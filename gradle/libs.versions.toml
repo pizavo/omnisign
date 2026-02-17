@@ -1,0 +1,82 @@
+[versions]
+androidx-lifecycle = "2.9.5"
+composeHotReload = "1.0.0"
+composeMultiplatform = "1.10.1"
+junit = "4.13.2"
+kotlin = "2.3.10"
+kotlinx-coroutines = "1.10.2"
+ktor = "3.4.0"
+logback = "1.5.27"
+clikt = "5.1.0"
+koin-bom = "4.1.1"
+koin-annotations = "2.3.1"
+dss-bom = "6.3"
+jaxb = "4.0.6"
+arrow = "2.2.1.1"
+kotlinx-serialization = "1.10.0"
+
+[libraries]
+kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
+kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
+junit = { module = "junit:junit", version.ref = "junit" }
+androidx-lifecycle-viewmodelCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidx-lifecycle" }
+androidx-lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
+kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }
+logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+ktor-serverCore = { module = "io.ktor:ktor-server-core-jvm", version.ref = "ktor" }
+ktor-serverNetty = { module = "io.ktor:ktor-server-netty-jvm", version.ref = "ktor" }
+ktor-serverTestHost = { module = "io.ktor:ktor-server-test-host-jvm", version.ref = "ktor" }
+
+koin-bom = { module = "io.insert-koin:koin-bom", version.ref = "koin-bom" }
+koin-core = { module = "io.insert-koin:koin-core" }
+koin-compose = { module = "io.insert-koin:koin-compose" }
+koin-compose-viewmodel = { module = "io.insert-koin:koin-compose-viewmodel" }
+koin-ktor = { module = "io.insert-koin:koin-ktor" }
+koin-test = { module = "io.insert-koin:koin-test" }
+koin-annotations = { module = "io.insert-koin:koin-annotations", version.ref = "koin-annotations" }
+
+arrow-core = { module = "io.arrow-kt:arrow-core", version.ref = "arrow" }
+arrow-fx-coroutines = { module = "io.arrow-kt:arrow-fx-coroutines", version.ref = "arrow" }
+
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
+
+clikt = { module = "com.github.ajalt.clikt:clikt", version.ref = "clikt" }
+clikt-core = { module = "com.github.ajalt.clikt:clikt-core", version.ref = "clikt" }
+clikt-markdown = { module = "com.github.ajalt.clikt:clikt-markdown", version.ref = "clikt" }
+
+dss-bom = { module = "eu.europa.ec.joinup.sd-dss:dss-bom", version.ref = "dss-bom" }
+
+dss-document = { module = "eu.europa.ec.joinup.sd-dss:dss-document" }
+dss-model = { module = "eu.europa.ec.joinup.sd-dss:dss-model" }
+
+dss-pades = { module = "eu.europa.ec.joinup.sd-dss:dss-pades" }
+dss-pades-pdfbox = { module = "eu.europa.ec.joinup.sd-dss:dss-pades-pdfbox" }
+
+dss-enumerations = { module = "eu.europa.ec.joinup.sd-dss:dss-enumerations" }
+dss-alert = { module = "eu.europa.ec.joinup.sd-dss:dss-alert" }
+dss-utils-apache-commons = { module = "eu.europa.ec.joinup.sd-dss:dss-utils-apache-commons" }
+dss-i18n = { module = "eu.europa.ec.joinup.sd-dss:dss-i18n" }
+dss-crl-parser = { module = "eu.europa.ec.joinup.sd-dss:dss-crl-parser" }
+dss-crl-parser-stream = { module = "eu.europa.ec.joinup.sd-dss:dss-crl-parser-stream" }
+dss-token = { module = "eu.europa.ec.joinup.sd-dss:dss-token" }
+dss-pdfa = { module = "eu.europa.ec.joinup.sd-dss:dss-pdfa" }
+
+dss-service = { module = "eu.europa.ec.joinup.sd-dss:dss-service" }
+dss-timestamp-remote = { module = "eu.europa.ec.joinup.sd-dss:dss-timestamp-remote" }
+dss-validation = { module = "eu.europa.ec.joinup.sd-dss:dss-validation" }
+
+dss-policy-jaxb = { module = "eu.europa.ec.joinup.sd-dss:dss-policy-jaxb" }
+dss-policy-crypto-xml = { module = "eu.europa.ec.joinup.sd-dss:dss-policy-crypto-xml" }
+dss-policy-crypto-json = { module = "eu.europa.ec.joinup.sd-dss:dss-policy-crypto-json" }
+
+jaxb-runtime = { module = "org.glassfish.jaxb:jaxb-runtime", version.ref = "jaxb" }
+
+[plugins]
+composeHotReload = { id = "org.jetbrains.compose.hot-reload", version.ref = "composeHotReload" }
+composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
+composeCompiler = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
+kotlinJvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
+kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
+kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
