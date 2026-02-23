@@ -5,24 +5,34 @@ import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 
 /**
- * Repository for archiving/LTA operations.
+ * Repository for post-signing document extension and archival renewal.
  */
 interface ArchivingRepository {
+
     /**
-     * Extend a signed document to B-LT or B-LTA format.
+     * Extend an already-signed PDF to a higher PAdES level by calling DSS
+     * [eu.europa.esig.dss.pades.signature.PAdESService.extendDocument].
      *
-     * @param parameters Archiving parameters
-     * @return Archiving result or error
+     * Covers all promotion paths:
+     * - B-B → B-T (add RFC 3161 timestamp)
+     * - B-T → B-LT (embed CRL/OCSP revocation data)
+     * - B-LT → B-LTA (add archival document timestamp)
+     * - B-LTA → B-LTA (archival renewal — re-timestamp before expiry)
+     *
+     * A TSA endpoint must be configured in [ArchivingParameters.resolvedConfig] for any
+     * target level of B-T or above.
+     *
+     * @param parameters Extension parameters including the target level.
+     * @return Result with the output path and applied level, or an [cz.pizavo.omnisign.domain.model.error.ArchivingError].
      */
-    suspend fun extendToArchival(parameters: ArchivingParameters): OperationResult<ArchivingResult>
-    
+    suspend fun extendDocument(parameters: ArchivingParameters): OperationResult<ArchivingResult>
+
     /**
-     * Check if a document needs archival timestamp renewal.
+     * Check whether the archival timestamps in [filePath] are close to expiry and the
+     * document should be re-timestamped.
      *
-     * @param filePath Path to the document
-     * @return True if renewal is needed
+     * @param filePath Absolute path to the B-LTA document to inspect.
+     * @return True if any timestamp signing certificate expires within the renewal window.
      */
     suspend fun needsArchivalRenewal(filePath: String): OperationResult<Boolean>
 }
-
-

@@ -12,12 +12,10 @@ val appModule = module {
     singleOf(::ValidateDocumentUseCase)
     singleOf(::SignDocumentUseCase)
     singleOf(::ListCertificatesUseCase)
-    singleOf(::AddTimestampUseCase)
-    singleOf(::ExtendToArchivalUseCase)
+    singleOf(::ExtendDocumentUseCase)
     singleOf(::CheckArchivalRenewalUseCase)
+    singleOf(::GetConfigUseCase)
+    singleOf(::SetGlobalConfigUseCase)
+    singleOf(::ManageProfileUseCase)
+    singleOf(::ManageTrustedListsUseCase)
 }
-
-
-
-
-

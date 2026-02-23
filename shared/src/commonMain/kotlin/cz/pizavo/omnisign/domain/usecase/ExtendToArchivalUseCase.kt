@@ -6,20 +6,19 @@ import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 
 /**
- * Use case for extending documents to archival formats (B-LT/B-LTA).
+ * Extends an already-signed PDF to a higher PAdES level.
+ *
+ * Delegates to [ArchivingRepository.extendDocument], which covers all promotion paths:
+ * B-B→T (add timestamp), B-T→LT (add revocation data), B-LT→LTA (add archival timestamp),
+ * and B-LTA→LTA (archival renewal).
  */
-class ExtendToArchivalUseCase(
+class ExtendDocumentUseCase(
     private val archivingRepository: ArchivingRepository
 ) {
     /**
-     * Execute archival extension.
-     *
-     * @param parameters Archiving parameters
-     * @return Archiving result or error
+     * @param parameters Extension parameters, including the desired [cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel].
+     * @return The archiving result or an error.
      */
-    suspend operator fun invoke(parameters: ArchivingParameters): OperationResult<ArchivingResult> {
-        return archivingRepository.extendToArchival(parameters)
-    }
+    suspend operator fun invoke(parameters: ArchivingParameters): OperationResult<ArchivingResult> =
+        archivingRepository.extendDocument(parameters)
 }
-
-

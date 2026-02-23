@@ -12,26 +12,27 @@ data class ValidationConfig(
      * Validation policy type.
      */
     val policyType: ValidationPolicyType = ValidationPolicyType.DEFAULT_ETSI,
-    
+
     /**
      * Path to custom validation policy file (when policyType is CUSTOM_FILE).
      */
     val customPolicyPath: String? = null,
-    
+
     /**
      * Whether to check certificate revocation status.
      */
     val checkRevocation: Boolean = true,
-    
+
     /**
      * Whether to use EU LOTL (List of Trusted Lists).
      */
     val useEuLotl: Boolean = true,
-    
+
     /**
-     * Paths to custom trusted lists.
+     * Custom trusted list sources registered for this validation context.
+     * Each entry may point to a remote URL or a local `file://` path.
      */
-    val customTrustedLists: List<String> = emptyList()
+    val customTrustedLists: List<CustomTrustedListConfig> = emptyList()
 )
 
 

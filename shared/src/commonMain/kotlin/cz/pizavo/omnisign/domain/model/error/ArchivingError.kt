@@ -16,10 +16,9 @@ sealed interface ArchivingError : OperationError {
     /**
      * Failed to extend signature to LTA format.
      */
-    data class LTAExtensionFailed(
+    data class ExtensionFailed(
         override val message: String,
         override val details: String? = null,
         override val cause: Throwable? = null
     ) : ArchivingError
 }
-

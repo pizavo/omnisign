@@ -47,7 +47,9 @@ kotlin {
 compose.desktop {
 	application {
 		mainClass = "cz.pizavo.omnisign.MainKt"
-		
+
+		jvmArgs("--enable-native-access=ALL-UNNAMED")
+
 		nativeDistributions {
 			targetFormats(
 				TargetFormat.Msi,

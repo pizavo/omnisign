@@ -24,6 +24,20 @@ interface TokenService {
         tokenInfo: TokenInfo,
         password: String?
     ): OperationResult<List<CertificateEntry>>
+
+    /**
+     * Load certificates without prompting for credentials.
+     * Returns an error immediately when the token requires a PIN and none is supplied.
+     * Use this during passive discovery to avoid blocking on user input.
+     *
+     * @param tokenInfo Token to load certificates from
+     * @param password Password/PIN for the token or null to skip PIN-protected tokens
+     * @return List of certificates or error
+     */
+    suspend fun loadCertificatesSilent(
+        tokenInfo: TokenInfo,
+        password: String?
+    ): OperationResult<List<CertificateEntry>>
     
     /**
      * Get a signing token for the specified certificate.

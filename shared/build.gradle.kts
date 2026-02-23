@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 
 plugins {
     alias(libs.plugins.kotlinMultiplatform)
@@ -6,7 +7,9 @@ plugins {
 }
 
 kotlin {
-	jvm()
+	jvm {
+		compilerOptions.jvmTarget = JvmTarget.JVM_25
+	}
     
     @OptIn(ExperimentalWasmDsl::class)
     wasmJs {
@@ -21,8 +24,6 @@ kotlin {
 	        
 	        implementation(libs.kotlinx.serialization.json)
 	        
-	        // Arrow 2.x supports all KMP targets including Wasm
-	        // Use api() because Either is part of our public API (OperationResult)
 		    api(libs.arrow.core)
 	        implementation(libs.arrow.fx.coroutines)
         }
@@ -30,12 +31,18 @@ kotlin {
             implementation(libs.kotlin.test)
 	        implementation(libs.koin.test)
         }
+        jvmTest.dependencies {
+            implementation(libs.kotlin.testJunit)
+            implementation(libs.mockk)
+            implementation(libs.kotlinx.coroutines.test)
+        }
 	    jvmMain.dependencies {
 	     
 		    implementation(project.dependencies.platform(libs.dss.bom))
 		    
 		    implementation(libs.dss.document)
 		    implementation(libs.dss.model)
+		    implementation(libs.dss.cms.obj)
 		    
 		    implementation(libs.dss.pades)
 		    implementation(libs.dss.pades.pdfbox)
@@ -51,6 +58,8 @@ kotlin {
 		    implementation(libs.dss.pdfa)
 		    
 		    implementation(libs.dss.service) // handles TSP, OCSP, CRL requests, etc.
+		    implementation(libs.dss.tsl.validation) // TLValidationJob, LOTLSource, TLSource
+		    implementation(libs.dss.specs.trusted.list) // JAXB model for building TL XML
 		    implementation(libs.dss.timestamp.remote)
 		    implementation(libs.dss.validation)
 		    
@@ -59,6 +68,7 @@ kotlin {
 		    implementation(libs.dss.policy.crypto.json)
 		    
 		    implementation(libs.jaxb.runtime)
+		    implementation(libs.java.keyring)
 	    }
     }
 }
