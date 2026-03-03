@@ -3,12 +3,15 @@ package cz.pizavo.omnisign.commands
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.groups.provideDelegate
+import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
+import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.path
 import cz.pizavo.omnisign.cli.OperationConfigOptions
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -47,6 +50,16 @@ class Validate : CliktCommand(
 		help = "Show detailed validation output including certificate key usages, timestamp IDs, and resolved configuration"
 	).flag(default = false)
 	
+	private val reportOut by option(
+		"--report-out",
+		help = "Write the raw DSS report to this file path (XML format chosen by --report-format)"
+	).path(canBeDir = false)
+	
+	private val reportFormat by option(
+		"--report-format",
+		help = "Format of the raw report written by --report-out (${RawReportFormat.entries.joinToString { it.name }}). Default: XML_DETAILED"
+	).enum<RawReportFormat>().default(RawReportFormat.XML_DETAILED)
+	
 	private val configOverrides by OperationConfigOptions()
 	
 	override fun help(context: Context): String =
@@ -58,17 +71,25 @@ class Validate : CliktCommand(
 			?: appConfig.activeProfile
 		val profileConfig = activeProfile?.let { appConfig.profiles[it] }
 		val operationConfig = configOverrides.toOperationConfig()
-		val resolvedConfig = ResolvedConfig.resolve(
+		val resolvedConfigResult = ResolvedConfig.resolve(
 			global = appConfig.global,
 			profile = profileConfig,
 			operationOverrides = operationConfig,
 			excludeGlobalTls = configOverrides.noGlobalTls
 		)
+		if (resolvedConfigResult.isLeft()) {
+			val error = resolvedConfigResult.leftOrNull()!!
+			echo("❌ Configuration Error: ${error.message}", err = true)
+			return@runBlocking
+		}
+		val resolvedConfig = resolvedConfigResult.getOrNull()!!
 		
 		val parameters = ValidationParameters(
 			inputFile = file.toAbsolutePath().toString(),
 			customPolicyPath = policy?.toAbsolutePath()?.toString(),
-			resolvedConfig = resolvedConfig
+			resolvedConfig = resolvedConfig,
+			rawReportOutputPath = reportOut?.toAbsolutePath()?.toString(),
+			rawReportFormat = reportFormat,
 		)
 		
 		validateUseCase(parameters).fold(
@@ -79,6 +100,9 @@ class Validate : CliktCommand(
 			},
 			ifRight = { report ->
 				printValidationReport(report, parameters, resolvedConfig)
+				reportOut?.let {
+					echo("\n📄 Raw report (${reportFormat.name}) written to: ${it.toAbsolutePath()}")
+				}
 			}
 		)
 	}
@@ -143,7 +167,7 @@ class Validate : CliktCommand(
 	 * Print a single signature block.
 	 *
 	 * Normal mode shows all cryptographically relevant facts: indication, signer,
-	 * level, best signature time, qualification, hash and encryption algorithms,
+	 * level, the best signature time, qualification, hash and encryption algorithms,
 	 * and full certificate identity fields.
 	 *
 	 * In [detailed] mode additional fields are included: the raw DSS signature ID,
@@ -177,7 +201,7 @@ class Validate : CliktCommand(
 		echo("│    Valid from:     ${signature.certificate.validFrom}")
 		echo("│    Valid to:       ${signature.certificate.validTo}")
 		echo("│    Qualified:      ${if (signature.certificate.isQualified) "Yes" else "No"}")
-
+		
 		if (detailed) {
 			if (signature.certificate.publicKeyAlgorithm != null) {
 				echo("│    Public key:     ${signature.certificate.publicKeyAlgorithm}")

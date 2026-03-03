@@ -21,7 +21,7 @@ interface SigningRepository {
      *
      * @return List of certificate aliases or error
      */
-    suspend fun listAvailableCertificates(): OperationResult<List<CertificateInfo>>
+    suspend fun listAvailableCertificates(): OperationResult<List<AvailableCertificateInfo>>
 }
 
 

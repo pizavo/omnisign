@@ -64,11 +64,17 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
         val activeProfile = profile ?: appConfig.activeProfile
         val profileConfig = activeProfile?.let { appConfig.profiles[it] }
         val operationConfig = configOverrides.toOperationConfig()
-        val resolvedConfig = ResolvedConfig.resolve(
+        val resolvedConfigResult = ResolvedConfig.resolve(
             global = appConfig.global,
             profile = profileConfig,
             operationOverrides = operationConfig
         )
+        if (resolvedConfigResult.isLeft()) {
+            val error = resolvedConfigResult.leftOrNull()!!
+            echo("❌ Configuration Error: ${error.message}", err = true)
+            return@runBlocking
+        }
+        val resolvedConfig = resolvedConfigResult.getOrNull()!!
 
         val parameters = ArchivingParameters(
             inputFile = inputFile.toAbsolutePath().toString(),

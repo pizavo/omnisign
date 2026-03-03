@@ -1,7 +1,7 @@
 package cz.pizavo.omnisign.domain.usecase
 
 import cz.pizavo.omnisign.domain.model.result.OperationResult
-import cz.pizavo.omnisign.domain.repository.CertificateInfo
+import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
 import cz.pizavo.omnisign.domain.repository.SigningRepository
 
 /**
@@ -22,12 +22,12 @@ class ListCertificatesUseCase(
      *
      * @return Filtered list of signing-capable certificate information, or an error.
      */
-    suspend operator fun invoke(): OperationResult<List<CertificateInfo>> =
+    suspend operator fun invoke(): OperationResult<List<AvailableCertificateInfo>> =
         signingRepository.listAvailableCertificates().map { certificates ->
             certificates.filter { it.isSigningCapable() }
         }
 
-    private fun CertificateInfo.isSigningCapable(): Boolean =
+    private fun AvailableCertificateInfo.isSigningCapable(): Boolean =
         if (keyUsages.isNotEmpty()) {
             keyUsages.any { it == "digitalSignature" || it == "nonRepudiation" }
         } else {

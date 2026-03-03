@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.data.repository
 
 import arrow.core.left
 import arrow.core.right
+import arrow.core.getOrElse
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.toDss
@@ -37,7 +38,7 @@ class DssArchivingRepository(
 	private val configRepository: ConfigRepository,
 	private val credentialStore: CredentialStore
 ) : ArchivingRepository {
-
+	
 	@Suppress("TooGenericExceptionCaught", "ReturnCount")
 	override suspend fun extendDocument(parameters: ArchivingParameters): OperationResult<ArchivingResult> {
 		return try {
@@ -47,33 +48,37 @@ class DssArchivingRepository(
 					message = "Input file not found: ${parameters.inputFile}"
 				).left()
 			}
-
+			
 			val config = configRepository.getCurrentConfig()
 			val resolvedConfig = parameters.resolvedConfig ?: ResolvedConfig.resolve(
 				global = config.global,
 				profile = config.activeProfile?.let { config.profiles[it] },
 				operationOverrides = null
-			)
-
+			).getOrElse { error ->
+				return ArchivingError.ExtensionFailed(
+					message = error.message
+				).left()
+			}
+			
 			if (parameters.targetLevel == SignatureLevel.PADES_BASELINE_B) {
 				return ArchivingError.ExtensionFailed(
 					message = "Cannot extend to B-B: target level must be higher than the current level"
 				).left()
 			}
-
+			
 			val tsConfig = resolvedConfig.timestampServer
 				?: return ArchivingError.ExtensionFailed(
 					message = "A timestamp server must be configured for extension to ${parameters.targetLevel}"
 				).left()
-
+			
 			val dssLevel = parameters.targetLevel.toDss()
 			val service = buildExtendService(resolvedConfig, tsConfig)
 			val extendParams = PAdESSignatureParameters().apply { setSignatureLevel(dssLevel) }
 			val extendedDocument = service.extendDocument(FileDocument(inputFile), extendParams)
-
+			
 			val outputFile = File(parameters.outputFile).also { it.parentFile?.mkdirs() }
 			withContext(Dispatchers.IO) { extendedDocument.writeTo(outputFile.outputStream()) }
-
+			
 			ArchivingResult(
 				outputFile = parameters.outputFile,
 				newSignatureLevel = parameters.targetLevel.name
@@ -84,7 +89,7 @@ class DssArchivingRepository(
 						it.contains("OCSP", ignoreCase = true) ||
 						it.contains("CRL", ignoreCase = true)
 			} ?: false
-
+			
 			if (isRevocationError) {
 				ArchivingError.RevocationInfoError(
 					message = "Failed to obtain revocation information",
@@ -100,9 +105,12 @@ class DssArchivingRepository(
 			}
 		}
 	}
-
+	
 	@Suppress("TooGenericExceptionCaught", "ReturnCount")
-	override suspend fun needsArchivalRenewal(filePath: String): OperationResult<Boolean> {
+	override suspend fun needsArchivalRenewal(
+		filePath: String,
+		renewalBufferDays: Int,
+	): OperationResult<Boolean> {
 		return try {
 			val file = File(filePath)
 			if (!file.exists()) {
@@ -110,19 +118,19 @@ class DssArchivingRepository(
 					message = "File not found: $filePath"
 				).left()
 			}
-
+			
 			val document = FileDocument(file)
 			val validator = PDFDocumentValidator(document).apply {
 				setCertificateVerifier(CommonCertificateVerifier())
 			}
 			val diagnosticData = validator.validateDocument().diagnosticData
-			val renewalThreshold = Instant.now().plusSeconds(RENEWAL_THRESHOLD_SECONDS)
-
+			val renewalThreshold = Instant.now().plusSeconds(renewalBufferDays * 86_400L)
+			
 			val needsRenewal = diagnosticData.getTimestampList().any { ts ->
-				val notAfter = ts.signingCertificate?.getNotAfter() ?: return@any false
+				val notAfter = ts.signingCertificate?.notAfter ?: return@any false
 				notAfter.toInstant().isBefore(renewalThreshold)
 			}
-
+			
 			needsRenewal.right()
 		} catch (e: Exception) {
 			ArchivingError.ExtensionFailed(
@@ -132,7 +140,7 @@ class DssArchivingRepository(
 			).left()
 		}
 	}
-
+	
 	/**
 	 * Build a [PAdESService] wired for document extension with revocation and TSA sources.
 	 */
@@ -141,9 +149,5 @@ class DssArchivingRepository(
 			setPdfObjFactory(DssServiceFactory.buildPdfObjectFactory())
 			setTspSource(DssServiceFactory.buildTspSource(tsConfig, credentialStore))
 		}
-
-	private companion object {
-		/** Timestamps expiring within 90 days are considered in need of renewal. */
-		const val RENEWAL_THRESHOLD_SECONDS = 90L * 24 * 3600
-	}
 }
+

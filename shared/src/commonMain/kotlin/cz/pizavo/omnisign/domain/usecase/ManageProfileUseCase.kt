@@ -16,10 +16,28 @@ class ManageProfileUseCase(
     /**
      * Upsert a profile by name.
      *
+     * Returns an error when [profile] disables its own [ProfileConfig.hashAlgorithm] or
+     * [ProfileConfig.encryptionAlgorithm] override, since that would make every resolution
+     * using the profile fail immediately.
+     *
      * @param profile The profile to add or replace.
      * @return Unit on success or an error.
      */
     suspend fun upsert(profile: ProfileConfig): OperationResult<Unit> {
+        val ha = profile.hashAlgorithm
+        if (ha != null && ha in profile.disabledHashAlgorithms) {
+            return ConfigurationError.InvalidConfiguration(
+                message = "Profile '${profile.name}' disables its own hash algorithm override ${ha.name}; " +
+                        "remove the override or remove it from the disabled set"
+            ).left()
+        }
+        val ea = profile.encryptionAlgorithm
+        if (ea != null && ea in profile.disabledEncryptionAlgorithms) {
+            return ConfigurationError.InvalidConfiguration(
+                message = "Profile '${profile.name}' disables its own encryption algorithm override ${ea.name}; " +
+                        "remove the override or remove it from the disabled set"
+            ).left()
+        }
         val current = configRepository.getCurrentConfig()
         val updated = current.copy(profiles = current.profiles + (profile.name to profile))
         return configRepository.saveConfig(updated)

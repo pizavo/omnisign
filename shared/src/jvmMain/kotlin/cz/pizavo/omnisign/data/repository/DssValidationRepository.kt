@@ -6,14 +6,11 @@ import cz.pizavo.omnisign.ades.policy.AdESPolicy
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.error.ValidationError
+import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
-import cz.pizavo.omnisign.domain.model.validation.SignatureValidationResult
-import cz.pizavo.omnisign.domain.model.validation.TimestampValidationResult
-import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
-import cz.pizavo.omnisign.domain.model.validation.ValidationReport
-import cz.pizavo.omnisign.domain.model.validation.ValidationResult
+import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.repository.ValidationRepository
 import eu.europa.esig.dss.detailedreport.DetailedReport
 import eu.europa.esig.dss.diagnostic.DiagnosticData
@@ -72,6 +69,10 @@ class DssValidationRepository : ValidationRepository {
 				?.let { validator.validateDocument(it) }
 				?: validator.validateDocument()
 			
+			parameters.rawReportOutputPath?.let { outPath ->
+				writeRawReport(reports, outPath, parameters.rawReportFormat)
+			}
+			
 			convertReports(reports, file.name)
 		}.mapLeft { exception ->
 			ValidationError.ValidationFailed(
@@ -90,16 +91,16 @@ class DssValidationRepository : ValidationRepository {
 	 */
 	private fun buildCertificateVerifier(config: ResolvedConfig?): CommonCertificateVerifier {
 		var capturedLoader: CommonsDataLoader? = null
-
+		
 		val cv = DssServiceFactory.buildCertificateVerifier(config) { capturedLoader = it }
-
+		
 		if (config != null && (config.validation.useEuLotl || config.validation.customTrustedLists.isNotEmpty())) {
 			val dataLoader = capturedLoader ?: CommonsDataLoader()
 			val tlCertSource = TrustedListsCertificateSource()
 			buildTLValidationJob(config, tlCertSource, dataLoader).onlineRefresh()
 			cv.setTrustedCertSources(tlCertSource)
 		}
-
+		
 		return cv
 	}
 	
@@ -112,18 +113,18 @@ class DssValidationRepository : ValidationRepository {
 		dataLoader: CommonsDataLoader
 	): TLValidationJob {
 		val cacheDir = Files.createTempDirectory("omnisign-tl-cache").toFile()
-
+		
 		val onlineLoader = FileCacheDataLoader().apply {
 			setCacheExpirationTime(0)
 			setDataLoader(dataLoader)
 			setFileCacheDirectory(cacheDir)
 		}
-
+		
 		val job = TLValidationJob().apply {
 			setTrustedListCertificateSource(tlCertSource)
 			setOnlineDataLoader(onlineLoader)
 		}
-
+		
 		if (config.validation.useEuLotl) {
 			val lotlSource = LOTLSource().apply {
 				url = EU_LOTL_URL
@@ -132,7 +133,7 @@ class DssValidationRepository : ValidationRepository {
 			}
 			job.setListOfTrustedListSources(lotlSource)
 		}
-
+		
 		if (config.validation.customTrustedLists.isNotEmpty()) {
 			val tlSources = config.validation.customTrustedLists.map { tl ->
 				TLSource().apply {
@@ -144,10 +145,10 @@ class DssValidationRepository : ValidationRepository {
 			}.toTypedArray()
 			job.setTrustedListSources(*tlSources)
 		}
-
+		
 		return job
 	}
-
+	
 	/**
 	 * Load the Official Journal (OJ) keystore bundled as a classpath resource and wrap it
 	 * in a [CommonTrustedCertificateSource] so DSS can verify EU LOTL pivot signatures.
@@ -159,22 +160,24 @@ class DssValidationRepository : ValidationRepository {
 		val keystoreStream = DssValidationRepository::class.java
 			.getResourceAsStream(OJ_KEYSTORE_RESOURCE)
 			?: error("OJ keystore not found on classpath: $OJ_KEYSTORE_RESOURCE")
-
+		
 		val keystore = KeyStoreCertificateSource(keystoreStream, OJ_KEYSTORE_TYPE, OJ_KEYSTORE_PASSWORD.toCharArray())
 		return CommonTrustedCertificateSource().also { it.importAsTrusted(keystore) }
 	}
-
+	
 	/**
 	 * Build a [CommonTrustedCertificateSource] from a PEM or DER certificate file on disk.
 	 * Used to supply per-TL signing certificates for custom [TLSource] instances.
 	 */
 	private fun buildCertSourceFromFile(certPath: String): CommonTrustedCertificateSource {
-		val x509 = java.security.cert.CertificateFactory.getInstance("X.509")
-			.generateCertificate(File(certPath).inputStream()) as java.security.cert.X509Certificate
+		val x509 = File(certPath).inputStream().use { stream ->
+			java.security.cert.CertificateFactory.getInstance("X.509")
+				.generateCertificate(stream) as java.security.cert.X509Certificate
+		}
 		val token = eu.europa.esig.dss.model.x509.CertificateToken(x509)
 		return CommonTrustedCertificateSource().also { it.addCertificate(token) }
 	}
-
+	
 	/**
 	 * Load a [eu.europa.esig.dss.model.policy.ValidationPolicy] from the resolved config
 	 * or a custom policy path. Returns null to let DSS use its built-in default ETSI policy.
@@ -190,7 +193,12 @@ class DssValidationRepository : ValidationRepository {
 			
 			else -> null
 		}
-		return policyFile?.let { adeSPolicy.load(it) }
+		val constraints = config?.validation?.algorithmConstraints
+		return if (policyFile != null || constraints != null) {
+			adeSPolicy.load(policyFile, constraints)
+		} else {
+			null
+		}
 	}
 	
 	/**
@@ -200,21 +208,21 @@ class DssValidationRepository : ValidationRepository {
 		val simpleReport = reports.simpleReport
 		val detailedReport = reports.detailedReport
 		val diagnosticData = reports.diagnosticData
-
+		
 		val signatures = simpleReport.signatureIdList.map { id ->
 			convertSignature(simpleReport, diagnosticData, id)
 		}
-
+		
 		val timestamps = diagnosticData.getTimestampList().map { tsw ->
 			convertTimestamp(tsw, detailedReport)
 		}
-
+		
 		val overallResult = when {
 			signatures.all { it.indication == ValidationIndication.TOTAL_PASSED } -> ValidationResult.VALID
 			signatures.any { it.indication == ValidationIndication.TOTAL_FAILED } -> ValidationResult.INVALID
 			else -> ValidationResult.INDETERMINATE
 		}
-
+		
 		return ValidationReport(
 			documentName = documentName,
 			validationTime = java.time.Instant.now().toString(),
@@ -223,7 +231,7 @@ class DssValidationRepository : ValidationRepository {
 			timestamps = timestamps
 		)
 	}
-
+	
 	/**
 	 * Convert a single DSS [eu.europa.esig.dss.diagnostic.TimestampWrapper] into a [TimestampValidationResult].
 	 *
@@ -236,16 +244,16 @@ class DssValidationRepository : ValidationRepository {
 		detailedReport: DetailedReport
 	): TimestampValidationResult {
 		val id = tsw.id
-
+		
 		val rawIndication = detailedReport.getBasicTimestampValidationIndication(id)
 		val indication = when (rawIndication) {
 			Indication.TOTAL_PASSED -> ValidationIndication.TOTAL_PASSED
 			Indication.TOTAL_FAILED -> ValidationIndication.TOTAL_FAILED
 			else -> ValidationIndication.INDETERMINATE
 		}
-
+		
 		val subIndication = detailedReport.getBasicTimestampValidationSubIndication(id)?.toString()
-
+		
 		val qualification = try {
 			detailedReport.getTimestampQualification(id)
 				?.takeIf { it != TimestampQualification.NA }
@@ -253,14 +261,14 @@ class DssValidationRepository : ValidationRepository {
 		} catch (_: Exception) {
 			null
 		}
-
+		
 		val bbb = detailedReport.getBasicBuildingBlockById(id)
 		val errors = bbb?.conclusion?.errors?.map { it.value } ?: emptyList()
 		val warnings = bbb?.conclusion?.warnings?.map { it.value } ?: emptyList()
 		val infos = bbb?.conclusion?.infos?.map { it.value } ?: emptyList()
-
+		
 		val tsaSubjectDN = tsw.signingCertificate?.getCertificateDN()
-
+		
 		return TimestampValidationResult(
 			timestampId = id,
 			type = tsw.type?.name?.replace('_', ' ')?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "Unknown",
@@ -342,9 +350,26 @@ class DssValidationRepository : ValidationRepository {
 		)
 	}
 	
+	/**
+	 * Write the native DSS report in the requested [format] to [outputPath].
+	 *
+	 * Uses the pre-marshalled XML strings that [Reports] caches internally, so the
+	 * output is identical to what the DSS webapp produces — no round-trip through the
+	 * domain model.
+	 */
+	private fun writeRawReport(reports: Reports, outputPath: String, format: RawReportFormat) {
+		val xml = when (format) {
+			RawReportFormat.XML_DETAILED -> reports.xmlDetailedReport
+			RawReportFormat.XML_SIMPLE -> reports.xmlSimpleReport
+			RawReportFormat.XML_DIAGNOSTIC -> reports.xmlDiagnosticData
+			RawReportFormat.XML_ETSI -> reports.xmlValidationReport
+		}
+		File(outputPath).also { it.parentFile?.mkdirs() }.writeText(xml)
+	}
+	
 	private companion object {
 		const val EU_LOTL_URL = "https://ec.europa.eu/tools/lotl/eu-lotl.xml"
-
+		
 		const val OJ_KEYSTORE_RESOURCE = "/lotl-keystore.p12"
 		const val OJ_KEYSTORE_TYPE = "PKCS12"
 		const val OJ_KEYSTORE_PASSWORD = "dss-password"

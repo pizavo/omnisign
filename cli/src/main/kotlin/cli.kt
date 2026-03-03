@@ -15,7 +15,7 @@ import org.koin.dsl.module
  */
 fun main(args: Array<String>) {
 	val terminal = Terminal()
-
+	
 	startKoin {
 		modules(
 			appModule,
@@ -23,9 +23,9 @@ fun main(args: Array<String>) {
 			module { single<PasswordCallback> { CliPasswordCallback(terminal) } }
 		)
 	}
-
+	
 	try {
-		omnisignCli().main(args)
+		Omnisign().main(args)
 	} finally {
 		stopKoin()
 	}

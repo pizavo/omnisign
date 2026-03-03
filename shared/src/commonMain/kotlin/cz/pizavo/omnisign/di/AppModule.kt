@@ -9,13 +9,14 @@ import org.koin.dsl.module
  * Platform-specific implementations are registered in separate modules.
  */
 val appModule = module {
-    singleOf(::ValidateDocumentUseCase)
-    singleOf(::SignDocumentUseCase)
-    singleOf(::ListCertificatesUseCase)
-    singleOf(::ExtendDocumentUseCase)
-    singleOf(::CheckArchivalRenewalUseCase)
-    singleOf(::GetConfigUseCase)
-    singleOf(::SetGlobalConfigUseCase)
-    singleOf(::ManageProfileUseCase)
-    singleOf(::ManageTrustedListsUseCase)
+	singleOf(::ValidateDocumentUseCase)
+	singleOf(::SignDocumentUseCase)
+	singleOf(::ListCertificatesUseCase)
+	singleOf(::ExtendDocumentUseCase)
+	singleOf(::CheckArchivalRenewalUseCase)
+	singleOf(::GetConfigUseCase)
+	singleOf(::SetGlobalConfigUseCase)
+	singleOf(::ManageProfileUseCase)
+	singleOf(::ManageTrustedListsUseCase)
+	singleOf(::ManageRenewalJobsUseCase)
 }

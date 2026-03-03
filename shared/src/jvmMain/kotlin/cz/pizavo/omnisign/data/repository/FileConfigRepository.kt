@@ -7,6 +7,8 @@ import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import java.nio.file.Path
 import java.nio.file.Paths
@@ -16,6 +18,8 @@ import kotlin.io.path.writeText
 
 /**
  * JVM implementation of ConfigRepository using JSON files.
+ *
+ * Thread-safe: all reads and writes to the cached configuration are protected by a [Mutex].
  */
 class FileConfigRepository(
     private val configPath: Path = getDefaultConfigPath()
@@ -26,21 +30,23 @@ class FileConfigRepository(
         ignoreUnknownKeys = true
     }
     
+    private val mutex = Mutex()
+    
+    @Volatile
     private var cachedConfig: AppConfig? = null
     
-    override suspend fun loadConfig(): OperationResult<AppConfig> {
-        return try {
+    override suspend fun loadConfig(): OperationResult<AppConfig> = mutex.withLock {
+        try {
             if (!configPath.exists()) {
-                // Create default config if it doesn't exist
                 val defaultConfig = AppConfig(global = GlobalConfig())
-                saveConfig(defaultConfig)
-                return defaultConfig.right()
+                saveConfigInternal(defaultConfig)
+                defaultConfig.right()
+            } else {
+                val configText = configPath.readText()
+                val config = json.decodeFromString<AppConfig>(configText)
+                cachedConfig = config
+                config.right()
             }
-            
-            val configText = configPath.readText()
-            val config = json.decodeFromString<AppConfig>(configText)
-            cachedConfig = config
-            config.right()
         } catch (e: Exception) {
             ConfigurationError.LoadFailed(
                 message = "Failed to load configuration",
@@ -50,11 +56,17 @@ class FileConfigRepository(
         }
     }
     
-    override suspend fun saveConfig(config: AppConfig): OperationResult<Unit> {
+    override suspend fun saveConfig(config: AppConfig): OperationResult<Unit> = mutex.withLock {
+        saveConfigInternal(config)
+    }
+    
+    /**
+     * Internal save without acquiring [mutex]. Called by [loadConfig] (which already holds
+     * the lock) when the config file does not exist yet.
+     */
+    private fun saveConfigInternal(config: AppConfig): OperationResult<Unit> {
         return try {
-            // Ensure parent directory exists
             configPath.parent?.toFile()?.mkdirs()
-            
             val configText = json.encodeToString(config)
             configPath.writeText(configText)
             cachedConfig = config
@@ -107,10 +119,4 @@ class FileConfigRepository(
         }
     }
 }
-
-
-
-
-
-
 

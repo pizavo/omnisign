@@ -20,6 +20,7 @@ dependencies {
 	implementation(libs.koin.core)
 
 	implementation(libs.kotlinx.coroutines.core)
+	implementation(libs.kotlinx.datetime)
 	runtimeOnly(libs.logback)
 }
 
@@ -41,5 +42,4 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
 	}
 	mergeServiceFiles()
 }
-
 
