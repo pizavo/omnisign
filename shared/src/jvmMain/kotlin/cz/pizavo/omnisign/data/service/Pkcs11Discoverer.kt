@@ -175,7 +175,7 @@ class Pkcs11Discoverer {
             lower.contains("cmp11") || lower.contains("charismathics") -> "Charismathics PKCS#11"
             lower.contains("softhsm") -> "SoftHSM2"
             lower.contains("libck") -> "Cryptoki Library"
-            else -> File(libraryPath).name
+            else -> libraryPath.substringAfterLast('/').substringAfterLast('\\')
         }
     }
 
