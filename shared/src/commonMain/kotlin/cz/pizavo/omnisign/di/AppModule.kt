@@ -19,4 +19,5 @@ val appModule = module {
 	singleOf(::ManageProfileUseCase)
 	singleOf(::ManageTrustedListsUseCase)
 	singleOf(::ManageRenewalJobsUseCase)
+	singleOf(::ManagePkcs11LibrariesUseCase)
 }

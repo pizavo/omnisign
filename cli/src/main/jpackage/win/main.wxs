@@ -1,0 +1,125 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Custom main.wxs for jpackage (JDK 25 / WiX 6).
+    Differs from jpackage's default in two ways:
+      1. The OmnisignPath ComponentGroupRef in DefaultFeature pulls in the PATH
+         Environment component from overrides.wxi.
+      2. Upgrades from older versions are always allowed: the installer automatically
+         uninstalls the previous version and installs the new one. The jpackage
+         JpFindRelatedProducts/wixhelper.dll custom action is kept as a definition
+         only — ui.wxf references it from its own UISequence and must be able to
+         resolve the symbol. It is intentionally omitted from InstallExecuteSequence.
+         RemoveExistingProducts is placed Before="CostInitialize" — matching
+         jpackage's own default — because CostInitialize performs
+         database-consistency and version-conflict checks that throw error 1638
+         if the old product is still present. IncludeMaximum="yes" on the
+         UpgradeVersion entry ensures that the same version is also covered, so
+         reinstalling a rebuild of the same version (same ProductCode, different
+         PackageCode) correctly removes the old installation first instead of
+         hitting 1638 at the ProductState=5 pre-check.
+         Downgrades are still blocked unless jpackage passes JpAllowDowngrades.
+    Update this file if upgrading the JDK and jpackage changes its default main.wxs.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+  <?ifdef JpIsSystemWide ?>
+    <?define JpInstallScope="perMachine"?>
+  <?else ?>
+    <?define JpInstallScope="perUser"?>
+  <?endif ?>
+
+  <?define JpProductLanguage=1033 ?>
+  <?define JpInstallerVersion=200 ?>
+  <?define JpCompressedMsi=yes ?>
+
+  <?include $(var.JpConfigDir)/overrides.wxi ?>
+
+  <?define JpUpgradeVersionOnlyDetectUpgrade="no"?>
+  <?ifdef JpAllowDowngrades ?>
+    <?define JpUpgradeVersionOnlyDetectDowngrade="no"?>
+  <?else ?>
+    <?define JpUpgradeVersionOnlyDetectDowngrade="yes"?>
+  <?endif ?>
+
+  <Package Name="OmniSign CLI" Language="$(var.JpProductLanguage)"
+           Version="$(var.JpAppVersion)" Manufacturer="$(var.JpAppVendor)"
+           UpgradeCode="$(var.JpProductUpgradeCode)" InstallerVersion="$(var.JpInstallerVersion)"
+           Compressed="$(var.JpCompressedMsi)" ProductCode="*"
+           Scope="$(var.JpInstallScope)">
+    <SummaryInformation Manufacturer="$(var.JpAppVendor)" Description="$(var.JpAppDescription)" />
+
+    <Media Id="1" Cabinet="Data.cab" EmbedCab="yes" />
+
+    <Upgrade Id="$(var.JpProductUpgradeCode)">
+      <UpgradeVersion OnlyDetect="$(var.JpUpgradeVersionOnlyDetectUpgrade)"
+                      Property="JP_UPGRADABLE_FOUND" Maximum="$(var.JpAppVersion)"
+                      MigrateFeatures="yes"
+                      IncludeMaximum="yes" />
+      <UpgradeVersion OnlyDetect="$(var.JpUpgradeVersionOnlyDetectDowngrade)"
+                      Property="JP_DOWNGRADABLE_FOUND" Minimum="$(var.JpAppVersion)"
+                      MigrateFeatures="yes"
+                      IncludeMinimum="$(var.JpUpgradeVersionOnlyDetectDowngrade)" />
+    </Upgrade>
+
+    <?ifndef JpAllowDowngrades ?>
+    <CustomAction Id="JpDisallowDowngrade" Error="!(loc.DowngradeErrorMessage)" />
+    <?endif ?>
+
+    <Binary Id="JpCaDll" SourceFile="wixhelper.dll" />
+    <CustomAction Id="JpFindRelatedProducts" BinaryRef="JpCaDll" DllEntry="FindRelatedProductsEx" />
+
+    <Feature Id="DefaultFeature" Title="!(loc.MainFeatureTitle)" Level="1">
+      <ComponentGroupRef Id="Shortcuts" />
+      <ComponentGroupRef Id="Files" />
+      <ComponentGroupRef Id="FileAssociations" />
+      <ComponentGroupRef Id="FragmentOsCondition" />
+      <ComponentGroupRef Id="OmnisignPath" />
+    </Feature>
+
+    <CustomAction Id="JpSetARPINSTALLLOCATION" Property="ARPINSTALLLOCATION" Value="[INSTALLDIR]" />
+    <CustomAction Id="JpSetARPCOMMENTS" Property="ARPCOMMENTS" Value="$(var.JpAppDescription)" />
+    <CustomAction Id="JpSetARPCONTACT" Property="ARPCONTACT" Value="$(var.JpAppVendor)" />
+    <CustomAction Id="JpSetARPSIZE" Property="ARPSIZE" Value="$(var.JpAppSizeKb)" />
+
+    <?ifdef JpHelpURL ?>
+    <CustomAction Id="JpSetARPHELPLINK" Property="ARPHELPLINK" Value="$(var.JpHelpURL)" />
+    <?endif ?>
+    <?ifdef JpAboutURL ?>
+    <CustomAction Id="JpSetARPURLINFOABOUT" Property="ARPURLINFOABOUT" Value="$(var.JpAboutURL)" />
+    <?endif ?>
+    <?ifdef JpUpdateURL ?>
+    <CustomAction Id="JpSetARPURLUPDATEINFO" Property="ARPURLUPDATEINFO" Value="$(var.JpUpdateURL)" />
+    <?endif ?>
+
+    <?ifdef JpIcon ?>
+    <Property Id="ARPPRODUCTICON" Value="JpARPPRODUCTICON" />
+    <Icon Id="JpARPPRODUCTICON" SourceFile="$(var.JpIcon)" />
+    <?endif ?>
+
+    <UIRef Id="JpUI" />
+
+    <InstallExecuteSequence>
+      <Custom Action="JpSetARPINSTALLLOCATION" After="CostFinalize" Condition="Not Installed" />
+      <Custom Action="JpSetARPCOMMENTS" After="CostFinalize" Condition="Not Installed" />
+      <Custom Action="JpSetARPCONTACT" After="CostFinalize" Condition="Not Installed" />
+      <Custom Action="JpSetARPSIZE" After="CostFinalize" Condition="Not Installed" />
+      <?ifdef JpHelpURL ?>
+      <Custom Action="JpSetARPHELPLINK" After="CostFinalize" Condition="Not Installed" />
+      <?endif ?>
+      <?ifdef JpAboutURL ?>
+      <Custom Action="JpSetARPURLINFOABOUT" After="CostFinalize" Condition="Not Installed" />
+      <?endif ?>
+      <?ifdef JpUpdateURL ?>
+      <Custom Action="JpSetARPURLUPDATEINFO" After="CostFinalize" Condition="Not Installed" />
+      <?endif ?>
+      <?ifndef JpAllowDowngrades ?>
+      <Custom Action="JpDisallowDowngrade" After="FindRelatedProducts" Condition="JP_DOWNGRADABLE_FOUND" />
+      <?endif ?>
+      <LaunchConditions Before="AppSearch" />
+      <RemoveExistingProducts Before="CostInitialize" />
+    </InstallExecuteSequence>
+
+
+  </Package>
+</Wix>
+

@@ -4,6 +4,7 @@ import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
+import java.io.File
 import kotlinx.coroutines.runBlocking
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -39,8 +40,10 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 				echo("  Validation policy      : ${config.global.validation.policyType}")
 				echo("  Use EU LOTL            : ${config.global.validation.useEuLotl}")
 				val ac = config.global.validation.algorithmConstraints
-				echo("  Algo expiry level      : ${ac.expirationLevel?.toString() ?: "default (${AlgorithmConstraintsConfig.DEFAULT.expirationLevel})"}")
-				echo("  Algo expiry after upd. : ${ac.expirationLevelAfterUpdate?.toString() ?: "default (${AlgorithmConstraintsConfig.DEFAULT.expirationLevelAfterUpdate})"}")
+				echo("  Algo expiry level      : ${ac.expirationLevel?.toString()
+					?: "default (${AlgorithmConstraintsConfig.DEFAULT.expirationLevel})"}")
+				echo("  Algo expiry after upd. : ${ac.expirationLevelAfterUpdate?.toString()
+					?: "default (${AlgorithmConstraintsConfig.DEFAULT.expirationLevelAfterUpdate})"}")
 				echo("  Algo policy updated    : ${ac.policyUpdateDate ?: "DSS default (2024-10-13)"}")
 				if (ac.expirationDateOverrides.isNotEmpty()) {
 					echo("  Algo expiry overrides  :")
@@ -88,6 +91,16 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 						if (profile.disabledEncryptionAlgorithms.isNotEmpty()) {
 							echo("    Disabled enc   : ${profile.disabledEncryptionAlgorithms.joinToString { it.name }}")
 						}
+					}
+				}
+				if (config.global.customPkcs11Libraries.isEmpty()) {
+					echo("\n[Custom PKCS#11 Libraries]\n  (none — add with: config pkcs11 add --name <label> --path <path>)")
+				} else {
+					echo("\n[Custom PKCS#11 Libraries]")
+					config.global.customPkcs11Libraries.forEach { lib ->
+						val status = if (File(lib.path).exists()) "✅" else "⚠️  (file not found)"
+						echo("  ● ${lib.name}  $status")
+						echo("    Path: ${lib.path}")
 					}
 				}
 				echo("\n═══════════════════════════════════════════════════════════════")

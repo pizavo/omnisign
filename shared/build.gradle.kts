@@ -75,6 +75,9 @@ kotlin {
 			implementation(libs.jackson.kotlin)
 			implementation(libs.jackson.yaml)
 			implementation(libs.jackson.xml)
+
+			implementation(libs.jna)
+			implementation(libs.jna.platform)
 		}
 	}
 }

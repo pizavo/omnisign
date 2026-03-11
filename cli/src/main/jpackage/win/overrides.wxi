@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Custom overrides.wxi for jpackage.
+    Defines the OmnisignPath ComponentGroup referenced by DefaultFeature in main.wxs,
+    which adds [INSTALLDIR] to the system PATH on installation.
+-->
+<Include xmlns="http://wixtoolset.org/schemas/v4/wxs">
+
+    <Fragment>
+        <ComponentGroup Id="OmnisignPath">
+            <Component Id="OmnisignSystemPath" Bitness="always64"
+                       Guid="9329d39e-4d6d-494c-a2dc-41311f0a8084"
+                       Directory="INSTALLDIR">
+                <Environment Id="OmnisignPathEnv"
+                             Name="PATH"
+                             Value="[INSTALLDIR]"
+                             Permanent="no"
+                             Part="last"
+                             Action="set"
+                             System="yes" />
+            </Component>
+        </ComponentGroup>
+    </Fragment>
+
+</Include>

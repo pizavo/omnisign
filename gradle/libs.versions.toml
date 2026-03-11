@@ -20,6 +20,7 @@ arrow = "2.2.1.1"
 kotlinx-serialization = "1.10.0"
 kotlinx-datetime = "0.6.2"
 jackson = "2.18.3"
+jna = "5.18.1"
 
 [libraries]
 kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
@@ -90,6 +91,9 @@ jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", ver
 jackson-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
 jackson-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml", version.ref = "jackson" }
 jackson-xml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-xml", version.ref = "jackson" }
+
+jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 
 [plugins]
 composeHotReload = { id = "org.jetbrains.compose.hot-reload", version.ref = "composeHotReload" }

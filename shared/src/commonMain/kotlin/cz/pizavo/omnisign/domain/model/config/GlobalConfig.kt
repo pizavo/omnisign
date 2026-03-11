@@ -61,7 +61,20 @@ data class GlobalConfig(
 	/**
 	 * Validation policy settings.
 	 */
-	val validation: ValidationConfig = ValidationConfig()
+	val validation: ValidationConfig = ValidationConfig(),
+
+	/**
+	 * User-registered PKCS#11 middleware libraries.
+	 *
+	 * These are merged into token discovery on top of OS-native autodiscovery and the
+	 * built-in fallback candidate list.  Use this to register middleware that the
+	 * autodiscovery cannot find (e.g. non-standard install paths, vendor-specific tokens,
+	 * or libraries bundled alongside the application).
+	 *
+	 * Libraries whose [CustomPkcs11Library.path] does not exist on disk at discovery time
+	 * are silently skipped.
+	 */
+	val customPkcs11Libraries: List<CustomPkcs11Library> = emptyList(),
 )
 
 

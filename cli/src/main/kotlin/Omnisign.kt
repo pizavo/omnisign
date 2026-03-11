@@ -23,6 +23,7 @@ class Omnisign : CliktCommand(name = "omnisign") {
 	override fun help(context: Context): String =
 		"Digital signature verification, signing and re-timestamping tool"
 	
-	override fun run() = Unit
+	override fun run() {
+		if (currentContext.invokedSubcommand == null) echo(getFormattedHelp())
+	}
 }
-
