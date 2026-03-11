@@ -10,5 +10,9 @@ runs:
         distribution: temurin
         java-version: '25'
 
+    - name: Make gradlew executable
+      shell: bash
+      run: chmod +x gradlew
+
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@v4

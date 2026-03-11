@@ -6,8 +6,19 @@ on:
       - 'desktop/v*'
 
 jobs:
+  prepare:
+    name: Extract version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#desktop/v}" >> $GITHUB_OUTPUT
+
   build-linux:
     name: Package — Linux & Web
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -18,10 +29,10 @@ jobs:
         run: sudo apt-get install -y rpm
 
       - name: Build Linux packages
-        run: ./gradlew :composeApp:packageDeb :composeApp:packageRpm :composeApp:packageAppImage
+        run: ./gradlew :composeApp:packageDeb :composeApp:packageRpm :composeApp:packageAppImage -PreleaseVersion=${{ needs.prepare.outputs.version }}
 
       - name: Build Wasm distribution
-        run: ./gradlew :composeApp:wasmJsBrowserDistribution
+        run: ./gradlew :composeApp:wasmJsBrowserDistribution -PreleaseVersion=${{ needs.prepare.outputs.version }}
 
       - name: Zip Wasm distribution
         run: |
@@ -58,6 +69,7 @@ jobs:
 
   build-windows:
     name: Package — Windows
+    needs: prepare
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -71,7 +83,7 @@ jobs:
           wix extension add --global WixToolset.Util.wixext
 
       - name: Build Windows packages
-        run: ./gradlew :composeApp:packageMsi :composeApp:packageExe
+        run: ./gradlew :composeApp:packageMsi :composeApp:packageExe -PreleaseVersion=${{ needs.prepare.outputs.version }}
 
       - name: Upload MSI
         uses: actions/upload-artifact@v4
@@ -89,6 +101,7 @@ jobs:
 
   build-macos:
     name: Package — macOS
+    needs: prepare
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -96,7 +109,7 @@ jobs:
       - uses: ./.github/actions/setup-gradle
 
       - name: Build macOS package
-        run: ./gradlew :composeApp:packageDmg
+        run: ./gradlew :composeApp:packageDmg -PreleaseVersion=${{ needs.prepare.outputs.version }}
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4

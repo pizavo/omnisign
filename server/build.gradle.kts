@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "cz.pizavo.omnisign"
-version = "1.0.0"
+version = project.findProperty("releaseVersion")?.toString() ?: "1.0.0"
 application {
     mainClass.set("cz.pizavo.omnisign.ApplicationKt")
     

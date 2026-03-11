@@ -8,6 +8,8 @@ plugins {
 	alias(libs.plugins.composeHotReload)
 }
 
+version = project.findProperty("releaseVersion")?.toString() ?: "1.0.0"
+
 kotlin {
 	jvm()
 	
@@ -64,7 +66,7 @@ compose.desktop {
 				TargetFormat.AppImage
 			)
 			packageName = "cz.pizavo.omnisign"
-			packageVersion = "1.0.0"
+			packageVersion = project.version.toString()
 		}
 	}
 }

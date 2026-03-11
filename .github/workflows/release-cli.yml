@@ -6,8 +6,19 @@ on:
       - 'cli/v*'
 
 jobs:
+  prepare:
+    name: Extract version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#cli/v}" >> $GITHUB_OUTPUT
+
   build-linux:
     name: Package — Linux
+    needs: prepare
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -20,7 +31,7 @@ jobs:
           sudo apt-get install -y imagemagick rpm
 
       - name: Build shadow JAR and Linux packages
-        run: ./gradlew :cli:shadowJar :cli:jpackageDeb :cli:jpackageRpm
+        run: ./gradlew :cli:shadowJar :cli:jpackageDeb :cli:jpackageRpm -PreleaseVersion=${{ needs.prepare.outputs.version }}
 
       - name: Upload fat JAR
         uses: actions/upload-artifact@v4
@@ -45,6 +56,7 @@ jobs:
 
   build-windows:
     name: Package — Windows
+    needs: prepare
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -62,12 +74,12 @@ jobs:
           wix extension add --global WixToolset.Util.wixext
 
       - name: Build Windows packages
-        run: ./gradlew :cli:jpackageWinExe :cli:jpackageWinMsi
+        run: ./gradlew :cli:jpackageWinExe :cli:jpackageWinMsi -PreleaseVersion=${{ needs.prepare.outputs.version }}
 
       - name: Zip portable app-image
         shell: powershell
         run: |
-          $version = (Select-String -Path "cli\build.gradle.kts" -Pattern 'version\s*=\s*"(.+)"').Matches[0].Groups[1].Value
+          $version = "${{ needs.prepare.outputs.version }}"
           Compress-Archive -Path "cli\build\jpackage\win-image\*" `
             -DestinationPath "cli\build\jpackage\omnisign-cli-${version}-win-portable.zip" -Force
 
@@ -87,6 +99,7 @@ jobs:
 
   build-macos:
     name: Package — macOS
+    needs: prepare
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -97,7 +110,7 @@ jobs:
         run: brew install imagemagick
 
       - name: Build macOS package
-        run: ./gradlew :cli:jpackageDmg
+        run: ./gradlew :cli:jpackageDmg -PreleaseVersion=${{ needs.prepare.outputs.version }}
 
       - name: Upload DMG
         uses: actions/upload-artifact@v4

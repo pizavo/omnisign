@@ -19,7 +19,7 @@ jobs:
       - uses: ./.github/actions/setup-gradle
 
       - name: Build fat JAR
-        run: ./gradlew :server:buildFatJar
+        run: ./gradlew :server:buildFatJar -PreleaseVersion=${{ steps.version.outputs.version }}
 
       - name: Extract version from tag
         id: version

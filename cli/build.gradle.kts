@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "cz.pizavo.omnisign"
-version = "0.4.0"
+version = project.findProperty("releaseVersion")?.toString() ?: "0.4.0"
 
 dependencies {
 	implementation(projects.shared)
@@ -196,7 +196,7 @@ abstract class JPackageTask @Inject constructor(private val execOps: ExecOperati
 	abstract val commonArgs: ListProperty<String>
 	
 	/**
-	 * Optional platform-specific resource directory (e.g. src/main/jpackage/win).
+	 * Optional platform-specific resource directory (e.g., src/main/jpackage/win).
 	 * Declared as an input so Gradle invalidates the task whenever any file inside
 	 * it changes — for example when main.wxs or overrides.wxi are edited.
 	 */
