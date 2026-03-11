@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "cz.pizavo.omnisign"
-version = project.findProperty("releaseVersion")?.toString() ?: "0.5.0"
+version = project.findProperty("releaseVersion")?.toString() ?: "1.5.0"
 
 dependencies {
 	implementation(projects.shared)

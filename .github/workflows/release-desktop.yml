@@ -5,6 +5,9 @@ on:
     tags:
       - 'desktop/v*'
 
+env:
+  WIX_VERSION: '6.0.2'
+
 jobs:
   prepare:
     name: Extract version
@@ -21,7 +24,7 @@ jobs:
     needs: prepare
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-gradle
 
@@ -40,28 +43,28 @@ jobs:
           zip -r "$GITHUB_WORKSPACE/composeApp/build/web-dist.zip" .
 
       - name: Upload DEB
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: desktop-linux-deb
           path: composeApp/build/compose/binaries/main/deb/*.deb
           if-no-files-found: error
 
       - name: Upload RPM
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: desktop-linux-rpm
           path: composeApp/build/compose/binaries/main/rpm/*.rpm
           if-no-files-found: error
 
       - name: Upload AppImage
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: desktop-linux-appimage
           path: composeApp/build/compose/binaries/main/app-image/*.AppImage
           if-no-files-found: error
 
       - name: Upload web distribution
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: desktop-web-dist
           path: composeApp/build/web-dist.zip
@@ -72,28 +75,28 @@ jobs:
     needs: prepare
     runs-on: windows-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-gradle
 
-      - name: Install WiX 6
+      - name: Install WiX
         run: |
-          dotnet tool install --global wix
-          wix extension add --global WixToolset.UI.wixext
-          wix extension add --global WixToolset.Util.wixext
+          dotnet tool install --global wix --version ${{ env.WIX_VERSION }}
+          wix extension add --global WixToolset.UI.wixext/${{ env.WIX_VERSION }}
+          wix extension add --global WixToolset.Util.wixext/${{ env.WIX_VERSION }}
 
       - name: Build Windows packages
         run: ./gradlew :composeApp:packageMsi :composeApp:packageExe -PreleaseVersion=${{ needs.prepare.outputs.version }}
 
       - name: Upload MSI
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: desktop-windows-msi
           path: composeApp/build/compose/binaries/main/msi/*.msi
           if-no-files-found: error
 
       - name: Upload EXE
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: desktop-windows-exe
           path: composeApp/build/compose/binaries/main/exe/*.exe
@@ -104,7 +107,7 @@ jobs:
     needs: prepare
     runs-on: macos-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-gradle
 
@@ -112,7 +115,7 @@ jobs:
         run: ./gradlew :composeApp:packageDmg -PreleaseVersion=${{ needs.prepare.outputs.version }}
 
       - name: Upload DMG
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: desktop-macos-dmg
           path: composeApp/build/compose/binaries/main/dmg/*.dmg
@@ -127,7 +130,7 @@ jobs:
 
     steps:
       - name: Download all artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v8
         with:
           path: artifacts/
           merge-multiple: true
