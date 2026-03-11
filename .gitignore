@@ -17,4 +17,7 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
-/.github
+.github/!workflows/
+.github/!actions
+.github/*.*
+lotl-keystore.p12

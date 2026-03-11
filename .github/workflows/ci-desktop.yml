@@ -1,0 +1,48 @@
+name: CI — Desktop & Web
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'composeApp/**'
+      - 'shared/**'
+      - 'gradle/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'composeApp/**'
+      - 'shared/**'
+      - 'gradle/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+
+jobs:
+  test-jvm:
+    name: Test JVM — ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Run JVM tests
+        run: ./gradlew :shared:jvmTest :composeApp:jvmTest
+
+  test-web:
+    name: Build Web (Wasm)
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Build Wasm distribution
+        run: ./gradlew :composeApp:wasmJsBrowserDistribution

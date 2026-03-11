@@ -1,0 +1,127 @@
+name: Release — Desktop & Web
+
+on:
+  push:
+    tags:
+      - 'desktop/v*'
+
+jobs:
+  build-linux:
+    name: Package — Linux & Web
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Install RPM tools
+        run: sudo apt-get install -y rpm
+
+      - name: Build Linux packages
+        run: ./gradlew :composeApp:packageDeb :composeApp:packageRpm :composeApp:packageAppImage
+
+      - name: Build Wasm distribution
+        run: ./gradlew :composeApp:wasmJsBrowserDistribution
+
+      - name: Zip Wasm distribution
+        run: |
+          cd composeApp/build/dist/wasmJs/productionExecutable
+          zip -r "$GITHUB_WORKSPACE/composeApp/build/web-dist.zip" .
+
+      - name: Upload DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux-deb
+          path: composeApp/build/compose/binaries/main/deb/*.deb
+          if-no-files-found: error
+
+      - name: Upload RPM
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux-rpm
+          path: composeApp/build/compose/binaries/main/rpm/*.rpm
+          if-no-files-found: error
+
+      - name: Upload AppImage
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-linux-appimage
+          path: composeApp/build/compose/binaries/main/app-image/*.AppImage
+          if-no-files-found: error
+
+      - name: Upload web distribution
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-web-dist
+          path: composeApp/build/web-dist.zip
+          if-no-files-found: error
+
+  build-windows:
+    name: Package — Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Install WiX 6
+        run: |
+          dotnet tool install --global wix
+          wix extension add --global WixToolset.UI.wixext
+          wix extension add --global WixToolset.Util.wixext
+
+      - name: Build Windows packages
+        run: ./gradlew :composeApp:packageMsi :composeApp:packageExe
+
+      - name: Upload MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-msi
+          path: composeApp/build/compose/binaries/main/msi/*.msi
+          if-no-files-found: error
+
+      - name: Upload EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-exe
+          path: composeApp/build/compose/binaries/main/exe/*.exe
+          if-no-files-found: error
+
+  build-macos:
+    name: Package — macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Build macOS package
+        run: ./gradlew :composeApp:packageDmg
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-macos-dmg
+          path: composeApp/build/compose/binaries/main/dmg/*.dmg
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Desktop ${{ github.ref_name }}"
+          generate_release_notes: true
+          files: artifacts/*

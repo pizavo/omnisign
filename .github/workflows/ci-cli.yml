@@ -1,0 +1,36 @@
+name: CI — CLI
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'cli/**'
+      - 'shared/**'
+      - 'gradle/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+  pull_request:
+    branches: [main]
+    paths:
+      - 'cli/**'
+      - 'shared/**'
+      - 'gradle/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+
+jobs:
+  build:
+    name: Build & Test — ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Build and test
+        run: ./gradlew :shared:jvmTest :cli:test :cli:shadowJar

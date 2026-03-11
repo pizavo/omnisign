@@ -1,0 +1,128 @@
+name: Release — CLI
+
+on:
+  push:
+    tags:
+      - 'cli/v*'
+
+jobs:
+  build-linux:
+    name: Package — Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Install tooling
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y imagemagick rpm
+
+      - name: Build shadow JAR and Linux packages
+        run: ./gradlew :cli:shadowJar :cli:jpackageDeb :cli:jpackageRpm
+
+      - name: Upload fat JAR
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-jar
+          path: cli/build/libs/omnisign-*.jar
+          if-no-files-found: error
+
+      - name: Upload DEB
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-linux-deb
+          path: cli/build/jpackage/linux/*.deb
+          if-no-files-found: error
+
+      - name: Upload RPM
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-linux-rpm
+          path: cli/build/jpackage/linux/*.rpm
+          if-no-files-found: error
+
+  build-windows:
+    name: Package — Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Install ImageMagick
+        shell: powershell
+        run: choco install imagemagick -y
+
+      - name: Install WiX 6
+        run: |
+          dotnet tool install --global wix
+          wix extension add --global WixToolset.UI.wixext
+          wix extension add --global WixToolset.Util.wixext
+
+      - name: Build Windows packages
+        run: ./gradlew :cli:jpackageWinExe :cli:jpackageWinMsi
+
+      - name: Zip portable app-image
+        shell: powershell
+        run: |
+          $version = (Select-String -Path "cli\build.gradle.kts" -Pattern 'version\s*=\s*"(.+)"').Matches[0].Groups[1].Value
+          Compress-Archive -Path "cli\build\jpackage\win-image\*" `
+            -DestinationPath "cli\build\jpackage\omnisign-cli-${version}-win-portable.zip" -Force
+
+      - name: Upload MSI
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-windows-msi
+          path: cli/build/jpackage/win-msi/*.msi
+          if-no-files-found: error
+
+      - name: Upload portable ZIP
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-windows-portable
+          path: cli/build/jpackage/*-win-portable.zip
+          if-no-files-found: error
+
+  build-macos:
+    name: Package — macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Install ImageMagick
+        run: brew install imagemagick
+
+      - name: Build macOS package
+        run: ./gradlew :cli:jpackageDmg
+
+      - name: Upload DMG
+        uses: actions/upload-artifact@v4
+        with:
+          name: cli-macos-dmg
+          path: cli/build/jpackage/mac/*.dmg
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: [build-linux, build-windows, build-macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+          merge-multiple: true
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "CLI ${{ github.ref_name }}"
+          generate_release_notes: true
+          files: artifacts/*
