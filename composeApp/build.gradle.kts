@@ -29,10 +29,12 @@ version = project.findProperty("releaseVersion")?.toString() ?: "1.0.0"
 kotlin {
 	jvm()
 	
-	@OptIn(ExperimentalWasmDsl::class)
-	wasmJs {
-		browser()
-		binaries.executable()
+	if (System.getenv("QODANA_ANALYSIS_ID") == null) {
+		@OptIn(ExperimentalWasmDsl::class)
+		wasmJs {
+			browser()
+			binaries.executable()
+		}
 	}
 	
 	sourceSets {

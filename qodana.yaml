@@ -4,7 +4,12 @@
 
 version: "1.0"
 linter: jetbrains/qodana-jvm:2025.3
+bootstrap: ./gradlew :composeApp:jvmMainClasses :shared:jvmJar :cli:classes :server:classes --no-daemon
 profile:
   name: qodana.recommended
 include:
   - name: CheckDependencyLicenses
+exclude:
+  - name: All
+    paths:
+      - composeApp/src/webMain
