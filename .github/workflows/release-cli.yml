@@ -47,14 +47,14 @@ jobs:
         uses: actions/upload-artifact@v7
         with:
           name: cli-linux-deb
-          path: cli/build/jpackage/linux/*.deb
+          path: cli/build/jpackage/linux-deb/*.deb
           if-no-files-found: error
 
       - name: Upload RPM
         uses: actions/upload-artifact@v7
         with:
           name: cli-linux-rpm
-          path: cli/build/jpackage/linux/*.rpm
+          path: cli/build/jpackage/linux-rpm/*.rpm
           if-no-files-found: error
 
   build-windows:

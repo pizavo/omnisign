@@ -279,23 +279,23 @@ tasks.register<SvgToIcoTask>("convertIconIco") {
 }
 
 /**
- * Converts the source SVG to a 512×512 PNG for Linux packages using ImageMagick.
+ * Converts the source SVG to a 512×512 PNG for Linux packages using rsvg-convert.
  */
 tasks.register<SvgToPngTask>("convertIconPng") {
 	group = "distribution"
-	description = "Converts omnisign.svg → build/jpackage/icons/omnisign.png via ImageMagick."
+	description = "Converts omnisign.svg → build/jpackage/icons/omnisign.png via rsvg-convert."
 	sourceSvg.set(sourceSvgFile)
 	outputPng.set(generatedIconsDir.map { it.file("omnisign.png") })
 	size.set(512)
 }
 
 /**
- * Converts the source SVG to a macOS .icns bundle using ImageMagick and iconutil.
+ * Converts the source SVG to a macOS .icns bundle using rsvg-convert and iconutil.
  * Only meaningful when building on macOS (iconutil is a macOS-only tool).
  */
 tasks.register<SvgToIcnsTask>("convertIconIcns") {
 	group = "distribution"
-	description = "Converts omnisign.svg → build/jpackage/icons/omnisign.icns via ImageMagick + iconutil (macOS only)."
+	description = "Converts omnisign.svg → build/jpackage/icons/omnisign.icns via rsvg-convert + iconutil (macOS only)."
 	sourceSvg.set(sourceSvgFile)
 	outputDir.set(generatedIconsDir)
 }
@@ -392,7 +392,7 @@ registerJPackageTask(
 	name = "jpackageDeb",
 	description = "Packages the CLI as a Debian/Ubuntu .deb package.",
 	type = "deb",
-	destSubdir = "linux",
+	destSubdir = "linux-deb",
 	iconFile = generatedIconsDir.map { it.file("omnisign.png") },
 	iconDependency = "convertIconPng",
 	extraArgsList = listOf(
@@ -407,7 +407,7 @@ registerJPackageTask(
 	name = "jpackageRpm",
 	description = "Packages the CLI as a Red Hat/Fedora .rpm package.",
 	type = "rpm",
-	destSubdir = "linux",
+	destSubdir = "linux-rpm",
 	iconFile = generatedIconsDir.map { it.file("omnisign.png") },
 	iconDependency = "convertIconPng",
 	extraArgsList = listOf(
