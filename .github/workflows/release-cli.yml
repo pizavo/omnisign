@@ -34,7 +34,13 @@ jobs:
           sudo apt-get install -y librsvg2-bin rpm
 
       - name: Build shadow JAR and Linux packages
-        run: ./gradlew :cli:shadowJar :cli:jpackageDeb :cli:jpackageRpm -PreleaseVersion=${{ needs.prepare.outputs.version }}
+        run: ./gradlew :cli:shadowJar :cli:jpackageDeb :cli:jpackageRpm :cli:jpackageLinuxImage -PreleaseVersion=${{ needs.prepare.outputs.version }}
+
+      - name: Tar portable app-image
+        run: |
+          version="${{ needs.prepare.outputs.version }}"
+          tar -czf "cli/build/jpackage/omnisign-cli-${version}-linux-portable.tar.gz" \
+            -C "cli/build/jpackage/linux-image" .
 
       - name: Upload fat JAR
         uses: actions/upload-artifact@v7
@@ -55,6 +61,13 @@ jobs:
         with:
           name: cli-linux-rpm
           path: cli/build/jpackage/linux-rpm/*.rpm
+          if-no-files-found: error
+
+      - name: Upload portable tarball
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-linux-portable
+          path: cli/build/jpackage/*-linux-portable.tar.gz
           if-no-files-found: error
 
   build-windows:

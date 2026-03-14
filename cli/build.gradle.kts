@@ -5,7 +5,7 @@ plugins {
 }
 
 group = "cz.pizavo.omnisign"
-version = project.findProperty("releaseVersion")?.toString() ?: "1.5.0"
+version = project.findProperty("releaseVersion")?.toString() ?: "1.6.0"
 
 /**
  * Normalizes a semver-like string to the three-component `MAJOR.MINOR.BUILD` format required by
@@ -342,7 +342,7 @@ fun registerJPackageTask(
 }
 
 /**
- * Appends a [doLast] action to a [JPackageTask] that renames every output file
+ * Appends a [Task.doLast] action to a [JPackageTask] that renames every output file
  * with [extension] whose name starts with `omnisign` to use the `omnisign-cli` prefix.
  */
 fun renamePackageOutput(taskName: String, extension: String) {
@@ -419,6 +419,17 @@ registerJPackageTask(
 renamePackageOutput("jpackageRpm", "rpm")
 
 registerJPackageTask(
+	name = "jpackageLinuxImage",
+	description =
+		"Packages the CLI as a portable Linux app-image directory (for Arch and other non-DEB/RPM distributions).",
+	type = "app-image",
+	destSubdir = "linux-image",
+	iconFile = generatedIconsDir.map { it.file("omnisign.png") },
+	iconDependency = "convertIconPng",
+	extraArgsList = emptyList(),
+)
+
+registerJPackageTask(
 	name = "jpackageDmg",
 	description = "Packages the CLI as a macOS .dmg disk image.",
 	type = "dmg",
@@ -435,7 +446,7 @@ renamePackageOutput("jpackageDmg", "dmg")
 /**
  * Lifecycle task that runs the appropriate jpackage task(s) for the current OS.
  * On Windows: produces both the app-image (.exe) and the .msi installer.
- * On Linux:   produces both .deb and .rpm.
+ * On Linux:   produces .deb, .rpm, and a portable app-image tarball.
  * On macOS:   produces a .dmg.
  */
 tasks.register("jpackage") {
@@ -444,7 +455,7 @@ tasks.register("jpackage") {
 	val os = System.getProperty("os.name").lowercase()
 	when {
 		os.contains("win") -> dependsOn("jpackageWinExe", "jpackageWinMsi")
-		os.contains("linux") -> dependsOn("jpackageDeb", "jpackageRpm")
+		os.contains("linux") -> dependsOn("jpackageDeb", "jpackageRpm", "jpackageLinuxImage")
 		os.contains("mac") -> dependsOn("jpackageDmg")
 	}
 }
