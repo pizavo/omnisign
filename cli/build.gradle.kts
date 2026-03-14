@@ -7,6 +7,22 @@ plugins {
 group = "cz.pizavo.omnisign"
 version = project.findProperty("releaseVersion")?.toString() ?: "1.5.0"
 
+/**
+ * Normalizes a semver-like string to the three-component `MAJOR.MINOR.BUILD` format required by
+ * Windows native installers (MSI/EXE). Pre-release suffixes (e.g. `-SNAPSHOT`) are stripped, and
+ * missing components are padded with `0`.
+ *
+ * Examples: `"1"` → `"1.0.0"`, `"1.5"` → `"1.5.0"`, `"1.5.0-SNAPSHOT"` → `"1.5.0"`.
+ */
+fun String.toNativeDistributionVersion(): String {
+    val parts = substringBefore("-").split(".").mapNotNull { it.toIntOrNull() }
+    return listOf(
+        parts.getOrElse(0) { 0 },
+        parts.getOrElse(1) { 0 },
+        parts.getOrElse(2) { 0 },
+    ).joinToString(".")
+}
+
 dependencies {
 	implementation(projects.shared)
 	testImplementation(libs.kotlin.testJunit)
@@ -242,7 +258,7 @@ val sourceSvgFile: RegularFile = layout.projectDirectory.file("src/main/jpackage
 /** Common jpackage arguments shared by every package type. */
 val commonJpackageArgsList: List<String> = listOf(
 	"--name", "omnisign",
-	"--app-version", project.version.toString(),
+	"--app-version", project.version.toString().toNativeDistributionVersion(),
 	"--vendor", "OmniSign",
 	"--description", "Multiplatform digital signature verification, signing and re-timestamping tool",
 	"--main-class", "cz.pizavo.omnisign.CliKt",

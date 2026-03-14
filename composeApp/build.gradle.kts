@@ -1,6 +1,22 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
+/**
+ * Normalizes a semver-like string to the three-component `MAJOR.MINOR.BUILD` format required by
+ * Windows native installers (MSI/EXE). Pre-release suffixes (e.g. `-SNAPSHOT`) are stripped, and
+ * missing components are padded with `0`.
+ *
+ * Examples: `"1"` → `"1.0.0"`, `"1.5"` → `"1.5.0"`, `"1.5.0-SNAPSHOT"` → `"1.5.0"`.
+ */
+fun String.toNativeDistributionVersion(): String {
+    val parts = substringBefore("-").split(".").mapNotNull { it.toIntOrNull() }
+    return listOf(
+        parts.getOrElse(0) { 0 },
+        parts.getOrElse(1) { 0 },
+        parts.getOrElse(2) { 0 },
+    ).joinToString(".")
+}
+
 plugins {
 	alias(libs.plugins.kotlinMultiplatform)
 	alias(libs.plugins.composeMultiplatform)
@@ -66,7 +82,7 @@ compose.desktop {
 				TargetFormat.AppImage
 			)
 			packageName = "cz.pizavo.omnisign"
-			packageVersion = project.version.toString()
+			packageVersion = project.version.toString().toNativeDistributionVersion()
 		}
 	}
 }
