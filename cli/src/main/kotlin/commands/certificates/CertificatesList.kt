@@ -2,9 +2,16 @@ package cz.pizavo.omnisign.commands.certificates
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
+import com.github.ajalt.clikt.core.requireObject
+import cz.pizavo.omnisign.cli.OutputConfig
+import cz.pizavo.omnisign.cli.json.JsonCertificateList
+import cz.pizavo.omnisign.cli.json.toJsonCertificateList
+import cz.pizavo.omnisign.cli.json.toJsonError
 import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
 import cz.pizavo.omnisign.domain.usecase.ListCertificatesUseCase
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -16,6 +23,7 @@ import org.koin.core.component.inject
  */
 class CertificatesList : CliktCommand(name = "list"), KoinComponent {
 	private val listCertificates: ListCertificatesUseCase by inject()
+	private val output by requireObject<OutputConfig>()
 	
 	override fun help(context: Context): String =
 		"List all certificates available for signing"
@@ -23,12 +31,22 @@ class CertificatesList : CliktCommand(name = "list"), KoinComponent {
 	override fun run(): Unit = runBlocking {
 		listCertificates().fold(
 			ifLeft = { error ->
-				echo("❌ Failed to list certificates: ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.let { echo("Cause: ${it.message}", err = true) }
+				if (output.json) {
+					echo(Json.encodeToString(JsonCertificateList(
+						success = false,
+						error = error.toJsonError()
+					)))
+				} else {
+					echo("❌ Failed to list certificates: ${error.message}", err = true)
+					error.details?.let { echo("Details: $it", err = true) }
+					error.cause?.let { echo("Cause: ${it.message}", err = true) }
+				}
+				throw ProgramResult(1)
 			},
 			ifRight = { certificates ->
-				if (certificates.isEmpty()) {
+				if (output.json) {
+					echo(Json.encodeToString(certificates.toJsonCertificateList()))
+				} else if (certificates.isEmpty()) {
 					echo("No certificates found. Configure a PKCS#12 file or hardware token via 'config set'.")
 				} else {
 					printCertificatesTable(certificates)
@@ -67,4 +85,3 @@ class CertificatesList : CliktCommand(name = "list"), KoinComponent {
 		echo("═".repeat(aliasWidth + subjectWidth + tokenWidth + 38))
 	}
 }
-

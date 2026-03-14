@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.commands.config
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
@@ -141,7 +142,7 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 		}
 		
 		val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
-		setGlobalConfig {
+		val result = setGlobalConfig {
 			val hasAlgoChange = algoExpirationLevel != null || algoExpirationLevelAfterUpdate != null ||
 					algoExpiryOverride.isNotEmpty()
 			copy(
@@ -165,10 +166,12 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 								+ parseExpiryOverrides(algoExpiryOverride)
 					).let { if (hasAlgoChange) it.stampedToday(today) else it })
 			)
-		}.fold(
+		}
+		result.fold(
 			ifLeft = { error ->
 				echo("❌ Failed to save configuration: ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
+				if (error.details != null) echo("Details: ${error.details}", err = true)
+				throw ProgramResult(1)
 			},
 			ifRight = {
 				echo("✅ Global configuration updated.")

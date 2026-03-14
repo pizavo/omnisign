@@ -2,6 +2,8 @@ package cz.pizavo.omnisign.commands
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
+import com.github.ajalt.clikt.core.requireObject
 import com.github.ajalt.clikt.parameters.groups.provideDelegate
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
@@ -10,6 +12,11 @@ import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.path
 import cz.pizavo.omnisign.cli.OperationConfigOptions
+import cz.pizavo.omnisign.cli.OutputConfig
+import cz.pizavo.omnisign.cli.json.JsonError
+import cz.pizavo.omnisign.cli.json.JsonValidationResult
+import cz.pizavo.omnisign.cli.json.toJsonError
+import cz.pizavo.omnisign.cli.json.toJsonResult
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
@@ -17,6 +24,7 @@ import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -28,6 +36,7 @@ class Validate : CliktCommand(
 ), KoinComponent {
 	private val validateUseCase: ValidateDocumentUseCase by inject()
 	private val configRepository: ConfigRepository by inject()
+	private val output by requireObject<OutputConfig>()
 	
 	private val file by option("-f", "--file", help = "Path to the PDF file to validate")
 		.path(
@@ -79,8 +88,15 @@ class Validate : CliktCommand(
 		)
 		if (resolvedConfigResult.isLeft()) {
 			val error = resolvedConfigResult.leftOrNull()!!
-			echo("❌ Configuration Error: ${error.message}", err = true)
-			return@runBlocking
+			if (output.json) {
+				echo(Json.encodeToString(JsonValidationResult(
+					success = false,
+					error = JsonError(message = "Configuration Error: ${error.message}")
+				)))
+			} else {
+				echo("❌ Configuration Error: ${error.message}", err = true)
+			}
+			throw ProgramResult(1)
 		}
 		val resolvedConfig = resolvedConfigResult.getOrNull()!!
 		
@@ -94,14 +110,27 @@ class Validate : CliktCommand(
 		
 		validateUseCase(parameters).fold(
 			ifLeft = { error ->
-				echo("❌ Validation Error: ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.let { echo("Cause: ${it.message}", err = true) }
+				if (output.json) {
+					echo(Json.encodeToString(JsonValidationResult(
+						success = false,
+						error = error.toJsonError()
+					)))
+				} else {
+					echo("❌ Validation Error: ${error.message}", err = true)
+					error.details?.let { echo("Details: $it", err = true) }
+					error.cause?.let { echo("Cause: ${it.message}", err = true) }
+				}
+				throw ProgramResult(1)
 			},
 			ifRight = { report ->
-				printValidationReport(report, parameters, resolvedConfig)
-				reportOut?.let {
-					echo("\n📄 Raw report (${reportFormat.name}) written to: ${it.toAbsolutePath()}")
+				val rawPath = reportOut?.toAbsolutePath()?.toString()
+				if (output.json) {
+					echo(Json.encodeToString(report.toJsonResult(rawReportPath = rawPath)))
+				} else {
+					printValidationReport(report, parameters, resolvedConfig)
+					reportOut?.let {
+						echo("\n📄 Raw report (${reportFormat.name}) written to: ${it.toAbsolutePath()}")
+					}
 				}
 			}
 		)

@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.commands.config
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import java.io.File
@@ -22,7 +23,8 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 		getConfig().fold(
 			ifLeft = { error ->
 				echo("❌ Failed to load configuration: ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
+				if (error.details != null) echo("Details: ${error.details}", err = true)
+				throw ProgramResult(1)
 			},
 			ifRight = { config ->
 				echo("═══════════════════════════════════════════════════════════════")

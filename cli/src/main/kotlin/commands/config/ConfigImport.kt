@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.commands.config
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
@@ -46,10 +47,10 @@ class ConfigImport : CliktCommand(name = "import"), KoinComponent {
 		"Import a global (or full) configuration from a file"
 	
 	override fun run(): Unit = runBlocking {
-		val resolvedFormat = resolveFormat(inputFile, format) ?: return@runBlocking
+		val resolvedFormat = resolveFormat(inputFile, format) ?: throw ProgramResult(1)
 		val text = runCatching { Path.of(inputFile).readText() }.getOrElse { e ->
 			echo("❌ Cannot read file '$inputFile': ${e.message}", err = true)
-			return@runBlocking
+			throw ProgramResult(1)
 		}
 		
 		val result = if (all) exportImport.importApp(text, resolvedFormat)
@@ -58,7 +59,8 @@ class ConfigImport : CliktCommand(name = "import"), KoinComponent {
 		result.fold(
 			ifLeft = { error ->
 				echo("❌ Import failed: ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
+				if (error.details != null) echo("Details: ${error.details}", err = true)
+				throw ProgramResult(1)
 			},
 			ifRight = {
 				val scope = if (all) "full application" else "global"

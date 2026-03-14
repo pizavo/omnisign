@@ -2,8 +2,12 @@ package cz.pizavo.omnisign.commands
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
+import com.github.ajalt.clikt.core.requireObject
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
+import cz.pizavo.omnisign.cli.OutputConfig
+import cz.pizavo.omnisign.cli.json.*
 import cz.pizavo.omnisign.data.service.NotificationUrgency
 import cz.pizavo.omnisign.data.service.OsNotificationService
 import cz.pizavo.omnisign.domain.model.config.RenewalJob
@@ -15,6 +19,8 @@ import cz.pizavo.omnisign.domain.usecase.CheckArchivalRenewalUseCase
 import cz.pizavo.omnisign.domain.usecase.ExtendDocumentUseCase
 import arrow.core.Either
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.encodeToString
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
@@ -36,6 +42,7 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 	private val extendUseCase: ExtendDocumentUseCase by inject()
 	private val configRepository: ConfigRepository by inject()
 	private val notificationService: OsNotificationService by inject()
+	private val output by requireObject<OutputConfig>()
 	
 	private val jobName by option(
 		"-j", "--job",
@@ -56,8 +63,15 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 		val jobsToRun = if (jobName != null) {
 			val job = appConfig.renewalJobs[jobName]
 			if (job == null) {
-				echo("❌ Renewal job '$jobName' not found.", err = true)
-				return@runBlocking
+				if (output.json) {
+					echo(Json.encodeToString(JsonRenewalResult(
+						success = false,
+						error = JsonError(message = "Renewal job '$jobName' not found.")
+					)))
+				} else {
+					echo("❌ Renewal job '$jobName' not found.", err = true)
+				}
+				throw ProgramResult(1)
 			}
 			mapOf(jobName!! to job)
 		} else {
@@ -65,7 +79,11 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 		}
 		
 		if (jobsToRun.isEmpty()) {
-			echo("No renewal jobs configured. Use `omnisign schedule job add` to add one.")
+			if (output.json) {
+				echo(Json.encodeToString(JsonRenewalResult(success = true, dryRun = dryRun)))
+			} else {
+				echo("No renewal jobs configured. Use `omnisign schedule job add` to add one.")
+			}
 			return@runBlocking
 		}
 		
@@ -73,27 +91,38 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 		var totalRenewed = 0
 		var totalSkipped = 0
 		var totalErrors = 0
+		val jsonJobs = mutableListOf<JsonRenewalJobResult>()
 		
 		for ((_, job) in jobsToRun) {
-			echo("\n▶ Job: ${job.name}")
+			if (!output.json) echo("\n▶ Job: ${job.name}")
 			val files = resolveGlobs(job.globs)
 			
 			if (files.isEmpty()) {
-				echo("  No files matched globs: ${job.globs.joinToString()}")
+				if (!output.json) echo("  No files matched globs: ${job.globs.joinToString()}")
+				jsonJobs.add(JsonRenewalJobResult(name = job.name))
 				continue
 			}
 			
 			val resolvedConfigResult = resolveJobConfig(appConfig, job)
 			if (resolvedConfigResult.isLeft()) {
 				val error = resolvedConfigResult.leftOrNull()!!
-				echo("  ❌ Configuration Error for job '${job.name}': ${error.message}", err = true)
+				if (!output.json) echo("  ❌ Configuration Error for job '${job.name}': ${error.message}", err = true)
 				totalErrors++
+				jsonJobs.add(JsonRenewalJobResult(
+					name = job.name,
+					files = listOf(JsonRenewalFileResult(
+						path = "",
+						status = "CONFIG_ERROR",
+						message = error.message
+					))
+				))
 				continue
 			}
 			val resolvedConfig = resolvedConfigResult.getOrNull()!!
 			
 			var jobRenewed = 0
 			var jobErrors = 0
+			val jsonFiles = mutableListOf<JsonRenewalFileResult>()
 			
 			for (file in files) {
 				totalChecked++
@@ -104,15 +133,17 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 						totalErrors++
 						jobErrors++
 						val msg = "[ERROR] $path — ${error.message}"
-						echo("  ❌ $msg", err = true)
+						if (!output.json) echo("  ❌ $msg", err = true)
 						job.logFile?.let { appendLog(it, msg) }
+						jsonFiles.add(JsonRenewalFileResult(path = path, status = "ERROR", message = error.message))
 					},
 					ifRight = { needsRenewal ->
 						if (!needsRenewal) {
 							totalSkipped++
 							val msg = "[SKIP]  $path — timestamp still valid"
-							echo("  ✔ $msg")
+							if (!output.json) echo("  ✔ $msg")
 							job.logFile?.let { appendLog(it, msg) }
+							jsonFiles.add(JsonRenewalFileResult(path = path, status = "SKIPPED"))
 							return@fold
 						}
 						
@@ -120,8 +151,9 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 							totalRenewed++
 							jobRenewed++
 							val msg = "[DRY-RUN] $path — would be re-timestamped"
-							echo("  🔶 $msg")
+							if (!output.json) echo("  🔶 $msg")
 							job.logFile?.let { appendLog(it, msg) }
+							jsonFiles.add(JsonRenewalFileResult(path = path, status = "DRY_RUN"))
 							return@fold
 						}
 						
@@ -137,35 +169,53 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 								totalErrors++
 								jobErrors++
 								val msg = "[ERROR] $path — renewal failed: ${error.message}"
-								echo("  ❌ $msg", err = true)
+								if (!output.json) echo("  ❌ $msg", err = true)
 								job.logFile?.let { appendLog(it, msg) }
+								jsonFiles.add(JsonRenewalFileResult(path = path, status = "ERROR", message = error.message))
 							},
 							ifRight = {
 								totalRenewed++
 								jobRenewed++
 								val msg = "[RENEWED] $path"
-								echo("  ✅ $msg")
+								if (!output.json) echo("  ✅ $msg")
 								job.logFile?.let { appendLog(it, msg) }
+								jsonFiles.add(JsonRenewalFileResult(path = path, status = "RENEWED"))
 							}
 						)
 					}
 				)
 			}
 			
+			jsonJobs.add(JsonRenewalJobResult(name = job.name, files = jsonFiles))
+			
 			if (job.notify && !dryRun) {
 				notifyJobResult(job.name, jobRenewed, jobErrors)
 			}
 		}
 		
-		echo("")
-		echo("═══════════════════════════════════════════════════════════════")
-		echo("                      RENEWAL SUMMARY")
-		echo("═══════════════════════════════════════════════════════════════")
-		echo("  Checked : $totalChecked")
-		echo("  Renewed : $totalRenewed${if (dryRun) " (dry-run)" else ""}")
-		echo("  Skipped : $totalSkipped")
-		echo("  Errors  : $totalErrors")
-		echo("═══════════════════════════════════════════════════════════════")
+		if (output.json) {
+			echo(Json.encodeToString(JsonRenewalResult(
+				success = totalErrors == 0,
+				checked = totalChecked,
+				renewed = totalRenewed,
+				skipped = totalSkipped,
+				errors = totalErrors,
+				dryRun = dryRun,
+				jobs = jsonJobs,
+			)))
+		} else {
+			echo("")
+			echo("═══════════════════════════════════════════════════════════════")
+			echo("                      RENEWAL SUMMARY")
+			echo("═══════════════════════════════════════════════════════════════")
+			echo("  Checked : $totalChecked")
+			echo("  Renewed : $totalRenewed${if (dryRun) " (dry-run)" else ""}")
+			echo("  Skipped : $totalSkipped")
+			echo("  Errors  : $totalErrors")
+			echo("═══════════════════════════════════════════════════════════════")
+		}
+		
+		if (totalErrors > 0) throw ProgramResult(1)
 	}
 	
 	/**
@@ -263,7 +313,6 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 			File(logFile).apply { parentFile?.mkdirs() }
 				.appendText("${Instant.now()} $message\n")
 		} catch (_: Exception) {
-			// Log failure must never abort the renewal run.
 		}
 	}
 }

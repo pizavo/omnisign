@@ -1,5 +1,6 @@
 plugins {
 	alias(libs.plugins.kotlinJvm)
+	alias(libs.plugins.kotlinSerialization)
 	alias(libs.plugins.shadow)
 	application
 }
@@ -47,6 +48,8 @@ tasks.named("processResources") {
 dependencies {
 	implementation(projects.shared)
 	testImplementation(libs.kotlin.testJunit)
+	testImplementation(libs.mockk)
+	testImplementation(libs.kotlinx.coroutines.test)
 	
 	implementation(libs.clikt)
 	implementation(libs.clikt.core)
@@ -55,10 +58,12 @@ dependencies {
 	
 	implementation(project.dependencies.platform(libs.koin.bom))
 	implementation(libs.koin.core)
+	implementation(libs.koin.test)
 	
 	implementation(libs.kotlinx.coroutines.core)
 	implementation(libs.kotlinx.datetime)
-	runtimeOnly(libs.logback)
+	implementation(libs.kotlinx.serialization.json)
+	implementation(libs.logback)
 }
 
 application {

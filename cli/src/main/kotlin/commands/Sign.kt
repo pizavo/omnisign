@@ -2,6 +2,8 @@ package cz.pizavo.omnisign.commands
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
+import com.github.ajalt.clikt.core.requireObject
 import com.github.ajalt.clikt.parameters.groups.provideDelegate
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
@@ -11,12 +13,18 @@ import com.github.ajalt.clikt.parameters.types.float
 import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.path
 import cz.pizavo.omnisign.cli.OperationConfigOptions
+import cz.pizavo.omnisign.cli.OutputConfig
+import cz.pizavo.omnisign.cli.json.JsonError
+import cz.pizavo.omnisign.cli.json.JsonSigningResult
+import cz.pizavo.omnisign.cli.json.toJsonError
+import cz.pizavo.omnisign.cli.json.toJsonResult
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.parameters.VisibleSignatureParameters
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -30,6 +38,7 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 	
 	private val signUseCase: SignDocumentUseCase by inject()
 	private val configRepository: ConfigRepository by inject()
+	private val output by requireObject<OutputConfig>()
 	
 	private val inputFile by option("-f", "--file", help = "Path to the PDF file to sign")
 		.path(mustExist = true, canBeDir = false, mustBeReadable = true)
@@ -103,8 +112,15 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 		)
 		if (resolvedConfigResult.isLeft()) {
 			val error = resolvedConfigResult.leftOrNull()!!
-			echo("❌ Configuration Error: ${error.message}", err = true)
-			return@runBlocking
+			if (output.json) {
+				echo(Json.encodeToString(JsonSigningResult(
+					success = false,
+					error = JsonError(message = "Configuration Error: ${error.message}")
+				)))
+			} else {
+				echo("❌ Configuration Error: ${error.message}", err = true)
+			}
+			throw ProgramResult(1)
 		}
 		val resolvedConfig = resolvedConfigResult.getOrNull()!!
 		
@@ -124,15 +140,27 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 		
 		signUseCase(parameters).fold(
 			ifLeft = { error ->
-				echo("❌ Signing Error: ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.let { echo("Cause: ${it.message}", err = true) }
+				if (output.json) {
+					echo(Json.encodeToString(JsonSigningResult(
+						success = false,
+						error = error.toJsonError()
+					)))
+				} else {
+					echo("❌ Signing Error: ${error.message}", err = true)
+					error.details?.let { echo("Details: $it", err = true) }
+					error.cause?.let { echo("Cause: ${it.message}", err = true) }
+				}
+				throw ProgramResult(1)
 			},
 			ifRight = { result ->
-				result.warnings.forEach { warning ->
-					echo("⚠️ Warning: $warning", err = true)
+				if (output.json) {
+					echo(Json.encodeToString(result.toJsonResult()))
+				} else {
+					result.warnings.forEach { warning ->
+						echo("⚠️ Warning: $warning", err = true)
+					}
+					printSigningResult(result.outputFile, result.signatureId, result.signatureLevel)
 				}
-				printSigningResult(result.outputFile, result.signatureId, result.signatureLevel)
 			}
 		)
 	}
@@ -175,6 +203,7 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 	 * Print a formatted summary of the completed signing operation to stdout.
 	 */
 	private fun printSigningResult(outputFile: String, signatureId: String, signatureLevel: String) {
+		if (output.quiet) return
 		echo("═══════════════════════════════════════════════════════════════")
 		echo("                      SIGNING RESULT")
 		echo("═══════════════════════════════════════════════════════════════")
