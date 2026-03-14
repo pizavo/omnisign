@@ -4,7 +4,7 @@
 
 version: "1.0"
 linter: jetbrains/qodana-jvm:2025.3
-bootstrap: chmod +x gradlew && ./gradlew :composeApp:jvmMainClasses :shared:jvmJar :cli:classes :server:classes --no-daemon
+bootstrap: chmod +x gradlew && echo 'qodanaAnalysis=true' >> gradle.properties && ./gradlew :composeApp:jvmMainClasses :shared:jvmJar :cli:classes :server:classes --no-daemon
 profile:
   name: qodana.recommended
 include:
