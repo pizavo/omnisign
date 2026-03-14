@@ -86,7 +86,9 @@ jobs:
           wix extension add --global WixToolset.Util.wixext/${{ env.WIX_VERSION }}
 
       - name: Build Windows packages
-        run: ./gradlew :composeApp:packageMsi :composeApp:packageExe -PreleaseVersion=${{ needs.prepare.outputs.version }}
+        env:
+          ORG_GRADLE_PROJECT_releaseVersion: ${{ needs.prepare.outputs.version }}
+        run: ./gradlew :composeApp:packageMsi :composeApp:packageExe
 
       - name: Upload MSI
         uses: actions/upload-artifact@v7
