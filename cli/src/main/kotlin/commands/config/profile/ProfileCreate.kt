@@ -84,10 +84,32 @@ class ProfileCreate : CliktCommand(name = "create"), KoinComponent {
 		help = "Disable an encryption algorithm for this profile (in addition to globally disabled ones). Repeatable."
 	).enum<EncryptionAlgorithm>().multiple()
 	
+	/**
+	 * Returns true when at least one option that gives the profile a meaningful configuration
+	 * was supplied. A profile with no settings is functionally identical to having no active
+	 * profile and therefore has no purpose.
+	 */
+	private val hasAnyOption: Boolean
+		get() = description != null ||
+				hashAlgorithm != null || encryptionAlgorithm != null || signatureLevel != null ||
+				timestampUrl != null || timestampUsername != null ||
+				timestampPassword != null || timestampTimeout != null ||
+				validationPolicy != null ||
+				algoExpirationLevel != null || algoExpirationLevelAfterUpdate != null ||
+				algoExpiryOverride.isNotEmpty() ||
+				disableHashAlgorithm.isNotEmpty() || disableEncryptionAlgorithm.isNotEmpty()
+	
 	override fun help(context: Context): String =
-		"Create or update a named configuration profile"
+		"Create a named configuration profile"
 	
 	override fun run(): Unit = runBlocking {
+		if (!hasAnyOption) {
+			echo(
+				"❌ No settings specified. Provide at least one option to create a meaningful profile. Use --help to see available options.",
+				err = true
+			)
+			return@runBlocking
+		}
 		val tsConfig = buildTimestampConfig()
 		val profile = ProfileConfig(
 			name = name,

@@ -11,6 +11,7 @@ class ConfigProfile : CliktCommand(name = "profile") {
 	init {
 		subcommands(
 			ProfileList(),
+			ProfileShow(),
 			ProfileCreate(),
 			ProfileEdit(),
 			ProfileUse(),

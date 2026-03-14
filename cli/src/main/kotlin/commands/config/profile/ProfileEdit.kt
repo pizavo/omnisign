@@ -134,10 +134,33 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 		help = "Remove an encryption algorithm from this profile's disabled set. Repeatable."
 	).enum<EncryptionAlgorithm>().multiple()
 	
+	/**
+	 * Returns true when at least one option or flag that modifies the profile was supplied.
+	 */
+	private val hasAnyChange: Boolean
+		get() = description != null || clearDescription ||
+				hashAlgorithm != null || clearHashAlgorithm ||
+				encryptionAlgorithm != null || clearEncryptionAlgorithm ||
+				signatureLevel != null || clearSignatureLevel ||
+				timestampUrl != null || timestampUsername != null ||
+				timestampPassword != null || timestampTimeout != null || clearTimestamp ||
+				validationPolicy != null || clearValidationPolicy ||
+				algoExpirationLevel != null || algoExpirationLevelAfterUpdate != null ||
+				clearAlgoConstraints || algoExpiryOverride.isNotEmpty() || clearAlgoExpiryOverrides ||
+				disableHashAlgorithm.isNotEmpty() || enableHashAlgorithm.isNotEmpty() ||
+				disableEncryptionAlgorithm.isNotEmpty() || enableEncryptionAlgorithm.isNotEmpty()
+	
 	override fun help(context: Context): String =
 		"Edit an existing configuration profile (only supplied options are changed)"
 	
 	override fun run(): Unit = runBlocking {
+		if (!hasAnyChange) {
+			echo(
+				"❌ No changes specified. Provide at least one option to modify. Use --help to see available options.",
+				err = true
+			)
+			return@runBlocking
+		}
 		manageProfile.get(name).fold(
 			ifLeft = { error ->
 				echo("❌ ${error.message}", err = true)
@@ -173,8 +196,10 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 			encryptionAlgorithm = patchEncryptionAlgorithm(existing),
 			signatureLevel = patchSignatureLevel(existing),
 			timestampServer = patchedTs,
-			disabledHashAlgorithms = (existing.disabledHashAlgorithms + disableHashAlgorithm) - enableHashAlgorithm.toSet(),
-			disabledEncryptionAlgorithms = (existing.disabledEncryptionAlgorithms + disableEncryptionAlgorithm) - enableEncryptionAlgorithm.toSet(),
+			disabledHashAlgorithms =
+				(existing.disabledHashAlgorithms + disableHashAlgorithm) - enableHashAlgorithm.toSet(),
+			disabledEncryptionAlgorithms =
+				(existing.disabledEncryptionAlgorithms + disableEncryptionAlgorithm) - enableEncryptionAlgorithm.toSet(),
 			validation = patchValidation(existing)
 		)
 	}

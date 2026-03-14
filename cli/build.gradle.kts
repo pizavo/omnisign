@@ -23,6 +23,27 @@ fun String.toNativeDistributionVersion(): String {
     ).joinToString(".")
 }
 
+val generateVersionProperties by tasks.registering {
+	group = "build"
+	description = "Generates a version.properties resource file containing the project version."
+	val versionValue = project.version.toString()
+	val outputDir = layout.buildDirectory.dir("generated/resources")
+	outputs.dir(outputDir)
+	doLast {
+		val file = outputDir.get().asFile.resolve("version.properties")
+		file.parentFile.mkdirs()
+		file.writeText("version=$versionValue\n")
+	}
+}
+
+sourceSets.main {
+	resources.srcDir(layout.buildDirectory.dir("generated/resources"))
+}
+
+tasks.named("processResources") {
+	dependsOn(generateVersionProperties)
+}
+
 dependencies {
 	implementation(projects.shared)
 	testImplementation(libs.kotlin.testJunit)

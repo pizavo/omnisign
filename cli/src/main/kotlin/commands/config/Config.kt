@@ -13,7 +13,15 @@ import cz.pizavo.omnisign.commands.config.tl.ConfigTrustedList
  */
 class Config : CliktCommand(name = "config") {
 	init {
-		subcommands(ConfigShow(), ConfigSet(), ConfigProfile(), ConfigTrustedList(), ConfigPkcs11(), ConfigExport(), ConfigImport())
+		subcommands(
+			ConfigShow(),
+			ConfigSet(),
+			ConfigProfile(),
+			ConfigTrustedList(),
+			ConfigPkcs11(),
+			ConfigExport(),
+			ConfigImport()
+		)
 	}
 	
 	override fun help(context: Context): String =
