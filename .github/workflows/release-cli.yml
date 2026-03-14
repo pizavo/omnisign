@@ -31,7 +31,7 @@ jobs:
       - name: Install tooling
         run: |
           sudo apt-get update -q
-          sudo apt-get install -y imagemagick rpm
+          sudo apt-get install -y librsvg2-bin rpm
 
       - name: Build shadow JAR and Linux packages
         run: ./gradlew :cli:shadowJar :cli:jpackageDeb :cli:jpackageRpm -PreleaseVersion=${{ needs.prepare.outputs.version }}
@@ -111,8 +111,8 @@ jobs:
 
       - uses: ./.github/actions/setup-gradle
 
-      - name: Install ImageMagick
-        run: brew install imagemagick
+      - name: Install librsvg
+        run: brew install librsvg
 
       - name: Build macOS package
         run: ./gradlew :cli:jpackageDmg -PreleaseVersion=${{ needs.prepare.outputs.version }}

@@ -106,7 +106,7 @@ abstract class SvgToIcoTask @Inject constructor(private val execOps: ExecOperati
 }
 
 /**
- * Task that converts an SVG to a PNG via ImageMagick.
+ * Task that converts an SVG to a PNG via rsvg-convert (librsvg).
  * Uses injected [ExecOperations] to remain configuration-cache compatible.
  */
 abstract class SvgToPngTask @Inject constructor(private val execOps: ExecOperations) : DefaultTask() {
@@ -128,16 +128,17 @@ abstract class SvgToPngTask @Inject constructor(private val execOps: ExecOperati
 		val s = size.get()
 		execOps.exec {
 			commandLine(
-				"magick", sourceSvg.get().asFile.absolutePath,
-				"-resize", "${s}x${s}",
-				outputPng.get().asFile.absolutePath,
+				"rsvg-convert",
+				"-w", s.toString(), "-h", s.toString(),
+				sourceSvg.get().asFile.absolutePath,
+				"-o", outputPng.get().asFile.absolutePath,
 			)
 		}
 	}
 }
 
 /**
- * Task that converts an SVG to a macOS .icns bundle via ImageMagick and iconutil.
+ * Task that converts an SVG to a macOS .icns bundle via rsvg-convert and iconutil.
  * Uses injected [ExecOperations] to remain configuration-cache compatible.
  */
 abstract class SvgToIcnsTask @Inject constructor(private val execOps: ExecOperations) : DefaultTask() {
@@ -157,14 +158,16 @@ abstract class SvgToIcnsTask @Inject constructor(private val execOps: ExecOperat
 		listOf(16, 32, 64, 128, 256, 512).forEach { size ->
 			execOps.exec {
 				commandLine(
-					"magick", svg, "-resize", "${size}x${size}",
-					File(iconsetDir, "icon_${size}x${size}.png").absolutePath,
+					"rsvg-convert",
+					"-w", size.toString(), "-h", size.toString(),
+					svg, "-o", File(iconsetDir, "icon_${size}x${size}.png").absolutePath,
 				)
 			}
 			execOps.exec {
 				commandLine(
-					"magick", svg, "-resize", "${size * 2}x${size * 2}",
-					File(iconsetDir, "icon_${size}x${size}@2x.png").absolutePath,
+					"rsvg-convert",
+					"-w", (size * 2).toString(), "-h", (size * 2).toString(),
+					svg, "-o", File(iconsetDir, "icon_${size}x${size}@2x.png").absolutePath,
 				)
 			}
 		}
