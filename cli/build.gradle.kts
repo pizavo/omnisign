@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "cz.pizavo.omnisign"
-version = project.findProperty("releaseVersion")?.toString() ?: "1.6.0"
+version = project.findProperty("releaseVersion")?.toString() ?: "1.7.0"
 
 /**
  * Normalizes a semver-like string to the three-component `MAJOR.MINOR.BUILD` format required by

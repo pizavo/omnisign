@@ -56,13 +56,26 @@ Or, when using the `install` distribution:
 .\cli\build\install\cli\bin\cli.bat <command> [options]
 ```
 
+## Environment Variables
+
+All options can also be set via environment variables using the `OMNISIGN_` prefix.
+For example, `--timestamp-url` becomes `OMNISIGN_TIMESTAMP_URL`.
+Explicit command-line options always take precedence over environment variables.
+
 ## Command Reference
 
 ### Top-level
 
 ```
-omnisign [command]
+omnisign [global-flags] [command]
 ```
+
+| Global flag     | Description                                                      |
+|-----------------|------------------------------------------------------------------|
+| `--json`        | Emit machine-readable JSON output instead of human-readable text |
+| `--verbose`     | Enable verbose (DEBUG-level) logging to stderr                   |
+| `--quiet`       | Suppress all informational output; only errors are printed       |
+| `-v, --version` | Print the application version and exit                           |
 
 | Command        | Description                                                        |
 |----------------|--------------------------------------------------------------------|
@@ -264,6 +277,14 @@ Print the current configuration including global defaults, active profile, and a
 omnisign config show
 ```
 
+#### `config path`
+
+Print the resolved configuration file path. Useful for scripting or debugging.
+
+```shell
+omnisign config path
+```
+
 #### `config set`
 
 Modify the global (default) configuration. Only provided options are updated.
@@ -288,6 +309,10 @@ omnisign config set [options]
 | `--algo-expiration-level <level>`              | Severity when an algorithm's expiration date has passed                           |
 | `--algo-expiration-level-after-update <level>` | Severity after the policy update date                                             |
 | `--algo-expiry-override <ALG=DATE>`            | Per-algorithm expiration date override (e.g. `RIPEMD160=2030-01-01`). Repeatable. |
+| `--disable-hash-algorithm <alg>`               | Globally disable a hash algorithm so it cannot be selected. Repeatable.           |
+| `--enable-hash-algorithm <alg>`                | Re-enable a globally disabled hash algorithm. Repeatable.                         |
+| `--disable-encryption-algorithm <alg>`         | Globally disable an encryption algorithm. Repeatable.                             |
+| `--enable-encryption-algorithm <alg>`          | Re-enable a globally disabled encryption algorithm. Repeatable.                   |
 
 **Example:**
 
@@ -303,23 +328,31 @@ omnisign config set \
 
 Profiles let you store sets of configuration values that can be activated per-operation with `--profile <name>`.
 
-| Subcommand                               | Description                                   |
-|------------------------------------------|-----------------------------------------------|
-| `config profile list`                    | List all profiles                             |
-| `config profile create <name> [options]` | Create or replace a profile                   |
-| `config profile edit <name> [options]`   | Update specific fields of an existing profile |
-| `config profile use <name>`              | Set a profile as the default active profile   |
-| `config profile remove <name>`           | Delete a profile                              |
-| `config profile export <name> <file>`    | Export a profile to a file                    |
-| `config profile import <file> [options]` | Import a profile from a file                  |
+| Subcommand                               | Description                                                     |
+|------------------------------------------|-----------------------------------------------------------------|
+| `config profile list`                    | List all profiles                                               |
+| `config profile show [name]`             | Show all settings of a profile (defaults to the active profile) |
+| `config profile create <name> [options]` | Create or replace a profile                                     |
+| `config profile edit <name> [options]`   | Update specific fields of an existing profile                   |
+| `config profile use <name>`              | Set a profile as the default active profile                     |
+| `config profile remove <name>`           | Delete a profile                                                |
+| `config profile export <name> <file>`    | Export a profile to a file                                      |
+| `config profile import <file> [options]` | Import a profile from a file                                    |
 
 `create` accepts `--description`, `--hash-algorithm`, `--encryption-algorithm`, `--signature-level`,
 `--timestamp-url`, `--timestamp-username`, `--timestamp-password`, `--timestamp-timeout`,
 `--validation-policy`, `--algo-expiration-level`, `--algo-expiration-level-after-update`,
-and `--algo-expiry-override` (repeatable).
+`--algo-expiry-override` (repeatable), `--disable-hash-algorithm` (repeatable),
+and `--disable-encryption-algorithm` (repeatable).
 
-`edit` accepts the same options as `create` plus the following `--clear-*` flags to explicitly
-unset individual fields:
+`edit` accepts the same options as `create` plus the following additional options:
+
+| Option                                | Effect                                                                       |
+|---------------------------------------|------------------------------------------------------------------------------|
+| `--enable-hash-algorithm <alg>`       | Remove a hash algorithm from this profile's disabled set. Repeatable.        |
+| `--enable-encryption-algorithm <alg>` | Remove an encryption algorithm from this profile's disabled set. Repeatable. |
+
+And the following `--clear-*` flags to explicitly unset individual fields:
 
 | Clear flag                      | Effect                                                      |
 |---------------------------------|-------------------------------------------------------------|
@@ -360,6 +393,12 @@ omnisign config profile create university \
 
 # Make it the default active profile
 omnisign config profile use university
+
+# Show the active profile
+omnisign config profile show
+
+# Show a specific profile
+omnisign config profile show university
 
 # Sign using the profile explicitly
 omnisign sign -f thesis.pdf -o thesis-signed.pdf --profile university
@@ -447,16 +486,48 @@ Register custom ETSI Trusted List sources for signature validation.
 
 **`config tl build` subcommands:**
 
-| Subcommand                                                         | Description                                                      |
-|--------------------------------------------------------------------|------------------------------------------------------------------|
-| `config tl build create <name>`                                    | Guided interactive wizard to build a complete trusted list draft |
-| `config tl build show <name>`                                      | Show the contents of an existing draft                           |
-| `config tl build add-tsp <draft> <tsp-name>`                       | Add a Trust Service Provider to a draft                          |
-| `config tl build remove-tsp <draft> <tsp-name>`                    | Remove a TSP from a draft                                        |
-| `config tl build add-service <draft> <tsp-name>`                   | Add a trust service to a TSP in a draft                          |
-| `config tl build remove-service <draft> <tsp-name> <service-name>` | Remove a service from a TSP                                      |
-| `config tl build compile <draft>`                                  | Compile a draft to a TL XML and optionally register it           |
-| `config tl build delete <draft>`                                   | Delete a draft                                                   |
+| Subcommand                                                           | Description                                                      |
+|----------------------------------------------------------------------|------------------------------------------------------------------|
+| `config tl build create <name>`                                      | Guided interactive wizard to build a complete trusted list draft |
+| `config tl build show <name>`                                        | Show the contents of an existing draft                           |
+| `config tl build tsp add <draft> <tsp-name>`                         | Add a Trust Service Provider to a draft                          |
+| `config tl build tsp remove <draft> <tsp-name>`                      | Remove a TSP from a draft                                        |
+| `config tl build service add <draft> <tsp-name>`                     | Add a trust service to a TSP in a draft                          |
+| `config tl build service remove <draft> <tsp-name> <service-name>`   | Remove a service from a TSP                                      |
+| `config tl build compile <draft>`                                    | Compile a draft to a TL XML and optionally register it           |
+| `config tl build delete <draft>`                                     | Delete a draft                                                   |
+
+#### `config pkcs11` — Manage custom PKCS#11 middleware libraries
+
+Register custom PKCS#11 middleware library paths for token discovery.
+Libraries registered here are merged into token discovery alongside the OS-native
+autodiscovery results and the built-in fallback candidate list.
+
+| Subcommand                    | Description                                             |
+|-------------------------------|---------------------------------------------------------|
+| `config pkcs11 add`           | Register a custom PKCS#11 middleware library            |
+| `config pkcs11 list`          | List all registered custom PKCS#11 middleware libraries |
+| `config pkcs11 remove <name>` | Remove a registered PKCS#11 middleware library          |
+
+**`config pkcs11 add` options:**
+
+| Option              | Description                                                                            |
+|---------------------|----------------------------------------------------------------------------------------|
+| `-n, --name <name>` | **(Required)** Unique label for this library (used in `pkcs11 remove`)                 |
+| `-p, --path <path>` | **(Required)** Absolute path to the PKCS#11 shared library (`.dll` / `.so` / `.dylib`) |
+
+**Examples:**
+
+```shell
+# Register a PKCS#11 library installed in a non-standard location
+omnisign config pkcs11 add --name safenet --path /usr/lib/libeTPkcs11.so
+
+# List registered libraries
+omnisign config pkcs11 list
+
+# Remove a registration
+omnisign config pkcs11 remove safenet
+```
 
 ---
 
@@ -542,17 +613,19 @@ The following options are available on `validate`, `sign`, and `timestamp` to ov
 configuration for a single execution without modifying any stored settings.
 TSA credentials supplied here are held in memory only and are never written to disk.
 
-| Option                             | Description                                              |
-|------------------------------------|----------------------------------------------------------|
-| `-H, --hash-algorithm <alg>`       | Hash algorithm override                                  |
-| `-E, --encryption-algorithm <alg>` | Encryption (signing key) algorithm override              |
-| `-L, --signature-level <level>`    | Signature level override                                 |
-| `--timestamp-url <url>`            | TSA URL override                                         |
-| `--timestamp-username <user>`      | TSA HTTP Basic username override                         |
-| `--timestamp-password <pass>`      | TSA HTTP Basic password override (in-memory only)        |
-| `--timestamp-timeout <ms>`         | TSA request timeout override in milliseconds             |
-| `--validation-policy <type>`       | Validation policy type override                          |
-| `--no-global-tls`                  | Exclude global trusted lists; use only profile-level TLs |
+| Option                                  | Description                                                              |
+|-----------------------------------------|--------------------------------------------------------------------------|
+| `-H, --hash-algorithm <alg>`            | Hash algorithm override                                                  |
+| `-E, --encryption-algorithm <alg>`      | Encryption (signing key) algorithm override                              |
+| `-L, --signature-level <level>`         | Signature level override                                                 |
+| `--timestamp-url <url>`                 | TSA URL override                                                         |
+| `--timestamp-username <user>`           | TSA HTTP Basic username override                                         |
+| `--timestamp-password <pass>`           | TSA HTTP Basic password override (in-memory only)                        |
+| `--timestamp-timeout <ms>`              | TSA request timeout override in milliseconds                             |
+| `--validation-policy <type>`            | Validation policy type override                                          |
+| `--no-global-tls`                       | Exclude global trusted lists; use only profile-level TLs                 |
+| `--disable-hash-algorithm <alg>`        | Disable a hash algorithm for this operation only. Repeatable.            |
+| `--disable-encryption-algorithm <alg>`  | Disable an encryption algorithm for this operation only. Repeatable.     |
 
 ## Exit Codes
 
