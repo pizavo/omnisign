@@ -18,6 +18,9 @@ jobs:
 
       - uses: ./.github/actions/setup-gradle
 
+      - name: Run tests
+        run: ./gradlew :shared:jvmTest :server:test
+
       - name: Build fat JAR
         run: ./gradlew :server:buildFatJar -PreleaseVersion=${{ steps.version.outputs.version }}
 

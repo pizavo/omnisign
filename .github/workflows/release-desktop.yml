@@ -19,9 +19,25 @@ jobs:
         id: version
         run: echo "version=${GITHUB_REF_NAME#desktop/v}" >> $GITHUB_OUTPUT
 
+  test:
+    name: Test — ${{ matrix.os }}
+    needs: prepare
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Run tests
+        run: ./gradlew :shared:jvmTest :composeApp:jvmTest
+
   build-linux:
     name: Package — Linux & Web
-    needs: prepare
+    needs: [prepare, test]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -72,7 +88,7 @@ jobs:
 
   build-windows:
     name: Package — Windows
-    needs: prepare
+    needs: [prepare, test]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -106,7 +122,7 @@ jobs:
 
   build-macos:
     name: Package — macOS
-    needs: prepare
+    needs: [prepare, test]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
