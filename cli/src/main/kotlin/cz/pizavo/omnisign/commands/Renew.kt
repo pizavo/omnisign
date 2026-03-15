@@ -18,18 +18,21 @@ import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.CheckArchivalRenewalUseCase
 import cz.pizavo.omnisign.domain.usecase.ExtendDocumentUseCase
 import arrow.core.Either
+import cz.pizavo.omnisign.domain.model.config.AppConfig
+import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
-import kotlinx.serialization.encodeToString
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
 import java.time.Instant
+import kotlin.collections.get
+import kotlin.collections.iterator
 
 /**
- * CLI command that executes all configured [cz.pizavo.omnisign.domain.model.config.RenewalJob]s
+ * CLI command that executes all configured [RenewalJob]s
  * (or a single named job), checks each matching B-LTA PDF against its renewal buffer, and
  * re-timestamps in-place any file whose archival timestamp is nearing expiry.
  *
@@ -267,9 +270,9 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 	 * when any resolved algorithm is in the disabled set.
 	 */
 	private fun resolveJobConfig(
-		appConfig: cz.pizavo.omnisign.domain.model.config.AppConfig,
+		appConfig: AppConfig,
 		job: RenewalJob,
-	): Either<cz.pizavo.omnisign.domain.model.error.ConfigurationError.InvalidConfiguration, ResolvedConfig> {
+	): Either<ConfigurationError.InvalidConfiguration, ResolvedConfig> {
 		val profileName = job.profile ?: appConfig.activeProfile
 		val profileConfig = profileName?.let { appConfig.profiles[it] }
 		return ResolvedConfig.resolve(

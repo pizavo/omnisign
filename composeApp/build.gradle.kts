@@ -28,6 +28,16 @@ plugins {
 
 version = project.findProperty("releaseVersion")?.toString() ?: "1.0.0"
 
+afterEvaluate {
+	configurations.findByName("commonTestApi")?.dependencies?.removeIf {
+		it.group == "io.kotest" && it.name == "kotest-assertions-core"
+	}
+}
+
+configurations.findByName("commonTestApi")?.dependencies?.removeIf {
+	it.group == "io.kotest" && it.name == "kotest-assertions-core"
+}
+
 kotlin {
 	jvm {
 		testRuns.configureEach {
