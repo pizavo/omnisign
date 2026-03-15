@@ -18,4 +18,3 @@ object BuildConfig {
         props.getProperty("version", "unknown")
     }
 }
-

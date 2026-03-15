@@ -9,11 +9,28 @@ plugins {
 	alias(libs.plugins.decoroutinator)
 }
 
+afterEvaluate {
+	configurations.findByName("commonTestApi")?.dependencies?.removeIf {
+		it.group == "io.kotest" && it.name == "kotest-assertions-core"
+	}
+}
+
+configurations.findByName("commonTestApi")?.dependencies?.removeIf {
+	it.group == "io.kotest" && it.name == "kotest-assertions-core"
+}
+
 kotlin {
 	jvm {
 		compilerOptions.jvmTarget = JvmTarget.JVM_25
 		testRuns.configureEach {
-			executionTask.configure { useJUnitPlatform() }
+			executionTask.configure {
+				useJUnitPlatform()
+				jvmArgs(
+					"-XX:+EnableDynamicAgentLoading",
+					"-Xshare:off",
+					"--enable-native-access=ALL-UNNAMED",
+				)
+			}
 		}
 	}
 	

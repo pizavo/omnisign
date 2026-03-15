@@ -9,31 +9,34 @@ import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
 /**
  * Convert a domain [OperationError] to a [JsonError] DTO.
  */
-fun OperationError.toJsonError(): JsonError = JsonError(
-    message = message,
-    details = details,
-    cause = cause?.message,
-)
+fun OperationError.toJsonError(): JsonError =
+    JsonError(
+        message = message,
+        details = details,
+        cause = cause?.message,
+    )
 
 /**
  * Convert a domain [SigningResult] to a success [JsonSigningResult] DTO.
  */
-fun SigningResult.toJsonResult(): JsonSigningResult = JsonSigningResult(
-    success = true,
-    outputFile = outputFile,
-    signatureId = signatureId,
-    signatureLevel = signatureLevel,
-    warnings = warnings,
-)
+fun SigningResult.toJsonResult(): JsonSigningResult =
+    JsonSigningResult(
+        success = true,
+        outputFile = outputFile,
+        signatureId = signatureId,
+        signatureLevel = signatureLevel,
+        warnings = warnings,
+    )
 
 /**
  * Convert a domain [ArchivingResult] to a success [JsonExtensionResult] DTO.
  */
-fun ArchivingResult.toJsonResult(): JsonExtensionResult = JsonExtensionResult(
-    success = true,
-    outputFile = outputFile,
-    newLevel = newSignatureLevel,
-)
+fun ArchivingResult.toJsonResult(): JsonExtensionResult =
+    JsonExtensionResult(
+        success = true,
+        outputFile = outputFile,
+        newLevel = newSignatureLevel,
+    )
 
 /**
  * Convert a domain [ValidationReport] to a [JsonValidationResult] DTO.
@@ -63,21 +66,22 @@ fun ValidationReport.toJsonResult(rawReportPath: String? = null): JsonValidation
 /**
  * Convert a domain [SignatureValidationResult] to a [JsonSignatureResult] DTO.
  */
-private fun SignatureValidationResult.toJson(): JsonSignatureResult = JsonSignatureResult(
-    signatureId = signatureId,
-    indication = indication.name,
-    subIndication = subIndication,
-    signedBy = signedBy,
-    signatureLevel = signatureLevel,
-    signatureTime = signatureTime,
-    qualification = signatureQualification,
-    hashAlgorithm = hashAlgorithm,
-    encryptionAlgorithm = encryptionAlgorithm,
-    certificate = certificate.toJson(),
-    errors = errors,
-    warnings = warnings,
-    infos = infos,
-)
+private fun SignatureValidationResult.toJson(): JsonSignatureResult =
+    JsonSignatureResult(
+        signatureId = signatureId,
+        indication = indication.name,
+        subIndication = subIndication,
+        signedBy = signedBy,
+        signatureLevel = signatureLevel,
+        signatureTime = signatureTime,
+        qualification = signatureQualification,
+        hashAlgorithm = hashAlgorithm,
+        encryptionAlgorithm = encryptionAlgorithm,
+        certificate = certificate.toJson(),
+        errors = errors,
+        warnings = warnings,
+        infos = infos,
+    )
 
 /**
  * Convert a domain [cz.pizavo.omnisign.domain.model.signature.CertificateInfo] to a [JsonCertificateInfo] DTO.
@@ -98,34 +102,36 @@ private fun cz.pizavo.omnisign.domain.model.signature.CertificateInfo.toJson(): 
 /**
  * Convert a domain [TimestampValidationResult] to a [JsonTimestampResult] DTO.
  */
-private fun TimestampValidationResult.toJson(): JsonTimestampResult = JsonTimestampResult(
-    timestampId = timestampId,
-    type = type,
-    indication = indication.name,
-    subIndication = subIndication,
-    productionTime = productionTime,
-    qualification = qualification,
-    tsaSubjectDN = tsaSubjectDN,
-    errors = errors,
-    warnings = warnings,
-    infos = infos,
-)
+private fun TimestampValidationResult.toJson(): JsonTimestampResult =
+    JsonTimestampResult(
+        timestampId = timestampId,
+        type = type,
+        indication = indication.name,
+        subIndication = subIndication,
+        productionTime = productionTime,
+        qualification = qualification,
+        tsaSubjectDN = tsaSubjectDN,
+        errors = errors,
+        warnings = warnings,
+        infos = infos,
+    )
 
 /**
  * Convert a list of domain [AvailableCertificateInfo] to a [JsonCertificateList] DTO.
  */
-fun List<AvailableCertificateInfo>.toJsonCertificateList(): JsonCertificateList = JsonCertificateList(
-    success = true,
-    certificates = map { cert ->
-        JsonAvailableCertificate(
-            alias = cert.alias,
-            subjectDN = cert.subjectDN,
-            issuerDN = cert.issuerDN,
-            validFrom = cert.validFrom,
-            validTo = cert.validTo,
-            tokenType = cert.tokenType,
-            keyUsages = cert.keyUsages,
-        )
-    },
-)
+fun List<AvailableCertificateInfo>.toJsonCertificateList(): JsonCertificateList =
+    JsonCertificateList(
+        success = true,
+        certificates = map { cert ->
+            JsonAvailableCertificate(
+                alias = cert.alias,
+                subjectDN = cert.subjectDN,
+                issuerDN = cert.issuerDN,
+                validFrom = cert.validFrom,
+                validTo = cert.validTo,
+                tokenType = cert.tokenType,
+                keyUsages = cert.keyUsages,
+            )
+        },
+    )
 

@@ -10,6 +10,7 @@ import cz.pizavo.omnisign.domain.usecase.ManageTrustedListsUseCase
 import kotlinx.coroutines.runBlocking
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
+import java.io.File
 
 /**
  * CLI subcommand for registering a custom trusted list source.
@@ -77,7 +78,7 @@ class TrustedListAdder : CliktCommand(name = "add"), KoinComponent {
 		if (source.startsWith("http://") || source.startsWith("https://") ||
 			source.startsWith("file://")
 		) return source
-		val file = java.io.File(source)
+		val file = File(source)
 		return file.toURI().toString()
 	}
 }

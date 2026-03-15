@@ -74,6 +74,11 @@ dependencies {
 
 tasks.withType<Test> {
 	useJUnitPlatform()
+	jvmArgs(
+		"-XX:+EnableDynamicAgentLoading",
+		"-Xshare:off",
+		"--enable-native-access=ALL-UNNAMED",
+	)
 }
 
 application {
