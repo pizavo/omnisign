@@ -96,11 +96,6 @@ class DssSigningRepository(
 				AlgorithmStatus.VALID -> Unit
 			}
 			
-			val (privateKey, tokenConnection) = resolvePrivateKey(parameters)
-				?: return SigningError.TokenAccessError(
-					message = "No suitable certificate found${parameters.certificateAlias?.let { " for alias '$it'" } ?: ""}"
-				).left()
-			
 			val requiresTimestamp = parameters.addTimestamp || effectiveLevel != SignatureLevel.PADES_BASELINE_B
 			if (requiresTimestamp && resolvedConfig.timestampServer == null) {
 				return SigningError.TimestampError(
@@ -108,6 +103,11 @@ class DssSigningRepository(
 							"Use 'omnisign config set --timestamp-url <url>' or supply '--timestamp-url' for this operation."
 				).left()
 			}
+			
+			val (privateKey, tokenConnection) = resolvePrivateKey(parameters)
+				?: return SigningError.TokenAccessError(
+					message = "No suitable certificate found${parameters.certificateAlias?.let { " for alias '$it'" } ?: ""}"
+				).left()
 			
 			val service = buildSigningService(resolvedConfig, dssSignatureLevel, parameters.addTimestamp)
 			val signatureParams = buildSignatureParameters(

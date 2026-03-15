@@ -1,128 +1,100 @@
 package cz.pizavo.omnisign.domain.model.config.enums
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.booleans.shouldBeFalse
+import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldNotBeEmpty
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldNotBeBlank
 
 /**
- * Unit tests for [EncryptionAlgorithm] compatibility matrix and properties.
+ * Verifies [EncryptionAlgorithm] compatibility maps, fixed-hash semantics,
+ * and metadata properties.
  */
-class EncryptionAlgorithmTest {
+class EncryptionAlgorithmTest : FunSpec({
 	
-	@Test
-	fun `RSA is compatible with all SHA-2 and SHA-3 hash algorithms`() {
-		val expected = setOf(
+	test("RSA is compatible with all SHA-2 and SHA-3 hash algorithms") {
+		EncryptionAlgorithm.RSA.compatibleHashAlgorithms shouldBe setOf(
 			HashAlgorithm.SHA256, HashAlgorithm.SHA384, HashAlgorithm.SHA512,
 			HashAlgorithm.SHA3_256, HashAlgorithm.SHA3_384, HashAlgorithm.SHA3_512,
 			HashAlgorithm.RIPEMD160
 		)
-		assertEquals(expected, EncryptionAlgorithm.RSA.compatibleHashAlgorithms)
 	}
 	
-	@Test
-	fun `RSA_SSA_PSS is compatible with SHA-2 SHA-3 and RIPEMD160`() {
+	test("RSA_SSA_PSS is compatible with SHA-2 SHA-3 and RIPEMD160") {
 		val compatible = EncryptionAlgorithm.RSA_SSA_PSS.compatibleHashAlgorithms
-		assertTrue(HashAlgorithm.SHA256 in compatible)
-		assertTrue(HashAlgorithm.SHA512 in compatible)
-		assertTrue(HashAlgorithm.SHA3_512 in compatible)
-		assertTrue(HashAlgorithm.RIPEMD160 in compatible)
-		assertFalse(HashAlgorithm.WHIRLPOOL in compatible)
+		(HashAlgorithm.SHA256 in compatible).shouldBeTrue()
+		(HashAlgorithm.SHA512 in compatible).shouldBeTrue()
+		(HashAlgorithm.SHA3_512 in compatible).shouldBeTrue()
+		(HashAlgorithm.RIPEMD160 in compatible).shouldBeTrue()
+		(HashAlgorithm.WHIRLPOOL in compatible).shouldBeFalse()
 	}
 	
-	@Test
-	fun `ECDSA is compatible with SHA-2 SHA-3 and RIPEMD160 but not WHIRLPOOL`() {
+	test("ECDSA is compatible with SHA-2 SHA-3 and RIPEMD160 but not WHIRLPOOL") {
 		val compatible = EncryptionAlgorithm.ECDSA.compatibleHashAlgorithms
-		assertTrue(HashAlgorithm.SHA256 in compatible)
-		assertTrue(HashAlgorithm.RIPEMD160 in compatible)
-		assertFalse(HashAlgorithm.WHIRLPOOL in compatible)
+		(HashAlgorithm.SHA256 in compatible).shouldBeTrue()
+		(HashAlgorithm.RIPEMD160 in compatible).shouldBeTrue()
+		(HashAlgorithm.WHIRLPOOL in compatible).shouldBeFalse()
 	}
 	
-	@Test
-	fun `PLAIN_ECDSA compatible set matches ECDSA`() {
-		assertEquals(
-			EncryptionAlgorithm.ECDSA.compatibleHashAlgorithms,
-			EncryptionAlgorithm.PLAIN_ECDSA.compatibleHashAlgorithms
-		)
+	test("PLAIN_ECDSA compatible set matches ECDSA") {
+		EncryptionAlgorithm.PLAIN_ECDSA.compatibleHashAlgorithms shouldBe
+			EncryptionAlgorithm.ECDSA.compatibleHashAlgorithms
 	}
 	
-	@Test
-	fun `DSA is not compatible with RIPEMD160 or WHIRLPOOL`() {
+	test("DSA is not compatible with RIPEMD160 or WHIRLPOOL") {
 		val compatible = EncryptionAlgorithm.DSA.compatibleHashAlgorithms
-		assertFalse(HashAlgorithm.RIPEMD160 in compatible)
-		assertFalse(HashAlgorithm.WHIRLPOOL in compatible)
-		assertTrue(HashAlgorithm.SHA256 in compatible)
-		assertTrue(HashAlgorithm.SHA3_256 in compatible)
+		(HashAlgorithm.RIPEMD160 in compatible).shouldBeFalse()
+		(HashAlgorithm.WHIRLPOOL in compatible).shouldBeFalse()
+		(HashAlgorithm.SHA256 in compatible).shouldBeTrue()
+		(HashAlgorithm.SHA3_256 in compatible).shouldBeTrue()
 	}
 	
-	@Test
-	fun `EDDSA has empty compatibleHashAlgorithms set`() {
-		assertTrue(EncryptionAlgorithm.EDDSA.compatibleHashAlgorithms.isEmpty())
+	test("EDDSA has empty compatibleHashAlgorithms set") {
+		EncryptionAlgorithm.EDDSA.compatibleHashAlgorithms.shouldBeEmpty()
 	}
 	
-	@Test
-	fun `EDDSA hasFixedHashAlgorithm is true`() {
-		assertTrue(EncryptionAlgorithm.EDDSA.hasFixedHashAlgorithm)
+	test("EDDSA hasFixedHashAlgorithm is true") {
+		EncryptionAlgorithm.EDDSA.hasFixedHashAlgorithm.shouldBeTrue()
 	}
 	
-	@Test
-	fun `other algorithms do not have fixed hash algorithm`() {
+	test("other algorithms do not have fixed hash algorithm") {
 		EncryptionAlgorithm.entries
 			.filter { it != EncryptionAlgorithm.EDDSA }
-			.forEach { alg ->
-				assertFalse(alg.hasFixedHashAlgorithm, "$alg should not have a fixed hash algorithm")
-			}
+			.forEach { alg -> alg.hasFixedHashAlgorithm.shouldBeFalse() }
 	}
 	
-	@Test
-	fun `isCompatibleWith returns true for EDDSA regardless of hash algorithm`() {
+	test("isCompatibleWith returns true for EDDSA regardless of hash algorithm") {
 		HashAlgorithm.entries.forEach { hash ->
-			assertTrue(
-				EncryptionAlgorithm.EDDSA.isCompatibleWith(hash),
-				"EDDSA should be compatible with $hash"
-			)
+			EncryptionAlgorithm.EDDSA.isCompatibleWith(hash).shouldBeTrue()
 		}
 	}
 	
-	@Test
-	fun `isCompatibleWith returns false for RSA and WHIRLPOOL`() {
-		assertFalse(EncryptionAlgorithm.RSA.isCompatibleWith(HashAlgorithm.WHIRLPOOL))
+	test("isCompatibleWith returns false for RSA and WHIRLPOOL") {
+		EncryptionAlgorithm.RSA.isCompatibleWith(HashAlgorithm.WHIRLPOOL).shouldBeFalse()
 	}
 	
-	@Test
-	fun `isCompatibleWith returns false for DSA and RIPEMD160`() {
-		assertFalse(EncryptionAlgorithm.DSA.isCompatibleWith(HashAlgorithm.RIPEMD160))
+	test("isCompatibleWith returns false for DSA and RIPEMD160") {
+		EncryptionAlgorithm.DSA.isCompatibleWith(HashAlgorithm.RIPEMD160).shouldBeFalse()
 	}
 	
-	@Test
-	fun `isCompatibleWith returns true for RSA and SHA256`() {
-		assertTrue(EncryptionAlgorithm.RSA.isCompatibleWith(HashAlgorithm.SHA256))
+	test("isCompatibleWith returns true for RSA and SHA256") {
+		EncryptionAlgorithm.RSA.isCompatibleWith(HashAlgorithm.SHA256).shouldBeTrue()
 	}
 	
-	@Test
-	fun `all non-EdDSA algorithms have non-empty compatibleHashAlgorithms`() {
+	test("all non-EdDSA algorithms have non-empty compatibleHashAlgorithms") {
 		EncryptionAlgorithm.entries
 			.filter { it != EncryptionAlgorithm.EDDSA }
-			.forEach { alg ->
-				assertTrue(
-					alg.compatibleHashAlgorithms.isNotEmpty(),
-					"$alg should have at least one compatible hash algorithm"
-				)
-			}
+			.forEach { alg -> alg.compatibleHashAlgorithms.shouldNotBeEmpty() }
 	}
 	
-	@Test
-	fun `dssName is non-blank for all algorithms`() {
-		EncryptionAlgorithm.entries.forEach { alg ->
-			assertTrue(alg.dssName.isNotBlank(), "$alg dssName should not be blank")
-		}
+	test("dssName is non-blank for all algorithms") {
+		EncryptionAlgorithm.entries.forEach { alg -> alg.dssName.shouldNotBeBlank() }
 	}
 	
-	@Test
-	fun `description is non-blank for all algorithms`() {
-		EncryptionAlgorithm.entries.forEach { alg ->
-			assertTrue(alg.description.isNotBlank(), "$alg description should not be blank")
-		}
+	test("description is non-blank for all algorithms") {
+		EncryptionAlgorithm.entries.forEach { alg -> alg.description.shouldNotBeBlank() }
 	}
-}
+})
 

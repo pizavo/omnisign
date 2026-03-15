@@ -22,12 +22,18 @@ plugins {
 	alias(libs.plugins.composeMultiplatform)
 	alias(libs.plugins.composeCompiler)
 	alias(libs.plugins.composeHotReload)
+	alias(libs.plugins.ksp)
+	alias(libs.plugins.kotest)
 }
 
 version = project.findProperty("releaseVersion")?.toString() ?: "1.0.0"
 
 kotlin {
-	jvm()
+	jvm {
+		testRuns.configureEach {
+			executionTask.configure { useJUnitPlatform() }
+		}
+	}
 	
 	if (project.findProperty("qodanaAnalysis") == null) {
 		@OptIn(ExperimentalWasmDsl::class)
@@ -54,7 +60,11 @@ kotlin {
 			implementation(libs.koin.compose.viewmodel)
 		}
 		commonTest.dependencies {
-			implementation(libs.kotlin.test)
+			implementation(libs.kotest.engine)
+			implementation(libs.kotest.core)
+		}
+		jvmTest.dependencies {
+			implementation(libs.kotest.jvm.runner)
 		}
 		jvmMain.dependencies {
 			implementation(compose.desktop.currentOs)

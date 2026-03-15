@@ -2,7 +2,6 @@
 androidx-lifecycle = "2.9.5"
 composeHotReload = "1.0.0"
 composeMultiplatform = "1.10.1"
-junit = "4.13.2"
 kotlin = "2.3.10"
 kotlinx-coroutines = "1.10.2"
 mockk = "1.13.14"
@@ -21,11 +20,22 @@ kotlinx-serialization = "1.10.0"
 kotlinx-datetime = "0.6.2"
 jackson = "2.18.3"
 jna = "5.18.1"
+kotest = "6.1.6"
+ksp = "2.3.6"
+decoroutinator = "2.6.1"
 
 [libraries]
-kotlin-test = { module = "org.jetbrains.kotlin:kotlin-test", version.ref = "kotlin" }
-kotlin-testJunit = { module = "org.jetbrains.kotlin:kotlin-test-junit", version.ref = "kotlin" }
-junit = { module = "junit:junit", version.ref = "junit" }
+kotest-engine = {module = "io.kotest:kotest-framework-engine", version.ref = "kotest" }
+kotest-core = {module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
+kotest-json = {module = "io.kotest:kotest-assertions-json", version.ref = "kotest" }
+kotest-ktor = {module = "io.kotest:kotest-assertions-ktor", version.ref = "kotest" }
+kotest-kotlinx-datetime = {module = "io.kotest:kotest-assertions-kotlinx-datetime", version.ref = "kotest" }
+kotest-arrow = {module = "io.kotest:kotest-assertions-arrow", version.ref = "kotest" }
+kotest-yaml = {module = "io.kotest:kotest-assertions-yaml", version.ref = "kotest" }
+kotest-koin = {module = "io.kotest:kotest-extensions-koin", version.ref = "kotest" }
+kotest-decoroutinator = {module = "io.kotest:kotest-extensions-decoroutinator", version.ref = "kotest" }
+kotest-jvm-runner = {module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
+
 androidx-lifecycle-viewmodelCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidx-lifecycle" }
 androidx-lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
@@ -95,6 +105,8 @@ jackson-xml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-xm
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 
+decoroutinator-jvm = { module = "dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm", version.ref = "decoroutinator" }
+
 [plugins]
 composeHotReload = { id = "org.jetbrains.compose.hot-reload", version.ref = "composeHotReload" }
 composeMultiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }
@@ -104,3 +116,6 @@ ktor = { id = "io.ktor.plugin", version.ref = "ktor" }
 kotlinMultiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlinSerialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 shadow = { id = "com.gradleup.shadow", version.ref = "shadow" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+kotest = { id = "io.kotest", version.ref = "kotest" }
+decoroutinator = { id = "dev.reformator.stacktracedecoroutinator", version.ref = "decoroutinator" }

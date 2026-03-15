@@ -1,26 +1,25 @@
 package cz.pizavo.omnisign.domain.model.config.enums
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertTrue
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldNotBeBlank
 
 /**
- * Unit tests for [AlgorithmConstraintLevel] properties and exhaustiveness.
+ * Verifies [AlgorithmConstraintLevel] entries, their descriptions, and DSS-level mapping.
  */
-class AlgorithmConstraintLevelTest {
+class AlgorithmConstraintLevelTest : FunSpec({
 	
-	@Test
-	fun `all entries have non-blank descriptions`() {
+	test("all entries have non-blank descriptions") {
 		AlgorithmConstraintLevel.entries.forEach { level ->
-			assertTrue(level.description.isNotBlank(), "$level description must not be blank")
+			level.description.shouldNotBeBlank()
 		}
 	}
 	
-	@Test
-	fun `entries cover all four DSS Level counterparts`() {
-		val names = AlgorithmConstraintLevel.entries.map { it.name }
-		assertEquals(4, names.size)
-		assertEquals(listOf("FAIL", "WARN", "INFORM", "IGNORE"), names)
+	test("entries cover all four DSS Level counterparts") {
+		AlgorithmConstraintLevel.entries.shouldHaveSize(4)
+		AlgorithmConstraintLevel.entries.map { it.name } shouldBe
+			listOf("FAIL", "WARN", "INFORM", "IGNORE")
 	}
-}
+})
 

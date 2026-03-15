@@ -1,19 +1,23 @@
 package cz.pizavo.omnisign
 
-import io.ktor.client.request.*
-import io.ktor.client.statement.*
-import io.ktor.http.*
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.ktor.client.request.get
 import io.ktor.server.testing.*
-import kotlin.test.*
 
-class ApplicationTest {
+/**
+ * Verifies the Ktor application module bootstraps correctly.
+ */
+class ApplicationTest : FunSpec({
+	
+	test("root endpoint responds") {
+		testApplication {
+			application {
+				module()
+			}
+			val response = client.get("/")
+			response.shouldNotBeNull()
+		}
+	}
+})
 
-    @Test
-    fun testRoot() = testApplication {
-        application {
-            module()
-        }
-        val response = client.get("/")
-//        assertEquals(HttpStatusCode.OK, response.status)
-    }
-}

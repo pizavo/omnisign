@@ -4,11 +4,17 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 plugins {
 	alias(libs.plugins.kotlinMultiplatform)
 	alias(libs.plugins.kotlinSerialization)
+	alias(libs.plugins.ksp)
+	alias(libs.plugins.kotest)
+	alias(libs.plugins.decoroutinator)
 }
 
 kotlin {
 	jvm {
 		compilerOptions.jvmTarget = JvmTarget.JVM_25
+		testRuns.configureEach {
+			executionTask.configure { useJUnitPlatform() }
+		}
 	}
 	
 	@OptIn(ExperimentalWasmDsl::class)
@@ -29,16 +35,19 @@ kotlin {
 			implementation(libs.kotlinx.datetime)
 		}
 		commonTest.dependencies {
-			implementation(libs.kotlin.test)
 			implementation(libs.koin.test)
+			implementation(libs.kotest.engine)
+			implementation(libs.kotest.core)
 		}
 		jvmTest.dependencies {
-			implementation(libs.kotlin.testJunit)
 			implementation(libs.mockk)
 			implementation(libs.kotlinx.coroutines.test)
+			implementation(libs.kotest.arrow)
+			implementation(libs.kotest.jvm.runner)
+			implementation(libs.kotest.decoroutinator)
+			implementation(libs.decoroutinator.jvm)
 		}
 		jvmMain.dependencies {
-			
 			implementation(project.dependencies.platform(libs.dss.bom))
 			
 			implementation(libs.dss.document)
@@ -81,3 +90,4 @@ kotlin {
 		}
 	}
 }
+

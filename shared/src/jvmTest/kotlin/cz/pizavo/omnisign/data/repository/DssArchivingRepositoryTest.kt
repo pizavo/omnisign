@@ -8,88 +8,74 @@ import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.CredentialStore
+import io.kotest.assertions.arrow.core.shouldBeLeft
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.engine.spec.tempdir
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
 import io.mockk.mockk
-import kotlinx.coroutines.runBlocking
-import org.junit.Rule
-import org.junit.Test
-import org.junit.rules.TemporaryFolder
-import kotlin.test.assertIs
+import java.io.File
 
 /**
- * Unit tests for [DssArchivingRepository].
- *
- * Tests cover:
- * - Missing input file returns [ArchivingError.ExtensionFailed].
- * - Missing TSA configuration returns [ArchivingError.ExtensionFailed].
- * - B-B target level returns [ArchivingError.ExtensionFailed].
- * - [DssArchivingRepository.needsArchivalRenewal] returns [ArchivingError.ExtensionFailed] for a missing file.
+ * Verifies [DssArchivingRepository] error handling using Arrow [arrow.core.Either] matchers.
  */
-class DssArchivingRepositoryTest {
+class DssArchivingRepositoryTest : FunSpec({
+	
+	val tmpDir = tempdir()
+	
+	val configRepository: ConfigRepository = mockk()
+	val credentialStore: CredentialStore = mockk()
+	
+	val repository = DssArchivingRepository(configRepository, credentialStore)
+	
+	fun configWithoutTsa() = AppConfig(
+		global = GlobalConfig(
+			defaultHashAlgorithm = HashAlgorithm.SHA256,
+			defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA
+		)
+	)
+	
+	fun tmpFile(name: String) = File(tmpDir, name).also { it.createNewFile() }
+	
+	test("extendDocument returns ExtensionFailed when input file does not exist") {
+		coEvery { configRepository.getCurrentConfig() } returns configWithoutTsa()
+		
+		repository.extendDocument(
+			ArchivingParameters(
+				inputFile = "/nonexistent/signed.pdf",
+				outputFile = tmpFile("out.pdf").absolutePath
+			)
+		).shouldBeLeft().shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
+	}
+	
+	test("extendDocument returns ExtensionFailed when no TSA is configured") {
+		coEvery { configRepository.getCurrentConfig() } returns configWithoutTsa()
+		
+		repository.extendDocument(
+			ArchivingParameters(
+				inputFile = tmpFile("signed.pdf").absolutePath,
+				outputFile = tmpFile("out2.pdf").absolutePath,
+				targetLevel = SignatureLevel.PADES_BASELINE_T
+			)
+		).shouldBeLeft().shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
+	}
+	
+	test("extendDocument returns ExtensionFailed when target level is B-B") {
+		coEvery { configRepository.getCurrentConfig() } returns configWithoutTsa()
+		
+		repository.extendDocument(
+			ArchivingParameters(
+				inputFile = tmpFile("signed2.pdf").absolutePath,
+				outputFile = tmpFile("out3.pdf").absolutePath,
+				targetLevel = SignatureLevel.PADES_BASELINE_B
+			)
+		).shouldBeLeft().shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
+	}
+	
+	test("needsArchivalRenewal returns ExtensionFailed for a non-existent file") {
+		repository.needsArchivalRenewal("/nonexistent/doc.pdf")
+			.shouldBeLeft()
+			.shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
+	}
+})
 
-    @get:Rule
-    val tmpFolder = TemporaryFolder()
-
-    private val configRepository: ConfigRepository = mockk()
-    private val credentialStore: CredentialStore = mockk()
-
-    private val repository = DssArchivingRepository(configRepository, credentialStore)
-
-    private fun configWithoutTsa() = AppConfig(
-        global = GlobalConfig(
-            defaultHashAlgorithm = HashAlgorithm.SHA256,
-            defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA
-        )
-    )
-
-    @Test
-    fun `extendDocument returns ExtensionFailed when input file does not exist`() = runBlocking<Unit> {
-        coEvery { configRepository.getCurrentConfig() } returns configWithoutTsa()
-
-        val result = repository.extendDocument(
-            ArchivingParameters(
-                inputFile = "/nonexistent/signed.pdf",
-                outputFile = tmpFolder.newFile("out.pdf").absolutePath
-            )
-        )
-
-        assertIs<arrow.core.Either.Left<ArchivingError.ExtensionFailed>>(result)
-    }
-
-    @Test
-    fun `extendDocument returns ExtensionFailed when no TSA is configured`() = runBlocking<Unit> {
-        coEvery { configRepository.getCurrentConfig() } returns configWithoutTsa()
-
-        val result = repository.extendDocument(
-            ArchivingParameters(
-                inputFile = tmpFolder.newFile("signed.pdf").absolutePath,
-                outputFile = tmpFolder.newFile("out.pdf").absolutePath,
-                targetLevel = SignatureLevel.PADES_BASELINE_T
-            )
-        )
-
-        assertIs<arrow.core.Either.Left<ArchivingError.ExtensionFailed>>(result)
-    }
-
-    @Test
-    fun `extendDocument returns ExtensionFailed when target level is B-B`() = runBlocking<Unit> {
-        coEvery { configRepository.getCurrentConfig() } returns configWithoutTsa()
-
-        val result = repository.extendDocument(
-            ArchivingParameters(
-                inputFile = tmpFolder.newFile("signed.pdf").absolutePath,
-                outputFile = tmpFolder.newFile("out.pdf").absolutePath,
-                targetLevel = SignatureLevel.PADES_BASELINE_B
-            )
-        )
-
-        assertIs<arrow.core.Either.Left<ArchivingError.ExtensionFailed>>(result)
-    }
-
-    @Test
-    fun `needsArchivalRenewal returns ExtensionFailed for a non-existent file`() = runBlocking<Unit> {
-        val result = repository.needsArchivalRenewal("/nonexistent/doc.pdf")
-
-        assertIs<arrow.core.Either.Left<ArchivingError.ExtensionFailed>>(result)
-    }
-}

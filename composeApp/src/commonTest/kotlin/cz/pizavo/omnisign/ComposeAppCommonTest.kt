@@ -1,12 +1,14 @@
 package cz.pizavo.omnisign
 
-import kotlin.test.Test
-import kotlin.test.assertEquals
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.shouldBe
 
-class ComposeAppCommonTest {
+/**
+ * Placeholder test verifying the Kotest framework is wired correctly in composeApp.
+ */
+class ComposeAppCommonTest : FunSpec({
 
-    @Test
-    fun example() {
-        assertEquals(3, 1 + 2)
-    }
-}
+	test("basic arithmetic sanity check") {
+		(1 + 2) shouldBe 3
+	}
+})

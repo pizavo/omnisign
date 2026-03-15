@@ -14,170 +14,160 @@ import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.SigningRepository
 import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
 import cz.pizavo.omnisign.platform.PasswordCallback
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.engine.spec.tempdir
+import io.kotest.koin.KoinExtension
+import io.kotest.koin.KoinLifecycleMode
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.mockk.coEvery
 import io.mockk.mockk
-import org.junit.Before
-import org.junit.Rule
-import org.junit.Test
-import org.junit.rules.TemporaryFolder
-import org.koin.core.context.startKoin
-import org.koin.core.context.stopKoin
 import org.koin.dsl.module
-import kotlin.test.assertEquals
-import kotlin.test.assertNotNull
-import kotlin.test.assertTrue
+import java.io.File
 
 /**
  * Behavioral tests for the [Sign] command verifying stdout/stderr output
  * and exit codes with mocked dependencies.
  */
-class SignTest {
-    @get:Rule
-    val tmp = TemporaryFolder()
+class SignTest : FunSpec({
+	
+	val tmpDir = tempdir()
+	
+	val signingRepository: SigningRepository = mockk()
+	val configRepository: ConfigRepository = mockk()
+	
+	val defaultConfig = AppConfig(
+		global = GlobalConfig(
+			defaultHashAlgorithm = HashAlgorithm.SHA256,
+			defaultSignatureLevel = SignatureLevel.PADES_BASELINE_B,
+		)
+	)
+	
+	fun tmpFile(name: String) = File(tmpDir, name).also { it.createNewFile() }
+	
+	extension(
+		KoinExtension(
+			module {
+				single { SignDocumentUseCase(signingRepository) }
+				single { configRepository }
+				single<PasswordCallback> { mockk() }
+			},
+			mode = KoinLifecycleMode.Test
+		)
+	)
+	
+	beforeTest {
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig
+	}
+	
 
-    private val signingRepository: SigningRepository = mockk()
-    private val configRepository: ConfigRepository = mockk()
+	test("sign command should be instantiable") {
+		Sign().shouldNotBeNull()
+	}
+	
+	test("sign command name should be 'sign'") {
+		Sign().commandName shouldBe "sign"
+	}
+	
+	test("sign command registered options should include required file and output") {
+		val optionNames = Sign().registeredOptions().flatMap { it.names }
+		optionNames.shouldContain("--file")
+		optionNames.shouldContain("-f")
+		optionNames.shouldContain("--output")
+		optionNames.shouldContain("-o")
+	}
+	
+	test("sign command registered options should include signature metadata options") {
+		val optionNames = Sign().registeredOptions().flatMap { it.names }
+		optionNames.shouldContain("--reason")
+		optionNames.shouldContain("--location")
+		optionNames.shouldContain("--contact")
+		optionNames.shouldContain("--certificate")
+	}
+	
+	test("sign command registered options should include timestamp and profile overrides") {
+		val optionNames = Sign().registeredOptions().flatMap { it.names }
+		optionNames.shouldContain("--no-timestamp")
+		optionNames.shouldContain("--profile")
+	}
+	
+	test("sign command registered options should include visible signature options") {
+		val optionNames = Sign().registeredOptions().flatMap { it.names }
+		optionNames.shouldContain("--visible")
+		optionNames.shouldContain("--vis-page")
+		optionNames.shouldContain("--vis-x")
+		optionNames.shouldContain("--vis-y")
+		optionNames.shouldContain("--vis-width")
+		optionNames.shouldContain("--vis-height")
+		optionNames.shouldContain("--vis-text")
+		optionNames.shouldContain("--vis-image")
+	}
+	
+	test("successful sign outputs result to stdout") {
+		val input = tmpFile("input.pdf")
+		val output = tmpFile("output.pdf")
+		
+		coEvery { signingRepository.signDocument(any()) } returns SigningResult(
+			outputFile = output.absolutePath,
+			signatureId = "sig-123",
+			signatureLevel = "PAdES-BASELINE-B",
+		).right()
+		
+		val result = Omnisign().test(listOf("sign", "-f", input.absolutePath, "-o", output.absolutePath))
+		
+		result.output shouldContain "SIGNING RESULT"
+		result.output shouldContain "sig-123"
+		result.output shouldContain "PAdES-BASELINE-B"
+		result.statusCode shouldBe 0
+	}
+	
+	test("sign error exits with code 1 and prints to stderr") {
+		val input = tmpFile("input2.pdf")
+		val output = tmpFile("output2.pdf")
+		
+		coEvery { signingRepository.signDocument(any()) } returns SigningError.SigningFailed(
+			message = "Token not found",
+			details = "No PKCS#11 token available",
+		).left()
+		
+		val result = Omnisign().test(listOf("sign", "-f", input.absolutePath, "-o", output.absolutePath))
+		
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "Token not found"
+	}
+	
+	test("sign with --json outputs JSON on success") {
+		val input = tmpFile("input3.pdf")
+		val output = tmpFile("output3.pdf")
+		
+		coEvery { signingRepository.signDocument(any()) } returns SigningResult(
+			outputFile = output.absolutePath,
+			signatureId = "sig-json",
+			signatureLevel = "PAdES-BASELINE-T",
+		).right()
+		
+		val result = Omnisign().test(listOf("--json", "sign", "-f", input.absolutePath, "-o", output.absolutePath))
+		
+		result.output shouldContain "\"success\""
+		result.output shouldContain "sig-json"
+		result.statusCode shouldBe 0
+	}
+	
+	test("sign with --json outputs JSON on error with exit code 1") {
+		val input = tmpFile("input4.pdf")
+		val output = tmpFile("output4.pdf")
+		
+		coEvery { signingRepository.signDocument(any()) } returns SigningError.SigningFailed(
+			message = "Certificate expired",
+		).left()
+		
+		val result = Omnisign().test(listOf("--json", "sign", "-f", input.absolutePath, "-o", output.absolutePath))
+		
+		result.output shouldContain "\"success\""
+		result.output shouldContain "Certificate expired"
+		result.statusCode shouldBe 1
+	}
+})
 
-    private val defaultConfig = AppConfig(
-        global = GlobalConfig(
-            defaultHashAlgorithm = HashAlgorithm.SHA256,
-            defaultSignatureLevel = SignatureLevel.PADES_BASELINE_B,
-        )
-    )
-
-    @Before
-    fun setUp() {
-        runCatching { stopKoin() }
-        startKoin {
-            modules(module {
-                single { SignDocumentUseCase(signingRepository) }
-                single { configRepository }
-                single<PasswordCallback> { mockk() }
-            })
-        }
-        coEvery { configRepository.getCurrentConfig() } returns defaultConfig
-    }
-
-    @Test
-    fun `sign command should be instantiable`() {
-        val command = Sign()
-        assertNotNull(command)
-    }
-
-    @Test
-    fun `sign command name should be 'sign'`() {
-        val command = Sign()
-        assertEquals("sign", command.commandName)
-    }
-
-    @Test
-    fun `sign command registered options should include required file and output`() {
-        val command = Sign()
-        val optionNames = command.registeredOptions().flatMap { it.names }
-        assertTrue("--file" in optionNames, "--file option must be registered")
-        assertTrue("-f" in optionNames, "-f short option must be registered")
-        assertTrue("--output" in optionNames, "--output option must be registered")
-        assertTrue("-o" in optionNames, "-o short option must be registered")
-    }
-
-    @Test
-    fun `sign command registered options should include signature metadata options`() {
-        val command = Sign()
-        val optionNames = command.registeredOptions().flatMap { it.names }
-        assertTrue("--reason" in optionNames)
-        assertTrue("--location" in optionNames)
-        assertTrue("--contact" in optionNames)
-        assertTrue("--certificate" in optionNames)
-    }
-
-    @Test
-    fun `sign command registered options should include timestamp and profile overrides`() {
-        val command = Sign()
-        val optionNames = command.registeredOptions().flatMap { it.names }
-        assertTrue("--no-timestamp" in optionNames)
-        assertTrue("--profile" in optionNames)
-    }
-
-    @Test
-    fun `sign command registered options should include visible signature options`() {
-        val command = Sign()
-        val optionNames = command.registeredOptions().flatMap { it.names }
-        assertTrue("--visible" in optionNames)
-        assertTrue("--vis-page" in optionNames)
-        assertTrue("--vis-x" in optionNames)
-        assertTrue("--vis-y" in optionNames)
-        assertTrue("--vis-width" in optionNames)
-        assertTrue("--vis-height" in optionNames)
-        assertTrue("--vis-text" in optionNames)
-        assertTrue("--vis-image" in optionNames)
-    }
-
-    @Test
-    fun `successful sign outputs result to stdout`() {
-        val input = tmp.newFile("input.pdf")
-        val output = tmp.newFile("output.pdf")
-
-        coEvery { signingRepository.signDocument(any()) } returns SigningResult(
-            outputFile = output.absolutePath,
-            signatureId = "sig-123",
-            signatureLevel = "PAdES-BASELINE-B",
-        ).right()
-
-        val result = Omnisign().test(listOf("sign", "-f", input.absolutePath, "-o", output.absolutePath))
-
-        assertTrue(result.output.contains("SIGNING RESULT"), "stdout was: ${result.output}\nstderr was: ${result.stderr}")
-        assertTrue(result.output.contains("sig-123"), "Should print signature ID")
-        assertTrue(result.output.contains("PAdES-BASELINE-B"), "Should print signature level")
-        assertEquals(0, result.statusCode)
-    }
-
-    @Test
-    fun `sign error exits with code 1 and prints to stderr`() {
-        val input = tmp.newFile("input.pdf")
-        val output = tmp.newFile("output.pdf")
-
-        coEvery { signingRepository.signDocument(any()) } returns SigningError.SigningFailed(
-            message = "Token not found",
-            details = "No PKCS#11 token available",
-        ).left()
-
-        val result = Omnisign().test(listOf("sign", "-f", input.absolutePath, "-o", output.absolutePath))
-
-        assertEquals(1, result.statusCode, "stdout was: ${result.output}\nstderr was: ${result.stderr}")
-        assertTrue(result.stderr.contains("Token not found"), "stderr was: ${result.stderr}")
-    }
-
-    @Test
-    fun `sign with --json outputs JSON on success`() {
-        val input = tmp.newFile("input.pdf")
-        val output = tmp.newFile("output.pdf")
-
-        coEvery { signingRepository.signDocument(any()) } returns SigningResult(
-            outputFile = output.absolutePath,
-            signatureId = "sig-json",
-            signatureLevel = "PAdES-BASELINE-T",
-        ).right()
-
-        val result = Omnisign().test(listOf("--json", "sign", "-f", input.absolutePath, "-o", output.absolutePath))
-
-        assertTrue(result.output.contains("\"success\""), "stdout was: ${result.output}\nstderr was: ${result.stderr}")
-        assertTrue(result.output.contains("sig-json"), "JSON output should contain signature ID")
-        assertEquals(0, result.statusCode)
-    }
-
-    @Test
-    fun `sign with --json outputs JSON on error with exit code 1`() {
-        val input = tmp.newFile("input.pdf")
-        val output = tmp.newFile("output.pdf")
-
-        coEvery { signingRepository.signDocument(any()) } returns SigningError.SigningFailed(
-            message = "Certificate expired",
-        ).left()
-
-        val result = Omnisign().test(listOf("--json", "sign", "-f", input.absolutePath, "-o", output.absolutePath))
-
-        assertTrue(result.output.contains("\"success\""), "stdout was: ${result.output}\nstderr was: ${result.stderr}")
-        assertTrue(result.output.contains("Certificate expired"), "JSON output should contain error message")
-        assertEquals(1, result.statusCode)
-    }
-}

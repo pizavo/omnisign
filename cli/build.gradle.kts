@@ -47,9 +47,15 @@ tasks.named("processResources") {
 
 dependencies {
 	implementation(projects.shared)
-	testImplementation(libs.kotlin.testJunit)
+	testImplementation(libs.kotest.engine)
+	testImplementation(libs.kotest.jvm.runner)
 	testImplementation(libs.mockk)
 	testImplementation(libs.kotlinx.coroutines.test)
+	testImplementation(libs.kotest.core)
+	testImplementation(libs.kotest.arrow)
+	testImplementation(libs.kotest.koin)
+	testImplementation(libs.kotest.decoroutinator)
+	testImplementation(libs.decoroutinator.jvm)
 	
 	implementation(libs.clikt)
 	implementation(libs.clikt.core)
@@ -64,6 +70,10 @@ dependencies {
 	implementation(libs.kotlinx.datetime)
 	implementation(libs.kotlinx.serialization.json)
 	implementation(libs.logback)
+}
+
+tasks.withType<Test> {
+	useJUnitPlatform()
 }
 
 application {

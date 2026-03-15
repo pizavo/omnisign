@@ -1,43 +1,33 @@
 package cz.pizavo.omnisign.data.service
 
-import kotlin.test.Test
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.booleans.shouldBeFalse
+import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.shouldBe
 
 /**
- * Unit tests for [CrontabSchedulerService].
+ * Verifies [CrontabSchedulerService] install/uninstall/idempotency.
  *
- * These tests manipulate the real user crontab, so they are guarded by an OS check and
- * skipped automatically on Windows.  They are integration-style but require no external
- * infrastructure beyond a working `crontab` binary.
+ * Guarded by an OS check — skipped automatically on Windows.
  */
-class CrontabSchedulerServiceTest {
+class CrontabSchedulerServiceTest : FunSpec({
 	
-	private val service = CrontabSchedulerService()
+	val service = CrontabSchedulerService()
 	
-	private fun isUnix() = !System.getProperty("os.name", "").lowercase().contains("win")
+	fun isUnix() = !System.getProperty("os.name", "").lowercase().contains("win")
 	
-	@Test
-	fun `install adds a crontab entry and isInstalled returns true`() {
-		if (!isUnix()) return
-		
+	test("install adds a crontab entry and isInstalled returns true").config(enabled = isUnix()) {
 		service.install(cliExecutablePath = "/usr/bin/omnisign", runAtHour = 3, runAtMinute = 0)
-		assertTrue(service.isInstalled(), "Expected job to be installed")
+		service.isInstalled().shouldBeTrue()
 	}
 	
-	@Test
-	fun `uninstall removes the crontab entry and isInstalled returns false`() {
-		if (!isUnix()) return
-		
+	test("uninstall removes the crontab entry and isInstalled returns false").config(enabled = isUnix()) {
 		service.install(cliExecutablePath = "/usr/bin/omnisign")
 		service.uninstall()
-		assertFalse(service.isInstalled(), "Expected job to be absent after uninstall")
+		service.isInstalled().shouldBeFalse()
 	}
 	
-	@Test
-	fun `install is idempotent — calling twice does not create duplicate entries`() {
-		if (!isUnix()) return
-		
+	test("install is idempotent — calling twice does not create duplicate entries").config(enabled = isUnix()) {
 		service.install(cliExecutablePath = "/usr/bin/omnisign")
 		service.install(cliExecutablePath = "/usr/bin/omnisign")
 		
@@ -48,17 +38,14 @@ class CrontabSchedulerServiceTest {
 			.lines()
 			.count { it.contains(OsSchedulerService.JOB_TAG) }
 		
-		assertTrue(count == 1, "Expected exactly 1 crontab entry, found $count")
+		count shouldBe 1
 		
 		service.uninstall()
 	}
 	
-	@Test
-	fun `uninstall on clean crontab does not throw`() {
-		if (!isUnix()) return
-		
+	test("uninstall on clean crontab does not throw").config(enabled = isUnix()) {
 		service.uninstall()
-		assertFalse(service.isInstalled())
+		service.isInstalled().shouldBeFalse()
 	}
-}
+})
 

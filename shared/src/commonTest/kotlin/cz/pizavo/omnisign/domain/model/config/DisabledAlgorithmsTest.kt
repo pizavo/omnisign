@@ -5,26 +5,21 @@ import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
-import kotlin.test.Test
-import kotlin.test.assertEquals
-import kotlin.test.assertIs
-import kotlin.test.assertTrue
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeInstanceOf
 
 /**
- * Tests for the disabled-algorithm enforcement in [ResolvedConfig.resolve].
- *
- * Verified properties:
- * - Globally disabled algorithms propagate to every higher-priority layer.
- * - Profile-disabled algorithms are enforced for operation overrides.
- * - Operation-only disabled algorithms are enforced within the same resolve call.
- * - Attempting to select a disabled algorithm as the resolved value produces an error.
- * - The resolved [ResolvedConfig.disabledHashAlgorithms] and
- *   [ResolvedConfig.disabledEncryptionAlgorithms] sets are the union of all layers.
- * - A completely unrelated algorithm selection is unaffected.
+ * Verifies disabled-algorithm enforcement across global, profile, and operation layers
+ * in [ResolvedConfig.resolve].
  */
-class DisabledAlgorithmsTest {
-
-	private fun global(
+class DisabledAlgorithmsTest : FunSpec({
+	
+	fun global(
 		defaultHash: HashAlgorithm = HashAlgorithm.SHA256,
 		defaultEnc: EncryptionAlgorithm? = null,
 		disabledHash: Set<HashAlgorithm> = emptySet(),
@@ -36,8 +31,8 @@ class DisabledAlgorithmsTest {
 		disabledHashAlgorithms = disabledHash,
 		disabledEncryptionAlgorithms = disabledEnc
 	)
-
-	private fun profile(
+	
+	fun profile(
 		hash: HashAlgorithm? = null,
 		enc: EncryptionAlgorithm? = null,
 		disabledHash: Set<HashAlgorithm> = emptySet(),
@@ -49,8 +44,8 @@ class DisabledAlgorithmsTest {
 		disabledHashAlgorithms = disabledHash,
 		disabledEncryptionAlgorithms = disabledEnc
 	)
-
-	private fun operation(
+	
+	fun operation(
 		hash: HashAlgorithm? = null,
 		enc: EncryptionAlgorithm? = null,
 		disabledHash: Set<HashAlgorithm> = emptySet(),
@@ -61,15 +56,15 @@ class DisabledAlgorithmsTest {
 		disabledHashAlgorithms = disabledHash,
 		disabledEncryptionAlgorithms = disabledEnc
 	)
-
-	private fun resolveOk(
+	
+	fun resolveOk(
 		global: GlobalConfig,
 		profile: ProfileConfig? = null,
 		op: OperationConfig? = null
 	) = ResolvedConfig.resolve(global, profile, op)
 		.getOrElse { throw AssertionError("Expected success but got error: ${it.message}") }
-
-	private fun resolveErr(
+	
+	fun resolveErr(
 		global: GlobalConfig,
 		profile: ProfileConfig? = null,
 		op: OperationConfig? = null
@@ -79,163 +74,125 @@ class DisabledAlgorithmsTest {
 			ifRight = { throw AssertionError("Expected error but got resolved config") }
 		)
 	}
-
-	// ── Happy-path: no disabled algorithms ──────────────────────────────────
-
-	@Test
-	fun `resolve with empty disabled sets succeeds and reports empty sets`() {
+	
+	test("resolve with empty disabled sets succeeds and reports empty sets") {
 		val resolved = resolveOk(global())
-		assertTrue(resolved.disabledHashAlgorithms.isEmpty())
-		assertTrue(resolved.disabledEncryptionAlgorithms.isEmpty())
+		resolved.disabledHashAlgorithms.shouldBeEmpty()
+		resolved.disabledEncryptionAlgorithms.shouldBeEmpty()
 	}
-
-	// ── Global disabled, no override ────────────────────────────────────────
-
-	@Test
-	fun `globally disabled hash algorithm is reflected in resolved set`() {
-		val resolved = resolveOk(global(disabledHash = setOf(HashAlgorithm.RIPEMD160)))
-		assertTrue(HashAlgorithm.RIPEMD160 in resolved.disabledHashAlgorithms)
+	
+	test("globally disabled hash algorithm is reflected in resolved set") {
+		resolveOk(global(disabledHash = setOf(HashAlgorithm.RIPEMD160)))
+			.disabledHashAlgorithms.shouldContain(HashAlgorithm.RIPEMD160)
 	}
-
-	@Test
-	fun `globally disabled encryption algorithm is reflected in resolved set`() {
-		val resolved = resolveOk(global(disabledEnc = setOf(EncryptionAlgorithm.DSA)))
-		assertTrue(EncryptionAlgorithm.DSA in resolved.disabledEncryptionAlgorithms)
+	
+	test("globally disabled encryption algorithm is reflected in resolved set") {
+		resolveOk(global(disabledEnc = setOf(EncryptionAlgorithm.DSA)))
+			.disabledEncryptionAlgorithms.shouldContain(EncryptionAlgorithm.DSA)
 	}
-
-	// ── Error: resolved hash is disabled ────────────────────────────────────
-
-	@Test
-	fun `error when global default hash is in global disabled set`() {
+	
+	test("error when global default hash is in global disabled set") {
 		val err = resolveErr(
 			global(defaultHash = HashAlgorithm.SHA256, disabledHash = setOf(HashAlgorithm.SHA256))
 		)
-		assertIs<ConfigurationError.InvalidConfiguration>(err)
-		assertTrue(err.message.contains("SHA256"))
+		err.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+		err.message shouldContain "SHA256"
 	}
-
-	@Test
-	fun `error when profile hash override is in global disabled set`() {
+	
+	test("error when profile hash override is in global disabled set") {
 		val err = resolveErr(
 			global = global(disabledHash = setOf(HashAlgorithm.SHA384)),
 			profile = profile(hash = HashAlgorithm.SHA384)
 		)
-		assertIs<ConfigurationError.InvalidConfiguration>(err)
-		assertTrue(err.message.contains("SHA384"))
+		err.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+		err.message shouldContain "SHA384"
 	}
-
-	@Test
-	fun `error when operation hash override is in global disabled set`() {
+	
+	test("error when operation hash override is in global disabled set") {
 		val err = resolveErr(
 			global = global(disabledHash = setOf(HashAlgorithm.WHIRLPOOL)),
 			op = operation(hash = HashAlgorithm.WHIRLPOOL)
 		)
-		assertIs<ConfigurationError.InvalidConfiguration>(err)
-		assertTrue(err.message.contains("WHIRLPOOL"))
+		err.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+		err.message shouldContain "WHIRLPOOL"
 	}
-
-	@Test
-	fun `error when operation hash override is in profile disabled set`() {
+	
+	test("error when operation hash override is in profile disabled set") {
 		val err = resolveErr(
 			global = global(),
 			profile = profile(disabledHash = setOf(HashAlgorithm.SHA512)),
 			op = operation(hash = HashAlgorithm.SHA512)
 		)
-		assertIs<ConfigurationError.InvalidConfiguration>(err)
-		assertTrue(err.message.contains("SHA512"))
+		err.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+		err.message shouldContain "SHA512"
 	}
-
-	// ── Error: resolved encryption is disabled ───────────────────────────────
-
-	@Test
-	fun `error when global default encryption is in global disabled set`() {
+	
+	test("error when global default encryption is in global disabled set") {
 		val err = resolveErr(
 			global(defaultEnc = EncryptionAlgorithm.RSA, disabledEnc = setOf(EncryptionAlgorithm.RSA))
 		)
-		assertIs<ConfigurationError.InvalidConfiguration>(err)
-		assertTrue(err.message.contains("RSA"))
+		err.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+		err.message shouldContain "RSA"
 	}
-
-	@Test
-	fun `error when profile encryption override is in global disabled set`() {
+	
+	test("error when profile encryption override is in global disabled set") {
 		val err = resolveErr(
 			global = global(disabledEnc = setOf(EncryptionAlgorithm.DSA)),
 			profile = profile(enc = EncryptionAlgorithm.DSA)
 		)
-		assertIs<ConfigurationError.InvalidConfiguration>(err)
-		assertTrue(err.message.contains("DSA"))
+		err.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+		err.message shouldContain "DSA"
 	}
-
-	@Test
-	fun `error when operation encryption override is in profile disabled set`() {
+	
+	test("error when operation encryption override is in profile disabled set") {
 		val err = resolveErr(
 			global = global(),
 			profile = profile(disabledEnc = setOf(EncryptionAlgorithm.ECDSA)),
 			op = operation(enc = EncryptionAlgorithm.ECDSA)
 		)
-		assertIs<ConfigurationError.InvalidConfiguration>(err)
-		assertTrue(err.message.contains("ECDSA"))
+		err.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+		err.message shouldContain "ECDSA"
 	}
-
-	// ── Union across layers ──────────────────────────────────────────────────
-
-	@Test
-	fun `disabled sets from all layers are unioned in resolved config`() {
-		val resolved = resolveOk(
+	
+	test("disabled sets from all layers are unioned in resolved config") {
+		resolveOk(
 			global = global(disabledHash = setOf(HashAlgorithm.RIPEMD160)),
 			profile = profile(disabledHash = setOf(HashAlgorithm.WHIRLPOOL)),
 			op = operation(disabledHash = setOf(HashAlgorithm.SHA3_512))
-		)
-		assertEquals(
-			setOf(HashAlgorithm.RIPEMD160, HashAlgorithm.WHIRLPOOL, HashAlgorithm.SHA3_512),
-			resolved.disabledHashAlgorithms
-		)
+		).disabledHashAlgorithms shouldBe
+			setOf(HashAlgorithm.RIPEMD160, HashAlgorithm.WHIRLPOOL, HashAlgorithm.SHA3_512)
 	}
-
-	@Test
-	fun `resolved hash that is not in any disabled set succeeds`() {
-		val resolved = resolveOk(
+	
+	test("resolved hash that is not in any disabled set succeeds") {
+		resolveOk(
 			global = global(
 				defaultHash = HashAlgorithm.SHA256,
 				disabledHash = setOf(HashAlgorithm.RIPEMD160, HashAlgorithm.WHIRLPOOL)
 			)
-		)
-		assertEquals(HashAlgorithm.SHA256, resolved.hashAlgorithm)
+		).hashAlgorithm shouldBe HashAlgorithm.SHA256
 	}
-
-	// ── Lower-priority layer cannot re-enable ───────────────────────────────
-
-	@Test
-	fun `operation cannot re-enable globally disabled algorithm by not listing it`() {
-		val err = resolveErr(
+	
+	test("operation cannot re-enable globally disabled algorithm by not listing it") {
+		resolveErr(
 			global = global(disabledHash = setOf(HashAlgorithm.SHA384)),
 			op = operation(hash = HashAlgorithm.SHA384)
-		)
-		assertIs<ConfigurationError.InvalidConfiguration>(err)
+		).shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
 	}
-
-	// ── null encryption algorithm is never blocked ───────────────────────────
-
-	@Test
-	fun `null encryption algorithm is never rejected even if set is non-empty`() {
-		val resolved = resolveOk(
+	
+	test("null encryption algorithm is never rejected even if set is non-empty") {
+		resolveOk(
 			global = global(
 				defaultEnc = null,
 				disabledEnc = setOf(EncryptionAlgorithm.RSA, EncryptionAlgorithm.DSA)
 			)
-		)
-		assertTrue(resolved.encryptionAlgorithm == null)
+		).encryptionAlgorithm.shouldBeNull()
 	}
-
-	// ── Profile-disabled not in global, but present on profile ───────────────
-
-	@Test
-	fun `profile can additionally disable algorithms not disabled globally`() {
-		val resolved = resolveOk(
+	
+	test("profile can additionally disable algorithms not disabled globally") {
+		resolveOk(
 			global = global(),
 			profile = profile(disabledHash = setOf(HashAlgorithm.SHA3_256))
-		)
-		assertTrue(HashAlgorithm.SHA3_256 in resolved.disabledHashAlgorithms)
+		).disabledHashAlgorithms.shouldContain(HashAlgorithm.SHA3_256)
 	}
-}
+})
 

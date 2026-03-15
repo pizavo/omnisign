@@ -6,180 +6,129 @@ import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
-import kotlin.test.*
+import io.kotest.assertions.arrow.core.shouldBeLeft
+import io.kotest.assertions.arrow.core.shouldBeRight
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.maps.shouldHaveSize
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotBeBlank
+import io.kotest.matchers.string.shouldNotStartWith
+import io.kotest.matchers.types.shouldBeInstanceOf
 
 /**
- * Unit tests for the three [cz.pizavo.omnisign.domain.port.ConfigSerializer] implementations.
- *
- * Each test verifies a symmetric serialize → deserialize round-trip preserves all fields,
- * and that deserializing invalid input produces an [Either.Left] containing a descriptive error.
+ * Verifies symmetric serialize→deserialize round-trips and invalid-input handling
+ * for JSON, YAML, and XML serializers.
  */
-class ConfigSerializerTest {
+class ConfigSerializerTest : FunSpec({
 	
-	private val serializers = listOf(
+	val serializers = listOf(
 		JsonConfigSerializer(),
 		YamlConfigSerializer(),
 		XmlConfigSerializer()
 	)
 	
-	private val sampleGlobal = GlobalConfig(
+	val sampleGlobal = GlobalConfig(
 		defaultHashAlgorithm = HashAlgorithm.SHA512,
 		defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LT
 	)
 	
-	private val sampleProfile = ProfileConfig(
+	val sampleProfile = ProfileConfig(
 		name = "test-profile",
 		description = "A test profile",
 		hashAlgorithm = HashAlgorithm.SHA384,
 		signatureLevel = SignatureLevel.PADES_BASELINE_T
 	)
 	
-	private val sampleApp = AppConfig(
+	val sampleApp = AppConfig(
 		global = sampleGlobal,
 		profiles = mapOf("test-profile" to sampleProfile),
 		activeProfile = "test-profile"
 	)
 	
-	@Test
-	fun `JSON serializer round-trips AppConfig`() {
+	test("JSON serializer round-trips AppConfig") {
 		val serializer = JsonConfigSerializer()
-		val text = serializer.serializeApp(sampleApp)
-		assertIs<Either.Right<String>>(text)
-		assertTrue(text.value.isNotBlank())
+		val text = serializer.serializeApp(sampleApp).shouldBeRight()
+		text.shouldNotBeBlank()
 		
-		val result = serializer.deserializeApp(text.value)
-		assertIs<Either.Right<AppConfig>>(result)
-		assertEquals(sampleApp.global.defaultHashAlgorithm, result.value.global.defaultHashAlgorithm)
-		assertEquals(sampleApp.global.defaultSignatureLevel, result.value.global.defaultSignatureLevel)
-		assertEquals(sampleApp.activeProfile, result.value.activeProfile)
-		assertEquals(1, result.value.profiles.size)
+		val result = serializer.deserializeApp(text).shouldBeRight()
+		result.global.defaultHashAlgorithm shouldBe sampleApp.global.defaultHashAlgorithm
+		result.global.defaultSignatureLevel shouldBe sampleApp.global.defaultSignatureLevel
+		result.activeProfile shouldBe sampleApp.activeProfile
+		result.profiles.shouldHaveSize(1)
 	}
 	
-	@Test
-	fun `YAML serializer round-trips AppConfig`() {
+	test("YAML serializer round-trips AppConfig") {
 		val serializer = YamlConfigSerializer()
-		val text = serializer.serializeApp(sampleApp)
-		assertIs<Either.Right<String>>(text)
+		val text = serializer.serializeApp(sampleApp).shouldBeRight()
 		
-		val result = serializer.deserializeApp(text.value)
-		assertIs<Either.Right<AppConfig>>(result)
-		assertEquals(sampleApp.global.defaultHashAlgorithm, result.value.global.defaultHashAlgorithm)
-		assertEquals(sampleApp.activeProfile, result.value.activeProfile)
+		val result = serializer.deserializeApp(text).shouldBeRight()
+		result.global.defaultHashAlgorithm shouldBe sampleApp.global.defaultHashAlgorithm
+		result.activeProfile shouldBe sampleApp.activeProfile
 	}
 	
-	@Test
-	fun `XML serializer round-trips AppConfig`() {
+	test("XML serializer round-trips AppConfig") {
 		val serializer = XmlConfigSerializer()
-		val text = serializer.serializeApp(sampleApp)
-		assertIs<Either.Right<String>>(text)
+		val text = serializer.serializeApp(sampleApp).shouldBeRight()
 		
-		val result = serializer.deserializeApp(text.value)
-		assertIs<Either.Right<AppConfig>>(result)
-		assertEquals(sampleApp.global.defaultHashAlgorithm, result.value.global.defaultHashAlgorithm)
+		val result = serializer.deserializeApp(text).shouldBeRight()
+		result.global.defaultHashAlgorithm shouldBe sampleApp.global.defaultHashAlgorithm
 	}
 	
-	@Test
-	fun `all serializers round-trip GlobalConfig`() {
+	test("all serializers round-trip GlobalConfig") {
 		for (serializer in serializers) {
-			val text = serializer.serializeGlobal(sampleGlobal)
-			assertIs<Either.Right<String>>(text, "${serializer.format}: serialize failed")
-			
-			val result = serializer.deserializeGlobal(text.value)
-			assertIs<Either.Right<GlobalConfig>>(result, "${serializer.format}: deserialize failed")
-			assertEquals(
-				sampleGlobal.defaultHashAlgorithm,
-				result.value.defaultHashAlgorithm,
-				"${serializer.format}: hash algorithm mismatch"
-			)
-			assertEquals(
-				sampleGlobal.defaultSignatureLevel,
-				result.value.defaultSignatureLevel,
-				"${serializer.format}: signature level mismatch"
-			)
+			val text = serializer.serializeGlobal(sampleGlobal).shouldBeRight()
+			val result = serializer.deserializeGlobal(text).shouldBeRight()
+			result.defaultHashAlgorithm shouldBe sampleGlobal.defaultHashAlgorithm
+			result.defaultSignatureLevel shouldBe sampleGlobal.defaultSignatureLevel
 		}
 	}
 	
-	@Test
-	fun `all serializers round-trip ProfileConfig`() {
+	test("all serializers round-trip ProfileConfig") {
 		for (serializer in serializers) {
-			val text = serializer.serializeProfile(sampleProfile)
-			assertIs<Either.Right<String>>(text, "${serializer.format}: serialize failed")
-			
-			val result = serializer.deserializeProfile(text.value)
-			assertIs<Either.Right<ProfileConfig>>(result, "${serializer.format}: deserialize failed")
-			assertEquals(
-				sampleProfile.name,
-				result.value.name,
-				"${serializer.format}: profile name mismatch"
-			)
-			assertEquals(
-				sampleProfile.hashAlgorithm,
-				result.value.hashAlgorithm,
-				"${serializer.format}: hash algorithm mismatch"
-			)
-			assertEquals(
-				sampleProfile.description,
-				result.value.description,
-				"${serializer.format}: description mismatch"
-			)
+			val text = serializer.serializeProfile(sampleProfile).shouldBeRight()
+			val result = serializer.deserializeProfile(text).shouldBeRight()
+			result.name shouldBe sampleProfile.name
+			result.hashAlgorithm shouldBe sampleProfile.hashAlgorithm
+			result.description shouldBe sampleProfile.description
 		}
 	}
 	
-	@Test
-	fun `JSON serializer returns error for invalid input`() {
-		val serializer = JsonConfigSerializer()
-		val result = serializer.deserializeApp("not valid json {{{")
-		assertIs<Either.Left<*>>(result)
-		val error = result.value
-		assertIs<cz.pizavo.omnisign.domain.model.error.OperationError>(error)
-		assertNotNull(error.message)
+	test("JSON serializer returns error for invalid input") {
+		val error = JsonConfigSerializer().deserializeApp("not valid json {{{")
+			.shouldBeLeft()
+		error.shouldBeInstanceOf<cz.pizavo.omnisign.domain.model.error.OperationError>()
+		error.message.shouldNotBeNull()
 	}
 	
-	@Test
-	fun `YAML serializer returns error for invalid input`() {
-		val serializer = YamlConfigSerializer()
-		val result = serializer.deserializeApp("key: [unclosed bracket")
-		assertIs<Either.Left<*>>(result)
-		val error = result.value
-		assertIs<cz.pizavo.omnisign.domain.model.error.OperationError>(error)
-		assertNotNull(error.message)
+	test("YAML serializer returns error for invalid input") {
+		val error = YamlConfigSerializer().deserializeApp("key: [unclosed bracket")
+			.shouldBeLeft()
+		error.shouldBeInstanceOf<cz.pizavo.omnisign.domain.model.error.OperationError>()
+		error.message.shouldNotBeNull()
 	}
 	
-	@Test
-	fun `XML serializer returns error for invalid input`() {
-		val serializer = XmlConfigSerializer()
-		val result = serializer.deserializeApp("<unclosed")
-		assertIs<Either.Left<*>>(result)
-		val error = result.value
-		assertIs<cz.pizavo.omnisign.domain.model.error.OperationError>(error)
-		assertNotNull(error.message)
+	test("XML serializer returns error for invalid input") {
+		val error = XmlConfigSerializer().deserializeApp("<unclosed")
+			.shouldBeLeft()
+		error.shouldBeInstanceOf<cz.pizavo.omnisign.domain.model.error.OperationError>()
+		error.message.shouldNotBeNull()
 	}
 	
-	@Test
-	fun `JSON output is pretty-printed`() {
-		val serializer = JsonConfigSerializer()
-		val text = (serializer.serializeGlobal(sampleGlobal) as Either.Right).value
-		assertTrue(text.contains('\n'), "Expected pretty-printed JSON with newlines")
+	test("JSON output is pretty-printed") {
+		val text = (JsonConfigSerializer().serializeGlobal(sampleGlobal) as Either.Right).value
+		text shouldContain "\n"
 	}
 	
-	@Test
-	fun `YAML output does not contain JSON braces`() {
-		val serializer = YamlConfigSerializer()
-		val text = (serializer.serializeGlobal(sampleGlobal) as Either.Right).value
-		assertTrue(!text.trimStart().startsWith("{"), "Expected YAML output, not JSON object")
+	test("YAML output does not contain JSON braces") {
+		val text = (YamlConfigSerializer().serializeGlobal(sampleGlobal) as Either.Right).value
+		text.trimStart().shouldNotStartWith("{")
 	}
 	
-	@Test
-	fun `XML output contains XML declaration or root element`() {
-		val serializer = XmlConfigSerializer()
-		val text = (serializer.serializeGlobal(sampleGlobal) as Either.Right).value
-		assertTrue(
-			text.contains('<'),
-			"Expected XML output to contain angle brackets"
-		)
+	test("XML output contains XML declaration or root element") {
+		val text = (XmlConfigSerializer().serializeGlobal(sampleGlobal) as Either.Right).value
+		text shouldContain "<"
 	}
-}
-
-
-
+})
 

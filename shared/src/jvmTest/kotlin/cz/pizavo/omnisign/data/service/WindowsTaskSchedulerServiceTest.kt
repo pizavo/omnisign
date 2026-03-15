@@ -1,24 +1,21 @@
 package cz.pizavo.omnisign.data.service
 
-import kotlin.test.Test
-import kotlin.test.assertFalse
-import kotlin.test.assertTrue
+import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.booleans.shouldBeFalse
+import io.kotest.matchers.booleans.shouldBeTrue
 
 /**
- * Unit tests for [WindowsTaskSchedulerService].
+ * Verifies [WindowsTaskSchedulerService] install/uninstall/idempotency.
  *
  * Guarded by an OS check — skipped automatically on non-Windows systems.
- * Tests are also skipped when `schtasks` requires elevated privileges that are not
- * available in the current environment (e.g. a non-admin CI runner).
- * Each test cleans up by uninstalling the task at the end.
  */
-class WindowsTaskSchedulerServiceTest {
+class WindowsTaskSchedulerServiceTest : FunSpec({
 	
-	private val service = WindowsTaskSchedulerService()
+	val service = WindowsTaskSchedulerService()
 	
-	private fun isWindows() = System.getProperty("os.name", "").lowercase().contains("win")
+	fun isWindows() = System.getProperty("os.name", "").lowercase().contains("win")
 	
-	private inline fun requiresAdmin(block: () -> Unit) {
+	fun requiresAdmin(block: () -> Unit) {
 		try {
 			block()
 		} catch (e: IllegalStateException) {
@@ -30,50 +27,40 @@ class WindowsTaskSchedulerServiceTest {
 		}
 	}
 	
-	@Test
-	fun `install registers the task and isInstalled returns true`() {
-		if (!isWindows()) return
+	test("install registers the task and isInstalled returns true").config(enabled = isWindows()) {
 		requiresAdmin {
 			service.install(cliExecutablePath = "C:\\Program Files\\omnisign\\omnisign.exe")
 			try {
-				assertTrue(service.isInstalled())
+				service.isInstalled().shouldBeTrue()
 			} finally {
 				service.uninstall()
 			}
 		}
 	}
 	
-	@Test
-	fun `uninstall removes the task and isInstalled returns false`() {
-		if (!isWindows()) return
+	test("uninstall removes the task and isInstalled returns false").config(enabled = isWindows()) {
 		requiresAdmin {
 			service.install(cliExecutablePath = "C:\\Program Files\\omnisign\\omnisign.exe")
 			service.uninstall()
-			assertFalse(service.isInstalled())
+			service.isInstalled().shouldBeFalse()
 		}
 	}
 	
-	@Test
-	fun `install is idempotent — calling twice leaves exactly one task`() {
-		if (!isWindows()) return
+	test("install is idempotent — calling twice leaves exactly one task").config(enabled = isWindows()) {
 		requiresAdmin {
 			service.install(cliExecutablePath = "C:\\omnisign\\omnisign.exe")
 			service.install(cliExecutablePath = "C:\\omnisign\\omnisign.exe")
 			try {
-				assertTrue(service.isInstalled())
+				service.isInstalled().shouldBeTrue()
 			} finally {
 				service.uninstall()
 			}
 		}
 	}
 	
-	@Test
-	fun `uninstall on absent task does not throw`() {
-		if (!isWindows()) return
+	test("uninstall on absent task does not throw").config(enabled = isWindows()) {
 		service.uninstall()
-		assertFalse(service.isInstalled())
+		service.isInstalled().shouldBeFalse()
 	}
-}
-
-
+})
 

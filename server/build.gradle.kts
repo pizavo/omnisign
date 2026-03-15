@@ -23,8 +23,17 @@ dependencies {
     implementation(libs.ktor.serverCore)
     implementation(libs.ktor.serverNetty)
     testImplementation(libs.ktor.serverTestHost)
-    testImplementation(libs.kotlin.testJunit)
+    testImplementation(libs.kotest.engine)
+    testImplementation(libs.kotest.jvm.runner)
+    testImplementation(libs.kotest.core)
+    testImplementation(libs.kotest.ktor)
+    testImplementation(libs.kotest.decoroutinator)
+    testImplementation(libs.decoroutinator.jvm)
     
     implementation(project.dependencies.platform(libs.koin.bom))
     implementation(libs.koin.ktor)
+}
+
+tasks.withType<Test> {
+    useJUnitPlatform()
 }
