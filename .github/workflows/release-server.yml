@@ -53,9 +53,35 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
+      - name: Generate release notes
+        id: notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev_tag=$(gh api "repos/${{ github.repository }}/releases" \
+            --jq '[.[] | select(.tag_name | startswith("server/v")) | .tag_name] | first' \
+            2>/dev/null || echo "")
+
+          args=(--method POST
+                -f tag_name="${{ github.ref_name }}"
+                -f configuration_file_path=".github/release-server.yml")
+
+          if [ -n "$prev_tag" ]; then
+            args+=(-f previous_tag_name="$prev_tag")
+          fi
+
+          notes=$(gh api "repos/${{ github.repository }}/releases/generate-notes" \
+            "${args[@]}" --jq '.body')
+
+          {
+            echo "body<<EOF"
+            echo "$notes"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           name: "Server ${{ github.ref_name }}"
-          generate_release_notes: true
+          body: ${{ steps.notes.outputs.body }}
           files: server/build/libs/*-all.jar
