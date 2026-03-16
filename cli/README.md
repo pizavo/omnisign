@@ -56,6 +56,82 @@ Or, when using the `install` distribution:
 .\cli\build\install\cli\bin\cli.bat <command> [options]
 ```
 
+## Installation
+
+### Windows — MSI installer
+
+The MSI installer registers `omnisign` in PATH automatically.
+During installation a dialog lets you choose between a system-wide install
+(Program Files, system PATH, requires elevation) and a per-user install
+(LocalAppData, user PATH, no elevation).
+
+### Linux — DEB / RPM
+
+Both packages install the application to `/opt/omnisign/` and create a
+`/usr/local/bin/omnisign` symlink so the command is available immediately.
+
+```shell
+# Debian / Ubuntu
+sudo dpkg -i omnisign-cli-<version>.deb
+
+# Fedora / RHEL
+sudo rpm -i omnisign-cli-<version>.rpm
+```
+
+### macOS — PKG installer (recommended)
+
+The `.pkg` installer places the application in `/Applications/omnisign.app`
+and creates a `/usr/local/bin/omnisign` symlink so the command is available
+in every new terminal session. It also installs an `omnisign-uninstall`
+helper (see [Uninstalling on macOS](#uninstalling-on-macos)).
+
+### macOS — DMG disk image
+
+The `.dmg` is a drag-to-Applications disk image and **does not** register
+`omnisign` in PATH. If you prefer the DMG, create the symlink manually:
+
+```shell
+ln -s /Applications/omnisign.app/Contents/MacOS/omnisign /usr/local/bin/omnisign
+```
+
+Or use the `.pkg` installer instead.
+
+### Portable app-images (Windows / Linux)
+
+App-image archives do not modify PATH. Run the binary directly from the
+extracted directory or add it to PATH manually.
+
+### macOS Gatekeeper note
+
+The macOS packages are currently unsigned. On first launch macOS may show an
+"unidentified developer" warning. You can bypass it with:
+
+```shell
+xattr -cr /Applications/omnisign.app
+```
+
+or by right-clicking the application and choosing **Open**.
+Code signing requires an Apple Developer ID certificate
+(separate from PGP/X.509, obtained through the
+[Apple Developer Program](https://developer.apple.com/programs/)).
+
+### Uninstalling on macOS
+
+The `.pkg` installer places an `omnisign-uninstall` command in
+`/usr/local/bin`. Running it removes the application, the PATH symlink,
+and the uninstaller itself:
+
+```shell
+omnisign-uninstall
+```
+
+To uninstall manually (e.g. after a DMG install):
+
+```shell
+rm -f /usr/local/bin/omnisign
+rm -rf /Applications/omnisign.app
+```
+
 ## Environment Variables
 
 All options can also be set via environment variables using the `OMNISIGN_` prefix.

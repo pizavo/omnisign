@@ -385,14 +385,14 @@ fun registerJPackageTask(
 
 /**
  * Appends a [Task.doLast] action to a [JPackageTask] that renames every output file
- * with [extension] whose name starts with `omnisign` to use the `omnisign-cli` prefix.
+ * with [extension] whose name starts with `omnisign` to use the given [replacement] prefix.
  */
-fun renamePackageOutput(taskName: String, extension: String) {
+fun renamePackageOutput(taskName: String, extension: String, replacement: String = "omnisign-cli") {
 	tasks.named<JPackageTask>(taskName) {
 		doLast {
 			destDir.get().asFile
 				.listFiles { f -> f.name.startsWith("omnisign") && f.name.endsWith(".$extension") }
-				?.forEach { f -> f.renameTo(File(f.parent, f.name.replaceFirst("omnisign", "omnisign-cli"))) }
+				?.forEach { f -> f.renameTo(File(f.parent, f.name.replaceFirst("omnisign", replacement))) }
 		}
 	}
 }
@@ -432,31 +432,31 @@ renamePackageOutput("jpackageWinMsi", "msi")
 
 registerJPackageTask(
 	name = "jpackageDeb",
-	description = "Packages the CLI as a Debian/Ubuntu .deb package.",
+	description = "Packages the CLI as a Debian/Ubuntu .deb package with /usr/local/bin symlink.",
 	type = "deb",
 	destSubdir = "linux-deb",
 	iconFile = generatedIconsDir.map { it.file("omnisign.png") },
 	iconDependency = "convertIconPng",
 	extraArgsList = listOf(
-		"--linux-menu-group", "omnisign",
-		"--linux-shortcut",
+		"--resource-dir", "$jpackageResourcesDir/linux-deb",
 		"--linux-app-category", "utils",
 	),
+	resourceDirPath = "$jpackageResourcesDir/linux-deb",
 )
 renamePackageOutput("jpackageDeb", "deb")
 
 registerJPackageTask(
 	name = "jpackageRpm",
-	description = "Packages the CLI as a Red Hat/Fedora .rpm package.",
+	description = "Packages the CLI as a Red Hat/Fedora .rpm package with /usr/local/bin symlink.",
 	type = "rpm",
 	destSubdir = "linux-rpm",
 	iconFile = generatedIconsDir.map { it.file("omnisign.png") },
 	iconDependency = "convertIconPng",
 	extraArgsList = listOf(
-		"--linux-menu-group", "omnisign",
-		"--linux-shortcut",
+		"--resource-dir", "$jpackageResourcesDir/linux-rpm",
 		"--linux-app-category", "utils",
 	),
+	resourceDirPath = "$jpackageResourcesDir/linux-rpm",
 )
 renamePackageOutput("jpackageRpm", "rpm")
 
@@ -485,11 +485,27 @@ registerJPackageTask(
 )
 renamePackageOutput("jpackageDmg", "dmg")
 
+registerJPackageTask(
+	name = "jpackagePkg",
+	description = "Packages the CLI as a macOS .pkg installer with /usr/local/bin symlink and uninstaller.",
+	type = "pkg",
+	destSubdir = "mac-pkg",
+	iconFile = generatedIconsDir.map { it.file("omnisign.icns") },
+	iconDependency = "convertIconIcns",
+	extraArgsList = listOf(
+		"--resource-dir", "$jpackageResourcesDir/mac",
+		"--mac-package-identifier", "cz.pizavo.omnisign",
+		"--mac-package-name", "omnisign",
+	),
+	resourceDirPath = "$jpackageResourcesDir/mac",
+)
+renamePackageOutput("jpackagePkg", "pkg")
+
 /**
  * Lifecycle task that runs the appropriate jpackage task(s) for the current OS.
  * On Windows: produces both the app-image (.exe) and the .msi installer.
  * On Linux:   produces .deb, .rpm, and a portable app-image tarball.
- * On macOS:   produces a .dmg.
+ * On macOS:   produces a .dmg and a .pkg installer.
  */
 tasks.register("jpackage") {
 	group = "distribution"
@@ -498,6 +514,6 @@ tasks.register("jpackage") {
 	when {
 		os.contains("win") -> dependsOn("jpackageWinExe", "jpackageWinMsi")
 		os.contains("linux") -> dependsOn("jpackageDeb", "jpackageRpm", "jpackageLinuxImage")
-		os.contains("mac") -> dependsOn("jpackageDmg")
+		os.contains("mac") -> dependsOn("jpackageDmg", "jpackagePkg")
 	}
 }

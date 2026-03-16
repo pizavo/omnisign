@@ -1,0 +1,4 @@
+#!/bin/sh
+set -e
+ln -sf /opt/omnisign/bin/omnisign /usr/local/bin/omnisign
+

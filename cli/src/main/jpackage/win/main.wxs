@@ -1,10 +1,16 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
     Custom main.wxs for jpackage (JDK 25 / WiX 6).
-    Differs from jpackage's default in two ways:
+    Differs from jpackage's default in three ways:
       1. The OmnisignPath ComponentGroupRef in DefaultFeature pulls in the PATH
-         Environment component from overrides.wxi.
-      2. Upgrades from older versions are always allowed: the installer automatically
+         Environment components from overrides.wxi (system PATH or user PATH,
+         selected at install time through MSIINSTALLPERUSER).
+      2. Scope is "perUserOrMachine" (ALLUSERS=2) so the user can choose between
+         a system-wide install (elevated, Program Files, system PATH) and a
+         per-user install (no elevation, LocalAppData, user PATH).  The custom
+         InstallScopeDlg in ui.wxf drives this choice.  InstallerVersion is 500
+         because Windows Installer 5.0+ is required for perUserOrMachine.
+      3. Upgrades from older versions are always allowed: the installer automatically
          uninstalls the previous version and installs the new one. The jpackage
          JpFindRelatedProducts/wixhelper.dll custom action is kept as a definition
          only — ui.wxf references it from its own UISequence and must be able to
@@ -22,14 +28,10 @@
 -->
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
-  <?ifdef JpIsSystemWide ?>
-    <?define JpInstallScope="perMachine"?>
-  <?else ?>
-    <?define JpInstallScope="perUser"?>
-  <?endif ?>
+  <?define JpInstallScope="perUserOrMachine"?>
 
   <?define JpProductLanguage=1033 ?>
-  <?define JpInstallerVersion=200 ?>
+  <?define JpInstallerVersion=500 ?>
   <?define JpCompressedMsi=yes ?>
 
   <?include $(var.JpConfigDir)/overrides.wxi ?>
