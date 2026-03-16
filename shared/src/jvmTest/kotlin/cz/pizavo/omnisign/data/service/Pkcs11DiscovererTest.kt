@@ -58,14 +58,26 @@ class Pkcs11DiscovererTest : FunSpec({
 		d.isPkcs11FileName("iidp11.dll").shouldBeTrue()
 		d.isPkcs11FileName("cmP11.dll").shouldBeTrue()
 		d.isPkcs11FileName("libcryptoki.so").shouldBeTrue()
+		d.isPkcs11FileName("libp11.so").shouldBeTrue()
+		d.isPkcs11FileName("p11-kit.so").shouldBeTrue()
+		d.isPkcs11FileName("p11.dll").shouldBeTrue()
 	}
-	
+
 	test("isPkcs11FileName rejects unrelated DLLs") {
 		val d = discoverer()
 		d.isPkcs11FileName("kernel32.dll").shouldBeFalse()
 		d.isPkcs11FileName("ntdll.dll").shouldBeFalse()
 		d.isPkcs11FileName("user32.dll").shouldBeFalse()
 		d.isPkcs11FileName("libssl.so").shouldBeFalse()
+	}
+
+	test("isPkcs11FileName rejects Visual C++ runtime DLLs that contain p11 as a version fragment") {
+		val d = discoverer()
+		d.isPkcs11FileName("msvcp110.dll").shouldBeFalse()
+		d.isPkcs11FileName("msvcp110_win.dll").shouldBeFalse()
+		d.isPkcs11FileName("vcamp110.dll").shouldBeFalse()
+		d.isPkcs11FileName("vcomp110.dll").shouldBeFalse()
+		d.isPkcs11FileName("msvcp110d.dll").shouldBeFalse()
 	}
 	
 	test("deriveMiddlewareName identifies SafeNet eToken paths") {

@@ -2,6 +2,11 @@ package cz.pizavo.omnisign.data.service
 
 import arrow.core.left
 import arrow.core.right
+import com.sun.jna.Library
+import com.sun.jna.Memory
+import com.sun.jna.Native
+import com.sun.jna.NativeLong
+import com.sun.jna.Pointer
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.result.OperationResult
@@ -76,6 +81,27 @@ class DssTokenService(
 		}
 	}
 
+	override suspend fun requestPin(tokenInfo: TokenInfo): String? =
+		passwordCallback.requestPassword(
+			"Enter PIN for ${tokenInfo.name}",
+			"PKCS#11 PIN Required",
+		)
+
+	/**
+	 * Check physical token presence without supplying a PIN.
+	 *
+	 * PKCS#11 tokens are probed via [C_GetSlotList] with [CK_TRUE], which queries the
+	 * middleware for slots that currently have a card inserted.  This never calls [C_Login]
+	 * and therefore never risks incrementing a wrong-PIN counter.
+	 * FILE tokens are checked via [File.exists].
+	 * OS-native stores always return true — the subsequent load call handles any failure.
+	 */
+	override suspend fun probeTokenPresent(tokenInfo: TokenInfo): Boolean = when (tokenInfo.type) {
+		TokenType.PKCS11 -> tokenInfo.path?.let { probeLibraryForToken(it) } ?: false
+		TokenType.FILE -> tokenInfo.path?.let { File(it).exists() } ?: false
+		TokenType.WINDOWS_MY, TokenType.MACOS_KEYCHAIN -> true
+	}
+
 	/**
 	 * Load certificates from [tokenInfo], prompting for credentials via [PasswordCallback]
 	 * when the token requires a PIN and none is supplied.
@@ -85,10 +111,7 @@ class DssTokenService(
 		password: String?,
 	): OperationResult<List<CertificateEntry>> {
 		val resolvedPassword = if (tokenInfo.requiresPin && password == null) {
-			passwordCallback.requestPassword(
-				"Enter PIN for ${tokenInfo.name}",
-				"PKCS#11 PIN Required",
-			) ?: return SigningError.TokenAccessError(
+			requestPin(tokenInfo) ?: return SigningError.TokenAccessError(
 				message = "PIN entry cancelled for '${tokenInfo.name}'"
 			).left()
 		} else {
@@ -219,6 +242,40 @@ class DssTokenService(
 			"digitalSignature", "nonRepudiation", "keyEncipherment", "dataEncipherment",
 			"keyAgreement", "keyCertSign", "cRLSign", "encipherOnly", "decipherOnly",
 		)
+
+		/**
+		 * PKCS#11 function subset needed for slot-presence probing.
+		 * Uses cdecl convention, which is mandated by the PKCS#11 v2.20 spec for all platforms.
+		 */
+		private interface Pkcs11ProbeLib : Library {
+			fun C_Initialize(pInitArgs: Pointer?): NativeLong
+			fun C_GetSlotList(tokenPresent: Byte, pSlotList: Pointer?, pulCount: Pointer?): NativeLong
+		}
+
+		private const val CKR_OK = 0L
+		private const val CKR_CRYPTOKI_ALREADY_INITIALIZED = 0x191L
+
+		/**
+		 * Return true when the PKCS#11 [libraryPath] reports at least one slot with a token
+		 * present ([C_GetSlotList] with CK_TRUE = 1).
+		 *
+		 * [C_Initialize] is called idempotently; CKR_CRYPTOKI_ALREADY_INITIALIZED is treated as
+		 * success.  [C_Finalize] is deliberately NOT called so existing sessions created by DSS
+		 * or the SunPKCS11 provider are not interrupted.  JNA caches loaded libraries, so
+		 * repeated calls for the same path are cheap.
+		 *
+		 * [pulCount] is backed by a [Native.LONG_SIZE]-byte [Memory] region, making it correct
+		 * on both Windows/LLP64 (CK_ULONG = 32 bit) and Linux/LP64 (CK_ULONG = 64 bit).
+		 */
+		fun probeLibraryForToken(libraryPath: String): Boolean = runCatching {
+			@Suppress("UNCHECKED_CAST")
+			val lib = Native.load(libraryPath, Pkcs11ProbeLib::class.java) as Pkcs11ProbeLib
+			val initRv = lib.C_Initialize(null).toLong()
+			if (initRv != CKR_OK && initRv != CKR_CRYPTOKI_ALREADY_INITIALIZED) return false
+			val countMem = Memory(Native.LONG_SIZE.toLong()).also { it.clear() }
+			val rv = lib.C_GetSlotList(1.toByte(), null, countMem)
+			rv.toLong() == CKR_OK && countMem.getNativeLong(0).toLong() > 0
+		}.getOrDefault(false)
 	}
 }
 

@@ -109,6 +109,14 @@ tasks.named<CreateStartScripts>("startScripts") {
 tasks.named<CreateStartScripts>("startShadowScripts") {
 	applicationName = "omnisign"
 	outputs.upToDateWhen { false }
+	doLast {
+		windowsScript.writeText(
+			windowsScript.readText().replace(
+				Regex("""(set DEFAULT_JVM_OPTS=")"""),
+				"""$1--add-modules=jdk.crypto.mscapi """
+			)
+		)
+	}
 }
 
 tasks.named("assembleShadowDist") {
@@ -326,6 +334,7 @@ val commonJpackageArgsList: List<String> = listOf(
 	"--vendor", "OmniSign",
 	"--description", "Multiplatform digital signature verification, signing and re-timestamping tool",
 	"--main-class", "cz.pizavo.omnisign.CliKt",
+	"--add-modules", "java.logging,java.naming,java.desktop,java.management,java.sql,java.xml.crypto,jdk.unsupported",
 	"--java-options", "--enable-native-access=ALL-UNNAMED",
 )
 
@@ -427,6 +436,8 @@ registerJPackageTask(
 	extraArgsList = listOf(
 		"--resource-dir", "$jpackageResourcesDir/win",
 		"--win-console",
+		"--add-modules", "jdk.crypto.mscapi",
+		"--java-options", "--add-modules=jdk.crypto.mscapi",
 	),
 	resourceDirPath = "$jpackageResourcesDir/win",
 )
@@ -446,6 +457,8 @@ registerJPackageTask(
 		"--win-menu-group", "omnisign",
 		"--win-shortcut",
 		"--win-console",
+		"--add-modules", "jdk.crypto.mscapi",
+		"--java-options", "--add-modules=jdk.crypto.mscapi",
 	),
 	resourceDirPath = "$jpackageResourcesDir/win",
 )

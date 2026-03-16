@@ -17,11 +17,15 @@ interface SigningRepository {
     suspend fun signDocument(parameters: SigningParameters): OperationResult<SigningResult>
     
     /**
-     * List available certificates from configured token sources.
+     * List available certificates from all configured token sources.
      *
-     * @return List of certificate aliases or error
+     * Per-token access failures are not propagated as hard errors; they are collected in
+     * [CertificateDiscoveryResult.tokenWarnings] so callers can surface diagnostic information.
+     *
+     * @return Discovery result containing signing-capable certificates and any per-token warnings,
+     *         or a hard error when token discovery itself fails.
      */
-    suspend fun listAvailableCertificates(): OperationResult<List<AvailableCertificateInfo>>
+    suspend fun listAvailableCertificates(): OperationResult<CertificateDiscoveryResult>
 }
 
 

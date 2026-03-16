@@ -9,6 +9,7 @@ import cz.pizavo.omnisign.cli.json.JsonCertificateList
 import cz.pizavo.omnisign.cli.json.toJsonCertificateList
 import cz.pizavo.omnisign.cli.json.toJsonError
 import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
+import cz.pizavo.omnisign.domain.repository.CertificateDiscoveryResult
 import cz.pizavo.omnisign.domain.usecase.ListCertificatesUseCase
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -20,14 +21,16 @@ import org.koin.core.component.inject
  * (PKCS#12 files, PKCS#11 hardware tokens, Windows keystore, macOS Keychain, etc.).
  *
  * The alias printed here is what should be supplied to `sign --certificate <alias>`.
+ * Per-token warnings are printed to stderr when a token could not be accessed, so the
+ * user understands why expected certificates may be absent.
  */
 class CertificatesList : CliktCommand(name = "list"), KoinComponent {
 	private val listCertificates: ListCertificatesUseCase by inject()
 	private val output by requireObject<OutputConfig>()
-	
+
 	override fun help(context: Context): String =
 		"List all certificates available for signing"
-	
+
 	override fun run(): Unit = runBlocking {
 		listCertificates().fold(
 			ifLeft = { error ->
@@ -43,18 +46,47 @@ class CertificatesList : CliktCommand(name = "list"), KoinComponent {
 				}
 				throw ProgramResult(1)
 			},
-			ifRight = { certificates ->
+			ifRight = { result ->
 				if (output.json) {
-					echo(Json.encodeToString(certificates.toJsonCertificateList()))
-				} else if (certificates.isEmpty()) {
-					echo("No certificates found. Configure a PKCS#12 file or hardware token via 'config set'.")
+					echo(Json.encodeToString(result.toJsonCertificateList()))
 				} else {
-					printCertificatesTable(certificates)
+					printTokenWarnings(result)
+					if (result.certificates.isEmpty()) {
+						printEmptyMessage(result)
+					} else {
+						printCertificatesTable(result.certificates)
+					}
 				}
 			}
 		)
 	}
-	
+
+	/**
+	 * Print per-token access warnings to stderr so they do not pollute stdout pipelines.
+	 */
+	private fun printTokenWarnings(result: CertificateDiscoveryResult) {
+		result.tokenWarnings.forEach { warning ->
+			echo("⚠️  Could not read token '${warning.tokenName}': ${warning.message}", err = true)
+			warning.details?.let { echo("   └─ $it", err = true) }
+		}
+	}
+
+	/**
+	 * Print a contextual message when no signing-capable certificates were found.
+	 */
+	private fun printEmptyMessage(result: CertificateDiscoveryResult) {
+		if (result.tokenWarnings.isNotEmpty()) {
+			echo(
+				"No signing-capable certificates found. " +
+				"${result.tokenWarnings.size} token(s) could not be accessed " +
+				"(see warnings above). " +
+				"Ensure the token is connected and try again, or configure a PKCS#12 file via 'config set'."
+			)
+		} else {
+			echo("No certificates found. Configure a PKCS#12 file or hardware token via 'config set'.")
+		}
+	}
+
 	/**
 	 * Print a formatted table of available certificates to stdout.
 	 */
@@ -62,11 +94,11 @@ class CertificatesList : CliktCommand(name = "list"), KoinComponent {
 		val aliasWidth = maxOf(certificates.maxOf { it.alias.length }, 5)
 		val subjectWidth = maxOf(certificates.maxOf { it.subjectDN.length }, 7)
 		val tokenWidth = maxOf(certificates.maxOf { it.tokenType.length }, 5)
-		
-		echo("═".repeat(aliasWidth + subjectWidth + tokenWidth + 38))
+
+		echo("═".repeat(aliasWidth + subjectWidth + tokenWidth + 16))
 		echo("  AVAILABLE CERTIFICATES (${certificates.size})")
-		echo("═".repeat(aliasWidth + subjectWidth + tokenWidth + 38))
-		
+		echo("═".repeat(aliasWidth + subjectWidth + tokenWidth + 16))
+
 		certificates.forEachIndexed { index, cert ->
 			echo("")
 			echo("  [${index + 1}] Alias      : ${cert.alias}")
@@ -78,10 +110,10 @@ class CertificatesList : CliktCommand(name = "list"), KoinComponent {
 			val usages = cert.keyUsages.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "not specified"
 			echo("      Key usages : $usages")
 		}
-		
+
 		echo("")
-		echo("═".repeat(aliasWidth + subjectWidth + tokenWidth + 38))
+		echo("═".repeat(aliasWidth + subjectWidth + tokenWidth + 16))
 		echo("  Use 'sign --certificate <alias>' to sign with a specific certificate.")
-		echo("═".repeat(aliasWidth + subjectWidth + tokenWidth + 38))
+		echo("═".repeat(aliasWidth + subjectWidth + tokenWidth + 16))
 	}
 }

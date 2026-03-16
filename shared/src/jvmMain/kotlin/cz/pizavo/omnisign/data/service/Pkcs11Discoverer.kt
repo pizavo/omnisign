@@ -153,11 +153,20 @@ class Pkcs11Discoverer {
 
     /**
      * Return `true` when [fileName] (base name only) looks like a PKCS#11 provider library.
-     * Matches names containing `pkcs11`, `p11`, `etpkcs`, `gclib`, `opensc`, `iidp11`,
-     * `cmp11`, `softhsm`, `libsac`, `libck`, or `cryptoki`.
+     *
+     * Patterns checked:
+     * - Exact substring matches against [PKCS11_NAME_PATTERNS] (e.g. `pkcs11`, `cryptoki`).
+     * - A standalone `p11` token that is **not** immediately followed by a digit, via
+     *   [P11_STANDALONE_PATTERN].  This prevents Microsoft Visual C++ runtime DLLs such as
+     *   `msvcp110.dll`, `vcamp110.dll`, and `vcomp110.dll` from being mistaken for PKCS#11
+     *   middleware — they all contain the three-character substring `p11` as part of the
+     *   version number `p110`.
      */
-    internal fun isPkcs11FileName(fileName: String): Boolean =
-        PKCS11_NAME_PATTERNS.any { fileName.lowercase().contains(it) }
+    internal fun isPkcs11FileName(fileName: String): Boolean {
+        val lower = fileName.lowercase()
+        return PKCS11_NAME_PATTERNS.any { lower.contains(it) } ||
+               P11_STANDALONE_PATTERN.containsMatchIn(lower)
+    }
 
     /**
      * Derive a human-readable middleware display name from an absolute [libraryPath].
@@ -480,10 +489,22 @@ class Pkcs11Discoverer {
          */
         const val ATR_MAX_SIZE_BYTES = 33
 
+        /**
+         * Substring patterns that unambiguously identify PKCS#11 middleware filenames.
+         * The standalone `p11` token is deliberately absent; it is matched separately by
+         * [P11_STANDALONE_PATTERN] to avoid false positives from VC++ runtime version numbers.
+         */
         val PKCS11_NAME_PATTERNS = listOf(
-            "pkcs11", "p11", "etpkcs", "gclib", "opensc", "iidp11", "cmp11",
+            "pkcs11", "etpkcs", "gclib", "opensc", "iidp11", "cmp11",
             "softhsm", "libsac", "libck", "cryptoki",
         )
+
+        /**
+         * Matches the standalone `p11` token in a lowercase filename when it is **not**
+         * immediately followed by a digit.  Examples that match: `libp11.so`, `p11-kit.so`,
+         * `p11.dll`.  Examples that do **not** match: `msvcp110.dll`, `vcamp110.dll`.
+         */
+        val P11_STANDALONE_PATTERN = Regex("""p11(?!\d)""")
     }
 }
 

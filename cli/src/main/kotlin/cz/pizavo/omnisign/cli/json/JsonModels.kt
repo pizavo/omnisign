@@ -114,7 +114,19 @@ data class JsonExtensionResult(
 data class JsonCertificateList(
     val success: Boolean,
     val certificates: List<JsonAvailableCertificate> = emptyList(),
+    val tokenWarnings: List<JsonTokenWarning> = emptyList(),
     val error: JsonError? = null,
+)
+
+/**
+ * JSON-serializable DTO for a per-token warning within a certificate listing.
+ */
+@Serializable
+data class JsonTokenWarning(
+    val tokenId: String,
+    val tokenName: String,
+    val message: String,
+    val details: String? = null,
 )
 
 /**

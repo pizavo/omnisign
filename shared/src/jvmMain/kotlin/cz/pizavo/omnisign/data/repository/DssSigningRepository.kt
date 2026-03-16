@@ -11,8 +11,10 @@ import cz.pizavo.omnisign.domain.model.parameters.VisibleSignatureParameters
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.result.SigningResult
 import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
+import cz.pizavo.omnisign.domain.repository.CertificateDiscoveryResult
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.SigningRepository
+import cz.pizavo.omnisign.domain.repository.TokenDiscoveryWarning
 import cz.pizavo.omnisign.domain.service.AlgorithmExpirationChecker
 import cz.pizavo.omnisign.domain.service.AlgorithmStatus
 import cz.pizavo.omnisign.domain.service.CredentialStore
@@ -132,19 +134,36 @@ class DssSigningRepository(
 	}
 	
 	@Suppress("TooGenericExceptionCaught")
-	override suspend fun listAvailableCertificates(): OperationResult<List<AvailableCertificateInfo>> {
+	override suspend fun listAvailableCertificates(): OperationResult<CertificateDiscoveryResult> {
 		return try {
 			val tokensResult = tokenService.discoverTokens()
 			tokensResult.fold(
 				ifLeft = { return it.left() },
 				ifRight = { tokens ->
 					val allCertificates = mutableListOf<AvailableCertificateInfo>()
+					val warnings = mutableListOf<TokenDiscoveryWarning>()
 					for (token in tokens) {
+						if (!tokenService.probeTokenPresent(token)) continue
 						val certsResult = tokenService.loadCertificatesSilent(token, null)
 						certsResult.fold(
-							ifLeft = { },
+							ifLeft = { error ->
+								warnings.add(
+									TokenDiscoveryWarning(
+										tokenId = token.id,
+										tokenName = token.name,
+										message = error.details ?: error.message,
+										details = error.cause?.cause?.let { deepCause ->
+											generateSequence(deepCause) { it.cause }
+												.mapNotNull { it.message?.trim() }
+												.filter { it.isNotBlank() }
+												.firstOrNull()
+												?.takeIf { it != (error.details ?: error.message) }
+										},
+									)
+								)
+							},
 							ifRight = { certs ->
-							allCertificates.addAll(certs.map { cert ->
+								allCertificates.addAll(certs.map { cert ->
 									AvailableCertificateInfo(
 										alias = cert.alias,
 										subjectDN = cert.subjectDN,
@@ -152,20 +171,23 @@ class DssSigningRepository(
 										validFrom = cert.validFrom,
 										validTo = cert.validTo,
 										tokenType = token.type.name,
-										keyUsages = cert.keyUsages
+										keyUsages = cert.keyUsages,
 									)
 								})
 							}
 						)
 					}
-					allCertificates.right()
+					CertificateDiscoveryResult(
+						certificates = allCertificates,
+						tokenWarnings = warnings,
+					).right()
 				}
 			)
 		} catch (e: Exception) {
 			SigningError.TokenAccessError(
 				message = "Failed to list certificates",
 				details = e.message,
-				cause = e
+				cause = e,
 			).left()
 		}
 	}
@@ -203,42 +225,49 @@ class DssSigningRepository(
 	 * the requested alias (or the first available key when no alias is requested), together
 	 * with its [AbstractSignatureTokenConnection].  Returns null when no matching key is found.
 	 *
-	 * For tokens that require a PIN (e.g. PKCS#11, file-based keystores), the password is
-	 * requested via [cz.pizavo.omnisign.platform.PasswordCallback] during [TokenService.loadCertificates]
-	 * and then reused when creating the signing token connection.
+	 * The hardware presence of PKCS#11 tokens is probed via [TokenService.probeTokenPresent]
+	 * before any PIN prompt.  Tokens whose card is not inserted are silently skipped.
+	 * The PIN obtained from the credential store or the user is reused for both
+	 * [TokenService.loadCertificatesSilent] and [TokenService.getSigningToken] so it is never
+	 * entered twice and never discarded.
 	 */
 	private suspend fun resolvePrivateKey(
 		parameters: SigningParameters
 	): Pair<DSSPrivateKeyEntry, AbstractSignatureTokenConnection>? {
 		val tokens = tokenService.discoverTokens().getOrNull() ?: return null
-		
+
 		for (tokenInfo in tokens) {
-			val certs = tokenService.loadCertificates(tokenInfo, null).getOrNull() ?: continue
+			if (!tokenService.probeTokenPresent(tokenInfo)) continue
+
+			val password = if (tokenInfo.requiresPin) {
+				credentialStore.getPassword(TOKEN_CREDENTIAL_SERVICE, tokenInfo.id)
+					?: tokenService.requestPin(tokenInfo)
+					?: continue
+			} else {
+				""
+			}
+
+			val certs = tokenService.loadCertificatesSilent(tokenInfo, password).getOrNull() ?: continue
 			val selected = if (parameters.certificateAlias != null) {
 				certs.find { it.alias == parameters.certificateAlias }
 			} else {
 				certs.firstOrNull()
 			} ?: continue
-			
-			val password = if (tokenInfo.requiresPin) {
-				credentialStore.getPassword(TOKEN_CREDENTIAL_SERVICE, tokenInfo.id) ?: ""
-			} else {
-				""
-			}
-			
+
+
 			val dssToken = tokenService.getSigningToken(selected, password).getOrNull()
 				?.getDssToken() as? AbstractSignatureTokenConnection ?: continue
-			
+
 			val key = dssToken.keys.find { k ->
 				k.certificate.certificate.subjectX500Principal.toString() == selected.subjectDN
 			} ?: dssToken.keys.firstOrNull() ?: continue
-			
+
 			return key to dssToken
 		}
-		
+
 		return null
 	}
-	
+
 	private companion object {
 		const val TOKEN_CREDENTIAL_SERVICE = "omnisign-token"
 	}

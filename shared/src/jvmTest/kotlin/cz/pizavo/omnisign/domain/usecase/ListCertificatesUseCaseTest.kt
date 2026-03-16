@@ -4,7 +4,9 @@ import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
+import cz.pizavo.omnisign.domain.repository.CertificateDiscoveryResult
 import cz.pizavo.omnisign.domain.repository.SigningRepository
+import cz.pizavo.omnisign.domain.repository.TokenDiscoveryWarning
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
@@ -38,43 +40,46 @@ class ListCertificatesUseCaseTest : FunSpec({
 		keyUsages = keyUsages
 	)
 
+	fun discovery(vararg certs: AvailableCertificateInfo, warnings: List<TokenDiscoveryWarning> = emptyList()) =
+		CertificateDiscoveryResult(certificates = certs.toList(), tokenWarnings = warnings)
+
 	test("returns certificates with digitalSignature key usage") {
 		coEvery { signingRepository.listAvailableCertificates() } returns
-			listOf(cert("a", keyUsages = listOf("digitalSignature"))).right()
+			discovery(cert("a", keyUsages = listOf("digitalSignature"))).right()
 
-		useCase().shouldBeRight().shouldHaveSize(1)
+		useCase().shouldBeRight().certificates.shouldHaveSize(1)
 	}
 
 	test("returns certificates with nonRepudiation key usage") {
 		coEvery { signingRepository.listAvailableCertificates() } returns
-			listOf(cert("a", keyUsages = listOf("nonRepudiation"))).right()
+			discovery(cert("a", keyUsages = listOf("nonRepudiation"))).right()
 
-		useCase().shouldBeRight().shouldHaveSize(1)
+		useCase().shouldBeRight().certificates.shouldHaveSize(1)
 	}
 
 	test("filters out certificates with key usages that lack signing capability") {
 		coEvery { signingRepository.listAvailableCertificates() } returns
-			listOf(cert("a", keyUsages = listOf("keyEncipherment", "dataEncipherment"))).right()
+			discovery(cert("a", keyUsages = listOf("keyEncipherment", "dataEncipherment"))).right()
 
-		useCase().shouldBeRight().shouldBeEmpty()
+		useCase().shouldBeRight().certificates.shouldBeEmpty()
 	}
 
 	test("certificate with empty key usages and different subject and issuer is included") {
 		coEvery { signingRepository.listAvailableCertificates() } returns
-			listOf(cert("a", subject = "CN=User", issuer = "CN=CA")).right()
+			discovery(cert("a", subject = "CN=User", issuer = "CN=CA")).right()
 
-		useCase().shouldBeRight().shouldHaveSize(1)
+		useCase().shouldBeRight().certificates.shouldHaveSize(1)
 	}
 
 	test("self-signed certificate with empty key usages is excluded") {
 		coEvery { signingRepository.listAvailableCertificates() } returns
-			listOf(cert("a", subject = "CN=Self", issuer = "CN=Self")).right()
+			discovery(cert("a", subject = "CN=Self", issuer = "CN=Self")).right()
 
-		useCase().shouldBeRight().shouldBeEmpty()
+		useCase().shouldBeRight().certificates.shouldBeEmpty()
 	}
 
 	test("mixed list filters correctly") {
-		coEvery { signingRepository.listAvailableCertificates() } returns listOf(
+		coEvery { signingRepository.listAvailableCertificates() } returns discovery(
 			cert("signing", keyUsages = listOf("digitalSignature")),
 			cert("encrypting", keyUsages = listOf("keyEncipherment")),
 			cert("no-usage-non-self", subject = "CN=User", issuer = "CN=CA"),
@@ -82,8 +87,19 @@ class ListCertificatesUseCaseTest : FunSpec({
 		).right()
 
 		val result = useCase().shouldBeRight()
-		result.shouldHaveSize(2)
-		result.map { it.alias } shouldBe listOf("signing", "no-usage-non-self")
+		result.certificates.shouldHaveSize(2)
+		result.certificates.map { it.alias } shouldBe listOf("signing", "no-usage-non-self")
+	}
+
+	test("token warnings are preserved after filtering") {
+		val warning = TokenDiscoveryWarning(tokenId = "t1", tokenName = "Broken Token", message = "Access denied")
+		coEvery { signingRepository.listAvailableCertificates() } returns
+			discovery(cert("a", keyUsages = listOf("digitalSignature")), warnings = listOf(warning)).right()
+
+		val result = useCase().shouldBeRight()
+		result.certificates.shouldHaveSize(1)
+		result.tokenWarnings.shouldHaveSize(1)
+		result.tokenWarnings.first().tokenId shouldBe "t1"
 	}
 
 	test("propagates repository error") {
@@ -96,9 +112,8 @@ class ListCertificatesUseCaseTest : FunSpec({
 
 	test("returns empty list when repository returns no certificates") {
 		coEvery { signingRepository.listAvailableCertificates() } returns
-			emptyList<AvailableCertificateInfo>().right()
+			discovery().right()
 
-		useCase().shouldBeRight().shouldBeEmpty()
+		useCase().shouldBeRight().certificates.shouldBeEmpty()
 	}
 })
-

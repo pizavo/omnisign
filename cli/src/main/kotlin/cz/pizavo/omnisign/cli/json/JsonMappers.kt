@@ -4,7 +4,7 @@ import cz.pizavo.omnisign.domain.model.error.OperationError
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.SigningResult
 import cz.pizavo.omnisign.domain.model.validation.*
-import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
+import cz.pizavo.omnisign.domain.repository.CertificateDiscoveryResult
 
 /**
  * Convert a domain [OperationError] to a [JsonError] DTO.
@@ -118,12 +118,12 @@ private fun TimestampValidationResult.toJson(): JsonTimestampResult =
     )
 
 /**
- * Convert a list of domain [AvailableCertificateInfo] to a [JsonCertificateList] DTO.
+ * Convert a [CertificateDiscoveryResult] to a success [JsonCertificateList] DTO.
  */
-fun List<AvailableCertificateInfo>.toJsonCertificateList(): JsonCertificateList =
+fun CertificateDiscoveryResult.toJsonCertificateList(): JsonCertificateList =
     JsonCertificateList(
         success = true,
-        certificates = map { cert ->
+        certificates = certificates.map { cert ->
             JsonAvailableCertificate(
                 alias = cert.alias,
                 subjectDN = cert.subjectDN,
@@ -132,6 +132,14 @@ fun List<AvailableCertificateInfo>.toJsonCertificateList(): JsonCertificateList 
                 validTo = cert.validTo,
                 tokenType = cert.tokenType,
                 keyUsages = cert.keyUsages,
+            )
+        },
+        tokenWarnings = tokenWarnings.map { w ->
+            JsonTokenWarning(
+                tokenId = w.tokenId,
+                tokenName = w.tokenName,
+                message = w.message,
+                details = w.details,
             )
         },
     )
