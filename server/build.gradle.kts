@@ -28,10 +28,11 @@ dependencies {
     testImplementation(libs.kotest.core)
     testImplementation(libs.kotest.ktor)
     testImplementation(libs.kotest.decoroutinator)
-    testImplementation(libs.decoroutinator.jvm)
     
     implementation(project.dependencies.platform(libs.koin.bom))
     implementation(libs.koin.ktor)
+    
+    implementation(libs.decoroutinator.jvm)
 }
 
 tasks.withType<Test> {

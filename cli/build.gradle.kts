@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "cz.pizavo.omnisign"
-version = project.findProperty("releaseVersion")?.toString() ?: "1.7.0"
+version = project.findProperty("releaseVersion")?.toString() ?: "1.7.1"
 
 /**
  * Normalizes a semver-like string to the three-component `MAJOR.MINOR.BUILD` format required by
@@ -55,7 +55,6 @@ dependencies {
 	testImplementation(libs.kotest.arrow)
 	testImplementation(libs.kotest.koin)
 	testImplementation(libs.kotest.decoroutinator)
-	testImplementation(libs.decoroutinator.jvm)
 	
 	implementation(libs.clikt)
 	implementation(libs.clikt.core)
@@ -70,6 +69,8 @@ dependencies {
 	implementation(libs.kotlinx.datetime)
 	implementation(libs.kotlinx.serialization.json)
 	implementation(libs.logback)
+	
+	implementation(libs.decoroutinator.jvm)
 }
 
 tasks.withType<Test> {
