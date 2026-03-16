@@ -60,6 +60,7 @@ fun ValidationReport.toJsonResult(rawReportPath: String? = null): JsonValidation
             indeterminate = indeterminate,
         ),
         rawReportPath = rawReportPath,
+        tlWarnings = tlWarnings,
     )
 }
 

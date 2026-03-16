@@ -16,7 +16,7 @@ Supports PAdES BASELINE B / B-T / B-LT / B-LTA signing, validation, timestamping
 .\gradlew.bat :cli:shadowJar
 ```
 
-The self-contained JAR is written to `cli/build/libs/omnisign-cli-<version>.jar`.
+The self-contained JAR is written to `cli/build/libs/omnisign-<version>.jar`.
 
 ### Run directly via Gradle
 
@@ -38,22 +38,22 @@ The self-contained JAR is written to `cli/build/libs/omnisign-cli-<version>.jar`
 .\gradlew.bat :cli:installDist
 ```
 
-Launch scripts are generated in `cli/build/install/cli/bin/`.
+Launch scripts are generated in `cli/build/install/omnisign/bin/`.
 
 ## Running
 
 ```shell
-java -jar omnisign-cli-<version>.jar <command> [options]
+java -jar omnisign-<version>.jar <command> [options]
 ```
 
 Or, when using the `install` distribution:
 
 ```shell
 # Linux / macOS
-./cli/build/install/cli/bin/cli <command> [options]
+./cli/build/install/omnisign/bin/omnisign <command> [options]
 
 # Windows
-.\cli\build\install\cli\bin\cli.bat <command> [options]
+.\cli\build\install\omnisign\bin\omnisign.bat <command> [options]
 ```
 
 ## Installation
@@ -191,6 +191,32 @@ omnisign validate -f contract.pdf --detailed
 omnisign validate -f contract.pdf --report-out report.xml --report-format XML_SIMPLE
 omnisign validate -f contract.pdf --profile university --validation-policy CUSTOM -p policy.xml
 ```
+
+**Output notes**
+
+*Trusted list notices:* If one or more EU member-state trusted lists cannot be reached at
+validation time (e.g. due to a network error or an untrusted server certificate on the remote
+host), a notice is printed below the report header:
+
+```
+⚠️  1 trusted list could not be refreshed (eidas.gov.ie). Qualification assessment for
+    certificates from this source may be incomplete.
+```
+
+This does not affect the cryptographic validity of the signature itself. Only the eIDAS
+qualification assessment (e.g. `AdESig-QC`) for signing certificates issued by the affected
+member state may be unavailable. When using `--json`, the equivalent information is available
+in the `tlWarnings` array of the validation result object.
+
+*INDETERMINATE timestamps in valid LTA signatures:* In a freshly created PAdES-BASELINE-LTA
+document it is normal for both the signature timestamp and the archive (document) timestamp to
+show `INDETERMINATE`. DSS validates each timestamp token in isolation (ETSI EN 319 102-1) before
+aggregating the results into the overall indication, so the TSA certificate's revocation status
+cannot always be proven at the exact timestamp production time. PDF readers (e.g. Adobe Acrobat)
+use a simpler PKIX chain check and report both timestamps as valid. The `✅ VALID` overall
+indication is the authoritative result. Renew the archive timestamp periodically
+(`omnisign timestamp --level PADES_BASELINE_LTA`) to maintain long-term cryptographic
+provability (digital continuity / re-archiving).
 
 ---
 

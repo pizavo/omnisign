@@ -1,4 +1,5 @@
 <configuration>
+    <statusListener class="ch.qos.logback.core.status.NopStatusListener"/>
     <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
         <target>System.err</target>
         <encoder>
@@ -7,7 +8,11 @@
     </appender>
 
     <logger name="eu.europa.esig" level="WARN"/>
+    <logger name="eu.europa.esig.dss.tsl.runnable" level="ERROR"/>
+    <logger name="eu.europa.esig.dss.tsl.function.converter" level="ERROR"/>
+    <logger name="eu.europa.esig.dss.tsl.sync" level="ERROR"/>
     <logger name="org.apache" level="WARN"/>
+    <logger name="org.apache.pdfbox.pdfparser" level="ERROR"/>
 
     <root level="WARN">
         <appender-ref ref="STDERR"/>

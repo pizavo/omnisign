@@ -27,6 +27,7 @@ data class JsonValidationResult(
     val signatures: List<JsonSignatureResult> = emptyList(),
     val timestamps: List<JsonTimestampResult> = emptyList(),
     val summary: JsonValidationSummary? = null,
+    val tlWarnings: List<String> = emptyList(),
     val rawReportPath: String? = null,
     val error: JsonError? = null,
 )

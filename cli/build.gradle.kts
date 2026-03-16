@@ -235,6 +235,10 @@ abstract class JPackageTask @Inject constructor(private val execOps: ExecOperati
 	/** The shadow JAR to package. */
 	@get:InputFile
 	abstract val shadowJar: RegularFileProperty
+
+	/** Directory that contains only the shadow JAR, passed to jpackage as {@code --input}. */
+	@get:InputDirectory
+	abstract val inputDir: DirectoryProperty
 	
 	/** jpackage --type value. */
 	@get:Input
@@ -282,7 +286,7 @@ abstract class JPackageTask @Inject constructor(private val execOps: ExecOperati
 			executable(jpackageBin.get())
 			args(
 				commonArgs.get() + listOf(
-					"--input", jar.parentFile.absolutePath,
+					"--input", inputDir.get().asFile.absolutePath,
 					"--main-jar", jar.name,
 					"--type", packageType.get(),
 					"--dest", dest.absolutePath,
@@ -299,6 +303,21 @@ val shadowJarFile: Provider<RegularFile> = shadowJarTask.flatMap { it.archiveFil
 val jpackageResourcesDir: String = layout.projectDirectory.dir("src/main/jpackage").asFile.absolutePath
 val generatedIconsDir: Provider<Directory> = layout.buildDirectory.dir("jpackage/icons")
 val sourceSvgFile: RegularFile = layout.projectDirectory.file("src/main/jpackage/omnisign.svg")
+
+/**
+ * Copies only the shadow JAR into a dedicated staging directory used as the jpackage {@code --input}.
+ * This prevents the thin CLI JAR from also appearing on the packaged application's classpath,
+ * which would otherwise cause duplicate resource warnings (e.g. {@code logback.xml}).
+ */
+val prepareJpackageInput by tasks.registering(Copy::class) {
+	group = "distribution"
+	description = "Stages the shadow JAR into build/jpackage/input for use as the jpackage --input directory."
+	dependsOn(shadowJarTask)
+	from(shadowJarFile)
+	into(layout.buildDirectory.dir("jpackage/input"))
+}
+
+val jpackageInputDir: Provider<Directory> = layout.buildDirectory.dir("jpackage/input")
 
 /** Common jpackage arguments shared by every package type. */
 val commonJpackageArgsList: List<String> = listOf(
@@ -371,9 +390,10 @@ fun registerJPackageTask(
 	tasks.register<JPackageTask>(name) {
 		this.group = "distribution"
 		this.description = description
-		dependsOn("shadowJar", iconDependency)
+		dependsOn("prepareJpackageInput", iconDependency)
 		jpackageBin.set(jpackageBinPath)
 		shadowJar.set(shadowJarFile)
+		inputDir.set(jpackageInputDir)
 		packageType.set(type)
 		destDir.set(layout.buildDirectory.dir("jpackage/$destSubdir"))
 		commonArgs.set(commonJpackageArgsList)

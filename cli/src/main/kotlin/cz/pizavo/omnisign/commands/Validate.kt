@@ -174,6 +174,11 @@ class Validate : CliktCommand(
 		
 		echo("═══════════════════════════════════════════════════════════════")
 		
+		if (report.tlWarnings.isNotEmpty()) {
+			echo("")
+			report.tlWarnings.forEach { echo("⚠️ $it") }
+		}
+		
 		if (report.signatures.isEmpty()) {
 			echo("\n⚠️ No signatures found in the document.")
 			return
@@ -184,7 +189,7 @@ class Validate : CliktCommand(
 		}
 		
 		if (report.timestamps.isNotEmpty()) {
-			printTimestamps(report.timestamps)
+			printTimestamps(report.timestamps, report.overallResult)
 		}
 		
 		echo("\n═══════════════════════════════════════════════════════════════")
@@ -276,16 +281,35 @@ class Validate : CliktCommand(
 	 * Normal mode shows type, indication, sub-indication, production time, qualification,
 	 * and the TSA subject DN. In [detailed] mode the raw DSS timestamp token ID and
 	 * informational messages are also included.
+	 *
+	 * When any timestamp is [ValidationIndication.INDETERMINATE] within an otherwise
+	 * [ValidationResult.VALID] signature, an informational note is prepended explaining
+	 * that this is expected behaviour for PAdES-BASELINE-LTA and does not affect the
+	 * overall validity.
 	 */
-	private fun printTimestamps(timestamps: List<TimestampValidationResult>) {
+	private fun printTimestamps(timestamps: List<TimestampValidationResult>, overallResult: ValidationResult) {
 		echo("\n┌─ Timestamps (${timestamps.size})")
+
+		val hasExpectedIndeterminate = overallResult == ValidationResult.VALID &&
+				timestamps.any { it.indication == ValidationIndication.INDETERMINATE }
+		if (hasExpectedIndeterminate) {
+			echo("│")
+			echo("│  ℹ️ Timestamps marked INDETERMINATE are a normal artefact of DSS's strict")
+			echo("│     ETSI EN 319 102-1 standalone validation. Each timestamp is checked in")
+			echo("│     isolation before being aggregated into the overall result, so the TSA")
+			echo("│     certificate revocation cannot always be proven at the exact timestamp")
+			echo("│     production time. PDF readers (e.g. Adobe) report both timestamps as")
+			echo("│     valid because they use a simpler PKIX chain check. The ✅ PASSED above")
+			echo("│     is the authoritative result. Renew the archive timestamp periodically")
+			echo("│     (digital continuity) to keep the chain cryptographically provable.")
+		}
 		timestamps.forEachIndexed { index, timestamp ->
 			echo("│")
 			echo("│  ${index + 1}. ${timestamp.type}")
 			if (detailed) {
 				echo("│     ID:            ${timestamp.timestampId}")
 			}
-			echo("│     Indication:    ${formatIndication(timestamp.indication)}")
+			echo("│     Indication:    ${formatTimestampIndication(timestamp.indication, overallResult)}")
 			if (timestamp.subIndication != null) {
 				echo("│     Sub-indication: ${timestamp.subIndication}")
 			}
@@ -324,6 +348,21 @@ class Validate : CliktCommand(
 		ValidationIndication.TOTAL_FAILED -> "❌ FAILED"
 		ValidationIndication.INDETERMINATE -> "⚠️ INDETERMINATE"
 	}
+
+	/**
+	 * Format a timestamp indication, using ℹ️ instead of ⚠️ for [ValidationIndication.INDETERMINATE]
+	 * when [overallResult] is [ValidationResult.VALID].
+	 *
+	 * In a valid LTA signature, INDETERMINATE timestamps are an expected artefact of DSS's strict
+	 * standalone ETSI EN 319 102-1 validation — not a real problem — so the warning emoji would be
+	 * misleading.
+	 */
+	private fun formatTimestampIndication(indication: ValidationIndication, overallResult: ValidationResult): String =
+		if (indication == ValidationIndication.INDETERMINATE && overallResult == ValidationResult.VALID) {
+			"ℹ️  INDETERMINATE"
+		} else {
+			formatIndication(indication)
+		}
 	
 	private fun formatSummary(report: ValidationReport): String {
 		val passed = report.signatures.count { it.indication == ValidationIndication.TOTAL_PASSED }
