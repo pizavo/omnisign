@@ -16,20 +16,20 @@
          the app-tracking key (\Software\OmniSign\omnisign\{version}), which causes
          a "Could not write value RM_RF..." error during WriteRegistryValues for
          non-elevated (per-user) install sessions.
-      3. Upgrades from older versions are always allowed: the installer automatically
-         uninstalls the previous version and installs the new one.
+      3. Upgrades from older versions are always allowed and fully rollback-safe.
          JpFindRelatedProducts (wixhelper.dll FindRelatedProductsEx) is suppressed
          from InstallUISequence (Condition="0") and instead runs in
          InstallExecuteSequence before FindRelatedProducts. This keeps upgrade
          marker writes out of the non-elevated UI phase.
-         RemoveExistingProducts is placed Before="CostInitialize" matching
-         jpackage's own default, because CostInitialize performs
-         database-consistency and version-conflict checks that throw error 1638
-         if the old product is still present. IncludeMaximum="yes" on the
-         UpgradeVersion entry ensures that the same version is also covered, so
-         reinstalling a rebuild of the same version (same ProductCode, different
-         PackageCode) correctly removes the old installation first instead of
-         hitting 1638 at the ProductState=5 pre-check.
+         RemoveExistingProducts is placed After="InstallInitialize" so the removal
+         of any prior installation is recorded in the rollback script.  If the user
+         cancels mid-install, or the installation fails, the previous version is
+         automatically restored.  Placing it here is safe because ProductCode="*"
+         lets WiX generate a fresh GUID on every build, so CostInitialize never
+         encounters a ProductCode conflict (error 1638) regardless of version.
+         IncludeMaximum="yes" on the UpgradeVersion entry ensures that the same
+         version is also covered, so reinstalling a different build of the same
+         version removes the old build cleanly.
          Downgrades are still blocked unless jpackage passes JpAllowDowngrades.
     Update this file if upgrading the JDK and jpackage changes its default main.wxs.
 -->
@@ -130,7 +130,7 @@
       <Custom Action="JpDisallowDowngrade" After="FindRelatedProducts" Condition="JP_DOWNGRADABLE_FOUND" />
       <?endif ?>
       <LaunchConditions Before="AppSearch" />
-      <RemoveExistingProducts Before="CostInitialize" />
+      <RemoveExistingProducts After="InstallInitialize" />
     </InstallExecuteSequence>
 
 
