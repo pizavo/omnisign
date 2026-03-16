@@ -17,6 +17,7 @@ class TrustedListBuild : CliktCommand(name = "build") {
 	init {
 		subcommands(
 			TrustedListBuildCreate(),
+			TrustedListBuildList(),
 			TrustedListBuildShow(),
 			TrustedListBuildTsp(),
 			TrustedListBuildService(),
