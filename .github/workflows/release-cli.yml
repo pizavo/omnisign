@@ -167,9 +167,35 @@ jobs:
           path: artifacts/
           merge-multiple: true
 
+      - name: Generate release notes
+        id: notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev_tag=$(gh api "repos/${{ github.repository }}/releases" \
+            --jq '[.[] | select(.tag_name | startswith("cli/v")) | .tag_name] | first' \
+            2>/dev/null || echo "")
+
+          args=(--method POST
+                -f tag_name="${{ github.ref_name }}"
+                -f configuration_file_path=".github/release-cli.yml")
+
+          if [ -n "$prev_tag" ]; then
+            args+=(-f previous_tag_name="$prev_tag")
+          fi
+
+          notes=$(gh api "repos/${{ github.repository }}/releases/generate-notes" \
+            "${args[@]}" --jq '.body')
+
+          {
+            echo "body<<EOF"
+            echo "$notes"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
       - name: Create release
         uses: softprops/action-gh-release@v2
         with:
           name: "CLI ${{ github.ref_name }}"
-          generate_release_notes: true
+          body: ${{ steps.notes.outputs.body }}
           files: artifacts/*
