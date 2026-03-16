@@ -32,7 +32,6 @@ import eu.europa.esig.dss.tsl.source.TLSource
 import eu.europa.esig.dss.validation.SignedDocumentValidator
 import eu.europa.esig.dss.validation.reports.Reports
 import java.io.File
-import java.nio.file.Files
 
 /**
  * JVM implementation of [ValidationRepository] using the EU DSS library.
@@ -106,22 +105,34 @@ class DssValidationRepository : ValidationRepository {
 	
 	/**
 	 * Build and return a [TLValidationJob] wired with EU LOTL and/or custom TL sources.
+	 *
+	 * Uses a persistent, platform-appropriate cache directory so the LOTL and member-state
+	 * trusted lists are only re-downloaded when the cached copy is older than
+	 * [TL_CACHE_EXPIRATION_MS]. An offline loader backed by the same directory ensures
+	 * that already-cached responses are served without any network access on subsequent
+	 * calls within the expiration window.
 	 */
 	private fun buildTLValidationJob(
 		config: ResolvedConfig,
 		tlCertSource: TrustedListsCertificateSource,
 		dataLoader: CommonsDataLoader
 	): TLValidationJob {
-		val cacheDir = Files.createTempDirectory("omnisign-tl-cache").toFile()
-		
+		val cacheDir = tlCacheDir().also { it.mkdirs() }
+
+		val offlineLoader = FileCacheDataLoader().apply {
+			setCacheExpirationTime(CACHE_NEVER_EXPIRE)
+			setFileCacheDirectory(cacheDir)
+		}
+
 		val onlineLoader = FileCacheDataLoader().apply {
-			setCacheExpirationTime(0)
+			setCacheExpirationTime(TL_CACHE_EXPIRATION_MS)
 			setDataLoader(dataLoader)
 			setFileCacheDirectory(cacheDir)
 		}
-		
+
 		val job = TLValidationJob().apply {
 			setTrustedListCertificateSource(tlCertSource)
+			setOfflineDataLoader(offlineLoader)
 			setOnlineDataLoader(onlineLoader)
 		}
 		
@@ -159,12 +170,39 @@ class DssValidationRepository : ValidationRepository {
 	private fun buildOjCertificateSource(): CommonTrustedCertificateSource {
 		val keystoreStream = DssValidationRepository::class.java
 			.getResourceAsStream(OJ_KEYSTORE_RESOURCE)
-			?: error("OJ keystore not found on classpath: $OJ_KEYSTORE_RESOURCE")
-		
+			?: error(
+				"OJ keystore not found on classpath: $OJ_KEYSTORE_RESOURCE. " +
+				"Run './gradlew :shared:updateLotlKeystore' to download it, then rebuild."
+			)
+
 		val keystore = KeyStoreCertificateSource(keystoreStream, OJ_KEYSTORE_TYPE, OJ_KEYSTORE_PASSWORD.toCharArray())
 		return CommonTrustedCertificateSource().also { it.importAsTrusted(keystore) }
 	}
-	
+
+	/**
+	 * Returns the platform-appropriate persistent directory for caching downloaded
+	 * trusted lists (EU LOTL and member-state TLs).
+	 *
+	 * - **Windows**: `%LOCALAPPDATA%\omnisign\tl-cache`
+	 * - **macOS**: `~/Library/Caches/omnisign/tl-cache`
+	 * - **Linux / other**: `~/.cache/omnisign/tl-cache`
+	 */
+	internal fun tlCacheDir(): File {
+		val os = System.getProperty("os.name", "").lowercase()
+		val userHome = System.getProperty("user.home")
+		val base = when {
+			os.contains("win") ->
+				System.getenv("LOCALAPPDATA")?.let { File(it, "omnisign") }
+					?: File(userHome, "AppData/Local/omnisign")
+			os.contains("mac") ->
+				File(userHome, "Library/Caches/omnisign")
+			else ->
+				System.getenv("XDG_CACHE_HOME")?.let { File(it, "omnisign") }
+					?: File(userHome, ".cache/omnisign")
+		}
+		return File(base, "tl-cache")
+	}
+
 	/**
 	 * Build a [CommonTrustedCertificateSource] from a PEM or DER certificate file on disk.
 	 * Used to supply per-TL signing certificates for custom [TLSource] instances.
@@ -367,11 +405,17 @@ class DssValidationRepository : ValidationRepository {
 		File(outputPath).also { it.parentFile?.mkdirs() }.writeText(xml)
 	}
 	
-	private companion object {
+	internal companion object {
 		const val EU_LOTL_URL = "https://ec.europa.eu/tools/lotl/eu-lotl.xml"
-		
+
 		const val OJ_KEYSTORE_RESOURCE = "/lotl-keystore.p12"
 		const val OJ_KEYSTORE_TYPE = "PKCS12"
 		const val OJ_KEYSTORE_PASSWORD = "dss-password"
+
+		/** 24 hours — how long a cached TL response is considered fresh before re-downloading. */
+		const val TL_CACHE_EXPIRATION_MS = 24 * 60 * 60 * 1000L
+
+		/** Sentinel for [FileCacheDataLoader.setCacheExpirationTime]: never re-download. */
+		const val CACHE_NEVER_EXPIRE = -1L
 	}
 }
