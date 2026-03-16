@@ -1,5 +1,6 @@
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.net.URI
 
 plugins {
 	alias(libs.plugins.kotlinMultiplatform)
@@ -105,6 +106,36 @@ kotlin {
 			implementation(libs.jna)
 			implementation(libs.jna.platform)
 		}
+	}
+}
+
+/**
+ * Downloads the current Official Journal (OJ) keystore from the DSS demonstrations
+ * repository into `src/jvmMain/resources/lotl-keystore.p12`.
+ *
+ * The keystore contains the EU Commission signing certificates required to verify
+ * the EU LOTL signature. Run this task whenever the EC rotates its signing keys
+ * to keep the bundled keystore in sync:
+ *
+ * ```
+ * ./gradlew :shared:updateLotlKeystore
+ * ```
+ */
+val updateLotlKeystore by tasks.registering {
+	group = "verification"
+	description = "Downloads the latest OJ keystore from the DSS demonstrations repository."
+	val keystoreTarget = layout.projectDirectory.file("src/jvmMain/resources/lotl-keystore.p12")
+	outputs.file(keystoreTarget)
+	doLast {
+		val url = URI.create(
+			"https://raw.githubusercontent.com/esig/dss-demonstrations/master" +
+			"/dss-demo-webapp/src/main/resources/keystore.p12"
+		).toURL()
+		keystoreTarget.asFile.parentFile.mkdirs()
+		url.openStream().use { input ->
+			keystoreTarget.asFile.outputStream().use { output -> input.copyTo(output) }
+		}
+		logger.lifecycle("OJ keystore updated → ${keystoreTarget.asFile}")
 	}
 }
 

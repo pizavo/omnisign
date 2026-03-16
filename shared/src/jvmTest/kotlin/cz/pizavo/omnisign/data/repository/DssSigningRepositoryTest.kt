@@ -19,6 +19,7 @@ import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
@@ -95,51 +96,52 @@ class DssSigningRepositoryTest : FunSpec({
 	}
 	
 	test("signDocument returns TokenAccessError when requested alias is absent") {
-		val tokenInfo = TokenInfo(id = "t1", name = "Test Token", type = TokenType.FILE)
+		val tokenInfo = TokenInfo(id = "t1", name = "Test Token", type = TokenType.FILE, requiresPin = false)
 		val certEntry = CertificateEntry(
 			alias = "my-cert", subjectDN = "CN=Test", issuerDN = "CN=CA",
 			serialNumber = "1", validFrom = "2024-01-01", validTo = "2026-01-01",
 			keyUsages = emptyList(), tokenInfo = tokenInfo
 		)
-		
+
 		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
 		coEvery { tokenService.discoverTokens() } returns listOf(tokenInfo).right()
-		coEvery { tokenService.loadCertificates(tokenInfo, null) } returns listOf(certEntry).right()
-		
+		coEvery { tokenService.probeTokenPresent(tokenInfo) } returns true
+		coEvery { tokenService.loadCertificatesSilent(tokenInfo, "") } returns listOf(certEntry).right()
+
 		val params = SigningParameters(
 			inputFile = tmpFile("input3.pdf").absolutePath,
 			outputFile = tmpFile("out3.pdf").absolutePath,
 			certificateAlias = "nonexistent-alias",
 			addTimestamp = false
 		)
-		
+
 		repository.signDocument(params)
 			.shouldBeLeft()
 			.shouldBeInstanceOf<SigningError.TokenAccessError>()
 	}
-	
+
 	test("signDocument returns TokenAccessError when signing token creation fails") {
-		val tokenInfo = TokenInfo(id = "t1", name = "Test Token", type = TokenType.FILE)
+		val tokenInfo = TokenInfo(id = "t1", name = "Test Token", type = TokenType.FILE, requiresPin = false)
 		val certEntry = CertificateEntry(
 			alias = "my-cert", subjectDN = "CN=Test", issuerDN = "CN=CA",
 			serialNumber = "1", validFrom = "2024-01-01", validTo = "2026-01-01",
 			keyUsages = emptyList(), tokenInfo = tokenInfo
 		)
-		
+
 		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
 		coEvery { tokenService.discoverTokens() } returns listOf(tokenInfo).right()
-		coEvery { tokenService.loadCertificates(tokenInfo, null) } returns listOf(certEntry).right()
-		coEvery { credentialStore.getPassword("omnisign-token", "t1") } returns ""
+		coEvery { tokenService.probeTokenPresent(tokenInfo) } returns true
+		coEvery { tokenService.loadCertificatesSilent(tokenInfo, "") } returns listOf(certEntry).right()
 		coEvery { tokenService.getSigningToken(certEntry, "") } returns SigningError.TokenAccessError(
 			message = "PIN incorrect"
 		).left()
-		
+
 		val params = SigningParameters(
 			inputFile = tmpFile("input4.pdf").absolutePath,
 			outputFile = tmpFile("out4.pdf").absolutePath,
 			addTimestamp = false
 		)
-		
+
 		repository.signDocument(params)
 			.shouldBeLeft()
 			.shouldBeInstanceOf<SigningError.TokenAccessError>()
@@ -158,17 +160,40 @@ class DssSigningRepositoryTest : FunSpec({
 			serialNumber = "2", validFrom = "2024-01-01", validTo = "2026-01-01",
 			keyUsages = emptyList(), tokenInfo = tokenInfo2
 		)
-		
+
 		coEvery { tokenService.discoverTokens() } returns listOf(tokenInfo1, tokenInfo2).right()
+		coEvery { tokenService.probeTokenPresent(tokenInfo1) } returns true
+		coEvery { tokenService.probeTokenPresent(tokenInfo2) } returns true
 		coEvery { tokenService.loadCertificatesSilent(tokenInfo1, null) } returns listOf(cert1).right()
 		coEvery { tokenService.loadCertificatesSilent(tokenInfo2, null) } returns listOf(cert2).right()
-		
-		val certs = repository.listAvailableCertificates().shouldBeRight()
-		certs.shouldHaveSize(2)
-		certs.map { it.alias } shouldBe listOf("cert-a", "cert-b")
+
+		val result = repository.listAvailableCertificates().shouldBeRight()
+		result.certificates.shouldHaveSize(2)
+		result.certificates.map { it.alias } shouldBe listOf("cert-a", "cert-b")
+		result.tokenWarnings.shouldBeEmpty()
 	}
-	
-	test("listAvailableCertificates silently skips tokens that fail to load") {
+
+	test("listAvailableCertificates silently skips tokens that are not physically present") {
+		val tokenInfo1 = TokenInfo(id = "t1", name = "Token 1", type = TokenType.FILE)
+		val tokenInfo2 = TokenInfo(id = "t2", name = "Token 2", type = TokenType.PKCS11, path = "/lib/fake.so")
+		val cert1 = CertificateEntry(
+			alias = "cert-a", subjectDN = "CN=A", issuerDN = "CN=CA",
+			serialNumber = "1", validFrom = "2024-01-01", validTo = "2026-01-01",
+			keyUsages = emptyList(), tokenInfo = tokenInfo1
+		)
+
+		coEvery { tokenService.discoverTokens() } returns listOf(tokenInfo1, tokenInfo2).right()
+		coEvery { tokenService.probeTokenPresent(tokenInfo1) } returns true
+		coEvery { tokenService.probeTokenPresent(tokenInfo2) } returns false
+		coEvery { tokenService.loadCertificatesSilent(tokenInfo1, null) } returns listOf(cert1).right()
+
+		val result = repository.listAvailableCertificates().shouldBeRight()
+		result.certificates.shouldHaveSize(1)
+		result.certificates.first().alias shouldBe "cert-a"
+		result.tokenWarnings.shouldBeEmpty()
+	}
+
+	test("listAvailableCertificates returns warning for tokens that fail to load") {
 		val tokenInfo1 = TokenInfo(id = "t1", name = "Token 1", type = TokenType.FILE)
 		val tokenInfo2 = TokenInfo(id = "t2", name = "Token 2", type = TokenType.FILE)
 		val cert1 = CertificateEntry(
@@ -176,16 +201,21 @@ class DssSigningRepositoryTest : FunSpec({
 			serialNumber = "1", validFrom = "2024-01-01", validTo = "2026-01-01",
 			keyUsages = emptyList(), tokenInfo = tokenInfo1
 		)
-		
+
 		coEvery { tokenService.discoverTokens() } returns listOf(tokenInfo1, tokenInfo2).right()
+		coEvery { tokenService.probeTokenPresent(tokenInfo1) } returns true
+		coEvery { tokenService.probeTokenPresent(tokenInfo2) } returns true
 		coEvery { tokenService.loadCertificatesSilent(tokenInfo1, null) } returns listOf(cert1).right()
 		coEvery { tokenService.loadCertificatesSilent(tokenInfo2, null) } returns SigningError.TokenAccessError(
 			message = "Access denied"
 		).left()
-		
-		val certs = repository.listAvailableCertificates().shouldBeRight()
-		certs.shouldHaveSize(1)
-		certs.first().alias shouldBe "cert-a"
+
+		val result = repository.listAvailableCertificates().shouldBeRight()
+		result.certificates.shouldHaveSize(1)
+		result.certificates.first().alias shouldBe "cert-a"
+		result.tokenWarnings.shouldHaveSize(1)
+		result.tokenWarnings.first().tokenId shouldBe "t2"
+		result.tokenWarnings.first().message shouldBe "Access denied"
 	}
 	
 	test("listAvailableCertificates returns TokenAccessError when discovery fails") {
@@ -199,23 +229,24 @@ class DssSigningRepositoryTest : FunSpec({
 	}
 	
 	test("signDocument returns TimestampError when addTimestamp is true but no TSA is configured") {
-		val tokenInfo = TokenInfo(id = "t1", name = "Test Token", type = TokenType.FILE)
+		val tokenInfo = TokenInfo(id = "t1", name = "Test Token", type = TokenType.FILE, requiresPin = false)
 		val certEntry = CertificateEntry(
 			alias = "my-cert", subjectDN = "CN=Test", issuerDN = "CN=CA",
 			serialNumber = "1", validFrom = "2024-01-01", validTo = "2026-01-01",
 			keyUsages = emptyList(), tokenInfo = tokenInfo
 		)
-		
+
 		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
 		coEvery { tokenService.discoverTokens() } returns listOf(tokenInfo).right()
-		coEvery { tokenService.loadCertificates(tokenInfo, null) } returns listOf(certEntry).right()
-		
+		coEvery { tokenService.probeTokenPresent(tokenInfo) } returns true
+		coEvery { tokenService.loadCertificatesSilent(tokenInfo, "") } returns listOf(certEntry).right()
+
 		val params = SigningParameters(
 			inputFile = tmpFile("input5.pdf").absolutePath,
 			outputFile = tmpFile("out5.pdf").absolutePath,
 			addTimestamp = true
 		)
-		
+
 		repository.signDocument(params)
 			.shouldBeLeft()
 			.shouldBeInstanceOf<SigningError.TimestampError>()
@@ -253,4 +284,3 @@ class DssSigningRepositoryTest : FunSpec({
 			.shouldBeInstanceOf<SigningError.InvalidParameters>()
 	}
 })
-

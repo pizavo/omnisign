@@ -14,8 +14,10 @@ import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.repository.ValidationRepository
 import eu.europa.esig.dss.detailedreport.DetailedReport
 import eu.europa.esig.dss.diagnostic.DiagnosticData
+import eu.europa.esig.dss.diagnostic.TimestampWrapper
 import eu.europa.esig.dss.enumerations.Indication
 import eu.europa.esig.dss.enumerations.SignatureQualification
+import eu.europa.esig.dss.enumerations.SubIndication
 import eu.europa.esig.dss.enumerations.TimestampQualification
 import eu.europa.esig.dss.model.FileDocument
 import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
@@ -26,13 +28,13 @@ import eu.europa.esig.dss.spi.tsl.TrustedListsCertificateSource
 import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import eu.europa.esig.dss.spi.x509.CommonTrustedCertificateSource
 import eu.europa.esig.dss.spi.x509.KeyStoreCertificateSource
+import eu.europa.esig.dss.model.tsl.TLValidationJobSummary
 import eu.europa.esig.dss.tsl.job.TLValidationJob
 import eu.europa.esig.dss.tsl.source.LOTLSource
 import eu.europa.esig.dss.tsl.source.TLSource
 import eu.europa.esig.dss.validation.SignedDocumentValidator
 import eu.europa.esig.dss.validation.reports.Reports
 import java.io.File
-import java.nio.file.Files
 
 /**
  * JVM implementation of [ValidationRepository] using the EU DSS library.
@@ -56,9 +58,10 @@ class DssValidationRepository : ValidationRepository {
 				).left()
 			}
 			
+			val (cv, tlWarnings) = buildCertificateVerifier(parameters.resolvedConfig)
 			val validator = SignedDocumentValidator.fromDocument(FileDocument(file))
 				.apply {
-					setCertificateVerifier(buildCertificateVerifier(parameters.resolvedConfig))
+					setCertificateVerifier(cv)
 					if (this is PDFDocumentValidator) {
 						setPdfObjFactory(DssServiceFactory.buildPdfObjectFactory())
 					}
@@ -73,7 +76,7 @@ class DssValidationRepository : ValidationRepository {
 				writeRawReport(reports, outPath, parameters.rawReportFormat)
 			}
 			
-			convertReports(reports, file.name)
+			convertReports(reports, file.name).copy(tlWarnings = tlWarnings)
 		}.mapLeft { exception ->
 			ValidationError.ValidationFailed(
 				message = "Validation failed",
@@ -88,8 +91,10 @@ class DssValidationRepository : ValidationRepository {
 	 *
 	 * When [config] is null or revocation checking is disabled, returns a lenient
 	 * offline verifier suitable for basic structural validation.
+	 *
+	 * @return A pair of the verifier and any user-readable trusted-list loading warnings.
 	 */
-	private fun buildCertificateVerifier(config: ResolvedConfig?): CommonCertificateVerifier {
+	private fun buildCertificateVerifier(config: ResolvedConfig?): Pair<CommonCertificateVerifier, List<String>> {
 		var capturedLoader: CommonsDataLoader? = null
 		
 		val cv = DssServiceFactory.buildCertificateVerifier(config) { capturedLoader = it }
@@ -97,31 +102,45 @@ class DssValidationRepository : ValidationRepository {
 		if (config != null && (config.validation.useEuLotl || config.validation.customTrustedLists.isNotEmpty())) {
 			val dataLoader = capturedLoader ?: CommonsDataLoader()
 			val tlCertSource = TrustedListsCertificateSource()
-			buildTLValidationJob(config, tlCertSource, dataLoader).onlineRefresh()
+			val job = buildTLValidationJob(config, tlCertSource, dataLoader)
+			job.onlineRefresh()
 			cv.setTrustedCertSources(tlCertSource)
+			return cv to collectTlWarnings(job.getSummary())
 		}
 		
-		return cv
+		return cv to emptyList()
 	}
 	
 	/**
 	 * Build and return a [TLValidationJob] wired with EU LOTL and/or custom TL sources.
+	 *
+	 * Uses a persistent, platform-appropriate cache directory so the LOTL and member-state
+	 * trusted lists are only re-downloaded when the cached copy is older than
+	 * [TL_CACHE_EXPIRATION_MS]. An offline loader backed by the same directory ensures
+	 * that already-cached responses are served without any network access on subsequent
+	 * calls within the expiration window.
 	 */
 	private fun buildTLValidationJob(
 		config: ResolvedConfig,
 		tlCertSource: TrustedListsCertificateSource,
 		dataLoader: CommonsDataLoader
 	): TLValidationJob {
-		val cacheDir = Files.createTempDirectory("omnisign-tl-cache").toFile()
-		
+		val cacheDir = tlCacheDir().also { it.mkdirs() }
+
+		val offlineLoader = FileCacheDataLoader().apply {
+			setCacheExpirationTime(CACHE_NEVER_EXPIRE)
+			setFileCacheDirectory(cacheDir)
+		}
+
 		val onlineLoader = FileCacheDataLoader().apply {
-			setCacheExpirationTime(0)
+			setCacheExpirationTime(TL_CACHE_EXPIRATION_MS)
 			setDataLoader(dataLoader)
 			setFileCacheDirectory(cacheDir)
 		}
-		
+
 		val job = TLValidationJob().apply {
 			setTrustedListCertificateSource(tlCertSource)
+			setOfflineDataLoader(offlineLoader)
 			setOnlineDataLoader(onlineLoader)
 		}
 		
@@ -159,12 +178,39 @@ class DssValidationRepository : ValidationRepository {
 	private fun buildOjCertificateSource(): CommonTrustedCertificateSource {
 		val keystoreStream = DssValidationRepository::class.java
 			.getResourceAsStream(OJ_KEYSTORE_RESOURCE)
-			?: error("OJ keystore not found on classpath: $OJ_KEYSTORE_RESOURCE")
-		
+			?: error(
+				"OJ keystore not found on classpath: $OJ_KEYSTORE_RESOURCE. " +
+				"Run './gradlew :shared:updateLotlKeystore' to download it, then rebuild."
+			)
+
 		val keystore = KeyStoreCertificateSource(keystoreStream, OJ_KEYSTORE_TYPE, OJ_KEYSTORE_PASSWORD.toCharArray())
 		return CommonTrustedCertificateSource().also { it.importAsTrusted(keystore) }
 	}
-	
+
+	/**
+	 * Returns the platform-appropriate persistent directory for caching downloaded
+	 * trusted lists (EU LOTL and member-state TLs).
+	 *
+	 * - **Windows**: `%LOCALAPPDATA%\omnisign\tl-cache`
+	 * - **macOS**: `~/Library/Caches/omnisign/tl-cache`
+	 * - **Linux / other**: `~/.cache/omnisign/tl-cache`
+	 */
+	internal fun tlCacheDir(): File {
+		val os = System.getProperty("os.name", "").lowercase()
+		val userHome = System.getProperty("user.home")
+		val base = when {
+			os.contains("win") ->
+				System.getenv("LOCALAPPDATA")?.let { File(it, "omnisign") }
+					?: File(userHome, "AppData/Local/omnisign")
+			os.contains("mac") ->
+				File(userHome, "Library/Caches/omnisign")
+			else ->
+				System.getenv("XDG_CACHE_HOME")?.let { File(it, "omnisign") }
+					?: File(userHome, ".cache/omnisign")
+		}
+		return File(base, "tl-cache")
+	}
+
 	/**
 	 * Build a [CommonTrustedCertificateSource] from a PEM or DER certificate file on disk.
 	 * Used to supply per-TL signing certificates for custom [TLSource] instances.
@@ -214,7 +260,7 @@ class DssValidationRepository : ValidationRepository {
 		}
 		
 		val timestamps = diagnosticData.getTimestampList().map { tsw ->
-			convertTimestamp(tsw, detailedReport)
+			convertTimestamp(tsw, simpleReport, detailedReport)
 		}
 		
 		val overallResult = when {
@@ -233,27 +279,73 @@ class DssValidationRepository : ValidationRepository {
 	}
 	
 	/**
-	 * Convert a single DSS [eu.europa.esig.dss.diagnostic.TimestampWrapper] into a [TimestampValidationResult].
+	 * Convert a single DSS [TimestampWrapper] into a [TimestampValidationResult].
 	 *
-	 * Uses [DetailedReport.getBasicTimestampValidationIndication] for the indication,
-	 * [DetailedReport.getTimestampQualification] for the QTSA qualification level, and
-	 * [DetailedReport.getBasicBuildingBlockById] for errors, warnings, and informational messages.
+	 * Indication is resolved with a cascade so the most authoritative available source is used:
+	 *
+	 * 1. [SimpleReport.getIndication] — the context-aware, aggregated result for independent
+	 *    (top-level) timestamps such as the `DOCUMENT_TIMESTAMP` in a PAdES-BASELINE-LTA document.
+	 * 2. [SimpleReport.getSignatureTimestamps] lookup — for `SIGNATURE_TIMESTAMP` tokens that are
+	 *    embedded inside a PAdES signature and not listed as top-level simple-report tokens.
+	 * 3. [DetailedReport] archival-data / basic-timestamp APIs — defensive last resort.
+	 *
+	 * **Note on expected INDETERMINATE status:** In a valid PAdES-BASELINE-LTA signature it is
+	 * entirely normal for DSS to report both the signature timestamp and the document (archive)
+	 * timestamp as `INDETERMINATE` — typically with sub-indication `NO_POE`. The signature
+	 * timestamp is INDETERMINATE because the TSA certificate's revocation can only be proven
+	 * through the LTA chain, not in isolation. The document timestamp is INDETERMINATE because
+	 * there is no subsequent archive timestamp to cover it yet; it needs periodic renewal to
+	 * maintain long-term provability. Neither affects the overall `TOTAL_PASSED` result of the
+	 * containing signature.
+	 *
+	 * The sub-indication is resolved from the simple-report first, falling back to the BBB
+	 * conclusion (which commonly carries `NO_POE`) so callers have a human-readable reason code.
 	 */
 	private fun convertTimestamp(
-		tsw: eu.europa.esig.dss.diagnostic.TimestampWrapper,
+		tsw: TimestampWrapper,
+		simpleReport: SimpleReport,
 		detailedReport: DetailedReport
 	): TimestampValidationResult {
 		val id = tsw.id
-		
-		val rawIndication = detailedReport.getBasicTimestampValidationIndication(id)
+
+		var rawIndication: Indication? = simpleReport.getIndication(id)
+		var rawSubIndication: SubIndication? = simpleReport.getSubIndication(id)
+
+		if (rawIndication == null) {
+			val sigId = tsw.timestampedSignatures.firstOrNull()?.id
+			if (sigId != null) {
+				val srTs = simpleReport.getSignatureTimestamps(sigId).find { it.id == id }
+				rawIndication = srTs?.indication
+				rawSubIndication = srTs?.subIndication
+			}
+		}
+
+		if (rawIndication == null) {
+			rawIndication = detailedReport.getArchiveDataTimestampValidationIndication(id)
+				?: detailedReport.getBasicTimestampValidationIndication(id)
+			rawSubIndication = rawSubIndication
+				?: detailedReport.getArchiveDataTimestampValidationSubIndication(id)
+				?: detailedReport.getBasicTimestampValidationSubIndication(id)
+		}
+
 		val indication = when (rawIndication) {
 			Indication.TOTAL_PASSED -> ValidationIndication.TOTAL_PASSED
 			Indication.TOTAL_FAILED -> ValidationIndication.TOTAL_FAILED
 			else -> ValidationIndication.INDETERMINATE
 		}
-		
-		val subIndication = detailedReport.getBasicTimestampValidationSubIndication(id)?.toString()
-		
+
+		val bbb = detailedReport.getBasicBuildingBlockById(id)
+
+		if (rawSubIndication == null) {
+			rawSubIndication = bbb?.conclusion?.subIndication
+				?: detailedReport.getBasicBuildingBlocksSubIndication(id)
+				?: detailedReport.getArchiveDataTimestampValidationSubIndication(id)
+				?: detailedReport.getBasicTimestampValidationSubIndication(id)
+		}
+
+		val subIndication = rawSubIndication?.toString()
+
+		// ...existing code...
 		val qualification = try {
 			detailedReport.getTimestampQualification(id)
 				?.takeIf { it != TimestampQualification.NA }
@@ -261,14 +353,13 @@ class DssValidationRepository : ValidationRepository {
 		} catch (_: Exception) {
 			null
 		}
-		
-		val bbb = detailedReport.getBasicBuildingBlockById(id)
+
 		val errors = bbb?.conclusion?.errors?.map { it.value } ?: emptyList()
 		val warnings = bbb?.conclusion?.warnings?.map { it.value } ?: emptyList()
 		val infos = bbb?.conclusion?.infos?.map { it.value } ?: emptyList()
-		
+
 		val tsaSubjectDN = tsw.signingCertificate?.getCertificateDN()
-		
+
 		return TimestampValidationResult(
 			timestampId = id,
 			type = tsw.type?.name?.replace('_', ' ')?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "Unknown",
@@ -367,11 +458,61 @@ class DssValidationRepository : ValidationRepository {
 		File(outputPath).also { it.parentFile?.mkdirs() }.writeText(xml)
 	}
 	
-	private companion object {
+	/**
+	 * Inspect a post-refresh [TLValidationJobSummary] and return user-readable warning strings
+	 * for every member-state trusted list that could not be downloaded or parsed.
+	 *
+	 * Only download failures are reported; partial parse failures (e.g. old certificate
+	 * entries inside an otherwise intact TL) are treated as non-actionable noise and
+	 * omitted intentionally.
+	 */
+	private fun collectTlWarnings(summary: TLValidationJobSummary): List<String> {
+		val failedHosts = mutableListOf<String>()
+
+		for (lotlInfo in summary.lotlInfos) {
+			for (tlInfo in lotlInfo.tlInfos) {
+				val dl = tlInfo.downloadCacheInfo
+				if (dl.isError || !dl.isResultExist) {
+					failedHosts += extractTlHost(tlInfo.url)
+				}
+			}
+		}
+
+		for (tlInfo in summary.otherTLInfos) {
+			val dl = tlInfo.downloadCacheInfo
+			if (dl.isError || !dl.isResultExist) {
+				failedHosts += extractTlHost(tlInfo.url)
+			}
+		}
+
+		if (failedHosts.isEmpty()) return emptyList()
+
+		val plural = if (failedHosts.size == 1) "list" else "lists"
+		return listOf(
+			"${failedHosts.size} trusted $plural could not be refreshed " +
+			"(${failedHosts.joinToString(", ")}). " +
+			"Qualification assessment for certificates from these sources may be incomplete."
+		)
+	}
+
+	/**
+	 * Extract a short, human-readable host label from a trusted list [url].
+	 * Falls back to the raw URL if parsing fails.
+	 */
+	private fun extractTlHost(url: String): String =
+		runCatching { java.net.URI(url).host ?: url }.getOrDefault(url)
+
+	internal companion object {
 		const val EU_LOTL_URL = "https://ec.europa.eu/tools/lotl/eu-lotl.xml"
-		
+
 		const val OJ_KEYSTORE_RESOURCE = "/lotl-keystore.p12"
 		const val OJ_KEYSTORE_TYPE = "PKCS12"
 		const val OJ_KEYSTORE_PASSWORD = "dss-password"
+
+		/** 24 hours — how long a cached TL response is considered fresh before re-downloading. */
+		const val TL_CACHE_EXPIRATION_MS = 24 * 60 * 60 * 1000L
+
+		/** Sentinel for [FileCacheDataLoader.setCacheExpirationTime]: never re-download. */
+		const val CACHE_NEVER_EXPIRE = -1L
 	}
 }

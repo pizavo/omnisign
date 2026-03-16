@@ -8,6 +8,12 @@ data class ValidationReport(
     val validationTime: String,
     val overallResult: ValidationResult,
     val signatures: List<SignatureValidationResult>,
-    val timestamps: List<TimestampValidationResult> = emptyList()
+    val timestamps: List<TimestampValidationResult> = emptyList(),
+    /**
+     * User-readable notices about trusted list loading issues encountered during validation.
+     * A non-empty list means one or more member-state trusted lists could not be refreshed,
+     * which may affect qualification assessment but does not invalidate the signature itself.
+     */
+    val tlWarnings: List<String> = emptyList(),
 )
 
