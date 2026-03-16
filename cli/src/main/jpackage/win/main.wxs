@@ -8,15 +8,22 @@
       2. Scope is "perUserOrMachine" (ALLUSERS=2) so the user can choose between
          a system-wide install (elevated, Program Files, system PATH) and a
          per-user install (no elevation, LocalAppData, user PATH).  The custom
-         InstallScopeDlg in ui.wxf drives this choice.  InstallerVersion is 500
+         OmniSignScopeDlg in ui.wxf drives this choice.  InstallerVersion is 500
          because Windows Installer 5.0+ is required for perUserOrMachine.
+         IMPORTANT: jpackage must be invoked with the win-per-user-install flag so
+         that the generated registry entries in files.wxf use HKCU/HKMU rather than
+         a hard-coded HKLM root.  Without that flag jpackage emits Root="HKLM" for
+         the app-tracking key (\Software\OmniSign\omnisign\{version}), which causes
+         a "Could not write value RM_RF..." error during WriteRegistryValues for
+         non-elevated (per-user) install sessions.
       3. Upgrades from older versions are always allowed: the installer automatically
-         uninstalls the previous version and installs the new one. The jpackage
-         JpFindRelatedProducts/wixhelper.dll custom action is kept as a definition
-         only — ui.wxf references it from its own UISequence and must be able to
-         resolve the symbol. It is intentionally omitted from InstallExecuteSequence.
-         RemoveExistingProducts is placed Before="CostInitialize" — matching
-         jpackage's own default — because CostInitialize performs
+         uninstalls the previous version and installs the new one.
+         JpFindRelatedProducts (wixhelper.dll FindRelatedProductsEx) is suppressed
+         from InstallUISequence (Condition="0") and instead runs in
+         InstallExecuteSequence before FindRelatedProducts. This keeps upgrade
+         marker writes out of the non-elevated UI phase.
+         RemoveExistingProducts is placed Before="CostInitialize" matching
+         jpackage's own default, because CostInitialize performs
          database-consistency and version-conflict checks that throw error 1638
          if the old product is still present. IncludeMaximum="yes" on the
          UpgradeVersion entry ensures that the same version is also covered, so
@@ -100,7 +107,12 @@
 
     <UIRef Id="JpUI" />
 
+    <InstallUISequence>
+      <Custom Action="JpFindRelatedProducts" Before="FindRelatedProducts" Condition="0" />
+    </InstallUISequence>
+
     <InstallExecuteSequence>
+      <Custom Action="JpFindRelatedProducts" Before="FindRelatedProducts" />
       <Custom Action="JpSetARPINSTALLLOCATION" After="CostFinalize" Condition="Not Installed" />
       <Custom Action="JpSetARPCOMMENTS" After="CostFinalize" Condition="Not Installed" />
       <Custom Action="JpSetARPCONTACT" After="CostFinalize" Condition="Not Installed" />

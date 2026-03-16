@@ -420,6 +420,7 @@ registerJPackageTask(
 	iconDependency = "convertIconIco",
 	extraArgsList = listOf(
 		"--resource-dir", "$jpackageResourcesDir/win",
+		"--win-per-user-install",
 		"--win-dir-chooser",
 		"--win-menu",
 		"--win-menu-group", "omnisign",
