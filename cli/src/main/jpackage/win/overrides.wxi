@@ -1,23 +1,42 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!--
     Custom overrides.wxi for jpackage.
-    Defines the OmnisignPath ComponentGroup referenced by DefaultFeature in main.wxs,
-    which adds [INSTALLDIR] to the system PATH on installation.
+    Defines the OmnisignPath ComponentGroup referenced by DefaultFeature in main.wxs.
+    Two mutually exclusive components add [INSTALLDIR] to PATH on installation:
+      - OmnisignMachinePath targets the machine-level (system) PATH and is installed
+        only for system-wide installs (MSIINSTALLPERUSER is empty).
+      - OmnisignUserPath targets the per-user PATH and is installed only for
+        per-user installs (MSIINSTALLPERUSER = 1).
+    The conditions are evaluated at install time, driven by OmniSignScopeDlg
+    in ui.wxf.
 -->
 <Include xmlns="http://wixtoolset.org/schemas/v4/wxs">
 
     <Fragment>
         <ComponentGroup Id="OmnisignPath">
-            <Component Id="OmnisignSystemPath" Bitness="always64"
+            <Component Id="OmnisignMachinePath" Bitness="always64"
                        Guid="9329d39e-4d6d-494c-a2dc-41311f0a8084"
-                       Directory="INSTALLDIR">
-                <Environment Id="OmnisignPathEnv"
+                       Directory="INSTALLDIR"
+                       Condition="NOT MSIINSTALLPERUSER">
+                <Environment Id="OmnisignMachinePathEnv"
                              Name="PATH"
                              Value="[INSTALLDIR]"
                              Permanent="no"
                              Part="last"
                              Action="set"
                              System="yes" />
+            </Component>
+            <Component Id="OmnisignUserPath" Bitness="always64"
+                       Guid="d4a8b3c7-2e91-4f56-a0d3-e1c7b5a39f82"
+                       Directory="INSTALLDIR"
+                       Condition="MSIINSTALLPERUSER">
+                <Environment Id="OmnisignUserPathEnv"
+                             Name="PATH"
+                             Value="[INSTALLDIR]"
+                             Permanent="no"
+                             Part="last"
+                             Action="set"
+                             System="no" />
             </Component>
         </ComponentGroup>
     </Fragment>

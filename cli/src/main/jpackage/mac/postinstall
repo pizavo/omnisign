@@ -1,0 +1,19 @@
+#!/bin/sh
+set -e
+
+mkdir -p /usr/local/bin
+ln -sf /Applications/omnisign.app/Contents/MacOS/omnisign /usr/local/bin/omnisign
+
+cat > /usr/local/bin/omnisign-uninstall << 'UNINSTALL'
+#!/bin/sh
+set -e
+echo "Uninstalling OmniSign CLI…"
+rm -f /usr/local/bin/omnisign
+rm -rf /Applications/omnisign.app
+echo "Removing this uninstaller…"
+rm -f /usr/local/bin/omnisign-uninstall
+echo "OmniSign CLI has been removed."
+UNINSTALL
+
+chmod +x /usr/local/bin/omnisign-uninstall
+

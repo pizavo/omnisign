@@ -1,0 +1,95 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Custom ui.wxf for jpackage — overrides the auto-generated version.
+    Based on the jpackage-generated UI for WixUI_InstallDir with the following
+    addition:
+      An OmniSignScopeDlg is inserted between WelcomeDlg and InstallDirDlg so
+      the user can choose between a system-wide install (Program Files, system
+      PATH, elevation required) and a per-user install (LocalAppData, user PATH,
+      no elevation).
+    Dialog sequence:
+      WelcomeDlg → OmniSignScopeDlg → InstallDirDlg → [InstallDirNotEmptyDlg] → VerifyReadyDlg
+    Update this file if upgrading the JDK and jpackage changes its default ui.wxf.
+-->
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+     xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+     xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
+
+  <Fragment>
+    <Property Id="WIXUI_INSTALLDIR" Value="INSTALLDIR" />
+    <Property Id="INSTALL_SCOPE" Value="perMachine" />
+
+    <?foreach WIXUIARCH in X86;X64;A64?>
+    <UI Id="JpUIInternal_$(WIXUIARCH)">
+      <ui:WixUI Id="WixUI_InstallDir" />
+    </UI>
+    <?endforeach?>
+
+    <UI Id="JpUI">
+      <ui:WixUI Id="JpUIInternal" />
+    </UI>
+
+    <UI Id="JpUIInternal">
+      <DialogRef Id="InstallDirNotEmptyDlg" />
+
+      <RadioButtonGroup Property="INSTALL_SCOPE">
+        <RadioButton Value="perMachine"
+                     Text="Everyone (requires administrator privileges)"
+                     X="0" Y="0" Width="330" Height="18" />
+        <RadioButton Value="perUser"
+                     Text="Just for me (no administrator privileges required)"
+                     X="0" Y="24" Width="330" Height="18" />
+      </RadioButtonGroup>
+
+      <Dialog Id="OmniSignScopeDlg" Width="370" Height="270"
+              Title="[ProductName] Setup" NoMinimize="yes">
+        <Control Id="BannerBitmap" Type="Bitmap" X="0" Y="0" Width="370" Height="44"
+                 TabSkip="no" Text="WixUI_Bmp_Banner" />
+        <Control Id="BannerLine" Type="Line" X="0" Y="44" Width="370" Height="0" />
+        <Control Id="BottomLine" Type="Line" X="0" Y="234" Width="370" Height="0" />
+        <Control Id="Title" Type="Text" X="15" Y="6" Width="200" Height="15"
+                 Transparent="yes" NoPrefix="yes"
+                 Text="{\WixUI_Font_Title}Install Scope" />
+        <Control Id="Description" Type="Text" X="25" Y="23" Width="280" Height="15"
+                 Transparent="yes" NoPrefix="yes"
+                 Text="Choose who can use this application." />
+        <Control Id="ScopeLabel" Type="Text" X="20" Y="65" Width="330" Height="20"
+                 NoPrefix="yes"
+                 Text="Please select whether you wish to make [ProductName] available to all users or just yourself:" />
+        <Control Id="ScopeGroup" Type="RadioButtonGroup"
+                 X="20" Y="100" Width="330" Height="50"
+                 Property="INSTALL_SCOPE" />
+        <Control Id="Back" Type="PushButton" X="180" Y="243" Width="56" Height="17"
+                 Text="!(loc.WixUIBack)">
+          <Publish Event="NewDialog" Value="WelcomeDlg" Condition="1" />
+        </Control>
+        <Control Id="Next" Type="PushButton" X="236" Y="243" Width="56" Height="17"
+                 Default="yes" Text="!(loc.WixUINext)">
+          <Publish Property="MSIINSTALLPERUSER" Value="{}" Order="1"
+                   Condition="INSTALL_SCOPE = &quot;perMachine&quot;" />
+          <Publish Property="MSIINSTALLPERUSER" Value="1" Order="1"
+                   Condition="INSTALL_SCOPE = &quot;perUser&quot;" />
+          <Publish Property="INSTALLDIR" Value="[ProgramFiles64Folder]omnisign" Order="2"
+                   Condition="INSTALL_SCOPE = &quot;perMachine&quot;" />
+          <Publish Property="INSTALLDIR" Value="[LocalAppDataFolder]omnisign" Order="2"
+                   Condition="INSTALL_SCOPE = &quot;perUser&quot;" />
+          <Publish Event="NewDialog" Value="InstallDirDlg" Order="3" Condition="1" />
+        </Control>
+        <Control Id="Cancel" Type="PushButton" X="304" Y="243" Width="56" Height="17"
+                 Cancel="yes" Text="!(loc.WixUICancel)">
+          <Publish Event="SpawnDialog" Value="CancelDlg" Condition="1" />
+        </Control>
+      </Dialog>
+
+      <Publish Dialog="WelcomeDlg" Control="Next" Event="NewDialog"
+               Value="OmniSignScopeDlg" Order="6" Condition="NOT Installed" />
+      <Publish Dialog="InstallDirDlg" Control="Back" Event="NewDialog"
+               Value="OmniSignScopeDlg" Order="6" Condition="NOT Installed" />
+    </UI>
+  </Fragment>
+</Wix>
+
+
+
+
+
