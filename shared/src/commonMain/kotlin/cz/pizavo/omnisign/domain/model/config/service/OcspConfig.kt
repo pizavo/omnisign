@@ -7,7 +7,6 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class OcspConfig(
-    val url: String? = null,
     val timeout: Int = 30000
 )
 

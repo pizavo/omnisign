@@ -59,22 +59,6 @@ class ProfileShow : CliktCommand(name = "show"), KoinComponent {
 					echo("  Timeout          : ${tsp.timeout} ms")
 				}
 				
-				echo("\n[OCSP]")
-				val ocsp = profile.ocsp
-				if (ocsp == null) {
-					echo("  (inherit from global)")
-				} else {
-					echo("  URL              : ${ocsp.url ?: "(none)"}")
-				}
-				
-				echo("\n[CRL]")
-				val crl = profile.crl
-				if (crl == null) {
-					echo("  (inherit from global)")
-				} else {
-					echo("  Timeout          : ${crl.timeout} ms")
-				}
-				
 				echo("\n[Validation]")
 				val validation = profile.validation
 				if (validation == null) {

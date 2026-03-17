@@ -36,8 +36,6 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 				echo("  Default signature level     : ${config.global.defaultSignatureLevel}")
 				val tsp = config.global.timestampServer
 				echo("  Timestamp server       : ${tsp?.url ?: "not set"}")
-				echo("  OCSP URL               : ${config.global.ocsp.url ?: "not set"}")
-				echo("  CRL timeout            : ${config.global.crl.timeout} ms")
 				echo("  Check revocation       : ${config.global.validation.checkRevocation}")
 				echo("  Validation policy      : ${config.global.validation.policyType}")
 				echo("  Use EU LOTL            : ${config.global.validation.useEuLotl}")

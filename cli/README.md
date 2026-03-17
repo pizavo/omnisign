@@ -404,7 +404,6 @@ omnisign config set [options]
 | `--timestamp-username <user>`                  | Default TSA HTTP Basic username                                                   |
 | `--timestamp-password <pass>`                  | Default TSA HTTP Basic password (stored in OS keychain)                           |
 | `--timestamp-timeout <ms>`                     | Default TSA request timeout in milliseconds                                       |
-| `--ocsp-url <url>`                             | Default OCSP responder URL                                                        |
 | `--validation-policy <type>`                   | Default validation policy (`DEFAULT_ETSI`, `CUSTOM`, …)                           |
 | `--check-revocation <bool>`                    | Enable/disable certificate revocation checking                                    |
 | `--use-eu-lotl <bool>`                         | Enable/disable the EU List of Trusted Lists                                       |
