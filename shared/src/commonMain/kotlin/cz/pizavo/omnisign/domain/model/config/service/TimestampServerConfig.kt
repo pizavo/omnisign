@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.domain.model.config.service
 
+import cz.pizavo.omnisign.domain.model.value.Sensitive
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.Transient
 
@@ -17,6 +18,9 @@ import kotlinx.serialization.Transient
  * 2. **Runtime-only** — [runtimePassword] carries a password supplied on the
  *    command line for the current invocation only. It is annotated `@Transient`
  *    so it is never written to disk, and it takes precedence over [credentialKey].
+ *    Its type is [Sensitive], which unconditionally returns `***` from
+ *    [toString], preventing accidental credential exposure in logs or
+ *    data-class–generated string representations on all platforms.
  *
  * @property url TSA endpoint URL (RFC 3161).
  * @property username HTTP Basic auth username; stored in the config file because
@@ -34,6 +38,5 @@ data class TimestampServerConfig(
     val username: String? = null,
     val credentialKey: String? = null,
     val timeout: Int = 30000,
-    @Transient val runtimePassword: String? = null
+    @Transient val runtimePassword: Sensitive<String>? = null
 )
-

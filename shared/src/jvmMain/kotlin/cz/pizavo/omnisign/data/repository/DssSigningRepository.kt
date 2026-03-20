@@ -4,6 +4,7 @@ import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.config.enums.toDss
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
@@ -106,11 +107,22 @@ class DssSigningRepository(
 				).left()
 			}
 			
-			val (privateKey, tokenConnection) = resolvePrivateKey(parameters)
+			val resolvedKey = resolvePrivateKey(parameters)
 				?: return SigningError.TokenAccessError(
 					message = "No suitable certificate found${parameters.certificateAlias?.let { " for alias '$it'" } ?: ""}"
 				).left()
-			
+
+			if (resolvedKey.tokenType == TokenType.WINDOWS_MY && !effectiveHash.isMscapiCompatible) {
+				return SigningError.InvalidParameters(
+					message = "Hash algorithm ${effectiveHash.name} is not supported by the Windows Certificate Store",
+					details = "Windows CNG only supports SHA-256, SHA-384 and SHA-512 for ECDSA and RSA " +
+						"signing with certificate store keys. " +
+						"Change the hash algorithm to SHA256, SHA384, or SHA512 in your profile or with --hash."
+				).left()
+			}
+
+			val privateKey = resolvedKey.privateKey
+			val tokenConnection = resolvedKey.token
 			val service = buildSigningService(resolvedConfig, dssSignatureLevel, parameters.addTimestamp)
 			val signatureParams = buildSignatureParameters(
 				privateKey, digestAlgorithm, dssSignatureLevel, effectiveEncryption?.toDss(), parameters
@@ -132,7 +144,7 @@ class DssSigningRepository(
 			SigningError.SigningFailed(message = "Signing failed", details = e.message, cause = e).left()
 		}
 	}
-	
+
 	@Suppress("TooGenericExceptionCaught")
 	override suspend fun listAvailableCertificates(): OperationResult<CertificateDiscoveryResult> {
 		return try {
@@ -223,7 +235,8 @@ class DssSigningRepository(
 	/**
 	 * Iterate all discovered tokens and return the first [DSSPrivateKeyEntry] that matches
 	 * the requested alias (or the first available key when no alias is requested), together
-	 * with its [AbstractSignatureTokenConnection].  Returns null when no matching key is found.
+	 * with its [AbstractSignatureTokenConnection] and the source [TokenType].
+	 * Returns null when no matching key is found.
 	 *
 	 * The hardware presence of PKCS#11 tokens is probed via [TokenService.probeTokenPresent]
 	 * before any PIN prompt.  Tokens whose card is not inserted are silently skipped.
@@ -233,7 +246,7 @@ class DssSigningRepository(
 	 */
 	private suspend fun resolvePrivateKey(
 		parameters: SigningParameters
-	): Pair<DSSPrivateKeyEntry, AbstractSignatureTokenConnection>? {
+	): ResolvedKey? {
 		val tokens = tokenService.discoverTokens().getOrNull() ?: return null
 
 		for (tokenInfo in tokens) {
@@ -254,7 +267,6 @@ class DssSigningRepository(
 				certs.firstOrNull()
 			} ?: continue
 
-
 			val dssToken = tokenService.getSigningToken(selected, password).getOrNull()
 				?.getDssToken() as? AbstractSignatureTokenConnection ?: continue
 
@@ -262,16 +274,25 @@ class DssSigningRepository(
 				k.certificate.certificate.subjectX500Principal.toString() == selected.subjectDN
 			} ?: dssToken.keys.firstOrNull() ?: continue
 
-			return key to dssToken
+			return ResolvedKey(key, dssToken, tokenInfo.type)
 		}
 
 		return null
 	}
 
+	/**
+	 * Holds the resolved private key entry, its DSS token connection, and the source [TokenType].
+	 */
+	private data class ResolvedKey(
+		val privateKey: DSSPrivateKeyEntry,
+		val token: AbstractSignatureTokenConnection,
+		val tokenType: TokenType,
+	)
+
 	private companion object {
 		const val TOKEN_CREDENTIAL_SERVICE = "omnisign-token"
 	}
-	
+
 	/**
 	 * Build [PAdESSignatureParameters] from the resolved values and optional overrides.
 	 *
@@ -292,11 +313,35 @@ class DssSigningRepository(
 		encryptionAlgorithm?.let { setEncryptionAlgorithm(it) }
 		setSigningCertificate(privateKey.certificate)
 		certificateChain = privateKey.certificateChain.toMutableList()
-		
+		contentSize = contentSizeForLevel(dssLevel)
+
 		parameters.reason?.let { reason = it }
 		parameters.location?.let { location = it }
 		parameters.contactInfo?.let { contactInfo = it }
 		parameters.visibleSignature?.let { imageParameters = buildImageParameters(it) }
+	}
+
+	/**
+	 * Returns the PDF signature content-area reservation in bytes for [level].
+	 *
+	 * The default DSS value of 9,472 bytes is insufficient for any level above B-B because
+	 * higher levels embed a certificate chain, CRL/OCSP revocation data, one or more RFC 3161
+	 * timestamp tokens, and (for B-LTA) an archive timestamp.  The values below are chosen
+	 * with comfortable headroom over the typical content sizes observed in practice:
+	 *
+	 * | Level    | Budget  | Contains                                          |
+	 * |----------|---------|---------------------------------------------------|
+	 * | B-B      | 13 KB   | signature + cert chain                            |
+	 * | B-T      | 22 KB   | + document timestamp (~5–8 KB)                    |
+	 * | B-LT     | 37 KB   | + CRL/OCSP revocation data (~10–15 KB)            |
+	 * | B-LTA    | 65 KB   | + archive timestamp + extra revocation (~15 KB)   |
+	 */
+	private fun contentSizeForLevel(level: DssSignatureLevel): Int = when (level) {
+		DssSignatureLevel.PAdES_BASELINE_B -> 13_312
+		DssSignatureLevel.PAdES_BASELINE_T -> 22_528
+		DssSignatureLevel.PAdES_BASELINE_LT -> 37_888
+		DssSignatureLevel.PAdES_BASELINE_LTA -> 65_536
+		else -> 22_528
 	}
 	
 	/**

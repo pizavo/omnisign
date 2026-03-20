@@ -30,7 +30,7 @@ internal object DssServiceFactory {
 	 * [credentialStore] when a credential key is configured on the server.
 	 */
 	fun buildTspSource(tsConfig: TimestampServerConfig, credentialStore: CredentialStore): OnlineTSPSource {
-		val password = tsConfig.runtimePassword
+		val password = tsConfig.runtimePassword?.value
 			?: tsConfig.credentialKey?.let { key ->
 				credentialStore.getPassword(TSA_CREDENTIAL_SERVICE, key)
 			}
