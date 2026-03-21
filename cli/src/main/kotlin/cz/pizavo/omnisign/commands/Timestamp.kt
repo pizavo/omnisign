@@ -41,103 +41,120 @@ import org.koin.core.component.inject
  * for any target level of B-T or above.
  */
 class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
-
-    private val extendUseCase: ExtendDocumentUseCase by inject()
-    private val configRepository: ConfigRepository by inject()
-    private val output by requireObject<OutputConfig>()
-
-    private val inputFile by option("-f", "--file", help = "Path to the signed PDF file to extend")
-        .path(mustExist = true, canBeDir = false, mustBeReadable = true)
-        .required()
-
-    private val outputFile by option("-o", "--output", help = "Path for the extended output PDF file")
-        .path(canBeDir = false)
-        .required()
-
-    private val targetLevel by option(
-        "-l", "--level",
-        help = "Target PAdES level to extend to (${extendableLevels().joinToString { it.name }}). Default: PADES_BASELINE_T"
-    ).enum<SignatureLevel>().default(SignatureLevel.PADES_BASELINE_T)
-
-    private val profile by option(
-        "--profile",
-        help = "Use a named configuration profile for this operation"
-    )
-
-    private val configOverrides by OperationConfigOptions()
-
-    override fun help(context: Context): String =
-        "Extend a signed PDF to a higher PAdES level (add timestamp, revocation data, or archival timestamp)"
-
-    override fun run(): Unit = runBlocking {
-        val appConfig = configRepository.getCurrentConfig()
-        val activeProfile = profile ?: appConfig.activeProfile
-        val profileConfig = activeProfile?.let { appConfig.profiles[it] }
-        val operationConfig = configOverrides.toOperationConfig()
-        val resolvedConfigResult = ResolvedConfig.resolve(
-            global = appConfig.global,
-            profile = profileConfig,
-            operationOverrides = operationConfig
-        )
-        if (resolvedConfigResult.isLeft()) {
-            val error = resolvedConfigResult.leftOrNull()!!
-            if (output.json) {
-                echo(Json.encodeToString(JsonExtensionResult(
-                    success = false,
-                    error = JsonError(message = "Configuration Error: ${error.message}")
-                )))
-            } else {
-                echo("❌ Configuration Error: ${error.message}", err = true)
-            }
-            throw ProgramResult(1)
-        }
-        val resolvedConfig = resolvedConfigResult.getOrNull()!!
-
-        val parameters = ArchivingParameters(
-            inputFile = inputFile.toAbsolutePath().toString(),
-            outputFile = outputFile.toAbsolutePath().toString(),
-            targetLevel = targetLevel,
-            resolvedConfig = resolvedConfig
-        )
-
-        extendUseCase(parameters).fold(
-            ifLeft = { error ->
-                if (output.json) {
-                    echo(Json.encodeToString(JsonExtensionResult(
-                        success = false,
-                        error = error.toJsonError()
-                    )))
-                } else {
-                    echo("❌ Extension Error: ${error.message}", err = true)
-                    error.details?.let { echo("Details: $it", err = true) }
-                    error.cause?.let { echo("Cause: ${it.message}", err = true) }
-                }
-                throw ProgramResult(1)
-            },
-            ifRight = { result ->
-                if (output.json) {
-                    echo(Json.encodeToString(result.toJsonResult()))
-                } else {
-                    printExtensionResult(result.outputFile, result.newSignatureLevel)
-                }
-            }
-        )
-    }
-
-    /**
-     * Print a formatted summary of the completed extension operation to stdout.
-     */
-    private fun printExtensionResult(outputFile: String, newLevel: String) {
-        if (output.quiet) return
-        echo("═══════════════════════════════════════════════════════════════")
-        echo("                     TIMESTAMP RESULT")
-        echo("═══════════════════════════════════════════════════════════════")
-        echo("✅ Document extended successfully")
-        echo("")
-        echo("Output file    : $outputFile")
-        echo("New level      : $newLevel")
-        echo("═══════════════════════════════════════════════════════════════")
-    }
+	
+	private val extendUseCase: ExtendDocumentUseCase by inject()
+	private val configRepository: ConfigRepository by inject()
+	private val output by requireObject<OutputConfig>()
+	
+	private val inputFile by option("-f", "--file", help = "Path to the signed PDF file to extend")
+		.path(mustExist = true, canBeDir = false, mustBeReadable = true)
+		.required()
+	
+	private val outputFile by option("-o", "--output", help = "Path for the extended output PDF file")
+		.path(canBeDir = false)
+		.required()
+	
+	private val targetLevel by option(
+		"-l", "--level",
+		help = "Target PAdES level to extend to (${extendableLevels().joinToString { it.name }}). Default: PADES_BASELINE_T"
+	).enum<SignatureLevel>().default(SignatureLevel.PADES_BASELINE_T)
+	
+	private val profile by option(
+		"--profile",
+		help = "Use a named configuration profile for this operation"
+	)
+	
+	private val configOverrides by OperationConfigOptions()
+	
+	override fun help(context: Context): String =
+		"Extend a signed PDF to a higher PAdES level (add timestamp, revocation data, or archival timestamp)"
+	
+	override fun run(): Unit = runBlocking {
+		val appConfig = configRepository.getCurrentConfig()
+		val activeProfile = profile ?: appConfig.activeProfile
+		val profileConfig = activeProfile?.let { appConfig.profiles[it] }
+		val operationConfig = configOverrides.toOperationConfig()
+		val resolvedConfigResult = ResolvedConfig.resolve(
+			global = appConfig.global,
+			profile = profileConfig,
+			operationOverrides = operationConfig
+		)
+		if (resolvedConfigResult.isLeft()) {
+			val error = resolvedConfigResult.leftOrNull()!!
+			if (output.json) {
+				echo(
+					Json.encodeToString(
+						JsonExtensionResult(
+							success = false,
+							error = JsonError(message = "Configuration Error: ${error.message}")
+						)
+					)
+				)
+			} else {
+				echo("❌ Configuration Error: ${error.message}", err = true)
+			}
+			throw ProgramResult(1)
+		}
+		val resolvedConfig = resolvedConfigResult.getOrNull()!!
+		
+		val parameters = ArchivingParameters(
+			inputFile = inputFile.toAbsolutePath().toString(),
+			outputFile = outputFile.toAbsolutePath().toString(),
+			targetLevel = targetLevel,
+			resolvedConfig = resolvedConfig
+		)
+		
+		extendUseCase(parameters).fold(
+			ifLeft = { error ->
+				if (output.json) {
+					echo(
+						Json.encodeToString(
+							JsonExtensionResult(
+								success = false,
+								error = error.toJsonError()
+							)
+						)
+					)
+				} else {
+					echo("❌ Extension Error: ${error.message}", err = true)
+					error.details?.let { echo("Details: $it", err = true) }
+					error.cause?.let { echo("Cause: ${it.message}", err = true) }
+				}
+				throw ProgramResult(1)
+			},
+			ifRight = { result ->
+				if (output.json) {
+					echo(Json.encodeToString(result.toJsonResult()))
+				} else {
+					result.warnings.forEach { warning ->
+						echo("⚠️ Warning: $warning", err = true)
+					}
+					if (output.verbose && result.rawWarnings.isNotEmpty()) {
+						echo("  Raw DSS warnings:", err = true)
+						result.rawWarnings.forEach { raw ->
+							echo("    • $raw", err = true)
+						}
+					}
+					printExtensionResult(result.outputFile, result.newSignatureLevel)
+				}
+			}
+		)
+	}
+	
+	/**
+	 * Print a formatted summary of the completed extension operation to stdout.
+	 */
+	private fun printExtensionResult(outputFile: String, newLevel: String) {
+		if (output.quiet) return
+		echo("═══════════════════════════════════════════════════════════════")
+		echo("                     TIMESTAMP RESULT")
+		echo("═══════════════════════════════════════════════════════════════")
+		echo("✅ Document extended successfully")
+		echo("")
+		echo("Output file    : $outputFile")
+		echo("New level      : $newLevel")
+		echo("═══════════════════════════════════════════════════════════════")
+	}
 }
 
 /**

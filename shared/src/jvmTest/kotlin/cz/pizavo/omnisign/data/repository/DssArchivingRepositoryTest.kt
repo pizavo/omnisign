@@ -7,7 +7,6 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
-import cz.pizavo.omnisign.domain.service.CredentialStore
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
@@ -24,9 +23,9 @@ class DssArchivingRepositoryTest : FunSpec({
 	val tmpDir = tempdir()
 	
 	val configRepository: ConfigRepository = mockk()
-	val credentialStore: CredentialStore = mockk()
+	val dssServiceFactory: DssServiceFactory = mockk(relaxed = true)
 	
-	val repository = DssArchivingRepository(configRepository, credentialStore)
+	val repository = DssArchivingRepository(configRepository, dssServiceFactory)
 	
 	fun configWithoutTsa() = AppConfig(
 		global = GlobalConfig(

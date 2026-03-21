@@ -13,11 +13,12 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.mockk.mockk
 import java.io.File
 
 /**
- * Verifies the critical invariants of [DssValidationRepository] that protect against
- * two past regressions:
+ * Verifies the critical invariants of [DssServiceFactory] and [DssValidationRepository]
+ * that protect against two past regressions:
  *
  * 1. **OJ keystore missing** — the bundled `lotl-keystore.p12` classpath resource must be
  *    present, parseable as PKCS12, and contain at least one EU signing certificate.
@@ -28,7 +29,7 @@ import java.io.File
  */
 class DssValidationRepositoryTest : FunSpec({
 
-	val repository = DssValidationRepository()
+	val repository = DssValidationRepository(DssServiceFactory(mockk(relaxed = true)))
 	val tmpDir = tempdir()
 
 	fun tmpFile(name: String): File = File(tmpDir, name).also { it.createNewFile() }
@@ -36,19 +37,19 @@ class DssValidationRepositoryTest : FunSpec({
 	// ── OJ keystore regression ────────────────────────────────────────────────
 
 	test("OJ keystore resource exists on the classpath") {
-		val stream = DssValidationRepository::class.java
-			.getResourceAsStream(DssValidationRepository.OJ_KEYSTORE_RESOURCE)
+		val stream = DssServiceFactory::class.java
+			.getResourceAsStream(DssServiceFactory.OJ_KEYSTORE_RESOURCE)
 		stream shouldNotBe null
 		stream!!.close()
 	}
 
 	test("OJ keystore is a valid PKCS12 openable with the expected password") {
-		val stream = DssValidationRepository::class.java
-			.getResourceAsStream(DssValidationRepository.OJ_KEYSTORE_RESOURCE)!!
+		val stream = DssServiceFactory::class.java
+			.getResourceAsStream(DssServiceFactory.OJ_KEYSTORE_RESOURCE)!!
 		val source = KeyStoreCertificateSource(
 			stream,
-			DssValidationRepository.OJ_KEYSTORE_TYPE,
-			DssValidationRepository.OJ_KEYSTORE_PASSWORD.toCharArray(),
+			DssServiceFactory.OJ_KEYSTORE_TYPE,
+			DssServiceFactory.OJ_KEYSTORE_PASSWORD.toCharArray(),
 		)
 		source.certificates.shouldNotBeEmpty()
 	}
@@ -56,32 +57,32 @@ class DssValidationRepositoryTest : FunSpec({
 	// ── TL cache regression ───────────────────────────────────────────────────
 
 	test("TL cache expiration is strictly positive (not zero or negative)") {
-		DssValidationRepository.TL_CACHE_EXPIRATION_MS shouldBeGreaterThan 0L
+		DssServiceFactory.TL_CACHE_EXPIRATION_MS shouldBeGreaterThan 0L
 	}
 
 	test("TL cache expiration is at least one hour") {
 		val oneHourMs = 60 * 60 * 1000L
-		DssValidationRepository.TL_CACHE_EXPIRATION_MS shouldBeGreaterThan oneHourMs
+		DssServiceFactory.TL_CACHE_EXPIRATION_MS shouldBeGreaterThan oneHourMs
 	}
 
 	test("tlCacheDir is not the system temporary directory") {
-		val cacheDir = repository.tlCacheDir()
+		val cacheDir = DssServiceFactory.tlCacheDir()
 		val sysTmp = System.getProperty("java.io.tmpdir")
 		cacheDir.absolutePath shouldNotContain sysTmp
 	}
 
 	test("tlCacheDir path contains the omnisign application subdirectory") {
-		val cacheDir = repository.tlCacheDir()
+		val cacheDir = DssServiceFactory.tlCacheDir()
 		cacheDir.absolutePath shouldContain "omnisign"
 	}
 
 	test("tlCacheDir path ends with the tl-cache subdirectory") {
-		val cacheDir = repository.tlCacheDir()
+		val cacheDir = DssServiceFactory.tlCacheDir()
 		cacheDir.name shouldBe "tl-cache"
 	}
 
 	test("tlCacheDir is rooted inside the platform user-data directory") {
-		val cacheDir = repository.tlCacheDir()
+		val cacheDir = DssServiceFactory.tlCacheDir()
 		val userHome = System.getProperty("user.home")
 		val os = System.getProperty("os.name", "").lowercase()
 

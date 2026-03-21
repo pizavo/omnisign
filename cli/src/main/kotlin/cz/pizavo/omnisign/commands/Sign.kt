@@ -113,10 +113,14 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 		if (resolvedConfigResult.isLeft()) {
 			val error = resolvedConfigResult.leftOrNull()!!
 			if (output.json) {
-				echo(Json.encodeToString(JsonSigningResult(
-					success = false,
-					error = JsonError(message = "Configuration Error: ${error.message}")
-				)))
+				echo(
+					Json.encodeToString(
+						JsonSigningResult(
+							success = false,
+							error = JsonError(message = "Configuration Error: ${error.message}")
+						)
+					)
+				)
 			} else {
 				echo("❌ Configuration Error: ${error.message}", err = true)
 			}
@@ -141,10 +145,14 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 		signUseCase(parameters).fold(
 			ifLeft = { error ->
 				if (output.json) {
-					echo(Json.encodeToString(JsonSigningResult(
-						success = false,
-						error = error.toJsonError()
-					)))
+					echo(
+						Json.encodeToString(
+							JsonSigningResult(
+								success = false,
+								error = error.toJsonError()
+							)
+						)
+					)
 				} else {
 					echo("❌ Signing Error: ${error.message}", err = true)
 					error.details?.let { echo("Details: $it", err = true) }
@@ -158,6 +166,12 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 				} else {
 					result.warnings.forEach { warning ->
 						echo("⚠️ Warning: $warning", err = true)
+					}
+					if (output.verbose && result.rawWarnings.isNotEmpty()) {
+						echo("  Raw DSS warnings:", err = true)
+						result.rawWarnings.forEach { raw ->
+							echo("    • $raw", err = true)
+						}
 					}
 					printSigningResult(result.outputFile, result.signatureId, result.signatureLevel)
 				}

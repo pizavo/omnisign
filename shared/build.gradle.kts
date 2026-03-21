@@ -64,6 +64,7 @@ kotlin {
 			implementation(libs.kotest.jvm.runner)
 			implementation(libs.kotest.decoroutinator)
 			implementation(libs.decoroutinator.jvm)
+			implementation(libs.logback)
 		}
 		jvmMain.dependencies {
 			implementation(project.dependencies.platform(libs.dss.bom))

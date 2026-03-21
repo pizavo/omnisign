@@ -1,9 +1,9 @@
 *.iml
 .kotlin
 .gradle
-**/build/
+**/build/**/*
+!/cli/src/main/kotlin/cz/pizavo/omnisign/commands/config/tl/build/**/*
 xcuserdata
-!src/**/build/
 local.properties
 .idea
 .DS_Store
@@ -20,3 +20,4 @@ node_modules/
 .github/!workflows/
 .github/!actions
 .github/*.*
+

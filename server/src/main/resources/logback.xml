@@ -4,9 +4,20 @@
             <pattern>%d{YYYY-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
-    <root level="trace">
+    <root level="INFO">
         <appender-ref ref="STDOUT"/>
     </root>
     <logger name="org.eclipse.jetty" level="INFO"/>
     <logger name="io.netty" level="INFO"/>
+    <logger name="eu.europa.esig" level="WARN"/>
+    <logger name="eu.europa.esig.dss.tsl.runnable" level="ERROR"/>
+    <logger name="eu.europa.esig.dss.tsl.function.converter" level="ERROR"/>
+    <logger name="eu.europa.esig.dss.tsl.sync" level="ERROR"/>
+    <!-- Suppress verbose per-certificate warnings and ASN1 parse stack traces from
+         malformed third-party certificates (e.g., FreeTSA's invalid certificatePolicies OID). -->
+    <logger name="eu.europa.esig.dss.spi.CertificateExtensionsUtils" level="ERROR"/>
+    <logger name="eu.europa.esig.dss.spi.validation.SignatureValidationContext" level="ERROR"/>
+    <logger name="eu.europa.esig.dss.spi.validation.RevocationDataVerifier" level="ERROR"/>
+    <logger name="eu.europa.esig.dss.spi.validation.TimestampTokenVerifier" level="ERROR"/>
+    <logger name="org.apache.pdfbox.pdfparser" level="ERROR"/>
 </configuration>
