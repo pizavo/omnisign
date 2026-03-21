@@ -99,6 +99,10 @@ object DssWarningSanitizer {
 		WarningCategory.REVOCATION_NOT_FOUND to listOf(
 			Regex("""No revocation found for the certificate $CERT_ID"""),
 			Regex("""No revocation data found.*?$CERT_ID"""),
+			Regex("""OCSP DSS Exception.*?Unable to retrieve OCSP response.*?'$CERT_ID'"""),
+			Regex("""Unable to retrieve OCSP response.*?'$CERT_ID'"""),
+			Regex("""CRL DSS Exception.*?Unable to download CRL.*?'$CERT_ID'"""),
+			Regex("""Unable to download CRL.*?'$CERT_ID'"""),
 		),
 		
 		WarningCategory.REVOCATION_UNTRUSTED_CHAIN to listOf(
@@ -128,6 +132,11 @@ object DssWarningSanitizer {
 			Regex("""Unable to load the alternative name"""),
 			Regex("""Unable to parse the certificatePolicies extension"""),
 			Regex("""Unable to retrieve the ASN1Sequence"""),
+		),
+		
+		WarningCategory.TSP_FAILURE to listOf(
+			Regex("""TSP Failure info.*?PKIFailureInfo"""),
+			Regex("""No timestamp token has been retrieved"""),
 		),
 	)
 	
@@ -204,6 +213,17 @@ object DssWarningSanitizer {
 				"Some certificates in the chain contain malformed extensions that could not " +
 						"be fully parsed. This is typically caused by non-standard third-party " +
 						"certificates (e.g. TSA) and does not affect the signature itself."
+		},
+		
+		/**
+		 * The timestamp server returned a failure or its response could not be processed.
+		 * This is a non-fatal warning captured from the DSS log; if the TSP failure was
+		 * critical, the operation would have failed with a dedicated timestamp error instead.
+		 */
+		TSP_FAILURE {
+			override fun toSummary(ids: Set<String>) =
+				"The timestamp server reported a problem (PKIFailureInfo). " +
+						"If the operation succeeded, the timestamp may have been obtained on a retry."
 		};
 		
 		/**

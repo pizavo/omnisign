@@ -179,5 +179,60 @@ class DssWarningSanitizerTest : FunSpec({
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "untrusted chain"
 	}
+	
+	test("OCSP DSS Exception is classified as REVOCATION_NOT_FOUND") {
+		val raw = listOf(
+			"OCSP DSS Exception: Unable to retrieve OCSP response for certificate " +
+					"with Id 'C-398F2F45F30C8052B4803A91EA4A37EB4361B67EB378FE75BDC462B3542D5A97' " +
+					"from URL 'http://ocsp.cesnet-ca.cz/'. Reason : unknown tag 28 encountered"
+		)
+		val result = DssWarningSanitizer.sanitize(raw)
+		result.summaries shouldHaveSize 1
+		result.summaries[0] shouldContain "CRL/OCSP"
+		result.summaries[0] shouldContain "1 certificate"
+	}
+	
+	test("Unable to retrieve OCSP response without prefix is classified as REVOCATION_NOT_FOUND") {
+		DssWarningSanitizer.classify(
+			"Unable to retrieve OCSP response for certificate with Id 'C-ABCD1234' from URL 'http://example.com/'"
+		)?.first shouldBe WarningCategory.REVOCATION_NOT_FOUND
+	}
+	
+	test("Unable to download CRL is classified as REVOCATION_NOT_FOUND") {
+		DssWarningSanitizer.classify(
+			"CRL DSS Exception: Unable to download CRL for certificate with Id 'C-ABCD1234'"
+		)?.first shouldBe WarningCategory.REVOCATION_NOT_FOUND
+	}
+	
+	test("OCSP and standard revocation messages group into one summary") {
+		val raw = listOf(
+			"OCSP DSS Exception: Unable to retrieve OCSP response for certificate " +
+					"with Id 'C-AAAA1111' from URL 'http://ocsp.example.com/'.",
+			"No revocation found for the certificate C-BBBB2222",
+		)
+		val result = DssWarningSanitizer.sanitize(raw)
+		result.summaries shouldHaveSize 1
+		result.summaries[0] shouldContain "2 certificates"
+		result.summaries[0] shouldContain "CRL/OCSP"
+	}
+	
+	test("TSP_FAILURE pattern matches PKIFailureInfo warning") {
+		val raw = listOf(
+			"TSP Failure info: PKIFailureInfo: 0x4"
+		)
+		val result = DssWarningSanitizer.sanitize(raw)
+		result.summaries shouldHaveSize 1
+		result.summaries[0] shouldContain "timestamp server"
+	}
+	
+	test("TSP_FAILURE classify returns correct category") {
+		DssWarningSanitizer.classify(
+			"TSP Failure info: PKIFailureInfo: 0x4"
+		)?.first shouldBe WarningCategory.TSP_FAILURE
+		
+		DssWarningSanitizer.classify(
+			"No timestamp token has been retrieved (TSP Status : ...)"
+		)?.first shouldBe WarningCategory.TSP_FAILURE
+	}
 })
 

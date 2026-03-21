@@ -9,15 +9,15 @@
     </root>
     <logger name="org.eclipse.jetty" level="INFO"/>
     <logger name="io.netty" level="INFO"/>
-    <logger name="eu.europa.esig" level="WARN"/>
+    <!-- All DSS WARN output is suppressed at the parent level and captured
+         programmatically by DssLogCapture during operations. Only ERROR events
+         propagate to the root appender. -->
+    <logger name="eu.europa.esig" level="ERROR"/>
+    <!-- TSL loggers stay at explicit ERROR so DssLogCapture does not lower them
+         to WARN during operations (their output is extremely verbose and handled
+         through a separate TL-warning mechanism). -->
     <logger name="eu.europa.esig.dss.tsl.runnable" level="ERROR"/>
     <logger name="eu.europa.esig.dss.tsl.function.converter" level="ERROR"/>
     <logger name="eu.europa.esig.dss.tsl.sync" level="ERROR"/>
-    <!-- Suppress verbose per-certificate warnings and ASN1 parse stack traces from
-         malformed third-party certificates (e.g., FreeTSA's invalid certificatePolicies OID). -->
-    <logger name="eu.europa.esig.dss.spi.CertificateExtensionsUtils" level="ERROR"/>
-    <logger name="eu.europa.esig.dss.spi.validation.SignatureValidationContext" level="ERROR"/>
-    <logger name="eu.europa.esig.dss.spi.validation.RevocationDataVerifier" level="ERROR"/>
-    <logger name="eu.europa.esig.dss.spi.validation.TimestampTokenVerifier" level="ERROR"/>
     <logger name="org.apache.pdfbox.pdfparser" level="ERROR"/>
 </configuration>
