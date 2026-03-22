@@ -7,26 +7,30 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.safeContentPadding
-import androidx.compose.material3.Button
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.tooling.preview.Preview
+import cz.pizavo.omnisign.lumo.LumoTheme
+import cz.pizavo.omnisign.lumo.components.Button
+import cz.pizavo.omnisign.lumo.components.Text
 import org.jetbrains.compose.resources.painterResource
-import org.jetbrains.compose.ui.tooling.preview.Preview
 
 import omnisign.composeapp.generated.resources.Res
 import omnisign.composeapp.generated.resources.compose_multiplatform
 
+/**
+ * Root composable for the OmniSign application.
+ * Wraps the entire UI in [LumoTheme] to provide consistent theming.
+ */
 @Composable
 @Preview
 fun App() {
-    MaterialTheme {
+    LumoTheme {
         var showContent by remember { mutableStateOf(false) }
         Column(
             modifier = Modifier
-                .background(MaterialTheme.colorScheme.primaryContainer)
+                .background(LumoTheme.colors.background)
                 .safeContentPadding()
                 .fillMaxSize(),
             horizontalAlignment = Alignment.CenterHorizontally,
