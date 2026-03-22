@@ -35,6 +35,13 @@ data class JsonValidationResult(
 
 /**
  * JSON-serializable DTO for a single signature within a validation report.
+ *
+ * @property errors AdES validation errors.
+ * @property warnings AdES validation warnings.
+ * @property infos AdES informational messages.
+ * @property qualificationErrors eIDAS qualification errors.
+ * @property qualificationWarnings eIDAS qualification warnings.
+ * @property qualificationInfos eIDAS qualification informational messages.
  */
 @Serializable
 data class JsonSignatureResult(
@@ -51,6 +58,9 @@ data class JsonSignatureResult(
 	val errors: List<String> = emptyList(),
 	val warnings: List<String> = emptyList(),
 	val infos: List<String> = emptyList(),
+	val qualificationErrors: List<String> = emptyList(),
+	val qualificationWarnings: List<String> = emptyList(),
+	val qualificationInfos: List<String> = emptyList(),
 )
 
 /**

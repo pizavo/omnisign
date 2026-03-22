@@ -147,14 +147,18 @@ class DssValidationRepository(
 	 *    embedded inside a PAdES signature and not listed as top-level simple-report tokens.
 	 * 3. [DetailedReport] archival-data / basic-timestamp APIs — defensive last resort.
 	 *
-	 * **Note on expected INDETERMINATE status:** In a valid PAdES-BASELINE-LTA signature it is
-	 * entirely normal for DSS to report both the signature timestamp and the document (archive)
-	 * timestamp as `INDETERMINATE` — typically with sub-indication `NO_POE`. The signature
-	 * timestamp is INDETERMINATE because the TSA certificate's revocation can only be proven
-	 * through the LTA chain, not in isolation. The document timestamp is INDETERMINATE because
-	 * there is no subsequent archive timestamp to cover it yet; it needs periodic renewal to
-	 * maintain long-term provability. Neither affects the overall `TOTAL_PASSED` result of the
-	 * containing signature.
+	 * **DSS indication mapping:** DSS uses [Indication.PASSED] / [Indication.FAILED] for
+	 * individual validation objects (timestamps, building blocks), while
+	 * [Indication.TOTAL_PASSED] / [Indication.TOTAL_FAILED] are reserved for the overall
+	 * signature validation result.  Both pairs are mapped to the corresponding domain
+	 * [ValidationIndication] value.
+	 *
+	 * **Note on expected INDETERMINATE status:** In a valid PAdES-BASELINE-LTA signature it
+	 * can happen that DSS reports one or both timestamps as `INDETERMINATE` — typically with
+	 * sub-indication `NO_POE` — when the TSA certificate is not directly identified as a trust
+	 * service in the loaded trusted lists.  This does not affect the overall `TOTAL_PASSED`
+	 * result of the containing signature.  When the TSA certificate *is* a trust anchor
+	 * (e.g. directly listed in the EU LOTL), DSS reports the timestamp as `PASSED`.
 	 *
 	 * The sub-indication is resolved from the simple-report first, falling back to the BBB
 	 * conclusion (which commonly carries `NO_POE`) so callers have a human-readable reason code.
@@ -187,8 +191,8 @@ class DssValidationRepository(
 		}
 		
 		val indication = when (rawIndication) {
-			Indication.TOTAL_PASSED -> ValidationIndication.TOTAL_PASSED
-			Indication.TOTAL_FAILED -> ValidationIndication.TOTAL_FAILED
+			Indication.TOTAL_PASSED, Indication.PASSED -> ValidationIndication.TOTAL_PASSED
+			Indication.TOTAL_FAILED, Indication.FAILED -> ValidationIndication.TOTAL_FAILED
 			else -> ValidationIndication.INDETERMINATE
 		}
 		
@@ -241,17 +245,17 @@ class DssValidationRepository(
 		signatureId: String
 	): SignatureValidationResult {
 		val indication = when (simpleReport.getIndication(signatureId)) {
-			Indication.TOTAL_PASSED -> ValidationIndication.TOTAL_PASSED
-			Indication.TOTAL_FAILED -> ValidationIndication.TOTAL_FAILED
+			Indication.TOTAL_PASSED, Indication.PASSED -> ValidationIndication.TOTAL_PASSED
+			Indication.TOTAL_FAILED, Indication.FAILED -> ValidationIndication.TOTAL_FAILED
 			else -> ValidationIndication.INDETERMINATE
 		}
 		
-		val errors = (simpleReport.getAdESValidationErrors(signatureId) +
-				simpleReport.getQualificationErrors(signatureId)).map { it.value }
-		val warnings = (simpleReport.getAdESValidationWarnings(signatureId) +
-				simpleReport.getQualificationWarnings(signatureId)).map { it.value }
-		val infos = (simpleReport.getAdESValidationInfo(signatureId) +
-				simpleReport.getQualificationInfo(signatureId)).map { it.value }
+		val errors = simpleReport.getAdESValidationErrors(signatureId).map { it.value }
+		val warnings = simpleReport.getAdESValidationWarnings(signatureId).map { it.value }
+		val infos = simpleReport.getAdESValidationInfo(signatureId).map { it.value }
+		val qualificationErrors = simpleReport.getQualificationErrors(signatureId).map { it.value }
+		val qualificationWarnings = simpleReport.getQualificationWarnings(signatureId).map { it.value }
+		val qualificationInfos = simpleReport.getQualificationInfo(signatureId).map { it.value }
 		
 		val signedBy = simpleReport.getSignedBy(signatureId) ?: "Unknown"
 		val signatureLevel = simpleReport.getSignatureFormat(signatureId)?.toString() ?: "Unknown"
@@ -288,6 +292,9 @@ class DssValidationRepository(
 			errors = errors,
 			warnings = warnings,
 			infos = infos,
+			qualificationErrors = qualificationErrors,
+			qualificationWarnings = qualificationWarnings,
+			qualificationInfos = qualificationInfos,
 			signedBy = signedBy,
 			signatureLevel = signatureLevel,
 			signatureTime = signatureTime,

@@ -35,6 +35,13 @@ data class ValidationConfig(
 	val customTrustedLists: List<CustomTrustedListConfig> = emptyList(),
 	
 	/**
+	 * Directly trusted certificates stored inline (Base64-encoded DER).
+	 * These are wired into DSS as a [CommonTrustedCertificateSource] alongside
+	 * any trusted lists, without requiring an ETSI TS 119612 XML document.
+	 */
+	val trustedCertificates: List<TrustedCertificateConfig> = emptyList(),
+	
+	/**
 	 * Cryptographic algorithm constraint configuration.
 	 * Controls how the validator reacts to expired algorithms and allows overriding
 	 * the policy's reference update date.

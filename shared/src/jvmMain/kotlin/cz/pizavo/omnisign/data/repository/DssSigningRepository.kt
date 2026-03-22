@@ -30,10 +30,10 @@ import eu.europa.esig.dss.token.AbstractSignatureTokenConnection
 import eu.europa.esig.dss.token.DSSPrivateKeyEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.todayIn
 import java.io.File
+import kotlin.time.Clock
 import eu.europa.esig.dss.enumerations.EncryptionAlgorithm as DssEncryptionAlgorithm
 import eu.europa.esig.dss.enumerations.SignatureLevel as DssSignatureLevel
 

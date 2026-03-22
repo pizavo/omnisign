@@ -88,6 +88,9 @@ private fun SignatureValidationResult.toJson(): JsonSignatureResult =
 		errors = errors,
 		warnings = warnings,
 		infos = infos,
+		qualificationErrors = qualificationErrors,
+		qualificationWarnings = qualificationWarnings,
+		qualificationInfos = qualificationInfos,
 	)
 
 /**

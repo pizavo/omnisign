@@ -91,6 +91,13 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 						if (profile.disabledEncryptionAlgorithms.isNotEmpty()) {
 							echo("    Disabled enc   : ${profile.disabledEncryptionAlgorithms.joinToString { it.name }}")
 						}
+						val profileCerts = profile.validation?.trustedCertificates.orEmpty()
+						if (profileCerts.isNotEmpty()) {
+							echo("    Trusted certs  :")
+							profileCerts.forEach { c ->
+								echo("      ${c.name}  [${c.type}]  ${c.subjectDN}")
+							}
+						}
 					}
 				}
 				if (config.global.customPkcs11Libraries.isEmpty()) {
@@ -101,6 +108,16 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 						val status = if (File(lib.path).exists()) "✅" else "⚠️  (file not found)"
 						echo("  ● ${lib.name}  $status")
 						echo("    Path: ${lib.path}")
+					}
+				}
+				val trustedCerts = config.global.validation.trustedCertificates
+				if (trustedCerts.isEmpty()) {
+					echo("\n[Trusted Certificates]\n  (none — add with: config trust add --name <label> --cert <file>)")
+				} else {
+					echo("\n[Trusted Certificates]")
+					trustedCerts.forEach { c ->
+						echo("  ● ${c.name}  [${c.type}]")
+						echo("    Subject: ${c.subjectDN}")
 					}
 				}
 				echo("\n═══════════════════════════════════════════════════════════════")

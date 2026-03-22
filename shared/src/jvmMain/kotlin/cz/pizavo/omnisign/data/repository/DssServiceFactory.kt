@@ -2,6 +2,7 @@
 
 import cz.pizavo.omnisign.data.repository.DssServiceFactory.Companion.TL_CACHE_EXPIRATION_MS
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import eu.europa.esig.dss.alert.LogOnStatusAlert
@@ -129,6 +130,9 @@ class DssServiceFactory(
 			alertOnInvalidTimestamp = alert
 			alertOnNoRevocationAfterBestSignatureTime = alert
 			alertOnRevokedCertificate = alert
+		}.also { verifier ->
+			buildDirectTrustedCertSource(config.validation.trustedCertificates)
+				?.let { verifier.setTrustedCertSources(it) }
 		}
 	}
 	
@@ -213,7 +217,8 @@ class DssServiceFactory(
 		}
 	
 	/**
-	 * Load EU LOTL and/or custom trusted lists into [cv] when [config] enables them.
+	 * Load EU LOTL and/or custom trusted lists into [cv] when [config] enables them,
+	 * and wire any directly trusted certificates from the configuration.
 	 *
 	 * The parsed [TrustedListsCertificateSource] is cached in memory so that repeated calls
 	 * within [TL_CACHE_EXPIRATION_MS] reuse the same instance. A [TLValidationJob] with a
@@ -228,14 +233,19 @@ class DssServiceFactory(
 		config: ResolvedConfig,
 		dataLoader: CommonsDataLoader
 	): List<String> {
-		if (!config.validation.useEuLotl && config.validation.customTrustedLists.isEmpty()) {
+		val directCertSource = buildDirectTrustedCertSource(config.validation.trustedCertificates)
+		val hasTlSources = config.validation.useEuLotl || config.validation.customTrustedLists.isNotEmpty()
+		
+		if (!hasTlSources) {
+			if (directCertSource != null) cv.setTrustedCertSources(directCertSource)
 			return emptyList()
 		}
 		
 		val now = System.currentTimeMillis()
 		val cached = cachedTlSource
 		if (cached != null && (now - tlCacheTimestamp) < TL_CACHE_EXPIRATION_MS) {
-			cv.setTrustedCertSources(cached)
+			if (directCertSource != null) cv.setTrustedCertSources(cached, directCertSource)
+			else cv.setTrustedCertSources(cached)
 			return cachedTlWarnings
 		}
 		
@@ -248,7 +258,8 @@ class DssServiceFactory(
 		cachedTlWarnings = warnings
 		tlCacheTimestamp = now
 		
-		cv.setTrustedCertSources(tlCertSource)
+		if (directCertSource != null) cv.setTrustedCertSources(tlCertSource, directCertSource)
+		else cv.setTrustedCertSources(tlCertSource)
 		return warnings
 	}
 	
@@ -367,6 +378,26 @@ class DssServiceFactory(
 			}
 			val token = eu.europa.esig.dss.model.x509.CertificateToken(x509)
 			return CommonTrustedCertificateSource().also { it.addCertificate(token) }
+		}
+		
+		/**
+		 * Build a [CommonTrustedCertificateSource] from directly trusted certificates
+		 * stored as Base64-encoded DER in the configuration.
+		 *
+		 * @return A populated source, or null when [certs] is empty.
+		 */
+		internal fun buildDirectTrustedCertSource(
+			certs: List<TrustedCertificateConfig>
+		): CommonTrustedCertificateSource? {
+			if (certs.isEmpty()) return null
+			val source = CommonTrustedCertificateSource()
+			for (cert in certs) {
+				val der = java.util.Base64.getDecoder().decode(cert.certificateBase64)
+				val x509 = java.security.cert.CertificateFactory.getInstance("X.509")
+					.generateCertificate(der.inputStream()) as java.security.cert.X509Certificate
+				source.addCertificate(eu.europa.esig.dss.model.x509.CertificateToken(x509))
+			}
+			return source
 		}
 		
 		/**

@@ -8,9 +8,12 @@ import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
  * @property signatureId DSS internal identifier for this signature.
  * @property indication Overall validation indication.
  * @property subIndication Optional sub-indication providing additional detail.
- * @property errors Validation errors for this signature.
- * @property warnings Validation warnings for this signature.
- * @property infos Informational messages for this signature.
+ * @property errors AdES validation errors for this signature.
+ * @property warnings AdES validation warnings for this signature.
+ * @property infos AdES informational messages for this signature.
+ * @property qualificationErrors eIDAS qualification errors (e.g. certificate not on a trusted list).
+ * @property qualificationWarnings eIDAS qualification warnings (e.g. unexpected key-usage).
+ * @property qualificationInfos eIDAS qualification informational messages.
  * @property signedBy Human-readable signer name from the certificate.
  * @property signatureLevel PAdES signature level (e.g. "PAdES-BASELINE-LTA").
  * @property signatureTime Best signature time as determined by DSS.
@@ -26,6 +29,9 @@ data class SignatureValidationResult(
     val errors: List<String> = emptyList(),
     val warnings: List<String> = emptyList(),
     val infos: List<String> = emptyList(),
+    val qualificationErrors: List<String> = emptyList(),
+    val qualificationWarnings: List<String> = emptyList(),
+    val qualificationInfos: List<String> = emptyList(),
     val signedBy: String,
     val signatureLevel: String,
     val signatureTime: String,

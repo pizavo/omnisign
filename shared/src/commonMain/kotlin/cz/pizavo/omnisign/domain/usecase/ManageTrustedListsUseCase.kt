@@ -290,4 +290,121 @@ class ManageTrustedListsUseCase(
 			if (t.name == tspName) t.copy(services = t.services.filter { it.name != serviceName }) else t
 		}.let { upsertDraft(draft.copy(trustServiceProviders = it)) }
 	}
+	
+	/**
+	 * Register a directly trusted certificate.
+	 *
+	 * The certificate's DER bytes are expected to be already Base64-encoded in [cert].
+	 * When [profileName] is given the entry is stored in that profile; otherwise in
+	 * the global config. Replaces any existing entry with the same name.
+	 *
+	 * @param cert The trusted certificate configuration to register.
+	 * @param profileName Target profile name, or null for global scope.
+	 */
+	suspend fun addTrustedCertificate(
+		cert: TrustedCertificateConfig,
+		profileName: String? = null
+	): OperationResult<Unit> {
+		val current = configRepository.getCurrentConfig()
+		
+		if (profileName != null) {
+			val profile = current.profiles[profileName]
+				?: return ConfigurationError.InvalidConfiguration(
+					message = "No profile named '$profileName' found"
+				).left()
+			val existingValidation = profile.validation ?: ValidationConfig()
+			val updatedValidation = existingValidation.copy(
+				trustedCertificates = existingValidation.trustedCertificates.filter { it.name != cert.name } + cert
+			)
+			val newConfig = current.copy(
+				profiles = current.profiles + (profileName to profile.copy(validation = updatedValidation))
+			)
+			return configRepository.saveConfig(newConfig)
+		}
+		
+		val existing = current.global.validation.trustedCertificates
+		val newConfig = current.copy(
+			global = current.global.copy(
+				validation = current.global.validation.copy(
+					trustedCertificates = existing.filter { it.name != cert.name } + cert
+				)
+			)
+		)
+		return configRepository.saveConfig(newConfig)
+	}
+	
+	/**
+	 * Remove a directly trusted certificate by name.
+	 *
+	 * When [profileName] is given the entry is removed from that profile's
+	 * [ValidationConfig]; otherwise from the global [ValidationConfig].
+	 *
+	 * @param name Name of the trusted certificate to remove.
+	 * @param profileName Target profile name, or null for global scope.
+	 */
+	suspend fun removeTrustedCertificate(
+		name: String,
+		profileName: String? = null
+	): OperationResult<Unit> {
+		val current = configRepository.getCurrentConfig()
+		
+		if (profileName != null) {
+			val profile = current.profiles[profileName]
+				?: return ConfigurationError.InvalidConfiguration(
+					message = "No profile named '$profileName' found"
+				).left()
+			val existingValidation = profile.validation ?: ValidationConfig()
+			if (existingValidation.trustedCertificates.none { it.name == name }) {
+				return ConfigurationError.InvalidConfiguration(
+					message = "No trusted certificate named '$name' found in profile '$profileName'"
+				).left()
+			}
+			val updatedValidation = existingValidation.copy(
+				trustedCertificates = existingValidation.trustedCertificates.filter { it.name != name }
+			)
+			val newConfig = current.copy(
+				profiles = current.profiles + (profileName to profile.copy(validation = updatedValidation))
+			)
+			return configRepository.saveConfig(newConfig)
+		}
+		
+		val existing = current.global.validation.trustedCertificates
+		if (existing.none { it.name == name }) {
+			return ConfigurationError.InvalidConfiguration(
+				message = "No trusted certificate named '$name' found"
+			).left()
+		}
+		val newConfig = current.copy(
+			global = current.global.copy(
+				validation = current.global.validation.copy(
+					trustedCertificates = existing.filter { it.name != name }
+				)
+			)
+		)
+		return configRepository.saveConfig(newConfig)
+	}
+	
+	/**
+	 * Return all directly trusted certificates for the given scope.
+	 *
+	 * When [profileName] is given, returns only the certificates stored in that profile's
+	 * [ValidationConfig]; otherwise returns the global list.
+	 *
+	 * @param profileName Target profile name, or null for global scope.
+	 */
+	suspend fun listTrustedCertificates(
+		profileName: String? = null
+	): OperationResult<List<TrustedCertificateConfig>> {
+		val current = configRepository.getCurrentConfig()
+		
+		if (profileName != null) {
+			val profile = current.profiles[profileName]
+				?: return ConfigurationError.InvalidConfiguration(
+					message = "No profile named '$profileName' found"
+				).left()
+			return (profile.validation?.trustedCertificates ?: emptyList()).right()
+		}
+		
+		return current.global.validation.trustedCertificates.right()
+	}
 }

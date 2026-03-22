@@ -3,9 +3,9 @@ package cz.pizavo.omnisign.commands.algorithms
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
-import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.todayIn
+import kotlin.time.Clock
 
 /**
  * Lists all hash algorithms supported by OmniSign, together with a short description,

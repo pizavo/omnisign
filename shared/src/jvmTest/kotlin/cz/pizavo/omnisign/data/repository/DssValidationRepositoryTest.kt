@@ -2,6 +2,8 @@ package cz.pizavo.omnisign.data.repository
 
 import cz.pizavo.omnisign.domain.model.error.ValidationError
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
+import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
+import eu.europa.esig.dss.enumerations.Indication
 import eu.europa.esig.dss.spi.x509.KeyStoreCertificateSource
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.core.spec.style.FunSpec
@@ -115,6 +117,38 @@ class DssValidationRepositoryTest : FunSpec({
 		repository.validateDocument(
 			ValidationParameters(inputFile = notAPdf.absolutePath)
 		).shouldBeLeft().shouldBeInstanceOf<ValidationError.ValidationFailed>()
+	}
+
+	// ── DSS Indication mapping ──────────────────────────────────────────────
+
+	fun mapIndication(raw: Indication): ValidationIndication = when (raw) {
+		Indication.TOTAL_PASSED, Indication.PASSED -> ValidationIndication.TOTAL_PASSED
+		Indication.TOTAL_FAILED, Indication.FAILED -> ValidationIndication.TOTAL_FAILED
+		else -> ValidationIndication.INDETERMINATE
+	}
+
+	test("Indication.TOTAL_PASSED maps to TOTAL_PASSED") {
+		mapIndication(Indication.TOTAL_PASSED) shouldBe ValidationIndication.TOTAL_PASSED
+	}
+
+	test("Indication.PASSED maps to TOTAL_PASSED") {
+		mapIndication(Indication.PASSED) shouldBe ValidationIndication.TOTAL_PASSED
+	}
+
+	test("Indication.TOTAL_FAILED maps to TOTAL_FAILED") {
+		mapIndication(Indication.TOTAL_FAILED) shouldBe ValidationIndication.TOTAL_FAILED
+	}
+
+	test("Indication.FAILED maps to TOTAL_FAILED") {
+		mapIndication(Indication.FAILED) shouldBe ValidationIndication.TOTAL_FAILED
+	}
+
+	test("Indication.INDETERMINATE maps to INDETERMINATE") {
+		mapIndication(Indication.INDETERMINATE) shouldBe ValidationIndication.INDETERMINATE
+	}
+
+	test("Indication.NO_SIGNATURE_FOUND maps to INDETERMINATE") {
+		mapIndication(Indication.NO_SIGNATURE_FOUND) shouldBe ValidationIndication.INDETERMINATE
 	}
 })
 

@@ -138,5 +138,27 @@ class ValidateTest : FunSpec({
 		result.output shouldContain "File not a PDF"
 		result.statusCode shouldBe 1
 	}
+	
+	test("qualification errors are shown under Qualification section, not under Errors") {
+		val input = tmpFile("qual.pdf")
+		val reportWithQualification = sampleReport.copy(
+			signatures = listOf(
+				sampleReport.signatures.first().copy(
+					qualificationErrors = listOf("Unable to build a certificate chain up to a trusted list!"),
+					qualificationWarnings = listOf("The signing certificate does not have an expected key-usage!"),
+				)
+			)
+		)
+		coEvery { validationRepository.validateDocument(any()) } returns reportWithQualification.right()
+		
+		val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
+		
+		result.output shouldContain "Qualification"
+		result.output shouldContain "Unable to build a certificate chain"
+		result.output shouldContain "expected key-usage"
+		val errorsIdx = result.output.indexOf("❌ Errors:")
+		errorsIdx shouldBe -1
+		result.statusCode shouldBe 0
+	}
 })
 
