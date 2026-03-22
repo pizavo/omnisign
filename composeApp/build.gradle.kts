@@ -24,6 +24,7 @@ plugins {
 	alias(libs.plugins.composeHotReload)
 	alias(libs.plugins.ksp)
 	alias(libs.plugins.kotest)
+	alias(libs.plugins.lumo)
 }
 
 version = project.findProperty("releaseVersion")?.toString() ?: "1.0.0"
@@ -55,12 +56,12 @@ kotlin {
 	
 	sourceSets {
 		commonMain.dependencies {
-			implementation(compose.runtime)
-			implementation(compose.foundation)
-			implementation(compose.material3)
-			implementation(compose.ui)
-			implementation(compose.components.resources)
-			implementation(compose.components.uiToolingPreview)
+			implementation(libs.compose.runtime)
+			implementation(libs.compose.foundation)
+			implementation(libs.compose.material)
+			implementation(libs.compose.ui)
+			implementation(libs.compose.ui.tooling)
+			implementation(libs.compose.components.resources)
 			implementation(libs.androidx.lifecycle.viewmodelCompose)
 			implementation(libs.androidx.lifecycle.runtimeCompose)
 			implementation(projects.shared)
