@@ -1,51 +1,52 @@
 package cz.pizavo.omnisign
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
-import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.safeContentPadding
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.RectangleShape
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.lumo.LumoTheme
-import cz.pizavo.omnisign.lumo.components.Button
-import cz.pizavo.omnisign.lumo.components.Text
-import org.jetbrains.compose.resources.painterResource
-
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.compose_multiplatform
+import cz.pizavo.omnisign.ui.layout.IslandLayout
+import cz.pizavo.omnisign.ui.platform.LocalWindowControls
 
 /**
  * Root composable for the OmniSign application.
- * Wraps the entire UI in [LumoTheme] to provide consistent theming.
+ *
+ * Wraps the entire UI in [LumoTheme] and renders the IntelliJ "Island"-inspired
+ * desktop shell via [IslandLayout]. The dark/light theme toggle state is owned here
+ * and threaded down to the layout and theme provider.
+ *
+ * On JVM desktop the window is undecorated and transparent, so the root content is
+ * clipped to a [RoundedCornerShape] for the floating-card aesthetic. The rounding is
+ * removed when the window is maximized to avoid visible gaps at screen edges.
  */
 @Composable
 @Preview
 fun App() {
-    LumoTheme {
-        var showContent by remember { mutableStateOf(false) }
-        Column(
+    val systemDark = isSystemInDarkTheme()
+    var isDarkTheme by remember { mutableStateOf(systemDark) }
+    val isMaximized = LocalWindowControls.current?.isMaximized?.invoke() == true
+    val windowShape = if (isMaximized) RectangleShape else RoundedCornerShape(12.dp)
+
+    LumoTheme(isDarkTheme = isDarkTheme) {
+        IslandLayout(
+            isDarkTheme = isDarkTheme,
+            onToggleTheme = { isDarkTheme = !isDarkTheme },
             modifier = Modifier
+                .fillMaxSize()
+                .clip(windowShape)
                 .background(LumoTheme.colors.background)
-                .safeContentPadding()
-                .fillMaxSize(),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Button(onClick = { showContent = !showContent }) {
-                Text("Click me!")
-            }
-            AnimatedVisibility(showContent) {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                ) {
-                    Image(painterResource(Res.drawable.compose_multiplatform), null)
-                }
-            }
-        }
+                .safeContentPadding(),
+        )
     }
 }

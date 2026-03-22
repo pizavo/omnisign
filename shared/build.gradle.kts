@@ -3,8 +3,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.net.URI
 
 plugins {
-	alias(libs.plugins.kotlinMultiplatform)
-	alias(libs.plugins.kotlinSerialization)
+	alias(libs.plugins.kotlin.multiplatform)
+	alias(libs.plugins.kotlin.serialization)
 	alias(libs.plugins.ksp)
 	alias(libs.plugins.kotest)
 	alias(libs.plugins.decoroutinator)

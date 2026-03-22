@@ -40,6 +40,17 @@ val Blue200: Color = Color(0xFFCFDEFB)
 val Blue100: Color = Color(0xFFE7EEFD)
 val Blue50: Color = Color(0xFFFFFFFF)
 
+val Yellow900: Color = Color(0xFF7B6100)
+val Yellow800: Color = Color(0xFF9B7B00)
+val Yellow700: Color = Color(0xFFB89200)
+val Yellow600: Color = Color(0xFFC9A100)
+val Yellow500: Color = Color(0xFFDDB62A)
+val Yellow400: Color = Color(0xFFFFD54F)
+val Yellow300: Color = Color(0xFFFFE082)
+val Yellow200: Color = Color(0xFFFFECB3)
+val Yellow100: Color = Color(0xFFFFF3D6)
+val Yellow50: Color = Color(0xFFFFF9EC)
+
 val Green950: Color = Color(0xFF0B4627)
 val Green900: Color = Color(0xFF16643B)
 val Green800: Color = Color(0xFF1A7544)
@@ -51,6 +62,17 @@ val Green300: Color = Color(0xFF84EBB4)
 val Green200: Color = Color(0xFFC2F5DA)
 val Green100: Color = Color(0xFFD0FBE9)
 val Green50: Color = Color(0xFFE0FAEC)
+
+/**
+ * Theme-aware tint colors for specific icon types.
+ *
+ * Keeps icon colours decoupled from semantic palette roles like `warning` or `error`,
+ * so each icon category can evolve independently.
+ */
+@Immutable
+data class IconColors(
+    val folder: Color,
+)
 
 @Immutable
 data class Colors(
@@ -64,6 +86,8 @@ data class Colors(
     val onError: Color,
     val success: Color,
     val onSuccess: Color,
+    val warning: Color,
+    val onWarning: Color,
     val disabled: Color,
     val onDisabled: Color,
     val surface: Color,
@@ -79,6 +103,7 @@ data class Colors(
     val textDisabled: Color,
     val scrim: Color,
     val elevation: Color,
+    val icons: IconColors,
 )
 
 internal val LightColors =
@@ -89,15 +114,17 @@ internal val LightColors =
         onSecondary = Black,
         tertiary = Blue900,
         onTertiary = White,
-        surface = Gray200,
+        surface = White,
         onSurface = Black,
         error = Red600,
         onError = White,
         success = Green600,
         onSuccess = White,
+        warning = Yellow700,
+        onWarning = Black,
         disabled = Gray100,
         onDisabled = Gray500,
-        background = White,
+        background = Gray200,
         onBackground = Black,
         outline = Gray300,
         transparent = Color.Transparent,
@@ -108,6 +135,7 @@ internal val LightColors =
         textDisabled = Gray400,
         scrim = Color.Black.copy(alpha = 0.32f),
         elevation = Gray700,
+        icons = IconColors(folder = Yellow700),
     )
 
 internal val DarkColors =
@@ -118,15 +146,17 @@ internal val DarkColors =
         onSecondary = White,
         tertiary = Blue300,
         onTertiary = Black,
-        surface = Gray900,
+        surface = Color(0xFF1E1E1E),
         onSurface = White,
         error = Red400,
         onError = Black,
         success = Green700,
         onSuccess = Black,
+        warning = Yellow400,
+        onWarning = Black,
         disabled = Gray700,
         onDisabled = Gray500,
-        background = Black,
+        background = Gray900,
         onBackground = White,
         outline = Gray800,
         transparent = Color.Transparent,
@@ -137,6 +167,7 @@ internal val DarkColors =
         textDisabled = Gray600,
         scrim = Color.Black.copy(alpha = 0.72f),
         elevation = Gray200,
+        icons = IconColors(folder = Yellow400),
     )
 
 val LocalColors = staticCompositionLocalOf { LightColors }
@@ -151,6 +182,7 @@ fun Colors.contentColorFor(backgroundColor: Color): Color {
         surface -> onSurface
         error -> onError
         success -> onSuccess
+        warning -> onWarning
         disabled -> onDisabled
         background -> onBackground
         else -> Color.Unspecified
