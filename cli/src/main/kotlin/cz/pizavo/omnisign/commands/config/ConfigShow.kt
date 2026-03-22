@@ -36,8 +36,6 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 				echo("  Default signature level     : ${config.global.defaultSignatureLevel}")
 				val tsp = config.global.timestampServer
 				echo("  Timestamp server       : ${tsp?.url ?: "not set"}")
-				echo("  OCSP URL               : ${config.global.ocsp.url ?: "not set"}")
-				echo("  CRL timeout            : ${config.global.crl.timeout} ms")
 				echo("  Check revocation       : ${config.global.validation.checkRevocation}")
 				echo("  Validation policy      : ${config.global.validation.policyType}")
 				echo("  Use EU LOTL            : ${config.global.validation.useEuLotl}")
@@ -93,6 +91,13 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 						if (profile.disabledEncryptionAlgorithms.isNotEmpty()) {
 							echo("    Disabled enc   : ${profile.disabledEncryptionAlgorithms.joinToString { it.name }}")
 						}
+						val profileCerts = profile.validation?.trustedCertificates.orEmpty()
+						if (profileCerts.isNotEmpty()) {
+							echo("    Trusted certs  :")
+							profileCerts.forEach { c ->
+								echo("      ${c.name}  [${c.type}]  ${c.subjectDN}")
+							}
+						}
 					}
 				}
 				if (config.global.customPkcs11Libraries.isEmpty()) {
@@ -103,6 +108,16 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 						val status = if (File(lib.path).exists()) "✅" else "⚠️  (file not found)"
 						echo("  ● ${lib.name}  $status")
 						echo("    Path: ${lib.path}")
+					}
+				}
+				val trustedCerts = config.global.validation.trustedCertificates
+				if (trustedCerts.isEmpty()) {
+					echo("\n[Trusted Certificates]\n  (none — add with: config trust add --name <label> --cert <file>)")
+				} else {
+					echo("\n[Trusted Certificates]")
+					trustedCerts.forEach { c ->
+						echo("  ● ${c.name}  [${c.type}]")
+						echo("    Subject: ${c.subjectDN}")
 					}
 				}
 				echo("\n═══════════════════════════════════════════════════════════════")

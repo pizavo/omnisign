@@ -11,7 +11,6 @@ import eu.europa.esig.trustedlist.jaxb.tsl.MultiLangNormStringType
 import eu.europa.esig.trustedlist.jaxb.tsl.NextUpdateType
 import eu.europa.esig.trustedlist.jaxb.tsl.NonEmptyMultiLangURIListType
 import eu.europa.esig.trustedlist.jaxb.tsl.NonEmptyMultiLangURIType
-import eu.europa.esig.trustedlist.jaxb.tsl.NonEmptyURIListType
 import eu.europa.esig.trustedlist.jaxb.tsl.TSLSchemeInformationType
 import eu.europa.esig.trustedlist.jaxb.tsl.TSPInformationType
 import eu.europa.esig.trustedlist.jaxb.tsl.TSPServiceInformationType
@@ -30,7 +29,7 @@ import javax.xml.datatype.DatatypeFactory
  * Compiles a [CustomTrustedListDraft] into a standards-conformant ETSI TS 119612 XML document
  * using the JAXB object model from `specs-trusted-list`.
  *
- * The resulting XML is unsigned — it is intended for use with DSS [TLSource] instances
+ * The resulting XML is unsigned — it is intended for use with DSS [eu.europa.esig.dss.tsl.source.TLSource] instances
  * whose signature verification is either disabled or handled separately.
  */
 class TrustedListCompiler {
@@ -70,16 +69,18 @@ class TrustedListCompiler {
     }
 
     private fun buildSchemeInformation(draft: CustomTrustedListDraft): TSLSchemeInformationType {
-        val now = xmlCalendarFactory.newXMLGregorianCalendar(GregorianCalendar())
+        val now = GregorianCalendar()
+        val nextYear = GregorianCalendar().apply { add(GregorianCalendar.YEAR, 1) }
         val info = TSLSchemeInformationType()
         info.setTSLVersionIdentifier(BigInteger.valueOf(ETSI_TL_VERSION))
         info.setTSLSequenceNumber(BigInteger.ONE)
         info.setTSLType(TSL_TYPE_URI)
         info.setSchemeTerritory(draft.territory)
         info.setSchemeOperatorName(internationalNames(draft.schemeOperatorName))
-        info.setListIssueDateTime(now)
-        info.setNextUpdate(NextUpdateType().also { it.setDateTime(now) })
-        info.setDistributionPoints(NonEmptyURIListType())
+        info.setListIssueDateTime(xmlCalendarFactory.newXMLGregorianCalendar(now))
+        info.setNextUpdate(NextUpdateType().also {
+            it.setDateTime(xmlCalendarFactory.newXMLGregorianCalendar(nextYear))
+        })
         return info
     }
 
@@ -93,7 +94,9 @@ class TrustedListCompiler {
         val info = TSPInformationType()
         info.setTSPName(internationalNames(tsp.name))
         tsp.tradeName?.let { info.setTSPTradeName(internationalNames(it)) }
-        info.setTSPInformationURI(multiLangUriList(tsp.infoUrl))
+        if (tsp.infoUrl.isNotBlank()) {
+            info.setTSPInformationURI(multiLangUriList(tsp.infoUrl))
+        }
 
         val services = TSPServicesListType()
         tsp.services.forEach { services.getTSPService().add(buildService(it)) }
@@ -123,9 +126,11 @@ class TrustedListCompiler {
      * [DigitalIdentityListType] containing one [DigitalIdentityType] with the raw DER bytes.
      */
     private fun buildDigitalIdentity(certPath: String): DigitalIdentityListType {
-        val certBytes = CertificateFactory.getInstance("X.509")
-            .generateCertificate(File(certPath).inputStream())
-            .encoded
+        val certBytes = File(certPath).inputStream().use { stream ->
+            CertificateFactory.getInstance("X.509")
+                .generateCertificate(stream)
+                .encoded
+        }
         val identity = DigitalIdentityType()
         identity.setX509Certificate(certBytes)
         val list = DigitalIdentityListType()

@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "cz.pizavo.omnisign"
-version = project.findProperty("releaseVersion")?.toString() ?: "1.7.1"
+version = project.findProperty("releaseVersion")?.toString() ?: "1.9.0"
 
 /**
  * Normalizes a semver-like string to the three-component `MAJOR.MINOR.BUILD` format required by
@@ -90,6 +90,9 @@ application {
 
 tasks.named<JavaExec>("run") {
 	jvmArgs("--enable-native-access=ALL-UNNAMED")
+	if (System.getProperty("os.name", "").lowercase().contains("win")) {
+		jvmArgs("--add-modules=jdk.crypto.mscapi")
+	}
 }
 
 tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
@@ -112,8 +115,8 @@ tasks.named<CreateStartScripts>("startShadowScripts") {
 	doLast {
 		windowsScript.writeText(
 			windowsScript.readText().replace(
-				Regex("""(set DEFAULT_JVM_OPTS=")"""),
-				"""$1--add-modules=jdk.crypto.mscapi """
+				Regex("""(set DEFAULT_JVM_OPTS=)"""),
+				"""$1"--add-modules=jdk.crypto.mscapi" """
 			)
 		)
 	}
@@ -271,7 +274,7 @@ abstract class JPackageTask @Inject constructor(private val execOps: ExecOperati
 	/**
 	 * Optional platform-specific resource directory (e.g., src/main/jpackage/win).
 	 * Declared as an input so Gradle invalidates the task whenever any file inside
-	 * it changes — for example when main.wxs or overrides.wxi are edited.
+	 * it changes — for example, when main.wxs or overrides.wxi are edited.
 	 */
 	@get:InputDirectory
 	@get:Optional

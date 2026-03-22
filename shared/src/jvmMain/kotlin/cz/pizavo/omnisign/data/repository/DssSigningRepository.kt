@@ -4,17 +4,14 @@ import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.config.enums.toDss
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.parameters.VisibleSignatureParameters
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.result.SigningResult
-import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
-import cz.pizavo.omnisign.domain.repository.CertificateDiscoveryResult
-import cz.pizavo.omnisign.domain.repository.ConfigRepository
-import cz.pizavo.omnisign.domain.repository.SigningRepository
-import cz.pizavo.omnisign.domain.repository.TokenDiscoveryWarning
+import cz.pizavo.omnisign.domain.repository.*
 import cz.pizavo.omnisign.domain.service.AlgorithmExpirationChecker
 import cz.pizavo.omnisign.domain.service.AlgorithmStatus
 import cz.pizavo.omnisign.domain.service.CredentialStore
@@ -33,10 +30,10 @@ import eu.europa.esig.dss.token.AbstractSignatureTokenConnection
 import eu.europa.esig.dss.token.DSSPrivateKeyEntry
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.todayIn
 import java.io.File
+import kotlin.time.Clock
 import eu.europa.esig.dss.enumerations.EncryptionAlgorithm as DssEncryptionAlgorithm
 import eu.europa.esig.dss.enumerations.SignatureLevel as DssSignatureLevel
 
@@ -53,7 +50,8 @@ import eu.europa.esig.dss.enumerations.SignatureLevel as DssSignatureLevel
 class DssSigningRepository(
 	private val tokenService: TokenService,
 	private val configRepository: ConfigRepository,
-	private val credentialStore: CredentialStore
+	private val credentialStore: CredentialStore,
+	private val dssServiceFactory: DssServiceFactory
 ) : SigningRepository {
 	
 	@Suppress("TooGenericExceptionCaught", "CyclomaticComplexMethod", "LongMethod", "ReturnCount")
@@ -106,30 +104,63 @@ class DssSigningRepository(
 				).left()
 			}
 			
-			val (privateKey, tokenConnection) = resolvePrivateKey(parameters)
+			val resolvedKey = resolvePrivateKey(parameters)
 				?: return SigningError.TokenAccessError(
 					message = "No suitable certificate found${parameters.certificateAlias?.let { " for alias '$it'" } ?: ""}"
 				).left()
 			
-			val service = buildSigningService(resolvedConfig, dssSignatureLevel, parameters.addTimestamp)
+			if (resolvedKey.tokenType == TokenType.WINDOWS_MY && !effectiveHash.isMscapiCompatible) {
+				return SigningError.InvalidParameters(
+					message = "Hash algorithm ${effectiveHash.name} is not supported by the Windows Certificate Store",
+					details = "Windows CNG only supports SHA-256, SHA-384 and SHA-512 for ECDSA and RSA " +
+							"signing with certificate store keys. " +
+							"Change the hash algorithm to SHA256, SHA384, or SHA512 in your profile or with --hash."
+				).left()
+			}
+			
+			val privateKey = resolvedKey.privateKey
+			val tokenConnection = resolvedKey.token
+			val statusAlert = CollectingStatusAlert()
+			val logCapture = DssLogCapture()
+			val service = buildSigningService(resolvedConfig, dssSignatureLevel, parameters.addTimestamp, statusAlert)
 			val signatureParams = buildSignatureParameters(
 				privateKey, digestAlgorithm, dssSignatureLevel, effectiveEncryption?.toDss(), parameters
 			)
-			val dataToSign: ToBeSigned = service.getDataToSign(FileDocument(inputFile), signatureParams)
-			val signatureValue: SignatureValue = tokenConnection.sign(dataToSign, digestAlgorithm, privateKey)
-			val signedDocument = service.signDocument(FileDocument(inputFile), signatureParams, signatureValue)
-			
-			val outputFile = File(parameters.outputFile).also { it.parentFile?.mkdirs() }
-			withContext(Dispatchers.IO) { signedDocument.writeTo(outputFile.outputStream()) }
-			
-			SigningResult(
-				outputFile = parameters.outputFile,
-				signatureId = extractSignatureId(parameters.outputFile),
-				signatureLevel = effectiveLevel.name,
-				warnings = signingWarnings
-			).right()
+			logCapture.start()
+			try {
+				val dataToSign: ToBeSigned = service.getDataToSign(FileDocument(inputFile), signatureParams)
+				val signatureValue: SignatureValue = tokenConnection.sign(dataToSign, digestAlgorithm, privateKey)
+				val signedDocument = service.signDocument(FileDocument(inputFile), signatureParams, signatureValue)
+				
+				signingWarnings += statusAlert.drain()
+				signingWarnings += logCapture.stop()
+				
+				val sanitized = DssWarningSanitizer.sanitize(signingWarnings)
+				
+				val outputFile = File(parameters.outputFile).also { it.parentFile?.mkdirs() }
+				withContext(Dispatchers.IO) { outputFile.outputStream().use { signedDocument.writeTo(it) } }
+				
+				SigningResult(
+					outputFile = parameters.outputFile,
+					signatureId = extractSignatureId(parameters.outputFile),
+					signatureLevel = effectiveLevel.name,
+					warnings = sanitized.summaries,
+					rawWarnings = sanitized.raw,
+				).right()
+			} finally {
+				logCapture.stop()
+			}
 		} catch (e: Exception) {
-			SigningError.SigningFailed(message = "Signing failed", details = e.message, cause = e).left()
+			if (TspErrorDetector.isTspException(e)) {
+				val tsaUrl = resolveConfig(parameters).getOrNull()?.timestampServer?.url
+				SigningError.TimestampError(
+					message = TspErrorDetector.buildUserMessage(e, tsaUrl),
+					details = e.message,
+					cause = e,
+				).left()
+			} else {
+				SigningError.SigningFailed(message = "Signing failed", details = e.message, cause = e).left()
+			}
 		}
 	}
 	
@@ -154,9 +185,7 @@ class DssSigningRepository(
 										message = error.details ?: error.message,
 										details = error.cause?.cause?.let { deepCause ->
 											generateSequence(deepCause) { it.cause }
-												.mapNotNull { it.message?.trim() }
-												.filter { it.isNotBlank() }
-												.firstOrNull()
+												.mapNotNull { it.message?.trim() }.firstOrNull { it.isNotBlank() }
 												?.takeIf { it != (error.details ?: error.message) }
 										},
 									)
@@ -208,22 +237,33 @@ class DssSigningRepository(
 	
 	/**
 	 * Build a [PAdESService] wired with a certificate verifier, PDF factory, and optional TSA.
+	 *
+	 * Uses the fast signing verifier ([DssServiceFactory.buildSigningCertificateVerifier])
+	 * that skips LOTL loading and instead enables revocation checks for untrusted chains.
+	 *
+	 * @param statusAlert A [CollectingStatusAlert] that will capture verifier warnings
+	 *   (missing revocation data, uncovered POE, etc.) fired during the signing operation.
 	 */
 	private fun buildSigningService(
 		resolvedConfig: ResolvedConfig,
 		signatureLevel: DssSignatureLevel,
-		addTimestamp: Boolean
-	): PAdESService = PAdESService(DssServiceFactory.buildCertificateVerifier(resolvedConfig)).apply {
-		setPdfObjFactory(DssServiceFactory.buildPdfObjectFactory())
-		resolvedConfig.timestampServer
-			?.takeIf { addTimestamp || signatureLevel != DssSignatureLevel.PAdES_BASELINE_B }
-			?.let { setTspSource(DssServiceFactory.buildTspSource(it, credentialStore)) }
+		addTimestamp: Boolean,
+		statusAlert: CollectingStatusAlert,
+	): PAdESService {
+		val cv = dssServiceFactory.buildSigningCertificateVerifier(resolvedConfig) { statusAlert }
+		return PAdESService(cv).apply {
+			setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
+			resolvedConfig.timestampServer
+				?.takeIf { addTimestamp || signatureLevel != DssSignatureLevel.PAdES_BASELINE_B }
+				?.let { setTspSource(dssServiceFactory.buildTspSource(it)) }
+		}
 	}
 	
 	/**
 	 * Iterate all discovered tokens and return the first [DSSPrivateKeyEntry] that matches
 	 * the requested alias (or the first available key when no alias is requested), together
-	 * with its [AbstractSignatureTokenConnection].  Returns null when no matching key is found.
+	 * with its [AbstractSignatureTokenConnection] and the source [TokenType].
+	 * Returns null when no matching key is found.
 	 *
 	 * The hardware presence of PKCS#11 tokens is probed via [TokenService.probeTokenPresent]
 	 * before any PIN prompt.  Tokens whose card is not inserted are silently skipped.
@@ -233,12 +273,12 @@ class DssSigningRepository(
 	 */
 	private suspend fun resolvePrivateKey(
 		parameters: SigningParameters
-	): Pair<DSSPrivateKeyEntry, AbstractSignatureTokenConnection>? {
+	): ResolvedKey? {
 		val tokens = tokenService.discoverTokens().getOrNull() ?: return null
-
+		
 		for (tokenInfo in tokens) {
 			if (!tokenService.probeTokenPresent(tokenInfo)) continue
-
+			
 			val password = if (tokenInfo.requiresPin) {
 				credentialStore.getPassword(TOKEN_CREDENTIAL_SERVICE, tokenInfo.id)
 					?: tokenService.requestPin(tokenInfo)
@@ -246,28 +286,36 @@ class DssSigningRepository(
 			} else {
 				""
 			}
-
+			
 			val certs = tokenService.loadCertificatesSilent(tokenInfo, password).getOrNull() ?: continue
 			val selected = if (parameters.certificateAlias != null) {
 				certs.find { it.alias == parameters.certificateAlias }
 			} else {
 				certs.firstOrNull()
 			} ?: continue
-
-
+			
 			val dssToken = tokenService.getSigningToken(selected, password).getOrNull()
 				?.getDssToken() as? AbstractSignatureTokenConnection ?: continue
-
+			
 			val key = dssToken.keys.find { k ->
 				k.certificate.certificate.subjectX500Principal.toString() == selected.subjectDN
 			} ?: dssToken.keys.firstOrNull() ?: continue
-
-			return key to dssToken
+			
+			return ResolvedKey(key, dssToken, tokenInfo.type)
 		}
-
+		
 		return null
 	}
-
+	
+	/**
+	 * Holds the resolved private key entry, its DSS token connection, and the source [TokenType].
+	 */
+	private data class ResolvedKey(
+		val privateKey: DSSPrivateKeyEntry,
+		val token: AbstractSignatureTokenConnection,
+		val tokenType: TokenType,
+	)
+	
 	private companion object {
 		const val TOKEN_CREDENTIAL_SERVICE = "omnisign-token"
 	}
@@ -292,11 +340,35 @@ class DssSigningRepository(
 		encryptionAlgorithm?.let { setEncryptionAlgorithm(it) }
 		setSigningCertificate(privateKey.certificate)
 		certificateChain = privateKey.certificateChain.toMutableList()
+		contentSize = contentSizeForLevel(dssLevel)
 		
 		parameters.reason?.let { reason = it }
 		parameters.location?.let { location = it }
 		parameters.contactInfo?.let { contactInfo = it }
 		parameters.visibleSignature?.let { imageParameters = buildImageParameters(it) }
+	}
+	
+	/**
+	 * Returns the PDF signature content-area reservation in bytes for [level].
+	 *
+	 * The default DSS value of 9,472 bytes is insufficient for any level above B-B because
+	 * higher levels embed a certificate chain, CRL/OCSP revocation data, one or more RFC 3161
+	 * timestamp tokens, and (for B-LTA) an archive timestamp.  The values below are chosen
+	 * with comfortable headroom over the typical content sizes observed in practice:
+	 *
+	 * | Level    | Budget  | Contains                                          |
+	 * |----------|---------|---------------------------------------------------|
+	 * | B-B      | 13 KB   | signature + cert chain                            |
+	 * | B-T      | 22 KB   | + document timestamp (~5–8 KB)                    |
+	 * | B-LT     | 37 KB   | + CRL/OCSP revocation data (~10–15 KB)            |
+	 * | B-LTA    | 65 KB   | + archive timestamp + extra revocation (~15 KB)   |
+	 */
+	private fun contentSizeForLevel(level: DssSignatureLevel): Int = when (level) {
+		DssSignatureLevel.PAdES_BASELINE_B -> 13_312
+		DssSignatureLevel.PAdES_BASELINE_T -> 22_528
+		DssSignatureLevel.PAdES_BASELINE_LT -> 37_888
+		DssSignatureLevel.PAdES_BASELINE_LTA -> 65_536
+		else -> 22_528
 	}
 	
 	/**

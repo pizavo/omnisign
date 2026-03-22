@@ -165,6 +165,12 @@ data class ResolvedConfig(
 				profile?.customTrustedLists?.forEach { put(it.name, it) }
 				operation?.customTrustedLists?.forEach { put(it.name, it) }
 			}.values.toList()
+			
+			val mergedCerts = buildMap<String, TrustedCertificateConfig> {
+				if (!excludeGlobalTls) global.trustedCertificates.forEach { put(it.name, it) }
+				profile?.trustedCertificates?.forEach { put(it.name, it) }
+				operation?.trustedCertificates?.forEach { put(it.name, it) }
+			}.values.toList()
 
 			return ValidationConfig(
 				policyType = operation?.policyType ?: profile?.policyType ?: global.policyType,
@@ -172,6 +178,7 @@ data class ResolvedConfig(
 				checkRevocation = operation?.checkRevocation ?: profile?.checkRevocation ?: global.checkRevocation,
 				useEuLotl = operation?.useEuLotl ?: profile?.useEuLotl ?: global.useEuLotl,
 				customTrustedLists = mergedTls,
+				trustedCertificates = mergedCerts,
 				algorithmConstraints = mergeAlgorithmConstraints(
 					global.algorithmConstraints,
 					profile?.algorithmConstraints,

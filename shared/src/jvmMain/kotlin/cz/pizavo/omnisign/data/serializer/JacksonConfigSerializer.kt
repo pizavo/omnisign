@@ -10,6 +10,7 @@ import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
+import cz.pizavo.omnisign.domain.model.value.Sensitive
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.port.ConfigSerializer
@@ -20,7 +21,7 @@ import cz.pizavo.omnisign.domain.port.ConfigSerializer
  */
 private abstract class TimestampServerConfigMixin {
 	@get:JsonIgnore
-	abstract val runtimePassword: String?
+	abstract val runtimePassword: Sensitive<String>?
 }
 
 /**

@@ -12,6 +12,9 @@ import cz.pizavo.omnisign.domain.model.config.TrustServiceDraft
 import cz.pizavo.omnisign.domain.model.config.TrustServiceProviderDraft
 import cz.pizavo.omnisign.domain.usecase.ManageTrustedListsUseCase
 import cz.pizavo.omnisign.extensions.*
+import kotlin.concurrent.atomics.AtomicBoolean
+import kotlin.concurrent.atomics.ExperimentalAtomicApi
+import kotlin.concurrent.thread
 import kotlinx.coroutines.runBlocking
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
@@ -45,15 +48,16 @@ class TrustedListBuildCreate : CliktCommand(name = "create"), KoinComponent {
 	override fun help(context: Context): String =
 		"Interactively build a complete trusted list draft in one guided session"
 	
+	@OptIn(ExperimentalAtomicApi::class)
 	override fun run(): Unit = runBlocking {
 		val t = terminal
-		var draftCreated = false
+		val draftCreated = AtomicBoolean(false)
 		
-		val shutdownHook = Thread(Thread.currentThread().threadGroup, {
-			if (draftCreated) {
+		val shutdownHook = thread(start = false, name = "tl-wizard-cleanup") {
+			if (draftCreated.load()) {
 				runBlocking { manageTl.deleteDraft(name) }
 			}
-		}, "tl-wizard-cleanup")
+		}
 		Runtime.getRuntime().addShutdownHook(shutdownHook)
 		
 		t.println("\n╔══════════════════════════════════════════════════════════╗")
@@ -77,7 +81,7 @@ class TrustedListBuildCreate : CliktCommand(name = "create"), KoinComponent {
 		manageTl.upsertDraft(draft).onLeft { e ->
 			echo("❌ Failed to save draft: ${e.message}", err = true); return@runBlocking
 		}
-		draftCreated = true
+		draftCreated.store(true)
 		
 		t.println("\n── Step 2: Trust Service Providers ──────────────────────────")
 		var addAnotherTsp = t.confirm("Add a Trust Service Provider?", default = true)
@@ -120,6 +124,7 @@ class TrustedListBuildCreate : CliktCommand(name = "create"), KoinComponent {
 		}
 		
 		manageTl.getDraft(name).onRight { draft = it }
+		Runtime.getRuntime().removeShutdownHook(shutdownHook)
 		
 		t.println("\n── Draft summary ────────────────────────────────────────────")
 		t.println("  Name      : ${draft.name}")
@@ -134,7 +139,6 @@ class TrustedListBuildCreate : CliktCommand(name = "create"), KoinComponent {
 		if (!t.confirm("Compile to XML now?", default = true)) {
 			t.println("\n✅ Draft '$name' saved. Compile later with:")
 			t.println("   config tl build compile $name --out $name.xml")
-			Runtime.getRuntime().removeShutdownHook(shutdownHook)
 			return@runBlocking
 		}
 		
@@ -161,8 +165,6 @@ class TrustedListBuildCreate : CliktCommand(name = "create"), KoinComponent {
 		} else {
 			t.println("   To register later: config tl add --name $name --source ${outputFile.absolutePath}")
 		}
-		
-		Runtime.getRuntime().removeShutdownHook(shutdownHook)
 	}
 	
 	private companion object {

@@ -53,11 +53,16 @@ class HashAlgorithmTest : FunSpec({
 		HashAlgorithm.WHIRLPOOL.notes.shouldNotBeNull()
 	}
 
-	test("SHA-2 and SHA-3 families have null notes") {
+	test("SHA-2 family has null notes") {
 		listOf(
 			HashAlgorithm.SHA256, HashAlgorithm.SHA384, HashAlgorithm.SHA512,
-			HashAlgorithm.SHA3_256, HashAlgorithm.SHA3_384, HashAlgorithm.SHA3_512
 		).forEach { alg -> alg.notes.shouldBeNull() }
+	}
+
+	test("SHA-3 family has non-null notes about Windows CNG incompatibility") {
+		listOf(
+			HashAlgorithm.SHA3_256, HashAlgorithm.SHA3_384, HashAlgorithm.SHA3_512
+		).forEach { alg -> alg.notes.shouldNotBeNull() }
 	}
 
 	test("entries count matches expected number of algorithms") {

@@ -1,80 +1,109 @@
-This is a Kotlin Multiplatform project targeting Web, Desktop (JVM), Server.
+# OmniSign
 
-* [/composeApp](./composeApp/src) is for code that will be shared across your Compose Multiplatform applications.
-  It contains several subfolders:
-  - [commonMain](./composeApp/src/commonMain/kotlin) is for code that’s common for all targets.
-  - Other folders are for Kotlin code that will be compiled for only the platform indicated in the folder name.
-    For example, if you want to use Apple’s CoreCrypto for the iOS part of your Kotlin app,
-    the [iosMain](./composeApp/src/iosMain/kotlin) folder would be the right place for such calls.
-    Similarly, if you want to edit the Desktop (JVM) specific part, the [jvmMain](./composeApp/src/jvmMain/kotlin)
-    folder is the appropriate location.
+Multiplatform digital signature verification, signing, and re-timestamping application built on the
+[EU Digital Signature Service (DSS)](https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/doc/dss-documentation.html)
+library. Supports **PAdES BASELINE B / B-T / B-LT / B-LTA** for PDF documents (including PDF/A-3b).
 
-* [/server](./server/src/main/kotlin) is for the Ktor server application.
+## Features
 
-* [/shared](./shared/src) is for the code that will be shared between all targets in the project.
-  The most important subfolder is [commonMain](./shared/src/commonMain/kotlin). If preferred, you
-  can add code to the platform-specific folders here too.
+- **Signing** — Sign PDF documents using X.509 certificates stored in PKCS#12 files, PKCS#11 hardware tokens
+  (including qualified ones), the Windows Certificate Store, or the macOS Keychain.
+- **Validation** — Validate electronically signed PDFs against eIDAS (EU LOTL), custom trusted lists,
+  or standalone PKIX chains. CRL and OCSP revocation checking are included.
+- **Timestamping** — Extend signatures from B-B → B-T → B-LT → B-LTA using RFC 3161 timestamp servers.
+- **Archival (Digital Continuity)** — Automatic re-timestamping of B-LTA documents before archival
+  timestamps expire, managed by an OS-level scheduler.
+- **Custom Trusted Lists** — Build and register your own ETSI Trusted Lists for non-eIDAS environments.
+- **Configurable Algorithms** — SHA-256, SHA-384, SHA-512 hash algorithms out of the box, with support
+  for Whirlpool, RIPEMD-160, and future post-quantum algorithms. Per-algorithm expiration date management
+  aligned with ETSI TS 119 312.
+- **Profiles** — Named configuration profiles for different signing/validation contexts
+  (e.g., university, personal, corporate).
+- **JSON Output** — Machine-readable JSON mode for scripting and integration.
 
-### Build and Run Desktop (JVM) Application
+## Platforms
 
-To build and run the development version of the desktop app, use the run configuration from the run widget
-in your IDE’s toolbar or run it directly from the terminal:
-- on macOS/Linux
-  ```shell
-  ./gradlew :composeApp:run
-  ```
-- on Windows
-  ```shell
-  .\gradlew.bat :composeApp:run
-  ```
+| Platform                        | Module        | Technology               |
+|---------------------------------|---------------|--------------------------|
+| CLI (Linux, Windows, macOS)     | `cli`         | Kotlin/JVM               |
+| Desktop (Linux, Windows, macOS) | `composeApp`  | Compose Multiplatform    |
+| Server                          | `server`      | Ktor (Kotlin/JVM)        |
+| Web                             | `composeApp`  | Compose for Web (Wasm)   |
 
-### Build and Run Server
+## Project Structure
 
-To build and run the development version of the server, use the run configuration from the run widget
-in your IDE’s toolbar or run it directly from the terminal:
-- on macOS/Linux
-  ```shell
-  ./gradlew :server:run
-  ```
-- on Windows
-  ```shell
-  .\gradlew.bat :server:run
-  ```
+```
+omnisign/
+├── shared/         Multiplatform core — domain models, use cases, DSS integration
+├── cli/            Command-line interface (fat JAR + native installers)
+├── composeApp/     Compose Multiplatform UI — desktop (JVM) and web (Wasm) targets
+├── server/         Ktor HTTP server
+└── gradle/         Version catalog and Gradle wrapper
+```
 
-### Build and Run Web Application
+## Quick Start
 
-To build and run the development version of the web app, use the run configuration from the run widget
-in your IDE's toolbar or run it directly from the terminal:
-- for the Wasm target (faster, modern browsers):
-  - on macOS/Linux
-    ```shell
-    ./gradlew :composeApp:wasmJsBrowserDevelopmentRun
-    ```
-  - on Windows
-    ```shell
-    .\gradlew.bat :composeApp:wasmJsBrowserDevelopmentRun
-    ```
-- for the JS target (slower, supports older browsers):
-  - on macOS/Linux
-    ```shell
-    ./gradlew :composeApp:jsBrowserDevelopmentRun
-    ```
-  - on Windows
-    ```shell
-    .\gradlew.bat :composeApp:jsBrowserDevelopmentRun
-    ```
+### Prerequisites
 
----
+- **JDK 25+** (required by the shared module)
+- **Gradle** (wrapper included)
+
+### Build & Run — CLI
+
+```shell
+# Fat JAR (recommended)
+.\gradlew.bat :cli:shadowJar
+java -jar cli/build/libs/omnisign-<version>.jar --help
+
+# Or run directly via Gradle
+.\gradlew.bat :cli:run --args="--help"
+```
+
+See the [CLI README](cli/README.md) for the full command reference, installer packages,
+and usage examples.
+
+### Build & Run — Desktop
+
+```shell
+# Linux / macOS
+./gradlew :composeApp:run
+
+# Windows
+.\gradlew.bat :composeApp:run
+```
+
+### Build & Run — Server
+
+```shell
+# Linux / macOS
+./gradlew :server:run
+
+# Windows
+.\gradlew.bat :server:run
+```
+
+### Build & Run — Web (Wasm)
+
+```shell
+# Linux / macOS
+./gradlew :composeApp:wasmJsBrowserDevelopmentRun
+
+# Windows
+.\gradlew.bat :composeApp:wasmJsBrowserDevelopmentRun
+```
+
+## Key Libraries
+
+| Library                                                                                               | Purpose                                                        |
+|-------------------------------------------------------------------------------------------------------|----------------------------------------------------------------|
+| [EU DSS 6.3](https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/doc/dss-documentation.html) | PAdES signing, validation, timestamping, trusted list handling |
+| [Compose Multiplatform](https://github.com/JetBrains/compose-multiplatform)                           | Shared UI for desktop and web                                  |
+| [Ktor](https://ktor.io/)                                                                              | HTTP server                                                    |
+| [Clikt](https://ajalt.github.io/clikt/)                                                               | CLI argument parsing                                           |
+| [Koin](https://insert-koin.io/)                                                                       | Dependency injection                                           |
+| [Arrow](https://arrow-kt.io/)                                                                         | Functional error handling                                      |
+| [Kotest](https://kotest.io/)                                                                          | Testing framework                                              |
 
 ## License
 
 This project is licensed under the [GNU Affero General Public License v3.0 or later](LICENSE.md) (AGPL-3.0-or-later).
-
----
-
-Learn more about [Kotlin Multiplatform](https://www.jetbrains.com/help/kotlin-multiplatform-dev/get-started.html),
-[Compose Multiplatform](https://github.com/JetBrains/compose-multiplatform/#compose-multiplatform),
-[Kotlin/Wasm](https://kotl.in/wasm/)…
-
-We would appreciate your feedback on Compose/Web and Kotlin/Wasm in the public Slack channel [#compose-web](https://slack-chats.kotlinlang.org/c/compose-web).
-If you face any issues, please report them on [YouTrack](https://youtrack.jetbrains.com/newIssue?project=CMP).

@@ -272,6 +272,16 @@ class Validate : CliktCommand(
 			}
 		}
 		
+		val hasQualificationNotes = signature.qualificationErrors.isNotEmpty() ||
+				signature.qualificationWarnings.isNotEmpty() ||
+				signature.qualificationInfos.isNotEmpty()
+		if (hasQualificationNotes) {
+			echo("│")
+			echo("│  🔒 Qualification:")
+			(signature.qualificationErrors + signature.qualificationWarnings + signature.qualificationInfos)
+				.forEach { note -> echo("│     ℹ️ $note") }
+		}
+		
 		echo("└" + "─".repeat(63))
 	}
 	

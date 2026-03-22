@@ -7,8 +7,6 @@ import kotlinx.serialization.Serializable
  */
 @Serializable
 data class CrlConfig(
-    val urls: List<String> = emptyList(),
-    val timeout: Int = 30000,
-    val cacheDirectory: String? = null
+    val timeout: Int = 30000
 )
 

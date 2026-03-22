@@ -38,8 +38,9 @@ class DssSigningRepositoryTest : FunSpec({
 	val tokenService: TokenService = mockk()
 	val configRepository: ConfigRepository = mockk()
 	val credentialStore: CredentialStore = mockk()
+	val dssServiceFactory: DssServiceFactory = mockk(relaxed = true)
 	
-	val repository = DssSigningRepository(tokenService, configRepository, credentialStore)
+	val repository = DssSigningRepository(tokenService, configRepository, credentialStore, dssServiceFactory)
 	
 	fun defaultConfig() = AppConfig(
 		global = GlobalConfig(

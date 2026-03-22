@@ -52,11 +52,24 @@ enum class HashAlgorithm {
 	 */
 	val notes: String?
 		get() = when (this) {
-			RIPEMD160 -> "160-bit output offers lower collision resistance than SHA-256; use only when interoperability requires it"
-			WHIRLPOOL -> "Not in ETSI/eIDAS recommended list; supported by DSS but uncommon in practice"
+			RIPEMD160 -> "160-bit output offers lower collision resistance than SHA-256; use only when interoperability requires it; not supported by Windows Certificate Store"
+			WHIRLPOOL -> "Not in ETSI/eIDAS recommended list; supported by DSS but uncommon in practice; not supported by Windows Certificate Store"
+			SHA3_256, SHA3_384, SHA3_512 -> "Not supported by Windows Certificate Store — Windows CNG does not implement SHA-3; use a PKCS#11 or file-based token for SHA-3 signing"
 			else -> null
 		}
-	
+
+	/**
+	 * Whether this algorithm is supported by the Windows CNG cryptography provider
+	 * (exposed to the JVM via `SunMSCAPI`).
+	 *
+	 * Windows CNG only supports the SHA-2 family (SHA-256, SHA-384, SHA-512) for ECDSA and RSA
+	 * signing. SHA-3 family, Whirlpool, and RIPEMD-160 are not implemented by Windows CNG and
+	 * will cause a JCA `InvalidKeyException` at runtime when using a `WINDOWS_MY` token.
+	 * Confirmed failing with DSS 6.3 + Java 21 on Windows 11 with an ECDSA certificate.
+	 */
+	val isMscapiCompatible: Boolean
+		get() = this in setOf(SHA256, SHA384, SHA512)
+
 	/**
 	 * The date after which this algorithm is considered cryptographically expired per
 	 * ETSI TS 119 312 as encoded in the DSS default ETSI validation policy.

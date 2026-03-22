@@ -21,4 +21,13 @@ sealed interface ArchivingError : OperationError {
         override val details: String? = null,
         override val cause: Throwable? = null
     ) : ArchivingError
+
+    /**
+     * The timestamp server could not be reached or returned an error during extension.
+     */
+    data class TimestampFailed(
+        override val message: String,
+        override val details: String? = null,
+        override val cause: Throwable? = null
+    ) : ArchivingError
 }

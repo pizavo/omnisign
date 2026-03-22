@@ -61,8 +61,8 @@ Or, when using the `install` distribution:
 ### Windows — MSI installer
 
 The MSI installer registers `omnisign` in PATH automatically.
-During installation a dialog lets you choose between a system-wide install
-(Program Files, system PATH, requires elevation) and a per-user install
+During installation a dialog lets you choose between a system-wide installation
+(Program Files, system PATH, requires elevation) and a per-user installation
 (LocalAppData, user PATH, no elevation).
 
 ### Linux — DEB / RPM
@@ -110,7 +110,7 @@ The macOS packages are currently unsigned. On first launch macOS may show an
 xattr -cr /Applications/omnisign.app
 ```
 
-or by right-clicking the application and choosing **Open**.
+Or by right-clicking the application and choosing **Open**.
 Code signing requires an Apple Developer ID certificate
 (separate from PGP/X.509, obtained through the
 [Apple Developer Program](https://developer.apple.com/programs/)).
@@ -125,7 +125,7 @@ and the uninstaller itself:
 omnisign-uninstall
 ```
 
-To uninstall manually (e.g. after a DMG install):
+To uninstall manually (e.g., after a DMG installation):
 
 ```shell
 rm -f /usr/local/bin/omnisign
@@ -192,27 +192,98 @@ omnisign validate -f contract.pdf --report-out report.xml --report-format XML_SI
 omnisign validate -f contract.pdf --profile university --validation-policy CUSTOM -p policy.xml
 ```
 
+**Sample output:**
+
+```
+═══════════════════════════════════════════════════════════════
+                    VALIDATION REPORT
+═══════════════════════════════════════════════════════════════
+Document:      thesis-signed.pdf
+Validated at:  2026-03-22T13:59:25.046040200Z
+Overall:       ✅ VALID
+═══════════════════════════════════════════════════════════════
+
+⚠️ 1 trusted list could not be refreshed (eidas.gov.ie). Qualification assessment
+   for certificates from these sources may be incomplete.
+
+┌─ Signature 1 of 1
+│
+│  Indication:       ✅ PASSED
+│  Signed by:        John Doe
+│  Signature level:  PAdES-BASELINE-LTA
+│  Signature time:   Sat Mar 21 20:43:08 CET 2026
+│  Algorithms:       SHA512 / RSA
+│
+│  Certificate:
+│    Subject:        CN=John Doe, O=Example University, C=CZ
+│    Issuer:         CN=CA RSA 1, O=Example CA, C=GR
+│    Serial:         73660465370300728244807694835464941913
+│    Valid from:     Fri Sep 12 00:27:09 CEST 2025
+│    Valid to:       Sun Sep 12 00:27:09 CEST 2027
+│    Qualified:      No
+│
+│  ❌ Errors:
+│     ℹ️ Unable to build a certificate chain up to a trusted list!
+│
+│  ⚠️ Warnings:
+│     ℹ️ The signing certificate does not have an expected key-usage!
+│
+│  ℹ️ Information:
+│     ℹ️ The certificate is not qualified.
+│
+└───────────────────────────────────────────────────────────────
+
+┌─ Timestamps (2)
+│
+│  1. Signature timestamp
+│     Indication:    ✅ PASSED
+│     Produced:      Sat Mar 21 20:43:08 CET 2026
+│     TSA:           CN=tsa.example.com, O=TSA Provider
+│
+│  2. Document timestamp
+│     Indication:    ✅ PASSED
+│     Produced:      Sat Mar 21 20:43:09 CET 2026
+│     TSA:           CN=tsa.example.com, O=TSA Provider
+│
+└───────────────────────────────────────────────────────────────
+
+═══════════════════════════════════════════════════════════════
+Summary: 1 passed (1 total)
+═══════════════════════════════════════════════════════════════
+```
+
 **Output notes**
 
+*Errors, warnings, and information:* Each signature and timestamp may contain
+`❌ Errors`, `⚠️ Warnings`, and `ℹ️ Information` sections. These are individual
+constraint check results reported by the DSS validation engine (ETSI EN 319 102-1)
+and do not necessarily indicate a problem with the signature itself:
+
+- **Errors** — Constraint checks that failed according to the active validation policy.
+  For example, *"Unable to build a certificate chain up to a trusted list!"* means the
+  signing certificate is not issued by any CA present in the EU LOTL or a registered
+  custom trusted list. This is expected for certificates outside the eIDAS trust framework
+  (e.g., institutional or self-signed certificates). The overall `✅ PASSED` indication
+  remains the authoritative result.
+- **Warnings** — Non-critical findings. For example, *"The signing certificate does not
+  have an expected key-usage!"* is reported when the certificate lacks a `nonRepudiation`
+  key usage — common for S/MIME or general-purpose certificates.
+- **Information** — Purely informational notes (shown by default when present,
+  additional details available with `--detailed`).
+
 *Trusted list notices:* If one or more EU member-state trusted lists cannot be reached at
-validation time (e.g. due to a network error or an untrusted server certificate on the remote
-host), a notice is printed below the report header:
-
-```
-⚠️  1 trusted list could not be refreshed (eidas.gov.ie). Qualification assessment for
-    certificates from this source may be incomplete.
-```
-
-This does not affect the cryptographic validity of the signature itself. Only the eIDAS
-qualification assessment (e.g. `AdESig-QC`) for signing certificates issued by the affected
-member state may be unavailable. When using `--json`, the equivalent information is available
-in the `tlWarnings` array of the validation result object.
+validation time (e.g., due to a network error or an untrusted server certificate on the remote
+host), a notice is printed below the report header. This does not affect the cryptographic
+validity of the signature itself. Only the eIDAS qualification assessment (e.g. `AdESig-QC`)
+for signing certificates issued by the affected member state may be unavailable. When using
+`--json`, the equivalent information is available in the `tlWarnings` array of the validation
+result object.
 
 *INDETERMINATE timestamps in valid LTA signatures:* In a freshly created PAdES-BASELINE-LTA
 document it is normal for both the signature timestamp and the archive (document) timestamp to
 show `INDETERMINATE`. DSS validates each timestamp token in isolation (ETSI EN 319 102-1) before
 aggregating the results into the overall indication, so the TSA certificate's revocation status
-cannot always be proven at the exact timestamp production time. PDF readers (e.g. Adobe Acrobat)
+cannot always be proven at the exact timestamp production time. PDF readers (e.g., Adobe Acrobat)
 use a simpler PKIX chain check and report both timestamps as valid. The `✅ VALID` overall
 indication is the authoritative result. Renew the archive timestamp periodically
 (`omnisign timestamp --level PADES_BASELINE_LTA`) to maintain long-term cryptographic
@@ -404,7 +475,6 @@ omnisign config set [options]
 | `--timestamp-username <user>`                  | Default TSA HTTP Basic username                                                   |
 | `--timestamp-password <pass>`                  | Default TSA HTTP Basic password (stored in OS keychain)                           |
 | `--timestamp-timeout <ms>`                     | Default TSA request timeout in milliseconds                                       |
-| `--ocsp-url <url>`                             | Default OCSP responder URL                                                        |
 | `--validation-policy <type>`                   | Default validation policy (`DEFAULT_ETSI`, `CUSTOM`, …)                           |
 | `--check-revocation <bool>`                    | Enable/disable certificate revocation checking                                    |
 | `--use-eu-lotl <bool>`                         | Enable/disable the EU List of Trusted Lists                                       |

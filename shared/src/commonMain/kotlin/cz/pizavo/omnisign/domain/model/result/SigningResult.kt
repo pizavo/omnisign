@@ -6,13 +6,14 @@ package cz.pizavo.omnisign.domain.model.result
  * @property outputFile Absolute path of the signed output file.
  * @property signatureId DSS-assigned identifier of the created signature.
  * @property signatureLevel Name of the PAdES level used (e.g. `PADES_BASELINE_B`).
- * @property warnings Non-fatal warnings produced during the signing operation, such as
- *   the use of an algorithm past its ETSI expiration date.
+ * @property warnings User-friendly, grouped warning summaries suitable for display.
+ * @property rawWarnings Original, unsanitized warning strings from DSS for verbose / JSON output.
  */
 data class SigningResult(
 	val outputFile: String,
 	val signatureId: String,
 	val signatureLevel: String,
-	val warnings: List<String> = emptyList()
+	val warnings: List<String> = emptyList(),
+	val rawWarnings: List<String> = emptyList(),
 )
 

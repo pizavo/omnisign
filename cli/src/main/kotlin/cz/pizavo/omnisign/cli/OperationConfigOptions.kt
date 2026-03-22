@@ -13,6 +13,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
+import cz.pizavo.omnisign.domain.model.value.sensitive
 
 /**
  * Reusable Clikt option group for on-execute configuration overrides.
@@ -118,7 +119,7 @@ class OperationConfigOptions : OptionGroup(
 			TimestampServerConfig(
 				url = timestampUrl ?: "",
 				username = timestampUsername,
-				runtimePassword = timestampPassword,
+				runtimePassword = timestampPassword?.sensitive(),
 				timeout = timestampTimeout ?: 30000
 			)
 		} else null

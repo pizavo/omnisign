@@ -1,9 +1,6 @@
 package cz.pizavo.omnisign.di
 
-import cz.pizavo.omnisign.data.repository.DssArchivingRepository
-import cz.pizavo.omnisign.data.repository.DssSigningRepository
-import cz.pizavo.omnisign.data.repository.DssValidationRepository
-import cz.pizavo.omnisign.data.repository.FileConfigRepository
+import cz.pizavo.omnisign.data.repository.*
 import cz.pizavo.omnisign.data.serializer.JsonConfigSerializer
 import cz.pizavo.omnisign.data.serializer.XmlConfigSerializer
 import cz.pizavo.omnisign.data.serializer.YamlConfigSerializer
@@ -35,6 +32,7 @@ val jvmRepositoryModule = module {
 	singleOf(::KeyringCredentialStore) bind CredentialStore::class
 	
 	single<ConfigRepository> { FileConfigRepository() }
+	singleOf(::DssServiceFactory)
 	singleOf(::DssValidationRepository) bind ValidationRepository::class
 	singleOf(::DssSigningRepository) bind SigningRepository::class
 	singleOf(::DssArchivingRepository) bind ArchivingRepository::class

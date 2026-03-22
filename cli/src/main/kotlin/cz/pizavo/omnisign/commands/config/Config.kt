@@ -6,6 +6,7 @@ import com.github.ajalt.clikt.core.subcommands
 import cz.pizavo.omnisign.commands.config.pkcs11.ConfigPkcs11
 import cz.pizavo.omnisign.commands.config.profile.ConfigProfile
 import cz.pizavo.omnisign.commands.config.tl.ConfigTrustedList
+import cz.pizavo.omnisign.commands.config.trust.ConfigTrust
 
 /**
  * Top-level CLI command for managing application configuration.
@@ -19,6 +20,7 @@ class Config : CliktCommand(name = "config") {
 			ConfigPath(),
 			ConfigProfile(),
 			ConfigTrustedList(),
+			ConfigTrust(),
 			ConfigPkcs11(),
 			ConfigExport(),
 			ConfigImport()

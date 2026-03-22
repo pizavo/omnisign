@@ -395,5 +395,172 @@ class ManageTrustedListsUseCaseTest : FunSpec({
 			.shouldBeLeft()
 			.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
 	}
+	
+	// ── Trusted certificate CRUD ──────────────────────────────────────────────
+	
+	fun cert(name: String, type: TrustedCertificateType = TrustedCertificateType.ANY) =
+		TrustedCertificateConfig(name = name, type = type, certificateBase64 = "AAAA", subjectDN = "CN=$name")
+	
+	test("addTrustedCertificate stores a global cert") {
+		coEvery { configRepository.getCurrentConfig() } returns baseConfig
+		val saved = slot<AppConfig>()
+		coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+		
+		useCase.addTrustedCertificate(cert("my-ca")).shouldBeRight()
+		
+		saved.captured.global.validation.trustedCertificates.shouldHaveSize(1)
+		saved.captured.global.validation.trustedCertificates.first().name shouldBe "my-ca"
+	}
+	
+	test("addTrustedCertificate replaces existing entry with same name") {
+		val existing = baseConfig.copy(
+			global = baseConfig.global.copy(
+				validation = baseConfig.global.validation.copy(
+					trustedCertificates = listOf(cert("my-ca"))
+				)
+			)
+		)
+		coEvery { configRepository.getCurrentConfig() } returns existing
+		val saved = slot<AppConfig>()
+		coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+		
+		val updated = cert("my-ca", TrustedCertificateType.TSA)
+		useCase.addTrustedCertificate(updated).shouldBeRight()
+		
+		saved.captured.global.validation.trustedCertificates.shouldHaveSize(1)
+		saved.captured.global.validation.trustedCertificates.first().type shouldBe TrustedCertificateType.TSA
+	}
+	
+	test("addTrustedCertificate to profile stores in that profile") {
+		val config = baseConfig.copy(
+			profiles = mapOf("p1" to ProfileConfig(name = "p1"))
+		)
+		coEvery { configRepository.getCurrentConfig() } returns config
+		val saved = slot<AppConfig>()
+		coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+		
+		useCase.addTrustedCertificate(cert("profile-cert"), profileName = "p1").shouldBeRight()
+		
+		saved.captured.profiles["p1"]?.validation?.trustedCertificates?.shouldHaveSize(1)
+	}
+	
+	test("addTrustedCertificate returns error for unknown profile") {
+		coEvery { configRepository.getCurrentConfig() } returns baseConfig
+		
+		useCase.addTrustedCertificate(cert("cert"), profileName = "ghost")
+			.shouldBeLeft()
+			.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+			.message shouldContain "ghost"
+	}
+	
+	test("removeTrustedCertificate removes a global cert") {
+		val existing = baseConfig.copy(
+			global = baseConfig.global.copy(
+				validation = baseConfig.global.validation.copy(
+					trustedCertificates = listOf(cert("a"), cert("b", TrustedCertificateType.TSA))
+				)
+			)
+		)
+		coEvery { configRepository.getCurrentConfig() } returns existing
+		val saved = slot<AppConfig>()
+		coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+		
+		useCase.removeTrustedCertificate("a").shouldBeRight()
+		
+		saved.captured.global.validation.trustedCertificates.shouldHaveSize(1)
+		saved.captured.global.validation.trustedCertificates.first().name shouldBe "b"
+	}
+	
+	test("removeTrustedCertificate returns error when name not found") {
+		coEvery { configRepository.getCurrentConfig() } returns baseConfig
+		
+		useCase.removeTrustedCertificate("nonexistent")
+			.shouldBeLeft()
+			.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+	}
+	
+	test("listTrustedCertificates returns global list") {
+		val existing = baseConfig.copy(
+			global = baseConfig.global.copy(
+				validation = baseConfig.global.validation.copy(
+					trustedCertificates = listOf(cert("a"), cert("b"))
+				)
+			)
+		)
+		coEvery { configRepository.getCurrentConfig() } returns existing
+		
+		val result = useCase.listTrustedCertificates().shouldBeRight()
+		result.shouldHaveSize(2)
+	}
+	
+	test("listTrustedCertificates returns empty list when none configured") {
+		coEvery { configRepository.getCurrentConfig() } returns baseConfig
+		
+		useCase.listTrustedCertificates().shouldBeRight().shouldBeEmpty()
+	}
+	
+	test("listTrustedCertificates returns profile-scoped list") {
+		val config = baseConfig.copy(
+			profiles = mapOf(
+				"p1" to ProfileConfig(
+					name = "p1",
+					validation = ValidationConfig(
+						trustedCertificates = listOf(cert("profile-cert"))
+					)
+				)
+			)
+		)
+		coEvery { configRepository.getCurrentConfig() } returns config
+		
+		useCase.listTrustedCertificates(profileName = "p1").shouldBeRight().shouldHaveSize(1)
+	}
+	
+	test("listTrustedCertificates returns error for unknown profile") {
+		coEvery { configRepository.getCurrentConfig() } returns baseConfig
+		
+		useCase.listTrustedCertificates(profileName = "ghost")
+			.shouldBeLeft()
+			.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+	}
+	
+	test("removeTrustedCertificate removes a profile-scoped cert") {
+		val config = baseConfig.copy(
+			profiles = mapOf(
+				"p1" to ProfileConfig(
+					name = "p1",
+					validation = ValidationConfig(
+						trustedCertificates = listOf(cert("a"), cert("b"))
+					)
+				)
+			)
+		)
+		coEvery { configRepository.getCurrentConfig() } returns config
+		val saved = slot<AppConfig>()
+		coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+		
+		useCase.removeTrustedCertificate("a", profileName = "p1").shouldBeRight()
+		
+		saved.captured.profiles["p1"]?.validation?.trustedCertificates?.shouldHaveSize(1)
+		saved.captured.profiles["p1"]?.validation?.trustedCertificates?.first()?.name shouldBe "b"
+	}
+	
+	test("removeTrustedCertificate returns error for unknown profile") {
+		coEvery { configRepository.getCurrentConfig() } returns baseConfig
+		
+		useCase.removeTrustedCertificate("cert", profileName = "ghost")
+			.shouldBeLeft()
+			.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+	}
+	
+	test("removeTrustedCertificate returns error for unknown cert name in profile") {
+		val config = baseConfig.copy(
+			profiles = mapOf("p1" to ProfileConfig(name = "p1"))
+		)
+		coEvery { configRepository.getCurrentConfig() } returns config
+		
+		useCase.removeTrustedCertificate("nonexistent", profileName = "p1")
+			.shouldBeLeft()
+			.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+	}
 })
 

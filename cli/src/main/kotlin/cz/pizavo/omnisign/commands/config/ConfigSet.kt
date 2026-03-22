@@ -13,11 +13,11 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
 import kotlinx.coroutines.runBlocking
-import kotlinx.datetime.Clock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.todayIn
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
+import kotlin.time.Clock
 
 /**
  * CLI subcommand for modifying the global (default) configuration.
@@ -64,11 +64,6 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 		"--timestamp-timeout",
 		help = "Default timestamp server request timeout in milliseconds"
 	).int()
-	
-	private val ocspUrl by option(
-		"--ocsp-url",
-		help = "Default OCSP URL"
-	)
 	
 	private val validationPolicy by option(
 		"--validation-policy",
@@ -130,7 +125,7 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 	override fun run(): Unit = runBlocking {
 		if (listOf(
 				hashAlgorithm, encryptionAlgorithm, signatureLevel, timestampUrl, timestampUsername,
-				timestampPassword, timestampTimeout, ocspUrl, validationPolicy, checkRevocation, useEuLotl,
+				timestampPassword, timestampTimeout, validationPolicy, checkRevocation, useEuLotl,
 				algoExpirationLevel, algoExpirationLevelAfterUpdate
 			)
 				.all { it == null } && algoExpiryOverride.isEmpty()
@@ -152,7 +147,6 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 				timestampServer = buildTimestampConfig(this.timestampServer),
 				disabledHashAlgorithms = (disabledHashAlgorithms + disableHashAlgorithm) - enableHashAlgorithm.toSet(),
 				disabledEncryptionAlgorithms = (disabledEncryptionAlgorithms + disableEncryptionAlgorithm) - enableEncryptionAlgorithm.toSet(),
-				ocsp = ocspUrl?.let { ocsp.copy(url = it) } ?: ocsp,
 				validation = validation.copy(
 					policyType = validationPolicy ?: validation.policyType,
 					checkRevocation = checkRevocation?.toBooleanStrictOrNull() ?: validation.checkRevocation,

@@ -17,6 +17,10 @@ import kotlin.system.exitProcess
  *
  * Starts Koin DI, runs the root [Omnisign] command, and converts
  * [ProgramResult] into the corresponding process exit code.
+ *
+ * [exitProcess] is called unconditionally so the JVM terminates immediately
+ * even when third-party libraries (e.g., DSS's Apache HttpClient connection
+ * pool) leave non-daemon threads alive after the operation completes.
  */
 fun main(args: Array<String>) {
 	val terminal = Terminal()
@@ -29,11 +33,13 @@ fun main(args: Array<String>) {
 		)
 	}
 	
+	var exitCode = 0
 	try {
 		Omnisign().main(args)
 	} catch (e: ProgramResult) {
-		exitProcess(e.statusCode)
+		exitCode = e.statusCode
 	} finally {
 		stopKoin()
 	}
+	exitProcess(exitCode)
 }
