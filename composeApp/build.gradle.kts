@@ -24,6 +24,7 @@ plugins {
 	alias(libs.plugins.ksp)
 	alias(libs.plugins.kotest)
 	alias(libs.plugins.lumo)
+	alias(libs.plugins.decoroutinator)
 }
 
 version = project.findProperty("releaseVersion")?.toString() ?: "1.0.0"
@@ -79,11 +80,16 @@ kotlin {
 		}
 		jvmTest.dependencies {
 			implementation(libs.kotest.jvm.runner)
+			implementation(libs.kotest.arrow)
+			implementation(libs.kotest.decoroutinator)
+			implementation(libs.mockk)
+			implementation(libs.kotlinx.coroutines.test)
 		}
 		jvmMain.dependencies {
 			implementation(compose.desktop.currentOs)
 			implementation(libs.kotlinx.coroutines.swing)
 			implementation(libs.pdfbox)
+			implementation(libs.decoroutinator.jvm)
 		}
 	}
 }

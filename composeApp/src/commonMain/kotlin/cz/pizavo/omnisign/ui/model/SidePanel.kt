@@ -4,6 +4,7 @@ import omnisign.composeapp.generated.resources.Res
 import omnisign.composeapp.generated.resources.icon_archive
 import omnisign.composeapp.generated.resources.icon_help
 import omnisign.composeapp.generated.resources.icon_pencil
+import omnisign.composeapp.generated.resources.icon_profile
 import omnisign.composeapp.generated.resources.icon_settings
 import omnisign.composeapp.generated.resources.icon_shield_check
 import omnisign.composeapp.generated.resources.icon_signature
@@ -78,6 +79,14 @@ enum class SidePanel(
         contentDescription = "Open settings panel",
         side = PanelSide.Right,
         pinToBottom = true,
+    ),
+
+    /** Configuration profiles management panel. */
+    Profiles(
+        label = "Profiles",
+        icon = Res.drawable.icon_profile,
+        contentDescription = "Open profiles panel",
+        side = PanelSide.Right,
     ),
     
     /** Application help and documentation panel. */

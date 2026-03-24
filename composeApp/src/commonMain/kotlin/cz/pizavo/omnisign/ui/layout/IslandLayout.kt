@@ -16,16 +16,21 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
+import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.ui.model.PanelSide
+import cz.pizavo.omnisign.ui.model.ProfileListState
 import cz.pizavo.omnisign.ui.model.SidePanel
 import cz.pizavo.omnisign.ui.platform.loadPdfFromPlatformFile
 import cz.pizavo.omnisign.ui.viewmodel.PdfViewerViewModel
+import cz.pizavo.omnisign.ui.viewmodel.ProfileViewModel
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.launch
+import org.koin.mp.KoinPlatform
 
 /**
  * Root shell composable that implements the IntelliJ "Island" layout.
@@ -56,6 +61,17 @@ fun IslandLayout(
     val pdfViewModel: PdfViewerViewModel = viewModel { PdfViewerViewModel() }
     val pdfState by pdfViewModel.state.collectAsState()
     val scope = rememberCoroutineScope()
+
+    val profileViewModel: ProfileViewModel? = remember {
+        val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
+        ProfileViewModel(
+            koin.get<ManageProfileUseCase>(),
+            koin.get<GetConfigUseCase>(),
+        )
+    }
+    val profileState by (profileViewModel?.state ?: remember {
+        kotlinx.coroutines.flow.MutableStateFlow(ProfileListState())
+    }).collectAsState()
 
     val filePickerLauncher = rememberFilePickerLauncher(
         type = FileKitType.File(extensions = listOf("pdf")),
@@ -125,14 +141,27 @@ fun IslandLayout(
                 fromEnd = true,
                 modifier = Modifier.fillMaxHeight(),
             ) {
-                PanelPlaceholderContent(panel = activeRightPanel)
+                when (activeRightPanel) {
+                    SidePanel.Profiles -> ProfilesPanel(
+                        state = profileState,
+                        onToggleActive = { profileViewModel?.toggleActive(it) },
+                        onEdit = { /* TODO: open profile editor */ },
+                        onDelete = { profileViewModel?.delete(it) },
+                        onAdd = { /* TODO: open profile creation form */ },
+                        onDeselectActive = { profileViewModel?.deselectActive() },
+                    )
+                    else -> PanelPlaceholderContent(panel = activeRightPanel)
+                }
             }
 
             IslandSideBar(
                 panels = rightPanels,
                 activePanel = activeRightPanel,
                 onPanelToggle = { panel ->
-                    activeRightPanel = if (activeRightPanel == panel) null else panel
+                    activeRightPanel = if (activeRightPanel == panel) null else {
+                        if (panel == SidePanel.Profiles) profileViewModel?.refresh()
+                        panel
+                    }
                 },
             )
         }
@@ -172,6 +201,11 @@ private fun PanelPlaceholderContent(panel: SidePanel?) {
         )
         SidePanel.Settings -> Text(
             text = "Application settings will appear here.",
+            style = LumoTheme.typography.body2,
+            color = LumoTheme.colors.textSecondary,
+        )
+        SidePanel.Profiles -> Text(
+            text = "Configuration profiles will appear here.",
             style = LumoTheme.typography.body2,
             color = LumoTheme.colors.textSecondary,
         )
