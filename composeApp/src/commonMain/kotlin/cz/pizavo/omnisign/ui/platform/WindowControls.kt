@@ -8,7 +8,7 @@ import androidx.compose.ui.Modifier
  * custom window decoration (JVM desktop with undecorated windows).
  *
  * Provided via [LocalWindowControls] from the platform entry point.
- * When `null` (e.g. on web), the toolbar hides its window-control buttons.
+ * When `null` (e.g., on web), the toolbar hides its window-control buttons.
  *
  * @property onMinimize Minimizes the window to the taskbar/dock.
  * @property onMaximize Toggles between maximized and floating window placement.
@@ -32,7 +32,7 @@ val LocalWindowControls = staticCompositionLocalOf<WindowControls?> { null }
 /**
  * Modifier that makes a composable act as a window drag handle.
  *
- * On JVM desktop this moves the undecorated window when dragged;
+ * On the JVM desktop this moves the undecorated window when dragged;
  * on other platforms this is a no-op identity modifier.
  */
 val LocalWindowDragModifier = staticCompositionLocalOf<Modifier> { Modifier }

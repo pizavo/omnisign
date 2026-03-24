@@ -25,6 +25,8 @@ decoroutinator = "2.6.1"
 compose = "1.10.1"
 compose-material = "1.9.0"
 lumo = "1.2.5"
+pdfbox = "3.0.7"
+filekit = "0.13.0"
 
 [libraries]
 kotest-engine = {module = "io.kotest:kotest-framework-engine", version.ref = "kotest" }
@@ -115,6 +117,12 @@ jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
 
 decoroutinator-jvm = { module = "dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm", version.ref = "decoroutinator" }
+
+pdfbox = { module = "org.apache.pdfbox:pdfbox", version.ref = "pdfbox" }
+
+filekit-core = { module = "io.github.vinceglb:filekit-core", version.ref = "filekit" }
+filekit-dialogs = { module = "io.github.vinceglb:filekit-dialogs", version.ref = "filekit" }
+filekit-dialogs-compose = { module = "io.github.vinceglb:filekit-dialogs-compose", version.ref = "filekit" }
 
 [plugins]
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }

@@ -69,6 +69,9 @@ kotlin {
 			implementation(project.dependencies.platform(libs.koin.bom))
 			implementation(libs.koin.compose)
 			implementation(libs.koin.compose.viewmodel)
+			
+			implementation(libs.filekit.core)
+			implementation(libs.filekit.dialogs.compose)
 		}
 		commonTest.dependencies {
 			implementation(libs.kotest.engine)
@@ -80,6 +83,7 @@ kotlin {
 		jvmMain.dependencies {
 			implementation(compose.desktop.currentOs)
 			implementation(libs.kotlinx.coroutines.swing)
+			implementation(libs.pdfbox)
 		}
 	}
 }

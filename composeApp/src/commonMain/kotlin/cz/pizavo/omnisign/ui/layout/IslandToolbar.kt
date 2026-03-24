@@ -54,12 +54,14 @@ private val CompactButtonPadding = PaddingValues(2.dp)
  *
  * @param isDarkTheme Whether a dark theme is currently active (controls the toggle icon).
  * @param onToggleTheme Callback invoked when the user clicks the theme-toggle button.
+ * @param onOpenFile Callback invoked when the user clicks the folder / open-file button.
  * @param modifier Optional [Modifier] applied to the toolbar root.
  */
 @Composable
 fun IslandToolbar(
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
+    onOpenFile: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val themeLabel = if (isDarkTheme) "Switch to light theme" else "Switch to dark theme"
@@ -101,7 +103,7 @@ fun IslandToolbar(
                             minHeight = CompactButtonSize,
                         ),
                         variant = IconButtonVariant.Ghost,
-                        onClick = { },
+                        onClick = onOpenFile,
                         contentPadding = CompactButtonPadding,
                     ) {
                         Icon(

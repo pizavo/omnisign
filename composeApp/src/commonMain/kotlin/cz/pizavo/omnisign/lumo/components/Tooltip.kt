@@ -43,6 +43,7 @@ import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalWindowInfo
 import androidx.compose.ui.platform.debugInspectorInfo
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Density
@@ -110,7 +111,7 @@ fun TooltipScope.Tooltip(
     val drawCaretModifier =
         if (caretSize.isSpecified) {
             val density = LocalDensity.current
-            val windowContainerWidthInPx = windowContainerWidthInPx()
+            val windowContainerWidthInPx = LocalWindowInfo.current.containerSize.width
             Modifier
                 .drawCaret { anchorLayoutCoordinates ->
                     drawCaretWithPath(
@@ -380,9 +381,6 @@ private fun CacheDrawScope.drawCaretWithPath(
     }
 }
 
-// Won't be needing this once containerSize API in LocalWindowInfo is upstreamed.
-@Composable
-internal expect fun windowContainerWidthInPx(): Int
 
 @Preview
 @Composable
