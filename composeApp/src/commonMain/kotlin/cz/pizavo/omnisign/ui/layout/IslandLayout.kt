@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.ui.layout
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
@@ -93,6 +94,9 @@ fun IslandLayout(
     var activeLeftPanel by remember { mutableStateOf<SidePanel?>(null) }
     var activeRightPanel by remember { mutableStateOf<SidePanel?>(null) }
 
+    var leftPanelWidth by remember { mutableStateOf(IslandSidePanelDefaultWidth) }
+    var rightPanelWidth by remember { mutableStateOf(IslandSidePanelDefaultWidth) }
+
     Column(modifier = modifier.fillMaxSize()) {
         IslandToolbar(
             isDarkTheme = isDarkTheme,
@@ -100,88 +104,111 @@ fun IslandLayout(
             onOpenFile = { filePickerLauncher.launch() },
         )
 
-        Row(
+        BoxWithConstraints(
             modifier = Modifier
                 .weight(1f)
                 .padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
-            horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            IslandSideBar(
-                panels = leftPanels,
-                activePanel = activeLeftPanel,
-                onPanelToggle = { panel ->
-                    activeLeftPanel = if (activeLeftPanel == panel) null else panel
-                },
-            )
+            val sideBarCount = (if (leftPanels.isNotEmpty()) 1 else 0) +
+                    (if (rightPanels.isNotEmpty()) 1 else 0)
+            val gapCount = sideBarCount + 1 +
+                    (if (activeLeftPanel != null) 1 else 0) +
+                    (if (activeRightPanel != null) 1 else 0)
+            val fixedChrome = SideBarWidth * sideBarCount + 4.dp * gapCount
+            val oppositeRight = if (activeRightPanel != null) rightPanelWidth else 0.dp
+            val oppositeLeft = if (activeLeftPanel != null) leftPanelWidth else 0.dp
+            val maxLeftPanelWidth = (maxWidth - fixedChrome - oppositeRight)
+                .coerceAtLeast(IslandSidePanelMinWidth)
+            val maxRightPanelWidth = (maxWidth - fixedChrome - oppositeLeft)
+                .coerceAtLeast(IslandSidePanelMinWidth)
 
-            IslandSidePanel(
-                visible = activeLeftPanel != null,
-                title = activeLeftPanel?.label ?: "",
-                onClose = { activeLeftPanel = null },
-                fromEnd = false,
-                modifier = Modifier.fillMaxHeight(),
+            Row(
+                modifier = Modifier.fillMaxSize(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
-                PanelPlaceholderContent(panel = activeLeftPanel)
-            }
+                IslandSideBar(
+                    panels = leftPanels,
+                    activePanel = activeLeftPanel,
+                    onPanelToggle = { panel ->
+                        activeLeftPanel = if (activeLeftPanel == panel) null else panel
+                    },
+                )
 
-            IslandContentCard(
-                modifier = Modifier.weight(1f).fillMaxHeight(),
-            ) {
-                PdfViewerContent(
-                    state = pdfState,
-                    onPreviousPage = pdfViewModel::previousPage,
-                    onNextPage = pdfViewModel::nextPage,
-                    onZoomIn = pdfViewModel::zoomIn,
-                    onZoomOut = pdfViewModel::zoomOut,
-                    onResetZoom = pdfViewModel::resetZoom,
+                IslandSidePanel(
+                    visible = activeLeftPanel != null,
+                    title = activeLeftPanel?.label ?: "",
+                    onClose = { activeLeftPanel = null },
+                    panelWidth = leftPanelWidth,
+                    maxPanelWidth = maxLeftPanelWidth,
+                    onWidthChange = { leftPanelWidth = it },
+                    fromEnd = false,
+                    modifier = Modifier.fillMaxHeight(),
+                ) {
+                    PanelPlaceholderContent(panel = activeLeftPanel)
+                }
+
+                IslandContentCard(
+                    modifier = Modifier.weight(1f).fillMaxHeight(),
+                ) {
+                    PdfViewerContent(
+                        state = pdfState,
+                        onPreviousPage = pdfViewModel::previousPage,
+                        onNextPage = pdfViewModel::nextPage,
+                        onZoomIn = pdfViewModel::zoomIn,
+                        onZoomOut = pdfViewModel::zoomOut,
+                        onResetZoom = pdfViewModel::resetZoom,
+                    )
+                }
+
+                val isEditingProfile = activeRightPanel == SidePanel.Profiles &&
+                        profileState.mode is ProfilePanelMode.Editing
+                val rightPanelTitle = if (isEditingProfile) "Edit Profile"
+                    else activeRightPanel?.label ?: ""
+
+                IslandSidePanel(
+                    visible = activeRightPanel != null,
+                    title = rightPanelTitle,
+                    onClose = {
+                        if (isEditingProfile) profileViewModel?.cancelEdit()
+                        activeRightPanel = null
+                    },
+                    panelWidth = rightPanelWidth,
+                    maxPanelWidth = maxRightPanelWidth,
+                    onWidthChange = { rightPanelWidth = it },
+                    fromEnd = true,
+                    onBack = if (isEditingProfile) {
+                        { profileViewModel?.cancelEdit() }
+                    } else null,
+                    modifier = Modifier.fillMaxHeight(),
+                ) {
+                    when (activeRightPanel) {
+                        SidePanel.Profiles -> ProfilesPanel(
+                            state = profileState,
+                            onToggleActive = { profileViewModel?.toggleActive(it) },
+                            onEdit = { profileViewModel?.startEdit(it) },
+                            onDelete = { profileViewModel?.delete(it) },
+                            onAdd = { profileViewModel?.startCreate() },
+                            onDeselectActive = { profileViewModel?.deselectActive() },
+                            onConfirmCreate = { profileViewModel?.confirmCreate(it) },
+                            onCancelCreate = { profileViewModel?.cancelCreate() },
+                            onFieldChange = { transform -> profileViewModel?.updateEditState(transform) },
+                            onSaveEdit = { profileViewModel?.saveEdit() },
+                        )
+                        else -> PanelPlaceholderContent(panel = activeRightPanel)
+                    }
+                }
+
+                IslandSideBar(
+                    panels = rightPanels,
+                    activePanel = activeRightPanel,
+                    onPanelToggle = { panel ->
+                        activeRightPanel = if (activeRightPanel == panel) null else {
+                            if (panel == SidePanel.Profiles) profileViewModel?.refresh()
+                            panel
+                        }
+                    },
                 )
             }
-
-            val isEditingProfile = activeRightPanel == SidePanel.Profiles &&
-                    profileState.mode is ProfilePanelMode.Editing
-            val rightPanelTitle = if (isEditingProfile) "Edit Profile"
-                else activeRightPanel?.label ?: ""
-
-            IslandSidePanel(
-                visible = activeRightPanel != null,
-                title = rightPanelTitle,
-                onClose = {
-                    if (isEditingProfile) profileViewModel?.cancelEdit()
-                    activeRightPanel = null
-                },
-                fromEnd = true,
-                onBack = if (isEditingProfile) {
-                    { profileViewModel?.cancelEdit() }
-                } else null,
-                modifier = Modifier.fillMaxHeight(),
-            ) {
-                when (activeRightPanel) {
-                    SidePanel.Profiles -> ProfilesPanel(
-                        state = profileState,
-                        onToggleActive = { profileViewModel?.toggleActive(it) },
-                        onEdit = { profileViewModel?.startEdit(it) },
-                        onDelete = { profileViewModel?.delete(it) },
-                        onAdd = { profileViewModel?.startCreate() },
-                        onDeselectActive = { profileViewModel?.deselectActive() },
-                        onConfirmCreate = { profileViewModel?.confirmCreate(it) },
-                        onCancelCreate = { profileViewModel?.cancelCreate() },
-                        onFieldChange = { transform -> profileViewModel?.updateEditState(transform) },
-                        onSaveEdit = { profileViewModel?.saveEdit() },
-                    )
-                    else -> PanelPlaceholderContent(panel = activeRightPanel)
-                }
-            }
-
-            IslandSideBar(
-                panels = rightPanels,
-                activePanel = activeRightPanel,
-                onPanelToggle = { panel ->
-                    activeRightPanel = if (activeRightPanel == panel) null else {
-                        if (panel == SidePanel.Profiles) profileViewModel?.refresh()
-                        panel
-                    }
-                },
-            )
         }
     }
 }

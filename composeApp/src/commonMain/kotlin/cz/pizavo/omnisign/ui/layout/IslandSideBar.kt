@@ -26,7 +26,8 @@ import cz.pizavo.omnisign.lumo.components.rememberTooltipState
 import cz.pizavo.omnisign.ui.model.SidePanel
 import org.jetbrains.compose.resources.painterResource
 
-private val SideBarWidth = 36.dp
+/** Width of the narrow sidebar icon strip on each side of the layout. */
+internal val SideBarWidth = 36.dp
 private val SideBarButtonSize = 32.dp
 private val SideBarIconSize = 22.dp
 private val SideBarButtonPadding = PaddingValues(2.dp)
