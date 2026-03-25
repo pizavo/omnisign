@@ -16,12 +16,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.ui.model.PanelSide
 import cz.pizavo.omnisign.ui.model.ProfileListState
+import cz.pizavo.omnisign.ui.model.ProfilePanelMode
 import cz.pizavo.omnisign.ui.model.SidePanel
 import cz.pizavo.omnisign.ui.platform.loadPdfFromPlatformFile
 import cz.pizavo.omnisign.ui.viewmodel.PdfViewerViewModel
@@ -67,6 +69,7 @@ fun IslandLayout(
         ProfileViewModel(
             koin.get<ManageProfileUseCase>(),
             koin.get<GetConfigUseCase>(),
+            koin.getOrNull<CredentialStore>(),
         )
     }
     val profileState by (profileViewModel?.state ?: remember {
@@ -134,21 +137,36 @@ fun IslandLayout(
                 )
             }
 
+            val isEditingProfile = activeRightPanel == SidePanel.Profiles &&
+                    profileState.mode is ProfilePanelMode.Editing
+            val rightPanelTitle = if (isEditingProfile) "Edit Profile"
+                else activeRightPanel?.label ?: ""
+
             IslandSidePanel(
                 visible = activeRightPanel != null,
-                title = activeRightPanel?.label ?: "",
-                onClose = { activeRightPanel = null },
+                title = rightPanelTitle,
+                onClose = {
+                    if (isEditingProfile) profileViewModel?.cancelEdit()
+                    activeRightPanel = null
+                },
                 fromEnd = true,
+                onBack = if (isEditingProfile) {
+                    { profileViewModel?.cancelEdit() }
+                } else null,
                 modifier = Modifier.fillMaxHeight(),
             ) {
                 when (activeRightPanel) {
                     SidePanel.Profiles -> ProfilesPanel(
                         state = profileState,
                         onToggleActive = { profileViewModel?.toggleActive(it) },
-                        onEdit = { /* TODO: open profile editor */ },
+                        onEdit = { profileViewModel?.startEdit(it) },
                         onDelete = { profileViewModel?.delete(it) },
-                        onAdd = { /* TODO: open profile creation form */ },
+                        onAdd = { profileViewModel?.startCreate() },
                         onDeselectActive = { profileViewModel?.deselectActive() },
+                        onConfirmCreate = { profileViewModel?.confirmCreate(it) },
+                        onCancelCreate = { profileViewModel?.cancelCreate() },
+                        onFieldChange = { transform -> profileViewModel?.updateEditState(transform) },
+                        onSaveEdit = { profileViewModel?.saveEdit() },
                     )
                     else -> PanelPlaceholderContent(panel = activeRightPanel)
                 }

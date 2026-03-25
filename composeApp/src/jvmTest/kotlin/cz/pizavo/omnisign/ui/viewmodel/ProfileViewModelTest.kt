@@ -4,10 +4,14 @@ import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
+import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.ui.model.ProfilePanelMode
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
@@ -199,6 +203,342 @@ class ProfileViewModelTest : FunSpec({
             state.loading shouldBe false
         }
     }
-})
 
+    test("startCreate sets creatingNew to true") {
+        runTest(testDispatcher) {
+            val config = AppConfig()
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.state.value.creatingNew shouldBe false
+
+            vm.startCreate()
+
+            vm.state.value.creatingNew shouldBe true
+            vm.state.value.error.shouldBeNull()
+        }
+    }
+
+    test("cancelCreate sets creatingNew to false") {
+        runTest(testDispatcher) {
+            val config = AppConfig()
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startCreate()
+            vm.state.value.creatingNew shouldBe true
+
+            vm.cancelCreate()
+
+            vm.state.value.creatingNew shouldBe false
+            vm.state.value.error.shouldBeNull()
+        }
+    }
+
+    test("confirmCreate with blank name sets error and keeps creatingNew true") {
+        runTest(testDispatcher) {
+            val config = AppConfig()
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startCreate()
+            vm.confirmCreate("   ")
+            advanceUntilIdle()
+
+            vm.state.value.creatingNew shouldBe true
+            vm.state.value.error.shouldNotBeNull()
+        }
+    }
+
+    test("confirmCreate with valid name creates profile and hides creation row") {
+        runTest(testDispatcher) {
+            var currentConfig = AppConfig()
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startCreate()
+            vm.state.value.creatingNew shouldBe true
+
+            vm.confirmCreate("new-profile")
+            advanceUntilIdle()
+
+            vm.state.value.creatingNew shouldBe false
+            vm.state.value.profiles shouldHaveSize 1
+            vm.state.value.profiles.first().name shouldBe "new-profile"
+            vm.state.value.error.shouldBeNull()
+        }
+    }
+
+    test("confirmCreate trims whitespace from name") {
+        runTest(testDispatcher) {
+            var currentConfig = AppConfig()
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startCreate()
+            vm.confirmCreate("  trimmed  ")
+            advanceUntilIdle()
+
+            vm.state.value.profiles.first().name shouldBe "trimmed"
+        }
+    }
+
+    test("startEdit loads profile and switches to Editing mode") {
+        runTest(testDispatcher) {
+            val config = AppConfig(
+                profiles = mapOf("dev" to profile("dev", "Development")),
+            )
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            val state = vm.state.value
+            state.mode shouldBe ProfilePanelMode.Editing("dev")
+            val editState = state.editState.shouldNotBeNull()
+            editState.profileName shouldBe "dev"
+            editState.description shouldBe "Development"
+            state.error.shouldBeNull()
+        }
+    }
+
+    test("startEdit sets error for unknown profile") {
+        runTest(testDispatcher) {
+            val config = AppConfig()
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("missing")
+            advanceUntilIdle()
+
+            vm.state.value.mode shouldBe ProfilePanelMode.Listing
+            vm.state.value.error.shouldNotBeNull()
+        }
+    }
+
+    test("cancelEdit returns to Listing mode") {
+        runTest(testDispatcher) {
+            val config = AppConfig(
+                profiles = mapOf("dev" to profile("dev")),
+            )
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+            vm.state.value.mode shouldBe ProfilePanelMode.Editing("dev")
+
+            vm.cancelEdit()
+
+            vm.state.value.mode shouldBe ProfilePanelMode.Listing
+            vm.state.value.editState.shouldBeNull()
+            vm.state.value.error.shouldBeNull()
+        }
+    }
+
+    test("updateEditState applies transform to editState") {
+        runTest(testDispatcher) {
+            val config = AppConfig(
+                profiles = mapOf("dev" to profile("dev")),
+            )
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState { it.copy(description = "Updated desc") }
+
+            vm.state.value.editState.shouldNotBeNull()
+            vm.state.value.editState!!.description shouldBe "Updated desc"
+        }
+    }
+
+    test("updateEditState is no-op when not in edit mode") {
+        runTest(testDispatcher) {
+            val config = AppConfig()
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.updateEditState { it.copy(description = "should not apply") }
+
+            vm.state.value.editState.shouldBeNull()
+        }
+    }
+
+    test("saveEdit persists changes and returns to Listing") {
+        runTest(testDispatcher) {
+            var currentConfig = AppConfig(
+                profiles = mapOf("dev" to profile("dev")),
+            )
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState { it.copy(description = "New description", hashAlgorithm = HashAlgorithm.SHA512) }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            vm.state.value.mode shouldBe ProfilePanelMode.Listing
+            vm.state.value.editState.shouldBeNull()
+            val savedProfile = saved.captured.profiles["dev"]
+            savedProfile.shouldNotBeNull()
+            savedProfile.description shouldBe "New description"
+            savedProfile.hashAlgorithm shouldBe HashAlgorithm.SHA512
+        }
+    }
+
+    test("saveEdit with validation error keeps Editing mode") {
+        runTest(testDispatcher) {
+            val devProfile = ProfileConfig(
+                name = "dev",
+                hashAlgorithm = HashAlgorithm.SHA256,
+            )
+            var currentConfig = AppConfig(
+                profiles = mapOf("dev" to devProfile),
+            )
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState {
+                it.copy(
+                    hashAlgorithm = HashAlgorithm.SHA256,
+                    disabledHashAlgorithms = setOf(HashAlgorithm.SHA256),
+                )
+            }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            vm.state.value.mode shouldBe ProfilePanelMode.Editing("dev")
+            vm.state.value.editState.shouldNotBeNull()
+            vm.state.value.editState!!.error.shouldNotBeNull()
+            vm.state.value.editState!!.saving shouldBe false
+        }
+    }
+
+    test("startEdit sets hasStoredPassword when credential exists") {
+        runTest(testDispatcher) {
+            val tsaProfile = ProfileConfig(
+                name = "tsa-profile",
+                timestampServer = TimestampServerConfig(
+                    url = "https://tsa.example.com",
+                    username = "user1",
+                    credentialKey = "user1",
+                ),
+            )
+            val config = AppConfig(profiles = mapOf("tsa-profile" to tsaProfile))
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val credStore: CredentialStore = mockk()
+            io.mockk.every { credStore.getPassword("omnisign-tsa", "user1") } returns "secret"
+
+            val vm = ProfileViewModel(manageProfile, getConfig, credStore)
+            advanceUntilIdle()
+
+            vm.startEdit("tsa-profile")
+            advanceUntilIdle()
+
+            val editState = vm.state.value.editState.shouldNotBeNull()
+            editState.hasStoredPassword shouldBe true
+            editState.timestampPassword shouldBe ""
+        }
+    }
+
+    test("saveEdit stores TSA password in credential store") {
+        runTest(testDispatcher) {
+            var currentConfig = AppConfig(
+                profiles = mapOf("dev" to profile("dev")),
+            )
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+
+            val credStore: CredentialStore = mockk(relaxed = true)
+            io.mockk.every { credStore.getPassword(any(), any()) } returns null
+
+            val vm = ProfileViewModel(manageProfile, getConfig, credStore)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState {
+                it.copy(
+                    timestampEnabled = true,
+                    timestampUrl = "https://tsa.example.com",
+                    timestampUsername = "admin",
+                    timestampPassword = "s3cret",
+                )
+            }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            io.mockk.verify { credStore.setPassword("omnisign-tsa", "admin", "s3cret") }
+            vm.state.value.mode shouldBe ProfilePanelMode.Listing
+        }
+    }
+})
 

@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -28,6 +29,7 @@ import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.lumo.components.card.Card
 import cz.pizavo.omnisign.lumo.components.card.CardDefaults
 import omnisign.composeapp.generated.resources.Res
+import omnisign.composeapp.generated.resources.icon_arrow_left
 import omnisign.composeapp.generated.resources.icon_x
 import org.jetbrains.compose.resources.painterResource
 
@@ -35,12 +37,15 @@ import org.jetbrains.compose.resources.painterResource
  * Animated side panel that slides in from a sidebar in the island layout.
  *
  * Wraps its content in a Lumo [Card] with rounded corners and provides a standard
- * header row containing the panel title and a close button. The body is scrollable.
+ * header row containing the panel title and a close button. When [onBack] is supplied
+ * a back-arrow button is rendered before the title for drill-down navigation.
+ * The body is scrollable.
  *
  * @param visible Whether the panel is currently expanded.
  * @param title Text displayed in the panel header.
  * @param onClose Callback invoked when the user clicks the close button.
  * @param fromEnd When `true` the panel slides in from the right edge; otherwise from the left.
+ * @param onBack Optional callback for back navigation; when non-null a back-arrow icon is shown.
  * @param modifier Optional [Modifier] applied to the [AnimatedVisibility] wrapper.
  * @param content Slot for the panel body, rendered inside a scrollable [Column].
  */
@@ -50,6 +55,7 @@ fun IslandSidePanel(
     title: String,
     onClose: () -> Unit,
     fromEnd: Boolean = false,
+    onBack: (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -84,11 +90,25 @@ fun IslandSidePanel(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
+                    .padding(start = if (onBack != null) 4.dp else 16.dp, end = 4.dp, top = 8.dp, bottom = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween,
             ) {
-                Text(text = title, style = LumoTheme.typography.h3)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    if (onBack != null) {
+                        IconButton(
+                            variant = IconButtonVariant.Ghost,
+                            onClick = onBack,
+                        ) {
+                            Icon(
+                                painter = painterResource(Res.drawable.icon_arrow_left),
+                                contentDescription = "Back",
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                    }
+                    Text(text = title, style = LumoTheme.typography.h3)
+                }
 
                 IconButton(
                     variant = IconButtonVariant.Ghost,

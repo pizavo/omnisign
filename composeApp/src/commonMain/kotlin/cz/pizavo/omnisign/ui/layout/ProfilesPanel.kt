@@ -9,13 +9,19 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.lumo.LumoTheme
@@ -28,8 +34,13 @@ import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.lumo.components.Tooltip
 import cz.pizavo.omnisign.lumo.components.TooltipBox
 import cz.pizavo.omnisign.lumo.components.rememberTooltipState
+import cz.pizavo.omnisign.lumo.components.textfield.TextField
+import cz.pizavo.omnisign.ui.model.ProfileEditState
 import cz.pizavo.omnisign.ui.model.ProfileListState
+import cz.pizavo.omnisign.ui.model.ProfilePanelMode
 import omnisign.composeapp.generated.resources.Res
+import omnisign.composeapp.generated.resources.icon_cancel
+import omnisign.composeapp.generated.resources.icon_check
 import omnisign.composeapp.generated.resources.icon_delete
 import omnisign.composeapp.generated.resources.icon_pencil
 import omnisign.composeapp.generated.resources.icon_profile_add
@@ -43,13 +54,12 @@ private val RowButtonSize = 28.dp
 private val RowButtonPadding = PaddingValues(2.dp)
 
 /**
- * Panel content displaying the list of configuration profiles.
+ * Panel content displaying configuration profiles.
  *
- * A toolbar row with "Add profile" and "Deselect active profile" buttons is rendered
- * above the profile list. Each profile is rendered as a row with the profile name
- * (and optional description), plus action icons for selecting/deselecting, editing,
- * and deleting. When no profiles exist, a placeholder message is shown. Deleting a
- * profile requires confirmation via an [AlertDialog].
+ * Dispatches between the profile list view and the profile edit form based on
+ * [ProfileListState.mode]. In [ProfilePanelMode.Listing] mode, a toolbar row with
+ * "Add profile" and "Deselect active profile" buttons is rendered above the profile
+ * list. In [ProfilePanelMode.Editing] mode, a [ProfileEditPanel] form is shown.
  *
  * @param state Current [ProfileListState] from [cz.pizavo.omnisign.ui.viewmodel.ProfileViewModel].
  * @param onToggleActive Called when the user clicks the select/deselect icon on a profile row.
@@ -57,6 +67,10 @@ private val RowButtonPadding = PaddingValues(2.dp)
  * @param onDelete Called when the user confirms deletion; receives the profile name.
  * @param onAdd Called when the user clicks the add-profile button.
  * @param onDeselectActive Called when the user clicks the deselect-all button.
+ * @param onConfirmCreate Called when the user confirms the new profile name.
+ * @param onCancelCreate Called when the user cancels the inline creation row.
+ * @param onFieldChange Called with a transform to update a single field in the edit form.
+ * @param onSaveEdit Called when the user clicks Save in the edit form.
  */
 @Composable
 fun ProfilesPanel(
@@ -66,6 +80,48 @@ fun ProfilesPanel(
     onDelete: (String) -> Unit,
     onAdd: () -> Unit,
     onDeselectActive: () -> Unit,
+    onConfirmCreate: (String) -> Unit,
+    onCancelCreate: () -> Unit,
+    onFieldChange: ((ProfileEditState) -> ProfileEditState) -> Unit,
+    onSaveEdit: () -> Unit,
+) {
+    when (state.mode) {
+        is ProfilePanelMode.Listing -> ProfileListContent(
+            state = state,
+            onToggleActive = onToggleActive,
+            onEdit = onEdit,
+            onDelete = onDelete,
+            onAdd = onAdd,
+            onDeselectActive = onDeselectActive,
+            onConfirmCreate = onConfirmCreate,
+            onCancelCreate = onCancelCreate,
+        )
+        is ProfilePanelMode.Editing -> {
+            val editState = state.editState
+            if (editState != null) {
+                ProfileEditPanel(
+                    state = editState,
+                    onFieldChange = onFieldChange,
+                    onSave = onSaveEdit,
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Profile list content shown when the panel is in [ProfilePanelMode.Listing] mode.
+ */
+@Composable
+private fun ProfileListContent(
+    state: ProfileListState,
+    onToggleActive: (String) -> Unit,
+    onEdit: (String) -> Unit,
+    onDelete: (String) -> Unit,
+    onAdd: () -> Unit,
+    onDeselectActive: () -> Unit,
+    onConfirmCreate: (String) -> Unit,
+    onCancelCreate: () -> Unit,
 ) {
     var pendingDeleteProfile by remember { mutableStateOf<String?>(null) }
 
@@ -95,22 +151,32 @@ fun ProfilesPanel(
 
     ProfileToolbar(
         hasActiveProfile = state.activeProfile != null,
+        creatingNew = state.creatingNew,
         onAdd = onAdd,
         onDeselectActive = onDeselectActive,
     )
 
     Spacer(modifier = Modifier.height(4.dp))
 
-    if (state.profiles.isEmpty() && !state.loading) {
-        Text(
-            text = "No profiles defined yet.",
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.textSecondary,
-        )
-        return
-    }
-
     Column(verticalArrangement = Arrangement.spacedBy(0.dp)) {
+        if (state.creatingNew) {
+            NewProfileRow(
+                onConfirm = onConfirmCreate,
+                onCancel = onCancelCreate,
+            )
+            if (state.profiles.isNotEmpty()) {
+                HorizontalDivider()
+            }
+        }
+
+        if (state.profiles.isEmpty() && !state.creatingNew && !state.loading) {
+            Text(
+                text = "No profiles defined yet.",
+                style = LumoTheme.typography.body2,
+                color = LumoTheme.colors.textSecondary,
+            )
+        }
+
         state.profiles.forEachIndexed { index, profile ->
             ProfileRow(
                 profile = profile,
@@ -130,12 +196,14 @@ fun ProfilesPanel(
  * Toolbar row rendered above the profile list with Add and Deselect actions.
  *
  * @param hasActiveProfile Whether any profile is currently active.
+ * @param creatingNew Whether the inline creation row is currently displayed.
  * @param onAdd Called when the add-profile button is clicked.
  * @param onDeselectActive Called when the Deselect button is clicked.
  */
 @Composable
 private fun ProfileToolbar(
     hasActiveProfile: Boolean,
+    creatingNew: Boolean,
     onAdd: () -> Unit,
     onDeselectActive: () -> Unit,
 ) {
@@ -154,6 +222,7 @@ private fun ProfileToolbar(
                     minHeight = RowButtonSize,
                 ),
                 variant = IconButtonVariant.Ghost,
+                enabled = !creatingNew,
                 onClick = onAdd,
                 contentPadding = RowButtonPadding,
             ) {
@@ -182,6 +251,88 @@ private fun ProfileToolbar(
                 Icon(
                     painter = painterResource(Res.drawable.icon_profile_off),
                     contentDescription = "Deselect active profile",
+                    modifier = Modifier.size(RowIconSize),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Inline row for creating a new profile with a text input and confirm/cancel buttons.
+ *
+ * The text field is automatically focused when the row appears. The confirm button
+ * is disabled when the input is blank. Pressing Enter on the keyboard also confirms.
+ *
+ * @param onConfirm Called with the entered profile name when the user confirms.
+ * @param onCancel Called when the user cancels creation.
+ */
+@Composable
+private fun NewProfileRow(
+    onConfirm: (String) -> Unit,
+    onCancel: () -> Unit,
+) {
+    var name by remember { mutableStateOf("") }
+    val focusRequester = remember { FocusRequester() }
+    val isValid = name.isNotBlank()
+
+    LaunchedEffect(Unit) {
+        focusRequester.requestFocus()
+    }
+
+    Row(
+        modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 40.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextField(
+            value = name,
+            onValueChange = { name = it },
+            modifier = Modifier.weight(1f).focusRequester(focusRequester),
+            singleLine = true,
+            placeholder = { Text(text = "Profile name") },
+            isError = name.isNotEmpty() && !isValid,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            keyboardActions = KeyboardActions(onDone = { if (isValid) onConfirm(name) }),
+        )
+
+        TooltipBox(
+            tooltip = { Tooltip { Text(text = "Confirm") } },
+            state = rememberTooltipState(),
+        ) {
+            IconButton(
+                modifier = Modifier.defaultMinSize(
+                    minWidth = RowButtonSize,
+                    minHeight = RowButtonSize,
+                ),
+                variant = IconButtonVariant.Ghost,
+                enabled = isValid,
+                onClick = { onConfirm(name) },
+                contentPadding = RowButtonPadding,
+            ) {
+                Icon(
+                    painter = painterResource(Res.drawable.icon_check),
+                    contentDescription = "Confirm new profile",
+                    modifier = Modifier.size(RowIconSize),
+                )
+            }
+        }
+
+        TooltipBox(
+            tooltip = { Tooltip { Text(text = "Cancel") } },
+            state = rememberTooltipState(),
+        ) {
+            IconButton(
+                modifier = Modifier.defaultMinSize(
+                    minWidth = RowButtonSize,
+                    minHeight = RowButtonSize,
+                ),
+                variant = IconButtonVariant.Ghost,
+                onClick = onCancel,
+                contentPadding = RowButtonPadding,
+            ) {
+                Icon(
+                    painter = painterResource(Res.drawable.icon_cancel),
+                    contentDescription = "Cancel new profile",
                     modifier = Modifier.size(RowIconSize),
                 )
             }
