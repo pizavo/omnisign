@@ -1,39 +1,35 @@
 package cz.pizavo.omnisign.ui.platform
 
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
 
 /**
- * Callbacks and state for native window operations on platforms that support
- * custom window decoration (JVM desktop with undecorated windows).
+ * Callback for registering a named rectangular control region inside the custom
+ * title bar so the OS does not initiate a window drag when the user interacts
+ * with that area.
  *
- * Provided via [LocalWindowControls] from the platform entry point.
- * When `null` (e.g., on web), the toolbar hides its window-control buttons.
- *
- * @property onMinimize Minimizes the window to the taskbar/dock.
- * @property onMaximize Toggles between maximized and floating window placement.
- * @property onClose Requests application exit.
- * @property isMaximized Returns `true` when the window is currently maximized.
+ * On JVM desktop this feeds [TitleBarHitTestState]. On other platforms (web)
+ * the default value is `null` and callers skip registration.
  */
-data class WindowControls(
-    val onMinimize: () -> Unit,
-    val onMaximize: () -> Unit,
-    val onClose: () -> Unit,
-    val isMaximized: () -> Boolean,
-)
+val LocalTitleBarHitTest = staticCompositionLocalOf<((String, Rect) -> Unit)?> { null }
 
 /**
- * Provides [WindowControls] for the current platform.
+ * Height of the custom title bar area in [Dp].
  *
- * `null` on platforms that do not support custom window decoration (e.g., web).
+ * On JVM desktop this matches the height set on the JBR
+ * [com.jetbrains.WindowDecorations.CustomTitleBar] so that the Compose toolbar
+ * and the native window-control buttons are always the same size.
+ * Default is `40.dp`.
  */
-val LocalWindowControls = staticCompositionLocalOf<WindowControls?> { null }
+val LocalTitleBarHeight = staticCompositionLocalOf<Dp> { 40.dp }
 
 /**
- * Modifier that makes a composable act as a window drag handle.
+ * Right-side inset in **AWT logical pixels** reserved for native window controls
+ * (minimize, maximize, close) rendered by the JBR custom title bar.
  *
- * On the JVM desktop this moves the undecorated window when dragged;
- * on other platforms this is a no-op identity modifier.
+ * On Compose Desktop, AWT logical pixels correspond directly to dp, so the
+ * toolbar converts this value with [Float.dp]. Default is `0f` (no inset).
  */
-val LocalWindowDragModifier = staticCompositionLocalOf<Modifier> { Modifier }
-
+val LocalTitleBarRightInset = staticCompositionLocalOf { 0f }

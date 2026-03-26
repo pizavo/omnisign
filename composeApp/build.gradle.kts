@@ -41,6 +41,10 @@ configurations.findByName("commonTestApi")?.dependencies?.removeIf {
 
 kotlin {
 	jvm {
+		kotlin.jvmToolchain {
+			languageVersion.set(JavaLanguageVersion.of(25))
+			vendor.set(JvmVendorSpec.JETBRAINS)
+		}
 		testRuns.configureEach {
 			executionTask.configure { useJUnitPlatform() }
 		}
@@ -90,16 +94,40 @@ kotlin {
 			implementation(libs.kotlinx.coroutines.swing)
 			implementation(libs.pdfbox)
 			implementation(libs.decoroutinator.jvm)
+			implementation(libs.jbr.api)
 		}
 	}
 }
 
+/**
+ * Lazily resolved JBR launcher from the Gradle toolchain registry.
+ *
+ * Used to ensure that both compilation and the Compose Desktop `run` task
+ * execute on JetBrains Runtime, which provides the Custom Title Bar API.
+ */
+val jbrLauncher = javaToolchains.launcherFor {
+	languageVersion.set(JavaLanguageVersion.of(25))
+	vendor.set(JvmVendorSpec.JETBRAINS)
+}
+
+/**
+ * Eagerly resolved path to the JBR installation, or `null` when JBR is not
+ * available on this machine. When `null`, the Compose Desktop `run` and
+ * packaging tasks will fail at execution time with a descriptive message.
+ */
+val jbrHomePath: String? = try {
+	jbrLauncher.map { it.metadata.installationPath.asFile.absolutePath }.get()
+} catch (_: Exception) {
+	null
+}
 
 compose.desktop {
 	application {
 		mainClass = "cz.pizavo.omnisign.MainKt"
 
 		jvmArgs("--enable-native-access=ALL-UNNAMED")
+
+		jbrHomePath?.let { javaHome = it }
 
 		nativeDistributions {
 			targetFormats(
@@ -119,3 +147,34 @@ compose.desktop {
 		}
 	}
 }
+
+gradle.taskGraph.whenReady {
+	if (jbrHomePath != null) return@whenReady
+
+	val needsJbr = allTasks.any {
+		it.project.path == ":composeApp" && it.name in setOf(
+			"run", "runDistributable", "suggestRuntimeModules",
+			"packageMsi", "packageExe",
+			"packageDmg", "packagePkg",
+			"packageDeb", "packageRpm",
+			"packageAppImage",
+			"createDistributable",
+		)
+	}
+
+	if (needsJbr) {
+		throw GradleException(
+			buildString {
+				appendLine()
+				appendLine("JetBrains Runtime (JBR) 25 is required to build/run the desktop application")
+				appendLine("but was not found by the Gradle toolchain resolver.")
+				appendLine()
+				appendLine("Install it via one of:")
+				appendLine("  • IntelliJ IDEA → Settings → Build → Build Tools → Gradle → Gradle JDK")
+				appendLine("  • Download from https://github.com/JetBrains/JetBrainsRuntime/releases")
+				appendLine("    and place it under ~/.jdks/ so Gradle auto-detects it.")
+			}
+		)
+	}
+}
+
