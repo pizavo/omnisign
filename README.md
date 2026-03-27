@@ -72,6 +72,9 @@ and usage examples.
 .\gradlew.bat :composeApp:run
 ```
 
+See the [Compose UI README](composeApp/README.md) for native distribution packaging,
+the web (Wasm) target, architecture details, and platform feature parity.
+
 ### Build & Run — Server
 
 ```shell
