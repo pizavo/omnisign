@@ -22,6 +22,7 @@ import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
+import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Icon
@@ -40,6 +41,7 @@ import cz.pizavo.omnisign.ui.platform.exportTextToFile
 import cz.pizavo.omnisign.ui.platform.loadPdfFromPlatformFile
 import cz.pizavo.omnisign.ui.viewmodel.PdfViewerViewModel
 import cz.pizavo.omnisign.ui.viewmodel.ProfileViewModel
+import cz.pizavo.omnisign.ui.viewmodel.SettingsViewModel
 import cz.pizavo.omnisign.ui.viewmodel.SignatureViewModel
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -102,6 +104,19 @@ fun IslandLayout(
     val profileState by (profileViewModel?.state ?: remember {
         kotlinx.coroutines.flow.MutableStateFlow(ProfileListState())
     }).collectAsState()
+
+    val settingsViewModel: SettingsViewModel? = remember {
+        val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
+        SettingsViewModel(
+            koin.get<GetConfigUseCase>(),
+            koin.get<SetGlobalConfigUseCase>(),
+            koin.getOrNull<CredentialStore>(),
+        )
+    }
+    val settingsState by (settingsViewModel?.state ?: remember {
+        kotlinx.coroutines.flow.MutableStateFlow(cz.pizavo.omnisign.ui.model.GlobalConfigEditState())
+    }).collectAsState()
+    var showSettingsDialog by remember { mutableStateOf(false) }
     
     
     val filePickerLauncher = rememberFilePickerLauncher(
@@ -130,7 +145,20 @@ fun IslandLayout(
             isDarkTheme = isDarkTheme,
             onToggleTheme = onToggleTheme,
             onOpenFile = { filePickerLauncher.launch() },
+            onOpenSettings = {
+                settingsViewModel?.load()
+                showSettingsDialog = true
+            },
         )
+
+        if (showSettingsDialog) {
+            SettingsDialog(
+                state = settingsState,
+                onFieldChange = { transform -> settingsViewModel?.updateState(transform) },
+                onSave = { settingsViewModel?.save(onSuccess = { showSettingsDialog = false }) },
+                onDismiss = { showSettingsDialog = false },
+            )
+        }
 
         BoxWithConstraints(
             modifier = Modifier
@@ -289,11 +317,6 @@ fun IslandLayout(
 @Composable
 private fun PanelPlaceholderContent(panel: SidePanel?) {
     when (panel) {
-        SidePanel.Settings -> Text(
-            text = "Application settings will appear here.",
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.textSecondary,
-        )
         SidePanel.Profiles -> Text(
             text = "Configuration profiles will appear here.",
             style = LumoTheme.typography.body2,

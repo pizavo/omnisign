@@ -103,6 +103,8 @@ fun ProfilesPanel(
                     state = editState,
                     onFieldChange = onFieldChange,
                     onSave = onSaveEdit,
+                    globalDisabledHashAlgorithms = state.globalDisabledHashAlgorithms,
+                    globalDisabledEncryptionAlgorithms = state.globalDisabledEncryptionAlgorithms,
                 )
             }
         }

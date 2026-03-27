@@ -47,10 +47,13 @@ class ProfileViewModel(
         viewModelScope.launch {
             _state.update { it.copy(loading = true, error = null) }
 
-            val activeProfile = getConfigUseCase().fold(
+            val appConfig = getConfigUseCase().fold(
                 ifLeft = { null },
-                ifRight = { it.activeProfile },
+                ifRight = { it },
             )
+            val activeProfile = appConfig?.activeProfile
+            val globalDisabledHash = appConfig?.global?.disabledHashAlgorithms ?: emptySet()
+            val globalDisabledEnc = appConfig?.global?.disabledEncryptionAlgorithms ?: emptySet()
 
             manageProfileUseCase.list().fold(
                 ifLeft = { error ->
@@ -63,6 +66,8 @@ class ProfileViewModel(
                             activeProfile = activeProfile,
                             loading = false,
                             error = null,
+                            globalDisabledHashAlgorithms = globalDisabledHash,
+                            globalDisabledEncryptionAlgorithms = globalDisabledEnc,
                         )
                     }
                 },

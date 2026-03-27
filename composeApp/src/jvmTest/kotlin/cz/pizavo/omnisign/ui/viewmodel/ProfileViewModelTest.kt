@@ -3,7 +3,9 @@ package cz.pizavo.omnisign.ui.viewmodel
 import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
+import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
@@ -14,6 +16,7 @@ import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.ui.model.ProfilePanelMode
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -538,6 +541,48 @@ class ProfileViewModelTest : FunSpec({
 
             io.mockk.verify { credStore.setPassword("omnisign-tsa", "admin", "s3cret") }
             vm.state.value.mode shouldBe ProfilePanelMode.Listing
+        }
+    }
+
+    test("refresh propagates global disabled algorithms to state") {
+        runTest(testDispatcher) {
+            val config = AppConfig(
+                global = GlobalConfig(
+                    disabledHashAlgorithms = setOf(HashAlgorithm.RIPEMD160, HashAlgorithm.WHIRLPOOL),
+                    disabledEncryptionAlgorithms = setOf(EncryptionAlgorithm.DSA),
+                ),
+                profiles = mapOf("dev" to profile("dev")),
+            )
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            val state = vm.state.value
+            state.globalDisabledHashAlgorithms.shouldContainExactlyInAnyOrder(
+                HashAlgorithm.RIPEMD160, HashAlgorithm.WHIRLPOOL,
+            )
+            state.globalDisabledEncryptionAlgorithms.shouldContainExactlyInAnyOrder(
+                EncryptionAlgorithm.DSA,
+            )
+        }
+    }
+
+    test("refresh with no disabled algorithms yields empty sets") {
+        runTest(testDispatcher) {
+            val config = AppConfig(
+                profiles = mapOf("dev" to profile("dev")),
+            )
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            val state = vm.state.value
+            state.globalDisabledHashAlgorithms.shouldBeEmpty()
+            state.globalDisabledEncryptionAlgorithms.shouldBeEmpty()
         }
     }
 })

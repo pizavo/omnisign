@@ -33,6 +33,7 @@ import omnisign.composeapp.generated.resources.Res
 import omnisign.composeapp.generated.resources.icon_folder
 import omnisign.composeapp.generated.resources.icon_moon
 import omnisign.composeapp.generated.resources.icon_omnisign
+import omnisign.composeapp.generated.resources.icon_settings
 import omnisign.composeapp.generated.resources.icon_sun
 import org.jetbrains.compose.resources.painterResource
 
@@ -43,15 +44,16 @@ private val CompactButtonPadding = PaddingValues(2.dp)
  * Seamless top toolbar for the island layout.
  *
  * Renders the application icon and action icons on the leading side, and a
- * theme-toggle button on the trailing side. On JVM desktop the toolbar sits
- * inside the JBR custom title bar area — the OS handles window dragging
- * natively and interactive controls are excluded via [LocalTitleBarHitTest].
- * Trailing padding is derived from [LocalTitleBarRightInset] so content does
- * not overlap the native window-control buttons.
+ * settings gear button plus a theme-toggle button on the trailing side. On JVM
+ * desktop the toolbar sits inside the JBR custom title bar area — the OS handles
+ * window dragging natively and interactive controls are excluded via
+ * [LocalTitleBarHitTest]. Trailing padding is derived from [LocalTitleBarRightInset]
+ * so content does not overlap the native window-control buttons.
  *
  * @param isDarkTheme Whether a dark theme is currently active (controls the toggle icon).
  * @param onToggleTheme Callback invoked when the user clicks the theme-toggle button.
  * @param onOpenFile Callback invoked when the user clicks the folder / open-file button.
+ * @param onOpenSettings Callback invoked when the user clicks the settings gear button.
  * @param modifier Optional [Modifier] applied to the toolbar root.
  */
 @Composable
@@ -59,6 +61,7 @@ fun IslandToolbar(
     isDarkTheme: Boolean,
     onToggleTheme: () -> Unit,
     onOpenFile: () -> Unit,
+    onOpenSettings: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val themeLabel = if (isDarkTheme) "Switch to light theme" else "Switch to dark theme"
@@ -126,6 +129,27 @@ fun IslandToolbar(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(0.dp),
             ) {
+                TooltipBox(
+                    tooltip = { Tooltip { Text(text = "Settings") } },
+                    state = rememberTooltipState(),
+                ) {
+                    IconButton(
+                        modifier = Modifier.defaultMinSize(
+                            minWidth = CompactButtonSize,
+                            minHeight = CompactButtonSize,
+                        ),
+                        variant = IconButtonVariant.Ghost,
+                        onClick = onOpenSettings,
+                        contentPadding = CompactButtonPadding,
+                    ) {
+                        Icon(
+                            painter = painterResource(Res.drawable.icon_settings),
+                            contentDescription = "Open settings",
+                            modifier = Modifier.size(22.dp),
+                        )
+                    }
+                }
+
                 TooltipBox(
                     tooltip = { Tooltip { Text(text = themeLabel) } },
                     state = rememberTooltipState(),

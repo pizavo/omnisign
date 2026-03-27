@@ -3,7 +3,6 @@ package cz.pizavo.omnisign.ui.model
 import omnisign.composeapp.generated.resources.Res
 import omnisign.composeapp.generated.resources.icon_help
 import omnisign.composeapp.generated.resources.icon_profile
-import omnisign.composeapp.generated.resources.icon_settings
 import omnisign.composeapp.generated.resources.icon_signature
 import org.jetbrains.compose.resources.DrawableResource
 
@@ -45,14 +44,6 @@ enum class SidePanel(
         side = PanelSide.Left,
     ),
 
-    /** Application settings panel. */
-    Settings(
-        label = "Settings",
-        icon = Res.drawable.icon_settings,
-        contentDescription = "Open settings panel",
-        side = PanelSide.Right,
-        pinToBottom = true,
-    ),
 
     /** Configuration profiles management panel. */
     Profiles(

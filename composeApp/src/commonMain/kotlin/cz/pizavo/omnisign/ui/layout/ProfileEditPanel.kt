@@ -42,25 +42,32 @@ import omnisign.composeapp.generated.resources.icon_eye_off
 import org.jetbrains.compose.resources.painterResource
 
 /**
- * Edit form rendered inside the profiles side panel when the user is editing a profile.
+ * Edit form rendered inside the Profiles side panel when the user is editing a profile.
  *
- * The form is organised into sections separated by dividers:
+ * The form is organized into sections separated by dividers:
  * 1. Profile name (read-only header)
  * 2. Description text field
  * 3. Algorithm & level selectors (dropdowns)
- * 4. Timestamp server toggle + fields
+ * 4. Timestamp server toggle and fields
  * 5. Disabled algorithm chip selectors
  * 6. Save button
  *
  * @param state The current [ProfileEditState] holding all form field values.
  * @param onFieldChange Callback accepting a transform function to update a single field.
  * @param onSave Called when the user clicks the Save button.
+ * @param globalDisabledHashAlgorithms Hash algorithms disabled at the global level.
+ *   These appear greyed-out in the algorithm selector and are always shown as
+ *   disabled in the chip toggles.
+ * @param globalDisabledEncryptionAlgorithms Encryption algorithms disabled at the global level.
+ *   Same behavior as [globalDisabledHashAlgorithms].
  */
 @Composable
 fun ProfileEditPanel(
     state: ProfileEditState,
     onFieldChange: ((ProfileEditState) -> ProfileEditState) -> Unit,
     onSave: () -> Unit,
+    globalDisabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
+    globalDisabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet(),
 ) {
     if (state.error != null) {
         Text(
@@ -83,7 +90,12 @@ fun ProfileEditPanel(
 
     SectionDivider()
 
-    AlgorithmSection(state = state, onFieldChange = onFieldChange)
+    AlgorithmSection(
+        state = state,
+        onFieldChange = onFieldChange,
+        globalDisabledHashAlgorithms = globalDisabledHashAlgorithms,
+        globalDisabledEncryptionAlgorithms = globalDisabledEncryptionAlgorithms,
+    )
 
     SectionDivider()
 
@@ -91,7 +103,12 @@ fun ProfileEditPanel(
 
     SectionDivider()
 
-    DisabledAlgorithmsSection(state = state, onFieldChange = onFieldChange)
+    DisabledAlgorithmsSection(
+        state = state,
+        onFieldChange = onFieldChange,
+        globalDisabledHashAlgorithms = globalDisabledHashAlgorithms,
+        globalDisabledEncryptionAlgorithms = globalDisabledEncryptionAlgorithms,
+    )
 
     Spacer(modifier = Modifier.height(16.dp))
 
@@ -128,11 +145,16 @@ private fun DescriptionSection(
 
 /**
  * Hash algorithm, encryption algorithm, and signature level dropdown selectors.
+ *
+ * Algorithms that are disabled at the global level are shown as greyed-out
+ * in the dropdown and cannot be selected.
  */
 @Composable
 private fun AlgorithmSection(
     state: ProfileEditState,
     onFieldChange: ((ProfileEditState) -> ProfileEditState) -> Unit,
+    globalDisabledHashAlgorithms: Set<HashAlgorithm>,
+    globalDisabledEncryptionAlgorithms: Set<EncryptionAlgorithm>,
 ) {
     Text(text = "Algorithms & Level", style = LumoTheme.typography.label1)
     Spacer(modifier = Modifier.height(8.dp))
@@ -142,6 +164,7 @@ private fun AlgorithmSection(
         options = HashAlgorithm.entries.toList(),
         onSelect = { value -> onFieldChange { it.copy(hashAlgorithm = value) } },
         label = { Text(text = "Hash algorithm") },
+        disabledOptions = globalDisabledHashAlgorithms,
         itemLabel = { it.name },
         modifier = Modifier.fillMaxWidth(),
     )
@@ -153,6 +176,7 @@ private fun AlgorithmSection(
         options = EncryptionAlgorithm.entries.toList(),
         onSelect = { value -> onFieldChange { it.copy(encryptionAlgorithm = value) } },
         label = { Text(text = "Encryption algorithm") },
+        disabledOptions = globalDisabledEncryptionAlgorithms,
         itemLabel = { it.name },
         modifier = Modifier.fillMaxWidth(),
     )
@@ -239,12 +263,17 @@ private fun TimestampSection(
 
 /**
  * Chip-based toggles for disabling specific hash and encryption algorithms.
+ *
+ * Algorithms already disabled at the global level are shown as selected and
+ * non-interactive (greyed-out) because they cannot be re-enabled from a profile.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DisabledAlgorithmsSection(
     state: ProfileEditState,
     onFieldChange: ((ProfileEditState) -> ProfileEditState) -> Unit,
+    globalDisabledHashAlgorithms: Set<HashAlgorithm>,
+    globalDisabledEncryptionAlgorithms: Set<EncryptionAlgorithm>,
 ) {
     Text(text = "Disabled hash algorithms", style = LumoTheme.typography.label1)
     Spacer(modifier = Modifier.height(4.dp))
@@ -254,10 +283,12 @@ private fun DisabledAlgorithmsSection(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         HashAlgorithm.entries.forEach { algo ->
-            val disabled = algo in state.disabledHashAlgorithms
+            val globallyDisabled = algo in globalDisabledHashAlgorithms
+            val disabled = globallyDisabled || algo in state.disabledHashAlgorithms
             Chip(
                 label = { Text(text = algo.name, style = LumoTheme.typography.body2) },
                 selected = disabled,
+                enabled = !globallyDisabled,
                 onClick = {
                     onFieldChange {
                         val updated = if (disabled) {
@@ -282,10 +313,12 @@ private fun DisabledAlgorithmsSection(
         verticalArrangement = Arrangement.spacedBy(4.dp),
     ) {
         EncryptionAlgorithm.entries.forEach { algo ->
-            val disabled = algo in state.disabledEncryptionAlgorithms
+            val globallyDisabled = algo in globalDisabledEncryptionAlgorithms
+            val disabled = globallyDisabled || algo in state.disabledEncryptionAlgorithms
             Chip(
                 label = { Text(text = algo.name, style = LumoTheme.typography.body2) },
                 selected = disabled,
+                enabled = !globallyDisabled,
                 onClick = {
                     onFieldChange {
                         val updated = if (disabled) {
