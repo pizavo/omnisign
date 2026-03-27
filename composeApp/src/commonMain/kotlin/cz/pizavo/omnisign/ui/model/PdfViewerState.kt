@@ -6,21 +6,26 @@ package cz.pizavo.omnisign.ui.model
  * @property name Display the name of the file.
  * @property data Raw PDF bytes.
  * @property pageCount Total number of pages.
+ * @property filePath Absolute filesystem path of the source file, or `null` on platforms
+ *   that do not expose file paths (e.g., Wasm).
  */
 data class PdfDocumentInfo(
     val name: String,
     val data: ByteArray,
     val pageCount: Int,
+    val filePath: String? = null,
 ) {
     override fun equals(other: Any?): Boolean {
         if (this === other) return true
         if (other !is PdfDocumentInfo) return false
-        return name == other.name && pageCount == other.pageCount && data.contentEquals(other.data)
+        return name == other.name && pageCount == other.pageCount &&
+                filePath == other.filePath && data.contentEquals(other.data)
     }
 
     override fun hashCode(): Int {
         var result = name.hashCode()
         result = 31 * result + pageCount
+        result = 31 * result + (filePath?.hashCode() ?: 0)
         result = 31 * result + data.contentHashCode()
         return result
     }

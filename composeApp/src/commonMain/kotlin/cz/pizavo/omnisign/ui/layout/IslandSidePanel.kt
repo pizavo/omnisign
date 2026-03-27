@@ -73,6 +73,8 @@ private val ResizeHandleWidth = 6.dp
  * @param onWidthChange Callback invoked with the new width when the user drags the resize handle.
  * @param fromEnd When `true` the panel slides in from the right edge; otherwise from the left.
  * @param onBack Optional callback for back navigation; when non-null, a back-arrow icon is shown.
+ * @param headerActions Optional composable slot rendered in the header row between the title and the
+ *   close button. Use it for action icons such as export or refresh.
  * @param modifier Optional [Modifier] applied to the [AnimatedVisibility] wrapper.
  * @param content Slot for the panel body, rendered inside a scrollable [Column].
  */
@@ -86,6 +88,7 @@ fun IslandSidePanel(
     onWidthChange: (Dp) -> Unit = {},
     fromEnd: Boolean = false,
     onBack: (() -> Unit)? = null,
+    headerActions: @Composable (() -> Unit)? = null,
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit,
 ) {
@@ -154,14 +157,18 @@ fun IslandSidePanel(
                         Text(text = title, style = LumoTheme.typography.h3)
                     }
 
-                    IconButton(
-                        variant = IconButtonVariant.Ghost,
-                        onClick = onClose,
-                    ) {
-                        Icon(
-                            painter = painterResource(Res.drawable.icon_x),
-                            contentDescription = "Close panel",
-                        )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        headerActions?.invoke()
+
+                        IconButton(
+                            variant = IconButtonVariant.Ghost,
+                            onClick = onClose,
+                        ) {
+                            Icon(
+                                painter = painterResource(Res.drawable.icon_x),
+                                contentDescription = "Close panel",
+                            )
+                        }
                     }
                 }
 

@@ -23,6 +23,7 @@ suspend fun loadPdfFromPlatformFile(file: PlatformFile): PdfDocumentInfo {
         name = file.name,
         data = bytes,
         pageCount = pageCount,
+        filePath = platformFilePath(file),
     )
 }
 

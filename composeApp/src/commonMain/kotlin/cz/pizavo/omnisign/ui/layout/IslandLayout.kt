@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -20,19 +21,32 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
+import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
 import cz.pizavo.omnisign.lumo.LumoTheme
+import cz.pizavo.omnisign.lumo.components.Icon
+import cz.pizavo.omnisign.lumo.components.IconButton
+import cz.pizavo.omnisign.lumo.components.IconButtonVariant
 import cz.pizavo.omnisign.lumo.components.Text
+import cz.pizavo.omnisign.lumo.components.Tooltip
+import cz.pizavo.omnisign.lumo.components.TooltipBox
+import cz.pizavo.omnisign.lumo.components.rememberTooltipState
 import cz.pizavo.omnisign.ui.model.PanelSide
 import cz.pizavo.omnisign.ui.model.ProfileListState
 import cz.pizavo.omnisign.ui.model.ProfilePanelMode
+import cz.pizavo.omnisign.ui.model.SignaturePanelState
 import cz.pizavo.omnisign.ui.model.SidePanel
+import cz.pizavo.omnisign.ui.platform.exportTextToFile
 import cz.pizavo.omnisign.ui.platform.loadPdfFromPlatformFile
 import cz.pizavo.omnisign.ui.viewmodel.PdfViewerViewModel
 import cz.pizavo.omnisign.ui.viewmodel.ProfileViewModel
+import cz.pizavo.omnisign.ui.viewmodel.SignatureViewModel
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.launch
+import omnisign.composeapp.generated.resources.Res
+import omnisign.composeapp.generated.resources.icon_download
+import org.jetbrains.compose.resources.painterResource
 import org.koin.mp.KoinPlatform
 
 /**
@@ -65,6 +79,14 @@ fun IslandLayout(
     val pdfState by pdfViewModel.state.collectAsState()
     val scope = rememberCoroutineScope()
 
+    val signatureViewModel: SignatureViewModel? = remember {
+        val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
+        SignatureViewModel(koin.get<ValidateDocumentUseCase>())
+    }
+    val signatureState by (signatureViewModel?.state ?: remember {
+        kotlinx.coroutines.flow.MutableStateFlow<SignaturePanelState>(SignaturePanelState.Idle())
+    }).collectAsState()
+
     val profileViewModel: ProfileViewModel? = remember {
         val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
         ProfileViewModel(
@@ -76,7 +98,8 @@ fun IslandLayout(
     val profileState by (profileViewModel?.state ?: remember {
         kotlinx.coroutines.flow.MutableStateFlow(ProfileListState())
     }).collectAsState()
-
+    
+    
     val filePickerLauncher = rememberFilePickerLauncher(
         type = FileKitType.File(extensions = listOf("pdf")),
     ) { platformFile: PlatformFile? ->
@@ -84,6 +107,7 @@ fun IslandLayout(
             scope.launch {
                 val document = loadPdfFromPlatformFile(platformFile)
                 pdfViewModel.onDocumentLoaded(document)
+                signatureViewModel?.onDocumentChanged(document.filePath)
             }
         }
     }
@@ -143,9 +167,45 @@ fun IslandLayout(
                     maxPanelWidth = maxLeftPanelWidth,
                     onWidthChange = { leftPanelWidth = it },
                     fromEnd = false,
+                    headerActions = if (activeLeftPanel == SidePanel.Signature &&
+                        signatureState is SignaturePanelState.Loaded
+                    ) {
+                        {
+                            TooltipBox(
+                                tooltip = { Tooltip { Text(text = "Export report") } },
+                                state = rememberTooltipState(),
+                            ) {
+                                IconButton(
+                                    variant = IconButtonVariant.Ghost,
+                                    onClick = {
+                                        val text = signatureViewModel?.exportReportText() ?: return@IconButton
+                                        scope.launch {
+                                            exportTextToFile(
+                                                text = text,
+                                                suggestedName = "validation-report",
+                                                extension = "txt",
+                                            )
+                                        }
+                                    },
+                                ) {
+                                    Icon(
+                                        painter = painterResource(Res.drawable.icon_download),
+                                        contentDescription = "Export validation report",
+                                        modifier = Modifier.size(20.dp),
+                                    )
+                                }
+                            }
+                        }
+                    } else null,
                     modifier = Modifier.fillMaxHeight(),
                 ) {
-                    PanelPlaceholderContent(panel = activeLeftPanel)
+                    when (activeLeftPanel) {
+                        SidePanel.Signature -> SignaturePanel(
+                            state = signatureState,
+                            onLoadSignatures = { signatureViewModel?.loadSignatures() },
+                        )
+                        else -> {}
+                    }
                 }
 
                 IslandContentCard(
@@ -225,26 +285,6 @@ fun IslandLayout(
 @Composable
 private fun PanelPlaceholderContent(panel: SidePanel?) {
     when (panel) {
-        SidePanel.Signature -> Text(
-            text = "Signature details and metadata will appear here.",
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.textSecondary,
-        )
-        SidePanel.Sign -> Text(
-            text = "Signing operations will appear here.",
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.textSecondary,
-        )
-        SidePanel.Validate -> Text(
-            text = "Validation results will appear here.",
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.textSecondary,
-        )
-        SidePanel.Archive -> Text(
-            text = "Archival and re-timestamping controls will appear here.",
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.textSecondary,
-        )
         SidePanel.Settings -> Text(
             text = "Application settings will appear here.",
             style = LumoTheme.typography.body2,

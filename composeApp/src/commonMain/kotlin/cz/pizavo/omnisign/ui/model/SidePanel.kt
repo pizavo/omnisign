@@ -1,12 +1,9 @@
 package cz.pizavo.omnisign.ui.model
 
 import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_archive
 import omnisign.composeapp.generated.resources.icon_help
-import omnisign.composeapp.generated.resources.icon_pencil
 import omnisign.composeapp.generated.resources.icon_profile
 import omnisign.composeapp.generated.resources.icon_settings
-import omnisign.composeapp.generated.resources.icon_shield_check
 import omnisign.composeapp.generated.resources.icon_signature
 import org.jetbrains.compose.resources.DrawableResource
 
@@ -22,7 +19,7 @@ enum class PanelSide {
 }
 
 /**
- * Enumerates the tool panels available in the island layout.
+ * Lists the tool panels available in the island layout.
  *
  * Each entry carries display metadata and declares which [PanelSide] it belongs to,
  * so the layout can render left and right sidebars independently.
@@ -40,35 +37,11 @@ enum class SidePanel(
     val side: PanelSide,
     val pinToBottom: Boolean = false,
 ) {
-    /** Document signing operations panel. */
-    Sign(
-        label = "Sign",
-        icon = Res.drawable.icon_pencil,
-        contentDescription = "Open signing panel",
-        side = PanelSide.Left,
-    ),
-
     /** Signature details and metadata panel. */
     Signature(
         label = "Signature",
         icon = Res.drawable.icon_signature,
         contentDescription = "Open signature details panel",
-        side = PanelSide.Left,
-    ),
-
-    /** Signature and document validation panel. */
-    Validate(
-        label = "Validate",
-        icon = Res.drawable.icon_shield_check,
-        contentDescription = "Open validation panel",
-        side = PanelSide.Left,
-    ),
-
-    /** Re-timestamping and archival (B-LTA) panel. */
-    Archive(
-        label = "Archive",
-        icon = Res.drawable.icon_archive,
-        contentDescription = "Open archive panel",
         side = PanelSide.Left,
     ),
 

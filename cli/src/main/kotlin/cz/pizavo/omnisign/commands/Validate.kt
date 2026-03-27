@@ -282,15 +282,48 @@ class Validate : CliktCommand(
 				.forEach { note -> echo("│     ℹ️ $note") }
 		}
 		
+		if (signature.timestamps.isNotEmpty()) {
+			echo("│")
+			echo("│  🕒 Timestamps (${signature.timestamps.size}):")
+			signature.timestamps.forEachIndexed { tsIndex, ts ->
+				val tsNum = "${tsIndex + 1}/${signature.timestamps.size}"
+				echo("│     [$tsNum] ${ts.type}")
+				echo("│       Indication:       ${formatIndication(ts.indication)}")
+				if (ts.subIndication != null) {
+					echo("│       Sub-indication:   ${ts.subIndication}")
+				}
+				echo("│       Production time:  ${ts.productionTime}")
+				if (ts.qualification != null) {
+					echo("│       Qualification:    ${ts.qualification}")
+				}
+				if (ts.tsaSubjectDN != null) {
+					echo("│       TSA:              ${ts.tsaSubjectDN}")
+				}
+				if (ts.errors.isNotEmpty()) {
+					echo("│       ❌ Errors:")
+					ts.errors.forEach { echo("│          • $it") }
+				}
+				if (ts.warnings.isNotEmpty()) {
+					echo("│       ⚠️ Warnings:")
+					ts.warnings.forEach { echo("│          • $it") }
+				}
+				if (detailed && ts.infos.isNotEmpty()) {
+					echo("│       ℹ️ Information:")
+					ts.infos.forEach { echo("│          • $it") }
+				}
+			}
+		}
+		
 		echo("└" + "─".repeat(63))
 	}
 	
 	/**
-	 * Print the timestamps block.
+	 * Print the document-level timestamps block.
 	 *
 	 * Normal mode shows type, indication, sub-indication, production time, qualification,
 	 * and the TSA subject DN. In [detailed] mode the raw DSS timestamp token ID and
-	 * informational messages are also included.
+	 * informational messages are also included. Timestamps associated with a specific
+	 * signature are printed in the corresponding signature block instead.
 	 *
 	 * When any timestamp is [ValidationIndication.INDETERMINATE] within an otherwise
 	 * [ValidationResult.VALID] signature, an informational note is prepended explaining
@@ -298,7 +331,7 @@ class Validate : CliktCommand(
 	 * overall validity.
 	 */
 	private fun printTimestamps(timestamps: List<TimestampValidationResult>, overallResult: ValidationResult) {
-		echo("\n┌─ Timestamps (${timestamps.size})")
+		echo("\n┌─ Document Timestamps (${timestamps.size})")
 
 		val hasExpectedIndeterminate = overallResult == ValidationResult.VALID &&
 				timestamps.any { it.indication == ValidationIndication.INDETERMINATE }

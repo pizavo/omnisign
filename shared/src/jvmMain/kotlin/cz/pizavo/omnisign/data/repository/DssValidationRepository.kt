@@ -113,13 +113,30 @@ class DssValidationRepository(
 		val detailedReport = reports.detailedReport
 		val diagnosticData = reports.diagnosticData
 		
-		val signatures = simpleReport.signatureIdList.map { id ->
-			convertSignature(simpleReport, diagnosticData, id)
+		val allTimestampResults = diagnosticData.getTimestampList().associate { tsw ->
+			tsw.id to convertTimestamp(tsw, simpleReport, detailedReport)
 		}
 		
-		val timestamps = diagnosticData.getTimestampList().map { tsw ->
-			convertTimestamp(tsw, simpleReport, detailedReport)
+		val signatureTimestampIds = mutableSetOf<String>()
+		
+		val signatures = simpleReport.signatureIdList.map { sigId ->
+			val sigWrapper = diagnosticData.getSignatureById(sigId)
+			val sigTsIds = sigWrapper?.timestampList
+				?.filter { it.type == eu.europa.esig.dss.enumerations.TimestampType.SIGNATURE_TIMESTAMP }
+				?.map { it.id }
+				?: emptyList()
+			signatureTimestampIds.addAll(sigTsIds)
+			
+			val sigTimestamps = sigTsIds.mapNotNull { tsId -> allTimestampResults[tsId] }
+			
+			convertSignature(simpleReport, diagnosticData, sigId).copy(
+				timestamps = sigTimestamps
+			)
 		}
+		
+		val documentTimestamps = allTimestampResults
+			.filterKeys { it !in signatureTimestampIds }
+			.values.toList()
 		
 		val overallResult = when {
 			signatures.all { it.indication == ValidationIndication.TOTAL_PASSED } -> ValidationResult.VALID
@@ -132,7 +149,7 @@ class DssValidationRepository(
 			validationTime = java.time.Instant.now().toString(),
 			overallResult = overallResult,
 			signatures = signatures,
-			timestamps = timestamps
+			timestamps = documentTimestamps
 		)
 	}
 	

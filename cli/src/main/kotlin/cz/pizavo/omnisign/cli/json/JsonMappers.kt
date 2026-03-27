@@ -91,6 +91,7 @@ private fun SignatureValidationResult.toJson(): JsonSignatureResult =
 		qualificationErrors = qualificationErrors,
 		qualificationWarnings = qualificationWarnings,
 		qualificationInfos = qualificationInfos,
+		timestamps = timestamps.map { it.toJson() },
 	)
 
 /**

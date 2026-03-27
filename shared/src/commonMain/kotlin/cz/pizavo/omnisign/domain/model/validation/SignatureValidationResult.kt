@@ -21,6 +21,7 @@ import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
  * @property signatureQualification eIDAS qualification of the signature (e.g. "QESig", "AdESig").
  * @property hashAlgorithm Digest algorithm used in the signature (e.g. "SHA256").
  * @property encryptionAlgorithm Encryption algorithm of the signing key (e.g. "RSA", "ECDSA").
+ * @property timestamps Timestamp tokens embedded within or covering this signature (e.g., signature timestamps).
  */
 data class SignatureValidationResult(
     val signatureId: String,
@@ -39,5 +40,6 @@ data class SignatureValidationResult(
     val signatureQualification: String? = null,
     val hashAlgorithm: String? = null,
     val encryptionAlgorithm: String? = null,
+    val timestamps: List<TimestampValidationResult> = emptyList(),
 )
 

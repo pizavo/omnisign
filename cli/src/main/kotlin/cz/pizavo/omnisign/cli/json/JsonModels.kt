@@ -61,6 +61,7 @@ data class JsonSignatureResult(
 	val qualificationErrors: List<String> = emptyList(),
 	val qualificationWarnings: List<String> = emptyList(),
 	val qualificationInfos: List<String> = emptyList(),
+	val timestamps: List<JsonTimestampResult> = emptyList(),
 )
 
 /**
