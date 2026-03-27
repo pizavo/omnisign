@@ -11,6 +11,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.data.util.toKotlinInstant
 import cz.pizavo.omnisign.domain.service.CertificateEntry
 import cz.pizavo.omnisign.domain.service.SigningToken
 import cz.pizavo.omnisign.domain.service.TokenInfo
@@ -166,16 +167,16 @@ class DssTokenService(
 						?: "certificate"
 					"$cn-${certToken.serialNumber.toString(16).take(ALIAS_SERIAL_SUFFIX_LENGTH)}"
 				}
-				CertificateEntry(
-					alias = alias,
-					subjectDN = certToken.subjectX500Principal.toString(),
-					issuerDN = certToken.issuerX500Principal.toString(),
-					serialNumber = certToken.serialNumber.toString(),
-					validFrom = certToken.notBefore.toString(),
-					validTo = certToken.notAfter.toString(),
-					keyUsages = extractKeyUsages(certToken.keyUsage),
-					tokenInfo = tokenInfo,
-				)
+			CertificateEntry(
+				alias = alias,
+				subjectDN = certToken.subjectX500Principal.toString(),
+				issuerDN = certToken.issuerX500Principal.toString(),
+				serialNumber = certToken.serialNumber.toString(),
+				validFrom = certToken.notBefore.toKotlinInstant(),
+				validTo = certToken.notAfter.toKotlinInstant(),
+				keyUsages = extractKeyUsages(certToken.keyUsage),
+				tokenInfo = tokenInfo,
+			)
 			}
 			token.close()
 			certificates.right()

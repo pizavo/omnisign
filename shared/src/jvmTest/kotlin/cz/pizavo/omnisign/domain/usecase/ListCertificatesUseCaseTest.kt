@@ -16,6 +16,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
 import io.mockk.mockk
+import kotlin.time.Instant
 
 /**
  * Verifies [ListCertificatesUseCase] signing-capability filtering logic.
@@ -34,8 +35,8 @@ class ListCertificatesUseCaseTest : FunSpec({
 		alias = alias,
 		subjectDN = subject,
 		issuerDN = issuer,
-		validFrom = "2024-01-01",
-		validTo = "2027-01-01",
+		validFrom = Instant.parse("2024-01-01T00:00:00Z"),
+		validTo = Instant.parse("2027-01-01T00:00:00Z"),
 		tokenType = "FILE",
 		keyUsages = keyUsages
 	)

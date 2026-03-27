@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.domain.model.validation
 
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
+import kotlin.time.Instant
 
 /**
  * Validation result for a single signature.
@@ -16,7 +17,7 @@ import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
  * @property qualificationInfos eIDAS qualification informational messages.
  * @property signedBy Human-readable signer name from the certificate.
  * @property signatureLevel PAdES signature level (e.g. "PAdES-BASELINE-LTA").
- * @property signatureTime Best signature time as determined by DSS.
+ * @property signatureTime Point in time of the best signature time as determined by DSS.
  * @property certificate Signing certificate details.
  * @property signatureQualification eIDAS qualification of the signature (e.g. "QESig", "AdESig").
  * @property hashAlgorithm Digest algorithm used in the signature (e.g. "SHA256").
@@ -35,11 +36,10 @@ data class SignatureValidationResult(
     val qualificationInfos: List<String> = emptyList(),
     val signedBy: String,
     val signatureLevel: String,
-    val signatureTime: String,
+    val signatureTime: Instant,
     val certificate: CertificateInfo,
     val signatureQualification: String? = null,
     val hashAlgorithm: String? = null,
     val encryptionAlgorithm: String? = null,
     val timestamps: List<TimestampValidationResult> = emptyList(),
 )
-

@@ -30,7 +30,7 @@ import org.koin.core.component.inject
 import java.io.File
 import java.nio.file.Files
 import java.nio.file.Paths
-import java.time.Instant
+import kotlin.time.Clock
 
 /**
  * CLI command that executes all configured [RenewalJob]s
@@ -345,7 +345,7 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 	private fun appendLog(logFile: String, message: String) {
 		try {
 			File(logFile).apply { parentFile?.mkdirs() }
-				.appendText("${Instant.now()} $message\n")
+				.appendText("${Clock.System.now()} $message\n")
 		} catch (_: Exception) {
 		}
 	}

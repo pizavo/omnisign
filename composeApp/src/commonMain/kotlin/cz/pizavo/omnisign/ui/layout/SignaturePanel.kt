@@ -21,6 +21,8 @@ import cz.pizavo.omnisign.domain.model.validation.TimestampValidationResult
 import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
 import cz.pizavo.omnisign.domain.model.validation.ValidationReport
 import cz.pizavo.omnisign.domain.model.validation.ValidationResult
+import cz.pizavo.omnisign.domain.model.value.formatDate
+import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Accordion
 import cz.pizavo.omnisign.lumo.components.Button
@@ -161,7 +163,7 @@ private fun ReportContent(report: ValidationReport) {
         Spacer(modifier = Modifier.height(4.dp))
 
         LabelValue(label = "Document", value = report.documentName)
-        LabelValue(label = "Validation time", value = report.validationTime)
+        LabelValue(label = "Validation time", value = report.validationTime.formatDateTime())
 
         if (report.signatures.isEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))
@@ -276,7 +278,7 @@ private fun SignatureAccordion(
             signature.subIndication?.let { LabelValue(label = "Sub-indication", value = it) }
             LabelValue(label = "Signed by", value = signature.signedBy)
             LabelValue(label = "Level", value = signature.signatureLevel)
-            LabelValue(label = "Time", value = signature.signatureTime)
+            LabelValue(label = "Time", value = signature.signatureTime.formatDateTime())
             signature.signatureQualification?.let { LabelValue(label = "Qualification", value = it) }
             signature.hashAlgorithm?.let { LabelValue(label = "Hash algorithm", value = it) }
             signature.encryptionAlgorithm?.let { LabelValue(label = "Encryption", value = it) }
@@ -318,8 +320,8 @@ private fun CertificateAccordion(signature: SignatureValidationResult) {
             LabelValue(label = "Subject", value = signature.certificate.subjectDN)
             LabelValue(label = "Issuer", value = signature.certificate.issuerDN)
             LabelValue(label = "Serial", value = signature.certificate.serialNumber)
-            LabelValue(label = "Valid from", value = signature.certificate.validFrom)
-            LabelValue(label = "Valid to", value = signature.certificate.validTo)
+            LabelValue(label = "Valid from", value = signature.certificate.validFrom.formatDate())
+            LabelValue(label = "Valid to", value = signature.certificate.validTo.formatDate())
             if (signature.certificate.keyUsages.isNotEmpty()) {
                 LabelValue(label = "Key usages", value = signature.certificate.keyUsages.joinToString())
             }
@@ -402,7 +404,7 @@ private fun TimestampAccordion(
         ) {
             LabelValue(label = "Indication", value = formatIndication(timestamp.indication))
             timestamp.subIndication?.let { LabelValue(label = "Sub-indication", value = it) }
-            LabelValue(label = "Production time", value = timestamp.productionTime)
+            LabelValue(label = "Production time", value = timestamp.productionTime.formatDateTime())
             timestamp.qualification?.let { LabelValue(label = "Qualification", value = it) }
             timestamp.tsaSubjectDN?.let { LabelValue(label = "TSA", value = it) }
 

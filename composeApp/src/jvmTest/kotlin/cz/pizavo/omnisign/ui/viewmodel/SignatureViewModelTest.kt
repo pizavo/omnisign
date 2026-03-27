@@ -27,6 +27,7 @@ import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlin.time.Instant
 
 /**
  * Unit tests for [SignatureViewModel].
@@ -40,7 +41,7 @@ class SignatureViewModelTest : FunSpec({
 
     val sampleReport = ValidationReport(
         documentName = "test.pdf",
-        validationTime = "2026-03-27T10:00:00Z",
+        validationTime = Instant.parse("2026-03-27T10:00:00Z"),
         overallResult = ValidationResult.VALID,
         signatures = listOf(
             SignatureValidationResult(
@@ -48,13 +49,13 @@ class SignatureViewModelTest : FunSpec({
                 indication = ValidationIndication.TOTAL_PASSED,
                 signedBy = "Test Signer",
                 signatureLevel = "PAdES-BASELINE-T",
-                signatureTime = "2026-03-27T09:00:00Z",
+                signatureTime = Instant.parse("2026-03-27T09:00:00Z"),
                 certificate = CertificateInfo(
                     subjectDN = "CN=Test",
                     issuerDN = "CN=CA",
                     serialNumber = "ABCD",
-                    validFrom = "2025-01-01",
-                    validTo = "2027-01-01",
+                    validFrom = Instant.parse("2025-01-01T00:00:00Z"),
+                    validTo = Instant.parse("2027-01-01T00:00:00Z"),
                 ),
             )
         ),

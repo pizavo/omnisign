@@ -26,6 +26,7 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
 import io.mockk.mockk
 import java.io.File
+import kotlin.time.Instant
 
 /**
  * Verifies [DssSigningRepository] error handling and certificate aggregation
@@ -100,7 +101,7 @@ class DssSigningRepositoryTest : FunSpec({
 		val tokenInfo = TokenInfo(id = "t1", name = "Test Token", type = TokenType.FILE, requiresPin = false)
 		val certEntry = CertificateEntry(
 			alias = "my-cert", subjectDN = "CN=Test", issuerDN = "CN=CA",
-			serialNumber = "1", validFrom = "2024-01-01", validTo = "2026-01-01",
+			serialNumber = "1", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
 			keyUsages = emptyList(), tokenInfo = tokenInfo
 		)
 
@@ -125,7 +126,7 @@ class DssSigningRepositoryTest : FunSpec({
 		val tokenInfo = TokenInfo(id = "t1", name = "Test Token", type = TokenType.FILE, requiresPin = false)
 		val certEntry = CertificateEntry(
 			alias = "my-cert", subjectDN = "CN=Test", issuerDN = "CN=CA",
-			serialNumber = "1", validFrom = "2024-01-01", validTo = "2026-01-01",
+			serialNumber = "1", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
 			keyUsages = emptyList(), tokenInfo = tokenInfo
 		)
 
@@ -153,12 +154,12 @@ class DssSigningRepositoryTest : FunSpec({
 		val tokenInfo2 = TokenInfo(id = "t2", name = "Token 2", type = TokenType.WINDOWS_MY)
 		val cert1 = CertificateEntry(
 			alias = "cert-a", subjectDN = "CN=A", issuerDN = "CN=CA",
-			serialNumber = "1", validFrom = "2024-01-01", validTo = "2026-01-01",
+			serialNumber = "1", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
 			keyUsages = emptyList(), tokenInfo = tokenInfo1
 		)
 		val cert2 = CertificateEntry(
 			alias = "cert-b", subjectDN = "CN=B", issuerDN = "CN=CA",
-			serialNumber = "2", validFrom = "2024-01-01", validTo = "2026-01-01",
+			serialNumber = "2", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
 			keyUsages = emptyList(), tokenInfo = tokenInfo2
 		)
 
@@ -179,7 +180,7 @@ class DssSigningRepositoryTest : FunSpec({
 		val tokenInfo2 = TokenInfo(id = "t2", name = "Token 2", type = TokenType.PKCS11, path = "/lib/fake.so")
 		val cert1 = CertificateEntry(
 			alias = "cert-a", subjectDN = "CN=A", issuerDN = "CN=CA",
-			serialNumber = "1", validFrom = "2024-01-01", validTo = "2026-01-01",
+			serialNumber = "1", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
 			keyUsages = emptyList(), tokenInfo = tokenInfo1
 		)
 
@@ -199,7 +200,7 @@ class DssSigningRepositoryTest : FunSpec({
 		val tokenInfo2 = TokenInfo(id = "t2", name = "Token 2", type = TokenType.FILE)
 		val cert1 = CertificateEntry(
 			alias = "cert-a", subjectDN = "CN=A", issuerDN = "CN=CA",
-			serialNumber = "1", validFrom = "2024-01-01", validTo = "2026-01-01",
+			serialNumber = "1", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
 			keyUsages = emptyList(), tokenInfo = tokenInfo1
 		)
 
@@ -233,7 +234,7 @@ class DssSigningRepositoryTest : FunSpec({
 		val tokenInfo = TokenInfo(id = "t1", name = "Test Token", type = TokenType.FILE, requiresPin = false)
 		val certEntry = CertificateEntry(
 			alias = "my-cert", subjectDN = "CN=Test", issuerDN = "CN=CA",
-			serialNumber = "1", validFrom = "2024-01-01", validTo = "2026-01-01",
+			serialNumber = "1", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
 			keyUsages = emptyList(), tokenInfo = tokenInfo
 		)
 

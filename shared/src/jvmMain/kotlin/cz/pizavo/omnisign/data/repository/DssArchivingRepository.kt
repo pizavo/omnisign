@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.data.repository
 import arrow.core.getOrElse
 import arrow.core.left
 import arrow.core.right
+import cz.pizavo.omnisign.data.util.toKotlinInstant
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.toDss
@@ -21,7 +22,8 @@ import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
-import java.time.Instant
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
 
 /**
  * JVM implementation of [ArchivingRepository] backed by the EU DSS library.
@@ -148,11 +150,11 @@ class DssArchivingRepository(
 				setCertificateVerifier(CommonCertificateVerifier())
 			}
 			val diagnosticData = validator.validateDocument().diagnosticData
-			val renewalThreshold = Instant.now().plusSeconds(renewalBufferDays * 86_400L)
+			val renewalThreshold = Clock.System.now() + renewalBufferDays.days
 			
 			val needsRenewal = diagnosticData.getTimestampList().any { ts ->
 				val notAfter = ts.signingCertificate?.notAfter ?: return@any false
-				notAfter.toInstant().isBefore(renewalThreshold)
+				notAfter.toKotlinInstant() < renewalThreshold
 			}
 			
 			needsRenewal.right()

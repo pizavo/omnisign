@@ -21,6 +21,8 @@ import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.validation.*
+import cz.pizavo.omnisign.domain.model.value.formatDate
+import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
 import kotlinx.coroutines.runBlocking
@@ -154,7 +156,7 @@ class Validate : CliktCommand(
 		echo("                    VALIDATION REPORT")
 		echo("═══════════════════════════════════════════════════════════════")
 		echo("Document:      ${report.documentName}")
-		echo("Validated at:  ${report.validationTime}")
+		echo("Validated at:  ${report.validationTime.formatDateTime()}")
 		echo("Overall:       ${formatOverallResult(report.overallResult)}")
 		
 		if (detailed) {
@@ -219,7 +221,7 @@ class Validate : CliktCommand(
 		}
 		echo("│  Signed by:        ${signature.signedBy}")
 		echo("│  Signature level:  ${signature.signatureLevel}")
-		echo("│  Signature time:   ${signature.signatureTime}")
+		echo("│  Signature time:   ${signature.signatureTime.formatDateTime()}")
 		if (signature.signatureQualification != null) {
 			echo("│  Qualification:    ${signature.signatureQualification}")
 		}
@@ -232,8 +234,8 @@ class Validate : CliktCommand(
 		echo("│    Subject:        ${signature.certificate.subjectDN}")
 		echo("│    Issuer:         ${signature.certificate.issuerDN}")
 		echo("│    Serial:         ${signature.certificate.serialNumber}")
-		echo("│    Valid from:     ${signature.certificate.validFrom}")
-		echo("│    Valid to:       ${signature.certificate.validTo}")
+		echo("│    Valid from:     ${signature.certificate.validFrom.formatDate()}")
+		echo("│    Valid to:       ${signature.certificate.validTo.formatDate()}")
 		echo("│    Qualified:      ${if (signature.certificate.isQualified) "Yes" else "No"}")
 		
 		if (detailed) {
@@ -292,7 +294,7 @@ class Validate : CliktCommand(
 				if (ts.subIndication != null) {
 					echo("│       Sub-indication:   ${ts.subIndication}")
 				}
-				echo("│       Production time:  ${ts.productionTime}")
+				echo("│       Production time:  ${ts.productionTime.formatDateTime()}")
 				if (ts.qualification != null) {
 					echo("│       Qualification:    ${ts.qualification}")
 				}
@@ -356,7 +358,7 @@ class Validate : CliktCommand(
 			if (timestamp.subIndication != null) {
 				echo("│     Sub-indication: ${timestamp.subIndication}")
 			}
-			echo("│     Produced:      ${timestamp.productionTime}")
+			echo("│     Produced:      ${timestamp.productionTime.formatDateTime()}")
 			if (timestamp.qualification != null) {
 				echo("│     Qualification: ${timestamp.qualification}")
 			}

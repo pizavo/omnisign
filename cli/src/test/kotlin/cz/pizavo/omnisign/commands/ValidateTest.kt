@@ -26,6 +26,7 @@ import io.mockk.coEvery
 import io.mockk.mockk
 import org.koin.dsl.module
 import java.io.File
+import kotlin.time.Instant
 
 /**
  * Behavioral tests for the [Validate] command verifying stdout/stderr output,
@@ -47,7 +48,7 @@ class ValidateTest : FunSpec({
 	
 	val sampleReport = ValidationReport(
 		documentName = "test.pdf",
-		validationTime = "2026-03-14T10:00:00Z",
+		validationTime = Instant.parse("2026-03-14T10:00:00Z"),
 		overallResult = ValidationResult.VALID,
 		signatures = listOf(
 			SignatureValidationResult(
@@ -55,13 +56,13 @@ class ValidateTest : FunSpec({
 				indication = ValidationIndication.TOTAL_PASSED,
 				signedBy = "Test Signer",
 				signatureLevel = "PAdES-BASELINE-T",
-				signatureTime = "2026-03-14T09:00:00Z",
+				signatureTime = Instant.parse("2026-03-14T09:00:00Z"),
 				certificate = CertificateInfo(
 					subjectDN = "CN=Test",
 					issuerDN = "CN=CA",
 					serialNumber = "1234",
-					validFrom = "2025-01-01",
-					validTo = "2027-01-01",
+					validFrom = Instant.parse("2025-01-01T00:00:00Z"),
+					validTo = Instant.parse("2027-01-01T00:00:00Z"),
 				),
 			)
 		),

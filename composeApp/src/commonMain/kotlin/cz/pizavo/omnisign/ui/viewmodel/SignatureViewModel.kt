@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.validation.ValidationReport
+import cz.pizavo.omnisign.domain.model.value.formatDate
+import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
 import cz.pizavo.omnisign.ui.model.SignaturePanelState
 import kotlinx.coroutines.CoroutineDispatcher
@@ -96,7 +98,7 @@ class SignatureViewModel(
         appendLine("OmniSign — Validation Report")
         appendLine("════════════════════════════════════════")
         appendLine("Document:        ${report.documentName}")
-        appendLine("Validation time: ${report.validationTime}")
+        appendLine("Validation time: ${report.validationTime.formatDateTime()}")
         appendLine("Overall result:  ${report.overallResult}")
         appendLine()
 
@@ -109,7 +111,7 @@ class SignatureViewModel(
                 sig.subIndication?.let { appendLine("  Sub-indication: $it") }
                 appendLine("  Signed by:      ${sig.signedBy}")
                 appendLine("  Level:          ${sig.signatureLevel}")
-                appendLine("  Time:           ${sig.signatureTime}")
+                appendLine("  Time:           ${sig.signatureTime.formatDateTime()}")
                 sig.signatureQualification?.let { appendLine("  Qualification:  $it") }
                 sig.hashAlgorithm?.let { appendLine("  Hash algorithm: $it") }
                 sig.encryptionAlgorithm?.let { appendLine("  Encryption:     $it") }
@@ -117,8 +119,8 @@ class SignatureViewModel(
                 appendLine("    Subject:      ${sig.certificate.subjectDN}")
                 appendLine("    Issuer:       ${sig.certificate.issuerDN}")
                 appendLine("    Serial:       ${sig.certificate.serialNumber}")
-                appendLine("    Valid from:   ${sig.certificate.validFrom}")
-                appendLine("    Valid to:     ${sig.certificate.validTo}")
+                appendLine("    Valid from:   ${sig.certificate.validFrom.formatDate()}")
+                appendLine("    Valid to:     ${sig.certificate.validTo.formatDate()}")
                 if (sig.certificate.keyUsages.isNotEmpty()) {
                     appendLine("    Key usages:   ${sig.certificate.keyUsages.joinToString()}")
                 }
@@ -142,7 +144,7 @@ class SignatureViewModel(
                 appendLine("  Timestamp ${index + 1}: ${ts.type}")
                 appendLine("    Indication:      ${ts.indication}")
                 ts.subIndication?.let { appendLine("    Sub-indication:  $it") }
-                appendLine("    Production time: ${ts.productionTime}")
+                appendLine("    Production time: ${ts.productionTime.formatDateTime()}")
                 ts.qualification?.let { appendLine("    Qualification:   $it") }
                 ts.tsaSubjectDN?.let { appendLine("    TSA:             $it") }
                 appendLine()

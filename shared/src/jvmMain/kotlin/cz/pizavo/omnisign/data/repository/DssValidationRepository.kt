@@ -12,6 +12,7 @@ import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
 import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.repository.ValidationRepository
+import cz.pizavo.omnisign.data.util.toKotlinInstant
 import eu.europa.esig.dss.detailedreport.DetailedReport
 import eu.europa.esig.dss.diagnostic.DiagnosticData
 import eu.europa.esig.dss.diagnostic.TimestampWrapper
@@ -146,7 +147,7 @@ class DssValidationRepository(
 		
 		return ValidationReport(
 			documentName = documentName,
-			validationTime = java.time.Instant.now().toString(),
+			validationTime = kotlin.time.Clock.System.now(),
 			overallResult = overallResult,
 			signatures = signatures,
 			timestamps = documentTimestamps
@@ -243,7 +244,7 @@ class DssValidationRepository(
 			type = tsw.type?.name?.replace('_', ' ')?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "Unknown",
 			indication = indication,
 			subIndication = subIndication,
-			productionTime = tsw.productionTime?.toString() ?: "Unknown",
+			productionTime = tsw.productionTime?.toKotlinInstant() ?: kotlin.time.Instant.fromEpochSeconds(0),
 			qualification = qualification,
 			tsaSubjectDN = tsaSubjectDN,
 			errors = errors,
@@ -276,7 +277,8 @@ class DssValidationRepository(
 		
 		val signedBy = simpleReport.getSignedBy(signatureId) ?: "Unknown"
 		val signatureLevel = simpleReport.getSignatureFormat(signatureId)?.toString() ?: "Unknown"
-		val signatureTime = simpleReport.getBestSignatureTime(signatureId)?.toString() ?: "Unknown"
+		val signatureTime = simpleReport.getBestSignatureTime(signatureId)?.toKotlinInstant()
+			?: kotlin.time.Instant.fromEpochSeconds(0)
 		
 		val sigWrapper = diagnosticData.getSignatureById(signatureId)
 		val signingCert = sigWrapper?.signingCertificate
@@ -289,8 +291,8 @@ class DssValidationRepository(
 			subjectDN = signingCert?.getCertificateDN() ?: signedBy,
 			issuerDN = signingCert?.getCertificateIssuerDN() ?: "Unknown",
 			serialNumber = signingCert?.serialNumber ?: "Unknown",
-			validFrom = signingCert?.notBefore?.toString() ?: "Unknown",
-			validTo = signingCert?.notAfter?.toString() ?: "Unknown",
+			validFrom = signingCert?.notBefore?.toKotlinInstant() ?: kotlin.time.Instant.fromEpochSeconds(0),
+			validTo = signingCert?.notAfter?.toKotlinInstant() ?: kotlin.time.Instant.fromEpochSeconds(0),
 			keyUsages = signingCert?.keyUsages?.map { it.name } ?: emptyList(),
 			isQualified = simpleReport.getSignatureQualification(signatureId)
 				?.let { it != SignatureQualification.NA } ?: false,

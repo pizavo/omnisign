@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.domain.model.signature
 
+import kotlin.time.Instant
+
 /**
  * Certificate information.
  *
@@ -17,11 +19,10 @@ data class CertificateInfo(
     val subjectDN: String,
     val issuerDN: String,
     val serialNumber: String,
-    val validFrom: String,
-    val validTo: String,
+    val validFrom: Instant,
+    val validTo: Instant,
     val keyUsages: List<String> = emptyList(),
     val isQualified: Boolean = false,
     val publicKeyAlgorithm: String? = null,
     val sha256Fingerprint: String? = null,
 )
-
