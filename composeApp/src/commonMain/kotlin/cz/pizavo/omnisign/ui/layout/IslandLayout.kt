@@ -18,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
@@ -81,7 +82,10 @@ fun IslandLayout(
 
     val signatureViewModel: SignatureViewModel? = remember {
         val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
-        SignatureViewModel(koin.get<ValidateDocumentUseCase>())
+        SignatureViewModel(
+            koin.get<ValidateDocumentUseCase>(),
+            koin.get<ConfigRepository>(),
+        )
     }
     val signatureState by (signatureViewModel?.state ?: remember {
         kotlinx.coroutines.flow.MutableStateFlow<SignaturePanelState>(SignaturePanelState.Idle())

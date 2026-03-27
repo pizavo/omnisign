@@ -2,10 +2,12 @@ package cz.pizavo.omnisign.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.validation.ValidationReport
 import cz.pizavo.omnisign.domain.model.value.formatDate
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
+import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
 import cz.pizavo.omnisign.ui.model.SignaturePanelState
 import kotlinx.coroutines.CoroutineDispatcher
@@ -25,11 +27,14 @@ import kotlinx.coroutines.withContext
  * [SignaturePanelState.Idle] so that stale results are never shown.
  *
  * @param validateDocumentUseCase Use case for validating a signed PDF.
+ * @param configRepository Repository for retrieving the current application configuration
+ *   so that EU LOTL and custom trusted lists are applied during validation.
  * @param ioDispatcher Dispatcher used for the heavy validation work. Defaults to
  *   [Dispatchers.Default]; tests should substitute a [kotlinx.coroutines.test.StandardTestDispatcher].
  */
 class SignatureViewModel(
     private val validateDocumentUseCase: ValidateDocumentUseCase,
+    private val configRepository: ConfigRepository,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
@@ -65,7 +70,15 @@ class SignatureViewModel(
         _state.update { SignaturePanelState.Loading }
         viewModelScope.launch {
             val result = withContext(ioDispatcher) {
-                validateDocumentUseCase(ValidationParameters(inputFile = path))
+                val appConfig = configRepository.getCurrentConfig()
+                val resolvedConfig = ResolvedConfig.resolve(
+                    global = appConfig.global,
+                    profile = appConfig.activeProfile?.let { appConfig.profiles[it] },
+                    operationOverrides = null,
+                ).getOrNull()
+                validateDocumentUseCase(
+                    ValidationParameters(inputFile = path, resolvedConfig = resolvedConfig)
+                )
             }
             result.fold(
                 ifLeft = { error ->

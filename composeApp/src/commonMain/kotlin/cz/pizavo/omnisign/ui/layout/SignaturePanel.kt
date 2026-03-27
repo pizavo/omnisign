@@ -299,9 +299,9 @@ private fun SignatureAccordion(
             Spacer(modifier = Modifier.height(4.dp))
             CertificateAccordion(signature = signature)
 
-            if (signature.timestamps.isNotEmpty()) {
+            signature.timestamps.firstOrNull()?.let { ts ->
                 Spacer(modifier = Modifier.height(4.dp))
-                SignatureTimestampsAccordion(timestamps = signature.timestamps)
+                SignatureTimestampAccordion(timestamp = ts)
             }
         }
     }
@@ -332,27 +332,31 @@ private fun CertificateAccordion(signature: SignatureValidationResult) {
 }
 
 /**
- * Nested collapsible section showing signature-level timestamps (e.g. signature timestamps).
- * The shield icon reflects the aggregate indication of the contained timestamps.
+ * Collapsible section for the single signature-level timestamp.
+ *
+ * PAdES allows at most one signature timestamp per signature, so this renders
+ * a flat accordion instead of a nested group. The shield icon reflects the
+ * timestamp's own validation indication.
  */
 @Composable
-private fun SignatureTimestampsAccordion(timestamps: List<TimestampValidationResult>) {
-    val aggregateIndication = aggregateTimestampIndication(timestamps)
-
+private fun SignatureTimestampAccordion(timestamp: TimestampValidationResult) {
     SectionAccordion(
-        title = "Timestamps (${timestamps.size})",
-        indication = aggregateIndication,
+        title = "Signature timestamp",
+        indication = timestamp.indication,
         initiallyExpanded = false,
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-            timestamps.forEachIndexed { tsIndex, ts ->
-                if (tsIndex > 0) {
-                    Spacer(modifier = Modifier.height(2.dp))
-                    HorizontalDivider()
-                    Spacer(modifier = Modifier.height(2.dp))
-                }
-                TimestampAccordion(index = tsIndex, total = timestamps.size, timestamp = ts)
-            }
+        Column(
+            modifier = Modifier.padding(start = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            LabelValue(label = "Indication", value = formatIndication(timestamp.indication))
+            timestamp.subIndication?.let { LabelValue(label = "Sub-indication", value = it) }
+            LabelValue(label = "Production time", value = timestamp.productionTime.formatDateTime())
+            timestamp.qualification?.let { LabelValue(label = "Qualification", value = it) }
+            timestamp.tsaSubjectDN?.let { LabelValue(label = "TSA", value = it) }
+
+            MessageList(title = "Errors", messages = timestamp.errors, color = LumoTheme.colors.error)
+            MessageList(title = "Warnings", messages = timestamp.warnings, color = LumoTheme.colors.warning)
         }
     }
 }
