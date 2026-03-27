@@ -68,7 +68,7 @@ fun IslandToolbar(
     val hitTestCallback = LocalTitleBarHitTest.current
     val titleBarHeight = LocalTitleBarHeight.current
     val nativeRightInsetPx = LocalTitleBarRightInset.current
-    val trailingPadding = if (nativeRightInsetPx > 0f) nativeRightInsetPx.dp else 4.dp
+    val trailingPadding = if (nativeRightInsetPx > 0f) (nativeRightInsetPx + 8).dp else 4.dp
 
     Surface(
         modifier = modifier.fillMaxWidth().height(titleBarHeight),
@@ -88,7 +88,7 @@ fun IslandToolbar(
                         hitTestCallback?.invoke("toolbar-left", coords.boundsInWindow())
                     },
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(2.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 Icon(
                     painter = painterResource(Res.drawable.icon_omnisign),
@@ -127,7 +127,7 @@ fun IslandToolbar(
                         hitTestCallback?.invoke("toolbar-right", coords.boundsInWindow())
                     },
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(0.dp),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
                 TooltipBox(
                     tooltip = { Tooltip { Text(text = "Settings") } },
