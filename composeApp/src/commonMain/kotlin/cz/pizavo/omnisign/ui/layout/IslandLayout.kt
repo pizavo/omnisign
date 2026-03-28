@@ -26,7 +26,6 @@ import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.launch
 import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_download
 import omnisign.composeapp.generated.resources.icon_refresh
 import org.jetbrains.compose.resources.painterResource
 import org.koin.mp.KoinPlatform
@@ -192,30 +191,19 @@ fun IslandLayout(
 				) {
 					{
 						if (signatureState is SignaturePanelState.Loaded) {
-							TooltipBox(
-								tooltip = { Tooltip { Text(text = "Export report") } },
-								state = rememberTooltipState(),
-							) {
-								IconButton(
-									variant = IconButtonVariant.Ghost,
-									onClick = {
-										val text = signatureViewModel?.exportReportText() ?: return@IconButton
-										scope.launch {
-											exportTextToFile(
-												text = text,
-												suggestedName = "validation-report",
-												extension = "txt",
-											)
-										}
-									},
-								) {
-									Icon(
-										painter = painterResource(Res.drawable.icon_download),
-										contentDescription = "Export validation report",
-										modifier = Modifier.size(20.dp),
-									)
-								}
-							}
+							ExportReportMenu(
+								availableFormats = signatureViewModel?.availableExportFormats() ?: emptyList(),
+								onFormatSelected = { format ->
+									val text = signatureViewModel?.exportReport(format) ?: return@ExportReportMenu
+									scope.launch {
+										exportTextToFile(
+											text = text,
+											suggestedName = "validation-report",
+											extension = format.extension,
+										)
+									}
+								},
+							)
 						}
 
 						TooltipBox(

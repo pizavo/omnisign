@@ -4,7 +4,10 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
+import cz.pizavo.omnisign.domain.model.validation.ReportExportFormat
 import cz.pizavo.omnisign.domain.model.validation.ValidationReport
+import cz.pizavo.omnisign.domain.model.validation.json.toJsonReport
+import cz.pizavo.omnisign.domain.model.validation.json.toJsonString
 import cz.pizavo.omnisign.domain.model.value.formatDate
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -45,6 +48,39 @@ class SignatureViewModel(
 
     /** File path of the currently loaded document, if any. */
     private var currentFilePath: String? = null
+
+    /**
+     * Return the list of [ReportExportFormat] entries that can be used for the
+     * current report. Domain-level formats (TXT, JSON) are always available;
+     * raw DSS XML formats are available only when the report carries them.
+     */
+    fun availableExportFormats(): List<ReportExportFormat> {
+        val loaded = _state.value as? SignaturePanelState.Loaded ?: return emptyList()
+        return ReportExportFormat.entries.filter { format ->
+            val raw = format.rawReportFormat
+            raw == null || loaded.report.rawReports.containsKey(raw)
+        }
+    }
+
+    /**
+     * Export the current [ValidationReport] in the requested [format].
+     *
+     * Returns the serialized string or `null` when no report is loaded or the
+     * requested raw XML format is not available.
+     */
+    fun exportReport(format: ReportExportFormat): String? {
+        val loaded = _state.value as? SignaturePanelState.Loaded ?: return null
+        val report = loaded.report
+
+        return when (format) {
+            ReportExportFormat.TXT -> formatReport(report)
+            ReportExportFormat.JSON -> report.toJsonReport().toJsonString()
+            else -> {
+                val rawKey = format.rawReportFormat ?: return null
+                report.rawReports[rawKey]
+            }
+        }
+    }
 
     /**
      * Notify the ViewModel that a new PDF document has been loaded (or cleared).
@@ -99,10 +135,7 @@ class SignatureViewModel(
      * Serialize the current [ValidationReport] to a human-readable text representation
      * suitable for saving to a file. Returns `null` when no report is available.
      */
-    fun exportReportText(): String? {
-        val loaded = _state.value as? SignaturePanelState.Loaded ?: return null
-        return formatReport(loaded.report)
-    }
+    fun exportReportText(): String? = exportReport(ReportExportFormat.TXT)
 
     /**
      * Format a [ValidationReport] into a human-readable text string.

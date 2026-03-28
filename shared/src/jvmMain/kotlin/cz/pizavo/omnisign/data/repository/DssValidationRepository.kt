@@ -73,7 +73,10 @@ class DssValidationRepository(
 			}
 			
 			val verifierWarnings = statusAlert.drain()
-			convertReports(reports, file.name).copy(tlWarnings = tlWarnings + verifierWarnings)
+			convertReports(reports, file.name).copy(
+				tlWarnings = tlWarnings + verifierWarnings,
+				rawReports = extractRawReports(reports),
+			)
 		}.mapLeft { exception ->
 			ValidationError.ValidationFailed(
 				message = "Validation failed",
@@ -176,7 +179,7 @@ class DssValidationRepository(
 	 * sub-indication `NO_POE` — when the TSA certificate is not directly identified as a trust
 	 * service in the loaded trusted lists.  This does not affect the overall `TOTAL_PASSED`
 	 * result of the containing signature.  When the TSA certificate *is* a trust anchor
-	 * (e.g. directly listed in the EU LOTL), DSS reports the timestamp as `PASSED`.
+	 * (e.g., directly listed in the EU LOTL), DSS reports the timestamp as `PASSED`.
 	 *
 	 * The sub-indication is resolved from the simple-report first, falling back to the BBB
 	 * conclusion (which commonly carries `NO_POE`) so callers have a human-readable reason code.
@@ -324,6 +327,17 @@ class DssValidationRepository(
 		)
 	}
 	
+	/**
+	 * Extract all four raw DSS report XML strings from the [Reports] bundle
+	 * so they can be carried on the domain [ValidationReport] for later export.
+	 */
+	private fun extractRawReports(reports: Reports): Map<RawReportFormat, String> = buildMap {
+		reports.xmlDetailedReport?.let { put(RawReportFormat.XML_DETAILED, it) }
+		reports.xmlSimpleReport?.let { put(RawReportFormat.XML_SIMPLE, it) }
+		reports.xmlDiagnosticData?.let { put(RawReportFormat.XML_DIAGNOSTIC, it) }
+		reports.xmlValidationReport?.let { put(RawReportFormat.XML_ETSI, it) }
+	}
+
 	/**
 	 * Write the native DSS report in the requested [format] to [outputPath].
 	 *

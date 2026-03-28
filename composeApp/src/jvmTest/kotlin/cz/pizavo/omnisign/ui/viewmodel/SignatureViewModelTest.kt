@@ -4,7 +4,9 @@ import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.error.ValidationError
+import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
+import cz.pizavo.omnisign.domain.model.validation.ReportExportFormat
 import cz.pizavo.omnisign.domain.model.validation.SignatureValidationResult
 import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
 import cz.pizavo.omnisign.domain.model.validation.ValidationReport
@@ -14,6 +16,8 @@ import cz.pizavo.omnisign.domain.repository.ValidationRepository
 import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
 import cz.pizavo.omnisign.ui.model.SignaturePanelState
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -175,6 +179,95 @@ class SignatureViewModelTest : FunSpec({
             text shouldContain "Test Signer"
             text shouldContain "PAdES-BASELINE-T"
             text shouldContain "CN=Test"
+        }
+    }
+
+    test("exportReport returns null for all formats when not Loaded") {
+        val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
+
+        ReportExportFormat.entries.forEach { format ->
+            vm.exportReport(format).shouldBeNull()
+        }
+    }
+
+    test("exportReport(JSON) returns valid JSON when Loaded") {
+        runTest(testDispatcher) {
+            coEvery { validationRepository.validateDocument(any()) } returns sampleReport.right()
+
+            val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
+            vm.onDocumentChanged("/path/to/file.pdf")
+            vm.loadSignatures()
+            advanceUntilIdle()
+
+            val json = vm.exportReport(ReportExportFormat.JSON).shouldNotBeNull()
+            json shouldContain "\"documentName\""
+            json shouldContain "test.pdf"
+            json shouldContain "\"overallResult\""
+            json shouldContain "VALID"
+            json shouldContain "\"signatures\""
+            json shouldContain "Test Signer"
+        }
+    }
+
+    test("exportReport returns raw XML when raw reports are present") {
+        runTest(testDispatcher) {
+            val reportWithRaw = sampleReport.copy(
+                rawReports = mapOf(
+                    RawReportFormat.XML_SIMPLE to "<SimpleReport>ok</SimpleReport>",
+                    RawReportFormat.XML_DETAILED to "<DetailedReport>full</DetailedReport>",
+                )
+            )
+            coEvery { validationRepository.validateDocument(any()) } returns reportWithRaw.right()
+
+            val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
+            vm.onDocumentChanged("/path/to/file.pdf")
+            vm.loadSignatures()
+            advanceUntilIdle()
+
+            vm.exportReport(ReportExportFormat.XML_SIMPLE) shouldBe "<SimpleReport>ok</SimpleReport>"
+            vm.exportReport(ReportExportFormat.XML_DETAILED) shouldBe "<DetailedReport>full</DetailedReport>"
+            vm.exportReport(ReportExportFormat.XML_DIAGNOSTIC).shouldBeNull()
+            vm.exportReport(ReportExportFormat.XML_ETSI).shouldBeNull()
+        }
+    }
+
+    test("availableExportFormats returns empty when not Loaded") {
+        val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
+        vm.availableExportFormats() shouldBe emptyList()
+    }
+
+    test("availableExportFormats always includes TXT and JSON") {
+        runTest(testDispatcher) {
+            coEvery { validationRepository.validateDocument(any()) } returns sampleReport.right()
+
+            val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
+            vm.onDocumentChanged("/path/to/file.pdf")
+            vm.loadSignatures()
+            advanceUntilIdle()
+
+            val formats = vm.availableExportFormats()
+            formats shouldContain ReportExportFormat.TXT
+            formats shouldContain ReportExportFormat.JSON
+        }
+    }
+
+    test("availableExportFormats includes XML formats only when raw reports are present") {
+        runTest(testDispatcher) {
+            val reportWithRaw = sampleReport.copy(
+                rawReports = mapOf(RawReportFormat.XML_SIMPLE to "<SimpleReport/>")
+            )
+            coEvery { validationRepository.validateDocument(any()) } returns reportWithRaw.right()
+
+            val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
+            vm.onDocumentChanged("/path/to/file.pdf")
+            vm.loadSignatures()
+            advanceUntilIdle()
+
+            val formats = vm.availableExportFormats()
+            formats shouldContain ReportExportFormat.XML_SIMPLE
+            formats shouldNotContain ReportExportFormat.XML_DETAILED
+            formats shouldNotContain ReportExportFormat.XML_DIAGNOSTIC
+            formats shouldNotContain ReportExportFormat.XML_ETSI
         }
     }
 })

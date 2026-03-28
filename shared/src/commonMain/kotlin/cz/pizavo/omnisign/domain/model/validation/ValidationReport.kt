@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.domain.model.validation
 
+import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import kotlin.time.Instant
 
 /**
@@ -11,6 +12,9 @@ import kotlin.time.Instant
  * @property signatures Per-signature validation results.
  * @property timestamps Document-level timestamp validation results not associated with a specific signature.
  * @property tlWarnings User-readable notices about trusted list loading issues encountered during validation.
+ * @property rawReports Pre-marshaled DSS report XML strings keyed by [RawReportFormat].
+ *   Populated on JVM after validation so that the desktop/server UI can export them
+ *   without re-running validation. Empty on non-JVM targets.
  */
 data class ValidationReport(
     val documentName: String,
@@ -24,4 +28,5 @@ data class ValidationReport(
      * which may affect qualification assessment but does not invalidate the signature itself.
      */
     val tlWarnings: List<String> = emptyList(),
+    val rawReports: Map<RawReportFormat, String> = emptyMap(),
 )
