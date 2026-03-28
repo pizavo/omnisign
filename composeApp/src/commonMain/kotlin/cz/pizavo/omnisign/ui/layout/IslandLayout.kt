@@ -27,6 +27,7 @@ import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.launch
 import omnisign.composeapp.generated.resources.Res
 import omnisign.composeapp.generated.resources.icon_download
+import omnisign.composeapp.generated.resources.icon_refresh
 import org.jetbrains.compose.resources.painterResource
 import org.koin.mp.KoinPlatform
 
@@ -186,10 +187,11 @@ fun IslandLayout(
 					maxPanelWidth = maxLeftPanelWidth,
 					onWidthChange = { leftPanelWidth = it },
 					fromEnd = false,
-					headerActions = if (activeLeftPanel == SidePanel.Signature &&
-						signatureState is SignaturePanelState.Loaded
-					) {
-						{
+				headerActions = if (activeLeftPanel == SidePanel.Signature &&
+					pdfState.document != null
+				) {
+					{
+						if (signatureState is SignaturePanelState.Loaded) {
 							TooltipBox(
 								tooltip = { Tooltip { Text(text = "Export report") } },
 								state = rememberTooltipState(),
@@ -215,7 +217,24 @@ fun IslandLayout(
 								}
 							}
 						}
-					} else null,
+
+						TooltipBox(
+							tooltip = { Tooltip { Text(text = "Refresh signatures") } },
+							state = rememberTooltipState(),
+						) {
+							IconButton(
+								variant = IconButtonVariant.Ghost,
+								onClick = { signatureViewModel?.loadSignatures() },
+							) {
+								Icon(
+									painter = painterResource(Res.drawable.icon_refresh),
+									contentDescription = "Refresh signatures",
+									modifier = Modifier.size(20.dp),
+								)
+							}
+						}
+					}
+				} else null,
 					modifier = Modifier.fillMaxHeight(),
 				) {
 					when (activeLeftPanel) {

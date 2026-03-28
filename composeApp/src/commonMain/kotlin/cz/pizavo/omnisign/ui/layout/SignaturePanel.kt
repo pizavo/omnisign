@@ -44,7 +44,7 @@ import org.jetbrains.compose.resources.painterResource
 /**
  * Content of the Signature side panel.
  *
- * Displays a "Load Signatures" button in the [SignaturePanelState.Idle] state,
+ * Displays a prompt in the [SignaturePanelState.Idle] state,
  * a progress indicator while [SignaturePanelState.Loading], the full validation
  * report when [SignaturePanelState.Loaded], or an error message on failure.
  *
@@ -57,11 +57,7 @@ fun SignaturePanel(
     onLoadSignatures: () -> Unit,
 ) {
     when (state) {
-        is SignaturePanelState.Idle -> IdleContent(
-            hasDocument = state.hasDocument,
-            onLoadSignatures = onLoadSignatures,
-        )
-
+        is SignaturePanelState.Idle -> IdleContent(hasDocument = state.hasDocument)
         is SignaturePanelState.Loading -> LoadingContent()
         is SignaturePanelState.Loaded -> ReportContent(report = state.report)
         is SignaturePanelState.Error -> ErrorContent(message = state.message, onRetry = onLoadSignatures)
@@ -69,13 +65,10 @@ fun SignaturePanel(
 }
 
 /**
- * Idle state — prompts the user to load signature information.
+ * Idle state — prompts the user to open a document or use the refresh action.
  */
 @Composable
-private fun IdleContent(
-    hasDocument: Boolean,
-    onLoadSignatures: () -> Unit,
-) {
+private fun IdleContent(hasDocument: Boolean) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         horizontalAlignment = Alignment.CenterHorizontally,
@@ -88,18 +81,11 @@ private fun IdleContent(
             tint = LumoTheme.colors.textSecondary,
         )
         Text(
-            text = if (hasDocument) "Click to retrieve signature information."
+            text = if (hasDocument) "Press the refresh button to retrieve signature information."
             else "Open a PDF document first.",
             style = LumoTheme.typography.body2,
             color = LumoTheme.colors.textSecondary,
         )
-        if (hasDocument) {
-            Button(
-                text = "Load Signatures",
-                variant = ButtonVariant.Primary,
-                onClick = onLoadSignatures,
-            )
-        }
     }
 }
 
@@ -114,7 +100,7 @@ private fun LoadingContent() {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "Analysing signatures\u2026",
+            text = "Analysing signatures…",
             style = LumoTheme.typography.body2,
             color = LumoTheme.colors.textSecondary,
         )
@@ -148,7 +134,7 @@ private fun ErrorContent(
 }
 
 /**
- * Successfully loaded report \u2013 renders the overall result badge, document metadata,
+ * Successfully loaded report – renders the overall result badge, document metadata,
  * a collapsible "Signatures" group, a collapsible "Document Timestamps" group, and
  * optional trusted-list warnings.
  */
@@ -193,7 +179,7 @@ private fun ReportContent(report: ValidationReport) {
             Text(text = "Trusted List Warnings", style = LumoTheme.typography.h4)
             report.tlWarnings.forEach { warning ->
                 Text(
-                    text = "\u26A0 $warning",
+                    text = "⚠️ $warning",
                     style = LumoTheme.typography.body2,
                     color = LumoTheme.colors.warning,
                 )
@@ -266,7 +252,7 @@ private fun SignatureAccordion(
     signature: SignatureValidationResult,
 ) {
     SectionAccordion(
-        title = "Signature ${index + 1} of $total \u2014 ${signature.signedBy}",
+        title = "Signature ${index + 1} of $total — ${signature.signedBy}",
         indication = signature.indication,
         initiallyExpanded = false,
     ) {
@@ -398,7 +384,7 @@ private fun TimestampAccordion(
     timestamp: TimestampValidationResult,
 ) {
     SectionAccordion(
-        title = "Timestamp ${index + 1} of $total \u2014 ${timestamp.type}",
+        title = "Timestamp ${index + 1} of $total — ${timestamp.type}",
         indication = timestamp.indication,
         initiallyExpanded = false,
     ) {
@@ -515,7 +501,7 @@ private fun NestedAccordion(
 }
 
 /**
- * A horizontal label\u2013value pair.
+ * A horizontal label–value pair.
  */
 @Composable
 private fun LabelValue(label: String, value: String) {
@@ -542,7 +528,7 @@ private fun MessageList(
         Text(text = title, style = LumoTheme.typography.label1, color = color)
         messages.forEach { msg ->
             Text(
-                text = "\u2022 $msg",
+                text = "• $msg",
                 style = LumoTheme.typography.body2,
                 color = color,
                 modifier = Modifier.padding(start = 8.dp),
@@ -581,7 +567,7 @@ private fun indicationColor(indication: ValidationIndication) = when (indication
 
 /**
  * Derive an aggregate [ValidationIndication] for a list of signatures.
- * All passed \u2192 [ValidationIndication.TOTAL_PASSED], any failed \u2192
+ * All passed → [ValidationIndication.TOTAL_PASSED], any failed →
  * [ValidationIndication.TOTAL_FAILED], otherwise [ValidationIndication.INDETERMINATE].
  */
 private fun aggregateSignatureIndication(
@@ -594,7 +580,7 @@ private fun aggregateSignatureIndication(
 
 /**
  * Derive an aggregate [ValidationIndication] for a list of timestamps.
- * All passed \u2192 [ValidationIndication.TOTAL_PASSED], any failed \u2192
+ * All passed → [ValidationIndication.TOTAL_PASSED], any failed →
  * [ValidationIndication.TOTAL_FAILED], otherwise [ValidationIndication.INDETERMINATE].
  */
 private fun aggregateTimestampIndication(
