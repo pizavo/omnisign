@@ -20,6 +20,7 @@ import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Button
 import cz.pizavo.omnisign.lumo.components.ButtonVariant
+import cz.pizavo.omnisign.lumo.components.Surface
 import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.ui.model.PdfViewerState
 import cz.pizavo.omnisign.ui.platform.rememberPdfPageBitmap
@@ -102,14 +103,19 @@ fun PdfViewerContent(
                     .horizontalScroll(horizontalScrollState),
                 contentAlignment = Alignment.TopCenter,
             ) {
-                Image(
-                    bitmap = bitmap,
-                    contentDescription = "Page ${state.currentPage + 1} of ${document.pageCount}",
+                Surface(
                     modifier = Modifier
                         .widthIn(max = BASE_MAX_WIDTH * state.zoomLevel)
                         .padding(horizontal = 16.dp, vertical = 8.dp),
-                    contentScale = ContentScale.FillWidth,
-                )
+                    shadowElevation = 4.dp,
+                ) {
+                    Image(
+                        bitmap = bitmap,
+                        contentDescription = "Page ${state.currentPage + 1} of ${document.pageCount}",
+                        modifier = Modifier.fillMaxWidth(),
+                        contentScale = ContentScale.FillWidth,
+                    )
+                }
             }
         } else {
             Box(
