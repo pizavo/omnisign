@@ -1,20 +1,7 @@
 package cz.pizavo.omnisign.ui.layout
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.BoxWithConstraints
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.setValue
+import androidx.compose.foundation.layout.*
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -26,18 +13,8 @@ import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
 import cz.pizavo.omnisign.lumo.LumoTheme
-import cz.pizavo.omnisign.lumo.components.Icon
-import cz.pizavo.omnisign.lumo.components.IconButton
-import cz.pizavo.omnisign.lumo.components.IconButtonVariant
-import cz.pizavo.omnisign.lumo.components.Text
-import cz.pizavo.omnisign.lumo.components.Tooltip
-import cz.pizavo.omnisign.lumo.components.TooltipBox
-import cz.pizavo.omnisign.lumo.components.rememberTooltipState
-import cz.pizavo.omnisign.ui.model.PanelSide
-import cz.pizavo.omnisign.ui.model.ProfileListState
-import cz.pizavo.omnisign.ui.model.ProfilePanelMode
-import cz.pizavo.omnisign.ui.model.SignaturePanelState
-import cz.pizavo.omnisign.ui.model.SidePanel
+import cz.pizavo.omnisign.lumo.components.*
+import cz.pizavo.omnisign.ui.model.*
 import cz.pizavo.omnisign.ui.platform.exportTextToFile
 import cz.pizavo.omnisign.ui.platform.loadPdfFromPlatformFile
 import cz.pizavo.omnisign.ui.viewmodel.PdfViewerViewModel
@@ -75,242 +52,249 @@ import org.koin.mp.KoinPlatform
  */
 @Composable
 fun IslandLayout(
-    isDarkTheme: Boolean,
-    onToggleTheme: () -> Unit,
-    modifier: Modifier = Modifier,
+	isDarkTheme: Boolean,
+	onToggleTheme: () -> Unit,
+	modifier: Modifier = Modifier,
 ) {
-    val pdfViewModel: PdfViewerViewModel = viewModel { PdfViewerViewModel() }
-    val pdfState by pdfViewModel.state.collectAsState()
-    val scope = rememberCoroutineScope()
-
-    val signatureViewModel: SignatureViewModel? = remember {
-        val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
-        SignatureViewModel(
-            koin.get<ValidateDocumentUseCase>(),
-            koin.get<ConfigRepository>(),
-        )
-    }
-    val signatureState by (signatureViewModel?.state ?: remember {
-        kotlinx.coroutines.flow.MutableStateFlow<SignaturePanelState>(SignaturePanelState.Idle())
-    }).collectAsState()
-
-    val profileViewModel: ProfileViewModel? = remember {
-        val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
-        ProfileViewModel(
-            koin.get<ManageProfileUseCase>(),
-            koin.get<GetConfigUseCase>(),
-            koin.getOrNull<CredentialStore>(),
-        )
-    }
-    val profileState by (profileViewModel?.state ?: remember {
-        kotlinx.coroutines.flow.MutableStateFlow(ProfileListState())
-    }).collectAsState()
-
-    val settingsViewModel: SettingsViewModel? = remember {
-        val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
-        SettingsViewModel(
-            koin.get<GetConfigUseCase>(),
-            koin.get<SetGlobalConfigUseCase>(),
-            koin.getOrNull<CredentialStore>(),
-        )
-    }
-    val settingsState by (settingsViewModel?.state ?: remember {
-        kotlinx.coroutines.flow.MutableStateFlow(cz.pizavo.omnisign.ui.model.GlobalConfigEditState())
-    }).collectAsState()
-    var showSettingsDialog by remember { mutableStateOf(false) }
-    
-    
-    val filePickerLauncher = rememberFilePickerLauncher(
-        type = FileKitType.File(extensions = listOf("pdf")),
-    ) { platformFile: PlatformFile? ->
-        if (platformFile != null) {
-            scope.launch {
-                val document = loadPdfFromPlatformFile(platformFile)
-                pdfViewModel.onDocumentLoaded(document)
-                signatureViewModel?.onDocumentChanged(document.filePath)
-            }
-        }
-    }
-
-    val leftPanels = remember { SidePanel.entries.filter { it.side == PanelSide.Left } }
-    val rightPanels = remember { SidePanel.entries.filter { it.side == PanelSide.Right } }
-
-    var activeLeftPanel by remember { mutableStateOf<SidePanel?>(null) }
-    var activeRightPanel by remember { mutableStateOf<SidePanel?>(null) }
-
-    var leftPanelWidth by remember { mutableStateOf(Dp.Unspecified) }
-    var rightPanelWidth by remember { mutableStateOf(Dp.Unspecified) }
-
-    Column(modifier = modifier.fillMaxSize()) {
-        IslandToolbar(
-            isDarkTheme = isDarkTheme,
-            onToggleTheme = onToggleTheme,
-            onOpenFile = { filePickerLauncher.launch() },
-            onOpenSettings = {
-                settingsViewModel?.load()
-                showSettingsDialog = true
-            },
-        )
-
-        if (showSettingsDialog) {
-            SettingsDialog(
-                state = settingsState,
-                onFieldChange = { transform -> settingsViewModel?.updateState(transform) },
-                onSave = { settingsViewModel?.save(onSuccess = { showSettingsDialog = false }) },
-                onDismiss = { showSettingsDialog = false },
-            )
-        }
-
-        BoxWithConstraints(
-            modifier = Modifier
-                .weight(1f)
-                .padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
-        ) {
-            val defaultPanelWidth = maxWidth * IslandSidePanelDefaultFraction
-            val effectiveLeftWidth = if (leftPanelWidth == Dp.Unspecified) defaultPanelWidth else leftPanelWidth
-            val effectiveRightWidth = if (rightPanelWidth == Dp.Unspecified) defaultPanelWidth else rightPanelWidth
-
-            val sideBarCount = (if (leftPanels.isNotEmpty()) 1 else 0) +
-                    (if (rightPanels.isNotEmpty()) 1 else 0)
-            val gapCount = sideBarCount + 1 +
-                    (if (activeLeftPanel != null) 1 else 0) +
-                    (if (activeRightPanel != null) 1 else 0)
-            val fixedChrome = SideBarWidth * sideBarCount + 4.dp * gapCount
-            val panelWidthCap = (maxWidth - SideBarWidth * sideBarCount) / 3
-            val oppositeRight = if (activeRightPanel != null) effectiveRightWidth else 0.dp
-            val oppositeLeft = if (activeLeftPanel != null) effectiveLeftWidth else 0.dp
-            val maxLeftPanelWidth = (maxWidth - fixedChrome - oppositeRight)
-                .coerceIn(IslandSidePanelMinWidth, panelWidthCap)
-            val maxRightPanelWidth = (maxWidth - fixedChrome - oppositeLeft)
-                .coerceIn(IslandSidePanelMinWidth, panelWidthCap)
-
-            Row(
-                modifier = Modifier.fillMaxSize(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                IslandSideBar(
-                    panels = leftPanels,
-                    activePanel = activeLeftPanel,
-                    onPanelToggle = { panel ->
-                        activeLeftPanel = if (activeLeftPanel == panel) null else panel
-                    },
-                )
-
-                IslandSidePanel(
-                    visible = activeLeftPanel != null,
-                    title = activeLeftPanel?.label ?: "",
-                    onClose = { activeLeftPanel = null },
-                    panelWidth = effectiveLeftWidth.coerceAtMost(maxLeftPanelWidth),
-                    defaultWidth = defaultPanelWidth,
-                    maxPanelWidth = maxLeftPanelWidth,
-                    onWidthChange = { leftPanelWidth = it },
-                    fromEnd = false,
-                    headerActions = if (activeLeftPanel == SidePanel.Signature &&
-                        signatureState is SignaturePanelState.Loaded
-                    ) {
-                        {
-                            TooltipBox(
-                                tooltip = { Tooltip { Text(text = "Export report") } },
-                                state = rememberTooltipState(),
-                            ) {
-                                IconButton(
-                                    variant = IconButtonVariant.Ghost,
-                                    onClick = {
-                                        val text = signatureViewModel?.exportReportText() ?: return@IconButton
-                                        scope.launch {
-                                            exportTextToFile(
-                                                text = text,
-                                                suggestedName = "validation-report",
-                                                extension = "txt",
-                                            )
-                                        }
-                                    },
-                                ) {
-                                    Icon(
-                                        painter = painterResource(Res.drawable.icon_download),
-                                        contentDescription = "Export validation report",
-                                        modifier = Modifier.size(20.dp),
-                                    )
-                                }
-                            }
-                        }
-                    } else null,
-                    modifier = Modifier.fillMaxHeight(),
-                ) {
-                    when (activeLeftPanel) {
-                        SidePanel.Signature -> SignaturePanel(
-                            state = signatureState,
-                            onLoadSignatures = { signatureViewModel?.loadSignatures() },
-                        )
-                        else -> {}
-                    }
-                }
-
-                IslandContentCard(
-                    modifier = Modifier.weight(1f).fillMaxHeight(),
-                ) {
-                    PdfViewerContent(
-                        state = pdfState,
-                        onPreviousPage = pdfViewModel::previousPage,
-                        onNextPage = pdfViewModel::nextPage,
-                        onZoomIn = pdfViewModel::zoomIn,
-                        onZoomOut = pdfViewModel::zoomOut,
-                        onResetZoom = pdfViewModel::resetZoom,
-                    )
-                }
-
-                val isEditingProfile = activeRightPanel == SidePanel.Profiles &&
-                        profileState.mode is ProfilePanelMode.Editing
-                val rightPanelTitle = if (isEditingProfile) "Edit Profile"
-                    else activeRightPanel?.label ?: ""
-
-                IslandSidePanel(
-                    visible = activeRightPanel != null,
-                    title = rightPanelTitle,
-                    onClose = {
-                        if (isEditingProfile) profileViewModel?.cancelEdit()
-                        activeRightPanel = null
-                    },
-                    panelWidth = effectiveRightWidth.coerceAtMost(maxRightPanelWidth),
-                    defaultWidth = defaultPanelWidth,
-                    maxPanelWidth = maxRightPanelWidth,
-                    onWidthChange = { rightPanelWidth = it },
-                    fromEnd = true,
-                    onBack = if (isEditingProfile) {
-                        { profileViewModel?.cancelEdit() }
-                    } else null,
-                    modifier = Modifier.fillMaxHeight(),
-                ) {
-                    when (activeRightPanel) {
-                        SidePanel.Profiles -> ProfilesPanel(
-                            state = profileState,
-                            onToggleActive = { profileViewModel?.toggleActive(it) },
-                            onEdit = { profileViewModel?.startEdit(it) },
-                            onDelete = { profileViewModel?.delete(it) },
-                            onAdd = { profileViewModel?.startCreate() },
-                            onDeselectActive = { profileViewModel?.deselectActive() },
-                            onConfirmCreate = { profileViewModel?.confirmCreate(it) },
-                            onCancelCreate = { profileViewModel?.cancelCreate() },
-                            onFieldChange = { transform -> profileViewModel?.updateEditState(transform) },
-                            onSaveEdit = { profileViewModel?.saveEdit() },
-                        )
-                        else -> PanelPlaceholderContent(panel = activeRightPanel)
-                    }
-                }
-
-                IslandSideBar(
-                    panels = rightPanels,
-                    activePanel = activeRightPanel,
-                    onPanelToggle = { panel ->
-                        activeRightPanel = if (activeRightPanel == panel) null else {
-                            if (panel == SidePanel.Profiles) profileViewModel?.refresh()
-                            panel
-                        }
-                    },
-                )
-            }
-        }
-    }
+	val pdfViewModel: PdfViewerViewModel = viewModel { PdfViewerViewModel() }
+	val pdfState by pdfViewModel.state.collectAsState()
+	val scope = rememberCoroutineScope()
+	
+	val signatureViewModel: SignatureViewModel? = remember {
+		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
+		SignatureViewModel(
+			koin.get<ValidateDocumentUseCase>(),
+			koin.get<ConfigRepository>(),
+		)
+	}
+	val signatureState by (signatureViewModel?.state ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow<SignaturePanelState>(SignaturePanelState.Idle())
+	}).collectAsState()
+	
+	val profileViewModel: ProfileViewModel? = remember {
+		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
+		ProfileViewModel(
+			koin.get<ManageProfileUseCase>(),
+			koin.get<GetConfigUseCase>(),
+			koin.getOrNull<CredentialStore>(),
+		)
+	}
+	val profileState by (profileViewModel?.state ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow(ProfileListState())
+	}).collectAsState()
+	
+	val settingsViewModel: SettingsViewModel? = remember {
+		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
+		SettingsViewModel(
+			koin.get<GetConfigUseCase>(),
+			koin.get<SetGlobalConfigUseCase>(),
+			koin.getOrNull<CredentialStore>(),
+		)
+	}
+	val settingsState by (settingsViewModel?.state ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow(GlobalConfigEditState())
+	}).collectAsState()
+	var showSettingsDialog by remember { mutableStateOf(false) }
+	
+	
+	val filePickerLauncher = rememberFilePickerLauncher(
+		type = FileKitType.File(extensions = listOf("pdf")),
+	) { platformFile: PlatformFile? ->
+		if (platformFile != null) {
+			scope.launch {
+				val document = loadPdfFromPlatformFile(platformFile)
+				pdfViewModel.onDocumentLoaded(document)
+				signatureViewModel?.onDocumentChanged(document.filePath)
+			}
+		}
+	}
+	
+	val leftPanels = remember { SidePanel.entries.filter { it.side == PanelSide.Left } }
+	val rightPanels = remember { SidePanel.entries.filter { it.side == PanelSide.Right } }
+	
+	var activeLeftPanel by remember { mutableStateOf<SidePanel?>(null) }
+	var activeRightPanel by remember { mutableStateOf<SidePanel?>(null) }
+	
+	var leftPanelWidth by remember { mutableStateOf(Dp.Unspecified) }
+	var rightPanelWidth by remember { mutableStateOf(Dp.Unspecified) }
+	
+	Column(modifier = modifier.fillMaxSize()) {
+		IslandToolbar(
+			isDarkTheme = isDarkTheme,
+			onToggleTheme = onToggleTheme,
+			onOpenFile = { filePickerLauncher.launch() },
+			onOpenSettings = {
+				settingsViewModel?.load()
+				showSettingsDialog = true
+			},
+			onSign = { },
+			onTimestamp = { },
+			fileLoaded = pdfState.document != null,
+		)
+		
+		if (showSettingsDialog) {
+			SettingsDialog(
+				state = settingsState,
+				onFieldChange = { transform -> settingsViewModel?.updateState(transform) },
+				onSave = { settingsViewModel?.save(onSuccess = { showSettingsDialog = false }) },
+				onDismiss = { showSettingsDialog = false },
+			)
+		}
+		
+		BoxWithConstraints(
+			modifier = Modifier
+				.weight(1f)
+				.padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
+		) {
+			val defaultPanelWidth = maxWidth * IslandSidePanelDefaultFraction
+			val effectiveLeftWidth = if (leftPanelWidth == Dp.Unspecified) defaultPanelWidth else leftPanelWidth
+			val effectiveRightWidth = if (rightPanelWidth == Dp.Unspecified) defaultPanelWidth else rightPanelWidth
+			
+			val sideBarCount = (if (leftPanels.isNotEmpty()) 1 else 0) +
+					(if (rightPanels.isNotEmpty()) 1 else 0)
+			val gapCount = sideBarCount + 1 +
+					(if (activeLeftPanel != null) 1 else 0) +
+					(if (activeRightPanel != null) 1 else 0)
+			val fixedChrome = SideBarWidth * sideBarCount + 4.dp * gapCount
+			val panelWidthCap = (maxWidth - SideBarWidth * sideBarCount) / 3
+			val oppositeRight = if (activeRightPanel != null) effectiveRightWidth else 0.dp
+			val oppositeLeft = if (activeLeftPanel != null) effectiveLeftWidth else 0.dp
+			val maxLeftPanelWidth = (maxWidth - fixedChrome - oppositeRight)
+				.coerceIn(IslandSidePanelMinWidth, panelWidthCap)
+			val maxRightPanelWidth = (maxWidth - fixedChrome - oppositeLeft)
+				.coerceIn(IslandSidePanelMinWidth, panelWidthCap)
+			
+			Row(
+				modifier = Modifier.fillMaxSize(),
+				horizontalArrangement = Arrangement.spacedBy(4.dp),
+			) {
+				IslandSideBar(
+					panels = leftPanels,
+					activePanel = activeLeftPanel,
+					onPanelToggle = { panel ->
+						activeLeftPanel = if (activeLeftPanel == panel) null else panel
+					},
+					tooltipPlacement = TooltipPlacement.End,
+				)
+				
+				IslandSidePanel(
+					visible = activeLeftPanel != null,
+					title = activeLeftPanel?.label ?: "",
+					onClose = { activeLeftPanel = null },
+					panelWidth = effectiveLeftWidth.coerceAtMost(maxLeftPanelWidth),
+					defaultWidth = defaultPanelWidth,
+					maxPanelWidth = maxLeftPanelWidth,
+					onWidthChange = { leftPanelWidth = it },
+					fromEnd = false,
+					headerActions = if (activeLeftPanel == SidePanel.Signature &&
+						signatureState is SignaturePanelState.Loaded
+					) {
+						{
+							TooltipBox(
+								tooltip = { Tooltip { Text(text = "Export report") } },
+								state = rememberTooltipState(),
+							) {
+								IconButton(
+									variant = IconButtonVariant.Ghost,
+									onClick = {
+										val text = signatureViewModel?.exportReportText() ?: return@IconButton
+										scope.launch {
+											exportTextToFile(
+												text = text,
+												suggestedName = "validation-report",
+												extension = "txt",
+											)
+										}
+									},
+								) {
+									Icon(
+										painter = painterResource(Res.drawable.icon_download),
+										contentDescription = "Export validation report",
+										modifier = Modifier.size(20.dp),
+									)
+								}
+							}
+						}
+					} else null,
+					modifier = Modifier.fillMaxHeight(),
+				) {
+					when (activeLeftPanel) {
+						SidePanel.Signature -> SignaturePanel(
+							state = signatureState,
+							onLoadSignatures = { signatureViewModel?.loadSignatures() },
+						)
+						
+						else -> {}
+					}
+				}
+				
+				IslandContentCard(
+					modifier = Modifier.weight(1f).fillMaxHeight(),
+				) {
+					PdfViewerContent(
+						state = pdfState,
+						onPreviousPage = pdfViewModel::previousPage,
+						onNextPage = pdfViewModel::nextPage,
+						onZoomIn = pdfViewModel::zoomIn,
+						onZoomOut = pdfViewModel::zoomOut,
+						onResetZoom = pdfViewModel::resetZoom,
+					)
+				}
+				
+				val isEditingProfile = activeRightPanel == SidePanel.Profiles &&
+						profileState.mode is ProfilePanelMode.Editing
+				val rightPanelTitle = if (isEditingProfile) "Edit Profile"
+				else activeRightPanel?.label ?: ""
+				
+				IslandSidePanel(
+					visible = activeRightPanel != null,
+					title = rightPanelTitle,
+					onClose = {
+						if (isEditingProfile) profileViewModel?.cancelEdit()
+						activeRightPanel = null
+					},
+					panelWidth = effectiveRightWidth.coerceAtMost(maxRightPanelWidth),
+					defaultWidth = defaultPanelWidth,
+					maxPanelWidth = maxRightPanelWidth,
+					onWidthChange = { rightPanelWidth = it },
+					fromEnd = true,
+					onBack = if (isEditingProfile) {
+						{ profileViewModel?.cancelEdit() }
+					} else null,
+					modifier = Modifier.fillMaxHeight(),
+				) {
+					when (activeRightPanel) {
+						SidePanel.Profiles -> ProfilesPanel(
+							state = profileState,
+							onToggleActive = { profileViewModel?.toggleActive(it) },
+							onEdit = { profileViewModel?.startEdit(it) },
+							onDelete = { profileViewModel?.delete(it) },
+							onAdd = { profileViewModel?.startCreate() },
+							onDeselectActive = { profileViewModel?.deselectActive() },
+							onConfirmCreate = { profileViewModel?.confirmCreate(it) },
+							onCancelCreate = { profileViewModel?.cancelCreate() },
+							onFieldChange = { transform -> profileViewModel?.updateEditState(transform) },
+							onSaveEdit = { profileViewModel?.saveEdit() },
+						)
+						
+						else -> PanelPlaceholderContent(panel = activeRightPanel)
+					}
+				}
+				
+				IslandSideBar(
+					panels = rightPanels,
+					activePanel = activeRightPanel,
+					onPanelToggle = { panel ->
+						activeRightPanel = if (activeRightPanel == panel) null else {
+							if (panel == SidePanel.Profiles) profileViewModel?.refresh()
+							panel
+						}
+					},
+					tooltipPlacement = TooltipPlacement.Start,
+				)
+			}
+		}
+	}
 }
 
 /**
@@ -323,17 +307,19 @@ fun IslandLayout(
  */
 @Composable
 private fun PanelPlaceholderContent(panel: SidePanel?) {
-    when (panel) {
-        SidePanel.Profiles -> Text(
-            text = "Configuration profiles will appear here.",
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.textSecondary,
-        )
-        SidePanel.Help -> Text(
-            text = "Help and documentation will appear here.",
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.textSecondary,
-        )
-        else -> {}
-    }
+	when (panel) {
+		SidePanel.Profiles -> Text(
+			text = "Configuration profiles will appear here.",
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.textSecondary,
+		)
+		
+		SidePanel.Help -> Text(
+			text = "Help and documentation will appear here.",
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.textSecondary,
+		)
+		
+		else -> {}
+	}
 }

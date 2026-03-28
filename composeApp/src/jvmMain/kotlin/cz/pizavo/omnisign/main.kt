@@ -11,7 +11,6 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
@@ -19,19 +18,14 @@ import com.jetbrains.JBR
 import com.jetbrains.WindowDecorations
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
-import cz.pizavo.omnisign.ui.platform.JbrTitleBarHelper
-import cz.pizavo.omnisign.ui.platform.LocalDragAreaCallback
-import cz.pizavo.omnisign.ui.platform.LocalTitleBarDarkControls
-import cz.pizavo.omnisign.ui.platform.LocalTitleBarHeight
-import cz.pizavo.omnisign.ui.platform.LocalTitleBarRightInset
-import cz.pizavo.omnisign.ui.platform.LocalWindowDragModifier
+import cz.pizavo.omnisign.ui.platform.*
 import org.koin.core.context.startKoin
 import java.awt.Frame
 import java.awt.MouseInfo
 import java.awt.Point
 import java.awt.Rectangle
 import java.awt.event.MouseAdapter
-import java.util.concurrent.atomic.AtomicReference
+import java.util.concurrent.ConcurrentHashMap
 import javax.swing.Timer
 
 private const val TITLE_BAR_HEIGHT_DP = 40
@@ -73,7 +67,7 @@ fun main() = application {
  * `HTCAPTION`. Compose renders everything inside a single heavyweight
  * `ComposePanel` which already has its own Swing-level mouse listeners, so
  * the entire title bar zone is already `HTCLIENT` by default. This listener
- * is added as an explicit guarantee that the behaviour stays consistent
+ * is added as an explicit guarantee that the behavior stays consistent
  * regardless of internal Compose implementation changes.
  */
 private val TitleBarClientAreaListener = object : MouseAdapter() {}
@@ -90,28 +84,28 @@ private val TitleBarClientAreaListener = object : MouseAdapter() {}
  * its own listeners, the entire title bar defaults to `HTCLIENT`
  * (non-draggable), making toolbar buttons work out of the box.
  *
- * To restore native dragging on the empty spacer between the left and right
- * button groups, a [Timer] running at ~120 Hz continuously polls the cursor
- * position. When the cursor is within the spacer bounds (synchronised from
- * Compose via [LocalDragAreaCallback]) the timer calls
- * [WindowDecorations.CustomTitleBar.forceHitTest] with `false`, which forces
- * the **next** `WM_NCHITTEST` to return `HTCAPTION`. Because both the timer
- * and the Windows message pump execute on the AWT EDT, the flag is reliably
- * primed before the user's click is processed — giving the OS full native
- * title-bar behaviour: drag with snap-assist, double-click maximise / restore,
- * right-click system menu, and Aero Shake.
+ * To restore native dragging on the empty spacers between toolbar button
+ * groups, a [Timer] running at ~120 Hz continuously polls the cursor
+ * position. When the cursor is within **any** registered drag-area bounds
+ * (synchronized from Compose via [LocalDragAreaCallback] using string keys)
+ * the timer calls [WindowDecorations.CustomTitleBar.forceHitTest] with
+ * `false`, which forces the **next** `WM_NCHITTEST` to return `HTCAPTION`.
+ * Because both the timer and the Windows message pump execute on the AWT
+ * EDT, the flag is reliably primed before the user's click is processed —
+ * giving the OS full native title-bar behavior: drag with snap-assist,
+ * double-click maximize / restore, right-click the system menu, and Aero Shake.
  *
- * When the cursor is stationary the flag stays set indefinitely (no messages
+ * When the cursor is stationary, the flag stays set indefinitely (no messages
  * consume it), so a click after hovering always triggers native drag.
  *
  * When JBR is unavailable a Compose-level fallback tracks drag gestures and
- * calls [java.awt.Window.setLocation]; double-tap toggles maximise / restore
+ * calls [java.awt.Window.setLocation]; double-tap toggles maximize / restore
  * via [Frame.extendedState].
  *
  * @param onCloseRequest Callback invoked when the window close is requested.
  */
 @Composable
-private fun ApplicationScope.JbrDecoratedWindow(onCloseRequest: () -> Unit) {
+private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 	val windowState = rememberWindowState()
 	
 	Window(
@@ -136,11 +130,10 @@ private fun ApplicationScope.JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 		
 		val hasTitleBar = titleBar != null
 		
-		val spacerBounds = remember { AtomicReference<Rectangle?>(null) }
+		val dragAreas = remember { ConcurrentHashMap<String, Rectangle>() }
 		
 		DisposableEffect(titleBar) {
-			val tb = titleBar
-			val timer = if (tb != null) {
+			val timer = if (titleBar != null) {
 				Timer(FORCE_HIT_TEST_POLL_MS) {
 					val pointer = MouseInfo.getPointerInfo() ?: return@Timer
 					val screen = pointer.location
@@ -151,9 +144,9 @@ private fun ApplicationScope.JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 					}
 					val localX = screen.x - panePos.x
 					val localY = screen.y - panePos.y
-					val bounds = spacerBounds.get()
-					if (bounds != null && bounds.contains(localX, localY)) {
-						tb.forceHitTest(false)
+					val hit = dragAreas.values.any { it.contains(localX, localY) }
+					if (hit) {
+						titleBar.forceHitTest(false)
 					}
 				}.apply { start() }
 			} else null
@@ -165,18 +158,16 @@ private fun ApplicationScope.JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 			awtWindow.graphicsConfiguration.defaultTransform.scaleX
 		}
 		
-		val dragAreaCallback: ((LayoutCoordinates) -> Unit)? = remember(hasTitleBar, spacerBounds, awtScale) {
+		val dragAreaCallback: ((String, LayoutCoordinates) -> Unit)? = remember(hasTitleBar, dragAreas, awtScale) {
 			if (!hasTitleBar) null
-			else { coords: LayoutCoordinates ->
+			else { key: String, coords: LayoutCoordinates ->
 				val pos = coords.positionInWindow()
 				val size = coords.size
-				spacerBounds.set(
-					Rectangle(
-						(pos.x / awtScale).toInt(),
-						(pos.y / awtScale).toInt(),
-						(size.width / awtScale).toInt(),
-						(size.height / awtScale).toInt(),
-					)
+				dragAreas[key] = Rectangle(
+					(pos.x / awtScale).toInt(),
+					(pos.y / awtScale).toInt(),
+					(size.width / awtScale).toInt(),
+					(size.height / awtScale).toInt(),
 				)
 			}
 		}
@@ -210,7 +201,7 @@ private fun ApplicationScope.JbrDecoratedWindow(onCloseRequest: () -> Unit) {
  * Creates a Compose-level drag [Modifier] used when JBR is unavailable.
  *
  * Drag gestures move the window via [java.awt.Window.setLocation]; double-tap
- * toggles maximise / restore via [Frame.extendedState].
+ * toggles maximize / restore via [Frame.extendedState].
  *
  * @param awtWindow The AWT frame to move.
  */
