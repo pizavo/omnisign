@@ -16,6 +16,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -137,8 +138,8 @@ fun IslandLayout(
     var activeLeftPanel by remember { mutableStateOf<SidePanel?>(null) }
     var activeRightPanel by remember { mutableStateOf<SidePanel?>(null) }
 
-    var leftPanelWidth by remember { mutableStateOf(IslandSidePanelDefaultWidth) }
-    var rightPanelWidth by remember { mutableStateOf(IslandSidePanelDefaultWidth) }
+    var leftPanelWidth by remember { mutableStateOf(Dp.Unspecified) }
+    var rightPanelWidth by remember { mutableStateOf(Dp.Unspecified) }
 
     Column(modifier = modifier.fillMaxSize()) {
         IslandToolbar(
@@ -165,6 +166,10 @@ fun IslandLayout(
                 .weight(1f)
                 .padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
         ) {
+            val defaultPanelWidth = maxWidth * IslandSidePanelDefaultFraction
+            val effectiveLeftWidth = if (leftPanelWidth == Dp.Unspecified) defaultPanelWidth else leftPanelWidth
+            val effectiveRightWidth = if (rightPanelWidth == Dp.Unspecified) defaultPanelWidth else rightPanelWidth
+
             val sideBarCount = (if (leftPanels.isNotEmpty()) 1 else 0) +
                     (if (rightPanels.isNotEmpty()) 1 else 0)
             val gapCount = sideBarCount + 1 +
@@ -172,8 +177,8 @@ fun IslandLayout(
                     (if (activeRightPanel != null) 1 else 0)
             val fixedChrome = SideBarWidth * sideBarCount + 4.dp * gapCount
             val panelWidthCap = (maxWidth - SideBarWidth * sideBarCount) / 3
-            val oppositeRight = if (activeRightPanel != null) rightPanelWidth else 0.dp
-            val oppositeLeft = if (activeLeftPanel != null) leftPanelWidth else 0.dp
+            val oppositeRight = if (activeRightPanel != null) effectiveRightWidth else 0.dp
+            val oppositeLeft = if (activeLeftPanel != null) effectiveLeftWidth else 0.dp
             val maxLeftPanelWidth = (maxWidth - fixedChrome - oppositeRight)
                 .coerceIn(IslandSidePanelMinWidth, panelWidthCap)
             val maxRightPanelWidth = (maxWidth - fixedChrome - oppositeLeft)
@@ -195,7 +200,8 @@ fun IslandLayout(
                     visible = activeLeftPanel != null,
                     title = activeLeftPanel?.label ?: "",
                     onClose = { activeLeftPanel = null },
-                    panelWidth = leftPanelWidth.coerceAtMost(maxLeftPanelWidth),
+                    panelWidth = effectiveLeftWidth.coerceAtMost(maxLeftPanelWidth),
+                    defaultWidth = defaultPanelWidth,
                     maxPanelWidth = maxLeftPanelWidth,
                     onWidthChange = { leftPanelWidth = it },
                     fromEnd = false,
@@ -265,7 +271,8 @@ fun IslandLayout(
                         if (isEditingProfile) profileViewModel?.cancelEdit()
                         activeRightPanel = null
                     },
-                    panelWidth = rightPanelWidth.coerceAtMost(maxRightPanelWidth),
+                    panelWidth = effectiveRightWidth.coerceAtMost(maxRightPanelWidth),
+                    defaultWidth = defaultPanelWidth,
                     maxPanelWidth = maxRightPanelWidth,
                     onWidthChange = { rightPanelWidth = it },
                     fromEnd = true,

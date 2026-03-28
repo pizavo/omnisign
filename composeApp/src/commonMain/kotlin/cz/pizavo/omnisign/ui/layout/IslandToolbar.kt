@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.ui.layout
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
@@ -14,7 +15,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.lumo.LumoTheme
@@ -26,9 +26,10 @@ import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.lumo.components.Tooltip
 import cz.pizavo.omnisign.lumo.components.TooltipBox
 import cz.pizavo.omnisign.lumo.components.rememberTooltipState
+import cz.pizavo.omnisign.ui.platform.LocalDragAreaCallback
 import cz.pizavo.omnisign.ui.platform.LocalTitleBarHeight
-import cz.pizavo.omnisign.ui.platform.LocalTitleBarHitTest
 import cz.pizavo.omnisign.ui.platform.LocalTitleBarRightInset
+import cz.pizavo.omnisign.ui.platform.LocalWindowDragModifier
 import omnisign.composeapp.generated.resources.Res
 import omnisign.composeapp.generated.resources.icon_folder
 import omnisign.composeapp.generated.resources.icon_moon
@@ -44,11 +45,12 @@ private val CompactButtonPadding = PaddingValues(2.dp)
  * Seamless top toolbar for the island layout.
  *
  * Renders the application icon and action icons on the leading side, and a
- * settings gear button plus a theme-toggle button on the trailing side. On JVM
- * desktop the toolbar sits inside the JBR custom title bar area — the OS handles
- * window dragging natively and interactive controls are excluded via
- * [LocalTitleBarHitTest]. Trailing padding is derived from [LocalTitleBarRightInset]
- * so content does not overlap the native window-control buttons.
+ * settings gear button plus a theme-toggle button on the trailing side. A
+ * transparent [Spacer] fills the gap between the two groups; on JVM desktop it
+ * acts as a window drag handle (move on drag, maximize / restore on
+ * double-click) via [LocalWindowDragModifier]. Trailing padding is derived
+ * from [LocalTitleBarRightInset] so content does not overlap the native
+ * window-control buttons.
  *
  * @param isDarkTheme Whether a dark theme is currently active (controls the toggle icon).
  * @param onToggleTheme Callback invoked when the user clicks the theme-toggle button.
@@ -65,10 +67,11 @@ fun IslandToolbar(
     modifier: Modifier = Modifier,
 ) {
     val themeLabel = if (isDarkTheme) "Switch to light theme" else "Switch to dark theme"
-    val hitTestCallback = LocalTitleBarHitTest.current
     val titleBarHeight = LocalTitleBarHeight.current
     val nativeRightInsetPx = LocalTitleBarRightInset.current
     val trailingPadding = if (nativeRightInsetPx > 0f) (nativeRightInsetPx + 8).dp else 4.dp
+    val dragModifier = LocalWindowDragModifier.current
+    val reportDragArea = LocalDragAreaCallback.current
 
     Surface(
         modifier = modifier.fillMaxWidth().height(titleBarHeight),
@@ -81,12 +84,8 @@ fun IslandToolbar(
         ) {
             Row(
                 modifier = Modifier
-                    .weight(1f)
                     .fillMaxHeight()
-                    .padding(start = 11.dp)
-                    .onGloballyPositioned { coords ->
-                        hitTestCallback?.invoke("toolbar-left", coords.boundsInWindow())
-                    },
+                    .padding(start = 11.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {
@@ -120,12 +119,20 @@ fun IslandToolbar(
                 }
             }
 
+            Spacer(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .then(dragModifier)
+                    .then(
+                        if (reportDragArea != null) Modifier.onGloballyPositioned(reportDragArea)
+                        else Modifier
+                    ),
+            )
+
             Row(
                 modifier = Modifier
-                    .padding(end = trailingPadding)
-                    .onGloballyPositioned { coords ->
-                        hitTestCallback?.invoke("toolbar-right", coords.boundsInWindow())
-                    },
+                    .padding(end = trailingPadding),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(4.dp),
             ) {

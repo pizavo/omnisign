@@ -1,29 +1,46 @@
 package cz.pizavo.omnisign
 
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.remember
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.LayoutCoordinates
+import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.ApplicationScope
 import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
+import com.jetbrains.JBR
+import com.jetbrains.WindowDecorations
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
 import cz.pizavo.omnisign.ui.platform.JbrTitleBarHelper
+import cz.pizavo.omnisign.ui.platform.LocalDragAreaCallback
+import cz.pizavo.omnisign.ui.platform.LocalTitleBarDarkControls
 import cz.pizavo.omnisign.ui.platform.LocalTitleBarHeight
-import cz.pizavo.omnisign.ui.platform.LocalTitleBarHitTest
 import cz.pizavo.omnisign.ui.platform.LocalTitleBarRightInset
-import cz.pizavo.omnisign.ui.platform.TitleBarHitTestState
-import com.jetbrains.WindowDecorations
+import cz.pizavo.omnisign.ui.platform.LocalWindowDragModifier
 import org.koin.core.context.startKoin
-import java.awt.AWTEvent
-import java.awt.event.MouseEvent
-import java.awt.Toolkit
-import javax.swing.SwingUtilities
+import java.awt.Frame
+import java.awt.MouseInfo
+import java.awt.Point
+import java.awt.Rectangle
+import java.awt.event.MouseAdapter
+import java.util.concurrent.atomic.AtomicReference
+import javax.swing.Timer
 
 private const val TITLE_BAR_HEIGHT_DP = 40
+
+/**
+ * Interval in milliseconds for the [Timer] that primes
+ * [WindowDecorations.CustomTitleBar.forceHitTest].
+ */
+private const val FORCE_HIT_TEST_POLL_MS = 8
 
 /**
  * JVM desktop entry point.
@@ -38,84 +55,192 @@ private const val TITLE_BAR_HEIGHT_DP = 40
  * needed.
  */
 fun main() = application {
-    startKoin {
-        modules(
-            appModule,
-            jvmRepositoryModule,
-        )
-    }
-
-    JbrDecoratedWindow(onCloseRequest = ::exitApplication)
+	startKoin {
+		modules(
+			appModule,
+			jvmRepositoryModule,
+		)
+	}
+	
+	JbrDecoratedWindow(onCloseRequest = ::exitApplication)
 }
+
+/**
+ * No-op [MouseAdapter] whose sole purpose is to exist on a component.
+ *
+ * JBR's custom title bar hit-test logic treats any AWT component that has a
+ * mouse listener (or a custom cursor) as opaque — i.e. `HTCLIENT` rather than
+ * `HTCAPTION`. Compose renders everything inside a single heavyweight
+ * `ComposePanel` which already has its own Swing-level mouse listeners, so
+ * the entire title bar zone is already `HTCLIENT` by default. This listener
+ * is added as an explicit guarantee that the behaviour stays consistent
+ * regardless of internal Compose implementation changes.
+ */
+private val TitleBarClientAreaListener = object : MouseAdapter() {}
 
 /**
  * Decorated window backed by JBR's Custom Title Bar API.
  *
- * The OS keeps its native window frame (shadows, resize borders, snap assist)
- * but the title bar pixels are handed to Compose for custom rendering. A
- * toolkit-level [java.awt.event.AWTEventListener] checks every mouse motion
- * and press against registered control regions and calls
- * [com.jetbrains.WindowDecorations.CustomTitleBar.forceHitTest] to prevent
- * window drags over interactive buttons. The toolkit listener is used instead
- * of a per-component [java.awt.event.MouseMotionListener] so that events
- * dispatched to child components (e.g. the Compose rendering layer) are still
- * intercepted reliably.
+ * The OS keeps its native window frame (shadows, resize borders, snap assist),
+ * but the title bar pixels are handed to Compose for custom rendering.
+ *
+ * **Drag strategy** — JBR's hit-test considers any AWT component **without**
+ * mouse listeners as "transparent" for native title bar actions (returns
+ * `HTCAPTION`). Since Compose renders into a single `ComposePanel` that has
+ * its own listeners, the entire title bar defaults to `HTCLIENT`
+ * (non-draggable), making toolbar buttons work out of the box.
+ *
+ * To restore native dragging on the empty spacer between the left and right
+ * button groups, a [Timer] running at ~120 Hz continuously polls the cursor
+ * position. When the cursor is within the spacer bounds (synchronised from
+ * Compose via [LocalDragAreaCallback]) the timer calls
+ * [WindowDecorations.CustomTitleBar.forceHitTest] with `false`, which forces
+ * the **next** `WM_NCHITTEST` to return `HTCAPTION`. Because both the timer
+ * and the Windows message pump execute on the AWT EDT, the flag is reliably
+ * primed before the user's click is processed — giving the OS full native
+ * title-bar behaviour: drag with snap-assist, double-click maximise / restore,
+ * right-click system menu, and Aero Shake.
+ *
+ * When the cursor is stationary the flag stays set indefinitely (no messages
+ * consume it), so a click after hovering always triggers native drag.
+ *
+ * When JBR is unavailable a Compose-level fallback tracks drag gestures and
+ * calls [java.awt.Window.setLocation]; double-tap toggles maximise / restore
+ * via [Frame.extendedState].
  *
  * @param onCloseRequest Callback invoked when the window close is requested.
  */
 @Composable
 private fun ApplicationScope.JbrDecoratedWindow(onCloseRequest: () -> Unit) {
-    val windowState = rememberWindowState()
-    val hitTestState = remember { TitleBarHitTestState() }
-
-    Window(
-        onCloseRequest = onCloseRequest,
-        undecorated = false,
-        transparent = false,
-        resizable = true,
-        state = windowState,
-        title = "OmniSign",
-    ) {
-        val awtWindow = window
-        val titleBarHeightPx = TITLE_BAR_HEIGHT_DP.toFloat()
-
-        val titleBar: WindowDecorations.CustomTitleBar? =
-            remember { JbrTitleBarHelper.install(awtWindow, titleBarHeightPx) }
-
-        DisposableEffect(titleBar) {
-            if (titleBar == null) return@DisposableEffect onDispose {}
-
-            val awtListener = java.awt.event.AWTEventListener { event ->
-                if (event !is MouseEvent) return@AWTEventListener
-                val source = event.component ?: return@AWTEventListener
-                val ancestor = SwingUtilities.getWindowAncestor(source) ?: source
-                if (ancestor !== awtWindow) return@AWTEventListener
-
-                val point = SwingUtilities.convertPoint(source, event.point, awtWindow)
-                if (point.y <= titleBarHeightPx &&
-                    hitTestState.isOverControl(point.x.toFloat(), point.y.toFloat())
-                ) {
-                    titleBar.forceHitTest(false)
-                }
-            }
-
-            Toolkit.getDefaultToolkit().addAWTEventListener(
-                awtListener,
-                AWTEvent.MOUSE_MOTION_EVENT_MASK or AWTEvent.MOUSE_EVENT_MASK,
-            )
-            onDispose {
-                Toolkit.getDefaultToolkit().removeAWTEventListener(awtListener)
-            }
-        }
-
-        val rightInsetPx = titleBar?.rightInset ?: 0f
-
-        CompositionLocalProvider(
-            LocalTitleBarHeight provides TITLE_BAR_HEIGHT_DP.dp,
-            LocalTitleBarHitTest provides { key, rect -> hitTestState.updateRegion(key, rect) },
-            LocalTitleBarRightInset provides rightInsetPx,
-        ) {
-            App()
-        }
-    }
+	val windowState = rememberWindowState()
+	
+	Window(
+		onCloseRequest = onCloseRequest,
+		undecorated = false,
+		transparent = false,
+		resizable = true,
+		state = windowState,
+		title = "OmniSign",
+	) {
+		val awtWindow = window
+		val titleBarHeightPx = TITLE_BAR_HEIGHT_DP.toFloat()
+		
+		val titleBar: WindowDecorations.CustomTitleBar? =
+			remember { JbrTitleBarHelper.install(awtWindow, titleBarHeightPx) }
+		
+		remember(titleBar) {
+			val contentPane = awtWindow.contentPane
+			contentPane.addMouseListener(TitleBarClientAreaListener)
+			contentPane.addMouseMotionListener(TitleBarClientAreaListener)
+		}
+		
+		val hasTitleBar = titleBar != null
+		
+		val spacerBounds = remember { AtomicReference<Rectangle?>(null) }
+		
+		DisposableEffect(titleBar) {
+			val tb = titleBar
+			val timer = if (tb != null) {
+				Timer(FORCE_HIT_TEST_POLL_MS) {
+					val pointer = MouseInfo.getPointerInfo() ?: return@Timer
+					val screen = pointer.location
+					val panePos = try {
+						awtWindow.contentPane.locationOnScreen
+					} catch (_: Exception) {
+						return@Timer
+					}
+					val localX = screen.x - panePos.x
+					val localY = screen.y - panePos.y
+					val bounds = spacerBounds.get()
+					if (bounds != null && bounds.contains(localX, localY)) {
+						tb.forceHitTest(false)
+					}
+				}.apply { start() }
+			} else null
+			
+			onDispose { timer?.stop() }
+		}
+		
+		val awtScale = remember(awtWindow) {
+			awtWindow.graphicsConfiguration.defaultTransform.scaleX
+		}
+		
+		val dragAreaCallback: ((LayoutCoordinates) -> Unit)? = remember(hasTitleBar, spacerBounds, awtScale) {
+			if (!hasTitleBar) null
+			else { coords: LayoutCoordinates ->
+				val pos = coords.positionInWindow()
+				val size = coords.size
+				spacerBounds.set(
+					Rectangle(
+						(pos.x / awtScale).toInt(),
+						(pos.y / awtScale).toInt(),
+						(size.width / awtScale).toInt(),
+						(size.height / awtScale).toInt(),
+					)
+				)
+			}
+		}
+		
+		val windowDragModifier = remember(awtWindow, hasTitleBar) {
+			if (hasTitleBar) Modifier else fallbackDragModifier(awtWindow)
+		}
+		
+		val rightInsetPx = titleBar?.rightInset ?: 0f
+		
+		CompositionLocalProvider(
+			LocalTitleBarHeight provides TITLE_BAR_HEIGHT_DP.dp,
+			LocalTitleBarRightInset provides rightInsetPx,
+			LocalWindowDragModifier provides windowDragModifier,
+			LocalDragAreaCallback provides dragAreaCallback,
+			LocalTitleBarDarkControls provides { isDark ->
+				val tb = titleBar ?: return@provides
+				tb.putProperty("controls.dark", isDark)
+				try {
+					JBR.getWindowDecorations()?.setCustomTitleBar(awtWindow, tb)
+				} catch (_: Throwable) {
+				}
+			},
+		) {
+			App()
+		}
+	}
 }
+
+/**
+ * Creates a Compose-level drag [Modifier] used when JBR is unavailable.
+ *
+ * Drag gestures move the window via [java.awt.Window.setLocation]; double-tap
+ * toggles maximise / restore via [Frame.extendedState].
+ *
+ * @param awtWindow The AWT frame to move.
+ */
+private fun fallbackDragModifier(awtWindow: Frame): Modifier =
+	Modifier
+		.pointerInput("double-tap") {
+			detectTapGestures(
+				onDoubleTap = {
+					val maximised = awtWindow.extendedState and Frame.MAXIMIZED_BOTH != 0
+					awtWindow.extendedState =
+						if (maximised) Frame.NORMAL else Frame.MAXIMIZED_BOTH
+				},
+			)
+		}
+		.pointerInput("drag") {
+			var startScreen = Point(0, 0)
+			var startWindow = Point(0, 0)
+			
+			detectDragGestures(
+				onDragStart = {
+					startScreen = MouseInfo.getPointerInfo()?.location ?: return@detectDragGestures
+					startWindow = awtWindow.location
+				},
+				onDrag = { change, _ ->
+					change.consume()
+					val now = MouseInfo.getPointerInfo()?.location ?: return@detectDragGestures
+					awtWindow.setLocation(
+						startWindow.x + (now.x - startScreen.x),
+						startWindow.y + (now.y - startScreen.y),
+					)
+				},
+			)
+		}

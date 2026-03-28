@@ -125,7 +125,10 @@ compose.desktop {
 	application {
 		mainClass = "cz.pizavo.omnisign.MainKt"
 
-		jvmArgs("--enable-native-access=ALL-UNNAMED")
+		jvmArgs(
+			"--enable-native-access=ALL-UNNAMED",
+			"-Dsun.java2d.d3d=false"
+		)
 
 		jbrHomePath?.let { javaHome = it }
 

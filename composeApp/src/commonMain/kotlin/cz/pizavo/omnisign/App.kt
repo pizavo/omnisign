@@ -5,6 +5,7 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -13,6 +14,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.ui.layout.IslandLayout
+import cz.pizavo.omnisign.ui.platform.LocalTitleBarDarkControls
 
 /**
  * Root composable for the OmniSign application.
@@ -26,6 +28,9 @@ import cz.pizavo.omnisign.ui.layout.IslandLayout
 fun App() {
     val systemDark = isSystemInDarkTheme()
     var isDarkTheme by remember { mutableStateOf(systemDark) }
+
+    val updateDarkControls = LocalTitleBarDarkControls.current
+    SideEffect { updateDarkControls?.invoke(isDarkTheme) }
 
     LumoTheme(isDarkTheme = isDarkTheme) {
         IslandLayout(

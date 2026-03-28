@@ -48,8 +48,8 @@ import omnisign.composeapp.generated.resources.icon_arrow_left
 import omnisign.composeapp.generated.resources.icon_x
 import org.jetbrains.compose.resources.painterResource
 
-/** Default width of a side panel when first opened. */
-val IslandSidePanelDefaultWidth = 280.dp
+/** Fraction of the available pane width used as the default side-panel width. */
+const val IslandSidePanelDefaultFraction = 0.25f
 
 /** Minimum width a side panel can be resized to. */
 val IslandSidePanelMinWidth = 200.dp
@@ -69,6 +69,7 @@ private val ResizeHandleWidth = 6.dp
  * @param title Text displayed in the panel header.
  * @param onClose Callback invoked when the user clicks the close button.
  * @param panelWidth Current width of the panel.
+ * @param defaultWidth Width to restore on double-tap of the resize handle.
  * @param maxPanelWidth Maximum width the panel can be resized to.
  * @param onWidthChange Callback invoked with the new width when the user drags the resize handle.
  * @param fromEnd When `true` the panel slides in from the right edge; otherwise from the left.
@@ -83,7 +84,8 @@ fun IslandSidePanel(
     visible: Boolean,
     title: String,
     onClose: () -> Unit,
-    panelWidth: Dp = IslandSidePanelDefaultWidth,
+    panelWidth: Dp,
+    defaultWidth: Dp = panelWidth,
     maxPanelWidth: Dp = panelWidth,
     onWidthChange: (Dp) -> Unit = {},
     fromEnd: Boolean = false,
@@ -115,6 +117,7 @@ fun IslandSidePanel(
             if (fromEnd) {
                 ResizeHandle(
                     panelWidth = panelWidth,
+                    defaultWidth = defaultWidth,
                     maxPanelWidth = maxPanelWidth,
                     onWidthChange = onWidthChange,
                     fromEnd = true,
@@ -185,6 +188,7 @@ fun IslandSidePanel(
             if (!fromEnd) {
                 ResizeHandle(
                     panelWidth = panelWidth,
+                    defaultWidth = defaultWidth,
                     maxPanelWidth = maxPanelWidth,
                     onWidthChange = onWidthChange,
                     fromEnd = false,
@@ -199,10 +203,11 @@ fun IslandSidePanel(
  *
  * Dragging horizontally changes the panel width via [onWidthChange]. The handle
  * displays a horizontal-resize cursor on hover and shows a subtle highlight
- * colour when the pointer is over it. Double-tapping resets the panel to its
- * default width.
+ * colour when the pointer is over it. Double-tapping resets the panel to
+ * [defaultWidth].
  *
  * @param panelWidth Current width of the owning panel.
+ * @param defaultWidth Width to restore on double-tap.
  * @param maxPanelWidth Maximum width the panel can be resized to.
  * @param onWidthChange Callback that receives the new desired width during a drag gesture.
  * @param fromEnd When `true` the handle belongs to a right-side panel (the drag direction is inverted).
@@ -210,6 +215,7 @@ fun IslandSidePanel(
 @Composable
 private fun ResizeHandle(
     panelWidth: Dp,
+    defaultWidth: Dp,
     maxPanelWidth: Dp,
     onWidthChange: (Dp) -> Unit,
     fromEnd: Boolean,
@@ -220,6 +226,7 @@ private fun ResizeHandle(
     val currentWidth by rememberUpdatedState(panelWidth)
     val currentMaxWidth by rememberUpdatedState(maxPanelWidth)
     val currentOnWidthChange by rememberUpdatedState(onWidthChange)
+    val currentDefaultWidth by rememberUpdatedState(defaultWidth)
 
     Box(
         modifier = Modifier
@@ -235,7 +242,7 @@ private fun ResizeHandle(
                 detectTapGestures(
                     onDoubleTap = {
                         currentOnWidthChange(
-                            IslandSidePanelDefaultWidth.coerceIn(IslandSidePanelMinWidth, currentMaxWidth)
+                            currentDefaultWidth.coerceIn(IslandSidePanelMinWidth, currentMaxWidth)
                         )
                     },
                 )
