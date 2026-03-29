@@ -5,34 +5,18 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -40,31 +24,18 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import cz.pizavo.omnisign.domain.model.config.CustomPkcs11Library
-import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
-import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
-import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
-import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
-import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
+import cz.pizavo.omnisign.domain.model.config.enums.*
 import cz.pizavo.omnisign.lumo.LumoTheme
-import cz.pizavo.omnisign.lumo.components.Button
-import cz.pizavo.omnisign.lumo.components.ButtonVariant
-import cz.pizavo.omnisign.lumo.components.Chip
-import cz.pizavo.omnisign.lumo.components.HorizontalDivider
-import cz.pizavo.omnisign.lumo.components.Icon
-import cz.pizavo.omnisign.lumo.components.IconButton
-import cz.pizavo.omnisign.lumo.components.IconButtonVariant
-import cz.pizavo.omnisign.lumo.components.Surface
-import cz.pizavo.omnisign.lumo.components.Switch
-import cz.pizavo.omnisign.lumo.components.Text
-import cz.pizavo.omnisign.lumo.components.VerticalDivider
+import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.TextField
+import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
 import cz.pizavo.omnisign.ui.model.SettingsCategory
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_chevron_down
-import omnisign.composeapp.generated.resources.icon_eye
-import omnisign.composeapp.generated.resources.icon_eye_off
-import omnisign.composeapp.generated.resources.icon_x
+import cz.pizavo.omnisign.ui.platform.platformFilePath
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
 
 private val NavPanelWidth = 220.dp
@@ -73,7 +44,7 @@ private val NavItemShape = RoundedCornerShape(6.dp)
 /**
  * Full-screen modal dialog for editing the global application configuration.
  *
- * Modelled after the IntelliJ Settings dialog: a left navigation sidebar with a
+ * Modeled after the IntelliJ Settings dialog: a left navigation sidebar with a
  * category tree and a right content panel showing the selected category's form.
  * The footer contains Cancel and Save buttons.
  *
@@ -89,79 +60,79 @@ private val NavItemShape = RoundedCornerShape(6.dp)
  */
 @Composable
 fun SettingsDialog(
-    state: GlobalConfigEditState,
-    onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
-    onSave: () -> Unit,
-    onDismiss: () -> Unit,
+	state: GlobalConfigEditState,
+	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
+	onSave: () -> Unit,
+	onDismiss: () -> Unit,
 ) {
-    var selectedCategory by remember { mutableStateOf(SettingsCategory.SigningDefaults) }
-
-    Dialog(
-        onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-    ) {
-        Surface(
-            modifier = Modifier
-                .widthIn(min = 700.dp, max = 920.dp)
-                .heightIn(min = 500.dp, max = 720.dp),
-            shape = RoundedCornerShape(16.dp),
-            color = LumoTheme.colors.surface,
-            shadowElevation = 8.dp,
-        ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                SettingsHeader(onClose = onDismiss)
-
-                HorizontalDivider()
-
-                Row(modifier = Modifier.weight(1f)) {
-                    SettingsNavPanel(
-                        selected = selectedCategory,
-                        onSelect = { selectedCategory = it },
-                    )
-
-                    VerticalDivider()
-
-                    SettingsContentPanel(
-                        category = selectedCategory,
-                        state = state,
-                        onFieldChange = onFieldChange,
-                    )
-                }
-
-                HorizontalDivider()
-
-                SettingsFooter(saving = state.saving, onCancel = onDismiss, onSave = onSave)
-            }
-        }
-    }
+	var selectedCategory by remember { mutableStateOf(SettingsCategory.SigningDefaults) }
+	
+	Dialog(
+		onDismissRequest = onDismiss,
+		properties = DialogProperties(usePlatformDefaultWidth = false),
+	) {
+		Surface(
+			modifier = Modifier
+				.widthIn(min = 700.dp, max = 920.dp)
+				.heightIn(min = 500.dp, max = 720.dp),
+			shape = RoundedCornerShape(16.dp),
+			color = LumoTheme.colors.surface,
+			shadowElevation = 8.dp,
+		) {
+			Column(modifier = Modifier.fillMaxSize()) {
+				SettingsHeader(onClose = onDismiss)
+				
+				HorizontalDivider()
+				
+				Row(modifier = Modifier.weight(1f)) {
+					SettingsNavPanel(
+						selected = selectedCategory,
+						onSelect = { selectedCategory = it },
+					)
+					
+					VerticalDivider()
+					
+					SettingsContentPanel(
+						category = selectedCategory,
+						state = state,
+						onFieldChange = onFieldChange,
+					)
+				}
+				
+				HorizontalDivider()
+				
+				SettingsFooter(saving = state.saving, onCancel = onDismiss, onSave = onSave)
+			}
+		}
+	}
 }
 
 /**
- * Header row with "Settings" title and close button.
+ * Header row with the "Settings" title and close button.
  *
  * @param onClose Callback invoked when the close button is clicked.
  */
 @Composable
 private fun SettingsHeader(onClose: () -> Unit) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(text = "Settings", style = LumoTheme.typography.h3)
-        IconButton(
-            variant = IconButtonVariant.Ghost,
-            onClick = onClose,
-        ) {
-            Icon(
-                painter = painterResource(Res.drawable.icon_x),
-                contentDescription = "Close settings",
-                modifier = Modifier.size(20.dp),
-            )
-        }
-    }
+	Row(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = 16.dp, vertical = 10.dp),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.SpaceBetween,
+	) {
+		Text(text = "Settings", style = LumoTheme.typography.h3)
+		IconButton(
+			variant = IconButtonVariant.Ghost,
+			onClick = onClose,
+		) {
+			Icon(
+				painter = painterResource(Res.drawable.icon_x),
+				contentDescription = "Close settings",
+				modifier = Modifier.size(20.dp),
+			)
+		}
+	}
 }
 
 /**
@@ -178,64 +149,64 @@ private fun SettingsHeader(onClose: () -> Unit) {
  */
 @Composable
 private fun SettingsNavPanel(
-    selected: SettingsCategory,
-    onSelect: (SettingsCategory) -> Unit,
+	selected: SettingsCategory,
+	onSelect: (SettingsCategory) -> Unit,
 ) {
-    var expandedGroups by remember {
-        mutableStateOf(setOf(SettingsCategory.groups.first()))
-    }
-
-    if (selected.parent != null && selected.parent !in expandedGroups) {
-        expandedGroups = expandedGroups + selected.parent
-    }
-
-    Column(
-        modifier = Modifier
-            .width(NavPanelWidth)
-            .fillMaxHeight()
-            .verticalScroll(rememberScrollState())
-            .padding(8.dp),
-    ) {
-        SettingsCategory.groups.forEach { group ->
-            val isExpanded = group in expandedGroups
-            val isActive = selected == group || selected.parent == group
-
-            NavGroupItem(
-                category = group,
-                isActive = isActive,
-                isExpanded = isExpanded,
-                onClick = {
-                    if (isExpanded && !isActive) {
-                        expandedGroups = expandedGroups - group
-                    } else if (!isExpanded) {
-                        expandedGroups = expandedGroups + group
-                        val firstChild = group.children.firstOrNull()
-                        if (firstChild != null) onSelect(firstChild)
-                    } else {
-                        expandedGroups = expandedGroups - group
-                    }
-                },
-            )
-
-            AnimatedVisibility(
-                visible = isExpanded,
-                enter = expandVertically(),
-                exit = shrinkVertically(),
-            ) {
-                Column {
-                    group.children.forEach { child ->
-                        NavLeafItem(
-                            category = child,
-                            isSelected = selected == child,
-                            onClick = { onSelect(child) },
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-        }
-    }
+	var expandedGroups by remember {
+		mutableStateOf(setOf(SettingsCategory.groups.first()))
+	}
+	
+	if (selected.parent != null && selected.parent !in expandedGroups) {
+		expandedGroups = expandedGroups + selected.parent
+	}
+	
+	Column(
+		modifier = Modifier
+			.width(NavPanelWidth)
+			.fillMaxHeight()
+			.verticalScroll(rememberScrollState())
+			.padding(8.dp),
+	) {
+		SettingsCategory.groups.forEach { group ->
+			val isExpanded = group in expandedGroups
+			val isActive = selected == group || selected.parent == group
+			
+			NavGroupItem(
+				category = group,
+				isActive = isActive,
+				isExpanded = isExpanded,
+				onClick = {
+					if (isExpanded && !isActive) {
+						expandedGroups = expandedGroups - group
+					} else if (!isExpanded) {
+						expandedGroups = expandedGroups + group
+						val firstChild = group.children.firstOrNull()
+						if (firstChild != null) onSelect(firstChild)
+					} else {
+						expandedGroups = expandedGroups - group
+					}
+				},
+			)
+			
+			AnimatedVisibility(
+				visible = isExpanded,
+				enter = expandVertically(),
+				exit = shrinkVertically(),
+			) {
+				Column {
+					group.children.forEach { child ->
+						NavLeafItem(
+							category = child,
+							isSelected = selected == child,
+							onClick = { onSelect(child) },
+						)
+					}
+				}
+			}
+			
+			Spacer(modifier = Modifier.height(4.dp))
+		}
+	}
 }
 
 /**
@@ -251,44 +222,44 @@ private fun SettingsNavPanel(
  */
 @Composable
 private fun NavGroupItem(
-    category: SettingsCategory,
-    isActive: Boolean,
-    isExpanded: Boolean,
-    onClick: () -> Unit,
+	category: SettingsCategory,
+	isActive: Boolean,
+	isExpanded: Boolean,
+	onClick: () -> Unit,
 ) {
-    val textColor = if (isActive) LumoTheme.colors.text else LumoTheme.colors.textSecondary
-    val chevronRotation = if (isExpanded) 0f else -90f
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(NavItemShape)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        Icon(
-            painter = painterResource(Res.drawable.icon_chevron_down),
-            contentDescription = if (isExpanded) "Collapse" else "Expand",
-            modifier = Modifier
-                .size(14.dp)
-                .graphicsLayer(rotationZ = chevronRotation),
-            tint = textColor,
-        )
-        Text(
-            text = category.label,
-            style = LumoTheme.typography.label1,
-            color = textColor,
-        )
-    }
+	val textColor = if (isActive) LumoTheme.colors.text else LumoTheme.colors.textSecondary
+	val chevronRotation = if (isExpanded) 0f else -90f
+	
+	Row(
+		modifier = Modifier
+			.fillMaxWidth()
+			.clip(NavItemShape)
+			.clickable(onClick = onClick)
+			.padding(horizontal = 8.dp, vertical = 6.dp),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.spacedBy(4.dp),
+	) {
+		Icon(
+			painter = painterResource(Res.drawable.icon_chevron_down),
+			contentDescription = if (isExpanded) "Collapse" else "Expand",
+			modifier = Modifier
+				.size(14.dp)
+				.graphicsLayer(rotationZ = chevronRotation),
+			tint = textColor,
+		)
+		Text(
+			text = category.label,
+			style = LumoTheme.typography.label1,
+			color = textColor,
+		)
+	}
 }
 
 /**
  * Indented leaf item in the navigation sidebar.
  *
  * When [isSelected] is true the item receives a highlighted background matching
- * the primary colour at reduced opacity, mimicking the IntelliJ selection style.
+ * the primary color at reduced opacity, mimicking the IntelliJ selection style.
  *
  * @param category The leaf [SettingsCategory].
  * @param isSelected Whether this category is currently active.
@@ -296,33 +267,33 @@ private fun NavGroupItem(
  */
 @Composable
 private fun NavLeafItem(
-    category: SettingsCategory,
-    isSelected: Boolean,
-    onClick: () -> Unit,
+	category: SettingsCategory,
+	isSelected: Boolean,
+	onClick: () -> Unit,
 ) {
-    val backgroundColor = if (isSelected) {
-        LumoTheme.colors.primary.copy(alpha = 0.15f)
-    } else {
-        LumoTheme.colors.surface
-    }
-    val textColor = if (isSelected) LumoTheme.colors.primary else LumoTheme.colors.text
-
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(start = 12.dp)
-            .clip(NavItemShape)
-            .background(backgroundColor)
-            .clickable(onClick = onClick)
-            .padding(horizontal = 8.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = category.label,
-            style = LumoTheme.typography.body2,
-            color = textColor,
-        )
-    }
+	val backgroundColor = if (isSelected) {
+		LumoTheme.colors.primary.copy(alpha = 0.15f)
+	} else {
+		LumoTheme.colors.surface
+	}
+	val textColor = if (isSelected) LumoTheme.colors.primary else LumoTheme.colors.text
+	
+	Row(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(start = 12.dp)
+			.clip(NavItemShape)
+			.background(backgroundColor)
+			.clickable(onClick = onClick)
+			.padding(horizontal = 8.dp, vertical = 6.dp),
+		verticalAlignment = Alignment.CenterVertically,
+	) {
+		Text(
+			text = category.label,
+			style = LumoTheme.typography.body2,
+			color = textColor,
+		)
+	}
 }
 
 /**
@@ -338,51 +309,62 @@ private fun NavLeafItem(
  */
 @Composable
 private fun SettingsContentPanel(
-    category: SettingsCategory,
-    state: GlobalConfigEditState,
-    onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
+	category: SettingsCategory,
+	state: GlobalConfigEditState,
+	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 ) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(24.dp),
-    ) {
-        if (state.error != null) {
-            Text(
-                text = state.error,
-                style = LumoTheme.typography.body2,
-                color = LumoTheme.colors.error,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-        }
-
-        Text(text = category.label, style = LumoTheme.typography.h3)
-        Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = category.description,
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.textSecondary,
-        )
-
-        Spacer(modifier = Modifier.height(16.dp))
-        HorizontalDivider()
-        Spacer(modifier = Modifier.height(16.dp))
-
-        when (category) {
-            SettingsCategory.Signing,
-            SettingsCategory.SigningDefaults -> SigningDefaultsSection(state = state, onFieldChange = onFieldChange)
-            SettingsCategory.DisabledAlgorithms -> DisabledAlgorithmsSection(state = state, onFieldChange = onFieldChange)
-            SettingsCategory.Services,
-            SettingsCategory.TimestampServer -> TimestampSection(state = state, onFieldChange = onFieldChange)
-            SettingsCategory.OcspCrl -> OcspCrlSection(state = state, onFieldChange = onFieldChange)
-            SettingsCategory.Validation,
-            SettingsCategory.ValidationPolicy -> ValidationPolicySection(state = state, onFieldChange = onFieldChange)
-            SettingsCategory.AlgorithmConstraints -> AlgorithmConstraintsSection(state = state, onFieldChange = onFieldChange)
-            SettingsCategory.Tokens,
-            SettingsCategory.Pkcs11Libraries -> Pkcs11Section(state = state, onFieldChange = onFieldChange)
-        }
-    }
+	Column(
+		modifier = Modifier
+			.fillMaxSize()
+			.verticalScroll(rememberScrollState())
+			.padding(24.dp),
+	) {
+		if (state.error != null) {
+			Text(
+				text = state.error,
+				style = LumoTheme.typography.body2,
+				color = LumoTheme.colors.error,
+			)
+			Spacer(modifier = Modifier.height(8.dp))
+		}
+		
+		Text(text = category.label, style = LumoTheme.typography.h3)
+		Spacer(modifier = Modifier.height(4.dp))
+		Text(
+			text = category.description,
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.textSecondary,
+		)
+		
+		Spacer(modifier = Modifier.height(16.dp))
+		HorizontalDivider()
+		Spacer(modifier = Modifier.height(16.dp))
+		
+		when (category) {
+			SettingsCategory.Signing,
+			SettingsCategory.SigningDefaults -> SigningDefaultsSection(state = state, onFieldChange = onFieldChange)
+			
+			SettingsCategory.DisabledAlgorithms -> DisabledAlgorithmsSection(
+				state = state,
+				onFieldChange = onFieldChange
+			)
+			
+			SettingsCategory.Services,
+			SettingsCategory.TimestampServer -> TimestampSection(state = state, onFieldChange = onFieldChange)
+			
+			SettingsCategory.OcspCrl -> OcspCrlSection(state = state, onFieldChange = onFieldChange)
+			SettingsCategory.Validation,
+			SettingsCategory.ValidationPolicy -> ValidationPolicySection(state = state, onFieldChange = onFieldChange)
+			
+			SettingsCategory.AlgorithmConstraints -> AlgorithmConstraintsSection(
+				state = state,
+				onFieldChange = onFieldChange
+			)
+			
+			SettingsCategory.Tokens,
+			SettingsCategory.Pkcs11Libraries -> Pkcs11Section(state = state, onFieldChange = onFieldChange)
+		}
+	}
 }
 
 /**
@@ -394,29 +376,29 @@ private fun SettingsContentPanel(
  */
 @Composable
 private fun SettingsFooter(
-    saving: Boolean,
-    onCancel: () -> Unit,
-    onSave: () -> Unit,
+	saving: Boolean,
+	onCancel: () -> Unit,
+	onSave: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp, vertical = 10.dp),
-        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-    ) {
-        Button(
-            text = "Cancel",
-            variant = ButtonVariant.Ghost,
-            onClick = onCancel,
-        )
-        Button(
-            text = "Save",
-            variant = ButtonVariant.Primary,
-            enabled = !saving,
-            loading = saving,
-            onClick = onSave,
-        )
-    }
+	Row(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(horizontal = 16.dp, vertical = 10.dp),
+		horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+	) {
+		Button(
+			text = "Cancel",
+			variant = ButtonVariant.Ghost,
+			onClick = onCancel,
+		)
+		Button(
+			text = "Save",
+			variant = ButtonVariant.Primary,
+			enabled = !saving,
+			loading = saving,
+			onClick = onSave,
+		)
+	}
 }
 
 /**
@@ -424,48 +406,48 @@ private fun SettingsFooter(
  */
 @Composable
 private fun SigningDefaultsSection(
-    state: GlobalConfigEditState,
-    onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
+	state: GlobalConfigEditState,
+	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 ) {
-    DropdownSelector(
-        selected = state.defaultHashAlgorithm,
-        options = HashAlgorithm.entries.toList(),
-        onSelect = { value ->
-            onFieldChange { it.copy(defaultHashAlgorithm = value ?: HashAlgorithm.SHA256) }
-        },
-        label = { Text(text = "Hash algorithm") },
-        showNullOption = false,
-        disabledOptions = state.disabledHashAlgorithms,
-        itemLabel = { it.name },
-        modifier = Modifier.fillMaxWidth(),
-    )
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    DropdownSelector(
-        selected = state.defaultEncryptionAlgorithm,
-        options = EncryptionAlgorithm.entries.toList(),
-        onSelect = { value -> onFieldChange { it.copy(defaultEncryptionAlgorithm = value) } },
-        label = { Text(text = "Encryption algorithm") },
-        nullLabel = "Auto-detect from certificate",
-        disabledOptions = state.disabledEncryptionAlgorithms,
-        itemLabel = { it.name },
-        modifier = Modifier.fillMaxWidth(),
-    )
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    DropdownSelector(
-        selected = state.defaultSignatureLevel,
-        options = SignatureLevel.entries.toList(),
-        onSelect = { value ->
-            onFieldChange { it.copy(defaultSignatureLevel = value ?: SignatureLevel.PADES_BASELINE_B) }
-        },
-        label = { Text(text = "Signature level") },
-        showNullOption = false,
-        itemLabel = { it.name.replace("_", " ") },
-        modifier = Modifier.fillMaxWidth(),
-    )
+	DropdownSelector(
+		selected = state.defaultHashAlgorithm,
+		options = HashAlgorithm.entries.toList(),
+		onSelect = { value ->
+			onFieldChange { it.copy(defaultHashAlgorithm = value ?: HashAlgorithm.SHA256) }
+		},
+		label = { Text(text = "Hash algorithm") },
+		showNullOption = false,
+		disabledOptions = state.disabledHashAlgorithms,
+		itemLabel = { it.name },
+		modifier = Modifier.fillMaxWidth(),
+	)
+	
+	Spacer(modifier = Modifier.height(8.dp))
+	
+	DropdownSelector(
+		selected = state.defaultEncryptionAlgorithm,
+		options = EncryptionAlgorithm.entries.toList(),
+		onSelect = { value -> onFieldChange { it.copy(defaultEncryptionAlgorithm = value) } },
+		label = { Text(text = "Encryption algorithm") },
+		nullLabel = "Auto-detect from certificate",
+		disabledOptions = state.disabledEncryptionAlgorithms,
+		itemLabel = { it.name },
+		modifier = Modifier.fillMaxWidth(),
+	)
+	
+	Spacer(modifier = Modifier.height(8.dp))
+	
+	DropdownSelector(
+		selected = state.defaultSignatureLevel,
+		options = SignatureLevel.entries.toList(),
+		onSelect = { value ->
+			onFieldChange { it.copy(defaultSignatureLevel = value ?: SignatureLevel.PADES_BASELINE_B) }
+		},
+		label = { Text(text = "Signature level") },
+		showNullOption = false,
+		itemLabel = { it.name.replace("_", " ") },
+		modifier = Modifier.fillMaxWidth(),
+	)
 }
 
 /**
@@ -474,62 +456,62 @@ private fun SigningDefaultsSection(
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DisabledAlgorithmsSection(
-    state: GlobalConfigEditState,
-    onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
+	state: GlobalConfigEditState,
+	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 ) {
-    Text(text = "Disabled hash algorithms", style = LumoTheme.typography.label1)
-    Spacer(modifier = Modifier.height(4.dp))
-
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        HashAlgorithm.entries.forEach { algo ->
-            val disabled = algo in state.disabledHashAlgorithms
-            Chip(
-                label = { Text(text = algo.name, style = LumoTheme.typography.body2) },
-                selected = disabled,
-                onClick = {
-                    onFieldChange {
-                        val updated = if (disabled) {
-                            it.disabledHashAlgorithms - algo
-                        } else {
-                            it.disabledHashAlgorithms + algo
-                        }
-                        it.copy(disabledHashAlgorithms = updated)
-                    }
-                },
-            )
-        }
-    }
-
-    Spacer(modifier = Modifier.height(16.dp))
-
-    Text(text = "Disabled encryption algorithms", style = LumoTheme.typography.label1)
-    Spacer(modifier = Modifier.height(4.dp))
-
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(4.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
-    ) {
-        EncryptionAlgorithm.entries.forEach { algo ->
-            val disabled = algo in state.disabledEncryptionAlgorithms
-            Chip(
-                label = { Text(text = algo.name, style = LumoTheme.typography.body2) },
-                selected = disabled,
-                onClick = {
-                    onFieldChange {
-                        val updated = if (disabled) {
-                            it.disabledEncryptionAlgorithms - algo
-                        } else {
-                            it.disabledEncryptionAlgorithms + algo
-                        }
-                        it.copy(disabledEncryptionAlgorithms = updated)
-                    }
-                },
-            )
-        }
-    }
+	Text(text = "Disabled hash algorithms", style = LumoTheme.typography.label1)
+	Spacer(modifier = Modifier.height(4.dp))
+	
+	FlowRow(
+		horizontalArrangement = Arrangement.spacedBy(4.dp),
+		verticalArrangement = Arrangement.spacedBy(4.dp),
+	) {
+		HashAlgorithm.entries.forEach { algo ->
+			val disabled = algo in state.disabledHashAlgorithms
+			Chip(
+				label = { Text(text = algo.name, style = LumoTheme.typography.body2) },
+				selected = disabled,
+				onClick = {
+					onFieldChange {
+						val updated = if (disabled) {
+							it.disabledHashAlgorithms - algo
+						} else {
+							it.disabledHashAlgorithms + algo
+						}
+						it.copy(disabledHashAlgorithms = updated)
+					}
+				},
+			)
+		}
+	}
+	
+	Spacer(modifier = Modifier.height(16.dp))
+	
+	Text(text = "Disabled encryption algorithms", style = LumoTheme.typography.label1)
+	Spacer(modifier = Modifier.height(4.dp))
+	
+	FlowRow(
+		horizontalArrangement = Arrangement.spacedBy(4.dp),
+		verticalArrangement = Arrangement.spacedBy(4.dp),
+	) {
+		EncryptionAlgorithm.entries.forEach { algo ->
+			val disabled = algo in state.disabledEncryptionAlgorithms
+			Chip(
+				label = { Text(text = algo.name, style = LumoTheme.typography.body2) },
+				selected = disabled,
+				onClick = {
+					onFieldChange {
+						val updated = if (disabled) {
+							it.disabledEncryptionAlgorithms - algo
+						} else {
+							it.disabledEncryptionAlgorithms + algo
+						}
+						it.copy(disabledEncryptionAlgorithms = updated)
+					}
+				},
+			)
+		}
+	}
 }
 
 /**
@@ -537,67 +519,67 @@ private fun DisabledAlgorithmsSection(
  */
 @Composable
 private fun TimestampSection(
-    state: GlobalConfigEditState,
-    onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
+	state: GlobalConfigEditState,
+	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(text = "Enable timestamp server", style = LumoTheme.typography.label1)
-        Switch(
-            checked = state.timestampEnabled,
-            onCheckedChange = { value -> onFieldChange { it.copy(timestampEnabled = value) } },
-        )
-    }
-
-    if (state.timestampEnabled) {
-        Spacer(modifier = Modifier.height(12.dp))
-
-        TextField(
-            value = state.timestampUrl,
-            onValueChange = { value -> onFieldChange { it.copy(timestampUrl = value) } },
-            label = { Text(text = "URL") },
-            placeholder = { Text(text = "https://tsa.example.com/tsr") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        TextField(
-            value = state.timestampUsername,
-            onValueChange = { value -> onFieldChange { it.copy(timestampUsername = value) } },
-            label = { Text(text = "Username") },
-            placeholder = { Text(text = "Optional") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        SettingsPasswordField(
-            value = state.timestampPassword,
-            onValueChange = { value -> onFieldChange { it.copy(timestampPassword = value) } },
-            hasStoredPassword = state.hasStoredPassword,
-        )
-
-        Spacer(modifier = Modifier.height(8.dp))
-
-        TextField(
-            value = state.timestampTimeout,
-            onValueChange = { value ->
-                if (value.all { c -> c.isDigit() }) {
-                    onFieldChange { it.copy(timestampTimeout = value) }
-                }
-            },
-            label = { Text(text = "Timeout (ms)") },
-            singleLine = true,
-            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.SpaceBetween,
+	) {
+		Text(text = "Enable timestamp server", style = LumoTheme.typography.label1)
+		Switch(
+			checked = state.timestampEnabled,
+			onCheckedChange = { value -> onFieldChange { it.copy(timestampEnabled = value) } },
+		)
+	}
+	
+	if (state.timestampEnabled) {
+		Spacer(modifier = Modifier.height(12.dp))
+		
+		TextField(
+			value = state.timestampUrl,
+			onValueChange = { value -> onFieldChange { it.copy(timestampUrl = value) } },
+			label = { Text(text = "URL") },
+			placeholder = { Text(text = "https://tsa.example.com/tsr") },
+			singleLine = true,
+			modifier = Modifier.fillMaxWidth(),
+		)
+		
+		Spacer(modifier = Modifier.height(8.dp))
+		
+		TextField(
+			value = state.timestampUsername,
+			onValueChange = { value -> onFieldChange { it.copy(timestampUsername = value) } },
+			label = { Text(text = "Username") },
+			placeholder = { Text(text = "Optional") },
+			singleLine = true,
+			modifier = Modifier.fillMaxWidth(),
+		)
+		
+		Spacer(modifier = Modifier.height(8.dp))
+		
+		SettingsPasswordField(
+			value = state.timestampPassword,
+			onValueChange = { value -> onFieldChange { it.copy(timestampPassword = value) } },
+			hasStoredPassword = state.hasStoredPassword,
+		)
+		
+		Spacer(modifier = Modifier.height(8.dp))
+		
+		TextField(
+			value = state.timestampTimeout,
+			onValueChange = { value ->
+				if (value.all { c -> c.isDigit() }) {
+					onFieldChange { it.copy(timestampTimeout = value) }
+				}
+			},
+			label = { Text(text = "Timeout (ms)") },
+			singleLine = true,
+			keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+			modifier = Modifier.fillMaxWidth(),
+		)
+	}
 }
 
 /**
@@ -605,36 +587,36 @@ private fun TimestampSection(
  */
 @Composable
 private fun OcspCrlSection(
-    state: GlobalConfigEditState,
-    onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
+	state: GlobalConfigEditState,
+	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 ) {
-    TextField(
-        value = state.ocspTimeout,
-        onValueChange = { value ->
-            if (value.all { c -> c.isDigit() }) {
-                onFieldChange { it.copy(ocspTimeout = value) }
-            }
-        },
-        label = { Text(text = "OCSP timeout (ms)") },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = Modifier.fillMaxWidth(),
-    )
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    TextField(
-        value = state.crlTimeout,
-        onValueChange = { value ->
-            if (value.all { c -> c.isDigit() }) {
-                onFieldChange { it.copy(crlTimeout = value) }
-            }
-        },
-        label = { Text(text = "CRL timeout (ms)") },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-        modifier = Modifier.fillMaxWidth(),
-    )
+	TextField(
+		value = state.ocspTimeout,
+		onValueChange = { value ->
+			if (value.all { c -> c.isDigit() }) {
+				onFieldChange { it.copy(ocspTimeout = value) }
+			}
+		},
+		label = { Text(text = "OCSP timeout (ms)") },
+		singleLine = true,
+		keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+		modifier = Modifier.fillMaxWidth(),
+	)
+	
+	Spacer(modifier = Modifier.height(8.dp))
+	
+	TextField(
+		value = state.crlTimeout,
+		onValueChange = { value ->
+			if (value.all { c -> c.isDigit() }) {
+				onFieldChange { it.copy(crlTimeout = value) }
+			}
+		},
+		label = { Text(text = "CRL timeout (ms)") },
+		singleLine = true,
+		keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+		modifier = Modifier.fillMaxWidth(),
+	)
 }
 
 /**
@@ -642,61 +624,88 @@ private fun OcspCrlSection(
  */
 @Composable
 private fun ValidationPolicySection(
-    state: GlobalConfigEditState,
-    onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
+	state: GlobalConfigEditState,
+	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 ) {
-    DropdownSelector(
-        selected = state.validationPolicyType,
-        options = ValidationPolicyType.entries.toList(),
-        onSelect = { value ->
-            onFieldChange { it.copy(validationPolicyType = value ?: ValidationPolicyType.DEFAULT_ETSI) }
-        },
-        label = { Text(text = "Validation policy") },
-        showNullOption = false,
-        itemLabel = { it.name.replace("_", " ") },
-        modifier = Modifier.fillMaxWidth(),
-    )
-
-    if (state.validationPolicyType == ValidationPolicyType.CUSTOM_FILE) {
-        Spacer(modifier = Modifier.height(8.dp))
-
-        TextField(
-            value = state.customPolicyPath,
-            onValueChange = { value -> onFieldChange { it.copy(customPolicyPath = value) } },
-            label = { Text(text = "Custom policy file path") },
-            placeholder = { Text(text = "/path/to/policy.xml") },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth(),
-        )
-    }
-
-    Spacer(modifier = Modifier.height(16.dp))
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(text = "Check certificate revocation", style = LumoTheme.typography.label1)
-        Switch(
-            checked = state.checkRevocation,
-            onCheckedChange = { value -> onFieldChange { it.copy(checkRevocation = value) } },
-        )
-    }
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Text(text = "Use EU List of Trusted Lists", style = LumoTheme.typography.label1)
-        Switch(
-            checked = state.useEuLotl,
-            onCheckedChange = { value -> onFieldChange { it.copy(useEuLotl = value) } },
-        )
-    }
+	DropdownSelector(
+		selected = state.validationPolicyType,
+		options = ValidationPolicyType.entries.toList(),
+		onSelect = { value ->
+			onFieldChange { it.copy(validationPolicyType = value ?: ValidationPolicyType.DEFAULT_ETSI) }
+		},
+		label = { Text(text = "Validation policy") },
+		showNullOption = false,
+		itemLabel = { it.name.replace("_", " ") },
+		modifier = Modifier.fillMaxWidth(),
+	)
+	
+	if (state.validationPolicyType == ValidationPolicyType.CUSTOM_FILE) {
+		Spacer(modifier = Modifier.height(8.dp))
+		
+		val policyFilePicker = rememberFilePickerLauncher(
+			type = FileKitType.File(extensions = listOf("xml")),
+		) { file: PlatformFile? ->
+			val path = file?.let { platformFilePath(it) }
+			if (path != null) {
+				onFieldChange { it.copy(customPolicyPath = path) }
+			}
+		}
+		
+		UnderlinedTextField(
+			value = state.customPolicyPath,
+			onValueChange = { value -> onFieldChange { it.copy(customPolicyPath = value) } },
+			label = { Text(text = "Custom policy file path") },
+			placeholder = { Text(text = "/path/to/policy.xml") },
+			singleLine = true,
+			modifier = Modifier.fillMaxWidth(),
+			trailingIcon = {
+				TooltipBox(
+					tooltip = { Tooltip { Text(text = "Browse") } },
+					state = rememberTooltipState()
+				) {
+					IconButton(
+						modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
+						variant = IconButtonVariant.Ghost,
+						onClick = { policyFilePicker.launch() },
+					) {
+						Icon(
+							painter = painterResource(Res.drawable.icon_folder),
+							contentDescription = "Browse for policy file",
+							modifier = Modifier.size(18.dp),
+						)
+					}
+				}
+			},
+		)
+	}
+	
+	Spacer(modifier = Modifier.height(16.dp))
+	
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.SpaceBetween,
+	) {
+		Text(text = "Check certificate revocation", style = LumoTheme.typography.label1)
+		Switch(
+			checked = state.checkRevocation,
+			onCheckedChange = { value -> onFieldChange { it.copy(checkRevocation = value) } },
+		)
+	}
+	
+	Spacer(modifier = Modifier.height(8.dp))
+	
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.SpaceBetween,
+	) {
+		Text(text = "Use EU List of Trusted Lists", style = LumoTheme.typography.label1)
+		Switch(
+			checked = state.useEuLotl,
+			onCheckedChange = { value -> onFieldChange { it.copy(useEuLotl = value) } },
+		)
+	}
 }
 
 /**
@@ -704,36 +713,36 @@ private fun ValidationPolicySection(
  */
 @Composable
 private fun AlgorithmConstraintsSection(
-    state: GlobalConfigEditState,
-    onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
+	state: GlobalConfigEditState,
+	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 ) {
-    DropdownSelector(
-        selected = state.algoExpirationLevel,
-        options = AlgorithmConstraintLevel.entries.toList(),
-        onSelect = { value ->
-            onFieldChange { it.copy(algoExpirationLevel = value ?: AlgorithmConstraintLevel.FAIL) }
-        },
-        label = { Text(text = "Expiration level (before policy update)") },
-        showNullOption = false,
-        itemLabel = { it.name },
-        modifier = Modifier.fillMaxWidth(),
-    )
-
-    Spacer(modifier = Modifier.height(8.dp))
-
-    DropdownSelector(
-        selected = state.algoExpirationLevelAfterUpdate,
-        options = AlgorithmConstraintLevel.entries.toList(),
-        onSelect = { value ->
-            onFieldChange {
-                it.copy(algoExpirationLevelAfterUpdate = value ?: AlgorithmConstraintLevel.WARN)
-            }
-        },
-        label = { Text(text = "Expiration level (after policy update)") },
-        showNullOption = false,
-        itemLabel = { it.name },
-        modifier = Modifier.fillMaxWidth(),
-    )
+	DropdownSelector(
+		selected = state.algoExpirationLevel,
+		options = AlgorithmConstraintLevel.entries.toList(),
+		onSelect = { value ->
+			onFieldChange { it.copy(algoExpirationLevel = value ?: AlgorithmConstraintLevel.FAIL) }
+		},
+		label = { Text(text = "Expiration level (before policy update)") },
+		showNullOption = false,
+		itemLabel = { it.name },
+		modifier = Modifier.fillMaxWidth(),
+	)
+	
+	Spacer(modifier = Modifier.height(8.dp))
+	
+	DropdownSelector(
+		selected = state.algoExpirationLevelAfterUpdate,
+		options = AlgorithmConstraintLevel.entries.toList(),
+		onSelect = { value ->
+			onFieldChange {
+				it.copy(algoExpirationLevelAfterUpdate = value ?: AlgorithmConstraintLevel.WARN)
+			}
+		},
+		label = { Text(text = "Expiration level (after policy update)") },
+		showNullOption = false,
+		itemLabel = { it.name },
+		modifier = Modifier.fillMaxWidth(),
+	)
 }
 
 /**
@@ -741,47 +750,47 @@ private fun AlgorithmConstraintsSection(
  */
 @Composable
 private fun Pkcs11Section(
-    state: GlobalConfigEditState,
-    onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
+	state: GlobalConfigEditState,
+	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 ) {
-    if (state.customPkcs11Libraries.isEmpty()) {
-        Text(
-            text = "No custom PKCS#11 libraries registered.",
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.textSecondary,
-        )
-    } else {
-        state.customPkcs11Libraries.forEachIndexed { index, lib ->
-            Pkcs11LibraryRow(
-                library = lib,
-                onRemove = {
-                    onFieldChange {
-                        it.copy(customPkcs11Libraries = it.customPkcs11Libraries.toMutableList().apply {
-                            removeAt(index)
-                        })
-                    }
-                },
-            )
-            if (index < state.customPkcs11Libraries.lastIndex) {
-                Spacer(modifier = Modifier.height(4.dp))
-            }
-        }
-    }
-
-    Spacer(modifier = Modifier.height(12.dp))
-
-    Pkcs11AddRow(
-        onAdd = { name, path ->
-            onFieldChange {
-                it.copy(
-                    customPkcs11Libraries = it.customPkcs11Libraries + CustomPkcs11Library(
-                        name = name,
-                        path = path,
-                    )
-                )
-            }
-        },
-    )
+	if (state.customPkcs11Libraries.isEmpty()) {
+		Text(
+			text = "No custom PKCS#11 libraries registered.",
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.textSecondary,
+		)
+	} else {
+		state.customPkcs11Libraries.forEachIndexed { index, lib ->
+			Pkcs11LibraryRow(
+				library = lib,
+				onRemove = {
+					onFieldChange {
+						it.copy(customPkcs11Libraries = it.customPkcs11Libraries.toMutableList().apply {
+							removeAt(index)
+						})
+					}
+				},
+			)
+			if (index < state.customPkcs11Libraries.lastIndex) {
+				Spacer(modifier = Modifier.height(4.dp))
+			}
+		}
+	}
+	
+	Spacer(modifier = Modifier.height(12.dp))
+	
+	Pkcs11AddRow(
+		onAdd = { name, path ->
+			onFieldChange {
+				it.copy(
+					customPkcs11Libraries = it.customPkcs11Libraries + CustomPkcs11Library(
+						name = name,
+						path = path,
+					)
+				)
+			}
+		},
+	)
 }
 
 /**
@@ -792,77 +801,77 @@ private fun Pkcs11Section(
  */
 @Composable
 private fun Pkcs11LibraryRow(
-    library: CustomPkcs11Library,
-    onRemove: () -> Unit,
+	library: CustomPkcs11Library,
+	onRemove: () -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.SpaceBetween,
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(text = library.name, style = LumoTheme.typography.label1)
-            Text(
-                text = library.path,
-                style = LumoTheme.typography.body2,
-                color = LumoTheme.colors.textSecondary,
-            )
-        }
-        IconButton(
-            variant = IconButtonVariant.Ghost,
-            onClick = onRemove,
-        ) {
-            Icon(
-                painter = painterResource(Res.drawable.icon_x),
-                contentDescription = "Remove ${library.name}",
-                modifier = Modifier.size(16.dp),
-            )
-        }
-    }
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.SpaceBetween,
+	) {
+		Column(modifier = Modifier.weight(1f)) {
+			Text(text = library.name, style = LumoTheme.typography.label1)
+			Text(
+				text = library.path,
+				style = LumoTheme.typography.body2,
+				color = LumoTheme.colors.textSecondary,
+			)
+		}
+		IconButton(
+			variant = IconButtonVariant.Ghost,
+			onClick = onRemove,
+		) {
+			Icon(
+				painter = painterResource(Res.drawable.icon_x),
+				contentDescription = "Remove ${library.name}",
+				modifier = Modifier.size(16.dp),
+			)
+		}
+	}
 }
 
 /**
- * Inline add row for registering a new PKCS#11 library.
+ * Inline add a row for registering a new PKCS#11 library.
  *
  * @param onAdd Callback invoked with (name, path) when the user confirms the new entry.
  */
 @Composable
 private fun Pkcs11AddRow(onAdd: (name: String, path: String) -> Unit) {
-    var name by remember { mutableStateOf("") }
-    var path by remember { mutableStateOf("") }
-
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalAlignment = Alignment.Bottom,
-    ) {
-        TextField(
-            value = name,
-            onValueChange = { name = it },
-            label = { Text(text = "Name") },
-            placeholder = { Text(text = "Label") },
-            singleLine = true,
-            modifier = Modifier.weight(1f),
-        )
-        TextField(
-            value = path,
-            onValueChange = { path = it },
-            label = { Text(text = "Path") },
-            placeholder = { Text(text = "/path/to/library.so") },
-            singleLine = true,
-            modifier = Modifier.weight(2f),
-        )
-        Button(
-            text = "Add",
-            variant = ButtonVariant.PrimaryOutlined,
-            enabled = name.isNotBlank() && path.isNotBlank(),
-            onClick = {
-                onAdd(name.trim(), path.trim())
-                name = ""
-                path = ""
-            },
-        )
-    }
+	var name by remember { mutableStateOf("") }
+	var path by remember { mutableStateOf("") }
+	
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		horizontalArrangement = Arrangement.spacedBy(8.dp),
+		verticalAlignment = Alignment.Bottom,
+	) {
+		TextField(
+			value = name,
+			onValueChange = { name = it },
+			label = { Text(text = "Name") },
+			placeholder = { Text(text = "Label") },
+			singleLine = true,
+			modifier = Modifier.weight(1f),
+		)
+		TextField(
+			value = path,
+			onValueChange = { path = it },
+			label = { Text(text = "Path") },
+			placeholder = { Text(text = "/path/to/library.so") },
+			singleLine = true,
+			modifier = Modifier.weight(2f),
+		)
+		Button(
+			text = "Add",
+			variant = ButtonVariant.PrimaryOutlined,
+			enabled = name.isNotBlank() && path.isNotBlank(),
+			onClick = {
+				onAdd(name.trim(), path.trim())
+				name = ""
+				path = ""
+			},
+		)
+	}
 }
 
 /**
@@ -878,37 +887,37 @@ private fun Pkcs11AddRow(onAdd: (name: String, path: String) -> Unit) {
  */
 @Composable
 private fun SettingsPasswordField(
-    value: String,
-    onValueChange: (String) -> Unit,
-    hasStoredPassword: Boolean,
+	value: String,
+	onValueChange: (String) -> Unit,
+	hasStoredPassword: Boolean,
 ) {
-    var visible by remember { mutableStateOf(false) }
-    val placeholder = if (hasStoredPassword) "Password stored — enter to replace" else "Optional"
-
-    TextField(
-        value = value,
-        onValueChange = onValueChange,
-        label = { Text(text = "Password") },
-        placeholder = { Text(text = placeholder) },
-        singleLine = true,
-        visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
-        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
-        modifier = Modifier.fillMaxWidth(),
-        trailingIcon = {
-            IconButton(
-                variant = IconButtonVariant.Ghost,
-                onClick = { visible = !visible },
-            ) {
-                Icon(
-                    painter = painterResource(
-                        if (visible) Res.drawable.icon_eye_off else Res.drawable.icon_eye
-                    ),
-                    contentDescription = if (visible) "Hide password" else "Show password",
-                    modifier = Modifier.size(18.dp),
-                )
-            }
-        },
-    )
+	var visible by remember { mutableStateOf(false) }
+	val placeholder = if (hasStoredPassword) "Password stored — enter to replace" else "Optional"
+	
+	TextField(
+		value = value,
+		onValueChange = onValueChange,
+		label = { Text(text = "Password") },
+		placeholder = { Text(text = placeholder) },
+		singleLine = true,
+		visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
+		keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+		modifier = Modifier.fillMaxWidth(),
+		trailingIcon = {
+			IconButton(
+				variant = IconButtonVariant.Ghost,
+				onClick = { visible = !visible },
+			) {
+				Icon(
+					painter = painterResource(
+						if (visible) Res.drawable.icon_eye_off else Res.drawable.icon_eye
+					),
+					contentDescription = if (visible) "Hide password" else "Show password",
+					modifier = Modifier.size(18.dp),
+				)
+			}
+		},
+	)
 }
 
 
