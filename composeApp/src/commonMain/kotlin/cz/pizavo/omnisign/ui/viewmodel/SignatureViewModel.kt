@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.validation.ReportExportFormat
+import cz.pizavo.omnisign.domain.model.validation.SignatureTrustTier
 import cz.pizavo.omnisign.domain.model.validation.ValidationReport
 import cz.pizavo.omnisign.domain.model.validation.json.toJsonReport
 import cz.pizavo.omnisign.domain.model.validation.json.toJsonString
@@ -159,6 +160,9 @@ class SignatureViewModel(
                 appendLine("  Level:          ${sig.signatureLevel}")
                 appendLine("  Time:           ${sig.signatureTime.formatDateTime()}")
                 sig.signatureQualification?.let { appendLine("  Qualification:  $it") }
+                if (sig.trustTier != SignatureTrustTier.NOT_QUALIFIED) {
+                    appendLine("  Trust tier:     ${sig.trustTier.label}")
+                }
                 sig.hashAlgorithm?.let { appendLine("  Hash algorithm: $it") }
                 sig.encryptionAlgorithm?.let { appendLine("  Encryption:     $it") }
                 appendLine("  Certificate:")

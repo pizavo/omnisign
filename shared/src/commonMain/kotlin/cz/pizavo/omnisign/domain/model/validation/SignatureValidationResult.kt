@@ -20,6 +20,7 @@ import kotlin.time.Instant
  * @property signatureTime Point in time of the best signature time as determined by DSS.
  * @property certificate Signing certificate details.
  * @property signatureQualification eIDAS qualification of the signature (e.g. "QESig", "AdESig").
+ * @property trustTier Derived eIDAS trust tier based on the signature qualification — see [SignatureTrustTier].
  * @property hashAlgorithm Digest algorithm used in the signature (e.g. "SHA256").
  * @property encryptionAlgorithm Encryption algorithm of the signing key (e.g. "RSA", "ECDSA").
  * @property timestamps Timestamp tokens embedded within or covering this signature (e.g., signature timestamps).
@@ -39,6 +40,7 @@ data class SignatureValidationResult(
     val signatureTime: Instant,
     val certificate: CertificateInfo,
     val signatureQualification: String? = null,
+    val trustTier: SignatureTrustTier = SignatureTrustTier.NOT_QUALIFIED,
     val hashAlgorithm: String? = null,
     val encryptionAlgorithm: String? = null,
     val timestamps: List<TimestampValidationResult> = emptyList(),

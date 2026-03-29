@@ -38,6 +38,7 @@ data class JsonValidationReport(
  * @property signatureLevel PAdES signature level string.
  * @property signatureTime ISO-8601 best signature time.
  * @property qualification eIDAS qualification label.
+ * @property trustTier eIDAS trust tier classification name (e.g. "QUALIFIED_QSCD", "QUALIFIED", "NOT_QUALIFIED").
  * @property hashAlgorithm Digest algorithm name.
  * @property encryptionAlgorithm Encryption algorithm name.
  * @property certificate Signing certificate details.
@@ -58,6 +59,7 @@ data class JsonSignatureReport(
     val signatureLevel: String,
     val signatureTime: String,
     val qualification: String? = null,
+    val trustTier: String? = null,
     val hashAlgorithm: String? = null,
     val encryptionAlgorithm: String? = null,
     val certificate: JsonCertificateReport,

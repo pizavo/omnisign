@@ -17,6 +17,7 @@ import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.validation.SignatureValidationResult
+import cz.pizavo.omnisign.domain.model.validation.SignatureTrustTier
 import cz.pizavo.omnisign.domain.model.validation.TimestampValidationResult
 import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
 import cz.pizavo.omnisign.domain.model.validation.ValidationReport
@@ -34,10 +35,12 @@ import cz.pizavo.omnisign.lumo.components.rememberAccordionState
 import cz.pizavo.omnisign.ui.model.SignaturePanelState
 import omnisign.composeapp.generated.resources.Res
 import omnisign.composeapp.generated.resources.icon_chevron_down
+import omnisign.composeapp.generated.resources.icon_rosette
 import omnisign.composeapp.generated.resources.icon_shield_check
 import omnisign.composeapp.generated.resources.icon_shield_exclamation
 import omnisign.composeapp.generated.resources.icon_shield_question
 import omnisign.composeapp.generated.resources.icon_signature
+import omnisign.composeapp.generated.resources.rosette_check
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
@@ -255,6 +258,8 @@ private fun SignatureAccordion(
         title = "Signature ${index + 1} of $total — ${signature.signedBy}",
         indication = signature.indication,
         initiallyExpanded = false,
+        trailingIcon = trustTierIcon(signature.trustTier),
+        trailingTint = trustTierColor(signature.trustTier),
     ) {
         Column(
             modifier = Modifier.padding(start = 4.dp),
@@ -266,6 +271,9 @@ private fun SignatureAccordion(
             LabelValue(label = "Level", value = signature.signatureLevel)
             LabelValue(label = "Time", value = signature.signatureTime.formatDateTime())
             signature.signatureQualification?.let { LabelValue(label = "Qualification", value = it) }
+            if (signature.trustTier != SignatureTrustTier.NOT_QUALIFIED) {
+                LabelValue(label = "Trust", value = signature.trustTier.label)
+            }
             signature.hashAlgorithm?.let { LabelValue(label = "Hash algorithm", value = it) }
             signature.encryptionAlgorithm?.let { LabelValue(label = "Encryption", value = it) }
 
@@ -405,14 +413,17 @@ private fun TimestampAccordion(
 }
 
 /**
- * Accordion header with a shield icon reflecting the [indication], a title, and
- * a rotating chevron. Used for top-level groups and individual signature/timestamp items.
+ * Accordion header with a shield icon reflecting the [indication], a title, an optional
+ * [trailingIcon] (e.g. a rosette for qualified signatures), and a rotating chevron.
+ * Used for top-level groups and individual signature/timestamp items.
  */
 @Composable
 private fun SectionAccordion(
     title: String,
     indication: ValidationIndication,
     initiallyExpanded: Boolean,
+    trailingIcon: DrawableResource? = null,
+    trailingTint: Color = Color.Unspecified,
     content: @Composable () -> Unit,
 ) {
     val state = rememberAccordionState(expanded = initiallyExpanded)
@@ -440,6 +451,14 @@ private fun SectionAccordion(
                     style = LumoTheme.typography.h4,
                     modifier = Modifier.weight(1f),
                 )
+                if (trailingIcon != null) {
+                    Icon(
+                        painter = painterResource(trailingIcon),
+                        contentDescription = "Qualified",
+                        modifier = Modifier.size(18.dp),
+                        tint = trailingTint,
+                    )
+                }
                 Icon(
                     painter = painterResource(Res.drawable.icon_chevron_down),
                     contentDescription = if (state.expanded) "Collapse" else "Expand",
@@ -563,6 +582,30 @@ private fun indicationColor(indication: ValidationIndication) = when (indication
     ValidationIndication.TOTAL_PASSED -> LumoTheme.colors.success
     ValidationIndication.TOTAL_FAILED -> LumoTheme.colors.error
     ValidationIndication.INDETERMINATE -> LumoTheme.colors.warning
+}
+
+/**
+ * Map a [SignatureTrustTier] to the appropriate rosette icon resource, or `null`
+ * when no rosette should be displayed.
+ */
+private fun trustTierIcon(tier: SignatureTrustTier): DrawableResource? = when (tier) {
+    SignatureTrustTier.QUALIFIED_QSCD -> Res.drawable.rosette_check
+    SignatureTrustTier.QUALIFIED -> Res.drawable.icon_rosette
+    SignatureTrustTier.NOT_QUALIFIED -> null
+}
+
+/**
+ * Map a [SignatureTrustTier] to the appropriate theme-aware tint color.
+ *
+ * Uses dedicated icon colors from [LumoTheme.colors.icons] so rosette hues
+ * are independent of the semantic palette (success / error / warning) used by the
+ * validation-indication shields.
+ */
+@Composable
+private fun trustTierColor(tier: SignatureTrustTier): Color = when (tier) {
+    SignatureTrustTier.QUALIFIED_QSCD -> LumoTheme.colors.icons.trustQualifiedQscd
+    SignatureTrustTier.QUALIFIED -> LumoTheme.colors.icons.trustQualified
+    SignatureTrustTier.NOT_QUALIFIED -> Color.Unspecified
 }
 
 /**

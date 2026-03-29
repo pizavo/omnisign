@@ -43,6 +43,7 @@ fun SignatureValidationResult.toJsonReport(): JsonSignatureReport =
         signatureLevel = signatureLevel,
         signatureTime = signatureTime.toString(),
         qualification = signatureQualification,
+        trustTier = trustTier.name,
         hashAlgorithm = hashAlgorithm,
         encryptionAlgorithm = encryptionAlgorithm,
         certificate = certificate.toJsonReport(),

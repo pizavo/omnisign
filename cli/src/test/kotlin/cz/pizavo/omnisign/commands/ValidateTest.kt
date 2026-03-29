@@ -22,6 +22,7 @@ import io.kotest.koin.KoinLifecycleMode
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.mockk.coEvery
 import io.mockk.mockk
 import org.koin.dsl.module
@@ -159,6 +160,51 @@ class ValidateTest : FunSpec({
 		result.output shouldContain "expected key-usage"
 		val errorsIdx = result.output.indexOf("❌ Errors:")
 		errorsIdx shouldBe -1
+		result.statusCode shouldBe 0
+	}
+	
+	test("trust tier is shown for qualified signatures") {
+		val input = tmpFile("qualified.pdf")
+		val qualifiedReport = sampleReport.copy(
+			signatures = listOf(
+				sampleReport.signatures.first().copy(
+					trustTier = SignatureTrustTier.QUALIFIED_QSCD,
+				)
+			)
+		)
+		coEvery { validationRepository.validateDocument(any()) } returns qualifiedReport.right()
+		
+		val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
+		
+		result.output shouldContain "Trust tier:"
+		result.output shouldContain "Qualified (QSCD)"
+		result.statusCode shouldBe 0
+	}
+	
+	test("trust tier is omitted for non-qualified signatures") {
+		val input = tmpFile("nonqual.pdf")
+		coEvery { validationRepository.validateDocument(any()) } returns sampleReport.right()
+		
+		val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
+		
+		result.output shouldNotContain "Trust tier:"
+		result.statusCode shouldBe 0
+	}
+	
+	test("trust tier appears in JSON output") {
+		val input = tmpFile("jsontier.pdf")
+		val qualifiedReport = sampleReport.copy(
+			signatures = listOf(
+				sampleReport.signatures.first().copy(
+					trustTier = SignatureTrustTier.QUALIFIED,
+				)
+			)
+		)
+		coEvery { validationRepository.validateDocument(any()) } returns qualifiedReport.right()
+		
+		val result = Omnisign().test(listOf("--json", "validate", "-f", input.absolutePath))
+		
+		result.output shouldContain "\"trustTier\":\"QUALIFIED\""
 		result.statusCode shouldBe 0
 	}
 })

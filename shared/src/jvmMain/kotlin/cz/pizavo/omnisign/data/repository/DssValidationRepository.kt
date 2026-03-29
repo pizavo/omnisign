@@ -18,6 +18,8 @@ import eu.europa.esig.dss.diagnostic.DiagnosticData
 import eu.europa.esig.dss.diagnostic.TimestampWrapper
 import eu.europa.esig.dss.enumerations.Indication
 import eu.europa.esig.dss.enumerations.SignatureQualification
+import cz.pizavo.omnisign.domain.model.validation.SignatureTrustTier
+import cz.pizavo.omnisign.domain.model.validation.toTrustTier
 import eu.europa.esig.dss.enumerations.SubIndication
 import eu.europa.esig.dss.enumerations.TimestampQualification
 import eu.europa.esig.dss.model.FileDocument
@@ -290,6 +292,9 @@ class DssValidationRepository(
 			bytes.joinToString(":") { "%02X".format(it) }
 		}
 		
+		val dssQualification = simpleReport.getSignatureQualification(signatureId)
+		val trustTier = dssQualification?.toTrustTier() ?: SignatureTrustTier.NOT_QUALIFIED
+		
 		val certificate = CertificateInfo(
 			subjectDN = signingCert?.getCertificateDN() ?: signedBy,
 			issuerDN = signingCert?.getCertificateIssuerDN() ?: "Unknown",
@@ -297,13 +302,12 @@ class DssValidationRepository(
 			validFrom = signingCert?.notBefore?.toKotlinInstant() ?: kotlin.time.Instant.fromEpochSeconds(0),
 			validTo = signingCert?.notAfter?.toKotlinInstant() ?: kotlin.time.Instant.fromEpochSeconds(0),
 			keyUsages = signingCert?.keyUsages?.map { it.name } ?: emptyList(),
-			isQualified = simpleReport.getSignatureQualification(signatureId)
-				?.let { it != SignatureQualification.NA } ?: false,
+			isQualified = trustTier != SignatureTrustTier.NOT_QUALIFIED,
 			publicKeyAlgorithm = signingCert?.encryptionAlgorithm?.name,
 			sha256Fingerprint = sha256Fingerprint,
 		)
 		
-		val signatureQualification = simpleReport.getSignatureQualification(signatureId)
+		val signatureQualification = dssQualification
 			?.takeIf { it != SignatureQualification.NA }
 			?.readable
 		
@@ -322,6 +326,7 @@ class DssValidationRepository(
 			signatureTime = signatureTime,
 			certificate = certificate,
 			signatureQualification = signatureQualification,
+			trustTier = trustTier,
 			hashAlgorithm = sigWrapper?.digestAlgorithm?.name,
 			encryptionAlgorithm = sigWrapper?.encryptionAlgorithm?.name,
 		)

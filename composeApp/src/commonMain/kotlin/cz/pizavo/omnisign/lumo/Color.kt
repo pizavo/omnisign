@@ -29,6 +29,8 @@ val Red200: Color = Color(0xFFffd2cd)
 val Red100: Color = Color(0xFFffe1de)
 val Red50: Color = Color(0xFFfff0ee)
 
+val Blue1100: Color = Color(0xFF0E55D8)
+val Blue1000: Color = Color(0xFF105EEF)
 val Blue900: Color = Color(0xFF276EF1)
 val Blue800: Color = Color(0xFF3F7EF2)
 val Blue700: Color = Color(0xFF578EF4)
@@ -66,12 +68,14 @@ val Green50: Color = Color(0xFFE0FAEC)
 /**
  * Theme-aware tint colors for specific icon types.
  *
- * Keeps icon colours decoupled from semantic palette roles like `warning` or `error`,
+ * Keeps icon colors decoupled from semantic palette roles like `warning` or `error`,
  * so each icon category can evolve independently.
  */
 @Immutable
 data class IconColors(
     val folder: Color,
+    val trustQualified: Color,
+    val trustQualifiedQscd: Color,
 )
 
 @Immutable
@@ -135,7 +139,11 @@ internal val LightColors =
         textDisabled = Gray400,
         scrim = Color.Black.copy(alpha = 0.32f),
         elevation = Gray700,
-        icons = IconColors(folder = Yellow700),
+        icons = IconColors(
+            folder = Yellow700,
+            trustQualified = Blue800,
+            trustQualifiedQscd = Blue1100,
+        ),
     )
 
 internal val DarkColors =
@@ -167,7 +175,11 @@ internal val DarkColors =
         textDisabled = Gray600,
         scrim = Color.Black.copy(alpha = 0.72f),
         elevation = Gray200,
-        icons = IconColors(folder = Yellow400),
+        icons = IconColors(
+            folder = Yellow400,
+            trustQualified = Blue600,
+            trustQualifiedQscd = Blue900,
+        ),
     )
 
 val LocalColors = staticCompositionLocalOf { LightColors }
