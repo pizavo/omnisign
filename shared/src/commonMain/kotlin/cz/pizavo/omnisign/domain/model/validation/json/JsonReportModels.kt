@@ -12,6 +12,7 @@ import kotlinx.serialization.Serializable
  * @property documentName Name of the validated document.
  * @property validationTime ISO-8601 timestamp of the validation execution.
  * @property overallResult Aggregated validation outcome name.
+ * @property overallTrustTier Highest eIDAS trust tier among all passed signatures (e.g. "QUALIFIED_QSCD"), or `null` when not qualified.
  * @property signatures Per-signature validation results.
  * @property timestamps Document-level timestamp results.
  * @property summary Counters of passed / failed / indeterminate signatures.
@@ -22,6 +23,7 @@ data class JsonValidationReport(
     val documentName: String,
     val validationTime: String,
     val overallResult: String,
+    val overallTrustTier: String? = null,
     val signatures: List<JsonSignatureReport> = emptyList(),
     val timestamps: List<JsonTimestampReport> = emptyList(),
     val summary: JsonValidationSummary? = null,

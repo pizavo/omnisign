@@ -25,6 +25,7 @@ data class JsonValidationResult(
 	val documentName: String? = null,
 	val validationTime: String? = null,
 	val overallResult: String? = null,
+	val overallTrustTier: String? = null,
 	val signatures: List<JsonSignatureResult> = emptyList(),
 	val timestamps: List<JsonTimestampResult> = emptyList(),
 	val summary: JsonValidationSummary? = null,

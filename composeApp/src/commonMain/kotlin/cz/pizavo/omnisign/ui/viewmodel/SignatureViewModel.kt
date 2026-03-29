@@ -147,6 +147,9 @@ class SignatureViewModel(
         appendLine("Document:        ${report.documentName}")
         appendLine("Validation time: ${report.validationTime.formatDateTime()}")
         appendLine("Overall result:  ${report.overallResult}")
+        if (report.overallTrustTier != SignatureTrustTier.NOT_QUALIFIED) {
+            appendLine("Trust tier:      ${report.overallTrustTier.label}")
+        }
         appendLine()
 
         if (report.signatures.isEmpty()) {

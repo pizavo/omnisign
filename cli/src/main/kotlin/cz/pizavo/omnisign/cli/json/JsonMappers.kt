@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.domain.model.error.OperationError
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.SigningResult
 import cz.pizavo.omnisign.domain.model.validation.SignatureValidationResult
+import cz.pizavo.omnisign.domain.model.validation.SignatureTrustTier
 import cz.pizavo.omnisign.domain.model.validation.TimestampValidationResult
 import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
 import cz.pizavo.omnisign.domain.model.validation.ValidationReport
@@ -57,6 +58,7 @@ fun ValidationReport.toJsonResult(rawReportPath: String? = null): JsonValidation
 		documentName = documentName,
 		validationTime = validationTime.toString(),
 		overallResult = overallResult.name,
+		overallTrustTier = overallTrustTier.takeIf { it != SignatureTrustTier.NOT_QUALIFIED }?.name,
 		signatures = signatures.map { it.toJson() },
 		timestamps = timestamps.map { it.toJson() },
 		summary = JsonValidationSummary(

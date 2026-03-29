@@ -29,4 +29,22 @@ data class ValidationReport(
      */
     val tlWarnings: List<String> = emptyList(),
     val rawReports: Map<RawReportFormat, String> = emptyMap(),
-)
+) {
+    /**
+     * Highest [SignatureTrustTier] among all signatures that passed validation.
+     *
+     * Only signatures with [ValidationIndication.TOTAL_PASSED] are considered, so
+     * a qualified but *invalid* signature does not contribute to the overall trust badge.
+     * Returns [SignatureTrustTier.NOT_QUALIFIED] when no passed signature is qualified
+     * or when [overallResult] is not [ValidationResult.VALID].
+     */
+    val overallTrustTier: SignatureTrustTier
+        get() {
+            if (overallResult != ValidationResult.VALID) return SignatureTrustTier.NOT_QUALIFIED
+
+            return signatures
+                .filter { it.indication == ValidationIndication.TOTAL_PASSED }
+                .minOfOrNull { it.trustTier }
+                ?: SignatureTrustTier.NOT_QUALIFIED
+        }
+}

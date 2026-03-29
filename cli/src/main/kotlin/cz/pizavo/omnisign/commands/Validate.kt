@@ -158,6 +158,9 @@ class Validate : CliktCommand(
 		echo("Document:      ${report.documentName}")
 		echo("Validated at:  ${report.validationTime.formatDateTime()}")
 		echo("Overall:       ${formatOverallResult(report.overallResult)}")
+		if (report.overallTrustTier != SignatureTrustTier.NOT_QUALIFIED) {
+			echo("Trust tier:    ${report.overallTrustTier.label}")
+		}
 		
 		if (detailed) {
 			echo("───────────────────────────────────────────────────────────────")

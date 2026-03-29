@@ -207,5 +207,69 @@ class ValidateTest : FunSpec({
 		result.output shouldContain "\"trustTier\":\"QUALIFIED\""
 		result.statusCode shouldBe 0
 	}
+	
+	test("overall trust tier is shown in header for valid qualified document") {
+		val input = tmpFile("overalltier.pdf")
+		val qualifiedReport = sampleReport.copy(
+			signatures = listOf(
+				sampleReport.signatures.first().copy(
+					trustTier = SignatureTrustTier.QUALIFIED_QSCD,
+				)
+			)
+		)
+		coEvery { validationRepository.validateDocument(any()) } returns qualifiedReport.right()
+		
+		val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
+		
+		val separator = "═".repeat(63)
+		val firstEnd = result.output.indexOf(separator)
+		val secondStart = result.output.indexOf(separator, firstEnd + separator.length)
+		val thirdStart = result.output.indexOf(separator, secondStart + separator.length)
+		val header = result.output.substring(0, thirdStart)
+		header shouldContain "Trust tier:"
+		header shouldContain "Qualified (QSCD)"
+		result.statusCode shouldBe 0
+	}
+	
+	test("overall trust tier is suppressed when document is indeterminate even if signature is qualified") {
+		val input = tmpFile("indettier.pdf")
+		val indeterminateReport = sampleReport.copy(
+			overallResult = ValidationResult.INDETERMINATE,
+			signatures = listOf(
+				sampleReport.signatures.first().copy(
+					indication = ValidationIndication.INDETERMINATE,
+					trustTier = SignatureTrustTier.QUALIFIED,
+				)
+			)
+		)
+		coEvery { validationRepository.validateDocument(any()) } returns indeterminateReport.right()
+		
+		val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
+		
+		val separator = "═".repeat(63)
+		val firstEnd = result.output.indexOf(separator)
+		val secondStart = result.output.indexOf(separator, firstEnd + separator.length)
+		val thirdStart = result.output.indexOf(separator, secondStart + separator.length)
+		val header = result.output.substring(0, thirdStart)
+		header shouldNotContain "Trust tier:"
+		result.statusCode shouldBe 0
+	}
+	
+	test("overall trust tier appears in JSON output for valid qualified document") {
+		val input = tmpFile("jsonoverall.pdf")
+		val qualifiedReport = sampleReport.copy(
+			signatures = listOf(
+				sampleReport.signatures.first().copy(
+					trustTier = SignatureTrustTier.QUALIFIED_QSCD,
+				)
+			)
+		)
+		coEvery { validationRepository.validateDocument(any()) } returns qualifiedReport.right()
+		
+		val result = Omnisign().test(listOf("--json", "validate", "-f", input.absolutePath))
+		
+		result.output shouldContain "\"overallTrustTier\":\"QUALIFIED_QSCD\""
+		result.statusCode shouldBe 0
+	}
 })
 

@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.domain.model.validation.json
 
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
+import cz.pizavo.omnisign.domain.model.validation.SignatureTrustTier
 import cz.pizavo.omnisign.domain.model.validation.SignatureValidationResult
 import cz.pizavo.omnisign.domain.model.validation.TimestampValidationResult
 import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
@@ -19,6 +20,7 @@ fun ValidationReport.toJsonReport(): JsonValidationReport {
         documentName = documentName,
         validationTime = validationTime.toString(),
         overallResult = overallResult.name,
+        overallTrustTier = overallTrustTier.takeIf { it != SignatureTrustTier.NOT_QUALIFIED }?.name,
         signatures = signatures.map { it.toJsonReport() },
         timestamps = timestamps.map { it.toJsonReport() },
         summary = JsonValidationSummary(

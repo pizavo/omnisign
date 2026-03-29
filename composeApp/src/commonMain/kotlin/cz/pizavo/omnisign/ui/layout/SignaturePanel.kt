@@ -31,9 +31,13 @@ import cz.pizavo.omnisign.lumo.components.ButtonVariant
 import cz.pizavo.omnisign.lumo.components.HorizontalDivider
 import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.Text
+import cz.pizavo.omnisign.lumo.components.Tooltip
+import cz.pizavo.omnisign.lumo.components.TooltipBox
 import cz.pizavo.omnisign.lumo.components.rememberAccordionState
+import cz.pizavo.omnisign.lumo.components.rememberTooltipState
 import cz.pizavo.omnisign.ui.model.SignaturePanelState
 import omnisign.composeapp.generated.resources.Res
+import omnisign.composeapp.generated.resources.icon_alert_warning
 import omnisign.composeapp.generated.resources.icon_chevron_down
 import omnisign.composeapp.generated.resources.icon_rosette
 import omnisign.composeapp.generated.resources.icon_shield_check
@@ -147,7 +151,7 @@ private fun ReportContent(report: ValidationReport) {
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        OverallResultBadge(result = report.overallResult)
+        OverallResultBadge(report = report)
 
         Spacer(modifier = Modifier.height(4.dp))
 
@@ -181,11 +185,22 @@ private fun ReportContent(report: ValidationReport) {
             Spacer(modifier = Modifier.height(4.dp))
             Text(text = "Trusted List Warnings", style = LumoTheme.typography.h4)
             report.tlWarnings.forEach { warning ->
-                Text(
-                    text = "⚠️ $warning",
-                    style = LumoTheme.typography.body2,
-                    color = LumoTheme.colors.warning,
-                )
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    Icon(
+                        painter = painterResource(Res.drawable.icon_alert_warning),
+                        contentDescription = null,
+                        modifier = Modifier.padding(top = 3.dp).size(14.dp),
+                        tint = LumoTheme.colors.warning,
+                    )
+                    Text(
+                        text = warning,
+                        style = LumoTheme.typography.body2,
+                        color = LumoTheme.colors.warning,
+                    )
+                }
             }
         }
     }
@@ -193,14 +208,20 @@ private fun ReportContent(report: ValidationReport) {
 
 /**
  * Colored badge indicating the overall validation result.
+ *
+ * When [ValidationReport.overallTrustTier] is qualified, an additional rosette icon
+ * is rendered to the right of the label — the same rosette/color logic used for
+ * individual signature accordions.
  */
 @Composable
-private fun OverallResultBadge(result: ValidationResult) {
-    val (label, color, icon) = when (result) {
+private fun OverallResultBadge(report: ValidationReport) {
+    val (label, color, icon) = when (report.overallResult) {
         ValidationResult.VALID -> Triple("VALID", LumoTheme.colors.success, Res.drawable.icon_shield_check)
         ValidationResult.INVALID -> Triple("INVALID", LumoTheme.colors.error, Res.drawable.icon_shield_exclamation)
         ValidationResult.INDETERMINATE -> Triple("INDETERMINATE", LumoTheme.colors.warning, Res.drawable.icon_shield_question)
     }
+    val rosette = trustTierIcon(report.overallTrustTier)
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
@@ -214,6 +235,20 @@ private fun OverallResultBadge(result: ValidationResult) {
         )
         Spacer(modifier = Modifier.size(8.dp))
         Text(text = label, style = LumoTheme.typography.h3, color = color)
+        if (rosette != null) {
+            Spacer(modifier = Modifier.size(8.dp))
+            TooltipBox(
+                tooltip = { Tooltip { Text(text = report.overallTrustTier.label) } },
+                state = rememberTooltipState(),
+            ) {
+                Icon(
+                    painter = painterResource(rosette),
+                    contentDescription = report.overallTrustTier.label,
+                    modifier = Modifier.size(22.dp),
+                    tint = trustTierColor(report.overallTrustTier),
+                )
+            }
+        }
     }
 }
 
@@ -260,6 +295,7 @@ private fun SignatureAccordion(
         initiallyExpanded = false,
         trailingIcon = trustTierIcon(signature.trustTier),
         trailingTint = trustTierColor(signature.trustTier),
+        trailingTooltip = signature.trustTier.takeIf { it != SignatureTrustTier.NOT_QUALIFIED }?.label,
     ) {
         Column(
             modifier = Modifier.padding(start = 4.dp),
@@ -414,7 +450,8 @@ private fun TimestampAccordion(
 
 /**
  * Accordion header with a shield icon reflecting the [indication], a title, an optional
- * [trailingIcon] (e.g. a rosette for qualified signatures), and a rotating chevron.
+ * [trailingIcon] (e.g. a rosette for qualified signatures) with an optional hover
+ * [trailingTooltip], and a rotating chevron.
  * Used for top-level groups and individual signature/timestamp items.
  */
 @Composable
@@ -424,6 +461,7 @@ private fun SectionAccordion(
     initiallyExpanded: Boolean,
     trailingIcon: DrawableResource? = null,
     trailingTint: Color = Color.Unspecified,
+    trailingTooltip: String? = null,
     content: @Composable () -> Unit,
 ) {
     val state = rememberAccordionState(expanded = initiallyExpanded)
@@ -452,12 +490,24 @@ private fun SectionAccordion(
                     modifier = Modifier.weight(1f),
                 )
                 if (trailingIcon != null) {
-                    Icon(
-                        painter = painterResource(trailingIcon),
-                        contentDescription = "Qualified",
-                        modifier = Modifier.size(18.dp),
-                        tint = trailingTint,
-                    )
+                    val iconContent = @Composable {
+                        Icon(
+                            painter = painterResource(trailingIcon),
+                            contentDescription = trailingTooltip ?: "Qualified",
+                            modifier = Modifier.size(18.dp),
+                            tint = trailingTint,
+                        )
+                    }
+                    if (trailingTooltip != null) {
+                        TooltipBox(
+                            tooltip = { Tooltip { Text(text = trailingTooltip) } },
+                            state = rememberTooltipState(),
+                        ) {
+                            iconContent()
+                        }
+                    } else {
+                        iconContent()
+                    }
                 }
                 Icon(
                     painter = painterResource(Res.drawable.icon_chevron_down),
