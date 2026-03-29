@@ -121,6 +121,10 @@ val jbrHomePath: String? = try {
 	null
 }
 
+compose.resources {
+	generateResClass = always
+}
+
 compose.desktop {
 	application {
 		mainClass = "cz.pizavo.omnisign.MainKt"
@@ -148,6 +152,11 @@ compose.desktop {
 			packageName = "cz.pizavo.omnisign"
 			packageVersion = project.version.toString().toNativeDistributionVersion()
 		}
+		
+		buildTypes.release.proguard {
+			version.set("7.9.0")
+			configurationFiles.from(project.file("proguard-rules.pro"))
+		}
 	}
 }
 
@@ -155,13 +164,11 @@ gradle.taskGraph.whenReady {
 	if (jbrHomePath != null) return@whenReady
 
 	val needsJbr = allTasks.any {
-		it.project.path == ":composeApp" && it.name in setOf(
-			"run", "runDistributable", "suggestRuntimeModules",
-			"packageMsi", "packageExe",
-			"packageDmg", "packagePkg",
-			"packageDeb", "packageRpm",
-			"packageAppImage",
-			"createDistributable",
+		it.project.path == ":composeApp" && (
+			it.name == "run" ||
+			it.name == "suggestRuntimeModules" ||
+			it.name.startsWith("package") ||
+			it.name.contains("Distributable")
 		)
 	}
 

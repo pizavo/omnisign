@@ -19,8 +19,8 @@ on:
       - 'gradle.properties'
 
 jobs:
-  test-jvm:
-    name: Test JVM — ${{ matrix.os }}
+  build:
+    name: Build & Test — ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -32,10 +32,10 @@ jobs:
 
       - uses: ./.github/actions/setup-gradle
 
-      - name: Run JVM tests
-        run: ./gradlew :shared:jvmTest :composeApp:jvmTest
+      - name: Build and test
+        run: ./gradlew :shared:jvmTest :composeApp:jvmTest :composeApp:createDistributable
 
-  test-web:
+  build-web:
     name: Build Web (Wasm)
     runs-on: ubuntu-latest
 
