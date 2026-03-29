@@ -241,8 +241,9 @@ private fun ResizeHandle(
             .pointerInput(Unit) {
                 detectTapGestures(
                     onDoubleTap = {
+                        val safeMin = minOf(IslandSidePanelMinWidth, currentMaxWidth)
                         currentOnWidthChange(
-                            currentDefaultWidth.coerceIn(IslandSidePanelMinWidth, currentMaxWidth)
+                            currentDefaultWidth.coerceIn(safeMin, maxOf(safeMin, currentMaxWidth))
                         )
                     },
                 )
@@ -252,7 +253,8 @@ private fun ResizeHandle(
                     change.consume()
                     val deltaDp = with(density) { dragAmount.x.toDp() }
                     val newWidth = if (fromEnd) currentWidth - deltaDp else currentWidth + deltaDp
-                    currentOnWidthChange(newWidth.coerceIn(IslandSidePanelMinWidth, currentMaxWidth))
+                    val safeMin = minOf(IslandSidePanelMinWidth, currentMaxWidth)
+                    currentOnWidthChange(newWidth.coerceIn(safeMin, maxOf(safeMin, currentMaxWidth)))
                 }
             },
     )

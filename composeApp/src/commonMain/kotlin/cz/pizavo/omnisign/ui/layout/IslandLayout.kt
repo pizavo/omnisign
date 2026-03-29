@@ -157,12 +157,13 @@ fun IslandLayout(
 					(if (activeRightPanel != null) 1 else 0)
 			val fixedChrome = SideBarWidth * sideBarCount + 4.dp * gapCount
 			val panelWidthCap = (maxWidth - SideBarWidth * sideBarCount) / 3
+			val safeMinPanelWidth = maxOf(0.dp, minOf(IslandSidePanelMinWidth, panelWidthCap))
 			val oppositeRight = if (activeRightPanel != null) effectiveRightWidth else 0.dp
 			val oppositeLeft = if (activeLeftPanel != null) effectiveLeftWidth else 0.dp
 			val maxLeftPanelWidth = (maxWidth - fixedChrome - oppositeRight)
-				.coerceIn(IslandSidePanelMinWidth, panelWidthCap)
+				.coerceIn(safeMinPanelWidth, maxOf(safeMinPanelWidth, panelWidthCap))
 			val maxRightPanelWidth = (maxWidth - fixedChrome - oppositeLeft)
-				.coerceIn(IslandSidePanelMinWidth, panelWidthCap)
+				.coerceIn(safeMinPanelWidth, maxOf(safeMinPanelWidth, panelWidthCap))
 			
 			Row(
 				modifier = Modifier.fillMaxSize(),
