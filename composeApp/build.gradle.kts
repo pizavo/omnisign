@@ -149,13 +149,30 @@ compose.desktop {
 				
 				TargetFormat.AppImage
 			)
-			packageName = "cz.pizavo.omnisign"
+			packageName = "OmniSign"
 			packageVersion = project.version.toString().toNativeDistributionVersion()
-		}
-		
-		buildTypes.release.proguard {
-			version.set("7.9.0")
-			configurationFiles.from(project.file("proguard-rules.pro"))
+			description = "Digital signature verification, signing and re-timestamping"
+			vendor = "Pizavo"
+
+			windows {
+				shortcut = true
+				menu = true
+				menuGroup = "OmniSign"
+				dirChooser = true
+				perUserInstall = true
+				upgradeUuid = "e479b089-886d-4bb1-94dd-b73837d17c2c"
+			}
+
+			linux {
+				shortcut = true
+				menuGroup = "OmniSign"
+				appCategory = "Utility"
+				debMaintainer = "pizavo@gmail.com"
+			}
+
+			macOS {
+				dockName = "OmniSign"
+			}
 		}
 	}
 }

@@ -53,16 +53,13 @@ jobs:
         run: >-
           ./gradlew
           :composeApp:packageDeb :composeApp:packageRpm :composeApp:packageAppImage
-          :composeApp:packageReleaseDeb :composeApp:packageReleaseRpm :composeApp:packageReleaseAppImage
           -PreleaseVersion=${{ needs.prepare.outputs.version }}
 
-      - name: Tar portable app-images
+      - name: Tar portable app-image
         run: |
           version="${{ needs.prepare.outputs.version }}"
           tar -czf "composeApp/build/omnisign-desktop-${version}-linux-portable.tar.gz" \
             -C "composeApp/build/compose/binaries/main/app-image" .
-          tar -czf "composeApp/build/omnisign-desktop-${version}-linux-portable.min.tar.gz" \
-            -C "composeApp/build/compose/binaries/main-release/app-image" .
 
       - name: Build Wasm distribution
         run: ./gradlew :composeApp:wasmJsBrowserDistribution -PreleaseVersion=${{ needs.prepare.outputs.version }}
@@ -79,13 +76,6 @@ jobs:
           path: composeApp/build/compose/binaries/main/deb/*.deb
           if-no-files-found: error
 
-      - name: Upload DEB (min)
-        uses: actions/upload-artifact@v7
-        with:
-          name: desktop-linux-deb-min
-          path: composeApp/build/compose/binaries/main-release/deb/*.deb
-          if-no-files-found: error
-
       - name: Upload RPM
         uses: actions/upload-artifact@v7
         with:
@@ -93,25 +83,11 @@ jobs:
           path: composeApp/build/compose/binaries/main/rpm/*.rpm
           if-no-files-found: error
 
-      - name: Upload RPM (min)
-        uses: actions/upload-artifact@v7
-        with:
-          name: desktop-linux-rpm-min
-          path: composeApp/build/compose/binaries/main-release/rpm/*.rpm
-          if-no-files-found: error
-
       - name: Upload portable tarball
         uses: actions/upload-artifact@v7
         with:
           name: desktop-linux-portable
           path: composeApp/build/*-linux-portable.tar.gz
-          if-no-files-found: error
-
-      - name: Upload portable tarball (min)
-        uses: actions/upload-artifact@v7
-        with:
-          name: desktop-linux-portable-min
-          path: composeApp/build/*-linux-portable.min.tar.gz
           if-no-files-found: error
 
       - name: Upload web distribution
@@ -142,29 +118,19 @@ jobs:
         run: >-
           ./gradlew
           :composeApp:packageMsi :composeApp:packageExe :composeApp:createDistributable
-          :composeApp:packageReleaseMsi :composeApp:packageReleaseExe :composeApp:createReleaseDistributable
 
-      - name: Zip portable app-images
+      - name: Zip portable app-image
         shell: powershell
         run: |
           $version = "${{ needs.prepare.outputs.version }}"
           Compress-Archive -Path "composeApp\build\compose\binaries\main\app\*" `
             -DestinationPath "composeApp\build\omnisign-desktop-${version}-win-portable.zip" -Force
-          Compress-Archive -Path "composeApp\build\compose\binaries\main-release\app\*" `
-            -DestinationPath "composeApp\build\omnisign-desktop-${version}-win-portable.min.zip" -Force
 
       - name: Upload MSI
         uses: actions/upload-artifact@v7
         with:
           name: desktop-windows-msi
           path: composeApp/build/compose/binaries/main/msi/*.msi
-          if-no-files-found: error
-
-      - name: Upload MSI (min)
-        uses: actions/upload-artifact@v7
-        with:
-          name: desktop-windows-msi-min
-          path: composeApp/build/compose/binaries/main-release/msi/*.msi
           if-no-files-found: error
 
       - name: Upload EXE
@@ -174,25 +140,11 @@ jobs:
           path: composeApp/build/compose/binaries/main/exe/*.exe
           if-no-files-found: error
 
-      - name: Upload EXE (min)
-        uses: actions/upload-artifact@v7
-        with:
-          name: desktop-windows-exe-min
-          path: composeApp/build/compose/binaries/main-release/exe/*.exe
-          if-no-files-found: error
-
       - name: Upload portable ZIP
         uses: actions/upload-artifact@v7
         with:
           name: desktop-windows-portable
           path: composeApp/build/*-win-portable.zip
-          if-no-files-found: error
-
-      - name: Upload portable ZIP (min)
-        uses: actions/upload-artifact@v7
-        with:
-          name: desktop-windows-portable-min
-          path: composeApp/build/*-win-portable.min.zip
           if-no-files-found: error
 
   build-macos:
@@ -207,7 +159,7 @@ jobs:
       - name: Build macOS packages
         run: >-
           ./gradlew
-          :composeApp:packageDmg :composeApp:packageReleaseDmg
+          :composeApp:packageDmg
           -PreleaseVersion=${{ needs.prepare.outputs.version }}
 
       - name: Upload DMG
@@ -215,13 +167,6 @@ jobs:
         with:
           name: desktop-macos-dmg
           path: composeApp/build/compose/binaries/main/dmg/*.dmg
-          if-no-files-found: error
-
-      - name: Upload DMG (min)
-        uses: actions/upload-artifact@v7
-        with:
-          name: desktop-macos-dmg-min
-          path: composeApp/build/compose/binaries/main-release/dmg/*.dmg
           if-no-files-found: error
 
   release:
