@@ -95,6 +95,7 @@ kotlin {
 			implementation(libs.pdfbox)
 			implementation(libs.decoroutinator.jvm)
 			implementation(libs.jbr.api)
+			implementation(libs.logback)
 		}
 	}
 }
@@ -136,7 +137,22 @@ compose.desktop {
 
 		jbrHomePath?.let { javaHome = it }
 
+		buildTypes.release.proguard {
+			isEnabled.set(false)
+		}
+
 		nativeDistributions {
+			modules(
+				"java.instrument",
+				"java.management",
+				"java.naming",
+				"java.net.http",
+				"java.sql",
+				"java.xml",
+				"java.xml.crypto",
+				"jdk.crypto.mscapi",
+				"jdk.unsupported",
+			)
 			targetFormats(
 				TargetFormat.Msi,
 				TargetFormat.Exe,

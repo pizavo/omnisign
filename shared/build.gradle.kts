@@ -49,6 +49,7 @@ kotlin {
 			implementation(libs.kotlinx.serialization.json)
 			
 			api(libs.arrow.core)
+			api(libs.kotlin.logging)
 			implementation(libs.arrow.fx.coroutines)
 			implementation(libs.kotlinx.datetime)
 		}

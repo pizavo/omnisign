@@ -28,6 +28,7 @@ lumo = "1.2.5"
 pdfbox = "3.0.7"
 filekit = "0.13.0"
 jbr-api = "1.10.1"
+kotlin-logging = "8.0.01"
 
 [libraries]
 kotest-engine = {module = "io.kotest:kotest-framework-engine", version.ref = "kotest" }
@@ -126,6 +127,8 @@ filekit-dialogs = { module = "io.github.vinceglb:filekit-dialogs", version.ref =
 filekit-dialogs-compose = { module = "io.github.vinceglb:filekit-dialogs-compose", version.ref = "filekit" }
 
 jbr-api = { module = "org.jetbrains.runtime:jbr-api", version.ref = "jbr-api" }
+
+kotlin-logging = { module = "io.github.oshai:kotlin-logging", version.ref = "kotlin-logging" }
 
 [plugins]
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }

@@ -19,14 +19,27 @@ import com.jetbrains.WindowDecorations
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
 import cz.pizavo.omnisign.ui.platform.*
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.context.startKoin
 import java.awt.Frame
 import java.awt.MouseInfo
 import java.awt.Point
 import java.awt.Rectangle
 import java.awt.event.MouseAdapter
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import javax.swing.Timer
+
+/**
+ * Resolved native log directory, set as a system property before Logback initialises.
+ *
+ * Top-level `val`s are initialized in declaration order, so placing this above the
+ * [logger] property guarantees `omnisign.log.dir` is visible when SLF4J/Logback
+ * reads `logback.xml`.
+ */
+private val LOG_DIR: String = resolveLogDir().also { System.setProperty("omnisign.log.dir", it) }
+
+private val logger = KotlinLogging.logger {}
 
 private const val TITLE_BAR_HEIGHT_DP = 40
 
@@ -35,6 +48,34 @@ private const val TITLE_BAR_HEIGHT_DP = 40
  * [WindowDecorations.CustomTitleBar.forceHitTest].
  */
 private const val FORCE_HIT_TEST_POLL_MS = 8
+
+/**
+ * Resolves the platform-native log directory for the OmniSign desktop application.
+ *
+ * - **Windows**: `%LOCALAPPDATA%/omnisign/logs`
+ * - **macOS**: `~/Library/Logs/omnisign`
+ * - **Linux/other**: `$XDG_STATE_HOME/omnisign` (fallback `~/.local/state/omnisign`)
+ */
+private fun resolveLogDir(): String {
+	val userHome = System.getProperty("user.home")
+	val os = System.getProperty("os.name").lowercase()
+	return when {
+		os.contains("win") ->
+			File(
+				System.getenv("LOCALAPPDATA") ?: "$userHome/AppData/Local",
+				"omnisign/logs"
+			).absolutePath
+
+		os.contains("mac") ->
+			File(userHome, "Library/Logs/omnisign").absolutePath
+
+		else ->
+			File(
+				System.getenv("XDG_STATE_HOME") ?: "$userHome/.local/state",
+				"omnisign"
+			).absolutePath
+	}
+}
 
 /**
  * JVM desktop entry point.
@@ -48,15 +89,19 @@ private const val FORCE_HIT_TEST_POLL_MS = 8
  * The build toolchain guarantees JetBrains Runtime, so no non-JBR fallback is
  * needed.
  */
-fun main() = application {
-	startKoin {
-		modules(
-			appModule,
-			jvmRepositoryModule,
-		)
+fun main() {
+	application {
+		startKoin {
+			modules(
+				appModule,
+				jvmRepositoryModule,
+			)
+		}
+
+		logger.info { "OmniSign desktop started — log directory: $LOG_DIR" }
+
+		JbrDecoratedWindow(onCloseRequest = ::exitApplication)
 	}
-	
-	JbrDecoratedWindow(onCloseRequest = ::exitApplication)
 }
 
 /**
