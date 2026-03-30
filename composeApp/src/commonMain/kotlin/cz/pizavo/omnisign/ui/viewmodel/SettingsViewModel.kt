@@ -8,8 +8,11 @@ import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -32,8 +35,20 @@ class SettingsViewModel(
 
     private val _state = MutableStateFlow(GlobalConfigEditState())
 
+    private val _initialState = MutableStateFlow<GlobalConfigEditState?>(null)
+
     /** Observable global config edit state. */
     val state: StateFlow<GlobalConfigEditState> = _state.asStateFlow()
+
+    /**
+     * Whether the current edit state differs from the originally loaded state.
+     *
+     * Returns `false` until [load] completes successfully or when the current state
+     * matches the initial snapshot (ignoring transient UI fields).
+     */
+    val hasChanges: StateFlow<Boolean> = combine(_state, _initialState) { current, initial ->
+        initial != null && !current.contentEquals(initial)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /**
      * Load the current global configuration from the config store and populate
@@ -47,7 +62,9 @@ class SettingsViewModel(
                 },
                 ifRight = { appConfig ->
                     val hasStored = hasStoredTsaPassword(appConfig.global)
-                    _state.value = GlobalConfigEditState.from(appConfig.global, hasStored)
+                    val editState = GlobalConfigEditState.from(appConfig.global, hasStored)
+                    _state.value = editState
+                    _initialState.value = editState
                 },
             )
         }

@@ -3,7 +3,7 @@ package cz.pizavo.omnisign.ui.model
 /**
  * Identifies a settings category displayed in the left navigation of the settings dialog.
  *
- * Categories are organised into top-level groups that may contain children.
+ * Categories are organized into top-level groups that may contain children.
  * A group entry acts as a header and selects the first child when clicked,
  * while a leaf entry shows its own content panel.
  *
@@ -73,6 +73,13 @@ enum class SettingsCategory(
     AlgorithmConstraints(
         label = "Algorithm Constraints",
         description = "Control how the validator reacts when a cryptographic algorithm has passed its expiration date.",
+        parent = Validation,
+    ),
+
+    /** Directly trusted CA and TSA certificates. */
+    TrustedCertificates(
+        label = "Trusted Certificates",
+        description = "Directly trusted CA and TSA certificates stored inline. These are wired into DSS alongside any ETSI trusted lists, without requiring an XML document.",
         parent = Validation,
     ),
 

@@ -34,7 +34,7 @@ import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.lumo.components.Tooltip
 import cz.pizavo.omnisign.lumo.components.TooltipBox
 import cz.pizavo.omnisign.lumo.components.rememberTooltipState
-import cz.pizavo.omnisign.lumo.components.textfield.TextField
+import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.ProfileEditState
 import cz.pizavo.omnisign.ui.model.ProfileListState
 import cz.pizavo.omnisign.ui.model.ProfilePanelMode
@@ -71,6 +71,7 @@ private val RowButtonPadding = PaddingValues(2.dp)
  * @param onCancelCreate Called when the user cancels the inline creation row.
  * @param onFieldChange Called with a transform to update a single field in the edit form.
  * @param onSaveEdit Called when the user clicks Save in the edit form.
+ * @param hasEditChanges Whether any persistable field in the edit form differs from the originally loaded state.
  */
 @Composable
 fun ProfilesPanel(
@@ -84,6 +85,7 @@ fun ProfilesPanel(
     onCancelCreate: () -> Unit,
     onFieldChange: ((ProfileEditState) -> ProfileEditState) -> Unit,
     onSaveEdit: () -> Unit,
+    hasEditChanges: Boolean = true,
 ) {
     when (state.mode) {
         is ProfilePanelMode.Listing -> ProfileListContent(
@@ -103,6 +105,7 @@ fun ProfilesPanel(
                     state = editState,
                     onFieldChange = onFieldChange,
                     onSave = onSaveEdit,
+                    hasChanges = hasEditChanges,
                     globalDisabledHashAlgorithms = state.globalDisabledHashAlgorithms,
                     globalDisabledEncryptionAlgorithms = state.globalDisabledEncryptionAlgorithms,
                 )
@@ -263,7 +266,7 @@ private fun ProfileToolbar(
 /**
  * Inline row for creating a new profile with a text input and confirm/cancel buttons.
  *
- * The text field is automatically focused when the row appears. The confirm button
+ * The text field is automatically focused when the row appears. The confirmation button
  * is disabled when the input is blank. Pressing Enter on the keyboard also confirms.
  *
  * @param onConfirm Called with the entered profile name when the user confirms.
@@ -286,7 +289,7 @@ private fun NewProfileRow(
         modifier = Modifier.fillMaxWidth().defaultMinSize(minHeight = 40.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextField(
+        UnderlinedTextField(
             value = name,
             onValueChange = { name = it },
             modifier = Modifier.weight(1f).focusRequester(focusRequester),

@@ -10,8 +10,11 @@ import cz.pizavo.omnisign.ui.model.ProfileEditState
 import cz.pizavo.omnisign.ui.model.ProfileListState
 import cz.pizavo.omnisign.ui.model.ProfilePanelMode
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -33,8 +36,22 @@ class ProfileViewModel(
 
     private val _state = MutableStateFlow(ProfileListState())
 
+    private val _initialEditState = MutableStateFlow<ProfileEditState?>(null)
+
     /** Observable profile list state. */
     val state: StateFlow<ProfileListState> = _state.asStateFlow()
+
+    /**
+     * Whether the current profile edit state differs from the originally loaded state.
+     *
+     * Returns `false` when not in edit mode or when the current edit state
+     * matches the initial snapshot (ignoring transient UI fields).
+     */
+    val hasEditChanges: StateFlow<Boolean> = _state.map { listState ->
+        val current = listState.editState
+        val initial = _initialEditState.value
+        current != null && initial != null && !current.contentEquals(initial)
+    }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     init {
         refresh()
@@ -184,10 +201,12 @@ class ProfileViewModel(
                 },
                 ifRight = { profile ->
                     val hasStored = hasStoredTsaPassword(profile)
+                    val editState = ProfileEditState.from(profile, hasStored)
+                    _initialEditState.value = editState
                     _state.update {
                         it.copy(
                             mode = ProfilePanelMode.Editing(name),
-                            editState = ProfileEditState.from(profile, hasStored),
+                            editState = editState,
                             error = null,
                         )
                     }
@@ -200,6 +219,7 @@ class ProfileViewModel(
      * Cancel editing and return to the profile list view.
      */
     fun cancelEdit() {
+        _initialEditState.value = null
         _state.update {
             it.copy(
                 mode = ProfilePanelMode.Listing,
@@ -241,6 +261,7 @@ class ProfileViewModel(
                 },
                 ifRight = {
                     storeTsaPasswordIfNeeded(editState)
+                    _initialEditState.value = null
                     _state.update {
                         it.copy(
                             mode = ProfilePanelMode.Listing,

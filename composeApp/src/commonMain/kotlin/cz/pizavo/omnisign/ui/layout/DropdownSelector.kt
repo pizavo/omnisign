@@ -34,7 +34,7 @@ import cz.pizavo.omnisign.lumo.components.HorizontalDivider
 import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.Surface
 import cz.pizavo.omnisign.lumo.components.Text
-import cz.pizavo.omnisign.lumo.components.textfield.TextField
+import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.lumo.foundation.ripple
 import omnisign.composeapp.generated.resources.Res
 import omnisign.composeapp.generated.resources.icon_chevron_down
@@ -46,7 +46,7 @@ private val DropdownItemHorizontalPadding = 12.dp
 private val DropdownMaxHeight = 260.dp
 
 /**
- * Reusable dropdown selector rendered as a read-only [TextField] with a chevron-trailing
+ * Reusable dropdown selector rendered as a read-only [UnderlinedTextField] with a chevron-trailing
  * icon and a Lumo-styled popup menu.
  *
  * The popup uses Lumo [Surface] so it automatically inherits the correct surface
@@ -63,7 +63,7 @@ private val DropdownMaxHeight = 260.dp
  * @param showNullOption When `false` the null / "inherit" row is hidden and only the
  *   concrete [options] are shown. Use this for fields that always require a value.
  * @param disabledOptions Items that should appear in the list but be shown as
- *   greyed-out and non-selectable (e.g. globally disabled algorithms).
+ *   greyed-out and non-selectable (e.g., globally disabled algorithms).
  * @param itemLabel Lambda converting an item of type [T] to a display string.
  * @param modifier Optional [Modifier] applied to the outer [Box].
  */
@@ -93,7 +93,7 @@ fun <T> DropdownSelector(
     }
 
     Box(modifier = modifier) {
-        TextField(
+        UnderlinedTextField(
             value = displayText,
             onValueChange = {},
             readOnly = true,

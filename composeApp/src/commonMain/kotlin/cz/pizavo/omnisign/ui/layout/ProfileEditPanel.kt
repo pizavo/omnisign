@@ -34,7 +34,7 @@ import cz.pizavo.omnisign.lumo.components.IconButton
 import cz.pizavo.omnisign.lumo.components.IconButtonVariant
 import cz.pizavo.omnisign.lumo.components.Switch
 import cz.pizavo.omnisign.lumo.components.Text
-import cz.pizavo.omnisign.lumo.components.textfield.TextField
+import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.ProfileEditState
 import omnisign.composeapp.generated.resources.Res
 import omnisign.composeapp.generated.resources.icon_eye
@@ -55,6 +55,7 @@ import org.jetbrains.compose.resources.painterResource
  * @param state The current [ProfileEditState] holding all form field values.
  * @param onFieldChange Callback accepting a transform function to update a single field.
  * @param onSave Called when the user clicks the Save button.
+ * @param hasChanges Whether any persistable field differs from the originally loaded state.
  * @param globalDisabledHashAlgorithms Hash algorithms disabled at the global level.
  *   These appear greyed-out in the algorithm selector and are always shown as
  *   disabled in the chip toggles.
@@ -66,6 +67,7 @@ fun ProfileEditPanel(
     state: ProfileEditState,
     onFieldChange: ((ProfileEditState) -> ProfileEditState) -> Unit,
     onSave: () -> Unit,
+    hasChanges: Boolean = true,
     globalDisabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
     globalDisabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet(),
 ) {
@@ -110,12 +112,40 @@ fun ProfileEditPanel(
         globalDisabledEncryptionAlgorithms = globalDisabledEncryptionAlgorithms,
     )
 
+    SectionDivider()
+
+    Text(text = "Trusted Certificates", style = LumoTheme.typography.label1)
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        text = "Certificates added here apply only to this profile, in addition to global ones.",
+        style = LumoTheme.typography.body2,
+        color = LumoTheme.colors.textSecondary,
+    )
+    Spacer(modifier = Modifier.height(8.dp))
+
+    TrustedCertificatesSection(
+        certificates = state.trustedCertificates,
+        onAdd = { cert ->
+            onFieldChange {
+                it.copy(trustedCertificates = it.trustedCertificates.filter { c -> c.name != cert.name } + cert)
+            }
+        },
+        onRemove = { index ->
+            onFieldChange {
+                it.copy(trustedCertificates = it.trustedCertificates.toMutableList().apply { removeAt(index) })
+            }
+        },
+        addError = state.certAddError,
+        onClearError = { onFieldChange { it.copy(certAddError = null) } },
+        onError = { message -> onFieldChange { it.copy(certAddError = message) } },
+    )
+
     Spacer(modifier = Modifier.height(16.dp))
 
     Button(
         text = "Save",
         variant = ButtonVariant.Primary,
-        enabled = !state.saving,
+        enabled = hasChanges && !state.saving,
         loading = state.saving,
         onClick = onSave,
         modifier = Modifier.fillMaxWidth(),
@@ -132,7 +162,7 @@ private fun DescriptionSection(
     state: ProfileEditState,
     onFieldChange: ((ProfileEditState) -> ProfileEditState) -> Unit,
 ) {
-    TextField(
+    UnderlinedTextField(
         value = state.description,
         onValueChange = { value -> onFieldChange { it.copy(description = value) } },
         label = { Text(text = "Description") },
@@ -216,7 +246,7 @@ private fun TimestampSection(
     if (state.timestampEnabled) {
         Spacer(modifier = Modifier.height(8.dp))
 
-        TextField(
+        UnderlinedTextField(
             value = state.timestampUrl,
             onValueChange = { value -> onFieldChange { it.copy(timestampUrl = value) } },
             label = { Text(text = "URL") },
@@ -227,7 +257,7 @@ private fun TimestampSection(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        TextField(
+        UnderlinedTextField(
             value = state.timestampUsername,
             onValueChange = { value -> onFieldChange { it.copy(timestampUsername = value) } },
             label = { Text(text = "Username") },
@@ -246,7 +276,7 @@ private fun TimestampSection(
 
         Spacer(modifier = Modifier.height(8.dp))
 
-        TextField(
+        UnderlinedTextField(
             value = state.timestampTimeout,
             onValueChange = { value ->
                 if (value.all { c -> c.isDigit() }) {
@@ -354,7 +384,7 @@ private fun PasswordField(
     var visible by remember { mutableStateOf(false) }
     val placeholder = if (hasStoredPassword) "Password stored — enter to replace" else "Optional"
 
-    TextField(
+    UnderlinedTextField(
         value = value,
         onValueChange = onValueChange,
         label = { Text(text = "Password") },

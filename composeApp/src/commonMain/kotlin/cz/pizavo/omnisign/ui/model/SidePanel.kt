@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.ui.model
 
 import omnisign.composeapp.generated.resources.Res
+import omnisign.composeapp.generated.resources.icon_certificate
 import omnisign.composeapp.generated.resources.icon_help
 import omnisign.composeapp.generated.resources.icon_profile
 import omnisign.composeapp.generated.resources.icon_signature
@@ -50,6 +51,14 @@ enum class SidePanel(
         label = "Profiles",
         icon = Res.drawable.icon_profile,
         contentDescription = "Open profiles panel",
+        side = PanelSide.Right,
+    ),
+
+    /** Trusted CA and TSA certificates overview panel. */
+    TrustedCerts(
+        label = "Trusted Certificates",
+        icon = Res.drawable.icon_certificate,
+        contentDescription = "Open trusted certificates panel",
         side = PanelSide.Right,
     ),
     

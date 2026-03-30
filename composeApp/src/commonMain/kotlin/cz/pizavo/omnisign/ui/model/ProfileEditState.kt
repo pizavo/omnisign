@@ -1,6 +1,8 @@
 package cz.pizavo.omnisign.ui.model
 
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
+import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
@@ -25,8 +27,10 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
  * @property timestampTimeout HTTP request timeout in milliseconds, stored as a string for the text field.
  * @property disabledHashAlgorithms Hash algorithms disabled by this profile.
  * @property disabledEncryptionAlgorithms Encryption algorithms disabled by this profile.
+ * @property trustedCertificates Directly trusted certificates scoped to this profile.
  * @property saving Whether a save operation is currently in progress.
  * @property error Human-readable error message from the last failed operation, or `null`.
+ * @property certAddError Human-readable error from the last failed trusted certificate add attempt, or `null`.
  */
 data class ProfileEditState(
     val profileName: String,
@@ -42,9 +46,31 @@ data class ProfileEditState(
     val timestampTimeout: String = "30000",
     val disabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
     val disabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet(),
+    val trustedCertificates: List<TrustedCertificateConfig> = emptyList(),
     val saving: Boolean = false,
     val error: String? = null,
+    val certAddError: String? = null,
 ) {
+
+    /**
+     * Compare only the persistable content fields of two states, ignoring
+     * transient UI properties like [saving], [error], and [certAddError].
+     */
+    fun contentEquals(other: ProfileEditState): Boolean =
+        profileName == other.profileName &&
+                description == other.description &&
+                hashAlgorithm == other.hashAlgorithm &&
+                encryptionAlgorithm == other.encryptionAlgorithm &&
+                signatureLevel == other.signatureLevel &&
+                timestampEnabled == other.timestampEnabled &&
+                timestampUrl == other.timestampUrl &&
+                timestampUsername == other.timestampUsername &&
+                timestampPassword == other.timestampPassword &&
+                hasStoredPassword == other.hasStoredPassword &&
+                timestampTimeout == other.timestampTimeout &&
+                disabledHashAlgorithms == other.disabledHashAlgorithms &&
+                disabledEncryptionAlgorithms == other.disabledEncryptionAlgorithms &&
+                trustedCertificates == other.trustedCertificates
 
     /**
      * Convert this UI state back into a persistable [ProfileConfig].
@@ -74,6 +100,11 @@ data class ProfileEditState(
         },
         disabledHashAlgorithms = disabledHashAlgorithms,
         disabledEncryptionAlgorithms = disabledEncryptionAlgorithms,
+        validation = if (trustedCertificates.isNotEmpty()) {
+            ValidationConfig(trustedCertificates = trustedCertificates)
+        } else {
+            null
+        },
     )
 
     companion object {
@@ -99,7 +130,7 @@ data class ProfileEditState(
             timestampTimeout = (profile.timestampServer?.timeout ?: 30000).toString(),
             disabledHashAlgorithms = profile.disabledHashAlgorithms,
             disabledEncryptionAlgorithms = profile.disabledEncryptionAlgorithms,
+            trustedCertificates = profile.validation?.trustedCertificates.orEmpty(),
         )
     }
 }
-

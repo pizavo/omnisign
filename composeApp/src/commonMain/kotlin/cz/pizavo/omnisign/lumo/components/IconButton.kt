@@ -120,6 +120,7 @@ enum class IconButtonVariant {
     DestructiveOutlined,
     DestructiveElevated,
     DestructiveGhost,
+    SuccessOutlined,
     Ghost,
 }
 
@@ -155,6 +156,7 @@ internal object IconButtonDefaults {
             IconButtonVariant.DestructiveOutlined -> destructiveOutlined(shape)
             IconButtonVariant.DestructiveElevated -> destructiveElevated(shape)
             IconButtonVariant.DestructiveGhost -> destructiveGhost(shape)
+            IconButtonVariant.SuccessOutlined -> successOutlined(shape)
             IconButtonVariant.Ghost -> ghost(shape)
         }
     }
@@ -334,6 +336,22 @@ internal object IconButtonDefaults {
                     disabledContainerColor = LumoTheme.colors.transparent,
                     disabledContentColor = LumoTheme.colors.onDisabled,
                     disabledBorderColor = LumoTheme.colors.transparent,
+                ),
+            shape = shape,
+            elevation = null,
+        )
+
+    @Composable
+    fun successOutlined(shape: Shape) =
+        IconButtonStyle(
+            colors =
+                IconButtonColors(
+                    containerColor = LumoTheme.colors.transparent,
+                    contentColor = LumoTheme.colors.success,
+                    borderColor = LumoTheme.colors.success,
+                    disabledContainerColor = LumoTheme.colors.transparent,
+                    disabledContentColor = LumoTheme.colors.onDisabled,
+                    disabledBorderColor = LumoTheme.colors.disabled,
                 ),
             shape = shape,
             elevation = null,

@@ -21,6 +21,7 @@ import cz.pizavo.omnisign.ui.viewmodel.PdfViewerViewModel
 import cz.pizavo.omnisign.ui.viewmodel.ProfileViewModel
 import cz.pizavo.omnisign.ui.viewmodel.SettingsViewModel
 import cz.pizavo.omnisign.ui.viewmodel.SignatureViewModel
+import cz.pizavo.omnisign.ui.viewmodel.TrustedCertsViewModel
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -82,6 +83,9 @@ fun IslandLayout(
 	val profileState by (profileViewModel?.state ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow(ProfileListState())
 	}).collectAsState()
+	val profileHasEditChanges by (profileViewModel?.hasEditChanges ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow(false)
+	}).collectAsState()
 	
 	val settingsViewModel: SettingsViewModel? = remember {
 		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
@@ -94,8 +98,18 @@ fun IslandLayout(
 	val settingsState by (settingsViewModel?.state ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow(GlobalConfigEditState())
 	}).collectAsState()
+	val settingsHasChanges by (settingsViewModel?.hasChanges ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow(false)
+	}).collectAsState()
 	var showSettingsDialog by remember { mutableStateOf(false) }
 	
+	val trustedCertsViewModel: TrustedCertsViewModel? = remember {
+		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
+		TrustedCertsViewModel(koin.get<GetConfigUseCase>())
+	}
+	val trustedCertsState by (trustedCertsViewModel?.state ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow(TrustedCertsPanelState())
+	}).collectAsState()
 	
 	val filePickerLauncher = rememberFilePickerLauncher(
 		type = FileKitType.File(extensions = listOf("pdf")),
@@ -135,6 +149,7 @@ fun IslandLayout(
 		if (showSettingsDialog) {
 			SettingsDialog(
 				state = settingsState,
+				hasChanges = settingsHasChanges,
 				onFieldChange = { transform -> settingsViewModel?.updateState(transform) },
 				onSave = { settingsViewModel?.save(onSuccess = { showSettingsDialog = false }) },
 				onDismiss = { showSettingsDialog = false },
@@ -283,7 +298,10 @@ fun IslandLayout(
 							onCancelCreate = { profileViewModel?.cancelCreate() },
 							onFieldChange = { transform -> profileViewModel?.updateEditState(transform) },
 							onSaveEdit = { profileViewModel?.saveEdit() },
+							hasEditChanges = profileHasEditChanges,
 						)
+						
+						SidePanel.TrustedCerts -> TrustedCertsPanel(state = trustedCertsState)
 						
 						else -> PanelPlaceholderContent(panel = activeRightPanel)
 					}
@@ -295,6 +313,7 @@ fun IslandLayout(
 					onPanelToggle = { panel ->
 						activeRightPanel = if (activeRightPanel == panel) null else {
 							if (panel == SidePanel.Profiles) profileViewModel?.refresh()
+							if (panel == SidePanel.TrustedCerts) trustedCertsViewModel?.refresh()
 							panel
 						}
 					},

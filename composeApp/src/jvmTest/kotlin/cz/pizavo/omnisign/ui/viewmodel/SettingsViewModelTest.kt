@@ -4,6 +4,9 @@ import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
+import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
@@ -13,6 +16,7 @@ import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -210,6 +214,103 @@ class SettingsViewModelTest : FunSpec({
             advanceUntilIdle()
 
             vm.state.value.hasStoredPassword shouldBe true
+        }
+    }
+
+    test("save persists trusted certificates in global validation config") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+
+            val cert = TrustedCertificateConfig(
+                name = "my-ca",
+                type = TrustedCertificateType.CA,
+                certificateBase64 = "AAAA",
+                subjectDN = "CN=My CA",
+            )
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.updateState { it.copy(trustedCertificates = listOf(cert)) }
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            advanceUntilIdle()
+
+            successCalled shouldBe true
+            saved.captured.global.validation.trustedCertificates shouldHaveSize 1
+            saved.captured.global.validation.trustedCertificates.first().name shouldBe "my-ca"
+        }
+    }
+
+    test("load populates trusted certificates from existing global config") {
+        runTest(testDispatcher) {
+            val cert = TrustedCertificateConfig(
+                name = "existing-ca",
+                type = TrustedCertificateType.ANY,
+                certificateBase64 = "BBBB",
+                subjectDN = "CN=Existing CA",
+            )
+            val globalWithCerts = baseGlobal.copy(
+                validation = ValidationConfig(trustedCertificates = listOf(cert)),
+            )
+            coEvery { configRepository.loadConfig() } returns AppConfig(global = globalWithCerts).right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.trustedCertificates shouldHaveSize 1
+            vm.state.value.trustedCertificates.first().name shouldBe "existing-ca"
+        }
+    }
+
+    test("hasChanges is false right after load") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.hasChanges.value shouldBe false
+        }
+    }
+
+    test("hasChanges becomes true when a field is modified") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.updateState { it.copy(defaultHashAlgorithm = HashAlgorithm.SHA512) }
+            advanceUntilIdle()
+
+            vm.hasChanges.value shouldBe true
+        }
+    }
+
+    test("hasChanges reverts to false when field is restored to original value") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.updateState { it.copy(defaultHashAlgorithm = HashAlgorithm.SHA512) }
+            advanceUntilIdle()
+            vm.hasChanges.value shouldBe true
+
+            vm.updateState { it.copy(defaultHashAlgorithm = HashAlgorithm.SHA256) }
+            advanceUntilIdle()
+            vm.hasChanges.value shouldBe false
         }
     }
 })

@@ -27,7 +27,6 @@ import cz.pizavo.omnisign.domain.model.config.CustomPkcs11Library
 import cz.pizavo.omnisign.domain.model.config.enums.*
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
-import cz.pizavo.omnisign.lumo.components.textfield.TextField
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
 import cz.pizavo.omnisign.ui.model.SettingsCategory
@@ -54,6 +53,7 @@ private val NavItemShape = RoundedCornerShape(6.dp)
  * the currently selected [SettingsCategory].
  *
  * @param state Current [GlobalConfigEditState] from [cz.pizavo.omnisign.ui.viewmodel.SettingsViewModel].
+ * @param hasChanges Whether the user has modified any persistable field since the dialog was opened.
  * @param onFieldChange Called with a transform to update a single field in the edit state.
  * @param onSave Called when the user clicks the Save button.
  * @param onDismiss Called when the user clicks Cancel or the close button.
@@ -61,6 +61,7 @@ private val NavItemShape = RoundedCornerShape(6.dp)
 @Composable
 fun SettingsDialog(
 	state: GlobalConfigEditState,
+	hasChanges: Boolean,
 	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 	onSave: () -> Unit,
 	onDismiss: () -> Unit,
@@ -101,7 +102,7 @@ fun SettingsDialog(
 				
 				HorizontalDivider()
 				
-				SettingsFooter(saving = state.saving, onCancel = onDismiss, onSave = onSave)
+				SettingsFooter(saving = state.saving, hasChanges = hasChanges, onCancel = onDismiss, onSave = onSave)
 			}
 		}
 	}
@@ -361,6 +362,23 @@ private fun SettingsContentPanel(
 				onFieldChange = onFieldChange
 			)
 			
+			SettingsCategory.TrustedCertificates -> TrustedCertificatesSection(
+				certificates = state.trustedCertificates,
+				onAdd = { cert ->
+					onFieldChange {
+						it.copy(trustedCertificates = it.trustedCertificates.filter { c -> c.name != cert.name } + cert)
+					}
+				},
+				onRemove = { index ->
+					onFieldChange {
+						it.copy(trustedCertificates = it.trustedCertificates.toMutableList().apply { removeAt(index) })
+					}
+				},
+				addError = state.certAddError,
+				onClearError = { onFieldChange { it.copy(certAddError = null) } },
+				onError = { message -> onFieldChange { it.copy(certAddError = message) } },
+			)
+			
 			SettingsCategory.Tokens,
 			SettingsCategory.Pkcs11Libraries -> Pkcs11Section(state = state, onFieldChange = onFieldChange)
 		}
@@ -371,12 +389,14 @@ private fun SettingsContentPanel(
  * Footer row with Cancel and Save buttons.
  *
  * @param saving Whether a save operation is currently in progress.
+ * @param hasChanges Whether any persistable field differs from the originally loaded state.
  * @param onCancel Callback invoked when Cancel is clicked.
  * @param onSave Callback invoked when Save is clicked.
  */
 @Composable
 private fun SettingsFooter(
 	saving: Boolean,
+	hasChanges: Boolean,
 	onCancel: () -> Unit,
 	onSave: () -> Unit,
 ) {
@@ -394,7 +414,7 @@ private fun SettingsFooter(
 		Button(
 			text = "Save",
 			variant = ButtonVariant.Primary,
-			enabled = !saving,
+			enabled = hasChanges && !saving,
 			loading = saving,
 			onClick = onSave,
 		)
@@ -537,7 +557,7 @@ private fun TimestampSection(
 	if (state.timestampEnabled) {
 		Spacer(modifier = Modifier.height(12.dp))
 		
-		TextField(
+		UnderlinedTextField(
 			value = state.timestampUrl,
 			onValueChange = { value -> onFieldChange { it.copy(timestampUrl = value) } },
 			label = { Text(text = "URL") },
@@ -548,7 +568,7 @@ private fun TimestampSection(
 		
 		Spacer(modifier = Modifier.height(8.dp))
 		
-		TextField(
+		UnderlinedTextField(
 			value = state.timestampUsername,
 			onValueChange = { value -> onFieldChange { it.copy(timestampUsername = value) } },
 			label = { Text(text = "Username") },
@@ -567,7 +587,7 @@ private fun TimestampSection(
 		
 		Spacer(modifier = Modifier.height(8.dp))
 		
-		TextField(
+		UnderlinedTextField(
 			value = state.timestampTimeout,
 			onValueChange = { value ->
 				if (value.all { c -> c.isDigit() }) {
@@ -590,7 +610,7 @@ private fun OcspCrlSection(
 	state: GlobalConfigEditState,
 	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 ) {
-	TextField(
+	UnderlinedTextField(
 		value = state.ocspTimeout,
 		onValueChange = { value ->
 			if (value.all { c -> c.isDigit() }) {
@@ -605,7 +625,7 @@ private fun OcspCrlSection(
 	
 	Spacer(modifier = Modifier.height(8.dp))
 	
-	TextField(
+	UnderlinedTextField(
 		value = state.crlTimeout,
 		onValueChange = { value ->
 			if (value.all { c -> c.isDigit() }) {
@@ -845,7 +865,7 @@ private fun Pkcs11AddRow(onAdd: (name: String, path: String) -> Unit) {
 		horizontalArrangement = Arrangement.spacedBy(8.dp),
 		verticalAlignment = Alignment.Bottom,
 	) {
-		TextField(
+		UnderlinedTextField(
 			value = name,
 			onValueChange = { name = it },
 			label = { Text(text = "Name") },
@@ -853,7 +873,7 @@ private fun Pkcs11AddRow(onAdd: (name: String, path: String) -> Unit) {
 			singleLine = true,
 			modifier = Modifier.weight(1f),
 		)
-		TextField(
+		UnderlinedTextField(
 			value = path,
 			onValueChange = { path = it },
 			label = { Text(text = "Path") },
@@ -894,7 +914,7 @@ private fun SettingsPasswordField(
 	var visible by remember { mutableStateOf(false) }
 	val placeholder = if (hasStoredPassword) "Password stored — enter to replace" else "Optional"
 	
-	TextField(
+	UnderlinedTextField(
 		value = value,
 		onValueChange = onValueChange,
 		label = { Text(text = "Password") },
@@ -919,6 +939,4 @@ private fun SettingsPasswordField(
 		},
 	)
 }
-
-
 

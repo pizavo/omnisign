@@ -5,6 +5,9 @@ import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
+import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
@@ -583,6 +586,193 @@ class ProfileViewModelTest : FunSpec({
             val state = vm.state.value
             state.globalDisabledHashAlgorithms.shouldBeEmpty()
             state.globalDisabledEncryptionAlgorithms.shouldBeEmpty()
+        }
+    }
+
+    test("startEdit loads profile-scoped trusted certificates into editState") {
+        runTest(testDispatcher) {
+            val cert = TrustedCertificateConfig(
+                name = "profile-ca",
+                type = TrustedCertificateType.CA,
+                certificateBase64 = "AAAA",
+                subjectDN = "CN=Profile CA",
+            )
+            val config = AppConfig(
+                profiles = mapOf(
+                    "dev" to ProfileConfig(
+                        name = "dev",
+                        validation = ValidationConfig(trustedCertificates = listOf(cert)),
+                    ),
+                ),
+            )
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            val editState = vm.state.value.editState.shouldNotBeNull()
+            editState.trustedCertificates shouldHaveSize 1
+            editState.trustedCertificates.first().name shouldBe "profile-ca"
+        }
+    }
+
+    test("saveEdit persists profile-scoped trusted certificates") {
+        runTest(testDispatcher) {
+            var currentConfig = AppConfig(
+                profiles = mapOf("dev" to profile("dev")),
+            )
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+
+            val cert = TrustedCertificateConfig(
+                name = "new-ca",
+                type = TrustedCertificateType.ANY,
+                certificateBase64 = "CCCC",
+                subjectDN = "CN=New CA",
+            )
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState { it.copy(trustedCertificates = listOf(cert)) }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            vm.state.value.mode shouldBe ProfilePanelMode.Listing
+            val savedProfile = saved.captured.profiles["dev"].shouldNotBeNull()
+            savedProfile.validation.shouldNotBeNull()
+            savedProfile.validation!!.trustedCertificates shouldHaveSize 1
+            savedProfile.validation!!.trustedCertificates.first().name shouldBe "new-ca"
+        }
+    }
+
+    test("saveEdit clears validation when trusted certificates are removed") {
+        runTest(testDispatcher) {
+            val cert = TrustedCertificateConfig(
+                name = "old-ca",
+                type = TrustedCertificateType.CA,
+                certificateBase64 = "DDDD",
+                subjectDN = "CN=Old CA",
+            )
+            var currentConfig = AppConfig(
+                profiles = mapOf(
+                    "dev" to ProfileConfig(
+                        name = "dev",
+                        validation = ValidationConfig(trustedCertificates = listOf(cert)),
+                    ),
+                ),
+            )
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState { it.copy(trustedCertificates = emptyList()) }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            val savedProfile = saved.captured.profiles["dev"].shouldNotBeNull()
+            savedProfile.validation.shouldBeNull()
+        }
+    }
+
+    test("hasEditChanges is false right after entering edit mode") {
+        runTest(testDispatcher) {
+            val config = AppConfig(profiles = mapOf("dev" to profile("dev")))
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.hasEditChanges.value shouldBe false
+        }
+    }
+
+    test("hasEditChanges becomes true when a field is modified") {
+        runTest(testDispatcher) {
+            val config = AppConfig(profiles = mapOf("dev" to profile("dev")))
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState { it.copy(description = "changed") }
+            advanceUntilIdle()
+
+            vm.hasEditChanges.value shouldBe true
+        }
+    }
+
+    test("hasEditChanges reverts to false when field is restored to original value") {
+        runTest(testDispatcher) {
+            val config = AppConfig(profiles = mapOf("dev" to profile("dev")))
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState { it.copy(description = "changed") }
+            advanceUntilIdle()
+            vm.hasEditChanges.value shouldBe true
+
+            vm.updateEditState { it.copy(description = "") }
+            advanceUntilIdle()
+            vm.hasEditChanges.value shouldBe false
+        }
+    }
+
+    test("hasEditChanges resets to false after cancelEdit") {
+        runTest(testDispatcher) {
+            val config = AppConfig(profiles = mapOf("dev" to profile("dev")))
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState { it.copy(description = "changed") }
+            advanceUntilIdle()
+            vm.hasEditChanges.value shouldBe true
+
+            vm.cancelEdit()
+            advanceUntilIdle()
+            vm.hasEditChanges.value shouldBe false
         }
     }
 })

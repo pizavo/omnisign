@@ -47,6 +47,7 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
  * @property customPkcs11Libraries User-registered PKCS#11 middleware libraries.
  * @property saving Whether a save operation is currently in progress.
  * @property error Human-readable error message from the last failed operation, or `null`.
+ * @property certAddError Human-readable error from the last failed trusted certificate add attempt, or `null`.
  */
 data class GlobalConfigEditState(
     val defaultHashAlgorithm: HashAlgorithm = HashAlgorithm.SHA256,
@@ -73,7 +74,36 @@ data class GlobalConfigEditState(
     val customPkcs11Libraries: List<CustomPkcs11Library> = emptyList(),
     val saving: Boolean = false,
     val error: String? = null,
+    val certAddError: String? = null,
 ) {
+
+    /**
+     * Compare only the persistable content fields of two states, ignoring
+     * transient UI properties like [saving], [error], and [certAddError].
+     */
+    fun contentEquals(other: GlobalConfigEditState): Boolean =
+        defaultHashAlgorithm == other.defaultHashAlgorithm &&
+                defaultEncryptionAlgorithm == other.defaultEncryptionAlgorithm &&
+                defaultSignatureLevel == other.defaultSignatureLevel &&
+                disabledHashAlgorithms == other.disabledHashAlgorithms &&
+                disabledEncryptionAlgorithms == other.disabledEncryptionAlgorithms &&
+                timestampEnabled == other.timestampEnabled &&
+                timestampUrl == other.timestampUrl &&
+                timestampUsername == other.timestampUsername &&
+                timestampPassword == other.timestampPassword &&
+                hasStoredPassword == other.hasStoredPassword &&
+                timestampTimeout == other.timestampTimeout &&
+                ocspTimeout == other.ocspTimeout &&
+                crlTimeout == other.crlTimeout &&
+                validationPolicyType == other.validationPolicyType &&
+                customPolicyPath == other.customPolicyPath &&
+                checkRevocation == other.checkRevocation &&
+                useEuLotl == other.useEuLotl &&
+                algoExpirationLevel == other.algoExpirationLevel &&
+                algoExpirationLevelAfterUpdate == other.algoExpirationLevelAfterUpdate &&
+                customTrustedLists == other.customTrustedLists &&
+                trustedCertificates == other.trustedCertificates &&
+                customPkcs11Libraries == other.customPkcs11Libraries
 
     /**
      * Convert this UI state back into a persistable [GlobalConfig].
@@ -156,4 +186,3 @@ data class GlobalConfigEditState(
             )
     }
 }
-
