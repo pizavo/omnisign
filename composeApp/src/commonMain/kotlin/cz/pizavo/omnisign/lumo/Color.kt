@@ -140,7 +140,7 @@ internal val LightColors =
         scrim = Color.Black.copy(alpha = 0.32f),
         elevation = Gray700,
         icons = IconColors(
-            folder = Yellow700,
+            folder = Blue900,
             trustQualified = Blue800,
             trustQualifiedQscd = Blue1100,
         ),
