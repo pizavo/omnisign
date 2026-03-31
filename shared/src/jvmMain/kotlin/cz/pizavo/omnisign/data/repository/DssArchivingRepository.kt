@@ -11,6 +11,7 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
+import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -161,6 +162,43 @@ class DssArchivingRepository(
 		} catch (e: Exception) {
 			ArchivingError.ExtensionFailed(
 				message = "Failed to check archival renewal status",
+				details = e.message,
+				cause = e
+			).left()
+		}
+	}
+	
+	@Suppress("TooGenericExceptionCaught")
+	override suspend fun getDocumentTimestampInfo(filePath: String): OperationResult<DocumentTimestampInfo> {
+		return try {
+			val file = File(filePath)
+			if (!file.exists()) {
+				return ArchivingError.ExtensionFailed(
+					message = "File not found: $filePath"
+				).left()
+			}
+			
+			val document = FileDocument(file)
+			val validator = PDFDocumentValidator(document).apply {
+				setCertificateVerifier(CommonCertificateVerifier())
+			}
+			val diagnosticData = validator.validateDocument().diagnosticData
+			
+			val hasDocumentTimestamp = diagnosticData.getTimestampList().any { ts ->
+				ts.type != eu.europa.esig.dss.enumerations.TimestampType.SIGNATURE_TIMESTAMP
+			}
+			
+			val containsLtData = hasDocumentTimestamp || diagnosticData.signatures.any { sig ->
+				sig.signatureFormat?.toString()?.contains("LT") == true
+			}
+			
+			DocumentTimestampInfo(
+				hasDocumentTimestamp = hasDocumentTimestamp,
+				containsLtData = containsLtData,
+			).right()
+		} catch (e: Exception) {
+			ArchivingError.ExtensionFailed(
+				message = "Failed to inspect document timestamp state",
 				details = e.message,
 				cause = e
 			).left()

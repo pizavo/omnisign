@@ -4,18 +4,21 @@ import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
-import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
+import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ExtendDocumentUseCase
+import cz.pizavo.omnisign.domain.usecase.GetDocumentTimestampInfoUseCase
 import cz.pizavo.omnisign.ui.model.TimestampDialogState
+import cz.pizavo.omnisign.ui.model.TimestampType
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -34,7 +37,12 @@ class TimestampViewModelTest : FunSpec({
 	val archivingRepository = mockk<ArchivingRepository>()
 	val configRepository = mockk<ConfigRepository>()
 	val extendUseCase = ExtendDocumentUseCase(archivingRepository)
+	val getTimestampInfoUseCase = GetDocumentTimestampInfoUseCase(archivingRepository)
 	val testDispatcher = StandardTestDispatcher()
+
+	val noTimestamps = DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = false)
+	val hasDocTs = DocumentTimestampInfo(hasDocumentTimestamp = true, containsLtData = true)
+	val hasLtOnly = DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = true)
 
 	val appConfig = AppConfig(
 		global = GlobalConfig(),
@@ -42,7 +50,9 @@ class TimestampViewModelTest : FunSpec({
 	)
 
 	beforeEach {
+		io.mockk.clearMocks(archivingRepository, configRepository)
 		coEvery { configRepository.getCurrentConfig() } returns appConfig
+		coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns noTimestamps.right()
 		Dispatchers.setMain(testDispatcher)
 	}
 
@@ -50,33 +60,82 @@ class TimestampViewModelTest : FunSpec({
 		Dispatchers.resetMain()
 	}
 
+	fun buildVm() = TimestampViewModel(extendUseCase, getTimestampInfoUseCase, configRepository, testDispatcher)
+
 	test("initial state is Idle") {
-		val vm = TimestampViewModel(extendUseCase, configRepository, testDispatcher)
-		vm.state.value.shouldBeInstanceOf<TimestampDialogState.Idle>()
+		buildVm().state.value.shouldBeInstanceOf<TimestampDialogState.Idle>()
 	}
 
-	test("open transitions to Ready with default target level") {
+	test("open transitions to Ready with Archival Timestamp as default") {
 		runTest(testDispatcher) {
-			val vm = TimestampViewModel(extendUseCase, configRepository, testDispatcher)
+			val vm = buildVm()
+			vm.onDocumentChanged("/tmp/signed.pdf")
+			advanceUntilIdle()
+
 			vm.open("/tmp/signed.pdf")
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
-			state.targetLevel shouldBe SignatureLevel.PADES_BASELINE_T
+			state.timestampType shouldBe TimestampType.ARCHIVAL_TIMESTAMP
+			state.disabledTypes shouldBe emptySet()
 			state.outputPath shouldContain "-extended"
+		}
+	}
+
+	test("open disables Signature Timestamp when document has document timestamp") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns hasDocTs.right()
+
+			val vm = buildVm()
+			vm.onDocumentChanged("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.open("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
+			state.disabledTypes shouldBe setOf(TimestampType.SIGNATURE_TIMESTAMP)
+			state.timestampType shouldBe TimestampType.ARCHIVAL_TIMESTAMP
+		}
+	}
+
+	test("onDocumentChanged pre-fetches timestamp info for the given file") {
+		runTest(testDispatcher) {
+			val vm = buildVm()
+			vm.onDocumentChanged("/tmp/test-doc.pdf")
+			advanceUntilIdle()
+
+			coVerify(exactly = 1) { archivingRepository.getDocumentTimestampInfo("/tmp/test-doc.pdf") }
+		}
+	}
+
+	test("open falls back to fresh fetch when no prior onDocumentChanged was called") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns
+					ArchivingError.ExtensionFailed(message = "corrupt file").left()
+
+			val vm = buildVm()
+			vm.open("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
+			state.disabledTypes shouldBe emptySet()
 		}
 	}
 
 	test("updateState modifies Ready state") {
 		runTest(testDispatcher) {
-			val vm = TimestampViewModel(extendUseCase, configRepository, testDispatcher)
+			val vm = buildVm()
+			vm.onDocumentChanged("/tmp/signed.pdf")
+			advanceUntilIdle()
+
 			vm.open("/tmp/signed.pdf")
 			advanceUntilIdle()
 
-			vm.updateState { it.copy(targetLevel = SignatureLevel.PADES_BASELINE_LTA) }
+			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP) }
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
-			state.targetLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+			state.timestampType shouldBe TimestampType.SIGNATURE_TIMESTAMP
 		}
 	}
 
@@ -85,10 +144,13 @@ class TimestampViewModelTest : FunSpec({
 			coEvery { archivingRepository.extendDocument(any()) } returns
 					ArchivingResult(
 						outputFile = "/tmp/signed-extended.pdf",
-						newSignatureLevel = "PAdES-BASELINE-T",
+						newSignatureLevel = "PAdES-BASELINE-LTA",
 					).right()
 
-			val vm = TimestampViewModel(extendUseCase, configRepository, testDispatcher)
+			val vm = buildVm()
+			vm.onDocumentChanged("/tmp/signed.pdf")
+			advanceUntilIdle()
+
 			vm.open("/tmp/signed.pdf")
 			advanceUntilIdle()
 
@@ -97,11 +159,11 @@ class TimestampViewModelTest : FunSpec({
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Success>()
 			state.outputFile shouldBe "/tmp/signed-extended.pdf"
-			state.newLevel shouldBe "PAdES-BASELINE-T"
+			state.newLevel shouldBe "PAdES-BASELINE-LTA"
 		}
 	}
 
-	test("extend transitions to Error on failure") {
+	test("extend transitions to Error on generic failure") {
 		runTest(testDispatcher) {
 			coEvery { archivingRepository.extendDocument(any()) } returns
 					ArchivingError.ExtensionFailed(
@@ -109,7 +171,10 @@ class TimestampViewModelTest : FunSpec({
 						details = "TSA unavailable",
 					).left()
 
-			val vm = TimestampViewModel(extendUseCase, configRepository, testDispatcher)
+			val vm = buildVm()
+			vm.onDocumentChanged("/tmp/signed.pdf")
+			advanceUntilIdle()
+
 			vm.open("/tmp/signed.pdf")
 			advanceUntilIdle()
 
@@ -122,9 +187,152 @@ class TimestampViewModelTest : FunSpec({
 		}
 	}
 
+	test("extend to LT with revocation error shows RevocationWarning when document has no LT data") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingError.RevocationInfoError(
+						message = "Failed to obtain revocation information",
+						details = "OCSP responder unreachable",
+					).left()
+
+			val vm = buildVm()
+			vm.onDocumentChanged("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.open("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP) }
+			vm.extend()
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.RevocationWarning>()
+			state.warnings.any { it.contains("revocation", ignoreCase = true) } shouldBe true
+		}
+	}
+
+	test("extend to LT with revocation error shows Error when document already contains LT data") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns hasLtOnly.right()
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingError.RevocationInfoError(
+						message = "Failed to obtain revocation information",
+						details = "OCSP responder unreachable",
+					).left()
+
+			val vm = buildVm()
+			vm.onDocumentChanged("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.open("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP) }
+			vm.extend()
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Error>()
+			state.message shouldContain "Revocation data could not be refreshed"
+			state.details shouldContain "degrade"
+		}
+	}
+
+	test("extend to LTA with revocation error shows Error not RevocationWarning") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingError.RevocationInfoError(
+						message = "Failed to obtain revocation information",
+						details = "OCSP unreachable",
+					).left()
+
+			val vm = buildVm()
+			vm.onDocumentChanged("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.open("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.extend()
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Error>()
+		}
+	}
+
+	test("acceptRevocationWarning retries extend at B-T level") {
+		runTest(testDispatcher) {
+			var callCount = 0
+			coEvery { archivingRepository.extendDocument(any()) } answers {
+				callCount++
+				if (callCount == 1) {
+					ArchivingError.RevocationInfoError(
+						message = "Failed to obtain revocation information",
+					).left()
+				} else {
+					ArchivingResult(
+						outputFile = "/tmp/signed-extended.pdf",
+						newSignatureLevel = "PADES_BASELINE_T",
+					).right()
+				}
+			}
+
+			val vm = buildVm()
+			vm.onDocumentChanged("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.open("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP) }
+			vm.extend()
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.RevocationWarning>()
+
+			vm.acceptRevocationWarning()
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Success>()
+			state.newLevel shouldBe "PADES_BASELINE_T"
+			callCount shouldBe 2
+
+			coVerify(exactly = 2) { archivingRepository.extendDocument(any()) }
+		}
+	}
+
+	test("abortAfterRevocationWarning returns to Ready state") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingError.RevocationInfoError(
+						message = "Failed to obtain revocation information",
+					).left()
+
+			val vm = buildVm()
+			vm.onDocumentChanged("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.open("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP) }
+			vm.extend()
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.RevocationWarning>()
+
+			vm.abortAfterRevocationWarning()
+
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
+			state.timestampType shouldBe TimestampType.SIGNATURE_TIMESTAMP
+		}
+	}
+
 	test("dismiss resets state to Idle") {
 		runTest(testDispatcher) {
-			val vm = TimestampViewModel(extendUseCase, configRepository, testDispatcher)
+			val vm = buildVm()
+			vm.onDocumentChanged("/tmp/signed.pdf")
+			advanceUntilIdle()
+
 			vm.open("/tmp/signed.pdf")
 			advanceUntilIdle()
 
@@ -132,14 +340,6 @@ class TimestampViewModelTest : FunSpec({
 
 			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Idle>()
 		}
-	}
-
-	test("EXTENDABLE_LEVELS excludes PADES_BASELINE_B") {
-		TimestampViewModel.EXTENDABLE_LEVELS shouldBe listOf(
-			SignatureLevel.PADES_BASELINE_T,
-			SignatureLevel.PADES_BASELINE_LT,
-			SignatureLevel.PADES_BASELINE_LTA,
-		)
 	}
 })
 

@@ -113,6 +113,7 @@ fun IslandLayout(
 		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
 		TimestampViewModel(
 			koin.get<ExtendDocumentUseCase>(),
+			koin.get<GetDocumentTimestampInfoUseCase>(),
 			koin.get<ConfigRepository>(),
 		)
 	}
@@ -137,6 +138,7 @@ fun IslandLayout(
 				val document = loadPdfFromPlatformFile(platformFile)
 				pdfViewModel.onDocumentLoaded(document)
 				signatureViewModel?.onDocumentChanged(document.filePath)
+				timestampViewModel?.onDocumentChanged(document.filePath)
 			}
 		}
 	}
@@ -197,7 +199,7 @@ fun IslandLayout(
 					if (signingState is SigningDialogState.Success) {
 						val outputFile = (signingState as SigningDialogState.Success).outputFile
 						scope.launch {
-							reloadDocument(outputFile, pdfViewModel, signatureViewModel)
+							reloadDocument(outputFile, pdfViewModel, signatureViewModel, timestampViewModel)
 						}
 					}
 					signingViewModel?.dismiss()
@@ -211,11 +213,13 @@ fun IslandLayout(
 				state = timestampState,
 				onFieldChange = { transform -> timestampViewModel?.updateState(transform) },
 				onExtend = { timestampViewModel?.extend() },
+				onAbortRevocation = { timestampViewModel?.abortAfterRevocationWarning() },
+				onAcceptRevocation = { timestampViewModel?.acceptRevocationWarning() },
 				onDismiss = {
 					if (timestampState is TimestampDialogState.Success) {
 						val outputFile = (timestampState as TimestampDialogState.Success).outputFile
 						scope.launch {
-							reloadDocument(outputFile, pdfViewModel, signatureViewModel)
+							reloadDocument(outputFile, pdfViewModel, signatureViewModel, timestampViewModel)
 						}
 					}
 					timestampViewModel?.dismiss()
@@ -428,15 +432,18 @@ private fun PanelPlaceholderContent(panel: SidePanel?) {
  * @param filePath Absolute path to the output file to load.
  * @param pdfViewModel Viewer ViewModel to update with the new document.
  * @param signatureViewModel Signature panel ViewModel to re-validate the new document.
+ * @param timestampViewModel Timestamp ViewModel to refresh cached timestamp info.
  */
 private suspend fun reloadDocument(
 	filePath: String,
 	pdfViewModel: PdfViewerViewModel,
 	signatureViewModel: SignatureViewModel?,
+	timestampViewModel: TimestampViewModel?,
 ) {
 	val doc = cz.pizavo.omnisign.ui.platform.loadPdfFromPath(filePath) ?: return
 	pdfViewModel.onDocumentLoaded(doc)
 	signatureViewModel?.onDocumentChanged(filePath)
+	timestampViewModel?.onDocumentChanged(filePath)
 }
 
 

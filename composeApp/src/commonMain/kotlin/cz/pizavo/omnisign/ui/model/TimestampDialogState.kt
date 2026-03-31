@@ -1,7 +1,5 @@
 package cz.pizavo.omnisign.ui.model
 
-import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
-
 /**
  * UI state for the timestamp / extension dialog.
  *
@@ -18,11 +16,15 @@ sealed interface TimestampDialogState {
 	/**
 	 * The extension form is ready for user input.
 	 *
-	 * @property targetLevel The PAdES level to extend to.
+	 * @property timestampType The selected timestamp operation type.
+	 * @property disabledTypes Timestamp types that are not selectable (e.g. when the
+	 *   document already has a document timestamp, [TimestampType.SIGNATURE_TIMESTAMP]
+	 *   is disabled because DSS would reject the level degradation).
 	 * @property outputPath Suggested output file path.
 	 */
 	data class Ready(
-		val targetLevel: SignatureLevel = SignatureLevel.PADES_BASELINE_T,
+		val timestampType: TimestampType = TimestampType.ARCHIVAL_TIMESTAMP,
+		val disabledTypes: Set<TimestampType> = emptySet(),
 		val outputPath: String = "",
 	) : TimestampDialogState
 
@@ -30,6 +32,22 @@ sealed interface TimestampDialogState {
 	 * An extension operation is in progress.
 	 */
 	data object Extending : TimestampDialogState
+
+	/**
+	 * Extension to B-LT failed because revocation data could not be obtained.
+	 *
+	 * The user can either accept a fallback to B-T (signature timestamp without
+	 * revocation data) or abort. This state is only reachable when the document
+	 * does not already contain LT-level data — if it does, an [Error] is shown
+	 * instead.
+	 *
+	 * @property warnings Revocation-related warnings / error details.
+	 * @property details Optional detailed error information from DSS.
+	 */
+	data class RevocationWarning(
+		val warnings: List<String>,
+		val details: String? = null,
+	) : TimestampDialogState
 
 	/**
 	 * Extension completed successfully.
@@ -55,4 +73,3 @@ sealed interface TimestampDialogState {
 		val details: String? = null,
 	) : TimestampDialogState
 }
-

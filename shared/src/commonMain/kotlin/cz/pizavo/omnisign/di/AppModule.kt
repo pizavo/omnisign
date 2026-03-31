@@ -14,6 +14,7 @@ val appModule = module {
 	singleOf(::ListCertificatesUseCase)
 	singleOf(::ExtendDocumentUseCase)
 	singleOf(::CheckArchivalRenewalUseCase)
+	singleOf(::GetDocumentTimestampInfoUseCase)
 	singleOf(::GetConfigUseCase)
 	singleOf(::SetGlobalConfigUseCase)
 	singleOf(::ManageProfileUseCase)

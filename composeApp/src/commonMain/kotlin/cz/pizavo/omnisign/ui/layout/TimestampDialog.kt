@@ -12,7 +12,7 @@ import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.TimestampDialogState
-import cz.pizavo.omnisign.ui.viewmodel.TimestampViewModel
+import cz.pizavo.omnisign.ui.model.TimestampType
 import omnisign.composeapp.generated.resources.Res
 import omnisign.composeapp.generated.resources.icon_alert_warning
 import omnisign.composeapp.generated.resources.icon_check
@@ -23,14 +23,17 @@ import org.jetbrains.compose.resources.painterResource
  * Modal dialog for extending a signed PDF to a higher PAdES level (timestamp / archival).
  *
  * The dialog adapts its content to the current [TimestampDialogState]:
- * - [TimestampDialogState.Ready]: form with target level selector and output path.
+ * - [TimestampDialogState.Ready]: form with timestamp type selector and output path.
  * - [TimestampDialogState.Extending]: progress indicator.
+ * - [TimestampDialogState.RevocationWarning]: revocation data warning with abort/continue options.
  * - [TimestampDialogState.Success]: summary of the extension result.
  * - [TimestampDialogState.Error]: error message.
  *
- * @param state Current timestamp dialog state from [TimestampViewModel].
+ * @param state Current timestamp dialog state from [cz.pizavo.omnisign.ui.viewmodel.TimestampViewModel].
  * @param onFieldChange Called with a transform to update a field in the [TimestampDialogState.Ready] state.
  * @param onExtend Called when the user clicks the Extend button.
+ * @param onAbortRevocation Called when the user clicks Abort on the revocation warning.
+ * @param onAcceptRevocation Called when the user clicks Continue on the revocation warning.
  * @param onDismiss Called when the user cancels or closes the dialog.
  */
 @Composable
@@ -38,6 +41,8 @@ fun TimestampDialog(
 	state: TimestampDialogState,
 	onFieldChange: ((TimestampDialogState.Ready) -> TimestampDialogState.Ready) -> Unit,
 	onExtend: () -> Unit,
+	onAbortRevocation: () -> Unit,
+	onAcceptRevocation: () -> Unit,
 	onDismiss: () -> Unit,
 ) {
 	Dialog(
@@ -70,6 +75,7 @@ fun TimestampDialog(
 							onFieldChange = onFieldChange,
 						)
 						is TimestampDialogState.Extending -> LoadingContent("Extending document...")
+						is TimestampDialogState.RevocationWarning -> TimestampRevocationWarningContent(state)
 						is TimestampDialogState.Success -> TimestampSuccessContent(state)
 						is TimestampDialogState.Error -> ErrorContent(
 							message = state.message,
@@ -83,6 +89,8 @@ fun TimestampDialog(
 				TimestampDialogFooter(
 					state = state,
 					onExtend = onExtend,
+					onAbortRevocation = onAbortRevocation,
+					onAcceptRevocation = onAcceptRevocation,
 					onDismiss = onDismiss,
 				)
 			}
@@ -123,6 +131,10 @@ private fun TimestampDialogHeader(onClose: () -> Unit, closeable: Boolean) {
 /**
  * Form section for configuring the extension operation.
  *
+ * Displays a dropdown with [TimestampType] options and an output path field.
+ * Types present in [TimestampDialogState.Ready.disabledTypes] are shown but
+ * not selectable.
+ *
  * @param state Current [TimestampDialogState.Ready] state.
  * @param onFieldChange Called with a transform to update a field.
  */
@@ -138,14 +150,15 @@ private fun TimestampFormContent(
 		verticalArrangement = Arrangement.spacedBy(16.dp),
 	) {
 		DropdownSelector(
-			selected = state.targetLevel,
-			options = TimestampViewModel.EXTENDABLE_LEVELS,
-			onSelect = { level ->
-				if (level != null) onFieldChange { it.copy(targetLevel = level) }
+			selected = state.timestampType,
+			options = TimestampType.entries.toList(),
+			onSelect = { type ->
+				if (type != null) onFieldChange { it.copy(timestampType = type) }
 			},
-			label = { Text("Target Level") },
+			label = { Text("Timestamp Type") },
 			showNullOption = false,
-			itemLabel = { it.name },
+			disabledOptions = state.disabledTypes,
+			itemLabel = { it.label },
 			modifier = Modifier.fillMaxWidth(),
 		)
 
@@ -156,6 +169,66 @@ private fun TimestampFormContent(
 			label = { Text("Output file path") },
 			modifier = Modifier.fillMaxWidth(),
 		)
+	}
+}
+
+/**
+ * Warning content shown when revocation data could not be obtained during
+ * a B-LT extension attempt.
+ *
+ * @param state The [TimestampDialogState.RevocationWarning] state.
+ */
+@Composable
+private fun TimestampRevocationWarningContent(state: TimestampDialogState.RevocationWarning) {
+	Column(
+		modifier = Modifier
+			.fillMaxSize()
+			.padding(24.dp),
+		verticalArrangement = Arrangement.spacedBy(8.dp),
+	) {
+		Row(
+			horizontalArrangement = Arrangement.spacedBy(6.dp),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			Icon(
+				painter = painterResource(Res.drawable.icon_alert_warning),
+				contentDescription = null,
+				modifier = Modifier.size(20.dp),
+				tint = LumoTheme.colors.warning,
+			)
+			Text(text = "Revocation data unavailable", style = LumoTheme.typography.h4)
+		}
+
+		Spacer(modifier = Modifier.height(4.dp))
+
+		Text(
+			text = "The extension to B-LT failed because revocation information (CRL/OCSP) " +
+					"could not be obtained. You can continue with a B-T extension (signature " +
+					"timestamp only, without revocation data), or abort and try again later.",
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.textSecondary,
+		)
+
+		Spacer(modifier = Modifier.height(8.dp))
+
+		state.warnings.forEach { warning ->
+			Row(
+				horizontalArrangement = Arrangement.spacedBy(4.dp),
+				verticalAlignment = Alignment.Top,
+			) {
+				Icon(
+					painter = painterResource(Res.drawable.icon_alert_warning),
+					contentDescription = null,
+					modifier = Modifier.padding(top = 3.dp).size(14.dp),
+					tint = LumoTheme.colors.warning,
+				)
+				Text(
+					text = warning,
+					style = LumoTheme.typography.body2,
+					color = LumoTheme.colors.warning,
+				)
+			}
+		}
 	}
 }
 
@@ -230,16 +303,20 @@ private fun TimestampSuccessContent(state: TimestampDialogState.Success) {
 }
 
 /**
- * Footer with Cancel and Extend / Close buttons.
+ * Footer with Cancel / Extend / Continue / Abort / Close buttons.
  *
  * @param state Current dialog state determining which buttons to show.
  * @param onExtend Called when the Extend button is clicked.
+ * @param onAbortRevocation Called when Abort is clicked on the revocation warning.
+ * @param onAcceptRevocation Called when Continue is clicked on the revocation warning.
  * @param onDismiss Called when Cancel or Close is clicked.
  */
 @Composable
 private fun TimestampDialogFooter(
 	state: TimestampDialogState,
 	onExtend: () -> Unit,
+	onAbortRevocation: () -> Unit,
+	onAcceptRevocation: () -> Unit,
 	onDismiss: () -> Unit,
 ) {
 	Row(
@@ -260,6 +337,19 @@ private fun TimestampDialogFooter(
 					variant = ButtonVariant.Primary,
 					enabled = state.outputPath.isNotBlank(),
 					onClick = onExtend,
+				)
+			}
+
+			is TimestampDialogState.RevocationWarning -> {
+				Button(
+					text = "Continue anyway",
+					variant = ButtonVariant.SecondaryOutlined,
+					onClick = onAcceptRevocation,
+				)
+				Button(
+					text = "Abort",
+					variant = ButtonVariant.Primary,
+					onClick = onAbortRevocation,
 				)
 			}
 
