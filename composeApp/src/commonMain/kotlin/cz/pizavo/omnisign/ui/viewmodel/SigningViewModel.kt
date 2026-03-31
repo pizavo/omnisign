@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ListCertificatesUseCase
@@ -23,7 +24,7 @@ import kotlinx.coroutines.withContext
  * Orchestrates certificate discovery, form state, and the actual signing operation.
  * The dialog flow mirrors the CLI [cz.pizavo.omnisign.commands.Sign] command:
  * resolve config → discover certificates → build [SigningParameters] → invoke
- * [SignDocumentUseCase] → show result.
+ * [SignDocumentUseCase] → show the result.
  *
  * @param signDocumentUseCase Use case for performing the signing operation.
  * @param listCertificatesUseCase Use case for discovering available signing certificates.
@@ -44,6 +45,7 @@ class SigningViewModel(
 
 	private var currentFilePath: String? = null
 	private var resolvedConfig: ResolvedConfig? = null
+	private var lastReadyState: SigningDialogState.Ready? = null
 
 	/**
 	 * Open the signing dialog for the given document.
@@ -87,17 +89,26 @@ class SigningViewModel(
 								)
 							},
 							ifRight = { discovery ->
+								val level = config.signatureLevel
+								val addSigTs = level == SignatureLevel.PADES_BASELINE_LT ||
+										level == SignatureLevel.PADES_BASELINE_LTA
+								val addArchTs = level == SignatureLevel.PADES_BASELINE_LTA
+
 								val suggestedOutput = buildSuggestedOutputPath(filePath, "-signed")
-								_state.value = SigningDialogState.Ready(
+								val ready = SigningDialogState.Ready(
 									certificates = discovery.certificates,
 									tokenWarnings = discovery.tokenWarnings,
 									hashAlgorithm = null,
-									signatureLevel = null,
+									addSignatureTimestamp = addSigTs,
+									addArchivalTimestamp = addArchTs,
 									configHashAlgorithm = config.hashAlgorithm,
-									configSignatureLevel = config.signatureLevel,
+									configAddSignatureTimestamp = addSigTs,
+									configAddArchivalTimestamp = addArchTs,
 									disabledHashAlgorithms = config.disabledHashAlgorithms,
 									outputPath = suggestedOutput,
 								)
+								lastReadyState = ready
+								_state.value = ready
 							},
 						)
 					},
@@ -123,13 +134,19 @@ class SigningViewModel(
 	 * Execute the signing operation with the current form state.
 	 *
 	 * Transitions from [SigningDialogState.Ready] through [SigningDialogState.Signing]
-	 * to either [SigningDialogState.Success] or [SigningDialogState.Error].
+	 * to either [SigningDialogState.Success], [SigningDialogState.RevocationWarning],
+	 * or [SigningDialogState.Error].
+	 *
+	 * When the effective level is ≥ B-LT and the signing result contains revocation
+	 * warnings, the dialog transitions to [SigningDialogState.RevocationWarning]
+	 * instead of [SigningDialogState.Success] so the user can decide to abort or continue.
 	 */
 	fun sign() {
 		val ready = _state.value as? SigningDialogState.Ready ?: return
 		val inputFile = currentFilePath ?: return
 		val config = resolvedConfig ?: return
 
+		lastReadyState = ready
 		_state.value = SigningDialogState.Signing
 
 		viewModelScope.launch {
@@ -139,11 +156,11 @@ class SigningViewModel(
 					outputFile = ready.outputPath,
 					certificateAlias = ready.selectedAlias,
 					hashAlgorithm = ready.hashAlgorithm ?: config.hashAlgorithm,
-					signatureLevel = ready.signatureLevel ?: config.signatureLevel,
+					signatureLevel = ready.effectiveSignatureLevel,
 					reason = ready.reason.ifBlank { null },
 					location = ready.location.ifBlank { null },
 					contactInfo = ready.contactInfo.ifBlank { null },
-					addTimestamp = ready.addTimestamp,
+					addTimestamp = ready.effectiveAddTimestamp,
 					resolvedConfig = config,
 				)
 
@@ -155,16 +172,53 @@ class SigningViewModel(
 						)
 					},
 					ifRight = { result ->
-						_state.value = SigningDialogState.Success(
-							outputFile = result.outputFile,
-							signatureId = result.signatureId,
-							signatureLevel = result.signatureLevel,
-							warnings = result.warnings,
-						)
+						val levelRequiresRevocation =
+							ready.effectiveSignatureLevel >= SignatureLevel.PADES_BASELINE_LT
+
+						if (result.hasRevocationWarnings && levelRequiresRevocation) {
+							_state.value = SigningDialogState.RevocationWarning(
+								warnings = result.warnings,
+								outputFile = result.outputFile,
+								signatureId = result.signatureId,
+								signatureLevel = result.signatureLevel,
+							)
+						} else {
+							_state.value = SigningDialogState.Success(
+								outputFile = result.outputFile,
+								signatureId = result.signatureId,
+								signatureLevel = result.signatureLevel,
+								warnings = result.warnings,
+							)
+						}
 					},
 				)
 			}
 		}
+	}
+
+	/**
+	 * Accept the revocation warning and transition to the success state.
+	 *
+	 * Called when the user clicks "Continue anyway" on the revocation warning screen.
+	 */
+	fun acceptRevocationWarning() {
+		val rw = _state.value as? SigningDialogState.RevocationWarning ?: return
+		_state.value = SigningDialogState.Success(
+			outputFile = rw.outputFile,
+			signatureId = rw.signatureId,
+			signatureLevel = rw.signatureLevel,
+			warnings = rw.warnings,
+		)
+	}
+
+	/**
+	 * Abort after a revocation warning and return to the signing form.
+	 *
+	 * The signed output file is left in place for potential manual inspection.
+	 * Called when the user clicks "Abort" on the revocation warning screen.
+	 */
+	fun abortAfterRevocationWarning() {
+		_state.value = lastReadyState ?: SigningDialogState.Idle
 	}
 
 	/**
@@ -173,6 +227,7 @@ class SigningViewModel(
 	fun dismiss() {
 		_state.value = SigningDialogState.Idle
 		resolvedConfig = null
+		lastReadyState = null
 	}
 
 	companion object {

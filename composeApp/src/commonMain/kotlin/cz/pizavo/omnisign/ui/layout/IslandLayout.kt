@@ -191,6 +191,8 @@ fun IslandLayout(
 				state = signingState,
 				onFieldChange = { transform -> signingViewModel?.updateState(transform) },
 				onSign = { signingViewModel?.sign() },
+				onAbortRevocation = { signingViewModel?.abortAfterRevocationWarning() },
+				onAcceptRevocation = { signingViewModel?.acceptRevocationWarning() },
 				onDismiss = {
 					if (signingState is SigningDialogState.Success) {
 						val outputFile = (signingState as SigningDialogState.Success).outputFile
@@ -418,9 +420,9 @@ private fun PanelPlaceholderContent(panel: SidePanel?) {
 }
 
 /**
- * Reload a document from disk into the PDF viewer and refresh signature validation.
+ * Reload a document from the disk into the PDF viewer and refresh signature validation.
  *
- * Called after a successful signing or extension operation so the user sees the
+ * Called after a successful signing or extension operation, so the user sees the
  * updated document immediately.
  *
  * @param filePath Absolute path to the output file to load.

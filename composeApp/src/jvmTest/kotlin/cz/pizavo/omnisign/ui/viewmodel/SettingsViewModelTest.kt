@@ -62,7 +62,8 @@ class SettingsViewModelTest : FunSpec({
 
             val state = vm.state.value
             state.defaultHashAlgorithm shouldBe HashAlgorithm.SHA256
-            state.defaultSignatureLevel shouldBe SignatureLevel.PADES_BASELINE_B
+            state.addSignatureTimestamp shouldBe false
+            state.addArchivalTimestamp shouldBe false
             state.defaultEncryptionAlgorithm shouldBe null
             state.error.shouldBeNull()
         }

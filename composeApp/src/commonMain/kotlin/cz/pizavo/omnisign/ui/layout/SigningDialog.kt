@@ -11,7 +11,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
-import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.progressindicators.CircularProgressIndicator
@@ -32,12 +31,15 @@ import org.jetbrains.compose.resources.painterResource
  * - [SigningDialogState.Ready]: signing form with certificate selector, algorithm options,
  *   metadata fields, and output path.
  * - [SigningDialogState.Signing]: progress indicator.
+ * - [SigningDialogState.RevocationWarning]: revocation data warning with abort/continue options.
  * - [SigningDialogState.Success]: summary of the created signature.
- * - [SigningDialogState.Error]: error message with retry option.
+ * - [SigningDialogState.Error]: error message with a retry option.
  *
  * @param state Current signing dialog state from [cz.pizavo.omnisign.ui.viewmodel.SigningViewModel].
  * @param onFieldChange Called with a transform to update a field in the [SigningDialogState.Ready] state.
  * @param onSign Called when the user clicks the Sign button.
+ * @param onAbortRevocation Called when the user aborts after a revocation warning.
+ * @param onAcceptRevocation Called when the user continues despite revocation warnings.
  * @param onDismiss Called when the user cancels or closes the dialog.
  */
 @Composable
@@ -45,6 +47,8 @@ fun SigningDialog(
 	state: SigningDialogState,
 	onFieldChange: ((SigningDialogState.Ready) -> SigningDialogState.Ready) -> Unit,
 	onSign: () -> Unit,
+	onAbortRevocation: () -> Unit,
+	onAcceptRevocation: () -> Unit,
 	onDismiss: () -> Unit,
 ) {
 	Dialog(
@@ -78,6 +82,7 @@ fun SigningDialog(
 							onFieldChange = onFieldChange,
 						)
 						is SigningDialogState.Signing -> LoadingContent("Signing document...")
+						is SigningDialogState.RevocationWarning -> RevocationWarningContent(state)
 						is SigningDialogState.Success -> SigningSuccessContent(state)
 						is SigningDialogState.Error -> ErrorContent(
 							message = state.message,
@@ -91,6 +96,8 @@ fun SigningDialog(
 				SigningDialogFooter(
 					state = state,
 					onSign = onSign,
+					onAbortRevocation = onAbortRevocation,
+					onAcceptRevocation = onAcceptRevocation,
 					onDismiss = onDismiss,
 				)
 			}
@@ -197,28 +204,41 @@ private fun SigningFormContent(
 				itemLabel = { it.name },
 				modifier = Modifier.weight(1f),
 			)
-
-			DropdownSelector(
-				selected = state.signatureLevel,
-				options = SignatureLevel.entries.toList(),
-				onSelect = { level -> onFieldChange { it.copy(signatureLevel = level) } },
-				label = { Text("Signature Level") },
-				nullLabel = "Default (${state.configSignatureLevel.name})",
-				showNullOption = true,
-				itemLabel = { it.name },
-				modifier = Modifier.weight(1f),
-			)
 		}
 
 		Row(
 			verticalAlignment = Alignment.CenterVertically,
-			horizontalArrangement = Arrangement.spacedBy(8.dp),
+			horizontalArrangement = Arrangement.spacedBy(16.dp),
 		) {
-			Switch(
-				checked = state.addTimestamp,
-				onCheckedChange = { checked -> onFieldChange { it.copy(addTimestamp = checked) } },
-			)
-			Text(text = "Include RFC 3161 timestamp", style = LumoTheme.typography.body2)
+			Row(
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(8.dp),
+			) {
+				Checkbox(
+					checked = state.addSignatureTimestamp,
+					onCheckedChange = { checked -> onFieldChange { it.copy(addSignatureTimestamp = checked) } },
+					enabled = !state.addArchivalTimestamp,
+				)
+				Text(text = "Signature timestamp", style = LumoTheme.typography.body2)
+				InfoTooltip(text = "Produces PAdES BASELINE B-LT")
+			}
+
+			Row(
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(8.dp),
+			) {
+				Checkbox(
+					checked = state.addArchivalTimestamp,
+					onCheckedChange = { checked ->
+						onFieldChange {
+							if (checked) it.copy(addArchivalTimestamp = true, addSignatureTimestamp = true)
+							else it.copy(addArchivalTimestamp = false)
+						}
+					},
+				)
+				Text(text = "Archival timestamp", style = LumoTheme.typography.body2)
+				InfoTooltip(text = "Produces PAdES BASELINE B-LTA")
+			}
 		}
 
 		UnderlinedTextField(
@@ -335,16 +355,79 @@ private fun SigningResultRow(label: String, value: String) {
 }
 
 /**
+ * Warning screen shown when signing completed but revocation data could not be obtained.
+ *
+ * @param state The [SigningDialogState.RevocationWarning] state with warning details.
+ */
+@Composable
+private fun RevocationWarningContent(state: SigningDialogState.RevocationWarning) {
+	Column(
+		modifier = Modifier
+			.fillMaxSize()
+			.padding(24.dp),
+		verticalArrangement = Arrangement.spacedBy(8.dp),
+	) {
+		Row(
+			horizontalArrangement = Arrangement.spacedBy(6.dp),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			Icon(
+				painter = painterResource(Res.drawable.icon_alert_warning),
+				contentDescription = null,
+				modifier = Modifier.size(20.dp),
+				tint = LumoTheme.colors.warning,
+			)
+			Text(text = "Revocation data unavailable", style = LumoTheme.typography.h4)
+		}
+
+		Spacer(modifier = Modifier.height(4.dp))
+
+		Text(
+			text = "The document was signed, but revocation information (CRL/OCSP) could not " +
+					"be embedded. Without this data the signature may not be suitable for " +
+					"long-term validation.",
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.textSecondary,
+		)
+
+		Spacer(modifier = Modifier.height(8.dp))
+
+		state.warnings.forEach { warning ->
+			Row(
+				horizontalArrangement = Arrangement.spacedBy(4.dp),
+				verticalAlignment = Alignment.Top,
+			) {
+				Icon(
+					painter = painterResource(Res.drawable.icon_alert_warning),
+					contentDescription = null,
+					modifier = Modifier.padding(top = 3.dp).size(14.dp),
+					tint = LumoTheme.colors.warning,
+				)
+				Text(
+					text = warning,
+					style = LumoTheme.typography.body2,
+					color = LumoTheme.colors.warning,
+				)
+			}
+		}
+	}
+}
+
+/**
  * Footer with Cancel and Sign / Close buttons.
  *
  * @param state Current dialog state determining which buttons to show.
  * @param onSign Called when the Sign button is clicked.
+ * @param onAbortRevocation Called when the Abort button is clicked on the revocation warning.
+ * @param onAcceptRevocation Called when the Continue button is clicked on the revocation warning.
  * @param onDismiss Called when Cancel or Close is clicked.
  */
 @Composable
 private fun SigningDialogFooter(
 	state: SigningDialogState,
 	onSign: () -> Unit,
+	onAbortRevocation: () -> Unit,
+	onAcceptRevocation: () -> Unit,
 	onDismiss: () -> Unit,
 ) {
 	Row(
@@ -365,6 +448,19 @@ private fun SigningDialogFooter(
 					variant = ButtonVariant.Primary,
 					enabled = state.outputPath.isNotBlank() && state.certificates.isNotEmpty(),
 					onClick = onSign,
+				)
+			}
+
+			is SigningDialogState.RevocationWarning -> {
+				Button(
+					text = "Continue anyway",
+					variant = ButtonVariant.SecondaryOutlined,
+					onClick = onAcceptRevocation,
+				)
+				Button(
+					text = "Abort",
+					variant = ButtonVariant.Primary,
+					onClick = onAbortRevocation,
 				)
 			}
 
@@ -409,7 +505,7 @@ internal fun LoadingContent(message: String) {
 }
 
 /**
- * Error display with message and optional details.
+ * Error display with the message and optional details.
  *
  * DSS exception messages often contain internal identifiers (e.g. `S-<hex>`, `C-<hex>`)
  * that are meaningless to end users. [sanitizeDssDetails] strips them before display.

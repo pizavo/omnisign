@@ -25,7 +25,8 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
  *
  * @property defaultHashAlgorithm Default hash algorithm for signing.
  * @property defaultEncryptionAlgorithm Default encryption algorithm, or `null` for auto-detect.
- * @property defaultSignatureLevel Default PAdES signature level.
+ * @property addSignatureTimestamp Whether the default level includes a signature timestamp and revocation data (B-LT).
+ * @property addArchivalTimestamp Whether the default level includes an archival document timestamp (B-LTA).
  * @property disabledHashAlgorithms Hash algorithms disabled globally.
  * @property disabledEncryptionAlgorithms Encryption algorithms disabled globally.
  * @property timestampEnabled Whether the timestamp server section is active.
@@ -50,139 +51,159 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
  * @property certAddError Human-readable error from the last failed trusted certificate add attempt, or `null`.
  */
 data class GlobalConfigEditState(
-    val defaultHashAlgorithm: HashAlgorithm = HashAlgorithm.SHA256,
-    val defaultEncryptionAlgorithm: EncryptionAlgorithm? = null,
-    val defaultSignatureLevel: SignatureLevel = SignatureLevel.PADES_BASELINE_B,
-    val disabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
-    val disabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet(),
-    val timestampEnabled: Boolean = false,
-    val timestampUrl: String = "",
-    val timestampUsername: String = "",
-    val timestampPassword: String = "",
-    val hasStoredPassword: Boolean = false,
-    val timestampTimeout: String = "30000",
-    val ocspTimeout: String = "30000",
-    val crlTimeout: String = "30000",
-    val validationPolicyType: ValidationPolicyType = ValidationPolicyType.DEFAULT_ETSI,
-    val customPolicyPath: String = "",
-    val checkRevocation: Boolean = true,
-    val useEuLotl: Boolean = true,
-    val algoExpirationLevel: AlgorithmConstraintLevel = AlgorithmConstraintLevel.FAIL,
-    val algoExpirationLevelAfterUpdate: AlgorithmConstraintLevel = AlgorithmConstraintLevel.WARN,
-    val customTrustedLists: List<CustomTrustedListConfig> = emptyList(),
-    val trustedCertificates: List<TrustedCertificateConfig> = emptyList(),
-    val customPkcs11Libraries: List<CustomPkcs11Library> = emptyList(),
-    val saving: Boolean = false,
-    val error: String? = null,
-    val certAddError: String? = null,
+	val defaultHashAlgorithm: HashAlgorithm = HashAlgorithm.SHA256,
+	val defaultEncryptionAlgorithm: EncryptionAlgorithm? = null,
+	val addSignatureTimestamp: Boolean = false,
+	val addArchivalTimestamp: Boolean = false,
+	val disabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
+	val disabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet(),
+	val timestampEnabled: Boolean = false,
+	val timestampUrl: String = "",
+	val timestampUsername: String = "",
+	val timestampPassword: String = "",
+	val hasStoredPassword: Boolean = false,
+	val timestampTimeout: String = "30000",
+	val ocspTimeout: String = "30000",
+	val crlTimeout: String = "30000",
+	val validationPolicyType: ValidationPolicyType = ValidationPolicyType.DEFAULT_ETSI,
+	val customPolicyPath: String = "",
+	val checkRevocation: Boolean = true,
+	val useEuLotl: Boolean = true,
+	val algoExpirationLevel: AlgorithmConstraintLevel = AlgorithmConstraintLevel.FAIL,
+	val algoExpirationLevelAfterUpdate: AlgorithmConstraintLevel = AlgorithmConstraintLevel.WARN,
+	val customTrustedLists: List<CustomTrustedListConfig> = emptyList(),
+	val trustedCertificates: List<TrustedCertificateConfig> = emptyList(),
+	val customPkcs11Libraries: List<CustomPkcs11Library> = emptyList(),
+	val saving: Boolean = false,
+	val error: String? = null,
+	val certAddError: String? = null,
 ) {
 
-    /**
-     * Compare only the persistable content fields of two states, ignoring
-     * transient UI properties like [saving], [error], and [certAddError].
-     */
-    fun contentEquals(other: GlobalConfigEditState): Boolean =
-        defaultHashAlgorithm == other.defaultHashAlgorithm &&
-                defaultEncryptionAlgorithm == other.defaultEncryptionAlgorithm &&
-                defaultSignatureLevel == other.defaultSignatureLevel &&
-                disabledHashAlgorithms == other.disabledHashAlgorithms &&
-                disabledEncryptionAlgorithms == other.disabledEncryptionAlgorithms &&
-                timestampEnabled == other.timestampEnabled &&
-                timestampUrl == other.timestampUrl &&
-                timestampUsername == other.timestampUsername &&
-                timestampPassword == other.timestampPassword &&
-                hasStoredPassword == other.hasStoredPassword &&
-                timestampTimeout == other.timestampTimeout &&
-                ocspTimeout == other.ocspTimeout &&
-                crlTimeout == other.crlTimeout &&
-                validationPolicyType == other.validationPolicyType &&
-                customPolicyPath == other.customPolicyPath &&
-                checkRevocation == other.checkRevocation &&
-                useEuLotl == other.useEuLotl &&
-                algoExpirationLevel == other.algoExpirationLevel &&
-                algoExpirationLevelAfterUpdate == other.algoExpirationLevelAfterUpdate &&
-                customTrustedLists == other.customTrustedLists &&
-                trustedCertificates == other.trustedCertificates &&
-                customPkcs11Libraries == other.customPkcs11Libraries
+	/**
+	 * Derive the PAdES [SignatureLevel] from the current checkbox state.
+	 *
+	 * - Both timestamps → B-LTA
+	 * - Signature timestamp only → B-LT
+	 * - Neither → B-B
+	 */
+	val effectiveSignatureLevel: SignatureLevel
+		get() = when {
+			addArchivalTimestamp -> SignatureLevel.PADES_BASELINE_LTA
+			addSignatureTimestamp -> SignatureLevel.PADES_BASELINE_LT
+			else -> SignatureLevel.PADES_BASELINE_B
+		}
 
-    /**
-     * Convert this UI state back into a persistable [GlobalConfig].
-     *
-     * The [timestampPassword] is intentionally **not** included in the returned config
-     * because passwords are persisted separately through the OS credential store.
-     * The [TimestampServerConfig.credentialKey] is set to the username when a password
-     * has been entered or was already stored.
-     */
-    fun toGlobalConfig(): GlobalConfig = GlobalConfig(
-        defaultHashAlgorithm = defaultHashAlgorithm,
-        defaultEncryptionAlgorithm = defaultEncryptionAlgorithm,
-        defaultSignatureLevel = defaultSignatureLevel,
-        disabledHashAlgorithms = disabledHashAlgorithms,
-        disabledEncryptionAlgorithms = disabledEncryptionAlgorithms,
-        timestampServer = if (timestampEnabled && timestampUrl.isNotBlank()) {
-            val effectiveUsername = timestampUsername.ifBlank { null }
-            val hasPassword = timestampPassword.isNotEmpty() || hasStoredPassword
-            TimestampServerConfig(
-                url = timestampUrl.trim(),
-                username = effectiveUsername,
-                credentialKey = if (hasPassword && effectiveUsername != null) effectiveUsername else null,
-                timeout = timestampTimeout.toIntOrNull() ?: 30000,
-            )
-        } else {
-            null
-        },
-        ocsp = OcspConfig(timeout = ocspTimeout.toIntOrNull() ?: 30000),
-        crl = CrlConfig(timeout = crlTimeout.toIntOrNull() ?: 30000),
-        validation = ValidationConfig(
-            policyType = validationPolicyType,
-            customPolicyPath = customPolicyPath.ifBlank { null },
-            checkRevocation = checkRevocation,
-            useEuLotl = useEuLotl,
-            customTrustedLists = customTrustedLists,
-            trustedCertificates = trustedCertificates,
-            algorithmConstraints = AlgorithmConstraintsConfig(
-                expirationLevel = algoExpirationLevel,
-                expirationLevelAfterUpdate = algoExpirationLevelAfterUpdate,
-            ),
-        ),
-        customPkcs11Libraries = customPkcs11Libraries,
-    )
+	/**
+	 * Compare only the persistable content fields of two states, ignoring
+	 * transient UI properties like [saving], [error], and [certAddError].
+	 */
+	fun contentEquals(other: GlobalConfigEditState): Boolean =
+		defaultHashAlgorithm == other.defaultHashAlgorithm &&
+				defaultEncryptionAlgorithm == other.defaultEncryptionAlgorithm &&
+				addSignatureTimestamp == other.addSignatureTimestamp &&
+				addArchivalTimestamp == other.addArchivalTimestamp &&
+				disabledHashAlgorithms == other.disabledHashAlgorithms &&
+				disabledEncryptionAlgorithms == other.disabledEncryptionAlgorithms &&
+				timestampEnabled == other.timestampEnabled &&
+				timestampUrl == other.timestampUrl &&
+				timestampUsername == other.timestampUsername &&
+				timestampPassword == other.timestampPassword &&
+				hasStoredPassword == other.hasStoredPassword &&
+				timestampTimeout == other.timestampTimeout &&
+				ocspTimeout == other.ocspTimeout &&
+				crlTimeout == other.crlTimeout &&
+				validationPolicyType == other.validationPolicyType &&
+				customPolicyPath == other.customPolicyPath &&
+				checkRevocation == other.checkRevocation &&
+				useEuLotl == other.useEuLotl &&
+				algoExpirationLevel == other.algoExpirationLevel &&
+				algoExpirationLevelAfterUpdate == other.algoExpirationLevelAfterUpdate &&
+				customTrustedLists == other.customTrustedLists &&
+				trustedCertificates == other.trustedCertificates &&
+				customPkcs11Libraries == other.customPkcs11Libraries
 
-    companion object {
+	/**
+	 * Convert this UI state back into a persistable [GlobalConfig].
+	 *
+	 * The [timestampPassword] is intentionally **not** included in the returned config
+	 * because passwords are persisted separately through the OS credential store.
+	 * The [TimestampServerConfig.credentialKey] is set to the username when a password
+	 * has been entered or was already stored.
+	 */
+	fun toGlobalConfig(): GlobalConfig = GlobalConfig(
+		defaultHashAlgorithm = defaultHashAlgorithm,
+		defaultEncryptionAlgorithm = defaultEncryptionAlgorithm,
+		defaultSignatureLevel = effectiveSignatureLevel,
+		disabledHashAlgorithms = disabledHashAlgorithms,
+		disabledEncryptionAlgorithms = disabledEncryptionAlgorithms,
+		timestampServer = if (timestampEnabled && timestampUrl.isNotBlank()) {
+			val effectiveUsername = timestampUsername.ifBlank { null }
+			val hasPassword = timestampPassword.isNotEmpty() || hasStoredPassword
+			TimestampServerConfig(
+				url = timestampUrl.trim(),
+				username = effectiveUsername,
+				credentialKey = if (hasPassword && effectiveUsername != null) effectiveUsername else null,
+				timeout = timestampTimeout.toIntOrNull() ?: 30000,
+			)
+		} else {
+			null
+		},
+		ocsp = OcspConfig(timeout = ocspTimeout.toIntOrNull() ?: 30000),
+		crl = CrlConfig(timeout = crlTimeout.toIntOrNull() ?: 30000),
+		validation = ValidationConfig(
+			policyType = validationPolicyType,
+			customPolicyPath = customPolicyPath.ifBlank { null },
+			checkRevocation = checkRevocation,
+			useEuLotl = useEuLotl,
+			customTrustedLists = customTrustedLists,
+			trustedCertificates = trustedCertificates,
+			algorithmConstraints = AlgorithmConstraintsConfig(
+				expirationLevel = algoExpirationLevel,
+				expirationLevelAfterUpdate = algoExpirationLevelAfterUpdate,
+			),
+		),
+		customPkcs11Libraries = customPkcs11Libraries,
+	)
 
-        /**
-         * Build a [GlobalConfigEditState] from an existing [GlobalConfig].
-         *
-         * @param config The source global configuration.
-         * @param hasStoredPassword Whether a TSA password is already persisted in the credential store.
-         * @return A new edit state pre-populated with the config's values.
-         */
-        fun from(config: GlobalConfig, hasStoredPassword: Boolean = false): GlobalConfigEditState =
-            GlobalConfigEditState(
-                defaultHashAlgorithm = config.defaultHashAlgorithm,
-                defaultEncryptionAlgorithm = config.defaultEncryptionAlgorithm,
-                defaultSignatureLevel = config.defaultSignatureLevel,
-                disabledHashAlgorithms = config.disabledHashAlgorithms,
-                disabledEncryptionAlgorithms = config.disabledEncryptionAlgorithms,
-                timestampEnabled = config.timestampServer != null,
-                timestampUrl = config.timestampServer?.url.orEmpty(),
-                timestampUsername = config.timestampServer?.username.orEmpty(),
-                timestampPassword = "",
-                hasStoredPassword = hasStoredPassword,
-                timestampTimeout = (config.timestampServer?.timeout ?: 30000).toString(),
-                ocspTimeout = config.ocsp.timeout.toString(),
-                crlTimeout = config.crl.timeout.toString(),
-                validationPolicyType = config.validation.policyType,
-                customPolicyPath = config.validation.customPolicyPath.orEmpty(),
-                checkRevocation = config.validation.checkRevocation,
-                useEuLotl = config.validation.useEuLotl,
-                algoExpirationLevel = config.validation.algorithmConstraints.expirationLevel
-                    ?: AlgorithmConstraintLevel.FAIL,
-                algoExpirationLevelAfterUpdate = config.validation.algorithmConstraints.expirationLevelAfterUpdate
-                    ?: AlgorithmConstraintLevel.WARN,
-                customTrustedLists = config.validation.customTrustedLists,
-                trustedCertificates = config.validation.trustedCertificates,
-                customPkcs11Libraries = config.customPkcs11Libraries,
-            )
-    }
+	companion object {
+
+		/**
+		 * Build a [GlobalConfigEditState] from an existing [GlobalConfig].
+		 *
+		 * @param config The source global configuration.
+		 * @param hasStoredPassword Whether a TSA password is already persisted in the credential store.
+		 * @return A new edit state pre-populated with the config's values.
+		 */
+		fun from(config: GlobalConfig, hasStoredPassword: Boolean = false): GlobalConfigEditState {
+			val level = config.defaultSignatureLevel
+			return GlobalConfigEditState(
+				defaultHashAlgorithm = config.defaultHashAlgorithm,
+				defaultEncryptionAlgorithm = config.defaultEncryptionAlgorithm,
+				addSignatureTimestamp = level == SignatureLevel.PADES_BASELINE_LT ||
+						level == SignatureLevel.PADES_BASELINE_LTA,
+				addArchivalTimestamp = level == SignatureLevel.PADES_BASELINE_LTA,
+				disabledHashAlgorithms = config.disabledHashAlgorithms,
+				disabledEncryptionAlgorithms = config.disabledEncryptionAlgorithms,
+				timestampEnabled = config.timestampServer != null,
+				timestampUrl = config.timestampServer?.url.orEmpty(),
+				timestampUsername = config.timestampServer?.username.orEmpty(),
+				timestampPassword = "",
+				hasStoredPassword = hasStoredPassword,
+				timestampTimeout = (config.timestampServer?.timeout ?: 30000).toString(),
+				ocspTimeout = config.ocsp.timeout.toString(),
+				crlTimeout = config.crl.timeout.toString(),
+				validationPolicyType = config.validation.policyType,
+				customPolicyPath = config.validation.customPolicyPath.orEmpty(),
+				checkRevocation = config.validation.checkRevocation,
+				useEuLotl = config.validation.useEuLotl,
+				algoExpirationLevel = config.validation.algorithmConstraints.expirationLevel
+					?: AlgorithmConstraintLevel.FAIL,
+				algoExpirationLevelAfterUpdate = config.validation.algorithmConstraints.expirationLevelAfterUpdate
+					?: AlgorithmConstraintLevel.WARN,
+				customTrustedLists = config.validation.customTrustedLists,
+				trustedCertificates = config.validation.trustedCertificates,
+				customPkcs11Libraries = config.customPkcs11Libraries,
+			)
+		}
+	}
 }

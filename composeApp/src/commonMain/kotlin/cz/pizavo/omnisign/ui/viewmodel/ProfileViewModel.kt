@@ -25,7 +25,7 @@ import kotlinx.coroutines.launch
  * and exposes actions for selecting, deselecting, deleting, creating, and editing profiles.
  *
  * @param manageProfileUseCase Use case for CRUD operations on configuration profiles.
- * @param getConfigUseCase Use case for reading the current application configuration.
+ * @param getConfigUseCase Use-case for reading the current application configuration.
  * @param credentialStore Optional OS credential store for persisting TSA passwords.
  */
 class ProfileViewModel(
@@ -71,6 +71,8 @@ class ProfileViewModel(
             val activeProfile = appConfig?.activeProfile
             val globalDisabledHash = appConfig?.global?.disabledHashAlgorithms ?: emptySet()
             val globalDisabledEnc = appConfig?.global?.disabledEncryptionAlgorithms ?: emptySet()
+            val globalArchival = appConfig?.global?.defaultSignatureLevel ==
+                    cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel.PADES_BASELINE_LTA
 
             manageProfileUseCase.list().fold(
                 ifLeft = { error ->
@@ -85,6 +87,7 @@ class ProfileViewModel(
                             error = null,
                             globalDisabledHashAlgorithms = globalDisabledHash,
                             globalDisabledEncryptionAlgorithms = globalDisabledEnc,
+                            globalAddArchivalTimestamp = globalArchival,
                         )
                     }
                 },

@@ -30,14 +30,15 @@ sealed interface SigningDialogState {
 	 * @property tokenWarnings Per-token warnings encountered during discovery.
 	 * @property selectedAlias Currently selected certificate alias, or `null` for auto.
 	 * @property hashAlgorithm Hash algorithm override, or `null` to use the resolved config default.
-	 * @property signatureLevel Signature level override, or `null` to use the resolved config default.
+	 * @property addSignatureTimestamp Whether to include a signature timestamp and revocation data (B-LT).
+	 * @property addArchivalTimestamp Whether to include an archival document timestamp (B-LTA).
 	 * @property reason Reason for signing.
 	 * @property location Location of signing.
 	 * @property contactInfo Contact information of the signer.
-	 * @property addTimestamp Whether to include an RFC 3161 timestamp.
 	 * @property outputPath Suggested output file path.
 	 * @property configHashAlgorithm Default hash algorithm from the resolved configuration.
-	 * @property configSignatureLevel Default signature level from the resolved configuration.
+	 * @property configAddSignatureTimestamp Whether the resolved config enables signature timestamps.
+	 * @property configAddArchivalTimestamp Whether the resolved config enables archival timestamps.
 	 * @property disabledHashAlgorithms Hash algorithms that are disabled in the current config.
 	 */
 	data class Ready(
@@ -45,21 +46,64 @@ sealed interface SigningDialogState {
 		val tokenWarnings: List<TokenDiscoveryWarning> = emptyList(),
 		val selectedAlias: String? = null,
 		val hashAlgorithm: HashAlgorithm? = null,
-		val signatureLevel: SignatureLevel? = null,
+		val addSignatureTimestamp: Boolean = true,
+		val addArchivalTimestamp: Boolean = false,
 		val reason: String = "",
 		val location: String = "",
 		val contactInfo: String = "",
-		val addTimestamp: Boolean = true,
 		val outputPath: String = "",
 		val configHashAlgorithm: HashAlgorithm = HashAlgorithm.SHA256,
-		val configSignatureLevel: SignatureLevel = SignatureLevel.PADES_BASELINE_B,
+		val configAddSignatureTimestamp: Boolean = false,
+		val configAddArchivalTimestamp: Boolean = false,
 		val disabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
-	) : SigningDialogState
+	) : SigningDialogState {
+
+		/**
+		 * Derive the PAdES [SignatureLevel] from the current checkbox state.
+		 *
+		 * - Both timestamps → B-LTA
+		 * - Signature timestamp only → B-LT
+		 * - Neither → B-B
+		 */
+		val effectiveSignatureLevel: SignatureLevel
+			get() = when {
+				addArchivalTimestamp -> SignatureLevel.PADES_BASELINE_LTA
+				addSignatureTimestamp -> SignatureLevel.PADES_BASELINE_LT
+				else -> SignatureLevel.PADES_BASELINE_B
+			}
+
+		/**
+		 * Whether the signing operation should include an RFC 3161 timestamp.
+		 *
+		 * True when any timestamp checkbox is checked.
+		 */
+		val effectiveAddTimestamp: Boolean
+			get() = addSignatureTimestamp || addArchivalTimestamp
+	}
 
 	/**
 	 * A signing operation is in progress.
 	 */
 	data object Signing : SigningDialogState
+
+	/**
+	 * Signing completed but revocation data could not be obtained.
+	 *
+	 * Shown when the effective level is ≥ B-LT and the signing result
+	 * contains revocation-related warnings. The user can abort (discard the
+	 * output) or continue to the success screen.
+	 *
+	 * @property warnings User-friendly warning summaries to display.
+	 * @property outputFile Path to the signed output file.
+	 * @property signatureId Identifier of the created signature.
+	 * @property signatureLevel PAdES level of the created signature.
+	 */
+	data class RevocationWarning(
+		val warnings: List<String>,
+		val outputFile: String,
+		val signatureId: String,
+		val signatureLevel: String,
+	) : SigningDialogState
 
 	/**
 	 * Signing completed successfully.
@@ -87,4 +131,3 @@ sealed interface SigningDialogState {
 		val details: String? = null,
 	) : SigningDialogState
 }
-

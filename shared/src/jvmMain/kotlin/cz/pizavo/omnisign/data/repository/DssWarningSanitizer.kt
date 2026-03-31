@@ -49,7 +49,7 @@ object DssWarningSanitizer {
 		}
 		summaries += unmatched
 		
-		return SanitizedWarnings(summaries = summaries, raw = rawWarnings)
+		return SanitizedWarnings(summaries = summaries, raw = rawWarnings, categories = buckets.keys.toSet())
 	}
 	
 	/**
@@ -231,11 +231,29 @@ object DssWarningSanitizer {
 		 */
 		abstract fun toSummary(ids: Set<String>): String
 		
+		/**
+		 * Whether this category indicates that revocation data could not be obtained.
+		 *
+		 * Used to trigger the revocation warning confirmation flow when signing
+		 * at B-LT or B-LTA level.
+		 */
+		val isRevocationRelated: Boolean
+			get() = this in REVOCATION_CATEGORIES
+		
 		protected fun pluralCerts(count: Int) =
 			if (count == 1) "1 certificate" else "$count certificates"
 		
 		protected fun pluralTimestamps(count: Int) =
 			if (count == 1) "1 timestamp" else "$count timestamps"
+		
+		companion object {
+			private val REVOCATION_CATEGORIES = setOf(
+				REVOCATION_NOT_FOUND,
+				REVOCATION_STATUS_UNKNOWN,
+				REVOCATION_POE_MISSING,
+				FRESH_REVOCATION_MISSING,
+			)
+		}
 	}
 }
 
@@ -244,9 +262,17 @@ object DssWarningSanitizer {
  *
  * @property summaries Grouped, user-friendly warning lines suitable for display.
  * @property raw The original raw warning strings for JSON / verbose output.
+ * @property categories The set of [DssWarningSanitizer.WarningCategory] buckets that had at least one match.
  */
 data class SanitizedWarnings(
 	val summaries: List<String>,
 	val raw: List<String>,
-)
+	val categories: Set<DssWarningSanitizer.WarningCategory> = emptySet(),
+) {
+	/**
+	 * Whether any matched category relates to missing or failed revocation data.
+	 */
+	val hasRevocationWarnings: Boolean
+		get() = categories.any { it.isRevocationRelated }
+}
 

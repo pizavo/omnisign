@@ -422,7 +422,7 @@ private fun SettingsFooter(
 }
 
 /**
- * Signing defaults section: hash algorithm, encryption algorithm, and signature level.
+ * Signing defaults section: hash algorithm, encryption algorithm, and timestamp level checkboxes.
  */
 @Composable
 private fun SigningDefaultsSection(
@@ -455,19 +455,44 @@ private fun SigningDefaultsSection(
 		modifier = Modifier.fillMaxWidth(),
 	)
 	
-	Spacer(modifier = Modifier.height(8.dp))
+	Spacer(modifier = Modifier.height(12.dp))
+
+	Text(text = "Timestamp level", style = LumoTheme.typography.label1)
+	Spacer(modifier = Modifier.height(4.dp))
 	
-	DropdownSelector(
-		selected = state.defaultSignatureLevel,
-		options = SignatureLevel.entries.toList(),
-		onSelect = { value ->
-			onFieldChange { it.copy(defaultSignatureLevel = value ?: SignatureLevel.PADES_BASELINE_B) }
-		},
-		label = { Text(text = "Signature level") },
-		showNullOption = false,
-		itemLabel = { it.name.replace("_", " ") },
-		modifier = Modifier.fillMaxWidth(),
-	)
+	Row(
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.spacedBy(8.dp),
+	) {
+		Checkbox(
+			checked = state.addSignatureTimestamp,
+			onCheckedChange = { checked ->
+				onFieldChange { it.copy(addSignatureTimestamp = checked) }
+			},
+			enabled = !state.addArchivalTimestamp,
+		)
+		Text(text = "Signature timestamp", style = LumoTheme.typography.body2)
+		InfoTooltip(text = "Produces PAdES BASELINE B-LT")
+	}
+
+	Spacer(modifier = Modifier.height(4.dp))
+
+	Row(
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.spacedBy(8.dp),
+	) {
+		Checkbox(
+			checked = state.addArchivalTimestamp,
+			onCheckedChange = { checked ->
+				onFieldChange {
+					if (checked) it.copy(addArchivalTimestamp = true, addSignatureTimestamp = true)
+					else it.copy(addArchivalTimestamp = false)
+				}
+			},
+		)
+		Text(text = "Archival timestamp", style = LumoTheme.typography.body2)
+		InfoTooltip(text = "Produces PAdES BASELINE B-LTA")
+	}
 }
 
 /**

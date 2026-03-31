@@ -108,6 +108,7 @@ fun ProfilesPanel(
                     hasChanges = hasEditChanges,
                     globalDisabledHashAlgorithms = state.globalDisabledHashAlgorithms,
                     globalDisabledEncryptionAlgorithms = state.globalDisabledEncryptionAlgorithms,
+                    globalAddArchivalTimestamp = state.globalAddArchivalTimestamp,
                 )
             }
         }

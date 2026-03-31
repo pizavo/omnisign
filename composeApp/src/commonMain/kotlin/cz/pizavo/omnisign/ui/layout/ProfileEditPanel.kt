@@ -23,7 +23,6 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
-import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Button
 import cz.pizavo.omnisign.lumo.components.ButtonVariant
@@ -34,6 +33,11 @@ import cz.pizavo.omnisign.lumo.components.IconButton
 import cz.pizavo.omnisign.lumo.components.IconButtonVariant
 import cz.pizavo.omnisign.lumo.components.Switch
 import cz.pizavo.omnisign.lumo.components.Text
+import cz.pizavo.omnisign.lumo.components.Tooltip
+import cz.pizavo.omnisign.lumo.components.TooltipBox
+import cz.pizavo.omnisign.lumo.components.TriStateToggle
+import cz.pizavo.omnisign.lumo.components.TriToggleState
+import cz.pizavo.omnisign.lumo.components.rememberTooltipState
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.ProfileEditState
 import omnisign.composeapp.generated.resources.Res
@@ -47,7 +51,7 @@ import org.jetbrains.compose.resources.painterResource
  * The form is organized into sections separated by dividers:
  * 1. Profile name (read-only header)
  * 2. Description text field
- * 3. Algorithm & level selectors (dropdowns)
+ * 3. Algorithm selectors (dropdowns) and timestamp level overrides (tri-state toggles)
  * 4. Timestamp server toggle and fields
  * 5. Disabled algorithm chip selectors
  * 6. Save button
@@ -61,6 +65,9 @@ import org.jetbrains.compose.resources.painterResource
  *   disabled in the chip toggles.
  * @param globalDisabledEncryptionAlgorithms Encryption algorithms disabled at the global level.
  *   Same behavior as [globalDisabledHashAlgorithms].
+ * @param globalAddArchivalTimestamp Whether the global config includes an archival timestamp (B-LTA).
+ *   When `true` and the profile's archival toggle is INHERIT, the signature timestamp
+ *   toggle is forced to `ENABLED` and disabled.
  */
 @Composable
 fun ProfileEditPanel(
@@ -70,6 +77,7 @@ fun ProfileEditPanel(
     hasChanges: Boolean = true,
     globalDisabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
     globalDisabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet(),
+    globalAddArchivalTimestamp: Boolean = false,
 ) {
     if (state.error != null) {
         Text(
@@ -97,6 +105,7 @@ fun ProfileEditPanel(
         onFieldChange = onFieldChange,
         globalDisabledHashAlgorithms = globalDisabledHashAlgorithms,
         globalDisabledEncryptionAlgorithms = globalDisabledEncryptionAlgorithms,
+        globalAddArchivalTimestamp = globalAddArchivalTimestamp,
     )
 
     SectionDivider()
@@ -174,10 +183,15 @@ private fun DescriptionSection(
 }
 
 /**
- * Hash algorithm, encryption algorithm, and signature level dropdown selectors.
+ * Hash algorithm, encryption algorithm selectors, and timestamp level overrides.
  *
  * Algorithms that are disabled at the global level are shown as greyed-out
- * in the dropdown and cannot be selected.
+ * in the dropdown and cannot be selected. Timestamp overrides use a tri-state
+ * toggle (Disable / Inherit / Enable).
+ *
+ * The signature timestamp toggle is forced to `ENABLED` and disabled whenever
+ * archival timestamps are effectively active — either because the profile
+ * explicitly sets archival to ENABLED, or because it inherits B-LTA from global.
  */
 @Composable
 private fun AlgorithmSection(
@@ -185,8 +199,13 @@ private fun AlgorithmSection(
     onFieldChange: ((ProfileEditState) -> ProfileEditState) -> Unit,
     globalDisabledHashAlgorithms: Set<HashAlgorithm>,
     globalDisabledEncryptionAlgorithms: Set<EncryptionAlgorithm>,
+    globalAddArchivalTimestamp: Boolean,
 ) {
-    Text(text = "Algorithms & Level", style = LumoTheme.typography.label1)
+    val archivalEffectivelyEnabled =
+        state.archivalTimestampOverride == TriToggleState.ENABLED ||
+                (state.archivalTimestampOverride == TriToggleState.INHERIT && globalAddArchivalTimestamp)
+
+    Text(text = "Algorithms & Timestamps", style = LumoTheme.typography.label1)
     Spacer(modifier = Modifier.height(8.dp))
 
     DropdownSelector(
@@ -211,16 +230,77 @@ private fun AlgorithmSection(
         modifier = Modifier.fillMaxWidth(),
     )
 
+    Spacer(modifier = Modifier.height(12.dp))
+
+    Text(text = "Timestamp level overrides", style = LumoTheme.typography.label1)
     Spacer(modifier = Modifier.height(8.dp))
 
-    DropdownSelector(
-        selected = state.signatureLevel,
-        options = SignatureLevel.entries.toList(),
-        onSelect = { value -> onFieldChange { it.copy(signatureLevel = value) } },
-        label = { Text(text = "Signature level") },
-        itemLabel = { it.name.replace("_", " ") },
+    Row(
         modifier = Modifier.fillMaxWidth(),
-    )
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(text = "Signature timestamp", style = LumoTheme.typography.body2)
+            InfoTooltip(text = "Produces PAdES BASELINE B-LT")
+        }
+        if (archivalEffectivelyEnabled) {
+            val reason = if (state.archivalTimestampOverride == TriToggleState.ENABLED) {
+                "Required by this profile's archival timestamp (B-LTA)"
+            } else {
+                "Required by global archival timestamp setting (B-LTA)"
+            }
+            TooltipBox(
+                tooltip = { Tooltip { Text(text = reason) } },
+                state = rememberTooltipState(),
+            ) {
+                TriStateToggle(
+                    state = TriToggleState.ENABLED,
+                    onStateChange = {},
+                    enabled = false,
+                )
+            }
+        } else {
+            TriStateToggle(
+                state = state.signatureTimestampOverride,
+                onStateChange = { value -> onFieldChange { it.copy(signatureTimestampOverride = value) } },
+            )
+        }
+    }
+
+    Spacer(modifier = Modifier.height(8.dp))
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(text = "Archival timestamp", style = LumoTheme.typography.body2)
+            InfoTooltip(text = "Produces PAdES BASELINE B-LTA")
+        }
+        TriStateToggle(
+            state = state.archivalTimestampOverride,
+            onStateChange = { value ->
+                onFieldChange {
+                    if (value == TriToggleState.ENABLED) {
+                        it.copy(
+                            archivalTimestampOverride = value,
+                            signatureTimestampOverride = TriToggleState.ENABLED,
+                        )
+                    } else {
+                        it.copy(archivalTimestampOverride = value)
+                    }
+                }
+            },
+        )
+    }
 }
 
 /**
@@ -428,11 +508,3 @@ private fun SectionDivider() {
     HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
     Spacer(modifier = Modifier.height(4.dp))
 }
-
-
-
-
-
-
-
-

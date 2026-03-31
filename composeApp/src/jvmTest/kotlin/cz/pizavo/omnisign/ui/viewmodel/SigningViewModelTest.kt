@@ -205,6 +205,148 @@ class SigningViewModelTest : FunSpec({
 	test("buildSuggestedOutputPath handles no extension") {
 		SigningViewModel.buildSuggestedOutputPath("/tmp/doc", "-signed") shouldBe "/tmp/doc-signed"
 	}
+
+	test("open derives addSignatureTimestamp from config level B-LT") {
+		runTest(testDispatcher) {
+			val ltConfig = AppConfig(
+				global = GlobalConfig(
+					defaultSignatureLevel = cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel.PADES_BASELINE_LT,
+				),
+			)
+			coEvery { configRepository.getCurrentConfig() } returns ltConfig
+			coEvery { signingRepository.listAvailableCertificates() } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			vm.open("/tmp/test.pdf")
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
+			state.addSignatureTimestamp shouldBe true
+			state.addArchivalTimestamp shouldBe false
+		}
+	}
+
+	test("sign transitions to RevocationWarning when revocation warnings present at B-LT") {
+		runTest(testDispatcher) {
+			val ltConfig = AppConfig(
+				global = GlobalConfig(
+					defaultSignatureLevel = cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel.PADES_BASELINE_LT,
+				),
+			)
+			coEvery { configRepository.getCurrentConfig() } returns ltConfig
+			coEvery { signingRepository.listAvailableCertificates() } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { signingRepository.signDocument(any()) } returns
+					SigningResult(
+						outputFile = "/tmp/test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-LT",
+						warnings = listOf("Revocation data missing"),
+						hasRevocationWarnings = true,
+					).right()
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			vm.open("/tmp/test.pdf")
+			advanceUntilIdle()
+			vm.sign()
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.RevocationWarning>()
+			state.warnings shouldHaveSize 1
+			state.outputFile shouldBe "/tmp/test-signed.pdf"
+		}
+	}
+
+	test("sign transitions to Success when revocation warnings present at B-B") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates() } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { signingRepository.signDocument(any()) } returns
+					SigningResult(
+						outputFile = "/tmp/test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-B",
+						warnings = listOf("Revocation data missing"),
+						hasRevocationWarnings = true,
+					).right()
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			vm.open("/tmp/test.pdf")
+			advanceUntilIdle()
+
+			vm.updateState { it.copy(addSignatureTimestamp = false, addArchivalTimestamp = false) }
+			vm.sign()
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
+		}
+	}
+
+	test("acceptRevocationWarning transitions to Success") {
+		runTest(testDispatcher) {
+			val ltConfig = AppConfig(
+				global = GlobalConfig(
+					defaultSignatureLevel = cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel.PADES_BASELINE_LT,
+				),
+			)
+			coEvery { configRepository.getCurrentConfig() } returns ltConfig
+			coEvery { signingRepository.listAvailableCertificates() } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { signingRepository.signDocument(any()) } returns
+					SigningResult(
+						outputFile = "/tmp/test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-LT",
+						warnings = listOf("Revocation data missing"),
+						hasRevocationWarnings = true,
+					).right()
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			vm.open("/tmp/test.pdf")
+			advanceUntilIdle()
+			vm.sign()
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<SigningDialogState.RevocationWarning>()
+			vm.acceptRevocationWarning()
+
+			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
+			state.outputFile shouldBe "/tmp/test-signed.pdf"
+		}
+	}
+
+	test("abortAfterRevocationWarning restores Ready state") {
+		runTest(testDispatcher) {
+			val ltConfig = AppConfig(
+				global = GlobalConfig(
+					defaultSignatureLevel = cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel.PADES_BASELINE_LT,
+				),
+			)
+			coEvery { configRepository.getCurrentConfig() } returns ltConfig
+			coEvery { signingRepository.listAvailableCertificates() } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { signingRepository.signDocument(any()) } returns
+					SigningResult(
+						outputFile = "/tmp/test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-LT",
+						warnings = listOf("Revocation data missing"),
+						hasRevocationWarnings = true,
+					).right()
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			vm.open("/tmp/test.pdf")
+			advanceUntilIdle()
+			vm.sign()
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<SigningDialogState.RevocationWarning>()
+			vm.abortAfterRevocationWarning()
+
+			vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
+		}
+	}
 })
 
 

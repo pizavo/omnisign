@@ -146,6 +146,7 @@ class DssSigningRepository(
 					signatureLevel = effectiveLevel.name,
 					warnings = sanitized.summaries,
 					rawWarnings = sanitized.raw,
+					hasRevocationWarnings = sanitized.hasRevocationWarnings,
 				).right()
 			} finally {
 				logCapture.stop()
@@ -358,10 +359,10 @@ class DssSigningRepository(
 	 *
 	 * | Level    | Budget  | Contains                                          |
 	 * |----------|---------|---------------------------------------------------|
-	 * | B-B      | 13 KB   | signature + cert chain                            |
+	 * | B-B      | 13 KB   | signature and cert chain                          |
 	 * | B-T      | 22 KB   | + document timestamp (~5–8 KB)                    |
 	 * | B-LT     | 37 KB   | + CRL/OCSP revocation data (~10–15 KB)            |
-	 * | B-LTA    | 65 KB   | + archive timestamp + extra revocation (~15 KB)   |
+	 * | B-LTA    | 65 KB   | + archive timestamp and extra revocation (~15 KB) |
 	 */
 	private fun contentSizeForLevel(level: DssSignatureLevel): Int = when (level) {
 		DssSignatureLevel.PAdES_BASELINE_B -> 13_312

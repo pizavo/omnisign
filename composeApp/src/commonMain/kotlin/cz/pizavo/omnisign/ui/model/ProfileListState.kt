@@ -18,6 +18,9 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
  *   used to grey-out unavailable options in profile algorithm selectors.
  * @property globalDisabledEncryptionAlgorithms Encryption algorithms disabled at the global level,
  *   used to grey-out unavailable options in profile algorithm selectors.
+ * @property globalAddArchivalTimestamp Whether the global config includes an archival timestamp (B-LTA).
+ *   When `true` and a profile's archival toggle is set to INHERIT, the signature timestamp
+ *   toggle is forced to `ENABLED` and disabled.
  */
 data class ProfileListState(
     val profiles: List<ProfileConfig> = emptyList(),
@@ -29,5 +32,6 @@ data class ProfileListState(
     val editState: ProfileEditState? = null,
     val globalDisabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
     val globalDisabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet(),
+    val globalAddArchivalTimestamp: Boolean = false,
 )
 
