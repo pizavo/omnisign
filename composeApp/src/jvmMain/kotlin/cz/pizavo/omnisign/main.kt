@@ -5,6 +5,8 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
@@ -18,6 +20,7 @@ import com.jetbrains.JBR
 import com.jetbrains.WindowDecorations
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
+import cz.pizavo.omnisign.platform.PasswordCallback
 import cz.pizavo.omnisign.ui.platform.*
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.koin.core.context.startKoin
@@ -95,6 +98,9 @@ fun main() {
 			modules(
 				appModule,
 				jvmRepositoryModule,
+				org.koin.dsl.module {
+					single<PasswordCallback> { ComposePasswordCallback() }
+				},
 			)
 		}
 
@@ -238,6 +244,23 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 			},
 		) {
 			App()
+			
+			val passwordCallback = remember {
+				org.koin.mp.KoinPlatform.getKoinOrNull()
+					?.getOrNull<PasswordCallback>() as? ComposePasswordCallback
+			}
+			val passwordRequest by (passwordCallback?.request
+				?: remember { kotlinx.coroutines.flow.MutableStateFlow(null) }
+			).collectAsState()
+			
+			passwordRequest?.let { request ->
+				cz.pizavo.omnisign.ui.layout.PasswordDialog(
+					title = request.title,
+					prompt = request.prompt,
+					onConfirm = { passwordCallback?.complete(it) },
+					onCancel = { passwordCallback?.complete(null) },
+				)
+			}
 		}
 	}
 }

@@ -897,7 +897,7 @@ private fun Pkcs11AddRow(onAdd: (name: String, path: String) -> Unit) {
 /**
  * Password text field with a trailing visibility toggle icon.
  *
- * When [hasStoredPassword] is true and the field is empty, a placeholder indicates
+ * When [hasStoredPassword] is true and the field is empty, a dot placeholder indicates
  * that a password is already stored in the OS credential store. Entering a new
  * value will replace the stored password on save.
  *
@@ -912,13 +912,22 @@ private fun SettingsPasswordField(
 	hasStoredPassword: Boolean,
 ) {
 	var visible by remember { mutableStateOf(false) }
-	val placeholder = if (hasStoredPassword) "Password stored — enter to replace" else "Optional"
 	
 	UnderlinedTextField(
 		value = value,
 		onValueChange = onValueChange,
 		label = { Text(text = "Password") },
-		placeholder = { Text(text = placeholder) },
+		placeholder = {
+			Text(
+				text = if (hasStoredPassword) "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+				else "Optional",
+			)
+		},
+		supportingText = if (hasStoredPassword && value.isEmpty()) {
+			{ Text(text = "Password stored — enter a new value to replace") }
+		} else {
+			null
+		},
 		singleLine = true,
 		visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
 		keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),

@@ -8,20 +8,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.CredentialStore
-import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
-import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
-import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
-import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
+import cz.pizavo.omnisign.domain.usecase.*
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.ui.model.*
 import cz.pizavo.omnisign.ui.platform.exportTextToFile
 import cz.pizavo.omnisign.ui.platform.loadPdfFromPlatformFile
-import cz.pizavo.omnisign.ui.viewmodel.PdfViewerViewModel
-import cz.pizavo.omnisign.ui.viewmodel.ProfileViewModel
-import cz.pizavo.omnisign.ui.viewmodel.SettingsViewModel
-import cz.pizavo.omnisign.ui.viewmodel.SignatureViewModel
-import cz.pizavo.omnisign.ui.viewmodel.TrustedCertsViewModel
+import cz.pizavo.omnisign.ui.viewmodel.*
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -103,6 +96,31 @@ fun IslandLayout(
 	}).collectAsState()
 	var showSettingsDialog by remember { mutableStateOf(false) }
 	
+	val signingViewModel: SigningViewModel? = remember {
+		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
+		SigningViewModel(
+			koin.get<SignDocumentUseCase>(),
+			koin.get<ListCertificatesUseCase>(),
+			koin.get<ConfigRepository>(),
+		)
+	}
+	val signingState by (signingViewModel?.state ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow<SigningDialogState>(SigningDialogState.Idle)
+	}).collectAsState()
+	var showSigningDialog by remember { mutableStateOf(false) }
+	
+	val timestampViewModel: TimestampViewModel? = remember {
+		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
+		TimestampViewModel(
+			koin.get<ExtendDocumentUseCase>(),
+			koin.get<ConfigRepository>(),
+		)
+	}
+	val timestampState by (timestampViewModel?.state ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow<TimestampDialogState>(TimestampDialogState.Idle)
+	}).collectAsState()
+	var showTimestampDialog by remember { mutableStateOf(false) }
+	
 	val trustedCertsViewModel: TrustedCertsViewModel? = remember {
 		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
 		TrustedCertsViewModel(koin.get<GetConfigUseCase>())
@@ -141,8 +159,20 @@ fun IslandLayout(
 				settingsViewModel?.load()
 				showSettingsDialog = true
 			},
-			onSign = { },
-			onTimestamp = { },
+			onSign = {
+				val filePath = pdfState.document?.filePath
+				if (filePath != null) {
+					signingViewModel?.open(filePath)
+					showSigningDialog = true
+				}
+			},
+			onTimestamp = {
+				val filePath = pdfState.document?.filePath
+				if (filePath != null) {
+					timestampViewModel?.open(filePath)
+					showTimestampDialog = true
+				}
+			},
 			fileLoaded = pdfState.document != null,
 		)
 		
@@ -153,6 +183,42 @@ fun IslandLayout(
 				onFieldChange = { transform -> settingsViewModel?.updateState(transform) },
 				onSave = { settingsViewModel?.save(onSuccess = { showSettingsDialog = false }) },
 				onDismiss = { showSettingsDialog = false },
+			)
+		}
+		
+		if (showSigningDialog) {
+			SigningDialog(
+				state = signingState,
+				onFieldChange = { transform -> signingViewModel?.updateState(transform) },
+				onSign = { signingViewModel?.sign() },
+				onDismiss = {
+					if (signingState is SigningDialogState.Success) {
+						val outputFile = (signingState as SigningDialogState.Success).outputFile
+						scope.launch {
+							reloadDocument(outputFile, pdfViewModel, signatureViewModel)
+						}
+					}
+					signingViewModel?.dismiss()
+					showSigningDialog = false
+				},
+			)
+		}
+		
+		if (showTimestampDialog) {
+			TimestampDialog(
+				state = timestampState,
+				onFieldChange = { transform -> timestampViewModel?.updateState(transform) },
+				onExtend = { timestampViewModel?.extend() },
+				onDismiss = {
+					if (timestampState is TimestampDialogState.Success) {
+						val outputFile = (timestampState as TimestampDialogState.Success).outputFile
+						scope.launch {
+							reloadDocument(outputFile, pdfViewModel, signatureViewModel)
+						}
+					}
+					timestampViewModel?.dismiss()
+					showTimestampDialog = false
+				},
 			)
 		}
 		
@@ -350,3 +416,25 @@ private fun PanelPlaceholderContent(panel: SidePanel?) {
 		else -> {}
 	}
 }
+
+/**
+ * Reload a document from disk into the PDF viewer and refresh signature validation.
+ *
+ * Called after a successful signing or extension operation so the user sees the
+ * updated document immediately.
+ *
+ * @param filePath Absolute path to the output file to load.
+ * @param pdfViewModel Viewer ViewModel to update with the new document.
+ * @param signatureViewModel Signature panel ViewModel to re-validate the new document.
+ */
+private suspend fun reloadDocument(
+	filePath: String,
+	pdfViewModel: PdfViewerViewModel,
+	signatureViewModel: SignatureViewModel?,
+) {
+	val doc = cz.pizavo.omnisign.ui.platform.loadPdfFromPath(filePath) ?: return
+	pdfViewModel.onDocumentLoaded(doc)
+	signatureViewModel?.onDocumentChanged(filePath)
+}
+
+

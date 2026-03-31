@@ -118,7 +118,6 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
 				} else {
 					echo("❌ Extension Error: ${error.message}", err = true)
 					error.details?.let { echo("Details: $it", err = true) }
-					error.cause?.let { echo("Cause: ${it.message}", err = true) }
 				}
 				throw ProgramResult(1)
 			},
