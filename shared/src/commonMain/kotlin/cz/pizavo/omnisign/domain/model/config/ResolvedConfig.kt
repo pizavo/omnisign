@@ -83,14 +83,20 @@ data class ResolvedConfig(
 				?: global.defaultEncryptionAlgorithm
 
 			if (resolvedHash in disabledHash) {
+				val selectedIn = hashSource(operationOverrides, profile)
+				val disabledIn = hashDisabledLayers(resolvedHash, global, profile, operationOverrides)
 				return ConfigurationError.InvalidConfiguration(
-					message = "Hash algorithm ${resolvedHash.name} is disabled and cannot be used"
+					message = "Hash algorithm ${resolvedHash.name} is selected in $selectedIn" +
+							" but disabled in $disabledIn"
 				).left()
 			}
 
 			if (resolvedEncryption != null && resolvedEncryption in disabledEncryption) {
+				val selectedIn = encryptionSource(operationOverrides, profile)
+				val disabledIn = encryptionDisabledLayers(resolvedEncryption, global, profile, operationOverrides)
 				return ConfigurationError.InvalidConfiguration(
-					message = "Encryption algorithm ${resolvedEncryption.name} is disabled and cannot be used"
+					message = "Encryption algorithm ${resolvedEncryption.name} is selected in $selectedIn" +
+							" but disabled in $disabledIn"
 				).left()
 			}
 
@@ -142,7 +148,7 @@ data class ResolvedConfig(
 		 * the standard higher-priority-wins rule.  [ValidationConfig.customTrustedLists]
 		 * is the **union** of all three layers so that global, profile-scoped, and
 		 * per-operation TLs are all active simultaneously.  When two entries share the
-		 * same name the higher-priority layer's entry is kept.
+		 * same name, the higher-priority layer's entry is kept.
 		 *
 		 * [ValidationConfig.algorithmConstraints] is merged field-by-field: each nullable
 		 * severity field falls through operation → profile → global → [AlgorithmConstraintsConfig.DEFAULT].
@@ -186,6 +192,64 @@ data class ResolvedConfig(
 				)
 			)
 		}
+
+		private const val LAYER_GLOBAL = "global config"
+		private const val LAYER_PROFILE = "profile config"
+		private const val LAYER_OPERATION = "operation overrides"
+
+		/**
+		 * Identify the configuration layer that provided the resolved hash algorithm.
+		 */
+		private fun hashSource(
+			operation: OperationConfig?,
+			profile: ProfileConfig?
+		): String = when {
+			operation?.hashAlgorithm != null -> LAYER_OPERATION
+			profile?.hashAlgorithm != null -> LAYER_PROFILE
+			else -> LAYER_GLOBAL
+		}
+
+		/**
+		 * Identify the configuration layer that provided the resolved encryption algorithm.
+		 */
+		private fun encryptionSource(
+			operation: OperationConfig?,
+			profile: ProfileConfig?
+		): String = when {
+			operation?.encryptionAlgorithm != null -> LAYER_OPERATION
+			profile?.encryptionAlgorithm != null -> LAYER_PROFILE
+			else -> LAYER_GLOBAL
+		}
+
+		/**
+		 * List the configuration layers that contain [algorithm] in their disabled hash set,
+		 * joined with "and" for human-readable error messages.
+		 */
+		private fun hashDisabledLayers(
+			algorithm: HashAlgorithm,
+			global: GlobalConfig,
+			profile: ProfileConfig?,
+			operation: OperationConfig?
+		): String = buildList {
+			if (algorithm in global.disabledHashAlgorithms) add(LAYER_GLOBAL)
+			if (profile != null && algorithm in profile.disabledHashAlgorithms) add(LAYER_PROFILE)
+			if (operation != null && algorithm in operation.disabledHashAlgorithms) add(LAYER_OPERATION)
+		}.joinToString(" and ")
+
+		/**
+		 * List the configuration layers that contain [algorithm] in their disabled encryption set,
+		 * joined with "and" for human-readable error messages.
+		 */
+		private fun encryptionDisabledLayers(
+			algorithm: EncryptionAlgorithm,
+			global: GlobalConfig,
+			profile: ProfileConfig?,
+			operation: OperationConfig?
+		): String = buildList {
+			if (algorithm in global.disabledEncryptionAlgorithms) add(LAYER_GLOBAL)
+			if (profile != null && algorithm in profile.disabledEncryptionAlgorithms) add(LAYER_PROFILE)
+			if (operation != null && algorithm in operation.disabledEncryptionAlgorithms) add(LAYER_OPERATION)
+		}.joinToString(" and ")
 
 		/**
 		 * Merge [AlgorithmConstraintsConfig] layers in priority order: operation > profile > global.

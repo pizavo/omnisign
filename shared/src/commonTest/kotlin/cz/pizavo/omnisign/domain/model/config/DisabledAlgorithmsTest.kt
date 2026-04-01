@@ -97,6 +97,8 @@ class DisabledAlgorithmsTest : FunSpec({
 		)
 		err.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
 		err.message shouldContain "SHA256"
+		err.message shouldContain "selected in global config"
+		err.message shouldContain "disabled in global config"
 	}
 	
 	test("error when profile hash override is in global disabled set") {
@@ -106,6 +108,8 @@ class DisabledAlgorithmsTest : FunSpec({
 		)
 		err.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
 		err.message shouldContain "SHA384"
+		err.message shouldContain "selected in profile config"
+		err.message shouldContain "disabled in global config"
 	}
 	
 	test("error when operation hash override is in global disabled set") {
@@ -115,6 +119,8 @@ class DisabledAlgorithmsTest : FunSpec({
 		)
 		err.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
 		err.message shouldContain "WHIRLPOOL"
+		err.message shouldContain "selected in operation overrides"
+		err.message shouldContain "disabled in global config"
 	}
 	
 	test("error when operation hash override is in profile disabled set") {
@@ -125,6 +131,8 @@ class DisabledAlgorithmsTest : FunSpec({
 		)
 		err.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
 		err.message shouldContain "SHA512"
+		err.message shouldContain "selected in operation overrides"
+		err.message shouldContain "disabled in profile config"
 	}
 	
 	test("error when global default encryption is in global disabled set") {
@@ -133,6 +141,8 @@ class DisabledAlgorithmsTest : FunSpec({
 		)
 		err.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
 		err.message shouldContain "RSA"
+		err.message shouldContain "selected in global config"
+		err.message shouldContain "disabled in global config"
 	}
 	
 	test("error when profile encryption override is in global disabled set") {
@@ -142,6 +152,8 @@ class DisabledAlgorithmsTest : FunSpec({
 		)
 		err.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
 		err.message shouldContain "DSA"
+		err.message shouldContain "selected in profile config"
+		err.message shouldContain "disabled in global config"
 	}
 	
 	test("error when operation encryption override is in profile disabled set") {
@@ -152,9 +164,22 @@ class DisabledAlgorithmsTest : FunSpec({
 		)
 		err.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
 		err.message shouldContain "ECDSA"
+		err.message shouldContain "selected in operation overrides"
+		err.message shouldContain "disabled in profile config"
 	}
 	
-	test("disabled sets from all layers are unioned in resolved config") {
+	test("error message lists multiple disabling layers when algorithm disabled in both global and profile") {
+		val err = resolveErr(
+			global = global(disabledHash = setOf(HashAlgorithm.SHA384)),
+			profile = profile(hash = HashAlgorithm.SHA384, disabledHash = setOf(HashAlgorithm.SHA384))
+		)
+		err.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+		err.message shouldContain "selected in profile config"
+		err.message shouldContain "global config"
+		err.message shouldContain "profile config"
+	}
+	
+	test("disabled sets from all layers are union in resolved config") {
 		resolveOk(
 			global = global(disabledHash = setOf(HashAlgorithm.RIPEMD160)),
 			profile = profile(disabledHash = setOf(HashAlgorithm.WHIRLPOOL)),

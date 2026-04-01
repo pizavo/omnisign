@@ -22,6 +22,8 @@ import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.apache.pdfbox.Loader
+import org.apache.pdfbox.cos.COSName
 import java.io.File
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
@@ -178,24 +180,21 @@ class DssArchivingRepository(
 				).left()
 			}
 			
-			val document = FileDocument(file)
-			val validator = PDFDocumentValidator(document).apply {
-				setCertificateVerifier(CommonCertificateVerifier())
+			Loader.loadPDF(file).use { pdf ->
+				val hasDocumentTimestamp = pdf.signatureDictionaries.any { sig ->
+					sig.subFilter == PADES_TIMESTAMP_SUBFILTER
+				}
+				
+				val hasDssDictionary = pdf.documentCatalog
+					.cosObject.containsKey(COSName.getPDFName(DSS_DICTIONARY_KEY))
+				
+				val containsLtData = hasDocumentTimestamp || hasDssDictionary
+				
+				DocumentTimestampInfo(
+					hasDocumentTimestamp = hasDocumentTimestamp,
+					containsLtData = containsLtData,
+				).right()
 			}
-			val diagnosticData = validator.validateDocument().diagnosticData
-			
-			val hasDocumentTimestamp = diagnosticData.getTimestampList().any { ts ->
-				ts.type != eu.europa.esig.dss.enumerations.TimestampType.SIGNATURE_TIMESTAMP
-			}
-			
-			val containsLtData = hasDocumentTimestamp || diagnosticData.signatures.any { sig ->
-				sig.signatureFormat?.toString()?.contains("LT") == true
-			}
-			
-			DocumentTimestampInfo(
-				hasDocumentTimestamp = hasDocumentTimestamp,
-				containsLtData = containsLtData,
-			).right()
 		} catch (e: Exception) {
 			ArchivingError.ExtensionFailed(
 				message = "Failed to inspect document timestamp state",
@@ -224,6 +223,19 @@ class DssArchivingRepository(
 			setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 			setTspSource(dssServiceFactory.buildTspSource(tsConfig))
 		}
+	}
+	
+	companion object {
+		/**
+		 * PDF SubFilter value identifying a PAdES document timestamp (RFC 3161).
+		 */
+		private const val PADES_TIMESTAMP_SUBFILTER = "ETSI.RFC3161"
+		
+		/**
+		 * PDF catalog key for the DSS dictionary that carries CRL/OCSP revocation data
+		 * in PAdES-BASELINE-LT and higher.
+		 */
+		private const val DSS_DICTIONARY_KEY = "DSS"
 	}
 }
 
