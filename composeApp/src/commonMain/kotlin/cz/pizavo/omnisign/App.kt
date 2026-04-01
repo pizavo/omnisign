@@ -15,6 +15,8 @@ import androidx.compose.ui.tooling.preview.Preview
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.ui.layout.IslandLayout
 import cz.pizavo.omnisign.ui.platform.LocalTitleBarDarkControls
+import cz.pizavo.omnisign.ui.platform.loadThemePreference
+import cz.pizavo.omnisign.ui.platform.saveThemePreference
 
 /**
  * Root composable for the OmniSign application.
@@ -22,12 +24,16 @@ import cz.pizavo.omnisign.ui.platform.LocalTitleBarDarkControls
  * Wraps the entire UI in [LumoTheme] and renders the IntelliJ "Island"-inspired
  * desktop shell via [IslandLayout]. The dark/light theme toggle state is owned
  * here and threaded down to the layout and theme provider.
+ *
+ * On first launch the theme follows the OS preference. Once the user explicitly
+ * toggles it the choice is persisted via [saveThemePreference] and restored on
+ * subsequent launches via [loadThemePreference].
  */
 @Composable
 @Preview
 fun App() {
     val systemDark = isSystemInDarkTheme()
-    var isDarkTheme by remember { mutableStateOf(systemDark) }
+    var isDarkTheme by remember { mutableStateOf(loadThemePreference() ?: systemDark) }
 
     val updateDarkControls = LocalTitleBarDarkControls.current
     SideEffect { updateDarkControls?.invoke(isDarkTheme) }
@@ -35,7 +41,10 @@ fun App() {
     LumoTheme(isDarkTheme = isDarkTheme) {
         IslandLayout(
             isDarkTheme = isDarkTheme,
-            onToggleTheme = { isDarkTheme = !isDarkTheme },
+            onToggleTheme = {
+                isDarkTheme = !isDarkTheme
+                saveThemePreference(isDarkTheme)
+            },
             modifier = Modifier
                 .fillMaxSize()
                 .background(LumoTheme.colors.background)

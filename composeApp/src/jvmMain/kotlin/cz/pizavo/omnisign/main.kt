@@ -5,15 +5,22 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.positionInWindow
+import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Window
+import androidx.compose.ui.window.WindowPlacement
+import androidx.compose.ui.window.WindowPosition
 import androidx.compose.ui.window.application
 import androidx.compose.ui.window.rememberWindowState
 import com.jetbrains.JBR
@@ -157,10 +164,37 @@ private val TitleBarClientAreaListener = object : MouseAdapter() {}
  */
 @Composable
 private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
-	val windowState = rememberWindowState()
+	val persisted = remember { WindowStateStore.load() }
+	val windowState = rememberWindowState(
+		placement = persisted?.placement ?: WindowPlacement.Floating,
+		position = persisted?.let { WindowPosition.Absolute(it.x.dp, it.y.dp) }
+			?: WindowPosition.PlatformDefault,
+		size = persisted?.let { DpSize(it.width.dp, it.height.dp) }
+			?: DpSize(800.dp, 600.dp),
+	)
+	
+	var lastFloatingSize by remember { mutableStateOf(windowState.size) }
+	var lastFloatingPosition by remember { mutableStateOf(windowState.position) }
+	
+	LaunchedEffect(Unit) {
+		snapshotFlow { Triple(windowState.placement, windowState.size, windowState.position) }
+			.collect { (placement, size, position) ->
+				if (placement == WindowPlacement.Floating) {
+					lastFloatingSize = size
+					lastFloatingPosition = position
+				}
+			}
+	}
 	
 	Window(
-		onCloseRequest = onCloseRequest,
+		onCloseRequest = {
+			WindowStateStore.save(
+				placement = windowState.placement,
+				size = lastFloatingSize,
+				position = lastFloatingPosition,
+			)
+			onCloseRequest()
+		},
 		undecorated = false,
 		transparent = false,
 		resizable = true,
