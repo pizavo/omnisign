@@ -1,6 +1,11 @@
 package cz.pizavo.omnisign.ui.layout
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -9,6 +14,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -17,6 +23,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -41,6 +49,7 @@ import cz.pizavo.omnisign.lumo.components.rememberTooltipState
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.ProfileEditState
 import omnisign.composeapp.generated.resources.Res
+import omnisign.composeapp.generated.resources.icon_chevron_down
 import omnisign.composeapp.generated.resources.icon_eye
 import omnisign.composeapp.generated.resources.icon_eye_off
 import org.jetbrains.compose.resources.painterResource
@@ -68,6 +77,7 @@ import org.jetbrains.compose.resources.painterResource
  * @param globalAddArchivalTimestamp Whether the global config includes an archival timestamp (B-LTA).
  *   When `true` and the profile's archival toggle is INHERIT, the signature timestamp
  *   toggle is forced to `ENABLED` and disabled.
+ * @param onBuildTl Called when the user clicks "Build Custom TL", or `null` when unavailable.
  */
 @Composable
 fun ProfileEditPanel(
@@ -78,6 +88,7 @@ fun ProfileEditPanel(
     globalDisabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
     globalDisabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet(),
     globalAddArchivalTimestamp: Boolean = false,
+    onBuildTl: (() -> Unit)? = null,
 ) {
     if (state.error != null) {
         Text(
@@ -123,31 +134,94 @@ fun ProfileEditPanel(
 
     SectionDivider()
 
-    Text(text = "Trusted Certificates", style = LumoTheme.typography.label1)
-    Spacer(modifier = Modifier.height(4.dp))
-    Text(
-        text = "Certificates added here apply only to this profile, in addition to global ones.",
-        style = LumoTheme.typography.body2,
-        color = LumoTheme.colors.textSecondary,
-    )
-    Spacer(modifier = Modifier.height(8.dp))
+    var certsExpanded by remember { mutableStateOf(false) }
 
-    TrustedCertificatesSection(
-        certificates = state.trustedCertificates,
-        onAdd = { cert ->
-            onFieldChange {
-                it.copy(trustedCertificates = it.trustedCertificates.filter { c -> c.name != cert.name } + cert)
-            }
-        },
-        onRemove = { index ->
-            onFieldChange {
-                it.copy(trustedCertificates = it.trustedCertificates.toMutableList().apply { removeAt(index) })
-            }
-        },
-        addError = state.certAddError,
-        onClearError = { onFieldChange { it.copy(certAddError = null) } },
-        onError = { message -> onFieldChange { it.copy(certAddError = message) } },
+    CollapsibleSectionHeader(
+        title = "Trusted Certificates",
+        count = state.trustedCertificates.size,
+        expanded = certsExpanded,
+        onToggle = { certsExpanded = !certsExpanded },
     )
+
+    AnimatedVisibility(
+        visible = certsExpanded,
+        enter = expandVertically(),
+        exit = shrinkVertically(),
+    ) {
+        Column {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Certificates added here apply only to this profile, in addition to global ones.",
+                style = LumoTheme.typography.body2,
+                color = LumoTheme.colors.textSecondary,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            TrustedCertificatesSection(
+                certificates = state.trustedCertificates,
+                onAdd = { cert ->
+                    onFieldChange {
+                        it.copy(trustedCertificates = it.trustedCertificates.filter { c -> c.name != cert.name } + cert)
+                    }
+                },
+                onRemove = { index ->
+                    onFieldChange {
+                        it.copy(trustedCertificates = it.trustedCertificates.toMutableList().apply { removeAt(index) })
+                    }
+                },
+                addError = state.certAddError,
+                onClearError = { onFieldChange { it.copy(certAddError = null) } },
+                onError = { message -> onFieldChange { it.copy(certAddError = message) } },
+            )
+        }
+    }
+
+    SectionDivider()
+
+    var tlsExpanded by remember { mutableStateOf(false) }
+
+    CollapsibleSectionHeader(
+        title = "Trusted Lists",
+        count = state.customTrustedLists.size,
+        expanded = tlsExpanded,
+        onToggle = { tlsExpanded = !tlsExpanded },
+    )
+
+    AnimatedVisibility(
+        visible = tlsExpanded,
+        enter = expandVertically(),
+        exit = shrinkVertically(),
+    ) {
+        Column {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Custom ETSI Trusted List sources added here apply only to this profile, in addition to global ones.",
+                style = LumoTheme.typography.body2,
+                color = LumoTheme.colors.textSecondary,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            CustomTrustedListsSection(
+                trustedLists = state.customTrustedLists,
+                onAdd = { tl ->
+                    onFieldChange {
+                        it.copy(
+                            customTrustedLists = it.customTrustedLists.filter { existing -> existing.name != tl.name } + tl
+                        )
+                    }
+                },
+                onRemove = { index ->
+                    onFieldChange {
+                        it.copy(customTrustedLists = it.customTrustedLists.toMutableList().apply { removeAt(index) })
+                    }
+                },
+                addError = state.tlAddError,
+                onClearError = { onFieldChange { it.copy(tlAddError = null) } },
+                onError = { message -> onFieldChange { it.copy(tlAddError = message) } },
+                onBuild = onBuildTl,
+            )
+        }
+    }
 
     Spacer(modifier = Modifier.height(16.dp))
 
@@ -497,6 +571,52 @@ private fun PasswordField(
             }
         },
     )
+}
+
+/**
+ * Clickable header row for a collapsible section in the profile edit form.
+ *
+ * Renders a chevron indicator that rotates between pointing right (collapsed)
+ * and pointing down (expanded), followed by the section title and an item count badge.
+ *
+ * @param title Section heading text.
+ * @param count Number of items currently in the section.
+ * @param expanded Whether the section content is currently visible.
+ * @param onToggle Callback invoked when the header is clicked.
+ */
+@Composable
+private fun CollapsibleSectionHeader(
+    title: String,
+    count: Int,
+    expanded: Boolean,
+    onToggle: () -> Unit,
+) {
+    val chevronRotation = if (expanded) 0f else -90f
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(6.dp))
+            .clickable(onClick = onToggle)
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+    ) {
+        Icon(
+            painter = painterResource(Res.drawable.icon_chevron_down),
+            contentDescription = if (expanded) "Collapse" else "Expand",
+            modifier = Modifier
+                .size(14.dp)
+                .graphicsLayer(rotationZ = chevronRotation),
+            tint = LumoTheme.colors.textSecondary,
+        )
+        Text(text = title, style = LumoTheme.typography.label1)
+        Text(
+            text = "($count)",
+            style = LumoTheme.typography.body2,
+            color = LumoTheme.colors.textSecondary,
+        )
+    }
 }
 
 /**

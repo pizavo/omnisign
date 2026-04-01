@@ -49,6 +49,7 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
  * @property saving Whether a save operation is currently in progress.
  * @property error Human-readable error message from the last failed operation, or `null`.
  * @property certAddError Human-readable error from the last failed trusted certificate add attempt, or `null`.
+ * @property tlAddError Human-readable error from the last failed trusted list add attempt, or `null`.
  */
 data class GlobalConfigEditState(
 	val defaultHashAlgorithm: HashAlgorithm = HashAlgorithm.SHA256,
@@ -77,6 +78,7 @@ data class GlobalConfigEditState(
 	val saving: Boolean = false,
 	val error: String? = null,
 	val certAddError: String? = null,
+	val tlAddError: String? = null,
 ) {
 
 	/**
@@ -95,7 +97,7 @@ data class GlobalConfigEditState(
 
 	/**
 	 * Compare only the persistable content fields of two states, ignoring
-	 * transient UI properties like [saving], [error], and [certAddError].
+	 * transient UI properties like [saving], [error], [certAddError], and [tlAddError].
 	 */
 	fun contentEquals(other: GlobalConfigEditState): Boolean =
 		defaultHashAlgorithm == other.defaultHashAlgorithm &&

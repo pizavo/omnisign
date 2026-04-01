@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.*
@@ -130,6 +131,15 @@ fun IslandLayout(
 		kotlinx.coroutines.flow.MutableStateFlow(TrustedCertsPanelState())
 	}).collectAsState()
 	
+	val tlBuilderViewModel: TlBuilderViewModel? = remember {
+		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
+		TlBuilderViewModel(koin.getOrNull<TrustedListCompilerPort>())
+	}
+	val tlBuilderState by (tlBuilderViewModel?.state ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow<TlBuilderDialogState>(TlBuilderDialogState.Idle)
+	}).collectAsState()
+	var showTlBuilderDialog by remember { mutableStateOf(false) }
+	
 	val filePickerLauncher = rememberFilePickerLauncher(
 		type = FileKitType.File(extensions = listOf("pdf")),
 	) { platformFile: PlatformFile? ->
@@ -185,6 +195,12 @@ fun IslandLayout(
 				onFieldChange = { transform -> settingsViewModel?.updateState(transform) },
 				onSave = { settingsViewModel?.save(onSuccess = { showSettingsDialog = false }) },
 				onDismiss = { showSettingsDialog = false },
+				onBuildTl = tlBuilderViewModel?.let {
+					{
+						it.open()
+						showTlBuilderDialog = true
+					}
+				},
 			)
 		}
 		
@@ -224,6 +240,31 @@ fun IslandLayout(
 					}
 					timestampViewModel?.dismiss()
 					showTimestampDialog = false
+				},
+			)
+		}
+		
+		if (showTlBuilderDialog) {
+			TlBuilderDialog(
+				state = tlBuilderState,
+				onFieldChange = { transform -> tlBuilderViewModel?.updateState(transform) },
+				onAddTsp = { tlBuilderViewModel?.addTsp() },
+				onRemoveTsp = { index -> tlBuilderViewModel?.removeTsp(index) },
+				onAddService = { tspIndex -> tlBuilderViewModel?.addService(tspIndex) },
+				onRemoveService = { tspIndex, svcIndex -> tlBuilderViewModel?.removeService(tspIndex, svcIndex) },
+				onCompile = { tlBuilderViewModel?.compile() },
+				onDismiss = {
+					val successState = tlBuilderState as? TlBuilderDialogState.Success
+					val tlConfig = successState?.tlConfig
+					if (tlConfig != null) {
+						settingsViewModel?.updateState { state ->
+							state.copy(
+								customTrustedLists = state.customTrustedLists.filter { it.name != tlConfig.name } + tlConfig
+							)
+						}
+					}
+					tlBuilderViewModel?.dismiss()
+					showTlBuilderDialog = false
 				},
 			)
 		}
@@ -371,6 +412,12 @@ fun IslandLayout(
 							onFieldChange = { transform -> profileViewModel?.updateEditState(transform) },
 							onSaveEdit = { profileViewModel?.saveEdit() },
 							hasEditChanges = profileHasEditChanges,
+							onBuildTl = tlBuilderViewModel?.let {
+								{
+									it.open()
+									showTlBuilderDialog = true
+								}
+							},
 						)
 						
 						SidePanel.TrustedCerts -> TrustedCertsPanel(state = trustedCertsState)

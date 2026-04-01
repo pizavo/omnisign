@@ -83,6 +83,13 @@ enum class SettingsCategory(
         parent = Validation,
     ),
 
+    /** Custom external ETSI Trusted List sources. */
+    CustomTrustedLists(
+        label = "Trusted Lists",
+        description = "Register external ETSI TS 119612 Trusted List XML sources. Each entry may be an HTTPS URL or a local file path. An optional signing certificate verifies the TL's XML signature — strongly recommended for non-EU lists.",
+        parent = Validation,
+    ),
+
     /** Top-level group for token/hardware configuration. */
     Tokens(
         label = "Tokens",

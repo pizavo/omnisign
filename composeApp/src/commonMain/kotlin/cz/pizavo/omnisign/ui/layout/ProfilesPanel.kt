@@ -72,6 +72,7 @@ private val RowButtonPadding = PaddingValues(2.dp)
  * @param onFieldChange Called with a transform to update a single field in the edit form.
  * @param onSaveEdit Called when the user clicks Save in the edit form.
  * @param hasEditChanges Whether any persistable field in the edit form differs from the originally loaded state.
+ * @param onBuildTl Called when the user clicks "Build Custom TL", or `null` when unavailable.
  */
 @Composable
 fun ProfilesPanel(
@@ -86,6 +87,7 @@ fun ProfilesPanel(
     onFieldChange: ((ProfileEditState) -> ProfileEditState) -> Unit,
     onSaveEdit: () -> Unit,
     hasEditChanges: Boolean = true,
+    onBuildTl: (() -> Unit)? = null,
 ) {
     when (state.mode) {
         is ProfilePanelMode.Listing -> ProfileListContent(
@@ -109,6 +111,7 @@ fun ProfilesPanel(
                     globalDisabledHashAlgorithms = state.globalDisabledHashAlgorithms,
                     globalDisabledEncryptionAlgorithms = state.globalDisabledEncryptionAlgorithms,
                     globalAddArchivalTimestamp = state.globalAddArchivalTimestamp,
+                    onBuildTl = onBuildTl,
                 )
             }
         }

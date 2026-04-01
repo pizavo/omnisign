@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.ui.model
 
+import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
@@ -30,9 +31,11 @@ import cz.pizavo.omnisign.lumo.components.TriToggleState
  * @property disabledHashAlgorithms Hash algorithms disabled by this profile.
  * @property disabledEncryptionAlgorithms Encryption algorithms disabled by this profile.
  * @property trustedCertificates Directly trusted certificates scoped to this profile.
+ * @property customTrustedLists Custom trusted list sources scoped to this profile.
  * @property saving Whether a save operation is currently in progress.
  * @property error Human-readable error message from the last failed operation, or `null`.
  * @property certAddError Human-readable error from the last failed trusted certificate add attempt, or `null`.
+ * @property tlAddError Human-readable error from the last failed trusted list add attempt, or `null`.
  */
 data class ProfileEditState(
 	val profileName: String,
@@ -50,9 +53,11 @@ data class ProfileEditState(
 	val disabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
 	val disabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet(),
 	val trustedCertificates: List<TrustedCertificateConfig> = emptyList(),
+	val customTrustedLists: List<CustomTrustedListConfig> = emptyList(),
 	val saving: Boolean = false,
 	val error: String? = null,
 	val certAddError: String? = null,
+	val tlAddError: String? = null,
 ) {
 
 	/**
@@ -79,7 +84,7 @@ data class ProfileEditState(
 
 	/**
 	 * Compare only the persistable content fields of two states, ignoring
-	 * transient UI properties like [saving], [error], and [certAddError].
+	 * transient UI properties like [saving], [error], [certAddError], and [tlAddError].
 	 */
 	fun contentEquals(other: ProfileEditState): Boolean =
 		profileName == other.profileName &&
@@ -96,7 +101,8 @@ data class ProfileEditState(
 				timestampTimeout == other.timestampTimeout &&
 				disabledHashAlgorithms == other.disabledHashAlgorithms &&
 				disabledEncryptionAlgorithms == other.disabledEncryptionAlgorithms &&
-				trustedCertificates == other.trustedCertificates
+				trustedCertificates == other.trustedCertificates &&
+				customTrustedLists == other.customTrustedLists
 
 	/**
 	 * Convert this UI state back into a persistable [ProfileConfig].
@@ -126,8 +132,11 @@ data class ProfileEditState(
 		},
 		disabledHashAlgorithms = disabledHashAlgorithms,
 		disabledEncryptionAlgorithms = disabledEncryptionAlgorithms,
-		validation = if (trustedCertificates.isNotEmpty()) {
-			ValidationConfig(trustedCertificates = trustedCertificates)
+		validation = if (trustedCertificates.isNotEmpty() || customTrustedLists.isNotEmpty()) {
+			ValidationConfig(
+				trustedCertificates = trustedCertificates,
+				customTrustedLists = customTrustedLists,
+			)
 		} else {
 			null
 		},
@@ -160,6 +169,7 @@ data class ProfileEditState(
 				disabledHashAlgorithms = profile.disabledHashAlgorithms,
 				disabledEncryptionAlgorithms = profile.disabledEncryptionAlgorithms,
 				trustedCertificates = profile.validation?.trustedCertificates.orEmpty(),
+				customTrustedLists = profile.validation?.customTrustedLists.orEmpty(),
 			)
 		}
 

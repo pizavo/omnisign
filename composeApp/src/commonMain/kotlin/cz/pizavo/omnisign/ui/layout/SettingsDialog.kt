@@ -57,6 +57,8 @@ private val NavItemShape = RoundedCornerShape(6.dp)
  * @param onFieldChange Called with a transform to update a single field in the edit state.
  * @param onSave Called when the user clicks the Save button.
  * @param onDismiss Called when the user clicks Cancel or the close button.
+ * @param onBuildTl Called when the user clicks "Build Custom TL" in the trusted lists section,
+ *   or `null` when the TL compiler is not available on the current platform.
  */
 @Composable
 fun SettingsDialog(
@@ -65,6 +67,7 @@ fun SettingsDialog(
 	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 	onSave: () -> Unit,
 	onDismiss: () -> Unit,
+	onBuildTl: (() -> Unit)? = null,
 ) {
 	var selectedCategory by remember { mutableStateOf(SettingsCategory.SigningDefaults) }
 	
@@ -97,6 +100,7 @@ fun SettingsDialog(
 						category = selectedCategory,
 						state = state,
 						onFieldChange = onFieldChange,
+						onBuildTl = onBuildTl,
 					)
 				}
 				
@@ -307,12 +311,14 @@ private fun NavLeafItem(
  * @param category The currently selected [SettingsCategory].
  * @param state Current global config edit state.
  * @param onFieldChange Called with a transform to update a single field.
+ * @param onBuildTl Called when the user clicks "Build Custom TL", or `null` when unavailable.
  */
 @Composable
 private fun SettingsContentPanel(
 	category: SettingsCategory,
 	state: GlobalConfigEditState,
 	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
+	onBuildTl: (() -> Unit)? = null,
 ) {
 	Column(
 		modifier = Modifier
@@ -377,6 +383,28 @@ private fun SettingsContentPanel(
 				addError = state.certAddError,
 				onClearError = { onFieldChange { it.copy(certAddError = null) } },
 				onError = { message -> onFieldChange { it.copy(certAddError = message) } },
+			)
+			
+			SettingsCategory.CustomTrustedLists -> CustomTrustedListsSection(
+				trustedLists = state.customTrustedLists,
+				onAdd = { tl ->
+					onFieldChange {
+						it.copy(
+							customTrustedLists = it.customTrustedLists.filter { existing -> existing.name != tl.name } + tl
+						)
+					}
+				},
+				onRemove = { index ->
+					onFieldChange {
+						it.copy(
+							customTrustedLists = it.customTrustedLists.toMutableList().apply { removeAt(index) }
+						)
+					}
+				},
+				addError = state.tlAddError,
+				onClearError = { onFieldChange { it.copy(tlAddError = null) } },
+				onError = { message -> onFieldChange { it.copy(tlAddError = message) } },
+				onBuild = onBuildTl,
 			)
 			
 			SettingsCategory.Tokens,

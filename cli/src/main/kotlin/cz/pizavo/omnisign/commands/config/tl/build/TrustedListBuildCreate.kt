@@ -8,6 +8,8 @@ import com.github.ajalt.clikt.parameters.options.option
 import cz.pizavo.omnisign.data.service.TrustedListCompiler
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListDraft
+import cz.pizavo.omnisign.domain.model.config.SERVICE_STATUS_HINTS
+import cz.pizavo.omnisign.domain.model.config.SERVICE_TYPE_HINTS
 import cz.pizavo.omnisign.domain.model.config.TrustServiceDraft
 import cz.pizavo.omnisign.domain.model.config.TrustServiceProviderDraft
 import cz.pizavo.omnisign.domain.usecase.ManageTrustedListsUseCase
@@ -101,8 +103,8 @@ class TrustedListBuildCreate : CliktCommand(name = "create"), KoinComponent {
 			while (addAnotherService) {
 				t.println("\n    ── New service ────────────────────────────────────────")
 				val svcName = t.promptRequired("    Service name")
-				val typeId = t.promptUriWithHints("Service type identifier", SERVICE_TYPE_HINTS)
-				val status = t.promptUriWithHints("Service status", SERVICE_STATUS_HINTS)
+				val typeId = t.promptUriWithHints("Service type identifier", SERVICE_TYPE_HINTS.map { it.uri to it.label })
+				val status = t.promptUriWithHints("Service status", SERVICE_STATUS_HINTS.map { it.uri to it.label })
 				val certPath = t.promptCertPath()
 				
 				services += TrustServiceDraft(
@@ -165,24 +167,6 @@ class TrustedListBuildCreate : CliktCommand(name = "create"), KoinComponent {
 		} else {
 			t.println("   To register later: config tl add --name $name --source ${outputFile.absolutePath}")
 		}
-	}
-	
-	private companion object {
-		val SERVICE_TYPE_HINTS = listOf(
-			"http://uri.etsi.org/TrstSvc/Svctype/CA/QC" to "CA/QC      — Qualified CA",
-			"http://uri.etsi.org/TrstSvc/Svctype/CA/PKC" to "CA/PKC     — Non-qualified CA",
-			"http://uri.etsi.org/TrstSvc/Svctype/TSA/QTST" to "TSA/QTST   — Qualified timestamp authority",
-			"http://uri.etsi.org/TrstSvc/Svctype/TSA" to "TSA         — Non-qualified timestamp authority",
-			"http://uri.etsi.org/TrstSvc/Svctype/EDS/Q" to "EDS/Q       — Qualified electronic delivery",
-			"http://uri.etsi.org/TrstSvc/Svctype/OCSP/QC" to "OCSP/QC     — Qualified OCSP",
-		)
-		
-		val SERVICE_STATUS_HINTS = listOf(
-			"http://uri.etsi.org/TrstSvc/TrustedList/Svcstatus/granted" to "granted    — Active / granted",
-			"http://uri.etsi.org/TrstSvc/TrustedList/Svcstatus/withdrawn" to "withdrawn  — Withdrawn",
-			"http://uri.etsi.org/TrstSvc/TrustedList/Svcstatus/recognisedatnationallevel" to "recognised — Recognised at national level",
-			"http://uri.etsi.org/TrstSvc/TrustedList/Svcstatus/deprecatedatnationallevel" to "deprecated — Deprecated at national level",
-		)
 	}
 }
 

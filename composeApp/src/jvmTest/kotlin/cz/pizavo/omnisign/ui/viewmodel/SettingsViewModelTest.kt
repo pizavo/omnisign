@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.ui.viewmodel
 import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
+import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
@@ -312,6 +313,56 @@ class SettingsViewModelTest : FunSpec({
             vm.updateState { it.copy(defaultHashAlgorithm = HashAlgorithm.SHA256) }
             advanceUntilIdle()
             vm.hasChanges.value shouldBe false
+        }
+    }
+
+    test("save persists custom trusted lists in global validation config") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+
+            val tl = CustomTrustedListConfig(
+                name = "my-tl",
+                source = "https://example.com/tl.xml",
+                signingCertPath = "/path/to/cert.pem",
+            )
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.updateState { it.copy(customTrustedLists = listOf(tl)) }
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            advanceUntilIdle()
+
+            successCalled shouldBe true
+            saved.captured.global.validation.customTrustedLists shouldHaveSize 1
+            saved.captured.global.validation.customTrustedLists.first().name shouldBe "my-tl"
+            saved.captured.global.validation.customTrustedLists.first().signingCertPath shouldBe "/path/to/cert.pem"
+        }
+    }
+
+    test("load populates custom trusted lists from existing global config") {
+        runTest(testDispatcher) {
+            val tl = CustomTrustedListConfig(
+                name = "existing-tl",
+                source = "https://example.com/existing.xml",
+            )
+            val globalWithTls = baseGlobal.copy(
+                validation = ValidationConfig(customTrustedLists = listOf(tl)),
+            )
+            coEvery { configRepository.loadConfig() } returns AppConfig(global = globalWithTls).right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.customTrustedLists shouldHaveSize 1
+            vm.state.value.customTrustedLists.first().name shouldBe "existing-tl"
         }
     }
 })

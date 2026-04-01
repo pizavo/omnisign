@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.ui.viewmodel
 import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
+import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
@@ -773,6 +774,148 @@ class ProfileViewModelTest : FunSpec({
             vm.cancelEdit()
             advanceUntilIdle()
             vm.hasEditChanges.value shouldBe false
+        }
+    }
+
+    test("startEdit loads profile-scoped custom trusted lists into editState") {
+        runTest(testDispatcher) {
+            val tl = CustomTrustedListConfig(
+                name = "profile-tl",
+                source = "https://example.com/profile-tl.xml",
+                signingCertPath = "/path/to/cert.pem",
+            )
+            val config = AppConfig(
+                profiles = mapOf(
+                    "dev" to ProfileConfig(
+                        name = "dev",
+                        validation = ValidationConfig(customTrustedLists = listOf(tl)),
+                    ),
+                ),
+            )
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            val editState = vm.state.value.editState.shouldNotBeNull()
+            editState.customTrustedLists shouldHaveSize 1
+            editState.customTrustedLists.first().name shouldBe "profile-tl"
+        }
+    }
+
+    test("saveEdit persists profile-scoped custom trusted lists") {
+        runTest(testDispatcher) {
+            var currentConfig = AppConfig(
+                profiles = mapOf("dev" to profile("dev")),
+            )
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+
+            val tl = CustomTrustedListConfig(
+                name = "new-tl",
+                source = "https://example.com/new-tl.xml",
+            )
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState { it.copy(customTrustedLists = listOf(tl)) }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            vm.state.value.mode shouldBe ProfilePanelMode.Listing
+            val savedProfile = saved.captured.profiles["dev"].shouldNotBeNull()
+            savedProfile.validation.shouldNotBeNull()
+            savedProfile.validation!!.customTrustedLists shouldHaveSize 1
+            savedProfile.validation!!.customTrustedLists.first().name shouldBe "new-tl"
+        }
+    }
+
+    test("saveEdit clears validation when both trusted certificates and trusted lists are removed") {
+        runTest(testDispatcher) {
+            val tl = CustomTrustedListConfig(
+                name = "old-tl",
+                source = "https://example.com/old-tl.xml",
+            )
+            var currentConfig = AppConfig(
+                profiles = mapOf(
+                    "dev" to ProfileConfig(
+                        name = "dev",
+                        validation = ValidationConfig(customTrustedLists = listOf(tl)),
+                    ),
+                ),
+            )
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState { it.copy(customTrustedLists = emptyList()) }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            val savedProfile = saved.captured.profiles["dev"].shouldNotBeNull()
+            savedProfile.validation.shouldBeNull()
+        }
+    }
+
+    test("saveEdit keeps validation when only trusted lists remain") {
+        runTest(testDispatcher) {
+            val tl = CustomTrustedListConfig(
+                name = "keep-tl",
+                source = "https://example.com/keep-tl.xml",
+            )
+            var currentConfig = AppConfig(
+                profiles = mapOf("dev" to profile("dev")),
+            )
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+
+            val vm = ProfileViewModel(manageProfile, getConfig)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState {
+                it.copy(
+                    trustedCertificates = emptyList(),
+                    customTrustedLists = listOf(tl),
+                )
+            }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            val savedProfile = saved.captured.profiles["dev"].shouldNotBeNull()
+            savedProfile.validation.shouldNotBeNull()
+            savedProfile.validation!!.customTrustedLists shouldHaveSize 1
+            savedProfile.validation!!.trustedCertificates.shouldBeEmpty()
         }
     }
 })

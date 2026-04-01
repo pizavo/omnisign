@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.data.serializer.XmlConfigSerializer
 import cz.pizavo.omnisign.data.serializer.YamlConfigSerializer
 import cz.pizavo.omnisign.data.service.*
 import cz.pizavo.omnisign.domain.port.ConfigSerializerRegistry
+import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.SigningRepository
@@ -37,6 +38,7 @@ val jvmRepositoryModule = module {
 	singleOf(::DssSigningRepository) bind SigningRepository::class
 	singleOf(::DssArchivingRepository) bind ArchivingRepository::class
 	singleOf(::TrustedListCompiler)
+	singleOf(::DssTrustedListCompilerAdapter) bind TrustedListCompilerPort::class
 	
 	single {
 		ConfigSerializerRegistry(
