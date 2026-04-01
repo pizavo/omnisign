@@ -86,6 +86,7 @@ fun IslandLayout(
 		SettingsViewModel(
 			koin.get<GetConfigUseCase>(),
 			koin.get<SetGlobalConfigUseCase>(),
+			koin.getOrNull<ConfigRepository>(),
 			koin.getOrNull<CredentialStore>(),
 		)
 	}

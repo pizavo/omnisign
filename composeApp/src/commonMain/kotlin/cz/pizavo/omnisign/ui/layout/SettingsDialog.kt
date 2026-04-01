@@ -409,6 +409,9 @@ private fun SettingsContentPanel(
 			
 			SettingsCategory.Tokens,
 			SettingsCategory.Pkcs11Libraries -> Pkcs11Section(state = state, onFieldChange = onFieldChange)
+
+			SettingsCategory.Archiving,
+			SettingsCategory.RenewalJobs -> RenewalJobsSection(state = state, onFieldChange = onFieldChange)
 		}
 	}
 }

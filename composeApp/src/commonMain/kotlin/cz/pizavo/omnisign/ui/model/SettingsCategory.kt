@@ -90,6 +90,19 @@ enum class SettingsCategory(
         parent = Validation,
     ),
 
+    /** Top-level group for archival renewal configuration. */
+    Archiving(
+        label = "Archiving",
+        description = "Configure automatic archival renewal of B-LTA documents.",
+    ),
+
+    /** Named renewal jobs for automatic B-LTA re-timestamping. */
+    RenewalJobs(
+        label = "Renewal Jobs",
+        description = "Named jobs that automatically re-timestamp B-LTA PDFs when their archival timestamp nears expiry. Each job defines glob patterns for the files to watch and a renewal buffer in days.",
+        parent = Archiving,
+    ),
+
     /** Top-level group for token/hardware configuration. */
     Tokens(
         label = "Tokens",

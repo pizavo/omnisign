@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
@@ -21,15 +22,18 @@ import kotlinx.coroutines.launch
  *
  * Loads the current [GlobalConfig] via [GetConfigUseCase], exposes it as a
  * [GlobalConfigEditState] for two-way binding, and persists changes via
- * [SetGlobalConfigUseCase].
+ * [SetGlobalConfigUseCase]. Renewal jobs are loaded from [cz.pizavo.omnisign.domain.model.config.AppConfig.renewalJobs]
+ * and saved back via [ConfigRepository] alongside the global config.
  *
  * @param getConfigUseCase Use-case for reading the current application configuration.
  * @param setGlobalConfigUseCase Use-case for updating and persisting the global configuration.
+ * @param configRepository Repository for persisting renewal jobs at the [cz.pizavo.omnisign.domain.model.config.AppConfig] level.
  * @param credentialStore Optional OS credential store for persisting TSA passwords.
  */
 class SettingsViewModel(
     private val getConfigUseCase: GetConfigUseCase,
     private val setGlobalConfigUseCase: SetGlobalConfigUseCase,
+    private val configRepository: ConfigRepository? = null,
     private val credentialStore: CredentialStore? = null,
 ) : ViewModel() {
 
@@ -62,7 +66,13 @@ class SettingsViewModel(
                 },
                 ifRight = { appConfig ->
                     val hasStored = hasStoredTsaPassword(appConfig.global)
-                    val editState = GlobalConfigEditState.from(appConfig.global, hasStored)
+                    val editState = GlobalConfigEditState.from(
+                        config = appConfig.global,
+                        hasStoredPassword = hasStored,
+                        renewalJobs = appConfig.renewalJobs,
+                        availableProfiles = appConfig.profiles.keys.sorted(),
+                        activeProfile = appConfig.activeProfile,
+                    )
                     _state.value = editState
                     _initialState.value = editState
                 },
@@ -98,6 +108,7 @@ class SettingsViewModel(
                     _state.update { it.copy(saving = false, error = error.message) }
                 },
                 ifRight = {
+                    saveRenewalJobs(current)
                     storeTsaPasswordIfNeeded(current)
                     _state.update { it.copy(saving = false, error = null) }
                     onSuccess()
@@ -122,6 +133,18 @@ class SettingsViewModel(
         if (editState.timestampPassword.isEmpty()) return
         val username = editState.timestampUsername.ifBlank { return }
         credentialStore?.setPassword(TSA_CREDENTIAL_SERVICE, username, editState.timestampPassword)
+    }
+
+    /**
+     * Persist the renewal jobs from [editState] into the application configuration
+     * via [ConfigRepository]. Reads the current config, replaces the renewal jobs map,
+     * and saves the result.
+     */
+    private suspend fun saveRenewalJobs(editState: GlobalConfigEditState) {
+        val repo = configRepository ?: return
+        val appConfig = repo.getCurrentConfig()
+        val jobMap = editState.renewalJobs.associateBy { it.name }
+        repo.saveConfig(appConfig.copy(renewalJobs = jobMap))
     }
 
     companion object {

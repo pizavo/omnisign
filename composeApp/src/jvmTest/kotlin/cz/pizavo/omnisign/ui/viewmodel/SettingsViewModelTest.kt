@@ -5,6 +5,8 @@ import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
@@ -57,7 +59,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
             vm.load()
             advanceUntilIdle()
 
@@ -76,7 +78,7 @@ class SettingsViewModelTest : FunSpec({
                 message = "corrupt file"
             ).left()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
             vm.load()
             advanceUntilIdle()
 
@@ -88,7 +90,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
             vm.load()
             advanceUntilIdle()
 
@@ -105,7 +107,7 @@ class SettingsViewModelTest : FunSpec({
             val saved = slot<AppConfig>()
             coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
             vm.load()
             advanceUntilIdle()
 
@@ -127,7 +129,7 @@ class SettingsViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
             coEvery { configRepository.getCurrentConfig() } returns baseConfig
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
             vm.load()
             advanceUntilIdle()
 
@@ -156,7 +158,7 @@ class SettingsViewModelTest : FunSpec({
             coEvery { configRepository.getCurrentConfig() } returns configWithTsa
             coEvery { configRepository.saveConfig(any()) } returns Unit.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
             vm.load()
             advanceUntilIdle()
 
@@ -180,7 +182,7 @@ class SettingsViewModelTest : FunSpec({
             coEvery { configRepository.getCurrentConfig() } returns baseConfig
             coEvery { configRepository.saveConfig(any()) } returns Unit.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
             vm.load()
             advanceUntilIdle()
 
@@ -211,7 +213,7 @@ class SettingsViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns AppConfig(global = globalWithCreds).right()
             every { credentialStore.getPassword("omnisign-tsa", "admin") } returns "stored-pw"
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
             vm.load()
             advanceUntilIdle()
 
@@ -233,7 +235,7 @@ class SettingsViewModelTest : FunSpec({
                 subjectDN = "CN=My CA",
             )
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
             vm.load()
             advanceUntilIdle()
 
@@ -262,7 +264,7 @@ class SettingsViewModelTest : FunSpec({
             )
             coEvery { configRepository.loadConfig() } returns AppConfig(global = globalWithCerts).right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
             vm.load()
             advanceUntilIdle()
 
@@ -275,7 +277,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
             vm.load()
             advanceUntilIdle()
 
@@ -287,7 +289,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
             vm.load()
             advanceUntilIdle()
 
@@ -302,7 +304,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
             vm.load()
             advanceUntilIdle()
 
@@ -329,7 +331,7 @@ class SettingsViewModelTest : FunSpec({
                 signingCertPath = "/path/to/cert.pem",
             )
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
             vm.load()
             advanceUntilIdle()
 
@@ -357,12 +359,132 @@ class SettingsViewModelTest : FunSpec({
             )
             coEvery { configRepository.loadConfig() } returns AppConfig(global = globalWithTls).right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
             vm.load()
             advanceUntilIdle()
 
             vm.state.value.customTrustedLists shouldHaveSize 1
             vm.state.value.customTrustedLists.first().name shouldBe "existing-tl"
+        }
+    }
+
+    test("load populates renewal jobs from AppConfig") {
+        runTest(testDispatcher) {
+            val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
+            val configWithJobs = baseConfig.copy(renewalJobs = mapOf("nightly" to job))
+            coEvery { configRepository.loadConfig() } returns configWithJobs.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.renewalJobs shouldHaveSize 1
+            vm.state.value.renewalJobs.first().name shouldBe "nightly"
+            vm.state.value.renewalJobs.first().globs shouldBe listOf("/docs/**/*.pdf")
+        }
+    }
+
+    test("load populates available profiles from AppConfig") {
+        runTest(testDispatcher) {
+            val configWithProfiles = baseConfig.copy(
+                profiles = mapOf(
+                    "work" to ProfileConfig(name = "work"),
+                    "personal" to ProfileConfig(name = "personal"),
+                ),
+            )
+            coEvery { configRepository.loadConfig() } returns configWithProfiles.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.availableProfiles shouldBe listOf("personal", "work")
+        }
+    }
+
+    test("save persists renewal jobs via ConfigRepository") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            val saved = mutableListOf<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore)
+            vm.load()
+            advanceUntilIdle()
+
+            val job = RenewalJob(name = "archive", globs = listOf("/archive/**/*.pdf"), renewalBufferDays = 60)
+            vm.updateState { it.copy(renewalJobs = listOf(job)) }
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            advanceUntilIdle()
+
+            successCalled shouldBe true
+            val lastSave = saved.last()
+            lastSave.renewalJobs.size shouldBe 1
+            lastSave.renewalJobs["archive"]?.renewalBufferDays shouldBe 60
+        }
+    }
+
+    test("save removes renewal jobs that were deleted in the edit state") {
+        runTest(testDispatcher) {
+            val job = RenewalJob(name = "old-job", globs = listOf("/old/**"))
+            val configWithJob = baseConfig.copy(renewalJobs = mapOf("old-job" to job))
+            coEvery { configRepository.loadConfig() } returns configWithJob.right()
+            coEvery { configRepository.getCurrentConfig() } returns configWithJob
+            val saved = mutableListOf<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.renewalJobs shouldHaveSize 1
+            vm.updateState { it.copy(renewalJobs = emptyList()) }
+
+            vm.save(onSuccess = {})
+            advanceUntilIdle()
+
+            val lastSave = saved.last()
+            lastSave.renewalJobs.size shouldBe 0
+        }
+    }
+
+    test("hasChanges detects renewal job additions") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.hasChanges.value shouldBe false
+
+            val job = RenewalJob(name = "new-job", globs = listOf("/new/**"))
+            vm.updateState { it.copy(renewalJobs = listOf(job)) }
+            advanceUntilIdle()
+
+            vm.hasChanges.value shouldBe true
+        }
+    }
+
+    test("hasChanges reverts to false when renewal jobs are restored") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore)
+            vm.load()
+            advanceUntilIdle()
+
+            val job = RenewalJob(name = "tmp", globs = listOf("/tmp/**"))
+            vm.updateState { it.copy(renewalJobs = listOf(job)) }
+            advanceUntilIdle()
+            vm.hasChanges.value shouldBe true
+
+            vm.updateState { it.copy(renewalJobs = emptyList()) }
+            advanceUntilIdle()
+            vm.hasChanges.value shouldBe false
         }
     }
 })

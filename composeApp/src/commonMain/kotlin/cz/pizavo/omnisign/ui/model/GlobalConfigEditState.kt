@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.config.CustomPkcs11Library
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
@@ -46,10 +47,14 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
  * @property customTrustedLists Registered external trusted list sources.
  * @property trustedCertificates Directly trusted certificates.
  * @property customPkcs11Libraries User-registered PKCS#11 middleware libraries.
+ * @property renewalJobs Renewal jobs managed in this edit session.
+ * @property availableProfiles Names of profiles available for the renewal job profile dropdown.
+ * @property activeProfile The currently active profile name, used as the default selection when adding a renewal job.
  * @property saving Whether a save operation is currently in progress.
  * @property error Human-readable error message from the last failed operation, or `null`.
  * @property certAddError Human-readable error from the last failed trusted certificate add attempt, or `null`.
  * @property tlAddError Human-readable error from the last failed trusted list add attempt, or `null`.
+ * @property renewalJobAddError Human-readable error from the last failed renewal job add attempt, or `null`.
  */
 data class GlobalConfigEditState(
 	val defaultHashAlgorithm: HashAlgorithm = HashAlgorithm.SHA256,
@@ -75,10 +80,14 @@ data class GlobalConfigEditState(
 	val customTrustedLists: List<CustomTrustedListConfig> = emptyList(),
 	val trustedCertificates: List<TrustedCertificateConfig> = emptyList(),
 	val customPkcs11Libraries: List<CustomPkcs11Library> = emptyList(),
+	val renewalJobs: List<RenewalJob> = emptyList(),
+	val availableProfiles: List<String> = emptyList(),
+	val activeProfile: String? = null,
 	val saving: Boolean = false,
 	val error: String? = null,
 	val certAddError: String? = null,
 	val tlAddError: String? = null,
+	val renewalJobAddError: String? = null,
 ) {
 
 	/**
@@ -122,7 +131,8 @@ data class GlobalConfigEditState(
 				algoExpirationLevelAfterUpdate == other.algoExpirationLevelAfterUpdate &&
 				customTrustedLists == other.customTrustedLists &&
 				trustedCertificates == other.trustedCertificates &&
-				customPkcs11Libraries == other.customPkcs11Libraries
+				customPkcs11Libraries == other.customPkcs11Libraries &&
+				renewalJobs == other.renewalJobs
 
 	/**
 	 * Convert this UI state back into a persistable [GlobalConfig].
@@ -174,9 +184,18 @@ data class GlobalConfigEditState(
 		 *
 		 * @param config The source global configuration.
 		 * @param hasStoredPassword Whether a TSA password is already persisted in the credential store.
+		 * @param renewalJobs Current renewal jobs from [cz.pizavo.omnisign.domain.model.config.AppConfig.renewalJobs].
+		 * @param availableProfiles Profile names available for the renewal job profile dropdown.
+		 * @param activeProfile The currently active profile name, or `null` if none is active.
 		 * @return A new edit state pre-populated with the config's values.
 		 */
-		fun from(config: GlobalConfig, hasStoredPassword: Boolean = false): GlobalConfigEditState {
+		fun from(
+			config: GlobalConfig,
+			hasStoredPassword: Boolean = false,
+			renewalJobs: Map<String, RenewalJob> = emptyMap(),
+			availableProfiles: List<String> = emptyList(),
+			activeProfile: String? = null,
+		): GlobalConfigEditState {
 			val level = config.defaultSignatureLevel
 			return GlobalConfigEditState(
 				defaultHashAlgorithm = config.defaultHashAlgorithm,
@@ -205,6 +224,9 @@ data class GlobalConfigEditState(
 				customTrustedLists = config.validation.customTrustedLists,
 				trustedCertificates = config.validation.trustedCertificates,
 				customPkcs11Libraries = config.customPkcs11Libraries,
+				renewalJobs = renewalJobs.values.toList(),
+				availableProfiles = availableProfiles,
+				activeProfile = activeProfile,
 			)
 		}
 	}
