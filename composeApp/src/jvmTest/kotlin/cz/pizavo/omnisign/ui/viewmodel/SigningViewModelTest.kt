@@ -4,19 +4,19 @@ import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.result.SigningResult
-import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
-import cz.pizavo.omnisign.domain.repository.CertificateDiscoveryResult
-import cz.pizavo.omnisign.domain.repository.ConfigRepository
-import cz.pizavo.omnisign.domain.repository.SigningRepository
-import cz.pizavo.omnisign.domain.repository.TokenDiscoveryWarning
+import cz.pizavo.omnisign.domain.repository.*
 import cz.pizavo.omnisign.domain.usecase.ListCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
 import cz.pizavo.omnisign.ui.model.SigningDialogState
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
@@ -24,11 +24,7 @@ import io.mockk.coEvery
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.test.*
 import kotlin.time.Instant
 
 /**
@@ -68,7 +64,7 @@ class SigningViewModelTest : FunSpec({
 	}
 
 	test("initial state is Idle") {
-		val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+		val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, ioDispatcher = testDispatcher)
 		vm.state.value.shouldBeInstanceOf<SigningDialogState.Idle>()
 	}
 
@@ -77,7 +73,7 @@ class SigningViewModelTest : FunSpec({
 			coEvery { signingRepository.listAvailableCertificates() } returns
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 
-			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, ioDispatcher = testDispatcher)
 			vm.open("/tmp/test.pdf")
 			advanceUntilIdle()
 
@@ -100,7 +96,7 @@ class SigningViewModelTest : FunSpec({
 						tokenWarnings = listOf(warning),
 					).right()
 
-			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, ioDispatcher = testDispatcher)
 			vm.open("/tmp/test.pdf")
 			advanceUntilIdle()
 
@@ -114,7 +110,7 @@ class SigningViewModelTest : FunSpec({
 			coEvery { signingRepository.listAvailableCertificates() } returns
 					SigningError.TokenAccessError(message = "Failed").left()
 
-			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, ioDispatcher = testDispatcher)
 			vm.open("/tmp/test.pdf")
 			advanceUntilIdle()
 
@@ -128,7 +124,7 @@ class SigningViewModelTest : FunSpec({
 			coEvery { signingRepository.listAvailableCertificates() } returns
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 
-			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, ioDispatcher = testDispatcher)
 			vm.open("/tmp/test.pdf")
 			advanceUntilIdle()
 
@@ -150,7 +146,7 @@ class SigningViewModelTest : FunSpec({
 						signatureLevel = "PAdES-BASELINE-B",
 					).right()
 
-			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, ioDispatcher = testDispatcher)
 			vm.open("/tmp/test.pdf")
 			advanceUntilIdle()
 
@@ -170,7 +166,7 @@ class SigningViewModelTest : FunSpec({
 			coEvery { signingRepository.signDocument(any()) } returns
 					SigningError.SigningFailed(message = "Signing error", details = "bad key").left()
 
-			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, ioDispatcher = testDispatcher)
 			vm.open("/tmp/test.pdf")
 			advanceUntilIdle()
 
@@ -188,7 +184,7 @@ class SigningViewModelTest : FunSpec({
 			coEvery { signingRepository.listAvailableCertificates() } returns
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 
-			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, ioDispatcher = testDispatcher)
 			vm.open("/tmp/test.pdf")
 			advanceUntilIdle()
 
@@ -217,7 +213,7 @@ class SigningViewModelTest : FunSpec({
 			coEvery { signingRepository.listAvailableCertificates() } returns
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 
-			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, ioDispatcher = testDispatcher)
 			vm.open("/tmp/test.pdf")
 			advanceUntilIdle()
 
@@ -246,7 +242,7 @@ class SigningViewModelTest : FunSpec({
 						hasRevocationWarnings = true,
 					).right()
 
-			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, ioDispatcher = testDispatcher)
 			vm.open("/tmp/test.pdf")
 			advanceUntilIdle()
 			vm.sign()
@@ -271,7 +267,7 @@ class SigningViewModelTest : FunSpec({
 						hasRevocationWarnings = true,
 					).right()
 
-			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, ioDispatcher = testDispatcher)
 			vm.open("/tmp/test.pdf")
 			advanceUntilIdle()
 
@@ -302,7 +298,7 @@ class SigningViewModelTest : FunSpec({
 						hasRevocationWarnings = true,
 					).right()
 
-			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, ioDispatcher = testDispatcher)
 			vm.open("/tmp/test.pdf")
 			advanceUntilIdle()
 			vm.sign()
@@ -335,7 +331,7 @@ class SigningViewModelTest : FunSpec({
 						hasRevocationWarnings = true,
 					).right()
 
-			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, testDispatcher)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, ioDispatcher = testDispatcher)
 			vm.open("/tmp/test.pdf")
 			advanceUntilIdle()
 			vm.sign()
@@ -345,6 +341,140 @@ class SigningViewModelTest : FunSpec({
 			vm.abortAfterRevocationWarning()
 
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
+		}
+	}
+
+	test("pendingRenewalOffer is populated after LTA signing with addToRenewalJob checked") {
+		runTest(testDispatcher) {
+			val ltaConfig = AppConfig(
+				global = GlobalConfig(
+					defaultSignatureLevel = cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel.PADES_BASELINE_LTA,
+				),
+				profiles = mapOf("prod" to ProfileConfig(name = "prod")),
+				activeProfile = "prod",
+			)
+			coEvery { configRepository.getCurrentConfig() } returns ltaConfig
+			coEvery { signingRepository.listAvailableCertificates() } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { signingRepository.signDocument(any()) } returns
+					SigningResult(
+						outputFile = "/tmp/test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-LTA",
+					).right()
+
+			val assigner = RenewalJobAssigner(configRepository)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, assigner, testDispatcher)
+			vm.open("/tmp/test.pdf")
+			advanceUntilIdle()
+
+			vm.updateState { it.copy(addToRenewalJob = true) }
+			vm.sign()
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
+			val offer = vm.pendingRenewalOffer.value
+			offer.shouldNotBeNull()
+			offer.outputFile shouldBe "/tmp/test-signed.pdf"
+			offer.availableProfiles shouldBe listOf("prod")
+		}
+	}
+
+	test("pendingRenewalOffer is null when addToRenewalJob is not checked") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates() } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { signingRepository.signDocument(any()) } returns
+					SigningResult(
+						outputFile = "/tmp/test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-B",
+					).right()
+
+			val assigner = RenewalJobAssigner(configRepository)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, assigner, testDispatcher)
+			vm.open("/tmp/test.pdf")
+			advanceUntilIdle()
+
+			vm.sign()
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
+			vm.pendingRenewalOffer.value.shouldBeNull()
+		}
+	}
+
+	test("covered output path auto-checks addToRenewalJob and skips offer dialog") {
+		runTest(testDispatcher) {
+			val existingJob = RenewalJob(
+				name = "archive",
+				globs = listOf("/tmp/**/*.pdf"),
+				profile = "prod",
+			)
+			val ltaConfig = AppConfig(
+				global = GlobalConfig(
+					defaultSignatureLevel = cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel.PADES_BASELINE_LTA,
+				),
+				profiles = mapOf("prod" to ProfileConfig(name = "prod")),
+				activeProfile = "prod",
+				renewalJobs = mapOf("archive" to existingJob),
+			)
+			coEvery { configRepository.getCurrentConfig() } returns ltaConfig
+			coEvery { signingRepository.listAvailableCertificates() } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { signingRepository.signDocument(any()) } returns
+					SigningResult(
+						outputFile = "/tmp/test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-LTA",
+					).right()
+
+			val assigner = RenewalJobAssigner(configRepository)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, assigner, testDispatcher)
+			vm.open("/tmp/test.pdf")
+			advanceUntilIdle()
+
+			val ready = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
+			ready.addToRenewalJob shouldBe true
+			ready.coveringRenewalJobName shouldBe "archive"
+
+			vm.sign()
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
+			vm.pendingRenewalOffer.value.shouldBeNull()
+		}
+	}
+
+	test("dismissRenewalOffer clears pending offer") {
+		runTest(testDispatcher) {
+			val ltaConfig = AppConfig(
+				global = GlobalConfig(
+					defaultSignatureLevel = cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel.PADES_BASELINE_LTA,
+				),
+			)
+			coEvery { configRepository.getCurrentConfig() } returns ltaConfig
+			coEvery { signingRepository.listAvailableCertificates() } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { signingRepository.signDocument(any()) } returns
+					SigningResult(
+						outputFile = "/tmp/test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-LTA",
+					).right()
+
+			val assigner = RenewalJobAssigner(configRepository)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, configRepository, assigner, testDispatcher)
+			vm.open("/tmp/test.pdf")
+			advanceUntilIdle()
+
+			vm.updateState { it.copy(addToRenewalJob = true) }
+			vm.sign()
+			advanceUntilIdle()
+
+			vm.pendingRenewalOffer.value.shouldNotBeNull()
+			vm.dismissRenewalOffer()
+			vm.pendingRenewalOffer.value.shouldBeNull()
 		}
 	}
 })

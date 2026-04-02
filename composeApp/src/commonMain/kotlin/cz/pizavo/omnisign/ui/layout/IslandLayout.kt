@@ -98,16 +98,25 @@ fun IslandLayout(
 	}).collectAsState()
 	var showSettingsDialog by remember { mutableStateOf(false) }
 	
+	val renewalJobAssigner: RenewalJobAssigner? = remember {
+		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
+		RenewalJobAssigner(koin.get<ConfigRepository>())
+	}
+	
 	val signingViewModel: SigningViewModel? = remember {
 		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
 		SigningViewModel(
 			koin.get<SignDocumentUseCase>(),
 			koin.get<ListCertificatesUseCase>(),
 			koin.get<ConfigRepository>(),
+			renewalJobAssigner,
 		)
 	}
 	val signingState by (signingViewModel?.state ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow<SigningDialogState>(SigningDialogState.Idle)
+	}).collectAsState()
+	val signingRenewalOffer by (signingViewModel?.pendingRenewalOffer ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow<RenewalJobOfferState?>(null)
 	}).collectAsState()
 	var showSigningDialog by remember { mutableStateOf(false) }
 	
@@ -117,10 +126,14 @@ fun IslandLayout(
 			koin.get<ExtendDocumentUseCase>(),
 			koin.get<GetDocumentTimestampInfoUseCase>(),
 			koin.get<ConfigRepository>(),
+			renewalJobAssigner,
 		)
 	}
 	val timestampState by (timestampViewModel?.state ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow<TimestampDialogState>(TimestampDialogState.Idle)
+	}).collectAsState()
+	val timestampRenewalOffer by (timestampViewModel?.pendingRenewalOffer ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow<RenewalJobOfferState?>(null)
 	}).collectAsState()
 	var showTimestampDialog by remember { mutableStateOf(false) }
 	
@@ -242,6 +255,24 @@ fun IslandLayout(
 					timestampViewModel?.dismiss()
 					showTimestampDialog = false
 				},
+			)
+		}
+		
+		if (signingRenewalOffer != null) {
+			RenewalJobOfferDialog(
+				state = signingRenewalOffer!!,
+				onAssignExisting = { jobName -> signingViewModel?.assignToExistingJob(jobName) },
+				onCreateNew = { job -> signingViewModel?.createAndAssignJob(job) },
+				onDismiss = { signingViewModel?.dismissRenewalOffer() },
+			)
+		}
+		
+		if (timestampRenewalOffer != null) {
+			RenewalJobOfferDialog(
+				state = timestampRenewalOffer!!,
+				onAssignExisting = { jobName -> timestampViewModel?.assignToExistingJob(jobName) },
+				onCreateNew = { job -> timestampViewModel?.createAndAssignJob(job) },
+				onDismiss = { timestampViewModel?.dismissRenewalOffer() },
 			)
 		}
 		

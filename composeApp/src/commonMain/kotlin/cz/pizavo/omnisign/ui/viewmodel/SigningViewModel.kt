@@ -2,12 +2,14 @@ package cz.pizavo.omnisign.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ListCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
+import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
 import cz.pizavo.omnisign.ui.model.SigningDialogState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -26,15 +28,21 @@ import kotlinx.coroutines.withContext
  * resolve config → discover certificates → build [SigningParameters] → invoke
  * [SignDocumentUseCase] → show the result.
  *
+ * When the user checks "Add to renewal job" and the signing produces a B-LTA
+ * document, a [RenewalJobOfferState] is populated in [pendingRenewalOffer] so
+ * that the UI layer can show a follow-up dialog for renewal job assignment.
+ *
  * @param signDocumentUseCase Use case for performing the signing operation.
  * @param listCertificatesUseCase Use case for discovering available signing certificates.
  * @param configRepository Repository for reading the current application configuration.
+ * @param renewalJobAssigner Shared helper for renewal job persistence and coverage checks.
  * @param ioDispatcher Dispatcher for heavy background work (certificate discovery, signing).
  */
 class SigningViewModel(
 	private val signDocumentUseCase: SignDocumentUseCase,
 	private val listCertificatesUseCase: ListCertificatesUseCase,
 	private val configRepository: ConfigRepository,
+	private val renewalJobAssigner: RenewalJobAssigner? = null,
 	private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
@@ -43,9 +51,20 @@ class SigningViewModel(
 	/** Observable signing dialog state. */
 	val state: StateFlow<SigningDialogState> = _state.asStateFlow()
 
+	private val _pendingRenewalOffer = MutableStateFlow<RenewalJobOfferState?>(null)
+
+	/**
+	 * When non-null, the UI should show a renewal job assignment dialog for the
+	 * successfully signed B-LTA document. Populated after a successful LTA signing
+	 * when the user checked "Add to renewal job" in the form.
+	 */
+	val pendingRenewalOffer: StateFlow<RenewalJobOfferState?> = _pendingRenewalOffer.asStateFlow()
+
 	private var currentFilePath: String? = null
 	private var resolvedConfig: ResolvedConfig? = null
 	private var lastReadyState: SigningDialogState.Ready? = null
+	private var addToRenewalJobFlag: Boolean = false
+	private var cachedRenewalJobs: List<RenewalJob> = emptyList()
 
 	/**
 	 * Open the signing dialog for the given document.
@@ -64,6 +83,7 @@ class SigningViewModel(
 		viewModelScope.launch {
 			withContext(ioDispatcher) {
 				val appConfig = configRepository.getCurrentConfig()
+				cachedRenewalJobs = appConfig.renewalJobs.values.toList()
 				val activeProfile = appConfig.activeProfile
 				val profileConfig = activeProfile?.let { appConfig.profiles[it] }
 
@@ -95,6 +115,9 @@ class SigningViewModel(
 								val addArchTs = level == SignatureLevel.PADES_BASELINE_LTA
 
 								val suggestedOutput = buildSuggestedOutputPath(filePath, "-signed")
+								val coveringJob = RenewalJobAssigner.findCoveringJob(
+									suggestedOutput, cachedRenewalJobs,
+								)
 								val ready = SigningDialogState.Ready(
 									certificates = discovery.certificates,
 									tokenWarnings = discovery.tokenWarnings,
@@ -106,6 +129,8 @@ class SigningViewModel(
 									configAddArchivalTimestamp = addArchTs,
 									disabledHashAlgorithms = config.disabledHashAlgorithms,
 									outputPath = suggestedOutput,
+									addToRenewalJob = coveringJob != null,
+									coveringRenewalJobName = coveringJob?.name,
 								)
 								lastReadyState = ready
 								_state.value = ready
@@ -120,13 +145,32 @@ class SigningViewModel(
 	/**
 	 * Apply a field-level transformation to the current [SigningDialogState.Ready] state.
 	 *
+	 * After applying the transform, renewal job coverage is recomputed for the
+	 * (possibly changed) output path. When the output path is covered by an
+	 * existing job, [SigningDialogState.Ready.addToRenewalJob] is forced to `true`.
+	 *
 	 * Has no effect when the state is not [SigningDialogState.Ready].
 	 *
 	 * @param transform Function that receives the current ready state and returns the updated one.
 	 */
 	fun updateState(transform: (SigningDialogState.Ready) -> SigningDialogState.Ready) {
 		_state.update { current ->
-			if (current is SigningDialogState.Ready) transform(current) else current
+			if (current is SigningDialogState.Ready) {
+				val transformed = transform(current)
+				val coveringJob = RenewalJobAssigner.findCoveringJob(
+					transformed.outputPath, cachedRenewalJobs,
+				)
+				if (coveringJob != null) {
+					transformed.copy(
+						coveringRenewalJobName = coveringJob.name,
+						addToRenewalJob = true,
+					)
+				} else {
+					transformed.copy(coveringRenewalJobName = null)
+				}
+			} else {
+				current
+			}
 		}
 	}
 
@@ -147,6 +191,9 @@ class SigningViewModel(
 		val config = resolvedConfig ?: return
 
 		lastReadyState = ready
+		addToRenewalJobFlag = ready.addToRenewalJob &&
+				ready.addArchivalTimestamp &&
+				ready.coveringRenewalJobName == null
 		_state.value = SigningDialogState.Signing
 
 		viewModelScope.launch {
@@ -189,6 +236,7 @@ class SigningViewModel(
 								signatureLevel = result.signatureLevel,
 								warnings = result.warnings,
 							)
+							populateRenewalOfferIfNeeded(result.outputFile)
 						}
 					},
 				)
@@ -209,6 +257,9 @@ class SigningViewModel(
 			signatureLevel = rw.signatureLevel,
 			warnings = rw.warnings,
 		)
+		viewModelScope.launch {
+			populateRenewalOfferIfNeeded(rw.outputFile)
+		}
 	}
 
 	/**
@@ -222,12 +273,76 @@ class SigningViewModel(
 	}
 
 	/**
-	 * Dismiss the dialog and reset the state to [SigningDialogState.Idle].
+	 * Dismiss the signing dialog and reset the state to [SigningDialogState.Idle].
+	 *
+	 * The [pendingRenewalOffer] is intentionally retained so the UI can still
+	 * display the renewal job assignment dialog after the signing dialog closes.
 	 */
 	fun dismiss() {
 		_state.value = SigningDialogState.Idle
 		resolvedConfig = null
 		lastReadyState = null
+	}
+
+	/**
+	 * Add the output file as a glob pattern to an existing renewal job.
+	 *
+	 * @param jobName Name of the existing job to assign the file to.
+	 */
+	fun assignToExistingJob(jobName: String) {
+		val offer = _pendingRenewalOffer.value ?: return
+		viewModelScope.launch {
+			withContext(ioDispatcher) {
+				val result = renewalJobAssigner?.assignToExistingJob(jobName, offer.outputFile)
+				if (result != null) {
+					_pendingRenewalOffer.value = offer.copy(assignedJobName = result, error = null)
+				} else {
+					_pendingRenewalOffer.value = offer.copy(error = "Job '$jobName' not found.")
+				}
+			}
+		}
+	}
+
+	/**
+	 * Create a new renewal job with the output file as its initial glob.
+	 *
+	 * @param job The new [RenewalJob] to create.
+	 */
+	fun createAndAssignJob(job: RenewalJob) {
+		val offer = _pendingRenewalOffer.value ?: return
+		viewModelScope.launch {
+			withContext(ioDispatcher) {
+				val result = renewalJobAssigner?.createNewJob(job)
+				if (result != null) {
+					result.fold(
+						onSuccess = { name ->
+							_pendingRenewalOffer.value = offer.copy(assignedJobName = name, error = null)
+						},
+						onFailure = { e ->
+							_pendingRenewalOffer.value = offer.copy(error = e.message)
+						},
+					)
+				}
+			}
+		}
+	}
+
+	/**
+	 * Dismiss the renewal job offer dialog and clear the pending state.
+	 */
+	fun dismissRenewalOffer() {
+		_pendingRenewalOffer.value = null
+		addToRenewalJobFlag = false
+	}
+
+	/**
+	 * Populate [_pendingRenewalOffer] when the signing produced a B-LTA document
+	 * and the user opted in to renewal job assignment.
+	 */
+	private suspend fun populateRenewalOfferIfNeeded(outputFile: String) {
+		if (!addToRenewalJobFlag || renewalJobAssigner == null) return
+		val offer = renewalJobAssigner.buildOfferState(outputFile)
+		_pendingRenewalOffer.value = offer
 	}
 
 	companion object {

@@ -40,6 +40,10 @@ sealed interface SigningDialogState {
 	 * @property configAddSignatureTimestamp Whether the resolved config enables signature timestamps.
 	 * @property configAddArchivalTimestamp Whether the resolved config enables archival timestamps.
 	 * @property disabledHashAlgorithms Hash algorithms that are disabled in the current config.
+	 * @property addToRenewalJob Whether the output file should be added to a renewal job after a successful LTA signing.
+	 * @property coveringRenewalJobName Name of the existing renewal job that already covers [outputPath],
+	 *   or `null` when no coverage exists. When non-null the "Add to renewal job" checkbox is
+	 *   forced checked and disabled because the file will be renewed regardless.
 	 */
 	data class Ready(
 		val certificates: List<AvailableCertificateInfo> = emptyList(),
@@ -56,6 +60,8 @@ sealed interface SigningDialogState {
 		val configAddSignatureTimestamp: Boolean = false,
 		val configAddArchivalTimestamp: Boolean = false,
 		val disabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
+		val addToRenewalJob: Boolean = false,
+		val coveringRenewalJobName: String? = null,
 	) : SigningDialogState {
 
 		/**

@@ -4,6 +4,7 @@ import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
@@ -14,6 +15,8 @@ import cz.pizavo.omnisign.domain.usecase.GetDocumentTimestampInfoUseCase
 import cz.pizavo.omnisign.ui.model.TimestampDialogState
 import cz.pizavo.omnisign.ui.model.TimestampType
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
@@ -22,11 +25,7 @@ import io.mockk.coVerify
 import io.mockk.mockk
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.StandardTestDispatcher
-import kotlinx.coroutines.test.advanceUntilIdle
-import kotlinx.coroutines.test.resetMain
-import kotlinx.coroutines.test.runTest
-import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.test.*
 
 /**
  * Unit tests for [TimestampViewModel].
@@ -60,7 +59,7 @@ class TimestampViewModelTest : FunSpec({
 		Dispatchers.resetMain()
 	}
 
-	fun buildVm() = TimestampViewModel(extendUseCase, getTimestampInfoUseCase, configRepository, testDispatcher)
+	fun buildVm() = TimestampViewModel(extendUseCase, getTimestampInfoUseCase, configRepository, ioDispatcher = testDispatcher)
 
 	test("initial state is Idle") {
 		buildVm().state.value.shouldBeInstanceOf<TimestampDialogState.Idle>()
@@ -339,6 +338,117 @@ class TimestampViewModelTest : FunSpec({
 			vm.dismiss()
 
 			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Idle>()
+		}
+	}
+
+	test("pendingRenewalOffer is populated after LTA extension with addToRenewalJob checked") {
+		runTest(testDispatcher) {
+			val ltaConfig = AppConfig(
+				global = GlobalConfig(),
+				profiles = mapOf("prod" to ProfileConfig(name = "prod")),
+				activeProfile = "prod",
+			)
+			coEvery { configRepository.getCurrentConfig() } returns ltaConfig
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingResult(
+						outputFile = "/tmp/signed-extended.pdf",
+						newSignatureLevel = "PAdES-BASELINE-LTA",
+					).right()
+
+			val assigner = RenewalJobAssigner(configRepository)
+			val vm = TimestampViewModel(extendUseCase, getTimestampInfoUseCase, configRepository, assigner, testDispatcher)
+			vm.onDocumentChanged("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.open("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.updateState { it.copy(addToRenewalJob = true) }
+			vm.extend()
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Success>()
+			val offer = vm.pendingRenewalOffer.value
+			offer.shouldNotBeNull()
+			offer.outputFile shouldBe "/tmp/signed-extended.pdf"
+			offer.availableProfiles shouldBe listOf("prod")
+		}
+	}
+
+	test("pendingRenewalOffer is null when addToRenewalJob is not checked") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingResult(
+						outputFile = "/tmp/signed-extended.pdf",
+						newSignatureLevel = "PAdES-BASELINE-LTA",
+					).right()
+
+			val assigner = RenewalJobAssigner(configRepository)
+			val vm = TimestampViewModel(extendUseCase, getTimestampInfoUseCase, configRepository, assigner, testDispatcher)
+			vm.onDocumentChanged("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.open("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.extend()
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Success>()
+			vm.pendingRenewalOffer.value.shouldBeNull()
+		}
+	}
+
+	test("pendingRenewalOffer is null for Signature Timestamp even with addToRenewalJob checked") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingResult(
+						outputFile = "/tmp/signed-extended.pdf",
+						newSignatureLevel = "PAdES-BASELINE-LT",
+					).right()
+
+			val assigner = RenewalJobAssigner(configRepository)
+			val vm = TimestampViewModel(extendUseCase, getTimestampInfoUseCase, configRepository, assigner, testDispatcher)
+			vm.onDocumentChanged("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.open("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP, addToRenewalJob = true) }
+			vm.extend()
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Success>()
+			vm.pendingRenewalOffer.value.shouldBeNull()
+		}
+	}
+
+	test("dismissRenewalOffer clears pending offer") {
+		runTest(testDispatcher) {
+			val ltaConfig = AppConfig(global = GlobalConfig())
+			coEvery { configRepository.getCurrentConfig() } returns ltaConfig
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingResult(
+						outputFile = "/tmp/signed-extended.pdf",
+						newSignatureLevel = "PAdES-BASELINE-LTA",
+					).right()
+
+			val assigner = RenewalJobAssigner(configRepository)
+			val vm = TimestampViewModel(extendUseCase, getTimestampInfoUseCase, configRepository, assigner, testDispatcher)
+			vm.onDocumentChanged("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.open("/tmp/signed.pdf")
+			advanceUntilIdle()
+
+			vm.updateState { it.copy(addToRenewalJob = true) }
+			vm.extend()
+			advanceUntilIdle()
+
+			vm.pendingRenewalOffer.value.shouldNotBeNull()
+			vm.dismissRenewalOffer()
+			vm.pendingRenewalOffer.value.shouldBeNull()
 		}
 	}
 })

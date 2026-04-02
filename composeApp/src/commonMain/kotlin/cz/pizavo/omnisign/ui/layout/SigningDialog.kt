@@ -16,11 +16,7 @@ import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.progressindicators.CircularProgressIndicator
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.SigningDialogState
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_alert_danger
-import omnisign.composeapp.generated.resources.icon_alert_warning
-import omnisign.composeapp.generated.resources.icon_check
-import omnisign.composeapp.generated.resources.icon_x
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
 
 /**
@@ -232,12 +228,34 @@ private fun SigningFormContent(
 					onCheckedChange = { checked ->
 						onFieldChange {
 							if (checked) it.copy(addArchivalTimestamp = true, addSignatureTimestamp = true)
-							else it.copy(addArchivalTimestamp = false)
+							else it.copy(addArchivalTimestamp = false, addToRenewalJob = false)
 						}
 					},
 				)
 				Text(text = "Archival timestamp", style = LumoTheme.typography.body2)
 				InfoTooltip(text = "Produces PAdES BASELINE B-LTA")
+			}
+
+			if (state.addArchivalTimestamp) {
+				Row(
+					verticalAlignment = Alignment.CenterVertically,
+					horizontalArrangement = Arrangement.spacedBy(8.dp),
+				) {
+					Checkbox(
+						checked = state.addToRenewalJob,
+						onCheckedChange = { checked ->
+							onFieldChange { it.copy(addToRenewalJob = checked) }
+						},
+						enabled = state.coveringRenewalJobName == null,
+					)
+					Text(text = "Add to renewal job", style = LumoTheme.typography.body2)
+					InfoTooltip(
+						text = if (state.coveringRenewalJobName != null)
+							"Already covered by \"${state.coveringRenewalJobName}\""
+						else
+							"Set up automatic archival renewal after signing",
+					)
+				}
 			}
 		}
 

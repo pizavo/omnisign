@@ -169,6 +169,28 @@ private fun TimestampFormContent(
 			label = { Text("Output file path") },
 			modifier = Modifier.fillMaxWidth(),
 		)
+
+		if (state.timestampType == TimestampType.ARCHIVAL_TIMESTAMP) {
+			Row(
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(8.dp),
+			) {
+				Checkbox(
+					checked = state.addToRenewalJob,
+					onCheckedChange = { checked ->
+						onFieldChange { it.copy(addToRenewalJob = checked) }
+					},
+					enabled = state.coveringRenewalJobName == null,
+				)
+				Text(text = "Add to renewal job", style = LumoTheme.typography.body2)
+				InfoTooltip(
+					text = if (state.coveringRenewalJobName != null)
+						"Already covered by \"${state.coveringRenewalJobName}\""
+					else
+						"Set up automatic archival renewal after extending",
+				)
+			}
+		}
 	}
 }
 
