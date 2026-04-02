@@ -24,7 +24,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import cz.pizavo.omnisign.domain.model.config.CustomPkcs11Library
-import cz.pizavo.omnisign.domain.model.config.enums.*
+import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
+import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
+import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
+import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
@@ -412,6 +415,8 @@ private fun SettingsContentPanel(
 
 			SettingsCategory.Archiving,
 			SettingsCategory.RenewalJobs -> RenewalJobsSection(state = state, onFieldChange = onFieldChange)
+
+			SettingsCategory.Scheduler -> SchedulerSection(state = state, onFieldChange = onFieldChange)
 		}
 	}
 }

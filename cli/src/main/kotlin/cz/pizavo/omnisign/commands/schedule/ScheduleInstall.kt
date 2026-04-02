@@ -7,6 +7,7 @@ import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
 import cz.pizavo.omnisign.data.service.OsSchedulerService
+import cz.pizavo.omnisign.data.service.SelfExecutableResolver
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
@@ -44,7 +45,7 @@ class ScheduleInstall : CliktCommand(name = "install"), KoinComponent {
 		"Register the daily automatic re-timestamping job with the OS scheduler"
 	
 	override fun run() {
-		val resolvedCliPath = cliPath ?: resolveCliPath()
+		val resolvedCliPath = cliPath ?: SelfExecutableResolver.resolve()
 		if (resolvedCliPath == null) {
 			echo(
 				"❌ Could not auto-detect the CLI executable path.\n" +
@@ -65,16 +66,6 @@ class ScheduleInstall : CliktCommand(name = "install"), KoinComponent {
 		echo("   Binary : $resolvedCliPath")
 		echo("   Time   : %02d:%02d".format(hour, minute))
 		logFile?.let { echo("   Log    : $it") }
-	}
-	
-	/**
-	 * Attempt to resolve the running binary path from the current [ProcessHandle].
-	 * Returns null when the process was started as `java -jar` (i.e. the command is a JVM).
-	 */
-	private fun resolveCliPath(): String? {
-		val cmd = ProcessHandle.current().info().command().orElse(null) ?: return null
-		val isJvm = cmd.endsWith("java") || cmd.endsWith("java.exe")
-		return if (isJvm) null else cmd
 	}
 }
 

@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.data.serializer.XmlConfigSerializer
 import cz.pizavo.omnisign.data.serializer.YamlConfigSerializer
 import cz.pizavo.omnisign.data.service.*
 import cz.pizavo.omnisign.domain.port.ConfigSerializerRegistry
+import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -14,6 +15,7 @@ import cz.pizavo.omnisign.domain.repository.ValidationRepository
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.service.TokenService
 import cz.pizavo.omnisign.domain.usecase.ExportImportConfigUseCase
+import cz.pizavo.omnisign.domain.usecase.RenewBatchUseCase
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
@@ -46,11 +48,14 @@ val jvmRepositoryModule = module {
 		)
 	}
 	single { ExportImportConfigUseCase(get(), get()) }
+	singleOf(::RenewBatchUseCase)
 	
 	single<OsSchedulerService> {
 		val os = System.getProperty("os.name", "").lowercase()
 		if (os.contains("win")) WindowsTaskSchedulerService() else CrontabSchedulerService()
 	}
+	
+	single<SchedulerPort> { SchedulerPortAdapter(get()) }
 	
 	single<OsNotificationService> {
 		val os = System.getProperty("os.name", "").lowercase()

@@ -3,18 +3,14 @@ package cz.pizavo.omnisign.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.config.SchedulerConfig
+import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.SharingStarted
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
-import kotlinx.coroutines.flow.combine
-import kotlinx.coroutines.flow.stateIn
-import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 
 /**
@@ -25,16 +21,27 @@ import kotlinx.coroutines.launch
  * [SetGlobalConfigUseCase]. Renewal jobs are loaded from [cz.pizavo.omnisign.domain.model.config.AppConfig.renewalJobs]
  * and saved back via [ConfigRepository] alongside the global config.
  *
+ * When a [SchedulerPort] is available, the OS-level renewal scheduler is
+ * automatically installed or removed on save depending on whether renewal jobs
+ * are configured and an executable path is available (auto-detected or manual).
+ *
  * @param getConfigUseCase Use-case for reading the current application configuration.
  * @param setGlobalConfigUseCase Use-case for updating and persisting the global configuration.
  * @param configRepository Repository for persisting renewal jobs at the [cz.pizavo.omnisign.domain.model.config.AppConfig] level.
  * @param credentialStore Optional OS credential store for persisting TSA passwords.
+ * @param schedulerPort Optional scheduler port for managing the OS-level daily renewal job.
+ * @param autoDetectedExecutablePath Auto-detected absolute path of the running executable.
+ *   When available, the executable path field is hidden from the user and this value is used
+ *   automatically. `null` when auto-detection is unavailable (e.g. `java -jar` or Wasm),
+ *   in which case a manual text field is shown as a fallback.
  */
 class SettingsViewModel(
     private val getConfigUseCase: GetConfigUseCase,
     private val setGlobalConfigUseCase: SetGlobalConfigUseCase,
     private val configRepository: ConfigRepository? = null,
     private val credentialStore: CredentialStore? = null,
+    private val schedulerPort: SchedulerPort? = null,
+    private val autoDetectedExecutablePath: String? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GlobalConfigEditState())
@@ -66,12 +73,16 @@ class SettingsViewModel(
                 },
                 ifRight = { appConfig ->
                     val hasStored = hasStoredTsaPassword(appConfig.global)
+                    val installed = try { schedulerPort?.isInstalled() == true } catch (_: Exception) { false }
                     val editState = GlobalConfigEditState.from(
                         config = appConfig.global,
                         hasStoredPassword = hasStored,
                         renewalJobs = appConfig.renewalJobs,
                         availableProfiles = appConfig.profiles.keys.sorted(),
                         activeProfile = appConfig.activeProfile,
+                        schedulerConfig = appConfig.schedulerConfig,
+                        schedulerInstalled = installed,
+                        schedulerAutoDetectedPath = autoDetectedExecutablePath,
                     )
                     _state.value = editState
                     _initialState.value = editState
@@ -101,6 +112,10 @@ class SettingsViewModel(
      */
     fun save(onSuccess: () -> Unit = {}) {
         val current = _state.value
+        if (current.hasSchedulerTimeError) {
+            _state.update { it.copy(error = "Scheduler time is invalid — hour must be 0\u201323, minute must be 0\u201359.") }
+            return
+        }
         _state.update { it.copy(saving = true, error = null) }
         viewModelScope.launch {
             setGlobalConfigUseCase { current.toGlobalConfig() }.fold(
@@ -108,7 +123,8 @@ class SettingsViewModel(
                     _state.update { it.copy(saving = false, error = error.message) }
                 },
                 ifRight = {
-                    saveRenewalJobs(current)
+                    saveAppLevelConfig(current)
+                    syncScheduler(current)
                     storeTsaPasswordIfNeeded(current)
                     _state.update { it.copy(saving = false, error = null) }
                     onSuccess()
@@ -136,15 +152,54 @@ class SettingsViewModel(
     }
 
     /**
-     * Persist the renewal jobs from [editState] into the application configuration
-     * via [ConfigRepository]. Reads the current config, replaces the renewal jobs map,
-     * and saves the result.
+     * Persist renewal jobs and scheduler config from [editState] into the
+     * application configuration in a single atomic write via [ConfigRepository].
      */
-    private suspend fun saveRenewalJobs(editState: GlobalConfigEditState) {
+    private suspend fun saveAppLevelConfig(editState: GlobalConfigEditState) {
         val repo = configRepository ?: return
         val appConfig = repo.getCurrentConfig()
         val jobMap = editState.renewalJobs.associateBy { it.name }
-        repo.saveConfig(appConfig.copy(renewalJobs = jobMap))
+        val schedulerCfg = SchedulerConfig(
+            cliExecutablePath = editState.effectiveSchedulerExecutablePath,
+            runAtHour = editState.schedulerHour.toIntOrNull()?.coerceIn(0, 23) ?: 2,
+            runAtMinute = editState.schedulerMinute.toIntOrNull()?.coerceIn(0, 59) ?: 0,
+            logFilePath = editState.schedulerLogFile.trim().ifBlank { null },
+        )
+        repo.saveConfig(
+            appConfig.copy(
+                renewalJobs = jobMap,
+                schedulerConfig = schedulerCfg,
+            )
+        )
+    }
+
+    /**
+     * Synchronize the OS scheduler with the current edit state.
+     *
+     * When renewal jobs exist and an executable path is available (auto-detected or
+     * manually entered), the scheduler is installed (or updated). Otherwise, the
+     * scheduler is uninstalled.
+     * If the [schedulerPort] is not available the method is a no-op.
+     */
+    private fun syncScheduler(editState: GlobalConfigEditState) {
+        val port = schedulerPort ?: return
+        val exePath = editState.effectiveSchedulerExecutablePath
+        if (editState.renewalJobs.isNotEmpty() && exePath != null) {
+            try {
+                port.install(
+                    cliExecutablePath = exePath,
+                    runAtHour = editState.schedulerHour.toIntOrNull()?.coerceIn(0, 23) ?: 2,
+                    runAtMinute = editState.schedulerMinute.toIntOrNull()?.coerceIn(0, 59) ?: 0,
+                    logFilePath = editState.schedulerLogFile.trim().ifBlank { null },
+                )
+            } catch (_: Exception) {
+                _state.update { it.copy(error = "Failed to install OS scheduler — check permissions.") }
+            }
+        } else {
+            try {
+                port.uninstall()
+            } catch (_: Exception) { }
+        }
     }
 
     companion object {

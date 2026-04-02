@@ -6,6 +6,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.CredentialStore
@@ -15,6 +16,7 @@ import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.ui.model.*
 import cz.pizavo.omnisign.ui.platform.exportTextToFile
 import cz.pizavo.omnisign.ui.platform.loadPdfFromPlatformFile
+import cz.pizavo.omnisign.ui.platform.resolveExecutablePath
 import cz.pizavo.omnisign.ui.viewmodel.*
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -88,6 +90,8 @@ fun IslandLayout(
 			koin.get<SetGlobalConfigUseCase>(),
 			koin.getOrNull<ConfigRepository>(),
 			koin.getOrNull<CredentialStore>(),
+			koin.getOrNull<SchedulerPort>(),
+			autoDetectedExecutablePath = resolveExecutablePath(),
 		)
 	}
 	val settingsState by (settingsViewModel?.state ?: remember {

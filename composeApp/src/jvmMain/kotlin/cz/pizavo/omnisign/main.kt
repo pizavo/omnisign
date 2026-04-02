@@ -2,35 +2,27 @@ package cz.pizavo.omnisign
 
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.collectAsState
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
-import androidx.compose.runtime.snapshotFlow
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.positionInWindow
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Window
-import androidx.compose.ui.window.WindowPlacement
-import androidx.compose.ui.window.WindowPosition
-import androidx.compose.ui.window.application
-import androidx.compose.ui.window.rememberWindowState
+import androidx.compose.ui.window.*
 import com.jetbrains.JBR
 import com.jetbrains.WindowDecorations
+import cz.pizavo.omnisign.data.service.NotificationUrgency
+import cz.pizavo.omnisign.data.service.OsNotificationService
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
+import cz.pizavo.omnisign.domain.usecase.RenewBatchUseCase
 import cz.pizavo.omnisign.platform.PasswordCallback
 import cz.pizavo.omnisign.ui.platform.*
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.runBlocking
 import org.koin.core.context.startKoin
+import org.koin.core.context.stopKoin
 import java.awt.Frame
 import java.awt.MouseInfo
 import java.awt.Point
@@ -39,6 +31,7 @@ import java.awt.event.MouseAdapter
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import javax.swing.Timer
+import kotlin.system.exitProcess
 
 /**
  * Resolved native log directory, set as a system property before Logback initialises.
@@ -98,8 +91,16 @@ private fun resolveLogDir(): String {
  *
  * The build toolchain guarantees JetBrains Runtime, so no non-JBR fallback is
  * needed.
+ *
+ * When invoked with the `renew` argument (e.g. by the OS scheduler), the app
+ * runs the renewal batch in headless mode and exits without starting the GUI.
  */
-fun main() {
+fun main(args: Array<String> = emptyArray()) {
+	if (args.isNotEmpty() && args[0] == "renew") {
+		runHeadlessRenewal()
+		return
+	}
+
 	application {
 		startKoin {
 			modules(
@@ -115,6 +116,74 @@ fun main() {
 
 		JbrDecoratedWindow(onCloseRequest = ::exitApplication)
 	}
+}
+
+/**
+ * Headless renewal mode invoked by the OS scheduler.
+ *
+ * Bootstraps Koin with a no-op [PasswordCallback] (renewal never needs
+ * interactive authentication), runs all configured renewal jobs via
+ * [RenewBatchUseCase], sends OS notifications for completed jobs, and
+ * exits with code 0 on success or 1 if any errors occurred.
+ */
+private fun runHeadlessRenewal() {
+	val koinApp = startKoin {
+		modules(
+			appModule,
+			jvmRepositoryModule,
+			org.koin.dsl.module {
+				single<PasswordCallback> {
+					object : PasswordCallback {
+						override fun requestPassword(prompt: String, title: String): String? = null
+					}
+				}
+			},
+		)
+	}
+
+	logger.info { "OmniSign headless renewal started — log directory: $LOG_DIR" }
+
+	val koin = koinApp.koin
+	val renewBatch = koin.get<RenewBatchUseCase>()
+	val notificationService = koin.get<OsNotificationService>()
+
+	val result = runBlocking { renewBatch() }
+	stopKoin()
+
+	if (result == null || result.jobs.isEmpty()) {
+		logger.info { "No renewal jobs configured — exiting." }
+		exitProcess(0)
+	}
+
+	logger.info {
+		"Renewal complete: checked=${result.checked}, renewed=${result.renewed}, " +
+				"skipped=${result.skipped}, errors=${result.errors}"
+	}
+
+	for (job in result.jobs) {
+		if (!job.notify) continue
+		when {
+			job.errors > 0 && job.renewed > 0 -> notificationService.notify(
+				title = "OmniSign — Renewal partial failure (${job.name})",
+				body = "${job.renewed} file(s) re-timestamped, ${job.errors} error(s). Check the log for details.",
+				urgency = NotificationUrgency.CRITICAL,
+			)
+
+			job.errors > 0 -> notificationService.notify(
+				title = "OmniSign — Renewal failed (${job.name})",
+				body = "${job.errors} file(s) could not be re-timestamped. Digital continuity may be at risk.",
+				urgency = NotificationUrgency.CRITICAL,
+			)
+
+			job.renewed > 0 -> notificationService.notify(
+				title = "OmniSign — Renewal complete (${job.name})",
+				body = "${job.renewed} file(s) successfully re-timestamped.",
+				urgency = NotificationUrgency.NORMAL,
+			)
+		}
+	}
+
+	exitProcess(if (result.success) 0 else 1)
 }
 
 /**

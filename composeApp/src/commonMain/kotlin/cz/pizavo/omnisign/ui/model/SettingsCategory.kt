@@ -103,6 +103,13 @@ enum class SettingsCategory(
         parent = Archiving,
     ),
 
+    /** OS-level daily scheduler for running renewal jobs automatically. */
+    Scheduler(
+        label = "Scheduler",
+        description = "Configure the OS-level daily scheduler that runs renewal jobs automatically via cron (Linux/macOS) or Task Scheduler (Windows).",
+        parent = Archiving,
+    ),
+
     /** Top-level group for token/hardware configuration. */
     Tokens(
         label = "Tokens",

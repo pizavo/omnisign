@@ -2,22 +2,17 @@ package cz.pizavo.omnisign.ui.viewmodel
 
 import arrow.core.left
 import arrow.core.right
-import cz.pizavo.omnisign.domain.model.config.AppConfig
-import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
-import cz.pizavo.omnisign.domain.model.config.GlobalConfig
-import cz.pizavo.omnisign.domain.model.config.ProfileConfig
-import cz.pizavo.omnisign.domain.model.config.RenewalJob
-import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
-import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
-import cz.pizavo.omnisign.domain.model.config.ValidationConfig
+import cz.pizavo.omnisign.domain.model.config.*
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
+import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
@@ -36,6 +31,7 @@ class SettingsViewModelTest : FunSpec({
 
     val configRepository: ConfigRepository = mockk()
     val credentialStore: CredentialStore = mockk(relaxed = true)
+    val schedulerPort: SchedulerPort = mockk(relaxed = true)
     val getConfig = GetConfigUseCase(configRepository)
     val setGlobalConfig = SetGlobalConfigUseCase(configRepository)
     val testDispatcher = StandardTestDispatcher()
@@ -47,7 +43,7 @@ class SettingsViewModelTest : FunSpec({
     val baseConfig = AppConfig(global = baseGlobal)
 
     beforeTest {
-        clearMocks(configRepository, credentialStore)
+        clearMocks(configRepository, credentialStore, schedulerPort)
         Dispatchers.setMain(testDispatcher)
     }
 
@@ -485,6 +481,309 @@ class SettingsViewModelTest : FunSpec({
             vm.updateState { it.copy(renewalJobs = emptyList()) }
             advanceUntilIdle()
             vm.hasChanges.value shouldBe false
+        }
+    }
+
+    test("load populates scheduler fields from AppConfig") {
+        runTest(testDispatcher) {
+            val config = baseConfig.copy(
+                schedulerConfig = SchedulerConfig(
+                    cliExecutablePath = "/usr/bin/omnisign",
+                    runAtHour = 3,
+                    runAtMinute = 30,
+                    logFilePath = "/var/log/omnisign.log",
+                ),
+            )
+            coEvery { configRepository.loadConfig() } returns config.right()
+            every { schedulerPort.isInstalled() } returns true
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.schedulerCliPath shouldBe "/usr/bin/omnisign"
+            vm.state.value.schedulerHour shouldBe "3"
+            vm.state.value.schedulerMinute shouldBe "30"
+            vm.state.value.schedulerLogFile shouldBe "/var/log/omnisign.log"
+            vm.state.value.schedulerInstalled shouldBe true
+        }
+    }
+
+    test("save installs scheduler using auto-detected path when renewal jobs exist") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
+            vm.updateState {
+                it.copy(
+                    renewalJobs = listOf(job),
+                    schedulerHour = "4",
+                    schedulerMinute = "15",
+                )
+            }
+
+            vm.save(onSuccess = {})
+            advanceUntilIdle()
+
+            verify { schedulerPort.install("/opt/omnisign/bin/OmniSign", 4, 15, null) }
+        }
+    }
+
+    test("save installs scheduler using manual path when auto-detection is unavailable") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort)
+            vm.load()
+            advanceUntilIdle()
+
+            val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
+            vm.updateState {
+                it.copy(
+                    renewalJobs = listOf(job),
+                    schedulerCliPath = "/usr/bin/omnisign",
+                    schedulerHour = "4",
+                    schedulerMinute = "15",
+                )
+            }
+
+            vm.save(onSuccess = {})
+            advanceUntilIdle()
+
+            verify { schedulerPort.install("/usr/bin/omnisign", 4, 15, null) }
+        }
+    }
+
+    test("save uninstalls scheduler when renewal jobs are empty") {
+        runTest(testDispatcher) {
+            val job = RenewalJob(name = "old", globs = listOf("/old/**"))
+            val config = baseConfig.copy(
+                renewalJobs = mapOf("old" to job),
+                schedulerConfig = SchedulerConfig(cliExecutablePath = "/usr/bin/omnisign"),
+            )
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+            every { schedulerPort.isInstalled() } returns true
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.updateState { it.copy(renewalJobs = emptyList()) }
+
+            vm.save(onSuccess = {})
+            advanceUntilIdle()
+
+            verify { schedulerPort.uninstall() }
+            verify(exactly = 0) { schedulerPort.install(any(), any(), any(), any()) }
+        }
+    }
+
+    test("save does not call scheduler when schedulerPort is null") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, null)
+            vm.load()
+            advanceUntilIdle()
+
+            val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
+            vm.updateState {
+                it.copy(
+                    renewalJobs = listOf(job),
+                    schedulerCliPath = "/usr/bin/omnisign",
+                )
+            }
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            advanceUntilIdle()
+
+            successCalled shouldBe true
+        }
+    }
+
+    test("save persists scheduler config via ConfigRepository") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            val saved = mutableListOf<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.updateState {
+                it.copy(
+                    schedulerHour = "5",
+                    schedulerMinute = "45",
+                    schedulerLogFile = "/tmp/renewal.log",
+                )
+            }
+
+            vm.save(onSuccess = {})
+            advanceUntilIdle()
+
+            val lastSave = saved.last()
+            lastSave.schedulerConfig.cliExecutablePath shouldBe "/opt/omnisign/bin/OmniSign"
+            lastSave.schedulerConfig.runAtHour shouldBe 5
+            lastSave.schedulerConfig.runAtMinute shouldBe 45
+            lastSave.schedulerConfig.logFilePath shouldBe "/tmp/renewal.log"
+        }
+    }
+
+    test("save uninstalls scheduler when no executable path is available even with renewal jobs") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort)
+            vm.load()
+            advanceUntilIdle()
+
+            val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
+            vm.updateState {
+                it.copy(
+                    renewalJobs = listOf(job),
+                    schedulerCliPath = "",
+                )
+            }
+
+            vm.save(onSuccess = {})
+            advanceUntilIdle()
+
+            verify { schedulerPort.uninstall() }
+            verify(exactly = 0) { schedulerPort.install(any(), any(), any(), any()) }
+        }
+    }
+
+    test("load sets schedulerAutoDetectedPath when autoDetectedExecutablePath is available") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.schedulerAutoDetectedPath shouldBe "/opt/omnisign/bin/OmniSign"
+            vm.state.value.effectiveSchedulerExecutablePath shouldBe "/opt/omnisign/bin/OmniSign"
+        }
+    }
+
+    test("load leaves schedulerAutoDetectedPath null when autoDetectedExecutablePath is unavailable") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.schedulerAutoDetectedPath.shouldBeNull()
+        }
+    }
+
+    test("effectiveSchedulerExecutablePath prefers auto-detected over persisted manual path") {
+        runTest(testDispatcher) {
+            val config = baseConfig.copy(
+                schedulerConfig = SchedulerConfig(cliExecutablePath = "/usr/bin/omnisign"),
+            )
+            coEvery { configRepository.loadConfig() } returns config.right()
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.schedulerAutoDetectedPath shouldBe "/opt/omnisign/bin/OmniSign"
+            vm.state.value.schedulerCliPath shouldBe "/usr/bin/omnisign"
+            vm.state.value.effectiveSchedulerExecutablePath shouldBe "/opt/omnisign/bin/OmniSign"
+        }
+    }
+
+    test("isSchedulerHourValid rejects values outside 0-23") {
+        val state = GlobalConfigEditState(schedulerHour = "24")
+        state.isSchedulerHourValid shouldBe false
+
+        GlobalConfigEditState(schedulerHour = "25").isSchedulerHourValid shouldBe false
+        GlobalConfigEditState(schedulerHour = "99").isSchedulerHourValid shouldBe false
+        GlobalConfigEditState(schedulerHour = "0").isSchedulerHourValid shouldBe true
+        GlobalConfigEditState(schedulerHour = "23").isSchedulerHourValid shouldBe true
+        GlobalConfigEditState(schedulerHour = "12").isSchedulerHourValid shouldBe true
+        GlobalConfigEditState(schedulerHour = "").isSchedulerHourValid shouldBe true
+    }
+
+    test("isSchedulerMinuteValid rejects values outside 0-59") {
+        GlobalConfigEditState(schedulerMinute = "60").isSchedulerMinuteValid shouldBe false
+        GlobalConfigEditState(schedulerMinute = "99").isSchedulerMinuteValid shouldBe false
+        GlobalConfigEditState(schedulerMinute = "0").isSchedulerMinuteValid shouldBe true
+        GlobalConfigEditState(schedulerMinute = "59").isSchedulerMinuteValid shouldBe true
+        GlobalConfigEditState(schedulerMinute = "30").isSchedulerMinuteValid shouldBe true
+        GlobalConfigEditState(schedulerMinute = "").isSchedulerMinuteValid shouldBe true
+    }
+
+    test("save blocks with error when scheduler hour is out of range") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.updateState { it.copy(schedulerHour = "25") }
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            advanceUntilIdle()
+
+            successCalled shouldBe false
+            vm.state.value.error.shouldNotBeNull()
+            vm.state.value.saving shouldBe false
+        }
+    }
+
+    test("save blocks with error when scheduler minute is out of range") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.updateState { it.copy(schedulerMinute = "60") }
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            advanceUntilIdle()
+
+            successCalled shouldBe false
+            vm.state.value.error.shouldNotBeNull()
+            vm.state.value.saving shouldBe false
         }
     }
 })

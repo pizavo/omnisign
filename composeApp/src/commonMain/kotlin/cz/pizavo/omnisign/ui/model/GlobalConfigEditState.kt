@@ -1,17 +1,7 @@
 package cz.pizavo.omnisign.ui.model
 
-import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
-import cz.pizavo.omnisign.domain.model.config.CustomPkcs11Library
-import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
-import cz.pizavo.omnisign.domain.model.config.GlobalConfig
-import cz.pizavo.omnisign.domain.model.config.RenewalJob
-import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
-import cz.pizavo.omnisign.domain.model.config.ValidationConfig
-import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
-import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
-import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
-import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
-import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
+import cz.pizavo.omnisign.domain.model.config.*
+import cz.pizavo.omnisign.domain.model.config.enums.*
 import cz.pizavo.omnisign.domain.model.config.service.CrlConfig
 import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
@@ -50,6 +40,14 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
  * @property renewalJobs Renewal jobs managed in this edit session.
  * @property availableProfiles Names of profiles available for the renewal job profile dropdown.
  * @property activeProfile The currently active profile name, used as the default selection when adding a renewal job.
+ * @property schedulerCliPath Manual fallback path to the OmniSign executable, used only when auto-detection is unavailable.
+ * @property schedulerAutoDetectedPath Auto-detected executable path of the running process, or `null` when unavailable.
+ *   When present, this path takes precedence over [schedulerCliPath] for scheduler installation and is shown as
+ *   read-only info in the UI. The editable [schedulerCliPath] field is hidden.
+ * @property schedulerHour Hour of the day (0–23) for the daily scheduler run.
+ * @property schedulerMinute Minute (0–59) for the daily scheduler run.
+ * @property schedulerLogFile Optional append-only log file path for scheduler output.
+ * @property schedulerInstalled Whether the OS scheduler job is currently registered (read-only, queried on the load).
  * @property saving Whether a save operation is currently in progress.
  * @property error Human-readable error message from the last failed operation, or `null`.
  * @property certAddError Human-readable error from the last failed trusted certificate add attempt, or `null`.
@@ -83,6 +81,12 @@ data class GlobalConfigEditState(
 	val renewalJobs: List<RenewalJob> = emptyList(),
 	val availableProfiles: List<String> = emptyList(),
 	val activeProfile: String? = null,
+	val schedulerCliPath: String = "",
+	val schedulerAutoDetectedPath: String? = null,
+	val schedulerHour: String = "2",
+	val schedulerMinute: String = "0",
+	val schedulerLogFile: String = "",
+	val schedulerInstalled: Boolean = false,
 	val saving: Boolean = false,
 	val error: String? = null,
 	val certAddError: String? = null,
@@ -103,6 +107,35 @@ data class GlobalConfigEditState(
 			addSignatureTimestamp -> SignatureLevel.PADES_BASELINE_LT
 			else -> SignatureLevel.PADES_BASELINE_B
 		}
+
+	/**
+	 * The executable path that will actually be used for the OS scheduler.
+	 *
+	 * Prefers [schedulerAutoDetectedPath] when available, falling back to
+	 * the manually entered [schedulerCliPath].
+	 */
+	val effectiveSchedulerExecutablePath: String?
+		get() = schedulerAutoDetectedPath ?: schedulerCliPath.trim().ifBlank { null }
+
+	/**
+	 * Whether the [schedulerHour] string represents a valid hour (0–23).
+	 * Empty strings are treated as valid (defaults are applied on save).
+	 */
+	val isSchedulerHourValid: Boolean
+		get() = schedulerHour.isEmpty() || schedulerHour.toIntOrNull()?.let { it in 0..23 } == true
+
+	/**
+	 * Whether the [schedulerMinute] string represents a valid minute (0–59).
+	 * Empty strings are treated as valid (defaults are applied on save).
+	 */
+	val isSchedulerMinuteValid: Boolean
+		get() = schedulerMinute.isEmpty() || schedulerMinute.toIntOrNull()?.let { it in 0..59 } == true
+
+	/**
+	 * Whether any scheduler time field contains an out-of-range value.
+	 */
+	val hasSchedulerTimeError: Boolean
+		get() = !isSchedulerHourValid || !isSchedulerMinuteValid
 
 	/**
 	 * Compare only the persistable content fields of two states, ignoring
@@ -132,7 +165,11 @@ data class GlobalConfigEditState(
 				customTrustedLists == other.customTrustedLists &&
 				trustedCertificates == other.trustedCertificates &&
 				customPkcs11Libraries == other.customPkcs11Libraries &&
-				renewalJobs == other.renewalJobs
+				renewalJobs == other.renewalJobs &&
+				schedulerCliPath == other.schedulerCliPath &&
+				schedulerHour == other.schedulerHour &&
+				schedulerMinute == other.schedulerMinute &&
+				schedulerLogFile == other.schedulerLogFile
 
 	/**
 	 * Convert this UI state back into a persistable [GlobalConfig].
@@ -187,6 +224,9 @@ data class GlobalConfigEditState(
 		 * @param renewalJobs Current renewal jobs from [cz.pizavo.omnisign.domain.model.config.AppConfig.renewalJobs].
 		 * @param availableProfiles Profile names available for the renewal job profile dropdown.
 		 * @param activeProfile The currently active profile name, or `null` if none is active.
+		 * @param schedulerConfig Persisted scheduler settings.
+		 * @param schedulerInstalled Whether the OS scheduler job is currently registered.
+		 * @param schedulerAutoDetectedPath Auto-detected executable path, or `null` when unavailable.
 		 * @return A new edit state pre-populated with the config's values.
 		 */
 		fun from(
@@ -195,6 +235,9 @@ data class GlobalConfigEditState(
 			renewalJobs: Map<String, RenewalJob> = emptyMap(),
 			availableProfiles: List<String> = emptyList(),
 			activeProfile: String? = null,
+			schedulerConfig: SchedulerConfig = SchedulerConfig(),
+			schedulerInstalled: Boolean = false,
+			schedulerAutoDetectedPath: String? = null,
 		): GlobalConfigEditState {
 			val level = config.defaultSignatureLevel
 			return GlobalConfigEditState(
@@ -227,6 +270,12 @@ data class GlobalConfigEditState(
 				renewalJobs = renewalJobs.values.toList(),
 				availableProfiles = availableProfiles,
 				activeProfile = activeProfile,
+				schedulerCliPath = schedulerConfig.cliExecutablePath.orEmpty(),
+				schedulerAutoDetectedPath = schedulerAutoDetectedPath,
+				schedulerHour = schedulerConfig.runAtHour.toString(),
+				schedulerMinute = schedulerConfig.runAtMinute.toString(),
+				schedulerLogFile = schedulerConfig.logFilePath.orEmpty(),
+				schedulerInstalled = schedulerInstalled,
 			)
 		}
 	}
