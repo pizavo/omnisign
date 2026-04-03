@@ -150,9 +150,13 @@ compose.desktop {
 				"java.sql",
 				"java.xml",
 				"java.xml.crypto",
-				"jdk.crypto.mscapi",
 				"jdk.unsupported",
 			)
+			
+			if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
+				modules("jdk.crypto.mscapi")
+			}
+			
 			targetFormats(
 				TargetFormat.Msi,
 				TargetFormat.Exe,
