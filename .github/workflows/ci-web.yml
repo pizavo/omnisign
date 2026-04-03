@@ -1,4 +1,4 @@
-name: CI — Desktop
+name: CI — Web
 
 on:
   push:
@@ -21,20 +21,14 @@ on:
 
 jobs:
   build:
-    name: Build & Test — ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+    name: Build Web (Wasm)
+    runs-on: ubuntu-latest
 
     steps:
       - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-gradle
-        with:
-          distribution: 'jetbrains'
 
-      - name: Build and test
-        run: ./gradlew :shared:jvmTest :composeApp:jvmTest :composeApp:createDistributable
+      - name: Build Wasm distribution
+        run: ./gradlew :composeApp:wasmJsBrowserDistribution
 
