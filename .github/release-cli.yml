@@ -1,6 +1,13 @@
 changelog:
   categories:
-    - title: All Changes
+    - title: New Features
+      labels:
+        - enhancement
+        - cli
+    - title: Bug Fixes
+      labels:
+        - bug
+        - cli
+    - title: Other Changes
       labels:
         - cli
-

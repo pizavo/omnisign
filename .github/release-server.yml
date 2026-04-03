@@ -1,6 +1,13 @@
 changelog:
   categories:
-    - title: All Changes
+    - title: New Features
+      labels:
+        - enhancement
+        - server
+    - title: Bug Fixes
+      labels:
+        - bug
+        - server
+    - title: Other Changes
       labels:
         - server
-

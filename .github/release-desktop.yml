@@ -1,6 +1,13 @@
 changelog:
   categories:
-    - title: All Changes
+    - title: New Features
+      labels:
+        - enhancement
+        - desktop
+    - title: Bug Fixes
+      labels:
+        - bug
+        - desktop
+    - title: Other Changes
       labels:
         - desktop
-

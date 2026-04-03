@@ -17,6 +17,7 @@ on:
       - 'gradle/**'
       - '*.gradle.kts'
       - 'gradle.properties'
+  workflow_dispatch:
 
 jobs:
   build:
@@ -31,6 +32,8 @@ jobs:
       - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-gradle
+        with:
+          distribution: 'jetbrains'
 
       - name: Build and test
         run: ./gradlew :shared:jvmTest :composeApp:jvmTest :composeApp:createDistributable

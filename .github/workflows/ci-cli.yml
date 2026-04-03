@@ -17,6 +17,7 @@ on:
       - 'gradle/**'
       - '*.gradle.kts'
       - 'gradle.properties'
+  workflow_dispatch:
 
 jobs:
   build:
