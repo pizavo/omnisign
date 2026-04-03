@@ -6,6 +6,10 @@ inputs:
     description: 'JDK distribution to install (e.g. temurin, jetbrains).'
     required: false
     default: 'temurin'
+  github-token:
+    description: 'GitHub token for authenticated API requests (avoids rate limits).'
+    required: false
+    default: ${{ github.token }}
 
 runs:
   using: composite
@@ -15,6 +19,7 @@ runs:
       with:
         distribution: ${{ inputs.distribution }}
         java-version: '25'
+        token: ${{ inputs.github-token }}
 
     - name: Make gradlew executable
       shell: bash
