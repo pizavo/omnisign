@@ -1,15 +1,5 @@
 name: 'Setup Java & Gradle'
-description: 'Sets up JDK 25 and configures Gradle with build caching.'
-
-inputs:
-  distribution:
-    description: 'JDK distribution to install (e.g. temurin, jetbrains).'
-    required: false
-    default: 'temurin'
-  github-token:
-    description: 'GitHub token for authenticated API requests (avoids rate limits).'
-    required: false
-    default: ${{ github.token }}
+description: 'Sets up Temurin JDK 25 (Gradle launcher) and configures Gradle with build caching. JBR is auto-provisioned by the Gradle foojay toolchain resolver when needed.'
 
 runs:
   using: composite
@@ -17,9 +7,8 @@ runs:
     - name: Set up JDK 25
       uses: actions/setup-java@v5
       with:
-        distribution: ${{ inputs.distribution }}
+        distribution: 'temurin'
         java-version: '25'
-        token: ${{ inputs.github-token }}
 
     - name: Make gradlew executable
       shell: bash
