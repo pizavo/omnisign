@@ -17,10 +17,11 @@ on:
       - 'gradle/**'
       - '*.gradle.kts'
       - 'gradle.properties'
+  workflow_dispatch:
 
 jobs:
-  test-jvm:
-    name: Test JVM — ${{ matrix.os }}
+  build:
+    name: Build & Test — ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -31,11 +32,13 @@ jobs:
       - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-gradle
+        with:
+          distribution: 'jetbrains'
 
-      - name: Run JVM tests
-        run: ./gradlew :shared:jvmTest :composeApp:jvmTest
+      - name: Build and test
+        run: ./gradlew :shared:jvmTest :composeApp:jvmTest :composeApp:createDistributable
 
-  test-web:
+  build-web:
     name: Build Web (Wasm)
     runs-on: ubuntu-latest
 

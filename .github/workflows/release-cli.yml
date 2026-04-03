@@ -143,14 +143,21 @@ jobs:
       - name: Install librsvg
         run: brew install librsvg
 
-      - name: Build macOS package
-        run: ./gradlew :cli:jpackageDmg -PreleaseVersion=${{ needs.prepare.outputs.version }}
+      - name: Build macOS packages
+        run: ./gradlew :cli:jpackageDmg :cli:jpackagePkg -PreleaseVersion=${{ needs.prepare.outputs.version }}
 
       - name: Upload DMG
         uses: actions/upload-artifact@v7
         with:
           name: cli-macos-dmg
           path: cli/build/jpackage/mac/*.dmg
+          if-no-files-found: error
+
+      - name: Upload PKG
+        uses: actions/upload-artifact@v7
+        with:
+          name: cli-macos-pkg
+          path: cli/build/jpackage/mac-pkg/*.pkg
           if-no-files-found: error
 
   release:

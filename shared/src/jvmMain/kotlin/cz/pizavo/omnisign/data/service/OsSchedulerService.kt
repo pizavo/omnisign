@@ -13,11 +13,11 @@ interface OsSchedulerService {
 	/**
 	 * Register (or replace) the daily renewal job in the OS scheduler.
 	 *
-	 * @param cliExecutablePath Absolute path to the `omnisign` binary (or `java -jar …`
-	 *   invocation) that will be called each day.
+	 * @param cliExecutablePath Absolute path to the OmniSign executable (CLI or desktop app)
+	 *   that will be called each day.
 	 * @param runAtHour Hour of day (0–23) at which the job should be triggered.
 	 * @param runAtMinute Minute (0–59) at which the job should be triggered.
-	 * @param logFilePath Optional path to an append-only log file.  When supplied the
+	 * @param logFilePath Optional path to an append-only log file.  When supplied, the
 	 *   scheduler redirects stdout and stderr of each run to this file.
 	 */
 	fun install(

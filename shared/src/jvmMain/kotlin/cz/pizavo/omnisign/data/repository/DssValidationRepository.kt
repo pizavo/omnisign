@@ -12,11 +12,14 @@ import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
 import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.repository.ValidationRepository
+import cz.pizavo.omnisign.data.util.toKotlinInstant
 import eu.europa.esig.dss.detailedreport.DetailedReport
 import eu.europa.esig.dss.diagnostic.DiagnosticData
 import eu.europa.esig.dss.diagnostic.TimestampWrapper
 import eu.europa.esig.dss.enumerations.Indication
 import eu.europa.esig.dss.enumerations.SignatureQualification
+import cz.pizavo.omnisign.domain.model.validation.SignatureTrustTier
+import cz.pizavo.omnisign.domain.model.validation.toTrustTier
 import eu.europa.esig.dss.enumerations.SubIndication
 import eu.europa.esig.dss.enumerations.TimestampQualification
 import eu.europa.esig.dss.model.FileDocument
@@ -72,7 +75,10 @@ class DssValidationRepository(
 			}
 			
 			val verifierWarnings = statusAlert.drain()
-			convertReports(reports, file.name).copy(tlWarnings = tlWarnings + verifierWarnings)
+			convertReports(reports, file.name).copy(
+				tlWarnings = tlWarnings + verifierWarnings,
+				rawReports = extractRawReports(reports),
+			)
 		}.mapLeft { exception ->
 			ValidationError.ValidationFailed(
 				message = "Validation failed",
@@ -113,13 +119,30 @@ class DssValidationRepository(
 		val detailedReport = reports.detailedReport
 		val diagnosticData = reports.diagnosticData
 		
-		val signatures = simpleReport.signatureIdList.map { id ->
-			convertSignature(simpleReport, diagnosticData, id)
+		val allTimestampResults = diagnosticData.getTimestampList().associate { tsw ->
+			tsw.id to convertTimestamp(tsw, simpleReport, detailedReport)
 		}
 		
-		val timestamps = diagnosticData.getTimestampList().map { tsw ->
-			convertTimestamp(tsw, simpleReport, detailedReport)
+		val signatureTimestampIds = mutableSetOf<String>()
+		
+		val signatures = simpleReport.signatureIdList.map { sigId ->
+			val sigWrapper = diagnosticData.getSignatureById(sigId)
+			val sigTsIds = sigWrapper?.timestampList
+				?.filter { it.type == eu.europa.esig.dss.enumerations.TimestampType.SIGNATURE_TIMESTAMP }
+				?.map { it.id }
+				?: emptyList()
+			signatureTimestampIds.addAll(sigTsIds)
+			
+			val sigTimestamps = sigTsIds.mapNotNull { tsId -> allTimestampResults[tsId] }
+			
+			convertSignature(simpleReport, diagnosticData, sigId).copy(
+				timestamps = sigTimestamps
+			)
 		}
+		
+		val documentTimestamps = allTimestampResults
+			.filterKeys { it !in signatureTimestampIds }
+			.values.toList()
 		
 		val overallResult = when {
 			signatures.all { it.indication == ValidationIndication.TOTAL_PASSED } -> ValidationResult.VALID
@@ -129,10 +152,10 @@ class DssValidationRepository(
 		
 		return ValidationReport(
 			documentName = documentName,
-			validationTime = java.time.Instant.now().toString(),
+			validationTime = kotlin.time.Clock.System.now(),
 			overallResult = overallResult,
 			signatures = signatures,
-			timestamps = timestamps
+			timestamps = documentTimestamps
 		)
 	}
 	
@@ -158,7 +181,7 @@ class DssValidationRepository(
 	 * sub-indication `NO_POE` — when the TSA certificate is not directly identified as a trust
 	 * service in the loaded trusted lists.  This does not affect the overall `TOTAL_PASSED`
 	 * result of the containing signature.  When the TSA certificate *is* a trust anchor
-	 * (e.g. directly listed in the EU LOTL), DSS reports the timestamp as `PASSED`.
+	 * (e.g., directly listed in the EU LOTL), DSS reports the timestamp as `PASSED`.
 	 *
 	 * The sub-indication is resolved from the simple-report first, falling back to the BBB
 	 * conclusion (which commonly carries `NO_POE`) so callers have a human-readable reason code.
@@ -226,7 +249,7 @@ class DssValidationRepository(
 			type = tsw.type?.name?.replace('_', ' ')?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "Unknown",
 			indication = indication,
 			subIndication = subIndication,
-			productionTime = tsw.productionTime?.toString() ?: "Unknown",
+			productionTime = tsw.productionTime?.toKotlinInstant() ?: kotlin.time.Instant.fromEpochSeconds(0),
 			qualification = qualification,
 			tsaSubjectDN = tsaSubjectDN,
 			errors = errors,
@@ -259,7 +282,8 @@ class DssValidationRepository(
 		
 		val signedBy = simpleReport.getSignedBy(signatureId) ?: "Unknown"
 		val signatureLevel = simpleReport.getSignatureFormat(signatureId)?.toString() ?: "Unknown"
-		val signatureTime = simpleReport.getBestSignatureTime(signatureId)?.toString() ?: "Unknown"
+		val signatureTime = simpleReport.getBestSignatureTime(signatureId)?.toKotlinInstant()
+			?: kotlin.time.Instant.fromEpochSeconds(0)
 		
 		val sigWrapper = diagnosticData.getSignatureById(signatureId)
 		val signingCert = sigWrapper?.signingCertificate
@@ -268,20 +292,22 @@ class DssValidationRepository(
 			bytes.joinToString(":") { "%02X".format(it) }
 		}
 		
+		val dssQualification = simpleReport.getSignatureQualification(signatureId)
+		val trustTier = dssQualification?.toTrustTier() ?: SignatureTrustTier.NOT_QUALIFIED
+		
 		val certificate = CertificateInfo(
 			subjectDN = signingCert?.getCertificateDN() ?: signedBy,
 			issuerDN = signingCert?.getCertificateIssuerDN() ?: "Unknown",
 			serialNumber = signingCert?.serialNumber ?: "Unknown",
-			validFrom = signingCert?.notBefore?.toString() ?: "Unknown",
-			validTo = signingCert?.notAfter?.toString() ?: "Unknown",
+			validFrom = signingCert?.notBefore?.toKotlinInstant() ?: kotlin.time.Instant.fromEpochSeconds(0),
+			validTo = signingCert?.notAfter?.toKotlinInstant() ?: kotlin.time.Instant.fromEpochSeconds(0),
 			keyUsages = signingCert?.keyUsages?.map { it.name } ?: emptyList(),
-			isQualified = simpleReport.getSignatureQualification(signatureId)
-				?.let { it != SignatureQualification.NA } ?: false,
+			isQualified = trustTier != SignatureTrustTier.NOT_QUALIFIED,
 			publicKeyAlgorithm = signingCert?.encryptionAlgorithm?.name,
 			sha256Fingerprint = sha256Fingerprint,
 		)
 		
-		val signatureQualification = simpleReport.getSignatureQualification(signatureId)
+		val signatureQualification = dssQualification
 			?.takeIf { it != SignatureQualification.NA }
 			?.readable
 		
@@ -300,11 +326,23 @@ class DssValidationRepository(
 			signatureTime = signatureTime,
 			certificate = certificate,
 			signatureQualification = signatureQualification,
+			trustTier = trustTier,
 			hashAlgorithm = sigWrapper?.digestAlgorithm?.name,
 			encryptionAlgorithm = sigWrapper?.encryptionAlgorithm?.name,
 		)
 	}
 	
+	/**
+	 * Extract all four raw DSS report XML strings from the [Reports] bundle
+	 * so they can be carried on the domain [ValidationReport] for later export.
+	 */
+	private fun extractRawReports(reports: Reports): Map<RawReportFormat, String> = buildMap {
+		reports.xmlDetailedReport?.let { put(RawReportFormat.XML_DETAILED, it) }
+		reports.xmlSimpleReport?.let { put(RawReportFormat.XML_SIMPLE, it) }
+		reports.xmlDiagnosticData?.let { put(RawReportFormat.XML_DIAGNOSTIC, it) }
+		reports.xmlValidationReport?.let { put(RawReportFormat.XML_ETSI, it) }
+	}
+
 	/**
 	 * Write the native DSS report in the requested [format] to [outputPath].
 	 *

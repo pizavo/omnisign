@@ -9,20 +9,22 @@ package cz.pizavo.omnisign.data.repository
  * string `"timestamp token"` and optionally a `PKIFailureInfo: 0x<hex>` code
  * defined by RFC 3161 § 2.4.2.
  */
-internal object TspErrorDetector {
+class TspErrorDetector {
 	
-	private val PKI_FAILURE_REGEX = Regex("""PKIFailureInfo:\s*0x([0-9a-fA-F]+)""")
-	
-	private val PKI_FAILURE_REASONS: Map<Int, String> = mapOf(
-		0x01 to "badAlg — unrecognized or unsupported algorithm",
-		0x04 to "badRequest — transaction not permitted or supported",
-		0x20 to "badDataFormat — submitted data has the wrong format",
-		0x4000 to "timeNotAvailable — TSA's time source is not available",
-		0x8000 to "unacceptedPolicy — requested TSA policy not supported",
-		0x10000 to "unacceptedExtension — requested extension not supported",
-		0x20000 to "addInfoNotAvailable — additional information not available",
-		0x2000000 to "systemFailure — internal TSA error",
-	)
+	companion object {
+		private val PKI_FAILURE_REGEX = Regex("""PKIFailureInfo:\s*0x([0-9a-fA-F]+)""")
+		
+		private val PKI_FAILURE_REASONS: Map<Int, String> = mapOf(
+			0x01 to "badAlg — unrecognized or unsupported algorithm",
+			0x04 to "badRequest — transaction not permitted or supported",
+			0x20 to "badDataFormat — submitted data has the wrong format",
+			0x4000 to "timeNotAvailable — TSA's time source is not available",
+			0x8000 to "unacceptedPolicy — requested TSA policy not supported",
+			0x10000 to "unacceptedExtension — requested extension not supported",
+			0x20000 to "addInfoNotAvailable — additional information not available",
+			0x2000000 to "systemFailure — internal TSA error",
+		)
+	}
 	
 	/**
 	 * Determines whether [exception] (or any of its causes) originates from a TSP / timestamp

@@ -18,12 +18,13 @@ fun String.toNativeDistributionVersion(): String {
 }
 
 plugins {
-	alias(libs.plugins.kotlinMultiplatform)
-	alias(libs.plugins.composeMultiplatform)
-	alias(libs.plugins.composeCompiler)
-	alias(libs.plugins.composeHotReload)
+	alias(libs.plugins.kotlin.multiplatform)
+	alias(libs.plugins.compose.multiplatform)
+	alias(libs.plugins.compose.compiler)
 	alias(libs.plugins.ksp)
 	alias(libs.plugins.kotest)
+	alias(libs.plugins.lumo)
+	alias(libs.plugins.decoroutinator)
 }
 
 version = project.findProperty("releaseVersion")?.toString() ?: "1.0.0"
@@ -40,6 +41,10 @@ configurations.findByName("commonTestApi")?.dependencies?.removeIf {
 
 kotlin {
 	jvm {
+		kotlin.jvmToolchain {
+			languageVersion.set(JavaLanguageVersion.of(25))
+			vendor.set(JvmVendorSpec.JETBRAINS)
+		}
 		testRuns.configureEach {
 			executionTask.configure { useJUnitPlatform() }
 		}
@@ -55,19 +60,23 @@ kotlin {
 	
 	sourceSets {
 		commonMain.dependencies {
-			implementation(compose.runtime)
-			implementation(compose.foundation)
-			implementation(compose.material3)
-			implementation(compose.ui)
-			implementation(compose.components.resources)
-			implementation(compose.components.uiToolingPreview)
 			implementation(libs.androidx.lifecycle.viewmodelCompose)
 			implementation(libs.androidx.lifecycle.runtimeCompose)
+			implementation(libs.compose.runtime)
+			implementation(libs.compose.foundation)
+			implementation(libs.compose.material)
+			implementation(libs.compose.ui)
+			implementation(libs.compose.ui.tooling)
+			implementation(libs.compose.components.resources)
+			
 			implementation(projects.shared)
 			
 			implementation(project.dependencies.platform(libs.koin.bom))
 			implementation(libs.koin.compose)
 			implementation(libs.koin.compose.viewmodel)
+			
+			implementation(libs.filekit.core)
+			implementation(libs.filekit.dialogs.compose)
 		}
 		commonTest.dependencies {
 			implementation(libs.kotest.engine)
@@ -75,22 +84,75 @@ kotlin {
 		}
 		jvmTest.dependencies {
 			implementation(libs.kotest.jvm.runner)
+			implementation(libs.kotest.arrow)
+			implementation(libs.kotest.decoroutinator)
+			implementation(libs.mockk)
+			implementation(libs.kotlinx.coroutines.test)
 		}
 		jvmMain.dependencies {
 			implementation(compose.desktop.currentOs)
 			implementation(libs.kotlinx.coroutines.swing)
+			implementation(libs.pdfbox)
+			implementation(libs.decoroutinator.jvm)
+			implementation(libs.jbr.api)
+			implementation(libs.logback)
 		}
 	}
 }
 
+/**
+ * Lazily resolved JBR launcher from the Gradle toolchain registry.
+ *
+ * Used to ensure that both compilation and the Compose Desktop `run` task
+ * execute on JetBrains Runtime, which provides the Custom Title Bar API.
+ */
+val jbrLauncher = javaToolchains.launcherFor {
+	languageVersion.set(JavaLanguageVersion.of(25))
+	vendor.set(JvmVendorSpec.JETBRAINS)
+}
+
+/**
+ * Eagerly resolved path to the JBR installation, or `null` when JBR is not
+ * available on this machine. When `null`, the Compose Desktop `run` and
+ * packaging tasks will fail at execution time with a descriptive message.
+ */
+val jbrHomePath: String? = try {
+	jbrLauncher.map { it.metadata.installationPath.asFile.absolutePath }.get()
+} catch (_: Exception) {
+	null
+}
+
+compose.resources {
+	generateResClass = always
+}
 
 compose.desktop {
 	application {
 		mainClass = "cz.pizavo.omnisign.MainKt"
 
-		jvmArgs("--enable-native-access=ALL-UNNAMED")
+		jvmArgs(
+			"--enable-native-access=ALL-UNNAMED",
+			"-Dsun.java2d.d3d=false"
+		)
+
+		jbrHomePath?.let { javaHome = it }
+
+		buildTypes.release.proguard {
+			isEnabled.set(false)
+		}
 
 		nativeDistributions {
+			modules(
+				"java.instrument",
+				"java.management",
+				"java.naming",
+				"java.net.http",
+				"java.sql",
+				"java.xml",
+				"java.xml.crypto",
+				"jdk.crypto.mscapi",
+				"jdk.unsupported",
+			)
 			targetFormats(
 				TargetFormat.Msi,
 				TargetFormat.Exe,
@@ -103,8 +165,59 @@ compose.desktop {
 				
 				TargetFormat.AppImage
 			)
-			packageName = "cz.pizavo.omnisign"
+			packageName = "OmniSign"
 			packageVersion = project.version.toString().toNativeDistributionVersion()
+			description = "Digital signature verification, signing and re-timestamping"
+			vendor = "Pizavo"
+
+			windows {
+				shortcut = true
+				menu = true
+				menuGroup = "OmniSign"
+				dirChooser = true
+				perUserInstall = true
+				upgradeUuid = "e479b089-886d-4bb1-94dd-b73837d17c2c"
+			}
+
+			linux {
+				shortcut = true
+				menuGroup = "OmniSign"
+				appCategory = "Utility"
+				debMaintainer = "pizavo@gmail.com"
+			}
+
+			macOS {
+				dockName = "OmniSign"
+			}
 		}
 	}
 }
+
+gradle.taskGraph.whenReady {
+	if (jbrHomePath != null) return@whenReady
+
+	val needsJbr = allTasks.any {
+		it.project.path == ":composeApp" && (
+			it.name == "run" ||
+			it.name == "suggestRuntimeModules" ||
+			it.name.startsWith("package") ||
+			it.name.contains("Distributable")
+		)
+	}
+
+	if (needsJbr) {
+		throw GradleException(
+			buildString {
+				appendLine()
+				appendLine("JetBrains Runtime (JBR) 25 is required to build/run the desktop application")
+				appendLine("but was not found by the Gradle toolchain resolver.")
+				appendLine()
+				appendLine("Install it via one of:")
+				appendLine("  • IntelliJ IDEA → Settings → Build → Build Tools → Gradle → Gradle JDK")
+				appendLine("  • Download from https://github.com/JetBrains/JetBrainsRuntime/releases")
+				appendLine("    and place it under ~/.jdks/ so Gradle auto-detects it.")
+			}
+		)
+	}
+}
+

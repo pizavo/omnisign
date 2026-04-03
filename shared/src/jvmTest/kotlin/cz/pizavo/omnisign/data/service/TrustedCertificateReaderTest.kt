@@ -27,6 +27,8 @@ import kotlin.time.toJavaInstant
  */
 class TrustedCertificateReaderTest : FunSpec({
 	
+	val reader = TrustedCertificateReader()
+	
 	fun generateSelfSignedCert(cn: String = "CN=Test CA"): X509Certificate {
 		val keyPairGen = KeyPairGenerator.getInstance("RSA")
 		keyPairGen.initialize(2048)
@@ -64,7 +66,7 @@ class TrustedCertificateReaderTest : FunSpec({
 		val cert = generateSelfSignedCert()
 		val file = writeDerFile(cert)
 		
-		val config = TrustedCertificateReader.read("my-ca", file, TrustedCertificateType.CA)
+		val config = reader.read("my-ca", file, TrustedCertificateType.CA)
 		
 		config.name shouldBe "my-ca"
 		config.type shouldBe TrustedCertificateType.CA
@@ -76,7 +78,7 @@ class TrustedCertificateReaderTest : FunSpec({
 		val cert = generateSelfSignedCert("CN=PEM Test")
 		val file = writePemFile(cert)
 		
-		val config = TrustedCertificateReader.read("pem-cert", file, TrustedCertificateType.TSA)
+		val config = reader.read("pem-cert", file, TrustedCertificateType.TSA)
 		
 		config.name shouldBe "pem-cert"
 		config.type shouldBe TrustedCertificateType.TSA
@@ -88,7 +90,7 @@ class TrustedCertificateReaderTest : FunSpec({
 		val cert = generateSelfSignedCert()
 		val file = writeDerFile(cert)
 		
-		val config = TrustedCertificateReader.read("roundtrip", file, TrustedCertificateType.CA)
+		val config = reader.read("roundtrip", file, TrustedCertificateType.CA)
 		val decoded = Base64.getDecoder().decode(config.certificateBase64)
 		
 		decoded shouldBe cert.encoded
@@ -101,7 +103,7 @@ class TrustedCertificateReaderTest : FunSpec({
 		}
 		
 		shouldThrow<CertificateException> {
-			TrustedCertificateReader.read("bad", garbage, TrustedCertificateType.CA)
+			reader.read("bad", garbage, TrustedCertificateType.CA)
 		}
 	}
 	
@@ -109,7 +111,7 @@ class TrustedCertificateReaderTest : FunSpec({
 		val cert = generateSelfSignedCert("CN=TSA Signer")
 		val file = writeDerFile(cert)
 		
-		val config = TrustedCertificateReader.read("tsa", file, TrustedCertificateType.TSA)
+		val config = reader.read("tsa", file, TrustedCertificateType.TSA)
 		
 		config.type shouldBe TrustedCertificateType.TSA
 	}
@@ -118,9 +120,8 @@ class TrustedCertificateReaderTest : FunSpec({
 		val cert = generateSelfSignedCert("CN=Root CA")
 		val file = writeDerFile(cert)
 		
-		val config = TrustedCertificateReader.read("root", file, TrustedCertificateType.ANY)
+		val config = reader.read("root", file, TrustedCertificateType.ANY)
 		
 		config.type shouldBe TrustedCertificateType.ANY
 	}
 })
-

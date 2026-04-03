@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.domain.repository
 
+import kotlin.time.Instant
+
 /**
  * Information about an available certificate from a token, used for listing and selection.
  *
@@ -13,9 +15,8 @@ data class AvailableCertificateInfo(
     val alias: String,
     val subjectDN: String,
     val issuerDN: String,
-    val validFrom: String,
-    val validTo: String,
+    val validFrom: Instant,
+    val validTo: Instant,
     val tokenType: String,
     val keyUsages: List<String> = emptyList()
 )
-

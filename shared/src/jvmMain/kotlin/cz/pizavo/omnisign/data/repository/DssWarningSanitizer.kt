@@ -1,7 +1,6 @@
 package cz.pizavo.omnisign.data.repository
 
-import cz.pizavo.omnisign.data.repository.DssWarningSanitizer.MAX_ID_DISPLAY_LEN
-import cz.pizavo.omnisign.data.repository.DssWarningSanitizer.sanitize
+import cz.pizavo.omnisign.data.repository.DssWarningSanitizer.Companion.MAX_ID_DISPLAY_LEN
 
 
 /**
@@ -9,7 +8,7 @@ import cz.pizavo.omnisign.data.repository.DssWarningSanitizer.sanitize
  * into grouped, user-friendly summaries.
  *
  * DSS produces highly technical diagnostics containing certificate hashes, Base64 blobs,
- * and ASN.1 error details. This object classifies each raw message into a
+ * and ASN.1 error details. This class classifies each raw message into a
  * [WarningCategory], groups them, and emits one human-readable sentence per category.
  * Messages that do not match any known pattern are kept verbatim, so no information is
  * silently lost.
@@ -18,7 +17,7 @@ import cz.pizavo.omnisign.data.repository.DssWarningSanitizer.sanitize
  * user-friendly summaries (for display) and the original raw list (for JSON / verbose
  * output).
  */
-object DssWarningSanitizer {
+class DssWarningSanitizer {
 	
 	/**
 	 * Classify and group [rawWarnings] into user-friendly summary lines.
@@ -49,7 +48,7 @@ object DssWarningSanitizer {
 		}
 		summaries += unmatched
 		
-		return SanitizedWarnings(summaries = summaries, raw = rawWarnings)
+		return SanitizedWarnings(summaries = summaries, raw = rawWarnings, categories = buckets.keys.toSet())
 	}
 	
 	/**
@@ -87,58 +86,60 @@ object DssWarningSanitizer {
 		return "$prefix${hash.take(MAX_ID_HASH_LEN)}…"
 	}
 	
-	private const val MAX_ID_DISPLAY_LEN = 20
-	private const val MAX_ID_HASH_LEN = 12
-	private const val PLACEHOLDER_ID = "_"
-	
-	private const val CERT_ID = """(C-[A-F0-9]+)"""
-	private const val TS_ID = """(T-[A-F0-9]+)"""
-	
-	private val PATTERNS: Map<WarningCategory, List<Regex>> = mapOf(
+	companion object {
+		private const val MAX_ID_DISPLAY_LEN = 20
+		private const val MAX_ID_HASH_LEN = 12
+		private const val PLACEHOLDER_ID = "_"
 		
-		WarningCategory.REVOCATION_NOT_FOUND to listOf(
-			Regex("""No revocation found for the certificate $CERT_ID"""),
-			Regex("""No revocation data found.*?$CERT_ID"""),
-			Regex("""OCSP DSS Exception.*?Unable to retrieve OCSP response.*?'$CERT_ID'"""),
-			Regex("""Unable to retrieve OCSP response.*?'$CERT_ID'"""),
-			Regex("""CRL DSS Exception.*?Unable to download CRL.*?'$CERT_ID'"""),
-			Regex("""Unable to download CRL.*?'$CERT_ID'"""),
-		),
+		private const val CERT_ID = """(C-[A-F0-9]+)"""
+		private const val TS_ID = """(T-[A-F0-9]+)"""
 		
-		WarningCategory.REVOCATION_UNTRUSTED_CHAIN to listOf(
-			Regex("""Revocation data is skipped for untrusted certificate.*?$CERT_ID"""),
-			Regex("""External revocation check is skipped for untrusted certificate\s*:\s*$CERT_ID"""),
-			Regex("""Revocation data is missing for one or more certificate.*?untrusted"""),
-		),
-		
-		WarningCategory.REVOCATION_STATUS_UNKNOWN to listOf(
-			Regex("""certificate\s+'$CERT_ID'\s+is not known to be not revoked"""),
-			Regex("""certificate\s+'$CERT_ID'\s+does not contain a valid revocation data"""),
-		),
-		
-		WarningCategory.REVOCATION_POE_MISSING to listOf(
-			Regex("""Revocation data is missing for one or more POE"""),
-		),
-		
-		WarningCategory.FRESH_REVOCATION_MISSING to listOf(
-			Regex("""Fresh revocation data is missing"""),
-		),
-		
-		WarningCategory.TIMESTAMP_UNTRUSTED to listOf(
-			Regex("""POE extraction is skipped for untrusted timestamp\s*:\s*$TS_ID"""),
-		),
-		
-		WarningCategory.CERTIFICATE_PARSE_ERROR to listOf(
-			Regex("""Unable to load the alternative name"""),
-			Regex("""Unable to parse the certificatePolicies extension"""),
-			Regex("""Unable to retrieve the ASN1Sequence"""),
-		),
-		
-		WarningCategory.TSP_FAILURE to listOf(
-			Regex("""TSP Failure info.*?PKIFailureInfo"""),
-			Regex("""No timestamp token has been retrieved"""),
-		),
-	)
+		private val PATTERNS: Map<WarningCategory, List<Regex>> = mapOf(
+			
+			WarningCategory.REVOCATION_NOT_FOUND to listOf(
+				Regex("""No revocation found for the certificate $CERT_ID"""),
+				Regex("""No revocation data found.*?$CERT_ID"""),
+				Regex("""OCSP DSS Exception.*?Unable to retrieve OCSP response.*?'$CERT_ID'"""),
+				Regex("""Unable to retrieve OCSP response.*?'$CERT_ID'"""),
+				Regex("""CRL DSS Exception.*?Unable to download CRL.*?'$CERT_ID'"""),
+				Regex("""Unable to download CRL.*?'$CERT_ID'"""),
+			),
+			
+			WarningCategory.REVOCATION_UNTRUSTED_CHAIN to listOf(
+				Regex("""Revocation data is skipped for untrusted certificate.*?$CERT_ID"""),
+				Regex("""External revocation check is skipped for untrusted certificate\s*:\s*$CERT_ID"""),
+				Regex("""Revocation data is missing for one or more certificate.*?untrusted"""),
+			),
+			
+			WarningCategory.REVOCATION_STATUS_UNKNOWN to listOf(
+				Regex("""certificate\s+'$CERT_ID'\s+is not known to be not revoked"""),
+				Regex("""certificate\s+'$CERT_ID'\s+does not contain a valid revocation data"""),
+			),
+			
+			WarningCategory.REVOCATION_POE_MISSING to listOf(
+				Regex("""Revocation data is missing for one or more POE"""),
+			),
+			
+			WarningCategory.FRESH_REVOCATION_MISSING to listOf(
+				Regex("""Fresh revocation data is missing"""),
+			),
+			
+			WarningCategory.TIMESTAMP_UNTRUSTED to listOf(
+				Regex("""POE extraction is skipped for untrusted timestamp\s*:\s*$TS_ID"""),
+			),
+			
+			WarningCategory.CERTIFICATE_PARSE_ERROR to listOf(
+				Regex("""Unable to load the alternative name"""),
+				Regex("""Unable to parse the certificatePolicies extension"""),
+				Regex("""Unable to retrieve the ASN1Sequence"""),
+			),
+			
+			WarningCategory.TSP_FAILURE to listOf(
+				Regex("""TSP Failure info.*?PKIFailureInfo"""),
+				Regex("""No timestamp token has been retrieved"""),
+			),
+		)
+	}
 	
 	/**
 	 * Known categories of DSS warnings with user-facing summary templates.
@@ -231,11 +232,29 @@ object DssWarningSanitizer {
 		 */
 		abstract fun toSummary(ids: Set<String>): String
 		
+		/**
+		 * Whether this category indicates that revocation data could not be obtained.
+		 *
+		 * Used to trigger the revocation warning confirmation flow when signing
+		 * at B-LT or B-LTA level.
+		 */
+		val isRevocationRelated: Boolean
+			get() = this in REVOCATION_CATEGORIES
+		
 		protected fun pluralCerts(count: Int) =
 			if (count == 1) "1 certificate" else "$count certificates"
 		
 		protected fun pluralTimestamps(count: Int) =
 			if (count == 1) "1 timestamp" else "$count timestamps"
+		
+		companion object {
+			private val REVOCATION_CATEGORIES = setOf(
+				REVOCATION_NOT_FOUND,
+				REVOCATION_STATUS_UNKNOWN,
+				REVOCATION_POE_MISSING,
+				FRESH_REVOCATION_MISSING,
+			)
+		}
 	}
 }
 
@@ -244,9 +263,17 @@ object DssWarningSanitizer {
  *
  * @property summaries Grouped, user-friendly warning lines suitable for display.
  * @property raw The original raw warning strings for JSON / verbose output.
+ * @property categories The set of [DssWarningSanitizer.WarningCategory] buckets that had at least one match.
  */
 data class SanitizedWarnings(
 	val summaries: List<String>,
 	val raw: List<String>,
-)
+	val categories: Set<DssWarningSanitizer.WarningCategory> = emptySet(),
+) {
+	/**
+	 * Whether any matched category relates to missing or failed revocation data.
+	 */
+	val hasRevocationWarnings: Boolean
+		get() = categories.any { it.isRevocationRelated }
+}
 

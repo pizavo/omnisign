@@ -8,6 +8,7 @@ package cz.pizavo.omnisign.domain.model.result
  * @property signatureLevel Name of the PAdES level used (e.g. `PADES_BASELINE_B`).
  * @property warnings User-friendly, grouped warning summaries suitable for display.
  * @property rawWarnings Original, unsanitized warning strings from DSS for verbose / JSON output.
+ * @property hasRevocationWarnings Whether any warnings relate to missing or failed revocation data.
  */
 data class SigningResult(
 	val outputFile: String,
@@ -15,5 +16,6 @@ data class SigningResult(
 	val signatureLevel: String,
 	val warnings: List<String> = emptyList(),
 	val rawWarnings: List<String> = emptyList(),
+	val hasRevocationWarnings: Boolean = false,
 )
 

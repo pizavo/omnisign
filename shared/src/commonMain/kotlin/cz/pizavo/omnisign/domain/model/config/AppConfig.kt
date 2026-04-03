@@ -34,5 +34,10 @@ data class AppConfig(
 	 * Keyed by [RenewalJob.name].
 	 */
 	val renewalJobs: Map<String, RenewalJob> = emptyMap(),
+
+	/**
+	 * OS-level daily renewal scheduler settings.
+	 */
+	val schedulerConfig: SchedulerConfig = SchedulerConfig(),
 )
 

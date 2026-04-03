@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.data.repository
 import arrow.core.getOrElse
 import arrow.core.left
 import arrow.core.right
+import cz.pizavo.omnisign.data.util.toKotlinInstant
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.toDss
@@ -10,6 +11,7 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
+import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -20,8 +22,11 @@ import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.apache.pdfbox.Loader
+import org.apache.pdfbox.cos.COSName
 import java.io.File
-import java.time.Instant
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
 
 /**
  * JVM implementation of [ArchivingRepository] backed by the EU DSS library.
@@ -35,7 +40,9 @@ import java.time.Instant
  */
 class DssArchivingRepository(
 	private val configRepository: ConfigRepository,
-	private val dssServiceFactory: DssServiceFactory
+	private val dssServiceFactory: DssServiceFactory,
+	private val warningSanitizer: DssWarningSanitizer,
+	private val tspErrorDetector: TspErrorDetector,
 ) : ArchivingRepository {
 	
 	@Suppress("TooGenericExceptionCaught", "ReturnCount")
@@ -80,7 +87,7 @@ class DssArchivingRepository(
 				val extendedDocument = service.extendDocument(FileDocument(inputFile), extendParams)
 				
 				val warnings = statusAlert.drain() + logCapture.stop()
-				val sanitized = DssWarningSanitizer.sanitize(warnings)
+				val sanitized = warningSanitizer.sanitize(warnings)
 				
 				val outputFile = File(parameters.outputFile).also { it.parentFile?.mkdirs() }
 				withContext(Dispatchers.IO) { outputFile.outputStream().use { extendedDocument.writeTo(it) } }
@@ -95,14 +102,14 @@ class DssArchivingRepository(
 				logCapture.stop()
 			}
 		} catch (e: Exception) {
-			if (TspErrorDetector.isTspException(e)) {
+			if (tspErrorDetector.isTspException(e)) {
 				val tsaUrl = (parameters.resolvedConfig ?: ResolvedConfig.resolve(
 					global = configRepository.getCurrentConfig().global,
 					profile = null,
 					operationOverrides = null
 				).getOrNull())?.timestampServer?.url
 				return ArchivingError.TimestampFailed(
-					message = TspErrorDetector.buildUserMessage(e, tsaUrl),
+					message = tspErrorDetector.buildUserMessage(e, tsaUrl),
 					details = e.message,
 					cause = e,
 				).left()
@@ -148,17 +155,51 @@ class DssArchivingRepository(
 				setCertificateVerifier(CommonCertificateVerifier())
 			}
 			val diagnosticData = validator.validateDocument().diagnosticData
-			val renewalThreshold = Instant.now().plusSeconds(renewalBufferDays * 86_400L)
+			val renewalThreshold = Clock.System.now() + renewalBufferDays.days
 			
 			val needsRenewal = diagnosticData.getTimestampList().any { ts ->
 				val notAfter = ts.signingCertificate?.notAfter ?: return@any false
-				notAfter.toInstant().isBefore(renewalThreshold)
+				notAfter.toKotlinInstant() < renewalThreshold
 			}
 			
 			needsRenewal.right()
 		} catch (e: Exception) {
 			ArchivingError.ExtensionFailed(
 				message = "Failed to check archival renewal status",
+				details = e.message,
+				cause = e
+			).left()
+		}
+	}
+	
+	@Suppress("TooGenericExceptionCaught")
+	override suspend fun getDocumentTimestampInfo(filePath: String): OperationResult<DocumentTimestampInfo> {
+		return try {
+			val file = File(filePath)
+			if (!file.exists()) {
+				return ArchivingError.ExtensionFailed(
+					message = "File not found: $filePath"
+				).left()
+			}
+			
+			Loader.loadPDF(file).use { pdf ->
+				val hasDocumentTimestamp = pdf.signatureDictionaries.any { sig ->
+					sig.subFilter == PADES_TIMESTAMP_SUBFILTER
+				}
+				
+				val hasDssDictionary = pdf.documentCatalog
+					.cosObject.containsKey(COSName.getPDFName(DSS_DICTIONARY_KEY))
+				
+				val containsLtData = hasDocumentTimestamp || hasDssDictionary
+				
+				DocumentTimestampInfo(
+					hasDocumentTimestamp = hasDocumentTimestamp,
+					containsLtData = containsLtData,
+				).right()
+			}
+		} catch (e: Exception) {
+			ArchivingError.ExtensionFailed(
+				message = "Failed to inspect document timestamp state",
 				details = e.message,
 				cause = e
 			).left()
@@ -184,6 +225,19 @@ class DssArchivingRepository(
 			setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 			setTspSource(dssServiceFactory.buildTspSource(tsConfig))
 		}
+	}
+	
+	companion object {
+		/**
+		 * PDF SubFilter value identifying a PAdES document timestamp (RFC 3161).
+		 */
+		private const val PADES_TIMESTAMP_SUBFILTER = "ETSI.RFC3161"
+		
+		/**
+		 * PDF catalog key for the DSS dictionary that carries CRL/OCSP revocation data
+		 * in PAdES-BASELINE-LT and higher.
+		 */
+		private const val DSS_DICTIONARY_KEY = "DSS"
 	}
 }
 

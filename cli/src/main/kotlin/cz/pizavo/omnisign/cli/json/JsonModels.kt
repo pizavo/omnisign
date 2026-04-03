@@ -25,6 +25,7 @@ data class JsonValidationResult(
 	val documentName: String? = null,
 	val validationTime: String? = null,
 	val overallResult: String? = null,
+	val overallTrustTier: String? = null,
 	val signatures: List<JsonSignatureResult> = emptyList(),
 	val timestamps: List<JsonTimestampResult> = emptyList(),
 	val summary: JsonValidationSummary? = null,
@@ -52,6 +53,7 @@ data class JsonSignatureResult(
 	val signatureLevel: String,
 	val signatureTime: String,
 	val qualification: String? = null,
+	val trustTier: String? = null,
 	val hashAlgorithm: String? = null,
 	val encryptionAlgorithm: String? = null,
 	val certificate: JsonCertificateInfo,
@@ -61,6 +63,7 @@ data class JsonSignatureResult(
 	val qualificationErrors: List<String> = emptyList(),
 	val qualificationWarnings: List<String> = emptyList(),
 	val qualificationInfos: List<String> = emptyList(),
+	val timestamps: List<JsonTimestampResult> = emptyList(),
 )
 
 /**

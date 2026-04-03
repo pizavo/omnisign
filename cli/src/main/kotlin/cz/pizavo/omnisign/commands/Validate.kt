@@ -21,6 +21,8 @@ import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.validation.*
+import cz.pizavo.omnisign.domain.model.value.formatDate
+import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
 import kotlinx.coroutines.runBlocking
@@ -154,8 +156,11 @@ class Validate : CliktCommand(
 		echo("                    VALIDATION REPORT")
 		echo("═══════════════════════════════════════════════════════════════")
 		echo("Document:      ${report.documentName}")
-		echo("Validated at:  ${report.validationTime}")
+		echo("Validated at:  ${report.validationTime.formatDateTime()}")
 		echo("Overall:       ${formatOverallResult(report.overallResult)}")
+		if (report.overallTrustTier != SignatureTrustTier.NOT_QUALIFIED) {
+			echo("Trust tier:    ${report.overallTrustTier.label}")
+		}
 		
 		if (detailed) {
 			echo("───────────────────────────────────────────────────────────────")
@@ -219,9 +224,12 @@ class Validate : CliktCommand(
 		}
 		echo("│  Signed by:        ${signature.signedBy}")
 		echo("│  Signature level:  ${signature.signatureLevel}")
-		echo("│  Signature time:   ${signature.signatureTime}")
+		echo("│  Signature time:   ${signature.signatureTime.formatDateTime()}")
 		if (signature.signatureQualification != null) {
 			echo("│  Qualification:    ${signature.signatureQualification}")
+		}
+		if (signature.trustTier != SignatureTrustTier.NOT_QUALIFIED) {
+			echo("│  Trust tier:       ${signature.trustTier.label}")
 		}
 		if (signature.hashAlgorithm != null || signature.encryptionAlgorithm != null) {
 			val algStr = listOfNotNull(signature.hashAlgorithm, signature.encryptionAlgorithm).joinToString(" / ")
@@ -232,8 +240,8 @@ class Validate : CliktCommand(
 		echo("│    Subject:        ${signature.certificate.subjectDN}")
 		echo("│    Issuer:         ${signature.certificate.issuerDN}")
 		echo("│    Serial:         ${signature.certificate.serialNumber}")
-		echo("│    Valid from:     ${signature.certificate.validFrom}")
-		echo("│    Valid to:       ${signature.certificate.validTo}")
+		echo("│    Valid from:     ${signature.certificate.validFrom.formatDate()}")
+		echo("│    Valid to:       ${signature.certificate.validTo.formatDate()}")
 		echo("│    Qualified:      ${if (signature.certificate.isQualified) "Yes" else "No"}")
 		
 		if (detailed) {
@@ -282,15 +290,48 @@ class Validate : CliktCommand(
 				.forEach { note -> echo("│     ℹ️ $note") }
 		}
 		
+		if (signature.timestamps.isNotEmpty()) {
+			echo("│")
+			echo("│  🕒 Timestamps (${signature.timestamps.size}):")
+			signature.timestamps.forEachIndexed { tsIndex, ts ->
+				val tsNum = "${tsIndex + 1}/${signature.timestamps.size}"
+				echo("│     [$tsNum] ${ts.type}")
+				echo("│       Indication:       ${formatIndication(ts.indication)}")
+				if (ts.subIndication != null) {
+					echo("│       Sub-indication:   ${ts.subIndication}")
+				}
+				echo("│       Production time:  ${ts.productionTime.formatDateTime()}")
+				if (ts.qualification != null) {
+					echo("│       Qualification:    ${ts.qualification}")
+				}
+				if (ts.tsaSubjectDN != null) {
+					echo("│       TSA:              ${ts.tsaSubjectDN}")
+				}
+				if (ts.errors.isNotEmpty()) {
+					echo("│       ❌ Errors:")
+					ts.errors.forEach { echo("│          • $it") }
+				}
+				if (ts.warnings.isNotEmpty()) {
+					echo("│       ⚠️ Warnings:")
+					ts.warnings.forEach { echo("│          • $it") }
+				}
+				if (detailed && ts.infos.isNotEmpty()) {
+					echo("│       ℹ️ Information:")
+					ts.infos.forEach { echo("│          • $it") }
+				}
+			}
+		}
+		
 		echo("└" + "─".repeat(63))
 	}
 	
 	/**
-	 * Print the timestamps block.
+	 * Print the document-level timestamps block.
 	 *
 	 * Normal mode shows type, indication, sub-indication, production time, qualification,
 	 * and the TSA subject DN. In [detailed] mode the raw DSS timestamp token ID and
-	 * informational messages are also included.
+	 * informational messages are also included. Timestamps associated with a specific
+	 * signature are printed in the corresponding signature block instead.
 	 *
 	 * When any timestamp is [ValidationIndication.INDETERMINATE] within an otherwise
 	 * [ValidationResult.VALID] signature, an informational note is prepended explaining
@@ -298,7 +339,7 @@ class Validate : CliktCommand(
 	 * overall validity.
 	 */
 	private fun printTimestamps(timestamps: List<TimestampValidationResult>, overallResult: ValidationResult) {
-		echo("\n┌─ Timestamps (${timestamps.size})")
+		echo("\n┌─ Document Timestamps (${timestamps.size})")
 
 		val hasExpectedIndeterminate = overallResult == ValidationResult.VALID &&
 				timestamps.any { it.indication == ValidationIndication.INDETERMINATE }
@@ -323,7 +364,7 @@ class Validate : CliktCommand(
 			if (timestamp.subIndication != null) {
 				echo("│     Sub-indication: ${timestamp.subIndication}")
 			}
-			echo("│     Produced:      ${timestamp.productionTime}")
+			echo("│     Produced:      ${timestamp.productionTime.formatDateTime()}")
 			if (timestamp.qualification != null) {
 				echo("│     Qualification: ${timestamp.qualification}")
 			}

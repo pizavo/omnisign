@@ -7,6 +7,18 @@
         </encoder>
     </appender>
 
+    <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
+        <file>${omnisign.log.dir}/omnisign.log</file>
+        <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
+            <fileNamePattern>${omnisign.log.dir}/omnisign.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+            <maxHistory>30</maxHistory>
+            <totalSizeCap>100MB</totalSizeCap>
+        </rollingPolicy>
+        <encoder>
+            <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
     <!-- All DSS WARN output is suppressed at the parent level and captured
          programmatically by DssLogCapture during operations. Only ERROR events
          propagate to the root appender. -->
@@ -22,6 +34,7 @@
 
     <root level="WARN">
         <appender-ref ref="STDERR"/>
+        <appender-ref ref="FILE"/>
     </root>
 </configuration>
 

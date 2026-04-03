@@ -22,6 +22,7 @@ import org.koin.core.component.inject
  */
 class TrustCertAdder : CliktCommand(name = "add"), KoinComponent {
 	private val manageTl: ManageTrustedListsUseCase by inject()
+	private val certificateReader: TrustedCertificateReader by inject()
 	
 	private val name by option(
 		"--name", "-n",
@@ -49,7 +50,7 @@ class TrustCertAdder : CliktCommand(name = "add"), KoinComponent {
 	@Suppress("TooGenericExceptionCaught")
 	override fun run(): Unit = runBlocking {
 		val certConfig = try {
-			TrustedCertificateReader.read(name, cert.toFile(), type)
+			certificateReader.read(name, cert.toFile(), type)
 		} catch (e: Exception) {
 			echo("❌ Failed to read certificate: ${e.message}", err = true)
 			return@runBlocking

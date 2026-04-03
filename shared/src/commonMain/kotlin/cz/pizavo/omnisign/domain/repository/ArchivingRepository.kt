@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.domain.repository
 
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
+import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository.Companion.DEFAULT_RENEWAL_BUFFER_DAYS
 
@@ -40,6 +41,17 @@ interface ArchivingRepository {
 		filePath: String,
 		renewalBufferDays: Int = DEFAULT_RENEWAL_BUFFER_DAYS,
 	): OperationResult<Boolean>
+	
+	/**
+	 * Perform a lightweight check of the document to determine its current timestamp
+	 * and signature level state.
+	 *
+	 * This is a fast operation that does not fetch CRL/OCSP data or load trusted lists.
+	 *
+	 * @param filePath Absolute path to the PDF document to inspect.
+	 * @return A [DocumentTimestampInfo] summarising the document state, or an error.
+	 */
+	suspend fun getDocumentTimestampInfo(filePath: String): OperationResult<DocumentTimestampInfo>
 	
 	companion object {
 		/** Default number of days before expiry at which archival renewal is triggered. */

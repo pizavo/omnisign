@@ -5,16 +5,13 @@ import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import java.io.File
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
-import java.util.Base64
+import java.util.*
 
 /**
  * Reads an X.509 certificate from a PEM or DER file and produces a
  * [TrustedCertificateConfig] with the DER bytes stored as Base64.
- *
- * This is intentionally a stateless object, so it can be used from any JVM
- * platform (CLI, desktop, server) without DI wiring.
  */
-object TrustedCertificateReader {
+class TrustedCertificateReader {
 
 	/**
 	 * Parse [certFile] as an X.509 certificate and return a [TrustedCertificateConfig]

@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.domain.model.error.OperationError
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.SigningResult
 import cz.pizavo.omnisign.domain.model.validation.SignatureValidationResult
+import cz.pizavo.omnisign.domain.model.validation.SignatureTrustTier
 import cz.pizavo.omnisign.domain.model.validation.TimestampValidationResult
 import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
 import cz.pizavo.omnisign.domain.model.validation.ValidationReport
@@ -55,8 +56,9 @@ fun ValidationReport.toJsonResult(rawReportPath: String? = null): JsonValidation
 	return JsonValidationResult(
 		success = true,
 		documentName = documentName,
-		validationTime = validationTime,
+		validationTime = validationTime.toString(),
 		overallResult = overallResult.name,
+		overallTrustTier = overallTrustTier.takeIf { it != SignatureTrustTier.NOT_QUALIFIED }?.name,
 		signatures = signatures.map { it.toJson() },
 		timestamps = timestamps.map { it.toJson() },
 		summary = JsonValidationSummary(
@@ -80,8 +82,9 @@ private fun SignatureValidationResult.toJson(): JsonSignatureResult =
 		subIndication = subIndication,
 		signedBy = signedBy,
 		signatureLevel = signatureLevel,
-		signatureTime = signatureTime,
+		signatureTime = signatureTime.toString(),
 		qualification = signatureQualification,
+		trustTier = trustTier.name,
 		hashAlgorithm = hashAlgorithm,
 		encryptionAlgorithm = encryptionAlgorithm,
 		certificate = certificate.toJson(),
@@ -91,6 +94,7 @@ private fun SignatureValidationResult.toJson(): JsonSignatureResult =
 		qualificationErrors = qualificationErrors,
 		qualificationWarnings = qualificationWarnings,
 		qualificationInfos = qualificationInfos,
+		timestamps = timestamps.map { it.toJson() },
 	)
 
 /**
@@ -101,8 +105,8 @@ private fun cz.pizavo.omnisign.domain.model.signature.CertificateInfo.toJson(): 
 		subjectDN = subjectDN,
 		issuerDN = issuerDN,
 		serialNumber = serialNumber,
-		validFrom = validFrom,
-		validTo = validTo,
+		validFrom = validFrom.toString(),
+		validTo = validTo.toString(),
 		keyUsages = keyUsages,
 		isQualified = isQualified,
 		publicKeyAlgorithm = publicKeyAlgorithm,
@@ -118,7 +122,7 @@ private fun TimestampValidationResult.toJson(): JsonTimestampResult =
 		type = type,
 		indication = indication.name,
 		subIndication = subIndication,
-		productionTime = productionTime,
+		productionTime = productionTime.toString(),
 		qualification = qualification,
 		tsaSubjectDN = tsaSubjectDN,
 		errors = errors,
@@ -137,8 +141,8 @@ fun CertificateDiscoveryResult.toJsonCertificateList(): JsonCertificateList =
 				alias = cert.alias,
 				subjectDN = cert.subjectDN,
 				issuerDN = cert.issuerDN,
-				validFrom = cert.validFrom,
-				validTo = cert.validTo,
+				validFrom = cert.validFrom.toString(),
+				validTo = cert.validTo.toString(),
 				tokenType = cert.tokenType,
 				keyUsages = cert.keyUsages,
 			)

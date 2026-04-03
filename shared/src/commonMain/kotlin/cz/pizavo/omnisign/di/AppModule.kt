@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.di
 
+import cz.pizavo.omnisign.domain.service.AlgorithmExpirationChecker
 import cz.pizavo.omnisign.domain.usecase.*
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.module
@@ -9,11 +10,13 @@ import org.koin.dsl.module
  * Platform-specific implementations are registered in separate modules.
  */
 val appModule = module {
+	singleOf(::AlgorithmExpirationChecker)
 	singleOf(::ValidateDocumentUseCase)
 	singleOf(::SignDocumentUseCase)
 	singleOf(::ListCertificatesUseCase)
 	singleOf(::ExtendDocumentUseCase)
 	singleOf(::CheckArchivalRenewalUseCase)
+	singleOf(::GetDocumentTimestampInfoUseCase)
 	singleOf(::GetConfigUseCase)
 	singleOf(::SetGlobalConfigUseCase)
 	singleOf(::ManageProfileUseCase)

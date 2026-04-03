@@ -3,8 +3,8 @@ import org.jetbrains.kotlin.gradle.dsl.JvmTarget
 import java.net.URI
 
 plugins {
-	alias(libs.plugins.kotlinMultiplatform)
-	alias(libs.plugins.kotlinSerialization)
+	alias(libs.plugins.kotlin.multiplatform)
+	alias(libs.plugins.kotlin.serialization)
 	alias(libs.plugins.ksp)
 	alias(libs.plugins.kotest)
 	alias(libs.plugins.decoroutinator)
@@ -49,6 +49,7 @@ kotlin {
 			implementation(libs.kotlinx.serialization.json)
 			
 			api(libs.arrow.core)
+			api(libs.kotlin.logging)
 			implementation(libs.arrow.fx.coroutines)
 			implementation(libs.kotlinx.datetime)
 		}
