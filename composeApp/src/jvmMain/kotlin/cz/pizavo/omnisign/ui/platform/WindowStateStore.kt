@@ -6,7 +6,7 @@ import androidx.compose.ui.window.WindowPosition
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.file.Path
 import java.nio.file.Paths
-import java.util.Properties
+import java.util.*
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.inputStream
@@ -45,8 +45,10 @@ data class PersistedWindowState(
  * - **macOS**: `~/Library/Application Support/omnisign/window-state.properties`
  * - **Linux**: `~/.config/omnisign/window-state.properties`
  */
-object WindowStateStore {
-	private const val FILE_NAME = "window-state.properties"
+class WindowStateStore {
+	companion object {
+		private const val FILE_NAME = "window-state.properties"
+	}
 
 	private val path: Path by lazy { resolveStorePath() }
 

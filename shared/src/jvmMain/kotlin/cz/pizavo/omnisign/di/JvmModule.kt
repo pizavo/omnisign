@@ -36,11 +36,15 @@ val jvmRepositoryModule = module {
 	
 	single<ConfigRepository> { FileConfigRepository() }
 	singleOf(::DssServiceFactory)
+	singleOf(::DssWarningSanitizer)
+	singleOf(::TspErrorDetector)
 	singleOf(::DssValidationRepository) bind ValidationRepository::class
 	singleOf(::DssSigningRepository) bind SigningRepository::class
 	singleOf(::DssArchivingRepository) bind ArchivingRepository::class
 	singleOf(::TrustedListCompiler)
 	singleOf(::DssTrustedListCompilerAdapter) bind TrustedListCompilerPort::class
+	singleOf(::TrustedCertificateReader)
+	singleOf(::SelfExecutableResolver)
 	
 	single {
 		ConfigSerializerRegistry(

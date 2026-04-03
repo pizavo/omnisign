@@ -20,6 +20,7 @@ import org.koin.core.component.inject
  */
 class ScheduleInstall : CliktCommand(name = "install"), KoinComponent {
 	private val scheduler: OsSchedulerService by inject()
+	private val selfExecutableResolver: SelfExecutableResolver by inject()
 	
 	private val cliPath by option(
 		"--cli-path",
@@ -45,7 +46,7 @@ class ScheduleInstall : CliktCommand(name = "install"), KoinComponent {
 		"Register the daily automatic re-timestamping job with the OS scheduler"
 	
 	override fun run() {
-		val resolvedCliPath = cliPath ?: SelfExecutableResolver.resolve()
+		val resolvedCliPath = cliPath ?: selfExecutableResolver.resolve()
 		if (resolvedCliPath == null) {
 			echo(
 				"❌ Could not auto-detect the CLI executable path.\n" +

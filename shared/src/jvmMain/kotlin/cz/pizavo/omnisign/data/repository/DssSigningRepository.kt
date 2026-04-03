@@ -51,7 +51,10 @@ class DssSigningRepository(
 	private val tokenService: TokenService,
 	private val configRepository: ConfigRepository,
 	private val credentialStore: CredentialStore,
-	private val dssServiceFactory: DssServiceFactory
+	private val dssServiceFactory: DssServiceFactory,
+	private val algorithmExpirationChecker: AlgorithmExpirationChecker,
+	private val warningSanitizer: DssWarningSanitizer,
+	private val tspErrorDetector: TspErrorDetector,
 ) : SigningRepository {
 	
 	@Suppress("TooGenericExceptionCaught", "CyclomaticComplexMethod", "LongMethod", "ReturnCount")
@@ -84,14 +87,14 @@ class DssSigningRepository(
 			val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
 			val constraints = resolvedConfig.validation.algorithmConstraints
 			val signingWarnings = mutableListOf<String>()
-			when (AlgorithmExpirationChecker.check(effectiveHash, constraints, today)) {
+			when (algorithmExpirationChecker.check(effectiveHash, constraints, today)) {
 				AlgorithmStatus.EXPIRED_FAIL -> return SigningError.ExpiredAlgorithm(
-					message = AlgorithmExpirationChecker.warningMessage(effectiveHash, constraints),
+					message = algorithmExpirationChecker.warningMessage(effectiveHash, constraints),
 					details = "Change the hash algorithm or set --algo-expiration-level WARN to override."
 				).left()
 				
 				AlgorithmStatus.EXPIRED_WARN ->
-					signingWarnings += AlgorithmExpirationChecker.warningMessage(effectiveHash, constraints)
+					signingWarnings += algorithmExpirationChecker.warningMessage(effectiveHash, constraints)
 				
 				AlgorithmStatus.VALID -> Unit
 			}
@@ -135,7 +138,7 @@ class DssSigningRepository(
 				signingWarnings += statusAlert.drain()
 				signingWarnings += logCapture.stop()
 				
-				val sanitized = DssWarningSanitizer.sanitize(signingWarnings)
+				val sanitized = warningSanitizer.sanitize(signingWarnings)
 				
 				val outputFile = File(parameters.outputFile).also { it.parentFile?.mkdirs() }
 				withContext(Dispatchers.IO) { outputFile.outputStream().use { signedDocument.writeTo(it) } }
@@ -152,10 +155,10 @@ class DssSigningRepository(
 				logCapture.stop()
 			}
 		} catch (e: Exception) {
-			if (TspErrorDetector.isTspException(e)) {
+			if (tspErrorDetector.isTspException(e)) {
 				val tsaUrl = resolveConfig(parameters).getOrNull()?.timestampServer?.url
 				SigningError.TimestampError(
-					message = TspErrorDetector.buildUserMessage(e, tsaUrl),
+					message = tspErrorDetector.buildUserMessage(e, tsaUrl),
 					details = e.message,
 					cause = e,
 				).left()

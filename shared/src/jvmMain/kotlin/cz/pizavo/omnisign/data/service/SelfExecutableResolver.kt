@@ -1,7 +1,5 @@
 package cz.pizavo.omnisign.data.service
 
-import cz.pizavo.omnisign.data.service.SelfExecutableResolver.resolve
-
 
 /**
  * Resolves the absolute path of the currently running executable.
@@ -11,7 +9,7 @@ import cz.pizavo.omnisign.data.service.SelfExecutableResolver.resolve
  * When started via `java -jar` the launcher is a JVM binary and
  * cannot be used directly — [resolve] returns `null` in that case.
  */
-object SelfExecutableResolver {
+class SelfExecutableResolver {
 
     /**
      * Attempt to determine the running executable path.

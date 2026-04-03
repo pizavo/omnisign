@@ -3,7 +3,7 @@ package cz.pizavo.omnisign.domain.service
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
-import cz.pizavo.omnisign.domain.service.AlgorithmExpirationChecker.DEFAULT_UPDATE_DATE
+import cz.pizavo.omnisign.domain.service.AlgorithmExpirationChecker.Companion.DEFAULT_UPDATE_DATE
 import kotlinx.datetime.LocalDate
 
 /**
@@ -47,13 +47,15 @@ enum class AlgorithmStatus {
  * In both cases [AlgorithmConstraintLevel.FAIL] maps to [AlgorithmStatus.EXPIRED_FAIL];
  * any other level maps to [AlgorithmStatus.EXPIRED_WARN].
  */
-object AlgorithmExpirationChecker {
+class AlgorithmExpirationChecker {
 	
-	/**
-	 * The DSS 6.3 default `UpdateDate` used when
-	 * [AlgorithmConstraintsConfig.policyUpdateDate] is null.
-	 */
-	val DEFAULT_UPDATE_DATE: LocalDate = LocalDate(2024, 10, 13)
+	companion object {
+		/**
+		 * The DSS 6.3 default `UpdateDate` used when
+		 * [AlgorithmConstraintsConfig.policyUpdateDate] is null.
+		 */
+		val DEFAULT_UPDATE_DATE: LocalDate = LocalDate(2024, 10, 13)
+	}
 	
 	/**
 	 * Return the [AlgorithmStatus] for [algorithm] on [today] using [config].

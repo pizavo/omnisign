@@ -15,8 +15,10 @@ import io.kotest.matchers.string.shouldNotContain
  */
 class DssWarningSanitizerTest : FunSpec({
 
+	val sanitizer = DssWarningSanitizer()
+
 	test("empty input produces empty output") {
-		val result = DssWarningSanitizer.sanitize(emptyList())
+		val result = sanitizer.sanitize(emptyList())
 		result.summaries.shouldBeEmpty()
 		result.raw.shouldBeEmpty()
 	}
@@ -26,7 +28,7 @@ class DssWarningSanitizerTest : FunSpec({
 			"No revocation found for the certificate C-AAAA",
 			"something unexpected",
 		)
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.raw.shouldContainExactly(raw)
 	}
 
@@ -35,7 +37,7 @@ class DssWarningSanitizerTest : FunSpec({
 			"No revocation found for the certificate C-AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555FFFF6666",
 			"No revocation found for the certificate C-1111222233334444555566667777888899990000AAAABBBB",
 		)
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "2 certificates"
 		result.summaries[0] shouldContain "CRL/OCSP"
@@ -43,7 +45,7 @@ class DssWarningSanitizerTest : FunSpec({
 
 	test("REVOCATION_NOT_FOUND with a single certificate uses singular form") {
 		val raw = listOf("No revocation found for the certificate C-ABCD1234")
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "1 certificate"
 	}
@@ -53,7 +55,7 @@ class DssWarningSanitizerTest : FunSpec({
 			"External revocation check is skipped for untrusted certificate : C-AAAA",
 			"Revocation data is skipped for untrusted certificate chain! C-BBBB",
 		)
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "untrusted chain"
 	}
@@ -63,7 +65,7 @@ class DssWarningSanitizerTest : FunSpec({
 			"The certificate 'C-ABCD1234' is not known to be not revoked!",
 			"The certificate 'C-ABCD1234' does not contain a valid revocation data information!",
 		)
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "Revocation status could not be confirmed"
 	}
@@ -72,7 +74,7 @@ class DssWarningSanitizerTest : FunSpec({
 		val raw = listOf(
 			"Revocation data is missing for one or more POE(s). NextUpdate time : 2026-09-18T14:45:18Z"
 		)
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "proof-of-existence"
 	}
@@ -81,7 +83,7 @@ class DssWarningSanitizerTest : FunSpec({
 		val raw = listOf(
 			"Fresh revocation data is missing for one or more certificate(s). [C-AAAA: detail]"
 		)
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "Fresh revocation data"
 	}
@@ -91,7 +93,7 @@ class DssWarningSanitizerTest : FunSpec({
 			"POE extraction is skipped for untrusted timestamp : T-AAAA1111BBBB2222CCCC3333DDDD4444EEEE5555FFFF6666",
 			"POE extraction is skipped for untrusted timestamp : T-1111222233334444555566667777888899990000AAAABBBB",
 		)
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "2 timestamps"
 		result.summaries[0] shouldContain "TSA"
@@ -102,7 +104,7 @@ class DssWarningSanitizerTest : FunSpec({
 			"Unable to load the alternative name. Reason : Invalid sequence length!",
 			"Unable to parse the certificatePolicies extension 'BIHOMIHLMIHIBgAwgcMw...' : Unable to retrieve the ASN1Sequence",
 		)
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "malformed extensions"
 		result.summaries[0] shouldNotContain "BIHOMIHLMIHIBgAwgcMw"
@@ -114,7 +116,7 @@ class DssWarningSanitizerTest : FunSpec({
 			"No revocation found for the certificate C-AAAA",
 			"No revocation found for the certificate C-BBBB",
 		)
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "2 certificates"
 	}
@@ -124,7 +126,7 @@ class DssWarningSanitizerTest : FunSpec({
 			"No revocation found for the certificate C-AAAA",
 			"Some completely unknown DSS message",
 		)
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 2
 		result.summaries[0] shouldContain "CRL/OCSP"
 		result.summaries[1] shouldBe "Some completely unknown DSS message"
@@ -136,7 +138,7 @@ class DssWarningSanitizerTest : FunSpec({
 			"No revocation found for the certificate C-AAAA",
 			"Unable to load the alternative name. Reason : Invalid sequence length!",
 		)
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 3
 		result.summaries[0] shouldContain "CRL/OCSP"
 		result.summaries[1] shouldContain "TSA"
@@ -144,19 +146,19 @@ class DssWarningSanitizerTest : FunSpec({
 	}
 
 	test("classify returns null for unknown messages") {
-		DssWarningSanitizer.classify("Totally unknown message") shouldBe null
+		sanitizer.classify("Totally unknown message") shouldBe null
 	}
 
 	test("classify returns correct category for known patterns") {
-		DssWarningSanitizer.classify(
+		sanitizer.classify(
 			"No revocation found for the certificate C-AAAA"
 		)?.first shouldBe WarningCategory.REVOCATION_NOT_FOUND
 
-		DssWarningSanitizer.classify(
+		sanitizer.classify(
 			"POE extraction is skipped for untrusted timestamp : T-BBBB"
 		)?.first shouldBe WarningCategory.TIMESTAMP_UNTRUSTED
 
-		DssWarningSanitizer.classify(
+		sanitizer.classify(
 			"Unable to parse the certificatePolicies extension 'blob'"
 		)?.first shouldBe WarningCategory.CERTIFICATE_PARSE_ERROR
 	}
@@ -164,7 +166,7 @@ class DssWarningSanitizerTest : FunSpec({
 	test("long certificate IDs are shortened in the internal bucket") {
 		val longId = "C-" + "A".repeat(64)
 		val raw = listOf("No revocation found for the certificate $longId")
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "1 certificate"
 	}
@@ -175,7 +177,7 @@ class DssWarningSanitizerTest : FunSpec({
 					"[C-AAAA: Revocation data is skipped for untrusted certificate chain!; " +
 					"C-BBBB: Revocation data is skipped for untrusted certificate chain!]"
 		)
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "untrusted chain"
 	}
@@ -186,20 +188,20 @@ class DssWarningSanitizerTest : FunSpec({
 					"with Id 'C-398F2F45F30C8052B4803A91EA4A37EB4361B67EB378FE75BDC462B3542D5A97' " +
 					"from URL 'http://ocsp.cesnet-ca.cz/'. Reason : unknown tag 28 encountered"
 		)
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "CRL/OCSP"
 		result.summaries[0] shouldContain "1 certificate"
 	}
 	
 	test("Unable to retrieve OCSP response without prefix is classified as REVOCATION_NOT_FOUND") {
-		DssWarningSanitizer.classify(
+		sanitizer.classify(
 			"Unable to retrieve OCSP response for certificate with Id 'C-ABCD1234' from URL 'http://example.com/'"
 		)?.first shouldBe WarningCategory.REVOCATION_NOT_FOUND
 	}
 	
 	test("Unable to download CRL is classified as REVOCATION_NOT_FOUND") {
-		DssWarningSanitizer.classify(
+		sanitizer.classify(
 			"CRL DSS Exception: Unable to download CRL for certificate with Id 'C-ABCD1234'"
 		)?.first shouldBe WarningCategory.REVOCATION_NOT_FOUND
 	}
@@ -210,7 +212,7 @@ class DssWarningSanitizerTest : FunSpec({
 					"with Id 'C-AAAA1111' from URL 'http://ocsp.example.com/'.",
 			"No revocation found for the certificate C-BBBB2222",
 		)
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "2 certificates"
 		result.summaries[0] shouldContain "CRL/OCSP"
@@ -220,17 +222,17 @@ class DssWarningSanitizerTest : FunSpec({
 		val raw = listOf(
 			"TSP Failure info: PKIFailureInfo: 0x4"
 		)
-		val result = DssWarningSanitizer.sanitize(raw)
+		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "timestamp server"
 	}
 	
 	test("TSP_FAILURE classify returns correct category") {
-		DssWarningSanitizer.classify(
+		sanitizer.classify(
 			"TSP Failure info: PKIFailureInfo: 0x4"
 		)?.first shouldBe WarningCategory.TSP_FAILURE
 		
-		DssWarningSanitizer.classify(
+		sanitizer.classify(
 			"No timestamp token has been retrieved (TSP Status : ...)"
 		)?.first shouldBe WarningCategory.TSP_FAILURE
 	}

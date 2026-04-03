@@ -108,6 +108,7 @@ fun main(args: Array<String> = emptyArray()) {
 				jvmRepositoryModule,
 				org.koin.dsl.module {
 					single<PasswordCallback> { ComposePasswordCallback() }
+					single { WindowStateStore() }
 				},
 			)
 		}
@@ -233,7 +234,8 @@ private val TitleBarClientAreaListener = object : MouseAdapter() {}
  */
 @Composable
 private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
-	val persisted = remember { WindowStateStore.load() }
+	val windowStateStore = remember { org.koin.mp.KoinPlatform.getKoin().get<WindowStateStore>() }
+	val persisted = remember { windowStateStore.load() }
 	val windowState = rememberWindowState(
 		placement = persisted?.placement ?: WindowPlacement.Floating,
 		position = persisted?.let { WindowPosition.Absolute(it.x.dp, it.y.dp) }
@@ -257,7 +259,7 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 	
 	Window(
 		onCloseRequest = {
-			WindowStateStore.save(
+			windowStateStore.save(
 				placement = windowState.placement,
 				size = lastFloatingSize,
 				position = lastFloatingPosition,

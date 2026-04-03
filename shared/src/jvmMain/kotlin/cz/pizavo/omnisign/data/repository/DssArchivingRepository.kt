@@ -40,7 +40,9 @@ import kotlin.time.Duration.Companion.days
  */
 class DssArchivingRepository(
 	private val configRepository: ConfigRepository,
-	private val dssServiceFactory: DssServiceFactory
+	private val dssServiceFactory: DssServiceFactory,
+	private val warningSanitizer: DssWarningSanitizer,
+	private val tspErrorDetector: TspErrorDetector,
 ) : ArchivingRepository {
 	
 	@Suppress("TooGenericExceptionCaught", "ReturnCount")
@@ -85,7 +87,7 @@ class DssArchivingRepository(
 				val extendedDocument = service.extendDocument(FileDocument(inputFile), extendParams)
 				
 				val warnings = statusAlert.drain() + logCapture.stop()
-				val sanitized = DssWarningSanitizer.sanitize(warnings)
+				val sanitized = warningSanitizer.sanitize(warnings)
 				
 				val outputFile = File(parameters.outputFile).also { it.parentFile?.mkdirs() }
 				withContext(Dispatchers.IO) { outputFile.outputStream().use { extendedDocument.writeTo(it) } }
@@ -100,14 +102,14 @@ class DssArchivingRepository(
 				logCapture.stop()
 			}
 		} catch (e: Exception) {
-			if (TspErrorDetector.isTspException(e)) {
+			if (tspErrorDetector.isTspException(e)) {
 				val tsaUrl = (parameters.resolvedConfig ?: ResolvedConfig.resolve(
 					global = configRepository.getCurrentConfig().global,
 					profile = null,
 					operationOverrides = null
 				).getOrNull())?.timestampServer?.url
 				return ArchivingError.TimestampFailed(
-					message = TspErrorDetector.buildUserMessage(e, tsaUrl),
+					message = tspErrorDetector.buildUserMessage(e, tsaUrl),
 					details = e.message,
 					cause = e,
 				).left()

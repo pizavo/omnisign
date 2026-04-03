@@ -32,7 +32,7 @@ class DssArchivingRepositoryTest : FunSpec({
 	val configRepository: ConfigRepository = mockk()
 	val dssServiceFactory: DssServiceFactory = mockk(relaxed = true)
 	
-	val repository = DssArchivingRepository(configRepository, dssServiceFactory)
+	val repository = DssArchivingRepository(configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector())
 	
 	fun configWithoutTsa() = AppConfig(
 		global = GlobalConfig(

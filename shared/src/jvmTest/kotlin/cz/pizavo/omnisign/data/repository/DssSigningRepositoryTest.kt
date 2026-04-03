@@ -11,10 +11,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
-import cz.pizavo.omnisign.domain.service.CertificateEntry
-import cz.pizavo.omnisign.domain.service.CredentialStore
-import cz.pizavo.omnisign.domain.service.TokenInfo
-import cz.pizavo.omnisign.domain.service.TokenService
+import cz.pizavo.omnisign.domain.service.*
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
@@ -41,7 +38,10 @@ class DssSigningRepositoryTest : FunSpec({
 	val credentialStore: CredentialStore = mockk()
 	val dssServiceFactory: DssServiceFactory = mockk(relaxed = true)
 	
-	val repository = DssSigningRepository(tokenService, configRepository, credentialStore, dssServiceFactory)
+	val repository = DssSigningRepository(
+		tokenService, configRepository, credentialStore, dssServiceFactory,
+		AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
+	)
 	
 	fun defaultConfig() = AppConfig(
 		global = GlobalConfig(

@@ -5,11 +5,12 @@ import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.absolutePath
+import org.koin.mp.KoinPlatform
 import java.io.File
 
 /**
  * JVM implementation — resolves the [PlatformFile] to a filesystem path and
- * delegates to [TrustedCertificateReader] for X.509 parsing.
+ * delegates to the Koin-provided [TrustedCertificateReader] for X.509 parsing.
  */
 @Suppress("UselessElvis")
 actual fun readCertificateFile(
@@ -17,8 +18,9 @@ actual fun readCertificateFile(
     file: PlatformFile,
     type: TrustedCertificateType,
 ): TrustedCertificateConfig? {
+    val reader = KoinPlatform.getKoin().get<TrustedCertificateReader>()
     val path = file.absolutePath()
-    return TrustedCertificateReader.read(name, File(path), type)
+    return reader.read(name, File(path), type)
 }
 
 /**
@@ -29,5 +31,6 @@ actual fun readCertificateFileFromPath(
     path: String,
     type: TrustedCertificateType,
 ): TrustedCertificateConfig? {
-    return TrustedCertificateReader.read(name, File(path), type)
+    val reader = KoinPlatform.getKoin().get<TrustedCertificateReader>()
+    return reader.read(name, File(path), type)
 }
