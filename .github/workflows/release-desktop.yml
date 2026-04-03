@@ -59,7 +59,7 @@ jobs:
         run: |
           version="${{ needs.prepare.outputs.version }}"
           tar -czf "composeApp/build/omnisign-desktop-${version}-linux-portable.tar.gz" \
-            -C "composeApp/build/compose/binaries/main/app-image" .
+            -C "composeApp/build/compose/binaries/main/app" .
 
       - name: Upload DEB
         uses: actions/upload-artifact@v7
