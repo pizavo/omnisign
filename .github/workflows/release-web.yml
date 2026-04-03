@@ -1,0 +1,93 @@
+name: Release — Web
+
+on:
+  push:
+    tags:
+      - 'web/v*'
+
+jobs:
+  prepare:
+    name: Extract version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#web/v}" >> $GITHUB_OUTPUT
+
+  build:
+    name: Build Web (Wasm)
+    needs: prepare
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Build Wasm distribution
+        run: ./gradlew :composeApp:wasmJsBrowserDistribution -PreleaseVersion=${{ needs.prepare.outputs.version }}
+
+      - name: Zip Wasm distribution
+        run: |
+          cd composeApp/build/dist/wasmJs/productionExecutable
+          zip -r "$GITHUB_WORKSPACE/composeApp/build/web-dist.zip" .
+
+      - name: Upload web distribution
+        uses: actions/upload-artifact@v7
+        with:
+          name: web-dist
+          path: composeApp/build/web-dist.zip
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: [prepare, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          sparse-checkout: .github
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v8
+        with:
+          path: artifacts/
+          merge-multiple: true
+
+      - name: Generate release notes
+        id: notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          prev_tag=$(gh api "repos/${{ github.repository }}/releases" \
+            --jq '[.[] | select(.tag_name | startswith("web/v")) | .tag_name] | first' \
+            2>/dev/null || echo "")
+
+          args=(--method POST
+                -f tag_name="${{ github.ref_name }}"
+                -f configuration_file_path=".github/release-web.yml")
+
+          if [ -n "$prev_tag" ]; then
+            args+=(-f previous_tag_name="$prev_tag")
+          fi
+
+          notes=$(gh api "repos/${{ github.repository }}/releases/generate-notes" \
+            "${args[@]}" --jq '.body')
+
+          {
+            echo "body<<EOF"
+            echo "$notes"
+            echo "EOF"
+          } >> $GITHUB_OUTPUT
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Web ${{ github.ref_name }}"
+          body: ${{ steps.notes.outputs.body }}
+          files: artifacts/*
+
