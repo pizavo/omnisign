@@ -31,8 +31,6 @@ jobs:
       - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-gradle
-        with:
-          distribution: 'jetbrains'
 
       - name: Run tests
         run: ./gradlew :shared:jvmTest :composeApp:jvmTest
@@ -45,8 +43,6 @@ jobs:
       - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-gradle
-        with:
-          distribution: 'jetbrains'
 
       - name: Install tooling
         run: |
@@ -94,8 +90,6 @@ jobs:
       - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-gradle
-        with:
-          distribution: 'jetbrains'
 
       - name: Install WiX
         run: |
@@ -146,8 +140,6 @@ jobs:
       - uses: actions/checkout@v6
 
       - uses: ./.github/actions/setup-gradle
-        with:
-          distribution: 'jetbrains'
 
       - name: Build macOS packages
         run: >-
