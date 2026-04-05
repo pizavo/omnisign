@@ -129,5 +129,55 @@ class TspErrorDetectorTest : FunSpec({
 		val reason = detector.parsePkiFailureReason(ex)
 		reason.shouldNotBeNull()
 	}
+
+	test("isTspException returns true for 'Invalid TSP response' with malformed body") {
+		val ex = RuntimeException(
+			"Invalid TSP response : malformed timestamp response: " +
+				"java.lang.IllegalArgumentException: failed to construct sequence from byte[]: " +
+				"corrupted stream - out of bounds length found: 108 >= 18"
+		)
+		detector.isTspException(ex) shouldBe true
+	}
+
+	test("isTspException returns true when malformed indicator is in nested cause") {
+		val root = IllegalArgumentException(
+			"failed to construct sequence from byte[]: corrupted stream - out of bounds length found: 108 >= 18"
+		)
+		val wrapper = RuntimeException("Invalid TSP response : malformed timestamp response", root)
+		detector.isTspException(wrapper) shouldBe true
+	}
+
+	test("isMalformedResponse returns true for corrupted stream exception") {
+		val ex = RuntimeException(
+			"Invalid TSP response : malformed timestamp response: " +
+				"java.lang.IllegalArgumentException: failed to construct sequence from byte[]: " +
+				"corrupted stream - out of bounds length found: 108 >= 18"
+		)
+		detector.isMalformedResponse(ex) shouldBe true
+	}
+
+	test("isMalformedResponse returns false for normal PKIFailureInfo error") {
+		val ex = RuntimeException("No timestamp token has been retrieved (PKIFailureInfo: 0x4)")
+		detector.isMalformedResponse(ex) shouldBe false
+	}
+
+	test("buildUserMessage returns malformed hint for corrupted TSP response") {
+		val ex = RuntimeException(
+			"Invalid TSP response : malformed timestamp response: " +
+				"java.lang.IllegalArgumentException: failed to construct sequence from byte[]: " +
+				"corrupted stream - out of bounds length found: 108 >= 18"
+		)
+		val msg = detector.buildUserMessage(ex, "https://tsa.example.com/timestamp")
+		msg shouldContain "malformed response"
+		msg shouldContain "https://tsa.example.com/timestamp"
+		msg shouldContain "verify the timestamp server URL"
+	}
+
+	test("buildUserMessage for malformed response without TSA URL omits parentheses") {
+		val ex = RuntimeException("malformed timestamp response: bad data")
+		val msg = detector.buildUserMessage(ex, null)
+		msg shouldContain "malformed response"
+		msg shouldContain "verify the timestamp server URL"
+	}
 })
 

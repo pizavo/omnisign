@@ -1,17 +1,33 @@
 package cz.pizavo.omnisign.data.service
 
-import com.sun.jna.Native
+import com.sun.jna.*
 import com.sun.jna.platform.win32.Advapi32Util
 import com.sun.jna.platform.win32.WinReg
 import com.sun.jna.ptr.IntByReference
 import com.sun.jna.win32.StdCallLibrary
+import cz.pizavo.omnisign.data.service.Pkcs11Discoverer.Companion.P11_STANDALONE_PATTERN
+import cz.pizavo.omnisign.data.service.Pkcs11Discoverer.Companion.PKCS11_NAME_PATTERNS
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.service.TokenInfo
 import java.io.File
 import java.util.*
 
 /**
- * Discovers PKCS#11 middleware libraries available on the current system.
+ * Identity of a physical PKCS#11 token as reported by `C_GetTokenInfo`.
+ *
+ * @property label Token label (up to 32 UTF-8 characters, space-padded by the PKCS#11 spec).
+ * @property serialNumber Token serial number (up to 16 characters, space-padded).
+ * @property libraryPath Absolute path of the PKCS#11 middleware library that reported this token.
+ */
+data class Pkcs11TokenIdentity(
+    val label: String,
+    val serialNumber: String,
+    val libraryPath: String,
+)
+
+/**
+ * Discovers PKCS#11 middleware libraries available on the current system and resolves
+ * them to physical token identities.
  *
  * Discovery is layered from most to least authoritative:
  * 1. OS-native sources ([discoverViaOs]) — PC/SC on Windows, `security`/`pluginkit` on macOS,
@@ -23,12 +39,28 @@ import java.util.*
  * 4. User-supplied paths — entries from
  *    [cz.pizavo.omnisign.domain.model.config.GlobalConfig.customPkcs11Libraries].
  *
- * Duplicates are resolved by canonical path; the first-seen name wins.
+ * Duplicates are resolved first by canonical path, then by probing the actual hardware
+ * token identity (label + serial number) via `C_GetTokenInfo`.  Multiple middleware DLLs
+ * that report the same physical token serial produce a single [TokenInfo].
+ *
+ * @property tokenProber Strategy for probing PKCS#11 libraries for hardware token identities.
+ *   Defaults to JNA-based probing; override for testing.
  */
-class Pkcs11Discoverer {
+class Pkcs11Discoverer(
+    private val tokenProber: (String) -> List<Pkcs11TokenIdentity> = ::probeTokenIdentities,
+) {
 
     /**
-     * Discover all available PKCS#11 tokens and return a [TokenInfo] for each.
+     * Discover all available PKCS#11 tokens and return a [TokenInfo] for each unique
+     * physical token.
+     *
+     * Each discovered PKCS#11 library is probed via [C_GetTokenInfo] to obtain the real
+     * hardware token label and serial number.  Tokens with the same serial number across
+     * different middleware DLLs are deduplicated, so a single physical device appears
+     * exactly once regardless of how many drivers can access it.
+     *
+     * Libraries that fail to probe (e.g. no card inserted, native load failure) fall back
+     * to [deriveMiddlewareName] with middleware-family deduplication.
      *
      * @param appDataPkcs11Dir Optional drop directory.  Every PKCS#11-named file found here
      *   is included automatically without any config change.  Pass `null` to skip.
@@ -62,15 +94,39 @@ class Pkcs11Discoverer {
         }
         merge(userPkcs11Libraries.filter { (_, path) -> File(path).exists() })
 
-        return seen.values.map { (name, path) ->
-            TokenInfo(
-                id = "pkcs11-${File(path).name}",
-                name = name,
-                type = TokenType.PKCS11,
-                path = path,
-                requiresPin = true,
-            )
+        val result = mutableListOf<TokenInfo>()
+        val seenSerials = mutableSetOf<String>()
+        val seenFamilies = mutableSetOf<String>()
+
+        for ((name, path) in seen.values) {
+            val identities = tokenProber(path)
+            if (identities.isNotEmpty()) {
+                for (identity in identities) {
+                    if (seenSerials.add(identity.serialNumber)) {
+                        result += TokenInfo(
+                            id = "pkcs11-${identity.serialNumber}",
+                            name = identity.label,
+                            type = TokenType.PKCS11,
+                            path = path,
+                            requiresPin = true,
+                        )
+                    }
+                }
+            } else {
+                val family = deriveMiddlewareFamily(path)
+                if (seenFamilies.add(family)) {
+                    result += TokenInfo(
+                        id = "pkcs11-${File(path).name}",
+                        name = name,
+                        type = TokenType.PKCS11,
+                        path = path,
+                        requiresPin = true,
+                    )
+                }
+            }
         }
+
+        return result
     }
 
     /**
@@ -185,6 +241,34 @@ class Pkcs11Discoverer {
             lower.contains("softhsm") -> "SoftHSM2"
             lower.contains("libck") -> "Cryptoki Library"
             else -> libraryPath.substringAfterLast('/').substringAfterLast('\\')
+        }
+    }
+
+    /**
+     * Derive a middleware family identifier from a library [path].
+     *
+     * Libraries within the same family access the same physical token slots and should be
+     * deduplicated when hardware probing is unavailable.  For example, SafeNet Authentication
+     * Client ships both `eTPKCS11.dll` and `gclib.dll` — both talk to the same smart card,
+     * so they belong to family `"safenet"`.
+     *
+     * Unknown libraries fall back to their canonical path so they are never grouped with
+     * unrelated entries.
+     */
+    internal fun deriveMiddlewareFamily(path: String): String {
+        val lower = path.lowercase()
+        return when {
+            lower.contains("etpkcs11") || lower.contains("etoken") ||
+                    lower.contains("/sac") || lower.contains("\\sac") ||
+                    lower.contains("gclib") || lower.contains("gemalto") ||
+                    lower.contains("idprime") -> "safenet"
+
+            lower.contains("opensc") -> "opensc"
+            lower.contains("iidp11") || lower.contains("netid") -> "secmaker"
+            lower.contains("cmp11") || lower.contains("charismathics") -> "charismathics"
+            lower.contains("softhsm") -> "softhsm"
+            lower.contains("libck") || lower.contains("cryptoki") -> "cryptoki"
+            else -> runCatching { File(path).canonicalPath }.getOrElse { path }
         }
     }
 
@@ -508,3 +592,89 @@ class Pkcs11Discoverer {
     }
 }
 
+/**
+ * Probe a PKCS#11 [libraryPath] for the identities of all currently inserted tokens.
+ *
+ * Uses JNA to call `C_Initialize`, `C_GetSlotList(tokenPresent=CK_TRUE)`, and
+ * `C_GetTokenInfo` to read the hardware token label and serial number from each
+ * occupied slot.  This never calls `C_Login` and therefore never risks incrementing
+ * a wrong-PIN counter.
+ *
+ * `C_Initialize` is called idempotently; `CKR_CRYPTOKI_ALREADY_INITIALIZED` is treated
+ * as success.  `C_Finalize` is deliberately NOT called so existing sessions created by
+ * DSS or the SunPKCS11 provider are not interrupted.
+ *
+ * Returns an empty list when the library cannot be loaded, no slots have tokens, or
+ * any PKCS#11 call fails.
+ */
+internal fun probeTokenIdentities(libraryPath: String): List<Pkcs11TokenIdentity> = runCatching {
+    @Suppress("UNCHECKED_CAST")
+    val lib = Native.load(libraryPath, Pkcs11ProbeLib::class.java) as Pkcs11ProbeLib
+    val initRv = lib.C_Initialize(null).toLong()
+    if (initRv != CKR_OK && initRv != CKR_CRYPTOKI_ALREADY_INITIALIZED) return emptyList()
+
+    val countMem = Memory(Native.LONG_SIZE.toLong()).also { it.clear() }
+    if (lib.C_GetSlotList(1.toByte(), null, countMem).toLong() != CKR_OK) return emptyList()
+    val slotCount = countMem.getNativeLong(0).toLong().toInt()
+    if (slotCount <= 0) return emptyList()
+
+    val slotsMem = Memory((slotCount.toLong() * Native.LONG_SIZE))
+    slotsMem.clear()
+    countMem.setNativeLong(0, NativeLong(slotCount.toLong()))
+    if (lib.C_GetSlotList(1.toByte(), slotsMem, countMem).toLong() != CKR_OK) return emptyList()
+
+    val results = mutableListOf<Pkcs11TokenIdentity>()
+    for (i in 0 until slotCount) {
+        val slotId = slotsMem.getNativeLong((i.toLong() * Native.LONG_SIZE))
+        val tokenInfo = Memory(CK_TOKEN_INFO_SIZE.toLong())
+        tokenInfo.clear()
+        if (lib.C_GetTokenInfo(slotId, tokenInfo).toLong() != CKR_OK) continue
+
+        val label = tokenInfo.getByteArray(CK_TOKEN_INFO_LABEL_OFFSET.toLong(), CK_TOKEN_INFO_LABEL_LEN)
+            .toString(Charsets.UTF_8).trim()
+        val serial = tokenInfo.getByteArray(CK_TOKEN_INFO_SERIAL_OFFSET.toLong(), CK_TOKEN_INFO_SERIAL_LEN)
+            .toString(Charsets.UTF_8).trim()
+
+        if (serial.isNotBlank()) {
+            results += Pkcs11TokenIdentity(
+                label = label.ifBlank { serial },
+                serialNumber = serial,
+                libraryPath = libraryPath,
+            )
+        }
+    }
+    results
+}.getOrDefault(emptyList())
+
+/**
+ * JNA binding for the PKCS#11 functions needed to probe token identities.
+ * Uses cdecl convention as mandated by the PKCS#11 v2.20 spec.
+ */
+private interface Pkcs11ProbeLib : Library {
+    /**
+     * Initialize the PKCS#11 library.
+     */
+    fun C_Initialize(pInitArgs: Pointer?): NativeLong
+
+    /**
+     * List slots that optionally have a token present.
+     */
+    fun C_GetSlotList(tokenPresent: Byte, pSlotList: Pointer?, pulCount: Pointer?): NativeLong
+
+    /**
+     * Obtain information about a particular token in the specified slot.
+     */
+    fun C_GetTokenInfo(slotID: NativeLong, pInfo: Pointer?): NativeLong
+}
+
+private const val CKR_OK = 0L
+private const val CKR_CRYPTOKI_ALREADY_INITIALIZED = 0x191L
+
+private const val CK_TOKEN_INFO_LABEL_OFFSET = 0
+private const val CK_TOKEN_INFO_LABEL_LEN = 32
+private const val CK_TOKEN_INFO_MANUFACTURER_LEN = 32
+private const val CK_TOKEN_INFO_MODEL_LEN = 16
+private const val CK_TOKEN_INFO_SERIAL_OFFSET =
+    CK_TOKEN_INFO_LABEL_LEN + CK_TOKEN_INFO_MANUFACTURER_LEN + CK_TOKEN_INFO_MODEL_LEN
+private const val CK_TOKEN_INFO_SERIAL_LEN = 16
+private const val CK_TOKEN_INFO_SIZE = 256

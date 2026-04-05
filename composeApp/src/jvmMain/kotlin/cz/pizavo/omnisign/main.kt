@@ -34,7 +34,7 @@ import javax.swing.Timer
 import kotlin.system.exitProcess
 
 /**
- * Resolved native log directory, set as a system property before Logback initialises.
+ * Resolved native log directory, set as a system property before Logback initializes.
  *
  * Top-level `val`s are initialized in declaration order, so placing this above the
  * [logger] property guarantees `omnisign.log.dir` is visible when SLF4J/Logback
@@ -92,7 +92,7 @@ private fun resolveLogDir(): String {
  * The build toolchain guarantees JetBrains Runtime, so no non-JBR fallback is
  * needed.
  *
- * When invoked with the `renew` argument (e.g. by the OS scheduler), the app
+ * When invoked with the `renew` argument (e.g., by the OS scheduler), the app
  * runs the renewal batch in headless mode and exits without starting the GUI.
  */
 fun main(args: Array<String> = emptyArray()) {
@@ -107,7 +107,9 @@ fun main(args: Array<String> = emptyArray()) {
 				appModule,
 				jvmRepositoryModule,
 				org.koin.dsl.module {
-					single<PasswordCallback> { ComposePasswordCallback() }
+					single { ComposePasswordCallback() }
+					single<PasswordCallback> { get<ComposePasswordCallback>() }
+					single<PasswordDialogController> { get<ComposePasswordCallback>() }
 					single { WindowStateStore() }
 				},
 			)
@@ -349,23 +351,6 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 			},
 		) {
 			App()
-			
-			val passwordCallback = remember {
-				org.koin.mp.KoinPlatform.getKoinOrNull()
-					?.getOrNull<PasswordCallback>() as? ComposePasswordCallback
-			}
-			val passwordRequest by (passwordCallback?.request
-				?: remember { kotlinx.coroutines.flow.MutableStateFlow(null) }
-			).collectAsState()
-			
-			passwordRequest?.let { request ->
-				cz.pizavo.omnisign.ui.layout.PasswordDialog(
-					title = request.title,
-					prompt = request.prompt,
-					onConfirm = { passwordCallback?.complete(it) },
-					onCancel = { passwordCallback?.complete(null) },
-				)
-			}
 		}
 	}
 }

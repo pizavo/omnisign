@@ -4,6 +4,7 @@ import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
+import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.domain.model.result.SigningResult
 import cz.pizavo.omnisign.domain.repository.SigningRepository
 import io.kotest.assertions.arrow.core.shouldBeLeft
@@ -81,7 +82,7 @@ class SignDocumentUseCaseTest : FunSpec({
 			outputFile = "/tmp/output.pdf",
 			signatureId = "sig-3",
 			signatureLevel = "PAdES-BASELINE-LT",
-			warnings = listOf("Revocation data fetch slow"),
+			annotatedWarnings = listOf(AnnotatedWarning("Revocation data fetch slow")),
 			rawWarnings = listOf("eu.europa.esig: CRL download timeout"),
 			hasRevocationWarnings = true,
 		)

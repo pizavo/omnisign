@@ -16,6 +16,11 @@ import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.progressindicators.CircularProgressIndicator
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.SigningDialogState
+import cz.pizavo.omnisign.ui.platform.platformFilePath
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import io.github.vinceglb.filekit.name
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
 
@@ -25,7 +30,8 @@ import org.jetbrains.compose.resources.painterResource
  * The dialog adapts its content to the current [SigningDialogState]:
  * - [SigningDialogState.Loading]: certificate discovery spinner.
  * - [SigningDialogState.Ready]: signing form with certificate selector, algorithm options,
- *   metadata fields, and output path.
+ *   metadata fields, and output path. Locked tokens show an unlock action; a button
+ *   allows importing certificates from a PKCS#12 file.
  * - [SigningDialogState.Signing]: progress indicator.
  * - [SigningDialogState.RevocationWarning]: revocation data warning with abort/continue options.
  * - [SigningDialogState.Success]: summary of the created signature.
@@ -36,6 +42,8 @@ import org.jetbrains.compose.resources.painterResource
  * @param onSign Called when the user clicks the Sign button.
  * @param onAbortRevocation Called when the user aborts after a revocation warning.
  * @param onAcceptRevocation Called when the user continues despite revocation warnings.
+ * @param onUnlockToken Called with a token ID when the user clicks Unlock on a locked token.
+ * @param onImportPkcs12 Called with the absolute file path when the user picks a PKCS#12 file to import.
  * @param onDismiss Called when the user cancels or closes the dialog.
  */
 @Composable
@@ -45,6 +53,8 @@ fun SigningDialog(
 	onSign: () -> Unit,
 	onAbortRevocation: () -> Unit,
 	onAcceptRevocation: () -> Unit,
+	onUnlockToken: (tokenId: String) -> Unit,
+	onImportPkcs12: (filePath: String) -> Unit,
 	onDismiss: () -> Unit,
 ) {
 	Dialog(
@@ -66,9 +76,9 @@ fun SigningDialog(
 					onClose = onDismiss,
 					closeable = state !is SigningDialogState.Signing,
 				)
-
+				
 				HorizontalDivider()
-
+				
 				Box(modifier = Modifier.weight(1f)) {
 					when (state) {
 						is SigningDialogState.Idle -> {}
@@ -76,7 +86,10 @@ fun SigningDialog(
 						is SigningDialogState.Ready -> SigningFormContent(
 							state = state,
 							onFieldChange = onFieldChange,
+							onUnlockToken = onUnlockToken,
+							onImportPkcs12 = onImportPkcs12,
 						)
+						
 						is SigningDialogState.Signing -> LoadingContent("Signing document...")
 						is SigningDialogState.RevocationWarning -> RevocationWarningContent(state)
 						is SigningDialogState.Success -> SigningSuccessContent(state)
@@ -86,9 +99,9 @@ fun SigningDialog(
 						)
 					}
 				}
-
+				
 				HorizontalDivider()
-
+				
 				SigningDialogFooter(
 					state = state,
 					onSign = onSign,
@@ -136,12 +149,25 @@ private fun SigningDialogHeader(onClose: () -> Unit, closeable: Boolean) {
  *
  * @param state Current [SigningDialogState.Ready] state.
  * @param onFieldChange Called with a transform to update a field.
+ * @param onUnlockToken Called with a token ID when the user clicks Unlock.
+ * @param onImportPkcs12 Called with the file path when the user imports a PKCS#12 file.
  */
 @Composable
 private fun SigningFormContent(
 	state: SigningDialogState.Ready,
 	onFieldChange: ((SigningDialogState.Ready) -> SigningDialogState.Ready) -> Unit,
+	onUnlockToken: (tokenId: String) -> Unit,
+	onImportPkcs12: (filePath: String) -> Unit,
 ) {
+	val pkcs12Picker = rememberFilePickerLauncher(
+		type = FileKitType.File(extensions = listOf("p12", "pfx")),
+	) { file: PlatformFile? ->
+		if (file != null) {
+			val path = platformFilePath(file) ?: file.name
+			onImportPkcs12(path)
+		}
+	}
+	
 	Column(
 		modifier = Modifier
 			.fillMaxSize()
@@ -149,42 +175,111 @@ private fun SigningFormContent(
 			.padding(horizontal = 24.dp, vertical = 16.dp),
 		verticalArrangement = Arrangement.spacedBy(16.dp),
 	) {
-		if (state.tokenWarnings.isNotEmpty()) {
-			state.tokenWarnings.forEach { warning ->
+		val lockedTokenIds = state.lockedTokens.map { it.tokenId }.toSet()
+		val generalWarningsByToken = state.tokenWarnings
+			.filter { it.tokenId !in lockedTokenIds }
+			.groupBy { it.tokenId }
+		
+		if (state.lockedTokens.isNotEmpty()) {
+			state.lockedTokens.forEach { locked ->
+				Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+					Row(
+						horizontalArrangement = Arrangement.spacedBy(8.dp),
+						verticalAlignment = Alignment.CenterVertically,
+					) {
+						Icon(
+							painter = painterResource(Res.drawable.icon_lock),
+							contentDescription = null,
+							modifier = Modifier.size(14.dp),
+							tint = LumoTheme.colors.textSecondary,
+						)
+						Text(
+							text = locked.tokenName,
+							style = LumoTheme.typography.body2,
+							color = LumoTheme.colors.textSecondary,
+							modifier = Modifier.weight(1f),
+						)
+						TooltipBox(
+							tooltip = { Tooltip { Text("Unlock") } }
+						) {
+							IconButton(
+								variant = IconButtonVariant.Ghost,
+								onClick = { onUnlockToken(locked.tokenId) },
+							) {
+								Icon(
+									painter = painterResource(Res.drawable.icon_lock_open),
+									contentDescription = "Unlock",
+									modifier = Modifier.size(20.dp),
+								)
+							}
+						}
+					}
+					
+					state.tokenWarnings
+						.filter { it.tokenId == locked.tokenId }
+						.forEach { warning ->
+							TokenWarningRow(warning.message)
+						}
+				}
+			}
+		}
+		
+		generalWarningsByToken.forEach { (_, warnings) ->
+			Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
 				Row(
-					horizontalArrangement = Arrangement.spacedBy(4.dp),
-					verticalAlignment = Alignment.Top,
+					horizontalArrangement = Arrangement.spacedBy(8.dp),
+					verticalAlignment = Alignment.CenterVertically,
 				) {
 					Icon(
 						painter = painterResource(Res.drawable.icon_alert_warning),
 						contentDescription = null,
-						modifier = Modifier.padding(top = 3.dp).size(14.dp),
+						modifier = Modifier.size(14.dp),
 						tint = LumoTheme.colors.warning,
 					)
 					Text(
-						text = "${warning.tokenName}: ${warning.message}",
+						text = warnings.first().tokenName,
 						style = LumoTheme.typography.body2,
-						color = LumoTheme.colors.warning,
+						color = LumoTheme.colors.textSecondary,
 					)
+				}
+				
+				warnings.forEach { warning ->
+					TokenWarningRow(warning.message)
 				}
 			}
 		}
-
+		
 		val certOptions = state.certificates.map { it.alias }
-		DropdownSelector(
-			selected = state.selectedAlias,
-			options = certOptions,
-			onSelect = { alias -> onFieldChange { it.copy(selectedAlias = alias) } },
-			label = { Text("Certificate") },
-			nullLabel = "Auto (first available)",
-			showNullOption = true,
-			itemLabel = { alias ->
-				val cert = state.certificates.find { it.alias == alias }
-			if (cert != null) "${cert.alias} — ${cert.subjectDN}" else alias
-			},
+		Row(
 			modifier = Modifier.fillMaxWidth(),
-		)
-
+			horizontalArrangement = Arrangement.spacedBy(8.dp),
+			verticalAlignment = Alignment.Bottom,
+		) {
+			DropdownSelector(
+				selected = state.selectedAlias,
+				options = certOptions,
+				onSelect = { alias -> onFieldChange { it.copy(selectedAlias = alias) } },
+				label = { Text("Certificate") },
+				nullLabel = "Select a certificate\u2026",
+				showNullOption = false,
+				itemLabel = { alias ->
+					val cert = state.certificates.find { it.alias == alias }
+					if (cert != null) "${cert.alias} — ${cert.subjectDN}" else alias
+				},
+				modifier = Modifier.weight(1f),
+			)
+			IconButton(
+				variant = IconButtonVariant.Ghost,
+				onClick = { pkcs12Picker.launch() },
+			) {
+				Icon(
+					painter = painterResource(Res.drawable.icon_upload),
+					contentDescription = "Import PKCS#12 file",
+					modifier = Modifier.size(20.dp),
+				)
+			}
+		}
+		
 		Row(
 			modifier = Modifier.fillMaxWidth(),
 			horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -201,7 +296,7 @@ private fun SigningFormContent(
 				modifier = Modifier.weight(1f),
 			)
 		}
-
+		
 		Row(
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -218,7 +313,7 @@ private fun SigningFormContent(
 				Text(text = "Signature timestamp", style = LumoTheme.typography.body2)
 				InfoTooltip(text = "Produces PAdES BASELINE B-LT")
 			}
-
+			
 			Row(
 				verticalAlignment = Alignment.CenterVertically,
 				horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -235,7 +330,7 @@ private fun SigningFormContent(
 				Text(text = "Archival timestamp", style = LumoTheme.typography.body2)
 				InfoTooltip(text = "Produces PAdES BASELINE B-LTA")
 			}
-
+			
 			if (state.addArchivalTimestamp) {
 				Row(
 					verticalAlignment = Alignment.CenterVertically,
@@ -258,7 +353,7 @@ private fun SigningFormContent(
 				}
 			}
 		}
-
+		
 		UnderlinedTextField(
 			value = state.reason,
 			onValueChange = { v -> onFieldChange { it.copy(reason = v) } },
@@ -266,7 +361,7 @@ private fun SigningFormContent(
 			label = { Text("Reason (optional)") },
 			modifier = Modifier.fillMaxWidth(),
 		)
-
+		
 		Row(
 			modifier = Modifier.fillMaxWidth(),
 			horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -278,7 +373,7 @@ private fun SigningFormContent(
 				label = { Text("Location (optional)") },
 				modifier = Modifier.weight(1f),
 			)
-
+			
 			UnderlinedTextField(
 				value = state.contactInfo,
 				onValueChange = { v -> onFieldChange { it.copy(contactInfo = v) } },
@@ -287,7 +382,7 @@ private fun SigningFormContent(
 				modifier = Modifier.weight(1f),
 			)
 		}
-
+		
 		UnderlinedTextField(
 			value = state.outputPath,
 			onValueChange = { v -> onFieldChange { it.copy(outputPath = v) } },
@@ -323,32 +418,17 @@ private fun SigningSuccessContent(state: SigningDialogState.Success) {
 			)
 			Text(text = "Document signed successfully", style = LumoTheme.typography.h4)
 		}
-
+		
 		Spacer(modifier = Modifier.height(8.dp))
-
+		
 		SigningResultRow(label = "Output file", value = state.outputFile)
 		SigningResultRow(label = "Signature ID", value = state.signatureId)
 		SigningResultRow(label = "Signature level", value = state.signatureLevel)
-
+		
 		if (state.warnings.isNotEmpty()) {
 			Spacer(modifier = Modifier.height(8.dp))
 			state.warnings.forEach { warning ->
-				Row(
-					horizontalArrangement = Arrangement.spacedBy(4.dp),
-					verticalAlignment = Alignment.Top,
-				) {
-					Icon(
-						painter = painterResource(Res.drawable.icon_alert_warning),
-						contentDescription = null,
-						modifier = Modifier.padding(top = 3.dp).size(14.dp),
-						tint = LumoTheme.colors.warning,
-					)
-					Text(
-						text = warning,
-						style = LumoTheme.typography.body2,
-						color = LumoTheme.colors.warning,
-					)
-				}
+				WarningRow(warning = warning)
 			}
 		}
 	}
@@ -397,9 +477,9 @@ private fun RevocationWarningContent(state: SigningDialogState.RevocationWarning
 			)
 			Text(text = "Revocation data unavailable", style = LumoTheme.typography.h4)
 		}
-
+		
 		Spacer(modifier = Modifier.height(4.dp))
-
+		
 		Text(
 			text = "The document was signed, but revocation information (CRL/OCSP) could not " +
 					"be embedded. Without this data the signature may not be suitable for " +
@@ -407,26 +487,11 @@ private fun RevocationWarningContent(state: SigningDialogState.RevocationWarning
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)
-
+		
 		Spacer(modifier = Modifier.height(8.dp))
-
+		
 		state.warnings.forEach { warning ->
-			Row(
-				horizontalArrangement = Arrangement.spacedBy(4.dp),
-				verticalAlignment = Alignment.Top,
-			) {
-				Icon(
-					painter = painterResource(Res.drawable.icon_alert_warning),
-					contentDescription = null,
-					modifier = Modifier.padding(top = 3.dp).size(14.dp),
-					tint = LumoTheme.colors.warning,
-				)
-				Text(
-					text = warning,
-					style = LumoTheme.typography.body2,
-					color = LumoTheme.colors.warning,
-				)
-			}
+			WarningRow(warning = warning)
 		}
 	}
 }
@@ -464,11 +529,11 @@ private fun SigningDialogFooter(
 				Button(
 					text = "Sign",
 					variant = ButtonVariant.Primary,
-					enabled = state.outputPath.isNotBlank() && state.certificates.isNotEmpty(),
+					enabled = state.outputPath.isNotBlank() && state.selectedAlias != null,
 					onClick = onSign,
 				)
 			}
-
+			
 			is SigningDialogState.RevocationWarning -> {
 				Button(
 					text = "Continue anyway",
@@ -481,7 +546,7 @@ private fun SigningDialogFooter(
 					onClick = onAbortRevocation,
 				)
 			}
-
+			
 			is SigningDialogState.Success -> {
 				Button(
 					text = "Close",
@@ -489,7 +554,7 @@ private fun SigningDialogFooter(
 					onClick = onDismiss,
 				)
 			}
-
+			
 			is SigningDialogState.Error -> {
 				Button(
 					text = "Close",
@@ -497,7 +562,7 @@ private fun SigningDialogFooter(
 					onClick = onDismiss,
 				)
 			}
-
+			
 			else -> {}
 		}
 	}
@@ -561,6 +626,32 @@ internal fun ErrorContent(message: String, details: String?) {
 	}
 }
 
+/**
+ * A single warning message row indented under its parent token/QSCD section.
+ *
+ * @param message Warning text to display.
+ */
+@Composable
+private fun TokenWarningRow(message: String) {
+	Row(
+		horizontalArrangement = Arrangement.spacedBy(4.dp),
+		verticalAlignment = Alignment.Top,
+		modifier = Modifier.padding(start = 22.dp),
+	) {
+		Icon(
+			painter = painterResource(Res.drawable.icon_alert_warning),
+			contentDescription = null,
+			modifier = Modifier.padding(top = 3.dp).size(14.dp),
+			tint = LumoTheme.colors.warning,
+		)
+		Text(
+			text = message,
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.warning,
+		)
+	}
+}
+
 private val DSS_ID_PATTERN = Regex("""\[?[SsCcTt]-[A-Fa-f0-9]{16,}:?\s*""")
 private val TRAILING_BRACKET = Regex("""\s*]$""")
 
@@ -574,5 +665,4 @@ private fun sanitizeDssDetails(raw: String): String {
 		.replace(TRAILING_BRACKET, "")
 		.trim()
 }
-
 

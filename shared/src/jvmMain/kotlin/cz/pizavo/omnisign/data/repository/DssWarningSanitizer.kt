@@ -1,6 +1,6 @@
 package cz.pizavo.omnisign.data.repository
 
-import cz.pizavo.omnisign.data.repository.DssWarningSanitizer.Companion.MAX_ID_DISPLAY_LEN
+import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 
 
 /**
@@ -25,8 +25,26 @@ class DssWarningSanitizer {
 	 * Each raw message is matched against known DSS warning patterns and placed into a
 	 * [WarningCategory] bucket. Categories are emitted in enum declaration order, one
 	 * summary line per bucket, followed by any unmatched messages verbatim.
+	 *
+	 * Categories listed in [suppressedCategories] are still classified (and appear in the
+	 * returned [SanitizedWarnings.categories] set and [SanitizedWarnings.raw] list) but
+	 * are **excluded** from [SanitizedWarnings.annotatedSummaries]. This allows callers
+	 * to silence context-dependent noise (e.g. [WarningCategory.REVOCATION_NOT_FOUND]
+	 * during signing, where the PAdES extension process embeds revocation data even when
+	 * the verifier's pre-extension check fires a warning).
+	 *
+	 * @param rawWarnings Raw warning strings from [CollectingStatusAlert] and [DssLogCapture].
+	 * @param certIdNames Optional mapping from DSS certificate/timestamp identifier to a
+	 *   human-readable name (e.g. subject CN). When present, matching entries are propagated
+	 *   to [AnnotatedWarning.idNames] so the UI can display friendly names alongside IDs.
+	 * @param suppressedCategories Categories whose warnings are classified but not emitted
+	 *   in the user-facing [SanitizedWarnings.annotatedSummaries].
 	 */
-	fun sanitize(rawWarnings: List<String>): SanitizedWarnings {
+	fun sanitize(
+		rawWarnings: List<String>,
+		certIdNames: Map<String, String> = emptyMap(),
+		suppressedCategories: Set<WarningCategory> = emptySet(),
+	): SanitizedWarnings {
 		if (rawWarnings.isEmpty()) return SanitizedWarnings(emptyList(), emptyList())
 		
 		val buckets = mutableMapOf<WarningCategory, MutableSet<String>>()
@@ -41,21 +59,37 @@ class DssWarningSanitizer {
 			}
 		}
 		
-		val summaries = mutableListOf<String>()
+		val annotated = mutableListOf<AnnotatedWarning>()
 		for (category in WarningCategory.entries) {
 			val ids = buckets[category] ?: continue
-			summaries += category.toSummary(ids)
+			if (category in suppressedCategories) continue
+			val filteredIds = ids.filter { it != PLACEHOLDER_ID }.sorted()
+			val names = filteredIds
+				.mapNotNull { id -> certIdNames[id]?.let { id to it } }
+				.toMap()
+			annotated += AnnotatedWarning(
+				summary = category.toSummary(ids),
+				affectedIds = filteredIds,
+				idNames = names,
+			)
 		}
-		summaries += unmatched
+		for (raw in unmatched) {
+			annotated += AnnotatedWarning(summary = raw)
+		}
 		
-		return SanitizedWarnings(summaries = summaries, raw = rawWarnings, categories = buckets.keys.toSet())
+		return SanitizedWarnings(
+			annotatedSummaries = annotated,
+			raw = rawWarnings,
+			categories = buckets.keys.toSet(),
+		)
 	}
 	
 	/**
 	 * Try to match [message] against the known DSS warning patterns.
 	 *
 	 * @return A pair of the matched [WarningCategory] and an identifier extracted from
-	 *   the message (e.g., a shortened certificate hash), or null when no pattern matches.
+	 *   the message (e.g., a full DSS certificate hash like `C-AAAA…`), or null when
+	 *   no pattern matches.
 	 */
 	internal fun classify(message: String): Pair<WarningCategory, String>? {
 		for ((category, patterns) in PATTERNS) {
@@ -63,7 +97,6 @@ class DssWarningSanitizer {
 				val match = pattern.find(message) ?: continue
 				val id = match.groupValues.getOrNull(1)
 					?.takeIf { it.isNotBlank() }
-					?.let { shortenId(it) }
 					?: PLACEHOLDER_ID
 				return category to id
 			}
@@ -71,24 +104,7 @@ class DssWarningSanitizer {
 		return null
 	}
 	
-	/**
-	 * Shorten a DSS certificate or timestamp identifier to at most [MAX_ID_DISPLAY_LEN]
-	 * hex characters for display, preserving the `C-` / `T-` prefix when present.
-	 */
-	private fun shortenId(id: String): String {
-		if (id.length <= MAX_ID_DISPLAY_LEN) return id
-		val prefix = when {
-			id.startsWith("C-") -> "C-"
-			id.startsWith("T-") -> "T-"
-			else -> ""
-		}
-		val hash = id.removePrefix(prefix)
-		return "$prefix${hash.take(MAX_ID_HASH_LEN)}…"
-	}
-	
 	companion object {
-		private const val MAX_ID_DISPLAY_LEN = 20
-		private const val MAX_ID_HASH_LEN = 12
 		private const val PLACEHOLDER_ID = "_"
 		
 		private const val CERT_ID = """(C-[A-F0-9]+)"""
@@ -249,10 +265,8 @@ class DssWarningSanitizer {
 		
 		companion object {
 			private val REVOCATION_CATEGORIES = setOf(
-				REVOCATION_NOT_FOUND,
 				REVOCATION_STATUS_UNKNOWN,
 				REVOCATION_POE_MISSING,
-				FRESH_REVOCATION_MISSING,
 			)
 		}
 	}
@@ -261,15 +275,21 @@ class DssWarningSanitizer {
 /**
  * Result of [DssWarningSanitizer.sanitize].
  *
- * @property summaries Grouped, user-friendly warning lines suitable for display.
+ * @property annotatedSummaries Grouped, user-friendly warnings with affected entity IDs preserved.
  * @property raw The original raw warning strings for JSON / verbose output.
  * @property categories The set of [DssWarningSanitizer.WarningCategory] buckets that had at least one match.
  */
 data class SanitizedWarnings(
-	val summaries: List<String>,
+	val annotatedSummaries: List<AnnotatedWarning>,
 	val raw: List<String>,
 	val categories: Set<DssWarningSanitizer.WarningCategory> = emptySet(),
 ) {
+	/**
+	 * Plain-text summaries derived from [annotatedSummaries] for backward-compatible consumers.
+	 */
+	val summaries: List<String>
+		get() = annotatedSummaries.map { it.summary }
+	
 	/**
 	 * Whether any matched category relates to missing or failed revocation data.
 	 */

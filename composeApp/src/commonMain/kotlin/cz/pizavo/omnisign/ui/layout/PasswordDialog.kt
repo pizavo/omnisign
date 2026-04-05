@@ -1,19 +1,8 @@
 ﻿package cz.pizavo.omnisign.ui.layout
 
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -29,8 +18,8 @@ import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 /**
  * Modal dialog that prompts the user for a password or PIN.
  *
- * Rendered when the [cz.pizavo.omnisign.ui.platform.ComposePasswordCallback]
- * posts a [cz.pizavo.omnisign.ui.platform.PasswordRequest]. The dialog blocks
+ * Rendered when the [cz.pizavo.omnisign.ui.platform.PasswordDialogController]
+ * posts a [cz.pizavo.omnisign.ui.platform.PasswordDialogRequest]. The dialog blocks
  * the DSS background thread until the user confirms or cancels.
  *
  * @param title Dialog title text.

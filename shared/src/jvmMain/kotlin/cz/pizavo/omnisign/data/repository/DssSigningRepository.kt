@@ -12,10 +12,7 @@ import cz.pizavo.omnisign.domain.model.parameters.VisibleSignatureParameters
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.result.SigningResult
 import cz.pizavo.omnisign.domain.repository.*
-import cz.pizavo.omnisign.domain.service.AlgorithmExpirationChecker
-import cz.pizavo.omnisign.domain.service.AlgorithmStatus
-import cz.pizavo.omnisign.domain.service.CredentialStore
-import cz.pizavo.omnisign.domain.service.TokenService
+import cz.pizavo.omnisign.domain.service.*
 import eu.europa.esig.dss.enumerations.DigestAlgorithm
 import eu.europa.esig.dss.enumerations.SignaturePackaging
 import eu.europa.esig.dss.model.FileDocument
@@ -56,6 +53,8 @@ class DssSigningRepository(
 	private val warningSanitizer: DssWarningSanitizer,
 	private val tspErrorDetector: TspErrorDetector,
 ) : SigningRepository {
+
+	private var discoveredTokens: List<TokenInfo> = emptyList()
 	
 	@Suppress("TooGenericExceptionCaught", "CyclomaticComplexMethod", "LongMethod", "ReturnCount")
 	override suspend fun signDocument(parameters: SigningParameters): OperationResult<SigningResult> {
@@ -125,10 +124,12 @@ class DssSigningRepository(
 			val tokenConnection = resolvedKey.token
 			val statusAlert = CollectingStatusAlert()
 			val logCapture = DssLogCapture()
-			val service = buildSigningService(resolvedConfig, dssSignatureLevel, parameters.addTimestamp, statusAlert)
+			val (service, tlWarnings) = buildSigningService(resolvedConfig, dssSignatureLevel, parameters.addTimestamp, statusAlert)
+			signingWarnings += tlWarnings
 			val signatureParams = buildSignatureParameters(
 				privateKey, digestAlgorithm, dssSignatureLevel, effectiveEncryption?.toDss(), parameters
 			)
+			val certIdNames = buildCertIdNames(privateKey)
 			logCapture.start()
 			try {
 				val dataToSign: ToBeSigned = service.getDataToSign(FileDocument(inputFile), signatureParams)
@@ -138,7 +139,7 @@ class DssSigningRepository(
 				signingWarnings += statusAlert.drain()
 				signingWarnings += logCapture.stop()
 				
-				val sanitized = warningSanitizer.sanitize(signingWarnings)
+				val sanitized = warningSanitizer.sanitize(signingWarnings, certIdNames, SIGNING_SUPPRESSED_CATEGORIES)
 				
 				val outputFile = File(parameters.outputFile).also { it.parentFile?.mkdirs() }
 				withContext(Dispatchers.IO) { outputFile.outputStream().use { signedDocument.writeTo(it) } }
@@ -147,7 +148,7 @@ class DssSigningRepository(
 					outputFile = parameters.outputFile,
 					signatureId = extractSignatureId(parameters.outputFile),
 					signatureLevel = effectiveLevel.name,
-					warnings = sanitized.summaries,
+					annotatedWarnings = sanitized.annotatedSummaries,
 					rawWarnings = sanitized.raw,
 					hasRevocationWarnings = sanitized.hasRevocationWarnings,
 				).right()
@@ -175,10 +176,37 @@ class DssSigningRepository(
 			tokensResult.fold(
 				ifLeft = { return it.left() },
 				ifRight = { tokens ->
+					discoveredTokens = tokens
 					val allCertificates = mutableListOf<AvailableCertificateInfo>()
 					val warnings = mutableListOf<TokenDiscoveryWarning>()
+					val locked = mutableListOf<LockedTokenInfo>()
 					for (token in tokens) {
 						if (!tokenService.probeTokenPresent(token)) continue
+						if (token.requiresPin) {
+							val storedPassword = credentialStore.getPassword(TOKEN_CREDENTIAL_SERVICE, token.id)
+							if (storedPassword != null) {
+								val certsResult = tokenService.loadCertificatesSilent(token, storedPassword)
+								certsResult.fold(
+									ifLeft = {
+										locked.add(LockedTokenInfo(
+											tokenId = token.id,
+											tokenName = token.name,
+											tokenTypeName = token.type.name,
+										))
+									},
+									ifRight = { certs ->
+										allCertificates.addAll(certs.toAvailableCertificateInfoList(token))
+									}
+								)
+							} else {
+								locked.add(LockedTokenInfo(
+									tokenId = token.id,
+									tokenName = token.name,
+									tokenTypeName = token.type.name,
+								))
+							}
+							continue
+						}
 						val certsResult = tokenService.loadCertificatesSilent(token, null)
 						certsResult.fold(
 							ifLeft = { error ->
@@ -196,29 +224,70 @@ class DssSigningRepository(
 								)
 							},
 							ifRight = { certs ->
-								allCertificates.addAll(certs.map { cert ->
-									AvailableCertificateInfo(
-										alias = cert.alias,
-										subjectDN = cert.subjectDN,
-										issuerDN = cert.issuerDN,
-										validFrom = cert.validFrom,
-										validTo = cert.validTo,
-										tokenType = token.type.name,
-										keyUsages = cert.keyUsages,
-									)
-								})
+								allCertificates.addAll(certs.toAvailableCertificateInfoList(token))
 							}
 						)
 					}
 					CertificateDiscoveryResult(
 						certificates = allCertificates,
 						tokenWarnings = warnings,
+						lockedTokens = locked,
 					).right()
 				}
 			)
 		} catch (e: Exception) {
 			SigningError.TokenAccessError(
 				message = "Failed to list certificates",
+				details = e.message,
+				cause = e,
+			).left()
+		}
+	}
+
+	@Suppress("TooGenericExceptionCaught")
+	override suspend fun unlockToken(tokenId: String): OperationResult<List<AvailableCertificateInfo>> {
+		return try {
+			val token = discoveredTokens.find { it.id == tokenId }
+				?: return SigningError.TokenAccessError(
+					message = "Token '$tokenId' not found among discovered tokens"
+				).left()
+			val certsResult = tokenService.loadCertificates(token, null)
+			certsResult.map { certs -> certs.toAvailableCertificateInfoList(token) }
+		} catch (e: Exception) {
+			SigningError.TokenAccessError(
+				message = "Failed to unlock token",
+				details = e.message,
+				cause = e,
+			).left()
+		}
+	}
+
+	@Suppress("TooGenericExceptionCaught")
+	override suspend fun loadCertificatesFromFile(filePath: String): OperationResult<List<AvailableCertificateInfo>> {
+		return try {
+			val password = tokenService.requestPassword(
+				"Enter password for ${File(filePath).name}",
+				"PKCS#12 Password Required",
+			) ?: return SigningError.TokenAccessError(
+				message = "Password entry cancelled"
+			).left()
+
+			tokenService.loadCertificatesFromFile(filePath, password).map { certs ->
+				certs.map { cert ->
+					AvailableCertificateInfo(
+						alias = cert.alias,
+						subjectDN = cert.subjectDN,
+						issuerDN = cert.issuerDN,
+						validFrom = cert.validFrom,
+						validTo = cert.validTo,
+						tokenType = TokenType.FILE.name,
+						keyUsages = cert.keyUsages,
+					)
+				}
+			}
+		} catch (e: Exception) {
+			SigningError.TokenAccessError(
+				message = "Failed to load certificates from file",
 				details = e.message,
 				cause = e,
 			).left()
@@ -242,25 +311,27 @@ class DssSigningRepository(
 	/**
 	 * Build a [PAdESService] wired with a certificate verifier, PDF factory, and optional TSA.
 	 *
-	 * Uses the fast signing verifier ([DssServiceFactory.buildSigningCertificateVerifier])
-	 * that skips LOTL loading and instead enables revocation checks for untrusted chains.
+	 * Uses [DssServiceFactory.buildSigningCertificateVerifier] which loads EU LOTL and
+	 * custom trusted-list sources so that TSA and certificate chains are properly trusted.
 	 *
 	 * @param statusAlert A [CollectingStatusAlert] that will capture verifier warnings
 	 *   (missing revocation data, uncovered POE, etc.) fired during the signing operation.
+	 * @return A pair of the wired [PAdESService] and any TL-loading warnings.
 	 */
 	private fun buildSigningService(
 		resolvedConfig: ResolvedConfig,
 		signatureLevel: DssSignatureLevel,
 		addTimestamp: Boolean,
 		statusAlert: CollectingStatusAlert,
-	): PAdESService {
-		val cv = dssServiceFactory.buildSigningCertificateVerifier(resolvedConfig) { statusAlert }
-		return PAdESService(cv).apply {
+	): Pair<PAdESService, List<String>> {
+		val (cv, tlWarnings) = dssServiceFactory.buildSigningCertificateVerifier(resolvedConfig) { statusAlert }
+		val service = PAdESService(cv).apply {
 			setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 			resolvedConfig.timestampServer
 				?.takeIf { addTimestamp || signatureLevel != DssSignatureLevel.PAdES_BASELINE_B }
 				?.let { setTspSource(dssServiceFactory.buildTspSource(it)) }
 		}
+		return service to tlWarnings
 	}
 	
 	/**
@@ -268,6 +339,16 @@ class DssSigningRepository(
 	 * the requested alias (or the first available key when no alias is requested), together
 	 * with its [AbstractSignatureTokenConnection] and the source [TokenType].
 	 * Returns null when no matching key is found.
+	 *
+	 * Uses a two-pass strategy to avoid unnecessary PIN prompts:
+	 *
+	 * 1. **Silent pass** — tries every token that does not require interactive input:
+	 *    tokens without a PIN requirement and PIN-protected tokens whose credential is
+	 *    already stored in the [CredentialStore].  If the requested certificate is found
+	 *    here the method returns immediately and no PIN dialog is ever shown.
+	 * 2. **Interactive pass** — reached only when the silent pass did not produce a match.
+	 *    Iterates over the PIN-protected tokens that were skipped and prompts the user
+	 *    via [TokenService.requestPin].
 	 *
 	 * The hardware presence of PKCS#11 tokens is probed via [TokenService.probeTokenPresent]
 	 * before any PIN prompt.  Tokens whose card is not inserted are silently skipped.
@@ -280,35 +361,56 @@ class DssSigningRepository(
 	): ResolvedKey? {
 		val tokens = tokenService.discoverTokens().getOrNull() ?: return null
 		
-		for (tokenInfo in tokens) {
-			if (!tokenService.probeTokenPresent(tokenInfo)) continue
-			
+		val presentTokens = tokens.filter { tokenService.probeTokenPresent(it) }
+		val deferredPinTokens = mutableListOf<TokenInfo>()
+		
+		for (tokenInfo in presentTokens) {
 			val password = if (tokenInfo.requiresPin) {
 				credentialStore.getPassword(TOKEN_CREDENTIAL_SERVICE, tokenInfo.id)
-					?: tokenService.requestPin(tokenInfo)
-					?: continue
+					?: run { deferredPinTokens.add(tokenInfo); continue }
 			} else {
 				""
 			}
 			
-			val certs = tokenService.loadCertificatesSilent(tokenInfo, password).getOrNull() ?: continue
-			val selected = if (parameters.certificateAlias != null) {
-				certs.find { it.alias == parameters.certificateAlias }
-			} else {
-				certs.firstOrNull()
-			} ?: continue
+			val result = tryResolveFromToken(tokenInfo, password, parameters)
+			if (result != null) return result
+		}
+		
+		for (tokenInfo in deferredPinTokens) {
+			val password = tokenService.requestPin(tokenInfo) ?: continue
 			
-			val dssToken = tokenService.getSigningToken(selected, password).getOrNull()
-				?.getDssToken() as? AbstractSignatureTokenConnection ?: continue
-			
-			val key = dssToken.keys.find { k ->
-				k.certificate.certificate.subjectX500Principal.toString() == selected.subjectDN
-			} ?: dssToken.keys.firstOrNull() ?: continue
-			
-			return ResolvedKey(key, dssToken, tokenInfo.type)
+			val result = tryResolveFromToken(tokenInfo, password, parameters)
+			if (result != null) return result
 		}
 		
 		return null
+	}
+	
+	/**
+	 * Attempt to load certificates from [tokenInfo] and resolve a signing key matching [parameters].
+	 *
+	 * @return A [ResolvedKey] when the token contains a matching certificate, null otherwise.
+	 */
+	private suspend fun tryResolveFromToken(
+		tokenInfo: TokenInfo,
+		password: String,
+		parameters: SigningParameters,
+	): ResolvedKey? {
+		val certs = tokenService.loadCertificatesSilent(tokenInfo, password).getOrNull() ?: return null
+		val selected = if (parameters.certificateAlias != null) {
+			certs.find { it.alias == parameters.certificateAlias }
+		} else {
+			certs.firstOrNull()
+		} ?: return null
+		
+		val dssToken = tokenService.getSigningToken(selected, password).getOrNull()
+			?.getDssToken() as? AbstractSignatureTokenConnection ?: return null
+		
+		val key = dssToken.keys.find { k ->
+			k.certificate.certificate.subjectX500Principal.toString() == selected.subjectDN
+		} ?: dssToken.keys.firstOrNull() ?: return null
+		
+		return ResolvedKey(key, dssToken, tokenInfo.type)
 	}
 	
 	/**
@@ -322,6 +424,34 @@ class DssSigningRepository(
 	
 	private companion object {
 		const val TOKEN_CREDENTIAL_SERVICE = "omnisign-token"
+		
+		/**
+		 * Warning categories suppressed during signing because the PAdES extension process
+		 * embeds revocation data independently of the certificate verifier's pre-extension
+		 * check. If the extension fails, DSS throws an exception; if it succeeds, the data
+		 * is embedded and these warnings are false positives.
+		 */
+		val SIGNING_SUPPRESSED_CATEGORIES = setOf(
+			DssWarningSanitizer.WarningCategory.REVOCATION_NOT_FOUND,
+			DssWarningSanitizer.WarningCategory.FRESH_REVOCATION_MISSING,
+		)
+	}
+
+	/**
+	 * Map a list of [CertificateEntry] to [AvailableCertificateInfo] for the given token.
+	 */
+	private fun List<CertificateEntry>.toAvailableCertificateInfoList(
+		token: TokenInfo,
+	): List<AvailableCertificateInfo> = map { cert ->
+		AvailableCertificateInfo(
+			alias = cert.alias,
+			subjectDN = cert.subjectDN,
+			issuerDN = cert.issuerDN,
+			validFrom = cert.validFrom,
+			validTo = cert.validTo,
+			tokenType = token.type.name,
+			keyUsages = cert.keyUsages,
+		)
 	}
 	
 	/**
@@ -402,4 +532,15 @@ class DssSigningRepository(
 		val name = File(outputPath).nameWithoutExtension
 		return "sig-$name-${System.currentTimeMillis()}"
 	}
+	
+	/**
+	 * Build a mapping from DSS certificate identifier (`C-XXXX`) to human-readable
+	 * subject name for every certificate in the signing chain.
+	 *
+	 * The resulting map is passed to [DssWarningSanitizer.sanitize] so that warnings
+	 * referencing these IDs can display a friendly name in the UI.
+	 */
+	private fun buildCertIdNames(privateKey: DSSPrivateKeyEntry): Map<String, String> =
+		privateKey.certificateChain
+			.associate { it.dssIdAsString to extractSubjectCN(it.certificate.subjectX500Principal) }
 }

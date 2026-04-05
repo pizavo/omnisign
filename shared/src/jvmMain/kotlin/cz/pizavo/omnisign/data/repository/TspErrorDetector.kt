@@ -24,6 +24,13 @@ class TspErrorDetector {
 			0x20000 to "addInfoNotAvailable — additional information not available",
 			0x2000000 to "systemFailure — internal TSA error",
 		)
+		
+		private val MALFORMED_INDICATORS = listOf(
+			"malformed timestamp",
+			"invalid tsp response",
+			"corrupted stream",
+			"failed to construct sequence from byte",
+		)
 	}
 	
 	/**
@@ -31,7 +38,9 @@ class TspErrorDetector {
 	 * failure.
 	 *
 	 * Detection heuristic: walks the full cause chain and checks whether any message contains
-	 * the phrase `"timestamp token"` or `"TSP"` together with failure indicators.
+	 * the phrase `"timestamp token"`, `"TSP"` together with failure indicators, or any of
+	 * the known malformed-response patterns (e.g. `"Invalid TSP response"`,
+	 * `"malformed timestamp"`, `"corrupted stream"`).
 	 */
 	fun isTspException(exception: Throwable): Boolean =
 		generateSequence(exception) { it.cause }
@@ -42,20 +51,41 @@ class TspErrorDetector {
 								(msg.contains("Failure", ignoreCase = true) || msg.contains(
 									"Status",
 									ignoreCase = true
-								)))
+								))) ||
+						MALFORMED_INDICATORS.any { indicator -> msg.contains(indicator, ignoreCase = true) }
+			}
+	
+	/**
+	 * Checks whether the [exception] cause chain contains indicators of a malformed
+	 * or unparseable TSP response (e.g., the server returned HTML or a truncated byte stream).
+	 */
+	fun isMalformedResponse(exception: Throwable): Boolean =
+		generateSequence(exception) { it.cause }
+			.any { e ->
+				val msg = e.message ?: return@any false
+				MALFORMED_INDICATORS.any { indicator -> msg.contains(indicator, ignoreCase = true) }
 			}
 	
 	/**
 	 * Builds a user-friendly error message for a TSP failure, including the decoded
-	 * PKIFailureInfo reason when present.
+	 * PKIFailureInfo reason when present. When the response is malformed (e.g., the TSA
+	 * returned HTML instead of an ASN.1 timestamp token), a dedicated hint is produced.
 	 *
 	 * @param exception The caught exception (cause chain is inspected).
 	 * @param tsaUrl The TSA endpoint URL to include in the message for diagnostics.
 	 * @return A concise, actionable message suitable for CLI / UI display.
 	 */
 	fun buildUserMessage(exception: Throwable, tsaUrl: String?): String {
-		val reason = parsePkiFailureReason(exception)
 		val tsaPart = tsaUrl?.let { " ($it)" } ?: ""
+		
+		if (isMalformedResponse(exception)) {
+			return "Timestamp server$tsaPart returned a malformed response. " +
+					"The server may be temporarily unavailable, returning an error page, " +
+					"or the URL may not be a valid RFC 3161 endpoint. " +
+					"Please verify the timestamp server URL and try again."
+		}
+		
+		val reason = parsePkiFailureReason(exception)
 		return if (reason != null) {
 			"Timestamp server$tsaPart rejected the request: $reason"
 		} else {

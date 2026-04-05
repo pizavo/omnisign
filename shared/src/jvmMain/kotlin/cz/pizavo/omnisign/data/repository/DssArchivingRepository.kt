@@ -80,13 +80,13 @@ class DssArchivingRepository(
 			val dssLevel = parameters.targetLevel.toDss()
 			val statusAlert = CollectingStatusAlert()
 			val logCapture = DssLogCapture()
-			val service = buildExtendService(resolvedConfig, tsConfig, statusAlert)
+			val (service, tlWarnings) = buildExtendService(resolvedConfig, tsConfig, statusAlert)
 			val extendParams = PAdESSignatureParameters().apply { setSignatureLevel(dssLevel) }
 			logCapture.start()
 			try {
 				val extendedDocument = service.extendDocument(FileDocument(inputFile), extendParams)
 				
-				val warnings = statusAlert.drain() + logCapture.stop()
+				val warnings = tlWarnings + statusAlert.drain() + logCapture.stop()
 				val sanitized = warningSanitizer.sanitize(warnings)
 				
 				val outputFile = File(parameters.outputFile).also { it.parentFile?.mkdirs() }
@@ -95,7 +95,7 @@ class DssArchivingRepository(
 				ArchivingResult(
 					outputFile = parameters.outputFile,
 					newSignatureLevel = parameters.targetLevel.name,
-					warnings = sanitized.summaries,
+					annotatedWarnings = sanitized.annotatedSummaries,
 					rawWarnings = sanitized.raw,
 				).right()
 			} finally {
@@ -209,22 +209,24 @@ class DssArchivingRepository(
 	/**
 	 * Build a [PAdESService] wired for document extension with revocation and TSA sources.
 	 *
-	 * Uses the fast signing verifier that enables revocation checks for untrusted chains
-	 * without the overhead of loading the EU LOTL.
+	 * Loads EU LOTL and custom trusted-list sources so that TSA and certificate chains
+	 * are properly trusted during the extension operation.
 	 *
 	 * @param statusAlert A [CollectingStatusAlert] that will capture verifier warnings
 	 *   fired during the extension operation.
+	 * @return A pair of the wired [PAdESService] and any TL-loading warnings.
 	 */
 	private fun buildExtendService(
 		config: ResolvedConfig,
 		tsConfig: TimestampServerConfig,
 		statusAlert: CollectingStatusAlert,
-	): PAdESService {
-		val cv = dssServiceFactory.buildSigningCertificateVerifier(config) { statusAlert }
-		return PAdESService(cv).apply {
+	): Pair<PAdESService, List<String>> {
+		val (cv, tlWarnings) = dssServiceFactory.buildSigningCertificateVerifier(config) { statusAlert }
+		val service = PAdESService(cv).apply {
 			setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 			setTspSource(dssServiceFactory.buildTspSource(tsConfig))
 		}
+		return service to tlWarnings
 	}
 	
 	companion object {

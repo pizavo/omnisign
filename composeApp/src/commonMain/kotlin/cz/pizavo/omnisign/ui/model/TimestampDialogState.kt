@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.ui.model
 
+import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
+
 /**
  * UI state for the timestamp / extension dialog.
  *
@@ -60,12 +62,12 @@ sealed interface TimestampDialogState {
 	 *
 	 * @property outputFile Path to the extended output file.
 	 * @property newLevel Name of the new PAdES level.
-	 * @property warnings Any warnings produced during extension.
+	 * @property warnings Annotated warnings produced during extension.
 	 */
 	data class Success(
 		val outputFile: String,
 		val newLevel: String,
-		val warnings: List<String> = emptyList(),
+		val warnings: List<AnnotatedWarning> = emptyList(),
 	) : TimestampDialogState
 
 	/**

@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.cli.json
 
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.error.ValidationError
+import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.SigningResult
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
@@ -61,7 +62,7 @@ class JsonMappersTest : FunSpec({
 			outputFile = "/out.pdf",
 			signatureId = "sig-1",
 			signatureLevel = "PAdES-BASELINE-B",
-			warnings = listOf("w1"),
+			annotatedWarnings = listOf(AnnotatedWarning("w1")),
 			rawWarnings = listOf("raw1"),
 		)
 
@@ -78,7 +79,7 @@ class JsonMappersTest : FunSpec({
 		val result = ArchivingResult(
 			outputFile = "/ext.pdf",
 			newSignatureLevel = "PAdES-BASELINE-LTA",
-			warnings = listOf("w2"),
+			annotatedWarnings = listOf(AnnotatedWarning("w2")),
 			rawWarnings = listOf("raw2"),
 		)
 

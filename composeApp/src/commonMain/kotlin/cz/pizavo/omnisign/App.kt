@@ -4,12 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.safeContentPadding
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import cz.pizavo.omnisign.lumo.LumoTheme
@@ -25,8 +20,8 @@ import cz.pizavo.omnisign.ui.platform.saveThemePreference
  * desktop shell via [IslandLayout]. The dark/light theme toggle state is owned
  * here and threaded down to the layout and theme provider.
  *
- * On first launch the theme follows the OS preference. Once the user explicitly
- * toggles it the choice is persisted via [saveThemePreference] and restored on
+ * On the first launch, the theme follows the OS preference. Once the user explicitly
+ * toggles it, the choice is persisted via [saveThemePreference] and restored on
  * subsequent launches via [loadThemePreference].
  */
 @Composable

@@ -10,7 +10,7 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 
 /**
- * Verifies the [DssWarningSanitizer] correctly classifies, groups, and summarises
+ * Verifies the [DssWarningSanitizer] correctly classifies, groups, and summarizes
  * raw DSS warning messages into user-friendly output.
  */
 class DssWarningSanitizerTest : FunSpec({
@@ -163,12 +163,13 @@ class DssWarningSanitizerTest : FunSpec({
 		)?.first shouldBe WarningCategory.CERTIFICATE_PARSE_ERROR
 	}
 
-	test("long certificate IDs are shortened in the internal bucket") {
+	test("full certificate IDs are preserved in affectedIds") {
 		val longId = "C-" + "A".repeat(64)
 		val raw = listOf("No revocation found for the certificate $longId")
 		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "1 certificate"
+		result.annotatedSummaries[0].affectedIds shouldContainExactly listOf(longId)
 	}
 
 	test("CollectingStatusAlert compound message with untrusted chain is matched") {
@@ -235,6 +236,140 @@ class DssWarningSanitizerTest : FunSpec({
 		sanitizer.classify(
 			"No timestamp token has been retrieved (TSP Status : ...)"
 		)?.first shouldBe WarningCategory.TSP_FAILURE
+	}
+	
+	test("FRESH_REVOCATION_MISSING is not revocation-related") {
+		WarningCategory.FRESH_REVOCATION_MISSING.isRevocationRelated shouldBe false
+	}
+	
+	test("sanitize with only FRESH_REVOCATION_MISSING has hasRevocationWarnings false") {
+		val raw = listOf(
+			"Fresh revocation data is missing for one or more certificate(s). [C-AAAA: detail]"
+		)
+		val result = sanitizer.sanitize(raw)
+		result.hasRevocationWarnings shouldBe false
+		result.summaries shouldHaveSize 1
+		result.summaries[0] shouldContain "Fresh revocation data"
+	}
+	
+	test("REVOCATION_NOT_FOUND is not revocation-related") {
+		WarningCategory.REVOCATION_NOT_FOUND.isRevocationRelated shouldBe false
+	}
+	
+	test("REVOCATION_STATUS_UNKNOWN is revocation-related") {
+		WarningCategory.REVOCATION_STATUS_UNKNOWN.isRevocationRelated shouldBe true
+	}
+	
+	test("sanitize with only REVOCATION_NOT_FOUND has hasRevocationWarnings false") {
+		val raw = listOf("No revocation found for the certificate C-ABCD1234")
+		val result = sanitizer.sanitize(raw)
+		result.hasRevocationWarnings shouldBe false
+	}
+	
+	test("annotatedSummaries carry sorted affectedIds for grouped category") {
+		val raw = listOf(
+			"No revocation found for the certificate C-BBBB",
+			"No revocation found for the certificate C-AAAA",
+		)
+		val result = sanitizer.sanitize(raw)
+		result.annotatedSummaries shouldHaveSize 1
+		result.annotatedSummaries[0].affectedIds shouldContainExactly listOf("C-AAAA", "C-BBBB")
+		result.annotatedSummaries[0].summary shouldContain "2 certificates"
+	}
+	
+	test("annotatedSummaries for unmatched messages have empty affectedIds") {
+		val raw = listOf("Some completely unknown DSS message")
+		val result = sanitizer.sanitize(raw)
+		result.annotatedSummaries shouldHaveSize 1
+		result.annotatedSummaries[0].affectedIds.shouldBeEmpty()
+		result.annotatedSummaries[0].summary shouldBe "Some completely unknown DSS message"
+	}
+	
+	test("annotatedSummaries carry timestamp IDs for TIMESTAMP_UNTRUSTED") {
+		val raw = listOf(
+			"POE extraction is skipped for untrusted timestamp : T-FFFF",
+			"POE extraction is skipped for untrusted timestamp : T-AAAA",
+		)
+		val result = sanitizer.sanitize(raw)
+		result.annotatedSummaries shouldHaveSize 1
+		result.annotatedSummaries[0].affectedIds shouldContainExactly listOf("T-AAAA", "T-FFFF")
+	}
+	
+	test("affectedIds exclude placeholder entries for categories without extractable IDs") {
+		val raw = listOf(
+			"Fresh revocation data is missing for one or more certificate(s). [C-AAAA: detail]",
+			"Unable to load the alternative name. Reason : Invalid sequence length!",
+		)
+		val result = sanitizer.sanitize(raw)
+		result.annotatedSummaries shouldHaveSize 2
+		result.annotatedSummaries[0].summary shouldContain "Fresh revocation data"
+		result.annotatedSummaries[0].affectedIds.shouldBeEmpty()
+		result.annotatedSummaries[1].summary shouldContain "malformed extensions"
+		result.annotatedSummaries[1].affectedIds.shouldBeEmpty()
+	}
+	
+	test("certIdNames are propagated to annotatedSummaries idNames") {
+		val raw = listOf(
+			"No revocation found for the certificate C-AAAA",
+			"No revocation found for the certificate C-BBBB",
+		)
+		val names = mapOf("C-AAAA" to "PostSignum Qualified CA 4", "C-BBBB" to "CESNET CA")
+		val result = sanitizer.sanitize(raw, names)
+		result.annotatedSummaries shouldHaveSize 1
+		result.annotatedSummaries[0].idNames shouldBe mapOf(
+			"C-AAAA" to "PostSignum Qualified CA 4",
+			"C-BBBB" to "CESNET CA",
+		)
+	}
+	
+	test("idNames only include IDs present in affectedIds") {
+		val raw = listOf("No revocation found for the certificate C-AAAA")
+		val names = mapOf("C-AAAA" to "Known Cert", "C-ZZZZ" to "Other Cert")
+		val result = sanitizer.sanitize(raw, names)
+		result.annotatedSummaries shouldHaveSize 1
+		result.annotatedSummaries[0].idNames shouldBe mapOf("C-AAAA" to "Known Cert")
+	}
+	
+	test("idNames are empty when no certIdNames are provided") {
+		val raw = listOf("No revocation found for the certificate C-AAAA")
+		val result = sanitizer.sanitize(raw)
+		result.annotatedSummaries shouldHaveSize 1
+		result.annotatedSummaries[0].idNames shouldBe emptyMap()
+	}
+	
+	test("suppressedCategories excludes matching categories from annotatedSummaries") {
+		val raw = listOf(
+			"No revocation found for the certificate C-AAAA",
+			"Fresh revocation data is missing for one or more certificate(s).",
+			"Unable to load the alternative name",
+		)
+		val result = sanitizer.sanitize(
+			raw,
+			suppressedCategories = setOf(
+				WarningCategory.REVOCATION_NOT_FOUND,
+				WarningCategory.FRESH_REVOCATION_MISSING,
+			),
+		)
+		result.annotatedSummaries shouldHaveSize 1
+		result.annotatedSummaries[0].summary shouldContain "malformed extensions"
+	}
+	
+	test("suppressedCategories still records categories in the categories set") {
+		val raw = listOf("No revocation found for the certificate C-AAAA")
+		val result = sanitizer.sanitize(
+			raw,
+			suppressedCategories = setOf(WarningCategory.REVOCATION_NOT_FOUND),
+		)
+		result.annotatedSummaries.shouldBeEmpty()
+		result.categories shouldBe setOf(WarningCategory.REVOCATION_NOT_FOUND)
+		result.raw shouldHaveSize 1
+	}
+	
+	test("suppressedCategories with empty set behaves like default") {
+		val raw = listOf("No revocation found for the certificate C-AAAA")
+		val result = sanitizer.sanitize(raw, suppressedCategories = emptySet())
+		result.annotatedSummaries shouldHaveSize 1
+		result.summaries[0] shouldContain "CRL/OCSP"
 	}
 })
 

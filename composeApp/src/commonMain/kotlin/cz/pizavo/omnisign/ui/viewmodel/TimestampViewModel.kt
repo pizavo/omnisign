@@ -277,7 +277,7 @@ class TimestampViewModel(
 						_state.value = TimestampDialogState.Success(
 							outputFile = result.outputFile,
 							newLevel = result.newSignatureLevel,
-							warnings = result.warnings,
+							warnings = result.annotatedWarnings,
 						)
 						populateRenewalOfferIfNeeded(result.outputFile)
 					},
@@ -316,11 +316,11 @@ class TimestampViewModel(
 							details = error.details,
 						)
 					},
-					ifRight = { result ->
+				ifRight = { result ->
 						_state.value = TimestampDialogState.Success(
 							outputFile = result.outputFile,
 							newLevel = result.newSignatureLevel,
-							warnings = result.warnings,
+							warnings = result.annotatedWarnings,
 						)
 					},
 				)
@@ -328,8 +328,10 @@ class TimestampViewModel(
 		}
 	}
 
+
+
 	/**
-	 * Abort after a revocation warning and return to the extension form.
+	 * Abort the revocation warning and return to the extension form.
 	 *
 	 * Called when the user clicks "Abort" on the revocation warning screen.
 	 */

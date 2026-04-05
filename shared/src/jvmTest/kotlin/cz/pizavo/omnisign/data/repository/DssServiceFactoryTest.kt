@@ -19,7 +19,7 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
-import java.util.Date
+import java.util.*
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.toJavaInstant
@@ -40,7 +40,7 @@ class DssServiceFactoryTest : FunSpec({
 		timestampServer = null,
 		ocsp = OcspConfig(),
 		crl = CrlConfig(),
-		validation = ValidationConfig(checkRevocation = checkRevocation),
+		validation = ValidationConfig(checkRevocation = checkRevocation, useEuLotl = false),
 	)
 	
 	// ── buildTspSource ────────────────────────────────────────────────────────
@@ -79,31 +79,41 @@ class DssServiceFactoryTest : FunSpec({
 	// ── buildSigningCertificateVerifier ───────────────────────────────────────
 	
 	test("signing verifier with null config returns lenient verifier with suppressed alerts") {
-		val cv = factory.buildSigningCertificateVerifier(null)
-		cv.alertOnMissingRevocationData shouldBe null
-		cv.alertOnUncoveredPOE shouldBe null
-		cv.alertOnInvalidTimestamp shouldBe null
-		cv.alertOnNoRevocationAfterBestSignatureTime shouldBe null
-		cv.alertOnRevokedCertificate shouldBe null
+		val result = factory.buildSigningCertificateVerifier(null)
+		result.verifier.alertOnMissingRevocationData shouldBe null
+		result.verifier.alertOnUncoveredPOE shouldBe null
+		result.verifier.alertOnInvalidTimestamp shouldBe null
+		result.verifier.alertOnNoRevocationAfterBestSignatureTime shouldBe null
+		result.verifier.alertOnRevokedCertificate shouldBe null
+		result.tlWarnings.shouldBeEmpty()
 	}
 	
 	test("signing verifier with revocation disabled returns suppressed alerts") {
-		val cv = factory.buildSigningCertificateVerifier(minimalConfig(checkRevocation = false))
-		cv.alertOnMissingRevocationData shouldBe null
+		val result = factory.buildSigningCertificateVerifier(minimalConfig(checkRevocation = false))
+		result.verifier.alertOnMissingRevocationData shouldBe null
+		result.tlWarnings.shouldBeEmpty()
 	}
 	
 	test("signing verifier with revocation enabled returns wired verifier") {
-		val cv = factory.buildSigningCertificateVerifier(minimalConfig(checkRevocation = true))
-		cv.alertOnMissingRevocationData shouldNotBe null
-		cv.aiaSource shouldNotBe null
-		cv.ocspSource shouldNotBe null
-		cv.crlSource shouldNotBe null
+		val result = factory.buildSigningCertificateVerifier(minimalConfig(checkRevocation = true))
+		result.verifier.aiaSource shouldNotBe null
+		result.verifier.ocspSource shouldNotBe null
+		result.verifier.crlSource shouldNotBe null
+		result.verifier.isCheckRevocationForUntrustedChains shouldBe false
 	}
 	
-	test("signing verifier injects custom alert factory") {
+	test("signing verifier suppresses missing-revocation and fresh-revocation alerts") {
+		val result = factory.buildSigningCertificateVerifier(minimalConfig(checkRevocation = true))
+		result.verifier.alertOnMissingRevocationData shouldBe null
+		result.verifier.alertOnNoRevocationAfterBestSignatureTime shouldBe null
+	}
+	
+	test("signing verifier keeps actionable alerts active") {
 		val statusAlert = CollectingStatusAlert()
-		val cv = factory.buildSigningCertificateVerifier(minimalConfig()) { statusAlert }
-		cv.alertOnMissingRevocationData shouldBe statusAlert
+		val result = factory.buildSigningCertificateVerifier(minimalConfig()) { statusAlert }
+		result.verifier.alertOnUncoveredPOE shouldBe statusAlert
+		result.verifier.alertOnInvalidTimestamp shouldBe statusAlert
+		result.verifier.alertOnRevokedCertificate shouldBe statusAlert
 	}
 	
 	// ── buildValidationCertificateVerifier ────────────────────────────────────
@@ -163,7 +173,7 @@ class DssServiceFactoryTest : FunSpec({
 	
 	test("buildDirectTrustedCertSource builds source from Base64 DER certs") {
 		val selfSigned = generateSelfSignedCert()
-		val base64 = java.util.Base64.getEncoder().encodeToString(selfSigned.encoded)
+		val base64 = Base64.getEncoder().encodeToString(selfSigned.encoded)
 		val cert = TrustedCertificateConfig(
 			name = "test-ca",
 			type = TrustedCertificateType.ANY,
@@ -177,17 +187,18 @@ class DssServiceFactoryTest : FunSpec({
 	
 	test("signing verifier with trusted certs has wired trusted source") {
 		val selfSigned = generateSelfSignedCert()
-		val base64 = java.util.Base64.getEncoder().encodeToString(selfSigned.encoded)
+		val base64 = Base64.getEncoder().encodeToString(selfSigned.encoded)
 		val config = minimalConfig().copy(
 			validation = ValidationConfig(
+				useEuLotl = false,
 				trustedCertificates = listOf(
 					TrustedCertificateConfig("test-ca", TrustedCertificateType.ANY, base64, "CN=Test")
 				)
 			)
 		)
-		val cv = factory.buildSigningCertificateVerifier(config)
-		cv.trustedCertSources.shouldNotBeNull()
-		cv.trustedCertSources.numberOfCertificates shouldBe 1
+		val result = factory.buildSigningCertificateVerifier(config)
+		result.verifier.trustedCertSources.shouldNotBeNull()
+		result.verifier.trustedCertSources.numberOfCertificates shouldBe 1
 	}
 }) {
 	companion object {
