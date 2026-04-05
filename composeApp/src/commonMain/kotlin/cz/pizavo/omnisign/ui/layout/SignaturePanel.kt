@@ -112,7 +112,7 @@ private fun ErrorContent(
 }
 
 /**
- * Successfully loaded report – renders the overall result badge, document metadata,
+ * Successfully loaded report renders the overall result badge, document metadata,
  * a collapsible "Signatures" group, a collapsible "Document Timestamps" group, and
  * optional trusted-list warnings.
  */
@@ -180,12 +180,37 @@ private fun ReportContent(report: ValidationReport) {
 /**
  * Colored badge indicating the overall validation result.
  *
+ * When the report contains no signatures at all, a neutral "NO SIGNATURES" badge
+ * with [Res.drawable.icon_shield_x] is shown instead of the normal result badge.
+ *
  * When [ValidationReport.overallTrustTier] is qualified, an additional rosette icon
  * is rendered to the right of the label — the same rosette/color logic used for
  * individual signature accordions.
  */
 @Composable
 private fun OverallResultBadge(report: ValidationReport) {
+    if (report.signatures.isEmpty()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                painter = painterResource(Res.drawable.icon_shield_x),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = LumoTheme.colors.textSecondary,
+            )
+            Spacer(modifier = Modifier.size(8.dp))
+            Text(
+                text = "NO SIGNATURES",
+                style = LumoTheme.typography.h3,
+                color = LumoTheme.colors.textSecondary,
+            )
+        }
+        return
+    }
+
     val (label, color, icon) = when (report.overallResult) {
         ValidationResult.VALID -> Triple("VALID", LumoTheme.colors.success, Res.drawable.icon_shield_check)
         ValidationResult.INVALID -> Triple("INVALID", LumoTheme.colors.error, Res.drawable.icon_shield_exclamation)
@@ -421,7 +446,7 @@ private fun TimestampAccordion(
 
 /**
  * Accordion header with a shield icon reflecting the [indication], a title, an optional
- * [trailingIcon] (e.g. a rosette for qualified signatures) with an optional hover
+ * [trailingIcon] (e.g., a rosette for qualified signatures) with an optional hover
  * [trailingTooltip], and a rotating chevron.
  * Used for top-level groups and individual signature/timestamp items.
  */
