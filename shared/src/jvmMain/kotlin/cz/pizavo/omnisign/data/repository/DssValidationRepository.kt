@@ -3,7 +3,10 @@ package cz.pizavo.omnisign.data.repository
 import arrow.core.Either
 import arrow.core.left
 import cz.pizavo.omnisign.ades.policy.AdESPolicy
+import cz.pizavo.omnisign.data.util.toKotlinInstant
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
+import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.error.ValidationError
 import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
@@ -12,14 +15,11 @@ import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
 import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.repository.ValidationRepository
-import cz.pizavo.omnisign.data.util.toKotlinInstant
 import eu.europa.esig.dss.detailedreport.DetailedReport
 import eu.europa.esig.dss.diagnostic.DiagnosticData
 import eu.europa.esig.dss.diagnostic.TimestampWrapper
 import eu.europa.esig.dss.enumerations.Indication
 import eu.europa.esig.dss.enumerations.SignatureQualification
-import cz.pizavo.omnisign.domain.model.validation.SignatureTrustTier
-import cz.pizavo.omnisign.domain.model.validation.toTrustTier
 import eu.europa.esig.dss.enumerations.SubIndication
 import eu.europa.esig.dss.enumerations.TimestampQualification
 import eu.europa.esig.dss.model.FileDocument
@@ -75,7 +75,14 @@ class DssValidationRepository(
 			}
 			
 			val verifierWarnings = statusAlert.drain()
-			convertReports(reports, file.name).copy(
+			val disabledHash = parameters.resolvedConfig?.disabledHashAlgorithms ?: emptySet()
+			val disabledEncryption = parameters.resolvedConfig?.disabledEncryptionAlgorithms ?: emptySet()
+			val report = convertReports(reports, file.name)
+			val annotatedSignatures = report.signatures.map { sig ->
+				annotateDisabledAlgorithms(sig, disabledHash, disabledEncryption)
+			}
+			report.copy(
+				signatures = annotatedSignatures,
 				tlWarnings = tlWarnings + verifierWarnings,
 				rawReports = extractRawReports(reports),
 			)
@@ -91,6 +98,9 @@ class DssValidationRepository(
 	/**
 	 * Load a [eu.europa.esig.dss.model.policy.ValidationPolicy] from the resolved config
 	 * or a custom policy path. Returns null to let DSS use its built-in default ETSI policy.
+	 *
+	 * Disabled hash / encryption algorithms from the [config] are forwarded to
+	 * [AdESPolicy.load] so that DSS itself treats them as non-compliant.
 	 */
 	private fun resolveValidationPolicy(
 		config: ResolvedConfig?,
@@ -104,8 +114,10 @@ class DssValidationRepository(
 			else -> null
 		}
 		val constraints = config?.validation?.algorithmConstraints
-		return if (policyFile != null || constraints != null) {
-			adeSPolicy.load(policyFile, constraints)
+		val disabledHash = config?.disabledHashAlgorithms ?: emptySet()
+		val disabledEncryption = config?.disabledEncryptionAlgorithms ?: emptySet()
+		return if (policyFile != null || constraints != null || disabledHash.isNotEmpty() || disabledEncryption.isNotEmpty()) {
+			adeSPolicy.load(policyFile, constraints, disabledHash, disabledEncryption)
 		} else {
 			null
 		}
@@ -330,6 +342,41 @@ class DssValidationRepository(
 			hashAlgorithm = sigWrapper?.digestAlgorithm?.name,
 			encryptionAlgorithm = sigWrapper?.encryptionAlgorithm?.name,
 		)
+	}
+	
+	/**
+	 * Append warnings to a [SignatureValidationResult] when the signature's hash or
+	 * encryption algorithm is in the disabled set.
+	 *
+	 * This serves as a safety net on top of the DSS policy patching performed in
+	 * [AdESPolicy.load]: even when a custom policy file is loaded (which may not
+	 * reflect the disabled sets), the user always sees an explicit warning.
+	 */
+	private fun annotateDisabledAlgorithms(
+		sig: SignatureValidationResult,
+		disabledHash: Set<HashAlgorithm>,
+		disabledEncryption: Set<EncryptionAlgorithm>,
+	): SignatureValidationResult {
+		val extra = mutableListOf<String>()
+		
+		val sigHashName = sig.hashAlgorithm
+		if (sigHashName != null) {
+			val matched = disabledHash.find { it.dssName.equals(sigHashName, ignoreCase = true) }
+			if (matched != null) {
+				extra += "Hash algorithm $sigHashName is disabled in your configuration"
+			}
+		}
+		
+		val sigEncName = sig.encryptionAlgorithm
+		if (sigEncName != null) {
+			val matched = disabledEncryption.find { it.dssName.equals(sigEncName, ignoreCase = true) }
+			if (matched != null) {
+				extra += "Encryption algorithm $sigEncName is disabled in your configuration"
+			}
+		}
+		
+		return if (extra.isEmpty()) sig
+		else sig.copy(warnings = sig.warnings + extra)
 	}
 	
 	/**

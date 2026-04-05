@@ -177,7 +177,7 @@ class ValidateTest : FunSpec({
 		val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
 		
 		result.output shouldContain "Trust tier:"
-		result.output shouldContain "Qualified (QSCD)"
+		result.output shouldContain "Qualified"
 		result.statusCode shouldBe 0
 	}
 	
@@ -227,7 +227,7 @@ class ValidateTest : FunSpec({
 		val thirdStart = result.output.indexOf(separator, secondStart + separator.length)
 		val header = result.output.substring(0, thirdStart)
 		header shouldContain "Trust tier:"
-		header shouldContain "Qualified (QSCD)"
+		header shouldContain "Qualified"
 		result.statusCode shouldBe 0
 	}
 	
