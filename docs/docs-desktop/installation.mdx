@@ -1,0 +1,106 @@
+---
+sidebar_position: 2
+---
+
+# Installation
+
+import OsTabs from '@site/src/components/OsTabs';
+import TabItem from '@theme/TabItem';
+
+## Prerequisites
+
+OmniSign Desktop requires **JetBrains Runtime (JBR) 25** or newer.
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+JBR is bundled with the MSI installer. If you run from source, install JBR from
+[JBR Releases](https://github.com/JetBrains/JetBrainsRuntime/releases) or via
+IntelliJ IDEA's Gradle JDK settings.
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+JBR is bundled with the DEB/RPM package. If you run from source, install JBR into
+`~/.jdks/` from [JBR Releases](https://github.com/JetBrains/JetBrainsRuntime/releases).
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+JBR is bundled with the DMG installer. If you run from source, install JBR from
+[JBR Releases](https://github.com/JetBrains/JetBrainsRuntime/releases) or via
+IntelliJ IDEA's Gradle JDK settings.
+
+</TabItem>
+</OsTabs>
+
+## Install OmniSign Desktop
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+Download `omnisign-desktop-x.y.z.msi` from
+[GitHub Releases](https://github.com/pizavo/omnisign/releases) and run the installer.
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+**DEB (Debian / Ubuntu)**
+
+```bash
+sudo dpkg -i omnisign-desktop_x.y.z_amd64.deb
+```
+
+**RPM (Fedora / RHEL)**
+
+```bash
+sudo rpm -i omnisign-desktop-x.y.z.x86_64.rpm
+```
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+Download `omnisign-desktop-x.y.z.dmg` from
+[GitHub Releases](https://github.com/pizavo/omnisign/releases) and drag OmniSign
+to your Applications folder.
+
+</TabItem>
+</OsTabs>
+
+## Running from source
+
+```bash
+./gradlew :composeApp:run
+```
+
+## Configuration & log directories
+
+OmniSign stores its configuration file and logs in platform-native directories.
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+| Purpose       | Path                                         |
+|---------------|----------------------------------------------|
+| Configuration | `%APPDATA%\omnisign\config.json`             |
+| Logs          | `%LOCALAPPDATA%\omnisign\logs`               |
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+| Purpose       | Path                                                                  |
+|---------------|-----------------------------------------------------------------------|
+| Configuration | `~/.config/omnisign/config.json`                                      |
+| Logs          | `$XDG_STATE_HOME/omnisign` (fallback `~/.local/state/omnisign`)       |
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+| Purpose       | Path                                                  |
+|---------------|-------------------------------------------------------|
+| Configuration | `~/Library/Application Support/omnisign/config.json`  |
+| Logs          | `~/Library/Logs/omnisign`                             |
+
+</TabItem>
+</OsTabs>
+

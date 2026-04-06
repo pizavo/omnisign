@@ -1,0 +1,121 @@
+---
+sidebar_position: 2
+---
+
+# Installation
+
+import OsTabs from '@site/src/components/OsTabs';
+import TabItem from '@theme/TabItem';
+
+## Prerequisites
+
+OmniSign CLI requires **Java 25** or newer.
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+Verify your Java version:
+
+```powershell
+java -version
+```
+
+If Java is not installed, download it from
+[Adoptium](https://adoptium.net/) or install via winget:
+
+```powershell
+winget install EclipseAdoptium.Temurin.25.JDK
+```
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+Verify your Java version:
+
+```bash
+java -version
+```
+
+Install via your package manager if needed:
+
+```bash
+# Debian / Ubuntu
+sudo apt install temurin-25-jdk
+
+# Fedora / RHEL
+sudo dnf install temurin-25-jdk
+```
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+Verify your Java version:
+
+```bash
+java -version
+```
+
+Install via Homebrew if needed:
+
+```bash
+brew install --cask temurin@25
+```
+
+</TabItem>
+</OsTabs>
+
+## Install OmniSign CLI
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+**Option A — MSI installer**
+
+Download `omnisign-cli-x.y.z.msi` from
+[GitHub Releases](https://github.com/pizavo/omnisign/releases) and run it.
+The installer adds `omnisign` to your `PATH`.
+
+**Option B — Fat JAR**
+
+```powershell
+java -jar omnisign-cli.jar --help
+```
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+**Option A — DEB package**
+
+```bash
+sudo dpkg -i omnisign-cli_x.y.z_amd64.deb
+```
+
+**Option B — RPM package**
+
+```bash
+sudo rpm -i omnisign-cli-x.y.z.x86_64.rpm
+```
+
+**Option C — Fat JAR**
+
+```bash
+java -jar omnisign-cli.jar --help
+```
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+**Option A — DMG installer**
+
+Download `omnisign-cli-x.y.z.dmg` from
+[GitHub Releases](https://github.com/pizavo/omnisign/releases) and drag OmniSign
+to your Applications folder.
+
+**Option B — Fat JAR**
+
+```bash
+java -jar omnisign-cli.jar --help
+```
+
+</TabItem>
+</OsTabs>

@@ -12,4 +12,5 @@ plugins {
     alias(libs.plugins.kotest) apply false
     alias(libs.plugins.decoroutinator) apply false
     alias(libs.plugins.lumo) apply false
+    alias(libs.plugins.dokka) apply false
 }

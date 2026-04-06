@@ -1,0 +1,71 @@
+name: Deploy Docs — GitHub Pages
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'docs/**'
+      - 'shared/src/**/commonMain/**'
+      - 'shared/src/**/jvmMain/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build documentation
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: ./.github/actions/setup-gradle
+
+      - name: Generate Dokka API docs
+        run: ./gradlew :shared:dokkaGenerate
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: docs/package-lock.json
+
+      - name: Install docs dependencies
+        working-directory: docs
+        run: npm ci
+
+      - name: Copy Dokka output into static directory
+        run: |
+          mkdir -p docs/static/api
+          cp -r shared/build/dokka/html/* docs/static/api/
+
+      - name: Build Docusaurus site
+        working-directory: docs
+        run: npm run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/build
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
+

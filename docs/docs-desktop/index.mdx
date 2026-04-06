@@ -1,0 +1,59 @@
+---
+sidebar_position: 1
+slug: /
+---
+
+# OmniSign Desktop
+
+OmniSign Desktop is a graphical application for signing, validating, and re-timestamping PDF
+documents. Built with Compose Multiplatform, it runs natively on Linux, Windows, and macOS.
+
+## Quick start
+
+import OsTabs from '@site/src/components/OsTabs';
+import TabItem from '@theme/TabItem';
+
+### Installation
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+Download the latest MSI installer from the
+[GitHub Releases](https://github.com/pizavo/omnisign/releases) page and run it.
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+Download the `.deb` or `.rpm` package from the
+[GitHub Releases](https://github.com/pizavo/omnisign/releases) page:
+
+```bash
+# Debian / Ubuntu
+sudo dpkg -i omnisign-desktop_x.y.z_amd64.deb
+
+# Fedora / RHEL
+sudo rpm -i omnisign-desktop-x.y.z.x86_64.rpm
+```
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+Download the `.dmg` installer from the
+[GitHub Releases](https://github.com/pizavo/omnisign/releases) page and drag OmniSign
+to your Applications folder.
+
+</TabItem>
+</OsTabs>
+
+### Features
+
+- **Sign** PDF documents with PAdES BASELINE B / B-LT / B-LTA
+- **Validate** electronically signed PDFs (including eIDAS EU LOTL validation)
+- **Re-timestamp** existing signatures for digital continuity (archiving)
+- **Extend** signatures to higher PAdES levels (B-T → B-LT → B-LTA)
+- **Certificate discovery** from PKCS#12 files and hardware tokens (PKCS#11)
+- **Export** validation reports in TXT, JSON, and multiple XML formats
+- **Build** custom ETSI Trusted Lists for non-EU certificate authorities
+- **Configuration profiles** for different signing workflows
+- **Automatic renewal scheduling** via OS-native schedulers (Task Scheduler / cron / launchd)
+- Wide range of [hash and encryption algorithms](algorithms.md) — SHA-2, SHA-3, Whirlpool, RIPEMD-160, RSA, ECDSA, EdDSA, and more

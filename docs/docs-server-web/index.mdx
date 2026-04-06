@@ -1,0 +1,87 @@
+---
+sidebar_position: 1
+slug: /
+---
+
+# OmniSign Web & Server
+
+OmniSign Server is a Ktor-based HTTP server paired with a Kotlin/Wasm web frontend. It provides
+the same signing, validation, and re-timestamping capabilities as the desktop and CLI apps, but
+accessible through a browser — ideal for organisation-wide deployment.
+
+## Architecture
+
+| Component | Technology         | Purpose                                       |
+|-----------|--------------------|-----------------------------------------------|
+| Server    | Ktor (Kotlin/JVM)  | REST API for signing, validation, archiving    |
+| Web       | Compose (Kotlin/Wasm) | Browser UI consuming the server API         |
+
+## Quick start
+
+import OsTabs from '@site/src/components/OsTabs';
+import TabItem from '@theme/TabItem';
+
+### Running the server
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+```powershell
+.\gradlew.bat :server:run
+```
+
+The server starts on `http://localhost:8080` by default.
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+```bash
+./gradlew :server:run
+```
+
+The server starts on `http://localhost:8080` by default.
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+```bash
+./gradlew :server:run
+```
+
+The server starts on `http://localhost:8080` by default.
+
+</TabItem>
+</OsTabs>
+
+### Running the web frontend (development)
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+```powershell
+.\gradlew.bat :composeApp:wasmJsBrowserDevelopmentRun
+```
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+```bash
+./gradlew :composeApp:wasmJsBrowserDevelopmentRun
+```
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+```bash
+./gradlew :composeApp:wasmJsBrowserDevelopmentRun
+```
+
+</TabItem>
+</OsTabs>
+
+### Docker deployment
+
+```bash
+docker build -t omnisign-server ./server
+docker run -p 8080:8080 omnisign-server
+```
