@@ -5,8 +5,10 @@ on:
     branches: [main]
     paths:
       - 'docs/**'
-      - 'shared/src/**/commonMain/**'
-      - 'shared/src/**/jvmMain/**'
+      - 'shared/src/**'
+      - 'cli/src/**'
+      - 'composeApp/src/**'
+      - 'server/src/**'
   workflow_dispatch:
 
 permissions:
@@ -29,7 +31,7 @@ jobs:
       - uses: ./.github/actions/setup-gradle
 
       - name: Generate Dokka API docs
-        run: ./gradlew :shared:dokkaGenerate
+        run: ./gradlew :dokkaGenerate
 
       - name: Setup Node.js
         uses: actions/setup-node@v6
@@ -45,7 +47,7 @@ jobs:
       - name: Copy Dokka output into static directory
         run: |
           mkdir -p docs/static/api
-          cp -r shared/build/dokka/html/* docs/static/api/
+          cp -r build/dokka/html/* docs/static/api/
 
       - name: Build Docusaurus site
         working-directory: docs
