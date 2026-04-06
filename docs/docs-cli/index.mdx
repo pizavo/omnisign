@@ -55,11 +55,32 @@ java -jar omnisign-cli.jar --help
 ### Signing a document
 
 ```bash
-omnisign sign --level B-T --hash SHA256 --keystore my-key.p12 document.pdf
+omnisign sign -f document.pdf -o document-signed.pdf
 ```
 
 ### Validating a document
 
 ```bash
-omnisign validate document-signed.pdf
+omnisign validate -f document-signed.pdf
 ```
+
+### Extending a signature
+
+```bash
+omnisign timestamp -f document-signed.pdf -o document-lta.pdf --level PADES_BASELINE_LTA
+```
+
+## Global flags
+
+Every subcommand inherits these flags from the root `omnisign` command:
+
+| Flag        | Description                                                   |
+|-------------|---------------------------------------------------------------|
+| `--json`    | Emit machine-readable JSON output instead of human-readable text |
+| `--verbose` | Enable verbose (DEBUG-level) logging to stderr                |
+| `--quiet`   | Suppress all informational output; only errors are printed    |
+| `-v, --version` | Print the application version and exit                    |
+
+All options can also be set via `OMNISIGN_`-prefixed environment variables
+(e.g. `OMNISIGN_TIMESTAMP_URL`). Explicit command-line flags always take precedence.
+

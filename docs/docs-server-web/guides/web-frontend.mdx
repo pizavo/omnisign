@@ -1,0 +1,93 @@
+---
+sidebar_position: 2
+---
+
+# Web Frontend
+
+The OmniSign web frontend is built with Kotlin/Wasm using Compose Multiplatform. It provides
+a browser-based PDF viewer that communicates with the Ktor server backend for signing and
+validation operations.
+
+## Building
+
+import OsTabs from '@site/src/components/OsTabs';
+import TabItem from '@theme/TabItem';
+
+### Development server
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+```powershell
+.\gradlew.bat :composeApp:wasmJsBrowserDevelopmentRun
+```
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+```bash
+./gradlew :composeApp:wasmJsBrowserDevelopmentRun
+```
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+```bash
+./gradlew :composeApp:wasmJsBrowserDevelopmentRun
+```
+
+</TabItem>
+</OsTabs>
+
+A local development server starts and opens the app in the default browser.
+
+### Production build
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+```powershell
+.\gradlew.bat :composeApp:wasmJsBrowserDistribution
+```
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+```bash
+./gradlew :composeApp:wasmJsBrowserDistribution
+```
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+```bash
+./gradlew :composeApp:wasmJsBrowserDistribution
+```
+
+</TabItem>
+</OsTabs>
+
+The production bundle is written to `composeApp/build/dist/wasmJs/productionExecutable/`.
+
+## Browser compatibility
+
+The Wasm frontend requires a browser with **WebAssembly** and **WebAssembly GC** support:
+
+| Browser          | Minimum version |
+|------------------|-----------------|
+| Chrome / Edge    | 119+            |
+| Firefox          | 120+            |
+| Safari           | 18.2+           |
+
+## Current capabilities
+
+| Feature                          | Available |
+|----------------------------------|:---------:|
+| Open and view PDF documents      |     ✅     |
+| Page navigation and zoom         |     ✅     |
+| Dark / light theme toggle        |     ✅     |
+| Sign documents (via server API)  |     🚧     |
+| Validate documents (via server)  |     🚧     |
+
+🚧 = Planned for future releases — the server API will provide these capabilities.
+
