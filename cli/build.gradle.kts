@@ -2,6 +2,7 @@ plugins {
 	alias(libs.plugins.kotlin.jvm)
 	alias(libs.plugins.kotlin.serialization)
 	alias(libs.plugins.shadow)
+	alias(libs.plugins.dokka)
 	application
 }
 
@@ -553,5 +554,17 @@ tasks.register("jpackage") {
 		os.contains("win") -> dependsOn("jpackageWinExe", "jpackageWinMsi")
 		os.contains("linux") -> dependsOn("jpackageDeb", "jpackageRpm", "jpackageLinuxImage")
 		os.contains("mac") -> dependsOn("jpackageDmg", "jpackagePkg")
+	}
+}
+
+/**
+ * Dokka configuration for the CLI module API documentation.
+ */
+dokka {
+	dokkaPublications.html {
+		outputDirectory.set(layout.buildDirectory.dir("dokka/html"))
+	}
+	pluginsConfiguration.html {
+		footerMessage.set("OmniSign — CLI module API reference")
 	}
 }

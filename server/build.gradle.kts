@@ -1,6 +1,7 @@
 plugins {
     alias(libs.plugins.kotlin.jvm)
     alias(libs.plugins.ktor)
+    alias(libs.plugins.dokka)
     application
 }
 
@@ -42,4 +43,16 @@ tasks.withType<Test> {
         "-Xshare:off",
         "--enable-native-access=ALL-UNNAMED",
     )
+}
+
+/**
+ * Dokka configuration for the server module API documentation.
+ */
+dokka {
+	dokkaPublications.html {
+		outputDirectory.set(layout.buildDirectory.dir("dokka/html"))
+	}
+	pluginsConfiguration.html {
+		footerMessage.set("OmniSign — server module API reference")
+	}
 }

@@ -25,6 +25,7 @@ plugins {
 	alias(libs.plugins.kotest)
 	alias(libs.plugins.lumo)
 	alias(libs.plugins.decoroutinator)
+	alias(libs.plugins.dokka)
 }
 
 version = project.findProperty("releaseVersion")?.toString() ?: "1.0.0"
@@ -222,6 +223,24 @@ gradle.taskGraph.whenReady {
 				appendLine("    and place it under ~/.jdks/ so Gradle auto-detects it.")
 			}
 		)
+	}
+}
+
+/**
+ * Dokka configuration for the composeApp module API documentation.
+ * The wasmJs source set is suppressed because Dokka cannot fully process Wasm targets.
+ */
+dokka {
+	dokkaPublications.html {
+		outputDirectory.set(layout.buildDirectory.dir("dokka/html"))
+	}
+	pluginsConfiguration.html {
+		footerMessage.set("OmniSign — composeApp module API reference")
+	}
+	dokkaSourceSets.configureEach {
+		if (name.contains("wasmJs", ignoreCase = true) || name.contains("web", ignoreCase = true)) {
+			suppress.set(true)
+		}
 	}
 }
 

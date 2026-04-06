@@ -142,11 +142,20 @@ val updateLotlKeystore by tasks.registering {
 	}
 }
 
+/**
+ * Dokka configuration for the shared module API documentation.
+ * The wasmJs source set is suppressed because Dokka cannot fully process Wasm targets.
+ */
 dokka {
 	dokkaPublications.html {
 		outputDirectory.set(layout.buildDirectory.dir("dokka/html"))
 	}
 	pluginsConfiguration.html {
 		footerMessage.set("OmniSign — shared module API reference")
+	}
+	dokkaSourceSets.configureEach {
+		if (name.contains("wasmJs", ignoreCase = true)) {
+			suppress.set(true)
+		}
 	}
 }

@@ -12,5 +12,26 @@ plugins {
     alias(libs.plugins.kotest) apply false
     alias(libs.plugins.decoroutinator) apply false
     alias(libs.plugins.lumo) apply false
-    alias(libs.plugins.dokka) apply false
+    alias(libs.plugins.dokka)
 }
+
+/**
+ * Root-level Dokka configuration that aggregates API documentation from all subprojects
+ * into a single unified HTML site. Run `:dokkaGenerate` to produce the combined output.
+ */
+dokka {
+    dokkaPublications.html {
+        outputDirectory.set(layout.buildDirectory.dir("dokka/html"))
+    }
+    pluginsConfiguration.html {
+        footerMessage.set("OmniSign — API reference")
+    }
+}
+
+dependencies {
+    dokka(project(":shared"))
+    dokka(project(":cli"))
+    dokka(project(":server"))
+    dokka(project(":composeApp"))
+}
+
