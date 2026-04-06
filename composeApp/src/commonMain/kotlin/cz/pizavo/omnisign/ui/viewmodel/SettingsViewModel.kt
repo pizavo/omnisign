@@ -10,8 +10,11 @@ import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * ViewModel managing the global configuration settings dialog state.
@@ -34,6 +37,7 @@ import kotlinx.coroutines.launch
  *   When available, the executable path field is hidden from the user and this value is used
  *   automatically. `null` when auto-detection is unavailable (e.g. `java -jar` or Wasm),
  *   in which case a manual text field is shown as a fallback.
+ * @param ioDispatcher Dispatcher for blocking scheduler process calls.
  */
 class SettingsViewModel(
     private val getConfigUseCase: GetConfigUseCase,
@@ -42,6 +46,7 @@ class SettingsViewModel(
     private val credentialStore: CredentialStore? = null,
     private val schedulerPort: SchedulerPort? = null,
     private val autoDetectedExecutablePath: String? = null,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GlobalConfigEditState())
@@ -73,7 +78,9 @@ class SettingsViewModel(
                 },
                 ifRight = { appConfig ->
                     val hasStored = hasStoredTsaPassword(appConfig.global)
-                    val installed = try { schedulerPort?.isInstalled() == true } catch (_: Exception) { false }
+                    val installed = withContext(ioDispatcher) {
+                        try { schedulerPort?.isInstalled() == true } catch (_: Exception) { false }
+                    }
                     val editState = GlobalConfigEditState.from(
                         config = appConfig.global,
                         hasStoredPassword = hasStored,
@@ -124,10 +131,15 @@ class SettingsViewModel(
                 },
                 ifRight = {
                     saveAppLevelConfig(current)
-                    syncScheduler(current)
+                    val (schedulerError, installed) = withContext(ioDispatcher) {
+                        val err = syncScheduler(current)
+                        val inst = try { schedulerPort?.isInstalled() == true } catch (_: Exception) { false }
+                        err to inst
+                    }
                     storeTsaPasswordIfNeeded(current)
-                    _state.update { it.copy(saving = false, error = null) }
-                    onSuccess()
+                    _state.update { it.copy(saving = false, error = schedulerError, schedulerInstalled = installed) }
+                    _initialState.value = _state.value
+                    if (schedulerError == null) onSuccess()
                 },
             )
         }
@@ -180,25 +192,30 @@ class SettingsViewModel(
      * manually entered), the scheduler is installed (or updated). Otherwise, the
      * scheduler is uninstalled.
      * If the [schedulerPort] is not available the method is a no-op.
+     *
+     * @return A human-readable error message when the scheduler operation failed,
+     *   or `null` on success.
      */
-    private fun syncScheduler(editState: GlobalConfigEditState) {
-        val port = schedulerPort ?: return
+    private fun syncScheduler(editState: GlobalConfigEditState): String? {
+        val port = schedulerPort ?: return null
         val exePath = editState.effectiveSchedulerExecutablePath
         if (editState.renewalJobs.isNotEmpty() && exePath != null) {
-            try {
+            return try {
                 port.install(
                     cliExecutablePath = exePath,
                     runAtHour = editState.schedulerHour.toIntOrNull()?.coerceIn(0, 23) ?: 2,
                     runAtMinute = editState.schedulerMinute.toIntOrNull()?.coerceIn(0, 59) ?: 0,
                     logFilePath = editState.schedulerLogFile.trim().ifBlank { null },
                 )
-            } catch (_: Exception) {
-                _state.update { it.copy(error = "Failed to install OS scheduler — check permissions.") }
+                null
+            } catch (e: Exception) {
+                "Failed to install OS scheduler: ${e.message ?: "unknown error"}"
             }
         } else {
             try {
                 port.uninstall()
             } catch (_: Exception) { }
+            return null
         }
     }
 

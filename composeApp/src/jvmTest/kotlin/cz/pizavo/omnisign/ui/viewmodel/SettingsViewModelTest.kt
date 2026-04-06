@@ -55,7 +55,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -74,7 +74,7 @@ class SettingsViewModelTest : FunSpec({
                 message = "corrupt file"
             ).left()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -86,7 +86,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -103,7 +103,7 @@ class SettingsViewModelTest : FunSpec({
             val saved = slot<AppConfig>()
             coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -125,7 +125,7 @@ class SettingsViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
             coEvery { configRepository.getCurrentConfig() } returns baseConfig
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -154,7 +154,7 @@ class SettingsViewModelTest : FunSpec({
             coEvery { configRepository.getCurrentConfig() } returns configWithTsa
             coEvery { configRepository.saveConfig(any()) } returns Unit.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -178,7 +178,7 @@ class SettingsViewModelTest : FunSpec({
             coEvery { configRepository.getCurrentConfig() } returns baseConfig
             coEvery { configRepository.saveConfig(any()) } returns Unit.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -209,7 +209,7 @@ class SettingsViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns AppConfig(global = globalWithCreds).right()
             every { credentialStore.getPassword("omnisign-tsa", "admin") } returns "stored-pw"
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -231,7 +231,7 @@ class SettingsViewModelTest : FunSpec({
                 subjectDN = "CN=My CA",
             )
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -260,7 +260,7 @@ class SettingsViewModelTest : FunSpec({
             )
             coEvery { configRepository.loadConfig() } returns AppConfig(global = globalWithCerts).right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -273,7 +273,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -285,7 +285,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -300,7 +300,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -327,7 +327,7 @@ class SettingsViewModelTest : FunSpec({
                 signingCertPath = "/path/to/cert.pem",
             )
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -355,7 +355,7 @@ class SettingsViewModelTest : FunSpec({
             )
             coEvery { configRepository.loadConfig() } returns AppConfig(global = globalWithTls).right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -370,7 +370,7 @@ class SettingsViewModelTest : FunSpec({
             val configWithJobs = baseConfig.copy(renewalJobs = mapOf("nightly" to job))
             coEvery { configRepository.loadConfig() } returns configWithJobs.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -390,7 +390,7 @@ class SettingsViewModelTest : FunSpec({
             )
             coEvery { configRepository.loadConfig() } returns configWithProfiles.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -405,7 +405,7 @@ class SettingsViewModelTest : FunSpec({
             val saved = mutableListOf<AppConfig>()
             coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -432,7 +432,7 @@ class SettingsViewModelTest : FunSpec({
             val saved = mutableListOf<AppConfig>()
             coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -451,7 +451,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -469,7 +469,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -497,7 +497,7 @@ class SettingsViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             every { schedulerPort.isInstalled() } returns true
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -514,13 +514,17 @@ class SettingsViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
             coEvery { configRepository.getCurrentConfig() } returns baseConfig
             coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+            every { schedulerPort.isInstalled() } returns false andThen true
 
             val vm = SettingsViewModel(
                 getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
                 autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+                ioDispatcher = testDispatcher,
             )
             vm.load()
             advanceUntilIdle()
+
+            vm.state.value.schedulerInstalled shouldBe false
 
             val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
             vm.updateState {
@@ -535,6 +539,7 @@ class SettingsViewModelTest : FunSpec({
             advanceUntilIdle()
 
             verify { schedulerPort.install("/opt/omnisign/bin/OmniSign", 4, 15, null) }
+            vm.state.value.schedulerInstalled shouldBe true
         }
     }
 
@@ -543,8 +548,9 @@ class SettingsViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
             coEvery { configRepository.getCurrentConfig() } returns baseConfig
             coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+            every { schedulerPort.isInstalled() } returns false andThen true
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -562,6 +568,7 @@ class SettingsViewModelTest : FunSpec({
             advanceUntilIdle()
 
             verify { schedulerPort.install("/usr/bin/omnisign", 4, 15, null) }
+            vm.state.value.schedulerInstalled shouldBe true
         }
     }
 
@@ -575,11 +582,13 @@ class SettingsViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
             coEvery { configRepository.saveConfig(any()) } returns Unit.right()
-            every { schedulerPort.isInstalled() } returns true
+            every { schedulerPort.isInstalled() } returns true andThen false
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
+
+            vm.state.value.schedulerInstalled shouldBe true
 
             vm.updateState { it.copy(renewalJobs = emptyList()) }
 
@@ -588,6 +597,7 @@ class SettingsViewModelTest : FunSpec({
 
             verify { schedulerPort.uninstall() }
             verify(exactly = 0) { schedulerPort.install(any(), any(), any(), any()) }
+            vm.state.value.schedulerInstalled shouldBe false
         }
     }
 
@@ -597,7 +607,7 @@ class SettingsViewModelTest : FunSpec({
             coEvery { configRepository.getCurrentConfig() } returns baseConfig
             coEvery { configRepository.saveConfig(any()) } returns Unit.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, null)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, null, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -627,6 +637,7 @@ class SettingsViewModelTest : FunSpec({
             val vm = SettingsViewModel(
                 getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
                 autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+                ioDispatcher = testDispatcher,
             )
             vm.load()
             advanceUntilIdle()
@@ -656,7 +667,7 @@ class SettingsViewModelTest : FunSpec({
             coEvery { configRepository.getCurrentConfig() } returns baseConfig
             coEvery { configRepository.saveConfig(any()) } returns Unit.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -683,6 +694,7 @@ class SettingsViewModelTest : FunSpec({
             val vm = SettingsViewModel(
                 getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
                 autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+                ioDispatcher = testDispatcher,
             )
             vm.load()
             advanceUntilIdle()
@@ -696,7 +708,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -714,6 +726,7 @@ class SettingsViewModelTest : FunSpec({
             val vm = SettingsViewModel(
                 getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
                 autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+                ioDispatcher = testDispatcher,
             )
             vm.load()
             advanceUntilIdle()
@@ -750,7 +763,7 @@ class SettingsViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
             coEvery { configRepository.getCurrentConfig() } returns baseConfig
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -771,7 +784,7 @@ class SettingsViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
             coEvery { configRepository.getCurrentConfig() } returns baseConfig
 
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort)
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort, ioDispatcher = testDispatcher)
             vm.load()
             advanceUntilIdle()
 
@@ -783,6 +796,38 @@ class SettingsViewModelTest : FunSpec({
 
             successCalled shouldBe false
             vm.state.value.error.shouldNotBeNull()
+            vm.state.value.saving shouldBe false
+        }
+    }
+
+    test("save surfaces scheduler install error and does not dismiss dialog") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+            every { schedulerPort.install(any(), any(), any(), any()) } throws
+                    IllegalStateException("schtasks failed (exit 1): Access is denied.")
+            every { schedulerPort.isInstalled() } returns false
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+                ioDispatcher = testDispatcher,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
+            vm.updateState { it.copy(renewalJobs = listOf(job)) }
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            advanceUntilIdle()
+
+            successCalled shouldBe false
+            vm.state.value.error.shouldNotBeNull()
+            vm.state.value.error shouldBe "Failed to install OS scheduler: schtasks failed (exit 1): Access is denied."
+            vm.state.value.schedulerInstalled shouldBe false
             vm.state.value.saving shouldBe false
         }
     }
