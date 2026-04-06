@@ -14,6 +14,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.value.sensitive
+import cz.pizavo.omnisign.platform.PasswordCallback
 
 /**
  * Reusable Clikt option group for on-execute configuration overrides.
@@ -62,6 +63,10 @@ class OperationConfigOptions : OptionGroup(
 	 * Override the timestamp server HTTP Basic password for this operation.
 	 * This value is used in-memory only and is never written to disk or the OS keychain.
 	 * To persist credentials permanently use `config set --timestamp-password`.
+	 *
+	 * **Security note:** When supplied via the `OMNISIGN_TIMESTAMP_PASSWORD` environment variable
+	 * (enabled by `autoEnvvarPrefix`), the value is readable in `/proc/<pid>/environ` on Linux
+	 * by the same OS user. Prefer the OS credential store for long-lived credentials.
 	 */
 	val timestampPassword by option(
 		"--timestamp-password",
@@ -110,16 +115,19 @@ class OperationConfigOptions : OptionGroup(
 	 * [cz.pizavo.omnisign.domain.model.config.ResolvedConfig.resolve].
 	 * The runtime [timestampPassword] is carried in the override object but
 	 * is never written to any persistent store.
+	 *
+	 * @param passwordCallback Used to prompt interactively when [timestampPassword] is [PASSWORD_PROMPT_SENTINEL].
 	 */
-	fun toOperationConfig(): OperationConfig {
+	fun toOperationConfig(passwordCallback: PasswordCallback): OperationConfig {
+		val resolvedPassword = resolvePasswordOption(timestampPassword, passwordCallback)
 		val hasTimestampOverride = timestampUrl != null || timestampUsername != null ||
-				timestampPassword != null || timestampTimeout != null
+				resolvedPassword != null || timestampTimeout != null
 		
 		val tsConfig = if (hasTimestampOverride) {
 			TimestampServerConfig(
 				url = timestampUrl ?: "",
 				username = timestampUsername,
-				runtimePassword = timestampPassword?.sensitive(),
+				runtimePassword = resolvedPassword?.sensitive(),
 				timeout = timestampTimeout ?: 30000
 			)
 		} else null

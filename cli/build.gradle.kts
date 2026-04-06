@@ -101,6 +101,7 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
 	archiveVersion.set(project.version.toString())
 	manifest {
 		attributes["Main-Class"] = "cz.pizavo.omnisign.CliKt"
+		attributes["Enable-Native-Access"] = "ALL-UNNAMED"
 	}
 	mergeServiceFiles()
 }
@@ -273,7 +274,7 @@ abstract class JPackageTask @Inject constructor(private val execOps: ExecOperati
 	
 	/**
 	 * Optional platform-specific resource directory (e.g., src/main/jpackage/win).
-	 * Declared as an input so Gradle invalidates the task whenever any file inside
+	 * Declared as an input, so Gradle invalidates the task whenever any file inside
 	 * it changes — for example, when main.wxs or overrides.wxi are edited.
 	 */
 	@get:InputDirectory

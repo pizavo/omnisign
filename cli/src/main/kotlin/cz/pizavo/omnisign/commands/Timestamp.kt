@@ -21,6 +21,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ExtendDocumentUseCase
+import cz.pizavo.omnisign.platform.PasswordCallback
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.koin.core.component.KoinComponent
@@ -44,6 +45,7 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
 	
 	private val extendUseCase: ExtendDocumentUseCase by inject()
 	private val configRepository: ConfigRepository by inject()
+	private val passwordCallback: PasswordCallback by inject()
 	private val output by requireObject<OutputConfig>()
 	
 	private val inputFile by option("-f", "--file", help = "Path to the signed PDF file to extend")
@@ -73,7 +75,7 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
 		val appConfig = configRepository.getCurrentConfig()
 		val activeProfile = profile ?: appConfig.activeProfile
 		val profileConfig = activeProfile?.let { appConfig.profiles[it] }
-		val operationConfig = configOverrides.toOperationConfig()
+		val operationConfig = configOverrides.toOperationConfig(passwordCallback)
 		val resolvedConfigResult = ResolvedConfig.resolve(
 			global = appConfig.global,
 			profile = profileConfig,

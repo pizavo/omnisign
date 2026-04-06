@@ -9,10 +9,13 @@ import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.maps.shouldContainKey
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
+import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.attribute.PosixFilePermission
 import kotlin.io.path.writeText
 
 /**
@@ -104,6 +107,34 @@ class FileConfigRepositoryTest : FunSpec({
 		result.shouldBeLeft().shouldBeInstanceOf<ConfigurationError.SaveFailed>()
 
 		path.toFile().setWritable(true)
+	}
+
+	test("saveConfig sets POSIX owner-only permissions on non-Windows").config(
+		enabledIf = { !System.getProperty("os.name").lowercase().contains("win") },
+	) {
+		val repo = repoAt("posix-perms")
+		repo.saveConfig(AppConfig(global = GlobalConfig())).shouldBeRight()
+
+		val path = Path.of(tmpDir.absolutePath, "posix-perms", "config.json")
+		val perms = Files.getPosixFilePermissions(path)
+		perms.toList().shouldContainExactlyInAnyOrder(
+			PosixFilePermission.OWNER_READ,
+			PosixFilePermission.OWNER_WRITE,
+		)
+	}
+
+	test("loadConfig sets POSIX owner-only permissions when creating default config on non-Windows").config(
+		enabledIf = { !System.getProperty("os.name").lowercase().contains("win") },
+	) {
+		val path = Path.of(tmpDir.absolutePath, "posix-default", "config.json")
+		val repo = repoAtPath(path)
+		repo.loadConfig().shouldBeRight()
+
+		val perms = Files.getPosixFilePermissions(path)
+		perms.toList().shouldContainExactlyInAnyOrder(
+			PosixFilePermission.OWNER_READ,
+			PosixFilePermission.OWNER_WRITE,
+		)
 	}
 })
 

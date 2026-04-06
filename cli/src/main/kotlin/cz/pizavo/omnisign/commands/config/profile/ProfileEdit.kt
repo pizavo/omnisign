@@ -8,6 +8,7 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
+import cz.pizavo.omnisign.cli.resolvePasswordOption
 import cz.pizavo.omnisign.commands.config.ConfigSet
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
@@ -16,6 +17,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.*
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
+import cz.pizavo.omnisign.platform.PasswordCallback
 import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.todayIn
@@ -36,6 +38,7 @@ import kotlin.time.Clock
 class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 	private val manageProfile: ManageProfileUseCase by inject()
 	private val credentialStore: CredentialStore by inject()
+	private val passwordCallback: PasswordCallback by inject()
 	
 	private val name by argument(help = "Name of the profile to edit")
 	private val description by option("--description", "-d", help = "New profile description")
@@ -74,7 +77,7 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 	)
 	private val timestampPassword by option(
 		"--timestamp-password",
-		help = "New timestamp server HTTP Basic password (stored in OS keychain, not in config file)"
+		help = "New timestamp server HTTP Basic password (stored in OS keychain; use '-' to prompt with hidden input)"
 	)
 	private val timestampTimeout by option(
 		"--timestamp-timeout",
@@ -287,17 +290,19 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 	 * When [clearTimestamp] is set the entire TSA block is removed.
 	 * When [timestampPassword] is supplied it is persisted in the OS keychain under
 	 * [ConfigSet.TSA_CREDENTIAL_SERVICE] with the effective username as the account key.
+	 * Passing `"-"` as the password triggers an interactive hidden-input prompt via [passwordCallback].
 	 */
 	private fun buildPatchedTimestampConfig(existing: TimestampServerConfig?): TimestampServerConfig? {
+		val resolvedPassword = resolvePasswordOption(timestampPassword, passwordCallback)
 		val anyTsOption = timestampUrl != null || timestampUsername != null ||
-				timestampPassword != null || timestampTimeout != null
+				resolvedPassword != null || timestampTimeout != null
 		if (clearTimestamp || (!anyTsOption && existing == null)) return null
 		if (!anyTsOption) return existing
 		
 		val baseUrl = timestampUrl ?: existing?.url ?: ""
 		val effectiveUsername = timestampUsername ?: existing?.username
-		val effectiveCredentialKey = if (timestampPassword != null && effectiveUsername != null) {
-			credentialStore.setPassword(ConfigSet.TSA_CREDENTIAL_SERVICE, effectiveUsername, timestampPassword!!)
+		val effectiveCredentialKey = if (resolvedPassword != null && effectiveUsername != null) {
+			credentialStore.setPassword(ConfigSet.TSA_CREDENTIAL_SERVICE, effectiveUsername, resolvedPassword)
 			effectiveUsername
 		} else {
 			existing?.credentialKey

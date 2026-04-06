@@ -7,6 +7,7 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
+import cz.pizavo.omnisign.cli.resolvePasswordOption
 import cz.pizavo.omnisign.commands.config.ConfigSet
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
@@ -15,6 +16,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.*
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
+import cz.pizavo.omnisign.platform.PasswordCallback
 import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.todayIn
@@ -31,6 +33,7 @@ import kotlin.time.Clock
 class ProfileCreate : CliktCommand(name = "create"), KoinComponent {
 	private val manageProfile: ManageProfileUseCase by inject()
 	private val credentialStore: CredentialStore by inject()
+	private val passwordCallback: PasswordCallback by inject()
 	
 	private val name by argument(help = "Profile name")
 	private val description by option("--description", "-d", help = "Profile description")
@@ -50,7 +53,7 @@ class ProfileCreate : CliktCommand(name = "create"), KoinComponent {
 	private val timestampUsername by option("--timestamp-username", help = "Timestamp server HTTP Basic username")
 	private val timestampPassword by option(
 		"--timestamp-password",
-		help = "Timestamp server HTTP Basic password (stored in OS keychain, not in config file)"
+		help = "Timestamp server HTTP Basic password (stored in OS keychain; use '-' to prompt with hidden input)"
 	)
 	private val timestampTimeout by option(
 		"--timestamp-timeout",
@@ -135,7 +138,7 @@ class ProfileCreate : CliktCommand(name = "create"), KoinComponent {
 	
 	/**
 	 * Build a [ValidationConfig] when any validation-related option is supplied.
-	 * Returns null when no validation options are provided so the profile inherits global settings.
+	 * Returns null when no validation options are provided, so the profile inherits global settings.
 	 */
 	private fun buildValidation(): ValidationConfig? {
 		val hasAlgoConstraints = algoExpirationLevel != null ||
@@ -158,15 +161,17 @@ class ProfileCreate : CliktCommand(name = "create"), KoinComponent {
 	 * When [timestampPassword] is supplied it is persisted in the OS keychain under
 	 * [ConfigSet.TSA_CREDENTIAL_SERVICE] with the effective username as the account key.
 	 * The password itself is never written to the config file.
+	 * Passing `"-"` as the password triggers an interactive hidden-input prompt via [passwordCallback].
 	 */
 	private fun buildTimestampConfig(): TimestampServerConfig? {
+		val resolvedPassword = resolvePasswordOption(timestampPassword, passwordCallback)
 		val hasTs = timestampUrl != null || timestampUsername != null ||
-				timestampPassword != null || timestampTimeout != null
+				resolvedPassword != null || timestampTimeout != null
 		if (!hasTs) return null
 		
 		val effectiveUsername = timestampUsername
-		val effectiveCredentialKey = if (timestampPassword != null && effectiveUsername != null) {
-			credentialStore.setPassword(ConfigSet.TSA_CREDENTIAL_SERVICE, effectiveUsername, timestampPassword!!)
+		val effectiveCredentialKey = if (resolvedPassword != null && effectiveUsername != null) {
+			credentialStore.setPassword(ConfigSet.TSA_CREDENTIAL_SERVICE, effectiveUsername, resolvedPassword)
 			effectiveUsername
 		} else null
 		

@@ -2,16 +2,18 @@ package cz.pizavo.omnisign.data.repository
 
 import arrow.core.left
 import arrow.core.right
-import cz.pizavo.omnisign.domain.model.error.ConfigurationError
-import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
+import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.attribute.PosixFilePermission
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
@@ -69,6 +71,7 @@ class FileConfigRepository(
             configPath.parent?.toFile()?.mkdirs()
             val configText = json.encodeToString(config)
             configPath.writeText(configText)
+            restrictPermissions(configPath)
             cachedConfig = config
             Unit.right()
         } catch (e: Exception) {
@@ -77,6 +80,22 @@ class FileConfigRepository(
                 details = e.message,
                 cause = e
             ).left()
+        }
+    }
+    
+    /**
+     * Restrict the file at [path] to owner-read and owner-write (POSIX 600).
+     *
+     * Silently ignored on non-POSIX file systems (e.g. Windows NTFS) where
+     * [PosixFilePermission] is not supported.
+     */
+    private fun restrictPermissions(path: Path) {
+        try {
+            Files.setPosixFilePermissions(
+                path,
+                setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
+            )
+        } catch (_: UnsupportedOperationException) {
         }
     }
     

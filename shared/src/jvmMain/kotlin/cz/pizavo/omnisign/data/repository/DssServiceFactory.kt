@@ -488,9 +488,21 @@ class DssServiceFactory(
 		private const val TEMP_FILE_LIMIT_BYTES = 2L * 1024 * 1024 * 1024
 		private const val DEFAULT_TIMEOUT = 30_000
 		
+		/** URL of the EU List of Trusted Lists (LOTL) XML document. */
 		const val EU_LOTL_URL = "https://ec.europa.eu/tools/lotl/eu-lotl.xml"
+
+		/** Classpath location of the pre-built Official Journal (OJ) keystore. */
 		const val OJ_KEYSTORE_RESOURCE = "/lotl-keystore.p12"
+
+		/** Keystore type for the OJ keystore. */
 		const val OJ_KEYSTORE_TYPE = "PKCS12"
+
+		/**
+		 * Well-known password for the pre-built OJ keystore from the EU DSS demonstrations
+		 * repository. This is **not a secret** — the keystore contains only public LOTL
+		 * signing certificates published in the Official Journal of the EU and is distributed
+		 * openly by the European Commission.
+		 */
 		const val OJ_KEYSTORE_PASSWORD = "dss-password"
 		
 		/** 24 hours — how long a cached TL response is considered fresh before re-downloading. */
