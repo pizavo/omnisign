@@ -72,3 +72,35 @@ to your Applications folder.
 ```bash
 ./gradlew :composeApp:run
 ```
+
+## Configuration & log directories
+
+OmniSign stores its configuration file and logs in platform-native directories.
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+| Purpose       | Path                                         |
+|---------------|----------------------------------------------|
+| Configuration | `%APPDATA%\omnisign\config.json`             |
+| Logs          | `%LOCALAPPDATA%\omnisign\logs`               |
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+| Purpose       | Path                                                                  |
+|---------------|-----------------------------------------------------------------------|
+| Configuration | `~/.config/omnisign/config.json`                                      |
+| Logs          | `$XDG_STATE_HOME/omnisign` (fallback `~/.local/state/omnisign`)       |
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+| Purpose       | Path                                                  |
+|---------------|-------------------------------------------------------|
+| Configuration | `~/Library/Application Support/omnisign/config.json`  |
+| Logs          | `~/Library/Logs/omnisign`                             |
+
+</TabItem>
+</OsTabs>
+
