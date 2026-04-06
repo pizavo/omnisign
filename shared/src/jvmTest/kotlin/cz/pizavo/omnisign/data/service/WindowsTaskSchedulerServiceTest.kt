@@ -19,8 +19,8 @@ class WindowsTaskSchedulerServiceTest : FunSpec({
 		try {
 			block()
 		} catch (e: IllegalStateException) {
-			if (e.message?.contains("schtasks", ignoreCase = true) == true) {
-				println("SKIP: schtasks not available or requires elevated privileges: ${e.message}")
+			if (e.message?.contains("Scheduler command failed", ignoreCase = true) == true) {
+				println("SKIP: scheduler command not available or requires elevated privileges: ${e.message}")
 				return
 			}
 			throw e
