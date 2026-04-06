@@ -1,0 +1,65 @@
+---
+sidebar_position: 1
+slug: /
+---
+
+# OmniSign CLI
+
+OmniSign CLI is a command-line tool for signing, validating, and re-timestamping PDF documents.
+It supports PAdES BASELINE B, B-T, B-LT, and B-LTA signature levels and runs on Linux, Windows,
+and macOS.
+
+## Quick start
+
+import OsTabs from '@site/src/components/OsTabs';
+import TabItem from '@theme/TabItem';
+
+### Installation
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+Download the latest MSI installer from the
+[GitHub Releases](https://github.com/pizavo/omnisign/releases) page, or run the fat JAR
+directly:
+
+```powershell
+java -jar omnisign-cli.jar --help
+```
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+Download the `.deb` or `.rpm` package from the
+[GitHub Releases](https://github.com/pizavo/omnisign/releases) page, or run the fat JAR
+directly:
+
+```bash
+java -jar omnisign-cli.jar --help
+```
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+Download the `.dmg` installer from the
+[GitHub Releases](https://github.com/pizavo/omnisign/releases) page, or run the fat JAR
+directly:
+
+```bash
+java -jar omnisign-cli.jar --help
+```
+
+</TabItem>
+</OsTabs>
+
+### Signing a document
+
+```bash
+omnisign sign --level B-T --hash SHA256 --keystore my-key.p12 document.pdf
+```
+
+### Validating a document
+
+```bash
+omnisign validate document-signed.pdf
+```

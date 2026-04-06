@@ -1,0 +1,100 @@
+---
+sidebar_position: 2
+---
+
+# Deployment
+
+import OsTabs from '@site/src/components/OsTabs';
+import TabItem from '@theme/TabItem';
+
+## Prerequisites
+
+The server requires **Java 25** or newer.
+
+## Docker (recommended)
+
+The recommended deployment method is Docker. A `Dockerfile` is provided in the `server/` directory.
+
+```bash
+docker build -t omnisign-server ./server
+docker run -d -p 8080:8080 --name omnisign omnisign-server
+```
+
+## Bare-metal
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+Build and run the server JAR:
+
+```powershell
+.\gradlew.bat :server:installDist
+.\server\build\install\server\bin\server.bat
+```
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+Build and run the server distribution:
+
+```bash
+./gradlew :server:installDist
+./server/build/install/server/bin/server
+```
+
+**Systemd service (optional)**
+
+Create `/etc/systemd/system/omnisign.service`:
+
+```ini
+[Unit]
+Description=OmniSign Server
+After=network.target
+
+[Service]
+ExecStart=/opt/omnisign/bin/server
+WorkingDirectory=/opt/omnisign
+Restart=on-failure
+User=omnisign
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl enable --now omnisign
+```
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+Build and run the server distribution:
+
+```bash
+./gradlew :server:installDist
+./server/build/install/server/bin/server
+```
+
+</TabItem>
+</OsTabs>
+
+## Reverse proxy
+
+Place the server behind Nginx or Caddy for TLS termination:
+
+```nginx
+server {
+    listen 443 ssl;
+    server_name sign.example.com;
+
+    ssl_certificate     /etc/ssl/certs/sign.example.com.pem;
+    ssl_certificate_key /etc/ssl/private/sign.example.com.key;
+
+    location / {
+        proxy_pass http://127.0.0.1:8080;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```

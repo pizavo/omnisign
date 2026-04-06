@@ -8,6 +8,7 @@ plugins {
 	alias(libs.plugins.ksp)
 	alias(libs.plugins.kotest)
 	alias(libs.plugins.decoroutinator)
+	alias(libs.plugins.dokka)
 }
 
 afterEvaluate {
@@ -141,3 +142,11 @@ val updateLotlKeystore by tasks.registering {
 	}
 }
 
+dokka {
+	dokkaPublications.html {
+		outputDirectory.set(layout.buildDirectory.dir("dokka/html"))
+	}
+	pluginsConfiguration.html {
+		footerMessage.set("OmniSign — shared module API reference")
+	}
+}
