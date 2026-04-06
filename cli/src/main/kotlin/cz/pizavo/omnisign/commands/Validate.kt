@@ -25,6 +25,7 @@ import cz.pizavo.omnisign.domain.model.value.formatDate
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
+import cz.pizavo.omnisign.platform.PasswordCallback
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.koin.core.component.KoinComponent
@@ -38,6 +39,7 @@ class Validate : CliktCommand(
 ), KoinComponent {
 	private val validateUseCase: ValidateDocumentUseCase by inject()
 	private val configRepository: ConfigRepository by inject()
+	private val passwordCallback: PasswordCallback by inject()
 	private val output by requireObject<OutputConfig>()
 	
 	private val file by option("-f", "--file", help = "Path to the PDF file to validate")
@@ -81,7 +83,7 @@ class Validate : CliktCommand(
 		val activeProfile = profile
 			?: appConfig.activeProfile
 		val profileConfig = activeProfile?.let { appConfig.profiles[it] }
-		val operationConfig = configOverrides.toOperationConfig()
+		val operationConfig = configOverrides.toOperationConfig(passwordCallback)
 		val resolvedConfigResult = ResolvedConfig.resolve(
 			global = appConfig.global,
 			profile = profileConfig,
@@ -335,7 +337,7 @@ class Validate : CliktCommand(
 	 *
 	 * When any timestamp is [ValidationIndication.INDETERMINATE] within an otherwise
 	 * [ValidationResult.VALID] signature, an informational note is prepended explaining
-	 * that this is expected behaviour for PAdES-BASELINE-LTA and does not affect the
+	 * that this is expected behavior for PAdES-BASELINE-LTA and does not affect the
 	 * overall validity.
 	 */
 	private fun printTimestamps(timestamps: List<TimestampValidationResult>, overallResult: ValidationResult) {
@@ -404,7 +406,7 @@ class Validate : CliktCommand(
 	 * Format a timestamp indication, using ℹ️ instead of ⚠️ for [ValidationIndication.INDETERMINATE]
 	 * when [overallResult] is [ValidationResult.VALID].
 	 *
-	 * In a valid LTA signature, INDETERMINATE timestamps are an expected artefact of DSS's strict
+	 * In a valid LTA signature, INDETERMINATE timestamps are an expected artifact of DSS's strict
 	 * standalone ETSI EN 319 102-1 validation — not a real problem — so the warning emoji would be
 	 * misleading.
 	 */

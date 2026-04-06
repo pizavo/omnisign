@@ -4,13 +4,16 @@ import com.github.javakeyring.BackendNotSupportedException
 import com.github.javakeyring.Keyring
 import com.github.javakeyring.PasswordAccessException
 import cz.pizavo.omnisign.domain.service.CredentialStore
+import io.github.oshai.kotlinlogging.KotlinLogging
+
+private val logger = KotlinLogging.logger {}
 
 /**
  * JVM implementation of [CredentialStore] backed by the OS native keychain via java-keyring.
  *
  * Falls back to an in-memory store when the native backend is unavailable (e.g. headless CI
  * environments). The fallback is intentionally non-persistent and will not survive process
- * restarts — callers should warn the user when the fallback is active.
+ * restarts. A warning is logged at construction time when the fallback is active.
  */
 class KeyringCredentialStore : CredentialStore {
 
@@ -21,6 +24,16 @@ class KeyringCredentialStore : CredentialStore {
     }
 
     private val memoryFallback = mutableMapOf<String, String>()
+
+    init {
+        if (keyring == null) {
+            logger.warn {
+                "Native OS keychain is not available — credentials will be kept in memory only " +
+                        "and will not survive process restarts. Install libsecret (Linux), or run " +
+                        "in a desktop session with Keychain (macOS) or Credential Manager (Windows)."
+            }
+        }
+    }
 
     /**
      * Whether the native OS keychain backend is available.

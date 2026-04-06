@@ -7,11 +7,13 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
+import cz.pizavo.omnisign.cli.resolvePasswordOption
 import cz.pizavo.omnisign.commands.config.ConfigSet.Companion.TSA_CREDENTIAL_SERVICE
 import cz.pizavo.omnisign.domain.model.config.enums.*
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
+import cz.pizavo.omnisign.platform.PasswordCallback
 import kotlinx.coroutines.runBlocking
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.todayIn
@@ -29,6 +31,7 @@ import kotlin.time.Clock
 class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 	private val setGlobalConfig: SetGlobalConfigUseCase by inject()
 	private val credentialStore: CredentialStore by inject()
+	private val passwordCallback: PasswordCallback by inject()
 	
 	private val hashAlgorithm by option(
 		"--hash-algorithm", "-H",
@@ -57,7 +60,7 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 	
 	private val timestampPassword by option(
 		"--timestamp-password",
-		help = "Default timestamp server HTTP Basic password (stored in OS keychain, not in config file)"
+		help = "Default timestamp server HTTP Basic password (stored in OS keychain; use '-' to prompt with hidden input)"
 	)
 	
 	private val timestampTimeout by option(
@@ -178,16 +181,18 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 	 * When [timestampPassword] is supplied it is persisted in the OS keychain under
 	 * the service name [TSA_CREDENTIAL_SERVICE] and the effective username as account.
 	 * The password itself is never written to the config file.
+	 * Passing `"-"` as the password triggers an interactive hidden-input prompt via [passwordCallback].
 	 */
 	private fun buildTimestampConfig(existing: TimestampServerConfig?): TimestampServerConfig? {
+		val resolvedPassword = resolvePasswordOption(timestampPassword, passwordCallback)
 		val hasUpdate = timestampUrl != null || timestampUsername != null ||
-				timestampPassword != null || timestampTimeout != null
+				resolvedPassword != null || timestampTimeout != null
 		if (!hasUpdate) return existing
 		
 		val base = existing ?: TimestampServerConfig(url = "")
 		val effectiveUsername = timestampUsername ?: base.username
-		val effectiveCredentialKey = if (timestampPassword != null && effectiveUsername != null) {
-			credentialStore.setPassword(TSA_CREDENTIAL_SERVICE, effectiveUsername, timestampPassword!!)
+		val effectiveCredentialKey = if (resolvedPassword != null && effectiveUsername != null) {
+			credentialStore.setPassword(TSA_CREDENTIAL_SERVICE, effectiveUsername, resolvedPassword)
 			effectiveUsername
 		} else {
 			base.credentialKey

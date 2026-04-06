@@ -26,6 +26,15 @@ import org.slf4j.LoggerFactory
  *
  * Provides global flags (`--json`, `--verbose`, `--quiet`) that are propagated to
  * every subcommand via [OutputConfig] stored in the Clikt context object.
+ *
+ * **Security note — environment variable prefix:** The [Context.autoEnvvarPrefix] is set to
+ * `OMNISIGN`, meaning every CLI option can be supplied via an `OMNISIGN_`-prefixed environment
+ * variable (e.g. `OMNISIGN_TIMESTAMP_PASSWORD`). On Linux, environment variables of a running
+ * process are readable via `/proc/<pid>/environ` by the same user. This is standard Clikt
+ * behavior and consistent with industry practice (Docker, AWS CLI, etc.), but operators should
+ * be aware that secrets passed this way are not protected from local same-user inspection.
+ * Prefer using `--timestamp-password -` (interactive hidden prompt) or the OS credential store
+ * (`config set --timestamp-password -`) for sensitive values.
  */
 class Omnisign : CliktCommand(name = "omnisign") {
 	init {

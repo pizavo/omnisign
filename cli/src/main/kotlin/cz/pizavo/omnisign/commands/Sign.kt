@@ -23,6 +23,7 @@ import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.parameters.VisibleSignatureParameters
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
+import cz.pizavo.omnisign.platform.PasswordCallback
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import org.koin.core.component.KoinComponent
@@ -38,6 +39,7 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 	
 	private val signUseCase: SignDocumentUseCase by inject()
 	private val configRepository: ConfigRepository by inject()
+	private val passwordCallback: PasswordCallback by inject()
 	private val output by requireObject<OutputConfig>()
 	
 	private val inputFile by option("-f", "--file", help = "Path to the PDF file to sign")
@@ -104,7 +106,7 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 		val appConfig = configRepository.getCurrentConfig()
 		val activeProfile = profile ?: appConfig.activeProfile
 		val profileConfig = activeProfile?.let { appConfig.profiles[it] }
-		val operationConfig = configOverrides.toOperationConfig()
+		val operationConfig = configOverrides.toOperationConfig(passwordCallback)
 		val resolvedConfigResult = ResolvedConfig.resolve(
 			global = appConfig.global,
 			profile = profileConfig,
