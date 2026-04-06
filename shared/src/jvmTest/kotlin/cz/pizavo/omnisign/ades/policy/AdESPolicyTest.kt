@@ -2,17 +2,23 @@ package cz.pizavo.omnisign.ades.policy
 
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
+import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
+import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import eu.europa.esig.dss.enumerations.Context
+import eu.europa.esig.dss.enumerations.DigestAlgorithm
 import eu.europa.esig.dss.enumerations.Level
 import eu.europa.esig.dss.policy.EtsiValidationPolicy
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import kotlinx.datetime.LocalDate
 import java.util.*
 
 /**
- * Verifies algorithm constraint application to the DSS validation policy.
+ * Verifies algorithm constraint application and disabled-algorithm enforcement
+ * on the DSS validation policy.
  */
 class AdESPolicyTest : FunSpec({
 	
@@ -116,6 +122,151 @@ class AdESPolicyTest : FunSpec({
 			?.find { it.value == "SHA256" }
 		algoEntry.shouldNotBeNull()
 		algoEntry.date shouldBe "2035-06-01"
+	}
+	
+	test("disabled hash algorithm is removed from acceptable digest algorithms") {
+		val loaded = policy.load(
+			policyFile = null,
+			disabledHashAlgorithms = setOf(HashAlgorithm.SHA256),
+		) as EtsiValidationPolicy
+		val suite = signatureSuite(loaded).shouldNotBeNull()
+		suite.acceptableDigestAlgorithms shouldNotContain DigestAlgorithm.SHA256
+	}
+	
+	test("non-disabled hash algorithms remain in acceptable digest algorithms") {
+		val loaded = policy.load(
+			policyFile = null,
+			disabledHashAlgorithms = setOf(HashAlgorithm.RIPEMD160),
+		) as EtsiValidationPolicy
+		val suite = signatureSuite(loaded).shouldNotBeNull()
+		suite.acceptableDigestAlgorithms shouldContain DigestAlgorithm.SHA256
+		suite.acceptableDigestAlgorithms shouldContain DigestAlgorithm.SHA384
+	}
+	
+	test("multiple disabled hash algorithms are all removed") {
+		val loaded = policy.load(
+			policyFile = null,
+			disabledHashAlgorithms = setOf(HashAlgorithm.SHA256, HashAlgorithm.SHA384),
+		) as EtsiValidationPolicy
+		val suite = signatureSuite(loaded).shouldNotBeNull()
+		suite.acceptableDigestAlgorithms shouldNotContain DigestAlgorithm.SHA256
+		suite.acceptableDigestAlgorithms shouldNotContain DigestAlgorithm.SHA384
+		suite.acceptableDigestAlgorithms shouldContain DigestAlgorithm.SHA512
+	}
+	
+	test("disabled encryption algorithm is removed from acceptable encryption algorithms") {
+		val loaded = policy.load(
+			policyFile = null,
+			disabledEncryptionAlgorithms = setOf(EncryptionAlgorithm.DSA),
+		) as EtsiValidationPolicy
+		val suite = signatureSuite(loaded).shouldNotBeNull()
+		suite.acceptableEncryptionAlgorithms shouldNotContain
+				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.DSA
+	}
+	
+	test("non-disabled encryption algorithms remain in acceptable encryption algorithms") {
+		val loaded = policy.load(
+			policyFile = null,
+			disabledEncryptionAlgorithms = setOf(EncryptionAlgorithm.DSA),
+		) as EtsiValidationPolicy
+		val suite = signatureSuite(loaded).shouldNotBeNull()
+		suite.acceptableEncryptionAlgorithms shouldContain
+				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.RSA
+		suite.acceptableEncryptionAlgorithms shouldContain
+				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.ECDSA
+	}
+	
+	test("multiple disabled encryption algorithms are all removed") {
+		val loaded = policy.load(
+			policyFile = null,
+			disabledEncryptionAlgorithms = setOf(EncryptionAlgorithm.DSA, EncryptionAlgorithm.RSA),
+		) as EtsiValidationPolicy
+		val suite = signatureSuite(loaded).shouldNotBeNull()
+		suite.acceptableEncryptionAlgorithms shouldNotContain
+				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.DSA
+		suite.acceptableEncryptionAlgorithms shouldNotContain
+				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.RSA
+		suite.acceptableEncryptionAlgorithms shouldContain
+				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.ECDSA
+	}
+	
+	test("disabled encryption algorithm is removed from global JAXB CryptographicConstraint") {
+		val loaded = policy.load(
+			policyFile = null,
+			disabledEncryptionAlgorithms = setOf(EncryptionAlgorithm.RSA),
+		) as EtsiValidationPolicy
+		val globalAlgos = loaded.cryptographic?.acceptableEncryptionAlgo?.algos
+		globalAlgos.shouldNotBeNull()
+		globalAlgos.none { it.value == "RSA" } shouldBe true
+	}
+	
+	test("disabled encryption and constraints can be applied together") {
+		val config = AlgorithmConstraintsConfig(
+			expirationLevel = AlgorithmConstraintLevel.WARN,
+			expirationLevelAfterUpdate = AlgorithmConstraintLevel.INFORM,
+		)
+		val loaded = policy.load(
+			policyFile = null,
+			algorithmConstraints = config,
+			disabledEncryptionAlgorithms = setOf(EncryptionAlgorithm.DSA),
+		) as EtsiValidationPolicy
+		val suite = signatureSuite(loaded).shouldNotBeNull()
+		suite.algorithmsExpirationDateLevel shouldBe Level.WARN
+		suite.acceptableEncryptionAlgorithms shouldNotContain
+				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.DSA
+	}
+	
+	test("disabled hash algorithms are removed from global JAXB CryptographicConstraint") {
+		val loaded = policy.load(
+			policyFile = null,
+			disabledHashAlgorithms = setOf(HashAlgorithm.SHA256),
+		) as EtsiValidationPolicy
+		val globalAlgos = loaded.cryptographic?.acceptableDigestAlgo?.algos
+		globalAlgos.shouldNotBeNull()
+		globalAlgos.none { it.value == "SHA256" } shouldBe true
+	}
+	
+	test("disabled hash and constraints can be applied together") {
+		val config = AlgorithmConstraintsConfig(
+			expirationLevel = AlgorithmConstraintLevel.WARN,
+			expirationLevelAfterUpdate = AlgorithmConstraintLevel.INFORM,
+		)
+		val loaded = policy.load(
+			policyFile = null,
+			algorithmConstraints = config,
+			disabledHashAlgorithms = setOf(HashAlgorithm.SHA256),
+		) as EtsiValidationPolicy
+		val suite = signatureSuite(loaded).shouldNotBeNull()
+		suite.algorithmsExpirationDateLevel shouldBe Level.WARN
+		suite.acceptableDigestAlgorithms shouldNotContain DigestAlgorithm.SHA256
+	}
+	
+	test("disabled hash and encryption algorithms can be applied simultaneously") {
+		val loaded = policy.load(
+			policyFile = null,
+			disabledHashAlgorithms = setOf(HashAlgorithm.SHA256),
+			disabledEncryptionAlgorithms = setOf(EncryptionAlgorithm.DSA),
+		) as EtsiValidationPolicy
+		val suite = signatureSuite(loaded).shouldNotBeNull()
+		suite.acceptableDigestAlgorithms shouldNotContain DigestAlgorithm.SHA256
+		suite.acceptableEncryptionAlgorithms shouldNotContain
+				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.DSA
+		suite.acceptableDigestAlgorithms shouldContain DigestAlgorithm.SHA512
+		suite.acceptableEncryptionAlgorithms shouldContain
+				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.RSA
+	}
+	
+	test("empty disabled sets leave policy unchanged") {
+		val baseline = policy.load(null) as EtsiValidationPolicy
+		val loaded = policy.load(
+			policyFile = null,
+			disabledHashAlgorithms = emptySet(),
+			disabledEncryptionAlgorithms = emptySet(),
+		) as EtsiValidationPolicy
+		val baselineSuite = signatureSuite(baseline).shouldNotBeNull()
+		val loadedSuite = signatureSuite(loaded).shouldNotBeNull()
+		loadedSuite.acceptableDigestAlgorithms shouldBe baselineSuite.acceptableDigestAlgorithms
+		loadedSuite.acceptableEncryptionAlgorithms shouldBe baselineSuite.acceptableEncryptionAlgorithms
 	}
 })
 

@@ -8,32 +8,20 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.runBlocking
 
 /**
- * Represents a pending password request that is displayed as a dialog in the Compose UI.
+ * Compose Desktop implementation of [PasswordCallback] and [PasswordDialogController].
  *
- * @property prompt Message shown to the user describing what the password is for.
- * @property title Dialog title text.
- * @property deferred Deferred that is completed with the password or `null` when the user cancels.
- */
-data class PasswordRequest(
-	val prompt: String,
-	val title: String,
-	val deferred: CompletableDeferred<String?>,
-)
-
-/**
- * Compose Desktop implementation of [PasswordCallback].
- *
- * When the DSS layer needs a password (e.g. for a PKCS#12 keystore or a hardware token PIN),
+ * When the DSS layer needs a password (e.g., for a PKCS#12 keystore or a hardware token PIN),
  * it calls [requestPassword] from a background thread. This implementation posts a
- * [PasswordRequest] into a [StateFlow] that the Compose UI observes. A dialog is then rendered
- * and the background thread blocks (via [runBlocking]) until the user confirms or cancels.
+ * [PasswordDialogRequest] that the Compose UI observes via the [request] flow.
+ * The background thread blocks (via [runBlocking]) until [complete] is called from the UI.
  */
-class ComposePasswordCallback : PasswordCallback {
+class ComposePasswordCallback : PasswordCallback, PasswordDialogController {
 
-	private val _request = MutableStateFlow<PasswordRequest?>(null)
+	private val _request = MutableStateFlow<PasswordDialogRequest?>(null)
 
-	/** Observable password request. The Compose layer renders a dialog when this is non-null. */
-	val request: StateFlow<PasswordRequest?> = _request.asStateFlow()
+	override val request: StateFlow<PasswordDialogRequest?> = _request.asStateFlow()
+
+	private var pendingDeferred: CompletableDeferred<String?>? = null
 
 	/**
 	 * Request a password from the user via a Compose dialog.
@@ -42,14 +30,16 @@ class ComposePasswordCallback : PasswordCallback {
 	 *
 	 * @param prompt Message describing what the password is for.
 	 * @param title Dialog title text.
-	 * @return The entered password, or `null` if the user cancelled.
+	 * @return The entered password, or `null` if the user canceled.
 	 */
 	override fun requestPassword(prompt: String, title: String): String? {
 		val deferred = CompletableDeferred<String?>()
-		_request.value = PasswordRequest(prompt = prompt, title = title, deferred = deferred)
+		pendingDeferred = deferred
+		_request.value = PasswordDialogRequest(prompt = prompt, title = title)
 		return try {
 			runBlocking { deferred.await() }
 		} finally {
+			pendingDeferred = null
 			_request.value = null
 		}
 	}
@@ -59,8 +49,8 @@ class ComposePasswordCallback : PasswordCallback {
 	 *
 	 * @param password The password entered by the user, or `null` to signal cancellation.
 	 */
-	fun complete(password: String?) {
-		_request.value?.deferred?.complete(password)
+	override fun complete(password: String?) {
+		pendingDeferred?.complete(password)
 	}
 }
 

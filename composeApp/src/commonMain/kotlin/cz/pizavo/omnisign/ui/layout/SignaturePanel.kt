@@ -1,14 +1,7 @@
 package cz.pizavo.omnisign.ui.layout
 
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -16,35 +9,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.unit.dp
-import cz.pizavo.omnisign.domain.model.validation.SignatureValidationResult
-import cz.pizavo.omnisign.domain.model.validation.SignatureTrustTier
-import cz.pizavo.omnisign.domain.model.validation.TimestampValidationResult
-import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
-import cz.pizavo.omnisign.domain.model.validation.ValidationReport
-import cz.pizavo.omnisign.domain.model.validation.ValidationResult
+import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.model.value.formatDate
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.lumo.LumoTheme
-import cz.pizavo.omnisign.lumo.components.Accordion
-import cz.pizavo.omnisign.lumo.components.Button
-import cz.pizavo.omnisign.lumo.components.ButtonVariant
-import cz.pizavo.omnisign.lumo.components.HorizontalDivider
-import cz.pizavo.omnisign.lumo.components.Icon
-import cz.pizavo.omnisign.lumo.components.Text
-import cz.pizavo.omnisign.lumo.components.Tooltip
-import cz.pizavo.omnisign.lumo.components.TooltipBox
-import cz.pizavo.omnisign.lumo.components.rememberAccordionState
-import cz.pizavo.omnisign.lumo.components.rememberTooltipState
+import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.ui.model.SignaturePanelState
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_alert_warning
-import omnisign.composeapp.generated.resources.icon_chevron_down
-import omnisign.composeapp.generated.resources.icon_rosette
-import omnisign.composeapp.generated.resources.icon_shield_check
-import omnisign.composeapp.generated.resources.icon_shield_exclamation
-import omnisign.composeapp.generated.resources.icon_shield_question
-import omnisign.composeapp.generated.resources.icon_signature
-import omnisign.composeapp.generated.resources.rosette_check
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
@@ -141,7 +112,7 @@ private fun ErrorContent(
 }
 
 /**
- * Successfully loaded report – renders the overall result badge, document metadata,
+ * Successfully loaded report renders the overall result badge, document metadata,
  * a collapsible "Signatures" group, a collapsible "Document Timestamps" group, and
  * optional trusted-list warnings.
  */
@@ -209,12 +180,37 @@ private fun ReportContent(report: ValidationReport) {
 /**
  * Colored badge indicating the overall validation result.
  *
+ * When the report contains no signatures at all, a neutral "NO SIGNATURES" badge
+ * with [Res.drawable.icon_shield_x] is shown instead of the normal result badge.
+ *
  * When [ValidationReport.overallTrustTier] is qualified, an additional rosette icon
  * is rendered to the right of the label — the same rosette/color logic used for
  * individual signature accordions.
  */
 @Composable
 private fun OverallResultBadge(report: ValidationReport) {
+    if (report.signatures.isEmpty()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Icon(
+                painter = painterResource(Res.drawable.icon_shield_x),
+                contentDescription = null,
+                modifier = Modifier.size(24.dp),
+                tint = LumoTheme.colors.textSecondary,
+            )
+            Spacer(modifier = Modifier.size(8.dp))
+            Text(
+                text = "NO SIGNATURES",
+                style = LumoTheme.typography.h3,
+                color = LumoTheme.colors.textSecondary,
+            )
+        }
+        return
+    }
+
     val (label, color, icon) = when (report.overallResult) {
         ValidationResult.VALID -> Triple("VALID", LumoTheme.colors.success, Res.drawable.icon_shield_check)
         ValidationResult.INVALID -> Triple("INVALID", LumoTheme.colors.error, Res.drawable.icon_shield_exclamation)
@@ -450,7 +446,7 @@ private fun TimestampAccordion(
 
 /**
  * Accordion header with a shield icon reflecting the [indication], a title, an optional
- * [trailingIcon] (e.g. a rosette for qualified signatures) with an optional hover
+ * [trailingIcon] (e.g., a rosette for qualified signatures) with an optional hover
  * [trailingTooltip], and a rotating chevron.
  * Used for top-level groups and individual signature/timestamp items.
  */
@@ -639,7 +635,7 @@ private fun indicationColor(indication: ValidationIndication) = when (indication
  * when no rosette should be displayed.
  */
 private fun trustTierIcon(tier: SignatureTrustTier): DrawableResource? = when (tier) {
-    SignatureTrustTier.QUALIFIED_QSCD -> Res.drawable.rosette_check
+    SignatureTrustTier.QUALIFIED_QSCD -> Res.drawable.icon_rosette_check
     SignatureTrustTier.QUALIFIED -> Res.drawable.icon_rosette
     SignatureTrustTier.NOT_QUALIFIED -> null
 }

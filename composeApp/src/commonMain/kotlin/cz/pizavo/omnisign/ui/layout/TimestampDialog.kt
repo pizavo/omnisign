@@ -303,22 +303,7 @@ private fun TimestampSuccessContent(state: TimestampDialogState.Success) {
 		if (state.warnings.isNotEmpty()) {
 			Spacer(modifier = Modifier.height(8.dp))
 			state.warnings.forEach { warning ->
-				Row(
-					horizontalArrangement = Arrangement.spacedBy(4.dp),
-					verticalAlignment = Alignment.Top,
-				) {
-					Icon(
-						painter = painterResource(Res.drawable.icon_alert_warning),
-						contentDescription = null,
-						modifier = Modifier.padding(top = 3.dp).size(14.dp),
-						tint = LumoTheme.colors.warning,
-					)
-					Text(
-						text = warning,
-						style = LumoTheme.typography.body2,
-						color = LumoTheme.colors.warning,
-					)
-				}
+				WarningRow(warning = warning)
 			}
 		}
 	}

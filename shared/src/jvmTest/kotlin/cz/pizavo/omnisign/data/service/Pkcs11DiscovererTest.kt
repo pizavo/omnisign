@@ -10,11 +10,13 @@ import java.io.File
 
 /**
  * Verifies [Pkcs11Discoverer] bitness-aware candidate selection, filename heuristics,
- * vendor name derivation, and deduplication logic.
+ * vendor name derivation, deduplication logic, and hardware identity-based token merging.
  */
 class Pkcs11DiscovererTest : FunSpec({
 	
-	fun discoverer() = Pkcs11Discoverer()
+	val noProbe: (String) -> List<Pkcs11TokenIdentity> = { emptyList() }
+
+	fun discoverer() = Pkcs11Discoverer(tokenProber = noProbe)
 	
 	test("64-bit JVM on Windows fallback list contains only Program Files paths, not System32") {
 		val paths = discoverer().candidatesForOs("windows 10", jvmIs64Bit = true).map { it.second }
@@ -151,5 +153,106 @@ class Pkcs11DiscovererTest : FunSpec({
 		
 		dropDir.deleteRecursively()
 	}
-})
 
+	test("deriveMiddlewareFamily groups SafeNet and Gemalto libraries into the same family") {
+		val d = discoverer()
+		d.deriveMiddlewareFamily("C:\\Windows\\System32\\eTPKCS11.dll") shouldBe "safenet"
+		d.deriveMiddlewareFamily("C:\\Windows\\System32\\gclib.dll") shouldBe "safenet"
+		d.deriveMiddlewareFamily("C:\\Program Files\\SafeNet\\Authentication\\SAC\\x64\\eTPKCS11.dll") shouldBe "safenet"
+	}
+
+	test("deriveMiddlewareFamily assigns distinct families to different vendors") {
+		val d = discoverer()
+		d.deriveMiddlewareFamily("/usr/lib/opensc-pkcs11.so") shouldBe "opensc"
+		d.deriveMiddlewareFamily("/usr/lib/softhsm/libsofthsm2.so") shouldBe "softhsm"
+		d.deriveMiddlewareFamily("/usr/lib/iidp11.so") shouldBe "secmaker"
+	}
+
+	test("deriveMiddlewareFamily falls back to canonical path for unknown libraries") {
+		val tmpFile = File.createTempFile("acme-pkcs11", ".so").also { it.deleteOnExit() }
+		val family = discoverer().deriveMiddlewareFamily(tmpFile.absolutePath)
+		family shouldBe tmpFile.canonicalPath
+	}
+
+	test("discoverTokens deduplicates same-family libraries when probing returns empty") {
+		val f1 = File.createTempFile("cmP11-a", ".dll").also { it.deleteOnExit() }
+		val f2 = File.createTempFile("charismathics-b-pkcs11", ".dll").also { it.deleteOnExit() }
+
+		val tokens = discoverer().discoverTokens(
+			userPkcs11Libraries = listOf(
+				"Charismathics A" to f1.absolutePath,
+				"Charismathics B" to f2.absolutePath,
+			)
+		)
+
+		tokens.filter {
+			it.path == f1.absolutePath || it.path == f2.absolutePath
+		}.shouldHaveSize(1)
+	}
+
+	test("discoverTokens deduplicates by serial number when probing returns identities") {
+		val lib1 = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
+		val lib2 = File.createTempFile("gclib", ".dll").also { it.deleteOnExit() }
+
+		val fakeProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
+			listOf(
+				Pkcs11TokenIdentity(
+					label = "My SafeNet Token",
+					serialNumber = "ABC123",
+					libraryPath = path,
+				)
+			)
+		}
+
+		val tokens = Pkcs11Discoverer(tokenProber = fakeProber).discoverTokens(
+			userPkcs11Libraries = listOf(
+				"SafeNet eToken" to lib1.absolutePath,
+				"Thales/Gemalto IDPrime" to lib2.absolutePath,
+			)
+		)
+
+		val hwTokens = tokens.filter { it.id == "pkcs11-ABC123" }
+		hwTokens.shouldHaveSize(1)
+		hwTokens.first().name shouldBe "My SafeNet Token"
+	}
+
+	test("discoverTokens produces separate entries for tokens with different serial numbers") {
+		val lib = File.createTempFile("softhsm-pkcs11", ".so").also { it.deleteOnExit() }
+
+		val fakeProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
+			listOf(
+				Pkcs11TokenIdentity(label = "Token A", serialNumber = "SN-001", libraryPath = path),
+				Pkcs11TokenIdentity(label = "Token B", serialNumber = "SN-002", libraryPath = path),
+			)
+		}
+
+		val tokens = Pkcs11Discoverer(tokenProber = fakeProber).discoverTokens(
+			userPkcs11Libraries = listOf("SoftHSM" to lib.absolutePath)
+		)
+
+		val hwTokens = tokens.filter { it.id.startsWith("pkcs11-SN-") }
+		hwTokens.shouldHaveSize(2)
+		hwTokens.map { it.name }.toSet() shouldBe setOf("Token A", "Token B")
+	}
+
+	test("discoverTokens uses hardware label as token name instead of middleware name") {
+		val lib = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
+
+		val fakeProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
+			listOf(
+				Pkcs11TokenIdentity(
+					label = "John's eToken 5110",
+					serialNumber = "0123456789ABCDEF",
+					libraryPath = path,
+				)
+			)
+		}
+
+		val tokens = Pkcs11Discoverer(tokenProber = fakeProber).discoverTokens(
+			userPkcs11Libraries = listOf("SafeNet eToken" to lib.absolutePath)
+		)
+
+		val hwToken = tokens.first { it.id == "pkcs11-0123456789ABCDEF" }
+		hwToken.name shouldBe "John's eToken 5110"
+	}
+})

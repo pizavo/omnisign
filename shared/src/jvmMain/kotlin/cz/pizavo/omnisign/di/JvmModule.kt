@@ -30,7 +30,7 @@ import org.koin.dsl.module
  * ```
  */
 val jvmRepositoryModule = module {
-	singleOf(::Pkcs11Discoverer)
+	single { Pkcs11Discoverer() }
 	singleOf(::DssTokenService) bind TokenService::class
 	singleOf(::KeyringCredentialStore) bind CredentialStore::class
 	

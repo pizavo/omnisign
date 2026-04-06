@@ -13,6 +13,7 @@ import eu.europa.esig.dss.pdf.pdfbox.PdfBoxNativeObjectFactory
 import eu.europa.esig.dss.service.crl.OnlineCRLSource
 import eu.europa.esig.dss.service.http.commons.*
 import eu.europa.esig.dss.service.ocsp.OnlineOCSPSource
+
 import eu.europa.esig.dss.service.tsp.OnlineTSPSource
 import eu.europa.esig.dss.spi.tsl.TrustedListsCertificateSource
 import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
@@ -86,31 +87,55 @@ class DssServiceFactory(
 	}
 	
 	/**
-	 * Build a [CommonCertificateVerifier] optimized for **signing and archiving**.
+	 * Build a [CommonCertificateVerifier] for **signing and archiving** with full trusted-list
+	 * support.
 	 *
-	 * Uses [CommonCertificateVerifier.setCheckRevocationForUntrustedChains] so that DSS
-	 * fetches and embeds CRL/OCSP revocation data even without loading the full EU LOTL.
-	 * This avoids the expensive TL download/parse that validation requires, keeping the
-	 * signing operation fast (seconds instead of minutes).
+	 * Loads EU LOTL and custom trusted-list sources so that DSS trusts TSA certificate chains
+	 * and can fetch and verify CRL/OCSP revocation data during the signing operation.
+	 * [CommonCertificateVerifier.setCheckRevocationForUntrustedChains] is intentionally
+	 * **disabled** — with trusted lists loaded, revocation data for all relevant chains is
+	 * already fetched. Enabling it would cause spurious warnings for auxiliary certificates
+	 * (e.g. OCSP responder certs) that legitimately have no CRL/OCSP endpoint.
 	 *
-	 * @param alertFactory Optional factory for the [StatusAlert] wired to all five verifier
-	 *   alert properties.  Pass a [CollectingStatusAlert] to capture warnings
-	 *   programmatically; defaults to [LogOnStatusAlert] at WARN level.
+	 * [CommonCertificateVerifier.setAlertOnMissingRevocationData] and
+	 * [CommonCertificateVerifier.setAlertOnNoRevocationAfterBestSignatureTime] are
+	 * intentionally **suppressed** for signing. These alerts fire during the verifier's
+	 * internal pre-extension check, before the PAdES extension process downloads and embeds
+	 * CRL/OCSP data. If the extension fails, DSS throws an exception; if it succeeds, the
+	 * revocation data IS embedded and the alerts are false positives. Keeping them active
+	 * would produce misleading "revocation data unavailable" warnings on every B-LT/B-LTA
+	 * signing operation even though the output document contains valid revocation data.
+	 *
+	 * The three alerts that remain active detect genuinely actionable conditions:
+	 * - [CommonCertificateVerifier.setAlertOnUncoveredPOE] — proof-of-existence gaps.
+	 * - [CommonCertificateVerifier.setAlertOnInvalidTimestamp] — timestamp validation failures.
+	 * - [CommonCertificateVerifier.setAlertOnRevokedCertificate] — revoked signing certificate.
+	 *
+	 * The parsed [TrustedListsCertificateSource] is cached in memory for
+	 * [TL_CACHE_EXPIRATION_MS], so the LOTL download overhead is incurred at most once per
+	 * 24-hour window.
+	 *
+	 * @param alertFactory Optional factory for the [StatusAlert] wired to the verifier
+	 *   alert properties that remain active during signing.  Pass a [CollectingStatusAlert]
+	 *   to capture warnings programmatically; defaults to [LogOnStatusAlert] at WARN level.
+	 * @return A [CertificateVerifierResult] containing the verifier and any TL loading warnings.
 	 */
 	fun buildSigningCertificateVerifier(
 		config: ResolvedConfig?,
 		alertFactory: () -> StatusAlert = { LogOnStatusAlert(Level.WARN) },
-	): CommonCertificateVerifier {
+	): CertificateVerifierResult {
 		val cv = CommonCertificateVerifier()
 		
 		if (config == null || !config.validation.checkRevocation) {
-			return cv.apply {
-				alertOnMissingRevocationData = null
-				alertOnUncoveredPOE = null
-				alertOnInvalidTimestamp = null
-				alertOnNoRevocationAfterBestSignatureTime = null
-				alertOnRevokedCertificate = null
-			}
+			return CertificateVerifierResult(
+				verifier = cv.apply {
+					alertOnMissingRevocationData = null
+					alertOnUncoveredPOE = null
+					alertOnInvalidTimestamp = null
+					alertOnNoRevocationAfterBestSignatureTime = null
+					alertOnRevokedCertificate = null
+				}
+			)
 		}
 		
 		val timeout = minOf(config.ocsp.timeout, config.crl.timeout)
@@ -118,22 +143,26 @@ class DssServiceFactory(
 			timeoutConnection = timeout
 			timeoutSocket = timeout
 		}
+		val ocspLoader = OCSPDataLoader().apply {
+			timeoutConnection = timeout
+			timeoutSocket = timeout
+		}
 		
 		val alert = alertFactory()
-		return cv.apply {
+		cv.apply {
 			aiaSource = DefaultAIASource(dataLoader)
-			ocspSource = OnlineOCSPSource().apply { setDataLoader(dataLoader) }
+			ocspSource = OnlineOCSPSource().apply { setDataLoader(ocspLoader) }
 			crlSource = OnlineCRLSource().apply { setDataLoader(dataLoader) }
-			isCheckRevocationForUntrustedChains = true
-			alertOnMissingRevocationData = alert
+			isCheckRevocationForUntrustedChains = false
+			alertOnMissingRevocationData = null
 			alertOnUncoveredPOE = alert
 			alertOnInvalidTimestamp = alert
-			alertOnNoRevocationAfterBestSignatureTime = alert
+			alertOnNoRevocationAfterBestSignatureTime = null
 			alertOnRevokedCertificate = alert
-		}.also { verifier ->
-			buildDirectTrustedCertSource(config.validation.trustedCertificates)
-				?.let { verifier.setTrustedCertSources(it) }
 		}
+		
+		val tlWarnings = wireTrustedSources(cv, config, dataLoader)
+		return CertificateVerifierResult(cv, tlWarnings)
 	}
 	
 	/**
@@ -172,11 +201,15 @@ class DssServiceFactory(
 			timeoutConnection = timeout
 			timeoutSocket = timeout
 		}
+		val ocspLoader = OCSPDataLoader().apply {
+			timeoutConnection = timeout
+			timeoutSocket = timeout
+		}
 		
 		val alert = alertFactory()
 		cv.apply {
 			aiaSource = DefaultAIASource(dataLoader)
-			ocspSource = OnlineOCSPSource().apply { setDataLoader(dataLoader) }
+			ocspSource = OnlineOCSPSource().apply { setDataLoader(ocspLoader) }
 			crlSource = OnlineCRLSource().apply { setDataLoader(dataLoader) }
 			alertOnMissingRevocationData = alert
 			alertOnUncoveredPOE = alert
@@ -198,9 +231,13 @@ class DssServiceFactory(
 			timeoutConnection = timeout
 			timeoutSocket = timeout
 		}
+		val ocspLoader = OCSPDataLoader().apply {
+			timeoutConnection = timeout
+			timeoutSocket = timeout
+		}
 		return CommonCertificateVerifier().apply {
 			aiaSource = DefaultAIASource(dataLoader)
-			ocspSource = OnlineOCSPSource().apply { setDataLoader(dataLoader) }
+			ocspSource = OnlineOCSPSource().apply { setDataLoader(ocspLoader) }
 			crlSource = OnlineCRLSource().apply { setDataLoader(dataLoader) }
 		}
 	}

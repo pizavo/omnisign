@@ -8,7 +8,9 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ListCertificatesUseCase
+import cz.pizavo.omnisign.domain.usecase.LoadFileCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
+import cz.pizavo.omnisign.domain.usecase.UnlockTokenUseCase
 import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
 import cz.pizavo.omnisign.ui.model.SigningDialogState
 import kotlinx.coroutines.CoroutineDispatcher
@@ -32,8 +34,10 @@ import kotlinx.coroutines.withContext
  * document, a [RenewalJobOfferState] is populated in [pendingRenewalOffer] so
  * that the UI layer can show a follow-up dialog for renewal job assignment.
  *
- * @param signDocumentUseCase Use case for performing the signing operation.
- * @param listCertificatesUseCase Use case for discovering available signing certificates.
+ * @param signDocumentUseCase Use-case for performing the signing operation.
+ * @param listCertificatesUseCase Use-case for discovering available signing certificates.
+ * @param unlockTokenUseCase Use-case for unlocking a PIN-protected token on demand.
+ * @param loadFileCertificatesUseCase Use-case for loading certificates from a PKCS#12 file.
  * @param configRepository Repository for reading the current application configuration.
  * @param renewalJobAssigner Shared helper for renewal job persistence and coverage checks.
  * @param ioDispatcher Dispatcher for heavy background work (certificate discovery, signing).
@@ -41,6 +45,8 @@ import kotlinx.coroutines.withContext
 class SigningViewModel(
 	private val signDocumentUseCase: SignDocumentUseCase,
 	private val listCertificatesUseCase: ListCertificatesUseCase,
+	private val unlockTokenUseCase: UnlockTokenUseCase,
+	private val loadFileCertificatesUseCase: LoadFileCertificatesUseCase,
 	private val configRepository: ConfigRepository,
 	private val renewalJobAssigner: RenewalJobAssigner? = null,
 	private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
@@ -121,6 +127,8 @@ class SigningViewModel(
 								val ready = SigningDialogState.Ready(
 									certificates = discovery.certificates,
 									tokenWarnings = discovery.tokenWarnings,
+									lockedTokens = discovery.lockedTokens,
+									selectedAlias = null,
 									hashAlgorithm = null,
 									addSignatureTimestamp = addSigTs,
 									addArchivalTimestamp = addArchTs,
@@ -175,6 +183,100 @@ class SigningViewModel(
 	}
 
 	/**
+	 * Unlock a PIN-protected token and merge its certificates into the Ready state.
+	 *
+	 * Prompts the user for the token PIN and, on success, appends discovered certificates
+	 * to [SigningDialogState.Ready.certificates] and removes the token from
+	 * [SigningDialogState.Ready.lockedTokens].
+	 *
+	 * On failure the token stays in [SigningDialogState.Ready.lockedTokens] so the user
+	 * can retry. Any previous warning for the same token is replaced to avoid stacking
+	 * duplicate messages.
+	 *
+	 * @param tokenId Stable identifier of the token to unlock.
+	 */
+	fun unlockToken(tokenId: String) {
+		if (_state.value !is SigningDialogState.Ready) return
+		viewModelScope.launch {
+			withContext(ioDispatcher) {
+				unlockTokenUseCase(tokenId).fold(
+					ifLeft = { error ->
+						_state.update { current ->
+							if (current is SigningDialogState.Ready) {
+								current.copy(
+									tokenWarnings = current.tokenWarnings.filterNot { it.tokenId == tokenId } +
+											cz.pizavo.omnisign.domain.repository.TokenDiscoveryWarning(
+												tokenId = tokenId,
+												tokenName = current.lockedTokens.find { it.tokenId == tokenId }?.tokenName ?: tokenId,
+												message = error.message,
+												details = error.details,
+											),
+								)
+							} else current
+						}
+					},
+					ifRight = { certs ->
+						_state.update { current ->
+							if (current is SigningDialogState.Ready) {
+								val merged = current.certificates + certs
+								current.copy(
+									certificates = merged,
+									lockedTokens = current.lockedTokens.filterNot { it.tokenId == tokenId },
+									tokenWarnings = current.tokenWarnings.filterNot { it.tokenId == tokenId },
+									selectedAlias = current.selectedAlias ?: merged.firstOrNull()?.alias,
+								)
+							} else current
+						}
+					},
+				)
+			}
+		}
+	}
+
+	/**
+	 * Load certificates from a PKCS#12 file and merge them into the Ready state.
+	 *
+	 * Prompts the user for the file password and, on success, appends the discovered
+	 * certificates to [SigningDialogState.Ready.certificates].
+	 *
+	 * @param filePath Absolute path to the PKCS#12 (.p12 / .pfx) file.
+	 */
+	fun loadPkcs12File(filePath: String) {
+		if (_state.value !is SigningDialogState.Ready) return
+		viewModelScope.launch {
+			withContext(ioDispatcher) {
+				loadFileCertificatesUseCase(filePath).fold(
+					ifLeft = { error ->
+						_state.update { current ->
+							if (current is SigningDialogState.Ready) {
+								current.copy(
+									tokenWarnings = current.tokenWarnings + cz.pizavo.omnisign.domain.repository.TokenDiscoveryWarning(
+										tokenId = "file-$filePath",
+										tokenName = filePath.substringAfterLast('/').substringAfterLast('\\'),
+										message = error.message,
+										details = error.details,
+									),
+								)
+							} else current
+						}
+					},
+					ifRight = { certs ->
+						_state.update { current ->
+							if (current is SigningDialogState.Ready) {
+								val merged = current.certificates + certs
+								current.copy(
+									certificates = merged,
+									selectedAlias = current.selectedAlias ?: merged.firstOrNull()?.alias,
+								)
+							} else current
+						}
+					},
+				)
+			}
+		}
+	}
+
+	/**
 	 * Execute the signing operation with the current form state.
 	 *
 	 * Transitions from [SigningDialogState.Ready] through [SigningDialogState.Signing]
@@ -224,7 +326,7 @@ class SigningViewModel(
 
 						if (result.hasRevocationWarnings && levelRequiresRevocation) {
 							_state.value = SigningDialogState.RevocationWarning(
-								warnings = result.warnings,
+								warnings = result.annotatedWarnings,
 								outputFile = result.outputFile,
 								signatureId = result.signatureId,
 								signatureLevel = result.signatureLevel,
@@ -234,7 +336,7 @@ class SigningViewModel(
 								outputFile = result.outputFile,
 								signatureId = result.signatureId,
 								signatureLevel = result.signatureLevel,
-								warnings = result.warnings,
+								warnings = result.annotatedWarnings,
 							)
 							populateRenewalOfferIfNeeded(result.outputFile)
 						}

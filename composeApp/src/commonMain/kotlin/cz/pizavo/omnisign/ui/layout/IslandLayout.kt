@@ -14,9 +14,7 @@ import cz.pizavo.omnisign.domain.usecase.*
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.ui.model.*
-import cz.pizavo.omnisign.ui.platform.exportTextToFile
-import cz.pizavo.omnisign.ui.platform.loadPdfFromPlatformFile
-import cz.pizavo.omnisign.ui.platform.resolveExecutablePath
+import cz.pizavo.omnisign.ui.platform.*
 import cz.pizavo.omnisign.ui.viewmodel.*
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -112,6 +110,8 @@ fun IslandLayout(
 		SigningViewModel(
 			koin.get<SignDocumentUseCase>(),
 			koin.get<ListCertificatesUseCase>(),
+			koin.get<UnlockTokenUseCase>(),
+			koin.get<LoadFileCertificatesUseCase>(),
 			koin.get<ConfigRepository>(),
 			renewalJobAssigner,
 		)
@@ -157,6 +157,13 @@ fun IslandLayout(
 		kotlinx.coroutines.flow.MutableStateFlow<TlBuilderDialogState>(TlBuilderDialogState.Idle)
 	}).collectAsState()
 	var showTlBuilderDialog by remember { mutableStateOf(false) }
+	
+	val passwordController: PasswordDialogController? = remember {
+		KoinPlatform.getKoinOrNull()?.getOrNull()
+	}
+	val passwordRequest by (passwordController?.request ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow<PasswordDialogRequest?>(null)
+	}).collectAsState()
 	
 	val filePickerLauncher = rememberFilePickerLauncher(
 		type = FileKitType.File(extensions = listOf("pdf")),
@@ -229,6 +236,8 @@ fun IslandLayout(
 				onSign = { signingViewModel?.sign() },
 				onAbortRevocation = { signingViewModel?.abortAfterRevocationWarning() },
 				onAcceptRevocation = { signingViewModel?.acceptRevocationWarning() },
+				onUnlockToken = { tokenId -> signingViewModel?.unlockToken(tokenId) },
+				onImportPkcs12 = { filePath -> signingViewModel?.loadPkcs12File(filePath) },
 				onDismiss = {
 					if (signingState is SigningDialogState.Success) {
 						val outputFile = (signingState as SigningDialogState.Success).outputFile
@@ -302,6 +311,15 @@ fun IslandLayout(
 					tlBuilderViewModel?.dismiss()
 					showTlBuilderDialog = false
 				},
+			)
+		}
+		
+		passwordRequest?.let { req ->
+			PasswordDialog(
+				title = req.title,
+				prompt = req.prompt,
+				onConfirm = { passwordController?.complete(it) },
+				onCancel = { passwordController?.complete(null) },
 			)
 		}
 		

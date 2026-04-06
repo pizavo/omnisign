@@ -21,6 +21,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
+import io.mockk.every
 import io.mockk.mockk
 import java.io.File
 import kotlin.time.Instant
@@ -150,8 +151,8 @@ class DssSigningRepositoryTest : FunSpec({
 	}
 	
 	test("listAvailableCertificates aggregates from multiple tokens") {
-		val tokenInfo1 = TokenInfo(id = "t1", name = "Token 1", type = TokenType.FILE)
-		val tokenInfo2 = TokenInfo(id = "t2", name = "Token 2", type = TokenType.WINDOWS_MY)
+		val tokenInfo1 = TokenInfo(id = "t1", name = "Token 1", type = TokenType.FILE, requiresPin = false)
+		val tokenInfo2 = TokenInfo(id = "t2", name = "Token 2", type = TokenType.WINDOWS_MY, requiresPin = false)
 		val cert1 = CertificateEntry(
 			alias = "cert-a", subjectDN = "CN=A", issuerDN = "CN=CA",
 			serialNumber = "1", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
@@ -176,8 +177,8 @@ class DssSigningRepositoryTest : FunSpec({
 	}
 
 	test("listAvailableCertificates silently skips tokens that are not physically present") {
-		val tokenInfo1 = TokenInfo(id = "t1", name = "Token 1", type = TokenType.FILE)
-		val tokenInfo2 = TokenInfo(id = "t2", name = "Token 2", type = TokenType.PKCS11, path = "/lib/fake.so")
+		val tokenInfo1 = TokenInfo(id = "t1", name = "Token 1", type = TokenType.FILE, requiresPin = false)
+		val tokenInfo2 = TokenInfo(id = "t2", name = "Token 2", type = TokenType.PKCS11, path = "/lib/fake.so", requiresPin = false)
 		val cert1 = CertificateEntry(
 			alias = "cert-a", subjectDN = "CN=A", issuerDN = "CN=CA",
 			serialNumber = "1", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
@@ -196,8 +197,8 @@ class DssSigningRepositoryTest : FunSpec({
 	}
 
 	test("listAvailableCertificates returns warning for tokens that fail to load") {
-		val tokenInfo1 = TokenInfo(id = "t1", name = "Token 1", type = TokenType.FILE)
-		val tokenInfo2 = TokenInfo(id = "t2", name = "Token 2", type = TokenType.FILE)
+		val tokenInfo1 = TokenInfo(id = "t1", name = "Token 1", type = TokenType.FILE, requiresPin = false)
+		val tokenInfo2 = TokenInfo(id = "t2", name = "Token 2", type = TokenType.FILE, requiresPin = false)
 		val cert1 = CertificateEntry(
 			alias = "cert-a", subjectDN = "CN=A", issuerDN = "CN=CA",
 			serialNumber = "1", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
@@ -284,5 +285,91 @@ class DssSigningRepositoryTest : FunSpec({
 		repository.signDocument(params)
 			.shouldBeLeft()
 			.shouldBeInstanceOf<SigningError.InvalidParameters>()
+	}
+
+	test("listAvailableCertificates separates locked tokens from warnings") {
+		val pinToken = TokenInfo(id = "t1", name = "PIN Token", type = TokenType.PKCS11, path = "/lib/fake.so", requiresPin = true)
+		val freeToken = TokenInfo(id = "t2", name = "Free Token", type = TokenType.WINDOWS_MY, requiresPin = false)
+		val cert = CertificateEntry(
+			alias = "cert-a", subjectDN = "CN=A", issuerDN = "CN=CA",
+			serialNumber = "1", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
+			keyUsages = emptyList(), tokenInfo = freeToken
+		)
+
+		coEvery { tokenService.discoverTokens() } returns listOf(pinToken, freeToken).right()
+		coEvery { tokenService.probeTokenPresent(pinToken) } returns true
+		coEvery { tokenService.probeTokenPresent(freeToken) } returns true
+		coEvery { credentialStore.getPassword(any(), "t1") } returns null
+		coEvery { tokenService.loadCertificatesSilent(freeToken, null) } returns listOf(cert).right()
+
+		val result = repository.listAvailableCertificates().shouldBeRight()
+		result.certificates.shouldHaveSize(1)
+		result.lockedTokens.shouldHaveSize(1)
+		result.lockedTokens.first().tokenId shouldBe "t1"
+		result.tokenWarnings.shouldBeEmpty()
+	}
+
+	test("resolvePrivateKey does not prompt for PIN when cert is found on a non-PIN token") {
+		val qscd = TokenInfo(id = "qscd-1", name = "QSCD Token", type = TokenType.PKCS11, path = "/lib/qscd.so", requiresPin = true)
+		val winStore = TokenInfo(id = "windows-my", name = "Windows MY", type = TokenType.WINDOWS_MY, requiresPin = false)
+		val winCert = CertificateEntry(
+			alias = "win-cert", subjectDN = "CN=WinUser", issuerDN = "CN=CA",
+			serialNumber = "42", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
+			keyUsages = emptyList(), tokenInfo = winStore,
+		)
+
+		val mockX509 = mockk<java.security.cert.X509Certificate> {
+			every { subjectX500Principal } returns javax.security.auth.x500.X500Principal("CN=WinUser")
+		}
+		val mockCertToken = mockk<eu.europa.esig.dss.model.x509.CertificateToken> {
+			every { certificate } returns mockX509
+		}
+		val mockKey = mockk<eu.europa.esig.dss.token.DSSPrivateKeyEntry> {
+			every { certificate } returns mockCertToken
+			every { certificateChain } returns arrayOf(mockCertToken)
+		}
+		val mockDssToken = mockk<eu.europa.esig.dss.token.AbstractSignatureTokenConnection>(relaxed = true) {
+			every { keys } returns listOf(mockKey)
+		}
+		val mockSigningToken = mockk<SigningToken> {
+			every { getDssToken() } returns mockDssToken
+		}
+
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
+		coEvery { tokenService.discoverTokens() } returns listOf(qscd, winStore).right()
+		coEvery { tokenService.probeTokenPresent(qscd) } returns true
+		coEvery { tokenService.probeTokenPresent(winStore) } returns true
+		coEvery { credentialStore.getPassword(any(), "qscd-1") } returns null
+		coEvery { tokenService.loadCertificatesSilent(winStore, "") } returns listOf(winCert).right()
+		coEvery { tokenService.getSigningToken(winCert, "") } returns mockSigningToken.right()
+
+		val params = SigningParameters(
+			inputFile = tmpFile("pin-skip-input.pdf").absolutePath,
+			outputFile = tmpFile("pin-skip-out.pdf").absolutePath,
+			certificateAlias = "win-cert",
+			addTimestamp = false,
+		)
+
+		repository.signDocument(params)
+
+		io.mockk.coVerify(exactly = 0) { tokenService.requestPin(qscd) }
+	}
+
+	test("listAvailableCertificates uses stored password for PIN token") {
+		val pinToken = TokenInfo(id = "t1", name = "PIN Token", type = TokenType.PKCS11, path = "/lib/fake.so", requiresPin = true)
+		val cert = CertificateEntry(
+			alias = "cert-a", subjectDN = "CN=A", issuerDN = "CN=CA",
+			serialNumber = "1", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
+			keyUsages = emptyList(), tokenInfo = pinToken
+		)
+
+		coEvery { tokenService.discoverTokens() } returns listOf(pinToken).right()
+		coEvery { tokenService.probeTokenPresent(pinToken) } returns true
+		coEvery { credentialStore.getPassword(any(), "t1") } returns "1234"
+		coEvery { tokenService.loadCertificatesSilent(pinToken, "1234") } returns listOf(cert).right()
+
+		val result = repository.listAvailableCertificates().shouldBeRight()
+		result.certificates.shouldHaveSize(1)
+		result.lockedTokens.shouldBeEmpty()
 	}
 })

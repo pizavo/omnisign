@@ -76,4 +76,28 @@ interface TokenService {
         certificateEntry: CertificateEntry,
         password: String
     ): OperationResult<SigningToken>
+
+    /**
+     * Load certificates from a PKCS#12 file on demand.
+     *
+     * Creates a transient [TokenInfo] with [cz.pizavo.omnisign.domain.model.config.enums.TokenType.FILE]
+     * and attempts to open the keystore with the given password.
+     *
+     * @param filePath Absolute path to the PKCS#12 (.p12 / .pfx) file.
+     * @param password Password for the PKCS#12 keystore.
+     * @return List of certificates or error.
+     */
+    suspend fun loadCertificatesFromFile(
+        filePath: String,
+        password: String,
+    ): OperationResult<List<CertificateEntry>>
+
+    /**
+     * Prompt the user for a password via the platform [cz.pizavo.omnisign.platform.PasswordCallback].
+     *
+     * @param prompt Message to display.
+     * @param title Dialog title.
+     * @return Entered password, or null if cancelled.
+     */
+    suspend fun requestPassword(prompt: String, title: String): String?
 }
