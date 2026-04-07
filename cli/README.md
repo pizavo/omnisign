@@ -153,16 +153,16 @@ omnisign [global-flags] [command]
 | `--quiet`       | Suppress all informational output; only errors are printed       |
 | `-v, --version` | Print the application version and exit                           |
 
-| Command        | Description                                                        |
-|----------------|--------------------------------------------------------------------|
-| `validate`     | Validate a signed PDF document                                     |
-| `sign`         | Sign a PDF document with a PAdES digital signature                 |
-| `timestamp`    | Extend a signed PDF to a higher PAdES level                        |
-| `renew`        | Execute configured renewal jobs (re-timestamp expiring B-LTA PDFs) |
-| `algorithms`   | List supported cryptographic algorithms                            |
-| `certificates` | Discover and inspect available signing certificates                |
-| `config`       | Manage application configuration                                   |
-| `schedule`     | Manage the automatic re-timestamping scheduler and renewal jobs    |
+| Command        | Description                                                                               |
+|----------------|-------------------------------------------------------------------------------------------|
+| `validate`     | Validate a signed PDF document                                                            |
+| `sign`         | Sign a PDF document with a PAdES digital signature                                        |
+| `timestamp`    | Extend a signed PDF to a higher PAdES level                                               |
+| `renew`        | Execute configured renewal jobs (re-timestamp expiring B-LTA PDFs)                        |
+| `algorithms`   | List supported cryptographic algorithms                                                   |
+| `certificates` | Discover and inspect available signing certificates                                       |
+| `config`       | Manage application configuration (profiles, trusted lists, trusted certificates, PKCS#11) |
+| `schedule`     | Manage the automatic re-timestamping scheduler and renewal jobs                           |
 
 ---
 
@@ -661,6 +661,7 @@ Register custom ETSI Trusted List sources for signature validation.
 | Subcommand                                                           | Description                                                      |
 |----------------------------------------------------------------------|------------------------------------------------------------------|
 | `config tl build create <name>`                                      | Guided interactive wizard to build a complete trusted list draft |
+| `config tl build list`                                               | List all stored TL builder drafts                                |
 | `config tl build show <name>`                                        | Show the contents of an existing draft                           |
 | `config tl build tsp add <draft> <tsp-name>`                         | Add a Trust Service Provider to a draft                          |
 | `config tl build tsp remove <draft> <tsp-name>`                      | Remove a TSP from a draft                                        |
@@ -668,6 +669,48 @@ Register custom ETSI Trusted List sources for signature validation.
 | `config tl build service remove <draft> <tsp-name> <service-name>`   | Remove a service from a TSP                                      |
 | `config tl build compile <draft>`                                    | Compile a draft to a TL XML and optionally register it           |
 | `config tl build delete <draft>`                                     | Delete a draft                                                   |
+
+#### `config trust` — Manage directly trusted certificates
+
+Register individual CA or TSA certificates as trusted without requiring a full ETSI TS 119612
+trusted list XML. The certificate file is read and parsed at registration time; its DER bytes
+and subject DN are stored inline in the config. The original file is no longer needed afterward.
+
+| Subcommand                   | Description                                       |
+|------------------------------|---------------------------------------------------|
+| `config trust add`           | Trust a certificate directly (no TL XML required) |
+| `config trust list`          | List all directly trusted certificates            |
+| `config trust remove <name>` | Remove a directly trusted certificate             |
+
+**`config trust add` options:**
+
+| Option                 | Description                                                                                                                 |
+|------------------------|-----------------------------------------------------------------------------------------------------------------------------|
+| `-n, --name <name>`    | **(Required)** Unique label for this trusted certificate                                                                    |
+| `-c, --cert <path>`    | **(Required)** Path to the PEM or DER certificate file                                                                      |
+| `-t, --type <type>`    | Certificate type: `ANY` (both CA and TSA), `CA` (Certificate Authority), or `TSA` (Time Stamping Authority). Default: `ANY` |
+| `-p, --profile <name>` | Store in the given profile instead of the global config                                                                     |
+
+**Examples:**
+
+```shell
+# Trust a CA certificate globally
+omnisign config trust add --name myca --cert /path/to/ca.pem
+
+# Trust a TSA certificate for a specific profile
+omnisign config trust add --name mytsa --cert tsa.der --type TSA --profile university
+
+# List trusted certificates
+omnisign config trust list
+
+# List trusted certificates from a profile
+omnisign config trust list --profile university
+
+# Remove a trusted certificate
+omnisign config trust remove myca
+```
+
+---
 
 #### `config pkcs11` — Manage custom PKCS#11 middleware libraries
 

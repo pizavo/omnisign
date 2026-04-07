@@ -174,6 +174,8 @@ compose.desktop {
 			packageVersion = project.version.toString().toNativeDistributionVersion()
 			description = "Digital signature verification, signing and re-timestamping"
 			vendor = "Pizavo"
+			copyright = "Copyright (C) 2026 Pizavo"
+			licenseFile.set(rootProject.file("LICENSE.md"))
 
 			windows {
 				iconFile.set(rootProject.file("assets/icons/omnisign-logo.ico"))
@@ -189,14 +191,42 @@ compose.desktop {
 				iconFile.set(rootProject.file("assets/icons/omnisign-logo-512.png"))
 				shortcut = true
 				menuGroup = "OmniSign"
+				packageName = "omnisign"
 				appCategory = "Utility"
 				debMaintainer = "pizavo@gmail.com"
+				rpmLicenseType = "AGPLv3+"
 			}
 
 			macOS {
 				iconFile.set(rootProject.file("assets/icons/omnisign-logo.icns"))
 				dockName = "OmniSign"
+				bundleID = "cz.pizavo.omnisign.desktop"
+				appCategory = "public.app-category.utilities"
 			}
+		}
+	}
+}
+
+/**
+ * Injects additional jpackage metadata arguments into every Compose Desktop packaging task.
+ * The Compose Gradle plugin does not expose DSL properties for about-url or Windows help/update
+ * URLs, so the underlying [AbstractJPackageTask.freeArgs] list is used to pass them to jpackage.
+ * Tasks that produce app-images (AppImage and Distributable) are excluded because jpackage
+ * rejects installer-only options such as `--about-url` when `--type app-image` is used.
+ */
+afterEvaluate {
+	tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask>().configureEach {
+		if (name.contains("AppImage", ignoreCase = true) || name.contains("Distributable", ignoreCase = true)) return@configureEach
+
+		freeArgs.addAll(
+			"--about-url", "https://pizavo.github.io/omnisign/desktop/",
+			"--file-associations", project.file("file-associations/pdf.properties").absolutePath,
+		)
+		if (name.contains("Msi", ignoreCase = true) || name.contains("Exe", ignoreCase = true)) {
+			freeArgs.addAll(
+				"--win-help-url", "https://pizavo.github.io/omnisign/desktop/",
+				"--win-update-url", "https://github.com/pizavo/omnisign/releases",
+			)
 		}
 	}
 }
@@ -246,4 +276,3 @@ dokka {
 		}
 	}
 }
-

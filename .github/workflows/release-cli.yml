@@ -52,6 +52,14 @@ jobs:
       - name: Build shadow JAR and Linux packages
         run: ./gradlew :cli:shadowJar :cli:jpackageDeb :cli:jpackageRpm :cli:jpackageLinuxImage -PreleaseVersion=${{ needs.prepare.outputs.version }}
 
+      - name: Upload jpackage logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jpackage-logs-linux
+          path: cli/build/jpackage/**/jpackage-*.txt
+          if-no-files-found: ignore
+
       - name: Tar portable app-image
         run: |
           version="${{ needs.prepare.outputs.version }}"
@@ -110,6 +118,14 @@ jobs:
           ORG_GRADLE_PROJECT_releaseVersion: ${{ needs.prepare.outputs.version }}
         run: ./gradlew :cli:jpackageWinExe :cli:jpackageWinMsi
 
+      - name: Upload jpackage logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jpackage-logs-windows
+          path: cli/build/jpackage/**/jpackage-*.txt
+          if-no-files-found: ignore
+
       - name: Zip portable app-image
         shell: powershell
         run: |
@@ -145,6 +161,14 @@ jobs:
 
       - name: Build macOS packages
         run: ./gradlew :cli:jpackageDmg :cli:jpackagePkg -PreleaseVersion=${{ needs.prepare.outputs.version }}
+
+      - name: Upload jpackage logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jpackage-logs-macos
+          path: cli/build/jpackage/**/jpackage-*.txt
+          if-no-files-found: ignore
 
       - name: Upload DMG
         uses: actions/upload-artifact@v7
