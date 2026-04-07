@@ -1,9 +1,11 @@
-<img src="assets/icons/omnisign-logo-512.png" alt="OmniSign logo" style="display: block; margin: 0 auto" />
+<p align="center">
+  <img src="assets/icons/omnisign-logo-512.png" alt="OmniSign logo" />
+</p>
 
-<h1 style="text-align: center">OmniSign</h1>
-<p style="text-align: center"><strong>Sign, validate, and future-proof your PDF documents — on any platform.</strong></p>
+<h1 align="center">OmniSign</h1>
+<p align="center"><strong>Sign, validate, and future-proof your PDF documents — on any platform.</strong></p>
 
-<div style="text-align: center">
+<div align="center">
 
 [![CI — CLI](https://github.com/pizavo/omnisign/actions/workflows/ci-cli.yml/badge.svg)](https://github.com/pizavo/omnisign/actions/workflows/ci-cli.yml)
 [![CI — Desktop](https://github.com/pizavo/omnisign/actions/workflows/ci-desktop.yml/badge.svg)](https://github.com/pizavo/omnisign/actions/workflows/ci-desktop.yml)
