@@ -54,6 +54,7 @@ dependencies {
  *  - `composeApp/src/jvmMain/resources/` (runtime window / taskbar icon)
  *  - `composeApp/src/webMain/resources/` (Wasm favicon)
  *  - `docs/static/img/favicon.ico` (Docusaurus favicon, from generated .ico)
+ *  - `docs/static/img/logo.png` (Docusaurus navbar logo)
  */
 tasks.register("generateIcons") {
     group = "distribution"
@@ -64,6 +65,7 @@ tasks.register("generateIcons") {
     val jvmResourcesIcon = rootProject.file("composeApp/src/jvmMain/resources/omnisign-logo.png")
     val webResourcesIcon = rootProject.file("composeApp/src/webMain/resources/omnisign-logo.png")
     val docsFavicon = rootProject.file("docs/static/img/favicon.ico")
+    val docsLogo = rootProject.file("docs/static/img/logo.png")
 
     doLast {
         fun magick(vararg args: String) {
@@ -111,6 +113,8 @@ tasks.register("generateIcons") {
 
         val desktopIco = File(iconsDir, "omnisign-logo.ico")
         desktopIco.copyTo(docsFavicon, overwrite = true)
+
+        desktopIcon.copyTo(docsLogo, overwrite = true)
     }
 }
 
