@@ -111,7 +111,7 @@ const config: Config = {
       title: 'OmniSign',
       logo: {
         alt: 'OmniSign Logo',
-        src: 'img/logo.svg',
+        src: 'img/logo.png',
       },
       items: [
         {
