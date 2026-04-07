@@ -236,9 +236,12 @@ val commonJpackageArgsList: List<String> = listOf(
 	"--app-version", project.version.toString().toNativeDistributionVersion(),
 	"--vendor", "OmniSign",
 	"--description", "Multiplatform digital signature verification, signing and re-timestamping tool",
+	"--copyright", "Copyright (C) 2026 Pizavo",
+	"--about-url", "https://pizavo.github.io/omnisign/cli/",
 	"--main-class", "cz.pizavo.omnisign.CliKt",
 	"--add-modules", "java.logging,java.naming,java.desktop,java.management,java.sql,java.xml.crypto,jdk.unsupported",
 	"--java-options", "--enable-native-access=ALL-UNNAMED",
+	"--license-file", rootProject.file("LICENSE.md").absolutePath,
 )
 
 
@@ -311,6 +314,8 @@ registerJPackageTask(
 		"--win-menu-group", "omnisign",
 		"--win-shortcut",
 		"--win-console",
+		"--win-help-url", "https://pizavo.github.io/omnisign/cli/",
+		"--win-update-url", "https://github.com/pizavo/omnisign/releases",
 		"--add-modules", "jdk.crypto.mscapi",
 		"--java-options", "--add-modules=jdk.crypto.mscapi",
 	),
@@ -327,6 +332,7 @@ registerJPackageTask(
 	extraArgsList = listOf(
 		"--resource-dir", "$jpackageResourcesDir/linux-deb",
 		"--linux-app-category", "utils",
+		"--linux-deb-maintainer", "pizavo@gmail.com",
 	),
 	resourceDirPath = "$jpackageResourcesDir/linux-deb",
 )
@@ -341,6 +347,7 @@ registerJPackageTask(
 	extraArgsList = listOf(
 		"--resource-dir", "$jpackageResourcesDir/linux-rpm",
 		"--linux-app-category", "utils",
+		"--linux-rpm-license-type", "AGPLv3+",
 	),
 	resourceDirPath = "$jpackageResourcesDir/linux-rpm",
 )
@@ -363,8 +370,9 @@ registerJPackageTask(
 	destSubdir = "mac",
 	iconFile = File(iconsDir, "omnisign-logo-cli.icns"),
 	extraArgsList = listOf(
-		"--mac-package-identifier", "cz.pizavo.omnisign",
+		"--mac-package-identifier", "cz.pizavo.omnisign.cli",
 		"--mac-package-name", "omnisign",
+		"--mac-app-category", "public.app-category.utilities",
 	),
 )
 renamePackageOutput("jpackageDmg", "dmg")
@@ -377,8 +385,9 @@ registerJPackageTask(
 	iconFile = File(iconsDir, "omnisign-logo-cli.icns"),
 	extraArgsList = listOf(
 		"--resource-dir", "$jpackageResourcesDir/mac",
-		"--mac-package-identifier", "cz.pizavo.omnisign",
+		"--mac-package-identifier", "cz.pizavo.omnisign.cli",
 		"--mac-package-name", "omnisign",
+		"--mac-app-category", "public.app-category.utilities",
 	),
 	resourceDirPath = "$jpackageResourcesDir/mac",
 )
