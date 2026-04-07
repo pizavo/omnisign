@@ -240,11 +240,11 @@ val commonJpackageArgsList: List<String> = listOf(
 	"--main-class", "cz.pizavo.omnisign.CliKt",
 	"--add-modules", "java.logging,java.naming,java.desktop,java.management,java.sql,java.xml.crypto,jdk.unsupported",
 	"--java-options", "--enable-native-access=ALL-UNNAMED",
-	"--license-file", rootProject.file("LICENSE.md").absolutePath,
 )
 
 /** Arguments valid only for installer types (not app-image). */
 val installerOnlyArgsList: List<String> = listOf(
+	"--license-file", rootProject.file("LICENSE.md").absolutePath,
 	"--about-url", "https://pizavo.github.io/omnisign/cli/",
 )
 
