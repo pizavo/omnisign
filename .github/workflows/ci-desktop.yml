@@ -36,3 +36,13 @@ jobs:
       - name: Build and test
         run: ./gradlew :shared:jvmTest :composeApp:jvmTest :composeApp:createDistributable
 
+      - name: Upload jpackage logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jpackage-logs-${{ matrix.os }}
+          path: |
+            composeApp/build/compose/logs/
+            composeApp/build/compose/tmp/*.args.txt
+          if-no-files-found: ignore
+

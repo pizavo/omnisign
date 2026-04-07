@@ -55,6 +55,16 @@ jobs:
           :composeApp:packageDeb :composeApp:packageRpm :composeApp:packageAppImage
           -PreleaseVersion=${{ needs.prepare.outputs.version }}
 
+      - name: Upload jpackage logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jpackage-logs-linux
+          path: |
+            composeApp/build/compose/logs/
+            composeApp/build/compose/tmp/*.args.txt
+          if-no-files-found: ignore
+
       - name: Tar portable app-image
         run: |
           version="${{ needs.prepare.outputs.version }}"
@@ -104,6 +114,16 @@ jobs:
           ./gradlew
           :composeApp:packageMsi :composeApp:packageExe :composeApp:createDistributable
 
+      - name: Upload jpackage logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jpackage-logs-windows
+          path: |
+            composeApp/build/compose/logs/
+            composeApp/build/compose/tmp/*.args.txt
+          if-no-files-found: ignore
+
       - name: Zip portable app-image
         shell: powershell
         run: |
@@ -146,6 +166,16 @@ jobs:
           ./gradlew
           :composeApp:packageDmg :composeApp:createDistributable
           -PreleaseVersion=${{ needs.prepare.outputs.version }}
+
+      - name: Upload jpackage logs
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: jpackage-logs-macos
+          path: |
+            composeApp/build/compose/logs/
+            composeApp/build/compose/tmp/*.args.txt
+          if-no-files-found: ignore
 
       - name: Tar portable app bundle
         run: |
