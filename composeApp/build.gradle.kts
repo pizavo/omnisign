@@ -211,10 +211,12 @@ compose.desktop {
  * Injects additional jpackage metadata arguments into every Compose Desktop packaging task.
  * The Compose Gradle plugin does not expose DSL properties for about-url or Windows help/update
  * URLs, so the underlying [AbstractJPackageTask.freeArgs] list is used to pass them to jpackage.
+ * Tasks that produce app-images (AppImage and Distributable) are excluded because jpackage
+ * rejects installer-only options such as `--about-url` when `--type app-image` is used.
  */
 afterEvaluate {
 	tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask>().configureEach {
-		if (name.contains("AppImage", ignoreCase = true)) return@configureEach
+		if (name.contains("AppImage", ignoreCase = true) || name.contains("Distributable", ignoreCase = true)) return@configureEach
 
 		freeArgs.addAll(
 			"--about-url", "https://pizavo.github.io/omnisign/desktop/",

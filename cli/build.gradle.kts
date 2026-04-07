@@ -237,11 +237,15 @@ val commonJpackageArgsList: List<String> = listOf(
 	"--vendor", "OmniSign",
 	"--description", "Multiplatform digital signature verification, signing and re-timestamping tool",
 	"--copyright", "Copyright (C) 2026 Pizavo",
-	"--about-url", "https://pizavo.github.io/omnisign/cli/",
 	"--main-class", "cz.pizavo.omnisign.CliKt",
 	"--add-modules", "java.logging,java.naming,java.desktop,java.management,java.sql,java.xml.crypto,jdk.unsupported",
 	"--java-options", "--enable-native-access=ALL-UNNAMED",
 	"--license-file", rootProject.file("LICENSE.md").absolutePath,
+)
+
+/** Arguments valid only for installer types (not app-image). */
+val installerOnlyArgsList: List<String> = listOf(
+	"--about-url", "https://pizavo.github.io/omnisign/cli/",
 )
 
 
@@ -264,7 +268,8 @@ fun registerJPackageTask(
 		inputDir.set(jpackageInputDir)
 		packageType.set(type)
 		destDir.set(layout.buildDirectory.dir("jpackage/$destSubdir"))
-		commonArgs.set(commonJpackageArgsList)
+		val effectiveCommon = if (type != "app-image") commonJpackageArgsList + installerOnlyArgsList else commonJpackageArgsList
+		commonArgs.set(effectiveCommon)
 		this.iconFile.set(iconFile)
 		extraArgs.set(extraArgsList)
 		if (resourceDirPath != null) resourceDir.set(file(resourceDirPath))
