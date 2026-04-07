@@ -4,6 +4,8 @@ import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.painter.BitmapPainter
+import androidx.compose.ui.graphics.toAwtImage
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.LayoutCoordinates
 import androidx.compose.ui.layout.positionInWindow
@@ -21,6 +23,7 @@ import cz.pizavo.omnisign.platform.PasswordCallback
 import cz.pizavo.omnisign.ui.platform.*
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.runBlocking
+import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import java.awt.Frame
@@ -248,6 +251,15 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 	
 	var lastFloatingSize by remember { mutableStateOf(windowState.size) }
 	var lastFloatingPosition by remember { mutableStateOf(windowState.position) }
+
+	val windowIcon = remember {
+		Thread.currentThread().contextClassLoader
+			.getResourceAsStream("omnisign-logo.png")
+			?.buffered()
+			?.use { it.readAllBytes().decodeToImageBitmap() }
+	}
+
+	val windowIconPainter = remember(windowIcon) { windowIcon?.let { BitmapPainter(it) } }
 	
 	LaunchedEffect(Unit) {
 		snapshotFlow { Triple(windowState.placement, windowState.size, windowState.position) }
@@ -268,6 +280,7 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 			)
 			onCloseRequest()
 		},
+		icon = windowIconPainter,
 		undecorated = false,
 		transparent = false,
 		resizable = true,
@@ -275,6 +288,11 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 		title = "OmniSign",
 	) {
 		val awtWindow = window
+
+		remember(windowIcon) {
+			windowIcon?.toAwtImage()?.let { awtWindow.iconImage = it }
+		}
+
 		val titleBarHeightPx = TITLE_BAR_HEIGHT_DP.toFloat()
 		
 		val titleBar: WindowDecorations.CustomTitleBar? =

@@ -176,6 +176,7 @@ compose.desktop {
 			vendor = "Pizavo"
 
 			windows {
+				iconFile.set(rootProject.file("assets/icons/omnisign-logo.ico"))
 				shortcut = true
 				menu = true
 				menuGroup = "OmniSign"
@@ -185,6 +186,7 @@ compose.desktop {
 			}
 
 			linux {
+				iconFile.set(rootProject.file("assets/icons/omnisign-logo-512.png"))
 				shortcut = true
 				menuGroup = "OmniSign"
 				appCategory = "Utility"
@@ -192,6 +194,7 @@ compose.desktop {
 			}
 
 			macOS {
+				iconFile.set(rootProject.file("assets/icons/omnisign-logo.icns"))
 				dockName = "OmniSign"
 			}
 		}

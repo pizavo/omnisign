@@ -134,107 +134,6 @@ tasks.register<Copy>("install") {
 	dependsOn("installShadowDist")
 }
 
-/**
- * Task that converts an SVG to a Windows multi-resolution .ico via ImageMagick.
- * Uses injected [ExecOperations] to remain configuration-cache compatible.
- */
-abstract class SvgToIcoTask @Inject constructor(private val execOps: ExecOperations) : DefaultTask() {
-	/** The source SVG file. */
-	@get:InputFile
-	abstract val sourceSvg: RegularFileProperty
-	
-	/** The output .ico file. */
-	@get:OutputFile
-	abstract val outputIco: RegularFileProperty
-	
-	@TaskAction
-	fun convert() {
-		outputIco.get().asFile.parentFile.mkdirs()
-		execOps.exec {
-			commandLine(
-				"magick", sourceSvg.get().asFile.absolutePath,
-				"-define", "icon:auto-resize=256,128,64,48,32,16",
-				outputIco.get().asFile.absolutePath,
-			)
-		}
-	}
-}
-
-/**
- * Task that converts an SVG to a PNG via rsvg-convert (librsvg).
- * Uses injected [ExecOperations] to remain configuration-cache compatible.
- */
-abstract class SvgToPngTask @Inject constructor(private val execOps: ExecOperations) : DefaultTask() {
-	/** The source SVG file. */
-	@get:InputFile
-	abstract val sourceSvg: RegularFileProperty
-	
-	/** The output PNG file. */
-	@get:OutputFile
-	abstract val outputPng: RegularFileProperty
-	
-	/** Target size in pixels (width and height). */
-	@get:Input
-	abstract val size: Property<Int>
-	
-	@TaskAction
-	fun convert() {
-		outputPng.get().asFile.parentFile.mkdirs()
-		val s = size.get()
-		execOps.exec {
-			commandLine(
-				"rsvg-convert",
-				"-w", s.toString(), "-h", s.toString(),
-				sourceSvg.get().asFile.absolutePath,
-				"-o", outputPng.get().asFile.absolutePath,
-			)
-		}
-	}
-}
-
-/**
- * Task that converts an SVG to a macOS .icns bundle via rsvg-convert and iconutil.
- * Uses injected [ExecOperations] to remain configuration-cache compatible.
- */
-abstract class SvgToIcnsTask @Inject constructor(private val execOps: ExecOperations) : DefaultTask() {
-	/** The source SVG file. */
-	@get:InputFile
-	abstract val sourceSvg: RegularFileProperty
-	
-	/** Directory into which omnisign.icns (and the intermediate .iconset) are written. */
-	@get:OutputDirectory
-	abstract val outputDir: DirectoryProperty
-	
-	@TaskAction
-	fun convert() {
-		val icDir = outputDir.get().asFile.also { it.mkdirs() }
-		val iconsetDir = File(icDir, "omnisign.iconset").also { it.mkdirs() }
-		val svg = sourceSvg.get().asFile.absolutePath
-		listOf(16, 32, 64, 128, 256, 512).forEach { size ->
-			execOps.exec {
-				commandLine(
-					"rsvg-convert",
-					"-w", size.toString(), "-h", size.toString(),
-					svg, "-o", File(iconsetDir, "icon_${size}x${size}.png").absolutePath,
-				)
-			}
-			execOps.exec {
-				commandLine(
-					"rsvg-convert",
-					"-w", (size * 2).toString(), "-h", (size * 2).toString(),
-					svg, "-o", File(iconsetDir, "icon_${size}x${size}@2x.png").absolutePath,
-				)
-			}
-		}
-		execOps.exec {
-			commandLine(
-				"iconutil", "-c", "icns",
-				iconsetDir.absolutePath,
-				"-o", File(icDir, "omnisign.icns").absolutePath,
-			)
-		}
-	}
-}
 
 /**
  * Task that packages the CLI using jpackage to create a native installer.
@@ -314,8 +213,7 @@ val jpackageBinPath: String = "${System.getProperty("java.home")}/bin/jpackage"
 val shadowJarTask = tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar")
 val shadowJarFile: Provider<RegularFile> = shadowJarTask.flatMap { it.archiveFile }
 val jpackageResourcesDir: String = layout.projectDirectory.dir("src/main/jpackage").asFile.absolutePath
-val generatedIconsDir: Provider<Directory> = layout.buildDirectory.dir("jpackage/icons")
-val sourceSvgFile: RegularFile = layout.projectDirectory.file("src/main/jpackage/omnisign.svg")
+val iconsDir: File = rootProject.file("assets/icons")
 
 /**
  * Copies only the shadow JAR into a dedicated staging directory used as the jpackage {@code --input}.
@@ -343,52 +241,6 @@ val commonJpackageArgsList: List<String> = listOf(
 	"--java-options", "--enable-native-access=ALL-UNNAMED",
 )
 
-/**
- * Converts the source SVG to a Windows multi-resolution .ico using ImageMagick.
- */
-tasks.register<SvgToIcoTask>("convertIconIco") {
-	group = "distribution"
-	description = "Converts omnisign.svg → build/jpackage/icons/omnisign.ico via ImageMagick."
-	sourceSvg.set(sourceSvgFile)
-	outputIco.set(generatedIconsDir.map { it.file("omnisign.ico") })
-}
-
-/**
- * Converts the source SVG to a 512×512 PNG for Linux packages using rsvg-convert.
- */
-tasks.register<SvgToPngTask>("convertIconPng") {
-	group = "distribution"
-	description = "Converts omnisign.svg → build/jpackage/icons/omnisign.png via rsvg-convert."
-	sourceSvg.set(sourceSvgFile)
-	outputPng.set(generatedIconsDir.map { it.file("omnisign.png") })
-	size.set(512)
-}
-
-/**
- * Converts the source SVG to a macOS .icns bundle using rsvg-convert and iconutil.
- * Only meaningful when building on macOS (iconutil is a macOS-only tool).
- */
-tasks.register<SvgToIcnsTask>("convertIconIcns") {
-	group = "distribution"
-	description = "Converts omnisign.svg → build/jpackage/icons/omnisign.icns via rsvg-convert + iconutil (macOS only)."
-	sourceSvg.set(sourceSvgFile)
-	outputDir.set(generatedIconsDir)
-}
-
-/**
- * Lifecycle task that converts the source SVG to all required icon formats.
- * On macOS the .icns is additionally produced by the convertIconIcns task.
- */
-tasks.register("convertIcons") {
-	group = "distribution"
-	description = "Converts src/main/jpackage/omnisign.svg into all platform icon formats."
-	val os = System.getProperty("os.name").lowercase()
-	if (os.contains("mac")) {
-		dependsOn("convertIconIco", "convertIconPng", "convertIconIcns")
-	} else {
-		dependsOn("convertIconIco", "convertIconPng")
-	}
-}
 
 /** Registers a [JPackageTask] with the given [name] and platform-specific [extraArgsList]. */
 fun registerJPackageTask(
@@ -396,15 +248,14 @@ fun registerJPackageTask(
 	description: String,
 	type: String,
 	destSubdir: String,
-	iconFile: Provider<RegularFile>,
-	iconDependency: String,
+	iconFile: File,
 	extraArgsList: List<String>,
 	resourceDirPath: String? = null,
 ) {
 	tasks.register<JPackageTask>(name) {
 		this.group = "distribution"
 		this.description = description
-		dependsOn("prepareJpackageInput", iconDependency)
+		dependsOn("prepareJpackageInput")
 		jpackageBin.set(jpackageBinPath)
 		shadowJar.set(shadowJarFile)
 		inputDir.set(jpackageInputDir)
@@ -436,8 +287,7 @@ registerJPackageTask(
 	description = "Packages the CLI as a self-contained Windows app-image (.exe launcher inside a directory).",
 	type = "app-image",
 	destSubdir = "win-image",
-	iconFile = generatedIconsDir.map { it.file("omnisign.ico") },
-	iconDependency = "convertIconIco",
+	iconFile = File(iconsDir, "omnisign-logo-cli.ico"),
 	extraArgsList = listOf(
 		"--resource-dir", "$jpackageResourcesDir/win",
 		"--win-console",
@@ -452,8 +302,7 @@ registerJPackageTask(
 	description = "Packages the CLI as a Windows MSI installer with start-menu entry and dir chooser.",
 	type = "msi",
 	destSubdir = "win-msi",
-	iconFile = generatedIconsDir.map { it.file("omnisign.ico") },
-	iconDependency = "convertIconIco",
+	iconFile = File(iconsDir, "omnisign-logo-cli.ico"),
 	extraArgsList = listOf(
 		"--resource-dir", "$jpackageResourcesDir/win",
 		"--win-per-user-install",
@@ -474,8 +323,7 @@ registerJPackageTask(
 	description = "Packages the CLI as a Debian/Ubuntu .deb package with /usr/local/bin symlink.",
 	type = "deb",
 	destSubdir = "linux-deb",
-	iconFile = generatedIconsDir.map { it.file("omnisign.png") },
-	iconDependency = "convertIconPng",
+	iconFile = File(iconsDir, "omnisign-logo-cli-512.png"),
 	extraArgsList = listOf(
 		"--resource-dir", "$jpackageResourcesDir/linux-deb",
 		"--linux-app-category", "utils",
@@ -489,8 +337,7 @@ registerJPackageTask(
 	description = "Packages the CLI as a Red Hat/Fedora .rpm package with /usr/local/bin symlink.",
 	type = "rpm",
 	destSubdir = "linux-rpm",
-	iconFile = generatedIconsDir.map { it.file("omnisign.png") },
-	iconDependency = "convertIconPng",
+	iconFile = File(iconsDir, "omnisign-logo-cli-512.png"),
 	extraArgsList = listOf(
 		"--resource-dir", "$jpackageResourcesDir/linux-rpm",
 		"--linux-app-category", "utils",
@@ -505,8 +352,7 @@ registerJPackageTask(
 		"Packages the CLI as a portable Linux app-image directory (for Arch and other non-DEB/RPM distributions).",
 	type = "app-image",
 	destSubdir = "linux-image",
-	iconFile = generatedIconsDir.map { it.file("omnisign.png") },
-	iconDependency = "convertIconPng",
+	iconFile = File(iconsDir, "omnisign-logo-cli-512.png"),
 	extraArgsList = emptyList(),
 )
 
@@ -515,8 +361,7 @@ registerJPackageTask(
 	description = "Packages the CLI as a macOS .dmg disk image.",
 	type = "dmg",
 	destSubdir = "mac",
-	iconFile = generatedIconsDir.map { it.file("omnisign.icns") },
-	iconDependency = "convertIconIcns",
+	iconFile = File(iconsDir, "omnisign-logo-cli.icns"),
 	extraArgsList = listOf(
 		"--mac-package-identifier", "cz.pizavo.omnisign",
 		"--mac-package-name", "omnisign",
@@ -529,8 +374,7 @@ registerJPackageTask(
 	description = "Packages the CLI as a macOS .pkg installer with /usr/local/bin symlink and uninstaller.",
 	type = "pkg",
 	destSubdir = "mac-pkg",
-	iconFile = generatedIconsDir.map { it.file("omnisign.icns") },
-	iconDependency = "convertIconIcns",
+	iconFile = File(iconsDir, "omnisign-logo-cli.icns"),
 	extraArgsList = listOf(
 		"--resource-dir", "$jpackageResourcesDir/mac",
 		"--mac-package-identifier", "cz.pizavo.omnisign",

@@ -77,12 +77,17 @@ fun IslandToolbar(
 				verticalAlignment = Alignment.CenterVertically,
 				horizontalArrangement = Arrangement.spacedBy(4.dp),
 			) {
-				Icon(
-					painter = painterResource(Res.drawable.icon_omnisign),
-					contentDescription = "OmniSign",
-					modifier = Modifier.size(22.dp),
-					tint = Color.Unspecified,
-				)
+				TooltipBox(
+					tooltip = { Tooltip { Text(text = "OmniSign") } },
+					state = rememberTooltipState(),
+				) {
+					Icon(
+						painter = painterResource(Res.drawable.icon_omnisign),
+						contentDescription = "OmniSign",
+						modifier = Modifier.size(22.dp),
+						tint = Color.Unspecified,
+					)
+				}
 				
 				TooltipBox(
 					tooltip = { Tooltip { Text(text = "Open file") } },
