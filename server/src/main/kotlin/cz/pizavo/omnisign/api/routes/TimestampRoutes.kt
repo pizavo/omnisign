@@ -1,11 +1,14 @@
 package cz.pizavo.omnisign.api.routes
 
-import cz.pizavo.omnisign.api.OperationException
 import cz.pizavo.omnisign.api.collectParts
+import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.extractFilePart
 import cz.pizavo.omnisign.api.extractTextField
 import cz.pizavo.omnisign.api.model.ApiError
-import cz.pizavo.omnisign.api.model.ExtensionResultMeta
+import cz.pizavo.omnisign.api.model.TimestampResultMeta
+import cz.pizavo.omnisign.api.requireOperation
+import cz.pizavo.omnisign.config.AllowedOperation
+import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
@@ -22,25 +25,31 @@ import org.koin.ktor.ext.inject
 import java.io.File
 
 /**
- * Mount extension/archiving API routes under `/api/v1/extend`.
+ * Mount timestamping/extension API routes under `/api/v1/timestamp`.
  *
- * `POST /api/v1/extend` accepts a `multipart/form-data` request with:
+ * `POST /api/v1/timestamp` accepts a `multipart/form-data` request with:
  * - `file` — the signed PDF to extend (required).
  * - `targetLevel` — target PAdES level name (optional, defaults to `PADES_BASELINE_LTA`).
  * - `profile` — named configuration profile (optional).
  *
+ * The TSA configuration is always taken from the server's pre-configured global or profile
+ * settings. Clients cannot supply their own TSA credentials.
+ *
  * On success the response is the extended PDF with `application/pdf` content type.
- * A `X-OmniSign-Result` header carries [ExtensionResultMeta] as JSON.
+ * A `X-OmniSign-Result` header carries [TimestampResultMeta] as JSON.
  */
-fun Route.extensionRoutes() {
+fun Route.timestampRoutes() {
 	val extendUseCase by inject<ExtendDocumentUseCase>()
 	val configRepository by inject<ConfigRepository>()
+	val serverConfig by inject<ServerConfig>()
 
-	post("/api/v1/extend") {
+	post("/api/v1/timestamp") {
+		if (!call.requireOperation(AllowedOperation.TIMESTAMP, serverConfig)) return@post
+
 		val multipart = call.receiveMultipart()
 		val parts = multipart.collectParts()
 
-		val inputFile = extractFilePart(parts, "file")
+		val inputFile = extractFilePart(parts, "file", serverConfig.maxFileSize)
 		if (inputFile == null) {
 			call.respond(
 				HttpStatusCode.BadRequest,
@@ -50,7 +59,7 @@ fun Route.extensionRoutes() {
 		}
 
 		val outputFile = withContext(Dispatchers.IO) {
-			File.createTempFile("omnisign-extended-", ".pdf")
+			File.createTempFile("omnisign-timestamped-", ".pdf")
 		}
 		outputFile.deleteOnExit()
 
@@ -88,7 +97,7 @@ fun Route.extensionRoutes() {
 					throw OperationException(error)
 				},
 				ifRight = { result ->
-					val meta = ExtensionResultMeta(
+					val meta = TimestampResultMeta(
 						newLevel = result.newSignatureLevel,
 						warnings = result.warnings,
 					)

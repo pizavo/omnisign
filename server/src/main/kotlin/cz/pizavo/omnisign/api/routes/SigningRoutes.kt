@@ -1,11 +1,14 @@
 package cz.pizavo.omnisign.api.routes
 
-import cz.pizavo.omnisign.api.OperationException
 import cz.pizavo.omnisign.api.collectParts
+import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.extractFilePart
 import cz.pizavo.omnisign.api.extractTextField
 import cz.pizavo.omnisign.api.model.ApiError
 import cz.pizavo.omnisign.api.model.SigningResultMeta
+import cz.pizavo.omnisign.api.requireOperation
+import cz.pizavo.omnisign.config.AllowedOperation
+import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
@@ -34,18 +37,24 @@ import java.io.File
  * - `noTimestamp` — set to `true` to omit the RFC 3161 timestamp.
  * - `profile` — named configuration profile to use (optional).
  *
+ * This operation is disabled by default and must be explicitly enabled in [ServerConfig.allowedOperations].
+ * When [ServerConfig.allowedCertificateAliases] is set, only those aliases may be used.
+ *
  * On success the response is the signed PDF with `application/pdf` content type.
  * A `X-OmniSign-Result` header carries [SigningResultMeta] as JSON.
  */
 fun Route.signingRoutes() {
 	val signUseCase by inject<SignDocumentUseCase>()
 	val configRepository by inject<ConfigRepository>()
+	val serverConfig by inject<ServerConfig>()
 
 	post("/api/v1/sign") {
+		if (!call.requireOperation(AllowedOperation.SIGN, serverConfig)) return@post
+
 		val multipart = call.receiveMultipart()
 		val parts = multipart.collectParts()
 
-		val inputFile = extractFilePart(parts, "file")
+		val inputFile = extractFilePart(parts, "file", serverConfig.maxFileSize)
 		if (inputFile == null) {
 			call.respond(
 				HttpStatusCode.BadRequest,
@@ -85,10 +94,23 @@ fun Route.signingRoutes() {
 
 			val noTimestamp = extractTextField(parts, "noTimestamp")?.toBoolean() == true
 
+			val requestedAlias = extractTextField(parts, "certificateAlias")
+			val allowedAliases = serverConfig.allowedCertificateAliases
+			if (allowedAliases != null && requestedAlias != null && requestedAlias !in allowedAliases) {
+				call.respond(
+					HttpStatusCode.Forbidden,
+					ApiError(
+						error = "CERTIFICATE_NOT_ALLOWED",
+						message = "Certificate alias '$requestedAlias' is not in the server's allowed list",
+					),
+				)
+				return@post
+			}
+
 			val parameters = SigningParameters(
 				inputFile = inputFile.absolutePath,
 				outputFile = outputFile.absolutePath,
-				certificateAlias = extractTextField(parts, "certificateAlias"),
+				certificateAlias = requestedAlias,
 				hashAlgorithm = hashAlgorithm,
 				signatureLevel = signatureLevel,
 				reason = extractTextField(parts, "reason"),

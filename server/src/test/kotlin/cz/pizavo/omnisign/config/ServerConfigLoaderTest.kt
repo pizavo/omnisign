@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.config
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -20,11 +21,14 @@ class ServerConfigLoaderTest : FunSpec({
 		config.host shouldBe "0.0.0.0"
 		config.port shouldBe 50080
 		config.tlsPort shouldBe 50443
-		config.development.shouldBeFalse()
+		config.development.shouldBeTrue()
 		config.proxyMode.shouldBeFalse()
 		config.requireLogin.shouldBeFalse()
 		config.tls.shouldBeNull()
 		config.cors.shouldBeNull()
+		config.allowedOperations shouldContainExactlyInAnyOrder
+				setOf(AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP)
+		config.allowedCertificateAliases.shouldBeNull()
 	}
 
 	test("load parses a YAML file with all fields") {
@@ -90,7 +94,31 @@ class ServerConfigLoaderTest : FunSpec({
 		val config = loader.load()
 		config.host shouldBe "0.0.0.0"
 		config.port shouldBe 50080
-		config.development.shouldBeFalse()
+		config.development.shouldBeTrue()
+		config.allowedOperations shouldContainExactlyInAnyOrder
+				setOf(AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP)
+		config.allowedCertificateAliases.shouldBeNull()
+	}
+
+	test("load parses allowedOperations including SIGN") {
+		val yaml = """
+			allowedOperations:
+			  - SIGN
+			  - VALIDATE
+			  - TIMESTAMP
+			allowedCertificateAliases:
+			  - "university-seal"
+		""".trimIndent()
+
+		val tmpFile = File.createTempFile("server-ops-", ".yml")
+		tmpFile.deleteOnExit()
+		tmpFile.writeText(yaml)
+
+		val config = loader.load(tmpFile.absolutePath)
+		config.allowedOperations shouldContainExactlyInAnyOrder
+				setOf(AllowedOperation.SIGN, AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP)
+		config.allowedCertificateAliases.shouldNotBeNull()
+		config.allowedCertificateAliases shouldBe listOf("university-seal")
 	}
 })
 

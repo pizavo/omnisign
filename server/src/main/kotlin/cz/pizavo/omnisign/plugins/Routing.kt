@@ -1,8 +1,8 @@
 package cz.pizavo.omnisign.plugins
 
-import cz.pizavo.omnisign.api.routes.extensionRoutes
 import cz.pizavo.omnisign.api.routes.signingRoutes
 import cz.pizavo.omnisign.api.routes.systemRoutes
+import cz.pizavo.omnisign.api.routes.timestampRoutes
 import cz.pizavo.omnisign.api.routes.validationRoutes
 import io.ktor.server.application.*
 import io.ktor.server.routing.*
@@ -15,7 +15,7 @@ fun Application.configureRouting() {
 		systemRoutes()
 		signingRoutes()
 		validationRoutes()
-		extensionRoutes()
+		timestampRoutes()
 	}
 }
 

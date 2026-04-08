@@ -1,10 +1,13 @@
 package cz.pizavo.omnisign.api.routes
 
-import cz.pizavo.omnisign.api.OperationException
 import cz.pizavo.omnisign.api.collectParts
+import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.extractFilePart
 import cz.pizavo.omnisign.api.extractTextField
 import cz.pizavo.omnisign.api.model.ApiError
+import cz.pizavo.omnisign.api.requireOperation
+import cz.pizavo.omnisign.config.AllowedOperation
+import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.validation.json.toJsonReport
@@ -24,17 +27,20 @@ import org.koin.ktor.ext.inject
  * - `file` — the PDF to validate (required).
  * - `profile` — named configuration profile to use (optional).
  *
- * On success the response is a JSON [cz.pizavo.omnisign.domain.model.validation.json.JsonValidationReport].
+ * On success the response is a JSON validation report.
  */
 fun Route.validationRoutes() {
 	val validateUseCase by inject<ValidateDocumentUseCase>()
 	val configRepository by inject<ConfigRepository>()
+	val serverConfig by inject<ServerConfig>()
 
 	post("/api/v1/validate") {
+		if (!call.requireOperation(AllowedOperation.VALIDATE, serverConfig)) return@post
+
 		val multipart = call.receiveMultipart()
 		val parts = multipart.collectParts()
 
-		val inputFile = extractFilePart(parts, "file")
+		val inputFile = extractFilePart(parts, "file", serverConfig.maxFileSize)
 		if (inputFile == null) {
 			call.respond(
 				HttpStatusCode.BadRequest,

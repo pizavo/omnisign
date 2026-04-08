@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign
 
+import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
 import cz.pizavo.omnisign.di.appModule
@@ -98,6 +99,22 @@ fun Application.moduleWith(serverConfig: ServerConfig) {
 
 	if (serverConfig.requireLogin) {
 		logger.info { "Login requirement is ENABLED (authentication mechanism not yet implemented)" }
+	}
+
+	logger.info { "Allowed operations: ${serverConfig.allowedOperations.joinToString { it.name }}" }
+
+	if (AllowedOperation.SIGN in serverConfig.allowedOperations && !serverConfig.requireLogin) {
+		logger.warn {
+			"⚠️  SIGN operation is enabled WITHOUT authentication — all configured signing " +
+					"certificates are accessible to any network-reachable client. " +
+					"Set requireLogin: true or restrict access with allowedCertificateAliases."
+		}
+	}
+
+	if (serverConfig.allowedCertificateAliases != null) {
+		logger.info {
+			"Certificate alias allowlist: ${serverConfig.allowedCertificateAliases.joinToString()}"
+		}
 	}
 }
 

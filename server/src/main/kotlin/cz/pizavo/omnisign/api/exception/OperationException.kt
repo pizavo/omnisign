@@ -1,4 +1,4 @@
-package cz.pizavo.omnisign.api
+package cz.pizavo.omnisign.api.exception
 
 import cz.pizavo.omnisign.domain.model.error.OperationError
 
@@ -13,4 +13,3 @@ import cz.pizavo.omnisign.domain.model.error.OperationError
  */
 class OperationException(val operationError: OperationError) :
 	RuntimeException(operationError.message, operationError.cause)
-

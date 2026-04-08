@@ -12,6 +12,13 @@ package cz.pizavo.omnisign.config
  *   listens on a plain HTTP connector. `X-Forwarded-*` headers are trusted.
  * @property requireLogin When `true`, the API requires authentication. The actual authentication
  *   mechanism is not yet implemented — this flag serves as a future extension point.
+ * @property allowedOperations Set of operations the server exposes. Defaults to [AllowedOperation.VALIDATE]
+ *   and [AllowedOperation.TIMESTAMP]. [AllowedOperation.SIGN] is opt-in for institutional deployments
+ *   where the server holds an HSM or seal certificate.
+ * @property allowedCertificateAliases When non-null, only these certificate aliases may be used
+ *   for signing via the API. Provides defense-in-depth so that personal certificates installed
+ *   on the server are never accidentally exposed. When `null` and signing is enabled, all
+ *   discovered signing certificates are available.
  * @property tls TLS/SSL keystore settings. Ignored when [proxyMode] is `true`.
  * @property cors Cross-Origin Resource Sharing configuration.
  * @property compression Response compression configuration.
@@ -24,6 +31,8 @@ data class ServerConfig(
 	val development: Boolean = false,
 	val proxyMode: Boolean = false,
 	val requireLogin: Boolean = false,
+	val allowedOperations: Set<AllowedOperation> = setOf(AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP),
+	val allowedCertificateAliases: List<String>? = null,
 	val tls: TlsConfig? = null,
 	val cors: CorsConfig? = null,
 	val compression: CompressionConfig = CompressionConfig(),

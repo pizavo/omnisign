@@ -3,13 +3,13 @@ package cz.pizavo.omnisign.api.model
 import kotlinx.serialization.Serializable
 
 /**
- * Metadata returned alongside an extended PDF binary.
+ * Metadata returned alongside a timestamped/extended PDF binary.
  *
- * @property newLevel The PAdES level after extension.
+ * @property newLevel The PAdES level after timestamping/extension.
  * @property warnings Human-readable warning summaries.
  */
 @Serializable
-data class ExtensionResultMeta(
+data class TimestampResultMeta(
 	val newLevel: String,
 	val warnings: List<String> = emptyList(),
 )

@@ -1,6 +1,6 @@
 package cz.pizavo.omnisign.plugins
 
-import cz.pizavo.omnisign.api.OperationException
+import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.model.ApiError
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.error.ValidationError

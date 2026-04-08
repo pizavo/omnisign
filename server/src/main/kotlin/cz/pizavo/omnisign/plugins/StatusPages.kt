@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.plugins
 
-import cz.pizavo.omnisign.api.OperationException
+import cz.pizavo.omnisign.api.exception.FileTooLargeException
+import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.model.ApiError
 import cz.pizavo.omnisign.domain.model.error.*
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -19,6 +20,16 @@ fun Application.configureStatusPages() {
 	install(StatusPages) {
 		exception<OperationException> { call, cause ->
 			call.respondOperationError(cause.operationError)
+		}
+		exception<FileTooLargeException> { call, cause ->
+			logger.warn { "File too large: ${cause.message}" }
+			call.respond(
+				HttpStatusCode.PayloadTooLarge,
+				ApiError(
+					error = "FILE_TOO_LARGE",
+					message = cause.message ?: "Uploaded file exceeds the maximum allowed size",
+				),
+			)
 		}
 		exception<IllegalArgumentException> { call, cause ->
 			logger.warn(cause) { "Bad request: ${cause.message}" }

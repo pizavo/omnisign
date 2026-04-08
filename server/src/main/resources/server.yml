@@ -25,6 +25,21 @@ proxyMode: false
 # for a future extension.
 requireLogin: false
 
+# Operations the server exposes. Valid values: SIGN, VALIDATE, TIMESTAMP.
+# Defaults to VALIDATE and TIMESTAMP only. SIGN is opt-in because it exposes
+# the server's signing certificates to all API callers.
+allowedOperations:
+  - VALIDATE
+  - TIMESTAMP
+# Uncomment to also enable signing (e.g. for institutional seal/HSM deployments):
+#  - SIGN
+
+# When SIGN is enabled, restrict which certificate aliases may be used via the API.
+# If omitted (null), all discovered signing certificates are available.
+# allowedCertificateAliases:
+#   - "university-seal"
+#   - "department-stamp"
+
 # TLS / SSL configuration.
 # Uncomment and fill in to enable direct HTTPS with TLS v1.3 and HTTP/2.
 # tls:
