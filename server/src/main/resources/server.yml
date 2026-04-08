@@ -1,0 +1,51 @@
+# OmniSign Server Configuration
+# ================================
+# This file configures the Ktor-based OmniSign HTTP server.
+# Place it as server.yml in the working directory, set the OMNISIGN_SERVER_CONFIG
+# environment variable, or pass --config <path> on the command line.
+
+# Network interface and port for the plain HTTP connector.
+host: "0.0.0.0"
+port: 50080
+
+# Port for the TLS (HTTPS) connector when TLS is configured.
+tlsPort: 50443
+
+# When true, Ktor development mode is activated (auto-reload, verbose errors).
+# Must be false in production.
+development: true
+
+# When true, TLS is handled by a reverse proxy (e.g., nginx, Caddy, Traefik).
+# The server listens on a plain HTTP connector and trusts X-Forwarded-* headers.
+# TLS v1.3 enforcement is skipped because the proxy handles it.
+proxyMode: false
+
+# When true, API endpoints require authentication.
+# The authentication mechanism is not yet implemented — this is a placeholder
+# for a future extension.
+requireLogin: false
+
+# TLS / SSL configuration.
+# Uncomment and fill in to enable direct HTTPS with TLS v1.3 and HTTP/2.
+# tls:
+#   keystorePath: "/path/to/keystore.p12"
+#   keystorePassword: "changeit"
+#   keyAlias: "omnisign"
+#   privateKeyPassword: "changeit"
+
+# CORS configuration for the web frontend.
+# cors:
+#   allowedOrigins:
+#     - "https://omnisign.example.com"
+#   allowCredentials: false
+
+# Response compression (gzip + deflate).
+# compression:
+#   enabled: true
+#   gzipPriority: 1.0
+#   gzipMinimumSize: 1024
+#   deflatePriority: 0.9
+#   deflateMinimumSize: 1024
+
+# Maximum upload file size in bytes (default: 100 MB).
+maxFileSize: 104857600

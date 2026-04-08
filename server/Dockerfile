@@ -5,5 +5,6 @@ WORKDIR /app
 COPY server/build/libs/*-all.jar app.jar
 
 EXPOSE 8080
+EXPOSE 8443
 
 ENTRYPOINT ["java", "--enable-native-access=ALL-UNNAMED", "-jar", "app.jar"]
