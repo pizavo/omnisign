@@ -1,7 +1,7 @@
 package cz.pizavo.omnisign.api.routes
 
-import cz.pizavo.omnisign.api.model.CapabilitiesResponse
-import cz.pizavo.omnisign.api.model.HealthResponse
+import cz.pizavo.omnisign.api.model.responses.CapabilitiesResponse
+import cz.pizavo.omnisign.api.model.responses.HealthResponse
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import io.ktor.server.response.*

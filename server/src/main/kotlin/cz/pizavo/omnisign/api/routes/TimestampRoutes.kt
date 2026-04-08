@@ -4,8 +4,8 @@ import cz.pizavo.omnisign.api.collectParts
 import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.extractFilePart
 import cz.pizavo.omnisign.api.extractTextField
-import cz.pizavo.omnisign.api.model.ApiError
-import cz.pizavo.omnisign.api.model.TimestampResultMeta
+import cz.pizavo.omnisign.api.model.responses.ApiError
+import cz.pizavo.omnisign.api.model.responses.TimestampResultMeta
 import cz.pizavo.omnisign.api.requireOperation
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
@@ -30,7 +30,8 @@ import java.io.File
  * `POST /api/v1/timestamp` accepts a `multipart/form-data` request with:
  * - `file` — the signed PDF to extend (required).
  * - `targetLevel` — target PAdES level name (optional, defaults to `PADES_BASELINE_LTA`).
- * - `profile` — named configuration profile (optional).
+ * - `profile` — named configuration profile (optional). When omitted, global defaults apply.
+ *   No server-side active profile is used as a fallback.
  *
  * The TSA configuration is always taken from the server's pre-configured global or profile
  * settings. Clients cannot supply their own TSA credentials.
@@ -66,8 +67,7 @@ fun Route.timestampRoutes() {
 		try {
 			val profileName = extractTextField(parts, "profile")
 			val appConfig = configRepository.getCurrentConfig()
-			val activeProfile = profileName ?: appConfig.activeProfile
-			val profileConfig = activeProfile?.let { appConfig.profiles[it] }
+			val profileConfig = profileName?.let { appConfig.profiles[it] }
 
 			val resolvedConfig = ResolvedConfig.resolve(appConfig.global, profileConfig, null)
 				.fold(

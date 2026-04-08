@@ -1,4 +1,4 @@
-package cz.pizavo.omnisign.api.model
+package cz.pizavo.omnisign.api.model.responses
 
 import kotlinx.serialization.Serializable
 

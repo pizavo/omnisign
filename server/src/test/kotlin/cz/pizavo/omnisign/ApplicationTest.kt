@@ -1,6 +1,6 @@
 package cz.pizavo.omnisign
 
-import cz.pizavo.omnisign.api.model.HealthResponse
+import cz.pizavo.omnisign.api.model.responses.HealthResponse
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.ktor.client.request.*

@@ -4,7 +4,7 @@ import cz.pizavo.omnisign.api.collectParts
 import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.extractFilePart
 import cz.pizavo.omnisign.api.extractTextField
-import cz.pizavo.omnisign.api.model.ApiError
+import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.api.requireOperation
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
@@ -25,7 +25,8 @@ import org.koin.ktor.ext.inject
  *
  * `POST /api/v1/validate` accepts a `multipart/form-data` request with:
  * - `file` — the PDF to validate (required).
- * - `profile` — named configuration profile to use (optional).
+ * - `profile` — named configuration profile to use (optional). When omitted, global
+ *   defaults apply. No server-side active profile is used as a fallback.
  *
  * On success the response is a JSON validation report.
  */
@@ -52,8 +53,7 @@ fun Route.validationRoutes() {
 		try {
 			val profileName = extractTextField(parts, "profile")
 			val appConfig = configRepository.getCurrentConfig()
-			val activeProfile = profileName ?: appConfig.activeProfile
-			val profileConfig = activeProfile?.let { appConfig.profiles[it] }
+			val profileConfig = profileName?.let { appConfig.profiles[it] }
 
 			val resolvedConfig = ResolvedConfig.resolve(appConfig.global, profileConfig, null)
 				.fold(

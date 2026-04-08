@@ -1,7 +1,7 @@
 package cz.pizavo.omnisign.plugins
 
 import cz.pizavo.omnisign.api.exception.OperationException
-import cz.pizavo.omnisign.api.model.ApiError
+import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.error.ValidationError
 import io.kotest.core.spec.style.FunSpec

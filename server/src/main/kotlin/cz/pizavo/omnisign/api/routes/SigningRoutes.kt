@@ -4,8 +4,8 @@ import cz.pizavo.omnisign.api.collectParts
 import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.extractFilePart
 import cz.pizavo.omnisign.api.extractTextField
-import cz.pizavo.omnisign.api.model.ApiError
-import cz.pizavo.omnisign.api.model.SigningResultMeta
+import cz.pizavo.omnisign.api.model.responses.ApiError
+import cz.pizavo.omnisign.api.model.responses.SigningResultMeta
 import cz.pizavo.omnisign.api.requireOperation
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
@@ -35,7 +35,8 @@ import java.io.File
  * - `signatureLevel` — PAdES level (optional, e.g. `PADES_BASELINE_T`).
  * - `reason`, `location`, `contactInfo` — optional signature metadata.
  * - `noTimestamp` — set to `true` to omit the RFC 3161 timestamp.
- * - `profile` — named configuration profile to use (optional).
+ * - `profile` — named configuration profile to use (optional). When omitted, global
+ *   defaults apply. No server-side active profile is used as a fallback.
  *
  * This operation is disabled by default and must be explicitly enabled in [ServerConfig.allowedOperations].
  * When [ServerConfig.allowedCertificateAliases] is set, only those aliases may be used.
@@ -71,8 +72,7 @@ fun Route.signingRoutes() {
 		try {
 			val profileName = extractTextField(parts, "profile")
 			val appConfig = configRepository.getCurrentConfig()
-			val activeProfile = profileName ?: appConfig.activeProfile
-			val profileConfig = activeProfile?.let { appConfig.profiles[it] }
+			val profileConfig = profileName?.let { appConfig.profiles[it] }
 
 			val resolvedConfig = ResolvedConfig.resolve(appConfig.global, profileConfig, null)
 				.fold(

@@ -2,7 +2,7 @@ package cz.pizavo.omnisign.plugins
 
 import cz.pizavo.omnisign.api.exception.FileTooLargeException
 import cz.pizavo.omnisign.api.exception.OperationException
-import cz.pizavo.omnisign.api.model.ApiError
+import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.domain.model.error.*
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.*

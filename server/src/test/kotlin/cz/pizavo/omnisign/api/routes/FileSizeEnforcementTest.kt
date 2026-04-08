@@ -1,6 +1,6 @@
 package cz.pizavo.omnisign.api.routes
 
-import cz.pizavo.omnisign.api.model.ApiError
+import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.module
