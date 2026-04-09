@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.config
 
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.ObjectMapper
+import com.fasterxml.jackson.databind.module.SimpleModule
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -24,6 +25,9 @@ class ServerConfigLoader {
 	private val mapper: ObjectMapper = ObjectMapper(YAMLFactory())
 		.registerKotlinModule()
 		.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+		.registerModule(
+			SimpleModule().addDeserializer(SsoProviderConfig::class.java, SsoProviderConfigDeserializer()),
+		)
 
 	/**
 	 * Load the server configuration from the first available source.
@@ -70,6 +74,17 @@ class ServerConfigLoader {
 
 		return null
 	}
+
+	/**
+	 * Load the server configuration from a raw YAML string.
+	 *
+	 * Primarily intended for testing so that a config can be provided inline without a file.
+	 *
+	 * @param yaml YAML content to parse.
+	 * @return Parsed [ServerConfig].
+	 */
+	fun loadFromString(yaml: String): ServerConfig =
+		mapper.readValue(yaml, ServerConfig::class.java)
 
 	companion object {
 		private const val ENV_VAR = "OMNISIGN_SERVER_CONFIG"

@@ -95,10 +95,22 @@ fun Application.moduleWith(serverConfig: ServerConfig) {
 	configureCors(serverConfig.cors, tlsEnabled = serverConfig.tls != null || serverConfig.proxyMode)
 	configureForwardedHeaders(serverConfig.proxyMode)
 	configureHttpsRedirect(serverConfig)
-	configureRouting()
+
+	val authConfig = serverConfig.auth
+	val externalUrl = if (authConfig != null) resolveExternalUrl(serverConfig) else ""
+	configureAuthentication(authConfig, externalUrl)
+	configureRouting(authConfig, serverConfig.requireLogin)
 
 	if (serverConfig.requireLogin) {
-		logger.info { "Login requirement is ENABLED (authentication mechanism not yet implemented)" }
+		if (authConfig == null || authConfig.providers.isEmpty()) {
+			logger.warn {
+				"⚠️  requireLogin is true but no auth providers are configured — all API calls will be rejected with 401"
+			}
+		} else {
+			logger.info {
+				"Authentication ENABLED — providers: ${authConfig.providers.joinToString { it.name }}"
+			}
+		}
 	}
 
 	logger.info { "Allowed operations: ${serverConfig.allowedOperations.joinToString { it.name }}" }
@@ -159,3 +171,23 @@ private fun loadKeyStore(path: String, password: String): KeyStore {
 	file.inputStream().use { keyStore.load(it, password.toCharArray()) }
 	return keyStore
 }
+
+/**
+ * Derive the externally reachable base URL for the server.
+ *
+ * Used to build OAuth2 redirect URIs. Reads the `OMNISIGN_EXTERNAL_URL` environment
+ * variable first, falling back to constructing a URL from [ServerConfig.host] and the
+ * active port/scheme.
+ *
+ * @param serverConfig Current server configuration.
+ * @return Base URL string (no trailing slash).
+ */
+private fun resolveExternalUrl(serverConfig: ServerConfig): String {
+	System.getenv("OMNISIGN_EXTERNAL_URL")?.takeIf { it.isNotBlank() }?.let { return it.trimEnd('/') }
+
+	val scheme = if (serverConfig.tls != null && !serverConfig.proxyMode) "https" else "http"
+	val port = if (serverConfig.tls != null && !serverConfig.proxyMode) serverConfig.tlsPort else serverConfig.port
+	val host = serverConfig.host.let { if (it == "0.0.0.0") "localhost" else it }
+	return "$scheme://$host:$port"
+}
+

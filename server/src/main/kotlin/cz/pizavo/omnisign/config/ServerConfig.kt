@@ -10,8 +10,9 @@ package cz.pizavo.omnisign.config
  *   auto-reload and more verbose error pages. Should be `false` in production.
  * @property proxyMode When `true`, TLS termination is handled by a reverse proxy and the server
  *   listens on a plain HTTP connector. `X-Forwarded-*` headers are trusted.
- * @property requireLogin When `true`, the API requires authentication. The actual authentication
- *   mechanism is not yet implemented — this flag serves as a future extension point.
+ * @property requireLogin When `true`, all API routes except the health check and auth
+ *   endpoints require a valid JWT session token. Must be combined with a non-empty
+ *   [AuthConfig.providers] list to be functional.
  * @property allowedOperations Set of operations the server exposes. Defaults to [AllowedOperation.VALIDATE]
  *   and [AllowedOperation.TIMESTAMP]. [AllowedOperation.SIGN] is opt-in for institutional deployments
  *   where the server holds an HSM or seal certificate.
@@ -23,6 +24,8 @@ package cz.pizavo.omnisign.config
  * @property cors Cross-Origin Resource Sharing configuration.
  * @property compression Response compression configuration.
  * @property maxFileSize Maximum upload file size in bytes. Defaults to 100 MB.
+ * @property auth SSO authentication configuration. When `null`, no authentication plugin
+ *   is installed and [requireLogin] has no effect.
  */
 data class ServerConfig(
 	val host: String = "0.0.0.0",
@@ -37,5 +40,6 @@ data class ServerConfig(
 	val cors: CorsConfig? = null,
 	val compression: CompressionConfig = CompressionConfig(),
 	val maxFileSize: Long = 100L * 1024 * 1024,
+	val auth: AuthConfig? = null,
 )
 

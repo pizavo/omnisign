@@ -65,6 +65,11 @@ ktor-server-status-pages = { module = "io.ktor:ktor-server-status-pages-jvm", ve
 ktor-server-cors = { module = "io.ktor:ktor-server-cors-jvm", version.ref = "ktor" }
 ktor-server-call-logging = { module = "io.ktor:ktor-server-call-logging-jvm", version.ref = "ktor" }
 ktor-server-auth = { module = "io.ktor:ktor-server-auth-jvm", version.ref = "ktor" }
+ktor-server-auth-jwt = { module = "io.ktor:ktor-server-auth-jwt-jvm", version.ref = "ktor" }
+ktor-server-sessions = { module = "io.ktor:ktor-server-sessions-jvm", version.ref = "ktor" }
+ktor-client-core = { module = "io.ktor:ktor-client-core-jvm", version.ref = "ktor" }
+ktor-client-cio = { module = "io.ktor:ktor-client-cio-jvm", version.ref = "ktor" }
+ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation-jvm", version.ref = "ktor" }
 ktor-server-compression = { module = "io.ktor:ktor-server-compression-jvm", version.ref = "ktor" }
 ktor-server-auto-head-response = { module = "io.ktor:ktor-server-auto-head-response-jvm", version.ref = "ktor" }
 ktor-server-https-redirect = { module = "io.ktor:ktor-server-http-redirect-jvm", version.ref = "ktor" }
