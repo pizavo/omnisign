@@ -131,10 +131,15 @@ compose.desktop {
 	application {
 		mainClass = "cz.pizavo.omnisign.MainKt"
 
-		jvmArgs(
+		val jvmArgsList = mutableListOf(
 			"--enable-native-access=ALL-UNNAMED",
-			"-Dsun.java2d.d3d=false"
+			"-Dsun.java2d.d3d=false",
+			"-Dsun.awt.wmclass=OmniSign",
 		)
+		if (org.gradle.internal.os.OperatingSystem.current().isLinux) {
+			jvmArgsList.addAll(listOf("--add-opens", "java.desktop/sun.awt.X11=ALL-UNNAMED"))
+		}
+		jvmArgs(*jvmArgsList.toTypedArray())
 
 		jbrHomePath?.let { javaHome = it }
 
@@ -256,6 +261,87 @@ gradle.taskGraph.whenReady {
 				appendLine("    and place it under ~/.jdks/ so Gradle auto-detects it.")
 			}
 		)
+	}
+}
+
+/**
+ * On Linux, installs two user-local `.desktop` entries before every `:composeApp:run`.
+ *
+ * GNOME Shell (Wayland) matches XWayland windows to apps via two mechanisms:
+ *  1. **`StartupWMClass` index** — only rebuilt at session login on Wayland.
+ *  2. **Name lookup**: `appSys.lookup_app("omnisign.desktop")` — lowercase of
+ *     WM_CLASS (`"OmniSign"` → `"omnisign"`), backed by GLib's `GAppInfoMonitor`
+ *     (inotify) and effective **without a session restart**.
+ *
+ * Both files are written so icon matching works whether the user has ever
+ * logged out since the project was cloned. No `sudo` is required; user-level
+ * entries take precedence over any system-level RPM file.
+ *
+ * The task is **incremental**: it is skipped entirely on subsequent runs once the
+ * files are up-to-date, adding zero overhead to day-to-day `:run` invocations.
+ */
+if (org.gradle.internal.os.OperatingSystem.current().isLinux) {
+	val userAppsDir = file("${System.getProperty("user.home")}/.local/share/applications")
+	val iconPath = rootProject.file("assets/icons/omnisign-logo-512.png").absolutePath
+
+	val primaryContent =
+		"[Desktop Entry]\n" +
+		"Name=OmniSign\n" +
+		"Comment=Digital signature verification, signing and re-timestamping\n" +
+		"Exec=/opt/omnisign/bin/OmniSign\n" +
+		"Icon=$iconPath\n" +
+		"Terminal=false\n" +
+		"Type=Application\n" +
+		"Categories=Utility\n" +
+		"MimeType=application/pdf\n" +
+		"StartupWMClass=OmniSign\n" +
+		"StartupNotify=true\n"
+
+	val hiddenContent =
+		"[Desktop Entry]\n" +
+		"Name=OmniSign\n" +
+		"Comment=OmniSign window-tracker entry — do not remove\n" +
+		"Exec=true\n" +
+		"Icon=$iconPath\n" +
+		"Terminal=false\n" +
+		"Type=Application\n" +
+		"NoDisplay=true\n" +
+		"StartupWMClass=OmniSign\n" +
+		"StartupNotify=true\n"
+
+	val primaryFile = userAppsDir.resolve("omnisign-OmniSign.desktop")
+	val hiddenFile  = userAppsDir.resolve("omnisign.desktop")
+
+	val installLinuxDevDesktopEntry by tasks.registering {
+		group = "compose desktop"
+		description =
+			"Installs two user-local .desktop entries so GNOME Shell matches the running " +
+			"window (WM_CLASS=OmniSign) to the correct icon when launching via :run."
+
+		inputs.property("primaryContent", primaryContent)
+		inputs.property("hiddenContent",  hiddenContent)
+		outputs.files(primaryFile, hiddenFile)
+
+		doLast {
+			userAppsDir.mkdirs()
+			primaryFile.writeText(primaryContent)
+			hiddenFile.writeText(hiddenContent)
+
+			try {
+				ProcessBuilder("update-desktop-database", userAppsDir.absolutePath)
+					.redirectErrorStream(true).start().waitFor()
+			} catch (_: Exception) { /* may not be installed; inotify handles it */ }
+
+			Thread.sleep(600)
+
+			logger.lifecycle("Installed development .desktop entries in $userAppsDir")
+		}
+	}
+
+	afterEvaluate {
+		tasks.matching { it.name == "run" }.configureEach {
+			dependsOn(installLinuxDevDesktopEntry)
+		}
 	}
 }
 

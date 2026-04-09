@@ -12,6 +12,7 @@ import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.ui.platform.LocalDragAreaCallback
 import cz.pizavo.omnisign.ui.platform.LocalTitleBarHeight
 import cz.pizavo.omnisign.ui.platform.LocalTitleBarRightInset
+import cz.pizavo.omnisign.ui.platform.LocalWindowControls
 import cz.pizavo.omnisign.ui.platform.LocalWindowDragModifier
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
@@ -60,6 +61,7 @@ fun IslandToolbar(
 	val trailingPadding = if (nativeRightInsetPx > 0f) (nativeRightInsetPx + 8).dp else 4.dp
 	val dragModifier = LocalWindowDragModifier.current
 	val reportDragArea = LocalDragAreaCallback.current
+	val windowControls = LocalWindowControls.current
 	
 	Surface(
 		modifier = modifier.fillMaxWidth().height(titleBarHeight),
@@ -233,6 +235,11 @@ fun IslandToolbar(
 					}
 				}
 			}
+			
+			// Custom window controls (minimize / maximize / close) injected on platforms
+			// that run without native window decorations — currently Linux, where JBR's
+			// WindowDecorations API is not supported and the window is undecorated.
+			windowControls?.invoke()
 		}
 	}
 }
