@@ -99,12 +99,12 @@ fun Application.moduleWith(serverConfig: ServerConfig) {
 	val authConfig = serverConfig.auth
 	val externalUrl = if (authConfig != null) resolveExternalUrl(serverConfig) else ""
 	configureAuthentication(authConfig, externalUrl)
-	configureRouting(authConfig, serverConfig.requireLogin)
+	configureRouting(authConfig)
 
-	if (serverConfig.requireLogin) {
-		if (authConfig == null || authConfig.providers.isEmpty()) {
+	if (authConfig?.enabled == true) {
+		if (authConfig.providers.isEmpty()) {
 			logger.warn {
-				"⚠️  requireLogin is true but no auth providers are configured — all API calls will be rejected with 401"
+				"⚠️  auth.enabled is true but no auth providers are configured — all API calls will be rejected with 401"
 			}
 		} else {
 			logger.info {
@@ -115,7 +115,7 @@ fun Application.moduleWith(serverConfig: ServerConfig) {
 
 	logger.info { "Allowed operations: ${serverConfig.allowedOperations.joinToString { it.name }}" }
 
-	if (AllowedOperation.SIGN in serverConfig.allowedOperations && !serverConfig.requireLogin) {
+	if (AllowedOperation.SIGN in serverConfig.allowedOperations && authConfig?.enabled != true) {
 		logger.warn {
 			"⚠️  SIGN operation is enabled WITHOUT authentication — all configured signing " +
 					"certificates are accessible to any network-reachable client. " +

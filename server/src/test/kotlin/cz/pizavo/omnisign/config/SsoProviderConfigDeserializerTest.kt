@@ -15,8 +15,8 @@ class SsoProviderConfigDeserializerTest : FunSpec({
 
     test("deserializes an oidc provider from YAML") {
         val yaml = """
-            requireLogin: true
             auth:
+              enabled: true
               providers:
                 - type: oidc
                   name: google

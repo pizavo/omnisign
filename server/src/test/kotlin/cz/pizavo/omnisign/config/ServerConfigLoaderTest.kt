@@ -23,7 +23,6 @@ class ServerConfigLoaderTest : FunSpec({
 		config.tlsPort shouldBe 50443
 		config.development.shouldBeTrue()
 		config.proxyMode.shouldBeFalse()
-		config.requireLogin.shouldBeFalse()
 		config.tls.shouldBeNull()
 		config.cors.shouldBeNull()
 		config.allowedOperations shouldContainExactlyInAnyOrder
@@ -38,7 +37,8 @@ class ServerConfigLoaderTest : FunSpec({
 			tlsPort: 9443
 			development: true
 			proxyMode: true
-			requireLogin: true
+			auth:
+			  enabled: true
 			tls:
 			  keystorePath: "/tmp/ks.p12"
 			  keystorePassword: "secret"
@@ -61,7 +61,7 @@ class ServerConfigLoaderTest : FunSpec({
 		config.tlsPort shouldBe 9443
 		config.development.shouldBeTrue()
 		config.proxyMode.shouldBeTrue()
-		config.requireLogin.shouldBeTrue()
+		config.auth?.enabled.shouldBeTrue()
 
 		config.tls.shouldNotBeNull()
 		config.tls.keystorePath shouldBe "/tmp/ks.p12"

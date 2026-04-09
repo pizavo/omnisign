@@ -20,10 +20,6 @@ development: true
 # TLS v1.3 enforcement is skipped because the proxy handles it.
 proxyMode: false
 
-# When true, API endpoints require a valid JWT Bearer token.
-# Must be combined with a non-empty auth.providers list to be functional.
-requireLogin: false
-
 # ──────────────────────────────────────────────────────────────────────────────
 # SSO Authentication
 # ──────────────────────────────────────────────────────────────────────────────
@@ -34,6 +30,9 @@ requireLogin: false
 # OMNISIGN_JWT_SECRET environment variable (env-var preferred for production).
 #
 # auth:
+#   # When true, all operational API endpoints require a valid JWT Bearer token.
+#   # Must be combined with a non-empty providers list to be functional.
+#   enabled: true
 #   session:
 #     # algorithm: HS512   # default; options: HS256, HS384, HS512 (HMAC, single-server deployments)
 #     #                    #          RS256, RS384, RS512 (RSA — planned, not yet implemented)
@@ -60,7 +59,7 @@ requireLogin: false
 #     # tenantId: "common" = multi-tenant, "organizations" = work/school only,
 #     #           or a specific tenant GUID / primary domain.
 #     # Use allowedEmailDomains to further restrict to specific domains within the tenant
-#     # (e.g. if subsidiary companies share the same Entra ID tenant).
+#     # (e.g., if subsidiary companies share the same Entra ID tenant).
 #     - type: oidc
 #       name: microsoft
 #       preset: MICROSOFT
