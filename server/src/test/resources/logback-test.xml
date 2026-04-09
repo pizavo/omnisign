@@ -1,0 +1,21 @@
+<configuration>
+    <appender name="STDOUT" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>%d{YYYY-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
+        </encoder>
+    </appender>
+    <root level="INFO">
+        <appender-ref ref="STDOUT"/>
+    </root>
+    <!-- Change to DEBUG for verbose route-level diagnostics during test development -->
+    <logger name="cz.pizavo.omnisign" level="INFO"/>
+    <logger name="org.eclipse.jetty" level="INFO"/>
+    <logger name="io.netty" level="INFO"/>
+    <logger name="eu.europa.esig" level="ERROR"/>
+    <logger name="eu.europa.esig.dss.tsl.runnable" level="ERROR"/>
+    <logger name="eu.europa.esig.dss.tsl.function.converter" level="ERROR"/>
+    <logger name="eu.europa.esig.dss.tsl.sync" level="ERROR"/>
+    <logger name="org.apache.pdfbox.pdfparser" level="ERROR"/>
+</configuration>
+
+
