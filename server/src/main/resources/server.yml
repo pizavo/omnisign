@@ -1,0 +1,238 @@
+# OmniSign Server Configuration
+# ================================
+# This file configures the Ktor-based OmniSign HTTP server.
+# Place it as server.yml in the working directory, set the OMNISIGN_SERVER_CONFIG
+# environment variable, or pass --config <path> on the command line.
+
+# Network interface and port for the plain HTTP connector.
+host: "0.0.0.0"
+port: 50080
+
+# Port for the TLS (HTTPS) connector when TLS is configured.
+tlsPort: 50443
+
+# When true, Ktor development mode is activated (auto-reload, verbose errors).
+# Must be false in production.
+development: true
+
+# When true, TLS is handled by a reverse proxy (e.g., nginx, Caddy, Traefik).
+# The server listens on a plain HTTP connector and trusts X-Forwarded-* headers.
+# TLS v1.3 enforcement is skipped because the proxy handles it.
+proxyMode: false
+
+# In-memory per-IP request rate limiting.
+# When enabled, protects auth and API endpoints from brute-force and DoS attacks.
+# In proxy mode, client IPs are taken from X-Forwarded-For (set by proxyMode: true).
+# rateLimiting:
+#   auth:
+#     limit: 20               # max requests per IP per refillPeriodSeconds on /auth/* routes
+#     refillPeriodSeconds: 60
+#   api:
+#     limit: 200              # max requests per IP per refillPeriodSeconds on API routes
+#     refillPeriodSeconds: 60
+
+# ─────────────────────────────────────────────────────────────────────────────
+# SSO Authentication
+# ──────────────────────────────────────────────────────────────────────────────
+# Uncomment and configure one or more providers to enable SSO login.
+# The base public URL used for OAuth2 redirect URIs can be overridden via the
+# OMNISIGN_EXTERNAL_URL environment variable (recommended for production).
+# The JWT signing secret is read from auth.session.secret or the
+# OMNISIGN_JWT_SECRET environment variable (env-var preferred for production).
+#
+# auth:
+#   # When true, all operational API endpoints require a valid JWT Bearer token.
+#   # Must be combined with a non-empty providers list to be functional.
+#   enabled: true
+#   session:
+#     # algorithm: HS512   # default; options: HS256, HS384, HS512 (HMAC, single-server deployments)
+#     #                    #          RS256, RS384, RS512 (RSA — planned, not yet implemented)
+#     #                    #          ES256, ES384, ES512 (ECDSA — planned, not yet implemented)
+#     # HS512 is the recommended default. Asymmetric variants (RS*, ES*) are only needed
+#     # when an external system must verify OmniSign tokens without the signing secret
+#     # (e.g., multi-instance or third-party integrations). See JwtAlgorithmType KDoc.
+#     issuer: omnisign
+#     audience: omnisign-api
+#     tokenExpirySeconds: 3600
+#     # secret: "change-me-use-OMNISIGN_JWT_SECRET-env-var-in-production"
+#   providers:
+#
+#     # ── Google ───────────────────────────────────────────────────────────────
+#     - type: oidc
+#       name: google
+#       preset: GOOGLE
+#       displayName: "Sign in with Google"
+#       clientId: "YOUR_CLIENT_ID.apps.googleusercontent.com"
+#       clientSecret: "YOUR_CLIENT_SECRET"
+#       # allowedEmailDomains: ["yourcompany.com"]   # restrict to org accounts only
+#
+#     # ── Microsoft Entra ID (Azure AD) ────────────────────────────────────────
+#     # tenantId: "common" = multi-tenant, "organizations" = work/school only,
+#     #           or a specific tenant GUID / primary domain.
+#     # Use allowedEmailDomains to further restrict to specific domains within the tenant
+#     # (e.g., if subsidiary companies share the same Entra ID tenant).
+#     - type: oidc
+#       name: microsoft
+#       preset: MICROSOFT
+#       displayName: "Sign in with Microsoft"
+#       tenantId: "common"
+#       clientId: "YOUR_APPLICATION_CLIENT_ID"
+#       clientSecret: "YOUR_CLIENT_SECRET"
+#       # allowedEmailDomains: ["contoso.com"]   # restrict to contoso.com accounts only
+#
+#     # ── Amazon Cognito ───────────────────────────────────────────────────────
+#     # tenantId format: "{region}/{userPoolId}"
+#     - type: oidc
+#       name: cognito
+#       preset: AMAZON_COGNITO
+#       displayName: "Sign in with Amazon"
+#       tenantId: "eu-central-1/eu-central-1_XXXXXXXXX"
+#       clientId: "YOUR_APP_CLIENT_ID"
+#       clientSecret: "YOUR_APP_CLIENT_SECRET"
+#
+#     # ── Keycloak (self-hosted) ───────────────────────────────────────────────
+#     # tenantId format: "{host}/{realm}"
+#     - type: oidc
+#       name: keycloak
+#       preset: KEYCLOAK
+#       displayName: "Sign in with Keycloak"
+#       tenantId: "keycloak.example.com/myrealm"
+#       clientId: "omnisign"
+#       clientSecret: "YOUR_CLIENT_SECRET"
+#
+#     # ── GitHub ───────────────────────────────────────────────────────────────
+#     # GitHub uses OAuth2 (not full OIDC). Email scope requires "user:email".
+#     # Use allowedEmailDomains to restrict to specific org/company email addresses.
+#     - type: oidc
+#       name: github
+#       preset: GITHUB
+#       displayName: "Sign in with GitHub"
+#       clientId: "YOUR_GITHUB_CLIENT_ID"
+#       clientSecret: "YOUR_GITHUB_CLIENT_SECRET"
+#       scopes: ["read:user", "user:email"]
+#       # allowedEmailDomains: ["yourcompany.com"]
+#
+#     # ── GitLab ───────────────────────────────────────────────────────────────
+#     - type: oidc
+#       name: gitlab
+#       preset: GITLAB
+#       displayName: "Sign in with GitLab"
+#       clientId: "YOUR_GITLAB_APP_ID"
+#       clientSecret: "YOUR_GITLAB_SECRET"
+#       # allowedEmailDomains: ["yourcompany.com"]
+#
+#     # ── Auth0 ────────────────────────────────────────────────────────────────
+#     # tenantId: your Auth0 domain (e.g. "myapp.eu.auth0.com")
+#     - type: oidc
+#       name: auth0
+#       preset: AUTH0
+#       displayName: "Sign in with Auth0"
+#       tenantId: "myapp.eu.auth0.com"
+#       clientId: "YOUR_AUTH0_CLIENT_ID"
+#       clientSecret: "YOUR_AUTH0_CLIENT_SECRET"
+#
+#     # ── Apple ────────────────────────────────────────────────────────────────
+#     - type: oidc
+#       name: apple
+#       preset: APPLE
+#       displayName: "Sign in with Apple"
+#       clientId: "YOUR_APPLE_SERVICE_ID"
+#       clientSecret: "YOUR_APPLE_CLIENT_SECRET"
+#
+#     # ── eduID.cz / Czech Academic Federation (OIDC mode) ─────────────────────
+#     # Register an OIDC client at https://www.eduid.cz/cs/tech/oidc
+#     # eduID.cz is a FEDERATION — a single clientId/clientSecret grants access to users
+#     # from ALL ~60+ federated Czech universities (Charles University, Masaryk University,
+#     # University of Ostrava, CTU Prague, etc.). Users pick their home institution on
+#     # the eduID.cz login page. The clientId does NOT restrict which institution can log in.
+#     #
+#     # Restrict by institution using one of the following approaches:
+#     #   1. allowedEmailDomains — simple domain check on the email claim.
+#     #   2. requiredClaims.schac_home_organization — authoritative institution identifier;
+#     #      works even when users have personal e-mail addresses on file.
+#     #   3. requiredClaims.eduperson_scoped_affiliation — restricts by institution AND role
+#     #      (student / staff / faculty / member). Multi-valued; at least one must match.
+#     - type: oidc
+#       name: eduid
+#       preset: EDUID_CZ
+#       displayName: "Sign in with eduID.cz"
+#       clientId: "YOUR_EDUID_CLIENT_ID"
+#       clientSecret: "YOUR_EDUID_CLIENT_SECRET"
+#       scopes: ["openid", "email", "profile", "eduperson_principal_name"]
+#       # Option 1 — restrict to University of Ostrava by email domain:
+#       # allowedEmailDomains: ["osu.cz"]
+#       #
+#       # Option 2 — restrict by schac_home_organization (more authoritative than email):
+#       # requiredClaims:
+#       #   schac_home_organization: ["osu.cz"]
+#       #
+#       # Option 3 — restrict to UO staff and faculty only (excludes students):
+#       # requiredClaims:
+#       #   schac_home_organization: ["osu.cz"]
+#       #   eduperson_scoped_affiliation: ["staff@osu.cz", "faculty@osu.cz"]
+#
+#     # ── Shibboleth / SAML 2.0 reverse-proxy mode ─────────────────────────────
+#     # For institutions using a traditional Shibboleth SP (Apache + mod_shib).
+#     # The SP authenticates the user and injects identity attributes as headers.
+#     # IMPORTANT: Ensure the Ktor server is not reachable directly from the internet;
+#     # only the Apache/Nginx reverse proxy should be exposed.
+#     - type: header-injection
+#       name: shibboleth
+#       displayName: "University SSO (Shibboleth)"
+#       userHeader: "X-Remote-User"        # or "REMOTE_USER" depending on SP config
+#       emailHeader: "X-Shib-Mail"         # Shibboleth attribute: mail
+#       displayNameHeader: "X-Shib-Cn"     # Shibboleth attribute: cn
+
+# Operations the server exposes. Valid values: SIGN, VALIDATE, TIMESTAMP.
+# Defaults to VALIDATE and TIMESTAMP only. SIGN is opt-in because it exposes
+# the server's signing certificates to all API callers.
+allowedOperations:
+  - VALIDATE
+  - TIMESTAMP
+# Uncomment to also enable signing (e.g., for institutional seal/HSM deployments):
+#  - SIGN
+
+# When SIGN is enabled, restrict which certificate aliases may be used via the API.
+# If omitted (null), all discovered signing certificates are available.
+# allowedCertificateAliases:
+#   - "university-seal"
+#   - "department-stamp"
+
+# TLS / SSL configuration.
+# Uncomment and fill in to enable direct HTTPS with TLS 1.2/1.3 and HTTP/2.
+# tls:
+#   keystorePath: "/path/to/keystore.p12"
+#   keystorePassword: "changeit"
+#   keyAlias: "omnisign"
+#   privateKeyPassword: "changeit"
+#
+#   # HTTP Strict Transport Security (HSTS).
+#   # Only enable when ALL traffic to the server arrives over HTTPS.
+#   # Sending this header over plain HTTP is a protocol error and can lock users out.
+#   # When behind a TLS-terminating proxy, let the proxy inject this header instead.
+#   #
+#   # Start with a short maxAgeSeconds (e.g. 300) during initial rollout; raise to
+#   # 31536000 (one year) once you are confident HTTPS is stable. preload: true requires
+#   # includeSubDomains: true and maxAgeSeconds >= 31536000, plus manual submission to
+#   # https://hstspreload.org/.
+#   # hsts:
+#   #   maxAgeSeconds: 31536000     # one year (default)
+#   #   includeSubDomains: true     # apply policy to subdomains (default)
+#   #   preload: false              # include preload directive (default)
+
+# CORS configuration for the web frontend.
+# cors:
+#   allowedOrigins:
+#     - "https://omnisign.example.com"
+#   allowCredentials: false
+
+# Response compression (gzip + deflate).
+# compression:
+#   enabled: true
+#   gzipPriority: 1.0
+#   gzipMinimumSize: 1024
+#   deflatePriority: 0.9
+#   deflateMinimumSize: 1024
+
+# Maximum upload file size in bytes (default: 100 MB).
+maxFileSize: 104857600
