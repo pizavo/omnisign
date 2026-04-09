@@ -17,6 +17,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.json.Json
 import org.koin.dsl.module
 import kotlin.coroutines.CoroutineContext
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 private val logger = KotlinLogging.logger {}
 
@@ -30,8 +32,10 @@ private val logger = KotlinLogging.logger {}
  * - IO [CoroutineContext] for blocking work.
  * - [HttpClient] (CIO engine) with JSON content-negotiation for OIDC discovery and
  *   user-info requests.
- * - [JwtSessionService] for issuing and verifying session tokens, only when an [cz.pizavo.omnisign.config.AuthConfig]
- *   with a resolved secret is present.
+ * - [JwtSessionService] for issuing and verifying session tokens. The signing secret is
+ *   resolved from `auth.session.secret` → `OMNISIGN_JWT_SECRET` env var → random UUID when
+ *   auth is disabled → ephemeral dev secret (development mode only, logs a warning) →
+ *   startup error (production with auth enabled but no secret configured).
  * - [OidcDiscoveryService] and [OidcUserInfoService] for the OIDC authorization-code flow.
  *
  * @param serverConfig Preloaded server configuration.
@@ -55,9 +59,13 @@ fun serverModule(serverConfig: ServerConfig) = module {
 
 	single<JwtSessionService> {
 		val config = serverConfig.auth?.session ?: SessionConfig()
+		val authEnabled = serverConfig.auth?.enabled == true
 		val secret = config.secret
 			?: System.getenv("OMNISIGN_JWT_SECRET")
-			?: if (serverConfig.development) {
+			?: if (!authEnabled) {
+				@OptIn(ExperimentalUuidApi::class)
+				Uuid.generateV7().toString()
+			} else if (serverConfig.development) {
 				"dev-secret-not-for-production-use".also {
 					logger.warn(
 						"⚠️  JWT secret is not configured — using an ephemeral development secret. " +

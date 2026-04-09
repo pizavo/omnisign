@@ -85,5 +85,41 @@ class CompressionTest : FunSpec({
 			response.headers[HttpHeaders.ContentEncoding] shouldBe null
 		}
 	}
+
+	test("application/pdf responses are never compressed") {
+		testApplication {
+			application {
+				configureCompression(CompressionConfig())
+				routing {
+					get("/test") {
+						call.respondBytes(ByteArray(4096), ContentType.Application.Pdf)
+					}
+				}
+			}
+			val response = client.get("/test") {
+				header(HttpHeaders.AcceptEncoding, "gzip")
+			}
+			response.status shouldBe HttpStatusCode.OK
+			response.headers[HttpHeaders.ContentEncoding] shouldBe null
+		}
+	}
+
+	test("application/octet-stream responses are never compressed") {
+		testApplication {
+			application {
+				configureCompression(CompressionConfig())
+				routing {
+					get("/test") {
+						call.respondBytes(ByteArray(4096), ContentType.Application.OctetStream)
+					}
+				}
+			}
+			val response = client.get("/test") {
+				header(HttpHeaders.AcceptEncoding, "gzip")
+			}
+			response.status shouldBe HttpStatusCode.OK
+			response.headers[HttpHeaders.ContentEncoding] shouldBe null
+		}
+	}
 })
 

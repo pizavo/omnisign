@@ -5,7 +5,6 @@ import cz.pizavo.omnisign.api.model.FilePartData
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
-import cz.pizavo.omnisign.domain.model.error.OperationError
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.*
 import io.ktor.http.content.*
@@ -42,7 +41,7 @@ suspend fun MultiPartData.collectParts(maxFileSize: Long = Long.MAX_VALUE): List
 			var totalRead = 0L
 			while (true) {
 				val n = channel.readAvailable(buffer)
-				if (n == -1) break
+				if (n <= 0) break
 				totalRead += n
 				if (totalRead > maxFileSize) {
 					throw FileTooLargeException(actualSize = totalRead, maxSize = maxFileSize)
@@ -128,17 +127,5 @@ suspend fun extractFilePart(parts: List<Any>, name: String, maxFileSize: Long = 
 fun extractTextField(parts: List<Any>, name: String): String? =
 	parts.filterIsInstance<PartData.FormItem>().firstOrNull { it.name == name }?.value
 
-/**
- * Respond with a structured [ApiError] for a domain [OperationError].
- */
-suspend fun RoutingCall.respondError(status: HttpStatusCode, error: OperationError) {
-	respond(
-		status,
-		ApiError(
-			error = error::class.simpleName ?: "UNKNOWN",
-			message = error.message,
-			details = error.details,
-		),
-	)
-}
+
 

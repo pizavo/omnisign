@@ -9,12 +9,13 @@ import io.kotest.matchers.shouldBe
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.testing.*
 import kotlinx.serialization.json.Json
 
 /**
- * Verifies [StatusPages] error mapping for domain errors and generic exceptions.
+ * Verifies [io.ktor.server.plugins.statuspages.StatusPages] error mapping for domain errors and generic exceptions.
  */
 class StatusPagesTest : FunSpec({
 
@@ -79,6 +80,24 @@ class StatusPagesTest : FunSpec({
 			response.status shouldBe HttpStatusCode.InternalServerError
 			val body = Json.decodeFromString<ApiError>(response.bodyAsText())
 			body.error shouldBe "INTERNAL_ERROR"
+		}
+	}
+
+	test("429 TooManyRequests status returns RATE_LIMIT_EXCEEDED JSON body") {
+		testApplication {
+			application {
+				configureSerialization()
+				configureStatusPages()
+				routing {
+					get("/test") {
+						call.respond(HttpStatusCode.TooManyRequests)
+					}
+				}
+			}
+			val response = client.get("/test")
+			response.status shouldBe HttpStatusCode.TooManyRequests
+			val body = Json.decodeFromString<ApiError>(response.bodyAsText())
+			body.error shouldBe "RATE_LIMIT_EXCEEDED"
 		}
 	}
 })

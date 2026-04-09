@@ -8,6 +8,7 @@ import cz.pizavo.omnisign.module
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldNotBeBlank
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
@@ -15,7 +16,6 @@ import io.ktor.server.testing.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-
 /**
  * Integration tests for the `/auth` route group, verifying login discovery, JWT
  * session endpoints, and authentication enforcement on protected routes.
@@ -94,7 +94,38 @@ class AuthRoutesTest : FunSpec({
 			response.status shouldBe HttpStatusCode.NoContent
 		}
 	}
-	
+
+	test("POST /auth/refresh returns 401 without a token") {
+		testApplication {
+			application { module(ServerConfig(auth = authConfig)) }
+			val response = client.post("/auth/refresh")
+			response.status shouldBe HttpStatusCode.Unauthorized
+		}
+	}
+
+	test("POST /auth/refresh returns a new token for a valid JWT") {
+		testApplication {
+			application { module(ServerConfig(auth = authConfig)) }
+
+			val jwtService = JwtSessionService(authConfig.session.copy(secret = jwtSecret))
+			val principal = AuthenticatedPrincipal(
+				userId = "u3",
+				email = "refresh@example.com",
+				displayName = "Refresh User",
+				providerName = "test",
+			)
+			val originalToken = jwtService.issue(principal)
+
+			val response = client.post("/auth/refresh") {
+				bearerAuth(originalToken)
+			}
+			response.status shouldBe HttpStatusCode.OK
+
+			val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+			body["token"]?.jsonPrimitive?.content.shouldNotBeBlank()
+		}
+	}
+
 	test("protected API route returns 401 without token when auth.enabled is true") {
 		testApplication {
 			application {

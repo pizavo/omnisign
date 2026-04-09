@@ -51,6 +51,7 @@ dependencies {
     implementation(libs.kotlin.logging)
 
     testImplementation(libs.ktor.server.test)
+    testImplementation(libs.ktor.client.mock)
     testImplementation(libs.kotest.engine)
     testImplementation(libs.kotest.jvm.runner)
     testImplementation(libs.kotest.core)

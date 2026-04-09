@@ -17,7 +17,8 @@ package cz.pizavo.omnisign.config
  *   for signing via the API. Provides defense-in-depth so that personal certificates installed
  *   on the server are never accidentally exposed. When `null` and signing is enabled, all
  *   discovered signing certificates are available.
- * @property tls TLS/SSL keystore settings. Ignored when [proxyMode] is `true`.
+ * @property tls TLS/SSL keystore settings, including optional nested [HstsConfig].
+ *   Ignored when [proxyMode] is `true`.
  * @property cors Cross-Origin Resource Sharing configuration.
  * @property compression Response compression configuration.
  * @property rateLimiting Per-IP request rate limiting for auth and API endpoints.
@@ -42,4 +43,3 @@ data class ServerConfig(
 	val maxFileSize: Long = 100L * 1024 * 1024,
 	val auth: AuthConfig? = null,
 )
-

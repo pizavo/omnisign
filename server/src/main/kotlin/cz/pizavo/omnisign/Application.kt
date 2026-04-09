@@ -22,7 +22,9 @@ private val logger = KotlinLogging.logger {}
  * Loads [ServerConfig] from `server.yml` and starts a Netty embedded server.
  *
  * When TLS is configured and [ServerConfig.proxyMode] is `false`, a TLS connector is created
- * with TLS v1.3 enforced and HTTP/2 ALPN negotiation enabled. Otherwise, a plain HTTP connector
+ * with TLS 1.2/1.3 and HTTP/2 ALPN negotiation enabled. To restrict to TLS 1.3 only, set the
+ * JVM system property `-Djdk.tls.disabledAlgorithms=TLSv1,TLSv1.1,TLSv1.2` at launch.
+ * Otherwise, a plain HTTP connector
  * is used (suitable for deployment behind a TLS-terminating reverse proxy).
  *
  * The `--config <path>` argument can be passed on the command line to point to a non-default
@@ -60,7 +62,7 @@ fun main(args: Array<String>) {
 			moduleWith(serverConfig)
 		}.start(wait = true)
 
-		logger.info { "TLS connector configured on ${serverConfig.host}:${serverConfig.tlsPort} (TLS v1.3, HTTP/2)" }
+		logger.info { "TLS connector configured on ${serverConfig.host}:${serverConfig.tlsPort} (TLS 1.2/1.3, HTTP/2 ALPN)" }
 	} else {
 		if (serverConfig.proxyMode) {
 			logger.info { "Proxy mode enabled — plain HTTP on ${serverConfig.host}:${serverConfig.port}" }
@@ -85,7 +87,7 @@ fun main(args: Array<String>) {
  */
 fun Application.moduleWith(serverConfig: ServerConfig) {
 	configureKoin(serverConfig)
-	configureDefaultHeaders()
+	configureDefaultHeaders(hstsConfig = serverConfig.tls?.hsts)
 	configureSerialization()
 	configureStatusPages()
 	configureCallId()
@@ -120,7 +122,7 @@ fun Application.moduleWith(serverConfig: ServerConfig) {
 		logger.warn {
 			"⚠️  SIGN operation is enabled WITHOUT authentication — all configured signing " +
 					"certificates are accessible to any network-reachable client. " +
-					"Set requireLogin: true or restrict access with allowedCertificateAliases."
+					"Set auth.enabled: true or restrict access with allowedCertificateAliases."
 		}
 	}
 

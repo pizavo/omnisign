@@ -120,6 +120,99 @@ class ServerConfigLoaderTest : FunSpec({
 		config.allowedCertificateAliases.shouldNotBeNull()
 		config.allowedCertificateAliases shouldBe listOf("university-seal")
 	}
+
+	test("load parses rateLimiting zone overrides") {
+		val yaml = """
+			rateLimiting:
+			  auth:
+			    limit: 5
+			    refillPeriodSeconds: 30
+			  api:
+			    limit: 500
+			    refillPeriodSeconds: 120
+		""".trimIndent()
+
+		val tmpFile = File.createTempFile("server-rl-", ".yml")
+		tmpFile.deleteOnExit()
+		tmpFile.writeText(yaml)
+
+		val config = loader.load(tmpFile.absolutePath)
+		config.rateLimiting.shouldNotBeNull()
+		config.rateLimiting.auth.limit shouldBe 5
+		config.rateLimiting.auth.refillPeriodSeconds shouldBe 30L
+		config.rateLimiting.api.limit shouldBe 500
+		config.rateLimiting.api.refillPeriodSeconds shouldBe 120L
+	}
+
+	test("rateLimiting is null when not specified") {
+		val yaml = "host: \"localhost\""
+
+		val tmpFile = File.createTempFile("server-nrl-", ".yml")
+		tmpFile.deleteOnExit()
+		tmpFile.writeText(yaml)
+
+		val config = loader.load(tmpFile.absolutePath)
+		config.rateLimiting.shouldBeNull()
+	}
+
+	test("load parses hsts block nested under tls") {
+		val yaml = """
+			tls:
+			  keystorePath: "/tmp/ks.p12"
+			  keystorePassword: "secret"
+			  hsts:
+			    maxAgeSeconds: 600
+			    includeSubDomains: false
+			    preload: true
+		""".trimIndent()
+
+		val tmpFile = File.createTempFile("server-hsts-", ".yml")
+		tmpFile.deleteOnExit()
+		tmpFile.writeText(yaml)
+
+		val config = loader.load(tmpFile.absolutePath)
+		config.tls.shouldNotBeNull()
+		config.tls.hsts.shouldNotBeNull()
+		config.tls.hsts.maxAgeSeconds shouldBe 600L
+		config.tls.hsts.includeSubDomains.shouldBeFalse()
+		config.tls.hsts.preload.shouldBeTrue()
+	}
+
+	test("hsts defaults are applied when only the hsts block is present under tls") {
+		val yaml = """
+			tls:
+			  keystorePath: "/tmp/ks.p12"
+			  keystorePassword: "secret"
+			  hsts: {}
+		""".trimIndent()
+
+		val tmpFile = File.createTempFile("server-hsts-defaults-", ".yml")
+		tmpFile.deleteOnExit()
+		tmpFile.writeText(yaml)
+
+		val config = loader.load(tmpFile.absolutePath)
+		config.tls.shouldNotBeNull()
+		config.tls.hsts.shouldNotBeNull()
+		config.tls.hsts.maxAgeSeconds shouldBe 31_536_000L
+		config.tls.hsts.includeSubDomains.shouldBeTrue()
+		config.tls.hsts.preload.shouldBeFalse()
+	}
+
+	test("hsts is null when tls block has no hsts entry") {
+		val yaml = """
+			tls:
+			  keystorePath: "/tmp/ks.p12"
+			  keystorePassword: "secret"
+		""".trimIndent()
+
+		val tmpFile = File.createTempFile("server-nhsts-", ".yml")
+		tmpFile.deleteOnExit()
+		tmpFile.writeText(yaml)
+
+		val config = loader.load(tmpFile.absolutePath)
+		config.tls.shouldNotBeNull()
+		config.tls.hsts.shouldBeNull()
+	}
 })
 
 

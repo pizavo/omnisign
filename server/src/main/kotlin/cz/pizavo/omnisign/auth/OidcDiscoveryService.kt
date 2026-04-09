@@ -6,6 +6,8 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.*
 import io.ktor.client.call.*
 import io.ktor.client.request.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -41,7 +43,8 @@ data class OidcDiscoveryDocument(
  */
 class OidcDiscoveryService(private val httpClient: HttpClient) {
 
-    private val cache = mutableMapOf<String, OidcDiscoveryDocument>()
+    private val cacheMutex = Mutex()
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, OidcDiscoveryDocument>()
 
     /**
      * Resolve and return the OIDC discovery document for [provider].
@@ -55,10 +58,13 @@ class OidcDiscoveryService(private val httpClient: HttpClient) {
      *   fetch fails.
      */
     suspend fun discover(provider: OidcProviderConfig): OidcDiscoveryDocument {
-        return cache.getOrPut(provider.name) {
-            val url = resolveDiscoveryUrl(provider)
-            logger.info { "Fetching OIDC discovery document for '${provider.name}' from $url" }
-            httpClient.get(url).body()
+        cache[provider.name]?.let { return it }
+        return cacheMutex.withLock {
+            cache.getOrPut(provider.name) {
+                val url = resolveDiscoveryUrl(provider)
+                logger.info { "Fetching OIDC discovery document for '${provider.name}' from $url" }
+                httpClient.get(url).body()
+            }
         }
     }
 

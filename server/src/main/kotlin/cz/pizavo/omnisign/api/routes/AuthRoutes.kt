@@ -35,6 +35,10 @@ private val logger = KotlinLogging.logger {}
  * - `GET /auth/session` — returns [SessionResponse] for the caller identified by a valid
  *   JWT Bearer token, or `401 Unauthorized` when no valid token is present.
  *
+ * - `POST /auth/refresh` — issues a new JWT with a fully-reset expiry for the caller
+ *   identified by a valid Bearer token. Allows long-running sessions without re-login.
+ *   Returns `503` when no auth providers are configured.
+ *
  * - `POST /auth/logout` — stateless acknowledgement (JWTs are self-contained; real revocation
  *   requires a deny-list, which is a future extension). Always returns `204 No Content`.
  *
@@ -192,6 +196,30 @@ fun Route.authRoutes(config: AuthConfig?) {
                     ),
                 )
             }
+
+            post("/refresh") {
+                val principal = call.principal<AuthenticatedPrincipal>()
+                    ?: run {
+                        call.respond(
+                            HttpStatusCode.Unauthorized,
+                            ApiError(error = "UNAUTHENTICATED", message = "No valid session token"),
+                        )
+                        return@post
+                    }
+
+                if (config == null) {
+                    call.respond(
+                        HttpStatusCode.ServiceUnavailable,
+                        ApiError(
+                            error = "AUTH_NOT_CONFIGURED",
+                            message = "Authentication is not configured on this server",
+                        ),
+                    )
+                    return@post
+                }
+
+                respondWithToken(call, principal, jwtService, config.session.tokenExpirySeconds)
+            }
         }
 
         post("/logout") {
@@ -206,8 +234,9 @@ fun Route.authRoutes(config: AuthConfig?) {
  * Uses the [OidcDiscoveryService] to find the UserInfo endpoint, then calls
  * [OidcUserInfoService.fetchRawClaims] with the access token from [oauthToken].
  * Falls back to the GitHub user API for providers with [SsoProviderPreset.GITHUB].
- * The raw [JsonObject] claims are preserved in [OidcAuthResult] so that post-login
- * filters such as [areRequiredClaimsSatisfied] can inspect provider-specific attributes.
+ * The raw [JsonObject][kotlinx.serialization.json.JsonObject] claims are
+ * preserved in [OidcAuthResult] so that post-login filters such as
+ * [areRequiredClaimsSatisfied] can inspect provider-specific attributes.
  *
  * @return The resolved [OidcAuthResult], or `null` on failure.
  */

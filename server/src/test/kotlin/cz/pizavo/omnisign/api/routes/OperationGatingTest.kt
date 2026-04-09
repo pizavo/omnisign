@@ -66,6 +66,7 @@ class OperationGatingTest : FunSpec({
 			response.status shouldBe HttpStatusCode.OK
 			val body = json.decodeFromString<CapabilitiesResponse>(response.bodyAsText())
 			body.allowedOperations shouldContainExactlyInAnyOrder listOf("VALIDATE", "TIMESTAMP")
+			body.authEnabled shouldBe false
 		}
 	}
 

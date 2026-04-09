@@ -15,9 +15,24 @@ private val logger = KotlinLogging.logger {}
 /**
  * Install Ktor [StatusPages] plugin that maps domain [OperationError] subtypes and
  * common exceptions to structured JSON error responses with appropriate HTTP status codes.
+ *
+ * In addition to exception handlers, a status-code handler for [HttpStatusCode.TooManyRequests]
+ * ensures that responses produced by the [io.ktor.server.plugins.ratelimit.RateLimit] plugin
+ * also carry a JSON [ApiError] body consistent with the rest of the API. The standard
+ * `Retry-After` and `X-RateLimit-*` headers set by the rate limiter are preserved.
  */
 fun Application.configureStatusPages() {
 	install(StatusPages) {
+		status(HttpStatusCode.TooManyRequests) { call, status ->
+			call.respond(
+				status,
+				ApiError(
+					error = "RATE_LIMIT_EXCEEDED",
+					message = "Too many requests — please slow down and try again later.",
+				),
+			)
+		}
+		// ...existing exception handlers...
 		exception<OperationException> { call, cause ->
 			call.respondOperationError(cause.operationError)
 		}
