@@ -35,4 +35,22 @@ object JbrTitleBarHelper {
     } catch (_: Throwable) {
         null
     }
+
+    /**
+     * Updates the height of an already-installed [titleBar] without recreating it.
+     *
+     * Preserves all previously set properties (e.g. `controls.dark`). Must be
+     * called on the AWT Event Dispatch Thread.
+     *
+     * @param window The AWT frame on which the title bar is installed.
+     * @param titleBar The existing [WindowDecorations.CustomTitleBar] to resize.
+     * @param newHeight New title bar height in physical pixels.
+     */
+    fun updateHeight(window: Frame, titleBar: WindowDecorations.CustomTitleBar, newHeight: Float) {
+        try {
+            titleBar.height = newHeight
+            JBR.getWindowDecorations()?.setCustomTitleBar(window, titleBar)
+        } catch (_: Throwable) {
+        }
+    }
 }

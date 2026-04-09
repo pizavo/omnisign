@@ -12,10 +12,7 @@ import cz.pizavo.omnisign.domain.service.SigningToken
 import cz.pizavo.omnisign.domain.service.TokenInfo
 import cz.pizavo.omnisign.domain.service.TokenService
 import cz.pizavo.omnisign.platform.PasswordCallback
-import eu.europa.esig.dss.token.AbstractSignatureTokenConnection
-import eu.europa.esig.dss.token.MSCAPISignatureToken
-import eu.europa.esig.dss.token.Pkcs11SignatureToken
-import eu.europa.esig.dss.token.Pkcs12SignatureToken
+import eu.europa.esig.dss.token.*
 import java.io.File
 import java.security.KeyStore
 
@@ -86,8 +83,8 @@ class DssTokenService(
 	/**
 	 * Check physical token presence without supplying a PIN.
 	 *
-	 * PKCS#11 tokens are probed via [C_GetSlotList] with [CK_TRUE], which queries the
-	 * middleware for slots that currently have a card inserted.  This never calls [C_Login]
+	 * PKCS#11 tokens are probed via `C_GetSlotList` with `CK_TRUE`, which queries the
+	 * middleware for slots that currently have a card inserted.  This never calls `C_Login`
 	 * and therefore never risks incrementing a wrong-PIN counter.
 	 * FILE tokens are checked via [File.exists].
 	 * OS-native stores always return true — the subsequent load call handles any failure.
@@ -250,8 +247,7 @@ class DssTokenService(
 			Pkcs12SignatureToken(File(filePath), KeyStore.PasswordProtection(pwd.toCharArray()))
 		}
 		TokenType.WINDOWS_MY -> MSCAPISignatureToken()
-		TokenType.MACOS_KEYCHAIN ->
-			throw UnsupportedOperationException("macOS Keychain support not yet implemented")
+		TokenType.MACOS_KEYCHAIN -> AppleSignatureToken()
 	}
 
 	private companion object {

@@ -7,7 +7,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * Callback invoked by toolbar drag spacers whenever their layout position or
+ * Callback invoked by toolbar-drag spacers whenever their layout position or
  * size changes.
  *
  * Each spacer passes a unique [String] key and its [LayoutCoordinates].
@@ -40,11 +40,11 @@ val LocalWindowDragModifier = staticCompositionLocalOf<Modifier> { Modifier }
  * Height of the custom title bar area in [Dp].
  *
  * On JVM desktop this matches the height set on the JBR
- * [com.jetbrains.WindowDecorations.CustomTitleBar] so that the Compose toolbar
+ * `CustomTitleBar` so that the Compose toolbar
  * and the native window-control buttons are always the same size.
  * Default is `40.dp`.
  */
-val LocalTitleBarHeight = staticCompositionLocalOf<Dp> { 40.dp }
+val LocalTitleBarHeight = staticCompositionLocalOf { 40.dp }
 
 /**
  * Right-side inset in **AWT logical pixels** reserved for native window controls
@@ -56,12 +56,35 @@ val LocalTitleBarHeight = staticCompositionLocalOf<Dp> { 40.dp }
 val LocalTitleBarRightInset = staticCompositionLocalOf { 0f }
 
 /**
+ * Left-side inset in **AWT logical pixels** reserved for native window controls
+ * rendered by the JBR custom title bar — on macOS these are the traffic-light
+ * buttons (close / minimize / zoom). Toolbar content must not be placed behind
+ * this region.
+ *
+ * On Compose Desktop, AWT logical pixels correspond directly to dp, so the
+ * toolbar converts this value with [Float.dp]. Default is `0f` (no inset).
+ */
+val LocalTitleBarLeftInset = staticCompositionLocalOf { 0f }
+
+/**
+ * Additional top padding in [Dp] that the toolbar must add above its interactive
+ * content.
+ *
+ * On macOS, when the window enters native full-screen mode, the OS renders an
+ * auto-hiding title bar that slides down from the top of the screen on hover.
+ * Setting this value to the height of that system title bar ensures the
+ * toolbar's interactive controls are positioned below the overlay and remain
+ * accessible. Default is `0.dp` (no extra padding required).
+ */
+val LocalTitleBarTopPadding = staticCompositionLocalOf { 0.dp }
+
+/**
  * Callback that informs the native title bar whether the application background
  * is dark so the OS can render window-control icons (minimize, maximize, close)
  * with an appropriate contrast color.
  *
  * On JVM desktop this sets the JBR `controls.dark` property on the
- * [com.jetbrains.WindowDecorations.CustomTitleBar]. On other platforms the
+ * `CustomTitleBar`. On other platforms the
  * default value is `null` and callers skip the call.
  *
  * Pass `true` when the title bar area has a dark background (so the OS renders
