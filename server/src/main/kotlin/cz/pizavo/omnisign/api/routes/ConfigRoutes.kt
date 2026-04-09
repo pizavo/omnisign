@@ -12,19 +12,19 @@ import org.koin.ktor.ext.inject
 /**
  * Mount configuration read-only routes under `/api/v1/config`.
  *
- * All four endpoints are open — no [cz.pizavo.omnisign.config.AllowedOperation] guard —
- * because they expose only sanitized metadata (credentials stripped) that the Wasm frontend
- * needs to populate its UI. If [cz.pizavo.omnisign.config.ServerConfig.requireLogin] is
- * enforced in the future these routes must be placed behind the same authentication check.
+ * All four endpoints expose only sanitized metadata (credentials stripped) that the
+ * Wasm frontend needs to populate its UI. They are grouped under the operational
+ * `authenticate` block in [configureRouting][cz.pizavo.omnisign.plugins.configureRouting], so when
+ * [AuthConfig.enabled][cz.pizavo.omnisign.config.AuthConfig.enabled] is `true` a valid JWT is required.
  *
- * None of the endpoints use [cz.pizavo.omnisign.domain.model.config.AppConfig.activeProfile]
+ * None of the endpoints use [AppConfig.activeProfile][cz.pizavo.omnisign.domain.model.config.AppConfig.activeProfile]
  * as a fallback. Profile selection is always explicit: callers must supply a `profile` query
- * parameter if they want profile-specific behaviour, otherwise global defaults apply.
+ * parameter if they want profile-specific behavior, otherwise global defaults apply.
  *
- * - `GET /api/v1/config/global` — returns [cz.pizavo.omnisign.api.model.responses.GlobalConfigResponse].
- * - `GET /api/v1/config/profiles` — returns a sorted list of [cz.pizavo.omnisign.api.model.responses.ProfileConfigResponse].
- * - `GET /api/v1/config/profiles/{name}` — returns a single [cz.pizavo.omnisign.api.model.responses.ProfileConfigResponse] or `404`.
- * - `GET /api/v1/config/resolved?profile={name}` — returns [cz.pizavo.omnisign.api.model.responses.ResolvedConfigResponse]
+ * - `GET /api/v1/config/global` — returns [GlobalConfigResponse][cz.pizavo.omnisign.api.model.responses.GlobalConfigResponse].
+ * - `GET /api/v1/config/profiles` — returns a sorted list of [ProfileConfigResponse][cz.pizavo.omnisign.api.model.responses.ProfileConfigResponse].
+ * - `GET /api/v1/config/profiles/{name}` — returns a single [ProfileConfigResponse][cz.pizavo.omnisign.api.model.responses.ProfileConfigResponse] or `404`.
+ * - `GET /api/v1/config/resolved?profile={name}` — returns [ResolvedConfigResponse][cz.pizavo.omnisign.api.model.responses.ResolvedConfigResponse]
  *   for the given profile (or global defaults when `profile` is omitted), or `404` / `422` on error.
  */
 fun Route.configRoutes() {

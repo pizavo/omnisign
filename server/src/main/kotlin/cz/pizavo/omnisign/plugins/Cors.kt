@@ -14,6 +14,9 @@ import io.ktor.server.plugins.cors.routing.*
  * only the `https` scheme is permitted for allowed hosts. Otherwise, both `http` and
  * `https` are accepted.
  *
+ * The following request headers are allowed: `Content-Type`, `Authorization`, `X-Request-Id`.
+ * The following response headers are exposed to JavaScript: `X-OmniSign-Result`, `X-Request-Id`.
+ *
  * @param config CORS configuration loaded from the server YAML.
  * @param tlsEnabled Whether TLS is active, either directly or via a reverse proxy.
  */
@@ -30,11 +33,16 @@ fun Application.configureCors(config: CorsConfig?, tlsEnabled: Boolean = false) 
 				allowHost(origin.removePrefix("https://").removePrefix("http://"), schemes = schemes)
 			}
 		}
-
-		allowHeader(HttpHeaders.ContentType)
-		allowHeader(HttpHeaders.Authorization)
+		
 		allowMethod(HttpMethod.Post)
 		allowMethod(HttpMethod.Get)
+		
+		allowHeader(HttpHeaders.ContentType)
+		allowHeader(HttpHeaders.Authorization)
+		allowHeader(HttpHeaders.XRequestId)
+		
+		exposeHeader("X-OmniSign-Result")
+		exposeHeader(HttpHeaders.XRequestId)
 
 		if (config.allowCredentials) {
 			allowCredentials = true

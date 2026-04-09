@@ -20,7 +20,18 @@ development: true
 # TLS v1.3 enforcement is skipped because the proxy handles it.
 proxyMode: false
 
-# ──────────────────────────────────────────────────────────────────────────────
+# In-memory per-IP request rate limiting.
+# When enabled, protects auth and API endpoints from brute-force and DoS attacks.
+# In proxy mode, client IPs are taken from X-Forwarded-For (set by proxyMode: true).
+# rateLimiting:
+#   auth:
+#     limit: 20               # max requests per IP per refillPeriodSeconds on /auth/* routes
+#     refillPeriodSeconds: 60
+#   api:
+#     limit: 200              # max requests per IP per refillPeriodSeconds on API routes
+#     refillPeriodSeconds: 60
+
+# ─────────────────────────────────────────────────────────────────────────────
 # SSO Authentication
 # ──────────────────────────────────────────────────────────────────────────────
 # Uncomment and configure one or more providers to enable SSO login.

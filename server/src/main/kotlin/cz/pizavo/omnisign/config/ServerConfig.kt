@@ -20,6 +20,8 @@ package cz.pizavo.omnisign.config
  * @property tls TLS/SSL keystore settings. Ignored when [proxyMode] is `true`.
  * @property cors Cross-Origin Resource Sharing configuration.
  * @property compression Response compression configuration.
+ * @property rateLimiting Per-IP request rate limiting for auth and API endpoints.
+ *   When `null`, rate limiting is disabled.
  * @property maxFileSize Maximum upload file size in bytes. Defaults to 100 MB.
  * @property auth SSO authentication configuration. When `null`, no authentication plugin
  *   is installed. Set [AuthConfig.enabled] to `true` within this block to enforce JWT
@@ -36,6 +38,7 @@ data class ServerConfig(
 	val tls: TlsConfig? = null,
 	val cors: CorsConfig? = null,
 	val compression: CompressionConfig = CompressionConfig(),
+	val rateLimiting: RateLimitConfig? = null,
 	val maxFileSize: Long = 100L * 1024 * 1024,
 	val auth: AuthConfig? = null,
 )

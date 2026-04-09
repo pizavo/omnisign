@@ -6,8 +6,7 @@ import cz.pizavo.omnisign.config.ServerConfigLoader
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
 import cz.pizavo.omnisign.di.serverModule
-import cz.pizavo.omnisign.plugins.*
-import io.github.oshai.kotlinlogging.KotlinLogging
+import cz.pizavo.omnisign.plugins.*import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
@@ -89,17 +88,19 @@ fun Application.moduleWith(serverConfig: ServerConfig) {
 	configureDefaultHeaders()
 	configureSerialization()
 	configureStatusPages()
+	configureCallId()
 	configureCallLogging()
 	configureCompression(serverConfig.compression)
 	configureAutoHeadResponse()
 	configureCors(serverConfig.cors, tlsEnabled = serverConfig.tls != null || serverConfig.proxyMode)
 	configureForwardedHeaders(serverConfig.proxyMode)
 	configureHttpsRedirect(serverConfig)
+	configureRateLimiting(serverConfig.rateLimiting)
 
 	val authConfig = serverConfig.auth
 	val externalUrl = if (authConfig != null) resolveExternalUrl(serverConfig) else ""
 	configureAuthentication(authConfig, externalUrl)
-	configureRouting(authConfig)
+	configureRouting(authConfig, serverConfig.rateLimiting)
 
 	if (authConfig?.enabled == true) {
 		if (authConfig.providers.isEmpty()) {

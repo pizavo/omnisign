@@ -53,7 +53,7 @@ fun Route.signingRoutes() {
 		if (!call.requireOperation(AllowedOperation.SIGN, serverConfig)) return@post
 
 		val multipart = call.receiveMultipart()
-		val parts = multipart.collectParts()
+		val parts = multipart.collectParts(serverConfig.maxFileSize)
 
 		val inputFile = extractFilePart(parts, "file", serverConfig.maxFileSize)
 		if (inputFile == null) {

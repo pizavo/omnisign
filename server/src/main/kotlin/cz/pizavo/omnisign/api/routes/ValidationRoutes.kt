@@ -39,7 +39,7 @@ fun Route.validationRoutes() {
 		if (!call.requireOperation(AllowedOperation.VALIDATE, serverConfig)) return@post
 
 		val multipart = call.receiveMultipart()
-		val parts = multipart.collectParts()
+		val parts = multipart.collectParts(serverConfig.maxFileSize)
 
 		val inputFile = extractFilePart(parts, "file", serverConfig.maxFileSize)
 		if (inputFile == null) {

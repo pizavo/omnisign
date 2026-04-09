@@ -8,6 +8,7 @@ import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
 import cz.pizavo.omnisign.config.SessionConfig
 import cz.pizavo.omnisign.platform.PasswordCallback
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
@@ -16,6 +17,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.serialization.json.Json
 import org.koin.dsl.module
 import kotlin.coroutines.CoroutineContext
+
+private val logger = KotlinLogging.logger {}
 
 /**
  * Server-specific Koin module.
@@ -27,7 +30,7 @@ import kotlin.coroutines.CoroutineContext
  * - IO [CoroutineContext] for blocking work.
  * - [HttpClient] (CIO engine) with JSON content-negotiation for OIDC discovery and
  *   user-info requests.
- * - [JwtSessionService] for issuing and verifying session tokens, only when an [AuthConfig]
+ * - [JwtSessionService] for issuing and verifying session tokens, only when an [cz.pizavo.omnisign.config.AuthConfig]
  *   with a resolved secret is present.
  * - [OidcDiscoveryService] and [OidcUserInfoService] for the OIDC authorization-code flow.
  *
@@ -55,7 +58,13 @@ fun serverModule(serverConfig: ServerConfig) = module {
 		val secret = config.secret
 			?: System.getenv("OMNISIGN_JWT_SECRET")
 			?: if (serverConfig.development) {
-				"dev-secret-not-for-production-use"
+				"dev-secret-not-for-production-use".also {
+					logger.warn(
+						"⚠️  JWT secret is not configured — using an ephemeral development secret. " +
+								"All tokens will be invalidated on server restart. " +
+								"Set the OMNISIGN_JWT_SECRET environment variable before deploying to production.",
+					)
+				}
 			} else {
 				error(
 					"JWT secret is not configured. Set 'auth.session.secret' in server.yml " +

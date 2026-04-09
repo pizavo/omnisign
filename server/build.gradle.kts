@@ -40,6 +40,8 @@ dependencies {
     implementation(libs.ktor.server.https.redirect)
     implementation(libs.ktor.server.headers.default)
     implementation(libs.ktor.server.headers.forwarded)
+    implementation(libs.ktor.server.call.id)
+    implementation(libs.ktor.server.rate.limit)
     implementation(libs.ktor.serialization.json)
 
     implementation(libs.kotlinx.serialization.json)

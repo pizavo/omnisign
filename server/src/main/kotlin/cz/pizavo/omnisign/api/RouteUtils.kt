@@ -21,18 +21,35 @@ private val logger = KotlinLogging.logger {}
 /**
  * Collect all multipart parts into a list without using the deprecated `readAllParts()`.
  *
- * File part content is eagerly read into [FilePartData.bytes] during iteration because
- * Ktor 3.x does not guarantee that [PartData.FileItem.provider] remains readable after
- * the multipart stream has been fully consumed.
+ * File parts are read incrementally chunk-by-chunk and rejected immediately when their
+ * accumulated size exceeds [maxFileSize], preventing memory exhaustion from oversized
+ * uploads. Non-file parts (form fields) are collected as-is.
  *
  * @receiver The multipart data from the request.
+ * @param maxFileSize Maximum allowed size in bytes for each file part.
+ *   Defaults to [Long.MAX_VALUE] (unlimited). When exceeded a [FileTooLargeException] is
+ *   thrown during the read, well before the full content reaches the heap.
  * @return All parts in order of occurrence. [PartData.FileItem] parts are wrapped as [FilePartData].
+ * @throws FileTooLargeException If any single file part exceeds [maxFileSize].
  */
-suspend fun MultiPartData.collectParts(): List<Any> {
+suspend fun MultiPartData.collectParts(maxFileSize: Long = Long.MAX_VALUE): List<Any> {
 	val result = mutableListOf<Any>()
 	forEachPart { part ->
 		if (part is PartData.FileItem) {
-			result.add(FilePartData(part.name, part.provider().toByteArray()))
+			val channel = part.provider()
+			val accumulator = java.io.ByteArrayOutputStream()
+			val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+			var totalRead = 0L
+			while (true) {
+				val n = channel.readAvailable(buffer)
+				if (n == -1) break
+				totalRead += n
+				if (totalRead > maxFileSize) {
+					throw FileTooLargeException(actualSize = totalRead, maxSize = maxFileSize)
+				}
+				accumulator.write(buffer, 0, n)
+			}
+			result.add(FilePartData(part.name, accumulator.toByteArray()))
 		} else {
 			result.add(part)
 		}
@@ -68,12 +85,12 @@ suspend fun RoutingCall.requireOperation(
  * Extract the first uploaded file part from collected multipart parts and save it to a temp file.
  *
  * Expects parts collected via [collectParts], where file content is already buffered
- * in [FilePartData] instances.
+ * in [FilePartData] instances. The [maxFileSize] check is a secondary guard; the primary
+ * enforcement happens during streaming in [collectParts].
  *
  * @param parts Collected multipart parts from [collectParts].
  * @param name Expected form field name.
- * @param maxFileSize Maximum allowed file size in bytes. When the uploaded content exceeds
- *   this limit a [FileTooLargeException] is thrown.
+ * @param maxFileSize Maximum allowed file size in bytes.
  * @return The temporary [File] containing the upload, or `null` if not found.
  * @throws FileTooLargeException If the file exceeds [maxFileSize].
  */
