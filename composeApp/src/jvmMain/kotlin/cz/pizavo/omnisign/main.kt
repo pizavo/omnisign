@@ -50,6 +50,14 @@ private val logger = KotlinLogging.logger {}
 private const val TITLE_BAR_HEIGHT_DP = 40
 
 /**
+ * Extra top padding in dp added to the title bar when the window is in macOS
+ * native full-screen mode. The macOS system auto-hide title bar slides down
+ * from the top of the screen on hover and occupies approximately this height,
+ * so the toolbar's interactive controls must be offset below it.
+ */
+private const val MAC_FULLSCREEN_TOP_INSET_DP = 28
+
+/**
  * Interval in milliseconds for the [Timer] that primes
  * [WindowDecorations.CustomTitleBar.forceHitTest].
  */
@@ -293,11 +301,21 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 			windowIcon?.toAwtImage()?.let { awtWindow.iconImage = it }
 		}
 
-		val titleBarHeightPx = TITLE_BAR_HEIGHT_DP.toFloat()
-		
+		val isMacOs = remember { System.getProperty("os.name").lowercase().contains("mac") }
+		val isFullscreen = windowState.placement == WindowPlacement.Fullscreen
+
+		val topInsetDp = if (isMacOs && isFullscreen) MAC_FULLSCREEN_TOP_INSET_DP else 0
+		val effectiveTitleBarHeightDp = TITLE_BAR_HEIGHT_DP + topInsetDp
+
 		val titleBar: WindowDecorations.CustomTitleBar? =
-			remember { JbrTitleBarHelper.install(awtWindow, titleBarHeightPx) }
-		
+			remember { JbrTitleBarHelper.install(awtWindow, TITLE_BAR_HEIGHT_DP.toFloat()) }
+
+		LaunchedEffect(effectiveTitleBarHeightDp) {
+			if (titleBar != null) {
+				JbrTitleBarHelper.updateHeight(awtWindow, titleBar, effectiveTitleBarHeightDp.toFloat())
+			}
+		}
+
 		remember(titleBar) {
 			val contentPane = awtWindow.contentPane
 			contentPane.addMouseListener(TitleBarClientAreaListener)
@@ -351,12 +369,15 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 		val windowDragModifier = remember(awtWindow, hasTitleBar) {
 			if (hasTitleBar) Modifier else fallbackDragModifier(awtWindow)
 		}
-		
-		val rightInsetPx = titleBar?.rightInset ?: 0f
+
+		val rightInsetPx = remember(isFullscreen, titleBar) { titleBar?.rightInset ?: 0f }
+		val leftInsetPx = remember(isFullscreen, titleBar) { titleBar?.leftInset ?: 0f }
 		
 		CompositionLocalProvider(
-			LocalTitleBarHeight provides TITLE_BAR_HEIGHT_DP.dp,
+			LocalTitleBarHeight provides effectiveTitleBarHeightDp.dp,
 			LocalTitleBarRightInset provides rightInsetPx,
+			LocalTitleBarLeftInset provides leftInsetPx,
+			LocalTitleBarTopPadding provides topInsetDp.dp,
 			LocalWindowDragModifier provides windowDragModifier,
 			LocalDragAreaCallback provides dragAreaCallback,
 			LocalTitleBarDarkControls provides { isDark ->

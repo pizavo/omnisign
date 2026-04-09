@@ -9,10 +9,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
-import cz.pizavo.omnisign.ui.platform.LocalDragAreaCallback
-import cz.pizavo.omnisign.ui.platform.LocalTitleBarHeight
-import cz.pizavo.omnisign.ui.platform.LocalTitleBarRightInset
-import cz.pizavo.omnisign.ui.platform.LocalWindowDragModifier
+import cz.pizavo.omnisign.ui.platform.*
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
 
@@ -22,16 +19,27 @@ private val CompactButtonPadding = PaddingValues(2.dp)
 /**
  * Seamless top toolbar for the island layout.
  *
- * Renders the application icon and action icons on the leading side, and a
- * settings gear button plus a theme-toggle button on the trailing side.
- * Centred between the two groups are **Sign** and **Timestamp** action
- * buttons. Two transparent [Spacer]s — one on each side of the central
- * buttons — fill the remaining space; on JVM desktop they act as window drag
- * handles (move on drag, maximize / restore on double-click) via
- * [LocalWindowDragModifier] and report their bounds through
- * [LocalDragAreaCallback]. Trailing padding is derived from
- * [LocalTitleBarRightInset] so content does not overlap the native
- * window-control buttons.
+ * Renders action icons on the leading side, and settings / theme-toggle buttons
+ * on the trailing side. Centred between the two groups are **Sign** and
+ * **Timestamp** action buttons. Two transparent [Spacer]s — one on each side of
+ * the central buttons — fill the remaining space; on JVM desktop they act as
+ * window drag handles via [LocalWindowDragModifier] and report their bounds
+ * through [LocalDragAreaCallback].
+ *
+ * **Platform-adaptive logo placement** — the OmniSign logo is positioned to
+ * mirror the native window controls so it never competes with them for visual
+ * weight:
+ * - **macOS** ([LocalTitleBarLeftInset] > 0): traffic lights occupy the leading
+ *   edge, so the logo is placed on the trailing end (rightmost item).
+ * - **Windows / Linux** ([LocalTitleBarLeftInset] = 0): window controls occupy
+ *   the trailing edge, so the logo is placed on the leading end (leftmost item,
+ *   followed by the open-file button).
+ *
+ * Leading padding respects [LocalTitleBarLeftInset] to avoid the macOS traffic
+ * lights; trailing padding respects [LocalTitleBarRightInset] to avoid the
+ * Windows/Linux window-control buttons. When [LocalTitleBarTopPadding] is
+ * non-zero (macOS native full-screen), an empty strip is inserted at the top so
+ * the OS auto-hiding title bar cannot cover the interactive controls on hover.
  *
  * @param isDarkTheme Whether a dark theme is currently active (controls the toggle icon).
  * @param onToggleTheme Callback invoked when the user clicks the theme-toggle button.
@@ -56,183 +64,209 @@ fun IslandToolbar(
 ) {
 	val themeLabel = if (isDarkTheme) "Switch to light theme" else "Switch to dark theme"
 	val titleBarHeight = LocalTitleBarHeight.current
+	val nativeLeftInsetPx = LocalTitleBarLeftInset.current
 	val nativeRightInsetPx = LocalTitleBarRightInset.current
+	val topPadding = LocalTitleBarTopPadding.current
+	val isMacOs = nativeLeftInsetPx > 0f
+	val leadingPadding = if (isMacOs) (nativeLeftInsetPx + 8f).dp else 11.dp
 	val trailingPadding = if (nativeRightInsetPx > 0f) (nativeRightInsetPx + 8).dp else 4.dp
 	val dragModifier = LocalWindowDragModifier.current
 	val reportDragArea = LocalDragAreaCallback.current
-	
+
 	Surface(
 		modifier = modifier.fillMaxWidth().height(titleBarHeight),
 		color = LumoTheme.colors.background,
 		contentColor = LumoTheme.colors.onBackground,
 	) {
-		Row(
-			modifier = Modifier.fillMaxSize(),
-			verticalAlignment = Alignment.CenterVertically,
-		) {
-			Row(
-				modifier = Modifier
-					.fillMaxHeight()
-					.padding(start = 11.dp),
-				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.spacedBy(4.dp),
-			) {
-				TooltipBox(
-					tooltip = { Tooltip { Text(text = "OmniSign") } },
-					state = rememberTooltipState(),
-				) {
-					Icon(
-						painter = painterResource(Res.drawable.icon_omnisign),
-						contentDescription = "OmniSign",
-						modifier = Modifier.size(22.dp),
-						tint = Color.Unspecified,
-					)
-				}
-				
-				TooltipBox(
-					tooltip = { Tooltip { Text(text = "Open file") } },
-					state = rememberTooltipState(),
-				) {
-					IconButton(
-						modifier = Modifier.defaultMinSize(
-							minWidth = CompactButtonSize,
-							minHeight = CompactButtonSize,
-						),
-						variant = IconButtonVariant.Ghost,
-						onClick = onOpenFile,
-						contentPadding = CompactButtonPadding,
-					) {
-						Icon(
-							painter = painterResource(Res.drawable.icon_folder),
-							contentDescription = "Open file",
-							modifier = Modifier.size(22.dp),
-							tint = LumoTheme.colors.icons.folder,
-						)
-					}
-				}
+		Column(modifier = Modifier.fillMaxSize()) {
+			if (topPadding > 0.dp) {
+				Spacer(modifier = Modifier.fillMaxWidth().height(topPadding))
 			}
-			
-			Spacer(
-				modifier = Modifier
-					.weight(1f)
-					.fillMaxHeight()
-					.then(dragModifier)
-					.then(
-						if (reportDragArea != null) Modifier.onGloballyPositioned { reportDragArea("drag-left", it) }
-						else Modifier
-					),
-			)
-			
+
 			Row(
-				modifier = Modifier.fillMaxHeight(),
+				modifier = Modifier.weight(1f).fillMaxWidth(),
 				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.spacedBy(4.dp),
 			) {
-				TooltipBox(
-					tooltip = { Tooltip { Text(text = "Sign") } },
-					state = rememberTooltipState(),
+				Row(
+					modifier = Modifier
+						.fillMaxHeight()
+						.padding(start = leadingPadding),
+					verticalAlignment = Alignment.CenterVertically,
+					horizontalArrangement = Arrangement.spacedBy(4.dp),
 				) {
-					IconButton(
-						modifier = Modifier.defaultMinSize(
-							minWidth = CompactButtonSize,
-							minHeight = CompactButtonSize,
-						),
-						variant = IconButtonVariant.Ghost,
-						enabled = fileLoaded,
-						onClick = onSign,
-						contentPadding = CompactButtonPadding,
+					if (!isMacOs) {
+						OmniSignLogoIcon()
+					}
+
+					TooltipBox(
+						tooltip = { Tooltip { Text(text = "Open file") } },
+						state = rememberTooltipState(),
 					) {
-						Icon(
-							painter = painterResource(Res.drawable.icon_sign),
-							contentDescription = "Sign document",
-							modifier = Modifier.size(22.dp),
-						)
+						IconButton(
+							modifier = Modifier.defaultMinSize(
+								minWidth = CompactButtonSize,
+								minHeight = CompactButtonSize,
+							),
+							variant = IconButtonVariant.Ghost,
+							onClick = onOpenFile,
+							contentPadding = CompactButtonPadding,
+						) {
+							Icon(
+								painter = painterResource(Res.drawable.icon_folder),
+								contentDescription = "Open file",
+								modifier = Modifier.size(22.dp),
+								tint = LumoTheme.colors.icons.folder,
+							)
+						}
 					}
 				}
-				
-				TooltipBox(
-					tooltip = { Tooltip { Text(text = "Timestamp") } },
-					state = rememberTooltipState(),
-				) {
-					IconButton(
-						modifier = Modifier.defaultMinSize(
-							minWidth = CompactButtonSize,
-							minHeight = CompactButtonSize,
+
+				Spacer(
+					modifier = Modifier
+						.weight(1f)
+						.fillMaxHeight()
+						.then(dragModifier)
+						.then(
+							if (reportDragArea != null) Modifier.onGloballyPositioned { reportDragArea("drag-left", it) }
+							else Modifier
 						),
-						variant = IconButtonVariant.Ghost,
-						enabled = fileLoaded,
-						onClick = onTimestamp,
-						contentPadding = CompactButtonPadding,
+				)
+
+				Row(
+					modifier = Modifier.fillMaxHeight(),
+					verticalAlignment = Alignment.CenterVertically,
+					horizontalArrangement = Arrangement.spacedBy(4.dp),
+				) {
+					TooltipBox(
+						tooltip = { Tooltip { Text(text = "Sign") } },
+						state = rememberTooltipState(),
 					) {
-						Icon(
-							painter = painterResource(Res.drawable.icon_stamp),
-							contentDescription = "Timestamp document",
-							modifier = Modifier.size(22.dp),
-						)
+						IconButton(
+							modifier = Modifier.defaultMinSize(
+								minWidth = CompactButtonSize,
+								minHeight = CompactButtonSize,
+							),
+							variant = IconButtonVariant.Ghost,
+							enabled = fileLoaded,
+							onClick = onSign,
+							contentPadding = CompactButtonPadding,
+						) {
+							Icon(
+								painter = painterResource(Res.drawable.icon_sign),
+								contentDescription = "Sign document",
+								modifier = Modifier.size(22.dp),
+							)
+						}
+					}
+
+					TooltipBox(
+						tooltip = { Tooltip { Text(text = "Timestamp") } },
+						state = rememberTooltipState(),
+					) {
+						IconButton(
+							modifier = Modifier.defaultMinSize(
+								minWidth = CompactButtonSize,
+								minHeight = CompactButtonSize,
+							),
+							variant = IconButtonVariant.Ghost,
+							enabled = fileLoaded,
+							onClick = onTimestamp,
+							contentPadding = CompactButtonPadding,
+						) {
+							Icon(
+								painter = painterResource(Res.drawable.icon_stamp),
+								contentDescription = "Timestamp document",
+								modifier = Modifier.size(22.dp),
+							)
+						}
 					}
 				}
-			}
-			
-			Spacer(
-				modifier = Modifier
-					.weight(1f)
-					.fillMaxHeight()
-					.then(dragModifier)
-					.then(
-						if (reportDragArea != null) Modifier.onGloballyPositioned { reportDragArea("drag-right", it) }
-						else Modifier
-					),
-			)
-			
-			Row(
-				modifier = Modifier
-					.padding(end = trailingPadding),
-				verticalAlignment = Alignment.CenterVertically,
-				horizontalArrangement = Arrangement.spacedBy(4.dp),
-			) {
-				TooltipBox(
-					tooltip = { Tooltip { Text(text = "Settings") } },
-					state = rememberTooltipState(),
-				) {
-					IconButton(
-						modifier = Modifier.defaultMinSize(
-							minWidth = CompactButtonSize,
-							minHeight = CompactButtonSize,
+
+				Spacer(
+					modifier = Modifier
+						.weight(1f)
+						.fillMaxHeight()
+						.then(dragModifier)
+						.then(
+							if (reportDragArea != null) Modifier.onGloballyPositioned { reportDragArea("drag-right", it) }
+							else Modifier
 						),
-						variant = IconButtonVariant.Ghost,
-						onClick = onOpenSettings,
-						contentPadding = CompactButtonPadding,
+				)
+
+				Row(
+					modifier = Modifier.padding(end = trailingPadding),
+					verticalAlignment = Alignment.CenterVertically,
+					horizontalArrangement = Arrangement.spacedBy(4.dp),
+				) {
+					TooltipBox(
+						tooltip = { Tooltip { Text(text = "Settings") } },
+						state = rememberTooltipState(),
 					) {
-						Icon(
-							painter = painterResource(Res.drawable.icon_settings),
-							contentDescription = "Open settings",
-							modifier = Modifier.size(22.dp),
-						)
+						IconButton(
+							modifier = Modifier.defaultMinSize(
+								minWidth = CompactButtonSize,
+								minHeight = CompactButtonSize,
+							),
+							variant = IconButtonVariant.Ghost,
+							onClick = onOpenSettings,
+							contentPadding = CompactButtonPadding,
+						) {
+							Icon(
+								painter = painterResource(Res.drawable.icon_settings),
+								contentDescription = "Open settings",
+								modifier = Modifier.size(22.dp),
+							)
+						}
 					}
-				}
-				
-				TooltipBox(
-					tooltip = { Tooltip { Text(text = themeLabel) } },
-					state = rememberTooltipState(),
-				) {
-					IconButton(
-						modifier = Modifier.defaultMinSize(
-							minWidth = CompactButtonSize,
-							minHeight = CompactButtonSize,
-						),
-						variant = IconButtonVariant.Ghost,
-						onClick = onToggleTheme,
-						contentPadding = CompactButtonPadding,
+
+					TooltipBox(
+						tooltip = { Tooltip { Text(text = themeLabel) } },
+						state = rememberTooltipState(),
 					) {
-						Icon(
-							painter = if (isDarkTheme) painterResource(Res.drawable.icon_sun)
-							else painterResource(Res.drawable.icon_moon),
-							contentDescription = themeLabel,
-							modifier = Modifier.size(22.dp),
-						)
+						IconButton(
+							modifier = Modifier.defaultMinSize(
+								minWidth = CompactButtonSize,
+								minHeight = CompactButtonSize,
+							),
+							variant = IconButtonVariant.Ghost,
+							onClick = onToggleTheme,
+							contentPadding = CompactButtonPadding,
+						) {
+							Icon(
+								painter = if (isDarkTheme) painterResource(Res.drawable.icon_sun)
+								else painterResource(Res.drawable.icon_moon),
+								contentDescription = themeLabel,
+								modifier = Modifier.size(22.dp),
+							)
+						}
+					}
+
+					if (isMacOs) {
+						OmniSignLogoIcon()
 					}
 				}
 			}
 		}
+	}
+}
+
+/**
+ * Standalone OmniSign logo icon used in the toolbar.
+ *
+ * Extracted to avoid duplication between the leading (Windows/Linux) and
+ * trailing (macOS) placements.
+ */
+@Composable
+private fun OmniSignLogoIcon() {
+	TooltipBox(
+		tooltip = { Tooltip { Text(text = "OmniSign") } },
+		state = rememberTooltipState(),
+	) {
+		Icon(
+			painter = painterResource(Res.drawable.icon_omnisign),
+			contentDescription = "OmniSign",
+			modifier = Modifier.size(22.dp),
+			tint = Color.Unspecified,
+		)
 	}
 }
