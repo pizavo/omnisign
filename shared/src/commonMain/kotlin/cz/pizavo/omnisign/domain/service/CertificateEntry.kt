@@ -13,6 +13,13 @@ import kotlin.time.Instant
  * @property validTo End of the certificate validity period.
  * @property keyUsages List of key usage extension values.
  * @property tokenInfo Token from which this certificate was loaded.
+ * @property isQualified Whether the certificate contains the QcCompliance statement
+ *   (`id-etsi-qcs-QcCompliance`, OID `0.4.0.1862.1.1`), indicating it is a qualified
+ *   certificate under eIDAS.  `null` when the QCStatements extension is absent or unreadable.
+ * @property isQscd Whether the certificate contains the QcSSCD statement
+ *   (`id-etsi-qcs-QcSSCD`, OID `0.4.0.1862.1.4`), indicating the private key is protected
+ *   by a Qualified Signature/Seal Creation Device.  `null` when the QCStatements extension
+ *   is absent or unreadable.
  */
 data class CertificateEntry(
     val alias: String,
@@ -22,5 +29,7 @@ data class CertificateEntry(
     val validFrom: Instant,
     val validTo: Instant,
     val keyUsages: List<String>,
-    val tokenInfo: TokenInfo
+    val tokenInfo: TokenInfo,
+    val isQualified: Boolean? = null,
+    val isQscd: Boolean? = null,
 )

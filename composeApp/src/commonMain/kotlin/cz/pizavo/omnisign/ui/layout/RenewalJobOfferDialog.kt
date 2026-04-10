@@ -1,10 +1,8 @@
 package cz.pizavo.omnisign.ui.layout
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -18,6 +16,7 @@ import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
+import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
 import omnisign.composeapp.generated.resources.Res
 import omnisign.composeapp.generated.resources.icon_alert_warning
 import omnisign.composeapp.generated.resources.icon_check
@@ -212,11 +211,9 @@ private fun RenewalOfferFormContent(
 	var newJobNotify by remember { mutableStateOf(true) }
 	var newJobLogFile by remember { mutableStateOf("") }
 
-	Column(
-		modifier = Modifier
-			.fillMaxSize()
-			.verticalScroll(rememberScrollState())
-			.padding(horizontal = 24.dp, vertical = 16.dp),
+	VerticalScrollableColumn(
+		modifier = Modifier.fillMaxSize(),
+		contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
 		verticalArrangement = Arrangement.spacedBy(12.dp),
 	) {
 		Text(
