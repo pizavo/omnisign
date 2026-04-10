@@ -35,11 +35,16 @@ private val CompactButtonPadding = PaddingValues(2.dp)
  *   the trailing edge, so the logo is placed on the leading end (leftmost item,
  *   followed by the open-file button).
  *
+ * In both cases the logo is positioned so that its horizontal center aligns with
+ * the center of the adjacent sidebar icon strip (`4.dp boxPadding + SideBarWidth/2`),
+ * keeping the logo visually on the same vertical axis as the sidebar icons.
+ *
  * Leading padding respects [LocalTitleBarLeftInset] to avoid the macOS traffic
  * lights; trailing padding respects [LocalTitleBarRightInset] to avoid the
- * Windows/Linux window-control buttons. When [LocalTitleBarTopPadding] is
- * non-zero (macOS native full-screen), an empty strip is inserted at the top so
- * the OS auto-hiding title bar cannot cover the interactive controls on hover.
+ * Windows/Linux window-control buttons. On macOS full-screen, [LocalTitleBarTopPadding]
+ * is animated in and out by a mouse-proximity tracker in the host window — when
+ * the cursor enters the top of the screen, a smooth spacer pushes content below
+ * the OS auto-hiding title bar; when the cursor leaves the spacer collapses.
  *
  * @param isDarkTheme Whether a dark theme is currently active (controls the toggle icon).
  * @param onToggleTheme Callback invoked when the user clicks the theme-toggle button.
@@ -67,9 +72,14 @@ fun IslandToolbar(
 	val nativeLeftInsetPx = LocalTitleBarLeftInset.current
 	val nativeRightInsetPx = LocalTitleBarRightInset.current
 	val topPadding = LocalTitleBarTopPadding.current
-	val isMacOs = nativeLeftInsetPx > 0f
-	val leadingPadding = if (isMacOs) (nativeLeftInsetPx + 8f).dp else 11.dp
-	val trailingPadding = if (nativeRightInsetPx > 0f) (nativeRightInsetPx + 8).dp else 4.dp
+	val isMacOs = LocalIsMacOs.current
+	val logoAlignment = 4.dp + (SideBarWidth - 22.dp) / 2
+	val leadingPadding = if (isMacOs) nativeLeftInsetPx.dp else logoAlignment
+	val trailingPadding = when {
+		nativeRightInsetPx > 0f -> (nativeRightInsetPx + 8).dp
+		isMacOs -> logoAlignment
+		else -> 4.dp
+	}
 	val dragModifier = LocalWindowDragModifier.current
 	val reportDragArea = LocalDragAreaCallback.current
 

@@ -67,14 +67,24 @@ val LocalTitleBarRightInset = staticCompositionLocalOf { 0f }
 val LocalTitleBarLeftInset = staticCompositionLocalOf { 0f }
 
 /**
+ * Whether the current host platform is macOS.
+ *
+ * Set once at startup from `System.getProperty("os.name")` on JVM desktop and
+ * defaults to `false` on all other platforms (web, etc.). Used by toolbar
+ * composables to apply platform-adaptive layout (e.g., logo placement) without
+ * depending on transient inset values that change during fullscreen transitions.
+ */
+val LocalIsMacOs = staticCompositionLocalOf { false }
+
+/**
  * Additional top padding in [Dp] that the toolbar must add above its interactive
  * content.
  *
- * On macOS, when the window enters native full-screen mode, the OS renders an
- * auto-hiding title bar that slides down from the top of the screen on hover.
- * Setting this value to the height of that system title bar ensures the
- * toolbar's interactive controls are positioned below the overlay and remain
- * accessible. Default is `0.dp` (no extra padding required).
+ * On macOS full-screen this value is animated between `0.dp` and the height of
+ * the OS auto-hiding title bar whenever the cursor approaches the top of the
+ * window. Therefore, ensuring the toolbar's interactive controls remain accessible when the
+ * system title bar slides into view. Outside of macOS full-screen the value is
+ * always `0.dp`.
  */
 val LocalTitleBarTopPadding = staticCompositionLocalOf { 0.dp }
 
