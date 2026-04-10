@@ -12,12 +12,14 @@ import cz.pizavo.omnisign.domain.service.SigningToken
 import cz.pizavo.omnisign.domain.service.TokenInfo
 import cz.pizavo.omnisign.domain.service.TokenService
 import cz.pizavo.omnisign.platform.PasswordCallback
-import eu.europa.esig.dss.token.AbstractSignatureTokenConnection
-import eu.europa.esig.dss.token.MSCAPISignatureToken
-import eu.europa.esig.dss.token.Pkcs11SignatureToken
-import eu.europa.esig.dss.token.Pkcs12SignatureToken
+import eu.europa.esig.dss.token.*
+import org.bouncycastle.asn1.ASN1ObjectIdentifier
+import org.bouncycastle.asn1.ASN1Primitive
+import org.bouncycastle.asn1.ASN1Sequence
+import org.bouncycastle.asn1.DEROctetString
 import java.io.File
 import java.security.KeyStore
+import java.security.cert.X509Certificate
 
 /**
  * JVM implementation of [TokenService] using the EU DSS library.
@@ -86,8 +88,8 @@ class DssTokenService(
 	/**
 	 * Check physical token presence without supplying a PIN.
 	 *
-	 * PKCS#11 tokens are probed via [C_GetSlotList] with [CK_TRUE], which queries the
-	 * middleware for slots that currently have a card inserted.  This never calls [C_Login]
+	 * PKCS#11 tokens are probed via `C_GetSlotList` with `CK_TRUE`, which queries the
+	 * middleware for slots that currently have a card inserted.  This never calls `C_Login`
 	 * and therefore never risks incrementing a wrong-PIN counter.
 	 * FILE tokens are checked via [File.exists].
 	 * OS-native stores always return true — the subsequent load call handles any failure.
@@ -185,16 +187,19 @@ class DssTokenService(
 						?: "certificate"
 					"$cn-${certToken.serialNumber.toString(16).take(ALIAS_SERIAL_SUFFIX_LENGTH)}"
 				}
-			CertificateEntry(
-				alias = alias,
-				subjectDN = certToken.subjectX500Principal.toString(),
-				issuerDN = certToken.issuerX500Principal.toString(),
-				serialNumber = certToken.serialNumber.toString(),
-				validFrom = certToken.notBefore.toKotlinInstant(),
-				validTo = certToken.notAfter.toKotlinInstant(),
-				keyUsages = extractKeyUsages(certToken.keyUsage),
-				tokenInfo = tokenInfo,
-			)
+				val (isQualified, isQscd) = extractQcStatements(certToken)
+				CertificateEntry(
+					alias = alias,
+					subjectDN = certToken.subjectX500Principal.toString(),
+					issuerDN = certToken.issuerX500Principal.toString(),
+					serialNumber = certToken.serialNumber.toString(),
+					validFrom = certToken.notBefore.toKotlinInstant(),
+					validTo = certToken.notAfter.toKotlinInstant(),
+					keyUsages = extractKeyUsages(certToken.keyUsage),
+					tokenInfo = tokenInfo,
+					isQualified = isQualified,
+					isQscd = isQscd,
+				)
 			}
 			token.close()
 			certificates.right()
@@ -215,6 +220,31 @@ class DssTokenService(
 	private fun extractKeyUsages(keyUsage: BooleanArray?): List<String> {
 		if (keyUsage == null) return emptyList()
 		return KEY_USAGE_NAMES.filterIndexed { index, _ -> index < keyUsage.size && keyUsage[index] }
+	}
+
+	/**
+	 * Read the QCStatements X.509 extension from [cert] and return whether the certificate
+	 * carries the QcCompliance and QcSSCD statements.
+	 *
+	 * Both values are `null` when the QCStatements extension (`1.3.6.1.5.5.7.1.3`) is absent
+	 * or cannot be parsed — callers should treat `null` as "unknown" rather than "false".
+	 *
+	 * @return Pair of (isQualified, isQscd); each element is `true` when the corresponding
+	 *   OID is present in the statement sequence, `false` when the extension exists but the
+	 *   OID is absent, and `null` when the extension itself is missing or unreadable.
+	 */
+	private fun extractQcStatements(cert: X509Certificate): Pair<Boolean?, Boolean?> {
+		val extBytes = cert.getExtensionValue(QC_STATEMENTS_EXTENSION_OID) ?: return null to null
+		return runCatching {
+			val octetStr = ASN1Primitive.fromByteArray(extBytes) as DEROctetString
+			val seq = ASN1Sequence.getInstance(ASN1Primitive.fromByteArray(octetStr.octets))
+			val oids = (0 until seq.size()).mapNotNull { i ->
+				(seq.getObjectAt(i) as? ASN1Sequence)
+					?.getObjectAt(0)
+					?.let { ASN1ObjectIdentifier.getInstance(it).id }
+			}.toSet()
+			(QC_COMPLIANCE_OID in oids) to (QC_SSCD_OID in oids)
+		}.getOrDefault(null to null)
 	}
 
 	/**
@@ -250,12 +280,26 @@ class DssTokenService(
 			Pkcs12SignatureToken(File(filePath), KeyStore.PasswordProtection(pwd.toCharArray()))
 		}
 		TokenType.WINDOWS_MY -> MSCAPISignatureToken()
-		TokenType.MACOS_KEYCHAIN ->
-			throw UnsupportedOperationException("macOS Keychain support not yet implemented")
+		TokenType.MACOS_KEYCHAIN -> AppleSignatureToken()
 	}
 
 	private companion object {
 		const val ALIAS_SERIAL_SUFFIX_LENGTH = 8
+
+		/**
+		 * OID of the QCStatements X.509 extension (RFC 3739 / ETSI EN 319 412).
+		 */
+		const val QC_STATEMENTS_EXTENSION_OID = "1.3.6.1.5.5.7.1.3"
+
+		/**
+		 * OID for `id-etsi-qcs-QcCompliance` — indicates a qualified certificate under eIDAS.
+		 */
+		const val QC_COMPLIANCE_OID = "0.4.0.1862.1.1"
+
+		/**
+		 * OID for `id-etsi-qcs-QcSSCD` — indicates the private key resides on a QSCD.
+		 */
+		const val QC_SSCD_OID = "0.4.0.1862.1.4"
 
 		val KEY_USAGE_NAMES = listOf(
 			"digitalSignature", "nonRepudiation", "keyEncipherment", "dataEncipherment",

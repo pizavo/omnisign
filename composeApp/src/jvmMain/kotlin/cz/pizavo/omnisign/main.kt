@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.*
@@ -48,6 +50,40 @@ private val LOG_DIR: String = resolveLogDir().also { System.setProperty("omnisig
 private val logger = KotlinLogging.logger {}
 
 private const val TITLE_BAR_HEIGHT_DP = 40
+
+/**
+ * Height in dp of the macOS system auto-hide title bar that slides down from
+ * the top of the screen when the window is in native full-screen mode.
+ *
+ * Used as the animation target for [LocalTitleBarTopPadding] and as the
+ * hysteresis close-threshold for the cursor-tracking timer: the gap is kept
+ * open as long as the cursor is within this many logical pixels of the window
+ * top, collapsing only once the cursor moves clearly below it.
+ */
+private const val MAC_FULLSCREEN_TOP_INSET_DP = 28
+
+/**
+ * Cursor Y-position threshold (in logical pixels, relative to the window top)
+ * at which the macOS full-screen gap is opened.
+ *
+ * A value of `2` means the gap appears only when the cursor is at the very top
+ * edge of the screen — the same moment macOS shows its auto-hiding title bar —
+ * rather than opening prematurely across the entire toolbar height. Negative
+ * values (cursor above the window, inside the native title bar area) also
+ * satisfy this condition, so the gap stays open while the user interacts with
+ * the system title bar.
+ */
+private const val MAC_FULLSCREEN_TRIGGER_DP = 2
+
+/**
+ * Polling interval in milliseconds for the macOS full-screen cursor-tracking
+ * [Timer].
+ *
+ * At 16 ms (~60 Hz) the gap responds within one frame of the cursor reaching
+ * the top edge, giving a smooth transition that matches the native title bar
+ * slide-in animation.
+ */
+private const val MAC_FULLSCREEN_CURSOR_POLL_MS = 16
 
 /**
  * Interval in milliseconds for the [Timer] that primes
@@ -327,13 +363,49 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 			windowIcon?.toAwtImage()?.let { awtWindow.iconImage = it }
 		}
 
-		val titleBarHeightPx = TITLE_BAR_HEIGHT_DP.toFloat()
-		
-		// On Linux, JBR WindowDecorations is not supported — the window is undecorated
-		// and custom controls are provided via LocalWindowControls instead.
+		val isMacOs = remember { System.getProperty("os.name").lowercase().contains("mac") }
+		val isFullscreen = windowState.placement == WindowPlacement.Fullscreen
+
 		val titleBar: WindowDecorations.CustomTitleBar? =
-			remember { if (isLinux) null else JbrTitleBarHelper.install(awtWindow, titleBarHeightPx) }
-		
+			remember { if (isLinux) null else JbrTitleBarHelper.install(awtWindow, TITLE_BAR_HEIGHT_DP.toFloat()) }
+
+		val isMacTitleBarHoveringState = remember { mutableStateOf(false) }
+		val isMacTitleBarHovering by isMacTitleBarHoveringState
+
+		DisposableEffect(isMacOs, isFullscreen, awtWindow) {
+			if (!isMacOs || !isFullscreen) {
+				isMacTitleBarHoveringState.value = false
+				return@DisposableEffect onDispose {}
+			}
+			val timer = Timer(MAC_FULLSCREEN_CURSOR_POLL_MS) {
+				val pointer = MouseInfo.getPointerInfo() ?: return@Timer
+				val windowTop = try {
+					awtWindow.locationOnScreen.y
+				} catch (_: Exception) {
+					return@Timer
+				}
+				val cursorWindowY = pointer.location.y - windowTop
+				val current = isMacTitleBarHoveringState.value
+				val next = when {
+					cursorWindowY <= MAC_FULLSCREEN_TRIGGER_DP -> true
+					cursorWindowY > MAC_FULLSCREEN_TOP_INSET_DP -> false
+					else -> current
+				}
+				if (current != next) isMacTitleBarHoveringState.value = next
+			}
+			timer.start()
+			onDispose {
+				timer.stop()
+				isMacTitleBarHoveringState.value = false
+			}
+		}
+
+		val macTitleBarPaddingDp by animateDpAsState(
+			targetValue = if (isMacOs && isFullscreen && isMacTitleBarHovering) MAC_FULLSCREEN_TOP_INSET_DP.dp else 0.dp,
+			animationSpec = tween(durationMillis = 200),
+			label = "macTitleBarPadding",
+		)
+
 		remember(titleBar) {
 			val contentPane = awtWindow.contentPane
 			contentPane.addMouseListener(TitleBarClientAreaListener)
@@ -387,16 +459,20 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 		val windowDragModifier = remember(awtWindow, hasTitleBar) {
 			if (hasTitleBar) Modifier else fallbackDragModifier(awtWindow)
 		}
-		
-		val rightInsetPx = titleBar?.rightInset ?: 0f
+
+		val rightInsetPx = remember(isFullscreen, titleBar) { titleBar?.rightInset ?: 0f }
+		val leftInsetPx = remember(isFullscreen, titleBar) { titleBar?.leftInset ?: 0f }
 		
 		val windowControlsContent: (@Composable () -> Unit)? = if (isLinux) {
 			{ LinuxWindowControls(awtWindow) }
 		} else null
 		
 		CompositionLocalProvider(
-			LocalTitleBarHeight provides TITLE_BAR_HEIGHT_DP.dp,
+			LocalTitleBarHeight provides TITLE_BAR_HEIGHT_DP.dp + macTitleBarPaddingDp,
 			LocalTitleBarRightInset provides rightInsetPx,
+			LocalTitleBarLeftInset provides leftInsetPx,
+			LocalTitleBarTopPadding provides macTitleBarPaddingDp,
+			LocalIsMacOs provides isMacOs,
 			LocalWindowDragModifier provides windowDragModifier,
 			LocalDragAreaCallback provides dragAreaCallback,
 			LocalWindowControls provides windowControlsContent,

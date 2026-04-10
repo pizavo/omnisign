@@ -13,14 +13,11 @@ import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
 import cz.pizavo.omnisign.domain.usecase.UnlockTokenUseCase
 import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
 import cz.pizavo.omnisign.ui.model.SigningDialogState
-import kotlinx.coroutines.CoroutineDispatcher
-import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 /**
  * ViewModel driving the signing dialog.
@@ -88,64 +85,69 @@ class SigningViewModel(
 
 		viewModelScope.launch {
 			withContext(ioDispatcher) {
-				val appConfig = configRepository.getCurrentConfig()
-				cachedRenewalJobs = appConfig.renewalJobs.values.toList()
-				val activeProfile = appConfig.activeProfile
-				val profileConfig = activeProfile?.let { appConfig.profiles[it] }
+				coroutineScope {
+					val appConfigDeferred = async { configRepository.getCurrentConfig() }
+					val discoveryDeferred = async { listCertificatesUseCase() }
 
-				val configResult = ResolvedConfig.resolve(
-					global = appConfig.global,
-					profile = profileConfig,
-					operationOverrides = null,
-				)
+					val appConfig = appConfigDeferred.await()
+					cachedRenewalJobs = appConfig.renewalJobs.values.toList()
+					val activeProfile = appConfig.activeProfile
+					val profileConfig = activeProfile?.let { appConfig.profiles[it] }
 
-				configResult.fold(
-					ifLeft = { error ->
-						_state.value = SigningDialogState.Error(
-							message = "Configuration error: ${error.message}",
-						)
-					},
-					ifRight = { config ->
-						resolvedConfig = config
-						listCertificatesUseCase().fold(
-							ifLeft = { error ->
-								_state.value = SigningDialogState.Error(
-									message = error.message,
-									details = error.details,
-								)
-							},
-							ifRight = { discovery ->
-								val level = config.signatureLevel
-								val addSigTs = level == SignatureLevel.PADES_BASELINE_LT ||
-										level == SignatureLevel.PADES_BASELINE_LTA
-								val addArchTs = level == SignatureLevel.PADES_BASELINE_LTA
+					val configResult = ResolvedConfig.resolve(
+						global = appConfig.global,
+						profile = profileConfig,
+						operationOverrides = null,
+					)
 
-								val suggestedOutput = buildSuggestedOutputPath(filePath, "-signed")
-								val coveringJob = RenewalJobAssigner.findCoveringJob(
-									suggestedOutput, cachedRenewalJobs,
-								)
-								val ready = SigningDialogState.Ready(
-									certificates = discovery.certificates,
-									tokenWarnings = discovery.tokenWarnings,
-									lockedTokens = discovery.lockedTokens,
-									selectedAlias = null,
-									hashAlgorithm = null,
-									addSignatureTimestamp = addSigTs,
-									addArchivalTimestamp = addArchTs,
-									configHashAlgorithm = config.hashAlgorithm,
-									configAddSignatureTimestamp = addSigTs,
-									configAddArchivalTimestamp = addArchTs,
-									disabledHashAlgorithms = config.disabledHashAlgorithms,
-									outputPath = suggestedOutput,
-									addToRenewalJob = coveringJob != null,
-									coveringRenewalJobName = coveringJob?.name,
-								)
-								lastReadyState = ready
-								_state.value = ready
-							},
-						)
-					},
-				)
+					configResult.fold(
+						ifLeft = { error ->
+							_state.value = SigningDialogState.Error(
+								message = "Configuration error: ${error.message}",
+							)
+						},
+						ifRight = { config ->
+							resolvedConfig = config
+							discoveryDeferred.await().fold(
+								ifLeft = { error ->
+									_state.value = SigningDialogState.Error(
+										message = error.message,
+										details = error.details,
+									)
+								},
+								ifRight = { discovery ->
+									val level = config.signatureLevel
+									val addSigTs = level == SignatureLevel.PADES_BASELINE_LT ||
+											level == SignatureLevel.PADES_BASELINE_LTA
+									val addArchTs = level == SignatureLevel.PADES_BASELINE_LTA
+
+									val suggestedOutput = buildSuggestedOutputPath(filePath, "-signed")
+									val coveringJob = RenewalJobAssigner.findCoveringJob(
+										suggestedOutput, cachedRenewalJobs,
+									)
+									val ready = SigningDialogState.Ready(
+										certificates = discovery.certificates,
+										tokenWarnings = discovery.tokenWarnings,
+										lockedTokens = discovery.lockedTokens,
+										selectedAlias = null,
+										hashAlgorithm = null,
+										addSignatureTimestamp = addSigTs,
+										addArchivalTimestamp = addArchTs,
+										configHashAlgorithm = config.hashAlgorithm,
+										configAddSignatureTimestamp = addSigTs,
+										configAddArchivalTimestamp = addArchTs,
+										disabledHashAlgorithms = config.disabledHashAlgorithms,
+										outputPath = suggestedOutput,
+										addToRenewalJob = coveringJob != null,
+										coveringRenewalJobName = coveringJob?.name,
+									)
+									lastReadyState = ready
+									_state.value = ready
+								},
+							)
+						},
+					)
+				}
 			}
 		}
 	}
@@ -415,16 +417,14 @@ class SigningViewModel(
 		viewModelScope.launch {
 			withContext(ioDispatcher) {
 				val result = renewalJobAssigner?.createNewJob(job)
-				if (result != null) {
-					result.fold(
-						onSuccess = { name ->
-							_pendingRenewalOffer.value = offer.copy(assignedJobName = name, error = null)
-						},
-						onFailure = { e ->
-							_pendingRenewalOffer.value = offer.copy(error = e.message)
-						},
-					)
-				}
+				result?.fold(
+					onSuccess = { name ->
+						_pendingRenewalOffer.value = offer.copy(assignedJobName = name, error = null)
+					},
+					onFailure = { e ->
+						_pendingRenewalOffer.value = offer.copy(error = e.message)
+					},
+				)
 			}
 		}
 	}

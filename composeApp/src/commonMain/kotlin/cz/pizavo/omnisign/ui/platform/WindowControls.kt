@@ -8,7 +8,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
- * Callback invoked by toolbar drag spacers whenever their layout position or
+ * Callback invoked by toolbar-drag spacers whenever their layout position or
  * size changes.
  *
  * Each spacer passes a unique [String] key and its [LayoutCoordinates].
@@ -44,7 +44,7 @@ val LocalWindowDragModifier = staticCompositionLocalOf<Modifier> { Modifier }
  * the Compose toolbar and the native window-control buttons are always the same size.
  * Default is `40.dp`.
  */
-val LocalTitleBarHeight = staticCompositionLocalOf<Dp> { 40.dp }
+val LocalTitleBarHeight = staticCompositionLocalOf { 40.dp }
 
 /**
  * Right-side inset in **AWT logical pixels** reserved for native window controls
@@ -54,6 +54,39 @@ val LocalTitleBarHeight = staticCompositionLocalOf<Dp> { 40.dp }
  * toolbar converts this value with [Float.dp]. Default is `0f` (no inset).
  */
 val LocalTitleBarRightInset = staticCompositionLocalOf { 0f }
+
+/**
+ * Left-side inset in **AWT logical pixels** reserved for native window controls
+ * rendered by the JBR custom title bar — on macOS these are the traffic-light
+ * buttons (close / minimize / zoom). Toolbar content must not be placed behind
+ * this region.
+ *
+ * On Compose Desktop, AWT logical pixels correspond directly to dp, so the
+ * toolbar converts this value with [Float.dp]. Default is `0f` (no inset).
+ */
+val LocalTitleBarLeftInset = staticCompositionLocalOf { 0f }
+
+/**
+ * Whether the current host platform is macOS.
+ *
+ * Set once at startup from `System.getProperty("os.name")` on JVM desktop and
+ * defaults to `false` on all other platforms (web, etc.). Used by toolbar
+ * composables to apply platform-adaptive layout (e.g., logo placement) without
+ * depending on transient inset values that change during fullscreen transitions.
+ */
+val LocalIsMacOs = staticCompositionLocalOf { false }
+
+/**
+ * Additional top padding in [Dp] that the toolbar must add above its interactive
+ * content.
+ *
+ * On macOS full-screen this value is animated between `0.dp` and the height of
+ * the OS auto-hiding title bar whenever the cursor approaches the top of the
+ * window. Therefore, ensuring the toolbar's interactive controls remain accessible when the
+ * system title bar slides into view. Outside of macOS full-screen the value is
+ * always `0.dp`.
+ */
+val LocalTitleBarTopPadding = staticCompositionLocalOf { 0.dp }
 
 /**
  * Callback that informs the native title bar whether the application background

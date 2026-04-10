@@ -235,6 +235,81 @@ class Pkcs11DiscovererTest : FunSpec({
 		hwTokens.map { it.name }.toSet() shouldBe setOf("Token A", "Token B")
 	}
 
+	test("isPkcs11FileName matches YubiKey YKCS11 library") {
+		discoverer().isPkcs11FileName("libykcs11.so").shouldBeTrue()
+		discoverer().isPkcs11FileName("libykcs11.dylib").shouldBeTrue()
+	}
+
+	test("isPkcs11FileName matches SafeNet eTPkcs11 library") {
+		discoverer().isPkcs11FileName("libeTPkcs11.so").shouldBeTrue()
+		discoverer().isPkcs11FileName("eTPKCS11.dll").shouldBeTrue()
+	}
+
+	test("deriveMiddlewareName identifies YubiKey YKCS11 paths") {
+		val d = discoverer()
+		d.deriveMiddlewareName("/usr/lib/libykcs11.so") shouldBe "YubiKey (YKCS11)"
+		d.deriveMiddlewareName("/usr/local/lib/libykcs11.dylib") shouldBe "YubiKey (YKCS11)"
+	}
+
+	test("deriveMiddlewareFamily assigns 'yubikey' family to YKCS11 libraries") {
+		discoverer().deriveMiddlewareFamily("/usr/lib/libykcs11.so") shouldBe "yubikey"
+	}
+
+	test("discoverViaP11KitProxy returns empty list when no proxy path exists") {
+		val result = discoverer().discoverViaP11KitProxy(proxyPaths = listOf("/tmp/nonexistent-p11-proxy.so"))
+		result.shouldBeEmpty()
+	}
+
+	test("discoverViaP11KitProxy returns first existing proxy path") {
+		val proxyFile = File.createTempFile("p11-kit-proxy", ".so").also { it.deleteOnExit() }
+
+		val result = discoverer().discoverViaP11KitProxy(
+			proxyPaths = listOf("/tmp/nonexistent.so", proxyFile.absolutePath),
+		)
+
+		result.shouldHaveSize(1)
+		result.first().first shouldBe "p11-kit Proxy"
+		result.first().second shouldBe proxyFile.absolutePath
+	}
+
+	test("discoverViaLibDirs finds PKCS11-named files in given directories") {
+		val dir = File.createTempFile("libdir", "").also { it.delete(); it.mkdirs(); it.deleteOnExit() }
+		val lib = File(dir, "libykcs11.so").also { it.createNewFile(); it.deleteOnExit() }
+
+		val result = discoverer().discoverViaLibDirs(listOf(dir.absolutePath))
+
+		result.any { it.second == lib.absolutePath }.shouldBeTrue()
+		dir.deleteRecursively()
+	}
+
+	test("discoverViaLibDirs skips non-PKCS11 files") {
+		val dir = File.createTempFile("libdir", "").also { it.delete(); it.mkdirs(); it.deleteOnExit() }
+		File(dir, "libssl.so").also { it.createNewFile(); it.deleteOnExit() }
+
+		val result = discoverer().discoverViaLibDirs(listOf(dir.absolutePath))
+
+		result.shouldBeEmpty()
+		dir.deleteRecursively()
+	}
+
+	test("discoverViaLibDirs silently skips non-existent directories") {
+		runCatching {
+			discoverer().discoverViaLibDirs(listOf("/tmp/dir-that-does-not-exist-omnisign"))
+		}.isSuccess.shouldBeTrue()
+	}
+
+	test("Linux 64-bit candidate list includes SafeNet and YubiKey paths") {
+		val paths = discoverer().candidatesForOs("linux", jvmIs64Bit = true).map { it.second }
+		paths.any { it.contains("libeTPkcs11") }.shouldBeTrue()
+		paths.any { it.contains("libykcs11") }.shouldBeTrue()
+	}
+
+	test("macOS candidate list includes SafeNet and YubiKey paths") {
+		val paths = discoverer().candidatesForOs("mac os x", jvmIs64Bit = true).map { it.second }
+		paths.any { it.contains("libeTPkcs11") }.shouldBeTrue()
+		paths.any { it.contains("libykcs11") }.shouldBeTrue()
+	}
+
 	test("discoverTokens uses hardware label as token name instead of middleware name") {
 		val lib = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
 

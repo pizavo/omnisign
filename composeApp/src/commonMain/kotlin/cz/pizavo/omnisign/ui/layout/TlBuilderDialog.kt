@@ -1,26 +1,9 @@
 package cz.pizavo.omnisign.ui.layout
 
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.widthIn
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -34,32 +17,18 @@ import cz.pizavo.omnisign.domain.model.config.EtsiUriHint
 import cz.pizavo.omnisign.domain.model.config.SERVICE_STATUS_HINTS
 import cz.pizavo.omnisign.domain.model.config.SERVICE_TYPE_HINTS
 import cz.pizavo.omnisign.lumo.LumoTheme
-import cz.pizavo.omnisign.lumo.components.Button
-import cz.pizavo.omnisign.lumo.components.ButtonVariant
-import cz.pizavo.omnisign.lumo.components.Checkbox
-import cz.pizavo.omnisign.lumo.components.HorizontalDivider
-import cz.pizavo.omnisign.lumo.components.Icon
-import cz.pizavo.omnisign.lumo.components.IconButton
-import cz.pizavo.omnisign.lumo.components.IconButtonVariant
-import cz.pizavo.omnisign.lumo.components.Surface
-import cz.pizavo.omnisign.lumo.components.Text
-import cz.pizavo.omnisign.lumo.components.Tooltip
-import cz.pizavo.omnisign.lumo.components.TooltipBox
-import cz.pizavo.omnisign.lumo.components.rememberTooltipState
+import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.ServiceEditState
 import cz.pizavo.omnisign.ui.model.TlBuilderDialogState
 import cz.pizavo.omnisign.ui.model.TspEditState
+import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
 import cz.pizavo.omnisign.ui.platform.platformFilePath
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.name
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_check
-import omnisign.composeapp.generated.resources.icon_chevron_down
-import omnisign.composeapp.generated.resources.icon_folder
-import omnisign.composeapp.generated.resources.icon_x
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
 
 /**
@@ -189,11 +158,9 @@ private fun TlBuilderFormContent(
 	onAddService: (Int) -> Unit,
 	onRemoveService: (Int, Int) -> Unit,
 ) {
-	Column(
-		modifier = Modifier
-			.fillMaxSize()
-			.verticalScroll(rememberScrollState())
-			.padding(24.dp),
+	VerticalScrollableColumn(
+		modifier = Modifier.fillMaxSize(),
+		contentPadding = PaddingValues(24.dp),
 		verticalArrangement = Arrangement.spacedBy(4.dp),
 	) {
 		if (state.error != null) {
