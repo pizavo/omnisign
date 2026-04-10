@@ -33,8 +33,6 @@ import java.awt.MouseInfo
 import java.awt.Point
 import java.awt.Rectangle
 import java.awt.event.MouseAdapter
-import java.awt.event.MouseEvent
-import java.awt.event.MouseMotionAdapter
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import javax.swing.Timer
@@ -57,12 +55,35 @@ private const val TITLE_BAR_HEIGHT_DP = 40
  * Height in dp of the macOS system auto-hide title bar that slides down from
  * the top of the screen when the window is in native full-screen mode.
  *
- * Used as both the animation target for [LocalTitleBarTopPadding] and the
- * mouse-proximity threshold: when the cursor's Y position (in logical pixels)
- * is at or below this value, the gap is animated in, pushing toolbar content
- * below the overlay so that interactive controls remain accessible.
+ * Used as the animation target for [LocalTitleBarTopPadding] and as the
+ * hysteresis close-threshold for the cursor-tracking timer: the gap is kept
+ * open as long as the cursor is within this many logical pixels of the window
+ * top, collapsing only once the cursor moves clearly below it.
  */
 private const val MAC_FULLSCREEN_TOP_INSET_DP = 28
+
+/**
+ * Cursor Y-position threshold (in logical pixels, relative to the window top)
+ * at which the macOS full-screen gap is opened.
+ *
+ * A value of `2` means the gap appears only when the cursor is at the very top
+ * edge of the screen — the same moment macOS shows its auto-hiding title bar —
+ * rather than opening prematurely across the entire toolbar height. Negative
+ * values (cursor above the window, inside the native title bar area) also
+ * satisfy this condition, so the gap stays open while the user interacts with
+ * the system title bar.
+ */
+private const val MAC_FULLSCREEN_TRIGGER_DP = 2
+
+/**
+ * Polling interval in milliseconds for the macOS full-screen cursor-tracking
+ * [Timer].
+ *
+ * At 16 ms (~60 Hz) the gap responds within one frame of the cursor reaching
+ * the top edge, giving a smooth transition that matches the native title bar
+ * slide-in animation.
+ */
+private const val MAC_FULLSCREEN_CURSOR_POLL_MS = 16
 
 /**
  * Interval in milliseconds for the [Timer] that primes
@@ -314,33 +335,34 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 		val titleBar: WindowDecorations.CustomTitleBar? =
 			remember { JbrTitleBarHelper.install(awtWindow, TITLE_BAR_HEIGHT_DP.toFloat()) }
 
-		var isMacTitleBarHovering by remember { mutableStateOf(false) }
+		val isMacTitleBarHoveringState = remember { mutableStateOf(false) }
+		val isMacTitleBarHovering by isMacTitleBarHoveringState
 
 		DisposableEffect(isMacOs, isFullscreen, awtWindow) {
 			if (!isMacOs || !isFullscreen) {
-				isMacTitleBarHovering = false
+				isMacTitleBarHoveringState.value = false
 				return@DisposableEffect onDispose {}
 			}
-			val motionListener = object : MouseMotionAdapter() {
-				override fun mouseMoved(e: MouseEvent) {
-					isMacTitleBarHovering = e.y <= MAC_FULLSCREEN_TOP_INSET_DP
+			val timer = Timer(MAC_FULLSCREEN_CURSOR_POLL_MS) {
+				val pointer = MouseInfo.getPointerInfo() ?: return@Timer
+				val windowTop = try {
+					awtWindow.locationOnScreen.y
+				} catch (_: Exception) {
+					return@Timer
 				}
-
-				override fun mouseDragged(e: MouseEvent) {
-					isMacTitleBarHovering = e.y <= MAC_FULLSCREEN_TOP_INSET_DP
+				val cursorWindowY = pointer.location.y - windowTop
+				val current = isMacTitleBarHoveringState.value
+				val next = when {
+					cursorWindowY <= MAC_FULLSCREEN_TRIGGER_DP -> true
+					cursorWindowY > MAC_FULLSCREEN_TOP_INSET_DP -> false
+					else -> current
 				}
+				if (current != next) isMacTitleBarHoveringState.value = next
 			}
-			val mouseExitListener = object : MouseAdapter() {
-				override fun mouseExited(e: MouseEvent) {
-					isMacTitleBarHovering = false
-				}
-			}
-			awtWindow.addMouseMotionListener(motionListener)
-			awtWindow.addMouseListener(mouseExitListener)
+			timer.start()
 			onDispose {
-				awtWindow.removeMouseMotionListener(motionListener)
-				awtWindow.removeMouseListener(mouseExitListener)
-				isMacTitleBarHovering = false
+				timer.stop()
+				isMacTitleBarHoveringState.value = false
 			}
 		}
 
