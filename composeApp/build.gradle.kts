@@ -162,6 +162,10 @@ compose.desktop {
 			if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
 				modules("jdk.crypto.mscapi")
 			}
+
+			if (org.gradle.internal.os.OperatingSystem.current().isLinux) {
+				modules("jdk.security.auth")
+			}
 			
 			targetFormats(
 				TargetFormat.Msi,
