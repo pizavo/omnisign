@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign
 
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.runtime.*
@@ -31,6 +33,8 @@ import java.awt.MouseInfo
 import java.awt.Point
 import java.awt.Rectangle
 import java.awt.event.MouseAdapter
+import java.awt.event.MouseEvent
+import java.awt.event.MouseMotionAdapter
 import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import javax.swing.Timer
@@ -50,10 +54,13 @@ private val logger = KotlinLogging.logger {}
 private const val TITLE_BAR_HEIGHT_DP = 40
 
 /**
- * Extra top padding in dp added to the title bar when the window is in macOS
- * native full-screen mode. The macOS system auto-hide title bar slides down
- * from the top of the screen on hover and occupies approximately this height,
- * so the toolbar's interactive controls must be offset below it.
+ * Height in dp of the macOS system auto-hide title bar that slides down from
+ * the top of the screen when the window is in native full-screen mode.
+ *
+ * Used as both the animation target for [LocalTitleBarTopPadding] and the
+ * mouse-proximity threshold: when the cursor's Y position (in logical pixels)
+ * is at or below this value, the gap is animated in, pushing toolbar content
+ * below the overlay so that interactive controls remain accessible.
  */
 private const val MAC_FULLSCREEN_TOP_INSET_DP = 28
 
@@ -304,17 +311,44 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 		val isMacOs = remember { System.getProperty("os.name").lowercase().contains("mac") }
 		val isFullscreen = windowState.placement == WindowPlacement.Fullscreen
 
-		val topInsetDp = if (isMacOs && isFullscreen) MAC_FULLSCREEN_TOP_INSET_DP else 0
-		val effectiveTitleBarHeightDp = TITLE_BAR_HEIGHT_DP + topInsetDp
-
 		val titleBar: WindowDecorations.CustomTitleBar? =
 			remember { JbrTitleBarHelper.install(awtWindow, TITLE_BAR_HEIGHT_DP.toFloat()) }
 
-		LaunchedEffect(effectiveTitleBarHeightDp) {
-			if (titleBar != null) {
-				JbrTitleBarHelper.updateHeight(awtWindow, titleBar, effectiveTitleBarHeightDp.toFloat())
+		var isMacTitleBarHovering by remember { mutableStateOf(false) }
+
+		DisposableEffect(isMacOs, isFullscreen, awtWindow) {
+			if (!isMacOs || !isFullscreen) {
+				isMacTitleBarHovering = false
+				return@DisposableEffect onDispose {}
+			}
+			val motionListener = object : MouseMotionAdapter() {
+				override fun mouseMoved(e: MouseEvent) {
+					isMacTitleBarHovering = e.y <= MAC_FULLSCREEN_TOP_INSET_DP
+				}
+
+				override fun mouseDragged(e: MouseEvent) {
+					isMacTitleBarHovering = e.y <= MAC_FULLSCREEN_TOP_INSET_DP
+				}
+			}
+			val mouseExitListener = object : MouseAdapter() {
+				override fun mouseExited(e: MouseEvent) {
+					isMacTitleBarHovering = false
+				}
+			}
+			awtWindow.addMouseMotionListener(motionListener)
+			awtWindow.addMouseListener(mouseExitListener)
+			onDispose {
+				awtWindow.removeMouseMotionListener(motionListener)
+				awtWindow.removeMouseListener(mouseExitListener)
+				isMacTitleBarHovering = false
 			}
 		}
+
+		val macTitleBarPaddingDp by animateDpAsState(
+			targetValue = if (isMacOs && isFullscreen && isMacTitleBarHovering) MAC_FULLSCREEN_TOP_INSET_DP.dp else 0.dp,
+			animationSpec = tween(durationMillis = 200),
+			label = "macTitleBarPadding",
+		)
 
 		remember(titleBar) {
 			val contentPane = awtWindow.contentPane
@@ -374,10 +408,11 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 		val leftInsetPx = remember(isFullscreen, titleBar) { titleBar?.leftInset ?: 0f }
 		
 		CompositionLocalProvider(
-			LocalTitleBarHeight provides effectiveTitleBarHeightDp.dp,
+			LocalTitleBarHeight provides TITLE_BAR_HEIGHT_DP.dp + macTitleBarPaddingDp,
 			LocalTitleBarRightInset provides rightInsetPx,
 			LocalTitleBarLeftInset provides leftInsetPx,
-			LocalTitleBarTopPadding provides topInsetDp.dp,
+			LocalTitleBarTopPadding provides macTitleBarPaddingDp,
+			LocalIsMacOs provides isMacOs,
 			LocalWindowDragModifier provides windowDragModifier,
 			LocalDragAreaCallback provides dragAreaCallback,
 			LocalTitleBarDarkControls provides { isDark ->
