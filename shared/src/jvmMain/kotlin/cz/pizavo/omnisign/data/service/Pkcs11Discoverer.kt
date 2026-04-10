@@ -5,10 +5,15 @@ import com.sun.jna.platform.win32.Advapi32Util
 import com.sun.jna.platform.win32.WinReg
 import com.sun.jna.ptr.IntByReference
 import com.sun.jna.win32.StdCallLibrary
+import cz.pizavo.omnisign.data.service.Pkcs11Discoverer.Companion.P11_KIT_PROXY_PATHS
 import cz.pizavo.omnisign.data.service.Pkcs11Discoverer.Companion.P11_STANDALONE_PATTERN
 import cz.pizavo.omnisign.data.service.Pkcs11Discoverer.Companion.PKCS11_NAME_PATTERNS
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.service.TokenInfo
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import java.io.File
 import java.util.*
 
@@ -40,7 +45,7 @@ data class Pkcs11TokenIdentity(
  *    [cz.pizavo.omnisign.domain.model.config.GlobalConfig.customPkcs11Libraries].
  *
  * Duplicates are resolved first by canonical path, then by probing the actual hardware
- * token identity (label + serial number) via `C_GetTokenInfo`.  Multiple middleware DLLs
+ * token identity (label and serial number) via `C_GetTokenInfo`.  Multiple middleware DLLs
  * that report the same physical token serial produce a single [TokenInfo].
  *
  * @property tokenProber Strategy for probing PKCS#11 libraries for hardware token identities.
@@ -51,23 +56,31 @@ class Pkcs11Discoverer(
 ) {
 
     /**
-     * Discover all available PKCS#11 tokens and return a [TokenInfo] for each unique
-     * physical token.
+     * Holds the raw output of probing a single PKCS#11 library.
      *
-     * Each discovered PKCS#11 library is probed via [C_GetTokenInfo] to obtain the real
-     * hardware token label and serial number.  Tokens with the same serial number across
-     * different middleware DLLs are deduplicated, so a single physical device appears
-     * exactly once regardless of how many drivers can access it.
-     *
-     * Libraries that fail to probe (e.g. no card inserted, native load failure) fall back
-     * to [deriveMiddlewareName] with middleware-family deduplication.
-     *
-     * @param appDataPkcs11Dir Optional drop directory.  Every PKCS#11-named file found here
-     *   is included automatically without any config change.  Pass `null` to skip.
-     * @param userPkcs11Libraries Caller-supplied `(name, absolutePath)` pairs, e.g., from
-     *   [cz.pizavo.omnisign.domain.model.config.GlobalConfig.customPkcs11Libraries].
+     * Used internally by [discoverTokens] to collect parallel probe results before
+     * performing serial deduplication.
      */
-    fun discoverTokens(
+    private data class LibProbeResult(
+        val name: String,
+        val path: String,
+        val identities: List<Pkcs11TokenIdentity>,
+    )
+
+    /**
+     * Discover all PKCS#11 tokens available on the system.
+     *
+     * Probing runs in parallel on [Dispatchers.IO] — one coroutine per unique library path —
+     * so that slow or unresponsive middleware does not delay discovery of other tokens.
+     * Deduplication (by serial number or middleware family) is applied after all probes finish
+     * and therefore produces deterministic results regardless of completion order.
+     *
+     * @param appDataPkcs11Dir Optional drop directory; every PKCS#11-named file found here is
+     *   added to the candidate list without any config change.
+     * @param userPkcs11Libraries Additional `(display name, path)` pairs supplied by the user.
+     *   Only entries whose file exists on disk are included.
+     */
+    suspend fun discoverTokens(
         appDataPkcs11Dir: File? = null,
         userPkcs11Libraries: List<Pair<String, String>> = emptyList(),
     ): List<TokenInfo> {
@@ -94,12 +107,19 @@ class Pkcs11Discoverer(
         }
         merge(userPkcs11Libraries.filter { (_, path) -> File(path).exists() })
 
+        val probeResults = coroutineScope {
+            seen.values.map { (name, path) ->
+                async(Dispatchers.IO) {
+                    LibProbeResult(name, path, tokenProber(path))
+                }
+            }.awaitAll()
+        }
+
         val result = mutableListOf<TokenInfo>()
         val seenSerials = mutableSetOf<String>()
         val seenFamilies = mutableSetOf<String>()
 
-        for ((name, path) in seen.values) {
-            val identities = tokenProber(path)
+        for ((name, path, identities) in probeResults) {
             if (identities.isNotEmpty()) {
                 for (identity in identities) {
                     if (seenSerials.add(identity.serialNumber)) {
@@ -133,22 +153,40 @@ class Pkcs11Discoverer(
      * Query OS-native sources for PKCS#11 middleware without touching the fallback list.
      *
      * - **Windows**: PC/SC via `SCardListReaders`, vendor registry trees, `System32` dir scan.
-     * - **macOS**: `security list-smartcards`, `pluginkit -mAT com.apple.ctk.token`, p11-kit.
-     * - **Linux**: p11-kit `*.module` files.
+     * - **macOS**: `security list-smartcards`, `pluginkit -mAT com.apple.ctk.token`, p11-kit
+     *   module files, standard library directory scan.
+     * - **Linux**: p11-kit proxy (if present), standard library directory scan, p11-kit
+     *   `*.module` files.
      *
      * Never throws; returns an empty list when the OS mechanism is unavailable.
      */
     internal fun discoverViaOs(
         os: String = System.getProperty("os.name").lowercase(),
         jvmIs64Bit: Boolean = System.getProperty("sun.arch.data.model") == "64",
-    ): List<Pair<String, String>> = when {
-        os.contains("win") -> discoverViaPcsc() +
-                discoverViaWindowsRegistry(jvmIs64Bit) +
-                discoverViaDirScan(jvmIs64Bit)
+    ): List<Pair<String, String>> {
+        val linuxLibDirs = if (jvmIs64Bit) listOf(
+            "/usr/lib/x86_64-linux-gnu",
+            "/usr/lib/aarch64-linux-gnu",
+            "/usr/lib",
+            "/usr/lib64",
+            "/usr/local/lib",
+        ) else listOf("/usr/lib", "/usr/local/lib")
 
-        os.contains("mac") -> discoverViaMacOsSecurity() + discoverViaP11Kit()
+        val macLibDirs = listOf("/usr/local/lib", "/opt/homebrew/lib")
 
-        else -> discoverViaP11Kit()
+        return when {
+            os.contains("win") -> discoverViaPcsc() +
+                    discoverViaWindowsRegistry(jvmIs64Bit) +
+                    discoverViaDirScan(jvmIs64Bit)
+
+            os.contains("mac") -> discoverViaMacOsSecurity() +
+                    discoverViaP11Kit() +
+                    discoverViaLibDirs(macLibDirs)
+
+            else -> discoverViaP11KitProxy() +
+                    discoverViaLibDirs(linuxLibDirs) +
+                    discoverViaP11Kit()
+        }
     }
 
     /**
@@ -186,6 +224,8 @@ class Pkcs11Discoverer(
         )
 
         os.contains("mac") -> listOf(
+            "SafeNet Authentication Client" to "/usr/local/lib/libeTPkcs11.dylib",
+            "YubiKey (YKCS11)" to "/usr/local/lib/libykcs11.dylib",
             "OpenSC" to "/Library/OpenSC/lib/opensc-pkcs11.so",
             "OpenSC (Homebrew)" to "/opt/homebrew/lib/opensc-pkcs11.so",
             "macOS Smart Card" to "/usr/lib/libctkpcscd.dylib",
@@ -193,6 +233,11 @@ class Pkcs11Discoverer(
         )
 
         jvmIs64Bit -> listOf(
+            "SafeNet Authentication Client" to "/usr/lib/libeTPkcs11.so",
+            "SafeNet Authentication Client (lib64)" to "/usr/lib64/libeTPkcs11.so",
+            "SafeNet Authentication Client (local)" to "/usr/local/lib/libeTPkcs11.so",
+            "YubiKey (YKCS11)" to "/usr/lib/libykcs11.so",
+            "YubiKey (YKCS11, lib64)" to "/usr/lib64/libykcs11.so",
             "OpenSC" to "/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so",
             "OpenSC (aarch64)" to "/usr/lib/aarch64-linux-gnu/opensc-pkcs11.so",
             "OpenSC (local)" to "/usr/local/lib/opensc-pkcs11.so",
@@ -201,6 +246,9 @@ class Pkcs11Discoverer(
         )
 
         else -> listOf(
+            "SafeNet Authentication Client" to "/usr/lib/libeTPkcs11.so",
+            "SafeNet Authentication Client (local)" to "/usr/local/lib/libeTPkcs11.so",
+            "YubiKey (YKCS11)" to "/usr/lib/libykcs11.so",
             "OpenSC" to "/usr/lib/opensc-pkcs11.so",
             "OpenSC (local)" to "/usr/local/lib/opensc-pkcs11.so",
             "SoftHSM2" to "/usr/lib/softhsm/libsofthsm2.so",
@@ -235,11 +283,13 @@ class Pkcs11Discoverer(
                     lower.contains("/sac") || lower.contains("\\sac") -> "SafeNet eToken"
             lower.contains("gclib") || lower.contains("gemalto") ||
                     lower.contains("idprime") -> "Thales/Gemalto IDPrime"
+            lower.contains("ykcs11") -> "YubiKey (YKCS11)"
             lower.contains("opensc") -> "OpenSC"
             lower.contains("iidp11") || lower.contains("netid") -> "SecMaker Net iD"
             lower.contains("cmp11") || lower.contains("charismathics") -> "Charismathics PKCS#11"
             lower.contains("softhsm") -> "SoftHSM2"
             lower.contains("libck") -> "Cryptoki Library"
+            lower.contains("p11-kit-proxy") || lower.contains("p11kitproxy") -> "p11-kit Proxy"
             else -> libraryPath.substringAfterLast('/').substringAfterLast('\\')
         }
     }
@@ -252,7 +302,7 @@ class Pkcs11Discoverer(
      * Client ships both `eTPKCS11.dll` and `gclib.dll` — both talk to the same smart card,
      * so they belong to family `"safenet"`.
      *
-     * Unknown libraries fall back to their canonical path so they are never grouped with
+     * Unknown libraries fall back to their canonical path, so they are never grouped with
      * unrelated entries.
      */
     internal fun deriveMiddlewareFamily(path: String): String {
@@ -263,6 +313,7 @@ class Pkcs11Discoverer(
                     lower.contains("gclib") || lower.contains("gemalto") ||
                     lower.contains("idprime") -> "safenet"
 
+            lower.contains("ykcs11") -> "yubikey"
             lower.contains("opensc") -> "opensc"
             lower.contains("iidp11") || lower.contains("netid") -> "secmaker"
             lower.contains("cmp11") || lower.contains("charismathics") -> "charismathics"
@@ -514,8 +565,46 @@ class Pkcs11Discoverer(
     }
 
     /**
-     * Parse p11-kit `*.module` files from standard search paths.
+     * Load the p11-kit proxy module if present on the system.
      *
+     * The proxy is a single PKCS#11 library that aggregates every module registered with
+     * p11-kit, so loading it exposes all system-registered tokens through one entry point.
+     * Only the first existing path from [P11_KIT_PROXY_PATHS] is returned — multiple proxy
+     * installations on the same machine are uncommon and the serial-number deduplication
+     * in [discoverTokens] would collapse them anyway.
+     *
+     * Returns an empty list when the proxy library is not found.
+     *
+     * @param proxyPaths Ordered list of candidate proxy paths; override for testing.
+     */
+    internal fun discoverViaP11KitProxy(
+        proxyPaths: List<String> = P11_KIT_PROXY_PATHS,
+    ): List<Pair<String, String>> =
+        proxyPaths.firstOrNull { File(it).exists() }
+            ?.let { listOf("p11-kit Proxy" to it) }
+            ?: emptyList()
+
+    /**
+     * Scan a list of native library directories for files whose names pass [isPkcs11FileName].
+     *
+     * This catches middleware installed to standard OS library paths without a p11-kit
+     * `.module` registration file — for example, SafeNet Authentication Client on Linux
+     * (`libeTPkcs11.so`) or YubiKey YKCS11 (`libykcs11.so`).
+     *
+     * Directories that do not exist are silently skipped.
+     *
+     * @param dirs Absolute directory paths to scan; ordered from highest to lowest priority.
+     */
+    internal fun discoverViaLibDirs(
+        dirs: List<String>,
+    ): List<Pair<String, String>> = dirs.flatMap { dirPath ->
+        File(dirPath).listFiles { f -> f.isFile && isPkcs11FileName(f.name) }
+            ?.map { f -> deriveMiddlewareName(f.absolutePath) to f.absolutePath }
+            ?: emptyList()
+    }
+
+    /**
+     * Parse p11-kit `*.module` files from standard search paths.     *
      * Each file is a simple `key: value` format.  Reads `module:` (library path) and
      * optionally `name:` / `description:` for the display name.
      *
@@ -524,7 +613,7 @@ class Pkcs11Discoverer(
      * - `/usr/share/p11-kit/modules`
      * - `~/.config/pkcs11/modules`
      * - `/Library/Application Support/p11-kit/modules` (macOS)
-     * - directory of `$P11_KIT_CONFIG_FILE` (if set)
+     * - Directory of `$P11_KIT_CONFIG_FILE` (if set)
      */
     private fun discoverViaP11Kit(): List<Pair<String, String>> {
         val searchDirs = buildList {
@@ -580,7 +669,7 @@ class Pkcs11Discoverer(
          */
         val PKCS11_NAME_PATTERNS = listOf(
             "pkcs11", "etpkcs", "gclib", "opensc", "iidp11", "cmp11",
-            "softhsm", "libsac", "libck", "cryptoki",
+            "softhsm", "libsac", "libck", "cryptoki", "ykcs11",
         )
 
         /**
@@ -589,6 +678,21 @@ class Pkcs11Discoverer(
          * `p11.dll`.  Examples that do **not** match: `msvcp110.dll`, `vcamp110.dll`.
          */
         val P11_STANDALONE_PATTERN = Regex("""p11(?!\d)""")
+
+        /**
+         * Ordered candidate paths for the p11-kit proxy PKCS#11 module.
+         *
+         * The proxy aggregates all modules registered with p11-kit and exposes their slots
+         * through a single library entry point.  Paths cover the multiarch layouts used by
+         * Debian/Ubuntu, RPM-based distributions, and manual installations.
+         */
+        val P11_KIT_PROXY_PATHS = listOf(
+            "/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-proxy.so",
+            "/usr/lib/aarch64-linux-gnu/pkcs11/p11-kit-proxy.so",
+            "/usr/lib64/pkcs11/p11-kit-proxy.so",
+            "/usr/lib/pkcs11/p11-kit-proxy.so",
+            "/usr/local/lib/pkcs11/p11-kit-proxy.so",
+        )
     }
 }
 
@@ -662,7 +766,7 @@ private interface Pkcs11ProbeLib : Library {
     fun C_GetSlotList(tokenPresent: Byte, pSlotList: Pointer?, pulCount: Pointer?): NativeLong
 
     /**
-     * Obtain information about a particular token in the specified slot.
+     * Gather information about a particular token in the specified slot.
      */
     fun C_GetTokenInfo(slotID: NativeLong, pInfo: Pointer?): NativeLong
 }

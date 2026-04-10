@@ -15,6 +15,8 @@ import kotlinx.serialization.Serializable
  * @property validTo Certificate validity end as an ISO-8601 string.
  * @property tokenType Token type name (e.g. `PKCS11`, `PKCS12`, `MSCAPI`).
  * @property keyUsages X.509 key usage extension values present on the certificate.
+ * @property isQualified Whether the certificate carries the QcCompliance QCStatement; `null` when absent.
+ * @property isQscd Whether the certificate carries the QcSSCD QCStatement; `null` when absent.
  */
 @Serializable
 data class CertificateInfoResponse(
@@ -25,6 +27,8 @@ data class CertificateInfoResponse(
 	val validTo: String,
 	val tokenType: String,
 	val keyUsages: List<String>,
+	val isQualified: Boolean? = null,
+	val isQscd: Boolean? = null,
 )
 
 /**
@@ -38,5 +42,6 @@ fun AvailableCertificateInfo.toResponse() = CertificateInfoResponse(
 	validTo = validTo.toString(),
 	tokenType = tokenType,
 	keyUsages = keyUsages,
+	isQualified = isQualified,
+	isQscd = isQscd,
 )
-

@@ -157,6 +157,8 @@ data class JsonAvailableCertificate(
 	val validTo: String,
 	val tokenType: String,
 	val keyUsages: List<String> = emptyList(),
+	val isQualified: Boolean? = null,
+	val isQscd: Boolean? = null,
 )
 
 /**

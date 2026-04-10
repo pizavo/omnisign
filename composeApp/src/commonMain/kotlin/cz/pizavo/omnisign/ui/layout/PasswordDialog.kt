@@ -2,8 +2,13 @@
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
@@ -22,9 +27,12 @@ import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
  * posts a [cz.pizavo.omnisign.ui.platform.PasswordDialogRequest]. The dialog blocks
  * the DSS background thread until the user confirms or cancels.
  *
+ * The password field receives focus automatically when the dialog opens, and pressing
+ * Enter / Done on the keyboard confirms the dialog when the field is non-empty.
+ *
  * @param title Dialog title text.
  * @param prompt Descriptive message explaining what the password is for.
- * @param onConfirm Called with the entered password when the user clicks Confirm.
+ * @param onConfirm Called with the entered password when the user clicks Confirm or presses Enter.
  * @param onCancel Called when the user dismisses the dialog without entering a password.
  */
 @Composable
@@ -35,6 +43,11 @@ fun PasswordDialog(
 	onCancel: () -> Unit,
 ) {
 	var password by remember { mutableStateOf("") }
+	val focusRequester = remember { FocusRequester() }
+
+	LaunchedEffect(Unit) {
+		focusRequester.requestFocus()
+	}
 
 	Dialog(
 		onDismissRequest = onCancel,
@@ -65,7 +78,13 @@ fun PasswordDialog(
 					singleLine = true,
 					visualTransformation = PasswordVisualTransformation(),
 					label = { Text("Password") },
-					modifier = Modifier.fillMaxWidth(),
+					keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+					keyboardActions = KeyboardActions(
+						onDone = { if (password.isNotEmpty()) onConfirm(password) },
+					),
+					modifier = Modifier
+						.fillMaxWidth()
+						.focusRequester(focusRequester),
 				)
 
 				Spacer(modifier = Modifier.height(20.dp))
@@ -90,4 +109,3 @@ fun PasswordDialog(
 		}
 	}
 }
-

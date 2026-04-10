@@ -4,22 +4,11 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.PressInteraction
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
+import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -64,7 +53,12 @@ private val DropdownMaxHeight = 260.dp
  *   concrete [options] are shown. Use this for fields that always require a value.
  * @param disabledOptions Items that should appear in the list but be shown as
  *   greyed-out and non-selectable (e.g., globally disabled algorithms).
- * @param itemLabel Lambda converting an item of type [T] to a display string.
+ * @param itemLabel Lambda converting an item of type [T] to a display string used in the
+ *   trigger field and for the null-option row. Always required even when [itemContent] is set.
+ * @param itemContent Optional composable renderer for each concrete option row inside the
+ *   popup. When provided it replaces the default single-line [Text] in each row, enabling
+ *   rich layouts such as icons or multi-line content. [itemLabel] is still used for the
+ *   trigger-field value display and the null / "inherit" row.
  * @param modifier Optional [Modifier] applied to the outer [Box].
  */
 @Composable
@@ -77,6 +71,7 @@ fun <T> DropdownSelector(
     showNullOption: Boolean = true,
     disabledOptions: Set<T> = emptySet(),
     itemLabel: (T) -> String = { it.toString() },
+    itemContent: (@Composable (T) -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -127,6 +122,7 @@ fun <T> DropdownSelector(
                     showNullOption = showNullOption,
                     disabledOptions = disabledOptions,
                     itemLabel = itemLabel,
+                    itemContent = itemContent,
                     menuWidth = widthDp,
                     onSelect = { value ->
                         onSelect(value)
@@ -146,6 +142,8 @@ fun <T> DropdownSelector(
  *
  * @param menuWidth The width the menu should occupy, matching the trigger field.
  * @param disabledOptions Items that appear greyed-out and cannot be selected.
+ * @param itemContent Optional composable renderer that replaces the default [Text] in each
+ *   concrete option row. When `null` [itemLabel] is used to produce a plain text row.
  */
 @Composable
 private fun <T> DropdownMenuContent(
@@ -155,6 +153,7 @@ private fun <T> DropdownMenuContent(
     showNullOption: Boolean,
     disabledOptions: Set<T>,
     itemLabel: (T) -> String,
+    itemContent: (@Composable (T) -> Unit)?,
     menuWidth: androidx.compose.ui.unit.Dp,
     onSelect: (T?) -> Unit,
 ) {
@@ -187,6 +186,7 @@ private fun <T> DropdownMenuContent(
                     isSelected = item == selected,
                     secondary = false,
                     enabled = !isDisabled,
+                    content = itemContent?.let { render -> { render(item) } },
                     onClick = { onSelect(item) },
                 )
             }
@@ -197,10 +197,13 @@ private fun <T> DropdownMenuContent(
 /**
  * A single selectable row inside the dropdown popup.
  *
- * @param text Display a label for this option.
+ * @param text Display label used when [content] is `null`.
  * @param isSelected Whether this option is currently selected (highlighted with primary color).
  * @param secondary When true, the text uses the secondary text color (for the null/"inherit" option).
  * @param enabled When false, the row is greyed-out and not clickable.
+ * @param content Optional composable that replaces the default [Text] when provided. This composable
+ * still applies the background, ripple, and padding; only the inner
+ * visual content is delegated.
  * @param onClick Called when this row is clicked.
  */
 @Composable
@@ -209,6 +212,7 @@ private fun DropdownItem(
     isSelected: Boolean,
     secondary: Boolean,
     enabled: Boolean,
+    content: (@Composable () -> Unit)? = null,
     onClick: () -> Unit,
 ) {
     val backgroundColor = if (isSelected)
@@ -243,11 +247,15 @@ private fun DropdownItem(
                 vertical = DropdownItemVerticalPadding,
             ),
     ) {
-        Text(
-            text = text,
-            style = LumoTheme.typography.body2,
-            color = textColor,
-        )
+        if (content != null) {
+            content()
+        } else {
+            Text(
+                text = text,
+                style = LumoTheme.typography.body2,
+                color = textColor,
+            )
+        }
     }
 }
 

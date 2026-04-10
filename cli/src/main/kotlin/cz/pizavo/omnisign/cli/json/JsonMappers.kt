@@ -3,11 +3,7 @@ package cz.pizavo.omnisign.cli.json
 import cz.pizavo.omnisign.domain.model.error.OperationError
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.SigningResult
-import cz.pizavo.omnisign.domain.model.validation.SignatureValidationResult
-import cz.pizavo.omnisign.domain.model.validation.SignatureTrustTier
-import cz.pizavo.omnisign.domain.model.validation.TimestampValidationResult
-import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
-import cz.pizavo.omnisign.domain.model.validation.ValidationReport
+import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.repository.CertificateDiscoveryResult
 
 /**
@@ -145,6 +141,8 @@ fun CertificateDiscoveryResult.toJsonCertificateList(): JsonCertificateList =
 				validTo = cert.validTo.toString(),
 				tokenType = cert.tokenType,
 				keyUsages = cert.keyUsages,
+				isQualified = cert.isQualified,
+				isQscd = cert.isQscd,
 			)
 		},
 		tokenWarnings = tokenWarnings.map { w ->

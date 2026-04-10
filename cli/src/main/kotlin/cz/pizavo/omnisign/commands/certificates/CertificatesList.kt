@@ -8,9 +8,9 @@ import cz.pizavo.omnisign.cli.OutputConfig
 import cz.pizavo.omnisign.cli.json.JsonCertificateList
 import cz.pizavo.omnisign.cli.json.toJsonCertificateList
 import cz.pizavo.omnisign.cli.json.toJsonError
+import cz.pizavo.omnisign.domain.model.value.formatDate
 import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
 import cz.pizavo.omnisign.domain.repository.CertificateDiscoveryResult
-import cz.pizavo.omnisign.domain.model.value.formatDate
 import cz.pizavo.omnisign.domain.usecase.ListCertificatesUseCase
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
@@ -110,6 +110,13 @@ class CertificatesList : CliktCommand(name = "list"), KoinComponent {
 			echo("      Token type : ${cert.tokenType}")
 			val usages = cert.keyUsages.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "not specified"
 			echo("      Key usages : $usages")
+			val qcStatus = when {
+				cert.isQscd == true -> "✅ Qualified (QSCD)"
+				cert.isQualified == true -> "⚠️ Qualified (no QSCD confirmed)"
+				cert.isQualified == false -> "ℹ️ Not qualified"
+				else -> null
+			}
+			if (qcStatus != null) echo("      QC status  : $qcStatus")
 		}
 
 		echo("")

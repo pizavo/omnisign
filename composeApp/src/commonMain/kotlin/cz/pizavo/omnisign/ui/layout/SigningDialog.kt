@@ -1,27 +1,36 @@
 ﻿package cz.pizavo.omnisign.ui.layout
 
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
+import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
+import cz.pizavo.omnisign.domain.repository.LockedTokenInfo
+import cz.pizavo.omnisign.domain.repository.TokenDiscoveryWarning
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.progressindicators.CircularProgressIndicator
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.SigningDialogState
+import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
 import cz.pizavo.omnisign.ui.platform.platformFilePath
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.name
 import omnisign.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
 /**
@@ -168,11 +177,9 @@ private fun SigningFormContent(
 		}
 	}
 	
-	Column(
-		modifier = Modifier
-			.fillMaxSize()
-			.verticalScroll(rememberScrollState())
-			.padding(horizontal = 24.dp, vertical = 16.dp),
+	VerticalScrollableColumn(
+		modifier = Modifier.fillMaxSize(),
+		contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
 		verticalArrangement = Arrangement.spacedBy(16.dp),
 	) {
 		val lockedTokenIds = state.lockedTokens.map { it.tokenId }.toSet()
@@ -181,47 +188,11 @@ private fun SigningFormContent(
 			.groupBy { it.tokenId }
 		
 		if (state.lockedTokens.isNotEmpty()) {
-			state.lockedTokens.forEach { locked ->
-				Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-					Row(
-						horizontalArrangement = Arrangement.spacedBy(8.dp),
-						verticalAlignment = Alignment.CenterVertically,
-					) {
-						Icon(
-							painter = painterResource(Res.drawable.icon_lock),
-							contentDescription = null,
-							modifier = Modifier.size(14.dp),
-							tint = LumoTheme.colors.textSecondary,
-						)
-						Text(
-							text = locked.tokenName,
-							style = LumoTheme.typography.body2,
-							color = LumoTheme.colors.textSecondary,
-							modifier = Modifier.weight(1f),
-						)
-						TooltipBox(
-							tooltip = { Tooltip { Text("Unlock") } }
-						) {
-							IconButton(
-								variant = IconButtonVariant.Ghost,
-								onClick = { onUnlockToken(locked.tokenId) },
-							) {
-								Icon(
-									painter = painterResource(Res.drawable.icon_lock_open),
-									contentDescription = "Unlock",
-									modifier = Modifier.size(20.dp),
-								)
-							}
-						}
-					}
-					
-					state.tokenWarnings
-						.filter { it.tokenId == locked.tokenId }
-						.forEach { warning ->
-							TokenWarningRow(warning.message)
-						}
-				}
-			}
+			LockedTokensAccordion(
+				lockedTokens = state.lockedTokens,
+				tokenWarnings = state.tokenWarnings,
+				onUnlockToken = onUnlockToken,
+			)
 		}
 		
 		generalWarningsByToken.forEach { (_, warnings) ->
@@ -250,33 +221,43 @@ private fun SigningFormContent(
 		}
 		
 		val certOptions = state.certificates.map { it.alias }
-		Row(
-			modifier = Modifier.fillMaxWidth(),
-			horizontalArrangement = Arrangement.spacedBy(8.dp),
-			verticalAlignment = Alignment.Bottom,
-		) {
-			DropdownSelector(
-				selected = state.selectedAlias,
-				options = certOptions,
-				onSelect = { alias -> onFieldChange { it.copy(selectedAlias = alias) } },
-				label = { Text("Certificate") },
-				nullLabel = "Select a certificate\u2026",
-				showNullOption = false,
-				itemLabel = { alias ->
-					val cert = state.certificates.find { it.alias == alias }
-					if (cert != null) "${cert.alias} — ${cert.subjectDN}" else alias
-				},
-				modifier = Modifier.weight(1f),
-			)
-			IconButton(
-				variant = IconButtonVariant.Ghost,
-				onClick = { pkcs12Picker.launch() },
+		Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				horizontalArrangement = Arrangement.spacedBy(8.dp),
+				verticalAlignment = Alignment.Bottom,
 			) {
-				Icon(
-					painter = painterResource(Res.drawable.icon_upload),
-					contentDescription = "Import PKCS#12 file",
-					modifier = Modifier.size(20.dp),
+				DropdownSelector(
+					selected = state.selectedAlias,
+					options = certOptions,
+					onSelect = { alias -> onFieldChange { it.copy(selectedAlias = alias) } },
+					label = { Text("Certificate") },
+					nullLabel = "Select a certificate\u2026",
+					showNullOption = false,
+					itemLabel = { alias ->
+						val cert = state.certificates.find { it.alias == alias }
+						if (cert != null) "${cert.alias} — ${cert.subjectDN}" else alias
+					},
+					itemContent = { alias ->
+						val cert = state.certificates.find { it.alias == alias }
+						CertDropdownRow(alias = alias, cert = cert)
+					},
+					modifier = Modifier.weight(1f),
 				)
+				IconButton(
+					variant = IconButtonVariant.Ghost,
+					onClick = { pkcs12Picker.launch() },
+				) {
+					Icon(
+						painter = painterResource(Res.drawable.icon_upload),
+						contentDescription = "Import PKCS#12 file",
+						modifier = Modifier.size(20.dp),
+					)
+				}
+			}
+			val selectedCert = state.certificates.find { it.alias == state.selectedAlias }
+			if (selectedCert != null) {
+				CertQualificationBadge(cert = selectedCert)
 			}
 		}
 		
@@ -619,6 +600,215 @@ internal fun ErrorContent(message: String, details: String?) {
 		if (!details.isNullOrBlank()) {
 			Text(
 				text = sanitizeDssDetails(details),
+				style = LumoTheme.typography.body2,
+				color = LumoTheme.colors.textSecondary,
+			)
+		}
+	}
+}
+
+/**
+ * Collapsible section listing all locked (PIN-protected) tokens with individual unlock buttons.
+ *
+ * Starts expanded so the user immediately sees which tokens require a PIN. The caller is
+ * responsible for only rendering this composable when [lockedTokens] is non-empty.
+ *
+ * @param lockedTokens Tokens that require a PIN but have no stored credential.
+ * @param tokenWarnings All current discovery warnings; those matching each token's ID are
+ *   rendered inline under that token's row.
+ * @param onUnlockToken Callback invoked with the token ID when the Unlock button is clicked.
+ */
+@Composable
+private fun LockedTokensAccordion(
+	lockedTokens: List<LockedTokenInfo>,
+	tokenWarnings: List<TokenDiscoveryWarning>,
+	onUnlockToken: (String) -> Unit,
+) {
+	val accordionState = rememberAccordionState(expanded = true)
+	val chevronRotation by animateFloatAsState(
+		targetValue = if (accordionState.expanded) 180f else 0f,
+		label = "lockedTokensChevron",
+	)
+
+	Accordion(
+		state = accordionState,
+		headerContent = {
+			Row(
+				modifier = Modifier.fillMaxWidth().padding(vertical = 4.dp),
+				horizontalArrangement = Arrangement.spacedBy(8.dp),
+				verticalAlignment = Alignment.CenterVertically,
+			) {
+				Icon(
+					painter = painterResource(Res.drawable.icon_lock),
+					contentDescription = null,
+					modifier = Modifier.size(14.dp),
+					tint = LumoTheme.colors.textSecondary,
+				)
+				val count = lockedTokens.size
+				Text(
+					text = if (count == 1) "1 locked token" else "$count locked tokens",
+					style = LumoTheme.typography.body2,
+					color = LumoTheme.colors.textSecondary,
+					modifier = Modifier.weight(1f),
+				)
+				Icon(
+					painter = painterResource(Res.drawable.icon_chevron_down),
+					contentDescription = if (accordionState.expanded) "Collapse" else "Expand",
+					modifier = Modifier.size(14.dp).rotate(chevronRotation),
+					tint = LumoTheme.colors.textSecondary,
+				)
+			}
+		},
+		bodyContent = {
+			Column(
+				modifier = Modifier.padding(top = 4.dp),
+				verticalArrangement = Arrangement.spacedBy(8.dp),
+			) {
+				lockedTokens.forEach { locked ->
+					Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+						Row(
+							horizontalArrangement = Arrangement.spacedBy(8.dp),
+							verticalAlignment = Alignment.CenterVertically,
+						) {
+							Text(
+								text = locked.tokenName,
+								style = LumoTheme.typography.body2,
+								color = LumoTheme.colors.textSecondary,
+								modifier = Modifier.weight(1f),
+							)
+							TooltipBox(
+								tooltip = { Tooltip { Text("Unlock") } },
+							) {
+								IconButton(
+									variant = IconButtonVariant.Ghost,
+									onClick = { onUnlockToken(locked.tokenId) },
+								) {
+									Icon(
+										painter = painterResource(Res.drawable.icon_lock_open),
+										contentDescription = "Unlock",
+										modifier = Modifier.size(20.dp),
+									)
+								}
+							}
+						}
+						tokenWarnings
+							.filter { it.tokenId == locked.tokenId }
+							.forEach { warning -> TokenWarningRow(warning.message) }
+					}
+				}
+			}
+		},
+	)
+}
+
+/**
+ *
+ * Renders the certificate alias in bold with an optional eIDAS rosette icon alongside it,
+ * and the subject DN underneath in a smaller secondary style. When [cert] is `null` (alias
+ * not yet matched to a loaded certificate) only the raw [alias] string is shown.
+ *
+ * @param alias Raw alias string used as a fallback when [cert] is unavailable.
+ * @param cert The matched [AvailableCertificateInfo], or `null` if not yet resolved.
+ */
+@Composable
+private fun CertDropdownRow(alias: String, cert: AvailableCertificateInfo?) {
+	if (cert == null) {
+		Text(text = alias, style = LumoTheme.typography.body2)
+		return
+	}
+	Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+		Row(
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(6.dp),
+		) {
+			Text(
+				text = cert.alias,
+				style = LumoTheme.typography.body2,
+				fontWeight = FontWeight.SemiBold,
+			)
+			when {
+				cert.isQscd == true -> Icon(
+					painter = painterResource(Res.drawable.icon_rosette_check),
+					contentDescription = "Qualified (QSCD)",
+					modifier = Modifier.size(14.dp),
+					tint = LumoTheme.colors.icons.trustQualifiedQscd,
+				)
+				cert.isQualified == true -> Icon(
+					painter = painterResource(Res.drawable.icon_rosette),
+					contentDescription = "Qualified",
+					modifier = Modifier.size(14.dp),
+					tint = LumoTheme.colors.icons.trustQualified,
+				)
+			}
+		}
+		Text(
+			text = cert.subjectDN,
+			style = LumoTheme.typography.body3,
+			color = LumoTheme.colors.textSecondary,
+			maxLines = 1,
+			overflow = TextOverflow.Ellipsis,
+		)
+	}
+}
+
+/**
+ * Displays the eIDAS qualification status of [cert] as an icon-and-label row with a tooltip.
+ *
+ * Mirrors the rosette convention used in [SignaturePanel]: [Res.drawable.icon_rosette_check] for
+ * QSCD-backed qualified certificates, [Res.drawable.icon_rosette] for qualified without confirmed
+ * QSCD, and [Res.drawable.icon_shield_x] for explicitly non-qualified. Nothing is rendered when
+ * both [AvailableCertificateInfo.isQscd] and [AvailableCertificateInfo.isQualified] are `null`
+ * (QCStatements extension absent or unreadable on the certificate).
+ *
+ * @param cert The certificate whose qualification status to display.
+ */
+@Composable
+private fun CertQualificationBadge(cert: AvailableCertificateInfo) {
+	data class BadgeConfig(
+		val icon: DrawableResource,
+		val tint: Color,
+		val label: String,
+		val tooltip: String,
+	)
+
+	val config = when {
+		cert.isQscd == true -> BadgeConfig(
+			icon = Res.drawable.icon_rosette_check,
+			tint = LumoTheme.colors.icons.trustQualifiedQscd,
+			label = "Qualified (QSCD)",
+			tooltip = "The certificate carries the QcSSCD statement — the private key is stored on a Qualified Signature/Seal Creation Device.",
+		)
+		cert.isQualified == true -> BadgeConfig(
+			icon = Res.drawable.icon_rosette,
+			tint = LumoTheme.colors.icons.trustQualified,
+			label = "Qualified",
+			tooltip = "The certificate carries the QcCompliance statement, but QSCD status was not confirmed.",
+		)
+		cert.isQualified == false -> BadgeConfig(
+			icon = Res.drawable.icon_shield_x,
+			tint = LumoTheme.colors.textSecondary,
+			label = "Not qualified",
+			tooltip = "The certificate does not carry QCStatements indicating eIDAS qualification.",
+		)
+		else -> return
+	}
+
+	TooltipBox(
+		tooltip = { Tooltip { Text(text = config.tooltip) } },
+		state = rememberTooltipState(),
+	) {
+		Row(
+			horizontalArrangement = Arrangement.spacedBy(6.dp),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			Icon(
+				painter = painterResource(config.icon),
+				contentDescription = config.label,
+				modifier = Modifier.size(14.dp),
+				tint = config.tint,
+			)
+			Text(
+				text = config.label,
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)

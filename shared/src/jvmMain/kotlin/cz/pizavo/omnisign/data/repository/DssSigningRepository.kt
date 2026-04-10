@@ -25,8 +25,7 @@ import eu.europa.esig.dss.pades.SignatureImageTextParameters
 import eu.europa.esig.dss.pades.signature.PAdESService
 import eu.europa.esig.dss.token.AbstractSignatureTokenConnection
 import eu.europa.esig.dss.token.DSSPrivateKeyEntry
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import kotlinx.coroutines.*
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.todayIn
 import java.io.File
@@ -177,61 +176,13 @@ class DssSigningRepository(
 				ifLeft = { return it.left() },
 				ifRight = { tokens ->
 					discoveredTokens = tokens
-					val allCertificates = mutableListOf<AvailableCertificateInfo>()
-					val warnings = mutableListOf<TokenDiscoveryWarning>()
-					val locked = mutableListOf<LockedTokenInfo>()
-					for (token in tokens) {
-						if (!tokenService.probeTokenPresent(token)) continue
-						if (token.requiresPin) {
-							val storedPassword = credentialStore.getPassword(TOKEN_CREDENTIAL_SERVICE, token.id)
-							if (storedPassword != null) {
-								val certsResult = tokenService.loadCertificatesSilent(token, storedPassword)
-								certsResult.fold(
-									ifLeft = {
-										locked.add(LockedTokenInfo(
-											tokenId = token.id,
-											tokenName = token.name,
-											tokenTypeName = token.type.name,
-										))
-									},
-									ifRight = { certs ->
-										allCertificates.addAll(certs.toAvailableCertificateInfoList(token))
-									}
-								)
-							} else {
-								locked.add(LockedTokenInfo(
-									tokenId = token.id,
-									tokenName = token.name,
-									tokenTypeName = token.type.name,
-								))
-							}
-							continue
-						}
-						val certsResult = tokenService.loadCertificatesSilent(token, null)
-						certsResult.fold(
-							ifLeft = { error ->
-								warnings.add(
-									TokenDiscoveryWarning(
-										tokenId = token.id,
-										tokenName = token.name,
-										message = error.details ?: error.message,
-										details = error.cause?.cause?.let { deepCause ->
-											generateSequence(deepCause) { it.cause }
-												.mapNotNull { it.message?.trim() }.firstOrNull { it.isNotBlank() }
-												?.takeIf { it != (error.details ?: error.message) }
-										},
-									)
-								)
-							},
-							ifRight = { certs ->
-								allCertificates.addAll(certs.toAvailableCertificateInfoList(token))
-							}
-						)
+					val partialResults = coroutineScope {
+						tokens.map { token -> async { discoverTokenCertificates(token) } }.awaitAll()
 					}
 					CertificateDiscoveryResult(
-						certificates = allCertificates,
-						tokenWarnings = warnings,
-						lockedTokens = locked,
+						certificates = partialResults.flatMap { it.certificates },
+						tokenWarnings = partialResults.flatMap { it.tokenWarnings },
+						lockedTokens = partialResults.flatMap { it.lockedTokens },
 					).right()
 				}
 			)
@@ -242,6 +193,64 @@ class DssSigningRepository(
 				cause = e,
 			).left()
 		}
+	}
+
+	/**
+	 * Probe and enumerate certificates for a single [token].
+	 *
+	 * Returns a partial [CertificateDiscoveryResult] containing only the data relevant to
+	 * this token.  Results from all tokens are merged by [listAvailableCertificates] after
+	 * all parallel probes complete.
+	 *
+	 * PIN-protected tokens without a stored credential are reported as locked.  Tokens that
+	 * are physically absent are silently skipped. Load errors for PINless tokens (e.g.,
+	 * OS key stores) are reported as warnings so the user can diagnose the issue.
+	 */
+	@Suppress("TooGenericExceptionCaught")
+	private suspend fun discoverTokenCertificates(token: TokenInfo): CertificateDiscoveryResult {
+		if (!tokenService.probeTokenPresent(token)) {
+			return CertificateDiscoveryResult(certificates = emptyList())
+		}
+		if (token.requiresPin) {
+			val storedPassword = credentialStore.getPassword(TOKEN_CREDENTIAL_SERVICE, token.id)
+				?: return CertificateDiscoveryResult(
+					certificates = emptyList(),
+					lockedTokens = listOf(LockedTokenInfo(token.id, token.name, token.type.name)),
+				)
+			return tokenService.loadCertificatesSilent(token, storedPassword).fold(
+				ifLeft = {
+					CertificateDiscoveryResult(
+						certificates = emptyList(),
+						lockedTokens = listOf(LockedTokenInfo(token.id, token.name, token.type.name)),
+					)
+				},
+				ifRight = { certs ->
+					CertificateDiscoveryResult(certificates = certs.toAvailableCertificateInfoList(token))
+				},
+			)
+		}
+		return tokenService.loadCertificatesSilent(token, null).fold(
+			ifLeft = { error ->
+				CertificateDiscoveryResult(
+					certificates = emptyList(),
+					tokenWarnings = listOf(
+						TokenDiscoveryWarning(
+							tokenId = token.id,
+							tokenName = token.name,
+							message = error.details ?: error.message,
+							details = error.cause?.cause?.let { deepCause ->
+								generateSequence(deepCause) { it.cause }
+									.mapNotNull { it.message?.trim() }.firstOrNull { it.isNotBlank() }
+									?.takeIf { it != (error.details ?: error.message) }
+							},
+						)
+					),
+				)
+			},
+			ifRight = { certs ->
+				CertificateDiscoveryResult(certificates = certs.toAvailableCertificateInfoList(token))
+			},
+		)
 	}
 
 	@Suppress("TooGenericExceptionCaught")
@@ -345,7 +354,7 @@ class DssSigningRepository(
 	 * 1. **Silent pass** — tries every token that does not require interactive input:
 	 *    tokens without a PIN requirement and PIN-protected tokens whose credential is
 	 *    already stored in the [CredentialStore].  If the requested certificate is found
-	 *    here the method returns immediately and no PIN dialog is ever shown.
+	 *     here, the method returns immediately and no PIN dialog is ever shown.
 	 * 2. **Interactive pass** — reached only when the silent pass did not produce a match.
 	 *    Iterates over the PIN-protected tokens that were skipped and prompts the user
 	 *    via [TokenService.requestPin].
@@ -451,6 +460,8 @@ class DssSigningRepository(
 			validTo = cert.validTo,
 			tokenType = token.type.name,
 			keyUsages = cert.keyUsages,
+			isQualified = cert.isQualified,
+			isQscd = cert.isQscd,
 		)
 	}
 	
@@ -485,7 +496,7 @@ class DssSigningRepository(
 	/**
 	 * Returns the PDF signature content-area reservation in bytes for [level].
 	 *
-	 * The default DSS value of 9,472 bytes is insufficient for any level above B-B because
+	 * The default DSS value of 9,472 bytes is not enough for any level above B-B because
 	 * higher levels embed a certificate chain, CRL/OCSP revocation data, one or more RFC 3161
 	 * timestamp tokens, and (for B-LTA) an archive timestamp.  The values below are chosen
 	 * with comfortable headroom over the typical content sizes observed in practice:
