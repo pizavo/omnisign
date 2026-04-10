@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.ui.platform
 
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.LayoutCoordinates
@@ -39,9 +40,8 @@ val LocalWindowDragModifier = staticCompositionLocalOf<Modifier> { Modifier }
 /**
  * Height of the custom title bar area in [Dp].
  *
- * On JVM desktop this matches the height set on the JBR
- * `CustomTitleBar` so that the Compose toolbar
- * and the native window-control buttons are always the same size.
+ * On JVM desktop this matches the height set on the JBR `CustomTitleBar` so that
+ * the Compose toolbar and the native window-control buttons are always the same size.
  * Default is `40.dp`.
  */
 val LocalTitleBarHeight = staticCompositionLocalOf { 40.dp }
@@ -93,11 +93,25 @@ val LocalTitleBarTopPadding = staticCompositionLocalOf { 0.dp }
  * is dark so the OS can render window-control icons (minimize, maximize, close)
  * with an appropriate contrast color.
  *
- * On JVM desktop this sets the JBR `controls.dark` property on the
- * `CustomTitleBar`. On other platforms the
- * default value is `null` and callers skip the call.
+ * On JVM desktop this sets the JBR `controls.dark` property on the `CustomTitleBar`.
+ * On other platforms the default value is `null` and callers skip the call.
  *
  * Pass `true` when the title bar area has a dark background (so the OS renders
  * light-colored icons) and `false` for a light background.
  */
 val LocalTitleBarDarkControls = staticCompositionLocalOf<((Boolean) -> Unit)?> { null }
+
+/**
+ * Composable slot for custom window-control buttons (minimize, maximize/restore, close).
+ *
+ * `null` (the default) means the OS provides native window controls — either via the
+ * native title bar or via JBR's Custom Title Bar API. When non-null the slot is
+ * invoked at the trailing end of [cz.pizavo.omnisign.ui.layout.IslandToolbar].
+ *
+ * On JVM desktop with Linux the value is set to a composable that renders
+ * minimize / maximize / restore / close icon buttons backed by AWT `Frame` calls,
+ * because JBR's `WindowDecorations` API is not supported on Linux and the window
+ * therefore runs as undecorated (no native title bar at all).
+ */
+val LocalWindowControls = staticCompositionLocalOf<(@Composable () -> Unit)?> { null }
+

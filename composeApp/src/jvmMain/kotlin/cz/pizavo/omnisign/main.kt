@@ -92,6 +92,17 @@ private const val MAC_FULLSCREEN_CURSOR_POLL_MS = 16
 private const val FORCE_HIT_TEST_POLL_MS = 8
 
 /**
+ * `true` when the app is running on Linux (or another non-Windows, non-macOS OS).
+ *
+ * JBR's [com.jetbrains.WindowDecorations] API is not supported on Linux, so the
+ * window runs as **undecorated** there and custom window-control buttons are shown
+ * inside the Compose toolbar via [LocalWindowControls].
+ */
+private val isLinux: Boolean = System.getProperty("os.name").lowercase().let {
+	!it.contains("win") && !it.contains("mac")
+}
+
+/**
  * Resolves the platform-native log directory for the OmniSign desktop application.
  *
  * - **Windows**: `%LOCALAPPDATA%/omnisign/logs`
@@ -135,9 +146,32 @@ private fun resolveLogDir(): String {
  * runs the renewal batch in headless mode and exits without starting the GUI.
  */
 fun main(args: Array<String> = emptyArray()) {
+	System.setProperty("sun.awt.wmclass", "OmniSign")
+
 	if (args.isNotEmpty() && args[0] == "renew") {
 		runHeadlessRenewal()
 		return
+	}
+
+	// On Linux, JBR 25 sets WM_CLASS from XToolkit.awtAppClassName, which is derived
+	// from the call-stack's bottom frame (the main class name) in the XToolkit constructor.
+	// It no longer reads sun.awt.wmclass for this purpose.  We force toolkit
+	// initialization, then override the private static field via reflection so that
+	// every subsequent X11 window gets WM_CLASS = "OmniSign".
+	// --add-opens java.desktop/sun.awt.X11=ALL-UNNAMED must be in jvmArgs (see build.gradle.kts).
+	// This block must come AFTER the renew-mode early-exit: Toolkit.getDefaultToolkit()
+	// starts the AWT event-dispatch thread (a non-daemon thread), which would prevent
+	// the JVM from exiting cleanly after a headless-renewal run.
+	if (System.getProperty("os.name", "").lowercase().contains("linux")) {
+		try {
+			java.awt.Toolkit.getDefaultToolkit() // ensure XToolkit.<init> has already run
+			val cls = Class.forName("sun.awt.X11.XToolkit")
+			val fld = cls.getDeclaredField("awtAppClassName")
+			fld.isAccessible = true
+			fld.set(null, "OmniSign")
+		} catch (_: Exception) {
+			// Non-X11 display (Wayland-native, headless) or restricted JVM – ignore.
+		}
 	}
 
 	application {
@@ -317,7 +351,7 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 			onCloseRequest()
 		},
 		icon = windowIconPainter,
-		undecorated = false,
+		undecorated = isLinux,
 		transparent = false,
 		resizable = true,
 		state = windowState,
@@ -333,7 +367,7 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 		val isFullscreen = windowState.placement == WindowPlacement.Fullscreen
 
 		val titleBar: WindowDecorations.CustomTitleBar? =
-			remember { JbrTitleBarHelper.install(awtWindow, TITLE_BAR_HEIGHT_DP.toFloat()) }
+			remember { if (isLinux) null else JbrTitleBarHelper.install(awtWindow, TITLE_BAR_HEIGHT_DP.toFloat()) }
 
 		val isMacTitleBarHoveringState = remember { mutableStateOf(false) }
 		val isMacTitleBarHovering by isMacTitleBarHoveringState
@@ -429,6 +463,10 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 		val rightInsetPx = remember(isFullscreen, titleBar) { titleBar?.rightInset ?: 0f }
 		val leftInsetPx = remember(isFullscreen, titleBar) { titleBar?.leftInset ?: 0f }
 		
+		val windowControlsContent: (@Composable () -> Unit)? = if (isLinux) {
+			{ LinuxWindowControls(awtWindow) }
+		} else null
+		
 		CompositionLocalProvider(
 			LocalTitleBarHeight provides TITLE_BAR_HEIGHT_DP.dp + macTitleBarPaddingDp,
 			LocalTitleBarRightInset provides rightInsetPx,
@@ -437,6 +475,7 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 			LocalIsMacOs provides isMacOs,
 			LocalWindowDragModifier provides windowDragModifier,
 			LocalDragAreaCallback provides dragAreaCallback,
+			LocalWindowControls provides windowControlsContent,
 			LocalTitleBarDarkControls provides { isDark ->
 				val tb = titleBar ?: return@provides
 				tb.putProperty("controls.dark", isDark)

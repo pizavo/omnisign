@@ -82,6 +82,7 @@ fun IslandToolbar(
 	}
 	val dragModifier = LocalWindowDragModifier.current
 	val reportDragArea = LocalDragAreaCallback.current
+	val windowControls = LocalWindowControls.current
 
 	Surface(
 		modifier = modifier.fillMaxWidth().height(titleBarHeight),
@@ -256,6 +257,11 @@ fun IslandToolbar(
 					}
 				}
 			}
+			
+			// Custom window controls (minimize / maximize / close) injected on platforms
+			// that run without native window decorations — currently Linux, where JBR's
+			// WindowDecorations API is not supported and the window is undecorated.
+			windowControls?.invoke()
 		}
 	}
 }
