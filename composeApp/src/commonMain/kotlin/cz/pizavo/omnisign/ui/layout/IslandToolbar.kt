@@ -256,12 +256,9 @@ fun IslandToolbar(
 						OmniSignLogoIcon()
 					}
 				}
+				
+				windowControls?.invoke()
 			}
-			
-			// Custom window controls (minimize / maximize / close) injected on platforms
-			// that run without native window decorations — currently Linux, where JBR's
-			// WindowDecorations API is not supported and the window is undecorated.
-			windowControls?.invoke()
 		}
 	}
 }

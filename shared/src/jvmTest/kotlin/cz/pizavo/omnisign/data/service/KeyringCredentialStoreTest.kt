@@ -12,11 +12,12 @@ import io.kotest.matchers.string.shouldContain
 import org.slf4j.LoggerFactory
 
 /**
- * Verifies [KeyringCredentialStore] in-memory fallback behaviour and warning log
+ * Verifies [KeyringCredentialStore] in-memory fallback behavior and warning log
  * emission when the native OS keychain is unavailable.
  *
  * These tests exercise the in-memory fallback path. The native keychain path
- * depends on the host OS and desktop session and is not unit-testable in isolation.
+ * (java-keyring on Windows/macOS, purejava/secret-service on Linux) depends on
+ * the host OS and desktop session and is not unit-testable in isolation.
  */
 class KeyringCredentialStoreTest : FunSpec({
 

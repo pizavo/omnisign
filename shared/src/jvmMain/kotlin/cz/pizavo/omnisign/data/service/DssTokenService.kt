@@ -95,7 +95,7 @@ class DssTokenService(
 	 * OS-native stores always return true — the subsequent load call handles any failure.
 	 */
 	override suspend fun probeTokenPresent(tokenInfo: TokenInfo): Boolean = when (tokenInfo.type) {
-		TokenType.PKCS11 -> tokenInfo.path?.let { probeTokenIdentities(it).isNotEmpty() } ?: false
+		TokenType.PKCS11 -> tokenInfo.path?.let { probeTokenIdentitiesViaSubprocess(it).isNotEmpty() } ?: false
 		TokenType.FILE -> tokenInfo.path?.let { File(it).exists() } ?: false
 		TokenType.WINDOWS_MY, TokenType.MACOS_KEYCHAIN -> true
 	}
