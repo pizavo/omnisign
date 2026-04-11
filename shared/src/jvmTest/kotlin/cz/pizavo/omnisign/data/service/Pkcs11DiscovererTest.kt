@@ -81,6 +81,55 @@ class Pkcs11DiscovererTest : FunSpec({
 		d.isPkcs11FileName("vcomp110.dll").shouldBeFalse()
 		d.isPkcs11FileName("msvcp110d.dll").shouldBeFalse()
 	}
+ 
+	test("isPkcs11FileName rejects PKCS11 spy and debugging wrapper libraries") {
+		val d = discoverer()
+		d.isPkcs11FileName("pkcs11-spy.so").shouldBeFalse()
+		d.isPkcs11FileName("pkcs11-spy.dll").shouldBeFalse()
+		d.isPkcs11FileName("pkcs11spy.so").shouldBeFalse()
+		d.isPkcs11FileName("PKCS11-SPY.DLL").shouldBeFalse()
+		d.isPkcs11FileName("p11-spy.so").shouldBeFalse()
+		d.isPkcs11FileName("p11spy.dll").shouldBeFalse()
+	}
+
+	test("isSpyLibrary recognises known spy library filenames") {
+		val d = discoverer()
+		d.isSpyLibrary("pkcs11-spy.so").shouldBeTrue()
+		d.isSpyLibrary("pkcs11-spy.dll").shouldBeTrue()
+		d.isSpyLibrary("pkcs11spy.so").shouldBeTrue()
+		d.isSpyLibrary("p11-spy.so").shouldBeTrue()
+		d.isSpyLibrary("p11spy.dll").shouldBeTrue()
+	}
+
+	test("isSpyLibrary rejects real PKCS11 middleware") {
+		val d = discoverer()
+		d.isSpyLibrary("opensc-pkcs11.so").shouldBeFalse()
+		d.isSpyLibrary("eTPKCS11.dll").shouldBeFalse()
+		d.isSpyLibrary("libsofthsm2.so").shouldBeFalse()
+	}
+
+	test("discoverTokens skips spy libraries found in lib directories") {
+		val dropDir = File.createTempFile("pkcs11-drop", "").also { it.delete(); it.mkdirs(); it.deleteOnExit() }
+		val spyFile = File(dropDir, "pkcs11-spy.so").also { it.createNewFile(); it.deleteOnExit() }
+		val realFile = File(dropDir, "vendor-pkcs11.so").also { it.createNewFile(); it.deleteOnExit() }
+
+		val tokens = discoverer().discoverTokens(appDataPkcs11Dir = dropDir)
+
+		tokens.any { it.path == spyFile.absolutePath }.shouldBeFalse()
+		tokens.any { it.path == realFile.absolutePath }.shouldBeTrue()
+
+		dropDir.deleteRecursively()
+	}
+
+	test("discoverTokens skips spy libraries from user-supplied paths") {
+		val spyFile = File.createTempFile("pkcs11-spy", ".so").also { it.deleteOnExit() }
+
+		val tokens = discoverer().discoverTokens(
+			userPkcs11Libraries = listOf("Spy Module" to spyFile.absolutePath),
+		)
+
+		tokens.any { it.path == spyFile.absolutePath }.shouldBeFalse()
+	}
 	
 	test("deriveMiddlewareName identifies SafeNet eToken paths") {
 		val d = discoverer()
@@ -105,12 +154,12 @@ class Pkcs11DiscovererTest : FunSpec({
 	}
 	
 	test("discoverTokens deduplicates same canonical path from multiple sources") {
-		val tmpFile = File.createTempFile("opensc-pkcs11", ".so").also { it.deleteOnExit() }
+		val tmpFile = File.createTempFile("acmevendor-pkcs11", ".so").also { it.deleteOnExit() }
 		
 		discoverer().discoverTokens(
 			userPkcs11Libraries = listOf(
-				"OpenSC (source 1)" to tmpFile.absolutePath,
-				"OpenSC (source 2)" to tmpFile.absolutePath,
+				"Acme (source 1)" to tmpFile.absolutePath,
+				"Acme (source 2)" to tmpFile.absolutePath,
 			)
 		).filter { it.path == tmpFile.absolutePath }.shouldHaveSize(1)
 	}

@@ -10,6 +10,15 @@ runs:
         distribution: 'temurin'
         java-version: '25'
 
+    - name: Start D-Bus session and Secret Service
+      if: runner.os == 'Linux'
+      shell: bash
+      run: |
+        sudo apt-get install -y -qq gnome-keyring dbus-x11 > /dev/null 2>&1
+        eval $(dbus-launch --sh-syntax)
+        echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
+        echo '' | gnome-keyring-daemon --unlock --components=secrets
+
     - name: Make gradlew executable
       shell: bash
       run: chmod +x gradlew

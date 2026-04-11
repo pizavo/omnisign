@@ -12,7 +12,8 @@ koin-bom = "4.1.1"
 koin-annotations = "2.3.1"
 dss-bom = "6.3"
 jaxb = "4.0.6"
-java-keyring = "1.0.4"
+keyring = "1.0.4"
+purejava-secret-service = "1.1.1"
 shadow = "8.3.6"
 arrow = "2.2.1.1"
 kotlinx-serialization = "1.10.0"
@@ -127,7 +128,7 @@ dss-policy-crypto-xml = { module = "eu.europa.ec.joinup.sd-dss:dss-policy-crypto
 dss-policy-crypto-json = { module = "eu.europa.ec.joinup.sd-dss:dss-policy-crypto-json" }
 
 jaxb-runtime = { module = "org.glassfish.jaxb:jaxb-runtime", version.ref = "jaxb" }
-java-keyring = { module = "com.github.javakeyring:java-keyring", version.ref = "java-keyring" }
+purejava-secret-service = { module = "org.purejava:secret-service", version.ref = "purejava-secret-service" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 
 jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }

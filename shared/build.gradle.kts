@@ -99,7 +99,11 @@ kotlin {
 			implementation(libs.dss.policy.crypto.json)
 			
 			implementation(libs.jaxb.runtime)
-			implementation(libs.java.keyring)
+			implementation("com.github.javakeyring:java-keyring:${libs.versions.keyring.get()}") {
+				exclude(group = "com.github.hypfvieh")
+				exclude(group = "de.swiesend")
+			}
+			implementation(libs.purejava.secret.service)
 			
 			implementation(libs.jackson.databind)
 			implementation(libs.jackson.kotlin)

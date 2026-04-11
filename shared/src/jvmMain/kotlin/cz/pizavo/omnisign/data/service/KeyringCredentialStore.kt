@@ -9,11 +9,20 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 private val logger = KotlinLogging.logger {}
 
 /**
- * JVM implementation of [CredentialStore] backed by the OS native keychain via java-keyring.
+ * JVM implementation of [CredentialStore] backed by the OS native keychain.
  *
- * Falls back to an in-memory store when the native backend is unavailable (e.g. headless CI
- * environments). The fallback is intentionally non-persistent and will not survive process
- * restarts. A warning is logged at construction time when the fallback is active.
+ * The resolution order is:
+ * 1. **java-keyring** (Windows / macOS) — uses JNA to talk to the OS keychain natively
+ *    (Windows Credential Manager, macOS Keychain).  The `dbus-java` transitive dependency
+ *    is excluded at Gradle level, so the Linux backend is intentionally unavailable;
+ *    Linux is handled by the next tier instead.
+ * 2. **purejava/secret-service** (Linux) — communicates with the freedesktop Secret Service
+ *    D-Bus API (GNOME Keyring, KDE Wallet, KeePassXC, …) via the
+ *    [org.purejava:secret-service](https://github.com/purejava/secret-service) library,
+ *    which is built against `dbus-java 5.x` (compatible with FileKit's transitive).
+ * 3. **In-memory map** — last resort; credentials do not survive process restarts.
+ *
+ * A warning is logged at construction time when only the in-memory fallback is active.
  */
 class KeyringCredentialStore : CredentialStore {
 
@@ -23,54 +32,73 @@ class KeyringCredentialStore : CredentialStore {
         null
     }
 
+    private val secretServiceFallback: FreedesktopSecretServiceStore? =
+        if (keyring == null) {
+            try {
+                val store = FreedesktopSecretServiceStore()
+                if (store.isAvailable) store else null
+            } catch (_: Throwable) {
+                null
+            }
+        } else {
+            null
+        }
+
     private val memoryFallback = mutableMapOf<String, String>()
 
     init {
-        if (keyring == null) {
-            logger.warn {
-                "Native OS keychain is not available — credentials will be kept in memory only " +
-                        "and will not survive process restarts. Install libsecret (Linux), or run " +
-                        "in a desktop session with Keychain (macOS) or Credential Manager (Windows)."
-            }
+        when {
+            keyring != null ->
+                logger.debug { "Credential store: java-keyring (native OS keychain)" }
+            secretServiceFallback != null ->
+                logger.debug {
+                    "Credential store: purejava/secret-service (freedesktop Secret Service D-Bus API)"
+                }
+            else ->
+                logger.warn {
+                    "Native OS keychain is not available — credentials will be kept in memory only " +
+                            "and will not survive process restarts. Install libsecret (Linux), or run " +
+                            "in a desktop session with Keychain (macOS) or Credential Manager (Windows)."
+                }
         }
     }
 
     /**
-     * Whether the native OS keychain backend is available.
+     * Whether a persistent credential backend is available (java-keyring or Secret Service).
+     *
      * When `false` credentials are kept only in memory for the lifetime of the process.
      */
-    val isNativeBackendAvailable: Boolean get() = keyring != null
+    val isNativeBackendAvailable: Boolean get() = keyring != null || secretServiceFallback != null
 
     override fun setPassword(service: String, account: String, password: String) {
-        if (keyring != null) {
-            keyring.setPassword(service, account, password)
-        } else {
-            memoryFallback["$service/$account"] = password
+        when {
+            keyring != null -> keyring.setPassword(service, account, password)
+            secretServiceFallback != null -> secretServiceFallback.setPassword(service, account, password)
+            else -> memoryFallback["$service/$account"] = password
         }
     }
 
     override fun getPassword(service: String, account: String): String? {
-        return if (keyring != null) {
-            try {
+        return when {
+            keyring != null -> try {
                 keyring.getPassword(service, account)
             } catch (_: PasswordAccessException) {
                 null
             }
-        } else {
-            memoryFallback["$service/$account"]
+            secretServiceFallback != null -> secretServiceFallback.getPassword(service, account)
+            else -> memoryFallback["$service/$account"]
         }
     }
 
     override fun deletePassword(service: String, account: String) {
-        if (keyring != null) {
-            try {
+        when {
+            keyring != null -> try {
                 keyring.deletePassword(service, account)
             } catch (_: PasswordAccessException) {
                 // Entry did not exist; nothing to do.
             }
-        } else {
-            memoryFallback.remove("$service/$account")
+            secretServiceFallback != null -> secretServiceFallback.deletePassword(service, account)
+            else -> memoryFallback.remove("$service/$account")
         }
     }
 }
-

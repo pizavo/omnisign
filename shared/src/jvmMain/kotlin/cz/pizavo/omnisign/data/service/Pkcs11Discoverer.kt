@@ -14,8 +14,11 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
+import java.nio.file.Path
 import java.util.*
+import java.util.concurrent.TimeUnit
 
 /**
  * Identity of a physical PKCS#11 token as reported by `C_GetTokenInfo`.
@@ -49,10 +52,14 @@ data class Pkcs11TokenIdentity(
  * that report the same physical token serial produce a single [TokenInfo].
  *
  * @property tokenProber Strategy for probing PKCS#11 libraries for hardware token identities.
- *   Defaults to JNA-based probing; override for testing.
+ *   Defaults to subprocess-based probing via [probeTokenIdentitiesViaSubprocess] to isolate
+ *   native crashes (SIGSEGV) from the host JVM; override for testing.
+ * @property probeTimeoutSeconds Maximum time in seconds to wait for a single PKCS#11 library
+ *   probe subprocess before killing it.  Defaults to [DEFAULT_PROBE_TIMEOUT_SECONDS].
  */
 class Pkcs11Discoverer(
-    private val tokenProber: (String) -> List<Pkcs11TokenIdentity> = ::probeTokenIdentities,
+    private val tokenProber: (String) -> List<Pkcs11TokenIdentity> = ::probeTokenIdentitiesViaSubprocess,
+    private val probeTimeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
 ) {
 
     /**
@@ -107,8 +114,10 @@ class Pkcs11Discoverer(
         }
         merge(userPkcs11Libraries.filter { (_, path) -> File(path).exists() })
 
+        val candidates = seen.values.filterNot { (_, path) -> isSpyLibrary(File(path).name) }
+
         val probeResults = coroutineScope {
-            seen.values.map { (name, path) ->
+            candidates.map { (name, path) ->
                 async(Dispatchers.IO) {
                     LibProbeResult(name, path, tokenProber(path))
                 }
@@ -265,11 +274,28 @@ class Pkcs11Discoverer(
      *   `msvcp110.dll`, `vcamp110.dll`, and `vcomp110.dll` from being mistaken for PKCS#11
      *   middleware — they all contain the three-character substring `p11` as part of the
      *   version number `p110`.
+     *
+     * Known spy/debugging wrappers (e.g. `pkcs11-spy.so`) are excluded via [isSpyLibrary].
      */
     internal fun isPkcs11FileName(fileName: String): Boolean {
+        if (isSpyLibrary(fileName)) return false
         val lower = fileName.lowercase()
         return PKCS11_NAME_PATTERNS.any { lower.contains(it) } ||
                P11_STANDALONE_PATTERN.containsMatchIn(lower)
+    }
+
+    /**
+     * Return `true` when [fileName] (base name only) is a known PKCS#11 spy or debugging
+     * wrapper library rather than actual middleware.
+     *
+     * The OpenSC project ships `pkcs11-spy.so` / `pkcs11-spy.dll` which is a logging
+     * pass-through that requires the `PKCS11SPY` environment variable to point to the real
+     * PKCS#11 module.  Loading it without that variable set produces errors or hangs.
+     * Such libraries must never be probed or offered as signing tokens.
+     */
+    internal fun isSpyLibrary(fileName: String): Boolean {
+        val lower = fileName.lowercase()
+        return SPY_LIBRARY_PATTERNS.any { lower.contains(it) }
     }
 
     /**
@@ -657,10 +683,20 @@ class Pkcs11Discoverer(
     }
 
     private companion object {
+        val logger = KotlinLogging.logger {}
+
         /**
          * Maximum ATR length defined by ISO/IEC 7816-3: 32 bytes of ATR + 1 TCK byte.
          */
         const val ATR_MAX_SIZE_BYTES = 33
+
+        /**
+         * Default timeout (in seconds) for probing a single PKCS#11 library.
+         *
+         * Generous enough for slow smart card readers but prevents unresponsive
+         * middleware from blocking discovery indefinitely.
+         */
+        const val DEFAULT_PROBE_TIMEOUT_SECONDS = 10L
 
         /**
          * Substring patterns that unambiguously identify PKCS#11 middleware filenames.
@@ -671,6 +707,15 @@ class Pkcs11Discoverer(
             "pkcs11", "etpkcs", "gclib", "opensc", "iidp11", "cmp11",
             "softhsm", "libsac", "libck", "cryptoki", "ykcs11",
         )
+
+        /**
+         * Substring patterns that identify PKCS#11 spy or debugging wrapper libraries.
+         *
+         * These libraries (e.g., OpenSC `pkcs11-spy.so`) are logging pass-throughs that
+         * require additional environment configuration (`PKCS11SPY`) to function.  Loading
+         * them without that configuration causes errors or hangs.
+         */
+        val SPY_LIBRARY_PATTERNS = listOf("pkcs11-spy", "pkcs11spy", "p11-spy", "p11spy")
 
         /**
          * Matches the standalone `p11` token in a lowercase filename when it is **not**
@@ -693,6 +738,67 @@ class Pkcs11Discoverer(
             "/usr/lib/pkcs11/p11-kit-proxy.so",
             "/usr/local/lib/pkcs11/p11-kit-proxy.so",
         )
+    }
+}
+
+/**
+ * Probe a PKCS#11 library for token identities in an isolated subprocess.
+ *
+ * Spawns a child JVM running [Pkcs11ProbeWorker] with the same classpath as the current
+ * process.  If the native library causes a fatal crash (e.g. SIGSEGV from SafeNet eToken's
+ * `libeTPKCS15.so` when no card is inserted), only the child process is terminated — the
+ * host JVM continues normally.
+ *
+ * Falls back to an empty list when:
+ * - The subprocess times out (killed after [timeoutSeconds]).
+ * - The subprocess exits with a non-zero code (native crash or probing error).
+ * - The subprocess output cannot be parsed.
+ * - The current JVM's classpath cannot be resolved.
+ *
+ * @param libraryPath Absolute path to the PKCS#11 shared library to probe.
+ * @param timeoutSeconds Maximum wall-clock time to wait for the subprocess before killing it.
+ */
+internal fun probeTokenIdentitiesViaSubprocess(
+    libraryPath: String,
+    timeoutSeconds: Long = 10,
+): List<Pkcs11TokenIdentity> {
+    val logger = KotlinLogging.logger {}
+    return runCatching {
+        val javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java").toString()
+        val classpath = System.getProperty("java.class.path") ?: return emptyList()
+
+        val process = ProcessBuilder(
+            javaExecutable,
+            "--enable-native-access=ALL-UNNAMED",
+            "-cp", classpath,
+            Pkcs11ProbeWorker::class.java.name,
+            libraryPath,
+        )
+            .redirectError(ProcessBuilder.Redirect.DISCARD)
+            .start()
+
+        val output = process.inputStream.bufferedReader().readText()
+        val completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+
+        if (!completed) {
+            logger.warn { "PKCS#11 probe subprocess for '$libraryPath' timed out after ${timeoutSeconds}s — killing" }
+            process.destroyForcibly()
+            return emptyList()
+        }
+        if (process.exitValue() != 0) {
+            logger.debug { "PKCS#11 probe subprocess for '$libraryPath' exited with code ${process.exitValue()}" }
+            return emptyList()
+        }
+
+        output.lines()
+            .filter { it.contains('\t') }
+            .map { line ->
+                val (label, serial) = line.split('\t', limit = 2)
+                Pkcs11TokenIdentity(label = label, serialNumber = serial, libraryPath = libraryPath)
+            }
+    }.getOrElse { e ->
+        logger.debug(e) { "Failed to spawn PKCS#11 probe subprocess for '$libraryPath'" }
+        emptyList()
     }
 }
 
