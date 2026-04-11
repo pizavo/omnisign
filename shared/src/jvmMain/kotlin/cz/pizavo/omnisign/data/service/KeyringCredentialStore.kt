@@ -34,8 +34,12 @@ class KeyringCredentialStore : CredentialStore {
 
     private val secretServiceFallback: FreedesktopSecretServiceStore? =
         if (keyring == null) {
-            val store = FreedesktopSecretServiceStore()
-            if (store.isAvailable) store else null
+            try {
+                val store = FreedesktopSecretServiceStore()
+                if (store.isAvailable) store else null
+            } catch (_: Throwable) {
+                null
+            }
         } else {
             null
         }

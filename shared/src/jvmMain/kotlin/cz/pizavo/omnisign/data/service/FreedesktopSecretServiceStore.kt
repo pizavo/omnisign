@@ -133,7 +133,7 @@ class FreedesktopSecretServiceStore : CredentialStore {
          */
         fun checkAvailable(): Boolean = try {
             Service().isAvailable
-        } catch (_: Exception) {
+        } catch (_: Throwable) {
             false
         }
     }
