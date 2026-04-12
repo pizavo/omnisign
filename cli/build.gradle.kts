@@ -10,6 +10,29 @@ group = "cz.pizavo.omnisign"
 version = project.findProperty("releaseVersion")?.toString() ?: "1.9.0"
 
 /**
+ * Resolves the platform-native crash-dump directory at Gradle evaluation time.
+ *
+ * Mirrors the desktop `resolveLogDir()` logic so that `-XX:ErrorFile` points to a
+ * `crashes/` subdirectory of the application log folder.  The CLI does not write
+ * application logs to files, but crash dumps share the same parent structure for
+ * discoverability.  For `gradle run` the path is always correct; for jpackage
+ * distributions, the JVM falls back to `/tmp` if the baked path is not writable.
+ */
+fun resolveCrashDir(): String {
+	val userHome = System.getProperty("user.home")
+	val os = System.getProperty("os.name").lowercase()
+	val logDir = when {
+		os.contains("win") ->
+			File(System.getenv("LOCALAPPDATA") ?: "$userHome/AppData/Local", "omnisign/logs")
+		os.contains("mac") ->
+			File(userHome, "Library/Logs/omnisign")
+		else ->
+			File(System.getenv("XDG_STATE_HOME") ?: "$userHome/.local/state", "omnisign")
+	}
+	return File(logDir, "crashes").absolutePath
+}
+
+/**
  * Normalizes a semver-like string to the three-component `MAJOR.MINOR.BUILD` format required by
  * Windows native installers (MSI/EXE). Pre-release suffixes (e.g. `-SNAPSHOT`) are stripped, and
  * missing components are padded with `0`.
@@ -85,12 +108,18 @@ tasks.withType<Test> {
 
 application {
 	mainClass.set("cz.pizavo.omnisign.CliKt")
-	applicationDefaultJvmArgs = listOf("--enable-native-access=ALL-UNNAMED")
+	applicationDefaultJvmArgs = listOf(
+		"--enable-native-access=ALL-UNNAMED",
+		"-XX:ErrorFile=${resolveCrashDir()}/hs_err_pid%p.log",
+	)
 	applicationName = "omnisign"
 }
 
 tasks.named<JavaExec>("run") {
-	jvmArgs("--enable-native-access=ALL-UNNAMED")
+	jvmArgs(
+		"--enable-native-access=ALL-UNNAMED",
+		"-XX:ErrorFile=${resolveCrashDir()}/hs_err_pid%p.log",
+	)
 	if (System.getProperty("os.name", "").lowercase().contains("win")) {
 		jvmArgs("--add-modules=jdk.crypto.mscapi")
 	}

@@ -2,6 +2,28 @@ import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
 
 /**
+ * Resolves the platform-native crash-dump directory at Gradle evaluation time.
+ *
+ * Mirrors the runtime `resolveLogDir()` logic in `main.kt` so that `-XX:ErrorFile`
+ * points to a `crashes/` subdirectory of the application log folder.  For `gradle run`
+ * the path is always correct.  For jpackage distributions the path is baked at build time —
+ * if the target user's home differs, the JVM silently falls back to `/tmp`.
+ */
+fun resolveCrashDir(): String {
+	val userHome = System.getProperty("user.home")
+	val os = System.getProperty("os.name").lowercase()
+	val logDir = when {
+		os.contains("win") ->
+			File(System.getenv("LOCALAPPDATA") ?: "$userHome/AppData/Local", "omnisign/logs")
+		os.contains("mac") ->
+			File(userHome, "Library/Logs/omnisign")
+		else ->
+			File(System.getenv("XDG_STATE_HOME") ?: "$userHome/.local/state", "omnisign")
+	}
+	return File(logDir, "crashes").absolutePath
+}
+
+/**
  * Normalizes a semver-like string to the three-component `MAJOR.MINOR.BUILD` format required by
  * Windows native installers (MSI/EXE). Pre-release suffixes (e.g. `-SNAPSHOT`) are stripped, and
  * missing components are padded with `0`.
@@ -135,6 +157,7 @@ compose.desktop {
 			"--enable-native-access=ALL-UNNAMED",
 			"-Dsun.java2d.d3d=false",
 			"-Dsun.awt.wmclass=OmniSign",
+			"-XX:ErrorFile=${resolveCrashDir()}/hs_err_pid%p.log",
 		)
 		if (org.gradle.internal.os.OperatingSystem.current().isLinux) {
 			jvmArgsList.addAll(listOf("--add-opens", "java.desktop/sun.awt.X11=ALL-UNNAMED"))
@@ -282,7 +305,7 @@ gradle.taskGraph.whenReady {
  * entries take precedence over any system-level RPM file.
  *
  * The task is **incremental**: it is skipped entirely on subsequent runs once the
- * files are up-to-date, adding zero overhead to day-to-day `:run` invocations.
+ * files are up to date, adding zero overhead to day-to-day `:run` invocations.
  */
 if (org.gradle.internal.os.OperatingSystem.current().isLinux) {
 	val userAppsDir = file("${System.getProperty("user.home")}/.local/share/applications")

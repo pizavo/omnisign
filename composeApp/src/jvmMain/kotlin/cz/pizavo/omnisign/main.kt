@@ -49,6 +49,17 @@ import kotlin.system.exitProcess
  */
 private val LOG_DIR: String = resolveLogDir().also { System.setProperty("omnisign.log.dir", it) }
 
+/**
+ * Dedicated subdirectory for JVM HotSpot crash dumps (`hs_err_pid*.log`).
+ *
+ * Created eagerly so that `-XX:ErrorFile` paths used by child processes
+ * (e.g. [cz.pizavo.omnisign.data.service.Pkcs11ProbeWorker]) always resolve to an
+ * existing directory. Exposed as the `omnisign.crash.dir` system property.
+ */
+@Suppress("unused")
+private val CRASH_DIR: String = File(LOG_DIR, "crashes").apply { mkdirs() }
+	.absolutePath.also { System.setProperty("omnisign.crash.dir", it) }
+
 private val logger = KotlinLogging.logger {}
 
 private const val TITLE_BAR_HEIGHT_DP = 40

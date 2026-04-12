@@ -5,16 +5,17 @@ import com.sun.jna.platform.win32.Advapi32Util
 import com.sun.jna.platform.win32.WinReg
 import com.sun.jna.ptr.IntByReference
 import com.sun.jna.win32.StdCallLibrary
+import cz.pizavo.omnisign.data.service.Pkcs11Discoverer.Companion.DEFAULT_PROBE_TIMEOUT_SECONDS
 import cz.pizavo.omnisign.data.service.Pkcs11Discoverer.Companion.P11_KIT_PROXY_PATHS
 import cz.pizavo.omnisign.data.service.Pkcs11Discoverer.Companion.P11_STANDALONE_PATTERN
 import cz.pizavo.omnisign.data.service.Pkcs11Discoverer.Companion.PKCS11_NAME_PATTERNS
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.service.TokenInfo
+import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.nio.file.Path
 import java.util.*
@@ -767,13 +768,16 @@ internal fun probeTokenIdentitiesViaSubprocess(
         val javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java").toString()
         val classpath = System.getProperty("java.class.path") ?: return emptyList()
 
-        val process = ProcessBuilder(
+        val command = mutableListOf(
             javaExecutable,
             "--enable-native-access=ALL-UNNAMED",
-            "-cp", classpath,
-            Pkcs11ProbeWorker::class.java.name,
-            libraryPath,
         )
+        System.getProperty("omnisign.crash.dir")?.let { crashDir ->
+            command.add("-XX:ErrorFile=$crashDir/hs_err_pid%p.log")
+        }
+        command.addAll(listOf("-cp", classpath, Pkcs11ProbeWorker::class.java.name, libraryPath))
+
+        val process = ProcessBuilder(command)
             .redirectError(ProcessBuilder.Redirect.DISCARD)
             .start()
 
