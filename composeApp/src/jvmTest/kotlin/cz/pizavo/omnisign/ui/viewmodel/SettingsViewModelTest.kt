@@ -13,6 +13,8 @@ import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
+import cz.pizavo.omnisign.ui.platform.loadUseNativeTitleBar
+import cz.pizavo.omnisign.ui.platform.saveUseNativeTitleBar
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
@@ -829,6 +831,149 @@ class SettingsViewModelTest : FunSpec({
             vm.state.value.error shouldBe "Failed to install OS scheduler: schtasks failed (exit 1): Access is denied."
             vm.state.value.schedulerInstalled shouldBe false
             vm.state.value.saving shouldBe false
+        }
+    }
+
+    test("load populates useNativeTitleBar and showNativeTitleBarOption when isLinuxDesktop is true") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            mockkStatic(::loadUseNativeTitleBar)
+            every { loadUseNativeTitleBar() } returns true
+
+            try {
+                val vm = SettingsViewModel(
+                    getConfig, setGlobalConfig, credentialStore = credentialStore,
+                    isLinuxDesktop = true, ioDispatcher = testDispatcher,
+                )
+                vm.load()
+                advanceUntilIdle()
+
+                vm.state.value.useNativeTitleBar shouldBe true
+                vm.state.value.showNativeTitleBarOption shouldBe true
+            } finally {
+                unmockkStatic(::loadUseNativeTitleBar)
+            }
+        }
+    }
+
+    test("load defaults useNativeTitleBar to false when preference returns null on Linux") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            mockkStatic(::loadUseNativeTitleBar)
+            every { loadUseNativeTitleBar() } returns null
+
+            try {
+                val vm = SettingsViewModel(
+                    getConfig, setGlobalConfig, credentialStore = credentialStore,
+                    isLinuxDesktop = true, ioDispatcher = testDispatcher,
+                )
+                vm.load()
+                advanceUntilIdle()
+
+                vm.state.value.useNativeTitleBar shouldBe false
+                vm.state.value.showNativeTitleBarOption shouldBe true
+            } finally {
+                unmockkStatic(::loadUseNativeTitleBar)
+            }
+        }
+    }
+
+    test("load does not set showNativeTitleBarOption when isLinuxDesktop is false") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, credentialStore = credentialStore,
+                isLinuxDesktop = false, ioDispatcher = testDispatcher,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.useNativeTitleBar shouldBe false
+            vm.state.value.showNativeTitleBarOption shouldBe false
+        }
+    }
+
+    test("save persists native title bar preference when isLinuxDesktop is true") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+            mockkStatic(::loadUseNativeTitleBar, ::saveUseNativeTitleBar)
+            every { loadUseNativeTitleBar() } returns false
+            every { saveUseNativeTitleBar(any()) } returns Unit
+
+            try {
+                val vm = SettingsViewModel(
+                    getConfig, setGlobalConfig, configRepository, credentialStore,
+                    isLinuxDesktop = true, ioDispatcher = testDispatcher,
+                )
+                vm.load()
+                advanceUntilIdle()
+
+                vm.updateState { it.copy(useNativeTitleBar = true) }
+
+                vm.save(onSuccess = {})
+                advanceUntilIdle()
+
+                verify { saveUseNativeTitleBar(true) }
+            } finally {
+                unmockkStatic(::loadUseNativeTitleBar, ::saveUseNativeTitleBar)
+            }
+        }
+    }
+
+    test("save does not persist native title bar preference when isLinuxDesktop is false") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+            mockkStatic(::saveUseNativeTitleBar)
+            every { saveUseNativeTitleBar(any()) } returns Unit
+
+            try {
+                val vm = SettingsViewModel(
+                    getConfig, setGlobalConfig, configRepository, credentialStore,
+                    isLinuxDesktop = false, ioDispatcher = testDispatcher,
+                )
+                vm.load()
+                advanceUntilIdle()
+
+                vm.updateState { it.copy(useNativeTitleBar = true) }
+
+                vm.save(onSuccess = {})
+                advanceUntilIdle()
+
+                verify(exactly = 0) { saveUseNativeTitleBar(any()) }
+            } finally {
+                unmockkStatic(::saveUseNativeTitleBar)
+            }
+        }
+    }
+
+    test("hasChanges detects useNativeTitleBar modification on Linux") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            mockkStatic(::loadUseNativeTitleBar)
+            every { loadUseNativeTitleBar() } returns false
+
+            try {
+                val vm = SettingsViewModel(
+                    getConfig, setGlobalConfig, credentialStore = credentialStore,
+                    isLinuxDesktop = true, ioDispatcher = testDispatcher,
+                )
+                vm.load()
+                advanceUntilIdle()
+
+                vm.hasChanges.value shouldBe false
+
+                vm.updateState { it.copy(useNativeTitleBar = true) }
+                advanceUntilIdle()
+
+                vm.hasChanges.value shouldBe true
+            } finally {
+                unmockkStatic(::loadUseNativeTitleBar)
+            }
         }
     }
 })

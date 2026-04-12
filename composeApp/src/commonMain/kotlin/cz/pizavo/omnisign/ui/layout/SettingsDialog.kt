@@ -73,6 +73,12 @@ fun SettingsDialog(
 ) {
 	var selectedCategory by remember { mutableStateOf(SettingsCategory.SigningDefaults) }
 	
+	val visibleGroups = remember(state.showNativeTitleBarOption) {
+		SettingsCategory.groups.filter { group ->
+			group != SettingsCategory.Appearance || state.showNativeTitleBarOption
+		}
+	}
+	
 	Dialog(
 		onDismissRequest = onDismiss,
 		properties = DialogProperties(usePlatformDefaultWidth = false),
@@ -94,6 +100,7 @@ fun SettingsDialog(
 					SettingsNavPanel(
 						selected = selectedCategory,
 						onSelect = { selectedCategory = it },
+						visibleGroups = visibleGroups,
 					)
 					
 					VerticalDivider()
@@ -153,14 +160,18 @@ private fun SettingsHeader(onClose: () -> Unit) {
  *
  * @param selected The currently active [SettingsCategory].
  * @param onSelect Callback invoked when the user clicks a category.
+ * @param visibleGroups Top-level groups to display. Categories whose group is not in this
+ *   list are hidden from the navigation sidebar (e.g. [SettingsCategory.Appearance] on
+ *   non-Linux platforms).
  */
 @Composable
 private fun SettingsNavPanel(
 	selected: SettingsCategory,
 	onSelect: (SettingsCategory) -> Unit,
+	visibleGroups: List<SettingsCategory> = SettingsCategory.groups,
 ) {
 	var expandedGroups by remember {
-		mutableStateOf(setOf(SettingsCategory.groups.first()))
+		mutableStateOf(setOf(visibleGroups.first()))
 	}
 	
 	if (selected.parent != null && selected.parent !in expandedGroups) {
@@ -173,7 +184,7 @@ private fun SettingsNavPanel(
 			.fillMaxHeight(),
 		contentPadding = PaddingValues(8.dp),
 	) {
-		SettingsCategory.groups.forEach { group ->
+		visibleGroups.forEach { group ->
 			val isExpanded = group in expandedGroups
 			val isActive = selected == group || selected.parent == group
 			
@@ -413,6 +424,9 @@ private fun SettingsContentPanel(
 			SettingsCategory.RenewalJobs -> RenewalJobsSection(state = state, onFieldChange = onFieldChange)
 
 			SettingsCategory.Scheduler -> SchedulerSection(state = state, onFieldChange = onFieldChange)
+
+			SettingsCategory.Appearance,
+			SettingsCategory.WindowTitleBar -> AppearanceWindowSection(state = state, onFieldChange = onFieldChange)
 		}
 	}
 }
@@ -1006,3 +1020,47 @@ private fun SettingsPasswordField(
 	)
 }
 
+/**
+ * Appearance > Window section: toggle between custom merged toolbar and native OS title bar.
+ *
+ * Shown only on Linux JVM desktop where the choice between CSD (undecorated + custom
+ * toolbar) and SSD (native decorated window) is meaningful.
+ *
+ * @param state Current [GlobalConfigEditState].
+ * @param onFieldChange Called with a transform to update a single field in the edit state.
+ */
+@Composable
+private fun AppearanceWindowSection(
+	state: GlobalConfigEditState,
+	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
+) {
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.SpaceBetween,
+	) {
+		Column(modifier = Modifier.weight(1f)) {
+			Text(text = "Use native title bar", style = LumoTheme.typography.body1)
+			Text(
+				text = "Display the toolbar below the native OS title bar instead of merging it into a custom header.",
+				style = LumoTheme.typography.body2,
+				color = LumoTheme.colors.textSecondary,
+			)
+		}
+		
+		Switch(
+			checked = state.useNativeTitleBar,
+			onCheckedChange = { checked ->
+				onFieldChange { it.copy(useNativeTitleBar = checked) }
+			},
+		)
+	}
+	
+	Spacer(modifier = Modifier.height(8.dp))
+	
+	Text(
+		text = "Requires an application restart to take effect.",
+		style = LumoTheme.typography.body2,
+		color = LumoTheme.colors.textSecondary,
+	)
+}

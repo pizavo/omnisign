@@ -53,6 +53,10 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
  * @property certAddError Human-readable error from the last failed trusted certificate add attempt, or `null`.
  * @property tlAddError Human-readable error from the last failed trusted list add attempt, or `null`.
  * @property renewalJobAddError Human-readable error from the last failed renewal job add attempt, or `null`.
+ * @property useNativeTitleBar Whether to use the native OS title bar instead of the merged custom toolbar on Linux.
+ *   This preference is persisted separately from [GlobalConfig] and requires an application restart to take effect.
+ * @property showNativeTitleBarOption Whether the native title bar toggle should be visible in the settings dialog.
+ *   Set to `true` only on Linux JVM desktop where the toggle is meaningful.
  */
 data class GlobalConfigEditState(
 	val defaultHashAlgorithm: HashAlgorithm = HashAlgorithm.SHA256,
@@ -92,6 +96,8 @@ data class GlobalConfigEditState(
 	val certAddError: String? = null,
 	val tlAddError: String? = null,
 	val renewalJobAddError: String? = null,
+	val useNativeTitleBar: Boolean = false,
+	val showNativeTitleBarOption: Boolean = false,
 ) {
 
 	/**
@@ -169,7 +175,8 @@ data class GlobalConfigEditState(
 				schedulerCliPath == other.schedulerCliPath &&
 				schedulerHour == other.schedulerHour &&
 				schedulerMinute == other.schedulerMinute &&
-				schedulerLogFile == other.schedulerLogFile
+				schedulerLogFile == other.schedulerLogFile &&
+				useNativeTitleBar == other.useNativeTitleBar
 
 	/**
 	 * Convert this UI state back into a persistable [GlobalConfig].

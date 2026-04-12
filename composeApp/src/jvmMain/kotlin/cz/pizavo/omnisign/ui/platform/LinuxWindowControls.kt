@@ -5,7 +5,9 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import cz.pizavo.omnisign.lumo.components.*
+import cz.pizavo.omnisign.lumo.components.Icon
+import cz.pizavo.omnisign.lumo.components.IconButton
+import cz.pizavo.omnisign.lumo.components.IconButtonVariant
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
 import java.awt.Frame
@@ -18,12 +20,13 @@ private val WindowControlButtonPadding = PaddingValues(6.dp)
 /**
  * Minimal close / minimize / maximize-restore button row for **undecorated Linux windows**.
  *
- * On Linux, JBR's [com.jetbrains.WindowDecorations] API is not supported, so the app
- * runs with `undecorated = true` (no native title bar). This composable is injected into
- * [cz.pizavo.omnisign.ui.layout.IslandToolbar] via [LocalWindowControls] and bridges
- * Compose to the underlying AWT [Frame].
+ * On Linux the window runs undecorated (no native title bar), and JBR's Custom
+ * Title Bar does not provide native window-control buttons on X11. This
+ * composable is always shown on Linux, injected into
+ * [cz.pizavo.omnisign.ui.layout.IslandToolbar] via [LocalWindowControls],
+ * and bridges Compose to the underlying AWT [Frame].
  *
- * Window-state changes triggered by the window manager (e.g. maximise via the taskbar)
+ * Window-state changes triggered by the window manager (e.g., maximize via the taskbar)
  * are tracked through a [WindowStateListener] attached for the lifetime of the composable.
  *
  * @param window The AWT frame whose state the buttons control.
@@ -72,7 +75,6 @@ fun LinuxWindowControls(window: Frame) {
             variant = IconButtonVariant.Ghost,
             onClick = {
                 window.extendedState = if (isMaximized) Frame.NORMAL else Frame.MAXIMIZED_BOTH
-                isMaximized = !isMaximized
             },
             contentPadding = WindowControlButtonPadding,
         ) {

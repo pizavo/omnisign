@@ -2,7 +2,11 @@ package cz.pizavo.omnisign.ui.platform
 
 import com.jetbrains.JBR
 import com.jetbrains.WindowDecorations
+import cz.pizavo.omnisign.ui.platform.JbrTitleBarHelper.install
+import io.github.oshai.kotlinlogging.KotlinLogging
 import java.awt.Frame
+
+private val logger = KotlinLogging.logger {}
 
 /**
  * Encapsulates JetBrains Runtime (JBR) Custom Title Bar setup.
@@ -11,6 +15,11 @@ import java.awt.Frame
  * preserving OS-level window management such as edge snapping, shadows,
  * resize borders, and taskbar integration. The freed title bar area is
  * handed to Compose for custom toolbar rendering.
+ *
+ * On Linux, the current JBR build resolved by the Gradle Foojay toolchain
+ * does not support [WindowDecorations] (`getWindowDecorations()` returns
+ * `null`), so [install] returns `null` and the caller falls back to
+ * [LinuxWindowControls] and [com.jetbrains.WindowMove]-based drag.
  */
 object JbrTitleBarHelper {
 
@@ -24,33 +33,20 @@ object JbrTitleBarHelper {
      * @param window The AWT frame to customize.
      * @param height Title bar height in physical pixels.
      * @return The installed [WindowDecorations.CustomTitleBar], or `null` when
-     *   JBR is not available.
+     *   JBR does not support [WindowDecorations] on the current platform.
      */
     fun install(window: Frame, height: Float): WindowDecorations.CustomTitleBar? = try {
-        val decorations = JBR.getWindowDecorations() ?: return null
+        val decorations = JBR.getWindowDecorations()
+        if (decorations == null) {
+            logger.debug { "JBR WindowDecorations not available on this platform" }
+            return null
+        }
         val titleBar = decorations.createCustomTitleBar()
         titleBar.height = height
         decorations.setCustomTitleBar(window, titleBar)
         titleBar
-    } catch (_: Throwable) {
+    } catch (e: Throwable) {
+        logger.debug(e) { "JBR CustomTitleBar installation failed" }
         null
-    }
-
-    /**
-     * Updates the height of an already-installed [titleBar] without recreating it.
-     *
-     * Preserves all previously set properties (e.g. `controls.dark`). Must be
-     * called on the AWT Event Dispatch Thread.
-     *
-     * @param window The AWT frame on which the title bar is installed.
-     * @param titleBar The existing [WindowDecorations.CustomTitleBar] to resize.
-     * @param newHeight New title bar height in physical pixels.
-     */
-    fun updateHeight(window: Frame, titleBar: WindowDecorations.CustomTitleBar, newHeight: Float) {
-        try {
-            titleBar.height = newHeight
-            JBR.getWindowDecorations()?.setCustomTitleBar(window, titleBar)
-        } catch (_: Throwable) {
-        }
     }
 }

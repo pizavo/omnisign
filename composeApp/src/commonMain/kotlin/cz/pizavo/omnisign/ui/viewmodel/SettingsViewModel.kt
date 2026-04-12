@@ -10,6 +10,8 @@ import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
+import cz.pizavo.omnisign.ui.platform.loadUseNativeTitleBar
+import cz.pizavo.omnisign.ui.platform.saveUseNativeTitleBar
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
@@ -37,6 +39,9 @@ import kotlinx.coroutines.withContext
  *   When available, the executable path field is hidden from the user and this value is used
  *   automatically. `null` when auto-detection is unavailable (e.g. `java -jar` or Wasm),
  *   in which case a manual text field is shown as a fallback.
+ * @param isLinuxDesktop Whether the application is running on JVM Linux desktop. When `true`,
+ *   the Appearance > Window section is shown in the settings dialog and the native title bar
+ *   preference is loaded/saved via [loadUseNativeTitleBar]/[saveUseNativeTitleBar].
  * @param ioDispatcher Dispatcher for blocking scheduler process calls.
  */
 class SettingsViewModel(
@@ -46,6 +51,7 @@ class SettingsViewModel(
     private val credentialStore: CredentialStore? = null,
     private val schedulerPort: SchedulerPort? = null,
     private val autoDetectedExecutablePath: String? = null,
+    private val isLinuxDesktop: Boolean = false,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
@@ -90,7 +96,12 @@ class SettingsViewModel(
                         schedulerConfig = appConfig.schedulerConfig,
                         schedulerInstalled = installed,
                         schedulerAutoDetectedPath = autoDetectedExecutablePath,
-                    )
+                    ).let {
+                        if (isLinuxDesktop) it.copy(
+                            useNativeTitleBar = loadUseNativeTitleBar() ?: false,
+                            showNativeTitleBarOption = true,
+                        ) else it
+                    }
                     _state.value = editState
                     _initialState.value = editState
                 },
@@ -137,6 +148,7 @@ class SettingsViewModel(
                         err to inst
                     }
                     storeTsaPasswordIfNeeded(current)
+                    if (isLinuxDesktop) saveUseNativeTitleBar(current.useNativeTitleBar)
                     _state.update { it.copy(saving = false, error = schedulerError, schedulerInstalled = installed) }
                     _initialState.value = _state.value
                     if (schedulerError == null) onSuccess()
