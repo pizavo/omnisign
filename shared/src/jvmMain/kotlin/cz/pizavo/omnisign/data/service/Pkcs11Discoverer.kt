@@ -10,7 +10,6 @@ import com.sun.jna.win32.StdCallLibrary
 import cz.pizavo.omnisign.data.service.Pkcs11Discoverer.Companion.P11_KIT_PROXY_PATHS
 import cz.pizavo.omnisign.data.service.Pkcs11Discoverer.Companion.P11_STANDALONE_PATTERN
 import cz.pizavo.omnisign.data.service.Pkcs11Discoverer.Companion.PKCS11_NAME_PATTERNS
-import cz.pizavo.omnisign.data.service.Pkcs11Discoverer.Companion.PROBE_CACHE_TTL
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.service.TokenInfo
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -24,10 +23,7 @@ import kotlinx.coroutines.flow.first
 import java.io.File
 import java.nio.file.Path
 import java.util.*
-import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
-import kotlin.time.Duration.Companion.seconds
-import kotlin.time.TimeSource
 
 /**
  * Identity of a physical PKCS#11 token as reported by `C_GetTokenInfo`.
@@ -83,6 +79,11 @@ internal const val DEFAULT_PROBE_TIMEOUT_SECONDS = 30L
  *   back to unreliable subprocess probes.  Defaults to a pre-completed flow for test contexts
  *   where warmup is not applicable.  In production, injected via Koin as a shared flow that
  *   [Pkcs11WarmupService] writes to.
+ * @property discoveryGate Concurrency gate ensuring that at most one [discoverTokens] cycle runs
+ *   at a time, with at most one additional cycle queued.  When a discovery is already in progress
+ *   and a new request arrives, the running cycle's result is discarded and a fresh cycle executes
+ *   so every caller receives the latest hardware state.  Defaults to a new instance for backward
+ *   compatibility and tests.
  * @property tokenProber Strategy for probing PKCS#11 libraries for hardware token identities.
  *   Defaults to subprocess-based probing via [probeTokenIdentitiesViaSubprocess] to isolate
  *   native crashes (SIGSEGV) from the host JVM; override for testing.  The default lambda
@@ -92,65 +93,43 @@ class Pkcs11Discoverer(
     private val probeTimeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
     private val sessionManager: Pkcs11SessionManager? = null,
     private val warmupReady: StateFlow<Boolean> = MutableStateFlow(true),
+    private val discoveryGate: ConflatedProbeGate<List<TokenInfo>> = ConflatedProbeGate(),
     private val tokenProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
         probeTokenIdentitiesViaSubprocess(path, probeTimeoutSeconds)
     },
 ) {
 
     /**
-     * Short-lived cache of probe results keyed by absolute library path.
+     * Probe a single PKCS#11 library for token identities using the configured strategy.
      *
-     * Prevents redundant subprocess spawns when [probeLibrary] is called shortly after
-     * [discoverTokens] for the same library — a pattern that occurs in
-     * [DssSigningRepository][cz.pizavo.omnisign.data.repository.DssSigningRepository] where
-     * discovery probes every candidate and then [DssTokenService.probeTokenPresent] immediately
-     * re-probes each discovered token.  Without caching, the rapid successive access to the
-     * same PKCS#11 middleware causes intermittent failures (the smart card reader is still
-     * busy from the first probe).
-     *
-     * Entries expire after [PROBE_CACHE_TTL] and are refreshed on the next call.
-     */
-    private val probeCache = ConcurrentHashMap<String, Pair<TimeSource.Monotonic.ValueTimeMark, List<Pkcs11TokenIdentity>>>()
-
-    /**
-     * Probe a single PKCS#11 library for token identities using the configured [tokenProber].
-     *
-     * Returns a cached result when the library was probed within the last [PROBE_CACHE_TTL];
-     * otherwise delegates to the [tokenProber] strategy (subprocess-based by default) and
-     * caches the result.
+     * When a [sessionManager] is available and the library has been initialized in-process
+     * (via [Pkcs11WarmupService]), the probe uses the fast in-process path
+     * (`C_GetSlotList` + `C_GetTokenInfo`, milliseconds).  Libraries that crashed during
+     * warmup are skipped immediately.  Otherwise falls back to the [tokenProber] strategy
+     * (subprocess-based by default).
      *
      * Callers such as [DssTokenService.probeTokenPresent] should use this method rather than
-     * calling [probeTokenIdentitiesViaSubprocess] directly so that the classpath fallback
-     * logic, caching, and any test overrides are applied consistently.
+     * calling [probeTokenIdentitiesViaSubprocess] directly so that the in-process fast path,
+     * crash avoidance, and any test overrides are applied consistently.
      *
      * @param libraryPath Absolute path to the PKCS#11 shared library to probe.
      * @return Token identities found in the library, or an empty list when the library is
      *   unreachable, the probe times out, or no tokens are inserted.
      */
     fun probeLibrary(libraryPath: String): List<Pkcs11TokenIdentity> {
-        val cached = probeCache[libraryPath]
-        if (cached != null && cached.first.elapsedNow() < PROBE_CACHE_TTL) {
-            logger.debug { "Probe cache hit for '$libraryPath' (age=${cached.first.elapsedNow()})" }
-            return cached.second
-        }
-
         if (sessionManager != null) {
             if (sessionManager.isCrashed(libraryPath)) {
                 logger.debug { "Skipping crashed library '$libraryPath' (in-process)" }
-                probeCache[libraryPath] = TimeSource.Monotonic.markNow() to emptyList()
                 return emptyList()
             }
             val inProcess = sessionManager.probeInProcess(libraryPath)
             if (inProcess != null) {
                 logger.debug { "In-process probe for '$libraryPath' returned ${inProcess.size} token(s)" }
-                probeCache[libraryPath] = TimeSource.Monotonic.markNow() to inProcess
                 return inProcess
             }
         }
 
-        val result = tokenProber(libraryPath)
-        probeCache[libraryPath] = TimeSource.Monotonic.markNow() to result
-        return result
+        return tokenProber(libraryPath)
     }
 
     /**
@@ -225,6 +204,11 @@ class Pkcs11Discoverer(
      * Deduplication (by serial number or middleware family) is applied after all probes finish
      * and therefore produces deterministic results regardless of completion order.
      *
+     * Concurrency between multiple callers is managed by [discoveryGate]: at most one
+     * full discovery cycle runs at a time, with at most one queued behind it.  If a new
+     * request arrives while a cycle is in progress, the in-progress result is discarded
+     * and a fresh cycle runs so that every caller receives the latest hardware state.
+     *
      * @param appDataPkcs11Dir Optional drop directory; every PKCS#11-named file found here is
      *   added to the candidate list without any config change.
      * @param userPkcs11Libraries Additional `(display name, path)` pairs supplied by the user.
@@ -233,7 +217,7 @@ class Pkcs11Discoverer(
     suspend fun discoverTokens(
         appDataPkcs11Dir: File? = null,
         userPkcs11Libraries: List<Pair<String, String>> = emptyList(),
-    ): List<TokenInfo> {
+    ): List<TokenInfo> = discoveryGate.runOrCoalesce {
         if (!warmupReady.value) {
             logger.info { "Waiting for PKCS#11 warmup to complete before discovery…" }
             warmupReady.first { it }
@@ -282,7 +266,7 @@ class Pkcs11Discoverer(
             }
         }
 
-        return result
+        result
     }
 
     /**
@@ -812,15 +796,6 @@ class Pkcs11Discoverer(
     private companion object {
         val logger = KotlinLogging.logger {}
 
-        /**
-         * Time-to-live for [probeCache] entries.
-         *
-         * Chosen to be long enough to cover the gap between [discoverTokens] and the
-         * subsequent [probeLibrary] calls from
-         * [DssTokenService.probeTokenPresent][cz.pizavo.omnisign.data.service.DssTokenService],
-         * but short enough that a manual UI refresh after a few seconds triggers a real probe.
-         */
-        val PROBE_CACHE_TTL = 10.seconds
 
         /**
          * Maximum ATR length defined by ISO/IEC 7816-3: 32 bytes of ATR + 1 TCK byte.
