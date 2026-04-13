@@ -431,6 +431,51 @@ class Pkcs11DiscovererTest : FunSpec({
 		discoverer.probeLibrary("/nonexistent.so").shouldBeEmpty()
 	}
 
+	test("probeLibrary skips crashed library via sessionManager") {
+		val sessionManager = Pkcs11SessionManager()
+		sessionManager.registerCrashed("/crashed/lib.so")
+
+		val discoverer = Pkcs11Discoverer(
+			sessionManager = sessionManager,
+			tokenProber = { error("should not be called") },
+		)
+
+		discoverer.probeLibrary("/crashed/lib.so").shouldBeEmpty()
+	}
+
+	test("probeLibrary uses in-process path when sessionManager has a session") {
+		val sessionManager = io.mockk.mockk<Pkcs11SessionManager>()
+		io.mockk.every { sessionManager.isCrashed("/in-process/lib.so") } returns false
+		io.mockk.every { sessionManager.probeInProcess("/in-process/lib.so") } returns listOf(
+			Pkcs11TokenIdentity(label = "InProc Token", serialNumber = "SN-IP", libraryPath = "/in-process/lib.so")
+		)
+
+		val discoverer = Pkcs11Discoverer(
+			sessionManager = sessionManager,
+			tokenProber = { error("should not fall back to subprocess") },
+		)
+
+		val result = discoverer.probeLibrary("/in-process/lib.so")
+		result.shouldHaveSize(1)
+		result.first().serialNumber shouldBe "SN-IP"
+	}
+
+	test("probeLibrary falls back to tokenProber when sessionManager returns null for probeInProcess") {
+		val sessionManager = io.mockk.mockk<Pkcs11SessionManager>()
+		io.mockk.every { sessionManager.isCrashed("/unknown/lib.so") } returns false
+		io.mockk.every { sessionManager.probeInProcess("/unknown/lib.so") } returns null
+
+		val expected = listOf(
+			Pkcs11TokenIdentity(label = "Sub Token", serialNumber = "SN-SUB", libraryPath = "/unknown/lib.so")
+		)
+		val discoverer = Pkcs11Discoverer(
+			sessionManager = sessionManager,
+			tokenProber = { expected },
+		)
+
+		discoverer.probeLibrary("/unknown/lib.so") shouldBe expected
+	}
+
 	test("resolveProbeClasspath returns non-blank value from java.class.path in test environment") {
 		val classpath = resolveProbeClasspath()
 

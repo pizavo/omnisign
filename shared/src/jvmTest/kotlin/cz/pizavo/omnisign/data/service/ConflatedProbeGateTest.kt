@@ -184,6 +184,45 @@ class ConflatedProbeGateTest : FunSpec({
 		}
 	}
 
+	test("error during re-run propagates to leader and all accumulated waiters from earlier iterations") {
+		runTest {
+			val gate = ConflatedProbeGate<String>()
+			var runCount = 0
+			val firstProbeStarted = CompletableDeferred<Unit>()
+			val allowFirstProbeFinish = CompletableDeferred<Unit>()
+
+			val block: suspend () -> String = {
+				runCount++
+				val thisRun = runCount
+				if (thisRun == 1) {
+					firstProbeStarted.complete(Unit)
+					allowFirstProbeFinish.await()
+					"stale-result"
+				} else {
+					error("re-run failed")
+				}
+			}
+
+			val callerA = async { runCatching { gate.runOrCoalesce(block) } }
+
+			firstProbeStarted.await()
+
+			val callerB = async { runCatching { gate.runOrCoalesce(block) } }
+
+			delay(50.milliseconds)
+			allowFirstProbeFinish.complete(Unit)
+
+			val resultA = callerA.await()
+			val resultB = callerB.await()
+
+			runCount shouldBe 2
+			resultA.isFailure shouldBe true
+			resultA.exceptionOrNull()!!.message shouldBe "re-run failed"
+			resultB.isFailure shouldBe true
+			resultB.exceptionOrNull()!!.message shouldBe "re-run failed"
+		}
+	}
+
 	test("gate returns to idle after completion so next caller becomes a new leader") {
 		runTest {
 			val gate = ConflatedProbeGate<String>()
