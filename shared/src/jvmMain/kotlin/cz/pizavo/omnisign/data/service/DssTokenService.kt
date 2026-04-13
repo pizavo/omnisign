@@ -13,6 +13,7 @@ import cz.pizavo.omnisign.domain.service.TokenInfo
 import cz.pizavo.omnisign.domain.service.TokenService
 import cz.pizavo.omnisign.platform.PasswordCallback
 import eu.europa.esig.dss.token.*
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.bouncycastle.asn1.ASN1ObjectIdentifier
 import org.bouncycastle.asn1.ASN1Primitive
 import org.bouncycastle.asn1.ASN1Sequence
@@ -88,14 +89,26 @@ class DssTokenService(
 	/**
 	 * Check physical token presence without supplying a PIN.
 	 *
-	 * PKCS#11 tokens are probed via `C_GetSlotList` with `CK_TRUE`, which queries the
-	 * middleware for slots that currently have a card inserted.  This never calls `C_Login`
+	 * PKCS#11 tokens are probed via [Pkcs11Discoverer.probeLibrary], which delegates to the
+	 * configured probe strategy (subprocess-based by default with classpath fallback for
+	 * jpackage distributions).  The probe calls `C_GetSlotList` with `CK_TRUE`, which queries
+	 * the middleware for slots that currently have a card inserted.  This never calls `C_Login`
 	 * and therefore never risks incrementing a wrong-PIN counter.
 	 * FILE tokens are checked via [File.exists].
 	 * OS-native stores always return true — the subsequent load call handles any failure.
 	 */
 	override suspend fun probeTokenPresent(tokenInfo: TokenInfo): Boolean = when (tokenInfo.type) {
-		TokenType.PKCS11 -> tokenInfo.path?.let { probeTokenIdentitiesViaSubprocess(it).isNotEmpty() } ?: false
+		TokenType.PKCS11 -> {
+			val path = tokenInfo.path
+			if (path == null) {
+				logger.warn { "PKCS#11 token '${tokenInfo.name}' has no library path — treating as absent" }
+				false
+			} else {
+				val present = pkcs11Discoverer.probeLibrary(path).isNotEmpty()
+				logger.debug { "PKCS#11 token '${tokenInfo.name}' at '$path': present=$present" }
+				present
+			}
+		}
 		TokenType.FILE -> tokenInfo.path?.let { File(it).exists() } ?: false
 		TokenType.WINDOWS_MY, TokenType.MACOS_KEYCHAIN -> true
 	}
@@ -284,6 +297,8 @@ class DssTokenService(
 	}
 
 	private companion object {
+		val logger = KotlinLogging.logger {}
+
 		const val ALIAS_SERIAL_SUFFIX_LENGTH = 8
 
 		/**

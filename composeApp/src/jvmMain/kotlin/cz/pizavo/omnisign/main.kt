@@ -20,16 +20,23 @@ import com.jetbrains.WindowDecorations
 import com.jetbrains.WindowMove
 import cz.pizavo.omnisign.data.service.NotificationUrgency
 import cz.pizavo.omnisign.data.service.OsNotificationService
+import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
+import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.RenewBatchUseCase
 import cz.pizavo.omnisign.platform.PasswordCallback
 import cz.pizavo.omnisign.ui.platform.*
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import org.jetbrains.compose.resources.decodeToImageBitmap
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
+import org.koin.mp.KoinPlatform.getKoin
 import java.awt.Frame
 import java.awt.MouseInfo
 import java.awt.Point
@@ -173,6 +180,31 @@ private fun resolveLogDir(): String {
 }
 
 /**
+ * Resolves the platform-appropriate PKCS#11 drop directory for background warmup.
+ *
+ * Mirrors the logic in
+ * [DssTokenService.appDataPkcs11DropDir][cz.pizavo.omnisign.data.service.DssTokenService]
+ * so that warmup and discovery use the same candidate pool.
+ *
+ * - **Windows**: `%APPDATA%/omnisign/pkcs11`
+ * - **macOS**: `~/Library/Application Support/omnisign/pkcs11`
+ * - **Linux/other**: `~/.config/omnisign/pkcs11`
+ *
+ * @return The drop directory [File]; it may not exist on disk.
+ */
+private fun resolvePkcs11DropDir(): File {
+	val os = System.getProperty("os.name").lowercase()
+	val userHome = System.getProperty("user.home")
+	val base = when {
+		os.contains("win") -> System.getenv("APPDATA")?.let { File(it, "omnisign") }
+			?: File(userHome, "AppData/Roaming/omnisign")
+		os.contains("mac") -> File(userHome, "Library/Application Support/omnisign")
+		else -> File(userHome, ".config/omnisign")
+	}
+	return File(base, "pkcs11")
+}
+
+/**
  * JVM desktop entry point.
  *
  * Launches a [Window] with a JBR custom title bar — the OS handles snapping,
@@ -187,8 +219,20 @@ private fun resolveLogDir(): String {
  *
  * When invoked with the `renew` argument (e.g., by the OS scheduler), the app
  * runs the renewal batch in headless mode and exits without starting the GUI.
+ *
+ * When invoked with `probe <libraryPath>`, the app acts as a thin wrapper around
+ * [cz.pizavo.omnisign.data.service.Pkcs11ProbeWorker] to probe a single PKCS#11
+ * library in an isolated subprocess.  This mode is used by the PKCS#11 discovery
+ * layer in jpackage distributions where the `java` binary is not bundled in the
+ * runtime image.  It exits immediately via [exitProcess] without starting Koin,
+ * AWT, or the Compose UI.
  */
 fun main(args: Array<String> = emptyArray()) {
+	if (args.size >= 2 && args[0] == "probe") {
+		cz.pizavo.omnisign.data.service.Pkcs11ProbeWorker.main(arrayOf(args[1]))
+		exitProcess(0)
+	}
+
 	System.setProperty("sun.awt.wmclass", "OmniSign")
 
 	if (args.isNotEmpty() && args[0] == "renew") {
@@ -227,6 +271,7 @@ fun main(args: Array<String> = emptyArray()) {
 				appModule,
 				jvmRepositoryModule,
 				org.koin.dsl.module {
+					single { MutableStateFlow(false) }
 					single { ComposePasswordCallback() }
 					single<PasswordCallback> { get<ComposePasswordCallback>() }
 					single<PasswordDialogController> { get<ComposePasswordCallback>() }
@@ -236,6 +281,26 @@ fun main(args: Array<String> = emptyArray()) {
 		}
 
 		logger.info { "OmniSign desktop started — log directory: $LOG_DIR" }
+
+		val koin = getKoin()
+		val warmupService = koin.get<Pkcs11WarmupService>()
+		val warmupConfigRepo = koin.get<ConfigRepository>()
+
+		CoroutineScope(Dispatchers.IO).launch {
+			try {
+				val config = warmupConfigRepo.getCurrentConfig()
+				val userLibs = config.global.customPkcs11Libraries.map { it.name to it.path }
+				val pkcs11Dir = resolvePkcs11DropDir()
+				logger.info { "Launching PKCS#11 background warmup (${userLibs.size} user lib(s), dropDir=$pkcs11Dir)" }
+				warmupService.warmup(
+					appDataPkcs11Dir = pkcs11Dir,
+					userPkcs11Libraries = userLibs,
+				)
+			} catch (e: Exception) {
+				logger.warn(e) { "PKCS#11 background warmup failed — certificate discovery will use subprocess probing" }
+				koin.get<MutableStateFlow<Boolean>>().value = true
+			}
+		}
 
 		if (isLinux) {
 			logger.info {
@@ -358,7 +423,7 @@ private val TitleBarClientAreaListener = object : MouseAdapter() {}
  */
 @Composable
 private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
-	val windowStateStore = remember { org.koin.mp.KoinPlatform.getKoin().get<WindowStateStore>() }
+	val windowStateStore = remember { getKoin().get<WindowStateStore>() }
 	val persisted = remember { windowStateStore.load() }
 	val windowState = rememberWindowState(
 		placement = persisted?.placement ?: WindowPlacement.Floating,

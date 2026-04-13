@@ -5,7 +5,9 @@ import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldNotBeBlank
 import java.io.File
 
 /**
@@ -265,6 +267,38 @@ class Pkcs11DiscovererTest : FunSpec({
 		hwTokens.first().name shouldBe "My SafeNet Token"
 	}
 
+	test("discoverTokens deduplicates across identity and family paths for same-family libraries") {
+		val lib1 = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
+		val lib2 = File.createTempFile("gclib", ".dll").also { it.deleteOnExit() }
+
+		val fakeProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
+			if (path == lib1.absolutePath) {
+				listOf(
+					Pkcs11TokenIdentity(
+						label = "VP-SafeNet",
+						serialNumber = "SN-CROSS",
+						libraryPath = path,
+					)
+				)
+			} else {
+				emptyList()
+			}
+		}
+
+		val tokens = Pkcs11Discoverer(tokenProber = fakeProber).discoverTokens(
+			userPkcs11Libraries = listOf(
+				"SafeNet eToken" to lib1.absolutePath,
+				"Thales/Gemalto IDPrime" to lib2.absolutePath,
+			)
+		)
+
+		val safenetTokens = tokens.filter {
+			it.id == "pkcs11-SN-CROSS" || it.path == lib2.absolutePath
+		}
+		safenetTokens.shouldHaveSize(1)
+		safenetTokens.first().name shouldBe "VP-SafeNet"
+	}
+
 	test("discoverTokens produces separate entries for tokens with different serial numbers") {
 		val lib = File.createTempFile("softhsm-pkcs11", ".so").also { it.deleteOnExit() }
 
@@ -378,5 +412,37 @@ class Pkcs11DiscovererTest : FunSpec({
 
 		val hwToken = tokens.first { it.id == "pkcs11-0123456789ABCDEF" }
 		hwToken.name shouldBe "John's eToken 5110"
+	}
+
+	test("probeLibrary delegates to the configured tokenProber") {
+		val expected = listOf(
+			Pkcs11TokenIdentity(label = "Test Token", serialNumber = "SN-999", libraryPath = "/test.so")
+		)
+		val fakeProber: (String) -> List<Pkcs11TokenIdentity> = { expected }
+
+		val discoverer = Pkcs11Discoverer(tokenProber = fakeProber)
+
+		discoverer.probeLibrary("/test.so") shouldBe expected
+	}
+
+	test("probeLibrary returns empty list when tokenProber returns empty") {
+		val discoverer = Pkcs11Discoverer(tokenProber = { emptyList() })
+
+		discoverer.probeLibrary("/nonexistent.so").shouldBeEmpty()
+	}
+
+	test("resolveProbeClasspath returns non-blank value from java.class.path in test environment") {
+		val classpath = resolveProbeClasspath()
+
+		classpath.shouldNotBeNull()
+		classpath.shouldNotBeBlank()
+	}
+
+	test("resolveProbeCommand returns a non-null command in test environment") {
+		val command = resolveProbeCommand("/test/lib.so")
+
+		command.shouldNotBeNull()
+		command.any { it.contains("java") || it.contains("probe") }.shouldBeTrue()
+		command.last() shouldBe "/test/lib.so"
 	}
 })

@@ -121,6 +121,11 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 		"--enable-encryption-algorithm",
 		help = "Re-enable a globally disabled encryption algorithm. Repeatable."
 	).enum<EncryptionAlgorithm>().multiple()
+
+	private val pkcs11ProbeTimeout by option(
+		"--pkcs11-probe-timeout",
+		help = "Maximum seconds to wait for a single PKCS#11 library probe (1–120)"
+	).int()
 	
 	override fun help(context: Context): String =
 		"Set global configuration defaults"
@@ -129,7 +134,7 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 		if (listOf(
 				hashAlgorithm, encryptionAlgorithm, signatureLevel, timestampUrl, timestampUsername,
 				timestampPassword, timestampTimeout, validationPolicy, checkRevocation, useEuLotl,
-				algoExpirationLevel, algoExpirationLevelAfterUpdate
+				algoExpirationLevel, algoExpirationLevelAfterUpdate, pkcs11ProbeTimeout
 			)
 				.all { it == null } && algoExpiryOverride.isEmpty()
 				&& disableHashAlgorithm.isEmpty() && enableHashAlgorithm.isEmpty()
@@ -150,9 +155,9 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 				timestampServer = buildTimestampConfig(this.timestampServer),
 				disabledHashAlgorithms = (disabledHashAlgorithms + disableHashAlgorithm) - enableHashAlgorithm.toSet(),
 				disabledEncryptionAlgorithms = (disabledEncryptionAlgorithms + disableEncryptionAlgorithm) - enableEncryptionAlgorithm.toSet(),
+				pkcs11ProbeTimeoutSeconds = pkcs11ProbeTimeout?.toLong()?.coerceIn(1, 120)
+					?: pkcs11ProbeTimeoutSeconds,
 				validation = validation.copy(
-					policyType = validationPolicy ?: validation.policyType,
-					checkRevocation = checkRevocation?.toBooleanStrictOrNull() ?: validation.checkRevocation,
 					useEuLotl = useEuLotl?.toBooleanStrictOrNull() ?: validation.useEuLotl,
 					algorithmConstraints = validation.algorithmConstraints.copy(
 						expirationLevel = algoExpirationLevel
