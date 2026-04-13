@@ -92,15 +92,25 @@ class Pkcs11SessionManager {
 	/**
 	 * Probe a library for token identities using the persistent in-process session.
 	 *
-	 * Uses `C_GetSlotList(tokenPresent=CK_TRUE)` and `C_GetTokenInfo` to enumerate
+	 * Uses `C_GetSlotList(tokenPresent=CK_TRUE)` and `C_GetTokenInfo` to list
 	 * currently inserted tokens.  These calls are lightweight and complete in
-	 * milliseconds — no `C_Initialize` overhead on subsequent calls.
+	 * milliseconds — no `C_Initialize` overhead on further calls.
+	 *
+	 * **Intentional code duplication**: the slot-enumeration logic
+	 * (`C_GetSlotList` → `C_GetTokenInfo` → build [Pkcs11TokenIdentity] list) is
+	 * near-identical to the standalone [probeTokenIdentities] function.  The duplication
+	 * is deliberate: [probeTokenIdentities] runs inside an isolated [Pkcs11ProbeWorker]
+	 * subprocess where native crashes (SIGSEGV, SIGABRT) are contained, whereas this
+	 * method operates on a pre-initialized in-process session.  Merging them would couple
+	 * the crash-isolated subprocess path to the in-process session lifecycle, defeating
+	 * the isolation boundary.
 	 *
 	 * @param libraryPath Absolute path to the PKCS#11 shared library.
 	 * @return Token identities found, empty list if no tokens are inserted, or `null`
 	 *   when no in-process session exists for this library (caller should fall back to
 	 *   subprocess probing).
 	 */
+	@Suppress("DuplicatedCode")
 	fun probeInProcess(libraryPath: String): List<Pkcs11TokenIdentity>? {
 		val lib = sessions[libraryPath] ?: return null
 

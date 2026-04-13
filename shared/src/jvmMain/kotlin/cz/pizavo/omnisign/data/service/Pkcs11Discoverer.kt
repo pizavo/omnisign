@@ -23,7 +23,6 @@ import kotlinx.coroutines.flow.first
 import java.io.File
 import java.nio.file.Path
 import java.util.*
-import java.util.concurrent.TimeUnit
 
 /**
  * Identity of a physical PKCS#11 token as reported by `C_GetTokenInfo`.
@@ -42,7 +41,7 @@ data class Pkcs11TokenIdentity(
  * Default timeout (in seconds) for probing a single PKCS#11 library.
  *
  * Acts as a safety net for middleware that hangs without responding.
- * Probes that crash (e.g. SIGSEGV, SIGABRT) exit immediately with a
+ * Probes that crash (e.g., SIGSEGV, SIGABRT) exit immediately with a
  * non-zero code and are handled without waiting for this timeout.
  */
 internal const val DEFAULT_PROBE_TIMEOUT_SECONDS = 30L
@@ -105,7 +104,7 @@ class Pkcs11Discoverer(
      * When a [sessionManager] is available and the library has been initialized in-process
      * (via [Pkcs11WarmupService]), the probe uses the fast in-process path
      * (`C_GetSlotList` + `C_GetTokenInfo`, milliseconds).  Libraries that crashed during
-     * warmup are skipped immediately.  Otherwise falls back to the [tokenProber] strategy
+     * warmup are skipped immediately.  Otherwise, falls back to the [tokenProber] strategy
      * (subprocess-based by default).
      *
      * Callers such as [DssTokenService.probeTokenPresent] should use this method rather than
@@ -987,53 +986,44 @@ internal fun probeTokenIdentitiesViaSubprocess(
 ): List<Pkcs11TokenIdentity> {
     val logger = KotlinLogging.logger {}
     return runCatching {
-        val command = resolveProbeCommand(libraryPath)
-        if (command == null) {
-            logger.warn { "Cannot resolve probe command — skipping probe for '$libraryPath'" }
-            return emptyList()
-        }
+        when (val result = runProbeSubprocess(libraryPath, timeoutSeconds)) {
+            null -> {
+                logger.warn { "Cannot resolve probe command — skipping probe for '$libraryPath'" }
+                emptyList()
+            }
 
-        logger.debug { "Spawning PKCS#11 probe subprocess: ${command.first()}, library=$libraryPath" }
+            is Pkcs11SubprocessResult.TimedOut -> {
+                logger.warn {
+                    "PKCS#11 probe subprocess pid=${result.pid} for '$libraryPath' timed out after ${timeoutSeconds}s"
+                }
+                emptyList()
+            }
 
-        val process = ProcessBuilder(command)
-            .start()
-
-        val pid = process.pid()
-        logger.debug { "PKCS#11 probe subprocess pid=$pid for '$libraryPath'" }
-
-        val completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
-
-        if (!completed) {
-            logger.warn { "PKCS#11 probe subprocess pid=$pid for '$libraryPath' timed out after ${timeoutSeconds}s — killing" }
-            process.destroyForcibly()
-            return emptyList()
-        }
-
-        val exitCode = process.exitValue()
-        if (exitCode != 0) {
-            val stderr = runCatching { process.errorStream.bufferedReader().readText().trim() }.getOrDefault("")
-            val signal = if (exitCode > 128) " (${signalName(exitCode - 128)})" else ""
-            logger.warn {
-                buildString {
-                    append("PKCS#11 probe subprocess pid=$pid for '$libraryPath' exited with code $exitCode$signal")
-                    if (stderr.isNotEmpty()) {
-                        append("\n  stderr: ${stderr.take(MAX_STDERR_LOG_CHARS)}")
-                    }
-                    if (exitCode - 128 == 11 || exitCode - 128 == 6) {
-                        append("\n  Check for hs_err_pid${pid}.log in the crash directory")
+            is Pkcs11SubprocessResult.Crashed -> {
+                val signal = if (result.exitCode > 128) " (${signalName(result.exitCode - 128)})" else ""
+                logger.warn {
+                    buildString {
+                        append("PKCS#11 probe subprocess pid=${result.pid} for '$libraryPath' exited with code ${result.exitCode}$signal")
+                        if (result.stderr.isNotEmpty()) {
+                            append("\n  stderr: ${result.stderr}")
+                        }
+                        if (result.exitCode - 128 == 11 || result.exitCode - 128 == 6) {
+                            append("\n  Check for hs_err_pid${result.pid}.log in the crash directory")
+                        }
                     }
                 }
+                emptyList()
             }
-            return emptyList()
-        }
 
-        val output = process.inputStream.bufferedReader().readText()
-        output.lines()
-            .filter { it.contains('\t') }
-            .map { line ->
-                val (label, serial) = line.split('\t', limit = 2)
-                Pkcs11TokenIdentity(label = label, serialNumber = serial, libraryPath = libraryPath)
+            is Pkcs11SubprocessResult.Success -> {
+                result.stdout.lines()
+                    .filter { it.contains('\t') }
+                    .map { line ->
+                        val (label, serial) = line.split('\t', limit = 2)
+                        Pkcs11TokenIdentity(label = label, serialNumber = serial, libraryPath = libraryPath)
+                    }
             }
+        }
     }.getOrElse { e ->
         logger.warn(e) { "Failed to spawn PKCS#11 probe subprocess for '$libraryPath'" }
         emptyList()
@@ -1052,9 +1042,18 @@ internal fun probeTokenIdentitiesViaSubprocess(
  * as success.  `C_Finalize` is deliberately NOT called so existing sessions created by
  * DSS or the SunPKCS11 provider are not interrupted.
  *
+ * **Intentional code duplication**: the slot-enumeration logic
+ * (`C_GetSlotList` → `C_GetTokenInfo` → build [Pkcs11TokenIdentity] list) is
+ * near-identical to [Pkcs11SessionManager.probeInProcess].  The duplication is deliberate:
+ * this function runs inside an isolated [Pkcs11ProbeWorker] subprocess where native crashes
+ * (SIGSEGV, SIGABRT) are contained, whereas [Pkcs11SessionManager.probeInProcess] operates
+ * on a pre-initialized in-process session.  Merging them would couple the crash-isolated
+ * subprocess path to the in-process session lifecycle, defeating the isolation boundary.
+ *
  * Returns an empty list when the library cannot be loaded, no slots have tokens, or
  * any PKCS#11 call fails.
  */
+@Suppress("DuplicatedCode")
 internal fun probeTokenIdentities(libraryPath: String): List<Pkcs11TokenIdentity> = runCatching {
     @Suppress("UNCHECKED_CAST")
     val lib = Native.load(libraryPath, Pkcs11ProbeLib::class.java) as Pkcs11ProbeLib
@@ -1096,10 +1095,6 @@ internal fun probeTokenIdentities(libraryPath: String): List<Pkcs11TokenIdentity
 
 
 
-/**
- * Maximum number of characters from stderr to include in probe failure log messages.
- */
-private const val MAX_STDERR_LOG_CHARS = 2000
 
 /**
  * Map a POSIX signal number to its conventional name for diagnostic logging.

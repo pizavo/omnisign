@@ -7,7 +7,6 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import java.util.concurrent.TimeUnit
 
 /**
  * Orchestrates background PKCS#11 library warmup at application startup.
@@ -126,52 +125,45 @@ class Pkcs11WarmupService(
 		logger.debug { "Warmup probing '$name' at '$libraryPath'" }
 
 		try {
-			val command = resolveProbeCommand(libraryPath)
-			if (command == null) {
-				logger.warn { "Cannot resolve probe command for '$name' ('$libraryPath') — skipping warmup" }
-				return
-			}
-
-			val process = ProcessBuilder(command).start()
-			val pid = process.pid()
-			logger.debug { "Warmup subprocess pid=$pid started for '$name' ('$libraryPath')" }
-
-			val completed = process.waitFor(probeTimeoutSeconds, TimeUnit.SECONDS)
-
-			if (!completed) {
-				logger.warn {
-					"Warmup subprocess pid=$pid for '$name' ('$libraryPath') timed out " +
-							"after ${probeTimeoutSeconds}s — killing and marking as crashed"
+			when (val result = runProbeSubprocess(libraryPath, probeTimeoutSeconds)) {
+				null -> {
+					logger.warn { "Cannot resolve probe command for '$name' ('$libraryPath') — skipping warmup" }
 				}
-				process.destroyForcibly()
-				sessionManager.registerCrashed(libraryPath)
-				return
-			}
 
-			val exitCode = process.exitValue()
-			if (exitCode != 0) {
-				val signal = if (exitCode > 128) " (${signalName(exitCode - 128)})" else ""
-				val stderr = runCatching { process.errorStream.bufferedReader().readText().trim() }.getOrDefault("")
-				logger.warn {
-					buildString {
-						append("Warmup subprocess pid=$pid for '$name' ('$libraryPath') ")
-						append("exited with code $exitCode$signal — marking as crashed")
-						if (stderr.isNotEmpty()) {
-							append("\n  stderr: ${stderr.take(MAX_STDERR_LOG_CHARS)}")
+				is Pkcs11SubprocessResult.TimedOut -> {
+					logger.warn {
+						"Warmup subprocess pid=${result.pid} for '$name' ('$libraryPath') timed out " +
+								"after ${probeTimeoutSeconds}s — marking as crashed"
+					}
+					sessionManager.registerCrashed(libraryPath)
+				}
+
+				is Pkcs11SubprocessResult.Crashed -> {
+					val signal = if (result.exitCode > 128) " (${signalName(result.exitCode - 128)})" else ""
+					logger.warn {
+						buildString {
+							append("Warmup subprocess pid=${result.pid} for '$name' ('$libraryPath') ")
+							append("exited with code ${result.exitCode}$signal — marking as crashed")
+							if (result.stderr.isNotEmpty()) {
+								append("\n  stderr: ${result.stderr}")
+							}
 						}
 					}
+					sessionManager.registerCrashed(libraryPath)
 				}
-				sessionManager.registerCrashed(libraryPath)
-				return
-			}
 
-			logger.debug { "Warmup subprocess pid=$pid for '$name' ('$libraryPath') succeeded — registering in-process" }
-			sessionManager.registerSafe(libraryPath)
+				is Pkcs11SubprocessResult.Success -> {
+					logger.debug {
+						"Warmup subprocess pid=${result.pid} for '$name' ('$libraryPath') succeeded — registering in-process"
+					}
+					sessionManager.registerSafe(libraryPath)
 
-			if (sessionManager.hasSession(libraryPath)) {
-				logger.info { "Warmup complete for '$name': in-process session established" }
-			} else {
-				logger.warn { "Warmup for '$name': subprocess passed but in-process registration failed" }
+					if (sessionManager.hasSession(libraryPath)) {
+						logger.info { "Warmup complete for '$name': in-process session established" }
+					} else {
+						logger.warn { "Warmup for '$name': subprocess passed but in-process registration failed" }
+					}
+				}
 			}
 		} catch (e: Exception) {
 			logger.warn(e) { "Warmup failed for '$name' ('$libraryPath') — marking as crashed" }
@@ -184,7 +176,3 @@ class Pkcs11WarmupService(
 	}
 }
 
-/**
- * Maximum number of characters from stderr to include in warmup failure log messages.
- */
-private const val MAX_STDERR_LOG_CHARS = 2000
