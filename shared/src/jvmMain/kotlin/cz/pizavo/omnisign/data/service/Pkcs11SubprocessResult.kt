@@ -1,7 +1,9 @@
 package cz.pizavo.omnisign.data.service
 
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
+import kotlin.concurrent.thread
 
 /**
  * Maximum number of characters from subprocess stderr to include in log messages.
@@ -10,6 +12,18 @@ import java.util.concurrent.TimeUnit
  * to keep log output bounded when a crashed library dumps a large stack trace to stderr.
  */
 internal const val MAX_STDERR_LOG_CHARS = 2000
+
+/**
+ * Grace period in seconds for draining subprocess stdout/stderr after the process
+ * has exited or been forcibly killed, and for waiting for the killed process to
+ * actually terminate.
+ *
+ * After a subprocess exits normally, its pipe buffers are flushed almost instantly;
+ * this timeout is a safety net for pathological cases.  After [Process.destroyForcibly],
+ * the OS closes the streams, causing the drain threads to finish within milliseconds —
+ * the timeout merely caps the wait so the caller is never blocked indefinitely.
+ */
+internal const val STREAM_DRAIN_TIMEOUT_SECONDS = 5L
 
 /**
  * Outcome of running a [Pkcs11ProbeWorker] subprocess to completion.
@@ -55,10 +69,19 @@ internal sealed interface Pkcs11SubprocessResult {
  * [probeTokenIdentitiesViaSubprocess] previously implemented independently:
  * 1. Resolve the probe command via [resolveProbeCommand].
  * 2. Start the process via [ProcessBuilder].
- * 3. Wait up to [timeoutSeconds] for completion.
- * 4. On timeout → [Process.destroyForcibly] and return [Pkcs11SubprocessResult.TimedOut].
- * 5. On non-zero exit → capture stderr and return [Pkcs11SubprocessResult.Crashed].
- * 6. On exit 0 → capture stdout and return [Pkcs11SubprocessResult.Success].
+ * 3. Immediately launch two daemon threads that drain `stdout` and `stderr` into
+ *    [CompletableFuture]s.  This prevents the classic pipe-buffer deadlock: OS pipe
+ *    buffers are typically 64 KB, and if the subprocess fills either buffer while the
+ *    parent blocks on [Process.waitFor], the child blocks on `write()` and never exits,
+ *    causing a spurious timeout.
+ * 4. Wait up to [timeoutSeconds] for completion.
+ * 5. On timeout → [Process.destroyForcibly], brief grace period, return [Pkcs11SubprocessResult.TimedOut].
+ * 6. On non-zero exit → drain stderr future and return [Pkcs11SubprocessResult.Crashed].
+ * 7. On exit 0 → drain stdout future and return [Pkcs11SubprocessResult.Success].
+ *
+ * A `try`/`finally` block guarantees that the subprocess is forcibly killed if the calling
+ * thread encounters an unexpected exception (e.g., [InterruptedException], OOM) after the
+ * process has been started, so discovery is never left hanging.
  *
  * @param libraryPath Absolute path to the PKCS#11 shared library to probe.
  * @param timeoutSeconds Maximum wall-clock time to wait before forcibly killing the subprocess.
@@ -81,22 +104,46 @@ internal fun runProbeSubprocess(
 	val pid = process.pid()
 	logger.debug { "PKCS#11 subprocess pid=$pid started for '$libraryPath'" }
 
-	val completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+	try {
+		val stdoutResult = CompletableFuture<String>()
+		val stderrResult = CompletableFuture<String>()
 
-	if (!completed) {
-		process.destroyForcibly()
-		return Pkcs11SubprocessResult.TimedOut(pid)
-	}
+		thread(isDaemon = true, name = "pkcs11-stdout-$pid") {
+			stdoutResult.complete(
+				runCatching { process.inputStream.bufferedReader().readText() }.getOrDefault("")
+			)
+		}
+		thread(isDaemon = true, name = "pkcs11-stderr-$pid") {
+			stderrResult.complete(
+				runCatching { process.errorStream.bufferedReader().readText().trim() }.getOrDefault("")
+			)
+		}
 
-	val exitCode = process.exitValue()
-	if (exitCode != 0) {
-		val stderr = runCatching {
-			process.errorStream.bufferedReader().readText().trim()
+		val completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+
+		if (!completed) {
+			process.destroyForcibly()
+			process.waitFor(STREAM_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+			return Pkcs11SubprocessResult.TimedOut(pid)
+		}
+
+		val exitCode = process.exitValue()
+		if (exitCode != 0) {
+			val stderr = runCatching {
+				stderrResult.get(STREAM_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+			}.getOrDefault("")
+			return Pkcs11SubprocessResult.Crashed(pid, exitCode, stderr.take(MAX_STDERR_LOG_CHARS))
+		}
+
+		val stdout = runCatching {
+			stdoutResult.get(STREAM_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
 		}.getOrDefault("")
-		return Pkcs11SubprocessResult.Crashed(pid, exitCode, stderr.take(MAX_STDERR_LOG_CHARS))
+		return Pkcs11SubprocessResult.Success(pid, stdout)
+	} finally {
+		if (process.isAlive) {
+			logger.debug { "Destroying leaked subprocess pid=$pid for '$libraryPath'" }
+			process.destroyForcibly()
+		}
 	}
-
-	val stdout = process.inputStream.bufferedReader().readText()
-	return Pkcs11SubprocessResult.Success(pid, stdout)
 }
 

@@ -299,6 +299,39 @@ class Pkcs11DiscovererTest : FunSpec({
 		safenetTokens.first().name shouldBe "VP-SafeNet"
 	}
 
+	test("discoverTokens suppresses fallback entry when identity-bearing library is discovered after empty same-family library") {
+		val lib1 = File.createTempFile("gclib", ".dll").also { it.deleteOnExit() }
+		val lib2 = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
+
+		val fakeProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
+			if (path == lib2.absolutePath) {
+				listOf(
+					Pkcs11TokenIdentity(
+						label = "My SafeNet Token",
+						serialNumber = "SN-REVERSE",
+						libraryPath = path,
+					)
+				)
+			} else {
+				emptyList()
+			}
+		}
+
+		val tokens = Pkcs11Discoverer(tokenProber = fakeProber).discoverTokens(
+			userPkcs11Libraries = listOf(
+				"Thales/Gemalto IDPrime" to lib1.absolutePath,
+				"SafeNet eToken" to lib2.absolutePath,
+			)
+		)
+
+		val safenetTokens = tokens.filter {
+			it.id == "pkcs11-SN-REVERSE" || it.path == lib1.absolutePath
+		}
+		safenetTokens.shouldHaveSize(1)
+		safenetTokens.first().name shouldBe "My SafeNet Token"
+		safenetTokens.first().id shouldBe "pkcs11-SN-REVERSE"
+	}
+
 	test("discoverTokens produces separate entries for tokens with different serial numbers") {
 		val lib = File.createTempFile("softhsm-pkcs11", ".so").also { it.deleteOnExit() }
 
@@ -489,5 +522,115 @@ class Pkcs11DiscovererTest : FunSpec({
 		command.shouldNotBeNull()
 		command.any { it.contains("java") || it.contains("probe") }.shouldBeTrue()
 		command.last() shouldBe "/test/lib.so"
+	}
+
+	test("trimPkcs11Field strips null-byte padding used by SafeNet middleware") {
+		val padded = "VP-SafeNet\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000".toByteArray(Charsets.UTF_8)
+		padded.trimPkcs11Field() shouldBe "VP-SafeNet"
+	}
+
+	test("trimPkcs11Field strips space padding mandated by PKCS11 spec") {
+		val padded = "ABC123          ".toByteArray(Charsets.UTF_8)
+		padded.trimPkcs11Field() shouldBe "ABC123"
+	}
+
+	test("trimPkcs11Field handles mixed null-byte and space padding") {
+		val padded = "SN-42\u0000\u0000   ".toByteArray(Charsets.UTF_8)
+		padded.trimPkcs11Field() shouldBe "SN-42"
+	}
+
+	test("trimPkcs11Field returns empty string for all-null-byte field") {
+		val padded = "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000".toByteArray(Charsets.UTF_8)
+		padded.trimPkcs11Field() shouldBe ""
+	}
+
+	test("normalizeSerial strips whitespace, null bytes, and uppercases") {
+		normalizeSerial("abc 123\u0000\u0000") shouldBe "ABC123"
+	}
+
+	test("normalizeSerial produces identical output for space-padded and null-padded serials") {
+		normalizeSerial("SN-42\u0000\u0000\u0000") shouldBe normalizeSerial("SN-42   ")
+	}
+
+	test("normalizeSerial handles already-clean serial unchanged except for case") {
+		normalizeSerial("ABC123") shouldBe "ABC123"
+		normalizeSerial("abc123") shouldBe "ABC123"
+	}
+
+	test("isProxyPath recognises p11-kit-proxy paths") {
+		val d = discoverer()
+		d.isProxyPath("/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-proxy.so").shouldBeTrue()
+		d.isProxyPath("/usr/lib64/pkcs11/p11-kit-proxy.so").shouldBeTrue()
+	}
+
+	test("isProxyPath rejects non-proxy paths") {
+		val d = discoverer()
+		d.isProxyPath("/usr/lib/libeTPkcs11.so").shouldBeFalse()
+		d.isProxyPath("/usr/lib/opensc-pkcs11.so").shouldBeFalse()
+	}
+
+	test("discoverTokens suppresses proxy fallback when proxy reports no identities") {
+		val proxyFile = File.createTempFile("p11-kit-proxy", ".so").also { it.deleteOnExit() }
+
+		val tokens = discoverer().discoverTokens(
+			userPkcs11Libraries = listOf("p11-kit Proxy" to proxyFile.absolutePath),
+		)
+
+		tokens.any { it.path == proxyFile.absolutePath }.shouldBeFalse()
+	}
+
+	test("discoverTokens deduplicates proxy identity against direct library by serial") {
+		val directLib = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
+		val proxyLib = File.createTempFile("p11-kit-proxy", ".so").also { it.deleteOnExit() }
+
+		val testPaths = setOf(directLib.absolutePath, proxyLib.absolutePath)
+		val fakeProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
+			if (path in testPaths) {
+				listOf(
+					Pkcs11TokenIdentity(
+						label = "VP-SafeNet",
+						serialNumber = "SN-DEDUP",
+						libraryPath = path,
+					)
+				)
+			} else {
+				emptyList()
+			}
+		}
+
+		val tokens = Pkcs11Discoverer(tokenProber = fakeProber).discoverTokens(
+			userPkcs11Libraries = listOf(
+				"SafeNet eToken" to directLib.absolutePath,
+				"p11-kit Proxy" to proxyLib.absolutePath,
+			)
+		)
+
+		val matched = tokens.filter { it.id == "pkcs11-SN-DEDUP" }
+		matched.shouldHaveSize(1)
+		matched.first().path shouldBe directLib.absolutePath
+	}
+
+	test("discoverTokens deduplicates serials differing only by null-byte vs space padding") {
+		val lib1 = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
+		val lib2 = File.createTempFile("gclib", ".dll").also { it.deleteOnExit() }
+
+		val fakeProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
+			listOf(
+				Pkcs11TokenIdentity(
+					label = "VP-SafeNet",
+					serialNumber = if (path == lib1.absolutePath) "SN42" else "sn42",
+					libraryPath = path,
+				)
+			)
+		}
+
+		val tokens = Pkcs11Discoverer(tokenProber = fakeProber).discoverTokens(
+			userPkcs11Libraries = listOf(
+				"SafeNet eToken" to lib1.absolutePath,
+				"Thales/Gemalto IDPrime" to lib2.absolutePath,
+			)
+		)
+
+		tokens.filter { it.name == "VP-SafeNet" }.shouldHaveSize(1)
 	}
 })

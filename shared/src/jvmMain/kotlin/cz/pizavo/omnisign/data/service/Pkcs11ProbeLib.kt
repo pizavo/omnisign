@@ -81,3 +81,20 @@ internal const val CK_TOKEN_INFO_SERIAL_LEN = 16
  */
 internal const val CK_TOKEN_INFO_SIZE = 256
 
+/**
+ * Decode a fixed-length PKCS#11 text field and strip padding.
+ *
+ * The PKCS#11 v2.20 specification mandates space-padding (`0x20`) for fixed-length
+ * character fields such as `CK_TOKEN_INFO.label` and `CK_TOKEN_INFO.serialNumber`.
+ * However, some middleware implementations (notably SafeNet Authentication Client)
+ * use null-byte (`0x00`) padding instead.  This extension handles both conventions
+ * by replacing null bytes with spaces before trimming.
+ *
+ * @receiver Raw byte array read from a `CK_TOKEN_INFO` field via JNA.
+ * @return The decoded, trimmed UTF-8 string with all padding removed.
+ */
+internal fun ByteArray.trimPkcs11Field(): String =
+	String(this, Charsets.UTF_8)
+		.replace('\u0000', ' ')
+		.trim()
+

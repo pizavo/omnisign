@@ -104,8 +104,14 @@ class Pkcs11Discoverer(
      * When a [sessionManager] is available and the library has been initialized in-process
      * (via [Pkcs11WarmupService]), the probe uses the fast in-process path
      * (`C_GetSlotList` + `C_GetTokenInfo`, milliseconds).  Libraries that crashed during
-     * warmup are skipped immediately.  Otherwise, falls back to the [tokenProber] strategy
-     * (subprocess-based by default).
+     * warmup are skipped immediately.
+     *
+     * When the in-process session exists but slot scanning returns no tokens, this method
+     * falls through to the [tokenProber] (subprocess) fallback.  This handles the
+     * **hot-insert** scenario: PKCS#11 middleware (notably SafeNet for USB crypto tokens)
+     * fixes the slot list at `C_Initialize` time; if the token was not connected during
+     * startup, the in-process session has zero slots and cannot detect it.  The subprocess
+     * runs its own `C_Initialize` in an isolated process and will discover the token.
      *
      * Callers such as [DssTokenService.probeTokenPresent] should use this method rather than
      * calling [probeTokenIdentitiesViaSubprocess] directly so that the in-process fast path,
@@ -126,6 +132,7 @@ class Pkcs11Discoverer(
                 logger.debug { "In-process probe for '$libraryPath' returned ${inProcess.size} token(s)" }
                 return inProcess
             }
+            logger.debug { "In-process probe for '$libraryPath' returned null — falling back to subprocess" }
         }
 
         return tokenProber(libraryPath)
@@ -189,84 +196,97 @@ class Pkcs11Discoverer(
         return seen.values.filterNot { (_, path) -> isSpyLibrary(File(path).name) }
     }
 
-    /**
-     * Discover all PKCS#11 tokens available on the system.
-     *
-     * When [warmupReady] is provided, this method suspends until the background warmup
-     * cycle completes.  Waiting ensures that [probeLibrary] can use the fast in-process
-     * path (`C_GetSlotList` + `C_GetTokenInfo`, milliseconds) for libraries that were
-     * successfully initialized during warmup, rather than falling back to unreliable
-     * subprocess probes.
-     *
-     * Probing runs in parallel on [Dispatchers.IO] — one coroutine per unique library path —
-     * so that slow or unresponsive middleware does not delay discovery of other tokens.
-     * Deduplication (by serial number or middleware family) is applied after all probes finish
-     * and therefore produces deterministic results regardless of completion order.
-     *
-     * Concurrency between multiple callers is managed by [discoveryGate]: at most one
-     * full discovery cycle runs at a time, with at most one queued behind it.  If a new
-     * request arrives while a cycle is in progress, the in-progress result is discarded
-     * and a fresh cycle runs so that every caller receives the latest hardware state.
-     *
-     * @param appDataPkcs11Dir Optional drop directory; every PKCS#11-named file found here is
-     *   added to the candidate list without any config change.
-     * @param userPkcs11Libraries Additional `(display name, path)` pairs supplied by the user.
-     *   Only entries whose file exists on disk are included.
-     */
-    suspend fun discoverTokens(
-        appDataPkcs11Dir: File? = null,
-        userPkcs11Libraries: List<Pair<String, String>> = emptyList(),
-    ): List<TokenInfo> = discoveryGate.runOrCoalesce {
-        if (!warmupReady.value) {
-            logger.info { "Waiting for PKCS#11 warmup to complete before discovery…" }
-            warmupReady.first { it }
-            logger.info { "PKCS#11 warmup complete — proceeding with discovery" }
-        }
+	/**
+	 * Discover all PKCS#11 tokens available on the system.
+	 *
+	 * When [warmupReady] is provided, this method suspends until the background warmup
+	 * cycle completes.  Waiting ensures that [probeLibrary] can use the fast in-process
+	 * path (`C_GetSlotList` + `C_GetTokenInfo`, milliseconds) for libraries that were
+	 * successfully initialized during warmup, rather than falling back to unreliable
+	 * subprocess probes.
+	 *
+	 * Probing runs in parallel on [Dispatchers.IO] — one coroutine per unique library path —
+	 * so that slow or unresponsive middleware does not delay discovery of other tokens.
+	 *
+	 * Deduplication uses a three-layer strategy over the collected probe results:
+	 * 1. **Serial number** — tokens with the same normalized serial number (ignoring
+	 *    whitespace, null-byte padding, and case) are collapsed to a single entry.
+	 *    Direct-library results are processed before p11-kit proxy results so the
+	 *    direct library's path takes precedence.
+	 * 2. **Middleware family** — libraries that returned no identities add a fallback
+	 *    [TokenInfo] only if their middleware family has not already been claimed by an
+	 *    identity-bearing result.
+	 * 3. **Proxy suppression** — p11-kit proxy results that returned no identities are
+	 *    suppressed entirely; the proxy adds no information when the underlying modules
+	 *    already report their tokens directly.
+	 *
+	 * Concurrency between multiple callers is managed by [discoveryGate]: at most one
+	 * full discovery cycle runs at a time, with at most one queued behind it.  If a new
+	 * request arrives while a cycle is in progress, the in-progress result is discarded
+	 * and a fresh cycle runs so that every caller receives the latest hardware state.
+	 *
+	 * @param appDataPkcs11Dir Optional drop directory; every PKCS#11-named file found here is
+	 *   added to the candidate list without any config change.
+	 * @param userPkcs11Libraries Additional `(display name, path)` pairs supplied by the user.
+	 *   Only entries whose file exists on disk are included.
+	 */
+	suspend fun discoverTokens(
+		appDataPkcs11Dir: File? = null,
+		userPkcs11Libraries: List<Pair<String, String>> = emptyList(),
+	): List<TokenInfo> = discoveryGate.runOrCoalesce {
+		if (!warmupReady.value) {
+			logger.info { "Waiting for PKCS#11 warmup to complete before discovery…" }
+			warmupReady.first { it }
+			logger.info { "PKCS#11 warmup complete — proceeding with discovery" }
+		}
 
-        val candidates = collectCandidates(appDataPkcs11Dir, userPkcs11Libraries)
+		val candidates = collectCandidates(appDataPkcs11Dir, userPkcs11Libraries)
 
-        val probeResults = coroutineScope {
-            candidates.map { (name, path) ->
-                async(Dispatchers.IO) {
-                    LibProbeResult(name, path, probeLibrary(path))
-                }
-            }.awaitAll()
-        }
+		val probeResults = coroutineScope {
+			candidates.map { (name, path) ->
+				async(Dispatchers.IO) {
+					LibProbeResult(name, path, probeLibrary(path))
+				}
+			}.awaitAll()
+		}
 
-        val result = mutableListOf<TokenInfo>()
-        val seenSerials = mutableSetOf<String>()
-        val seenFamilies = mutableSetOf<String>()
+		val (withIdentities, withoutIdentities) = probeResults.partition { it.identities.isNotEmpty() }
+		val sortedWithIdentities = withIdentities.sortedBy { isProxyPath(it.path) }
 
-        for ((name, path, identities) in probeResults) {
-            val family = deriveMiddlewareFamily(path)
-            if (identities.isNotEmpty()) {
-                seenFamilies.add(family)
-                for (identity in identities) {
-                    if (seenSerials.add(identity.serialNumber)) {
-                        result += TokenInfo(
-                            id = "pkcs11-${identity.serialNumber}",
-                            name = identity.label,
-                            type = TokenType.PKCS11,
-                            path = path,
-                            requiresPin = true,
-                        )
-                    }
-                }
-            } else {
-                if (seenFamilies.add(family)) {
-                    result += TokenInfo(
-                        id = "pkcs11-${File(path).name}",
-                        name = name,
-                        type = TokenType.PKCS11,
-                        path = path,
-                        requiresPin = true,
-                    )
-                }
-            }
-        }
+		val result = mutableListOf<TokenInfo>()
+		val seenSerials = mutableSetOf<String>()
+		val seenFamilies = mutableSetOf<String>()
 
-        result
-    }
+		for ((_, path, identities) in sortedWithIdentities) {
+			seenFamilies.add(deriveMiddlewareFamily(path))
+			for (identity in identities) {
+				if (seenSerials.add(normalizeSerial(identity.serialNumber))) {
+					result += TokenInfo(
+						id = "pkcs11-${identity.serialNumber}",
+						name = identity.label,
+						type = TokenType.PKCS11,
+						path = path,
+						requiresPin = true,
+					)
+				}
+			}
+		}
+
+		for ((name, path, _) in withoutIdentities) {
+			if (isProxyPath(path)) continue
+			if (seenFamilies.add(deriveMiddlewareFamily(path))) {
+				result += TokenInfo(
+					id = "pkcs11-${File(path).name}",
+					name = name,
+					type = TokenType.PKCS11,
+					path = path,
+					requiresPin = true,
+				)
+			}
+		}
+
+		result
+	}
 
     /**
      * Query OS-native sources for PKCS#11 middleware without touching the fallback list.
@@ -430,8 +450,23 @@ class Pkcs11Discoverer(
         }
     }
 
-    /**
-     * Derive a middleware family identifier from a library [path].
+	/**
+	 * Return `true` when the given [path] refers to the p11-kit proxy PKCS#11 module.
+	 *
+	 * The p11-kit proxy is a PKCS#11 aggregator that exposes tokens from all registered
+	 * underlying modules through a single library.  During deduplication, proxy results
+	 * are processed after direct-library results so that the direct library's path takes
+	 * precedence in the resulting [TokenInfo].  Proxy paths that report no identities
+	 * are suppressed entirely — they add no information beyond what the direct libraries
+	 * already provide.
+	 */
+	internal fun isProxyPath(path: String): Boolean {
+		val lower = path.lowercase()
+		return lower.contains("p11-kit-proxy") || lower.contains("p11kitproxy")
+	}
+
+	/**
+	 * Derive a middleware family identifier from a library [path].
      *
      * Libraries within the same family access the same physical token slots and should be
      * deduplicated when hardware probing is unavailable.  For example, SafeNet Authentication
@@ -1077,10 +1112,10 @@ internal fun probeTokenIdentities(libraryPath: String): List<Pkcs11TokenIdentity
         tokenInfo.clear()
         if (lib.C_GetTokenInfo(slotId, tokenInfo).toLong() != CKR_OK) continue
 
-        val label = tokenInfo.getByteArray(CK_TOKEN_INFO_LABEL_OFFSET.toLong(), CK_TOKEN_INFO_LABEL_LEN)
-            .toString(Charsets.UTF_8).trim()
-        val serial = tokenInfo.getByteArray(CK_TOKEN_INFO_SERIAL_OFFSET.toLong(), CK_TOKEN_INFO_SERIAL_LEN)
-            .toString(Charsets.UTF_8).trim()
+		val label = tokenInfo.getByteArray(CK_TOKEN_INFO_LABEL_OFFSET.toLong(), CK_TOKEN_INFO_LABEL_LEN)
+			.trimPkcs11Field()
+		val serial = tokenInfo.getByteArray(CK_TOKEN_INFO_SERIAL_OFFSET.toLong(), CK_TOKEN_INFO_SERIAL_LEN)
+			.trimPkcs11Field()
 
         if (serial.isNotBlank()) {
             results += Pkcs11TokenIdentity(
@@ -1095,6 +1130,23 @@ internal fun probeTokenIdentities(libraryPath: String): List<Pkcs11TokenIdentity
 
 
 
+
+/**
+ * Normalize a PKCS#11 token serial number for deduplication comparison.
+ *
+ * Different middleware implementations may report the same physical serial with
+ * different padding and casing — for example, SafeNet uses null-byte padding while
+ * OpenSC uses space-padding, and some middleware upper-cases the hex serial while
+ * others preserve the case from the card.  This function strips all whitespace and
+ * null bytes and upper-cases the result so that `"ABC 123\u0000"` and `"abc123  "`
+ * both normalize to `"ABC123"`.
+ *
+ * @param serial The raw serial string (already decoded from bytes, may contain
+ *   residual whitespace or null-byte artifacts).
+ * @return The normalized serial suitable for set-based deduplication.
+ */
+internal fun normalizeSerial(serial: String): String =
+	serial.filterNot { it.isWhitespace() || it == '\u0000' }.uppercase()
 
 /**
  * Map a POSIX signal number to its conventional name for diagnostic logging.
