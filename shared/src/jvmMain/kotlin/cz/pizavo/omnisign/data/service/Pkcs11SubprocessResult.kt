@@ -30,8 +30,8 @@ internal const val STREAM_DRAIN_TIMEOUT_SECONDS = 5L
  *
  * Produced by [runProbeSubprocess] after spawning a child process via [resolveProbeCommand]
  * and waiting for it to finish or time out.  Each caller interprets the result differently:
- * - [Pkcs11WarmupService]: [Success] → [Pkcs11SessionManager.registerSafe], failure →
- *   [Pkcs11SessionManager.registerCrashed].
+ * - [Pkcs11WarmupService]: [Success] → log validation; [Crashed] →
+ *   [Pkcs11CrashBlacklist.registerCrashed]; [TimedOut] → no record (retried on demand).
  * - [probeTokenIdentitiesViaSubprocess]: [Success] → parse [Success.stdout] for
  *   [Pkcs11TokenIdentity] lines, failure → empty list.
  */

@@ -31,16 +31,16 @@ import org.koin.dsl.module
  * ```
  */
 val jvmRepositoryModule = module {
-	singleOf(::Pkcs11SessionManager)
+	singleOf(::Pkcs11CrashBlacklist)
 	single {
 		Pkcs11Discoverer(
-			sessionManager = get(),
+			crashBlacklist = get(),
 		)
 	}
 	single {
 		Pkcs11WarmupService(
 			discoverer = get(),
-			sessionManager = get(),
+			crashBlacklist = get(),
 			warmupSignal = getOrNull<MutableStateFlow<Boolean>>() ?: MutableStateFlow(true),
 		)
 	}

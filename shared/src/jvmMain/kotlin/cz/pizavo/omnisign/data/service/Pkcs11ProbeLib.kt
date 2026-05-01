@@ -12,8 +12,8 @@ import com.sun.jna.Pointer
  * `C_GetSlotList`, and `C_GetTokenInfo` — so that probing never calls
  * `C_Login` and therefore never risks incrementing a wrong-PIN counter.
  *
- * Shared between [Pkcs11ProbeWorker] (subprocess), [probeTokenIdentities]
- * (in-process one-shot), and [Pkcs11SessionManager] (persistent in-process).
+ * Used exclusively from inside [Pkcs11ProbeWorker] (subprocess) so that any native crash
+ * stays out of the host JVM.  No in-process consumer of this binding exists.
  */
 internal interface Pkcs11ProbeLib : Library {
 

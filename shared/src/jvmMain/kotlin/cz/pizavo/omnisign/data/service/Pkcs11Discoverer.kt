@@ -63,13 +63,11 @@ internal const val DEFAULT_PROBE_TIMEOUT_SECONDS = 30L
  *   probe subprocess before killing it.  Acts as a safety net for middleware that hangs without
  *   responding; probes that crash (SIGSEGV, SIGABRT) exit immediately and are handled without
  *   waiting for this timeout.  Defaults to [DEFAULT_PROBE_TIMEOUT_SECONDS].
- * @property sessionManager Optional persistent session manager for fast in-process probing.
- *   When a library has been pre-initialized via [Pkcs11WarmupService], [probeLibrary] uses
- *   the in-process path (milliseconds) instead of spawning a subprocess (~18 s).  When `null`
- *   or when no session has been registered yet (warmup still in flight), every probe falls
- *   back to the subprocess strategy.  Discovery never blocks on warmup completion — running
- *   while warmup is mid-flight just yields slower (subprocess-only) results for libraries
- *   that have not been registered yet.
+ * @property crashBlacklist Records libraries whose subprocess validation crashed so they are
+ *   never probed again in this JVM.  Populated by [Pkcs11WarmupService] during startup
+ *   validation.  All actual token probing runs out-of-process via [tokenProber] (a subprocess
+ *   by default) — there is intentionally no in-process JNA consumer alongside SunPKCS11,
+ *   which DSS uses for signing.
  * @property discoveryGate Concurrency gate ensuring that at most one [discoverTokens] cycle runs
  *   at a time, with at most one additional cycle queued.  When a discovery is already in progress
  *   and a new request arrives, the running cycle's result is discarded and a fresh cycle executes
@@ -82,7 +80,7 @@ internal const val DEFAULT_PROBE_TIMEOUT_SECONDS = 30L
  */
 class Pkcs11Discoverer(
     private val probeTimeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
-    private val sessionManager: Pkcs11SessionManager? = null,
+    private val crashBlacklist: Pkcs11CrashBlacklist = Pkcs11CrashBlacklist(),
     private val discoveryGate: ConflatedProbeGate<List<TokenInfo>> = ConflatedProbeGate(),
     private val tokenProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
         probeTokenIdentitiesViaSubprocess(path, probeTimeoutSeconds)
@@ -90,42 +88,26 @@ class Pkcs11Discoverer(
 ) {
 
     /**
-     * Probe a single PKCS#11 library for token identities using the configured strategy.
+     * Probe a single PKCS#11 library for token identities by spawning a [Pkcs11ProbeWorker]
+     * subprocess, unless the library is on [crashBlacklist] (in which case it is skipped
+     * silently).
      *
-     * When a [sessionManager] is available and the library has been initialized in-process
-     * (via [Pkcs11WarmupService]), the probe uses the fast in-process path
-     * (`C_GetSlotList` + `C_GetTokenInfo`, milliseconds).  Libraries that crashed during
-     * warmup are skipped immediately.
-     *
-     * When the in-process session exists but slot scanning returns no tokens, this method
-     * falls through to the [tokenProber] (subprocess) fallback.  This handles the
-     * **hot-insert** scenario: PKCS#11 middleware (notably SafeNet for USB crypto tokens)
-     * fixes the slot list at `C_Initialize` time; if the token was not connected during
-     * startup, the in-process session has zero slots and cannot detect it.  The subprocess
-     * runs its own `C_Initialize` in an isolated process and will discover the token.
-     *
-     * Callers such as [DssTokenService.probeTokenPresent] should use this method rather than
-     * calling [probeTokenIdentitiesViaSubprocess] directly so that the in-process fast path,
-     * crash avoidance, and any test overrides are applied consistently.
+     * Every probe runs out-of-process via [tokenProber] (default: subprocess).  This
+     * deliberately avoids running our own in-process PKCS#11 consumer alongside SunPKCS11 —
+     * DSS uses SunPKCS11 for signing, and having a second consumer in the same JVM was a
+     * recurring source of subtle interaction bugs.  Out-of-process probing is slower per
+     * call (~500 ms minimum on Windows, several seconds on weak Linux) but correct and
+     * stable across middleware vendors.
      *
      * @param libraryPath Absolute path to the PKCS#11 shared library to probe.
      * @return Token identities found in the library, or an empty list when the library is
-     *   unreachable, the probe times out, or no tokens are inserted.
+     *   blacklisted, unreachable, the probe times out, or no tokens are inserted.
      */
     fun probeLibrary(libraryPath: String): List<Pkcs11TokenIdentity> {
-        if (sessionManager != null) {
-            if (sessionManager.isCrashed(libraryPath)) {
-                logger.debug { "Skipping crashed library '$libraryPath' (in-process)" }
-                return emptyList()
-            }
-            val inProcess = sessionManager.probeInProcess(libraryPath)
-            if (inProcess != null) {
-                logger.debug { "In-process probe for '$libraryPath' returned ${inProcess.size} token(s)" }
-                return inProcess
-            }
-            logger.debug { "In-process probe for '$libraryPath' returned null — falling back to subprocess" }
+        if (crashBlacklist.isCrashed(libraryPath)) {
+            logger.debug { "Skipping crashed library '$libraryPath'" }
+            return emptyList()
         }
-
         return tokenProber(libraryPath)
     }
 
@@ -954,22 +936,14 @@ internal fun probeTokenIdentitiesViaSubprocess(
  * occupied slot.  This never calls `C_Login` and therefore never risks incrementing
  * a wrong-PIN counter.
  *
- * `C_Initialize` is called idempotently; `CKR_CRYPTOKI_ALREADY_INITIALIZED` is treated
- * as success.  `C_Finalize` is deliberately NOT called so existing sessions created by
- * DSS or the SunPKCS11 provider are not interrupted.
- *
- * **Intentional code duplication**: the slot-enumeration logic
- * (`C_GetSlotList` → `C_GetTokenInfo` → build [Pkcs11TokenIdentity] list) is
- * near-identical to [Pkcs11SessionManager.probeInProcess].  The duplication is deliberate:
- * this function runs inside an isolated [Pkcs11ProbeWorker] subprocess where native crashes
- * (SIGSEGV, SIGABRT) are contained, whereas [Pkcs11SessionManager.probeInProcess] operates
- * on a pre-initialized in-process session.  Merging them would couple the crash-isolated
- * subprocess path to the in-process session lifecycle, defeating the isolation boundary.
+ * Designed to run **only inside a [Pkcs11ProbeWorker] subprocess** so any native crash
+ * stays contained.  `C_Initialize` is idempotent (`CKR_CRYPTOKI_ALREADY_INITIALIZED` is
+ * treated as success); `C_Finalize` is deliberately not called because the subprocess
+ * exits immediately after printing the identities.
  *
  * Returns an empty list when the library cannot be loaded, no slots have tokens, or
  * any PKCS#11 call fails.
  */
-@Suppress("DuplicatedCode")
 internal fun probeTokenIdentities(libraryPath: String): List<Pkcs11TokenIdentity> = runCatching {
     @Suppress("UNCHECKED_CAST")
     val lib = Native.load(libraryPath, Pkcs11ProbeLib::class.java) as Pkcs11ProbeLib
