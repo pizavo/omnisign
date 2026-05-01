@@ -35,7 +35,6 @@ val jvmRepositoryModule = module {
 	single {
 		Pkcs11Discoverer(
 			sessionManager = get(),
-			warmupReady = getOrNull<MutableStateFlow<Boolean>>() ?: MutableStateFlow(true),
 		)
 	}
 	single {
@@ -43,6 +42,12 @@ val jvmRepositoryModule = module {
 			discoverer = get(),
 			sessionManager = get(),
 			warmupSignal = getOrNull<MutableStateFlow<Boolean>>() ?: MutableStateFlow(true),
+		)
+	}
+	single {
+		Pkcs11DiagnosticsService(
+			pkcs11Discoverer = get(),
+			configRepository = get(),
 		)
 	}
 	singleOf(::DssTokenService) bind TokenService::class

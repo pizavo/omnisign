@@ -3,63 +3,73 @@ package cz.pizavo.omnisign.data.service
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 
 /**
  * Orchestrates background PKCS#11 library warmup at application startup.
  *
  * Runs the two-phase discovery–initialization cycle on a background coroutine:
  * 1. **Candidate enumeration** — [Pkcs11Discoverer.collectCandidates] gathers all
- *    discoverable PKCS#11 libraries from OS-native sources, the curated fallback
- *    list, the app-data drop directory, and user-supplied paths.
- * 2. **Parallel in-process registration** — each candidate is probed via a subprocess
- *    to safely detect crashes and hangs.  Libraries whose subprocess exits successfully
- *    are then loaded in-process via [Pkcs11SessionManager.registerSafe], establishing
- *    a persistent `C_Initialize` session.  Libraries whose subprocess crashes or times
- *    out are recorded via [Pkcs11SessionManager.registerCrashed].
+ *    discoverable PKCS#11 libraries from OS-native sources, the app-data drop directory,
+ *    and user-supplied paths.
+ * 2. **Bounded-parallel in-process registration** — candidates are probed via subprocess
+ *    with at most [maxParallelism] running concurrently (default `2`) so that weak
+ *    hardware does not thrash under JVM cold-start contention.  Libraries whose subprocess
+ *    exits successfully are loaded in-process via [Pkcs11SessionManager.registerSafe],
+ *    establishing a persistent `C_Initialize` session.  Crashed libraries are permanently
+ *    blacklisted via [Pkcs11SessionManager.registerCrashed]; **timed-out** libraries are
+ *    *not* blacklisted — discovery falls back to subprocess on demand instead, so a
+ *    transient hang during warmup does not permanently disable a healthy library.
  *
- * Once warmup completes, further token probes in [Pkcs11Discoverer.probeLibrary]
- * use the fast in-process path (`C_GetSlotList` + `C_GetTokenInfo`, milliseconds)
- * instead of spawning a new subprocess (~18 s for some middleware).
+ * Once warmup completes, further token probes in [Pkcs11Discoverer.probeLibrary] use the
+ * fast in-process path (`C_GetSlotList` + `C_GetTokenInfo`, milliseconds) for libraries
+ * that registered successfully and fall back to subprocess for everything else.  Discovery
+ * never blocks on warmup — it can run concurrently and just yields slower (subprocess-only)
+ * results for libraries that have not yet been registered.
  *
  * @property discoverer The discoverer used to list candidate library paths.
  * @property sessionManager The session manager that holds persistent in-process handles.
  * @property warmupSignal Shared mutable flow that this service writes `true` to upon
- *   completion.  The same flow is injected into [Pkcs11Discoverer] as its
- *   `warmupReady` parameter so that [Pkcs11Discoverer.discoverTokens] suspends
- *   until warmup finishes.  Injected via Koin to break the circular dependency
- *   between [Pkcs11Discoverer] and this service.
+ *   completion.  Exposed as [warmedUp] for UI consumption (e.g. a "warming up…" indicator);
+ *   not used as a discovery gate.
  * @property probeTimeoutSeconds Timeout for each subprocess probe during warmup.
+ * @property maxParallelism Upper bound on concurrent warmup probes.  Each probe spawns a
+ *   fresh JVM subprocess; running too many in parallel on weak hardware causes cold-start
+ *   contention and false timeouts.  Defaults to `2`, which keeps throughput reasonable on
+ *   strong machines without thrashing slow ones.
  */
 class Pkcs11WarmupService(
 	private val discoverer: Pkcs11Discoverer,
 	private val sessionManager: Pkcs11SessionManager,
 	private val warmupSignal: MutableStateFlow<Boolean>,
 	private val probeTimeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
+	private val maxParallelism: Int = DEFAULT_MAX_PARALLELISM,
 ) {
 
 	/**
 	 * Whether the warmup cycle has completed.
 	 *
 	 * Consumers (e.g., ViewModels) can collect this flow to show a progress indicator
-	 * during the initial library discovery phase.  Also observed by
-	 * [Pkcs11Discoverer.discoverTokens] (via the shared [warmupSignal]) to gate
-	 * discovery until in-process sessions are established.
+	 * during the initial library discovery phase.  Discovery does **not** block on it —
+	 * this signal is purely informational for the UI.
 	 */
 	val warmedUp: StateFlow<Boolean> = warmupSignal.asStateFlow()
 
 	/**
-	 * Run the two-phase warmup for all discoverable PKCS#11 libraries.
+	 * Run the bounded-parallel warmup for all discoverable PKCS#11 libraries.
 	 *
-	 * Candidate libraries are enumerated from OS-native sources, the curated fallback
-	 * list, the app-data drop directory, and user-supplied paths.  Each candidate is
-	 * probed in parallel via [Dispatchers.IO].
+	 * Candidate libraries are enumerated from OS-native sources, the app-data drop directory,
+	 * and user-supplied paths.  At most [maxParallelism] candidates are probed in parallel
+	 * via [Dispatchers.IO]; the remainder queue behind a [Semaphore] permit.
 	 *
-	 * This method is safe to call multiple times — further calls after the first
-	 * successful warmup return immediately.
+	 * This method is safe to call multiple times — further calls after the first successful
+	 * warmup return immediately.
 	 *
 	 * @param appDataPkcs11Dir Optional drop directory for user-placed PKCS#11 libraries.
 	 * @param userPkcs11Libraries Additional `(display name, path)` pairs from config.
@@ -74,7 +84,10 @@ class Pkcs11WarmupService(
 		}
 
 		try {
-			logger.info { "Starting PKCS#11 background warmup (timeout=${probeTimeoutSeconds}s)" }
+			logger.info {
+				"Starting PKCS#11 background warmup (timeout=${probeTimeoutSeconds}s, " +
+						"maxParallelism=$maxParallelism)"
+			}
 			val startTime = System.currentTimeMillis()
 
 			val candidates = discoverer.collectCandidates(appDataPkcs11Dir, userPkcs11Libraries)
@@ -86,12 +99,13 @@ class Pkcs11WarmupService(
 
 			logger.info { "Warming up ${candidates.size} PKCS#11 candidate library(-ies): ${candidates.map { it.first }}" }
 
+			val gate = Semaphore(maxParallelism)
 			coroutineScope {
 				candidates.map { (name, path) ->
 					async(Dispatchers.IO) {
-						warmupSingleLibrary(name, path)
+						gate.withPermit { warmupSingleLibrary(name, path) }
 					}
-				}.forEach { it.await() }
+				}.awaitAll()
 			}
 
 			val elapsed = System.currentTimeMillis() - startTime
@@ -100,7 +114,7 @@ class Pkcs11WarmupService(
 			logger.info {
 				"PKCS#11 warmup complete in ${elapsed}ms — " +
 						"$sessionCount/${candidates.size} sessions established, " +
-						"$crashedCount crashed/timed out"
+						"$crashedCount crashed (timed-out libs are not counted; they retry on demand)"
 			}
 		} finally {
 			warmupSignal.value = true
@@ -115,8 +129,11 @@ class Pkcs11WarmupService(
 	 * crashes (SIGSEGV / SIGABRT), and timeouts:
 	 *
 	 * - **Exit 0** → the library is safe; register in-process via [Pkcs11SessionManager.registerSafe].
-	 * - **Non-zero exit** → the library crashed; mark via [Pkcs11SessionManager.registerCrashed].
-	 * - **Timeout** → the subprocess hung; forcibly kill and mark as crashed.
+	 * - **Non-zero exit (crash)** → the library crashes during `C_Initialize`; permanently
+	 *   blacklist via [Pkcs11SessionManager.registerCrashed] so it is never loaded in-process.
+	 * - **Timeout (hang)** → the subprocess hung; forcibly kill it but **do not** blacklist —
+	 *   discovery will subprocess-probe on demand.  A transient timeout (slow USB enumeration,
+	 *   thrash on a weak box) should not disable a healthy library for the rest of the session.
 	 *
 	 * @param name Human-readable library display name (for logging).
 	 * @param libraryPath Absolute path to the PKCS#11 shared library.
@@ -133,9 +150,8 @@ class Pkcs11WarmupService(
 				is Pkcs11SubprocessResult.TimedOut -> {
 					logger.warn {
 						"Warmup subprocess pid=${result.pid} for '$name' ('$libraryPath') timed out " +
-								"after ${probeTimeoutSeconds}s — marking as crashed"
+								"after ${probeTimeoutSeconds}s — will retry via subprocess on demand"
 					}
-					sessionManager.registerCrashed(libraryPath)
 				}
 
 				is Pkcs11SubprocessResult.Crashed -> {
@@ -173,6 +189,12 @@ class Pkcs11WarmupService(
 
 	private companion object {
 		val logger = KotlinLogging.logger {}
+
+		/**
+		 * Default ceiling on concurrent warmup probes.  Each probe spawns a fresh JVM
+		 * subprocess; capping concurrency at `2` keeps throughput reasonable on strong
+		 * hardware while avoiding cold-start contention on weak machines.
+		 */
+		const val DEFAULT_MAX_PARALLELISM = 2
 	}
 }
-

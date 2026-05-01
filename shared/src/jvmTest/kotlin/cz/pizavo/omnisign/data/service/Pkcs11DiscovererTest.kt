@@ -20,40 +20,6 @@ class Pkcs11DiscovererTest : FunSpec({
 
 	fun discoverer() = Pkcs11Discoverer(tokenProber = noProbe)
 	
-	test("64-bit JVM on Windows fallback list contains only Program Files paths, not System32") {
-		val paths = discoverer().candidatesForOs("windows 10", jvmIs64Bit = true).map { it.second }
-		
-		paths.none { it.contains("System32") || it.contains("SysWOW64") || it.contains("(x86)") }.shouldBeTrue()
-		paths.all { it.contains("Program Files") || it.contains("SoftHSM2") }.shouldBeTrue()
-	}
-	
-	test("32-bit JVM on Windows fallback list contains only Program Files x86 paths") {
-		val paths = discoverer().candidatesForOs("windows 10", jvmIs64Bit = false).map { it.second }
-		
-		paths.none { it.contains("System32") || it.contains("SysWOW64") }.shouldBeTrue()
-		paths.all { it.contains("(x86)") }.shouldBeTrue()
-	}
-	
-	test("64-bit and 32-bit Windows candidate sets are disjoint") {
-		val d = discoverer()
-		val paths64 = d.candidatesForOs("windows 10", jvmIs64Bit = true).map { it.second }.toSet()
-		val paths32 = d.candidatesForOs("windows 10", jvmIs64Bit = false).map { it.second }.toSet()
-		
-		(paths64 intersect paths32).shouldBeEmpty()
-	}
-	
-	test("64-bit JVM on Linux picks lib64 and multiarch paths") {
-		discoverer().candidatesForOs("linux", jvmIs64Bit = true).map { it.second }
-			.any { it.contains("lib64") || it.contains("x86_64") || it.contains("aarch64") }
-			.shouldBeTrue()
-	}
-	
-	test("32-bit JVM on Linux does not list lib64 or multiarch paths") {
-		discoverer().candidatesForOs("linux", jvmIs64Bit = false).map { it.second }
-			.none { it.contains("lib64") || it.contains("x86_64") || it.contains("aarch64") }
-			.shouldBeTrue()
-	}
-	
 	test("isPkcs11FileName matches known PKCS11 naming patterns") {
 		val d = discoverer()
 		d.isPkcs11FileName("eTPKCS11.dll").shouldBeTrue()
@@ -115,7 +81,14 @@ class Pkcs11DiscovererTest : FunSpec({
 		val spyFile = File(dropDir, "pkcs11-spy.so").also { it.createNewFile(); it.deleteOnExit() }
 		val realFile = File(dropDir, "vendor-pkcs11.so").also { it.createNewFile(); it.deleteOnExit() }
 
-		val tokens = discoverer().discoverTokens(appDataPkcs11Dir = dropDir)
+		val identityProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
+			if (path == realFile.absolutePath || path == spyFile.absolutePath) {
+				listOf(Pkcs11TokenIdentity(label = "Token", serialNumber = "SN-${path.hashCode()}", libraryPath = path))
+			} else {
+				emptyList()
+			}
+		}
+		val tokens = Pkcs11Discoverer(tokenProber = identityProber).discoverTokens(appDataPkcs11Dir = dropDir)
 
 		tokens.any { it.path == spyFile.absolutePath }.shouldBeFalse()
 		tokens.any { it.path == realFile.absolutePath }.shouldBeTrue()
@@ -157,19 +130,33 @@ class Pkcs11DiscovererTest : FunSpec({
 	
 	test("discoverTokens deduplicates same canonical path from multiple sources") {
 		val tmpFile = File.createTempFile("acmevendor-pkcs11", ".so").also { it.deleteOnExit() }
-		
-		discoverer().discoverTokens(
+
+		val identityProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
+			if (path == tmpFile.absolutePath) {
+				listOf(Pkcs11TokenIdentity(label = "Acme", serialNumber = "SN-DEDUP-PATH", libraryPath = path))
+			} else {
+				emptyList()
+			}
+		}
+		Pkcs11Discoverer(tokenProber = identityProber).discoverTokens(
 			userPkcs11Libraries = listOf(
 				"Acme (source 1)" to tmpFile.absolutePath,
 				"Acme (source 2)" to tmpFile.absolutePath,
 			)
 		).filter { it.path == tmpFile.absolutePath }.shouldHaveSize(1)
 	}
-	
-	test("discoverTokens includes user-supplied library when file exists") {
+
+	test("discoverTokens includes user-supplied library when file exists and probe returns identities") {
 		val tmpFile = File.createTempFile("custom-pkcs11", ".so").also { it.deleteOnExit() }
-		
-		discoverer().discoverTokens(
+
+		val identityProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
+			if (path == tmpFile.absolutePath) {
+				listOf(Pkcs11TokenIdentity(label = "My Token", serialNumber = "SN-USER", libraryPath = path))
+			} else {
+				emptyList()
+			}
+		}
+		Pkcs11Discoverer(tokenProber = identityProber).discoverTokens(
 			userPkcs11Libraries = listOf("My Custom Token" to tmpFile.absolutePath)
 		).any { it.path == tmpFile.absolutePath }.shouldBeTrue()
 	}
@@ -185,13 +172,20 @@ class Pkcs11DiscovererTest : FunSpec({
 			.isSuccess.shouldBeTrue()
 	}
 	
-	test("discoverTokens picks up PKCS11-named files from app-data drop directory") {
+	test("discoverTokens picks up PKCS11-named files from app-data drop directory when probe returns identities") {
 		val dropDir = File.createTempFile("pkcs11-drop", "").also { it.delete(); it.mkdirs(); it.deleteOnExit() }
 		val libFile = File(dropDir, "vendor-pkcs11.so").also { it.createNewFile(); it.deleteOnExit() }
-		
-		discoverer().discoverTokens(appDataPkcs11Dir = dropDir)
+
+		val identityProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
+			if (path == libFile.absolutePath) {
+				listOf(Pkcs11TokenIdentity(label = "Drop Token", serialNumber = "SN-DROP", libraryPath = path))
+			} else {
+				emptyList()
+			}
+		}
+		Pkcs11Discoverer(tokenProber = identityProber).discoverTokens(appDataPkcs11Dir = dropDir)
 			.any { it.path == libFile.absolutePath }.shouldBeTrue()
-		
+
 		dropDir.deleteRecursively()
 	}
 	
@@ -205,27 +199,7 @@ class Pkcs11DiscovererTest : FunSpec({
 		dropDir.deleteRecursively()
 	}
 
-	test("deriveMiddlewareFamily groups SafeNet and Gemalto libraries into the same family") {
-		val d = discoverer()
-		d.deriveMiddlewareFamily("C:\\Windows\\System32\\eTPKCS11.dll") shouldBe "safenet"
-		d.deriveMiddlewareFamily("C:\\Windows\\System32\\gclib.dll") shouldBe "safenet"
-		d.deriveMiddlewareFamily("C:\\Program Files\\SafeNet\\Authentication\\SAC\\x64\\eTPKCS11.dll") shouldBe "safenet"
-	}
-
-	test("deriveMiddlewareFamily assigns distinct families to different vendors") {
-		val d = discoverer()
-		d.deriveMiddlewareFamily("/usr/lib/opensc-pkcs11.so") shouldBe "opensc"
-		d.deriveMiddlewareFamily("/usr/lib/softhsm/libsofthsm2.so") shouldBe "softhsm"
-		d.deriveMiddlewareFamily("/usr/lib/iidp11.so") shouldBe "secmaker"
-	}
-
-	test("deriveMiddlewareFamily falls back to canonical path for unknown libraries") {
-		val tmpFile = File.createTempFile("acme-pkcs11", ".so").also { it.deleteOnExit() }
-		val family = discoverer().deriveMiddlewareFamily(tmpFile.absolutePath)
-		family shouldBe tmpFile.canonicalPath
-	}
-
-	test("discoverTokens deduplicates same-family libraries when probing returns empty") {
+	test("discoverTokens emits no token for libraries that probe successfully but expose no identities") {
 		val f1 = File.createTempFile("cmP11-a", ".dll").also { it.deleteOnExit() }
 		val f2 = File.createTempFile("charismathics-b-pkcs11", ".dll").also { it.deleteOnExit() }
 
@@ -238,7 +212,7 @@ class Pkcs11DiscovererTest : FunSpec({
 
 		tokens.filter {
 			it.path == f1.absolutePath || it.path == f2.absolutePath
-		}.shouldHaveSize(1)
+		}.shouldBeEmpty()
 	}
 
 	test("discoverTokens deduplicates by serial number when probing returns identities") {
@@ -267,7 +241,7 @@ class Pkcs11DiscovererTest : FunSpec({
 		hwTokens.first().name shouldBe "My SafeNet Token"
 	}
 
-	test("discoverTokens deduplicates across identity and family paths for same-family libraries") {
+	test("discoverTokens emits only the identity-bearing library when a same-family lib has no identities") {
 		val lib1 = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
 		val lib2 = File.createTempFile("gclib", ".dll").also { it.deleteOnExit() }
 
@@ -299,7 +273,7 @@ class Pkcs11DiscovererTest : FunSpec({
 		safenetTokens.first().name shouldBe "VP-SafeNet"
 	}
 
-	test("discoverTokens suppresses fallback entry when identity-bearing library is discovered after empty same-family library") {
+	test("discoverTokens emits the identity-bearing library regardless of probe order vs an empty same-family lib") {
 		val lib1 = File.createTempFile("gclib", ".dll").also { it.deleteOnExit() }
 		val lib2 = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
 
@@ -367,10 +341,6 @@ class Pkcs11DiscovererTest : FunSpec({
 		d.deriveMiddlewareName("/usr/local/lib/libykcs11.dylib") shouldBe "YubiKey (YKCS11)"
 	}
 
-	test("deriveMiddlewareFamily assigns 'yubikey' family to YKCS11 libraries") {
-		discoverer().deriveMiddlewareFamily("/usr/lib/libykcs11.so") shouldBe "yubikey"
-	}
-
 	test("discoverViaP11KitProxy returns empty list when no proxy path exists") {
 		val result = discoverer().discoverViaP11KitProxy(proxyPaths = listOf("/tmp/nonexistent-p11-proxy.so"))
 		result.shouldBeEmpty()
@@ -412,18 +382,6 @@ class Pkcs11DiscovererTest : FunSpec({
 		runCatching {
 			discoverer().discoverViaLibDirs(listOf("/tmp/dir-that-does-not-exist-omnisign"))
 		}.isSuccess.shouldBeTrue()
-	}
-
-	test("Linux 64-bit candidate list includes SafeNet and YubiKey paths") {
-		val paths = discoverer().candidatesForOs("linux", jvmIs64Bit = true).map { it.second }
-		paths.any { it.contains("libeTPkcs11") }.shouldBeTrue()
-		paths.any { it.contains("libykcs11") }.shouldBeTrue()
-	}
-
-	test("macOS candidate list includes SafeNet and YubiKey paths") {
-		val paths = discoverer().candidatesForOs("mac os x", jvmIs64Bit = true).map { it.second }
-		paths.any { it.contains("libeTPkcs11") }.shouldBeTrue()
-		paths.any { it.contains("libykcs11") }.shouldBeTrue()
 	}
 
 	test("discoverTokens uses hardware label as token name instead of middleware name") {

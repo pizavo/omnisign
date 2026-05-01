@@ -18,6 +18,7 @@ import cz.pizavo.omnisign.commands.Validate
 import cz.pizavo.omnisign.commands.algorithms.Algorithms
 import cz.pizavo.omnisign.commands.certificates.Certificates
 import cz.pizavo.omnisign.commands.config.Config
+import cz.pizavo.omnisign.commands.diagnose.Diagnose
 import cz.pizavo.omnisign.commands.schedule.Schedule
 import org.slf4j.LoggerFactory
 
@@ -39,7 +40,7 @@ import org.slf4j.LoggerFactory
 class Omnisign : CliktCommand(name = "omnisign") {
 	init {
 		versionOption(BuildConfig.VERSION, names = setOf("-v", "--version"))
-		subcommands(Sign(), Validate(), Timestamp(), Renew(), Algorithms(), Certificates(), Config(), Schedule())
+		subcommands(Sign(), Validate(), Timestamp(), Renew(), Algorithms(), Certificates(), Config(), Diagnose(), Schedule())
 		context {
 			autoEnvvarPrefix = "OMNISIGN"
 		}

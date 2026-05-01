@@ -17,9 +17,6 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.first
 import java.io.File
 import java.nio.file.Path
 import java.util.*
@@ -53,11 +50,9 @@ internal const val DEFAULT_PROBE_TIMEOUT_SECONDS = 30L
  * Discovery is layered from most to least authoritative:
  * 1. OS-native sources ([discoverViaOs]) — PC/SC on Windows, `security`/`pluginkit` on macOS,
  *    p11-kit on Linux.
- * 2. Curated fallback list ([candidatesForOs]) — well-known vendor paths not covered by
- *    OS-native discovery.
- * 3. App-data drop directory — any PKCS#11-named file placed under
+ * 2. App-data drop directory — any PKCS#11-named file placed under
  *    `<appDataDir>/omnisign/pkcs11/`.
- * 4. User-supplied paths — entries from
+ * 3. User-supplied paths — entries from
  *    [cz.pizavo.omnisign.domain.model.config.GlobalConfig.customPkcs11Libraries].
  *
  * Duplicates are resolved first by canonical path, then by probing the actual hardware
@@ -70,14 +65,11 @@ internal const val DEFAULT_PROBE_TIMEOUT_SECONDS = 30L
  *   waiting for this timeout.  Defaults to [DEFAULT_PROBE_TIMEOUT_SECONDS].
  * @property sessionManager Optional persistent session manager for fast in-process probing.
  *   When a library has been pre-initialized via [Pkcs11WarmupService], [probeLibrary] uses
- *   the in-process path (milliseconds) instead of spawning a subprocess (~18 s).  When `null`,
- *   every probe falls back to the subprocess strategy.
- * @property warmupReady Signal indicating that [Pkcs11WarmupService] has finished its
- *   background initialization cycle.  [discoverTokens] suspends until this flow emits `true`
- *   so that probing can use the fast in-process path established by warmup rather than falling
- *   back to unreliable subprocess probes.  Defaults to a pre-completed flow for test contexts
- *   where warmup is not applicable.  In production, injected via Koin as a shared flow that
- *   [Pkcs11WarmupService] writes to.
+ *   the in-process path (milliseconds) instead of spawning a subprocess (~18 s).  When `null`
+ *   or when no session has been registered yet (warmup still in flight), every probe falls
+ *   back to the subprocess strategy.  Discovery never blocks on warmup completion — running
+ *   while warmup is mid-flight just yields slower (subprocess-only) results for libraries
+ *   that have not been registered yet.
  * @property discoveryGate Concurrency gate ensuring that at most one [discoverTokens] cycle runs
  *   at a time, with at most one additional cycle queued.  When a discovery is already in progress
  *   and a new request arrives, the running cycle's result is discarded and a fresh cycle executes
@@ -91,7 +83,6 @@ internal const val DEFAULT_PROBE_TIMEOUT_SECONDS = 30L
 class Pkcs11Discoverer(
     private val probeTimeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
     private val sessionManager: Pkcs11SessionManager? = null,
-    private val warmupReady: StateFlow<Boolean> = MutableStateFlow(true),
     private val discoveryGate: ConflatedProbeGate<List<TokenInfo>> = ConflatedProbeGate(),
     private val tokenProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
         probeTokenIdentitiesViaSubprocess(path, probeTimeoutSeconds)
@@ -139,18 +130,6 @@ class Pkcs11Discoverer(
     }
 
     /**
-     * Holds the raw output of probing a single PKCS#11 library.
-     *
-     * Used internally by [discoverTokens] to collect parallel probe results before
-     * performing serial deduplication.
-     */
-    private data class LibProbeResult(
-        val name: String,
-        val path: String,
-        val identities: List<Pkcs11TokenIdentity>,
-    )
-
-    /**
      * Enumerate all unique candidate PKCS#11 library paths without probing them.
      *
      * This is the discovery-only first phase: OS-native sources, curated fallback paths,
@@ -182,7 +161,6 @@ class Pkcs11Discoverer(
         }
 
         merge(discoverViaOs(os, jvmIs64Bit))
-        merge(candidatesForOs(os, jvmIs64Bit).filter { (_, path) -> File(path).exists() })
         if (appDataPkcs11Dir != null && appDataPkcs11Dir.isDirectory) {
             merge(
                 appDataPkcs11Dir
@@ -199,26 +177,18 @@ class Pkcs11Discoverer(
 	/**
 	 * Discover all PKCS#11 tokens available on the system.
 	 *
-	 * When [warmupReady] is provided, this method suspends until the background warmup
-	 * cycle completes.  Waiting ensures that [probeLibrary] can use the fast in-process
-	 * path (`C_GetSlotList` + `C_GetTokenInfo`, milliseconds) for libraries that were
-	 * successfully initialized during warmup, rather than falling back to unreliable
-	 * subprocess probes.
+	 * Discovery never blocks on [Pkcs11WarmupService] completion.  Each candidate library is
+	 * probed via [probeLibrary], which uses the fast in-process path when [sessionManager]
+	 * has a registered session for it and falls back to a subprocess otherwise.  If warmup
+	 * is still in flight, libraries that have not yet been registered fall back to subprocess
+	 * — slower but correct.
 	 *
 	 * Probing runs in parallel on [Dispatchers.IO] — one coroutine per unique library path —
 	 * so that slow or unresponsive middleware does not delay discovery of other tokens.
 	 *
-	 * Deduplication uses a three-layer strategy over the collected probe results:
-	 * 1. **Serial number** — tokens with the same normalized serial number (ignoring
-	 *    whitespace, null-byte padding, and case) are collapsed to a single entry.
-	 *    Direct-library results are processed before p11-kit proxy results so the
-	 *    direct library's path takes precedence.
-	 * 2. **Middleware family** — libraries that returned no identities add a fallback
-	 *    [TokenInfo] only if their middleware family has not already been claimed by an
-	 *    identity-bearing result.
-	 * 3. **Proxy suppression** — p11-kit proxy results that returned no identities are
-	 *    suppressed entirely; the proxy adds no information when the underlying modules
-	 *    already report their tokens directly.
+	 * Deduplication is described in [buildTokenInfoList]: serial-number collapse with
+	 * direct-before-proxy ordering, and libraries with no identities are dropped (no stub
+	 * `TokenInfo` is emitted for an empty probe).
 	 *
 	 * Concurrency between multiple callers is managed by [discoveryGate]: at most one
 	 * full discovery cycle runs at a time, with at most one queued behind it.  If a new
@@ -234,31 +204,48 @@ class Pkcs11Discoverer(
 		appDataPkcs11Dir: File? = null,
 		userPkcs11Libraries: List<Pair<String, String>> = emptyList(),
 	): List<TokenInfo> = discoveryGate.runOrCoalesce {
-		if (!warmupReady.value) {
-			logger.info { "Waiting for PKCS#11 warmup to complete before discovery…" }
-			warmupReady.first { it }
-			logger.info { "PKCS#11 warmup complete — proceeding with discovery" }
-		}
-
 		val candidates = collectCandidates(appDataPkcs11Dir, userPkcs11Libraries)
 
 		val probeResults = coroutineScope {
 			candidates.map { (name, path) ->
 				async(Dispatchers.IO) {
-					LibProbeResult(name, path, probeLibrary(path))
+					Triple(name, path, probeLibrary(path))
 				}
 			}.awaitAll()
 		}
 
-		val (withIdentities, withoutIdentities) = probeResults.partition { it.identities.isNotEmpty() }
-		val sortedWithIdentities = withIdentities.sortedBy { isProxyPath(it.path) }
+		buildTokenInfoList(probeResults)
+	}
+
+	/**
+	 * Apply the deduplication strategy described in [discoverTokens] to a pre-computed list
+	 * of probed candidates and emit the resulting [TokenInfo] entries.
+	 *
+	 * Extracted as an internal helper so [Pkcs11DiagnosticsService] can reuse the same dedup
+	 * logic when building its own report from sequentially timed probes — keeping a single
+	 * source of truth for the proxy-vs-direct ordering and serial normalisation.
+	 *
+	 * Dedup rules:
+	 * 1. **Identities required** — only libraries that returned at least one token identity
+	 *    contribute to the result.  Libraries that probe successfully but expose no inserted
+	 *    token are surfaced only via diagnostics, not as user-visible tokens.
+	 * 2. **Serial number** — the same normalised serial collapses to a single entry; direct
+	 *    libraries are processed before proxy paths so direct paths win.
+	 *
+	 * @param probedCandidates Triples of `(display name, absolute path, identities)` —
+	 *   one per candidate library, in any order.
+	 * @return Deduplicated [TokenInfo] list ready to surface to the caller.
+	 */
+	internal fun buildTokenInfoList(
+		probedCandidates: List<Triple<String, String, List<Pkcs11TokenIdentity>>>,
+	): List<TokenInfo> {
+		val withIdentities = probedCandidates.filter { it.third.isNotEmpty() }
+		val sortedWithIdentities = withIdentities.sortedBy { isProxyPath(it.second) }
 
 		val result = mutableListOf<TokenInfo>()
 		val seenSerials = mutableSetOf<String>()
-		val seenFamilies = mutableSetOf<String>()
 
 		for ((_, path, identities) in sortedWithIdentities) {
-			seenFamilies.add(deriveMiddlewareFamily(path))
 			for (identity in identities) {
 				if (seenSerials.add(normalizeSerial(identity.serialNumber))) {
 					result += TokenInfo(
@@ -272,20 +259,7 @@ class Pkcs11Discoverer(
 			}
 		}
 
-		for ((name, path, _) in withoutIdentities) {
-			if (isProxyPath(path)) continue
-			if (seenFamilies.add(deriveMiddlewareFamily(path))) {
-				result += TokenInfo(
-					id = "pkcs11-${File(path).name}",
-					name = name,
-					type = TokenType.PKCS11,
-					path = path,
-					requiresPin = true,
-				)
-			}
-		}
-
-		result
+		return result
 	}
 
     /**
@@ -326,72 +300,6 @@ class Pkcs11Discoverer(
                     discoverViaLibDirs(linuxLibDirs) +
                     discoverViaP11Kit()
         }
-    }
-
-    /**
-     * Return `(display name, absolute path)` pairs for the curated fallback list of PKCS#11
-     * middleware candidates appropriate for the given [os] string (lowercase).
-     *
-     * **Scope**: only paths not reachable by [discoverViaOs]:
-     * - Windows: `Program Files` vendor paths not always registered in the registry, and
-     *   standalone tools (SoftHSM2) that never register.  `System32`/`SysWOW64` is already
-     *   covered by the dir scan.  Specifically: SafeNet SAC 10.x does not always copy its DLL
-     *   to `System32`; OpenSC only does so when "Register in system" is checked at installation time;
-     *   SoftHSM2 for Windows is a standalone zip.
-     * - Linux/macOS: libraries from installations without a p11-kit `.module` file.
-     *
-     * Stale entries (file no longer on disk) are silently dropped by the [File.exists] filter
-     * in [discoverTokens].  Only the bitness-appropriate path is included.
-     */
-    internal fun candidatesForOs(
-        os: String,
-        jvmIs64Bit: Boolean = System.getProperty("sun.arch.data.model") == "64",
-    ): List<Pair<String, String>> = when {
-        os.contains("win") && jvmIs64Bit -> listOf(
-            "SafeNet Authentication Client" to
-                    "C:\\Program Files\\SafeNet\\Authentication\\SAC\\x64\\eTPKCS11.dll",
-            "OpenSC" to
-                    "C:\\Program Files\\OpenSC Project\\OpenSC\\pkcs11\\opensc-pkcs11.dll",
-            "SoftHSM2" to "C:\\SoftHSM2\\lib\\softhsm2-x64.dll",
-        )
-
-        os.contains("win") -> listOf(
-            "SafeNet Authentication Client" to
-                    "C:\\Program Files (x86)\\SafeNet\\Authentication\\SAC\\x32\\eTPKCS11.dll",
-            "OpenSC" to
-                    "C:\\Program Files (x86)\\OpenSC Project\\OpenSC\\pkcs11\\opensc-pkcs11.dll",
-        )
-
-        os.contains("mac") -> listOf(
-            "SafeNet Authentication Client" to "/usr/local/lib/libeTPkcs11.dylib",
-            "YubiKey (YKCS11)" to "/usr/local/lib/libykcs11.dylib",
-            "OpenSC" to "/Library/OpenSC/lib/opensc-pkcs11.so",
-            "OpenSC (Homebrew)" to "/opt/homebrew/lib/opensc-pkcs11.so",
-            "macOS Smart Card" to "/usr/lib/libctkpcscd.dylib",
-            "SoftHSM2 (Homebrew)" to "/opt/homebrew/lib/softhsm/libsofthsm2.so",
-        )
-
-        jvmIs64Bit -> listOf(
-            "SafeNet Authentication Client" to "/usr/lib/libeTPkcs11.so",
-            "SafeNet Authentication Client (lib64)" to "/usr/lib64/libeTPkcs11.so",
-            "SafeNet Authentication Client (local)" to "/usr/local/lib/libeTPkcs11.so",
-            "YubiKey (YKCS11)" to "/usr/lib/libykcs11.so",
-            "YubiKey (YKCS11, lib64)" to "/usr/lib64/libykcs11.so",
-            "OpenSC" to "/usr/lib/x86_64-linux-gnu/opensc-pkcs11.so",
-            "OpenSC (aarch64)" to "/usr/lib/aarch64-linux-gnu/opensc-pkcs11.so",
-            "OpenSC (local)" to "/usr/local/lib/opensc-pkcs11.so",
-            "SoftHSM2" to "/usr/lib/softhsm/libsofthsm2.so",
-            "SoftHSM2 (lib64)" to "/usr/lib64/softhsm/libsofthsm2.so",
-        )
-
-        else -> listOf(
-            "SafeNet Authentication Client" to "/usr/lib/libeTPkcs11.so",
-            "SafeNet Authentication Client (local)" to "/usr/local/lib/libeTPkcs11.so",
-            "YubiKey (YKCS11)" to "/usr/lib/libykcs11.so",
-            "OpenSC" to "/usr/lib/opensc-pkcs11.so",
-            "OpenSC (local)" to "/usr/local/lib/opensc-pkcs11.so",
-            "SoftHSM2" to "/usr/lib/softhsm/libsofthsm2.so",
-        )
     }
 
     /**
@@ -465,34 +373,6 @@ class Pkcs11Discoverer(
 		return lower.contains("p11-kit-proxy") || lower.contains("p11kitproxy")
 	}
 
-	/**
-	 * Derive a middleware family identifier from a library [path].
-     *
-     * Libraries within the same family access the same physical token slots and should be
-     * deduplicated when hardware probing is unavailable.  For example, SafeNet Authentication
-     * Client ships both `eTPKCS11.dll` and `gclib.dll` — both talk to the same smart card,
-     * so they belong to family `"safenet"`.
-     *
-     * Unknown libraries fall back to their canonical path, so they are never grouped with
-     * unrelated entries.
-     */
-    internal fun deriveMiddlewareFamily(path: String): String {
-        val lower = path.lowercase()
-        return when {
-            lower.contains("etpkcs11") || lower.contains("etoken") ||
-                    lower.contains("/sac") || lower.contains("\\sac") ||
-                    lower.contains("gclib") || lower.contains("gemalto") ||
-                    lower.contains("idprime") -> "safenet"
-
-            lower.contains("ykcs11") -> "yubikey"
-            lower.contains("opensc") -> "opensc"
-            lower.contains("iidp11") || lower.contains("netid") -> "secmaker"
-            lower.contains("cmp11") || lower.contains("charismathics") -> "charismathics"
-            lower.contains("softhsm") -> "softhsm"
-            lower.contains("libck") || lower.contains("cryptoki") -> "cryptoki"
-            else -> runCatching { File(path).canonicalPath }.getOrElse { path }
-        }
-    }
 
     /**
      * Minimal JNA binding for `winscard.dll` (PC/SC).
@@ -953,7 +833,8 @@ internal fun resolveProbeClasspath(): String? {
 internal fun resolveProbeCommand(libraryPath: String): List<String>? {
     val logger = KotlinLogging.logger {}
 
-    val javaExecutable = Path.of(System.getProperty("java.home"), "bin", "java").toString()
+    val javaBinaryName = if (System.getProperty("os.name").lowercase().contains("win")) "java.exe" else "java"
+    val javaExecutable = Path.of(System.getProperty("java.home"), "bin", javaBinaryName).toString()
     if (File(javaExecutable).exists()) {
         val classpath = resolveProbeClasspath()
         if (classpath == null) {
