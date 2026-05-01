@@ -129,7 +129,7 @@ class DiagnosePkcs11 : CliktCommand(name = "pkcs11"), KoinComponent {
 		appendLine("PC/SC readers (${readers.size})")
 		appendLine(SECTION_SEPARATOR)
 		if (readers.isEmpty()) {
-			appendLine("  (PC/SC enumeration not yet implemented — slated for refactor step 5)")
+			appendLine("  (no readers detected — pcscd/winscard unreachable, or no readers connected)")
 			return
 		}
 		for (name in readers) appendLine("  - $name")

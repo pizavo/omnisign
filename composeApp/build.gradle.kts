@@ -155,6 +155,7 @@ compose.desktop {
 
 		val jvmArgsList = mutableListOf(
 			"--enable-native-access=ALL-UNNAMED",
+			"--add-modules=java.smartcardio",
 			"-Dsun.java2d.d3d=false",
 			"-Dsun.awt.wmclass=OmniSign",
 			"-XX:ErrorFile=${resolveCrashDir()}/hs_err_pid%p.log",
@@ -176,6 +177,7 @@ compose.desktop {
 				"java.management",
 				"java.naming",
 				"java.net.http",
+				"java.smartcardio",
 				"java.sql",
 				"java.xml",
 				"java.xml.crypto",

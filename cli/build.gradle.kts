@@ -103,6 +103,7 @@ tasks.withType<Test> {
 		"-XX:+EnableDynamicAgentLoading",
 		"-Xshare:off",
 		"--enable-native-access=ALL-UNNAMED",
+		"--add-modules=java.smartcardio",
 	)
 }
 
@@ -110,6 +111,7 @@ application {
 	mainClass.set("cz.pizavo.omnisign.CliKt")
 	applicationDefaultJvmArgs = listOf(
 		"--enable-native-access=ALL-UNNAMED",
+		"--add-modules=java.smartcardio",
 		"-XX:ErrorFile=${resolveCrashDir()}/hs_err_pid%p.log",
 	)
 	applicationName = "omnisign"
@@ -118,6 +120,7 @@ application {
 tasks.named<JavaExec>("run") {
 	jvmArgs(
 		"--enable-native-access=ALL-UNNAMED",
+		"--add-modules=java.smartcardio",
 		"-XX:ErrorFile=${resolveCrashDir()}/hs_err_pid%p.log",
 	)
 	if (System.getProperty("os.name", "").lowercase().contains("win")) {
@@ -267,7 +270,7 @@ val commonJpackageArgsList: List<String> = listOf(
 	"--description", "Multiplatform digital signature verification, signing and re-timestamping tool",
 	"--copyright", "Copyright (C) 2026 Pizavo",
 	"--main-class", "cz.pizavo.omnisign.CliKt",
-	"--add-modules", "java.logging,java.naming,java.desktop,java.management,java.sql,java.xml.crypto,jdk.unsupported",
+	"--add-modules", "java.logging,java.naming,java.desktop,java.management,java.smartcardio,java.sql,java.xml.crypto,jdk.unsupported",
 	"--java-options", "--enable-native-access=ALL-UNNAMED",
 )
 

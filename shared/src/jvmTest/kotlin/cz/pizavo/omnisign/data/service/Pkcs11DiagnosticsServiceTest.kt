@@ -40,8 +40,12 @@ class Pkcs11DiagnosticsServiceTest : FunSpec({
 		coEvery { repo.getCurrentConfig() } returns AppConfig(global = GlobalConfig())
 	}
 
+	fun newPcscMonitor(): PcscMonitorService = mockk<PcscMonitorService>().also { monitor ->
+		every { monitor.currentReaders() } returns emptyList()
+	}
+
 	test("runDiagnostics returns a populated environment block") {
-		val service = Pkcs11DiagnosticsService(newDiscoverer(), newConfigRepo())
+		val service = Pkcs11DiagnosticsService(newDiscoverer(), newConfigRepo(), newPcscMonitor())
 
 		val report = service.runDiagnostics()
 
@@ -51,7 +55,7 @@ class Pkcs11DiagnosticsServiceTest : FunSpec({
 	}
 
 	test("runDiagnostics with no candidates produces empty probes and tokens") {
-		val service = Pkcs11DiagnosticsService(newDiscoverer(), newConfigRepo())
+		val service = Pkcs11DiagnosticsService(newDiscoverer(), newConfigRepo(), newPcscMonitor())
 
 		val report = service.runDiagnostics()
 
@@ -69,7 +73,7 @@ class Pkcs11DiagnosticsServiceTest : FunSpec({
 		every { runProbeSubprocess("/test/safe.so", any()) } returns
 				Pkcs11SubprocessResult.Success(pid = 100L, stdout = "MyToken\tABC123\n")
 
-		val report = Pkcs11DiagnosticsService(discoverer, newConfigRepo()).runDiagnostics()
+		val report = Pkcs11DiagnosticsService(discoverer, newConfigRepo(), newPcscMonitor()).runDiagnostics()
 
 		report.probes shouldHaveSize 1
 		val probe = report.probes.single()
@@ -88,7 +92,7 @@ class Pkcs11DiagnosticsServiceTest : FunSpec({
 		every { runProbeSubprocess("/test/crash.so", any()) } returns
 				Pkcs11SubprocessResult.Crashed(pid = 200L, exitCode = 139, stderr = "SIGSEGV at 0x0")
 
-		val report = Pkcs11DiagnosticsService(discoverer, newConfigRepo()).runDiagnostics()
+		val report = Pkcs11DiagnosticsService(discoverer, newConfigRepo(), newPcscMonitor()).runDiagnostics()
 
 		val probe = report.probes.single()
 		probe.outcome shouldBe Pkcs11DiagnosticsReport.ProbeOutcome.Outcome.CRASHED
@@ -106,7 +110,7 @@ class Pkcs11DiagnosticsServiceTest : FunSpec({
 		every { runProbeSubprocess("/test/hung.so", any()) } returns
 				Pkcs11SubprocessResult.TimedOut(pid = 300L)
 
-		val report = Pkcs11DiagnosticsService(discoverer, newConfigRepo()).runDiagnostics()
+		val report = Pkcs11DiagnosticsService(discoverer, newConfigRepo(), newPcscMonitor()).runDiagnostics()
 
 		val probe = report.probes.single()
 		probe.outcome shouldBe Pkcs11DiagnosticsReport.ProbeOutcome.Outcome.TIMED_OUT
@@ -122,7 +126,7 @@ class Pkcs11DiagnosticsServiceTest : FunSpec({
 		mockkStatic(::runProbeSubprocess)
 		every { runProbeSubprocess("/test/nocmd.so", any()) } returns null
 
-		val report = Pkcs11DiagnosticsService(discoverer, newConfigRepo()).runDiagnostics()
+		val report = Pkcs11DiagnosticsService(discoverer, newConfigRepo(), newPcscMonitor()).runDiagnostics()
 
 		val probe = report.probes.single()
 		probe.outcome shouldBe Pkcs11DiagnosticsReport.ProbeOutcome.Outcome.NO_COMMAND
@@ -148,7 +152,7 @@ class Pkcs11DiagnosticsServiceTest : FunSpec({
 		every { runProbeSubprocess("/test/lib.so", any()) } returns
 				Pkcs11SubprocessResult.Success(pid = 1L, stdout = "Token\tXYZ\n")
 
-		val report = Pkcs11DiagnosticsService(discoverer, newConfigRepo()).runDiagnostics()
+		val report = Pkcs11DiagnosticsService(discoverer, newConfigRepo(), newPcscMonitor()).runDiagnostics()
 
 		report.tokens shouldHaveSize 1
 		report.tokens.single().id shouldBe "pkcs11-XYZ"
@@ -160,7 +164,7 @@ class Pkcs11DiagnosticsServiceTest : FunSpec({
 		val discoverer = newDiscoverer()
 		every { discoverer.discoverViaOs(any(), any()) } returns listOf("OS Lib" to "/os/lib.so")
 
-		val report = Pkcs11DiagnosticsService(discoverer, newConfigRepo()).runDiagnostics()
+		val report = Pkcs11DiagnosticsService(discoverer, newConfigRepo(), newPcscMonitor()).runDiagnostics()
 
 		report.candidatesByLayer.osNative shouldHaveSize 1
 		report.candidatesByLayer.osNative.single().name shouldBe "OS Lib"
@@ -169,7 +173,7 @@ class Pkcs11DiagnosticsServiceTest : FunSpec({
 	}
 
 	test("runDiagnostics measures total elapsed time") {
-		val service = Pkcs11DiagnosticsService(newDiscoverer(), newConfigRepo())
+		val service = Pkcs11DiagnosticsService(newDiscoverer(), newConfigRepo(), newPcscMonitor())
 
 		val report = service.runDiagnostics()
 

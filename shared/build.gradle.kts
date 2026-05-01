@@ -23,7 +23,10 @@ configurations.findByName("commonTestApi")?.dependencies?.removeIf {
 
 kotlin {
 	jvm {
-		compilerOptions.jvmTarget = JvmTarget.JVM_25
+		compilerOptions {
+			jvmTarget = JvmTarget.JVM_25
+			freeCompilerArgs.add("-Xadd-modules=java.smartcardio")
+		}
 		testRuns.configureEach {
 			executionTask.configure {
 				useJUnitPlatform()
@@ -31,6 +34,7 @@ kotlin {
 					"-XX:+EnableDynamicAgentLoading",
 					"-Xshare:off",
 					"--enable-native-access=ALL-UNNAMED",
+					"--add-modules=java.smartcardio",
 				)
 			}
 		}

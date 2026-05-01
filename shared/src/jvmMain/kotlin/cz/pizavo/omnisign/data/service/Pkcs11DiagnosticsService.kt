@@ -30,6 +30,7 @@ import java.util.concurrent.TimeUnit
 class Pkcs11DiagnosticsService(
 	private val pkcs11Discoverer: Pkcs11Discoverer,
 	private val configRepository: ConfigRepository,
+	private val pcscMonitor: PcscMonitorService,
 	private val probeTimeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
 	private val externalCommandTimeoutSeconds: Long = DEFAULT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
 ) {
@@ -66,7 +67,12 @@ class Pkcs11DiagnosticsService(
 			.map { (name, path) -> toCandidate(name, path) }
 
 		val p11Kit = if (isLinux(osLower)) collectP11KitTruth() else null
-		val pcscReaders = emptyList<String>()
+		val pcscReaders = pcscMonitor.currentReaders().map { reader ->
+			val cardTag = if (reader.cardPresent) {
+				reader.atrHex?.let { " — card present (ATR $it)" } ?: " — card present"
+			} else " — empty"
+			"${reader.name}$cardTag"
+		}
 
 		val probeOutcomes = mutableListOf<Pkcs11DiagnosticsReport.ProbeOutcome>()
 		val probedTriples = mergedCandidates.map { candidate ->

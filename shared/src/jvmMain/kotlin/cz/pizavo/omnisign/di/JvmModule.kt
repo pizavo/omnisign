@@ -32,6 +32,7 @@ import org.koin.dsl.module
  */
 val jvmRepositoryModule = module {
 	singleOf(::Pkcs11CrashBlacklist)
+	single { PcscMonitorService() }
 	single {
 		Pkcs11Discoverer(
 			crashBlacklist = get(),
@@ -48,6 +49,7 @@ val jvmRepositoryModule = module {
 		Pkcs11DiagnosticsService(
 			pkcs11Discoverer = get(),
 			configRepository = get(),
+			pcscMonitor = get(),
 		)
 	}
 	singleOf(::DssTokenService) bind TokenService::class

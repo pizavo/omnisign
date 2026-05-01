@@ -13,8 +13,9 @@ package cz.pizavo.omnisign.data.service
  * @property mergedCandidates Deduplicated candidate list as the discoverer would produce it.
  * @property p11Kit Out-of-process p11-kit truth (Linux only); `null` on other platforms or
  *   when no `p11-kit` / `pkg-config` binary is available.
- * @property pcscReaders Smart-card reader names; always empty in v1 (PC/SC enumeration is
- *   slated for the hot-insert event channel work in step 5 of the refactor roadmap).
+ * @property pcscReaders Connected PC/SC readers and their card-presence state.  Empty when
+ *   the PC/SC stack is unavailable (no `pcscd` on Linux; no smart-card service on Windows).
+ *   Each entry is `"<reader name> — <card present (ATR …) | empty>"`.
  * @property probes Per-candidate subprocess probe outcomes with wall-clock timings.
  * @property tokens The final [cz.pizavo.omnisign.domain.service.TokenInfo] list as discovery would emit it.
  * @property totalElapsedMillis Total wall-clock duration of the diagnostics run, in milliseconds.
