@@ -21,13 +21,24 @@ interface SigningRepository {
      *
      * Per-token access failures are not propagated as hard errors; they are collected in
      * [CertificateDiscoveryResult.tokenWarnings] so callers can surface diagnostic information.
-     * Tokens that require a PIN are reported in [CertificateDiscoveryResult.lockedTokens]
-     * rather than as warnings so the UI can offer an unlock action.
+     * Tokens that require a PIN and have no stored credential are handled in two phases:
      *
+     * 1. **Silent pass (always)** — every present token attempts a load using its stored credential
+     *    or no PIN.  Tokens with no stored credential and a PIN requirement are collected as locked.
+     * 2. **Prompted pass (when [promptForLocked] is `true`)** — locked tokens are revisited
+     *    sequentially and the configured [cz.pizavo.omnisign.platform.PasswordCallback] is asked for
+     *    a PIN.  Tokens whose prompt is satisfied yield certificates; tokens whose prompt is
+     *    cancelled (callback returns `null`) remain in [CertificateDiscoveryResult.lockedTokens].
+     *
+     * @param promptForLocked When `true` (default), invoke the platform [PasswordCallback] for any
+     *   token that survives the silent pass.  Set to `false` for non-interactive contexts (server,
+     *   scripted CLI) — locked tokens then remain in `lockedTokens` without any prompt.
      * @return Discovery result containing signing-capable certificates and any per-token warnings,
      *         or a hard error when token discovery itself fails.
      */
-    suspend fun listAvailableCertificates(): OperationResult<CertificateDiscoveryResult>
+    suspend fun listAvailableCertificates(
+        promptForLocked: Boolean = true,
+    ): OperationResult<CertificateDiscoveryResult>
 
     /**
      * Unlock a PIN-protected token by prompting the user for credentials.

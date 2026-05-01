@@ -4,6 +4,8 @@ import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.core.requireObject
+import com.github.ajalt.clikt.parameters.options.flag
+import com.github.ajalt.clikt.parameters.options.option
 import cz.pizavo.omnisign.cli.OutputConfig
 import cz.pizavo.omnisign.cli.json.JsonCertificateList
 import cz.pizavo.omnisign.cli.json.toJsonCertificateList
@@ -29,11 +31,17 @@ class CertificatesList : CliktCommand(name = "list"), KoinComponent {
 	private val listCertificates: ListCertificatesUseCase by inject()
 	private val output by requireObject<OutputConfig>()
 
+	private val noPrompt by option(
+		"--no-prompt",
+		help = "Skip the interactive PIN prompt for locked PKCS#11 tokens; report them as locked instead. " +
+				"Use in scripted / CI contexts where stdin is not attached to a TTY.",
+	).flag(default = false)
+
 	override fun help(context: Context): String =
 		"List all certificates available for signing"
 
 	override fun run(): Unit = runBlocking {
-		listCertificates().fold(
+		listCertificates(promptForLocked = !noPrompt).fold(
 			ifLeft = { error ->
 				if (output.json) {
 					echo(Json.encodeToString(JsonCertificateList(
@@ -52,6 +60,7 @@ class CertificatesList : CliktCommand(name = "list"), KoinComponent {
 					echo(Json.encodeToString(result.toJsonCertificateList()))
 				} else {
 					printTokenWarnings(result)
+					printLockedTokens(result)
 					if (result.certificates.isEmpty()) {
 						printEmptyMessage(result)
 					} else {
@@ -69,6 +78,24 @@ class CertificatesList : CliktCommand(name = "list"), KoinComponent {
 		result.tokenWarnings.forEach { warning ->
 			echo("⚠️  Could not read token '${warning.tokenName}': ${warning.message}", err = true)
 			warning.details?.let { echo("   └─ $it", err = true) }
+		}
+	}
+
+	/**
+	 * Print PIN-protected tokens that the silent + (optional) prompted pass could not unlock,
+	 * so the user knows certificates from those tokens were not enumerated.
+	 *
+	 * In default `--no-prompt`-disabled mode, a token surfaces here only when the user cancelled
+	 * the PIN prompt or when the platform [cz.pizavo.omnisign.platform.PasswordCallback] returned
+	 * `null` (e.g., the server back-end).  In `--no-prompt` mode, every PIN-required token without
+	 * a stored credential surfaces here — that is the deliberate scripting trade-off.
+	 */
+	private fun printLockedTokens(result: CertificateDiscoveryResult) {
+		if (result.lockedTokens.isEmpty()) return
+		val noun = if (result.lockedTokens.size == 1) "token" else "tokens"
+		echo("🔒 ${result.lockedTokens.size} $noun locked — PIN entry was cancelled or unavailable:", err = true)
+		result.lockedTokens.forEach { locked ->
+			echo("   • ${locked.tokenName} (${locked.tokenTypeName})", err = true)
 		}
 	}
 

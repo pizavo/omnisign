@@ -126,6 +126,10 @@ tasks.named<JavaExec>("run") {
 	if (System.getProperty("os.name", "").lowercase().contains("win")) {
 		jvmArgs("--add-modules=jdk.crypto.mscapi")
 	}
+	// Pass the parent terminal's stdin to the application so interactive prompts
+	// (PIN entry via Mordant.promptSecret) can read user input.  Without this
+	// gradle's JavaExec leaves stdin disconnected and the prompt sees EOF immediately.
+	standardInput = System.`in`
 }
 
 tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
