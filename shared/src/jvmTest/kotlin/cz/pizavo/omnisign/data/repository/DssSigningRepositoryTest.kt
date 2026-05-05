@@ -287,7 +287,7 @@ class DssSigningRepositoryTest : FunSpec({
 			.shouldBeInstanceOf<SigningError.InvalidParameters>()
 	}
 
-	test("listAvailableCertificates separates locked tokens from warnings") {
+	test("listAvailableCertificates with promptForLocked=false separates locked tokens from warnings") {
 		val pinToken = TokenInfo(id = "t1", name = "PIN Token", type = TokenType.PKCS11, path = "/lib/fake.so", requiresPin = true)
 		val freeToken = TokenInfo(id = "t2", name = "Free Token", type = TokenType.WINDOWS_MY, requiresPin = false)
 		val cert = CertificateEntry(
@@ -302,11 +302,47 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { credentialStore.getPassword(any(), "t1") } returns null
 		coEvery { tokenService.loadCertificatesSilent(freeToken, null) } returns listOf(cert).right()
 
-		val result = repository.listAvailableCertificates().shouldBeRight()
+		val result = repository.listAvailableCertificates(promptForLocked = false).shouldBeRight()
 		result.certificates.shouldHaveSize(1)
 		result.lockedTokens.shouldHaveSize(1)
 		result.lockedTokens.first().tokenId shouldBe "t1"
 		result.tokenWarnings.shouldBeEmpty()
+	}
+
+	test("listAvailableCertificates with promptForLocked=true loads certs from prompted token") {
+		val pinToken = TokenInfo(id = "t1", name = "PIN Token", type = TokenType.PKCS11, path = "/lib/fake.so", requiresPin = true)
+		val cert = CertificateEntry(
+			alias = "cert-prompt", subjectDN = "CN=Prompt", issuerDN = "CN=CA",
+			serialNumber = "9", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
+			keyUsages = listOf("digitalSignature"), tokenInfo = pinToken,
+		)
+
+		coEvery { tokenService.discoverTokens() } returns listOf(pinToken).right()
+		coEvery { tokenService.probeTokenPresent(pinToken) } returns true
+		coEvery { credentialStore.getPassword(any(), "t1") } returns null
+		coEvery { tokenService.loadCertificates(pinToken, null) } returns listOf(cert).right()
+
+		val result = repository.listAvailableCertificates(promptForLocked = true).shouldBeRight()
+		result.certificates.shouldHaveSize(1)
+		result.certificates.first().alias shouldBe "cert-prompt"
+		result.lockedTokens.shouldBeEmpty()
+		result.tokenWarnings.shouldBeEmpty()
+	}
+
+	test("listAvailableCertificates with promptForLocked=true keeps token locked when prompt is cancelled") {
+		val pinToken = TokenInfo(id = "t1", name = "PIN Token", type = TokenType.PKCS11, path = "/lib/fake.so", requiresPin = true)
+
+		coEvery { tokenService.discoverTokens() } returns listOf(pinToken).right()
+		coEvery { tokenService.probeTokenPresent(pinToken) } returns true
+		coEvery { credentialStore.getPassword(any(), "t1") } returns null
+		coEvery { tokenService.loadCertificates(pinToken, null) } returns SigningError.TokenAccessError(
+			message = "PIN entry cancelled for 'PIN Token'"
+		).left()
+
+		val result = repository.listAvailableCertificates(promptForLocked = true).shouldBeRight()
+		result.certificates.shouldBeEmpty()
+		result.lockedTokens.shouldHaveSize(1)
+		result.lockedTokens.first().tokenId shouldBe "t1"
 	}
 
 	test("resolvePrivateKey does not prompt for PIN when cert is found on a non-PIN token") {

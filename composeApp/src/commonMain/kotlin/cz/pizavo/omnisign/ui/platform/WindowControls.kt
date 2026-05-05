@@ -108,10 +108,10 @@ val LocalTitleBarDarkControls = staticCompositionLocalOf<((Boolean) -> Unit)?> {
  * native title bar or via JBR's Custom Title Bar API. When non-null the slot is
  * invoked at the trailing end of [cz.pizavo.omnisign.ui.layout.IslandToolbar].
  *
- * On JVM desktop with Linux the value is set to a composable that renders
+ * On JVM desktop with Linux the value is always set to a composable that renders
  * minimize / maximize / restore / close icon buttons backed by AWT `Frame` calls,
- * because JBR's `WindowDecorations` API is not supported on Linux and the window
- * therefore runs as undecorated (no native title bar at all).
+ * because JBR's Custom Title Bar on X11 does not provide native window-control
+ * buttons on undecorated frames.
  */
 val LocalWindowControls = staticCompositionLocalOf<(@Composable () -> Unit)?> { null }
 

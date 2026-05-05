@@ -24,11 +24,16 @@ class ListCertificatesUseCase(
     /**
      * Return certificates available for signing from all discovered token sources.
      *
+     * @param promptForLocked When `true` (default), interactive contexts (CLI, desktop) are
+     *   prompted for the PIN of any locked PIN-required token.  Set to `false` from
+     *   non-interactive callers (server, scripted CLI) to preserve the silent-only behaviour.
      * @return Discovery result with filtered certificates and any per-token access warnings,
      *         or a hard error when token discovery itself fails.
      */
-    suspend operator fun invoke(): OperationResult<CertificateDiscoveryResult> =
-        signingRepository.listAvailableCertificates().map { result ->
+    suspend operator fun invoke(
+        promptForLocked: Boolean = true,
+    ): OperationResult<CertificateDiscoveryResult> =
+        signingRepository.listAvailableCertificates(promptForLocked).map { result ->
             result.copy(certificates = result.certificates.filter { it.isSigningCapable() })
         }
 

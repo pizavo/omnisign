@@ -169,20 +169,50 @@ class DssSigningRepository(
 	}
 	
 	@Suppress("TooGenericExceptionCaught")
-	override suspend fun listAvailableCertificates(): OperationResult<CertificateDiscoveryResult> {
+	override suspend fun listAvailableCertificates(
+		promptForLocked: Boolean,
+	): OperationResult<CertificateDiscoveryResult> {
 		return try {
 			val tokensResult = tokenService.discoverTokens()
 			tokensResult.fold(
 				ifLeft = { return it.left() },
 				ifRight = { tokens ->
 					discoveredTokens = tokens
+
+					// Pass 1: silent (parallel) — every token gets a non-blocking attempt.
+					// PIN-required tokens without a stored credential surface as `lockedTokens`.
 					val partialResults = coroutineScope {
-						tokens.map { token -> async { discoverTokenCertificates(token) } }.awaitAll()
+						tokens.map { token -> async { discoverTokenCertificatesSilent(token) } }.awaitAll()
 					}
+					val certificates = partialResults.flatMap { it.certificates }.toMutableList()
+					val warnings = partialResults.flatMap { it.tokenWarnings }.toMutableList()
+					val locked = partialResults.flatMap { it.lockedTokens }
+
+					// Pass 2: prompted (sequential) — when allowed, ask the platform PasswordCallback
+					// for each locked token in turn.  Sequential so simultaneous PIN dialogs / terminal
+					// prompts cannot collide.  Tokens whose prompt is cancelled remain locked.
+					val stillLocked = mutableListOf<LockedTokenInfo>()
+					if (promptForLocked && locked.isNotEmpty()) {
+						val tokensById = tokens.associateBy { it.id }
+						for (entry in locked) {
+							val token = tokensById[entry.tokenId]
+							if (token == null) {
+								stillLocked.add(entry)
+								continue
+							}
+							tokenService.loadCertificates(token, null).fold(
+								ifLeft = { stillLocked.add(entry) },
+								ifRight = { certs -> certificates.addAll(certs.toAvailableCertificateInfoList(token)) },
+							)
+						}
+					} else {
+						stillLocked.addAll(locked)
+					}
+
 					CertificateDiscoveryResult(
-						certificates = partialResults.flatMap { it.certificates },
-						tokenWarnings = partialResults.flatMap { it.tokenWarnings },
-						lockedTokens = partialResults.flatMap { it.lockedTokens },
+						certificates = certificates,
+						tokenWarnings = warnings,
+						lockedTokens = stillLocked,
 					).right()
 				}
 			)
@@ -196,18 +226,19 @@ class DssSigningRepository(
 	}
 
 	/**
-	 * Probe and enumerate certificates for a single [token].
+	 * Probe and enumerate certificates for a single [token] without prompting for credentials.
 	 *
 	 * Returns a partial [CertificateDiscoveryResult] containing only the data relevant to
 	 * this token.  Results from all tokens are merged by [listAvailableCertificates] after
-	 * all parallel probes complete.
+	 * all parallel probes complete; the optional prompted pass then re-attempts any
+	 * `lockedTokens` it produced.
 	 *
 	 * PIN-protected tokens without a stored credential are reported as locked.  Tokens that
 	 * are physically absent are silently skipped. Load errors for PINless tokens (e.g.,
 	 * OS key stores) are reported as warnings so the user can diagnose the issue.
 	 */
 	@Suppress("TooGenericExceptionCaught")
-	private suspend fun discoverTokenCertificates(token: TokenInfo): CertificateDiscoveryResult {
+	private suspend fun discoverTokenCertificatesSilent(token: TokenInfo): CertificateDiscoveryResult {
 		if (!tokenService.probeTokenPresent(token)) {
 			return CertificateDiscoveryResult(certificates = emptyList())
 		}

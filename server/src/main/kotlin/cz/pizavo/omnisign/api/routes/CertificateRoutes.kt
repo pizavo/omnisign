@@ -28,7 +28,7 @@ fun Route.certificateRoutes() {
 	get("/api/v1/certificates") {
 		if (!call.requireOperation(AllowedOperation.SIGN, serverConfig)) return@get
 
-		listCertificatesUseCase().fold(
+		listCertificatesUseCase(promptForLocked = false).fold(
 			ifLeft = { error ->
 				throw OperationException(error)
 			},

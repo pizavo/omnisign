@@ -3,13 +3,21 @@ package cz.pizavo.omnisign
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
+import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
 import cz.pizavo.omnisign.di.serverModule
-import cz.pizavo.omnisign.plugins.*import io.github.oshai.kotlinlogging.KotlinLogging
+import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.plugins.*
+import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import org.koin.ktor.ext.inject
 import org.koin.ktor.plugin.Koin
 import java.io.File
 import java.security.KeyStore
@@ -87,6 +95,7 @@ fun main(args: Array<String>) {
  */
 fun Application.moduleWith(serverConfig: ServerConfig) {
 	configureKoin(serverConfig)
+	launchPkcs11WarmupIfNeeded(serverConfig)
 	configureDefaultHeaders(hstsConfig = serverConfig.tls?.hsts)
 	configureSerialization()
 	configureStatusPages()
@@ -155,6 +164,43 @@ fun Application.configureKoin(serverConfig: ServerConfig) {
 			jvmRepositoryModule,
 			serverModule(serverConfig),
 		)
+	}
+}
+
+/**
+ * Launch a background PKCS#11 warmup cycle when [AllowedOperation.SIGN] is enabled.
+ *
+ * Signing requires PKCS#11 token discovery to list available certificates.  The warmup
+ * cycle pre-initializes PKCS#11 middleware libraries in-process so that subsequent
+ * certificate discovery calls use the fast in-process path rather than spawning
+ * unreliable subprocesses.
+ *
+ * When `SIGN` is not in [ServerConfig.allowedOperations], warmup is skipped entirely
+ * because the certificate discovery route (`GET /api/v1/certificates`) is gated behind
+ * `SIGN` and will never be invoked.
+ *
+ * @param serverConfig Current server configuration.
+ */
+private fun Application.launchPkcs11WarmupIfNeeded(serverConfig: ServerConfig) {
+	if (AllowedOperation.SIGN !in serverConfig.allowedOperations) {
+		logger.debug { "SIGN operation not enabled — skipping PKCS#11 warmup" }
+		return
+	}
+
+	val warmupService by inject<Pkcs11WarmupService>()
+	val configRepo by inject<ConfigRepository>()
+
+	CoroutineScope(Dispatchers.IO).launch {
+		try {
+			val config = configRepo.getCurrentConfig()
+			val userLibs = config.global.customPkcs11Libraries.map { it.name to it.path }
+			logger.info { "Launching PKCS#11 background warmup (${userLibs.size} user lib(s))" }
+			warmupService.warmup(userPkcs11Libraries = userLibs)
+		} catch (e: Exception) {
+			logger.warn(e) { "PKCS#11 background warmup failed — certificate discovery will use subprocess probing" }
+			val signal by inject<MutableStateFlow<Boolean>>()
+			signal.value = true
+		}
 	}
 }
 

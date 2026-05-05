@@ -16,6 +16,7 @@ import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.service.TokenService
 import cz.pizavo.omnisign.domain.usecase.ExportImportConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.RenewBatchUseCase
+import kotlinx.coroutines.flow.MutableStateFlow
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
 import org.koin.dsl.module
@@ -30,7 +31,27 @@ import org.koin.dsl.module
  * ```
  */
 val jvmRepositoryModule = module {
-	single { Pkcs11Discoverer() }
+	singleOf(::Pkcs11CrashBlacklist)
+	single { PcscMonitorService() }
+	single {
+		Pkcs11Discoverer(
+			crashBlacklist = get(),
+		)
+	}
+	single {
+		Pkcs11WarmupService(
+			discoverer = get(),
+			crashBlacklist = get(),
+			warmupSignal = getOrNull<MutableStateFlow<Boolean>>() ?: MutableStateFlow(true),
+		)
+	}
+	single {
+		Pkcs11DiagnosticsService(
+			pkcs11Discoverer = get(),
+			configRepository = get(),
+			pcscMonitor = get(),
+		)
+	}
 	singleOf(::DssTokenService) bind TokenService::class
 	singleOf(::KeyringCredentialStore) bind CredentialStore::class
 	

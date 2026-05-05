@@ -13,8 +13,11 @@ runs:
     - name: Start D-Bus session and Secret Service
       if: runner.os == 'Linux'
       shell: bash
+      env:
+        DEBIAN_FRONTEND: noninteractive
       run: |
-        sudo apt-get install -y -qq gnome-keyring dbus-x11 > /dev/null 2>&1
+        sudo apt-get update -qq
+        sudo apt-get install -y -qq gnome-keyring dbus-x11
         eval $(dbus-launch --sh-syntax)
         echo "DBUS_SESSION_BUS_ADDRESS=$DBUS_SESSION_BUS_ADDRESS" >> "$GITHUB_ENV"
         echo '' | gnome-keyring-daemon --unlock --components=secrets

@@ -68,5 +68,31 @@ class GlobalConfigEditStateTest : FunSpec({
 		val state = GlobalConfigEditState.from(original)
 		state.toGlobalConfig().defaultSignatureLevel shouldBe SignatureLevel.PADES_BASELINE_LT
 	}
+
+	test("contentEquals detects change in useNativeTitleBar") {
+		val a = GlobalConfigEditState(useNativeTitleBar = false)
+		val b = GlobalConfigEditState(useNativeTitleBar = true)
+		a.contentEquals(b) shouldBe false
+	}
+
+	test("contentEquals ignores showNativeTitleBarOption as transient") {
+		val a = GlobalConfigEditState(showNativeTitleBarOption = false)
+		val b = GlobalConfigEditState(showNativeTitleBarOption = true)
+		a.contentEquals(b) shouldBe true
+	}
+
+	test("contentEquals returns true when useNativeTitleBar matches") {
+		val a = GlobalConfigEditState(useNativeTitleBar = true)
+		val b = GlobalConfigEditState(useNativeTitleBar = true)
+		a.contentEquals(b) shouldBe true
+	}
+
+	test("default useNativeTitleBar is false") {
+		GlobalConfigEditState().useNativeTitleBar shouldBe false
+	}
+
+	test("default showNativeTitleBarOption is false") {
+		GlobalConfigEditState().showNativeTitleBarOption shouldBe false
+	}
 })
 

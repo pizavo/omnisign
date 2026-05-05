@@ -68,13 +68,23 @@ data class GlobalConfig(
 	 *
 	 * These are merged into token discovery on top of OS-native autodiscovery and the
 	 * built-in fallback candidate list.  Use this to register middleware that the
-	 * autodiscovery cannot find (e.g. non-standard install paths, vendor-specific tokens,
+	 * autodiscovery cannot find (e.g., non-standard install paths, vendor-specific tokens,
 	 * or libraries bundled alongside the application).
 	 *
 	 * Libraries whose [CustomPkcs11Library.path] does not exist on disk at discovery time
 	 * are silently skipped.
 	 */
 	val customPkcs11Libraries: List<CustomPkcs11Library> = emptyList(),
+
+	/**
+	 * Maximum time in seconds to wait for a single PKCS#11 library probe subprocess
+	 * before killing it.
+	 *
+	 * Acts as a safety net for middleware that hangs without responding; probes that
+	 * crash (SIGSEGV, SIGABRT) exit immediately and are handled without waiting for
+	 * this timeout.  Must be in the range 1–120.
+	 */
+	val pkcs11ProbeTimeoutSeconds: Long = 30,
 )
 
 

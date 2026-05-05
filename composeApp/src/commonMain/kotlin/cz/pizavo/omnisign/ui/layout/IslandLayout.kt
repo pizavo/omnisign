@@ -83,6 +83,7 @@ fun IslandLayout(
 	
 	val settingsViewModel: SettingsViewModel? = remember {
 		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
+		val linux = isLinuxPlatform()
 		SettingsViewModel(
 			koin.get<GetConfigUseCase>(),
 			koin.get<SetGlobalConfigUseCase>(),
@@ -90,6 +91,7 @@ fun IslandLayout(
 			koin.getOrNull<CredentialStore>(),
 			koin.getOrNull<SchedulerPort>(),
 			autoDetectedExecutablePath = resolveExecutablePath(),
+			isLinuxDesktop = linux,
 		)
 	}
 	val settingsState by (settingsViewModel?.state ?: remember {
@@ -541,7 +543,7 @@ private suspend fun reloadDocument(
 	signatureViewModel: SignatureViewModel?,
 	timestampViewModel: TimestampViewModel?,
 ) {
-	val doc = cz.pizavo.omnisign.ui.platform.loadPdfFromPath(filePath) ?: return
+	val doc = loadPdfFromPath(filePath) ?: return
 	pdfViewModel.onDocumentLoaded(doc)
 	signatureViewModel?.onDocumentChanged(filePath)
 	timestampViewModel?.onDocumentChanged(filePath)

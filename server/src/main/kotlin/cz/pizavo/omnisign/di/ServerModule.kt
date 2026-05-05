@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.auth.JwtSessionService
 import cz.pizavo.omnisign.auth.OidcDiscoveryService
 import cz.pizavo.omnisign.auth.OidcUserInfoService
 import cz.pizavo.omnisign.auth.ServerPasswordCallback
+import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
 import cz.pizavo.omnisign.config.SessionConfig
@@ -14,6 +15,7 @@ import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.serialization.kotlinx.json.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.Json
 import org.koin.dsl.module
 import kotlin.coroutines.CoroutineContext
@@ -45,6 +47,10 @@ fun serverModule(serverConfig: ServerConfig) = module {
 	single<ServerConfigLoader> { ServerConfigLoader() }
 	single<PasswordCallback> { ServerPasswordCallback() }
 	single<CoroutineContext> { Dispatchers.IO }
+
+	if (AllowedOperation.SIGN in serverConfig.allowedOperations) {
+		single { MutableStateFlow(false) }
+	}
 
 	single<HttpClient> {
 		HttpClient(CIO) {

@@ -121,6 +121,19 @@ enum class SettingsCategory(
         label = "PKCS#11 Libraries",
         description = "Register custom PKCS#11 middleware libraries that are not discovered automatically by the OS.",
         parent = Tokens,
+    ),
+
+    /** Top-level group for desktop appearance settings (Linux only). */
+    Appearance(
+        label = "Appearance",
+        description = "Desktop appearance and window decoration settings.",
+    ),
+
+    /** Window title bar mode (native vs. merged custom toolbar). */
+    WindowTitleBar(
+        label = "Window",
+        description = "Choose whether the toolbar is merged into the title bar area (custom CSD) or displayed below the native OS title bar. Changing this setting requires an application restart.",
+        parent = Appearance,
     );
 
     /** Whether this category is a top-level group (has children). */

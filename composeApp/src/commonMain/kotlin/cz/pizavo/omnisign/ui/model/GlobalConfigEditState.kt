@@ -53,6 +53,10 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
  * @property certAddError Human-readable error from the last failed trusted certificate add attempt, or `null`.
  * @property tlAddError Human-readable error from the last failed trusted list add attempt, or `null`.
  * @property renewalJobAddError Human-readable error from the last failed renewal job add attempt, or `null`.
+ * @property useNativeTitleBar Whether to use the native OS title bar instead of the merged custom toolbar on Linux.
+ *   This preference is persisted separately from [GlobalConfig] and requires an application restart to take effect.
+ * @property showNativeTitleBarOption Whether the native title bar toggle should be visible in the settings dialog.
+ *   Set to `true` only on Linux JVM desktop where the toggle is meaningful.
  */
 data class GlobalConfigEditState(
 	val defaultHashAlgorithm: HashAlgorithm = HashAlgorithm.SHA256,
@@ -78,6 +82,7 @@ data class GlobalConfigEditState(
 	val customTrustedLists: List<CustomTrustedListConfig> = emptyList(),
 	val trustedCertificates: List<TrustedCertificateConfig> = emptyList(),
 	val customPkcs11Libraries: List<CustomPkcs11Library> = emptyList(),
+	val pkcs11ProbeTimeout: String = "30",
 	val renewalJobs: List<RenewalJob> = emptyList(),
 	val availableProfiles: List<String> = emptyList(),
 	val activeProfile: String? = null,
@@ -92,6 +97,8 @@ data class GlobalConfigEditState(
 	val certAddError: String? = null,
 	val tlAddError: String? = null,
 	val renewalJobAddError: String? = null,
+	val useNativeTitleBar: Boolean = false,
+	val showNativeTitleBarOption: Boolean = false,
 ) {
 
 	/**
@@ -116,6 +123,13 @@ data class GlobalConfigEditState(
 	 */
 	val effectiveSchedulerExecutablePath: String?
 		get() = schedulerAutoDetectedPath ?: schedulerCliPath.trim().ifBlank { null }
+
+	/**
+	 * Whether the [pkcs11ProbeTimeout] string represents a valid timeout (1–120 seconds).
+	 * Empty strings are treated as valid (defaults are applied on save).
+	 */
+	val isPkcs11ProbeTimeoutValid: Boolean
+		get() = pkcs11ProbeTimeout.isEmpty() || pkcs11ProbeTimeout.toLongOrNull()?.let { it in 1..120 } == true
 
 	/**
 	 * Whether the [schedulerHour] string represents a valid hour (0–23).
@@ -165,19 +179,19 @@ data class GlobalConfigEditState(
 				customTrustedLists == other.customTrustedLists &&
 				trustedCertificates == other.trustedCertificates &&
 				customPkcs11Libraries == other.customPkcs11Libraries &&
+				pkcs11ProbeTimeout == other.pkcs11ProbeTimeout &&
 				renewalJobs == other.renewalJobs &&
 				schedulerCliPath == other.schedulerCliPath &&
 				schedulerHour == other.schedulerHour &&
 				schedulerMinute == other.schedulerMinute &&
-				schedulerLogFile == other.schedulerLogFile
+				schedulerLogFile == other.schedulerLogFile &&
+				useNativeTitleBar == other.useNativeTitleBar
 
 	/**
 	 * Convert this UI state back into a persistable [GlobalConfig].
 	 *
 	 * The [timestampPassword] is intentionally **not** included in the returned config
 	 * because passwords are persisted separately through the OS credential store.
-	 * The [TimestampServerConfig.credentialKey] is set to the username when a password
-	 * has been entered or was already stored.
 	 */
 	fun toGlobalConfig(): GlobalConfig = GlobalConfig(
 		defaultHashAlgorithm = defaultHashAlgorithm,
@@ -212,6 +226,7 @@ data class GlobalConfigEditState(
 			),
 		),
 		customPkcs11Libraries = customPkcs11Libraries,
+		pkcs11ProbeTimeoutSeconds = (pkcs11ProbeTimeout.toLongOrNull() ?: 30).coerceIn(1, 120),
 	)
 
 	companion object {
@@ -225,7 +240,6 @@ data class GlobalConfigEditState(
 		 * @param availableProfiles Profile names available for the renewal job profile dropdown.
 		 * @param activeProfile The currently active profile name, or `null` if none is active.
 		 * @param schedulerConfig Persisted scheduler settings.
-		 * @param schedulerInstalled Whether the OS scheduler job is currently registered.
 		 * @param schedulerAutoDetectedPath Auto-detected executable path, or `null` when unavailable.
 		 * @return A new edit state pre-populated with the config's values.
 		 */
@@ -267,6 +281,7 @@ data class GlobalConfigEditState(
 				customTrustedLists = config.validation.customTrustedLists,
 				trustedCertificates = config.validation.trustedCertificates,
 				customPkcs11Libraries = config.customPkcs11Libraries,
+				pkcs11ProbeTimeout = config.pkcs11ProbeTimeoutSeconds.toString(),
 				renewalJobs = renewalJobs.values.toList(),
 				availableProfiles = availableProfiles,
 				activeProfile = activeProfile,
