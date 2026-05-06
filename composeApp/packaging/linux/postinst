@@ -1,0 +1,38 @@
+#!/bin/sh
+# postinst script for APPLICATION_PACKAGE
+#
+# Extends the default jpackage template with AppStream metainfo and hicolor
+# icon installation so the application appears with full metadata and icon
+# in software centers (GNOME Software, KDE Discover) and launchers.
+
+set -e
+
+package_type=deb
+LAUNCHER_AS_SERVICE_SCRIPTS
+
+case "$1" in
+    configure)
+DESKTOP_COMMANDS_INSTALL
+LAUNCHER_AS_SERVICE_COMMANDS_INSTALL
+        install -Dm644 /opt/omnisign/lib/app/resources/cz.pizavo.omnisign.metainfo.xml \
+            /usr/share/metainfo/cz.pizavo.omnisign.metainfo.xml
+        install -Dm644 /opt/omnisign/lib/OmniSign.png \
+            /usr/share/icons/hicolor/512x512/apps/omnisign.png
+        if command -v gtk-update-icon-cache >/dev/null 2>&1; then
+            gtk-update-icon-cache -q -t -f /usr/share/icons/hicolor 2>/dev/null || :
+        fi
+        if command -v appstreamcli >/dev/null 2>&1; then
+            appstreamcli refresh-cache --force >/dev/null 2>&1 || :
+        fi
+        ;;
+
+    abort-upgrade|abort-remove|abort-deconfigure)
+        ;;
+
+    *)
+        echo "postinst called with unknown argument \`$1'" >&2
+        exit 1
+        ;;
+esac
+
+exit 0

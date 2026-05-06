@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>cz.pizavo.omnisign</id>
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>AGPL-3.0-or-later</project_license>
+
+  <name>OmniSign</name>
+  <summary>Sign, verify, and re-timestamp PDF documents</summary>
+
+  <developer id="cz.pizavo">
+    <name>Pizavo</name>
+  </developer>
+
+  <description>
+    <p>
+      OmniSign is a multiplatform digital signature application for PDF documents.
+      It produces and validates PAdES BASELINE B, B-T, B-LT, and B-LTA signatures using
+      the EU DSS library, with full support for the EU Trusted Lists and eIDAS-compliant
+      qualified electronic signatures.
+    </p>
+    <p>Key features:</p>
+    <ul>
+      <li>Sign PDFs with PKCS#11 hardware tokens or PKCS#12 keystores.</li>
+      <li>Verify existing PAdES signatures against the EU LOTL.</li>
+      <li>Re-timestamp archived signatures to extend their long-term validity.</li>
+      <li>Batch signing and renewal with profile-based configuration.</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">omnisign-OmniSign.desktop</launchable>
+
+  <icon type="stock">omnisign</icon>
+
+  <categories>
+    <category>Utility</category>
+    <category>Office</category>
+  </categories>
+
+  <keywords>
+    <keyword>PDF</keyword>
+    <keyword>signature</keyword>
+    <keyword>PAdES</keyword>
+    <keyword>eIDAS</keyword>
+    <keyword>timestamp</keyword>
+    <keyword>PKCS#11</keyword>
+  </keywords>
+
+  <url type="homepage">https://pizavo.github.io/omnisign/desktop/</url>
+  <url type="bugtracker">https://github.com/pizavo/omnisign/issues</url>
+  <url type="vcs-browser">https://github.com/pizavo/omnisign</url>
+
+  <provides>
+    <binary>OmniSign</binary>
+    <mediatype>application/pdf</mediatype>
+  </provides>
+
+  <content_rating type="oars-1.1"/>
+
+  <releases>
+    <release version="1.4.1" date="2026-05-05"/>
+  </releases>
+</component>

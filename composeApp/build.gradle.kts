@@ -5,9 +5,11 @@ import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
  * Resolves the platform-native crash-dump directory at Gradle evaluation time.
  *
  * Mirrors the runtime `resolveLogDir()` logic in `main.kt` so that `-XX:ErrorFile`
- * points to a `crashes/` subdirectory of the application log folder.  For `gradle run`
- * the path is always correct.  For jpackage distributions the path is baked at build time —
- * if the target user's home differs, the JVM silently falls back to `/tmp`.
+ * points to a `crashes/` subdirectory of the application log folder. Used only by the
+ * `:run` task — packaged builds intentionally omit `-XX:ErrorFile` because the path
+ * resolved here is the build host's `user.home`, which would never match the path on
+ * an end-user's machine. Without the flag, HotSpot falls back to writing crash dumps
+ * next to the launcher, which is correct on the target.
  */
 fun resolveCrashDir(): String {
 	val userHome = System.getProperty("user.home")
@@ -158,7 +160,6 @@ compose.desktop {
 			"--add-modules=java.smartcardio",
 			"-Dsun.java2d.d3d=false",
 			"-Dsun.awt.wmclass=OmniSign",
-			"-XX:ErrorFile=${resolveCrashDir()}/hs_err_pid%p.log",
 		)
 		if (org.gradle.internal.os.OperatingSystem.current().isLinux) {
 			jvmArgsList.addAll(listOf("--add-opens", "java.desktop/sun.awt.X11=ALL-UNNAMED"))
@@ -211,6 +212,8 @@ compose.desktop {
 			copyright = "Copyright (C) 2026 Pizavo"
 			licenseFile.set(rootProject.file("LICENSE.md"))
 
+			appResourcesRootDir.set(project.layout.projectDirectory.dir("resources"))
+
 			windows {
 				iconFile.set(rootProject.file("assets/icons/omnisign-logo.ico"))
 				shortcut = true
@@ -224,11 +227,11 @@ compose.desktop {
 			linux {
 				iconFile.set(rootProject.file("assets/icons/omnisign-logo-512.png"))
 				shortcut = true
-				menuGroup = "OmniSign"
+				menuGroup = "Utility"
 				packageName = "omnisign"
-				appCategory = "Utility"
+				appCategory = "utils"
 				debMaintainer = "pizavo@gmail.com"
-				rpmLicenseType = "AGPLv3+"
+				rpmLicenseType = "AGPL-3.0-or-later"
 			}
 
 			macOS {
@@ -243,10 +246,25 @@ compose.desktop {
 
 /**
  * Injects additional jpackage metadata arguments into every Compose Desktop packaging task.
- * The Compose Gradle plugin does not expose DSL properties for about-url or Windows help/update
- * URLs, so the underlying [AbstractJPackageTask.freeArgs] list is used to pass them to jpackage.
- * Tasks that produce app-images (AppImage and Distributable) are excluded because jpackage
- * rejects installer-only options such as `--about-url` when `--type app-image` is used.
+ * The Compose Gradle plugin does not expose DSL properties for about-url, Windows help/update
+ * URLs, Linux package dependencies, or jpackage's `--resource-dir`, so the underlying
+ * [AbstractJPackageTask.freeArgs] list is used to pass them to jpackage. Tasks that produce
+ * app-images (AppImage and Distributable) are excluded because jpackage rejects installer-only
+ * options such as `--about-url` when `--type app-image` is used.
+ *
+ * On Linux, two extra flags are appended:
+ *  - `--linux-package-deps "xdg-utils"` declares the runtime requirement so the post-install
+ *    scripts (`xdg-desktop-menu install`, `xdg-mime install`) succeed on minimal RPM-based
+ *    systems. The DEB target has it via the Compose plugin's auto-injected dependency list;
+ *    the RPM does not.
+ *  - `--resource-dir packaging/linux` points jpackage at a custom `OmniSign.desktop` template
+ *    that adds `StartupWMClass=OmniSign`, `Exec=APPLICATION_LAUNCHER %U`, and
+ *    `StartupNotify=true` — keys jpackage cannot emit on its own (tracked upstream as
+ *    JetBrains YouTrack CMP-8559, closed "As designed"). The Compose plugin already passes
+ *    its own `--resource-dir` pointing at `build/compose/tmp/resources/`, but jpackage
+ *    resolves duplicate `--resource-dir` arguments last-wins via
+ *    `DeployParams.addBundleArgument` (LinkedHashMap.put), and the plugin's `clearDirs`
+ *    call only touches its own path, so the override file is preserved.
  */
 afterEvaluate {
 	tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask>().configureEach {
@@ -262,6 +280,21 @@ afterEvaluate {
 				"--win-update-url", "https://github.com/pizavo/omnisign/releases",
 			)
 		}
+		if (name.contains("Deb", ignoreCase = true) || name.contains("Rpm", ignoreCase = true)) {
+			freeArgs.addAll("--linux-package-deps", "xdg-utils")
+			freeArgs.addAll("--resource-dir", project.file("packaging/linux").absolutePath)
+		}
+	}
+}
+
+/**
+ * Adds `-XX:ErrorFile` to the `:run` JavaExec task only. The path is resolved from the
+ * Gradle-running user's `user.home`, which on a developer's machine matches the runtime
+ * user. Packaged jpackage builds intentionally omit this option (see [resolveCrashDir]).
+ */
+afterEvaluate {
+	tasks.matching { it.name == "run" }.configureEach {
+		(this as? JavaExec)?.jvmArgs("-XX:ErrorFile=${resolveCrashDir()}/hs_err_pid%p.log")
 	}
 }
 
