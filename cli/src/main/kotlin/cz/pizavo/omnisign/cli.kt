@@ -58,7 +58,7 @@ private val WARMUP_SUBCOMMANDS = setOf("sign", "certificates")
  */
 fun main(args: Array<String>) {
 	if (args.size >= 2 && args[0] == "probe") {
-		cz.pizavo.omnisign.data.service.Pkcs11ProbeWorker.main(arrayOf(args[1]))
+		cz.pizavo.omnisign.data.service.Pkcs11ProbeWorker.main(args.drop(1).toTypedArray())
 		exitProcess(0)
 	}
 

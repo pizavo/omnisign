@@ -233,7 +233,13 @@ class DssSigningRepository(
 	 * all parallel probes complete; the optional prompted pass then re-attempts any
 	 * `lockedTokens` it produced.
 	 *
-	 * PIN-protected tokens without a stored credential are reported as locked.  Tokens that
+	 * PIN-protected tokens without a stored credential first attempt an unauthenticated
+	 * listing via [TokenService.listCertificatesNoLogin]: when the token exposes public
+	 * certificate objects (verified for Czech qualified tokens) those are returned so the
+	 * certificate is selectable immediately and the PIN is deferred to signing, where the
+	 * shared deterministic alias resolves the same key.  When that yields nothing — certs
+	 * are private, or the probe failed — the token falls back to being reported as locked,
+	 * so behaviour only ever improves over the previous always-locked path.  Tokens that
 	 * are physically absent are silently skipped. Load errors for PINless tokens (e.g.,
 	 * OS key stores) are reported as warnings so the user can diagnose the issue.
 	 */
@@ -244,10 +250,18 @@ class DssSigningRepository(
 		}
 		if (token.requiresPin) {
 			val storedPassword = credentialStore.getPassword(TOKEN_CREDENTIAL_SERVICE, token.id)
-				?: return CertificateDiscoveryResult(
-					certificates = emptyList(),
-					lockedTokens = listOf(LockedTokenInfo(token.id, token.name, token.type.name)),
-				)
+			if (storedPassword == null) {
+				val noLoginCerts = tokenService.listCertificatesNoLogin(token)
+					.fold(ifLeft = { emptyList() }, ifRight = { it })
+				return if (noLoginCerts.isNotEmpty()) {
+					CertificateDiscoveryResult(certificates = noLoginCerts.toAvailableCertificateInfoList(token))
+				} else {
+					CertificateDiscoveryResult(
+						certificates = emptyList(),
+						lockedTokens = listOf(LockedTokenInfo(token.id, token.name, token.type.name)),
+					)
+				}
+			}
 			return tokenService.loadCertificatesSilent(token, storedPassword).fold(
 				ifLeft = {
 					CertificateDiscoveryResult(
@@ -321,6 +335,7 @@ class DssSigningRepository(
 						validFrom = cert.validFrom,
 						validTo = cert.validTo,
 						tokenType = TokenType.FILE.name,
+						tokenName = File(filePath).name,
 						keyUsages = cert.keyUsages,
 					)
 				}
@@ -490,6 +505,7 @@ class DssSigningRepository(
 			validFrom = cert.validFrom,
 			validTo = cert.validTo,
 			tokenType = token.type.name,
+			tokenName = token.name,
 			keyUsages = cert.keyUsages,
 			isQualified = cert.isQualified,
 			isQscd = cert.isQscd,

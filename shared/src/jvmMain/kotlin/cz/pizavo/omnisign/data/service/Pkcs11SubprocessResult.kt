@@ -94,9 +94,42 @@ internal fun runProbeSubprocess(
 	libraryPath: String,
 	timeoutSeconds: Long,
 ): Pkcs11SubprocessResult? {
-	val logger = KotlinLogging.logger {}
-
 	val command = resolveProbeCommand(libraryPath) ?: return null
+	return runResolvedProbeSubprocess(command, libraryPath, timeoutSeconds)
+}
+
+/**
+ * Diagnostic-only variant of [runProbeSubprocess] that appends the `--certs` argument so
+ * the [Pkcs11ProbeWorker] additionally performs a no-`C_Login` certificate enumeration.
+ *
+ * Spawned exclusively by [Pkcs11DiagnosticsService]; never by discovery or warmup, so the
+ * proven identity-probe path and its callers are entirely unaffected.  Same lifecycle and
+ * isolation guarantees as [runProbeSubprocess].
+ *
+ * @param libraryPath Absolute path to the PKCS#11 shared library to probe.
+ * @param timeoutSeconds Maximum wall-clock time before the subprocess is forcibly killed.
+ * @return The subprocess outcome, or `null` when no probe command can be resolved.
+ */
+internal fun runCertProbeSubprocess(
+	libraryPath: String,
+	timeoutSeconds: Long,
+): Pkcs11SubprocessResult? {
+	val command = resolveProbeCommand(libraryPath) ?: return null
+	return runResolvedProbeSubprocess(command + "--certs", libraryPath, timeoutSeconds)
+}
+
+/**
+ * Shared subprocess lifecycle for [runProbeSubprocess] / [runCertProbeSubprocess]: spawn
+ * [command], drain stdout/stderr on daemon threads, wait up to [timeoutSeconds], and
+ * classify the outcome.  Always returns a result; callers map an unresolved command to
+ * `null` before calling this.
+ */
+private fun runResolvedProbeSubprocess(
+	command: List<String>,
+	libraryPath: String,
+	timeoutSeconds: Long,
+): Pkcs11SubprocessResult {
+	val logger = KotlinLogging.logger {}
 
 	logger.debug { "Spawning PKCS#11 subprocess: ${command.first()}, library=$libraryPath" }
 
