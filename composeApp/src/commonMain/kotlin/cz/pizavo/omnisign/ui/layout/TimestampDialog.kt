@@ -1,13 +1,10 @@
-﻿package cz.pizavo.omnisign.ui.layout
+package cz.pizavo.omnisign.ui.layout
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
@@ -49,51 +46,44 @@ fun TimestampDialog(
 		onDismissRequest = {
 			if (state !is TimestampDialogState.Extending) onDismiss()
 		},
-		properties = DialogProperties(usePlatformDefaultWidth = false),
+		modifier = Modifier
+			.widthIn(min = 480.dp, max = 620.dp)
+			.heightIn(min = 300.dp, max = 500.dp),
 	) {
-		Surface(
-			modifier = Modifier
-				.widthIn(min = 480.dp, max = 620.dp)
-				.heightIn(min = 300.dp, max = 500.dp),
-			shape = RoundedCornerShape(16.dp),
-			color = LumoTheme.colors.surface,
-			shadowElevation = 8.dp,
-		) {
-			Column(modifier = Modifier.fillMaxSize()) {
-				TimestampDialogHeader(
-					onClose = onDismiss,
-					closeable = state !is TimestampDialogState.Extending,
-				)
+		Column(modifier = Modifier.fillMaxSize()) {
+			TimestampDialogHeader(
+				onClose = onDismiss,
+				closeable = state !is TimestampDialogState.Extending,
+			)
 
-				HorizontalDivider()
+			HorizontalDivider()
 
-				Box(modifier = Modifier.weight(1f)) {
-					when (state) {
-						is TimestampDialogState.Idle -> {}
-						is TimestampDialogState.Ready -> TimestampFormContent(
-							state = state,
-							onFieldChange = onFieldChange,
-						)
-						is TimestampDialogState.Extending -> LoadingContent("Extending document...")
-						is TimestampDialogState.RevocationWarning -> TimestampRevocationWarningContent(state)
-						is TimestampDialogState.Success -> TimestampSuccessContent(state)
-						is TimestampDialogState.Error -> ErrorContent(
-							message = state.message,
-							details = state.details,
-						)
-					}
+			Box(modifier = Modifier.weight(1f)) {
+				when (state) {
+					is TimestampDialogState.Idle -> {}
+					is TimestampDialogState.Ready -> TimestampFormContent(
+						state = state,
+						onFieldChange = onFieldChange,
+					)
+					is TimestampDialogState.Extending -> LoadingContent("Extending document...")
+					is TimestampDialogState.RevocationWarning -> TimestampRevocationWarningContent(state)
+					is TimestampDialogState.Success -> TimestampSuccessContent(state)
+					is TimestampDialogState.Error -> ErrorContent(
+						message = state.message,
+						details = state.details,
+					)
 				}
-
-				HorizontalDivider()
-
-				TimestampDialogFooter(
-					state = state,
-					onExtend = onExtend,
-					onAbortRevocation = onAbortRevocation,
-					onAcceptRevocation = onAcceptRevocation,
-					onDismiss = onDismiss,
-				)
 			}
+
+			HorizontalDivider()
+
+			TimestampDialogFooter(
+				state = state,
+				onExtend = onExtend,
+				onAbortRevocation = onAbortRevocation,
+				onAcceptRevocation = onAcceptRevocation,
+				onDismiss = onDismiss,
+			)
 		}
 	}
 }

@@ -15,12 +15,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.text.*
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import cz.pizavo.omnisign.domain.model.config.CustomPkcs11Library
 import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
@@ -32,7 +33,9 @@ import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
 import cz.pizavo.omnisign.ui.model.SettingsCategory
 import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
+import cz.pizavo.omnisign.ui.platform.openInFileExplorer
 import cz.pizavo.omnisign.ui.platform.platformFilePath
+import cz.pizavo.omnisign.ui.platform.resolvePkcs11DropDirectory
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
@@ -61,6 +64,9 @@ private val NavItemShape = RoundedCornerShape(6.dp)
  * @param onDismiss Called when the user clicks Cancel or the close button.
  * @param onBuildTl Called when the user clicks "Build Custom TL" in the trusted lists section,
  *   or `null` when the TL compiler is not available on the current platform.
+ * @param initialCategory Optional [SettingsCategory] to preselect when the dialog opens.
+ *   The `remember` is keyed on this value, so callers can deep-link to a specific tab by
+ *   toggling it before showing the dialog.  Defaults to [SettingsCategory.SigningDefaults].
  */
 @Composable
 fun SettingsDialog(
@@ -70,8 +76,11 @@ fun SettingsDialog(
 	onSave: () -> Unit,
 	onDismiss: () -> Unit,
 	onBuildTl: (() -> Unit)? = null,
+	initialCategory: SettingsCategory? = null,
 ) {
-	var selectedCategory by remember { mutableStateOf(SettingsCategory.SigningDefaults) }
+	var selectedCategory by remember(initialCategory) {
+		mutableStateOf(initialCategory ?: SettingsCategory.SigningDefaults)
+	}
 	
 	val visibleGroups = remember(state.showNativeTitleBarOption) {
 		SettingsCategory.groups.filter { group ->
@@ -81,42 +90,35 @@ fun SettingsDialog(
 	
 	Dialog(
 		onDismissRequest = onDismiss,
-		properties = DialogProperties(usePlatformDefaultWidth = false),
+		modifier = Modifier
+			.widthIn(min = 700.dp, max = 920.dp)
+			.heightIn(min = 500.dp, max = 720.dp),
 	) {
-		Surface(
-			modifier = Modifier
-				.widthIn(min = 700.dp, max = 920.dp)
-				.heightIn(min = 500.dp, max = 720.dp),
-			shape = RoundedCornerShape(16.dp),
-			color = LumoTheme.colors.surface,
-			shadowElevation = 8.dp,
-		) {
-			Column(modifier = Modifier.fillMaxSize()) {
-				SettingsHeader(onClose = onDismiss)
+		Column(modifier = Modifier.fillMaxSize()) {
+			SettingsHeader(onClose = onDismiss)
+			
+			HorizontalDivider()
+			
+			Row(modifier = Modifier.weight(1f)) {
+				SettingsNavPanel(
+					selected = selectedCategory,
+					onSelect = { selectedCategory = it },
+					visibleGroups = visibleGroups,
+				)
 				
-				HorizontalDivider()
+				VerticalDivider()
 				
-				Row(modifier = Modifier.weight(1f)) {
-					SettingsNavPanel(
-						selected = selectedCategory,
-						onSelect = { selectedCategory = it },
-						visibleGroups = visibleGroups,
-					)
-					
-					VerticalDivider()
-					
-					SettingsContentPanel(
-						category = selectedCategory,
-						state = state,
-						onFieldChange = onFieldChange,
-						onBuildTl = onBuildTl,
-					)
-				}
-				
-				HorizontalDivider()
-				
-				SettingsFooter(saving = state.saving, hasChanges = hasChanges, onCancel = onDismiss, onSave = onSave)
+				SettingsContentPanel(
+					category = selectedCategory,
+					state = state,
+					onFieldChange = onFieldChange,
+					onBuildTl = onBuildTl,
+				)
 			}
+			
+			HorizontalDivider()
+			
+			SettingsFooter(saving = state.saving, hasChanges = hasChanges, onCancel = onDismiss, onSave = onSave)
 		}
 	}
 }
@@ -419,12 +421,12 @@ private fun SettingsContentPanel(
 			
 			SettingsCategory.Tokens,
 			SettingsCategory.Pkcs11Libraries -> Pkcs11Section(state = state, onFieldChange = onFieldChange)
-
+			
 			SettingsCategory.Archiving,
 			SettingsCategory.RenewalJobs -> RenewalJobsSection(state = state, onFieldChange = onFieldChange)
-
+			
 			SettingsCategory.Scheduler -> SchedulerSection(state = state, onFieldChange = onFieldChange)
-
+			
 			SettingsCategory.Appearance,
 			SettingsCategory.WindowTitleBar -> AppearanceWindowSection(state = state, onFieldChange = onFieldChange)
 		}
@@ -502,7 +504,7 @@ private fun SigningDefaultsSection(
 	)
 	
 	Spacer(modifier = Modifier.height(12.dp))
-
+	
 	Text(text = "Timestamp level", style = LumoTheme.typography.label1)
 	Spacer(modifier = Modifier.height(4.dp))
 	
@@ -520,9 +522,9 @@ private fun SigningDefaultsSection(
 		Text(text = "Signature timestamp", style = LumoTheme.typography.body2)
 		InfoTooltip(text = "Produces PAdES BASELINE B-LT")
 	}
-
+	
 	Spacer(modifier = Modifier.height(4.dp))
-
+	
 	Row(
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -838,12 +840,25 @@ private fun AlgorithmConstraintsSection(
 
 /**
  * PKCS#11 middleware libraries section with add/remove support.
+ *
+ * Renders a drop-directory hint at the top (when the platform provides one),
+ * the existing custom entries with remove buttons, and an inline add-row at
+ * the bottom.  The drop-directory hint surfaces the platform-appropriate
+ * folder where a downloaded library file can be placed for automatic
+ * discovery, with an inline clickable link that reveals the folder in the
+ * host OS file manager so users don't have to copy-paste the path.
  */
 @Composable
 private fun Pkcs11Section(
 	state: GlobalConfigEditState,
 	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 ) {
+	val dropDir = remember { resolvePkcs11DropDirectory() }
+	if (dropDir != null) {
+		Pkcs11DropDirectoryHint(path = dropDir, onOpen = { openInFileExplorer(dropDir) })
+		Spacer(modifier = Modifier.height(12.dp))
+	}
+
 	if (state.customPkcs11Libraries.isEmpty()) {
 		Text(
 			text = "No custom PKCS#11 libraries registered.",
@@ -882,6 +897,57 @@ private fun Pkcs11Section(
 			}
 		},
 	)
+}
+
+/**
+ * Hint banner shown at the top of the PKCS#11 libraries section.
+ *
+ * Tells the user about the auto-discovery drop directory and exposes the
+ * absolute path as a clickable link rendered on its own line below the tip.
+ * Clicking the link invokes [onOpen], typically wired to reveal the folder
+ * in the host OS file manager (Explorer / Finder / `xdg-open`).
+ *
+ * The path lives on a separate line so Compose's word-break rules don't split
+ * it mid-way at colons or directory separators — which would otherwise turn
+ * a Windows path into "into C:\" / line-break / "Users\Vojta\..." and other
+ * awkward layouts depending on the available width.
+ *
+ * Only rendered when the current platform has a drop-directory concept
+ * (i.e. when [resolvePkcs11DropDirectory] returns non-null).  Web targets
+ * skip this affordance entirely.
+ */
+@Composable
+private fun Pkcs11DropDirectoryHint(path: String, onOpen: () -> Unit) {
+	Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+		Text(
+			text = "Tip: drop a PKCS#11 library file (.dll / .so / .dylib) into the directory " +
+					"below and it will be discovered automatically — no entry needed here.",
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.textSecondary,
+		)
+		val annotated = buildAnnotatedString {
+			withLink(
+				LinkAnnotation.Clickable(
+					tag = "pkcs11-drop-directory",
+					styles = TextLinkStyles(
+						style = SpanStyle(
+							color = LumoTheme.colors.primary,
+							textDecoration = TextDecoration.Underline,
+							fontWeight = FontWeight.Medium,
+						),
+					),
+					linkInteractionListener = { onOpen() },
+				),
+			) {
+				append(path)
+			}
+		}
+		Text(
+			text = annotated,
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.text,
+		)
+	}
 }
 
 /**
@@ -931,6 +997,15 @@ private fun Pkcs11AddRow(onAdd: (name: String, path: String) -> Unit) {
 	var name by remember { mutableStateOf("") }
 	var path by remember { mutableStateOf("") }
 	
+	val libraryFilePicker = rememberFilePickerLauncher(
+		type = FileKitType.File(extensions = listOf("dll", "so", "dylib")),
+	) { file: PlatformFile? ->
+		val selected = file?.let { platformFilePath(it) }
+		if (selected != null) {
+			path = selected
+		}
+	}
+	
 	Row(
 		modifier = Modifier.fillMaxWidth(),
 		horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -951,6 +1026,24 @@ private fun Pkcs11AddRow(onAdd: (name: String, path: String) -> Unit) {
 			placeholder = { Text(text = "/path/to/library.so") },
 			singleLine = true,
 			modifier = Modifier.weight(2f),
+			trailingIcon = {
+				TooltipBox(
+					tooltip = { Tooltip { Text(text = "Browse") } },
+					state = rememberTooltipState(),
+				) {
+					IconButton(
+						modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
+						variant = IconButtonVariant.Ghost,
+						onClick = { libraryFilePicker.launch() },
+					) {
+						Icon(
+							painter = painterResource(Res.drawable.icon_folder),
+							contentDescription = "Browse for PKCS#11 library",
+							modifier = Modifier.size(18.dp),
+						)
+					}
+				}
+			},
 		)
 		Button(
 			text = "Add",

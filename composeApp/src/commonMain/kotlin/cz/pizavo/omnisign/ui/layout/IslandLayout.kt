@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.ui.layout
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -10,11 +11,15 @@ import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.CredentialStore
+import cz.pizavo.omnisign.domain.service.TokenService
 import cz.pizavo.omnisign.domain.usecase.*
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.ui.model.*
 import cz.pizavo.omnisign.ui.platform.*
+import cz.pizavo.omnisign.ui.toast.LocalToastService
+import cz.pizavo.omnisign.ui.toast.ToastHost
+import cz.pizavo.omnisign.ui.toast.ToastService
 import cz.pizavo.omnisign.ui.viewmodel.*
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -101,11 +106,14 @@ fun IslandLayout(
 		kotlinx.coroutines.flow.MutableStateFlow(false)
 	}).collectAsState()
 	var showSettingsDialog by remember { mutableStateOf(false) }
+	var initialSettingsCategory by remember { mutableStateOf<SettingsCategory?>(null) }
 	
 	val renewalJobAssigner: RenewalJobAssigner? = remember {
 		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
 		RenewalJobAssigner(koin.get<ConfigRepository>())
 	}
+	
+	val toastService = remember { ToastService() }
 	
 	val signingViewModel: SigningViewModel? = remember {
 		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
@@ -115,7 +123,9 @@ fun IslandLayout(
 			koin.get<UnlockTokenUseCase>(),
 			koin.get<LoadFileCertificatesUseCase>(),
 			koin.get<ConfigRepository>(),
+			koin.get<TokenService>(),
 			renewalJobAssigner,
+			toastService = toastService,
 		)
 	}
 	val signingState by (signingViewModel?.state ?: remember {
@@ -123,6 +133,9 @@ fun IslandLayout(
 	}).collectAsState()
 	val signingRenewalOffer by (signingViewModel?.pendingRenewalOffer ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow<RenewalJobOfferState?>(null)
+	}).collectAsState()
+	val signingDiagnosticSnapshot by (signingViewModel?.diagnosticSnapshot ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow<cz.pizavo.omnisign.domain.service.Pkcs11DiagnosticSnapshot?>(null)
 	}).collectAsState()
 	var showSigningDialog by remember { mutableStateOf(false) }
 	
@@ -189,312 +202,361 @@ fun IslandLayout(
 	var leftPanelWidth by remember { mutableStateOf(Dp.Unspecified) }
 	var rightPanelWidth by remember { mutableStateOf(Dp.Unspecified) }
 	
-	Column(modifier = modifier.fillMaxSize()) {
-		IslandToolbar(
-			isDarkTheme = isDarkTheme,
-			onToggleTheme = onToggleTheme,
-			onOpenFile = { filePickerLauncher.launch() },
-			onOpenSettings = {
-				settingsViewModel?.load()
-				showSettingsDialog = true
-			},
-			onSign = {
-				val filePath = pdfState.document?.filePath
-				if (filePath != null) {
-					signingViewModel?.open(filePath)
-					showSigningDialog = true
-				}
-			},
-			onTimestamp = {
-				val filePath = pdfState.document?.filePath
-				if (filePath != null) {
-					timestampViewModel?.open(filePath)
-					showTimestampDialog = true
-				}
-			},
-			fileLoaded = pdfState.document != null,
-		)
-		
-		if (showSettingsDialog) {
-			SettingsDialog(
-				state = settingsState,
-				hasChanges = settingsHasChanges,
-				onFieldChange = { transform -> settingsViewModel?.updateState(transform) },
-				onSave = { settingsViewModel?.save(onSuccess = { showSettingsDialog = false }) },
-				onDismiss = { showSettingsDialog = false },
-				onBuildTl = tlBuilderViewModel?.let {
-					{
-						it.open()
-						showTlBuilderDialog = true
-					}
-				},
-			)
-		}
-		
-		if (showSigningDialog) {
-			SigningDialog(
-				state = signingState,
-				onFieldChange = { transform -> signingViewModel?.updateState(transform) },
-				onSign = { signingViewModel?.sign() },
-				onAbortRevocation = { signingViewModel?.abortAfterRevocationWarning() },
-				onAcceptRevocation = { signingViewModel?.acceptRevocationWarning() },
-				onUnlockToken = { tokenId -> signingViewModel?.unlockToken(tokenId) },
-				onImportPkcs12 = { filePath -> signingViewModel?.loadPkcs12File(filePath) },
-				onDismiss = {
-					if (signingState is SigningDialogState.Success) {
-						val outputFile = (signingState as SigningDialogState.Success).outputFile
-						scope.launch {
-							reloadDocument(outputFile, pdfViewModel, signatureViewModel, timestampViewModel)
-						}
-					}
-					signingViewModel?.dismiss()
-					showSigningDialog = false
-				},
-			)
-		}
-		
-		if (showTimestampDialog) {
-			TimestampDialog(
-				state = timestampState,
-				onFieldChange = { transform -> timestampViewModel?.updateState(transform) },
-				onExtend = { timestampViewModel?.extend() },
-				onAbortRevocation = { timestampViewModel?.abortAfterRevocationWarning() },
-				onAcceptRevocation = { timestampViewModel?.acceptRevocationWarning() },
-				onDismiss = {
-					if (timestampState is TimestampDialogState.Success) {
-						val outputFile = (timestampState as TimestampDialogState.Success).outputFile
-						scope.launch {
-							reloadDocument(outputFile, pdfViewModel, signatureViewModel, timestampViewModel)
-						}
-					}
-					timestampViewModel?.dismiss()
-					showTimestampDialog = false
-				},
-			)
-		}
-		
-		if (signingRenewalOffer != null) {
-			RenewalJobOfferDialog(
-				state = signingRenewalOffer!!,
-				onAssignExisting = { jobName -> signingViewModel?.assignToExistingJob(jobName) },
-				onCreateNew = { job -> signingViewModel?.createAndAssignJob(job) },
-				onDismiss = { signingViewModel?.dismissRenewalOffer() },
-			)
-		}
-		
-		if (timestampRenewalOffer != null) {
-			RenewalJobOfferDialog(
-				state = timestampRenewalOffer!!,
-				onAssignExisting = { jobName -> timestampViewModel?.assignToExistingJob(jobName) },
-				onCreateNew = { job -> timestampViewModel?.createAndAssignJob(job) },
-				onDismiss = { timestampViewModel?.dismissRenewalOffer() },
-			)
-		}
-		
-		if (showTlBuilderDialog) {
-			TlBuilderDialog(
-				state = tlBuilderState,
-				onFieldChange = { transform -> tlBuilderViewModel?.updateState(transform) },
-				onAddTsp = { tlBuilderViewModel?.addTsp() },
-				onRemoveTsp = { index -> tlBuilderViewModel?.removeTsp(index) },
-				onAddService = { tspIndex -> tlBuilderViewModel?.addService(tspIndex) },
-				onRemoveService = { tspIndex, svcIndex -> tlBuilderViewModel?.removeService(tspIndex, svcIndex) },
-				onCompile = { tlBuilderViewModel?.compile() },
-				onDismiss = {
-					val successState = tlBuilderState as? TlBuilderDialogState.Success
-					val tlConfig = successState?.tlConfig
-					if (tlConfig != null) {
-						settingsViewModel?.updateState { state ->
-							state.copy(
-								customTrustedLists = state.customTrustedLists.filter { it.name != tlConfig.name } + tlConfig
-							)
-						}
-					}
-					tlBuilderViewModel?.dismiss()
-					showTlBuilderDialog = false
-				},
-			)
-		}
-		
-		passwordRequest?.let { req ->
-			PasswordDialog(
-				title = req.title,
-				prompt = req.prompt,
-				onConfirm = { passwordController?.complete(it) },
-				onCancel = { passwordController?.complete(null) },
-			)
-		}
-		
-		BoxWithConstraints(
-			modifier = Modifier
-				.weight(1f)
-				.padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
-		) {
-			val defaultPanelWidth = maxWidth * IslandSidePanelDefaultFraction
-			val effectiveLeftWidth = if (leftPanelWidth == Dp.Unspecified) defaultPanelWidth else leftPanelWidth
-			val effectiveRightWidth = if (rightPanelWidth == Dp.Unspecified) defaultPanelWidth else rightPanelWidth
-			
-			val sideBarCount = (if (leftPanels.isNotEmpty()) 1 else 0) +
-					(if (rightPanels.isNotEmpty()) 1 else 0)
-			val gapCount = sideBarCount + 1 +
-					(if (activeLeftPanel != null) 1 else 0) +
-					(if (activeRightPanel != null) 1 else 0)
-			val fixedChrome = SideBarWidth * sideBarCount + 4.dp * gapCount
-			val panelWidthCap = (maxWidth - SideBarWidth * sideBarCount) / 3
-			val safeMinPanelWidth = maxOf(0.dp, minOf(IslandSidePanelMinWidth, panelWidthCap))
-			val oppositeRight = if (activeRightPanel != null) effectiveRightWidth else 0.dp
-			val oppositeLeft = if (activeLeftPanel != null) effectiveLeftWidth else 0.dp
-			val maxLeftPanelWidth = (maxWidth - fixedChrome - oppositeRight)
-				.coerceIn(safeMinPanelWidth, maxOf(safeMinPanelWidth, panelWidthCap))
-			val maxRightPanelWidth = (maxWidth - fixedChrome - oppositeLeft)
-				.coerceIn(safeMinPanelWidth, maxOf(safeMinPanelWidth, panelWidthCap))
-			
-			Row(
-				modifier = Modifier.fillMaxSize(),
-				horizontalArrangement = Arrangement.spacedBy(4.dp),
-			) {
-				IslandSideBar(
-					panels = leftPanels,
-					activePanel = activeLeftPanel,
-					onPanelToggle = { panel ->
-						activeLeftPanel = if (activeLeftPanel == panel) null else panel
+	CompositionLocalProvider(LocalToastService provides toastService) {
+		Box(modifier = modifier.fillMaxSize()) {
+			Column(modifier = Modifier.fillMaxSize()) {
+				IslandToolbar(
+					isDarkTheme = isDarkTheme,
+					onToggleTheme = onToggleTheme,
+					onOpenFile = { filePickerLauncher.launch() },
+					onOpenSettings = {
+						settingsViewModel?.load()
+						showSettingsDialog = true
 					},
-					tooltipPlacement = TooltipPlacement.End,
+					onSign = {
+						val filePath = pdfState.document?.filePath
+						if (filePath != null) {
+							signingViewModel?.open(filePath)
+							showSigningDialog = true
+						}
+					},
+					onTimestamp = {
+						val filePath = pdfState.document?.filePath
+						if (filePath != null) {
+							timestampViewModel?.open(filePath)
+							showTimestampDialog = true
+						}
+					},
+					fileLoaded = pdfState.document != null,
 				)
 				
-				IslandSidePanel(
-					visible = activeLeftPanel != null,
-					title = activeLeftPanel?.label ?: "",
-					onClose = { activeLeftPanel = null },
-					panelWidth = effectiveLeftWidth.coerceAtMost(maxLeftPanelWidth),
-					defaultWidth = defaultPanelWidth,
-					maxPanelWidth = maxLeftPanelWidth,
-					onWidthChange = { leftPanelWidth = it },
-					fromEnd = false,
-				headerActions = if (activeLeftPanel == SidePanel.Signature &&
-					pdfState.document != null
-				) {
-					{
-						if (signatureState is SignaturePanelState.Loaded) {
-							ExportReportMenu(
-								availableFormats = signatureViewModel?.availableExportFormats() ?: emptyList(),
-								onFormatSelected = { format ->
-									val text = signatureViewModel?.exportReport(format) ?: return@ExportReportMenu
-									scope.launch {
-										exportTextToFile(
-											text = text,
-											suggestedName = "validation-report",
-											extension = format.extension,
-										)
-									}
-								},
-							)
-						}
-
-						TooltipBox(
-							tooltip = { Tooltip { Text(text = "Refresh signatures") } },
-							state = rememberTooltipState(),
-						) {
-							IconButton(
-								variant = IconButtonVariant.Ghost,
-								onClick = { signatureViewModel?.loadSignatures() },
-							) {
-								Icon(
-									painter = painterResource(Res.drawable.icon_refresh),
-									contentDescription = "Refresh signatures",
-									modifier = Modifier.size(20.dp),
-								)
+				if (showSettingsDialog) {
+					SettingsDialog(
+						state = settingsState,
+						hasChanges = settingsHasChanges,
+						onFieldChange = { transform -> settingsViewModel?.updateState(transform) },
+						onSave = {
+							settingsViewModel?.save(onSuccess = {
+								showSettingsDialog = false
+								initialSettingsCategory = null
+							})
+						},
+						onDismiss = {
+							showSettingsDialog = false
+							initialSettingsCategory = null
+						},
+						onBuildTl = tlBuilderViewModel?.let {
+							{
+								it.open()
+								showTlBuilderDialog = true
 							}
-						}
-					}
-				} else null,
-					modifier = Modifier.fillMaxHeight(),
-				) {
-					when (activeLeftPanel) {
-						SidePanel.Signature -> SignaturePanel(
-							state = signatureState,
-							onLoadSignatures = { signatureViewModel?.loadSignatures() },
-						)
-						
-						else -> {}
-					}
-				}
-				
-				IslandContentCard(
-					modifier = Modifier.weight(1f).fillMaxHeight(),
-				) {
-					PdfViewerContent(
-						state = pdfState,
-						onPreviousPage = pdfViewModel::previousPage,
-						onNextPage = pdfViewModel::nextPage,
-						onZoomIn = pdfViewModel::zoomIn,
-						onZoomOut = pdfViewModel::zoomOut,
-						onResetZoom = pdfViewModel::resetZoom,
+						},
+						initialCategory = initialSettingsCategory,
 					)
 				}
 				
-				val isEditingProfile = activeRightPanel == SidePanel.Profiles &&
-						profileState.mode is ProfilePanelMode.Editing
-				val rightPanelTitle = if (isEditingProfile) "Edit Profile"
-				else activeRightPanel?.label ?: ""
-				
-				IslandSidePanel(
-					visible = activeRightPanel != null,
-					title = rightPanelTitle,
-					onClose = {
-						if (isEditingProfile) profileViewModel?.cancelEdit()
-						activeRightPanel = null
-					},
-					panelWidth = effectiveRightWidth.coerceAtMost(maxRightPanelWidth),
-					defaultWidth = defaultPanelWidth,
-					maxPanelWidth = maxRightPanelWidth,
-					onWidthChange = { rightPanelWidth = it },
-					fromEnd = true,
-					onBack = if (isEditingProfile) {
-						{ profileViewModel?.cancelEdit() }
-					} else null,
-					modifier = Modifier.fillMaxHeight(),
-				) {
-					when (activeRightPanel) {
-						SidePanel.Profiles -> ProfilesPanel(
-							state = profileState,
-							onToggleActive = { profileViewModel?.toggleActive(it) },
-							onEdit = { profileViewModel?.startEdit(it) },
-							onDelete = { profileViewModel?.delete(it) },
-							onAdd = { profileViewModel?.startCreate() },
-							onDeselectActive = { profileViewModel?.deselectActive() },
-							onConfirmCreate = { profileViewModel?.confirmCreate(it) },
-							onCancelCreate = { profileViewModel?.cancelCreate() },
-							onFieldChange = { transform -> profileViewModel?.updateEditState(transform) },
-							onSaveEdit = { profileViewModel?.saveEdit() },
-							hasEditChanges = profileHasEditChanges,
-							onBuildTl = tlBuilderViewModel?.let {
-								{
-									it.open()
-									showTlBuilderDialog = true
+				if (showSigningDialog) {
+					SigningDialog(
+						state = signingState,
+						onFieldChange = { transform -> signingViewModel?.updateState(transform) },
+						onSign = { signingViewModel?.sign() },
+						onAbortRevocation = { signingViewModel?.abortAfterRevocationWarning() },
+						onAcceptRevocation = { signingViewModel?.acceptRevocationWarning() },
+						onUnlockToken = { tokenId -> signingViewModel?.unlockToken(tokenId) },
+						onImportPkcs12 = { filePath -> signingViewModel?.loadPkcs12File(filePath) },
+						onRescan = { signingViewModel?.rescan() },
+						onShowDiagnostic = { signingViewModel?.showDiagnostic() },
+						onDismiss = {
+							if (signingState is SigningDialogState.Success) {
+								val outputFile = (signingState as SigningDialogState.Success).outputFile
+								scope.launch {
+									reloadDocument(outputFile, pdfViewModel, signatureViewModel, timestampViewModel)
 								}
-							},
-						)
-						
-						SidePanel.TrustedCerts -> TrustedCertsPanel(state = trustedCertsState)
-						
-						else -> PanelPlaceholderContent(panel = activeRightPanel)
-					}
+							}
+							signingViewModel?.dismiss()
+							showSigningDialog = false
+						},
+					)
 				}
 				
-				IslandSideBar(
-					panels = rightPanels,
-					activePanel = activeRightPanel,
-					onPanelToggle = { panel ->
-						activeRightPanel = if (activeRightPanel == panel) null else {
-							if (panel == SidePanel.Profiles) profileViewModel?.refresh()
-							if (panel == SidePanel.TrustedCerts) trustedCertsViewModel?.refresh()
-							panel
+				signingDiagnosticSnapshot?.let { snapshot ->
+					Pkcs11DiagnosticDialog(
+						snapshot = snapshot,
+						onDismiss = { signingViewModel?.dismissDiagnostic() },
+						onOpenPkcs11Settings = if (settingsViewModel != null) {
+							{
+								signingViewModel?.dismissDiagnostic()
+								initialSettingsCategory = SettingsCategory.Pkcs11Libraries
+								settingsViewModel.load()
+								showSettingsDialog = true
+							}
+						} else null,
+						onOpenDropDirectory = snapshot.dropDirectoryPath?.let { dropDir ->
+							{ openInFileExplorer(dropDir) }
+						},
+					)
+				}
+				
+				if (showTimestampDialog) {
+					TimestampDialog(
+						state = timestampState,
+						onFieldChange = { transform -> timestampViewModel?.updateState(transform) },
+						onExtend = { timestampViewModel?.extend() },
+						onAbortRevocation = { timestampViewModel?.abortAfterRevocationWarning() },
+						onAcceptRevocation = { timestampViewModel?.acceptRevocationWarning() },
+						onDismiss = {
+							if (timestampState is TimestampDialogState.Success) {
+								val outputFile = (timestampState as TimestampDialogState.Success).outputFile
+								scope.launch {
+									reloadDocument(outputFile, pdfViewModel, signatureViewModel, timestampViewModel)
+								}
+							}
+							timestampViewModel?.dismiss()
+							showTimestampDialog = false
+						},
+					)
+				}
+				
+				if (signingRenewalOffer != null) {
+					RenewalJobOfferDialog(
+						state = signingRenewalOffer!!,
+						onAssignExisting = { jobName -> signingViewModel?.assignToExistingJob(jobName) },
+						onCreateNew = { job -> signingViewModel?.createAndAssignJob(job) },
+						onDismiss = { signingViewModel?.dismissRenewalOffer() },
+					)
+				}
+				
+				if (timestampRenewalOffer != null) {
+					RenewalJobOfferDialog(
+						state = timestampRenewalOffer!!,
+						onAssignExisting = { jobName -> timestampViewModel?.assignToExistingJob(jobName) },
+						onCreateNew = { job -> timestampViewModel?.createAndAssignJob(job) },
+						onDismiss = { timestampViewModel?.dismissRenewalOffer() },
+					)
+				}
+				
+				if (showTlBuilderDialog) {
+					TlBuilderDialog(
+						state = tlBuilderState,
+						onFieldChange = { transform -> tlBuilderViewModel?.updateState(transform) },
+						onAddTsp = { tlBuilderViewModel?.addTsp() },
+						onRemoveTsp = { index -> tlBuilderViewModel?.removeTsp(index) },
+						onAddService = { tspIndex -> tlBuilderViewModel?.addService(tspIndex) },
+						onRemoveService = { tspIndex, svcIndex ->
+							tlBuilderViewModel?.removeService(
+								tspIndex,
+								svcIndex
+							)
+						},
+						onCompile = { tlBuilderViewModel?.compile() },
+						onDismiss = {
+							val successState = tlBuilderState as? TlBuilderDialogState.Success
+							val tlConfig = successState?.tlConfig
+							if (tlConfig != null) {
+								settingsViewModel?.updateState { state ->
+									state.copy(
+										customTrustedLists = state.customTrustedLists.filter { it.name != tlConfig.name } + tlConfig
+									)
+								}
+							}
+							tlBuilderViewModel?.dismiss()
+							showTlBuilderDialog = false
+						},
+					)
+				}
+				
+				passwordRequest?.let { req ->
+					PasswordDialog(
+						title = req.title,
+						prompt = req.prompt,
+						onConfirm = { passwordController?.complete(it) },
+						onCancel = { passwordController?.complete(null) },
+					)
+				}
+				
+				BoxWithConstraints(
+					modifier = Modifier
+						.weight(1f)
+						.padding(start = 4.dp, end = 4.dp, bottom = 8.dp),
+				) {
+					val defaultPanelWidth = maxWidth * IslandSidePanelDefaultFraction
+					val effectiveLeftWidth = if (leftPanelWidth == Dp.Unspecified) defaultPanelWidth else leftPanelWidth
+					val effectiveRightWidth =
+						if (rightPanelWidth == Dp.Unspecified) defaultPanelWidth else rightPanelWidth
+					
+					val sideBarCount = (if (leftPanels.isNotEmpty()) 1 else 0) +
+							(if (rightPanels.isNotEmpty()) 1 else 0)
+					val gapCount = sideBarCount + 1 +
+							(if (activeLeftPanel != null) 1 else 0) +
+							(if (activeRightPanel != null) 1 else 0)
+					val fixedChrome = SideBarWidth * sideBarCount + 4.dp * gapCount
+					val panelWidthCap = (maxWidth - SideBarWidth * sideBarCount) / 3
+					val safeMinPanelWidth = maxOf(0.dp, minOf(IslandSidePanelMinWidth, panelWidthCap))
+					val oppositeRight = if (activeRightPanel != null) effectiveRightWidth else 0.dp
+					val oppositeLeft = if (activeLeftPanel != null) effectiveLeftWidth else 0.dp
+					val maxLeftPanelWidth = (maxWidth - fixedChrome - oppositeRight)
+						.coerceIn(safeMinPanelWidth, maxOf(safeMinPanelWidth, panelWidthCap))
+					val maxRightPanelWidth = (maxWidth - fixedChrome - oppositeLeft)
+						.coerceIn(safeMinPanelWidth, maxOf(safeMinPanelWidth, panelWidthCap))
+					
+					Row(
+						modifier = Modifier.fillMaxSize(),
+						horizontalArrangement = Arrangement.spacedBy(4.dp),
+					) {
+						IslandSideBar(
+							panels = leftPanels,
+							activePanel = activeLeftPanel,
+							onPanelToggle = { panel ->
+								activeLeftPanel = if (activeLeftPanel == panel) null else panel
+							},
+							tooltipPlacement = TooltipPlacement.End,
+						)
+						
+						IslandSidePanel(
+							visible = activeLeftPanel != null,
+							title = activeLeftPanel?.label ?: "",
+							onClose = { activeLeftPanel = null },
+							panelWidth = effectiveLeftWidth.coerceAtMost(maxLeftPanelWidth),
+							defaultWidth = defaultPanelWidth,
+							maxPanelWidth = maxLeftPanelWidth,
+							onWidthChange = { leftPanelWidth = it },
+							fromEnd = false,
+							headerActions = if (activeLeftPanel == SidePanel.Signature &&
+								pdfState.document != null
+							) {
+								{
+									if (signatureState is SignaturePanelState.Loaded) {
+										ExportReportMenu(
+											availableFormats = signatureViewModel?.availableExportFormats()
+												?: emptyList(),
+											onFormatSelected = { format ->
+												val text =
+													signatureViewModel?.exportReport(format) ?: return@ExportReportMenu
+												scope.launch {
+													exportTextToFile(
+														text = text,
+														suggestedName = "validation-report",
+														extension = format.extension,
+													)
+												}
+											},
+										)
+									}
+									
+									TooltipBox(
+										tooltip = { Tooltip { Text(text = "Refresh signatures") } },
+										state = rememberTooltipState(),
+									) {
+										IconButton(
+											variant = IconButtonVariant.Ghost,
+											onClick = { signatureViewModel?.loadSignatures() },
+										) {
+											Icon(
+												painter = painterResource(Res.drawable.icon_refresh),
+												contentDescription = "Refresh signatures",
+												modifier = Modifier.size(20.dp),
+											)
+										}
+									}
+								}
+							} else null,
+							modifier = Modifier.fillMaxHeight(),
+						) {
+							when (activeLeftPanel) {
+								SidePanel.Signature -> SignaturePanel(
+									state = signatureState,
+									onLoadSignatures = { signatureViewModel?.loadSignatures() },
+								)
+								
+								else -> {}
+							}
 						}
-					},
-					tooltipPlacement = TooltipPlacement.Start,
-				)
+						
+						IslandContentCard(
+							modifier = Modifier.weight(1f).fillMaxHeight(),
+						) {
+							PdfViewerContent(
+								state = pdfState,
+								onPreviousPage = pdfViewModel::previousPage,
+								onNextPage = pdfViewModel::nextPage,
+								onZoomIn = pdfViewModel::zoomIn,
+								onZoomOut = pdfViewModel::zoomOut,
+								onResetZoom = pdfViewModel::resetZoom,
+							)
+						}
+						
+						val isEditingProfile = activeRightPanel == SidePanel.Profiles &&
+								profileState.mode is ProfilePanelMode.Editing
+						val rightPanelTitle = if (isEditingProfile) "Edit Profile"
+						else activeRightPanel?.label ?: ""
+						
+						IslandSidePanel(
+							visible = activeRightPanel != null,
+							title = rightPanelTitle,
+							onClose = {
+								if (isEditingProfile) profileViewModel?.cancelEdit()
+								activeRightPanel = null
+							},
+							panelWidth = effectiveRightWidth.coerceAtMost(maxRightPanelWidth),
+							defaultWidth = defaultPanelWidth,
+							maxPanelWidth = maxRightPanelWidth,
+							onWidthChange = { rightPanelWidth = it },
+							fromEnd = true,
+							onBack = if (isEditingProfile) {
+								{ profileViewModel?.cancelEdit() }
+							} else null,
+							modifier = Modifier.fillMaxHeight(),
+						) {
+							when (activeRightPanel) {
+								SidePanel.Profiles -> ProfilesPanel(
+									state = profileState,
+									onToggleActive = { profileViewModel?.toggleActive(it) },
+									onEdit = { profileViewModel?.startEdit(it) },
+									onDelete = { profileViewModel?.delete(it) },
+									onAdd = { profileViewModel?.startCreate() },
+									onDeselectActive = { profileViewModel?.deselectActive() },
+									onConfirmCreate = { profileViewModel?.confirmCreate(it) },
+									onCancelCreate = { profileViewModel?.cancelCreate() },
+									onFieldChange = { transform -> profileViewModel?.updateEditState(transform) },
+									onSaveEdit = { profileViewModel?.saveEdit() },
+									hasEditChanges = profileHasEditChanges,
+									onBuildTl = tlBuilderViewModel?.let {
+										{
+											it.open()
+											showTlBuilderDialog = true
+										}
+									},
+								)
+								
+								SidePanel.TrustedCerts -> TrustedCertsPanel(state = trustedCertsState)
+								
+								else -> PanelPlaceholderContent(panel = activeRightPanel)
+							}
+						}
+						
+						IslandSideBar(
+							panels = rightPanels,
+							activePanel = activeRightPanel,
+							onPanelToggle = { panel ->
+								activeRightPanel = if (activeRightPanel == panel) null else {
+									if (panel == SidePanel.Profiles) profileViewModel?.refresh()
+									if (panel == SidePanel.TrustedCerts) trustedCertsViewModel?.refresh()
+									panel
+								}
+							},
+							tooltipPlacement = TooltipPlacement.Start,
+						)
+					}
+				}
 			}
+			
+			ToastHost(
+				service = toastService,
+				modifier = Modifier
+					.align(Alignment.BottomEnd)
+					.padding(end = 60.dp, bottom = 72.dp),
+				suppressWhenDialogOpen = true,
+			)
 		}
 	}
 }

@@ -8,9 +8,9 @@
     </appender>
 
     <appender name="FILE" class="ch.qos.logback.core.rolling.RollingFileAppender">
-        <file>${omnisign.log.dir}/omnisign.log</file>
+        <file>${omnisign.log.dir:-${java.io.tmpdir}/omnisign}/omnisign.log</file>
         <rollingPolicy class="ch.qos.logback.core.rolling.TimeBasedRollingPolicy">
-            <fileNamePattern>${omnisign.log.dir}/omnisign.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
+            <fileNamePattern>${omnisign.log.dir:-${java.io.tmpdir}/omnisign}/omnisign.%d{yyyy-MM-dd}.log.gz</fileNamePattern>
             <maxHistory>30</maxHistory>
             <totalSizeCap>100MB</totalSizeCap>
         </rollingPolicy>
@@ -18,6 +18,11 @@
             <pattern>%d{yyyy-MM-dd HH:mm:ss.SSS} [%thread] %-5level %logger{36} - %msg%n</pattern>
         </encoder>
     </appender>
+
+    <!-- Surface our own code's INFO output in the Run console / log file so PKCS#11
+         discovery, warmup, and cache-invalidator activity is observable.  The DSS noise
+         remains suppressed below; only `cz.pizavo.omnisign.*` logs are elevated. -->
+    <logger name="cz.pizavo.omnisign" level="INFO"/>
 
     <!-- All DSS WARN output is suppressed at the parent level and captured
          programmatically by DssLogCapture during operations. Only ERROR events
