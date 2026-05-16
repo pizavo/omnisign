@@ -98,9 +98,11 @@ class PcscMonitorService(
 			val rechecked = watcher
 			if (rechecked != null && rechecked.isActive) return
 			val terminals = runCatching { terminalsProvider() }.getOrNull() ?: run {
-				logger.debug { "PC/SC monitor: no terminal factory available — watcher will not start" }
+				logger.warn { "PC/SC monitor: no terminal factory available — watcher will NOT start (smart-card hot-insert events will not fire)" }
 				return
 			}
+			val initialReaders = runCatching { terminals.list() }.getOrDefault(emptyList())
+			logger.info { "PC/SC monitor: watcher starting — initial reader count=${initialReaders.size}, names=${initialReaders.map { it.name }}" }
 			watcher = scope.launch { runWatchLoop(terminals) }
 		}
 	}

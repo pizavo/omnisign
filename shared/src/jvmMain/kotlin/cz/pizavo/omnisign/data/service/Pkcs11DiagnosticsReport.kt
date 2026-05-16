@@ -18,6 +18,18 @@ package cz.pizavo.omnisign.data.service
  *   Each entry is `"<reader name> — <card present (ATR …) | empty>"`.
  * @property probes Per-candidate subprocess probe outcomes with wall-clock timings.
  * @property tokens The final [cz.pizavo.omnisign.domain.service.TokenInfo] list as discovery would emit it.
+ * @property noLoginEnumeration Per-PKCS#11-token result of attempting a SunPKCS#11
+ *   `KeyStore` enumeration **without** `C_Login` (no PIN).  This is the "Route A" probe:
+ *   it answers, against the real token, whether signing certificates are visible as
+ *   public objects before any authentication — i.e. whether OmniSign could list certs
+ *   the way Adobe does and defer the PIN to signing.  Empty when no PKCS#11 token was
+ *   discovered.
+ * @property rawNoLoginCertificates Per-library result of a raw, out-of-process
+ *   `C_FindObjects(CKO_CERTIFICATE)` enumeration with no `C_Login` — the authoritative
+ *   "Route A premise" check through OmniSign's own JNA stack.  Unlike [noLoginEnumeration]
+ *   (which goes through SunPKCS#11's `KeyStore` and is blocked for login-required tokens),
+ *   this reads certificate objects directly and exposes the exact `CKA_ID` / label a
+ *   future no-login-list → logged-in-sign handoff would join on.
  * @property totalElapsedMillis Total wall-clock duration of the diagnostics run, in milliseconds.
  */
 data class Pkcs11DiagnosticsReport(
@@ -28,6 +40,8 @@ data class Pkcs11DiagnosticsReport(
 	val pcscReaders: List<String>,
 	val probes: List<ProbeOutcome>,
 	val tokens: List<TokenSummary>,
+	val noLoginEnumeration: List<NoLoginEnumeration>,
+	val rawNoLoginCertificates: List<RawNoLoginCertScan>,
 	val totalElapsedMillis: Long,
 ) {
 
@@ -151,13 +165,17 @@ data class Pkcs11DiagnosticsReport(
 	}
 
 	/**
-	 * A single token identity observed by the probe (label + serial).
+	 * A single token identity observed by the probe (label + serial + slot).
 	 *
 	 * @property label Token label as reported by `C_GetTokenInfo` (max 32 chars, padding stripped).
 	 * @property serialNumber Token serial number as reported by `C_GetTokenInfo` (max 16 chars,
 	 *   padding stripped).
+	 * @property slotId PKCS#11 slot identifier where the token was observed.  Surfaced so users
+	 *   diagnosing PIN-rejection issues can see which slot SunPKCS11 will be pinned to;
+	 *   particularly relevant on Linux p11-kit-proxy installs where slot 0 is rarely the
+	 *   user-PIN slot.
 	 */
-	data class Identity(val label: String, val serialNumber: String)
+	data class Identity(val label: String, val serialNumber: String, val slotId: Long = 0L)
 
 	/**
 	 * Compact projection of [cz.pizavo.omnisign.domain.service.TokenInfo] for the diagnostics
@@ -175,5 +193,108 @@ data class Pkcs11DiagnosticsReport(
 		val type: String,
 		val path: String?,
 		val requiresPin: Boolean,
+	)
+
+	/**
+	 * Outcome of attempting an unauthenticated (no-`C_Login`) SunPKCS#11 `KeyStore`
+	 * enumeration of one PKCS#11 token — the "Route A" experiment.
+	 *
+	 * The probe configures a SunPKCS#11 provider for [libraryPath]/[slotId] and calls
+	 * `KeyStore("PKCS11").load(null, null)`, which opens a public session **without**
+	 * sending the user PIN.  What [entries] then contains tells us, on this specific
+	 * token, whether the signing certificate is a public object readable before
+	 * authentication (so the PIN could be deferred to signing, matching Adobe) or
+	 * whether enumeration itself is gated behind login on this token/JDK.
+	 *
+	 * @property tokenName Display name of the token as discovery would emit it.
+	 * @property libraryPath Absolute path of the PKCS#11 module the provider was pointed at.
+	 * @property slotId Slot the provider was pinned to, or `null` when discovery did not
+	 *   resolve a slot (the provider then falls back to its default slot selection).
+	 * @property loaded `true` when `KeyStore.load(null, null)` returned without throwing —
+	 *   i.e. an unauthenticated session was usable.  `false` records that the no-login
+	 *   path is not viable on this token, with the reason in [error].
+	 * @property error Failure detail when [loaded] is `false` (library missing, provider
+	 *   unavailable, or the exception thrown by `load`); `null` on success.
+	 * @property entries Keystore entries visible **without** a PIN; empty when [loaded] is
+	 *   `true` but the token exposes nothing publicly.
+	 */
+	data class NoLoginEnumeration(
+		val tokenName: String,
+		val libraryPath: String,
+		val slotId: Long?,
+		val loaded: Boolean,
+		val error: String?,
+		val entries: List<NoLoginEntry>,
+	)
+
+	/**
+	 * A single keystore entry observed during the no-login enumeration.
+	 *
+	 * The decisive field is [isCertificateEntry] with a non-null [subjectDN]: a signing
+	 * certificate showing up here means it is a public object readable without the PIN.
+	 * [isKeyEntry] is expected to be `false` pre-login (private keys stay private until
+	 * `C_Login`); a `true` here would itself be a notable token quirk.
+	 *
+	 * @property alias Keystore alias as surfaced by SunPKCS#11.
+	 * @property isKeyEntry `KeyStore.isKeyEntry(alias)` — whether a private-key entry is
+	 *   visible without login (normally `false`).
+	 * @property isCertificateEntry `KeyStore.isCertificateEntry(alias)` — whether the alias
+	 *   resolves to a certificate-only (trusted-cert) entry.
+	 * @property subjectDN Subject DN of the entry's X.509 certificate; `null` when the
+	 *   alias has no readable certificate.
+	 * @property issuerDN Issuer DN of the entry's X.509 certificate; `null` when absent.
+	 * @property serialNumber Certificate serial number (decimal string); `null` when absent.
+	 */
+	data class NoLoginEntry(
+		val alias: String,
+		val isKeyEntry: Boolean,
+		val isCertificateEntry: Boolean,
+		val subjectDN: String?,
+		val issuerDN: String?,
+		val serialNumber: String?,
+	)
+
+	/**
+	 * Result of the raw, out-of-process no-`C_Login` certificate enumeration for one
+	 * PKCS#11 library.
+	 *
+	 * @property libraryPath Absolute path of the probed PKCS#11 module.
+	 * @property subprocessSucceeded Whether the `--certs` probe subprocess exited cleanly.
+	 *   `false` means it crashed, timed out, or could not be launched (see the Probes
+	 *   section for the reason); [certificates] is then empty for that reason, not because
+	 *   the token has no public certs.
+	 * @property certificates Certificates readable without a PIN.  Empty with
+	 *   [subprocessSucceeded] `true` means the token exposes no public certificate objects
+	 *   (they are private — Route A would not work for this token).
+	 */
+	data class RawNoLoginCertScan(
+		val libraryPath: String,
+		val subprocessSucceeded: Boolean,
+		val certificates: List<RawNoLoginCert>,
+	)
+
+	/**
+	 * One certificate read directly from the token without authenticating.
+	 *
+	 * The presence of an end-entity signing certificate here is the verified proof that
+	 * the cert is a public object, so OmniSign could list it with no PIN and defer
+	 * authentication to signing.
+	 *
+	 * @property subjectDN Subject DN (RFC 2253).
+	 * @property issuerDN Issuer DN (RFC 2253).
+	 * @property serialNumber Certificate serial number (decimal string).
+	 * @property ckaId Lower-case hex of the object's `CKA_ID`; the join key a future
+	 *   no-login-list → logged-in-sign handoff would match against the private key.
+	 *   Empty when the object has no `CKA_ID`.
+	 * @property label The object's `CKA_LABEL` (decoded UTF-8); empty when absent.
+	 * @property slotId Slot the certificate was found in.
+	 */
+	data class RawNoLoginCert(
+		val subjectDN: String,
+		val issuerDN: String,
+		val serialNumber: String,
+		val ckaId: String,
+		val label: String,
+		val slotId: Long,
 	)
 }

@@ -31,7 +31,7 @@ import org.koin.dsl.module
  * ```
  */
 val jvmRepositoryModule = module {
-	singleOf(::Pkcs11CrashBlacklist)
+	single { Pkcs11CrashBlacklist() }
 	single { PcscMonitorService() }
 	single {
 		Pkcs11Discoverer(
@@ -45,14 +45,32 @@ val jvmRepositoryModule = module {
 			warmupSignal = getOrNull<MutableStateFlow<Boolean>>() ?: MutableStateFlow(true),
 		)
 	}
+	single { Pkcs11NoLoginCertProbe() }
 	single {
 		Pkcs11DiagnosticsService(
 			pkcs11Discoverer = get(),
 			configRepository = get(),
 			pcscMonitor = get(),
+			noLoginProbe = get(),
 		)
 	}
-	singleOf(::DssTokenService) bind TokenService::class
+	single {
+		Pkcs11CacheInvalidator(
+			monitor = get(),
+			discoverer = get(),
+			configRepository = get(),
+			appDataPkcs11Dir = pkcs11DropDir(),
+		)
+	}
+	single {
+		DssTokenService(
+			passwordCallback = get(),
+			pkcs11Discoverer = get(),
+			pkcs11CacheInvalidator = get(),
+			pcscMonitorService = get(),
+			configRepository = get(),
+		)
+	} bind TokenService::class
 	singleOf(::KeyringCredentialStore) bind CredentialStore::class
 	
 	single<ConfigRepository> { FileConfigRepository() }

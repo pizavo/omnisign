@@ -5,8 +5,6 @@ import com.sun.jna.Native
 import com.sun.jna.NativeLong
 import com.sun.jna.platform.win32.Advapi32Util
 import com.sun.jna.platform.win32.WinReg
-import com.sun.jna.ptr.IntByReference
-import com.sun.jna.win32.StdCallLibrary
 import cz.pizavo.omnisign.data.service.Pkcs11Discoverer.Companion.P11_KIT_PROXY_PATHS
 import cz.pizavo.omnisign.data.service.Pkcs11Discoverer.Companion.P11_STANDALONE_PATTERN
 import cz.pizavo.omnisign.data.service.Pkcs11Discoverer.Companion.PKCS11_NAME_PATTERNS
@@ -17,9 +15,19 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.sync.Semaphore
+import kotlinx.coroutines.sync.withPermit
 import java.io.File
 import java.nio.file.Path
-import java.util.*
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
+import java.util.Base64
+import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicInteger
+import javax.smartcardio.TerminalFactory
 
 /**
  * Identity of a physical PKCS#11 token as reported by `C_GetTokenInfo`.
@@ -27,11 +35,17 @@ import java.util.*
  * @property label Token label (up to 32 UTF-8 characters, space-padded by the PKCS#11 spec).
  * @property serialNumber Token serial number (up to 16 characters, space-padded).
  * @property libraryPath Absolute path of the PKCS#11 middleware library that reported this token.
+ * @property slotId Slot identifier where the token was found, as returned by
+ *   `C_GetSlotList(tokenPresent=CK_TRUE)`.  This is the literal slot ID, not an index into
+ *   the slot list — used directly in the SunPKCS11 `slot = ` config directive so that
+ *   `C_Login` targets the correct slot on aggregator modules (p11-kit-proxy) where slot 0
+ *   is typically the wrong slot.
  */
 data class Pkcs11TokenIdentity(
-    val label: String,
-    val serialNumber: String,
-    val libraryPath: String,
+	val label: String,
+	val serialNumber: String,
+	val libraryPath: String,
+	val slotId: Long = 0L,
 )
 
 /**
@@ -77,85 +91,306 @@ internal const val DEFAULT_PROBE_TIMEOUT_SECONDS = 30L
  *   Defaults to subprocess-based probing via [probeTokenIdentitiesViaSubprocess] to isolate
  *   native crashes (SIGSEGV) from the host JVM; override for testing.  The default lambda
  *   forwards [probeTimeoutSeconds] to the subprocess.
+ * @property probeParallelism Maximum number of subprocesses [discoverTokens] is allowed to
+ *   spawn concurrently.  Each subprocess cold-starts a JVM and calls `C_Initialize` on the
+ *   target library; running too many in parallel against the same vendor library (e.g. SafeNet
+ *   `eTPKCS11.dll`) is a well-documented source of intermittent SIGSEGV / `CKR_FUNCTION_FAILED`
+ *   responses.  Defaults to `2`, matching [Pkcs11WarmupService] so combined warmup +
+ *   discovery never exceed `4` concurrent probes against the same lib in the worst case.
+ *
+ * Cache lifetime is **event-driven**, not time-driven: entries live indefinitely until
+ * [Pkcs11CacheInvalidator] observes a PC/SC reader-state change and clears them, or until
+ * a caller invokes [invalidateCache] explicitly (e.g. a "Rescan tokens" UI button for the
+ * rare case of a vendor middleware install while the app is running).  This keeps hot-path
+ * dialog opens at sub-millisecond cost without ever returning stale hardware state.
+ *
+ * Consumers that should not trigger their own discovery cycle (the sign dialog being the
+ * canonical case) instead suspend on [discoveryRunning] until any in-flight cycle settles
+ * — warmup at startup or invalidator-launched rediscovery after a PC/SC event — and then
+ * read [getCachedTokens].  The producer side ([Pkcs11WarmupService], the invalidator) keeps
+ * the flag accurate by wrapping its own discovery work in [beginDiscovery] / [endDiscovery];
+ * [discoverTokens] does so internally on every caller's behalf.
  */
 class Pkcs11Discoverer(
-    private val probeTimeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
-    private val crashBlacklist: Pkcs11CrashBlacklist = Pkcs11CrashBlacklist(),
-    private val discoveryGate: ConflatedProbeGate<List<TokenInfo>> = ConflatedProbeGate(),
-    private val tokenProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
-        probeTokenIdentitiesViaSubprocess(path, probeTimeoutSeconds)
-    },
+	private val probeTimeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
+	private val crashBlacklist: Pkcs11CrashBlacklist = Pkcs11CrashBlacklist(),
+	private val discoveryGate: ConflatedProbeGate<List<TokenInfo>> = ConflatedProbeGate(),
+	private val tokenProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
+		probeTokenIdentitiesViaSubprocess(path, probeTimeoutSeconds)
+	},
+	private val probeParallelism: Int = DEFAULT_PROBE_PARALLELISM,
 ) {
-
-    /**
-     * Probe a single PKCS#11 library for token identities by spawning a [Pkcs11ProbeWorker]
-     * subprocess, unless the library is on [crashBlacklist] (in which case it is skipped
-     * silently).
-     *
-     * Every probe runs out-of-process via [tokenProber] (default: subprocess).  This
-     * deliberately avoids running our own in-process PKCS#11 consumer alongside SunPKCS11 —
-     * DSS uses SunPKCS11 for signing, and having a second consumer in the same JVM was a
-     * recurring source of subtle interaction bugs.  Out-of-process probing is slower per
-     * call (~500 ms minimum on Windows, several seconds on weak Linux) but correct and
-     * stable across middleware vendors.
-     *
-     * @param libraryPath Absolute path to the PKCS#11 shared library to probe.
-     * @return Token identities found in the library, or an empty list when the library is
-     *   blacklisted, unreachable, the probe times out, or no tokens are inserted.
-     */
-    fun probeLibrary(libraryPath: String): List<Pkcs11TokenIdentity> {
-        if (crashBlacklist.isCrashed(libraryPath)) {
-            logger.debug { "Skipping crashed library '$libraryPath'" }
-            return emptyList()
-        }
-        return tokenProber(libraryPath)
-    }
-
-    /**
-     * Enumerate all unique candidate PKCS#11 library paths without probing them.
-     *
-     * This is the discovery-only first phase: OS-native sources, curated fallback paths,
-     * the app-data drop directory, and user-supplied libraries are merged and deduplicated
-     * by canonical path.  No subprocess is spawned and no PKCS#11 function is called.
-     *
-     * Used by [Pkcs11WarmupService] to obtain the candidate set for background initialization
-     * and by [discoverTokens] as the first step before parallel probing.
-     *
-     * @param appDataPkcs11Dir Optional drop directory; every PKCS#11-named file found here is
-     *   added to the candidate list without any config change.
-     * @param userPkcs11Libraries Additional `(display name, path)` pairs supplied by the user.
-     *   Only entries whose file exists on disk are included.
-     * @return Deduplicated list of `(display name, absolute path)` pairs.
-     */
-    fun collectCandidates(
-        appDataPkcs11Dir: File? = null,
-        userPkcs11Libraries: List<Pair<String, String>> = emptyList(),
-    ): List<Pair<String, String>> {
-        val os = System.getProperty("os.name").lowercase()
-        val jvmIs64Bit = System.getProperty("sun.arch.data.model") == "64"
-        val seen = LinkedHashMap<String, Pair<String, String>>()
-
-        fun merge(candidates: List<Pair<String, String>>) {
-            for ((name, path) in candidates) {
-                val canonical = runCatching { File(path).canonicalPath }.getOrElse { path }
-                seen.putIfAbsent(canonical, name to path)
-            }
-        }
-
-        merge(discoverViaOs(os, jvmIs64Bit))
-        if (appDataPkcs11Dir != null && appDataPkcs11Dir.isDirectory) {
-            merge(
-                appDataPkcs11Dir
-                    .listFiles { f -> f.isFile && isPkcs11FileName(f.name) }
-                    ?.map { f -> deriveMiddlewareName(f.absolutePath) to f.absolutePath }
-                    ?: emptyList()
-            )
-        }
-        merge(userPkcs11Libraries.filter { (_, path) -> File(path).exists() })
-
-        return seen.values.filterNot { (_, path) -> isSpyLibrary(File(path).name) }
-    }
-
+	
+	/**
+	 * Per-path cache of successful probe results.
+	 *
+	 * Populated by [probeLibrary] on subprocess success and by [primeCache] when the warmup
+	 * service has a fresh result to share.  Lookups in [probeLibrary] short-circuit any
+	 * present entry without spawning a subprocess.
+	 *
+	 * Entries live indefinitely; freshness is enforced by [Pkcs11CacheInvalidator] reacting
+	 * to PC/SC reader-state events, not by a time-based TTL.  Failed probes are deliberately
+	 * **not** cached: the user might insert the card mid-session and we want the next dialog
+	 * open to see it.  The crash blacklist handles the "library always crashes" case
+	 * separately.
+	 */
+	/**
+	 * Reference count of concurrently in-flight discovery cycles (warmup, dialog-triggered
+	 * [discoverTokens] calls, invalidator-launched rediscovery — anything that calls
+	 * [beginDiscovery]).  Drives transitions of [_discoveryRunning]: `0 → 1` flips the flag
+	 * `true`, `1 → 0` flips it `false`.  Intermediate increments leave the flag at `true`
+	 * so concurrent callers don't briefly observe a false gap between back-to-back cycles.
+	 */
+	private val activeDiscoveryCount = AtomicInteger(0)
+	
+	/**
+	 * Backing mutable flow for [discoveryRunning].  Modified only via [beginDiscovery] /
+	 * [endDiscovery] so the refcount and the flag stay coherent.
+	 */
+	private val _discoveryRunning = MutableStateFlow(false)
+	
+	/**
+	 * `true` while at least one discovery cycle is in flight, `false` when none is.
+	 *
+	 * The signal is unified across every producer of probe-cache state:
+	 * - [Pkcs11WarmupService.warmup] at application start.
+	 * - [Pkcs11CacheInvalidator] background rediscovery launched by a PC/SC reader-state event.
+	 * - Direct [discoverTokens] calls (e.g. tests or future callers).
+	 *
+	 * Initial value is `false` because warmup is always launched at bootstrap, well before
+	 * any UI dialog can call into this class — its first action inside [warmupSignal]'s
+	 * try-block is [beginDiscovery], which flips the flag synchronously on the warmup
+	 * coroutine before any consumer can observe it.  Falling back to `false` (rather than
+	 * an initial `true` that warmup later clears) avoids the "dialog spinner forever"
+	 * failure mode if warmup ever fails to launch.
+	 *
+	 * Consumers that want a passive cache read should `discoveryRunning.filter { !it }.first()`
+	 * before calling [getCachedTokens] so the cache is fully populated by the time they read it.
+	 */
+	val discoveryRunning: StateFlow<Boolean> = _discoveryRunning.asStateFlow()
+	
+	/**
+	 * Increment the discovery refcount, flipping [discoveryRunning] to `true` if this is the
+	 * first in-flight cycle.
+	 *
+	 * Public so producers that don't call [discoverTokens] internally (notably
+	 * [Pkcs11WarmupService], which runs its own subprocess loop and writes through to
+	 * [probeCache] via [primeCache]) can still publish their in-progress state.  Callers
+	 * MUST pair every call with [endDiscovery] in a `finally` block to avoid leaking the
+	 * flag at `true`.
+	 */
+	fun beginDiscovery() {
+		if (activeDiscoveryCount.incrementAndGet() == 1) _discoveryRunning.value = true
+	}
+	
+	/**
+	 * Decrement the discovery refcount, flipping [discoveryRunning] to `false` when the last
+	 * in-flight cycle ends.
+	 *
+	 * See [beginDiscovery] for usage contract.
+	 */
+	fun endDiscovery() {
+		if (activeDiscoveryCount.decrementAndGet() == 0) _discoveryRunning.value = false
+	}
+	
+	private val probeCache = ConcurrentHashMap<String, List<Pkcs11TokenIdentity>>()
+	
+	/**
+	 * Cache of [collectCandidates] results, keyed by `(appDataPkcs11Dir, userPkcs11Libraries)`.
+	 *
+	 * `collectCandidates` is the cold dominator of every dialog open: PC/SC enumeration on
+	 * Windows, p11-kit module parsing and standard library-directory scans on Linux/macOS.
+	 * The composition of installed PKCS#11 middleware changes only when the user
+	 * installs/uninstalls a vendor package or plugs / unplugs a smart-card reader.  Entries
+	 * live indefinitely and are cleared by [Pkcs11CacheInvalidator] on reader plug / unplug
+	 * events; explicit user rescan calls [invalidateCache].
+	 */
+	private val candidateCache = ConcurrentHashMap<CandidateCacheKey, List<Pair<String, String>>>()
+	
+	/**
+	 * Composite cache key reflecting the inputs that determine the candidate list.
+	 *
+	 * @property dropDirPath Absolute path of the app-data drop directory, or `null` when none.
+	 *   Two opens with different drop directories must not share a cache entry.
+	 * @property userLibraryPaths Snapshot of user-supplied library paths (by absolute path,
+	 *   names dropped because they don't affect candidate selection).
+	 */
+	private data class CandidateCacheKey(
+		val dropDirPath: String?,
+		val userLibraryPaths: List<String>,
+	)
+	
+	/**
+	 * Probe a single PKCS#11 library for token identities, using the cache when possible.
+	 *
+	 * Resolution order:
+	 * 1. **Crash blacklist** — if the path has crashed enough times in the current sliding
+	 *    window ([Pkcs11CrashBlacklist]), return empty without spawning anything.
+	 * 2. **Cache hit** — if a successful probe result is present, return its identities
+	 *    without spawning a subprocess.  This is the hot path that makes a second
+	 *    `probeTokenPresent` call inside the dialog-open flow effectively free.  Cache
+	 *    freshness is enforced by [Pkcs11CacheInvalidator] reacting to PC/SC events.
+	 * 3. **Cache miss** — spawn a subprocess via [tokenProber] (default: process-isolated to
+	 *    contain native SIGSEGV).  On non-empty success, populate the cache.  On empty
+	 *    success or failure, leave the cache untouched so a later card insertion is picked
+	 *    up on the next call.
+	 *
+	 * Out-of-process probing remains the cohabitation-safe choice alongside SunPKCS11 —
+	 * see the class-level docs for the rationale behind the in-process path's removal.
+	 *
+	 * @param libraryPath Absolute path to the PKCS#11 shared library to probe.
+	 * @return Token identities found in the library, or an empty list when the library is
+	 *   blacklisted, unreachable, the probe times out, or no tokens are inserted.
+	 */
+	fun probeLibrary(libraryPath: String): List<Pkcs11TokenIdentity> {
+		if (crashBlacklist.isCrashed(libraryPath)) {
+			logger.debug { "Skipping crashed library '$libraryPath'" }
+			return emptyList()
+		}
+		probeCache[libraryPath]?.let {
+			logger.debug { "Probe cache hit for '$libraryPath' (${it.size} identity(-ies))" }
+			return it
+		}
+		val identities = tokenProber(libraryPath)
+		if (identities.isNotEmpty()) {
+			probeCache[libraryPath] = identities
+		}
+		return identities
+	}
+	
+	/**
+	 * Insert an externally-computed probe result into the cache.
+	 *
+	 * Used by [Pkcs11WarmupService] to share its successful warmup probes with discovery so
+	 * the very first sign-dialog open does not re-spawn subprocesses for libraries the
+	 * warmup just validated.  No-op when [identities] is empty — empty results are never
+	 * cached, so a freshly inserted card is still picked up.
+	 *
+	 * @param libraryPath Absolute path to the PKCS#11 shared library.
+	 * @param identities Identities observed during the priming probe.
+	 */
+	fun primeCache(libraryPath: String, identities: List<Pkcs11TokenIdentity>) {
+		if (identities.isEmpty()) return
+		probeCache[libraryPath] = identities
+		logger.debug { "Probe cache primed for '$libraryPath' (${identities.size} identity(-ies))" }
+	}
+	
+	/**
+	 * Drop every cached probe result so the next [probeLibrary] call re-spawns a subprocess.
+	 *
+	 * Used when the set of *present tokens* may have changed but the set of installed
+	 * libraries has not — typically a card insertion or removal observed via
+	 * [PcscMonitorService.events].
+	 */
+	fun invalidateProbes() {
+		probeCache.clear()
+		logger.debug { "Probe cache cleared" }
+	}
+	
+	/**
+	 * Drop every cached candidate enumeration so the next [collectCandidates] call
+	 * re-runs the OS-native discovery branches.
+	 *
+	 * Used when the set of installed PKCS#11 libraries may have changed — typically a
+	 * smart-card reader being plugged in or unplugged, which can alter PC/SC + Calais
+	 * mappings or which p11-kit modules are reachable.
+	 */
+	fun invalidateCandidates() {
+		candidateCache.clear()
+		logger.debug { "Candidate cache cleared" }
+	}
+	
+	/**
+	 * Drop every cached probe and candidate result.
+	 *
+	 * Intended for explicit user-initiated refresh (a "Rescan tokens" button) and for tests.
+	 * Event-driven invalidation typically uses the finer-grained [invalidateProbes] or
+	 * [invalidateCandidates] instead, depending on which surface actually changed.
+	 */
+	fun invalidateCache() {
+		invalidateProbes()
+		invalidateCandidates()
+	}
+	
+	/**
+	 * Enumerate all unique candidate PKCS#11 library paths without probing them.
+	 *
+	 * This is the discovery-only first phase: OS-native sources, the app-data drop directory,
+	 * and user-supplied libraries are merged and deduplicated by absolute path.  No
+	 * subprocess is spawned (other than the OS-discovery sub-helpers' own spawns, which are
+	 * themselves rate-limited and gated on prerequisites) and no PKCS#11 function is called.
+	 *
+	 * Used by [Pkcs11WarmupService] to obtain the candidate set for background initialization
+	 * and by [discoverTokens] as the first step before parallel probing.
+	 *
+	 * Repeated calls with the same `(appDataPkcs11Dir, userPkcs11Libraries)` return the
+	 * cached list without re-running PC/SC, registry, or directory scans; this is the
+	 * dominant cost on every dialog open and the cache turns second-and-onward opens into
+	 * a sub-millisecond lookup.  Cache entries live indefinitely; [Pkcs11CacheInvalidator]
+	 * clears them on reader plug / unplug events, and [invalidateCache] handles explicit
+	 * user rescans.
+	 *
+	 * @param appDataPkcs11Dir Optional drop directory; every PKCS#11-named file found here is
+	 *   added to the candidate list without any config change.
+	 * @param userPkcs11Libraries Additional `(display name, path)` pairs supplied by the user.
+	 *   Only entries whose file exists on disk are included.
+	 * @return Deduplicated list of `(display name, absolute path)` pairs.
+	 */
+	fun collectCandidates(
+		appDataPkcs11Dir: File? = null,
+		userPkcs11Libraries: List<Pair<String, String>> = emptyList(),
+	): List<Pair<String, String>> {
+		val cacheKey = CandidateCacheKey(
+			dropDirPath = appDataPkcs11Dir?.absolutePath,
+			userLibraryPaths = userPkcs11Libraries.map { it.second },
+		)
+		candidateCache[cacheKey]?.let {
+			logger.debug { "Candidate cache hit (${it.size} entry(-ies))" }
+			return it
+		}
+		val os = System.getProperty("os.name").lowercase()
+		val jvmIs64Bit = System.getProperty("sun.arch.data.model") == "64"
+		val candidates = collectCandidatesUncached(os, jvmIs64Bit, appDataPkcs11Dir, userPkcs11Libraries)
+		candidateCache[cacheKey] = candidates
+		return candidates
+	}
+	
+	/**
+	 * Compute the candidate list from scratch, bypassing [candidateCache].
+	 *
+	 * Extracted from [collectCandidates] so that the cache lookup wraps a single uncached
+	 * call site, and so warmup can offer to populate the cache without going through the
+	 * cache-lookup branch itself (the warmup result IS the first cache fill).
+	 */
+	private fun collectCandidatesUncached(
+		os: String,
+		jvmIs64Bit: Boolean,
+		appDataPkcs11Dir: File?,
+		userPkcs11Libraries: List<Pair<String, String>>,
+	): List<Pair<String, String>> {
+		val seen = LinkedHashMap<String, Pair<String, String>>()
+		
+		fun merge(candidates: List<Pair<String, String>>) {
+			for ((name, path) in candidates) {
+				val key = File(path).absolutePath
+				seen.putIfAbsent(key, name to path)
+			}
+		}
+		
+		merge(discoverViaOs(os, jvmIs64Bit))
+		if (appDataPkcs11Dir != null && appDataPkcs11Dir.isDirectory) {
+			merge(
+				appDataPkcs11Dir
+					.listFiles { f -> f.isFile && isPkcs11FileName(f.name) }
+					?.map { f -> deriveMiddlewareName(f.absolutePath) to f.absolutePath }
+					?: emptyList()
+			)
+		}
+		merge(userPkcs11Libraries.filter { (_, path) -> File(path).exists() })
+		
+		return seen.values.filterNot { (_, path) -> isSpyLibrary(File(path).name) }
+	}
+	
 	/**
 	 * Discover all PKCS#11 tokens available on the system.
 	 *
@@ -185,20 +420,53 @@ class Pkcs11Discoverer(
 	suspend fun discoverTokens(
 		appDataPkcs11Dir: File? = null,
 		userPkcs11Libraries: List<Pair<String, String>> = emptyList(),
-	): List<TokenInfo> = discoveryGate.runOrCoalesce {
-		val candidates = collectCandidates(appDataPkcs11Dir, userPkcs11Libraries)
+	): List<TokenInfo> {
+		beginDiscovery()
+		try {
+			return discoveryGate.runOrCoalesce {
+				val candidates = collectCandidates(appDataPkcs11Dir, userPkcs11Libraries)
 
-		val probeResults = coroutineScope {
-			candidates.map { (name, path) ->
-				async(Dispatchers.IO) {
-					Triple(name, path, probeLibrary(path))
+				val gate = Semaphore(probeParallelism.coerceAtLeast(1))
+				val probeResults = coroutineScope {
+					candidates.map { (name, path) ->
+						async(Dispatchers.IO) {
+							gate.withPermit { Triple(name, path, probeLibrary(path)) }
+						}
+					}.awaitAll()
 				}
-			}.awaitAll()
+				
+				buildTokenInfoList(probeResults)
+			}
+		} finally {
+			endDiscovery()
 		}
-
-		buildTokenInfoList(probeResults)
 	}
-
+	
+	/**
+	 * Return the deduplicated [TokenInfo] list reflecting the current [probeCache] contents.
+	 *
+	 * This is the **read-only** counterpart to [discoverTokens]: no subprocess is spawned, no
+	 * candidate enumeration is run, no [discoveryGate] is engaged.  It walks the entries that
+	 * earlier discovery cycles (warmup, [discoverTokens], or [primeCache]) populated and runs
+	 * them through [buildTokenInfoList] for the same serial-based dedup that [discoverTokens]
+	 * applies.
+	 *
+	 * Intended for consumers that should never trigger their own discovery cycle — most
+	 * notably [DssTokenService.discoverTokens] for the sign-dialog hot path.  Pair the call
+	 * with a wait on [discoveryRunning] (`filter { !it }.first()`) so the cache is fully
+	 * populated by any in-flight producer before being read.
+	 *
+	 * @return Token info entries built from probe results currently cached; empty when no
+	 *   library has been probed successfully (cold start before warmup, or after
+	 *   [invalidateProbes] when nothing has refilled the cache yet).
+	 */
+	fun getCachedTokens(): List<TokenInfo> {
+		val probedCandidates = probeCache.entries.map { (path, identities) ->
+			Triple(deriveMiddlewareName(path), path, identities)
+		}
+		return buildTokenInfoList(probedCandidates)
+	}
+	
 	/**
 	 * Apply the deduplication strategy described in [discoverTokens] to a pre-computed list
 	 * of probed candidates and emit the resulting [TokenInfo] entries.
@@ -223,10 +491,10 @@ class Pkcs11Discoverer(
 	): List<TokenInfo> {
 		val withIdentities = probedCandidates.filter { it.third.isNotEmpty() }
 		val sortedWithIdentities = withIdentities.sortedBy { isProxyPath(it.second) }
-
+		
 		val result = mutableListOf<TokenInfo>()
 		val seenSerials = mutableSetOf<String>()
-
+		
 		for ((_, path, identities) in sortedWithIdentities) {
 			for (identity in identities) {
 				if (seenSerials.add(normalizeSerial(identity.serialNumber))) {
@@ -236,509 +504,379 @@ class Pkcs11Discoverer(
 						type = TokenType.PKCS11,
 						path = path,
 						requiresPin = true,
+						pkcs11SlotId = identity.slotId,
 					)
 				}
 			}
 		}
-
+		
 		return result
 	}
-
-    /**
-     * Query OS-native sources for PKCS#11 middleware without touching the fallback list.
-     *
-     * - **Windows**: PC/SC via `SCardListReaders`, vendor registry trees, `System32` dir scan.
-     * - **macOS**: `security list-smartcards`, `pluginkit -mAT com.apple.ctk.token`, p11-kit
-     *   module files, standard library directory scan.
-     * - **Linux**: p11-kit proxy (if present), standard library directory scan, p11-kit
-     *   `*.module` files.
-     *
-     * Never throws; returns an empty list when the OS mechanism is unavailable.
-     */
-    internal fun discoverViaOs(
-        os: String = System.getProperty("os.name").lowercase(),
-        jvmIs64Bit: Boolean = System.getProperty("sun.arch.data.model") == "64",
-    ): List<Pair<String, String>> {
-        val linuxLibDirs = if (jvmIs64Bit) listOf(
-            "/usr/lib/x86_64-linux-gnu",
-            "/usr/lib/aarch64-linux-gnu",
-            "/usr/lib",
-            "/usr/lib64",
-            "/usr/local/lib",
-        ) else listOf("/usr/lib", "/usr/local/lib")
-
-        val macLibDirs = listOf("/usr/local/lib", "/opt/homebrew/lib")
-
-        return when {
-            os.contains("win") -> discoverViaPcsc() +
-                    discoverViaWindowsRegistry(jvmIs64Bit) +
-                    discoverViaDirScan(jvmIs64Bit)
-
-            os.contains("mac") -> discoverViaMacOsSecurity() +
-                    discoverViaP11Kit() +
-                    discoverViaLibDirs(macLibDirs)
-
-            else -> discoverViaP11KitProxy() +
-                    discoverViaLibDirs(linuxLibDirs) +
-                    discoverViaP11Kit()
-        }
-    }
-
-    /**
-     * Return `true` when [fileName] (base name only) looks like a PKCS#11 provider library.
-     *
-     * Patterns checked:
-     * - Exact substring matches against [PKCS11_NAME_PATTERNS] (e.g. `pkcs11`, `cryptoki`).
-     * - A standalone `p11` token that is **not** immediately followed by a digit, via
-     *   [P11_STANDALONE_PATTERN].  This prevents Microsoft Visual C++ runtime DLLs such as
-     *   `msvcp110.dll`, `vcamp110.dll`, and `vcomp110.dll` from being mistaken for PKCS#11
-     *   middleware — they all contain the three-character substring `p11` as part of the
-     *   version number `p110`.
-     *
-     * Known spy/debugging wrappers (e.g. `pkcs11-spy.so`) are excluded via [isSpyLibrary].
-     */
-    internal fun isPkcs11FileName(fileName: String): Boolean {
-        if (isSpyLibrary(fileName)) return false
-        val lower = fileName.lowercase()
-        return PKCS11_NAME_PATTERNS.any { lower.contains(it) } ||
-               P11_STANDALONE_PATTERN.containsMatchIn(lower)
-    }
-
-    /**
-     * Return `true` when [fileName] (base name only) is a known PKCS#11 spy or debugging
-     * wrapper library rather than actual middleware.
-     *
-     * The OpenSC project ships `pkcs11-spy.so` / `pkcs11-spy.dll` which is a logging
-     * pass-through that requires the `PKCS11SPY` environment variable to point to the real
-     * PKCS#11 module.  Loading it without that variable set produces errors or hangs.
-     * Such libraries must never be probed or offered as signing tokens.
-     */
-    internal fun isSpyLibrary(fileName: String): Boolean {
-        val lower = fileName.lowercase()
-        return SPY_LIBRARY_PATTERNS.any { lower.contains(it) }
-    }
-
-    /**
-     * Derive a human-readable middleware display name from an absolute [libraryPath].
-     * Falls back to the file's base name when no known vendor pattern matches.
-     */
-    internal fun deriveMiddlewareName(libraryPath: String): String {
-        val lower = libraryPath.lowercase()
-        return when {
-            lower.contains("etpkcs11") || lower.contains("etoken") ||
-                    lower.contains("/sac") || lower.contains("\\sac") -> "SafeNet eToken"
-            lower.contains("gclib") || lower.contains("gemalto") ||
-                    lower.contains("idprime") -> "Thales/Gemalto IDPrime"
-            lower.contains("ykcs11") -> "YubiKey (YKCS11)"
-            lower.contains("opensc") -> "OpenSC"
-            lower.contains("iidp11") || lower.contains("netid") -> "SecMaker Net iD"
-            lower.contains("cmp11") || lower.contains("charismathics") -> "Charismathics PKCS#11"
-            lower.contains("softhsm") -> "SoftHSM2"
-            lower.contains("libck") -> "Cryptoki Library"
-            lower.contains("p11-kit-proxy") || lower.contains("p11kitproxy") -> "p11-kit Proxy"
-            else -> libraryPath.substringAfterLast('/').substringAfterLast('\\')
-        }
-    }
-
+	
+	/**
+	 * Query OS-native sources for PKCS#11 middleware.
+	 *
+	 * Each platform delegates to its OS PKCS#11 manager — the standard registration mechanism
+	 * a well-behaved vendor installer uses — and nothing else.  Libraries that bypass the
+	 * OS manager (an installer that skipped registration, a manually-deployed library, an
+	 * out-of-tree development build) reach discovery via the user-controlled escape hatches
+	 * documented in [collectCandidates]: the app-data drop directory and the
+	 * `customPkcs11Libraries` config entry.  See `pkcs11-symptoms-analysis.md` rounds 4–8
+	 * for the audit history that arrived at this design.
+	 *
+	 * - **Windows**: PC/SC + Calais ATR mapping
+	 *   (`SCardListReaders` → `HKLM\SOFTWARE\Microsoft\Cryptography\Calais\SmartCards`).
+	 * - **macOS**: `security list-smartcards`, `pluginkit -mAT com.apple.ctk.token`, plus the
+	 *   p11-kit *proxy* if the user installed p11-kit via Homebrew.
+	 * - **Linux**: the p11-kit *proxy* library.
+	 *
+	 * The proxy is a single PKCS#11 module that aggregates every module registered with
+	 * p11-kit, so probing it loads the whole p11-kit registry in one subprocess instead of
+	 * N — meaningful on multi-token systems and noticeable even with our parallelism cap of
+	 * two.  It also honours `.module` directives a naive parser ignores (`disable-in:`,
+	 * `enable-in:`, priority ordering, env-var overrides).  Every modern distribution that
+	 * ships `.module` files also ships the proxy in the same package
+	 * (Fedora `p11-kit`, Debian/Ubuntu `p11-kit-modules`, Arch `p11-kit`,
+	 * Homebrew `p11-kit`), so the proxy is the OS-manager surface — direct `.module` parsing
+	 * adds no realistic coverage.  Users with non-registering middleware drop the library
+	 * into `<appData>/omnisign/pkcs11/` or add it to `customPkcs11Libraries`.
+	 *
+	 * The platform-specific branches are independent and run in parallel via short-lived
+	 * worker threads.
+	 *
+	 * Never throws; returns an empty list when an OS mechanism is unavailable.
+	 */
+	internal fun discoverViaOs(
+		os: String = System.getProperty("os.name").lowercase(),
+		@Suppress("UNUSED_PARAMETER") jvmIs64Bit: Boolean = System.getProperty("sun.arch.data.model") == "64",
+	): List<Pair<String, String>> {
+		val branches: List<() -> List<Pair<String, String>>> = when {
+			os.contains("win") -> listOf(
+				{ discoverViaPcsc() },
+			)
+			
+			os.contains("mac") -> listOf(
+				{ discoverViaMacOsSecurity() },
+				{ discoverViaP11KitProxy() },
+			)
+			
+			else -> listOf(
+				{ discoverViaP11KitProxy() },
+			)
+		}
+		
+		return runBranchesInParallel(branches)
+	}
+	
+	/**
+	 * Execute the three platform branches concurrently and concatenate their results in the
+	 * declared branch order.
+	 *
+	 * Uses raw daemon threads with `join` rather than coroutines so that this synchronous
+	 * helper stays callable from non-suspending code paths (warmup, diagnostics, tests).  Each
+	 * branch is fully self-contained and bounded; we accept the small per-call thread-creation
+	 * overhead in exchange for keeping `collectCandidates` non-suspending.
+	 *
+	 * Branches that throw have their exception swallowed and treated as "no candidates from
+	 * this source", matching the legacy synchronous behaviour where each branch was wrapped
+	 * in `runCatching` internally.
+	 */
+	private fun runBranchesInParallel(
+		branches: List<() -> List<Pair<String, String>>>,
+	): List<Pair<String, String>> {
+		@Suppress("UNCHECKED_CAST")
+		val results = arrayOfNulls<List<Pair<String, String>>>(branches.size)
+		val threads = branches.mapIndexed { index, branch ->
+			Thread({
+				results[index] = runCatching { branch() }.getOrDefault(emptyList())
+			}, "pkcs11-discover-${index}").apply {
+				isDaemon = true
+				start()
+			}
+		}
+		threads.forEach { it.join() }
+		return results.filterNotNull().flatten()
+	}
+	
+	/**
+	 * Return `true` when [fileName] (base name only) looks like a PKCS#11 provider library.
+	 *
+	 * Patterns checked:
+	 * - Exact substring matches against [PKCS11_NAME_PATTERNS] (e.g. `pkcs11`, `cryptoki`).
+	 * - A standalone `p11` token that is **not** immediately followed by a digit, via
+	 *   [P11_STANDALONE_PATTERN].  This prevents Microsoft Visual C++ runtime DLLs such as
+	 *   `msvcp110.dll`, `vcamp110.dll`, and `vcomp110.dll` from being mistaken for PKCS#11
+	 *   middleware — they all contain the three-character substring `p11` as part of the
+	 *   version number `p110`.
+	 *
+	 * Known spy/debugging wrappers (e.g. `pkcs11-spy.so`) are excluded via [isSpyLibrary].
+	 */
+	internal fun isPkcs11FileName(fileName: String): Boolean {
+		if (isSpyLibrary(fileName)) return false
+		val lower = fileName.lowercase()
+		return PKCS11_NAME_PATTERNS.any { lower.contains(it) } ||
+				P11_STANDALONE_PATTERN.containsMatchIn(lower)
+	}
+	
+	/**
+	 * Return `true` when [fileName] (base name only) is a known PKCS#11 spy or debugging
+	 * wrapper library rather than actual middleware.
+	 *
+	 * The OpenSC project ships `pkcs11-spy.so` / `pkcs11-spy.dll` which is a logging
+	 * pass-through that requires the `PKCS11SPY` environment variable to point to the real
+	 * PKCS#11 module.  Loading it without that variable set produces errors or hangs.
+	 * Such libraries must never be probed or offered as signing tokens.
+	 */
+	internal fun isSpyLibrary(fileName: String): Boolean {
+		val lower = fileName.lowercase()
+		return SPY_LIBRARY_PATTERNS.any { lower.contains(it) }
+	}
+	
+	/**
+	 * Derive a human-readable middleware display name from an absolute [libraryPath].
+	 * Falls back to the file's base name when no known vendor pattern matches.
+	 */
+	internal fun deriveMiddlewareName(libraryPath: String): String {
+		val lower = libraryPath.lowercase()
+		return when {
+			lower.contains("etpkcs11") || lower.contains("etoken") ||
+					lower.contains("/sac") || lower.contains("\\sac") -> "SafeNet eToken"
+			
+			lower.contains("gclib") || lower.contains("gemalto") ||
+					lower.contains("idprime") -> "Thales/Gemalto IDPrime"
+			
+			lower.contains("ykcs11") -> "YubiKey (YKCS11)"
+			lower.contains("opensc") -> "OpenSC"
+			lower.contains("iidp11") || lower.contains("netid") -> "SecMaker Net iD"
+			lower.contains("cmp11") || lower.contains("charismathics") -> "Charismathics PKCS#11"
+			lower.contains("softhsm") -> "SoftHSM2"
+			lower.contains("libck") -> "Cryptoki Library"
+			lower.contains("p11-kit-proxy") || lower.contains("p11kitproxy") -> "p11-kit Proxy"
+			else -> libraryPath.substringAfterLast('/').substringAfterLast('\\')
+		}
+	}
+	
 	/**
 	 * Return `true` when the given [path] refers to the p11-kit proxy PKCS#11 module.
 	 *
-	 * The p11-kit proxy is a PKCS#11 aggregator that exposes tokens from all registered
-	 * underlying modules through a single library.  During deduplication, proxy results
-	 * are processed after direct-library results so that the direct library's path takes
-	 * precedence in the resulting [TokenInfo].  Proxy paths that report no identities
-	 * are suppressed entirely — they add no information beyond what the direct libraries
-	 * already provide.
+	 * On Linux, [discoverViaOs] prefers the proxy when it's present — it's a single subprocess
+	 * load that covers every p11-kit-registered module, with consistent slot IDs.  If the user
+	 * also adds direct module paths via the app-data drop directory or `customPkcs11Libraries`,
+	 * the proxy and a direct module may report the same physical token.  In that case
+	 * [buildTokenInfoList] sorts proxy results last so the direct library's path wins,
+	 * because direct paths typically come from explicit user intent and let us pin SunPKCS11
+	 * to a vendor-specific slot ID.
 	 */
 	internal fun isProxyPath(path: String): Boolean {
 		val lower = path.lowercase()
 		return lower.contains("p11-kit-proxy") || lower.contains("p11kitproxy")
 	}
-
-
-    /**
-     * Minimal JNA binding for `winscard.dll` (PC/SC).
-     *
-     * `jna-platform` does not ship a `Winscard` class in any released artifact, so we define
-     * the small subset of the PC/SC API we need directly.  The interface uses the Unicode (`W`)
-     * entry points; JNA maps `String` / `CharArray` parameters to wide-string types automatically.
-     * `jna` and `jna-platform` 5.18.1 are declared explicitly in `build.gradle.kts` to override
-     * the older transitive version pulled in by `dss-token`.
-     */
-    private interface WinscardLib : StdCallLibrary {
-        fun sCardEstablishContext(dwScope: Int, pvReserved1: Any?, pvReserved2: Any?, phContext: IntByReference): Int
-        fun sCardReleaseContext(hContext: Int): Int
-        fun sCardListReadersW(
-            hContext: Int,
-            mszGroups: String?,
-            mszReaders: CharArray?,
-            pcchReaders: IntByReference,
-        ): Int
-
-        fun sCardConnectW(
-            hContext: Int,
-            szReader: String,
-            dwShareMode: Int,
-            dwPreferredProtocols: Int,
-            phCard: IntByReference,
-            pdwActiveProtocol: IntByReference,
-        ): Int
-
-        fun sCardDisconnect(hCard: Int, dwDisposition: Int): Int
-        fun sCardStatusW(
-            hCard: Int,
-            mszReaderNames: CharArray?,
-            pcchReaderLen: IntByReference?,
-            pdwState: IntByReference?,
-            pdwProtocol: IntByReference?,
-            pbAtr: ByteArray?,
-            pcbAtrLen: IntByReference?,
-        ): Int
-
-        companion object {
-            const val SCARD_S_SUCCESS = 0
-            const val SCARD_SCOPE_SYSTEM = 2
-            const val SCARD_SHARE_SHARED = 2
-            const val SCARD_PROTOCOL_T0 = 1
-            const val SCARD_PROTOCOL_T1 = 2
-            const val SCARD_LEAVE_CARD = 0
-
-            val INSTANCE: WinscardLib? by lazy {
-                runCatching {
-                    Native.load("winscard", WinscardLib::class.java) as WinscardLib
-                }.getOrNull()
-            }
-        }
-    }
-
-    /**
-     * List PC/SC smart card readers via `SCardListReaders` and resolve the PKCS#11 middleware
-     * for each inserted card from
-     * `HKLM\SOFTWARE\Microsoft\Cryptography\Calais\SmartCards`.
-     *
-     * Returns an empty list when no smart card service is running, no readers are connected,
-     * or `winscard.dll` is unavailable.
-     */
-    private fun discoverViaPcsc(): List<Pair<String, String>> {
-        val api = WinscardLib.INSTANCE ?: return emptyList()
-        val results = mutableListOf<Pair<String, String>>()
-
-        runCatching {
-            val ctxRef = IntByReference()
-            if (api.sCardEstablishContext(WinscardLib.SCARD_SCOPE_SYSTEM, null, null, ctxRef)
-                != WinscardLib.SCARD_S_SUCCESS
-            ) return emptyList()
-            val ctx = ctxRef.value
-
-            try {
-                val lenRef = IntByReference()
-                if (api.sCardListReadersW(ctx, null, null, lenRef) != WinscardLib.SCARD_S_SUCCESS)
-                    return emptyList()
-
-                val buf = CharArray(lenRef.value)
-                if (api.sCardListReadersW(ctx, null, buf, lenRef) != WinscardLib.SCARD_S_SUCCESS)
-                    return emptyList()
-
-                for (reader in String(buf).split("\u0000").filter { it.isNotEmpty() }) {
-                    runCatching {
-                        val cardRef = IntByReference()
-                        val protoRef = IntByReference()
-                        if (api.sCardConnectW(
-                                ctx, reader,
-                                WinscardLib.SCARD_SHARE_SHARED,
-                                WinscardLib.SCARD_PROTOCOL_T0 or WinscardLib.SCARD_PROTOCOL_T1,
-                                cardRef, protoRef,
-                            ) != WinscardLib.SCARD_S_SUCCESS
-                        ) return@runCatching
-                        val card = cardRef.value
-
-                        try {
-                            val atrBuf = ByteArray(ATR_MAX_SIZE_BYTES)
-                            val atrLen = IntByReference(atrBuf.size)
-                            api.sCardStatusW(card, null, null, null, null, atrBuf, atrLen)
-                            val atrHex = atrBuf.take(atrLen.value)
-                                .joinToString("") { "%02X".format(it) }
-                            resolveFromAtr(atrHex)
-                                ?.takeIf { File(it).exists() }
-                                ?.let { results += deriveMiddlewareName(it) to it }
-                        } finally {
-                            api.sCardDisconnect(card, WinscardLib.SCARD_LEAVE_CARD)
-                        }
-                    }
-                }
-            } finally {
-                api.sCardReleaseContext(ctx)
-            }
-        }
-        return results
-    }
-
-    /**
-     * Look up the PKCS#11 library for a card by its ATR hex string in
-     * `HKLM\SOFTWARE\Microsoft\Cryptography\Calais\SmartCards`.
-     *
-     * Prefers the subkey whose stored `ATR` exactly matches [atrHex]; falls back to the
-     * first subkey with an existing `Pkcs11Lib` path when no exact match is found.
-     * Returns null when the hive is inaccessible or no entry is found.
-     */
-    private fun resolveFromAtr(atrHex: String): String? {
-        val root = "SOFTWARE\\Microsoft\\Cryptography\\Calais\\SmartCards"
-        runCatching {
-            val subKeys = Advapi32Util.registryGetKeys(WinReg.HKEY_LOCAL_MACHINE, root)
-            var fallback: String? = null
-
-            for (subKey in subKeys) {
-                runCatching {
-                    val values = Advapi32Util.registryGetValues(
-                        WinReg.HKEY_LOCAL_MACHINE, "$root\\$subKey"
-                    )
-                    val pkcs11 = (values["Pkcs11Lib"] ?: values["Crypto Provider"]) as? String
-                        ?: return@runCatching
-                    if (fallback == null && File(pkcs11).exists()) fallback = pkcs11
-                    val atr = values["ATR"] as? String ?: return@runCatching
-                    if (atr.replace(" ", "").equals(atrHex, ignoreCase = true)) return pkcs11
-                }
-            }
-            return fallback
-        }
-        return null
-    }
-
-    /**
-     * Detect the macOS CryptoTokenKit PKCS#11 shim (`/usr/lib/libctkpcscd.dylib`) when a
-     * smart card or CTK token extension is actually present.
-     *
-     * Uses `security list-smartcards` and `pluginkit -mAT com.apple.ctk.token`.
-     * The shim is only returned when at least one card or CTK extension is found, avoiding a
-     * spurious PKCS#11 slot on systems with no tokens.  Other middleware paths (OpenSC, etc.)
-     * are covered by [candidatesForOs] and [discoverViaP11Kit].
-     *
-     * Returns an empty list when neither tool is available or no tokens are present.
-     */
-    private fun discoverViaMacOsSecurity(): List<Pair<String, String>> {
-        val shimPath = "/usr/lib/libctkpcscd.dylib"
-        if (!File(shimPath).exists()) return emptyList()
-
-        val hasCard = runCatching {
-            Runtime.getRuntime()
-                .exec(arrayOf("security", "list-smartcards"))
-                .inputStream.bufferedReader().readText().isNotBlank()
-        }.getOrDefault(false)
-
-        if (hasCard) return listOf("macOS Smart Card (PC/SC)" to shimPath)
-
-        val ctkExtensions = runCatching {
-            val output = Runtime.getRuntime()
-                .exec(arrayOf("pluginkit", "-mAT", "com.apple.ctk.token"))
-                .inputStream.bufferedReader().readText()
-            Regex("""^\s*\+\s*(\S+)""", RegexOption.MULTILINE)
-                .findAll(output).map { it.groupValues[1] }.toList()
-        }.getOrDefault(emptyList())
-
-        if (ctkExtensions.isEmpty()) return emptyList()
-        return listOf("macOS CryptoTokenKit (${ctkExtensions.size} extension(s))" to shimPath)
-    }
-
-    /**
-     * Scan well-known vendor registry trees for PKCS#11 library paths via `reg query`.
-     *
-     * Covers `HKLM\SOFTWARE\SafeNet`, `Gemalto`, `HID Global`, `Charismathics`, `SecMaker`.
-     * `Calais\SmartCards` is excluded — it is already read by [discoverViaPcsc] via JNA.
-     *
-     * Returns an empty list when the registry is inaccessible or `reg` is not on the PATH.
-     */
-    private fun discoverViaWindowsRegistry(jvmIs64Bit: Boolean): List<Pair<String, String>> {
-        val results = mutableListOf<Pair<String, String>>()
-        val arch = if (jvmIs64Bit) "/reg:64" else "/reg:32"
-
-        val roots = listOf(
-            "HKLM\\SOFTWARE\\SafeNet",
-            "HKLM\\SOFTWARE\\Gemalto",
-            "HKLM\\SOFTWARE\\HID Global",
-            "HKLM\\SOFTWARE\\Charismathics",
-            "HKLM\\SOFTWARE\\SecMaker",
-        )
-
-        for (root in roots) {
-            runCatching {
-                val output = Runtime.getRuntime()
-                    .exec(arrayOf("reg", "query", root, "/s", arch))
-                    .inputStream.bufferedReader().readText()
-
-                val pkcs11Pattern = Regex(
-                    """(?i)(PKCS11Lib|Pkcs11|pkcs11|p11|eTPKCS11|gclib|opensc-pkcs11|iidp11|cmP11)\s+REG_SZ\s+(.+\.dll)"""
-                )
-                for (match in pkcs11Pattern.findAll(output)) {
-                    val path = match.groupValues[2].trim()
-                    if (File(path).exists()) results += deriveMiddlewareName(path) to path
-                }
-
-                val dllPattern = Regex("""REG_SZ\s+(C:\\[^\r\n]*\.dll)""", RegexOption.IGNORE_CASE)
-                for (match in dllPattern.findAll(output)) {
-                    val path = match.groupValues[1].trim()
-                    if (isPkcs11FileName(File(path).name) && File(path).exists())
-                        results += deriveMiddlewareName(path) to path
-                }
-            }
-        }
-
-        return results
-    }
-
-    /**
-     * Scan `%SystemRoot%\System32` (64-bit JVM) or `%SystemRoot%\SysWOW64` (32-bit JVM) for
-     * files whose names match [isPkcs11FileName].
-     */
-    private fun discoverViaDirScan(jvmIs64Bit: Boolean): List<Pair<String, String>> {
-        val sysRoot = System.getenv("SystemRoot") ?: "C:\\Windows"
-        val dir = File(if (jvmIs64Bit) "$sysRoot\\System32" else "$sysRoot\\SysWOW64")
-        return dir.listFiles { f -> f.isFile && isPkcs11FileName(f.name) }
-            ?.map { f -> deriveMiddlewareName(f.absolutePath) to f.absolutePath }
-            ?: emptyList()
-    }
-
-    /**
-     * Load the p11-kit proxy module if present on the system.
-     *
-     * The proxy is a single PKCS#11 library that aggregates every module registered with
-     * p11-kit, so loading it exposes all system-registered tokens through one entry point.
-     * Only the first existing path from [P11_KIT_PROXY_PATHS] is returned — multiple proxy
-     * installations on the same machine are uncommon and the serial-number deduplication
-     * in [discoverTokens] would collapse them anyway.
-     *
-     * Returns an empty list when the proxy library is not found.
-     *
-     * @param proxyPaths Ordered list of candidate proxy paths; override for testing.
-     */
-    internal fun discoverViaP11KitProxy(
-        proxyPaths: List<String> = P11_KIT_PROXY_PATHS,
-    ): List<Pair<String, String>> =
-        proxyPaths.firstOrNull { File(it).exists() }
-            ?.let { listOf("p11-kit Proxy" to it) }
-            ?: emptyList()
-
-    /**
-     * Scan a list of native library directories for files whose names pass [isPkcs11FileName].
-     *
-     * This catches middleware installed to standard OS library paths without a p11-kit
-     * `.module` registration file — for example, SafeNet Authentication Client on Linux
-     * (`libeTPkcs11.so`) or YubiKey YKCS11 (`libykcs11.so`).
-     *
-     * Directories that do not exist are silently skipped.
-     *
-     * @param dirs Absolute directory paths to scan; ordered from highest to lowest priority.
-     */
-    internal fun discoverViaLibDirs(
-        dirs: List<String>,
-    ): List<Pair<String, String>> = dirs.flatMap { dirPath ->
-        File(dirPath).listFiles { f -> f.isFile && isPkcs11FileName(f.name) }
-            ?.map { f -> deriveMiddlewareName(f.absolutePath) to f.absolutePath }
-            ?: emptyList()
-    }
-
-    /**
-     * Parse p11-kit `*.module` files from standard search paths.     *
-     * Each file is a simple `key: value` format.  Reads `module:` (library path) and
-     * optionally `name:` / `description:` for the display name.
-     *
-     * Search paths:
-     * - `/etc/pkcs11/modules`
-     * - `/usr/share/p11-kit/modules`
-     * - `~/.config/pkcs11/modules`
-     * - `/Library/Application Support/p11-kit/modules` (macOS)
-     * - Directory of `$P11_KIT_CONFIG_FILE` (if set)
-     */
-    private fun discoverViaP11Kit(): List<Pair<String, String>> {
-        val searchDirs = buildList {
-            add("/etc/pkcs11/modules")
-            add("/usr/share/p11-kit/modules")
-            add("${System.getProperty("user.home")}/.config/pkcs11/modules")
-            add("/Library/Application Support/p11-kit/modules")
-            val env = System.getenv("P11_KIT_CONFIG_FILE")
-            if (env != null) add(File(env).parent)
-        }
-
-        val results = mutableListOf<Pair<String, String>>()
-
-        for (dirPath in searchDirs) {
-            val dir = File(dirPath)
-            if (!dir.isDirectory) continue
-            dir.listFiles { f -> f.isFile && f.name.endsWith(".module") }?.forEach { moduleFile ->
-                runCatching {
-                    val props = Properties()
-                    moduleFile.bufferedReader().use { reader ->
-                        reader.lineSequence()
-                            .map { it.trim() }
-                            .filter { it.isNotEmpty() && !it.startsWith('#') && it.contains(':') }
-                            .forEach { line ->
-                                val colon = line.indexOf(':')
-                                props[line.substring(0, colon).trim()] =
-                                    line.substring(colon + 1).trim()
-                            }
-                    }
-                    val libPath = props.getProperty("module") ?: return@runCatching
-                    if (!File(libPath).exists()) return@runCatching
-                    val name = props.getProperty("name")
-                        ?: props.getProperty("description")
-                        ?: deriveMiddlewareName(libPath)
-                    results += name to libPath
-                }
-            }
-        }
-
-        return results
-    }
-
-    private companion object {
-        val logger = KotlinLogging.logger {}
-
-
-        /**
-         * Maximum ATR length defined by ISO/IEC 7816-3: 32 bytes of ATR + 1 TCK byte.
-         */
-        const val ATR_MAX_SIZE_BYTES = 33
-
-        /**
-         * Substring patterns that unambiguously identify PKCS#11 middleware filenames.
-         * The standalone `p11` token is deliberately absent; it is matched separately by
-         * [P11_STANDALONE_PATTERN] to avoid false positives from VC++ runtime version numbers.
-         */
-        val PKCS11_NAME_PATTERNS = listOf(
-            "pkcs11", "etpkcs", "gclib", "opensc", "iidp11", "cmp11",
-            "softhsm", "libsac", "libck", "cryptoki", "ykcs11",
-        )
-
-        /**
-         * Substring patterns that identify PKCS#11 spy or debugging wrapper libraries.
-         *
-         * These libraries (e.g., OpenSC `pkcs11-spy.so`) are logging pass-throughs that
-         * require additional environment configuration (`PKCS11SPY`) to function.  Loading
-         * them without that configuration causes errors or hangs.
-         */
-        val SPY_LIBRARY_PATTERNS = listOf("pkcs11-spy", "pkcs11spy", "p11-spy", "p11spy")
-
-        /**
-         * Matches the standalone `p11` token in a lowercase filename when it is **not**
-         * immediately followed by a digit.  Examples that match: `libp11.so`, `p11-kit.so`,
-         * `p11.dll`.  Examples that do **not** match: `msvcp110.dll`, `vcamp110.dll`.
-         */
-        val P11_STANDALONE_PATTERN = Regex("""p11(?!\d)""")
-
-        /**
-         * Ordered candidate paths for the p11-kit proxy PKCS#11 module.
-         *
-         * The proxy aggregates all modules registered with p11-kit and exposes their slots
-         * through a single library entry point.  Paths cover the multiarch layouts used by
-         * Debian/Ubuntu, RPM-based distributions, and manual installations.
-         */
-        val P11_KIT_PROXY_PATHS = listOf(
-            "/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-proxy.so",
-            "/usr/lib/aarch64-linux-gnu/pkcs11/p11-kit-proxy.so",
-            "/usr/lib64/pkcs11/p11-kit-proxy.so",
-            "/usr/lib/pkcs11/p11-kit-proxy.so",
-            "/usr/local/lib/pkcs11/p11-kit-proxy.so",
-        )
-    }
+	
+	
+	/**
+	 * List PC/SC smart card readers via [javax.smartcardio.TerminalFactory] and resolve the
+	 * PKCS#11 middleware for each inserted card from
+	 * `HKLM\SOFTWARE\Microsoft\Cryptography\Calais\SmartCards`.
+	 *
+	 * Returns an empty list when no smart card service is running, no readers are connected,
+	 * or the platform PC/SC stack is unreachable.  Failures (PC/SC down, JNA load issues for
+	 * the registry lookup, exceptions during card connect) are logged and swallowed so
+	 * discovery degrades gracefully to the user-supplied escape hatches in [collectCandidates].
+	 *
+	 * The implementation uses [javax.smartcardio] (the same stack [PcscMonitorService] uses
+	 * for hot-insert events) rather than direct `winscard.dll` JNA calls.  Both are equivalent
+	 * on Windows, but the smartcardio path is more robust against JNA marshaling issues that
+	 * have caused silent enumeration failures in the past.
+	 */
+	private fun discoverViaPcsc(): List<Pair<String, String>> {
+		val terminals = runCatching {
+			TerminalFactory.getDefault().terminals().list()
+		}.onFailure { e ->
+			logger.warn(e) { "discoverViaPcsc: PC/SC terminal enumeration failed" }
+		}.getOrDefault(emptyList())
+		
+		if (terminals.isEmpty()) {
+			logger.info { "discoverViaPcsc: no PC/SC readers detected" }
+			return emptyList()
+		}
+		
+		logger.info { "discoverViaPcsc: ${terminals.size} reader(s) found: ${terminals.map { it.name }}" }
+		val results = mutableListOf<Pair<String, String>>()
+		
+		for (terminal in terminals) {
+			runCatching {
+				if (!terminal.isCardPresent) {
+					logger.info { "discoverViaPcsc: reader='${terminal.name}' has no card inserted" }
+					return@runCatching
+				}
+				val card = terminal.connect("*")
+				try {
+					val atrHex = card.atr.bytes.joinToString("") { "%02X".format(it) }
+					val resolvedPath = resolveFromAtr(atrHex)
+					when {
+						resolvedPath == null -> logger.warn { "discoverViaPcsc: reader='${terminal.name}' atr=$atrHex - no matching Pkcs11Lib in Calais registry" }
+						!File(resolvedPath).exists() -> logger.warn { "discoverViaPcsc: reader='${terminal.name}' atr=$atrHex resolved to '$resolvedPath' but the file does not exist on disk" }
+						else -> {
+							logger.info { "discoverViaPcsc: reader='${terminal.name}' atr=$atrHex -> '$resolvedPath'" }
+							results += deriveMiddlewareName(resolvedPath) to resolvedPath
+						}
+					}
+				} finally {
+					runCatching { card.disconnect(false) }
+				}
+			}.onFailure { e ->
+				logger.warn(e) { "discoverViaPcsc: failed to probe reader '${terminal.name}'" }
+			}
+		}
+		
+		logger.info { "discoverViaPcsc: returning ${results.size} candidate(s): ${results.map { it.second }}" }
+		return results
+	}
+	
+	/**
+	 * Look up the PKCS#11 library for a card by its ATR hex string in
+	 * `HKLM\SOFTWARE\Microsoft\Cryptography\Calais\SmartCards`.
+	 *
+	 * Prefers the subkey whose stored `ATR` exactly matches [atrHex]; falls back to the
+	 * first subkey with an existing `Pkcs11Lib` path when no exact match is found.
+	 * Returns null when the hive is inaccessible or no entry is found.
+	 */
+	private fun resolveFromAtr(atrHex: String): String? {
+		val root = "SOFTWARE\\Microsoft\\Cryptography\\Calais\\SmartCards"
+		runCatching {
+			val subKeys = Advapi32Util.registryGetKeys(WinReg.HKEY_LOCAL_MACHINE, root)
+			var fallback: String? = null
+			
+			for (subKey in subKeys) {
+				runCatching {
+					val values = Advapi32Util.registryGetValues(
+						WinReg.HKEY_LOCAL_MACHINE, "$root\\$subKey"
+					)
+					val pkcs11 = (values["Pkcs11Lib"] ?: values["Crypto Provider"]) as? String
+						?: return@runCatching
+					if (fallback == null && File(pkcs11).exists()) fallback = pkcs11
+					val atr = values["ATR"] as? String ?: return@runCatching
+					if (atr.replace(" ", "").equals(atrHex, ignoreCase = true)) return pkcs11
+				}
+			}
+			return fallback
+		}
+		return null
+	}
+	
+	/**
+	 * Detect the macOS CryptoTokenKit PKCS#11 shim (`/usr/lib/libctkpcscd.dylib`) when a
+	 * smart card or CTK token extension is actually present.
+	 *
+	 * Uses `security list-smartcards` and `pluginkit -mAT com.apple.ctk.token`.
+	 * The shim is only returned when at least one card or CTK extension is found, avoiding a
+	 * spurious PKCS#11 slot on systems with no tokens.  Other middleware paths (OpenSC, etc.)
+	 * are covered by [discoverViaP11KitProxy] when the user has installed p11-kit via
+	 * Homebrew, or by the user-controlled escape hatches in [collectCandidates].
+	 *
+	 * Returns an empty list when neither tool is available or no tokens are present.
+	 */
+	private fun discoverViaMacOsSecurity(): List<Pair<String, String>> {
+		val shimPath = "/usr/lib/libctkpcscd.dylib"
+		if (!File(shimPath).exists()) return emptyList()
+		
+		val hasCard = runCatching {
+			Runtime.getRuntime()
+				.exec(arrayOf("security", "list-smartcards"))
+				.inputStream.bufferedReader().readText().isNotBlank()
+		}.getOrDefault(false)
+		
+		if (hasCard) return listOf("macOS Smart Card (PC/SC)" to shimPath)
+		
+		val ctkExtensions = runCatching {
+			val output = Runtime.getRuntime()
+				.exec(arrayOf("pluginkit", "-mAT", "com.apple.ctk.token"))
+				.inputStream.bufferedReader().readText()
+			Regex("""^\s*\+\s*(\S+)""", RegexOption.MULTILINE)
+				.findAll(output).map { it.groupValues[1] }.toList()
+		}.getOrDefault(emptyList())
+		
+		if (ctkExtensions.isEmpty()) return emptyList()
+		return listOf("macOS CryptoTokenKit (${ctkExtensions.size} extension(s))" to shimPath)
+	}
+	
+	/**
+	 * Load the p11-kit proxy module if present on the system.
+	 *
+	 * The proxy is a single PKCS#11 library that aggregates every module registered with
+	 * p11-kit, so loading it exposes all system-registered tokens through one entry point.
+	 * Only the first existing path from [P11_KIT_PROXY_PATHS] is returned — multiple proxy
+	 * installations on the same machine are uncommon and the serial-number deduplication
+	 * in [discoverTokens] would collapse them anyway.
+	 *
+	 * Returns an empty list when the proxy library is not found, signalling to
+	 * [discoverViaOs] that it should fall back to direct `.module` parsing.
+	 *
+	 * @param proxyPaths Ordered list of candidate proxy paths; override for testing.
+	 */
+	internal fun discoverViaP11KitProxy(
+		proxyPaths: List<String> = P11_KIT_PROXY_PATHS,
+	): List<Pair<String, String>> =
+		proxyPaths.firstOrNull { File(it).exists() }
+			?.let { listOf("p11-kit Proxy" to it) }
+			?: emptyList()
+	
+	private companion object {
+		val logger = KotlinLogging.logger {}
+		
+		/**
+		 * Default ceiling on concurrent subprocess probes spawned by [discoverTokens].
+		 *
+		 * Matches [Pkcs11WarmupService.DEFAULT_MAX_PARALLELISM] so the worst-case combined
+		 * load (warmup + discovery against the same lib) is bounded at four concurrent
+		 * `C_Initialize` calls — well below the failure threshold reported for SafeNet
+		 * eToken middleware.
+		 */
+		const val DEFAULT_PROBE_PARALLELISM = 2
+		
+		/**
+		 * Substring patterns that unambiguously identify PKCS#11 middleware filenames.
+		 * The standalone `p11` token is deliberately absent; it is matched separately by
+		 * [P11_STANDALONE_PATTERN] to avoid false positives from VC++ runtime version numbers.
+		 */
+		val PKCS11_NAME_PATTERNS = listOf(
+			"pkcs11", "etpkcs", "gclib", "opensc", "iidp11", "cmp11",
+			"softhsm", "libsac", "libck", "cryptoki", "ykcs11",
+		)
+		
+		/**
+		 * Substring patterns that identify PKCS#11 spy or debugging wrapper libraries.
+		 *
+		 * These libraries (e.g., OpenSC `pkcs11-spy.so`) are logging pass-throughs that
+		 * require additional environment configuration (`PKCS11SPY`) to function.  Loading
+		 * them without that configuration causes errors or hangs.
+		 */
+		val SPY_LIBRARY_PATTERNS = listOf("pkcs11-spy", "pkcs11spy", "p11-spy", "p11spy")
+		
+		/**
+		 * Matches the standalone `p11` token in a lowercase filename when it is **not**
+		 * immediately followed by a digit.  Examples that match: `libp11.so`, `p11-kit.so`,
+		 * `p11.dll`.  Examples that do **not** match: `msvcp110.dll`, `vcamp110.dll`.
+		 */
+		val P11_STANDALONE_PATTERN = Regex("""p11(?!\d)""")
+		
+		/**
+		 * Ordered candidate paths for the p11-kit proxy PKCS#11 module.
+		 *
+		 * The proxy aggregates all modules registered with p11-kit and exposes their slots
+		 * through a single library entry point.  Paths cover the multiarch layouts used by
+		 * Debian/Ubuntu, RPM-based distributions, and manual installations on Linux, plus
+		 * Homebrew (`brew install p11-kit`) on Intel and Apple Silicon macOS.
+		 */
+		val P11_KIT_PROXY_PATHS = listOf(
+			"/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-proxy.so",
+			"/usr/lib/aarch64-linux-gnu/pkcs11/p11-kit-proxy.so",
+			"/usr/lib64/pkcs11/p11-kit-proxy.so",
+			"/usr/lib/pkcs11/p11-kit-proxy.so",
+			"/usr/local/lib/pkcs11/p11-kit-proxy.so",
+			"/opt/homebrew/lib/pkcs11/p11-kit-proxy.so",
+		)
+	}
 }
 
 /**
@@ -756,42 +894,42 @@ class Pkcs11Discoverer(
  * @return The resolved classpath string, or `null` when neither strategy yields a usable path.
  */
 internal fun resolveProbeClasspath(): String? {
-    val logger = KotlinLogging.logger {}
-
-    val sysCp = System.getProperty("java.class.path")
-    if (!sysCp.isNullOrBlank()) {
-        logger.debug { "Probe classpath resolved from java.class.path (${sysCp.length} chars)" }
-        return sysCp
-    }
-
-    logger.info { "java.class.path is null or blank — falling back to code-source JAR directory scan" }
-
-    val codeSource = Pkcs11ProbeWorker::class.java.protectionDomain?.codeSource?.location
-    if (codeSource == null) {
-        logger.warn { "Cannot resolve code source for Pkcs11ProbeWorker — subprocess probing will be unavailable" }
-        return null
-    }
-
-    val sourceFile = runCatching { File(codeSource.toURI()) }.getOrElse { e ->
-        logger.warn(e) { "Cannot convert code source URI to file path: $codeSource" }
-        return null
-    }
-
-    val appDir = sourceFile.parentFile
-    if (appDir == null || !appDir.isDirectory) {
-        logger.warn { "Code source parent directory does not exist: ${sourceFile.parent}" }
-        return null
-    }
-
-    val jars = appDir.listFiles { f -> f.isFile && f.extension == "jar" }
-    if (jars.isNullOrEmpty()) {
-        logger.warn { "No JAR files found in code source directory: ${appDir.absolutePath}" }
-        return null
-    }
-
-    val classpath = jars.joinToString(File.pathSeparator) { it.absolutePath }
-    logger.info { "Probe classpath resolved from ${jars.size} JARs in ${appDir.absolutePath}" }
-    return classpath
+	val logger = KotlinLogging.logger {}
+	
+	val sysCp = System.getProperty("java.class.path")
+	if (!sysCp.isNullOrBlank()) {
+		logger.debug { "Probe classpath resolved from java.class.path (${sysCp.length} chars)" }
+		return sysCp
+	}
+	
+	logger.info { "java.class.path is null or blank — falling back to code-source JAR directory scan" }
+	
+	val codeSource = Pkcs11ProbeWorker::class.java.protectionDomain?.codeSource?.location
+	if (codeSource == null) {
+		logger.warn { "Cannot resolve code source for Pkcs11ProbeWorker — subprocess probing will be unavailable" }
+		return null
+	}
+	
+	val sourceFile = runCatching { File(codeSource.toURI()) }.getOrElse { e ->
+		logger.warn(e) { "Cannot convert code source URI to file path: $codeSource" }
+		return null
+	}
+	
+	val appDir = sourceFile.parentFile
+	if (appDir == null || !appDir.isDirectory) {
+		logger.warn { "Code source parent directory does not exist: ${sourceFile.parent}" }
+		return null
+	}
+	
+	val jars = appDir.listFiles { f -> f.isFile && f.extension == "jar" }
+	if (jars.isNullOrEmpty()) {
+		logger.warn { "No JAR files found in code source directory: ${appDir.absolutePath}" }
+		return null
+	}
+	
+	val classpath = jars.joinToString(File.pathSeparator) { it.absolutePath }
+	logger.info { "Probe classpath resolved from ${jars.size} JARs in ${appDir.absolutePath}" }
+	return classpath
 }
 
 /**
@@ -813,36 +951,36 @@ internal fun resolveProbeClasspath(): String? {
  *   executable can be found.
  */
 internal fun resolveProbeCommand(libraryPath: String): List<String>? {
-    val logger = KotlinLogging.logger {}
-
-    val javaBinaryName = if (System.getProperty("os.name").lowercase().contains("win")) "java.exe" else "java"
-    val javaExecutable = Path.of(System.getProperty("java.home"), "bin", javaBinaryName).toString()
-    if (File(javaExecutable).exists()) {
-        val classpath = resolveProbeClasspath()
-        if (classpath == null) {
-            logger.warn { "java binary found but classpath resolution failed — cannot probe '$libraryPath'" }
-            return null
-        }
-        return buildList {
-            add(javaExecutable)
-            add("--enable-native-access=ALL-UNNAMED")
-            System.getProperty("omnisign.crash.dir")?.let { crashDir ->
-                add("-XX:ErrorFile=$crashDir/hs_err_pid%p.log")
-            }
-            addAll(listOf("-cp", classpath, Pkcs11ProbeWorker::class.java.name, libraryPath))
-        }
-    }
-
-    logger.info { "java binary not found at '$javaExecutable' — trying native launcher fallback" }
-
-    val nativeLauncher = ProcessHandle.current().info().command().orElse(null)
-    if (nativeLauncher != null && File(nativeLauncher).exists()) {
-        logger.info { "Using native launcher for PKCS#11 probe: $nativeLauncher" }
-        return listOf(nativeLauncher, "probe", libraryPath)
-    }
-
-    logger.warn { "Neither java binary nor native launcher found — cannot spawn probe for '$libraryPath'" }
-    return null
+	val logger = KotlinLogging.logger {}
+	
+	val javaBinaryName = if (System.getProperty("os.name").lowercase().contains("win")) "java.exe" else "java"
+	val javaExecutable = Path.of(System.getProperty("java.home"), "bin", javaBinaryName).toString()
+	if (File(javaExecutable).exists()) {
+		val classpath = resolveProbeClasspath()
+		if (classpath == null) {
+			logger.warn { "java binary found but classpath resolution failed — cannot probe '$libraryPath'" }
+			return null
+		}
+		return buildList {
+			add(javaExecutable)
+			add("--enable-native-access=ALL-UNNAMED")
+			System.getProperty("omnisign.crash.dir")?.let { crashDir ->
+				add("-XX:ErrorFile=$crashDir/hs_err_pid%p.log")
+			}
+			addAll(listOf("-cp", classpath, Pkcs11ProbeWorker::class.java.name, libraryPath))
+		}
+	}
+	
+	logger.info { "java binary not found at '$javaExecutable' — trying native launcher fallback" }
+	
+	val nativeLauncher = ProcessHandle.current().info().command().orElse(null)
+	if (nativeLauncher != null && File(nativeLauncher).exists()) {
+		logger.info { "Using native launcher for PKCS#11 probe: $nativeLauncher" }
+		return listOf(nativeLauncher, "probe", libraryPath)
+	}
+	
+	logger.warn { "Neither java binary nor native launcher found — cannot spawn probe for '$libraryPath'" }
+	return null
 }
 
 /**
@@ -879,54 +1017,86 @@ internal fun resolveProbeCommand(libraryPath: String): List<String>? {
  *   Only reached when the process hangs; crashed probes are handled immediately.
  */
 internal fun probeTokenIdentitiesViaSubprocess(
-    libraryPath: String,
-    timeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
+	libraryPath: String,
+	timeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
 ): List<Pkcs11TokenIdentity> {
-    val logger = KotlinLogging.logger {}
-    return runCatching {
-        when (val result = runProbeSubprocess(libraryPath, timeoutSeconds)) {
-            null -> {
-                logger.warn { "Cannot resolve probe command — skipping probe for '$libraryPath'" }
-                emptyList()
-            }
-
-            is Pkcs11SubprocessResult.TimedOut -> {
-                logger.warn {
-                    "PKCS#11 probe subprocess pid=${result.pid} for '$libraryPath' timed out after ${timeoutSeconds}s"
-                }
-                emptyList()
-            }
-
-            is Pkcs11SubprocessResult.Crashed -> {
-                val signal = if (result.exitCode > 128) " (${signalName(result.exitCode - 128)})" else ""
-                logger.warn {
-                    buildString {
-                        append("PKCS#11 probe subprocess pid=${result.pid} for '$libraryPath' exited with code ${result.exitCode}$signal")
-                        if (result.stderr.isNotEmpty()) {
-                            append("\n  stderr: ${result.stderr}")
-                        }
-                        if (result.exitCode - 128 == 11 || result.exitCode - 128 == 6) {
-                            append("\n  Check for hs_err_pid${result.pid}.log in the crash directory")
-                        }
-                    }
-                }
-                emptyList()
-            }
-
-            is Pkcs11SubprocessResult.Success -> {
-                result.stdout.lines()
-                    .filter { it.contains('\t') }
-                    .map { line ->
-                        val (label, serial) = line.split('\t', limit = 2)
-                        Pkcs11TokenIdentity(label = label, serialNumber = serial, libraryPath = libraryPath)
-                    }
-            }
-        }
-    }.getOrElse { e ->
-        logger.warn(e) { "Failed to spawn PKCS#11 probe subprocess for '$libraryPath'" }
-        emptyList()
-    }
+	val logger = KotlinLogging.logger {}
+	return runCatching {
+		when (val result = runProbeSubprocess(libraryPath, timeoutSeconds)) {
+			null -> {
+				logger.warn { "Cannot resolve probe command — skipping probe for '$libraryPath'" }
+				emptyList()
+			}
+			
+			is Pkcs11SubprocessResult.TimedOut -> {
+				logger.warn {
+					"PKCS#11 probe subprocess pid=${result.pid} for '$libraryPath' timed out after ${timeoutSeconds}s"
+				}
+				emptyList()
+			}
+			
+			is Pkcs11SubprocessResult.Crashed -> {
+				val signal = if (result.exitCode > 128) " (${signalName(result.exitCode - 128)})" else ""
+				logger.warn {
+					buildString {
+						append("PKCS#11 probe subprocess pid=${result.pid} for '$libraryPath' exited with code ${result.exitCode}$signal")
+						if (result.stderr.isNotEmpty()) {
+							append("\n  stderr: ${result.stderr}")
+						}
+						if (result.exitCode - 128 == 11 || result.exitCode - 128 == 6) {
+							append("\n  Check for hs_err_pid${result.pid}.log in the crash directory")
+						}
+					}
+				}
+				emptyList()
+			}
+			
+			is Pkcs11SubprocessResult.Success -> parseProbeStdout(result.stdout, libraryPath)
+		}
+	}.getOrElse { e ->
+		logger.warn(e) { "Failed to spawn PKCS#11 probe subprocess for '$libraryPath'" }
+		emptyList()
+	}
 }
+
+/**
+ * Parse a [Pkcs11ProbeWorker] subprocess's `stdout` into a list of [Pkcs11TokenIdentity].
+ *
+ * Each non-empty tab-separated line carries `label\tserialNumber\tslotId` (current format)
+ * or `label\tserialNumber` (legacy two-column format, retained for forward compatibility
+ * with mixed-version invocations).  The legacy form falls back to slot ID `0`, which matches
+ * DSS's pre-slot-aware default and keeps Windows behaviour unchanged when an older subprocess
+ * binary is launched.
+ *
+ * Lines without a tab character are dropped (defensive against logger output leaking into
+ * stdout in pathological cases).  Lines that fail to parse a numeric slot ID degrade
+ * gracefully to `0`.
+ *
+ * Shared between [probeTokenIdentitiesViaSubprocess] and [Pkcs11WarmupService] so a single
+ * subprocess invocation can populate the discoverer's probe cache without re-spawning.
+ *
+ * @param stdout Captured standard output of the probe subprocess.
+ * @param libraryPath Absolute path to the PKCS#11 shared library that produced this output.
+ *   Stored in the resulting [Pkcs11TokenIdentity] for downstream traceability.
+ */
+internal fun parseProbeStdout(stdout: String, libraryPath: String): List<Pkcs11TokenIdentity> =
+	stdout.lines()
+		.filter { it.contains('\t') }
+		.mapNotNull { line ->
+			val parts = line.split('\t')
+			val (label, serial, slotIdRaw) = when (parts.size) {
+				3 -> Triple(parts[0], parts[1], parts[2])
+				2 -> Triple(parts[0], parts[1], "0")
+				else -> return@mapNotNull null
+			}
+			val slotId = slotIdRaw.toLongOrNull() ?: 0L
+			Pkcs11TokenIdentity(
+				label = label,
+				serialNumber = serial,
+				libraryPath = libraryPath,
+				slotId = slotId,
+			)
+		}
 
 /**
  * Probe a PKCS#11 [libraryPath] for the identities of all currently inserted tokens.
@@ -945,46 +1115,225 @@ internal fun probeTokenIdentitiesViaSubprocess(
  * any PKCS#11 call fails.
  */
 internal fun probeTokenIdentities(libraryPath: String): List<Pkcs11TokenIdentity> = runCatching {
-    @Suppress("UNCHECKED_CAST")
-    val lib = Native.load(libraryPath, Pkcs11ProbeLib::class.java) as Pkcs11ProbeLib
-    val initRv = lib.C_Initialize(null).toLong()
-    if (initRv != CKR_OK && initRv != CKR_CRYPTOKI_ALREADY_INITIALIZED) return emptyList()
-
-    val countMem = Memory(Native.LONG_SIZE.toLong()).also { it.clear() }
-    if (lib.C_GetSlotList(1.toByte(), null, countMem).toLong() != CKR_OK) return emptyList()
-    val slotCount = countMem.getNativeLong(0).toLong().toInt()
-    if (slotCount <= 0) return emptyList()
-
-    val slotsMem = Memory((slotCount.toLong() * Native.LONG_SIZE))
-    slotsMem.clear()
-    countMem.setNativeLong(0, NativeLong(slotCount.toLong()))
-    if (lib.C_GetSlotList(1.toByte(), slotsMem, countMem).toLong() != CKR_OK) return emptyList()
-
-    val results = mutableListOf<Pkcs11TokenIdentity>()
-    for (i in 0 until slotCount) {
-        val slotId = slotsMem.getNativeLong((i.toLong() * Native.LONG_SIZE))
-        val tokenInfo = Memory(CK_TOKEN_INFO_SIZE.toLong())
-        tokenInfo.clear()
-        if (lib.C_GetTokenInfo(slotId, tokenInfo).toLong() != CKR_OK) continue
-
+	@Suppress("UNCHECKED_CAST")
+	val lib = Native.load(libraryPath, Pkcs11ProbeLib::class.java) as Pkcs11ProbeLib
+	val initRv = lib.C_Initialize(null).toLong()
+	if (initRv != CKR_OK && initRv != CKR_CRYPTOKI_ALREADY_INITIALIZED) return emptyList()
+	
+	val countMem = Memory(Native.LONG_SIZE.toLong()).also { it.clear() }
+	if (lib.C_GetSlotList(1.toByte(), null, countMem).toLong() != CKR_OK) return emptyList()
+	val slotCount = countMem.getNativeLong(0).toLong().toInt()
+	if (slotCount <= 0) return emptyList()
+	
+	val slotsMem = Memory((slotCount.toLong() * Native.LONG_SIZE))
+	slotsMem.clear()
+	countMem.setNativeLong(0, NativeLong(slotCount.toLong()))
+	if (lib.C_GetSlotList(1.toByte(), slotsMem, countMem).toLong() != CKR_OK) return emptyList()
+	
+	val results = mutableListOf<Pkcs11TokenIdentity>()
+	for (i in 0 until slotCount) {
+		val slotId = slotsMem.getNativeLong((i.toLong() * Native.LONG_SIZE))
+		val tokenInfo = Memory(CK_TOKEN_INFO_SIZE.toLong())
+		tokenInfo.clear()
+		if (lib.C_GetTokenInfo(slotId, tokenInfo).toLong() != CKR_OK) continue
+		
 		val label = tokenInfo.getByteArray(CK_TOKEN_INFO_LABEL_OFFSET.toLong(), CK_TOKEN_INFO_LABEL_LEN)
 			.trimPkcs11Field()
 		val serial = tokenInfo.getByteArray(CK_TOKEN_INFO_SERIAL_OFFSET.toLong(), CK_TOKEN_INFO_SERIAL_LEN)
 			.trimPkcs11Field()
-
-        if (serial.isNotBlank()) {
-            results += Pkcs11TokenIdentity(
-                label = label.ifBlank { serial },
-                serialNumber = serial,
-                libraryPath = libraryPath,
-            )
-        }
-    }
-    results
+		
+		if (serial.isNotBlank()) {
+			results += Pkcs11TokenIdentity(
+				label = label.ifBlank { serial },
+				serialNumber = serial,
+				libraryPath = libraryPath,
+				slotId = slotId.toLong(),
+			)
+		}
+	}
+	results
 }.getOrDefault(emptyList())
 
+/**
+ * Batch size for `C_FindObjects` calls during no-login certificate enumeration.
+ */
+private const val PKCS11_FIND_BATCH = 64
 
+/**
+ * Hard ceiling on a single attribute's byte length; guards against a misbehaving
+ * module returning an absurd `ulValueLen` (or `(CK_ULONG)-1` for sensitive attrs).
+ */
+private const val PKCS11_MAX_ATTR_BYTES = 4_000_000L
 
+/**
+ * Field count of a worker `CERT` line: `CERT`, slot, CKA_ID hex, label b64, DER b64.
+ */
+private const val CERT_LINE_FIELDS = 5
+
+/**
+ * Enumerate a PKCS#11 [libraryPath]'s certificate objects **without** `C_Login`.
+ *
+ * Opens a read-only (`CKF_SERIAL_SESSION`-only) session per token-present slot, finds
+ * `CKO_CERTIFICATE` objects, and reads `CKA_VALUE` / `CKA_ID` / `CKA_LABEL`.  No PIN is
+ * ever supplied, so this returns exactly the certificates that are public objects on the
+ * token — the "Route A premise" check (`pkcs11-tool --list-objects --type cert` without
+ * `--login`), performed through OmniSign's own JNA stack.
+ *
+ * Designed to run **only inside a [Pkcs11ProbeWorker] subprocess** so any native crash is
+ * contained.  `C_Initialize` is idempotent; `C_Finalize` is intentionally skipped because
+ * the subprocess exits immediately after printing.  Any failure (load, init, slot, session,
+ * find) degrades to an empty list so it can never disturb the identity probe that ran first.
+ *
+ * `CK_ATTRIBUTE` is `{ CK_ULONG type; CK_VOID_PTR pValue; CK_ULONG ulValueLen; }`.  Windows
+ * Cryptoki is `pack(1)` while LP64 (Linux/macOS) uses natural alignment, but with
+ * `CK_ULONG == Native.LONG_SIZE` and the pointer `== Native.POINTER_SIZE` the field offsets
+ * collapse to the same formula on both ABIs, so the offsets below are computed once.
+ */
+internal fun probeNoLoginCertificates(libraryPath: String): List<Pkcs11NoLoginCertRecord> = runCatching {
+	@Suppress("UNCHECKED_CAST")
+	val lib = Native.load(libraryPath, Pkcs11ProbeLib::class.java) as Pkcs11ProbeLib
+	val initRv = lib.C_Initialize(null).toLong()
+	if (initRv != CKR_OK && initRv != CKR_CRYPTOKI_ALREADY_INITIALIZED) return emptyList()
+
+	val ulong = Native.LONG_SIZE
+	val ptr = Native.POINTER_SIZE
+	val pValueOff = ulong.toLong()
+	val lenOff = (ulong + ptr).toLong()
+	val attrSize = (ulong + ptr + ulong).toLong()
+
+	val countMem = Memory(ulong.toLong()).also { it.clear() }
+	if (lib.C_GetSlotList(1.toByte(), null, countMem).toLong() != CKR_OK) return emptyList()
+	val slotCount = countMem.getNativeLong(0).toLong().toInt()
+	if (slotCount <= 0) return emptyList()
+	val slotsMem = Memory(slotCount.toLong() * ulong).also { it.clear() }
+	countMem.setNativeLong(0, NativeLong(slotCount.toLong()))
+	if (lib.C_GetSlotList(1.toByte(), slotsMem, countMem).toLong() != CKR_OK) return emptyList()
+
+	val records = mutableListOf<Pkcs11NoLoginCertRecord>()
+	for (i in 0 until slotCount) {
+		val slotId = slotsMem.getNativeLong(i.toLong() * ulong)
+		val sessMem = Memory(ulong.toLong()).also { it.clear() }
+		if (lib.C_OpenSession(slotId, NativeLong(CKF_SERIAL_SESSION), null, null, sessMem)
+				.toLong() != CKR_OK
+		) continue
+		val session = sessMem.getNativeLong(0)
+		try {
+			val classHolder = Memory(ulong.toLong()).also { it.setNativeLong(0, NativeLong(CKO_CERTIFICATE)) }
+			val template = Memory(attrSize).also { it.clear() }
+			template.setNativeLong(0, NativeLong(CKA_CLASS))
+			template.setPointer(pValueOff, classHolder)
+			template.setNativeLong(lenOff, NativeLong(ulong.toLong()))
+			if (lib.C_FindObjectsInit(session, template, NativeLong(1)).toLong() != CKR_OK) continue
+
+			val handles = Memory(ulong.toLong() * PKCS11_FIND_BATCH).also { it.clear() }
+			val foundCount = Memory(ulong.toLong()).also { it.clear() }
+			while (true) {
+				if (lib.C_FindObjects(session, handles, NativeLong(PKCS11_FIND_BATCH.toLong()), foundCount)
+						.toLong() != CKR_OK
+				) break
+				val n = foundCount.getNativeLong(0).toLong().toInt()
+				if (n <= 0) break
+				for (h in 0 until n) {
+					val obj = handles.getNativeLong(h.toLong() * ulong)
+					val der = readPkcs11Attribute(lib, session, obj, CKA_VALUE, pValueOff, lenOff, attrSize)
+						?: continue
+					val id = readPkcs11Attribute(lib, session, obj, CKA_ID, pValueOff, lenOff, attrSize)
+						?: ByteArray(0)
+					val label = readPkcs11Attribute(lib, session, obj, CKA_LABEL, pValueOff, lenOff, attrSize)
+						?: ByteArray(0)
+					records += Pkcs11NoLoginCertRecord(
+						slotId = slotId.toLong(),
+						ckaIdHex = id.joinToString("") { "%02x".format(it) },
+						labelBase64 = Base64.getEncoder().encodeToString(label),
+						derBase64 = Base64.getEncoder().encodeToString(der),
+					)
+				}
+				if (n < PKCS11_FIND_BATCH) break
+			}
+			lib.C_FindObjectsFinal(session)
+		} finally {
+			lib.C_CloseSession(session)
+		}
+	}
+	records
+}.getOrDefault(emptyList())
+
+/**
+ * Read one object attribute with the standard two-pass `C_GetAttributeValue` idiom:
+ * a NULL-buffer call to learn the length, then a sized call to fetch the bytes.
+ *
+ * Returns `null` when the attribute is absent, sensitive, or reports an out-of-range
+ * length (including the `(CK_ULONG)-1` sentinel, which surfaces as a non-positive Long).
+ */
+private fun readPkcs11Attribute(
+	lib: Pkcs11ProbeLib,
+	session: NativeLong,
+	obj: NativeLong,
+	attrType: Long,
+	pValueOff: Long,
+	lenOff: Long,
+	attrSize: Long,
+): ByteArray? {
+	val sizing = Memory(attrSize).also { it.clear() }
+	sizing.setNativeLong(0, NativeLong(attrType))
+	val sizeRv = lib.C_GetAttributeValue(session, obj, sizing, NativeLong(1)).toLong()
+	if (sizeRv != CKR_OK && sizeRv != CKR_BUFFER_TOO_SMALL) return null
+	val len = sizing.getNativeLong(lenOff).toLong()
+	if (len <= 0L || len > PKCS11_MAX_ATTR_BYTES) return null
+
+	val buffer = Memory(len)
+	val fetch = Memory(attrSize).also { it.clear() }
+	fetch.setNativeLong(0, NativeLong(attrType))
+	fetch.setPointer(pValueOff, buffer)
+	fetch.setNativeLong(lenOff, NativeLong(len))
+	if (lib.C_GetAttributeValue(session, obj, fetch, NativeLong(1)).toLong() != CKR_OK) return null
+	return buffer.getByteArray(0, len.toInt())
+}
+
+/**
+ * Parse the `CERT\t<slot>\t<ckaIdHex>\t<labelBase64>\t<derBase64>` lines emitted by a
+ * `--certs` [Pkcs11ProbeWorker] run into [Pkcs11NoLoginParsedCert]s.
+ *
+ * Non-`CERT` lines (token-identity output, stray logging) are ignored, and any line that
+ * fails to split into five fields or whose Base64/DER does not parse as an X.509
+ * certificate is dropped — the parser never throws.  Single source of truth for the
+ * `CERT` line format, shared by the diagnostics report and no-login discovery.
+ */
+internal fun parseProbeNoLoginCerts(stdout: String): List<Pkcs11NoLoginParsedCert> {
+	val factory = runCatching { CertificateFactory.getInstance("X.509") }.getOrNull() ?: return emptyList()
+	return stdout.lines()
+		.filter { it.startsWith("CERT\t") }
+		.mapNotNull { line ->
+			val parts = line.split('\t')
+			if (parts.size != CERT_LINE_FIELDS) return@mapNotNull null
+			val der = runCatching { Base64.getDecoder().decode(parts[4]) }.getOrNull() ?: return@mapNotNull null
+			val cert = runCatching {
+				factory.generateCertificate(der.inputStream()) as X509Certificate
+			}.getOrNull() ?: return@mapNotNull null
+			Pkcs11NoLoginParsedCert(
+				certificate = cert,
+				ckaIdHex = parts[2],
+				label = runCatching { String(Base64.getDecoder().decode(parts[3]), Charsets.UTF_8) }
+					.getOrDefault(""),
+				slotId = parts[1].toLongOrNull() ?: 0L,
+			)
+		}
+}
+
+/**
+ * Project [parseProbeNoLoginCerts] into the diagnostics-report shape.
+ */
+internal fun parseProbeCertificates(stdout: String): List<Pkcs11DiagnosticsReport.RawNoLoginCert> =
+	parseProbeNoLoginCerts(stdout).map { parsed ->
+		Pkcs11DiagnosticsReport.RawNoLoginCert(
+			subjectDN = parsed.certificate.subjectX500Principal.name,
+			issuerDN = parsed.certificate.issuerX500Principal.name,
+			serialNumber = parsed.certificate.serialNumber.toString(),
+			ckaId = parsed.ckaIdHex,
+			label = parsed.label,
+			slotId = parsed.slotId,
+		)
+	}
 
 /**
  * Normalize a PKCS#11 token serial number for deduplication comparison.
@@ -1010,17 +1359,17 @@ internal fun normalizeSerial(serial: String): String =
  * @return Human-readable name such as `"SIGSEGV"`, or `"signal $signal"` for unmapped values.
  */
 internal fun signalName(signal: Int): String = when (signal) {
-    1 -> "SIGHUP"
-    2 -> "SIGINT"
-    3 -> "SIGQUIT"
-    4 -> "SIGILL"
-    6 -> "SIGABRT"
-    7 -> "SIGBUS"
-    8 -> "SIGFPE"
-    9 -> "SIGKILL"
-    11 -> "SIGSEGV"
-    13 -> "SIGPIPE"
-    14 -> "SIGALRM"
-    15 -> "SIGTERM"
-    else -> "signal $signal"
+	1 -> "SIGHUP"
+	2 -> "SIGINT"
+	3 -> "SIGQUIT"
+	4 -> "SIGILL"
+	6 -> "SIGABRT"
+	7 -> "SIGBUS"
+	8 -> "SIGFPE"
+	9 -> "SIGKILL"
+	11 -> "SIGSEGV"
+	13 -> "SIGPIPE"
+	14 -> "SIGALRM"
+	15 -> "SIGTERM"
+	else -> "signal $signal"
 }
