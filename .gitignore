@@ -22,4 +22,6 @@ node_modules/
 .github/*.*
 hs_err_pid*.log
 core.*
+# Logback's literal dir when ${omnisign.log.dir} is unresolved at init (logback.xml now has a :- fallback; this is belt-and-suspenders)
+**/*.dir_IS_UNDEFINED/
 
