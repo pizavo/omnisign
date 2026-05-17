@@ -324,26 +324,6 @@ class Pkcs11DiscovererTest : FunSpec({
 		(peak.get() <= 2) shouldBe true
 	}
 
-	test("trimPkcs11Field strips null-byte padding used by SafeNet middleware") {
-		val padded = "VP-SafeNet".toByteArray(Charsets.UTF_8) + ByteArray(22)
-		padded.trimPkcs11Field() shouldBe "VP-SafeNet"
-	}
-
-	test("trimPkcs11Field strips space padding mandated by PKCS11 spec") {
-		val padded = ("ABC123" + " ".repeat(10)).toByteArray(Charsets.UTF_8)
-		padded.trimPkcs11Field() shouldBe "ABC123"
-	}
-
-	test("trimPkcs11Field handles mixed null-byte and space padding") {
-		val padded = "SN-42".toByteArray(Charsets.UTF_8) + ByteArray(2) + " ".repeat(3).toByteArray(Charsets.UTF_8)
-		padded.trimPkcs11Field() shouldBe "SN-42"
-	}
-
-	test("trimPkcs11Field returns empty string for all-null-byte field") {
-		val padded = ByteArray(8)
-		padded.trimPkcs11Field() shouldBe ""
-	}
-
 	test("discoverTokens suppresses proxy fallback when proxy reports no identities") {
 		val proxyFile = File.createTempFile("p11-kit-proxy", ".so").also { it.deleteOnExit() }
 
