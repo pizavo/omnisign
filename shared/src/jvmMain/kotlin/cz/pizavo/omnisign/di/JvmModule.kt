@@ -38,11 +38,13 @@ val jvmRepositoryModule = module {
 	single { Pkcs11ProbeCache(crashBlacklist = get(), prober = get()) }
 	single { Pkcs11PcscCalaisResolver(pcscRecovery = get()) }
 	single { Pkcs11CandidateCollector(pcscCalaisResolver = get()) }
+	single { Pkcs11TokenInfoDeduplicator() }
 	single { PcscMonitorService(recovery = get()) }
 	single {
 		Pkcs11Discoverer(
 			probeCache = get(),
 			candidateCollector = get(),
+			deduplicator = get(),
 			discoverySignal = get(),
 		)
 	}
@@ -59,7 +61,7 @@ val jvmRepositoryModule = module {
 	single { Pkcs11NoLoginCertProbe() }
 	single {
 		Pkcs11DiagnosticsService(
-			pkcs11Discoverer = get(),
+			deduplicator = get(),
 			candidateCollector = get(),
 			prober = get(),
 			configRepository = get(),

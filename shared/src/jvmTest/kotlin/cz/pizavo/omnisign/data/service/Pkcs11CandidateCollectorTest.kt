@@ -113,18 +113,6 @@ class Pkcs11CandidateCollectorTest : FunSpec({
 		collector().deriveMiddlewareName("C:\\Some\\Path\\acme-token.dll") shouldBe "acme-token.dll"
 	}
 
-	test("isProxyPath recognises p11-kit-proxy paths") {
-		val c = collector()
-		c.isProxyPath("/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-proxy.so").shouldBeTrue()
-		c.isProxyPath("/usr/lib64/pkcs11/p11-kit-proxy.so").shouldBeTrue()
-	}
-
-	test("isProxyPath rejects non-proxy paths") {
-		val c = collector()
-		c.isProxyPath("/usr/lib/libeTPkcs11.so").shouldBeFalse()
-		c.isProxyPath("/usr/lib/opensc-pkcs11.so").shouldBeFalse()
-	}
-
 	test("discoverViaOs returns empty list without throwing on unknown OS") {
 		runCatching { collector().discoverViaOs(os = "haiku", jvmIs64Bit = true) }
 			.isSuccess.shouldBeTrue()

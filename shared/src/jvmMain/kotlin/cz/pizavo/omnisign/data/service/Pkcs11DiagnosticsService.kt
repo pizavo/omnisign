@@ -16,12 +16,12 @@ import java.util.concurrent.TimeUnit
  * The service deliberately does **not** participate in the warmup machinery.  Probes run
  * **sequentially** so each candidate's wall-clock cost is reported in isolation, free of
  * parallel-thrash distortion that the production warmup path produces on weak hardware.
- * The same dedup helper used by discovery, [Pkcs11Discoverer.buildTokenInfoList], is reused
+ * The same dedup helper used by discovery, [Pkcs11TokenInfoDeduplicator], is reused
  * to build the final [cz.pizavo.omnisign.domain.service.TokenInfo] list, so the report
  * faithfully reflects what discovery would emit.
  *
- * @property pkcs11Discoverer Application-scope discoverer reused for the shared
- *   serial-dedup logic ([Pkcs11Discoverer.buildTokenInfoList]).
+ * @property deduplicator Shared serial-dedup helper ([Pkcs11TokenInfoDeduplicator]) — the
+ *   same instance discovery uses, so the report's token list matches the dialog's.
  * @property candidateCollector Enumerates the candidate libraries per layer and the merged
  *   set, mirroring exactly what discovery sees ([Pkcs11CandidateCollector]).
  * @property noLoginProbe Probe that attempts an unauthenticated SunPKCS#11 `KeyStore`
@@ -35,7 +35,7 @@ import java.util.concurrent.TimeUnit
  *   helper commands.  Short by design — diagnostics should not stall on a hung tool.
  */
 class Pkcs11DiagnosticsService(
-	private val pkcs11Discoverer: Pkcs11Discoverer,
+	private val deduplicator: Pkcs11TokenInfoDeduplicator,
 	private val candidateCollector: Pkcs11CandidateCollector,
 	private val prober: Pkcs11Prober,
 	private val configRepository: ConfigRepository,
@@ -51,7 +51,7 @@ class Pkcs11DiagnosticsService(
 	 * Steps, in order: collect environment, enumerate candidates per layer, query
 	 * `pkg-config` / `p11-kit` (Linux), enumerate PC/SC readers, run a fresh subprocess
 	 * probe per merged candidate **sequentially**, and finally compute the deduplicated
-	 * [cz.pizavo.omnisign.domain.service.TokenInfo] list via [Pkcs11Discoverer.buildTokenInfoList].
+	 * [cz.pizavo.omnisign.domain.service.TokenInfo] list via [Pkcs11TokenInfoDeduplicator.buildTokenInfoList].
 	 *
 	 * @param appDataPkcs11Dir Optional drop directory for user-placed PKCS#11 libraries;
 	 *   when omitted, the platform-appropriate default under `<appData>/omnisign/pkcs11/`
@@ -90,7 +90,7 @@ class Pkcs11DiagnosticsService(
 			Triple(candidate.name, candidate.path, identities)
 		}
 
-		val tokenInfos = pkcs11Discoverer.buildTokenInfoList(probedTriples)
+		val tokenInfos = deduplicator.buildTokenInfoList(probedTriples)
 		val tokens = tokenInfos.map { token ->
 			Pkcs11DiagnosticsReport.TokenSummary(
 				id = token.id,

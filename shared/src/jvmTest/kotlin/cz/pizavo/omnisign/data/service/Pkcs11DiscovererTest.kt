@@ -22,9 +22,6 @@ class Pkcs11DiscovererTest : FunSpec({
 
 	val noProbe: (String) -> List<Pkcs11TokenIdentity> = { emptyList() }
 
-	// The PKCS#11 NUL padding character, expressed without a unicode-escape source literal.
-	val nul = Char(0)
-
 	/**
 	 * Adapt a probe lambda into a [Pkcs11Prober] — only [Pkcs11Prober.probeIdentities] is
 	 * exercised through the injected [Pkcs11ProbeCache]; the subprocess-level methods are
@@ -345,19 +342,6 @@ class Pkcs11DiscovererTest : FunSpec({
 	test("trimPkcs11Field returns empty string for all-null-byte field") {
 		val padded = ByteArray(8)
 		padded.trimPkcs11Field() shouldBe ""
-	}
-
-	test("normalizeSerial strips whitespace, null bytes, and uppercases") {
-		normalizeSerial("abc 123$nul$nul") shouldBe "ABC123"
-	}
-
-	test("normalizeSerial produces identical output for space-padded and null-padded serials") {
-		normalizeSerial("SN-42$nul$nul$nul") shouldBe normalizeSerial("SN-42" + " ".repeat(3))
-	}
-
-	test("normalizeSerial handles already-clean serial unchanged except for case") {
-		normalizeSerial("ABC123") shouldBe "ABC123"
-		normalizeSerial("abc123") shouldBe "ABC123"
 	}
 
 	test("discoverTokens suppresses proxy fallback when proxy reports no identities") {

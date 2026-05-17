@@ -287,22 +287,6 @@ class Pkcs11CandidateCollector(
 	}
 
 	/**
-	 * Return `true` when the given [path] refers to the p11-kit proxy PKCS#11 module.
-	 *
-	 * On Linux, [discoverViaOs] prefers the proxy when it's present — it's a single subprocess
-	 * load that covers every p11-kit-registered module, with consistent slot IDs.  If the user
-	 * also adds direct module paths via the app-data drop directory or `customPkcs11Libraries`,
-	 * the proxy and a direct module may report the same physical token.  In that case
-	 * [Pkcs11TokenInfoDeduplicator] sorts proxy results last so the direct library's path
-	 * wins, because direct paths typically come from explicit user intent and let us pin
-	 * SunPKCS11 to a vendor-specific slot ID.
-	 */
-	internal fun isProxyPath(path: String): Boolean {
-		val lower = path.lowercase()
-		return lower.contains("p11-kit-proxy") || lower.contains("p11kitproxy")
-	}
-
-	/**
 	 * Detect the macOS CryptoTokenKit PKCS#11 shim (`/usr/lib/libctkpcscd.dylib`) when a
 	 * smart card or CTK token extension is actually present.
 	 *

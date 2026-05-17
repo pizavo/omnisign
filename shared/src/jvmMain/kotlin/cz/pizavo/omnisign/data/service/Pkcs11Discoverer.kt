@@ -20,8 +20,8 @@ import java.io.File
  *   sources, the app-data drop directory, and user config.
  * - [Pkcs11ProbeCache] resolves each candidate to physical token identities, caching
  *   successful probes and skipping crash-blacklisted libraries.
- * - [buildTokenInfoList] collapses identities to one [TokenInfo] per physical token serial
- *   (direct paths preferred over the p11-kit proxy).
+ * - [Pkcs11TokenInfoDeduplicator] collapses identities to one [TokenInfo] per physical
+ *   token serial (direct paths preferred over the p11-kit proxy).
  *
  * @property probeCache Resolves a candidate library to token identities and owns the probe
  *   cache + crash blacklist + the process-isolated prober ([Pkcs11ProbeCache]).  Injected so
@@ -29,6 +29,9 @@ import java.io.File
  * @property candidateCollector Enumerates (and caches) the candidate library paths
  *   ([Pkcs11CandidateCollector]).  Shared so the invalidator can clear its cache on a PC/SC
  *   event and warmup can prime against the same candidate set the dialog will read.
+ * @property deduplicator Collapses probed identities into the deduplicated [TokenInfo] list
+ *   ([Pkcs11TokenInfoDeduplicator]); shared with [Pkcs11DiagnosticsService] so the report
+ *   and live discovery apply identical dedup policy.
  * @property discoveryGate Concurrency gate ensuring that at most one [discoverTokens] cycle runs
  *   at a time, with at most one additional cycle queued.  When a discovery is already in progress
  *   and a new request arrives, the running cycle's result is discarded and a fresh cycle executes
@@ -57,6 +60,7 @@ import java.io.File
 class Pkcs11Discoverer(
 	private val probeCache: Pkcs11ProbeCache = Pkcs11ProbeCache(),
 	private val candidateCollector: Pkcs11CandidateCollector = Pkcs11CandidateCollector(),
+	private val deduplicator: Pkcs11TokenInfoDeduplicator = Pkcs11TokenInfoDeduplicator(),
 	private val discoveryGate: ConflatedProbeGate<List<TokenInfo>> = ConflatedProbeGate(),
 	private val probeParallelism: Int = DEFAULT_PROBE_PARALLELISM,
 	private val discoverySignal: Pkcs11DiscoverySignal = Pkcs11DiscoverySignal(),
@@ -106,7 +110,7 @@ class Pkcs11Discoverer(
 	 * Probing runs in parallel on [Dispatchers.IO] — one coroutine per unique library path —
 	 * so that slow or unresponsive middleware does not delay discovery of other tokens.
 	 *
-	 * Deduplication is described in [buildTokenInfoList]: serial-number collapse with
+	 * Deduplication is described in [Pkcs11TokenInfoDeduplicator.buildTokenInfoList]: serial-number collapse with
 	 * direct-before-proxy ordering, and libraries with no identities are dropped (no stub
 	 * `TokenInfo` is emitted for an empty probe).
 	 *
@@ -138,7 +142,7 @@ class Pkcs11Discoverer(
 					}.awaitAll()
 				}
 
-				buildTokenInfoList(probeResults)
+				deduplicator.buildTokenInfoList(probeResults)
 			}
 		} finally {
 			endDiscovery()
@@ -151,7 +155,7 @@ class Pkcs11Discoverer(
 	 * This is the **read-only** counterpart to [discoverTokens]: no subprocess is spawned, no
 	 * candidate enumeration is run, no [discoveryGate] is engaged.  It walks the entries that
 	 * earlier discovery cycles (warmup, [discoverTokens], or [Pkcs11ProbeCache.primeCache])
-	 * populated and runs them through [buildTokenInfoList] for the same serial-based dedup
+	 * populated and runs them through [Pkcs11TokenInfoDeduplicator.buildTokenInfoList] for the same serial-based dedup
 	 * that [discoverTokens] applies.
 	 *
 	 * Intended for consumers that should never trigger their own discovery cycle — most
@@ -167,53 +171,7 @@ class Pkcs11Discoverer(
 		val probedCandidates = probeCache.cachedProbes().map { (path, identities) ->
 			Triple(candidateCollector.deriveMiddlewareName(path), path, identities)
 		}
-		return buildTokenInfoList(probedCandidates)
-	}
-
-	/**
-	 * Apply the deduplication strategy described in [discoverTokens] to a pre-computed list
-	 * of probed candidates and emit the resulting [TokenInfo] entries.
-	 *
-	 * Extracted as an internal helper so [Pkcs11DiagnosticsService] can reuse the same dedup
-	 * logic when building its own report from sequentially timed probes — keeping a single
-	 * source of truth for the proxy-vs-direct ordering and serial normalisation.
-	 *
-	 * Dedup rules:
-	 * 1. **Identities required** — only libraries that returned at least one token identity
-	 *    contribute to the result.  Libraries that probe successfully but expose no inserted
-	 *    token are surfaced only via diagnostics, not as user-visible tokens.
-	 * 2. **Serial number** — the same normalised serial collapses to a single entry; direct
-	 *    libraries are processed before proxy paths so direct paths win.
-	 *
-	 * @param probedCandidates Triples of `(display name, absolute path, identities)` —
-	 *   one per candidate library, in any order.
-	 * @return Deduplicated [TokenInfo] list ready to surface to the caller.
-	 */
-	internal fun buildTokenInfoList(
-		probedCandidates: List<Triple<String, String, List<Pkcs11TokenIdentity>>>,
-	): List<TokenInfo> {
-		val withIdentities = probedCandidates.filter { it.third.isNotEmpty() }
-		val sortedWithIdentities = withIdentities.sortedBy { candidateCollector.isProxyPath(it.second) }
-
-		val result = mutableListOf<TokenInfo>()
-		val seenSerials = mutableSetOf<String>()
-
-		for ((_, path, identities) in sortedWithIdentities) {
-			for (identity in identities) {
-				if (seenSerials.add(normalizeSerial(identity.serialNumber))) {
-					result += TokenInfo(
-						id = "pkcs11-${identity.serialNumber}",
-						name = identity.label,
-						type = TokenType.PKCS11,
-						path = path,
-						requiresPin = true,
-						pkcs11SlotId = identity.slotId,
-					)
-				}
-			}
-		}
-
-		return result
+		return deduplicator.buildTokenInfoList(probedCandidates)
 	}
 
 	private companion object {
@@ -228,20 +186,3 @@ class Pkcs11Discoverer(
 		const val DEFAULT_PROBE_PARALLELISM = 2
 	}
 }
-
-/**
- * Normalize a PKCS#11 token serial number for deduplication comparison.
- *
- * Different middleware implementations may report the same physical serial with
- * different padding and casing — for example, SafeNet uses null-byte padding while
- * OpenSC uses space-padding, and some middleware upper-cases the hex serial while
- * others preserve the case from the card.  This function strips all whitespace and
- * null bytes and upper-cases the result so that a serial padded with trailing null
- * bytes and one padded with trailing spaces both normalize to the same value.
- *
- * @param serial The raw serial string (already decoded from bytes, may contain
- *   residual whitespace or null-byte artifacts).
- * @return The normalized serial suitable for set-based deduplication.
- */
-internal fun normalizeSerial(serial: String): String =
-	serial.filterNot { it.isWhitespace() || it.code == 0 }.uppercase()
