@@ -13,10 +13,10 @@ import java.util.concurrent.TimeUnit
  * with per-candidate subprocess timings and out-of-process p11-kit truth (Linux).  Used by
  * the `omnisign diagnose pkcs11` CLI subcommand to remove guesswork from troubleshooting.
  *
- * The service deliberately does **not** participate in the warmup / [Pkcs11SessionManager]
- * machinery.  Probes run **sequentially** so each candidate's wall-clock cost is reported in
- * isolation, free of parallel-thrash distortion that the production warmup path produces on
- * weak hardware.  The same dedup helper used by [Pkcs11Discoverer.discoverTokens] is reused
+ * The service deliberately does **not** participate in the warmup machinery.  Probes run
+ * **sequentially** so each candidate's wall-clock cost is reported in isolation, free of
+ * parallel-thrash distortion that the production warmup path produces on weak hardware.
+ * The same dedup helper used by discovery, [Pkcs11Discoverer.buildTokenInfoList], is reused
  * to build the final [cz.pizavo.omnisign.domain.service.TokenInfo] list, so the report
  * faithfully reflects what discovery would emit.
  *

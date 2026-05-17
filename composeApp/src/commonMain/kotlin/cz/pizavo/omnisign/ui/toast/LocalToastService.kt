@@ -5,9 +5,11 @@ import androidx.compose.runtime.compositionLocalOf
 /**
  * CompositionLocal carrying the application-wide [ToastService] down the composition tree.
  *
- * Provided once in `IslandLayout` via `CompositionLocalProvider(LocalToastService provides
- * remember { ToastService() }) { … }` and read inside every
- * [cz.pizavo.omnisign.lumo.components.Dialog] to render its own bottom-right [ToastHost].
+ * `IslandLayout` hoists the instance — `val toastService = remember { ToastService() }` —
+ * so the same service can also be constructor-injected into ViewModels, then provides it
+ * via `CompositionLocalProvider(LocalToastService provides toastService) { … }`.  It is
+ * read inside every [cz.pizavo.omnisign.lumo.components.Dialog] to render its own
+ * bottom-right [ToastHost].
  * Compose Multiplatform `Dialog` runs its content in a subcomposition that inherits the
  * parent CompositionLocals, so dialogs opened anywhere under `IslandLayout` see the same
  * service.

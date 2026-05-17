@@ -78,11 +78,14 @@ internal const val DEFAULT_PROBE_TIMEOUT_SECONDS = 30L
  *   probe subprocess before killing it.  Acts as a safety net for middleware that hangs without
  *   responding; probes that crash (SIGSEGV, SIGABRT) exit immediately and are handled without
  *   waiting for this timeout.  Defaults to [DEFAULT_PROBE_TIMEOUT_SECONDS].
- * @property crashBlacklist Records libraries whose subprocess validation crashed so they are
- *   never probed again in this JVM.  Populated by [Pkcs11WarmupService] during startup
- *   validation.  All actual token probing runs out-of-process via [tokenProber] (a subprocess
- *   by default) — there is intentionally no in-process JNA consumer alongside SunPKCS11,
- *   which DSS uses for signing.
+ * @property crashBlacklist Records libraries whose subprocess validation crashed.  A path is
+ *   skipped by [probeLibrary] only while it has crashed at least the [Pkcs11CrashBlacklist]
+ *   threshold times within its sliding window; the record then decays and probing resumes,
+ *   so a transient SafeNet-style crash does not disable a healthy library for the JVM
+ *   lifetime.  Populated by [Pkcs11WarmupService] during startup validation.  All actual
+ *   token probing runs out-of-process via [tokenProber] (a subprocess by default) — there
+ *   is intentionally no in-process JNA consumer alongside SunPKCS11, which DSS uses for
+ *   signing.
  * @property discoveryGate Concurrency gate ensuring that at most one [discoverTokens] cycle runs
  *   at a time, with at most one additional cycle queued.  When a discovery is already in progress
  *   and a new request arrives, the running cycle's result is discarded and a fresh cycle executes
@@ -127,19 +130,6 @@ class Pkcs11Discoverer(
 	private val pcscRecovery: PcscContextRecovery = PcscContextRecovery(),
 ) {
 	
-	/**
-	 * Per-path cache of successful probe results.
-	 *
-	 * Populated by [probeLibrary] on subprocess success and by [primeCache] when the warmup
-	 * service has a fresh result to share.  Lookups in [probeLibrary] short-circuit any
-	 * present entry without spawning a subprocess.
-	 *
-	 * Entries live indefinitely; freshness is enforced by [Pkcs11CacheInvalidator] reacting
-	 * to PC/SC reader-state events, not by a time-based TTL.  Failed probes are deliberately
-	 * **not** cached: the user might insert the card mid-session and we want the next dialog
-	 * open to see it.  The crash blacklist handles the "library always crashes" case
-	 * separately.
-	 */
 	/**
 	 * Reference count of concurrently in-flight discovery cycles (warmup, dialog-triggered
 	 * [discoverTokens] calls, invalidator-launched rediscovery — anything that calls
@@ -199,13 +189,26 @@ class Pkcs11Discoverer(
 		if (activeDiscoveryCount.decrementAndGet() == 0) _discoveryRunning.value = false
 	}
 	
+	/**
+	 * Per-path cache of successful probe results.
+	 *
+	 * Populated by [probeLibrary] on subprocess success and by [primeCache] when the warmup
+	 * service has a fresh result to share.  Lookups in [probeLibrary] short-circuit any
+	 * present entry without spawning a subprocess.
+	 *
+	 * Entries live indefinitely; freshness is enforced by [Pkcs11CacheInvalidator] reacting
+	 * to PC/SC reader-state events, not by a time-based TTL.  Failed probes are deliberately
+	 * **not** cached: the user might insert the card mid-session and we want the next dialog
+	 * open to see it.  The crash blacklist handles the "library always crashes" case
+	 * separately.
+	 */
 	private val probeCache = ConcurrentHashMap<String, List<Pkcs11TokenIdentity>>()
 	
 	/**
 	 * Cache of [collectCandidates] results, keyed by `(appDataPkcs11Dir, userPkcs11Libraries)`.
 	 *
 	 * `collectCandidates` is the cold dominator of every dialog open: PC/SC enumeration on
-	 * Windows, p11-kit module parsing and standard library-directory scans on Linux/macOS.
+	 * Windows, and the p11-kit proxy on Linux (plus `security` / `pluginkit` on macOS).
 	 * The composition of installed PKCS#11 middleware changes only when the user
 	 * installs/uninstalls a vendor package or plugs / unplugs a smart-card reader.  Entries
 	 * live indefinitely and are cleared by [Pkcs11CacheInvalidator] on reader plug / unplug
@@ -401,10 +404,10 @@ class Pkcs11Discoverer(
 	 * Discover all PKCS#11 tokens available on the system.
 	 *
 	 * Discovery never blocks on [Pkcs11WarmupService] completion.  Each candidate library is
-	 * probed via [probeLibrary], which uses the fast in-process path when [sessionManager]
-	 * has a registered session for it and falls back to a subprocess otherwise.  If warmup
-	 * is still in flight, libraries that have not yet been registered fall back to subprocess
-	 * — slower but correct.
+	 * probed via [probeLibrary], which returns a cached probe result when one is present
+	 * (the hot path once warmup or an invalidator-driven rediscovery has populated the
+	 * cache) and otherwise spawns an out-of-process [tokenProber] subprocess.  There is no
+	 * in-process probing path.
 	 *
 	 * Probing runs in parallel on [Dispatchers.IO] — one coroutine per unique library path —
 	 * so that slow or unresponsive middleware does not delay discovery of other tokens.
@@ -527,8 +530,7 @@ class Pkcs11Discoverer(
 	 * OS manager (an installer that skipped registration, a manually-deployed library, an
 	 * out-of-tree development build) reach discovery via the user-controlled escape hatches
 	 * documented in [collectCandidates]: the app-data drop directory and the
-	 * `customPkcs11Libraries` config entry.  See `pkcs11-symptoms-analysis.md` rounds 4–8
-	 * for the audit history that arrived at this design.
+	 * `customPkcs11Libraries` config entry.
 	 *
 	 * - **Windows**: PC/SC + Calais ATR mapping
 	 *   (`SCardListReaders` → `HKLM\SOFTWARE\Microsoft\Cryptography\Calais\SmartCards`).
@@ -575,8 +577,9 @@ class Pkcs11Discoverer(
 	}
 	
 	/**
-	 * Execute the three platform branches concurrently and concatenate their results in the
-	 * declared branch order.
+	 * Execute the selected platform branches concurrently and concatenate their results in
+	 * the declared branch order.  The branch set is OS-dependent (one on Windows and Linux,
+	 * two on macOS), not a fixed three.
 	 *
 	 * Uses raw daemon threads with `join` rather than coroutines so that this synchronous
 	 * helper stays callable from non-suspending code paths (warmup, diagnostics, tests).  Each
@@ -858,8 +861,9 @@ class Pkcs11Discoverer(
 	 * installations on the same machine are uncommon and the serial-number deduplication
 	 * in [discoverTokens] would collapse them anyway.
 	 *
-	 * Returns an empty list when the proxy library is not found, signalling to
-	 * [discoverViaOs] that it should fall back to direct `.module` parsing.
+	 * Returns an empty list when the proxy library is not found; [discoverViaOs] then simply
+	 * contributes no candidates from this source (users with non-registering middleware use
+	 * the app-data drop directory or `customPkcs11Libraries`).
 	 *
 	 * @param proxyPaths Ordered list of candidate proxy paths; override for testing.
 	 */

@@ -133,11 +133,13 @@ class DssTokenService(
 	/**
 	 * Check physical token presence without supplying a PIN.
 	 *
-	 * PKCS#11 tokens are probed via [Pkcs11Discoverer.probeLibrary], which delegates to the
-	 * configured probe strategy (subprocess-based by default with classpath fallback for
-	 * jpackage distributions).  The probe calls `C_GetSlotList` with `CK_TRUE`, which queries
-	 * the middleware for slots that currently have a card inserted.  This never calls `C_Login`
-	 * and therefore never risks incrementing a wrong-PIN counter.
+	 * PKCS#11 tokens are checked via [Pkcs11Discoverer.probeLibrary], which returns a cached
+	 * probe result when the cache is warm (the common case after warmup or an
+	 * invalidator-driven rediscovery) and only on a cache miss spawns the configured probe
+	 * strategy (subprocess-based by default, with a classpath fallback for jpackage
+	 * distributions).  That subprocess probe calls `C_GetSlotList` with `CK_TRUE`, which
+	 * queries the middleware for slots that currently have a card inserted.  This never calls
+	 * `C_Login` and therefore never risks incrementing a wrong-PIN counter.
 	 * FILE tokens are checked via [File.exists].
 	 * OS-native stores always return true — the subsequent load call handles any failure.
 	 */

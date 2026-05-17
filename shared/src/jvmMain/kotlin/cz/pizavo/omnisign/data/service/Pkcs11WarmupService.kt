@@ -20,9 +20,11 @@ import kotlinx.coroutines.sync.withPermit
  * skips them on subsequent calls.  All actual token probing now runs out-of-process.
  *
  * Probes run with at most [maxParallelism] concurrently (default `2`) so weak hardware does
- * not thrash on N parallel JVM cold-starts.  Crashes (non-zero exit) are blacklisted
- * permanently; **timeouts** are not — a transient hang during warmup should not disable a
- * healthy library, so discovery falls back to subprocess on demand instead.
+ * not thrash on N parallel JVM cold-starts.  Crashes (non-zero exit) are recorded in
+ * [Pkcs11CrashBlacklist], which suppresses a library only after it crashes repeatedly
+ * within a sliding window and lets the record decay afterwards; **timeouts** are never
+ * recorded — a transient hang during warmup should not disable a healthy library, so
+ * discovery falls back to subprocess on demand instead.
  *
  * Discovery never blocks on warmup.  Warmup publishes its in-progress state through
  * [Pkcs11Discoverer.discoveryRunning] by wrapping the validation pass in
@@ -118,8 +120,9 @@ class Pkcs11WarmupService(
 	 * crashes (SIGSEGV / SIGABRT), and timeouts:
 	 *
 	 * - **Exit 0** → the library is safe; nothing to record (it stays off the blacklist).
-	 * - **Non-zero exit (crash)** → the library crashes during `C_Initialize`; permanently
-	 *   blacklist via [Pkcs11CrashBlacklist.registerCrashed] so it is never probed again.
+	 * - **Non-zero exit (crash)** → the library crashed during `C_Initialize`; record it via
+	 *   [Pkcs11CrashBlacklist.registerCrashed], which suppresses the library only after
+	 *   repeated crashes within the window and decays the record afterwards.
 	 * - **Timeout (hang)** → the subprocess hung; forcibly kill it but **do not** blacklist —
 	 *   discovery will subprocess-probe on demand.
 	 *
