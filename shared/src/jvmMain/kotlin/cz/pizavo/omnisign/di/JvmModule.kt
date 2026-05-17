@@ -33,24 +33,37 @@ import org.koin.dsl.module
 val jvmRepositoryModule = module {
 	single { Pkcs11CrashBlacklist() }
 	single { PcscContextRecovery() }
+	single { Pkcs11DiscoverySignal() }
+	single<Pkcs11Prober> { Pkcs11SubprocessProber() }
+	single { Pkcs11ProbeCache(crashBlacklist = get(), prober = get()) }
+	single { Pkcs11PcscCalaisResolver(pcscRecovery = get()) }
+	single { Pkcs11CandidateCollector(pcscCalaisResolver = get()) }
+	single { Pkcs11TokenInfoDeduplicator() }
 	single { PcscMonitorService(recovery = get()) }
 	single {
 		Pkcs11Discoverer(
-			crashBlacklist = get(),
-			pcscRecovery = get(),
+			probeCache = get(),
+			candidateCollector = get(),
+			deduplicator = get(),
+			discoverySignal = get(),
 		)
 	}
 	single {
 		Pkcs11WarmupService(
-			discoverer = get(),
+			candidateCollector = get(),
+			probeCache = get(),
+			prober = get(),
 			crashBlacklist = get(),
 			warmupSignal = getOrNull<MutableStateFlow<Boolean>>() ?: MutableStateFlow(true),
+			discoverySignal = get(),
 		)
 	}
 	single { Pkcs11NoLoginCertProbe() }
 	single {
 		Pkcs11DiagnosticsService(
-			pkcs11Discoverer = get(),
+			deduplicator = get(),
+			candidateCollector = get(),
+			prober = get(),
 			configRepository = get(),
 			pcscMonitor = get(),
 			noLoginProbe = get(),
@@ -60,6 +73,8 @@ val jvmRepositoryModule = module {
 		Pkcs11CacheInvalidator(
 			monitor = get(),
 			discoverer = get(),
+			probeCache = get(),
+			candidateCollector = get(),
 			configRepository = get(),
 			appDataPkcs11Dir = pkcs11DropDir(),
 		)
@@ -68,6 +83,9 @@ val jvmRepositoryModule = module {
 		DssTokenService(
 			passwordCallback = get(),
 			pkcs11Discoverer = get(),
+			probeCache = get(),
+			candidateCollector = get(),
+			prober = get(),
 			pkcs11CacheInvalidator = get(),
 			pcscMonitorService = get(),
 			configRepository = get(),

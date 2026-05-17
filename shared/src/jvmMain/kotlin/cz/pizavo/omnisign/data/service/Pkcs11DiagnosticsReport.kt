@@ -73,10 +73,10 @@ data class Pkcs11DiagnosticsReport(
 	/**
 	 * Candidate library paths grouped by the source layer that produced them.
 	 *
-	 * Each list contains entries that *would* be merged by [Pkcs11Discoverer.collectCandidates];
+	 * Each list contains entries that *would* be merged by [Pkcs11CandidateCollector.collectCandidates];
 	 * deduplication and filtering are reflected only in [Pkcs11DiagnosticsReport.mergedCandidates].
 	 *
-	 * @property osNative Result of [Pkcs11Discoverer.discoverViaOs] — PC/SC + registry on Windows,
+	 * @property osNative Result of [Pkcs11CandidateCollector.discoverViaOs] — PC/SC + registry on Windows,
 	 *   `security`/`pluginkit`/`.module` on macOS, p11-kit / dir scan / `.module` on Linux.
 	 * @property dropDir Files under `<appData>/omnisign/pkcs11/` whose names match the
 	 *   PKCS#11 filename heuristic.
@@ -91,7 +91,7 @@ data class Pkcs11DiagnosticsReport(
 	/**
 	 * A single PKCS#11 library candidate path with file-existence metadata.
 	 *
-	 * @property name Human-readable middleware label as derived by [Pkcs11Discoverer.deriveMiddlewareName].
+	 * @property name Human-readable middleware label as derived by [Pkcs11CandidateCollector.deriveMiddlewareName].
 	 * @property path Absolute path on the local filesystem.
 	 * @property exists `true` when the path resolves to an existing regular file at scan time.
 	 * @property sizeBytes File size in bytes when the path is a regular file; `null` otherwise.
@@ -159,7 +159,7 @@ data class Pkcs11DiagnosticsReport(
 		 * - [SUCCESS] — exit code 0; identity output (possibly empty when no card is inserted).
 		 * - [CRASHED] — non-zero exit, often a SIGSEGV from misbehaving middleware.
 		 * - [TIMED_OUT] — subprocess did not exit within the configured timeout and was killed.
-		 * - [NO_COMMAND] — [resolveProbeCommand] could not find a usable executable.
+		 * - [NO_COMMAND] — [Pkcs11Prober] could not resolve a usable probe executable.
 		 */
 		enum class Outcome { SUCCESS, CRASHED, TIMED_OUT, NO_COMMAND }
 	}

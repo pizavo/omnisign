@@ -30,8 +30,10 @@ import java.security.cert.X509Certificate
 /**
  * JVM implementation of [TokenService] using the EU DSS library.
  *
- * PKCS#11 token discovery is fully delegated to [Pkcs11Discoverer].  This class is responsible
- * only for loading certificates, managing credentials, and creating DSS signing tokens.
+ * PKCS#11 enumeration is delegated to the discovery subsystem — the cached token list via
+ * [Pkcs11Discoverer], physical-presence checks via [Pkcs11ProbeCache], and the diagnostic
+ * snapshot via [Pkcs11CandidateCollector].  This class is responsible only for loading
+ * certificates, managing credentials, and creating DSS signing tokens.
  *
  * OS-native stores (Windows MY, macOS Keychain) are added alongside PKCS#11 tokens.
  * No credential is requested during discovery; [loadCertificates] prompts via [PasswordCallback]
@@ -47,6 +49,9 @@ import java.security.cert.X509Certificate
 class DssTokenService(
 	private val passwordCallback: PasswordCallback,
 	private val pkcs11Discoverer: Pkcs11Discoverer = Pkcs11Discoverer(),
+	private val probeCache: Pkcs11ProbeCache = Pkcs11ProbeCache(),
+	private val candidateCollector: Pkcs11CandidateCollector = Pkcs11CandidateCollector(),
+	private val prober: Pkcs11Prober = Pkcs11SubprocessProber(),
 	private val pkcs11CacheInvalidator: Pkcs11CacheInvalidator? = null,
 	private val pcscMonitorService: PcscMonitorService? = null,
 	private val configRepository: ConfigRepository? = null,
@@ -67,7 +72,7 @@ class DssTokenService(
 			?.map { it.name to it.path }
 			?: emptyList()
 		val dropDir = pkcs11DropDir()
-		val candidates = pkcs11Discoverer
+		val candidates = candidateCollector
 			.collectCandidates(appDataPkcs11Dir = dropDir, userPkcs11Libraries = userLibs)
 			.map { (name, path) -> Pkcs11DiagnosticSnapshot.CandidateLibrary(name, path) }
 		return Pkcs11DiagnosticSnapshot(
@@ -133,7 +138,7 @@ class DssTokenService(
 	/**
 	 * Check physical token presence without supplying a PIN.
 	 *
-	 * PKCS#11 tokens are checked via [Pkcs11Discoverer.probeLibrary], which returns a cached
+	 * PKCS#11 tokens are checked via [Pkcs11ProbeCache.probeLibrary], which returns a cached
 	 * probe result when the cache is warm (the common case after warmup or an
 	 * invalidator-driven rediscovery) and only on a cache miss spawns the configured probe
 	 * strategy (subprocess-based by default, with a classpath fallback for jpackage
@@ -150,7 +155,7 @@ class DssTokenService(
 				logger.warn { "PKCS#11 token '${tokenInfo.name}' has no library path — treating as absent" }
 				false
 			} else {
-				val present = pkcs11Discoverer.probeLibrary(path).isNotEmpty()
+				val present = probeCache.probeLibrary(path).isNotEmpty()
 				logger.debug { "PKCS#11 token '${tokenInfo.name}' at '$path': present=$present" }
 				present
 			}
@@ -207,7 +212,7 @@ class DssTokenService(
 		if (tokenInfo.type != TokenType.PKCS11) return emptyList<CertificateEntry>().right()
 		val libraryPath = tokenInfo.path ?: return emptyList<CertificateEntry>().right()
 		val certs = runCatching {
-			val result = runCertProbeSubprocess(libraryPath, DEFAULT_PROBE_TIMEOUT_SECONDS)
+			val result = prober.runCertProbe(libraryPath, Pkcs11Prober.DEFAULT_PROBE_TIMEOUT_SECONDS)
 			if (result is Pkcs11SubprocessResult.Success) {
 				parseProbeNoLoginCerts(result.stdout).map { it.toCertificateEntry(tokenInfo) }
 			} else {

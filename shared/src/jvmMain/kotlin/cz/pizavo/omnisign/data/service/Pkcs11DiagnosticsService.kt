@@ -16,26 +16,34 @@ import java.util.concurrent.TimeUnit
  * The service deliberately does **not** participate in the warmup machinery.  Probes run
  * **sequentially** so each candidate's wall-clock cost is reported in isolation, free of
  * parallel-thrash distortion that the production warmup path produces on weak hardware.
- * The same dedup helper used by discovery, [Pkcs11Discoverer.buildTokenInfoList], is reused
+ * The same dedup helper used by discovery, [Pkcs11TokenInfoDeduplicator], is reused
  * to build the final [cz.pizavo.omnisign.domain.service.TokenInfo] list, so the report
  * faithfully reflects what discovery would emit.
  *
- * @property pkcs11Discoverer Application-scope discoverer used for candidate enumeration helpers
- *   and the shared dedup logic.
+ * @property deduplicator Shared serial-dedup helper ([Pkcs11TokenInfoDeduplicator]) — the
+ *   same instance discovery uses, so the report's token list matches the dialog's.
+ * @property candidateCollector Enumerates the candidate libraries per layer and the merged
+ *   set, mirroring exactly what discovery sees ([Pkcs11CandidateCollector]).
  * @property noLoginProbe Probe that attempts an unauthenticated SunPKCS#11 `KeyStore`
  *   enumeration per discovered PKCS#11 token (the "Route A" experiment).
  * @property configRepository Source of the user-supplied PKCS#11 library list.
+ * @property prober Process-isolated probe runner used for the per-candidate identity and
+ *   no-login certificate probes.
+ * @property pcscMonitor PC/SC monitor queried via [PcscMonitorService.currentReaders] to
+ *   list the connected readers and their card state in the report.
  * @property probeTimeoutSeconds Maximum time to wait for a single library probe before
- *   forcibly killing the subprocess.  Defaults to [DEFAULT_PROBE_TIMEOUT_SECONDS].
+ *   forcibly killing the subprocess.  Defaults to [Pkcs11Prober.DEFAULT_PROBE_TIMEOUT_SECONDS].
  * @property externalCommandTimeoutSeconds Maximum time to wait for `p11-kit` / `pkg-config`
  *   helper commands.  Short by design — diagnostics should not stall on a hung tool.
  */
 class Pkcs11DiagnosticsService(
-	private val pkcs11Discoverer: Pkcs11Discoverer,
+	private val deduplicator: Pkcs11TokenInfoDeduplicator,
+	private val candidateCollector: Pkcs11CandidateCollector,
+	private val prober: Pkcs11Prober,
 	private val configRepository: ConfigRepository,
 	private val pcscMonitor: PcscMonitorService,
 	private val noLoginProbe: Pkcs11NoLoginCertProbe = Pkcs11NoLoginCertProbe(),
-	private val probeTimeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
+	private val probeTimeoutSeconds: Long = Pkcs11Prober.DEFAULT_PROBE_TIMEOUT_SECONDS,
 	private val externalCommandTimeoutSeconds: Long = DEFAULT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
 ) {
 
@@ -45,7 +53,7 @@ class Pkcs11DiagnosticsService(
 	 * Steps, in order: collect environment, enumerate candidates per layer, query
 	 * `pkg-config` / `p11-kit` (Linux), enumerate PC/SC readers, run a fresh subprocess
 	 * probe per merged candidate **sequentially**, and finally compute the deduplicated
-	 * [cz.pizavo.omnisign.domain.service.TokenInfo] list via [Pkcs11Discoverer.buildTokenInfoList].
+	 * [cz.pizavo.omnisign.domain.service.TokenInfo] list via [Pkcs11TokenInfoDeduplicator.buildTokenInfoList].
 	 *
 	 * @param appDataPkcs11Dir Optional drop directory for user-placed PKCS#11 libraries;
 	 *   when omitted, the platform-appropriate default under `<appData>/omnisign/pkcs11/`
@@ -66,7 +74,7 @@ class Pkcs11DiagnosticsService(
 		val osLower = System.getProperty("os.name").lowercase()
 		val candidatesByLayer = collectLayerBreakdown(osLower, environment.jvmIs64Bit, effectiveDropDir, userLibraries)
 
-		val mergedCandidates = pkcs11Discoverer
+		val mergedCandidates = candidateCollector
 			.collectCandidates(effectiveDropDir, userLibraries)
 			.map { (name, path) -> toCandidate(name, path) }
 
@@ -84,7 +92,7 @@ class Pkcs11DiagnosticsService(
 			Triple(candidate.name, candidate.path, identities)
 		}
 
-		val tokenInfos = pkcs11Discoverer.buildTokenInfoList(probedTriples)
+		val tokenInfos = deduplicator.buildTokenInfoList(probedTriples)
 		val tokens = tokenInfos.map { token ->
 			Pkcs11DiagnosticsReport.TokenSummary(
 				id = token.id,
@@ -99,7 +107,7 @@ class Pkcs11DiagnosticsService(
 			.map { token -> noLoginProbe.enumerate(token.name, token.path!!, token.pkcs11SlotId) }
 
 		val rawNoLoginCertificates = mergedCandidates.map { candidate ->
-			val result = runCatching { runCertProbeSubprocess(candidate.path, probeTimeoutSeconds) }.getOrNull()
+			val result = runCatching { prober.runCertProbe(candidate.path, probeTimeoutSeconds) }.getOrNull()
 			Pkcs11DiagnosticsReport.RawNoLoginCertScan(
 				libraryPath = candidate.path,
 				subprocessSucceeded = result is Pkcs11SubprocessResult.Success,
@@ -146,8 +154,9 @@ class Pkcs11DiagnosticsService(
 	}
 
 	/**
-	 * Compute the per-layer candidate breakdown, mirroring [Pkcs11Discoverer.collectCandidates]
-	 * but preserving each layer's contribution separately.
+	 * Compute the per-layer candidate breakdown, mirroring
+	 * [Pkcs11CandidateCollector.collectCandidates] but preserving each layer's contribution
+	 * separately.
 	 */
 	private fun collectLayerBreakdown(
 		osLower: String,
@@ -155,13 +164,13 @@ class Pkcs11DiagnosticsService(
 		dropDir: File?,
 		userLibraries: List<Pair<String, String>>,
 	): Pkcs11DiagnosticsReport.CandidatesByLayer {
-		val osNative = pkcs11Discoverer.discoverViaOs(osLower, jvmIs64Bit)
+		val osNative = candidateCollector.discoverViaOs(osLower, jvmIs64Bit)
 			.map { (name, path) -> toCandidate(name, path) }
 
 		val drop = dropDir
 			?.takeIf { it.isDirectory }
-			?.listFiles { f -> f.isFile && pkcs11Discoverer.isPkcs11FileName(f.name) }
-			?.map { f -> toCandidate(pkcs11Discoverer.deriveMiddlewareName(f.absolutePath), f.absolutePath) }
+			?.listFiles { f -> f.isFile && candidateCollector.isPkcs11FileName(f.name) }
+			?.map { f -> toCandidate(candidateCollector.deriveMiddlewareName(f.absolutePath), f.absolutePath) }
 			.orEmpty()
 
 		val user = userLibraries
@@ -197,7 +206,7 @@ class Pkcs11DiagnosticsService(
 		outcomes: MutableList<Pkcs11DiagnosticsReport.ProbeOutcome>,
 	): List<Pkcs11TokenIdentity> {
 		val startNanos = System.nanoTime()
-		val result = runCatching { runProbeSubprocess(libraryPath, probeTimeoutSeconds) }.getOrNull()
+		val result = runCatching { prober.runProbe(libraryPath, probeTimeoutSeconds) }.getOrNull()
 		val totalMillis = (System.nanoTime() - startNanos) / NANOS_PER_MILLI
 
 		val (outcome, identities) = when (result) {
@@ -235,7 +244,7 @@ class Pkcs11DiagnosticsService(
 			) to emptyList()
 
 			is Pkcs11SubprocessResult.Success -> {
-				val parsed = parseProbeStdout(result.stdout, libraryPath)
+				val parsed = prober.parseIdentities(result.stdout, libraryPath)
 				val reportIdentities = parsed.map {
 					Pkcs11DiagnosticsReport.Identity(it.label, it.serialNumber, it.slotId)
 				}

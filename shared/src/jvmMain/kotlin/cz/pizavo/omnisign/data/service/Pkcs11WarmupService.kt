@@ -16,7 +16,7 @@ import kotlinx.coroutines.sync.withPermit
  * scans could skip subprocess overhead.  That created a second PKCS#11 consumer alongside
  * SunPKCS11 (which DSS uses for signing) and was a recurring source of subtle interaction
  * bugs.  The current model is **validate-only**: each candidate is probed via subprocess;
- * crashed libraries are recorded in [Pkcs11CrashBlacklist] so [Pkcs11Discoverer.probeLibrary]
+ * crashed libraries are recorded in [Pkcs11CrashBlacklist] so [Pkcs11ProbeCache.probeLibrary]
  * skips them on subsequent calls.  All actual token probing now runs out-of-process.
  *
  * Probes run with at most [maxParallelism] concurrently (default `2`) so weak hardware does
@@ -27,28 +27,38 @@ import kotlinx.coroutines.sync.withPermit
  * discovery falls back to subprocess on demand instead.
  *
  * Discovery never blocks on warmup.  Warmup publishes its in-progress state through
- * [Pkcs11Discoverer.discoveryRunning] by wrapping the validation pass in
- * [Pkcs11Discoverer.beginDiscovery] / [Pkcs11Discoverer.endDiscovery].  This lets passive
- * cache readers (notably [DssTokenService]'s sign-dialog path) suspend on the unified
- * discovery signal without having to know which producer is currently running.
+ * [Pkcs11DiscoverySignal.discoveryRunning] by wrapping the validation pass in
+ * [Pkcs11DiscoverySignal.beginDiscovery] / [Pkcs11DiscoverySignal.endDiscovery].  This lets
+ * passive cache readers (notably [DssTokenService]'s sign-dialog path) suspend on the
+ * unified discovery signal without having to know which producer is currently running.
  *
- * @property discoverer The discoverer used to list candidate library paths.
+ * @property candidateCollector Enumerates the candidate library paths to validate
+ *   ([Pkcs11CandidateCollector]); shared so warmup primes against the same candidate set
+ *   the sign dialog will read.
+ * @property probeCache The shared probe cache primed with each validated library's identities.
+ * @property prober Process-isolated probe runner; each candidate is validated by spawning a
+ *   probe subprocess through it.
  * @property crashBlacklist The blacklist updated when a subprocess validation crashes.
  * @property warmupSignal Shared mutable flow that this service writes `true` to upon
  *   completion.  Used internally to short-circuit repeated [warmup] invocations once the
  *   first pass has settled.  Callers that want to react to discovery progress should
- *   observe [Pkcs11Discoverer.discoveryRunning] instead, which covers both warmup and
+ *   observe [Pkcs11DiscoverySignal.discoveryRunning] instead, which covers both warmup and
  *   any subsequent invalidator-launched rediscovery cycles.
+ * @property discoverySignal Shared discovery-running signal bracketed around the validation
+ *   pass so passive readers see warmup as an in-flight cycle ([Pkcs11DiscoverySignal]).
  * @property probeTimeoutSeconds Timeout for each subprocess probe during warmup.
  * @property maxParallelism Upper bound on concurrent warmup probes.  Each probe spawns a
  *   fresh JVM subprocess; running too many in parallel on weak hardware causes cold-start
  *   contention and false timeouts.  Defaults to `2`.
  */
 class Pkcs11WarmupService(
-	private val discoverer: Pkcs11Discoverer,
+	private val candidateCollector: Pkcs11CandidateCollector,
+	private val probeCache: Pkcs11ProbeCache,
+	private val prober: Pkcs11Prober,
 	private val crashBlacklist: Pkcs11CrashBlacklist,
 	private val warmupSignal: MutableStateFlow<Boolean>,
-	private val probeTimeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
+	private val discoverySignal: Pkcs11DiscoverySignal,
+	private val probeTimeoutSeconds: Long = Pkcs11Prober.DEFAULT_PROBE_TIMEOUT_SECONDS,
 	private val maxParallelism: Int = DEFAULT_MAX_PARALLELISM,
 ) {
 
@@ -74,7 +84,7 @@ class Pkcs11WarmupService(
 			return
 		}
 
-		discoverer.beginDiscovery()
+		discoverySignal.beginDiscovery()
 		try {
 			logger.info {
 				"Starting PKCS#11 background warmup (timeout=${probeTimeoutSeconds}s, " +
@@ -82,7 +92,7 @@ class Pkcs11WarmupService(
 			}
 			val startTime = System.currentTimeMillis()
 
-			val candidates = discoverer.collectCandidates(appDataPkcs11Dir, userPkcs11Libraries)
+			val candidates = candidateCollector.collectCandidates(appDataPkcs11Dir, userPkcs11Libraries)
 
 			if (candidates.isEmpty()) {
 				logger.info { "No PKCS#11 candidate libraries found — warmup complete" }
@@ -108,14 +118,14 @@ class Pkcs11WarmupService(
 			}
 		} finally {
 			warmupSignal.value = true
-			discoverer.endDiscovery()
+			discoverySignal.endDiscovery()
 		}
 	}
 
 	/**
 	 * Probe a single library via subprocess and update [crashBlacklist] when it crashes.
 	 *
-	 * The subprocess is spawned via [resolveProbeCommand] and monitored for completion
+	 * The subprocess is spawned via the injected [Pkcs11Prober] and monitored for completion
 	 * within [probeTimeoutSeconds].  Exit codes are analyzed to distinguish clean exits,
 	 * crashes (SIGSEGV / SIGABRT), and timeouts:
 	 *
@@ -133,7 +143,7 @@ class Pkcs11WarmupService(
 		logger.debug { "Warmup probing '$name' at '$libraryPath'" }
 
 		try {
-			when (val result = runProbeSubprocess(libraryPath, probeTimeoutSeconds)) {
+			when (val result = prober.runProbe(libraryPath, probeTimeoutSeconds)) {
 				null -> {
 					logger.warn { "Cannot resolve probe command for '$name' ('$libraryPath') — skipping warmup" }
 				}
@@ -160,8 +170,8 @@ class Pkcs11WarmupService(
 				}
 
 				is Pkcs11SubprocessResult.Success -> {
-					val identities = parseProbeStdout(result.stdout, libraryPath)
-					discoverer.primeCache(libraryPath, identities)
+					val identities = prober.parseIdentities(result.stdout, libraryPath)
+					probeCache.primeCache(libraryPath, identities)
 					logger.info {
 						"Warmup validated '$name' — library loads cleanly in subprocess " +
 								"(${identities.size} identity(-ies) cached)"

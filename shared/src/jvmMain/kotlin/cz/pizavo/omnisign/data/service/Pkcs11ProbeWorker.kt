@@ -5,7 +5,7 @@ import kotlin.system.exitProcess
 /**
  * Standalone entry point for out-of-process PKCS#11 library probing.
  *
- * Invoked as a subprocess by [probeTokenIdentitiesViaSubprocess] to isolate native library
+ * Invoked as a subprocess by [Pkcs11SubprocessProber] to isolate native library
  * crashes (SIGSEGV, SIGABRT) from the host JVM. Some PKCS#11 middleware — notably SafeNet
  * eToken's `libeTPKCS15.so` — can crash with a NULL-pointer dereference inside `C_Initialize`
  * when no smart card reader or token is present. Running the probe in a child process
