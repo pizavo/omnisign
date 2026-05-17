@@ -29,6 +29,13 @@ signing certificates. Certificates are gathered from:
 - **PKCS#12 files** — click the **Load from file** button to import a `.p12` / `.pfx`
   keystore. The imported certificates are added to the dropdown immediately.
 
+Each dropdown entry is **source-aware**: it shows the certificate's common name, its
+*valid until* date, and the **source** it came from — for example
+`Jan Novák — valid until 14.03.2027; eToken 5110`. The source suffix is the hardware
+token's label, the OS certificate store, or the loaded `.p12` file. When the same
+identity is present on more than one token or store, the source is what tells the
+entries apart, so you can pick the exact key you intend to sign with.
+
 ### Locked tokens
 
 Some hardware tokens require a PIN before their certificates can be listed. These appear
@@ -41,6 +48,38 @@ the dropdown.
 If any token source encounters issues during discovery (e.g., a PKCS#11 library cannot be
 loaded), a warning banner is shown at the top of the certificate section listing the
 affected tokens and error details.
+
+### Rescanning for tokens
+
+The dialog header has a **Rescan tokens** action. Use it when you have installed or
+changed PKCS#11 middleware **while OmniSign is running** — no card or reader event would
+otherwise trigger re-detection. The rescan is fire-and-forget: the control is replaced by
+an inline progress indicator while it runs, and the certificate dropdown refreshes
+automatically when it settles.
+
+The refresh is **silent** — a newly detected PIN-required token appears in the
+**Locked tokens** section rather than opening a PIN dialog (unlocking stays an explicit
+per-token action). When the rescan settles, a toast confirms the outcome:
+
+- *Rescan complete — N PKCS#11 entries detected* — a brief confirmation.
+- *Rescan complete — no PKCS#11 tokens detected* — shown with a **Show diagnostic info**
+  action that opens the PKCS#11 diagnostic dialog, so you can troubleshoot why a token
+  that is plugged in is not being seen (commonly a smart-card middleware / ATR-mapping
+  mismatch).
+
+### Automatic refresh when a card or reader changes
+
+While the signing dialog is open, inserting or removing a smart card — or plugging or
+unplugging a reader — refreshes the certificate list automatically. A small inline
+indicator is shown during the refresh, and your current selection is kept if that
+certificate is still available afterwards. These background refreshes are **silent** (no
+toast and no PIN prompt), which is what distinguishes them from a manual **Rescan**.
+
+:::note
+Toasts such as the rescan confirmation appear at the bottom-right and persist across
+dialogs: a toast raised inside the signing dialog keeps showing — and remains
+actionable — even if you close the dialog before it disappears.
+:::
 
 ## 4. Configure signing options
 

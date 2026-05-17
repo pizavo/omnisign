@@ -21,6 +21,9 @@ sidebar_position: 3
 | Headless renewal mode (OS scheduler)        |     ✅     |
 | PKCS#11 hardware token support              |     ✅     |
 | PKCS#12 file-based certificates             |     ✅     |
+| Source-aware certificate selection          |     ✅     |
+| Live PKCS#11 token detection (hot-plug)     |     ✅     |
+| Manual token rescan with toast feedback     |     ✅     |
 | Dark / light theme toggle                   |     ✅     |
 | Window position and size persistence        |     ✅     |
 | JBR custom title bar (native frame)         |     ✅     |
