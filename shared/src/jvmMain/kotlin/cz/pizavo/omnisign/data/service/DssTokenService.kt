@@ -30,8 +30,10 @@ import java.security.cert.X509Certificate
 /**
  * JVM implementation of [TokenService] using the EU DSS library.
  *
- * PKCS#11 token discovery is fully delegated to [Pkcs11Discoverer].  This class is responsible
- * only for loading certificates, managing credentials, and creating DSS signing tokens.
+ * PKCS#11 enumeration is delegated to the discovery subsystem — the cached token list via
+ * [Pkcs11Discoverer], physical-presence checks via [Pkcs11ProbeCache], and the diagnostic
+ * snapshot via [Pkcs11CandidateCollector].  This class is responsible only for loading
+ * certificates, managing credentials, and creating DSS signing tokens.
  *
  * OS-native stores (Windows MY, macOS Keychain) are added alongside PKCS#11 tokens.
  * No credential is requested during discovery; [loadCertificates] prompts via [PasswordCallback]

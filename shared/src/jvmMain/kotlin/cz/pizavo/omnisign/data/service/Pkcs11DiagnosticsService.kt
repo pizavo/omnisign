@@ -29,6 +29,8 @@ import java.util.concurrent.TimeUnit
  * @property configRepository Source of the user-supplied PKCS#11 library list.
  * @property prober Process-isolated probe runner used for the per-candidate identity and
  *   no-login certificate probes.
+ * @property pcscMonitor PC/SC monitor queried via [PcscMonitorService.currentReaders] to
+ *   list the connected readers and their card state in the report.
  * @property probeTimeoutSeconds Maximum time to wait for a single library probe before
  *   forcibly killing the subprocess.  Defaults to [Pkcs11Prober.DEFAULT_PROBE_TIMEOUT_SECONDS].
  * @property externalCommandTimeoutSeconds Maximum time to wait for `p11-kit` / `pkg-config`

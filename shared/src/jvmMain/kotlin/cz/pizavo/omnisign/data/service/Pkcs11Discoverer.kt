@@ -43,6 +43,10 @@ import java.io.File
  *   `eTPKCS11.dll`) is a well-documented source of intermittent SIGSEGV / `CKR_FUNCTION_FAILED`
  *   responses.  Defaults to `2`, matching [Pkcs11WarmupService] so combined warmup +
  *   discovery never exceed `4` concurrent probes against the same lib in the worst case.
+ * @property discoverySignal Shared discovery-running refcount surfaced as [discoveryRunning]
+ *   and bracketed by [beginDiscovery] / [endDiscovery] ([Pkcs11DiscoverySignal]); the same
+ *   instance warmup and the invalidator publish to, so passive readers observe one unified
+ *   in-flight flag regardless of which producer is running.
  *
  * Cache lifetime is **event-driven**, not time-driven: entries live indefinitely until
  * [Pkcs11CacheInvalidator] observes a PC/SC reader-state change and clears them, or until
