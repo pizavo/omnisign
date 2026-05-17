@@ -10,6 +10,9 @@ import kotlinx.coroutines.flow.MutableStateFlow
 /**
  * Verifies [Pkcs11WarmupService] orchestration: subprocess result handling,
  * [Pkcs11CrashBlacklist] updates, parallelism cap, and signal lifecycle.
+ *
+ * The probe seam is the injected [Pkcs11Prober] mock — warmup branches on the
+ * [Pkcs11SubprocessResult] it returns and parses successes via [Pkcs11Prober.parseIdentities].
  */
 class Pkcs11WarmupServiceTest : FunSpec({
 
@@ -29,11 +32,12 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		every { discoverer.collectCandidates(any(), any()) } returns listOf("Safe Lib" to "/test/safe.so")
 		val signal = MutableStateFlow(false)
 
-		mockkStatic(::runProbeSubprocess)
-		every { runProbeSubprocess("/test/safe.so", any()) } returns
+		val prober = mockk<Pkcs11Prober>()
+		every { prober.runProbe("/test/safe.so", any()) } returns
 				Pkcs11SubprocessResult.Success(pid = 200L, stdout = "")
+		every { prober.parseIdentities(any(), any()) } returns emptyList()
 
-		Pkcs11WarmupService(discoverer, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
 
 		blacklist.isCrashed("/test/safe.so").shouldBeFalse()
 		signal.value.shouldBeTrue()
@@ -45,11 +49,11 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		every { discoverer.collectCandidates(any(), any()) } returns listOf("Crash Lib" to "/test/crash.so")
 		val signal = MutableStateFlow(false)
 
-		mockkStatic(::runProbeSubprocess)
-		every { runProbeSubprocess("/test/crash.so", any()) } returns
+		val prober = mockk<Pkcs11Prober>()
+		every { prober.runProbe("/test/crash.so", any()) } returns
 				Pkcs11SubprocessResult.Crashed(pid = 201L, exitCode = 139, stderr = "SIGSEGV")
 
-		Pkcs11WarmupService(discoverer, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
 
 		blacklist.isCrashed("/test/crash.so").shouldBeTrue()
 		signal.value.shouldBeTrue()
@@ -61,11 +65,11 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		every { discoverer.collectCandidates(any(), any()) } returns listOf("Hung Lib" to "/test/hung.so")
 		val signal = MutableStateFlow(false)
 
-		mockkStatic(::runProbeSubprocess)
-		every { runProbeSubprocess("/test/hung.so", any()) } returns
+		val prober = mockk<Pkcs11Prober>()
+		every { prober.runProbe("/test/hung.so", any()) } returns
 				Pkcs11SubprocessResult.TimedOut(pid = 202L)
 
-		Pkcs11WarmupService(discoverer, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
 
 		blacklist.isCrashed("/test/hung.so").shouldBeFalse()
 		signal.value.shouldBeTrue()
@@ -77,10 +81,10 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		every { discoverer.collectCandidates(any(), any()) } returns listOf("No Cmd" to "/test/nocmd.so")
 		val signal = MutableStateFlow(false)
 
-		mockkStatic(::runProbeSubprocess)
-		every { runProbeSubprocess("/test/nocmd.so", any()) } returns null
+		val prober = mockk<Pkcs11Prober>()
+		every { prober.runProbe("/test/nocmd.so", any()) } returns null
 
-		Pkcs11WarmupService(discoverer, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
 
 		blacklist.isCrashed("/test/nocmd.so").shouldBeFalse()
 		signal.value.shouldBeTrue()
@@ -95,11 +99,11 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		)
 		val signal = MutableStateFlow(false)
 
-		mockkStatic(::runProbeSubprocess)
-		every { runProbeSubprocess(any(), any()) } returns
+		val prober = mockk<Pkcs11Prober>()
+		every { prober.runProbe(any(), any()) } returns
 				Pkcs11SubprocessResult.Crashed(pid = 300L, exitCode = 134, stderr = "")
 
-		Pkcs11WarmupService(discoverer, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
 
 		blacklist.isCrashed("/test/a.so").shouldBeTrue()
 		blacklist.isCrashed("/test/b.so").shouldBeTrue()
@@ -116,16 +120,17 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		val concurrent = java.util.concurrent.atomic.AtomicInteger(0)
 		val peak = java.util.concurrent.atomic.AtomicInteger(0)
 
-		mockkStatic(::runProbeSubprocess)
-		every { runProbeSubprocess(any(), any()) } answers {
+		val prober = mockk<Pkcs11Prober>()
+		every { prober.runProbe(any(), any()) } answers {
 			val now = concurrent.incrementAndGet()
 			peak.updateAndGet { kotlin.math.max(it, now) }
 			Thread.sleep(50)
 			concurrent.decrementAndGet()
 			Pkcs11SubprocessResult.Success(pid = 1L, stdout = "")
 		}
+		every { prober.parseIdentities(any(), any()) } returns emptyList()
 
-		Pkcs11WarmupService(discoverer, blacklist, signal, maxParallelism = 2).warmup()
+		Pkcs11WarmupService(discoverer, prober, blacklist, signal, maxParallelism = 2).warmup()
 
 		(peak.get() <= 2) shouldBe true
 		signal.value.shouldBeTrue()
@@ -134,9 +139,10 @@ class Pkcs11WarmupServiceTest : FunSpec({
 	test("warmup skips when signal is already true") {
 		val blacklist = Pkcs11CrashBlacklist()
 		val discoverer = mockk<Pkcs11Discoverer>(relaxUnitFun = true)
+		val prober = mockk<Pkcs11Prober>()
 		val signal = MutableStateFlow(true)
 
-		Pkcs11WarmupService(discoverer, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
 
 		verify(exactly = 0) { discoverer.collectCandidates(any(), any()) }
 	}
@@ -145,9 +151,10 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		val blacklist = Pkcs11CrashBlacklist()
 		val discoverer = mockk<Pkcs11Discoverer>(relaxUnitFun = true)
 		every { discoverer.collectCandidates(any(), any()) } returns emptyList()
+		val prober = mockk<Pkcs11Prober>()
 		val signal = MutableStateFlow(false)
 
-		Pkcs11WarmupService(discoverer, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
 
 		signal.value.shouldBeTrue()
 	}
@@ -158,10 +165,10 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		every { discoverer.collectCandidates(any(), any()) } returns listOf("Error Lib" to "/test/error.so")
 		val signal = MutableStateFlow(false)
 
-		mockkStatic(::runProbeSubprocess)
-		every { runProbeSubprocess("/test/error.so", any()) } throws RuntimeException("process failed")
+		val prober = mockk<Pkcs11Prober>()
+		every { prober.runProbe("/test/error.so", any()) } throws RuntimeException("process failed")
 
-		Pkcs11WarmupService(discoverer, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
 
 		blacklist.isCrashed("/test/error.so").shouldBeTrue()
 		signal.value.shouldBeTrue()
@@ -171,9 +178,10 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		val blacklist = Pkcs11CrashBlacklist()
 		val discoverer = mockk<Pkcs11Discoverer>(relaxUnitFun = true)
 		every { discoverer.collectCandidates(any(), any()) } returns emptyList()
+		val prober = mockk<Pkcs11Prober>()
 		val signal = MutableStateFlow(false)
 
-		Pkcs11WarmupService(discoverer, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
 
 		verifyOrder {
 			discoverer.beginDiscovery()
@@ -186,9 +194,10 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		val blacklist = Pkcs11CrashBlacklist()
 		val discoverer = mockk<Pkcs11Discoverer>(relaxUnitFun = true)
 		every { discoverer.collectCandidates(any(), any()) } throws RuntimeException("enumeration failed")
+		val prober = mockk<Pkcs11Prober>()
 		val signal = MutableStateFlow(false)
 
-		runCatching { Pkcs11WarmupService(discoverer, blacklist, signal).warmup() }
+		runCatching { Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup() }
 
 		verify(exactly = 1) { discoverer.beginDiscovery() }
 		verify(exactly = 1) { discoverer.endDiscovery() }
@@ -197,9 +206,10 @@ class Pkcs11WarmupServiceTest : FunSpec({
 	test("warmup skips begin/endDiscovery when the signal already says warmup is done") {
 		val blacklist = Pkcs11CrashBlacklist()
 		val discoverer = mockk<Pkcs11Discoverer>(relaxUnitFun = true)
+		val prober = mockk<Pkcs11Prober>()
 		val signal = MutableStateFlow(true)
 
-		Pkcs11WarmupService(discoverer, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
 
 		verify(exactly = 0) { discoverer.beginDiscovery() }
 		verify(exactly = 0) { discoverer.endDiscovery() }

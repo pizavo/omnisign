@@ -159,7 +159,7 @@ data class Pkcs11DiagnosticsReport(
 		 * - [SUCCESS] — exit code 0; identity output (possibly empty when no card is inserted).
 		 * - [CRASHED] — non-zero exit, often a SIGSEGV from misbehaving middleware.
 		 * - [TIMED_OUT] — subprocess did not exit within the configured timeout and was killed.
-		 * - [NO_COMMAND] — [resolveProbeCommand] could not find a usable executable.
+		 * - [NO_COMMAND] — [Pkcs11Prober] could not resolve a usable probe executable.
 		 */
 		enum class Outcome { SUCCESS, CRASHED, TIMED_OUT, NO_COMMAND }
 	}

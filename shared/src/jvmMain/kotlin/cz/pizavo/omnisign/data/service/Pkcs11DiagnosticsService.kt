@@ -25,17 +25,20 @@ import java.util.concurrent.TimeUnit
  * @property noLoginProbe Probe that attempts an unauthenticated SunPKCS#11 `KeyStore`
  *   enumeration per discovered PKCS#11 token (the "Route A" experiment).
  * @property configRepository Source of the user-supplied PKCS#11 library list.
+ * @property prober Process-isolated probe runner used for the per-candidate identity and
+ *   no-login certificate probes.
  * @property probeTimeoutSeconds Maximum time to wait for a single library probe before
- *   forcibly killing the subprocess.  Defaults to [DEFAULT_PROBE_TIMEOUT_SECONDS].
+ *   forcibly killing the subprocess.  Defaults to [Pkcs11Prober.DEFAULT_PROBE_TIMEOUT_SECONDS].
  * @property externalCommandTimeoutSeconds Maximum time to wait for `p11-kit` / `pkg-config`
  *   helper commands.  Short by design — diagnostics should not stall on a hung tool.
  */
 class Pkcs11DiagnosticsService(
 	private val pkcs11Discoverer: Pkcs11Discoverer,
+	private val prober: Pkcs11Prober,
 	private val configRepository: ConfigRepository,
 	private val pcscMonitor: PcscMonitorService,
 	private val noLoginProbe: Pkcs11NoLoginCertProbe = Pkcs11NoLoginCertProbe(),
-	private val probeTimeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
+	private val probeTimeoutSeconds: Long = Pkcs11Prober.DEFAULT_PROBE_TIMEOUT_SECONDS,
 	private val externalCommandTimeoutSeconds: Long = DEFAULT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
 ) {
 
@@ -99,7 +102,7 @@ class Pkcs11DiagnosticsService(
 			.map { token -> noLoginProbe.enumerate(token.name, token.path!!, token.pkcs11SlotId) }
 
 		val rawNoLoginCertificates = mergedCandidates.map { candidate ->
-			val result = runCatching { runCertProbeSubprocess(candidate.path, probeTimeoutSeconds) }.getOrNull()
+			val result = runCatching { prober.runCertProbe(candidate.path, probeTimeoutSeconds) }.getOrNull()
 			Pkcs11DiagnosticsReport.RawNoLoginCertScan(
 				libraryPath = candidate.path,
 				subprocessSucceeded = result is Pkcs11SubprocessResult.Success,
@@ -197,7 +200,7 @@ class Pkcs11DiagnosticsService(
 		outcomes: MutableList<Pkcs11DiagnosticsReport.ProbeOutcome>,
 	): List<Pkcs11TokenIdentity> {
 		val startNanos = System.nanoTime()
-		val result = runCatching { runProbeSubprocess(libraryPath, probeTimeoutSeconds) }.getOrNull()
+		val result = runCatching { prober.runProbe(libraryPath, probeTimeoutSeconds) }.getOrNull()
 		val totalMillis = (System.nanoTime() - startNanos) / NANOS_PER_MILLI
 
 		val (outcome, identities) = when (result) {
@@ -235,7 +238,7 @@ class Pkcs11DiagnosticsService(
 			) to emptyList()
 
 			is Pkcs11SubprocessResult.Success -> {
-				val parsed = parseProbeStdout(result.stdout, libraryPath)
+				val parsed = prober.parseIdentities(result.stdout, libraryPath)
 				val reportIdentities = parsed.map {
 					Pkcs11DiagnosticsReport.Identity(it.label, it.serialNumber, it.slotId)
 				}

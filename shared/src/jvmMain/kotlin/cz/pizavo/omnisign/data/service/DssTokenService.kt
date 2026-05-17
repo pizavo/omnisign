@@ -47,6 +47,7 @@ import java.security.cert.X509Certificate
 class DssTokenService(
 	private val passwordCallback: PasswordCallback,
 	private val pkcs11Discoverer: Pkcs11Discoverer = Pkcs11Discoverer(),
+	private val prober: Pkcs11Prober = Pkcs11SubprocessProber(),
 	private val pkcs11CacheInvalidator: Pkcs11CacheInvalidator? = null,
 	private val pcscMonitorService: PcscMonitorService? = null,
 	private val configRepository: ConfigRepository? = null,
@@ -207,7 +208,7 @@ class DssTokenService(
 		if (tokenInfo.type != TokenType.PKCS11) return emptyList<CertificateEntry>().right()
 		val libraryPath = tokenInfo.path ?: return emptyList<CertificateEntry>().right()
 		val certs = runCatching {
-			val result = runCertProbeSubprocess(libraryPath, DEFAULT_PROBE_TIMEOUT_SECONDS)
+			val result = prober.runCertProbe(libraryPath, Pkcs11Prober.DEFAULT_PROBE_TIMEOUT_SECONDS)
 			if (result is Pkcs11SubprocessResult.Success) {
 				parseProbeNoLoginCerts(result.stdout).map { it.toCertificateEntry(tokenInfo) }
 			} else {

@@ -33,16 +33,21 @@ import org.koin.dsl.module
 val jvmRepositoryModule = module {
 	single { Pkcs11CrashBlacklist() }
 	single { PcscContextRecovery() }
+	single { Pkcs11DiscoverySignal() }
+	single<Pkcs11Prober> { Pkcs11SubprocessProber() }
 	single { PcscMonitorService(recovery = get()) }
 	single {
 		Pkcs11Discoverer(
 			crashBlacklist = get(),
+			prober = get(),
 			pcscRecovery = get(),
+			discoverySignal = get(),
 		)
 	}
 	single {
 		Pkcs11WarmupService(
 			discoverer = get(),
+			prober = get(),
 			crashBlacklist = get(),
 			warmupSignal = getOrNull<MutableStateFlow<Boolean>>() ?: MutableStateFlow(true),
 		)
@@ -51,6 +56,7 @@ val jvmRepositoryModule = module {
 	single {
 		Pkcs11DiagnosticsService(
 			pkcs11Discoverer = get(),
+			prober = get(),
 			configRepository = get(),
 			pcscMonitor = get(),
 			noLoginProbe = get(),
@@ -68,6 +74,7 @@ val jvmRepositoryModule = module {
 		DssTokenService(
 			passwordCallback = get(),
 			pkcs11Discoverer = get(),
+			prober = get(),
 			pkcs11CacheInvalidator = get(),
 			pcscMonitorService = get(),
 			configRepository = get(),

@@ -15,48 +15,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
-import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 import java.io.File
-import java.nio.file.Path
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicInteger
 import javax.smartcardio.CardTerminal
 import javax.smartcardio.TerminalFactory
-
-/**
- * Identity of a physical PKCS#11 token as reported by `C_GetTokenInfo`.
- *
- * @property label Token label (up to 32 UTF-8 characters, space-padded by the PKCS#11 spec).
- * @property serialNumber Token serial number (up to 16 characters, space-padded).
- * @property libraryPath Absolute path of the PKCS#11 middleware library that reported this token.
- * @property slotId Slot identifier where the token was found, as returned by
- *   `C_GetSlotList(tokenPresent=CK_TRUE)`.  This is the literal slot ID, not an index into
- *   the slot list — used directly in the SunPKCS11 `slot = ` config directive so that
- *   `C_Login` targets the correct slot on aggregator modules (p11-kit-proxy) where slot 0
- *   is typically the wrong slot.
- */
-data class Pkcs11TokenIdentity(
-	val label: String,
-	val serialNumber: String,
-	val libraryPath: String,
-	val slotId: Long = 0L,
-)
-
-/**
- * Default timeout (in seconds) for probing a single PKCS#11 library.
- *
- * Acts as a safety net for middleware that hangs without responding.
- * Probes that crash (e.g., SIGSEGV, SIGABRT) exit immediately with a
- * non-zero code and are handled without waiting for this timeout.
- */
-internal const val DEFAULT_PROBE_TIMEOUT_SECONDS = 30L
 
 /**
  * Discovers PKCS#11 middleware libraries available on the current system and resolves
@@ -74,27 +42,21 @@ internal const val DEFAULT_PROBE_TIMEOUT_SECONDS = 30L
  * token identity (label and serial number) via `C_GetTokenInfo`.  Multiple middleware DLLs
  * that report the same physical token serial produce a single [TokenInfo].
  *
- * @property probeTimeoutSeconds Maximum time in seconds to wait for a single PKCS#11 library
- *   probe subprocess before killing it.  Acts as a safety net for middleware that hangs without
- *   responding; probes that crash (SIGSEGV, SIGABRT) exit immediately and are handled without
- *   waiting for this timeout.  Defaults to [DEFAULT_PROBE_TIMEOUT_SECONDS].
  * @property crashBlacklist Records libraries whose subprocess validation crashed.  A path is
  *   skipped by [probeLibrary] only while it has crashed at least the [Pkcs11CrashBlacklist]
  *   threshold times within its sliding window; the record then decays and probing resumes,
  *   so a transient SafeNet-style crash does not disable a healthy library for the JVM
  *   lifetime.  Populated by [Pkcs11WarmupService] during startup validation.  All actual
- *   token probing runs out-of-process via [tokenProber] (a subprocess by default) — there
- *   is intentionally no in-process JNA consumer alongside SunPKCS11, which DSS uses for
- *   signing.
+ *   token probing runs out-of-process via [prober] — there is intentionally no in-process
+ *   JNA consumer alongside SunPKCS11, which DSS uses for signing.
  * @property discoveryGate Concurrency gate ensuring that at most one [discoverTokens] cycle runs
  *   at a time, with at most one additional cycle queued.  When a discovery is already in progress
  *   and a new request arrives, the running cycle's result is discarded and a fresh cycle executes
  *   so every caller receives the latest hardware state.  Defaults to a new instance for backward
  *   compatibility and tests.
- * @property tokenProber Strategy for probing PKCS#11 libraries for hardware token identities.
- *   Defaults to subprocess-based probing via [probeTokenIdentitiesViaSubprocess] to isolate
- *   native crashes (SIGSEGV) from the host JVM; override for testing.  The default lambda
- *   forwards [probeTimeoutSeconds] to the subprocess.
+ * @property prober Strategy for probing PKCS#11 libraries for hardware token identities,
+ *   process-isolated by default ([Pkcs11SubprocessProber]) so a native crash (SIGSEGV) cannot
+ *   take down the host JVM.  Injected as a [Pkcs11Prober] so it can be substituted in tests.
  * @property probeParallelism Maximum number of subprocesses [discoverTokens] is allowed to
  *   spawn concurrently.  Each subprocess cold-starts a JVM and calls `C_Initialize` on the
  *   target library; running too many in parallel against the same vendor library (e.g. SafeNet
@@ -120,74 +82,31 @@ internal const val DEFAULT_PROBE_TIMEOUT_SECONDS = 30L
  * [discoverTokens] does so internally on every caller's behalf.
  */
 class Pkcs11Discoverer(
-	private val probeTimeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
 	private val crashBlacklist: Pkcs11CrashBlacklist = Pkcs11CrashBlacklist(),
 	private val discoveryGate: ConflatedProbeGate<List<TokenInfo>> = ConflatedProbeGate(),
-	private val tokenProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
-		probeTokenIdentitiesViaSubprocess(path, probeTimeoutSeconds)
-	},
+	private val prober: Pkcs11Prober = Pkcs11SubprocessProber(),
 	private val probeParallelism: Int = DEFAULT_PROBE_PARALLELISM,
 	private val pcscRecovery: PcscContextRecovery = PcscContextRecovery(),
+	private val discoverySignal: Pkcs11DiscoverySignal = Pkcs11DiscoverySignal(),
 ) {
 	
 	/**
-	 * Reference count of concurrently in-flight discovery cycles (warmup, dialog-triggered
-	 * [discoverTokens] calls, invalidator-launched rediscovery — anything that calls
-	 * [beginDiscovery]).  Drives transitions of [_discoveryRunning]: `0 → 1` flips the flag
-	 * `true`, `1 → 0` flips it `false`.  Intermediate increments leave the flag at `true`
-	 * so concurrent callers don't briefly observe a false gap between back-to-back cycles.
+	 * `true` while at least one PKCS#11 discovery cycle is in flight.  Delegates to the
+	 * shared [Pkcs11DiscoverySignal]; see there for the cross-producer contract and why the
+	 * initial value is `false`.
 	 */
-	private val activeDiscoveryCount = AtomicInteger(0)
-	
+	val discoveryRunning: StateFlow<Boolean> get() = discoverySignal.discoveryRunning
+
 	/**
-	 * Backing mutable flow for [discoveryRunning].  Modified only via [beginDiscovery] /
-	 * [endDiscovery] so the refcount and the flag stay coherent.
+	 * Begin a discovery cycle.  Delegates to [Pkcs11DiscoverySignal.beginDiscovery] — pair
+	 * every call with [endDiscovery] in a `finally` block to avoid leaking the flag.
 	 */
-	private val _discoveryRunning = MutableStateFlow(false)
-	
+	fun beginDiscovery() = discoverySignal.beginDiscovery()
+
 	/**
-	 * `true` while at least one discovery cycle is in flight, `false` when none is.
-	 *
-	 * The signal is unified across every producer of probe-cache state:
-	 * - [Pkcs11WarmupService.warmup] at application start.
-	 * - [Pkcs11CacheInvalidator] background rediscovery launched by a PC/SC reader-state event.
-	 * - Direct [discoverTokens] calls (e.g. tests or future callers).
-	 *
-	 * Initial value is `false` because warmup is always launched at bootstrap, well before
-	 * any UI dialog can call into this class — its first action inside [warmupSignal]'s
-	 * try-block is [beginDiscovery], which flips the flag synchronously on the warmup
-	 * coroutine before any consumer can observe it.  Falling back to `false` (rather than
-	 * an initial `true` that warmup later clears) avoids the "dialog spinner forever"
-	 * failure mode if warmup ever fails to launch.
-	 *
-	 * Consumers that want a passive cache read should `discoveryRunning.filter { !it }.first()`
-	 * before calling [getCachedTokens] so the cache is fully populated by the time they read it.
+	 * End a discovery cycle.  Delegates to [Pkcs11DiscoverySignal.endDiscovery].
 	 */
-	val discoveryRunning: StateFlow<Boolean> = _discoveryRunning.asStateFlow()
-	
-	/**
-	 * Increment the discovery refcount, flipping [discoveryRunning] to `true` if this is the
-	 * first in-flight cycle.
-	 *
-	 * Public so producers that don't call [discoverTokens] internally (notably
-	 * [Pkcs11WarmupService], which runs its own subprocess loop and writes through to
-	 * [probeCache] via [primeCache]) can still publish their in-progress state.  Callers
-	 * MUST pair every call with [endDiscovery] in a `finally` block to avoid leaking the
-	 * flag at `true`.
-	 */
-	fun beginDiscovery() {
-		if (activeDiscoveryCount.incrementAndGet() == 1) _discoveryRunning.value = true
-	}
-	
-	/**
-	 * Decrement the discovery refcount, flipping [discoveryRunning] to `false` when the last
-	 * in-flight cycle ends.
-	 *
-	 * See [beginDiscovery] for usage contract.
-	 */
-	fun endDiscovery() {
-		if (activeDiscoveryCount.decrementAndGet() == 0) _discoveryRunning.value = false
-	}
+	fun endDiscovery() = discoverySignal.endDiscovery()
 	
 	/**
 	 * Per-path cache of successful probe results.
@@ -239,7 +158,7 @@ class Pkcs11Discoverer(
 	 *    without spawning a subprocess.  This is the hot path that makes a second
 	 *    `probeTokenPresent` call inside the dialog-open flow effectively free.  Cache
 	 *    freshness is enforced by [Pkcs11CacheInvalidator] reacting to PC/SC events.
-	 * 3. **Cache miss** — spawn a subprocess via [tokenProber] (default: process-isolated to
+	 * 3. **Cache miss** — probe out-of-process via [prober] (default: process-isolated to
 	 *    contain native SIGSEGV).  On non-empty success, populate the cache.  On empty
 	 *    success or failure, leave the cache untouched so a later card insertion is picked
 	 *    up on the next call.
@@ -260,7 +179,7 @@ class Pkcs11Discoverer(
 			logger.debug { "Probe cache hit for '$libraryPath' (${it.size} identity(-ies))" }
 			return it
 		}
-		val identities = tokenProber(libraryPath)
+		val identities = prober.probeIdentities(libraryPath)
 		if (identities.isNotEmpty()) {
 			probeCache[libraryPath] = identities
 		}
@@ -406,7 +325,7 @@ class Pkcs11Discoverer(
 	 * Discovery never blocks on [Pkcs11WarmupService] completion.  Each candidate library is
 	 * probed via [probeLibrary], which returns a cached probe result when one is present
 	 * (the hot path once warmup or an invalidator-driven rediscovery has populated the
-	 * cache) and otherwise spawns an out-of-process [tokenProber] subprocess.  There is no
+	 * cache) and otherwise spawns an out-of-process [prober] subprocess.  There is no
 	 * in-process probing path.
 	 *
 	 * Probing runs in parallel on [Dispatchers.IO] — one coroutine per unique library path —
@@ -933,225 +852,6 @@ class Pkcs11Discoverer(
 }
 
 /**
- * Resolve the classpath to use when spawning a [Pkcs11ProbeWorker] subprocess via `java`.
- *
- * Attempts the following strategies in order:
- * 1. **`java.class.path` system property** — always available when the app is launched via
- *    `java -cp` or from an IDE, and usually set by jpackage native launchers.
- * 2. **Code-source JAR directory scan** — when `java.class.path` is null or blank (observed
- *    in some jpackage distributions), the JAR containing [Pkcs11ProbeWorker] is located via
- *    [Class.getProtectionDomain], and every `*.jar` in its parent directory is included.
- *    In a jpackage image this corresponds to all JARs under the `lib/app` directory, which
- *    is the exact set the native launcher would have placed on the classpath.
- *
- * @return The resolved classpath string, or `null` when neither strategy yields a usable path.
- */
-internal fun resolveProbeClasspath(): String? {
-	val logger = KotlinLogging.logger {}
-	
-	val sysCp = System.getProperty("java.class.path")
-	if (!sysCp.isNullOrBlank()) {
-		logger.debug { "Probe classpath resolved from java.class.path (${sysCp.length} chars)" }
-		return sysCp
-	}
-	
-	logger.info { "java.class.path is null or blank — falling back to code-source JAR directory scan" }
-	
-	val codeSource = Pkcs11ProbeWorker::class.java.protectionDomain?.codeSource?.location
-	if (codeSource == null) {
-		logger.warn { "Cannot resolve code source for Pkcs11ProbeWorker — subprocess probing will be unavailable" }
-		return null
-	}
-	
-	val sourceFile = runCatching { File(codeSource.toURI()) }.getOrElse { e ->
-		logger.warn(e) { "Cannot convert code source URI to file path: $codeSource" }
-		return null
-	}
-	
-	val appDir = sourceFile.parentFile
-	if (appDir == null || !appDir.isDirectory) {
-		logger.warn { "Code source parent directory does not exist: ${sourceFile.parent}" }
-		return null
-	}
-	
-	val jars = appDir.listFiles { f -> f.isFile && f.extension == "jar" }
-	if (jars.isNullOrEmpty()) {
-		logger.warn { "No JAR files found in code source directory: ${appDir.absolutePath}" }
-		return null
-	}
-	
-	val classpath = jars.joinToString(File.pathSeparator) { it.absolutePath }
-	logger.info { "Probe classpath resolved from ${jars.size} JARs in ${appDir.absolutePath}" }
-	return classpath
-}
-
-/**
- * Build the command line for a [Pkcs11ProbeWorker] subprocess.
- *
- * Attempts two strategies in order:
- * 1. **`java` binary** — the standard `java` executable inside `java.home/bin/`.  Works from
- *    an IDE, `java -jar`, or any standard JVM launch.  Requires [resolveProbeClasspath] to
- *    succeed.
- * 2. **Native launcher** — the application's own executable as reported by
- *    [ProcessHandle.current].  In a jpackage distribution the `java` binary is stripped by
- *    `--strip-native-commands`, but the native launcher (e.g. `/opt/omnisign/bin/OmniSign`)
- *    is always present.  The subprocess is started with the `probe` argument so that the
- *    application's `main()` delegates directly to [Pkcs11ProbeWorker] and exits without
- *    starting the full UI or DI framework.
- *
- * @param libraryPath Absolute path to the PKCS#11 shared library to probe.
- * @return The full command list ready for [ProcessBuilder], or `null` when no usable
- *   executable can be found.
- */
-internal fun resolveProbeCommand(libraryPath: String): List<String>? {
-	val logger = KotlinLogging.logger {}
-	
-	val javaBinaryName = if (System.getProperty("os.name").lowercase().contains("win")) "java.exe" else "java"
-	val javaExecutable = Path.of(System.getProperty("java.home"), "bin", javaBinaryName).toString()
-	if (File(javaExecutable).exists()) {
-		val classpath = resolveProbeClasspath()
-		if (classpath == null) {
-			logger.warn { "java binary found but classpath resolution failed — cannot probe '$libraryPath'" }
-			return null
-		}
-		return buildList {
-			add(javaExecutable)
-			add("--enable-native-access=ALL-UNNAMED")
-			System.getProperty("omnisign.crash.dir")?.let { crashDir ->
-				add("-XX:ErrorFile=$crashDir/hs_err_pid%p.log")
-			}
-			addAll(listOf("-cp", classpath, Pkcs11ProbeWorker::class.java.name, libraryPath))
-		}
-	}
-	
-	logger.info { "java binary not found at '$javaExecutable' — trying native launcher fallback" }
-	
-	val nativeLauncher = ProcessHandle.current().info().command().orElse(null)
-	if (nativeLauncher != null && File(nativeLauncher).exists()) {
-		logger.info { "Using native launcher for PKCS#11 probe: $nativeLauncher" }
-		return listOf(nativeLauncher, "probe", libraryPath)
-	}
-	
-	logger.warn { "Neither java binary nor native launcher found — cannot spawn probe for '$libraryPath'" }
-	return null
-}
-
-/**
- * Probe a PKCS#11 library for token identities in an isolated subprocess.
- *
- * Spawns a child process running [Pkcs11ProbeWorker] to probe the given library.
- * If the native library causes a fatal crash (e.g., SIGSEGV from SafeNet eToken's
- * `libeTPKCS15.so` when no card is inserted), only the child process is terminated — the
- * host JVM continues normally.
- *
- * The subprocess command is resolved via [resolveProbeCommand], which handles two
- * environments:
- * - **Standard JVM** (IDE, `java -jar`): spawns `java -cp ... Pkcs11ProbeWorker`.
- * - **jpackage distribution**: the bundled runtime has no `java` binary (stripped by
- *   `--strip-native-commands`), so the application's own native launcher is invoked with
- *   the `probe` argument instead.
- *
- * Error handling uses two mechanisms:
- * - **Crash detection**: probes that crash (SIGSEGV, SIGABRT, etc.) exit immediately with
- *   a non-zero code.  [Process.waitFor] returns as soon as the process terminates, so
- *   crashed probes are handled in milliseconds regardless of the configured timeout.
- * - **Hang safety net**: the [timeoutSeconds] parameter guards against middleware that
- *   freezes without crashing.  Only truly unresponsive probes wait the full duration
- *   before being forcibly killed.
- *
- * Falls back to an empty list when:
- * - The subprocess times out (killed after [timeoutSeconds]).
- * - The subprocess exits with a non-zero code (native crash or probing error).
- * - The subprocess output cannot be parsed.
- * - No suitable executable can be resolved.
- *
- * @param libraryPath Absolute path to the PKCS#11 shared library to probe.
- * @param timeoutSeconds Maximum wall-clock time to wait for the subprocess before killing it.
- *   Only reached when the process hangs; crashed probes are handled immediately.
- */
-internal fun probeTokenIdentitiesViaSubprocess(
-	libraryPath: String,
-	timeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
-): List<Pkcs11TokenIdentity> {
-	val logger = KotlinLogging.logger {}
-	return runCatching {
-		when (val result = runProbeSubprocess(libraryPath, timeoutSeconds)) {
-			null -> {
-				logger.warn { "Cannot resolve probe command — skipping probe for '$libraryPath'" }
-				emptyList()
-			}
-			
-			is Pkcs11SubprocessResult.TimedOut -> {
-				logger.warn {
-					"PKCS#11 probe subprocess pid=${result.pid} for '$libraryPath' timed out after ${timeoutSeconds}s"
-				}
-				emptyList()
-			}
-			
-			is Pkcs11SubprocessResult.Crashed -> {
-				val signal = if (result.exitCode > 128) " (${signalName(result.exitCode - 128)})" else ""
-				logger.warn {
-					buildString {
-						append("PKCS#11 probe subprocess pid=${result.pid} for '$libraryPath' exited with code ${result.exitCode}$signal")
-						if (result.stderr.isNotEmpty()) {
-							append("\n  stderr: ${result.stderr}")
-						}
-						if (result.exitCode - 128 == 11 || result.exitCode - 128 == 6) {
-							append("\n  Check for hs_err_pid${result.pid}.log in the crash directory")
-						}
-					}
-				}
-				emptyList()
-			}
-			
-			is Pkcs11SubprocessResult.Success -> parseProbeStdout(result.stdout, libraryPath)
-		}
-	}.getOrElse { e ->
-		logger.warn(e) { "Failed to spawn PKCS#11 probe subprocess for '$libraryPath'" }
-		emptyList()
-	}
-}
-
-/**
- * Parse a [Pkcs11ProbeWorker] subprocess's `stdout` into a list of [Pkcs11TokenIdentity].
- *
- * Each non-empty tab-separated line carries `label\tserialNumber\tslotId` (current format)
- * or `label\tserialNumber` (legacy two-column format, retained for forward compatibility
- * with mixed-version invocations).  The legacy form falls back to slot ID `0`, which matches
- * DSS's pre-slot-aware default and keeps Windows behaviour unchanged when an older subprocess
- * binary is launched.
- *
- * Lines without a tab character are dropped (defensive against logger output leaking into
- * stdout in pathological cases).  Lines that fail to parse a numeric slot ID degrade
- * gracefully to `0`.
- *
- * Shared between [probeTokenIdentitiesViaSubprocess] and [Pkcs11WarmupService] so a single
- * subprocess invocation can populate the discoverer's probe cache without re-spawning.
- *
- * @param stdout Captured standard output of the probe subprocess.
- * @param libraryPath Absolute path to the PKCS#11 shared library that produced this output.
- *   Stored in the resulting [Pkcs11TokenIdentity] for downstream traceability.
- */
-internal fun parseProbeStdout(stdout: String, libraryPath: String): List<Pkcs11TokenIdentity> =
-	stdout.lines()
-		.filter { it.contains('\t') }
-		.mapNotNull { line ->
-			val parts = line.split('\t')
-			val (label, serial, slotIdRaw) = when (parts.size) {
-				3 -> Triple(parts[0], parts[1], parts[2])
-				2 -> Triple(parts[0], parts[1], "0")
-				else -> return@mapNotNull null
-			}
-			val slotId = slotIdRaw.toLongOrNull() ?: 0L
-			Pkcs11TokenIdentity(
-				label = label,
-				serialNumber = serial,
-				libraryPath = libraryPath,
-				slotId = slotId,
-			)
-		}
-
-/**
  * Probe a PKCS#11 [libraryPath] for the identities of all currently inserted tokens.
  *
  * Uses JNA to call `C_Initialize`, `C_GetSlotList(tokenPresent=CK_TRUE)`, and
@@ -1404,25 +1104,3 @@ internal fun parseProbeCertificates(stdout: String): List<Pkcs11DiagnosticsRepor
  */
 internal fun normalizeSerial(serial: String): String =
 	serial.filterNot { it.isWhitespace() || it == '\u0000' }.uppercase()
-
-/**
- * Map a POSIX signal number to its conventional name for diagnostic logging.
- *
- * @param signal Signal number (e.g. 6 for SIGABRT, 11 for SIGSEGV).
- * @return Human-readable name such as `"SIGSEGV"`, or `"signal $signal"` for unmapped values.
- */
-internal fun signalName(signal: Int): String = when (signal) {
-	1 -> "SIGHUP"
-	2 -> "SIGINT"
-	3 -> "SIGQUIT"
-	4 -> "SIGILL"
-	6 -> "SIGABRT"
-	7 -> "SIGBUS"
-	8 -> "SIGFPE"
-	9 -> "SIGKILL"
-	11 -> "SIGSEGV"
-	13 -> "SIGPIPE"
-	14 -> "SIGALRM"
-	15 -> "SIGTERM"
-	else -> "signal $signal"
-}

@@ -32,7 +32,10 @@ import kotlinx.coroutines.sync.withPermit
  * cache readers (notably [DssTokenService]'s sign-dialog path) suspend on the unified
  * discovery signal without having to know which producer is currently running.
  *
- * @property discoverer The discoverer used to list candidate library paths.
+ * @property discoverer The discoverer used to list candidate library paths and prime its
+ *   probe cache with validated identities.
+ * @property prober Process-isolated probe runner; each candidate is validated by spawning a
+ *   probe subprocess through it.
  * @property crashBlacklist The blacklist updated when a subprocess validation crashes.
  * @property warmupSignal Shared mutable flow that this service writes `true` to upon
  *   completion.  Used internally to short-circuit repeated [warmup] invocations once the
@@ -46,9 +49,10 @@ import kotlinx.coroutines.sync.withPermit
  */
 class Pkcs11WarmupService(
 	private val discoverer: Pkcs11Discoverer,
+	private val prober: Pkcs11Prober,
 	private val crashBlacklist: Pkcs11CrashBlacklist,
 	private val warmupSignal: MutableStateFlow<Boolean>,
-	private val probeTimeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
+	private val probeTimeoutSeconds: Long = Pkcs11Prober.DEFAULT_PROBE_TIMEOUT_SECONDS,
 	private val maxParallelism: Int = DEFAULT_MAX_PARALLELISM,
 ) {
 
@@ -115,7 +119,7 @@ class Pkcs11WarmupService(
 	/**
 	 * Probe a single library via subprocess and update [crashBlacklist] when it crashes.
 	 *
-	 * The subprocess is spawned via [resolveProbeCommand] and monitored for completion
+	 * The subprocess is spawned via the injected [Pkcs11Prober] and monitored for completion
 	 * within [probeTimeoutSeconds].  Exit codes are analyzed to distinguish clean exits,
 	 * crashes (SIGSEGV / SIGABRT), and timeouts:
 	 *
@@ -133,7 +137,7 @@ class Pkcs11WarmupService(
 		logger.debug { "Warmup probing '$name' at '$libraryPath'" }
 
 		try {
-			when (val result = runProbeSubprocess(libraryPath, probeTimeoutSeconds)) {
+			when (val result = prober.runProbe(libraryPath, probeTimeoutSeconds)) {
 				null -> {
 					logger.warn { "Cannot resolve probe command for '$name' ('$libraryPath') — skipping warmup" }
 				}
@@ -160,7 +164,7 @@ class Pkcs11WarmupService(
 				}
 
 				is Pkcs11SubprocessResult.Success -> {
-					val identities = parseProbeStdout(result.stdout, libraryPath)
+					val identities = prober.parseIdentities(result.stdout, libraryPath)
 					discoverer.primeCache(libraryPath, identities)
 					logger.info {
 						"Warmup validated '$name' — library loads cleanly in subprocess " +
