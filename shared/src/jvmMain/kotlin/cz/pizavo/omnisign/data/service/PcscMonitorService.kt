@@ -169,7 +169,7 @@ class PcscMonitorService(
 				val failure = poll.exceptionOrNull()
 				when {
 					failure != null && recovery.isStaleContext(failure) -> {
-						logger.warn(failure) { "PC/SC watcher hit a stale context — resetting and rebuilding the reader watcher" }
+						logger.info { "PC/SC watcher hit a stale context ($failure) — resetting and rebuilding the reader watcher" }
 						terminals = recoverTerminals() ?: run {
 							logger.warn { "PC/SC watcher could not recover the context; reader-state events will not resume until restart" }
 							return
