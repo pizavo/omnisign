@@ -33,7 +33,7 @@ import kotlin.time.Instant
  * [registerCrashed] and [isCrashed] cannot corrupt the per-path record.
  *
  * **Population is warmup-only.**  Only [Pkcs11WarmupService] calls [registerCrashed]; the
- * discovery / "Rescan tokens" path ([Pkcs11Discoverer.probeLibrary]) only *reads*
+ * discovery / "Rescan tokens" path ([Pkcs11ProbeCache.probeLibrary]) only *reads*
  * [isCrashed], never records a crash.  Recovery is therefore by the decay window **alone**:
  * there is deliberately no manual force-clear wired into rescan, because the discovery path
  * never re-registers a crash, so force-clearing would let a genuinely broken library
