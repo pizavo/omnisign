@@ -9,21 +9,23 @@ import kotlinx.coroutines.launch
 import java.io.File
 
 /**
- * Keeps the [Pkcs11Discoverer] caches in sync with PC/SC reader-state events.
+ * Keeps the PKCS#11 probe and candidate caches in sync with PC/SC reader-state events.
  *
- * The discoverer caches probe results and candidate enumerations so repeated dialog opens
- * are sub-millisecond.  Without event-driven invalidation, a hot-inserted card is invisible
- * until the cache is otherwise cleared.  By subscribing to [PcscMonitorService.events],
- * this service does two things on every relevant change:
+ * [Pkcs11ProbeCache] and [Pkcs11CandidateCollector] cache probe results and candidate
+ * enumerations so repeated dialog opens are sub-millisecond.  Without event-driven
+ * invalidation, a hot-inserted card is invisible until the cache is otherwise cleared.  By
+ * subscribing to [PcscMonitorService.events], this service does two things on every
+ * relevant change:
  *
  * 1. **Invalidate** the appropriate cache so any cached data that contradicts the new
  *    hardware state is dropped immediately: reader plug / unplug always clears both the
  *    probe and candidate caches; card insert / removal clears the probe cache, and also
  *    the candidate cache when [candidateCacheIsCardDependent] (Windows, where the
- *    candidate list is derived from the inserted card's ATR — see [Pkcs11Discoverer]).
+ *    candidate list is derived from the inserted card's ATR — see
+ *    [Pkcs11CandidateCollector]).
  * 2. **Proactively re-run discovery** in the background so the cache is *populated* with
  *    fresh data by the time the user opens the sign dialog.  The result is intentionally
- *    discarded — its only purpose is the side effect on [Pkcs11Discoverer]'s caches.
+ *    discarded — its only purpose is the side effect on the shared probe / candidate caches.
  *
  * Cache-key consistency: the rediscovery cycle uses the **same** `(appDataPkcs11Dir,
  * userPkcs11Libraries)` tuple that [DssTokenService.discoverTokens] passes when the dialog
@@ -45,10 +47,14 @@ import java.io.File
  *
  * @property monitor The PC/SC monitor whose [PcscMonitorService.events] flow this service
  *   collects.  Collecting on the flow lazily starts the underlying watcher coroutine.
- * @property discoverer The discoverer whose candidate cache this service invalidates and
- *   whose [Pkcs11Discoverer.discoverTokens] this service drives in the background.
+ * @property discoverer Drives the background [Pkcs11Discoverer.discoverTokens] rediscovery
+ *   cycle and the explicit [Pkcs11Discoverer.invalidateCache] rescan; not used for the
+ *   fine-grained per-event cache invalidation.
  * @property probeCache The shared probe cache cleared on every relevant PC/SC event so a
  *   hot-inserted card is re-probed on the next discovery cycle.
+ * @property candidateCollector The shared candidate cache cleared on reader plug / unplug
+ *   (and on card events where [candidateCacheIsCardDependent]) so a newly-installed or
+ *   ATR-resolved library is re-enumerated.
  * @property configRepository Source of [cz.pizavo.omnisign.domain.model.config.GlobalConfig.customPkcs11Libraries],
  *   re-read on every event so config changes during the session are respected.
  * @property appDataPkcs11Dir Drop directory passed to [Pkcs11Discoverer.discoverTokens] —
@@ -60,8 +66,8 @@ import java.io.File
  *   coroutine completion deterministically.
  * @property candidateCacheIsCardDependent Whether inserting / removing a card can change
  *   which PKCS#11 libraries are *candidates* (not merely which tokens are present).  True
- *   on **Windows**, where [Pkcs11Discoverer] resolves the middleware per inserted card
- *   from the card's ATR via the Calais registry, so a card event must also drop the
+ *   on **Windows**, where [Pkcs11PcscCalaisResolver] resolves the middleware per inserted
+ *   card from the card's ATR via the Calais registry, so a card event must also drop the
  *   candidate cache or a freshly-inserted card's token stays invisible until a reader
  *   replug or a manual rescan.  False on Linux (p11-kit proxy) and macOS, where the
  *   candidate set is card-independent and clearing it on every card event would be wasted
@@ -72,6 +78,7 @@ class Pkcs11CacheInvalidator(
 	private val monitor: PcscMonitorService,
 	private val discoverer: Pkcs11Discoverer,
 	private val probeCache: Pkcs11ProbeCache,
+	private val candidateCollector: Pkcs11CandidateCollector,
 	private val configRepository: ConfigRepository,
 	private val appDataPkcs11Dir: File,
 	private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
@@ -111,12 +118,12 @@ class Pkcs11CacheInvalidator(
 						" and triggering rediscovery"
 				}
 				probeCache.invalidateProbes()
-				if (candidateCacheIsCardDependent) discoverer.invalidateCandidates()
+				if (candidateCacheIsCardDependent) candidateCollector.invalidateCandidates()
 			}
 			is PcscEvent.ReaderConnected, is PcscEvent.ReaderDisconnected -> {
 				logger.info { "$event → invalidating probe and candidate caches and triggering rediscovery" }
 				probeCache.invalidateProbes()
-				discoverer.invalidateCandidates()
+				candidateCollector.invalidateCandidates()
 			}
 		}
 		scope.launch { runRediscovery() }

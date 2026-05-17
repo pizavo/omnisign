@@ -20,8 +20,10 @@ import java.util.concurrent.TimeUnit
  * to build the final [cz.pizavo.omnisign.domain.service.TokenInfo] list, so the report
  * faithfully reflects what discovery would emit.
  *
- * @property pkcs11Discoverer Application-scope discoverer used for candidate enumeration helpers
- *   and the shared dedup logic.
+ * @property pkcs11Discoverer Application-scope discoverer reused for the shared
+ *   serial-dedup logic ([Pkcs11Discoverer.buildTokenInfoList]).
+ * @property candidateCollector Enumerates the candidate libraries per layer and the merged
+ *   set, mirroring exactly what discovery sees ([Pkcs11CandidateCollector]).
  * @property noLoginProbe Probe that attempts an unauthenticated SunPKCS#11 `KeyStore`
  *   enumeration per discovered PKCS#11 token (the "Route A" experiment).
  * @property configRepository Source of the user-supplied PKCS#11 library list.
@@ -34,6 +36,7 @@ import java.util.concurrent.TimeUnit
  */
 class Pkcs11DiagnosticsService(
 	private val pkcs11Discoverer: Pkcs11Discoverer,
+	private val candidateCollector: Pkcs11CandidateCollector,
 	private val prober: Pkcs11Prober,
 	private val configRepository: ConfigRepository,
 	private val pcscMonitor: PcscMonitorService,
@@ -69,7 +72,7 @@ class Pkcs11DiagnosticsService(
 		val osLower = System.getProperty("os.name").lowercase()
 		val candidatesByLayer = collectLayerBreakdown(osLower, environment.jvmIs64Bit, effectiveDropDir, userLibraries)
 
-		val mergedCandidates = pkcs11Discoverer
+		val mergedCandidates = candidateCollector
 			.collectCandidates(effectiveDropDir, userLibraries)
 			.map { (name, path) -> toCandidate(name, path) }
 
@@ -149,8 +152,9 @@ class Pkcs11DiagnosticsService(
 	}
 
 	/**
-	 * Compute the per-layer candidate breakdown, mirroring [Pkcs11Discoverer.collectCandidates]
-	 * but preserving each layer's contribution separately.
+	 * Compute the per-layer candidate breakdown, mirroring
+	 * [Pkcs11CandidateCollector.collectCandidates] but preserving each layer's contribution
+	 * separately.
 	 */
 	private fun collectLayerBreakdown(
 		osLower: String,
@@ -158,13 +162,13 @@ class Pkcs11DiagnosticsService(
 		dropDir: File?,
 		userLibraries: List<Pair<String, String>>,
 	): Pkcs11DiagnosticsReport.CandidatesByLayer {
-		val osNative = pkcs11Discoverer.discoverViaOs(osLower, jvmIs64Bit)
+		val osNative = candidateCollector.discoverViaOs(osLower, jvmIs64Bit)
 			.map { (name, path) -> toCandidate(name, path) }
 
 		val drop = dropDir
 			?.takeIf { it.isDirectory }
-			?.listFiles { f -> f.isFile && pkcs11Discoverer.isPkcs11FileName(f.name) }
-			?.map { f -> toCandidate(pkcs11Discoverer.deriveMiddlewareName(f.absolutePath), f.absolutePath) }
+			?.listFiles { f -> f.isFile && candidateCollector.isPkcs11FileName(f.name) }
+			?.map { f -> toCandidate(candidateCollector.deriveMiddlewareName(f.absolutePath), f.absolutePath) }
 			.orEmpty()
 
 		val user = userLibraries

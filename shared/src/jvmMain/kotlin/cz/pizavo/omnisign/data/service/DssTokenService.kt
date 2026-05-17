@@ -48,6 +48,7 @@ class DssTokenService(
 	private val passwordCallback: PasswordCallback,
 	private val pkcs11Discoverer: Pkcs11Discoverer = Pkcs11Discoverer(),
 	private val probeCache: Pkcs11ProbeCache = Pkcs11ProbeCache(),
+	private val candidateCollector: Pkcs11CandidateCollector = Pkcs11CandidateCollector(),
 	private val prober: Pkcs11Prober = Pkcs11SubprocessProber(),
 	private val pkcs11CacheInvalidator: Pkcs11CacheInvalidator? = null,
 	private val pcscMonitorService: PcscMonitorService? = null,
@@ -69,7 +70,7 @@ class DssTokenService(
 			?.map { it.name to it.path }
 			?: emptyList()
 		val dropDir = pkcs11DropDir()
-		val candidates = pkcs11Discoverer
+		val candidates = candidateCollector
 			.collectCandidates(appDataPkcs11Dir = dropDir, userPkcs11Libraries = userLibs)
 			.map { (name, path) -> Pkcs11DiagnosticSnapshot.CandidateLibrary(name, path) }
 		return Pkcs11DiagnosticSnapshot(

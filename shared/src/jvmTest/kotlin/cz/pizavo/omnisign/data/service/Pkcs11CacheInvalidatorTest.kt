@@ -34,22 +34,24 @@ class Pkcs11CacheInvalidatorTest : FunSpec({
 
 	/**
 	 * The collaborators a test needs to drive and assert on: the invalidator under test,
-	 * the [Pkcs11Discoverer] mock (candidate-cache + rediscovery seam), the shared
-	 * [Pkcs11ProbeCache] mock (probe-cache seam), and the [ConfigRepository] mock.
+	 * the [Pkcs11Discoverer] mock (rediscovery seam), the shared [Pkcs11ProbeCache] mock
+	 * (probe-cache seam), the [Pkcs11CandidateCollector] mock (candidate-cache seam), and
+	 * the [ConfigRepository] mock.
 	 */
 	data class Fixture(
 		val invalidator: Pkcs11CacheInvalidator,
 		val discoverer: Pkcs11Discoverer,
 		val probeCache: Pkcs11ProbeCache,
+		val candidateCollector: Pkcs11CandidateCollector,
 		val configRepository: ConfigRepository,
 	)
 
 	/**
-	 * Build a [Pkcs11CacheInvalidator] backed by an inert [PcscMonitorService] mock
-	 * whose `events` flow never emits, plus [Pkcs11Discoverer] / [Pkcs11ProbeCache] mocks
-	 * and a [ConfigRepository] mock returning [config].  The caller advances the injected
-	 * [TestScope] with `runCurrent()` to drive the proactive rediscovery coroutine to
-	 * completion.
+	 * Build a [Pkcs11CacheInvalidator] backed by an inert [PcscMonitorService] mock whose
+	 * `events` flow never emits, plus [Pkcs11Discoverer] / [Pkcs11ProbeCache] /
+	 * [Pkcs11CandidateCollector] mocks and a [ConfigRepository] mock returning [config].
+	 * The caller advances the injected [TestScope] with `runCurrent()` to drive the
+	 * proactive rediscovery coroutine to completion.
 	 */
 	fun TestScope.newFixture(
 		candidateCacheIsCardDependent: Boolean = false,
@@ -62,6 +64,7 @@ class Pkcs11CacheInvalidatorTest : FunSpec({
 		coEvery { discoverer.discoverTokens(any(), any()) } returns emptyList()
 
 		val probeCache = mockk<Pkcs11ProbeCache>(relaxUnitFun = true)
+		val candidateCollector = mockk<Pkcs11CandidateCollector>(relaxUnitFun = true)
 
 		val configRepository = mockk<ConfigRepository>()
 		coEvery { configRepository.getCurrentConfig() } returns config
@@ -75,24 +78,25 @@ class Pkcs11CacheInvalidatorTest : FunSpec({
 			monitor = monitor,
 			discoverer = discoverer,
 			probeCache = probeCache,
+			candidateCollector = candidateCollector,
 			configRepository = configRepository,
 			appDataPkcs11Dir = dropDir,
 			scope = backgroundScope,
 			candidateCacheIsCardDependent = candidateCacheIsCardDependent,
 		)
-		return Fixture(invalidator, discoverer, probeCache, configRepository)
+		return Fixture(invalidator, discoverer, probeCache, candidateCollector, configRepository)
 	}
 
 	test("CardInserted invalidates only the probe cache on a card-independent platform") {
 		runTest {
-			val (invalidator, discoverer, probeCache) = newFixture()
+			val (invalidator, discoverer, probeCache, candidateCollector) = newFixture()
 			val reader = PcscReader(name = "Reader 1", cardPresent = true, atrHex = "3B...")
 
 			invalidator.handleEvent(PcscEvent.CardInserted(reader))
 			testScheduler.runCurrent()
 
 			verify(exactly = 1) { probeCache.invalidateProbes() }
-			verify(exactly = 0) { discoverer.invalidateCandidates() }
+			verify(exactly = 0) { candidateCollector.invalidateCandidates() }
 			coVerify(exactly = 1) {
 				discoverer.discoverTokens(
 					appDataPkcs11Dir = dropDir,
@@ -104,68 +108,68 @@ class Pkcs11CacheInvalidatorTest : FunSpec({
 
 	test("CardRemoved invalidates only the probe cache on a card-independent platform") {
 		runTest {
-			val (invalidator, discoverer, probeCache) = newFixture()
+			val (invalidator, discoverer, probeCache, candidateCollector) = newFixture()
 			val reader = PcscReader(name = "Reader 1", cardPresent = false, atrHex = null)
 
 			invalidator.handleEvent(PcscEvent.CardRemoved(reader))
 			testScheduler.runCurrent()
 
 			verify(exactly = 1) { probeCache.invalidateProbes() }
-			verify(exactly = 0) { discoverer.invalidateCandidates() }
+			verify(exactly = 0) { candidateCollector.invalidateCandidates() }
 			coVerify(exactly = 1) { discoverer.discoverTokens(any(), any()) }
 		}
 	}
 
 	test("CardInserted also invalidates the candidate cache when the candidate set is card-dependent") {
 		runTest {
-			val (invalidator, discoverer, probeCache) = newFixture(candidateCacheIsCardDependent = true)
+			val (invalidator, discoverer, probeCache, candidateCollector) = newFixture(candidateCacheIsCardDependent = true)
 			val reader = PcscReader(name = "Reader 1", cardPresent = true, atrHex = "3B...")
 
 			invalidator.handleEvent(PcscEvent.CardInserted(reader))
 			testScheduler.runCurrent()
 
 			verify(exactly = 1) { probeCache.invalidateProbes() }
-			verify(exactly = 1) { discoverer.invalidateCandidates() }
+			verify(exactly = 1) { candidateCollector.invalidateCandidates() }
 			coVerify(exactly = 1) { discoverer.discoverTokens(any(), any()) }
 		}
 	}
 
 	test("CardRemoved also invalidates the candidate cache when the candidate set is card-dependent") {
 		runTest {
-			val (invalidator, discoverer, probeCache) = newFixture(candidateCacheIsCardDependent = true)
+			val (invalidator, discoverer, probeCache, candidateCollector) = newFixture(candidateCacheIsCardDependent = true)
 			val reader = PcscReader(name = "Reader 1", cardPresent = false, atrHex = null)
 
 			invalidator.handleEvent(PcscEvent.CardRemoved(reader))
 			testScheduler.runCurrent()
 
 			verify(exactly = 1) { probeCache.invalidateProbes() }
-			verify(exactly = 1) { discoverer.invalidateCandidates() }
+			verify(exactly = 1) { candidateCollector.invalidateCandidates() }
 			coVerify(exactly = 1) { discoverer.discoverTokens(any(), any()) }
 		}
 	}
 
 	test("ReaderConnected invalidates both caches and triggers rediscovery") {
 		runTest {
-			val (invalidator, discoverer, probeCache) = newFixture()
+			val (invalidator, discoverer, probeCache, candidateCollector) = newFixture()
 
 			invalidator.handleEvent(PcscEvent.ReaderConnected("New Reader"))
 			testScheduler.runCurrent()
 
 			verify(exactly = 1) { probeCache.invalidateProbes() }
-			verify(exactly = 1) { discoverer.invalidateCandidates() }
+			verify(exactly = 1) { candidateCollector.invalidateCandidates() }
 			coVerify(exactly = 1) { discoverer.discoverTokens(any(), any()) }
 		}
 	}
 
 	test("ReaderDisconnected invalidates both caches and triggers rediscovery") {
 		runTest {
-			val (invalidator, discoverer, probeCache) = newFixture()
+			val (invalidator, discoverer, probeCache, candidateCollector) = newFixture()
 
 			invalidator.handleEvent(PcscEvent.ReaderDisconnected("Removed Reader"))
 			testScheduler.runCurrent()
 
 			verify(exactly = 1) { probeCache.invalidateProbes() }
-			verify(exactly = 1) { discoverer.invalidateCandidates() }
+			verify(exactly = 1) { candidateCollector.invalidateCandidates() }
 			coVerify(exactly = 1) { discoverer.discoverTokens(any(), any()) }
 		}
 	}
@@ -185,7 +189,7 @@ class Pkcs11CacheInvalidatorTest : FunSpec({
 
 	test("rediscovery re-reads user libraries from config on every event") {
 		runTest {
-			val (invalidator, discoverer, _, configRepository) = newFixture()
+			val (invalidator, discoverer, _, _, configRepository) = newFixture()
 
 			invalidator.handleEvent(PcscEvent.CardInserted(PcscReader("R", true, null)))
 			invalidator.handleEvent(PcscEvent.CardRemoved(PcscReader("R", false, null)))

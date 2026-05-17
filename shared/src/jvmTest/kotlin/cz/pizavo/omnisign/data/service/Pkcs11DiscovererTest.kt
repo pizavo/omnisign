@@ -9,12 +9,21 @@ import io.kotest.matchers.shouldBe
 import java.io.File
 
 /**
- * Verifies [Pkcs11Discoverer] bitness-aware candidate selection, filename heuristics,
- * vendor name derivation, deduplication logic, and hardware identity-based token merging.
+ * Verifies the [Pkcs11Discoverer] orchestration pipeline: candidate enumeration →
+ * process-isolated probing → serial-based deduplication, plus the discovery-running
+ * signal and the read-only [Pkcs11Discoverer.getCachedTokens] path.
+ *
+ * Candidate-source heuristics live in [Pkcs11CandidateCollectorTest]; probe-cache
+ * behaviour in [Pkcs11ProbeCacheTest].  These tests inject a real
+ * [Pkcs11CandidateCollector] (default) and drive the probe seam through a fake
+ * [Pkcs11Prober] wrapped in a [Pkcs11ProbeCache].
  */
 class Pkcs11DiscovererTest : FunSpec({
-	
+
 	val noProbe: (String) -> List<Pkcs11TokenIdentity> = { emptyList() }
+
+	// The PKCS#11 NUL padding character, expressed without a unicode-escape source literal.
+	val nul = Char(0)
 
 	/**
 	 * Adapt a probe lambda into a [Pkcs11Prober] — only [Pkcs11Prober.probeIdentities] is
@@ -39,66 +48,11 @@ class Pkcs11DiscovererTest : FunSpec({
 	) = Pkcs11ProbeCache(crashBlacklist = crashBlacklist, prober = proberOf(probe))
 
 	/**
-	 * A [Pkcs11Discoverer] backed by a fresh [Pkcs11ProbeCache] whose prober runs [probe].
+	 * A [Pkcs11Discoverer] backed by a fresh [Pkcs11ProbeCache] whose prober runs [probe]
+	 * and a real default [Pkcs11CandidateCollector].
 	 */
 	fun discoverer(probe: (String) -> List<Pkcs11TokenIdentity> = noProbe) =
 		Pkcs11Discoverer(probeCache = probeCacheOf(probe = probe))
-	
-	test("isPkcs11FileName matches known PKCS11 naming patterns") {
-		val d = discoverer()
-		d.isPkcs11FileName("eTPKCS11.dll").shouldBeTrue()
-		d.isPkcs11FileName("opensc-pkcs11.dll").shouldBeTrue()
-		d.isPkcs11FileName("libsofthsm2.so").shouldBeTrue()
-		d.isPkcs11FileName("iidp11.dll").shouldBeTrue()
-		d.isPkcs11FileName("cmP11.dll").shouldBeTrue()
-		d.isPkcs11FileName("libcryptoki.so").shouldBeTrue()
-		d.isPkcs11FileName("libp11.so").shouldBeTrue()
-		d.isPkcs11FileName("p11-kit.so").shouldBeTrue()
-		d.isPkcs11FileName("p11.dll").shouldBeTrue()
-	}
-
-	test("isPkcs11FileName rejects unrelated DLLs") {
-		val d = discoverer()
-		d.isPkcs11FileName("kernel32.dll").shouldBeFalse()
-		d.isPkcs11FileName("ntdll.dll").shouldBeFalse()
-		d.isPkcs11FileName("user32.dll").shouldBeFalse()
-		d.isPkcs11FileName("libssl.so").shouldBeFalse()
-	}
-
-	test("isPkcs11FileName rejects Visual C++ runtime DLLs that contain p11 as a version fragment") {
-		val d = discoverer()
-		d.isPkcs11FileName("msvcp110.dll").shouldBeFalse()
-		d.isPkcs11FileName("msvcp110_win.dll").shouldBeFalse()
-		d.isPkcs11FileName("vcamp110.dll").shouldBeFalse()
-		d.isPkcs11FileName("vcomp110.dll").shouldBeFalse()
-		d.isPkcs11FileName("msvcp110d.dll").shouldBeFalse()
-	}
- 
-	test("isPkcs11FileName rejects PKCS11 spy and debugging wrapper libraries") {
-		val d = discoverer()
-		d.isPkcs11FileName("pkcs11-spy.so").shouldBeFalse()
-		d.isPkcs11FileName("pkcs11-spy.dll").shouldBeFalse()
-		d.isPkcs11FileName("pkcs11spy.so").shouldBeFalse()
-		d.isPkcs11FileName("PKCS11-SPY.DLL").shouldBeFalse()
-		d.isPkcs11FileName("p11-spy.so").shouldBeFalse()
-		d.isPkcs11FileName("p11spy.dll").shouldBeFalse()
-	}
-
-	test("isSpyLibrary recognises known spy library filenames") {
-		val d = discoverer()
-		d.isSpyLibrary("pkcs11-spy.so").shouldBeTrue()
-		d.isSpyLibrary("pkcs11-spy.dll").shouldBeTrue()
-		d.isSpyLibrary("pkcs11spy.so").shouldBeTrue()
-		d.isSpyLibrary("p11-spy.so").shouldBeTrue()
-		d.isSpyLibrary("p11spy.dll").shouldBeTrue()
-	}
-
-	test("isSpyLibrary rejects real PKCS11 middleware") {
-		val d = discoverer()
-		d.isSpyLibrary("opensc-pkcs11.so").shouldBeFalse()
-		d.isSpyLibrary("eTPKCS11.dll").shouldBeFalse()
-		d.isSpyLibrary("libsofthsm2.so").shouldBeFalse()
-	}
 
 	test("discoverTokens skips spy libraries found in lib directories") {
 		val dropDir = File.createTempFile("pkcs11-drop", "").also { it.delete(); it.mkdirs(); it.deleteOnExit() }
@@ -129,29 +83,7 @@ class Pkcs11DiscovererTest : FunSpec({
 
 		tokens.any { it.path == spyFile.absolutePath }.shouldBeFalse()
 	}
-	
-	test("deriveMiddlewareName identifies SafeNet eToken paths") {
-		val d = discoverer()
-		d.deriveMiddlewareName("C:\\Windows\\System32\\eTPKCS11.dll") shouldBe "SafeNet eToken"
-		d.deriveMiddlewareName("/usr/lib/libeTPkcs11.so") shouldBe "SafeNet eToken"
-	}
-	
-	test("deriveMiddlewareName identifies Gemalto IDPrime paths") {
-		val d = discoverer()
-		d.deriveMiddlewareName("C:\\Windows\\System32\\gclib.dll") shouldBe "Thales/Gemalto IDPrime"
-		d.deriveMiddlewareName("/usr/lib/libgclib.so") shouldBe "Thales/Gemalto IDPrime"
-	}
-	
-	test("deriveMiddlewareName identifies OpenSC paths") {
-		val d = discoverer()
-		d.deriveMiddlewareName("/usr/lib/opensc-pkcs11.so") shouldBe "OpenSC"
-		d.deriveMiddlewareName("C:\\Windows\\System32\\opensc-pkcs11.dll") shouldBe "OpenSC"
-	}
-	
-	test("deriveMiddlewareName falls back to filename for unknown libraries") {
-		discoverer().deriveMiddlewareName("C:\\Some\\Path\\acme-token.dll") shouldBe "acme-token.dll"
-	}
-	
+
 	test("discoverTokens deduplicates same canonical path from multiple sources") {
 		val tmpFile = File.createTempFile("acmevendor-pkcs11", ".so").also { it.deleteOnExit() }
 
@@ -184,18 +116,13 @@ class Pkcs11DiscovererTest : FunSpec({
 			userPkcs11Libraries = listOf("My Custom Token" to tmpFile.absolutePath)
 		).any { it.path == tmpFile.absolutePath }.shouldBeTrue()
 	}
-	
+
 	test("discoverTokens ignores user-supplied library when file does not exist") {
 		discoverer().discoverTokens(
 			userPkcs11Libraries = listOf("Ghost Token" to "/tmp/does-not-exist-pkcs11.so")
 		).any { it.path == "/tmp/does-not-exist-pkcs11.so" }.shouldBeFalse()
 	}
-	
-	test("discoverViaOs returns empty list without throwing on unknown OS") {
-		runCatching { discoverer().discoverViaOs(os = "haiku", jvmIs64Bit = true) }
-			.isSuccess.shouldBeTrue()
-	}
-	
+
 	test("discoverTokens picks up PKCS11-named files from app-data drop directory when probe returns identities") {
 		val dropDir = File.createTempFile("pkcs11-drop", "").also { it.delete(); it.mkdirs(); it.deleteOnExit() }
 		val libFile = File(dropDir, "vendor-pkcs11.so").also { it.createNewFile(); it.deleteOnExit() }
@@ -212,14 +139,14 @@ class Pkcs11DiscovererTest : FunSpec({
 
 		dropDir.deleteRecursively()
 	}
-	
+
 	test("discoverTokens ignores non-PKCS11-named files in drop directory") {
 		val dropDir = File.createTempFile("pkcs11-drop", "").also { it.delete(); it.mkdirs(); it.deleteOnExit() }
 		val unrelated = File(dropDir, "readme.txt").also { it.createNewFile(); it.deleteOnExit() }
-		
+
 		discoverer().discoverTokens(appDataPkcs11Dir = dropDir)
 			.any { it.path == unrelated.absolutePath }.shouldBeFalse()
-		
+
 		dropDir.deleteRecursively()
 	}
 
@@ -349,39 +276,6 @@ class Pkcs11DiscovererTest : FunSpec({
 		hwTokens.map { it.name }.toSet() shouldBe setOf("Token A", "Token B")
 	}
 
-	test("isPkcs11FileName matches YubiKey YKCS11 library") {
-		discoverer().isPkcs11FileName("libykcs11.so").shouldBeTrue()
-		discoverer().isPkcs11FileName("libykcs11.dylib").shouldBeTrue()
-	}
-
-	test("isPkcs11FileName matches SafeNet eTPkcs11 library") {
-		discoverer().isPkcs11FileName("libeTPkcs11.so").shouldBeTrue()
-		discoverer().isPkcs11FileName("eTPKCS11.dll").shouldBeTrue()
-	}
-
-	test("deriveMiddlewareName identifies YubiKey YKCS11 paths") {
-		val d = discoverer()
-		d.deriveMiddlewareName("/usr/lib/libykcs11.so") shouldBe "YubiKey (YKCS11)"
-		d.deriveMiddlewareName("/usr/local/lib/libykcs11.dylib") shouldBe "YubiKey (YKCS11)"
-	}
-
-	test("discoverViaP11KitProxy returns empty list when no proxy path exists") {
-		val result = discoverer().discoverViaP11KitProxy(proxyPaths = listOf("/tmp/nonexistent-p11-proxy.so"))
-		result.shouldBeEmpty()
-	}
-
-	test("discoverViaP11KitProxy returns first existing proxy path") {
-		val proxyFile = File.createTempFile("p11-kit-proxy", ".so").also { it.deleteOnExit() }
-
-		val result = discoverer().discoverViaP11KitProxy(
-			proxyPaths = listOf("/tmp/nonexistent.so", proxyFile.absolutePath),
-		)
-
-		result.shouldHaveSize(1)
-		result.first().first shouldBe "p11-kit Proxy"
-		result.first().second shouldBe proxyFile.absolutePath
-	}
-
 	test("discoverTokens uses hardware label as token name instead of middleware name") {
 		val lib = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
 
@@ -401,39 +295,6 @@ class Pkcs11DiscovererTest : FunSpec({
 
 		val hwToken = tokens.first { it.id == "pkcs11-0123456789ABCDEF" }
 		hwToken.name shouldBe "John's eToken 5110"
-	}
-
-	test("collectCandidates caches its result so a second call returns the same instance") {
-		val lib = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
-		val discoverer = Pkcs11Discoverer(probeCache = probeCacheOf())
-
-		val first = discoverer.collectCandidates(userPkcs11Libraries = listOf("Test" to lib.absolutePath))
-		val second = discoverer.collectCandidates(userPkcs11Libraries = listOf("Test" to lib.absolutePath))
-
-		(first === second) shouldBe true
-	}
-
-	test("invalidateCache forces collectCandidates to re-enumerate") {
-		val lib = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
-		val discoverer = Pkcs11Discoverer(probeCache = probeCacheOf())
-
-		val first = discoverer.collectCandidates(userPkcs11Libraries = listOf("Test" to lib.absolutePath))
-		discoverer.invalidateCache()
-		val second = discoverer.collectCandidates(userPkcs11Libraries = listOf("Test" to lib.absolutePath))
-
-		(first === second) shouldBe false
-		first shouldBe second
-	}
-
-	test("collectCandidates uses distinct cache entries for different user-library inputs") {
-		val lib1 = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
-		val lib2 = File.createTempFile("opensc", ".dll").also { it.deleteOnExit() }
-		val discoverer = Pkcs11Discoverer(probeCache = probeCacheOf())
-
-		val first = discoverer.collectCandidates(userPkcs11Libraries = listOf("a" to lib1.absolutePath))
-		val second = discoverer.collectCandidates(userPkcs11Libraries = listOf("b" to lib2.absolutePath))
-
-		(first === second) shouldBe false
 	}
 
 	test("discoverTokens caps subprocess parallelism at probeParallelism") {
@@ -467,48 +328,36 @@ class Pkcs11DiscovererTest : FunSpec({
 	}
 
 	test("trimPkcs11Field strips null-byte padding used by SafeNet middleware") {
-		val padded = "VP-SafeNet\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000".toByteArray(Charsets.UTF_8)
+		val padded = "VP-SafeNet".toByteArray(Charsets.UTF_8) + ByteArray(22)
 		padded.trimPkcs11Field() shouldBe "VP-SafeNet"
 	}
 
 	test("trimPkcs11Field strips space padding mandated by PKCS11 spec") {
-		val padded = "ABC123          ".toByteArray(Charsets.UTF_8)
+		val padded = ("ABC123" + " ".repeat(10)).toByteArray(Charsets.UTF_8)
 		padded.trimPkcs11Field() shouldBe "ABC123"
 	}
 
 	test("trimPkcs11Field handles mixed null-byte and space padding") {
-		val padded = "SN-42\u0000\u0000   ".toByteArray(Charsets.UTF_8)
+		val padded = "SN-42".toByteArray(Charsets.UTF_8) + ByteArray(2) + " ".repeat(3).toByteArray(Charsets.UTF_8)
 		padded.trimPkcs11Field() shouldBe "SN-42"
 	}
 
 	test("trimPkcs11Field returns empty string for all-null-byte field") {
-		val padded = "\u0000\u0000\u0000\u0000\u0000\u0000\u0000\u0000".toByteArray(Charsets.UTF_8)
+		val padded = ByteArray(8)
 		padded.trimPkcs11Field() shouldBe ""
 	}
 
 	test("normalizeSerial strips whitespace, null bytes, and uppercases") {
-		normalizeSerial("abc 123\u0000\u0000") shouldBe "ABC123"
+		normalizeSerial("abc 123$nul$nul") shouldBe "ABC123"
 	}
 
 	test("normalizeSerial produces identical output for space-padded and null-padded serials") {
-		normalizeSerial("SN-42\u0000\u0000\u0000") shouldBe normalizeSerial("SN-42   ")
+		normalizeSerial("SN-42$nul$nul$nul") shouldBe normalizeSerial("SN-42" + " ".repeat(3))
 	}
 
 	test("normalizeSerial handles already-clean serial unchanged except for case") {
 		normalizeSerial("ABC123") shouldBe "ABC123"
 		normalizeSerial("abc123") shouldBe "ABC123"
-	}
-
-	test("isProxyPath recognises p11-kit-proxy paths") {
-		val d = discoverer()
-		d.isProxyPath("/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-proxy.so").shouldBeTrue()
-		d.isProxyPath("/usr/lib64/pkcs11/p11-kit-proxy.so").shouldBeTrue()
-	}
-
-	test("isProxyPath rejects non-proxy paths") {
-		val d = discoverer()
-		d.isProxyPath("/usr/lib/libeTPkcs11.so").shouldBeFalse()
-		d.isProxyPath("/usr/lib/opensc-pkcs11.so").shouldBeFalse()
 	}
 
 	test("discoverTokens suppresses proxy fallback when proxy reports no identities") {
