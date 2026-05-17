@@ -300,12 +300,33 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { tokenService.probeTokenPresent(pinToken) } returns true
 		coEvery { tokenService.probeTokenPresent(freeToken) } returns true
 		coEvery { credentialStore.getPassword(any(), "t1") } returns null
+		coEvery { tokenService.listCertificatesNoLogin(pinToken) } returns emptyList<CertificateEntry>().right()
 		coEvery { tokenService.loadCertificatesSilent(freeToken, null) } returns listOf(cert).right()
 
 		val result = repository.listAvailableCertificates(promptForLocked = false).shouldBeRight()
 		result.certificates.shouldHaveSize(1)
 		result.lockedTokens.shouldHaveSize(1)
 		result.lockedTokens.first().tokenId shouldBe "t1"
+		result.tokenWarnings.shouldBeEmpty()
+	}
+
+	test("listAvailableCertificates surfaces a PIN token's certs without a PIN when public") {
+		val pinToken = TokenInfo(id = "t1", name = "PIN Token", type = TokenType.PKCS11, path = "/lib/fake.so", requiresPin = true)
+		val publicCert = CertificateEntry(
+			alias = "Vojtech Piza-15dc279", subjectDN = "CN=Vojtech Piza", issuerDN = "CN=PostSignum Qualified CA 4",
+			serialNumber = "22921849", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
+			keyUsages = listOf("nonRepudiation"), tokenInfo = pinToken,
+		)
+
+		coEvery { tokenService.discoverTokens() } returns listOf(pinToken).right()
+		coEvery { tokenService.probeTokenPresent(pinToken) } returns true
+		coEvery { credentialStore.getPassword(any(), "t1") } returns null
+		coEvery { tokenService.listCertificatesNoLogin(pinToken) } returns listOf(publicCert).right()
+
+		val result = repository.listAvailableCertificates(promptForLocked = false).shouldBeRight()
+		result.certificates.shouldHaveSize(1)
+		result.certificates.first().alias shouldBe "Vojtech Piza-15dc279"
+		result.lockedTokens.shouldBeEmpty()
 		result.tokenWarnings.shouldBeEmpty()
 	}
 
@@ -320,6 +341,7 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { tokenService.discoverTokens() } returns listOf(pinToken).right()
 		coEvery { tokenService.probeTokenPresent(pinToken) } returns true
 		coEvery { credentialStore.getPassword(any(), "t1") } returns null
+		coEvery { tokenService.listCertificatesNoLogin(pinToken) } returns emptyList<CertificateEntry>().right()
 		coEvery { tokenService.loadCertificates(pinToken, null) } returns listOf(cert).right()
 
 		val result = repository.listAvailableCertificates(promptForLocked = true).shouldBeRight()
@@ -335,6 +357,7 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { tokenService.discoverTokens() } returns listOf(pinToken).right()
 		coEvery { tokenService.probeTokenPresent(pinToken) } returns true
 		coEvery { credentialStore.getPassword(any(), "t1") } returns null
+		coEvery { tokenService.listCertificatesNoLogin(pinToken) } returns emptyList<CertificateEntry>().right()
 		coEvery { tokenService.loadCertificates(pinToken, null) } returns SigningError.TokenAccessError(
 			message = "PIN entry cancelled for 'PIN Token'"
 		).left()

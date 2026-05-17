@@ -6,8 +6,6 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
 
@@ -22,17 +20,25 @@ import kotlinx.coroutines.sync.withPermit
  * skips them on subsequent calls.  All actual token probing now runs out-of-process.
  *
  * Probes run with at most [maxParallelism] concurrently (default `2`) so weak hardware does
- * not thrash on N parallel JVM cold-starts.  Crashes (non-zero exit) are blacklisted
- * permanently; **timeouts** are not — a transient hang during warmup should not disable a
- * healthy library, so discovery falls back to subprocess on demand instead.
+ * not thrash on N parallel JVM cold-starts.  Crashes (non-zero exit) are recorded in
+ * [Pkcs11CrashBlacklist], which suppresses a library only after it crashes repeatedly
+ * within a sliding window and lets the record decay afterwards; **timeouts** are never
+ * recorded — a transient hang during warmup should not disable a healthy library, so
+ * discovery falls back to subprocess on demand instead.
  *
- * Discovery never blocks on warmup.  The [warmedUp] flow exists only as an optional UI
- * indicator (e.g. a "warming up…" banner during the initial validation pass).
+ * Discovery never blocks on warmup.  Warmup publishes its in-progress state through
+ * [Pkcs11Discoverer.discoveryRunning] by wrapping the validation pass in
+ * [Pkcs11Discoverer.beginDiscovery] / [Pkcs11Discoverer.endDiscovery].  This lets passive
+ * cache readers (notably [DssTokenService]'s sign-dialog path) suspend on the unified
+ * discovery signal without having to know which producer is currently running.
  *
  * @property discoverer The discoverer used to list candidate library paths.
  * @property crashBlacklist The blacklist updated when a subprocess validation crashes.
  * @property warmupSignal Shared mutable flow that this service writes `true` to upon
- *   completion.  Exposed as [warmedUp] for UI consumption; not used as a discovery gate.
+ *   completion.  Used internally to short-circuit repeated [warmup] invocations once the
+ *   first pass has settled.  Callers that want to react to discovery progress should
+ *   observe [Pkcs11Discoverer.discoveryRunning] instead, which covers both warmup and
+ *   any subsequent invalidator-launched rediscovery cycles.
  * @property probeTimeoutSeconds Timeout for each subprocess probe during warmup.
  * @property maxParallelism Upper bound on concurrent warmup probes.  Each probe spawns a
  *   fresh JVM subprocess; running too many in parallel on weak hardware causes cold-start
@@ -45,15 +51,6 @@ class Pkcs11WarmupService(
 	private val probeTimeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
 	private val maxParallelism: Int = DEFAULT_MAX_PARALLELISM,
 ) {
-
-	/**
-	 * Whether the warmup cycle has completed.
-	 *
-	 * Consumers (e.g., ViewModels) can collect this flow to show a progress indicator
-	 * during the initial library validation phase.  Discovery does **not** block on it —
-	 * this signal is purely informational for the UI.
-	 */
-	val warmedUp: StateFlow<Boolean> = warmupSignal.asStateFlow()
 
 	/**
 	 * Run the bounded-parallel validation pass for all discoverable PKCS#11 libraries.
@@ -77,6 +74,7 @@ class Pkcs11WarmupService(
 			return
 		}
 
+		discoverer.beginDiscovery()
 		try {
 			logger.info {
 				"Starting PKCS#11 background warmup (timeout=${probeTimeoutSeconds}s, " +
@@ -110,6 +108,7 @@ class Pkcs11WarmupService(
 			}
 		} finally {
 			warmupSignal.value = true
+			discoverer.endDiscovery()
 		}
 	}
 
@@ -121,8 +120,9 @@ class Pkcs11WarmupService(
 	 * crashes (SIGSEGV / SIGABRT), and timeouts:
 	 *
 	 * - **Exit 0** → the library is safe; nothing to record (it stays off the blacklist).
-	 * - **Non-zero exit (crash)** → the library crashes during `C_Initialize`; permanently
-	 *   blacklist via [Pkcs11CrashBlacklist.registerCrashed] so it is never probed again.
+	 * - **Non-zero exit (crash)** → the library crashed during `C_Initialize`; record it via
+	 *   [Pkcs11CrashBlacklist.registerCrashed], which suppresses the library only after
+	 *   repeated crashes within the window and decays the record afterwards.
 	 * - **Timeout (hang)** → the subprocess hung; forcibly kill it but **do not** blacklist —
 	 *   discovery will subprocess-probe on demand.
 	 *
@@ -160,7 +160,12 @@ class Pkcs11WarmupService(
 				}
 
 				is Pkcs11SubprocessResult.Success -> {
-					logger.info { "Warmup validated '$name' — library loads cleanly in subprocess" }
+					val identities = parseProbeStdout(result.stdout, libraryPath)
+					discoverer.primeCache(libraryPath, identities)
+					logger.info {
+						"Warmup validated '$name' — library loads cleanly in subprocess " +
+								"(${identities.size} identity(-ies) cached)"
+					}
 				}
 			}
 		} catch (e: Exception) {

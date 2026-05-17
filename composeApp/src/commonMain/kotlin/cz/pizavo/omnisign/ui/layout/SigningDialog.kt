@@ -2,7 +2,6 @@
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
@@ -12,9 +11,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
+import cz.pizavo.omnisign.domain.model.config.enums.TokenType
+import cz.pizavo.omnisign.domain.model.value.formatDate
 import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
 import cz.pizavo.omnisign.domain.repository.LockedTokenInfo
 import cz.pizavo.omnisign.domain.repository.TokenDiscoveryWarning
@@ -53,6 +52,14 @@ import org.jetbrains.compose.resources.painterResource
  * @param onAcceptRevocation Called when the user continues despite revocation warnings.
  * @param onUnlockToken Called with a token ID when the user clicks Unlock on a locked token.
  * @param onImportPkcs12 Called with the absolute file path when the user picks a PKCS#12 file to import.
+ * @param onRescan Called when the user clicks the rescan button in the header to force a fresh
+ *   token discovery cycle.  Only shown in [SigningDialogState.Ready] when no discovery is
+ *   currently in flight; the rescan button is mutually exclusive with the refreshing indicator.
+ * @param onShowDiagnostic Called when the user clicks any "Show diagnostic info" affordance —
+ *   the always-visible info icon in the header, the link in the empty-state banner, or the
+ *   action button on a "no PKCS#11 tokens detected" rescan toast.  Opens the diagnostic
+ *   snapshot dialog so the user can see what PC/SC reports and where to add missing
+ *   PKCS#11 library paths.
  * @param onDismiss Called when the user cancels or closes the dialog.
  */
 @Composable
@@ -64,61 +71,61 @@ fun SigningDialog(
 	onAcceptRevocation: () -> Unit,
 	onUnlockToken: (tokenId: String) -> Unit,
 	onImportPkcs12: (filePath: String) -> Unit,
+	onRescan: () -> Unit,
+	onShowDiagnostic: () -> Unit,
 	onDismiss: () -> Unit,
 ) {
 	Dialog(
 		onDismissRequest = {
 			if (state !is SigningDialogState.Signing) onDismiss()
 		},
-		properties = DialogProperties(usePlatformDefaultWidth = false),
+		modifier = Modifier
+			.widthIn(min = 560.dp, max = 720.dp)
+			.heightIn(min = 400.dp, max = 640.dp),
 	) {
-		Surface(
-			modifier = Modifier
-				.widthIn(min = 560.dp, max = 720.dp)
-				.heightIn(min = 400.dp, max = 640.dp),
-			shape = RoundedCornerShape(16.dp),
-			color = LumoTheme.colors.surface,
-			shadowElevation = 8.dp,
-		) {
-			Column(modifier = Modifier.fillMaxSize()) {
-				SigningDialogHeader(
-					onClose = onDismiss,
-					closeable = state !is SigningDialogState.Signing,
-				)
-				
-				HorizontalDivider()
-				
-				Box(modifier = Modifier.weight(1f)) {
-					when (state) {
-						is SigningDialogState.Idle -> {}
-						is SigningDialogState.Loading -> LoadingContent("Discovering certificates...")
-						is SigningDialogState.Ready -> SigningFormContent(
-							state = state,
-							onFieldChange = onFieldChange,
-							onUnlockToken = onUnlockToken,
-							onImportPkcs12 = onImportPkcs12,
-						)
-						
-						is SigningDialogState.Signing -> LoadingContent("Signing document...")
-						is SigningDialogState.RevocationWarning -> RevocationWarningContent(state)
-						is SigningDialogState.Success -> SigningSuccessContent(state)
-						is SigningDialogState.Error -> ErrorContent(
-							message = state.message,
-							details = state.details,
-						)
-					}
+		Column(modifier = Modifier.fillMaxSize()) {
+			val readyState = state as? SigningDialogState.Ready
+			SigningDialogHeader(
+				onClose = onDismiss,
+				closeable = state !is SigningDialogState.Signing,
+				refreshing = readyState?.refreshing == true,
+				onRescan = if (readyState != null && !readyState.refreshing) onRescan else null,
+				onShowDiagnostic = if (readyState != null) onShowDiagnostic else null,
+			)
+
+			HorizontalDivider()
+
+			Box(modifier = Modifier.weight(1f)) {
+				when (state) {
+					is SigningDialogState.Idle -> {}
+					is SigningDialogState.Loading -> LoadingContent("Discovering certificates...")
+					is SigningDialogState.Ready -> SigningFormContent(
+						state = state,
+						onFieldChange = onFieldChange,
+						onUnlockToken = onUnlockToken,
+						onImportPkcs12 = onImportPkcs12,
+						onShowDiagnostic = onShowDiagnostic,
+					)
+
+					is SigningDialogState.Signing -> LoadingContent("Signing document...")
+					is SigningDialogState.RevocationWarning -> RevocationWarningContent(state)
+					is SigningDialogState.Success -> SigningSuccessContent(state)
+					is SigningDialogState.Error -> ErrorContent(
+						message = state.message,
+						details = state.details,
+					)
 				}
-				
-				HorizontalDivider()
-				
-				SigningDialogFooter(
-					state = state,
-					onSign = onSign,
-					onAbortRevocation = onAbortRevocation,
-					onAcceptRevocation = onAcceptRevocation,
-					onDismiss = onDismiss,
-				)
 			}
+
+			HorizontalDivider()
+
+			SigningDialogFooter(
+				state = state,
+				onSign = onSign,
+				onAbortRevocation = onAbortRevocation,
+				onAcceptRevocation = onAcceptRevocation,
+				onDismiss = onDismiss,
+			)
 		}
 	}
 }
@@ -126,11 +133,42 @@ fun SigningDialog(
 /**
  * Header row with the dialog title and close button.
  *
+ * The slot next to the title hosts two independent affordances:
+ *
+ * - **Refresh slot (mutually exclusive)** — bound to [refreshing]:
+ *   - `true` shows a small inline progress indicator while a background discovery cycle is
+ *     running (warmup, PC/SC-event-driven rediscovery, or user-triggered rescan).
+ *   - `false` with non-null [onRescan] shows a refresh icon button that manually triggers a
+ *     full rescan; covers the edge case of installing new PKCS#11 middleware while the app is
+ *     running where no PC/SC event would fire.
+ * - **Diagnostic slot (always-on while [onShowDiagnostic] is non-null)** — an info icon button
+ *   that opens the PKCS#11 diagnostic snapshot dialog.  Coexists with the refresh slot
+ *   regardless of `refreshing` because the diagnostic surface is a read-only inspection
+ *   affordance, not a duplicate trigger of the in-flight cycle.  Needed so users can reach the
+ *   diagnostic dialog even when other sources (Windows-MY, PKCS#12 files) populated the
+ *   certificate list and the empty-state banner — which carries its own "Show diagnostic info"
+ *   link — never appears.
+ *
+ * Outside of [SigningDialogState.Ready] (Loading / Signing / Success / etc) both slots are
+ * suppressed by passing null callbacks.  The certificate list stays visible underneath the
+ * indicator so the user can keep interacting while a refresh runs in the background.
+ *
  * @param onClose Callback invoked when the close button is clicked.
  * @param closeable Whether the close button is enabled.
+ * @param refreshing Whether a background token-discovery cycle is currently in flight.
+ * @param onRescan Callback for the rescan button, or `null` to suppress it.  Must be
+ *   `null` whenever [refreshing] is `true` to preserve mutual exclusivity with the indicator.
+ * @param onShowDiagnostic Callback for the always-on diagnostic info icon, or `null` to
+ *   suppress it (e.g. outside [SigningDialogState.Ready]).
  */
 @Composable
-private fun SigningDialogHeader(onClose: () -> Unit, closeable: Boolean) {
+private fun SigningDialogHeader(
+	onClose: () -> Unit,
+	closeable: Boolean,
+	refreshing: Boolean,
+	onRescan: (() -> Unit)? = null,
+	onShowDiagnostic: (() -> Unit)? = null,
+) {
 	Row(
 		modifier = Modifier
 			.fillMaxWidth()
@@ -138,7 +176,50 @@ private fun SigningDialogHeader(onClose: () -> Unit, closeable: Boolean) {
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.SpaceBetween,
 	) {
-		Text(text = "Sign Document", style = LumoTheme.typography.h3)
+		Row(
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(10.dp),
+		) {
+			Text(text = "Sign Document", style = LumoTheme.typography.h3)
+			when {
+				refreshing -> CircularProgressIndicator(
+					modifier = Modifier.size(14.dp),
+					strokeWidth = 2.dp,
+				)
+				onRescan != null -> TooltipBox(
+					tooltip = { Tooltip { Text(text = "Rescan tokens") } },
+					state = rememberTooltipState(),
+				) {
+					IconButton(
+						variant = IconButtonVariant.Ghost,
+						onClick = onRescan,
+					) {
+						Icon(
+							painter = painterResource(Res.drawable.icon_refresh),
+							contentDescription = "Rescan tokens",
+							modifier = Modifier.size(16.dp),
+						)
+					}
+				}
+			}
+			if (onShowDiagnostic != null) {
+				TooltipBox(
+					tooltip = { Tooltip { Text(text = "Show PKCS#11 diagnostic info") } },
+					state = rememberTooltipState(),
+				) {
+					IconButton(
+						variant = IconButtonVariant.Ghost,
+						onClick = onShowDiagnostic,
+					) {
+						Icon(
+							painter = painterResource(Res.drawable.icon_alert_info),
+							contentDescription = "Show PKCS#11 diagnostic info",
+							modifier = Modifier.size(16.dp),
+						)
+					}
+				}
+			}
+		}
 		IconButton(
 			variant = IconButtonVariant.Ghost,
 			enabled = closeable,
@@ -167,6 +248,7 @@ private fun SigningFormContent(
 	onFieldChange: ((SigningDialogState.Ready) -> SigningDialogState.Ready) -> Unit,
 	onUnlockToken: (tokenId: String) -> Unit,
 	onImportPkcs12: (filePath: String) -> Unit,
+	onShowDiagnostic: () -> Unit,
 ) {
 	val pkcs12Picker = rememberFilePickerLauncher(
 		type = FileKitType.File(extensions = listOf("p12", "pfx")),
@@ -220,6 +302,10 @@ private fun SigningFormContent(
 			}
 		}
 		
+		if (state.certificates.isEmpty() && state.lockedTokens.isEmpty() && !state.refreshing) {
+			EmptyTokenBanner(onShowDiagnostic = onShowDiagnostic)
+		}
+
 		val certOptions = state.certificates.map { it.alias }
 		Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
 			Row(
@@ -236,7 +322,12 @@ private fun SigningFormContent(
 					showNullOption = false,
 					itemLabel = { alias ->
 						val cert = state.certificates.find { it.alias == alias }
-						if (cert != null) "${cert.alias} — ${cert.subjectDN}" else alias
+						if (cert != null) {
+							val source = cert.tokenName.takeIf { it.isNotBlank() }?.let { "; $it" } ?: ""
+							"${cert.commonName()} — valid until ${cert.validTo.formatDate()}$source"
+						} else {
+							alias
+						}
 					},
 					itemContent = { alias ->
 						val cert = state.certificates.find { it.alias == alias }
@@ -703,9 +794,12 @@ private fun LockedTokensAccordion(
 
 /**
  *
- * Renders the certificate alias in bold with an optional eIDAS rosette icon alongside it,
- * and the subject DN underneath in a smaller secondary style. When [cert] is `null` (alias
- * not yet matched to a loaded certificate) only the raw [alias] string is shown.
+ * Renders the certificate's common name in bold with an optional eIDAS rosette icon and,
+ * for certificates held on a PKCS#11 hardware token, a USB device icon alongside it.
+ * Underneath, in a smaller secondary style, the expiry is shown as `valid until <date>`,
+ * followed by `; <source>` when the source token name is known so the same certificate
+ * present on more than one source stays distinguishable. When [cert] is `null` (alias not
+ * yet matched to a loaded certificate) only the raw [alias] string is shown.
  *
  * @param alias Raw alias string used as a fallback when [cert] is unavailable.
  * @param cert The matched [AvailableCertificateInfo], or `null` if not yet resolved.
@@ -722,27 +816,41 @@ private fun CertDropdownRow(alias: String, cert: AvailableCertificateInfo?) {
 			horizontalArrangement = Arrangement.spacedBy(6.dp),
 		) {
 			Text(
-				text = cert.alias,
+				text = cert.commonName(),
 				style = LumoTheme.typography.body2,
 				fontWeight = FontWeight.SemiBold,
 			)
-			when {
-				cert.isQscd == true -> Icon(
-					painter = painterResource(Res.drawable.icon_rosette_check),
-					contentDescription = "Qualified (QSCD)",
-					modifier = Modifier.size(14.dp),
-					tint = LumoTheme.colors.icons.trustQualifiedQscd,
-				)
-				cert.isQualified == true -> Icon(
-					painter = painterResource(Res.drawable.icon_rosette),
-					contentDescription = "Qualified",
-					modifier = Modifier.size(14.dp),
-					tint = LumoTheme.colors.icons.trustQualified,
-				)
+			Row(
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(4.dp),
+			) {
+				when {
+					cert.isQscd == true -> Icon(
+						painter = painterResource(Res.drawable.icon_rosette_check),
+						contentDescription = "Qualified (QSCD)",
+						modifier = Modifier.size(14.dp),
+						tint = LumoTheme.colors.icons.trustQualifiedQscd,
+					)
+					cert.isQualified == true -> Icon(
+						painter = painterResource(Res.drawable.icon_rosette),
+						contentDescription = "Qualified",
+						modifier = Modifier.size(14.dp),
+						tint = LumoTheme.colors.icons.trustQualified,
+					)
+				}
+				if (cert.tokenType == TokenType.PKCS11.name) {
+					Icon(
+						painter = painterResource(Res.drawable.icon_device_usb),
+						contentDescription = "On PKCS#11 hardware token",
+						modifier = Modifier.size(14.dp),
+						tint = LumoTheme.colors.success,
+					)
+				}
 			}
 		}
+		val expiry = "valid until ${cert.validTo.formatDate()}"
 		Text(
-			text = cert.subjectDN,
+			text = if (cert.tokenName.isNotBlank()) "$expiry; ${cert.tokenName}" else expiry,
 			style = LumoTheme.typography.body3,
 			color = LumoTheme.colors.textSecondary,
 			maxLines = 1,
@@ -839,6 +947,73 @@ private fun TokenWarningRow(message: String) {
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.warning,
 		)
+	}
+}
+
+/**
+ * Banner shown above the certificate dropdown when no tokens were discovered and no
+ * background discovery cycle is in flight.
+ *
+ * The dropdown alone gives no signal about *what* the user can do next — they see a
+ * disabled control with the placeholder "Select a certificate…" and have no way to tell
+ * whether the app failed to find their token or whether they just haven't inserted it
+ * yet.  This banner makes the next steps explicit:
+ *  1. Insert a smart card (auto-refresh picks it up via PC/SC).
+ *  2. Use the import button below to load a PKCS#12 file directly.
+ *  3. Add the middleware path under Global Settings → PKCS#11 Libraries when the OS
+ *     doesn't advertise it (e.g. SafeNet Authentication Client on Windows registers
+ *     CSP / minidriver entries but doesn't expose a `Pkcs11Lib` value in the Calais
+ *     registry, so PC/SC enumeration alone cannot find it).
+ *
+ * When [onShowDiagnostic] is non-null, a "Show diagnostic info" link appears at the
+ * bottom — clicking it surfaces the diagnostic snapshot dialog so the user can see
+ * which readers PC/SC sees, which candidate libraries discovery would probe, and
+ * where to drop a library file for automatic pickup.
+ *
+ * @param onShowDiagnostic Callback invoked when the user clicks the diagnostic link;
+ *   suppresses the link when `null`.
+ */
+@Composable
+private fun EmptyTokenBanner(onShowDiagnostic: (() -> Unit)? = null) {
+	Row(
+		modifier = Modifier
+			.fillMaxWidth()
+			.padding(vertical = 4.dp),
+		horizontalArrangement = Arrangement.spacedBy(8.dp),
+		verticalAlignment = Alignment.Top,
+	) {
+		Icon(
+			painter = painterResource(Res.drawable.icon_alert_info),
+			contentDescription = null,
+			modifier = Modifier.padding(top = 3.dp).size(16.dp),
+			tint = LumoTheme.colors.textSecondary,
+		)
+		Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+			Text(
+				text = "No tokens detected.",
+				style = LumoTheme.typography.body2,
+				fontWeight = FontWeight.SemiBold,
+				color = LumoTheme.colors.text,
+			)
+			Text(
+				text = "Insert a smart card to load its certificates, or use the import button to load a PKCS#12 file.",
+				style = LumoTheme.typography.body2,
+				color = LumoTheme.colors.textSecondary,
+			)
+			Text(
+				text = "If your PKCS#11 token isn't picked up automatically, add its library path under Global Settings → PKCS#11 Libraries.",
+				style = LumoTheme.typography.body2,
+				color = LumoTheme.colors.textSecondary,
+			)
+			if (onShowDiagnostic != null) {
+				Button(
+					variant = ButtonVariant.PrimaryGhost,
+					text = "Show diagnostic info",
+					onClick = onShowDiagnostic,
+					modifier = Modifier.padding(top = 2.dp),
+				)
+			}
+		}
 	}
 }
 

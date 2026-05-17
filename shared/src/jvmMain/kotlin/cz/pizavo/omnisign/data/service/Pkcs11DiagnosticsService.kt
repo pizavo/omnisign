@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.data.service
 
+import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import java.io.File
 import java.lang.management.ManagementFactory
@@ -12,15 +13,17 @@ import java.util.concurrent.TimeUnit
  * with per-candidate subprocess timings and out-of-process p11-kit truth (Linux).  Used by
  * the `omnisign diagnose pkcs11` CLI subcommand to remove guesswork from troubleshooting.
  *
- * The service deliberately does **not** participate in the warmup / [Pkcs11SessionManager]
- * machinery.  Probes run **sequentially** so each candidate's wall-clock cost is reported in
- * isolation, free of parallel-thrash distortion that the production warmup path produces on
- * weak hardware.  The same dedup helper used by [Pkcs11Discoverer.discoverTokens] is reused
+ * The service deliberately does **not** participate in the warmup machinery.  Probes run
+ * **sequentially** so each candidate's wall-clock cost is reported in isolation, free of
+ * parallel-thrash distortion that the production warmup path produces on weak hardware.
+ * The same dedup helper used by discovery, [Pkcs11Discoverer.buildTokenInfoList], is reused
  * to build the final [cz.pizavo.omnisign.domain.service.TokenInfo] list, so the report
  * faithfully reflects what discovery would emit.
  *
  * @property pkcs11Discoverer Application-scope discoverer used for candidate enumeration helpers
  *   and the shared dedup logic.
+ * @property noLoginProbe Probe that attempts an unauthenticated SunPKCS#11 `KeyStore`
+ *   enumeration per discovered PKCS#11 token (the "Route A" experiment).
  * @property configRepository Source of the user-supplied PKCS#11 library list.
  * @property probeTimeoutSeconds Maximum time to wait for a single library probe before
  *   forcibly killing the subprocess.  Defaults to [DEFAULT_PROBE_TIMEOUT_SECONDS].
@@ -31,6 +34,7 @@ class Pkcs11DiagnosticsService(
 	private val pkcs11Discoverer: Pkcs11Discoverer,
 	private val configRepository: ConfigRepository,
 	private val pcscMonitor: PcscMonitorService,
+	private val noLoginProbe: Pkcs11NoLoginCertProbe = Pkcs11NoLoginCertProbe(),
 	private val probeTimeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS,
 	private val externalCommandTimeoutSeconds: Long = DEFAULT_EXTERNAL_COMMAND_TIMEOUT_SECONDS,
 ) {
@@ -54,7 +58,7 @@ class Pkcs11DiagnosticsService(
 		val startNanos = System.nanoTime()
 
 		val environment = collectEnvironment()
-		val effectiveDropDir = appDataPkcs11Dir ?: defaultPkcs11DropDir()
+		val effectiveDropDir = appDataPkcs11Dir ?: pkcs11DropDir()
 
 		val config = configRepository.getCurrentConfig()
 		val userLibraries = config.global.customPkcs11Libraries.map { it.name to it.path }
@@ -80,13 +84,28 @@ class Pkcs11DiagnosticsService(
 			Triple(candidate.name, candidate.path, identities)
 		}
 
-		val tokens = pkcs11Discoverer.buildTokenInfoList(probedTriples).map { token ->
+		val tokenInfos = pkcs11Discoverer.buildTokenInfoList(probedTriples)
+		val tokens = tokenInfos.map { token ->
 			Pkcs11DiagnosticsReport.TokenSummary(
 				id = token.id,
 				name = token.name,
 				type = token.type.name,
 				path = token.path,
 				requiresPin = token.requiresPin,
+			)
+		}
+		val noLoginEnumeration = tokenInfos
+			.filter { it.type == TokenType.PKCS11 && it.path != null }
+			.map { token -> noLoginProbe.enumerate(token.name, token.path!!, token.pkcs11SlotId) }
+
+		val rawNoLoginCertificates = mergedCandidates.map { candidate ->
+			val result = runCatching { runCertProbeSubprocess(candidate.path, probeTimeoutSeconds) }.getOrNull()
+			Pkcs11DiagnosticsReport.RawNoLoginCertScan(
+				libraryPath = candidate.path,
+				subprocessSucceeded = result is Pkcs11SubprocessResult.Success,
+				certificates = (result as? Pkcs11SubprocessResult.Success)
+					?.let { parseProbeCertificates(it.stdout) }
+					?: emptyList(),
 			)
 		}
 
@@ -100,6 +119,8 @@ class Pkcs11DiagnosticsService(
 			pcscReaders = pcscReaders,
 			probes = probeOutcomes.toList().sortedBy { it.path },
 			tokens = tokens,
+			noLoginEnumeration = noLoginEnumeration,
+			rawNoLoginCertificates = rawNoLoginCertificates,
 			totalElapsedMillis = totalElapsed,
 		)
 	}
@@ -214,14 +235,9 @@ class Pkcs11DiagnosticsService(
 			) to emptyList()
 
 			is Pkcs11SubprocessResult.Success -> {
-				val parsed = result.stdout.lines()
-					.filter { it.contains('\t') }
-					.map { line ->
-						val (label, serial) = line.split('\t', limit = 2)
-						Pkcs11TokenIdentity(label, serial, libraryPath)
-					}
+				val parsed = parseProbeStdout(result.stdout, libraryPath)
 				val reportIdentities = parsed.map {
-					Pkcs11DiagnosticsReport.Identity(it.label, it.serialNumber)
+					Pkcs11DiagnosticsReport.Identity(it.label, it.serialNumber, it.slotId)
 				}
 				Pkcs11DiagnosticsReport.ProbeOutcome(
 					name = name,
@@ -275,24 +291,6 @@ class Pkcs11DiagnosticsService(
 			if (process.isAlive) process.destroyForcibly()
 			null
 		}
-	}
-
-	/**
-	 * Resolve the platform-appropriate default PKCS#11 drop directory: `<appData>/omnisign/pkcs11/`.
-	 *
-	 * Mirrors the path resolution in [DssTokenService] so the diagnostic run sees exactly
-	 * what the application sees at runtime.  The directory does not need to exist.
-	 */
-	private fun defaultPkcs11DropDir(): File {
-		val osLower = System.getProperty("os.name").lowercase()
-		val userHome = System.getProperty("user.home")
-		val base = when {
-			osLower.contains("win") -> System.getenv("APPDATA")?.let { File(it, "omnisign") }
-				?: File(userHome, "AppData/Roaming/omnisign")
-			osLower.contains("mac") -> File(userHome, "Library/Application Support/omnisign")
-			else -> File(userHome, ".config/omnisign")
-		}
-		return File(base, "pkcs11")
 	}
 
 	private fun isLinux(osLower: String): Boolean =

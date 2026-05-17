@@ -47,6 +47,11 @@ sealed interface SigningDialogState {
 	 * @property coveringRenewalJobName Name of the existing renewal job that already covers [outputPath],
 	 *   or `null` when no coverage exists. When non-null, the "Add to renewal job" checkbox is
 	 *   forced checked and disabled because the file will be renewed regardless.
+	 * @property refreshing `true` while a background PKCS#11 discovery cycle is in flight after the
+	 *   dialog has already opened — typically triggered by a PC/SC reader-state event (card inserted /
+	 *   removed, reader plugged / unplugged).  The UI binds a small inline indicator to this flag and
+	 *   re-fetches the certificate list once it returns to `false`, preserving the current
+	 *   [selectedAlias] when it is still present in the refreshed list.
 	 */
 	data class Ready(
 		val certificates: List<AvailableCertificateInfo> = emptyList(),
@@ -66,6 +71,7 @@ sealed interface SigningDialogState {
 		val disabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
 		val addToRenewalJob: Boolean = false,
 		val coveringRenewalJobName: String? = null,
+		val refreshing: Boolean = false,
 	) : SigningDialogState {
 
 		/**

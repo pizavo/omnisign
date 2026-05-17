@@ -1,15 +1,12 @@
 package cz.pizavo.omnisign.ui.layout
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.lumo.LumoTheme
@@ -48,42 +45,35 @@ fun RenewalJobOfferDialog(
 ) {
 	Dialog(
 		onDismissRequest = onDismiss,
-		properties = DialogProperties(usePlatformDefaultWidth = false),
+		modifier = Modifier
+			.widthIn(min = 520.dp, max = 680.dp)
+			.heightIn(min = 280.dp, max = 560.dp),
 	) {
-		Surface(
-			modifier = Modifier
-				.widthIn(min = 520.dp, max = 680.dp)
-				.heightIn(min = 280.dp, max = 560.dp),
-			shape = RoundedCornerShape(16.dp),
-			color = LumoTheme.colors.surface,
-			shadowElevation = 8.dp,
-		) {
-			Column(modifier = Modifier.fillMaxSize()) {
-				RenewalOfferHeader(onClose = onDismiss)
+		Column(modifier = Modifier.fillMaxSize()) {
+			RenewalOfferHeader(onClose = onDismiss)
 
-				HorizontalDivider()
+			HorizontalDivider()
 
-				Box(modifier = Modifier.weight(1f)) {
-					if (state.assignedJobName != null) {
-						RenewalOfferAssignedContent(state.assignedJobName)
-					} else if (state.coveringJob != null) {
-						RenewalOfferAlreadyCoveredContent(state.coveringJob)
-					} else {
-						RenewalOfferFormContent(
-							state = state,
-							onAssignExisting = onAssignExisting,
-							onCreateNew = onCreateNew,
-						)
-					}
+			Box(modifier = Modifier.weight(1f)) {
+				if (state.assignedJobName != null) {
+					RenewalOfferAssignedContent(state.assignedJobName)
+				} else if (state.coveringJob != null) {
+					RenewalOfferAlreadyCoveredContent(state.coveringJob)
+				} else {
+					RenewalOfferFormContent(
+						state = state,
+						onAssignExisting = onAssignExisting,
+						onCreateNew = onCreateNew,
+					)
 				}
-
-				HorizontalDivider()
-
-				RenewalOfferFooter(
-					isAssigned = state.assignedJobName != null || state.coveringJob != null,
-					onDismiss = onDismiss,
-				)
 			}
+
+			HorizontalDivider()
+
+			RenewalOfferFooter(
+				isAssigned = state.assignedJobName != null || state.coveringJob != null,
+				onDismiss = onDismiss,
+			)
 		}
 	}
 }

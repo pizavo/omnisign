@@ -31,6 +31,56 @@ internal interface Pkcs11ProbeLib : Library {
 	 * Gather information about a particular token in the specified slot.
 	 */
 	fun C_GetTokenInfo(slotID: NativeLong, pInfo: Pointer?): NativeLong
+
+	/**
+	 * Open a session between an application and a token in a slot.  The "Route A"
+	 * no-login probe opens a **read-only** (`CKF_SERIAL_SESSION`-only) session and
+	 * never follows it with `C_Login`, so only public objects are visible.
+	 */
+	fun C_OpenSession(
+		slotID: NativeLong,
+		flags: NativeLong,
+		pApplication: Pointer?,
+		notify: Pointer?,
+		phSession: Pointer?,
+	): NativeLong
+
+	/**
+	 * Close a session between an application and a token.
+	 */
+	fun C_CloseSession(hSession: NativeLong): NativeLong
+
+	/**
+	 * Initialize a search for token and session objects that match a template.
+	 */
+	fun C_FindObjectsInit(hSession: NativeLong, pTemplate: Pointer?, ulCount: NativeLong): NativeLong
+
+	/**
+	 * Continue a search for token and session objects, obtaining additional object handles.
+	 */
+	fun C_FindObjects(
+		hSession: NativeLong,
+		phObject: Pointer?,
+		ulMaxObjectCount: NativeLong,
+		pulObjectCount: Pointer?,
+	): NativeLong
+
+	/**
+	 * Finish a search for token and session objects.
+	 */
+	fun C_FindObjectsFinal(hSession: NativeLong): NativeLong
+
+	/**
+	 * Obtain the value of one or more attributes of an object.  Used with the
+	 * standard two-pass idiom: first call with `pValue = NULL` to learn the
+	 * required buffer length, then again with an allocated buffer.
+	 */
+	fun C_GetAttributeValue(
+		hSession: NativeLong,
+		hObject: NativeLong,
+		pTemplate: Pointer?,
+		ulCount: NativeLong,
+	): NativeLong
 }
 
 /**
@@ -80,6 +130,46 @@ internal const val CK_TOKEN_INFO_SERIAL_LEN = 16
  * Allocation size for reading a full `CK_TOKEN_INFO` structure via JNA.
  */
 internal const val CK_TOKEN_INFO_SIZE = 256
+
+/**
+ * PKCS#11 return value: the supplied buffer was too small; `ulValueLen` now holds
+ * the required length.  Treated like success by the two-pass `C_GetAttributeValue`
+ * sizing call.
+ */
+internal const val CKR_BUFFER_TOO_SMALL = 0x150L
+
+/**
+ * `CK_OBJECT_CLASS` value for an X.509 certificate object (`CKO_CERTIFICATE`).
+ */
+internal const val CKO_CERTIFICATE = 0x00000001L
+
+/**
+ * `CK_ATTRIBUTE_TYPE` for the object class (`CKA_CLASS`).
+ */
+internal const val CKA_CLASS = 0x00000000L
+
+/**
+ * `CK_ATTRIBUTE_TYPE` for the object label (`CKA_LABEL`, UTF-8 text).
+ */
+internal const val CKA_LABEL = 0x00000003L
+
+/**
+ * `CK_ATTRIBUTE_TYPE` for the DER-encoded certificate value (`CKA_VALUE`).
+ */
+internal const val CKA_VALUE = 0x00000011L
+
+/**
+ * `CK_ATTRIBUTE_TYPE` for the key/cert pairing identifier (`CKA_ID`).  This is the
+ * value a private key and its certificate share, so it is the robust join key for a
+ * future no-login-list → logged-in-sign handoff.
+ */
+internal const val CKA_ID = 0x00000102L
+
+/**
+ * `CK_SESSION_INFO` flag marking a serial session; a read-only session sets this
+ * flag only (no `CKF_RW_SESSION`, no `C_Login`).
+ */
+internal const val CKF_SERIAL_SESSION = 0x00000004L
 
 /**
  * Decode a fixed-length PKCS#11 text field and strip padding.

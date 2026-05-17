@@ -358,32 +358,6 @@ class Pkcs11DiscovererTest : FunSpec({
 		result.first().second shouldBe proxyFile.absolutePath
 	}
 
-	test("discoverViaLibDirs finds PKCS11-named files in given directories") {
-		val dir = File.createTempFile("libdir", "").also { it.delete(); it.mkdirs(); it.deleteOnExit() }
-		val lib = File(dir, "libykcs11.so").also { it.createNewFile(); it.deleteOnExit() }
-
-		val result = discoverer().discoverViaLibDirs(listOf(dir.absolutePath))
-
-		result.any { it.second == lib.absolutePath }.shouldBeTrue()
-		dir.deleteRecursively()
-	}
-
-	test("discoverViaLibDirs skips non-PKCS11 files") {
-		val dir = File.createTempFile("libdir", "").also { it.delete(); it.mkdirs(); it.deleteOnExit() }
-		File(dir, "libssl.so").also { it.createNewFile(); it.deleteOnExit() }
-
-		val result = discoverer().discoverViaLibDirs(listOf(dir.absolutePath))
-
-		result.shouldBeEmpty()
-		dir.deleteRecursively()
-	}
-
-	test("discoverViaLibDirs silently skips non-existent directories") {
-		runCatching {
-			discoverer().discoverViaLibDirs(listOf("/tmp/dir-that-does-not-exist-omnisign"))
-		}.isSuccess.shouldBeTrue()
-	}
-
 	test("discoverTokens uses hardware label as token name instead of middleware name") {
 		val lib = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
 
@@ -423,7 +397,7 @@ class Pkcs11DiscovererTest : FunSpec({
 	}
 
 	test("probeLibrary skips blacklisted library without spawning a subprocess") {
-		val blacklist = Pkcs11CrashBlacklist()
+		val blacklist = Pkcs11CrashBlacklist(crashThreshold = 1)
 		blacklist.registerCrashed("/crashed/lib.so")
 
 		val discoverer = Pkcs11Discoverer(
@@ -444,6 +418,125 @@ class Pkcs11DiscovererTest : FunSpec({
 		)
 
 		discoverer.probeLibrary("/unknown/lib.so") shouldBe expected
+	}
+
+	test("probeLibrary caches a successful result and serves the next call from cache") {
+		val calls = java.util.concurrent.atomic.AtomicInteger(0)
+		val identities = listOf(
+			Pkcs11TokenIdentity(label = "Cached", serialNumber = "SN-CACHE", libraryPath = "/lib.so")
+		)
+		val discoverer = Pkcs11Discoverer(tokenProber = {
+			calls.incrementAndGet()
+			identities
+		})
+
+		discoverer.probeLibrary("/lib.so") shouldBe identities
+		discoverer.probeLibrary("/lib.so") shouldBe identities
+
+		calls.get() shouldBe 1
+	}
+
+	test("probeLibrary does not cache empty results") {
+		val calls = java.util.concurrent.atomic.AtomicInteger(0)
+		val discoverer = Pkcs11Discoverer(tokenProber = {
+			calls.incrementAndGet()
+			emptyList()
+		})
+
+		discoverer.probeLibrary("/lib.so").shouldBeEmpty()
+		discoverer.probeLibrary("/lib.so").shouldBeEmpty()
+
+		calls.get() shouldBe 2
+	}
+
+	test("primeCache makes a subsequent probeLibrary skip the prober") {
+		val identities = listOf(
+			Pkcs11TokenIdentity(label = "Primed", serialNumber = "SN-PRIME", libraryPath = "/lib.so")
+		)
+		val discoverer = Pkcs11Discoverer(tokenProber = { error("should not be called") })
+
+		discoverer.primeCache("/lib.so", identities)
+		discoverer.probeLibrary("/lib.so") shouldBe identities
+	}
+
+	test("invalidateCache forces the next probeLibrary to run the prober again") {
+		val calls = java.util.concurrent.atomic.AtomicInteger(0)
+		val identities = listOf(
+			Pkcs11TokenIdentity(label = "X", serialNumber = "SN-X", libraryPath = "/lib.so")
+		)
+		val discoverer = Pkcs11Discoverer(tokenProber = {
+			calls.incrementAndGet()
+			identities
+		})
+
+		discoverer.probeLibrary("/lib.so")
+		discoverer.invalidateCache()
+		discoverer.probeLibrary("/lib.so")
+
+		calls.get() shouldBe 2
+	}
+
+	test("collectCandidates caches its result so a second call returns the same instance") {
+		val lib = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
+		val discoverer = Pkcs11Discoverer(tokenProber = { emptyList() })
+
+		val first = discoverer.collectCandidates(userPkcs11Libraries = listOf("Test" to lib.absolutePath))
+		val second = discoverer.collectCandidates(userPkcs11Libraries = listOf("Test" to lib.absolutePath))
+
+		(first === second) shouldBe true
+	}
+
+	test("invalidateCache forces collectCandidates to re-enumerate") {
+		val lib = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
+		val discoverer = Pkcs11Discoverer(tokenProber = { emptyList() })
+
+		val first = discoverer.collectCandidates(userPkcs11Libraries = listOf("Test" to lib.absolutePath))
+		discoverer.invalidateCache()
+		val second = discoverer.collectCandidates(userPkcs11Libraries = listOf("Test" to lib.absolutePath))
+
+		(first === second) shouldBe false
+		first shouldBe second
+	}
+
+	test("collectCandidates uses distinct cache entries for different user-library inputs") {
+		val lib1 = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
+		val lib2 = File.createTempFile("opensc", ".dll").also { it.deleteOnExit() }
+		val discoverer = Pkcs11Discoverer(tokenProber = { emptyList() })
+
+		val first = discoverer.collectCandidates(userPkcs11Libraries = listOf("a" to lib1.absolutePath))
+		val second = discoverer.collectCandidates(userPkcs11Libraries = listOf("b" to lib2.absolutePath))
+
+		(first === second) shouldBe false
+	}
+
+	test("discoverTokens caps subprocess parallelism at probeParallelism") {
+		val concurrent = java.util.concurrent.atomic.AtomicInteger(0)
+		val peak = java.util.concurrent.atomic.AtomicInteger(0)
+		val candidatePaths = (1..6).map { i ->
+			File.createTempFile("eTPKCS11-$i", ".dll").also { it.deleteOnExit() }.absolutePath
+		}
+
+		val prober: (String) -> List<Pkcs11TokenIdentity> = { path ->
+			val now = concurrent.incrementAndGet()
+			peak.updateAndGet { kotlin.math.max(it, now) }
+			Thread.sleep(50)
+			concurrent.decrementAndGet()
+			listOf(
+				Pkcs11TokenIdentity(
+					label = "T-$path",
+					serialNumber = "SN-${path.hashCode()}",
+					libraryPath = path,
+				)
+			)
+		}
+
+		val discoverer = Pkcs11Discoverer(tokenProber = prober, probeParallelism = 2)
+
+		discoverer.discoverTokens(
+			userPkcs11Libraries = candidatePaths.map { "Lib" to it },
+		)
+
+		(peak.get() <= 2) shouldBe true
 	}
 
 	test("resolveProbeClasspath returns non-blank value from java.class.path in test environment") {
@@ -569,5 +662,116 @@ class Pkcs11DiscovererTest : FunSpec({
 		)
 
 		tokens.filter { it.name == "VP-SafeNet" }.shouldHaveSize(1)
+	}
+
+	test("discoveryRunning is initially false so a passive read does not block forever") {
+		val d = discoverer()
+		d.discoveryRunning.value.shouldBeFalse()
+	}
+
+	test("beginDiscovery / endDiscovery toggle discoveryRunning around a single in-flight cycle") {
+		val d = discoverer()
+		d.discoveryRunning.value.shouldBeFalse()
+
+		d.beginDiscovery()
+		d.discoveryRunning.value.shouldBeTrue()
+
+		d.endDiscovery()
+		d.discoveryRunning.value.shouldBeFalse()
+	}
+
+	test("nested begin/end keep discoveryRunning true until the last endDiscovery") {
+		val d = discoverer()
+
+		d.beginDiscovery()
+		d.beginDiscovery()
+		d.discoveryRunning.value.shouldBeTrue()
+
+		d.endDiscovery()
+		d.discoveryRunning.value.shouldBeTrue()
+
+		d.endDiscovery()
+		d.discoveryRunning.value.shouldBeFalse()
+	}
+
+	test("discoverTokens leaves discoveryRunning false after a successful cycle") {
+		val tmp = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
+		val d = Pkcs11Discoverer(tokenProber = { path ->
+			listOf(Pkcs11TokenIdentity(label = "T", serialNumber = "SN", libraryPath = path))
+		})
+
+		d.discoverTokens(userPkcs11Libraries = listOf("Lib" to tmp.absolutePath))
+
+		d.discoveryRunning.value.shouldBeFalse()
+	}
+
+	test("discoverTokens flips discoveryRunning false even when the cycle throws") {
+		val tmp = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
+		val d = Pkcs11Discoverer(tokenProber = { error("boom") })
+
+		runCatching {
+			d.discoverTokens(userPkcs11Libraries = listOf("Lib" to tmp.absolutePath))
+		}
+
+		d.discoveryRunning.value.shouldBeFalse()
+	}
+
+	test("getCachedTokens returns empty when no probe result has been cached") {
+		val d = discoverer()
+		d.getCachedTokens().shouldBeEmpty()
+	}
+
+	test("getCachedTokens returns the same deduplicated tokens that discoverTokens produced") {
+		val lib1 = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
+		val lib2 = File.createTempFile("gclib", ".dll").also { it.deleteOnExit() }
+
+		val fakeProber: (String) -> List<Pkcs11TokenIdentity> = { path ->
+			listOf(
+				Pkcs11TokenIdentity(
+					label = "Hardware Token",
+					serialNumber = "SN-CACHED",
+					libraryPath = path,
+				)
+			)
+		}
+		val d = Pkcs11Discoverer(tokenProber = fakeProber)
+
+		d.discoverTokens(
+			userPkcs11Libraries = listOf(
+				"SafeNet eToken" to lib1.absolutePath,
+				"Thales/Gemalto IDPrime" to lib2.absolutePath,
+			)
+		)
+
+		val cached = d.getCachedTokens()
+		cached.shouldHaveSize(1)
+		cached.first().id shouldBe "pkcs11-SN-CACHED"
+		cached.first().name shouldBe "Hardware Token"
+	}
+
+	test("getCachedTokens reflects primeCache writes from warmup") {
+		val d = discoverer()
+		val identities = listOf(
+			Pkcs11TokenIdentity(label = "Primed Token", serialNumber = "SN-PRIME", libraryPath = "/lib.so")
+		)
+
+		d.primeCache("/lib.so", identities)
+
+		val cached = d.getCachedTokens()
+		cached.shouldHaveSize(1)
+		cached.first().id shouldBe "pkcs11-SN-PRIME"
+	}
+
+	test("getCachedTokens returns empty after invalidateProbes clears the cache") {
+		val d = Pkcs11Discoverer(tokenProber = { path ->
+			listOf(Pkcs11TokenIdentity(label = "T", serialNumber = "SN", libraryPath = path))
+		})
+		val tmp = File.createTempFile("eTPKCS11", ".dll").also { it.deleteOnExit() }
+
+		d.discoverTokens(userPkcs11Libraries = listOf("Lib" to tmp.absolutePath))
+		d.getCachedTokens().shouldHaveSize(1)
+
+		d.invalidateProbes()
+		d.getCachedTokens().shouldBeEmpty()
 	}
 })

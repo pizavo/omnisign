@@ -3,7 +3,9 @@ package cz.pizavo.omnisign
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
+import cz.pizavo.omnisign.data.service.Pkcs11CacheInvalidator
 import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
+import cz.pizavo.omnisign.data.service.pkcs11DropDir
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
 import cz.pizavo.omnisign.di.serverModule
@@ -96,6 +98,7 @@ fun main(args: Array<String>) {
 fun Application.moduleWith(serverConfig: ServerConfig) {
 	configureKoin(serverConfig)
 	launchPkcs11WarmupIfNeeded(serverConfig)
+	attachPkcs11CacheInvalidatorIfNeeded(serverConfig)
 	configureDefaultHeaders(hstsConfig = serverConfig.tls?.hsts)
 	configureSerialization()
 	configureStatusPages()
@@ -168,6 +171,31 @@ fun Application.configureKoin(serverConfig: ServerConfig) {
 }
 
 /**
+ * Attach the PKCS#11 cache invalidator when [AllowedOperation.SIGN] is enabled.
+ *
+ * Resolves [Pkcs11CacheInvalidator] from Koin so its lazy `single` definition is
+ * instantiated, which in turn starts its background subscription to
+ * [cz.pizavo.omnisign.data.service.PcscMonitorService.events].  The invalidator
+ * clears the discoverer's caches in response to card insertion / removal and
+ * reader (un)plug events, ensuring the next certificate-discovery call sees
+ * fresh hardware state without waiting for the cache TTL to elapse.
+ *
+ * Skipped when `SIGN` is not allowed because PKCS#11 discovery is gated behind it
+ * and the cache would never be consulted anyway.
+ *
+ * @param serverConfig Current server configuration.
+ */
+private fun Application.attachPkcs11CacheInvalidatorIfNeeded(serverConfig: ServerConfig) {
+	if (AllowedOperation.SIGN !in serverConfig.allowedOperations) {
+		logger.debug { "SIGN operation not enabled — skipping PKCS#11 cache invalidator" }
+		return
+	}
+
+	val invalidator = inject<Pkcs11CacheInvalidator>().value
+	logger.debug { "PKCS#11 cache invalidator attached (${invalidator::class.simpleName})" }
+}
+
+/**
  * Launch a background PKCS#11 warmup cycle when [AllowedOperation.SIGN] is enabled.
  *
  * Signing requires PKCS#11 token discovery to list available certificates.  The warmup
@@ -194,8 +222,9 @@ private fun Application.launchPkcs11WarmupIfNeeded(serverConfig: ServerConfig) {
 		try {
 			val config = configRepo.getCurrentConfig()
 			val userLibs = config.global.customPkcs11Libraries.map { it.name to it.path }
-			logger.info { "Launching PKCS#11 background warmup (${userLibs.size} user lib(s))" }
-			warmupService.warmup(userPkcs11Libraries = userLibs)
+			val pkcs11Dir = pkcs11DropDir()
+			logger.info { "Launching PKCS#11 background warmup (${userLibs.size} user lib(s), dropDir=$pkcs11Dir)" }
+			warmupService.warmup(appDataPkcs11Dir = pkcs11Dir, userPkcs11Libraries = userLibs)
 		} catch (e: Exception) {
 			logger.warn(e) { "PKCS#11 background warmup failed — certificate discovery will use subprocess probing" }
 			val signal by inject<MutableStateFlow<Boolean>>()

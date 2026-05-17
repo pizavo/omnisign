@@ -70,6 +70,8 @@ class Pkcs11DiagnosticsServiceTest : FunSpec({
 				listOf("Safe Lib" to "/test/safe.so")
 
 		mockkStatic(::runProbeSubprocess)
+		mockkStatic(::runCertProbeSubprocess)
+		every { runCertProbeSubprocess(any(), any()) } returns null
 		every { runProbeSubprocess("/test/safe.so", any()) } returns
 				Pkcs11SubprocessResult.Success(pid = 100L, stdout = "MyToken\tABC123\n")
 
@@ -89,6 +91,8 @@ class Pkcs11DiagnosticsServiceTest : FunSpec({
 				listOf("Crash Lib" to "/test/crash.so")
 
 		mockkStatic(::runProbeSubprocess)
+		mockkStatic(::runCertProbeSubprocess)
+		every { runCertProbeSubprocess(any(), any()) } returns null
 		every { runProbeSubprocess("/test/crash.so", any()) } returns
 				Pkcs11SubprocessResult.Crashed(pid = 200L, exitCode = 139, stderr = "SIGSEGV at 0x0")
 
@@ -107,6 +111,8 @@ class Pkcs11DiagnosticsServiceTest : FunSpec({
 				listOf("Hung Lib" to "/test/hung.so")
 
 		mockkStatic(::runProbeSubprocess)
+		mockkStatic(::runCertProbeSubprocess)
+		every { runCertProbeSubprocess(any(), any()) } returns null
 		every { runProbeSubprocess("/test/hung.so", any()) } returns
 				Pkcs11SubprocessResult.TimedOut(pid = 300L)
 
@@ -124,6 +130,8 @@ class Pkcs11DiagnosticsServiceTest : FunSpec({
 				listOf("No Cmd" to "/test/nocmd.so")
 
 		mockkStatic(::runProbeSubprocess)
+		mockkStatic(::runCertProbeSubprocess)
+		every { runCertProbeSubprocess(any(), any()) } returns null
 		every { runProbeSubprocess("/test/nocmd.so", any()) } returns null
 
 		val report = Pkcs11DiagnosticsService(discoverer, newConfigRepo(), newPcscMonitor()).runDiagnostics()
@@ -149,6 +157,8 @@ class Pkcs11DiagnosticsServiceTest : FunSpec({
 		)
 
 		mockkStatic(::runProbeSubprocess)
+		mockkStatic(::runCertProbeSubprocess)
+		every { runCertProbeSubprocess(any(), any()) } returns null
 		every { runProbeSubprocess("/test/lib.so", any()) } returns
 				Pkcs11SubprocessResult.Success(pid = 1L, stdout = "Token\tXYZ\n")
 

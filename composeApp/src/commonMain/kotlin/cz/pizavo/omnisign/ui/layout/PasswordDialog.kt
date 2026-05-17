@@ -1,7 +1,6 @@
-﻿package cz.pizavo.omnisign.ui.layout
+package cz.pizavo.omnisign.ui.layout
 
 import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.*
@@ -11,12 +10,10 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Button
 import cz.pizavo.omnisign.lumo.components.ButtonVariant
-import cz.pizavo.omnisign.lumo.components.Surface
+import cz.pizavo.omnisign.lumo.components.Dialog
 import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 
@@ -51,60 +48,54 @@ fun PasswordDialog(
 
 	Dialog(
 		onDismissRequest = onCancel,
-		properties = DialogProperties(usePlatformDefaultWidth = false),
+		modifier = Modifier.widthIn(min = 360.dp, max = 460.dp),
+		showToast = false,
 	) {
-		Surface(
-			modifier = Modifier.widthIn(min = 360.dp, max = 460.dp),
-			shape = RoundedCornerShape(16.dp),
-			color = LumoTheme.colors.surface,
-			shadowElevation = 8.dp,
-		) {
-			Column(modifier = Modifier.padding(24.dp)) {
-				Text(text = title, style = LumoTheme.typography.h3)
+		Column(modifier = Modifier.padding(24.dp)) {
+			Text(text = title, style = LumoTheme.typography.h3)
 
-				Spacer(modifier = Modifier.height(12.dp))
+			Spacer(modifier = Modifier.height(12.dp))
 
-				Text(
-					text = prompt,
-					style = LumoTheme.typography.body2,
-					color = LumoTheme.colors.textSecondary,
+			Text(
+				text = prompt,
+				style = LumoTheme.typography.body2,
+				color = LumoTheme.colors.textSecondary,
+			)
+
+			Spacer(modifier = Modifier.height(16.dp))
+
+			UnderlinedTextField(
+				value = password,
+				onValueChange = { password = it },
+				singleLine = true,
+				visualTransformation = PasswordVisualTransformation(),
+				label = { Text("Password") },
+				keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+				keyboardActions = KeyboardActions(
+					onDone = { if (password.isNotEmpty()) onConfirm(password) },
+				),
+				modifier = Modifier
+					.fillMaxWidth()
+					.focusRequester(focusRequester),
+			)
+
+			Spacer(modifier = Modifier.height(20.dp))
+
+			Row(
+				modifier = Modifier.fillMaxWidth(),
+				horizontalArrangement = Arrangement.spacedBy(8.dp, alignment = androidx.compose.ui.Alignment.End),
+			) {
+				Button(
+					text = "Cancel",
+					variant = ButtonVariant.SecondaryOutlined,
+					onClick = onCancel,
 				)
-
-				Spacer(modifier = Modifier.height(16.dp))
-
-				UnderlinedTextField(
-					value = password,
-					onValueChange = { password = it },
-					singleLine = true,
-					visualTransformation = PasswordVisualTransformation(),
-					label = { Text("Password") },
-					keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-					keyboardActions = KeyboardActions(
-						onDone = { if (password.isNotEmpty()) onConfirm(password) },
-					),
-					modifier = Modifier
-						.fillMaxWidth()
-						.focusRequester(focusRequester),
+				Button(
+					text = "Confirm",
+					variant = ButtonVariant.Primary,
+					enabled = password.isNotEmpty(),
+					onClick = { onConfirm(password) },
 				)
-
-				Spacer(modifier = Modifier.height(20.dp))
-
-				Row(
-					modifier = Modifier.fillMaxWidth(),
-					horizontalArrangement = Arrangement.spacedBy(8.dp, alignment = androidx.compose.ui.Alignment.End),
-				) {
-					Button(
-						text = "Cancel",
-						variant = ButtonVariant.SecondaryOutlined,
-						onClick = onCancel,
-					)
-					Button(
-						text = "Confirm",
-						variant = ButtonVariant.Primary,
-						enabled = password.isNotEmpty(),
-						onClick = { onConfirm(password) },
-					)
-				}
 			}
 		}
 	}

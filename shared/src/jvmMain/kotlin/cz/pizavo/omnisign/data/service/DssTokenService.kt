@@ -6,14 +6,19 @@ import cz.pizavo.omnisign.data.util.toKotlinInstant
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.result.OperationResult
+import cz.pizavo.omnisign.domain.model.value.commonNameOf
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.CertificateEntry
+import cz.pizavo.omnisign.domain.service.Pkcs11DiagnosticSnapshot
 import cz.pizavo.omnisign.domain.service.SigningToken
 import cz.pizavo.omnisign.domain.service.TokenInfo
 import cz.pizavo.omnisign.domain.service.TokenService
 import cz.pizavo.omnisign.platform.PasswordCallback
 import eu.europa.esig.dss.token.*
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.filter
+import kotlinx.coroutines.flow.first
 import org.bouncycastle.asn1.ASN1ObjectIdentifier
 import org.bouncycastle.asn1.ASN1Primitive
 import org.bouncycastle.asn1.ASN1Sequence
@@ -32,21 +37,60 @@ import java.security.cert.X509Certificate
  * No credential is requested during discovery; [loadCertificates] prompts via [PasswordCallback]
  * when a PIN is needed, while [loadCertificatesSilent] returns an error instead of prompting so
  * it is safe to call during passive enumeration.
+ *
+ * [discoverTokens] is a **passive cache reader** — it suspends on
+ * [Pkcs11Discoverer.discoveryRunning] until any in-flight cycle (warmup, invalidator-launched
+ * rediscovery) finishes, then reads [Pkcs11Discoverer.getCachedTokens] without triggering its
+ * own discovery.  The producers are [Pkcs11WarmupService] at startup and
+ * [Pkcs11CacheInvalidator] on PC/SC reader-state events.
  */
 class DssTokenService(
 	private val passwordCallback: PasswordCallback,
-	private val configRepository: ConfigRepository,
 	private val pkcs11Discoverer: Pkcs11Discoverer = Pkcs11Discoverer(),
+	private val pkcs11CacheInvalidator: Pkcs11CacheInvalidator? = null,
+	private val pcscMonitorService: PcscMonitorService? = null,
+	private val configRepository: ConfigRepository? = null,
 ) : TokenService {
+
+	override val discoveryRunning: StateFlow<Boolean> = pkcs11Discoverer.discoveryRunning
+
+	override suspend fun getDiagnosticSnapshot(): Pkcs11DiagnosticSnapshot {
+		val readers = pcscMonitorService?.currentReaders()?.map { reader ->
+			Pkcs11DiagnosticSnapshot.PcscReaderInfo(
+				name = reader.name,
+				cardPresent = reader.cardPresent,
+				atrHex = reader.atrHex,
+			)
+		} ?: emptyList()
+		val userLibs = configRepository?.getCurrentConfig()
+			?.global?.customPkcs11Libraries
+			?.map { it.name to it.path }
+			?: emptyList()
+		val dropDir = pkcs11DropDir()
+		val candidates = pkcs11Discoverer
+			.collectCandidates(appDataPkcs11Dir = dropDir, userPkcs11Libraries = userLibs)
+			.map { (name, path) -> Pkcs11DiagnosticSnapshot.CandidateLibrary(name, path) }
+		return Pkcs11DiagnosticSnapshot(
+			pcscReaders = readers,
+			candidateLibraries = candidates,
+			dropDirectoryPath = dropDir.absolutePath,
+		)
+	}
+
+	override fun rescanTokens() {
+		val invalidator = pkcs11CacheInvalidator
+		if (invalidator == null) {
+			logger.warn { "rescanTokens() called but no Pkcs11CacheInvalidator wired — rescan ignored" }
+			return
+		}
+		logger.info { "Manual rescan requested — invalidating caches and re-running discovery" }
+		invalidator.rescan()
+	}
 
 	override suspend fun discoverTokens(): OperationResult<List<TokenInfo>> {
 		return try {
-			val config = configRepository.getCurrentConfig()
-			val userLibraries = config.global.customPkcs11Libraries.map { it.name to it.path }
-			val tokens = pkcs11Discoverer.discoverTokens(
-				appDataPkcs11Dir = appDataPkcs11DropDir(),
-				userPkcs11Libraries = userLibraries,
-			).toMutableList()
+			pkcs11Discoverer.discoveryRunning.filter { !it }.first()
+			val tokens = pkcs11Discoverer.getCachedTokens().toMutableList()
 
 			val os = System.getProperty("os.name").lowercase()
 			if (os.contains("win")) {
@@ -89,11 +133,13 @@ class DssTokenService(
 	/**
 	 * Check physical token presence without supplying a PIN.
 	 *
-	 * PKCS#11 tokens are probed via [Pkcs11Discoverer.probeLibrary], which delegates to the
-	 * configured probe strategy (subprocess-based by default with classpath fallback for
-	 * jpackage distributions).  The probe calls `C_GetSlotList` with `CK_TRUE`, which queries
-	 * the middleware for slots that currently have a card inserted.  This never calls `C_Login`
-	 * and therefore never risks incrementing a wrong-PIN counter.
+	 * PKCS#11 tokens are checked via [Pkcs11Discoverer.probeLibrary], which returns a cached
+	 * probe result when the cache is warm (the common case after warmup or an
+	 * invalidator-driven rediscovery) and only on a cache miss spawns the configured probe
+	 * strategy (subprocess-based by default, with a classpath fallback for jpackage
+	 * distributions).  That subprocess probe calls `C_GetSlotList` with `CK_TRUE`, which
+	 * queries the middleware for slots that currently have a card inserted.  This never calls
+	 * `C_Login` and therefore never risks incrementing a wrong-PIN counter.
 	 * FILE tokens are checked via [File.exists].
 	 * OS-native stores always return true — the subsequent load call handles any failure.
 	 */
@@ -141,6 +187,36 @@ class DssTokenService(
 		password: String?,
 	): OperationResult<List<CertificateEntry>> = loadCertificatesInternal(tokenInfo, password)
 
+	/**
+	 * Enumerate a PKCS#11 token's public certificate objects without `C_Login`.
+	 *
+	 * Runs the out-of-process `--certs` probe ([runCertProbeSubprocess]) so a misbehaving
+	 * module cannot crash this JVM, parses the returned DER, and builds [CertificateEntry]s
+	 * whose [CertificateEntry.alias] is the same deterministic, content-derived value the
+	 * PIN path ([loadCertificatesInternal]) produces — so a certificate listed here resolves
+	 * to the same key when [DssSigningRepository] later signs with the PIN, with no change
+	 * to the signing logic.
+	 *
+	 * Returns an empty list (never an error) for non-PKCS#11 tokens, when the probe fails,
+	 * or when the token exposes no public certificates — callers then fall back to the
+	 * PIN-prompt path.
+	 */
+	override suspend fun listCertificatesNoLogin(
+		tokenInfo: TokenInfo,
+	): OperationResult<List<CertificateEntry>> {
+		if (tokenInfo.type != TokenType.PKCS11) return emptyList<CertificateEntry>().right()
+		val libraryPath = tokenInfo.path ?: return emptyList<CertificateEntry>().right()
+		val certs = runCatching {
+			val result = runCertProbeSubprocess(libraryPath, DEFAULT_PROBE_TIMEOUT_SECONDS)
+			if (result is Pkcs11SubprocessResult.Success) {
+				parseProbeNoLoginCerts(result.stdout).map { it.toCertificateEntry(tokenInfo) }
+			} else {
+				emptyList()
+			}
+		}.getOrDefault(emptyList())
+		return certs.right()
+	}
+
 	override suspend fun getSigningToken(
 		certificateEntry: CertificateEntry,
 		password: String,
@@ -187,22 +263,9 @@ class DssTokenService(
 			val token = createDssToken(tokenInfo, password)
 			val certificates = token.keys.map { key ->
 				val certToken = key.certificate.certificate
-				val alias = runCatching {
-					key::class.java.getDeclaredField("alias")
-						.apply { isAccessible = true }
-						.get(key) as? String
-				}.getOrNull() ?: run {
-					val cn = certToken.subjectX500Principal.name
-						.split(",")
-						.find { it.trim().startsWith("CN=") }
-						?.substringAfter("CN=")
-						?.trim()
-						?: "certificate"
-					"$cn-${certToken.serialNumber.toString(16).take(ALIAS_SERIAL_SUFFIX_LENGTH)}"
-				}
 				val (isQualified, isQscd) = extractQcStatements(certToken)
 				CertificateEntry(
-					alias = alias,
+					alias = pkcs11CertAlias(certToken, tokenInfo),
 					subjectDN = certToken.subjectX500Principal.toString(),
 					issuerDN = certToken.issuerX500Principal.toString(),
 					serialNumber = certToken.serialNumber.toString(),
@@ -223,6 +286,51 @@ class DssTokenService(
 				cause = e,
 			).left()
 		}
+	}
+
+	/**
+	 * Deterministic certificate alias: `<CN>-<serialHex>@<tokenInfo.id>`.
+	 *
+	 * The leading `<CN>-<serialHex>` is derived purely from the certificate; the trailing
+	 * `@<tokenInfo.id>` records *which source* the certificate was read from.  [TokenInfo.id]
+	 * is stable for a given source — `pkcs11-<tokenSerial>` for a hardware token (the physical
+	 * token serial, never the transient slot), `windows-my` / `macos-keychain` for the OS
+	 * stores, `file-…` for an imported keystore — and is reproduced identically by both the
+	 * no-login probe and the logged-in keystore for the same token, because both build their
+	 * [CertificateEntry] from the same discovered [TokenInfo].
+	 *
+	 * This keeps two invariants at once:
+	 * - the alias the user selects from a no-PIN listing is the exact alias the logged-in
+	 *   keystore yields for the same physical certificate at signing time, so
+	 *   [DssSigningRepository]'s key resolution stays unchanged; and
+	 * - the same certificate present on two different sources (e.g. a hardware token and the
+	 *   Windows store that mirrors it) yields two distinct aliases, so selection and
+	 *   sign-time resolution can no longer collapse them onto the wrong key.
+	 */
+	private fun pkcs11CertAlias(cert: X509Certificate, tokenInfo: TokenInfo): String {
+		val cn = commonNameOf(cert.subjectX500Principal.name) ?: "certificate"
+		return "$cn-${cert.serialNumber.toString(RADIX_HEX)}@${tokenInfo.id}"
+	}
+
+	/**
+	 * Build a [CertificateEntry] from a no-login-parsed certificate, mirroring exactly the
+	 * field derivation of [loadCertificatesInternal] (same alias, DN formatting, validity,
+	 * key usages, and QC-statement extraction) so the two paths are interchangeable.
+	 */
+	private fun Pkcs11NoLoginParsedCert.toCertificateEntry(tokenInfo: TokenInfo): CertificateEntry {
+		val (isQualified, isQscd) = extractQcStatements(certificate)
+		return CertificateEntry(
+			alias = pkcs11CertAlias(certificate, tokenInfo),
+			subjectDN = certificate.subjectX500Principal.toString(),
+			issuerDN = certificate.issuerX500Principal.toString(),
+			serialNumber = certificate.serialNumber.toString(),
+			validFrom = certificate.notBefore.toKotlinInstant(),
+			validTo = certificate.notAfter.toKotlinInstant(),
+			keyUsages = extractKeyUsages(certificate.keyUsage),
+			tokenInfo = tokenInfo,
+			isQualified = isQualified,
+			isQscd = isQscd,
+		)
 	}
 
 	/**
@@ -260,31 +368,25 @@ class DssTokenService(
 		}.getOrDefault(null to null)
 	}
 
-	/**
-	 * Return the platform-appropriate PKCS#11 drop directory: `<appDataDir>/omnisign/pkcs11/`.
-	 *
-	 * Files placed here are discovered automatically by [Pkcs11Discoverer] without any config
-	 * change.  The directory does not need to exist.
-	 */
-	private fun appDataPkcs11DropDir(): File {
-		val os = System.getProperty("os.name").lowercase()
-		val userHome = System.getProperty("user.home")
-		val base = when {
-			os.contains("win") -> System.getenv("APPDATA")?.let { File(it, "omnisign") }
-				?: File(userHome, "AppData/Roaming/omnisign")
-			os.contains("mac") -> File(userHome, "Library/Application Support/omnisign")
-			else -> File(userHome, ".config/omnisign")
-		}
-		return File(base, "pkcs11")
-	}
-
 	private fun createDssToken(
 		tokenInfo: TokenInfo,
 		password: String?,
 	): AbstractSignatureTokenConnection = when (tokenInfo.type) {
 		TokenType.PKCS11 -> {
 			val pin = password ?: error("PIN required for PKCS#11 token '${tokenInfo.name}'")
-			Pkcs11SignatureToken(tokenInfo.path, KeyStore.PasswordProtection(pin.toCharArray()))
+			val protection = KeyStore.PasswordProtection(pin.toCharArray())
+			val slotId = tokenInfo.pkcs11SlotId
+			if (slotId != null) {
+				Pkcs11SignatureToken(
+					tokenInfo.path,
+					PrefilledPasswordCallback(protection),
+					slotId.toInt(),
+					-1,
+					null,
+				)
+			} else {
+				Pkcs11SignatureToken(tokenInfo.path, protection)
+			}
 		}
 		TokenType.FILE -> {
 			val filePath = tokenInfo.path
@@ -299,7 +401,10 @@ class DssTokenService(
 	private companion object {
 		val logger = KotlinLogging.logger {}
 
-		const val ALIAS_SERIAL_SUFFIX_LENGTH = 8
+		/**
+		 * Radix for rendering a certificate serial number in the deterministic alias.
+		 */
+		const val RADIX_HEX = 16
 
 		/**
 		 * OID of the QCStatements X.509 extension (RFC 3739 / ETSI EN 319 412).

@@ -20,7 +20,9 @@ import com.jetbrains.WindowDecorations
 import com.jetbrains.WindowMove
 import cz.pizavo.omnisign.data.service.NotificationUrgency
 import cz.pizavo.omnisign.data.service.OsNotificationService
+import cz.pizavo.omnisign.data.service.Pkcs11CacheInvalidator
 import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
+import cz.pizavo.omnisign.data.service.pkcs11DropDir
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -180,31 +182,6 @@ private fun resolveLogDir(): String {
 }
 
 /**
- * Resolves the platform-appropriate PKCS#11 drop directory for background warmup.
- *
- * Mirrors the logic in
- * [DssTokenService.appDataPkcs11DropDir][cz.pizavo.omnisign.data.service.DssTokenService]
- * so that warmup and discovery use the same candidate pool.
- *
- * - **Windows**: `%APPDATA%/omnisign/pkcs11`
- * - **macOS**: `~/Library/Application Support/omnisign/pkcs11`
- * - **Linux/other**: `~/.config/omnisign/pkcs11`
- *
- * @return The drop directory [File]; it may not exist on disk.
- */
-private fun resolvePkcs11DropDir(): File {
-	val os = System.getProperty("os.name").lowercase()
-	val userHome = System.getProperty("user.home")
-	val base = when {
-		os.contains("win") -> System.getenv("APPDATA")?.let { File(it, "omnisign") }
-			?: File(userHome, "AppData/Roaming/omnisign")
-		os.contains("mac") -> File(userHome, "Library/Application Support/omnisign")
-		else -> File(userHome, ".config/omnisign")
-	}
-	return File(base, "pkcs11")
-}
-
-/**
  * JVM desktop entry point.
  *
  * Launches a [Window] with a JBR custom title bar — the OS handles snapping,
@@ -229,7 +206,7 @@ private fun resolvePkcs11DropDir(): File {
  */
 fun main(args: Array<String> = emptyArray()) {
 	if (args.size >= 2 && args[0] == "probe") {
-		cz.pizavo.omnisign.data.service.Pkcs11ProbeWorker.main(arrayOf(args[1]))
+		cz.pizavo.omnisign.data.service.Pkcs11ProbeWorker.main(args.drop(1).toTypedArray())
 		exitProcess(0)
 	}
 
@@ -286,11 +263,13 @@ fun main(args: Array<String> = emptyArray()) {
 		val warmupService = koin.get<Pkcs11WarmupService>()
 		val warmupConfigRepo = koin.get<ConfigRepository>()
 
+		koin.get<Pkcs11CacheInvalidator>()
+
 		CoroutineScope(Dispatchers.IO).launch {
 			try {
 				val config = warmupConfigRepo.getCurrentConfig()
 				val userLibs = config.global.customPkcs11Libraries.map { it.name to it.path }
-				val pkcs11Dir = resolvePkcs11DropDir()
+				val pkcs11Dir = pkcs11DropDir()
 				logger.info { "Launching PKCS#11 background warmup (${userLibs.size} user lib(s), dropDir=$pkcs11Dir)" }
 				warmupService.warmup(
 					appDataPkcs11Dir = pkcs11Dir,

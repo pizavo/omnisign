@@ -11,6 +11,11 @@ import kotlin.time.Instant
  * [isQualified] and [isQscd] are derived from the QCStatements X.509 extension at
  * discovery time; `null` means the extension was absent or unreadable on the certificate.
  *
+ * [tokenName] is the human-readable name of the source the certificate was read from
+ * (e.g. the hardware-token label or `"Windows Certificate Store (MY)"`); it lets the UI
+ * distinguish the same certificate present on more than one source. [alias] embeds the
+ * same provenance (`…@<sourceId>`) so selection and signing resolve to the chosen source.
+ *
  * Not to be confused with [cz.pizavo.omnisign.domain.model.signature.CertificateInfo],
  * which holds certificate details extracted during validation.
  */
@@ -21,6 +26,7 @@ data class AvailableCertificateInfo(
     val validFrom: Instant,
     val validTo: Instant,
     val tokenType: String,
+    val tokenName: String = "",
     val keyUsages: List<String> = emptyList(),
     val isQualified: Boolean? = null,
     val isQscd: Boolean? = null,

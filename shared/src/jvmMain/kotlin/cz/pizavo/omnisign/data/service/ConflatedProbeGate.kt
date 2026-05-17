@@ -19,9 +19,11 @@ import kotlin.coroutines.cancellation.CancellationException
  * - This loop repeats until a block execution completes with no pending request,
  *   guaranteeing that every caller receives the result of the latest quiescent run.
  *
- * **Cancellation**: if the leader's coroutine is canceled, all coalesced waiters
- * receive a [kotlinx.coroutines.CancellationException] and the gate returns to the
- * idle state so the next caller can become a new leader.
+ * **Cancellation**: if the leader's coroutine is canceled, all coalesced waiters are
+ * completed with a [LeaderCancelledException] wrapper (not a raw
+ * [kotlinx.coroutines.CancellationException], so the waiters' own coroutines are not
+ * cancelled) and the gate returns to the idle state so the next caller can become a new
+ * leader.
  *
  * Thread-safety is provided by a single [synchronized] monitor ([lock]) that protects
  * the [running] flag and the [pendingDeferred] slot.  The actual block executes

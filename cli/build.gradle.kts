@@ -104,6 +104,7 @@ tasks.withType<Test> {
 		"-Xshare:off",
 		"--enable-native-access=ALL-UNNAMED",
 		"--add-modules=java.smartcardio",
+		"--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED",
 	)
 }
 
@@ -112,6 +113,7 @@ application {
 	applicationDefaultJvmArgs = listOf(
 		"--enable-native-access=ALL-UNNAMED",
 		"--add-modules=java.smartcardio",
+		"--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED",
 		"-XX:ErrorFile=${resolveCrashDir()}/hs_err_pid%p.log",
 	)
 	applicationName = "omnisign"
@@ -121,6 +123,7 @@ tasks.named<JavaExec>("run") {
 	jvmArgs(
 		"--enable-native-access=ALL-UNNAMED",
 		"--add-modules=java.smartcardio",
+		"--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED",
 		"-XX:ErrorFile=${resolveCrashDir()}/hs_err_pid%p.log",
 	)
 	if (System.getProperty("os.name", "").lowercase().contains("win")) {
@@ -276,6 +279,7 @@ val commonJpackageArgsList: List<String> = listOf(
 	"--main-class", "cz.pizavo.omnisign.CliKt",
 	"--add-modules", "java.logging,java.naming,java.desktop,java.management,java.smartcardio,java.sql,java.xml.crypto,jdk.unsupported",
 	"--java-options", "--enable-native-access=ALL-UNNAMED",
+	"--java-options", "--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED",
 )
 
 /** Arguments valid only for installer types (not app-image). */

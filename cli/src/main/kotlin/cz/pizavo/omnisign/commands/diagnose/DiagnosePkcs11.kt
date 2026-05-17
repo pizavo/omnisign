@@ -43,6 +43,8 @@ class DiagnosePkcs11 : CliktCommand(name = "pkcs11"), KoinComponent {
 		appendPcscReaders(report.pcscReaders)
 		appendProbes(report.probes)
 		appendTokens(report.tokens)
+		appendNoLoginEnumeration(report.noLoginEnumeration)
+		appendRawNoLoginEnumeration(report.rawNoLoginCertificates)
 		appendFooter(report.totalElapsedMillis)
 	}
 
@@ -163,7 +165,10 @@ class DiagnosePkcs11 : CliktCommand(name = "pkcs11"), KoinComponent {
 		if (probe.identities.isEmpty()) return
 		appendLine("    identities (${probe.identities.size}):")
 		for (identity in probe.identities) {
-			appendLine("      - ${identity.label.ifBlank { "(blank label)" }} / serial ${identity.serialNumber}")
+			val slotHex = "0x%X".format(identity.slotId)
+			appendLine(
+				"      - ${identity.label.ifBlank { "(blank label)" }} / serial ${identity.serialNumber} / slot ${identity.slotId} ($slotHex)"
+			)
 		}
 	}
 
@@ -179,6 +184,100 @@ class DiagnosePkcs11 : CliktCommand(name = "pkcs11"), KoinComponent {
 			val pinTag = if (token.requiresPin) "requires PIN" else "no PIN"
 			appendLine("  ● ${token.id}  \"${token.name}\"  [${token.type}, $pinTag]")
 			token.path?.let { appendLine("    Path: $it") }
+		}
+	}
+
+	/**
+	 * Render the "Route A" no-login enumeration section: whether each PKCS#11 token's
+	 * certificates are visible through a SunPKCS#11 `KeyStore` opened without a PIN.
+	 */
+	private fun StringBuilder.appendNoLoginEnumeration(
+		results: List<Pkcs11DiagnosticsReport.NoLoginEnumeration>,
+	) {
+		appendLine()
+		appendLine("No-login certificate enumeration (Route A experiment)")
+		appendLine(SECTION_SEPARATOR)
+		appendLine("  Attempts KeyStore(\"PKCS11\").load(null, null) — a public session, no C_Login.")
+		appendLine("  A signing certificate appearing here is readable WITHOUT a PIN, so the PIN")
+		appendLine("  could be deferred to signing (the Adobe model).")
+		if (results.isEmpty()) {
+			appendLine("  (no PKCS#11 tokens discovered — nothing to probe)")
+			return
+		}
+		for (result in results) appendNoLoginResult(result)
+	}
+
+	private fun StringBuilder.appendNoLoginResult(result: Pkcs11DiagnosticsReport.NoLoginEnumeration) {
+		val slotTag = result.slotId?.let { " slot $it (0x%X)".format(it) } ?: " (default slot)"
+		appendLine()
+		appendLine("  ● ${result.tokenName}$slotTag")
+		appendLine("    ${result.libraryPath}")
+		if (!result.loaded) {
+			appendLine("    ⚠️  no-login enumeration NOT viable — ${result.error}")
+			return
+		}
+		if (result.entries.isEmpty()) {
+			appendLine("    ✅ public session opened without a PIN — but 0 entries visible")
+			appendLine("       (certs are private objects on this token, or SunPKCS11 hides certs")
+			appendLine("        whose private key is invisible pre-login → Route A not usable here)")
+			return
+		}
+		val plural = if (result.entries.size == 1) "entry" else "entries"
+		appendLine("    ✅ public session opened without a PIN — ${result.entries.size} $plural visible:")
+		for (entry in result.entries) {
+			val kind = when {
+				entry.isKeyEntry -> "key+cert"
+				entry.isCertificateEntry -> "cert-only"
+				else -> "other"
+			}
+			appendLine("      - ${entry.alias}  [$kind]")
+			entry.subjectDN?.let { appendLine("        subject: $it") }
+			entry.issuerDN?.let { appendLine("        issuer:  $it") }
+			entry.serialNumber?.let { appendLine("        serial:  $it") }
+		}
+	}
+
+	/**
+	 * Render the raw, out-of-process no-`C_Login` certificate enumeration — the
+	 * authoritative Route A/B premise check through OmniSign's own JNA stack.
+	 */
+	private fun StringBuilder.appendRawNoLoginEnumeration(
+		scans: List<Pkcs11DiagnosticsReport.RawNoLoginCertScan>,
+	) {
+		appendLine()
+		appendLine("No-login certificate enumeration — raw PKCS#11 (out-of-process)")
+		appendLine(SECTION_SEPARATOR)
+		appendLine("  C_FindObjects(CKO_CERTIFICATE) in a read-only session, no C_Login — the")
+		appendLine("  same check as 'pkcs11-tool --list-objects --type cert' (no --login), via")
+		appendLine("  OmniSign's JNA stack.  A signing cert here is a public object: it could")
+		appendLine("  be listed with no PIN, deferring authentication to signing.")
+		if (scans.isEmpty()) {
+			appendLine("  (no PKCS#11 libraries to probe)")
+			return
+		}
+		for (scan in scans) appendRawNoLoginScan(scan)
+	}
+
+	private fun StringBuilder.appendRawNoLoginScan(scan: Pkcs11DiagnosticsReport.RawNoLoginCertScan) {
+		appendLine()
+		appendLine("  ● ${scan.libraryPath}")
+		if (!scan.subprocessSucceeded) {
+			appendLine("    ⚠️  --certs subprocess did not succeed — see the Probes section above")
+			return
+		}
+		if (scan.certificates.isEmpty()) {
+			appendLine("    ✅ session opened without a PIN — 0 public certificate objects")
+			appendLine("       (certificates are private on this token → Route A would not help here)")
+			return
+		}
+		val plural = if (scan.certificates.size == 1) "certificate" else "certificates"
+		appendLine("    ✅ ${scan.certificates.size} $plural readable WITHOUT a PIN:")
+		for (cert in scan.certificates) {
+			appendLine("      - subject: ${cert.subjectDN}")
+			appendLine("        issuer:  ${cert.issuerDN}")
+			appendLine("        serial:  ${cert.serialNumber}   slot ${cert.slotId}")
+			appendLine("        CKA_ID:  ${cert.ckaId.ifBlank { "(none)" }}")
+			appendLine("        label:   ${cert.label.ifBlank { "(none)" }}")
 		}
 	}
 

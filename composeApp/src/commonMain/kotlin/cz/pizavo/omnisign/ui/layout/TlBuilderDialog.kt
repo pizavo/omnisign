@@ -11,8 +11,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import cz.pizavo.omnisign.domain.model.config.EtsiUriHint
 import cz.pizavo.omnisign.domain.model.config.SERVICE_STATUS_HINTS
 import cz.pizavo.omnisign.domain.model.config.SERVICE_TYPE_HINTS
@@ -65,53 +63,46 @@ fun TlBuilderDialog(
 		onDismissRequest = {
 			if (state !is TlBuilderDialogState.Compiling) onDismiss()
 		},
-		properties = DialogProperties(usePlatformDefaultWidth = false),
+		modifier = Modifier
+			.widthIn(min = 640.dp, max = 860.dp)
+			.heightIn(min = 500.dp, max = 720.dp),
 	) {
-		Surface(
-			modifier = Modifier
-				.widthIn(min = 640.dp, max = 860.dp)
-				.heightIn(min = 500.dp, max = 720.dp),
-			shape = RoundedCornerShape(16.dp),
-			color = LumoTheme.colors.surface,
-			shadowElevation = 8.dp,
-		) {
-			Column(modifier = Modifier.fillMaxSize()) {
-				TlBuilderHeader(
-					onClose = onDismiss,
-					closeable = state !is TlBuilderDialogState.Compiling,
-				)
+		Column(modifier = Modifier.fillMaxSize()) {
+			TlBuilderHeader(
+				onClose = onDismiss,
+				closeable = state !is TlBuilderDialogState.Compiling,
+			)
 
-				HorizontalDivider()
+			HorizontalDivider()
 
-				Box(modifier = Modifier.weight(1f)) {
-					when (state) {
-						is TlBuilderDialogState.Idle -> {}
-						is TlBuilderDialogState.Editing -> TlBuilderFormContent(
-							state = state,
-							onFieldChange = onFieldChange,
-							onAddTsp = onAddTsp,
-							onRemoveTsp = onRemoveTsp,
-							onAddService = onAddService,
-							onRemoveService = onRemoveService,
-						)
+			Box(modifier = Modifier.weight(1f)) {
+				when (state) {
+					is TlBuilderDialogState.Idle -> {}
+					is TlBuilderDialogState.Editing -> TlBuilderFormContent(
+						state = state,
+						onFieldChange = onFieldChange,
+						onAddTsp = onAddTsp,
+						onRemoveTsp = onRemoveTsp,
+						onAddService = onAddService,
+						onRemoveService = onRemoveService,
+					)
 
-						is TlBuilderDialogState.Compiling -> LoadingContent("Compiling trusted list…")
-						is TlBuilderDialogState.Success -> TlBuilderSuccessContent(state)
-						is TlBuilderDialogState.Error -> ErrorContent(
-							message = state.message,
-							details = state.details,
-						)
-					}
+					is TlBuilderDialogState.Compiling -> LoadingContent("Compiling trusted list…")
+					is TlBuilderDialogState.Success -> TlBuilderSuccessContent(state)
+					is TlBuilderDialogState.Error -> ErrorContent(
+						message = state.message,
+						details = state.details,
+					)
 				}
-
-				HorizontalDivider()
-
-				TlBuilderFooter(
-					state = state,
-					onCompile = onCompile,
-					onDismiss = onDismiss,
-				)
 			}
+
+			HorizontalDivider()
+
+			TlBuilderFooter(
+				state = state,
+				onCompile = onCompile,
+				onDismiss = onDismiss,
+			)
 		}
 	}
 }
