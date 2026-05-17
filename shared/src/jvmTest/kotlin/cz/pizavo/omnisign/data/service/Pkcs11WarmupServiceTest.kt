@@ -26,6 +26,13 @@ class Pkcs11WarmupServiceTest : FunSpec({
 	 */
 	fun newImmediateBlacklist() = Pkcs11CrashBlacklist(crashThreshold = 1)
 
+	/**
+	 * A relaxed [Pkcs11ProbeCache] mock.  Warmup only touches it via
+	 * [Pkcs11ProbeCache.primeCache] on a successful probe, which these tests don't assert,
+	 * so a no-op stand-in keeps them focused on the warmup → blacklist plumbing.
+	 */
+	fun newProbeCache() = mockk<Pkcs11ProbeCache>(relaxUnitFun = true)
+
 	test("warmup leaves a successful library off the blacklist") {
 		val blacklist = newImmediateBlacklist()
 		val discoverer = mockk<Pkcs11Discoverer>(relaxUnitFun = true)
@@ -37,7 +44,7 @@ class Pkcs11WarmupServiceTest : FunSpec({
 				Pkcs11SubprocessResult.Success(pid = 200L, stdout = "")
 		every { prober.parseIdentities(any(), any()) } returns emptyList()
 
-		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, newProbeCache(), prober, blacklist, signal).warmup()
 
 		blacklist.isCrashed("/test/safe.so").shouldBeFalse()
 		signal.value.shouldBeTrue()
@@ -53,7 +60,7 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		every { prober.runProbe("/test/crash.so", any()) } returns
 				Pkcs11SubprocessResult.Crashed(pid = 201L, exitCode = 139, stderr = "SIGSEGV")
 
-		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, newProbeCache(), prober, blacklist, signal).warmup()
 
 		blacklist.isCrashed("/test/crash.so").shouldBeTrue()
 		signal.value.shouldBeTrue()
@@ -69,7 +76,7 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		every { prober.runProbe("/test/hung.so", any()) } returns
 				Pkcs11SubprocessResult.TimedOut(pid = 202L)
 
-		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, newProbeCache(), prober, blacklist, signal).warmup()
 
 		blacklist.isCrashed("/test/hung.so").shouldBeFalse()
 		signal.value.shouldBeTrue()
@@ -84,7 +91,7 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		val prober = mockk<Pkcs11Prober>()
 		every { prober.runProbe("/test/nocmd.so", any()) } returns null
 
-		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, newProbeCache(), prober, blacklist, signal).warmup()
 
 		blacklist.isCrashed("/test/nocmd.so").shouldBeFalse()
 		signal.value.shouldBeTrue()
@@ -103,7 +110,7 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		every { prober.runProbe(any(), any()) } returns
 				Pkcs11SubprocessResult.Crashed(pid = 300L, exitCode = 134, stderr = "")
 
-		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, newProbeCache(), prober, blacklist, signal).warmup()
 
 		blacklist.isCrashed("/test/a.so").shouldBeTrue()
 		blacklist.isCrashed("/test/b.so").shouldBeTrue()
@@ -130,7 +137,7 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		}
 		every { prober.parseIdentities(any(), any()) } returns emptyList()
 
-		Pkcs11WarmupService(discoverer, prober, blacklist, signal, maxParallelism = 2).warmup()
+		Pkcs11WarmupService(discoverer, newProbeCache(), prober, blacklist, signal, maxParallelism = 2).warmup()
 
 		(peak.get() <= 2) shouldBe true
 		signal.value.shouldBeTrue()
@@ -142,7 +149,7 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		val prober = mockk<Pkcs11Prober>()
 		val signal = MutableStateFlow(true)
 
-		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, newProbeCache(), prober, blacklist, signal).warmup()
 
 		verify(exactly = 0) { discoverer.collectCandidates(any(), any()) }
 	}
@@ -154,7 +161,7 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		val prober = mockk<Pkcs11Prober>()
 		val signal = MutableStateFlow(false)
 
-		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, newProbeCache(), prober, blacklist, signal).warmup()
 
 		signal.value.shouldBeTrue()
 	}
@@ -168,7 +175,7 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		val prober = mockk<Pkcs11Prober>()
 		every { prober.runProbe("/test/error.so", any()) } throws RuntimeException("process failed")
 
-		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, newProbeCache(), prober, blacklist, signal).warmup()
 
 		blacklist.isCrashed("/test/error.so").shouldBeTrue()
 		signal.value.shouldBeTrue()
@@ -181,7 +188,7 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		val prober = mockk<Pkcs11Prober>()
 		val signal = MutableStateFlow(false)
 
-		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, newProbeCache(), prober, blacklist, signal).warmup()
 
 		verifyOrder {
 			discoverer.beginDiscovery()
@@ -197,7 +204,7 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		val prober = mockk<Pkcs11Prober>()
 		val signal = MutableStateFlow(false)
 
-		runCatching { Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup() }
+		runCatching { Pkcs11WarmupService(discoverer, newProbeCache(), prober, blacklist, signal).warmup() }
 
 		verify(exactly = 1) { discoverer.beginDiscovery() }
 		verify(exactly = 1) { discoverer.endDiscovery() }
@@ -209,7 +216,7 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		val prober = mockk<Pkcs11Prober>()
 		val signal = MutableStateFlow(true)
 
-		Pkcs11WarmupService(discoverer, prober, blacklist, signal).warmup()
+		Pkcs11WarmupService(discoverer, newProbeCache(), prober, blacklist, signal).warmup()
 
 		verify(exactly = 0) { discoverer.beginDiscovery() }
 		verify(exactly = 0) { discoverer.endDiscovery() }

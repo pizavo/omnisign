@@ -35,11 +35,11 @@ val jvmRepositoryModule = module {
 	single { PcscContextRecovery() }
 	single { Pkcs11DiscoverySignal() }
 	single<Pkcs11Prober> { Pkcs11SubprocessProber() }
+	single { Pkcs11ProbeCache(crashBlacklist = get(), prober = get()) }
 	single { PcscMonitorService(recovery = get()) }
 	single {
 		Pkcs11Discoverer(
-			crashBlacklist = get(),
-			prober = get(),
+			probeCache = get(),
 			pcscRecovery = get(),
 			discoverySignal = get(),
 		)
@@ -47,6 +47,7 @@ val jvmRepositoryModule = module {
 	single {
 		Pkcs11WarmupService(
 			discoverer = get(),
+			probeCache = get(),
 			prober = get(),
 			crashBlacklist = get(),
 			warmupSignal = getOrNull<MutableStateFlow<Boolean>>() ?: MutableStateFlow(true),
@@ -66,6 +67,7 @@ val jvmRepositoryModule = module {
 		Pkcs11CacheInvalidator(
 			monitor = get(),
 			discoverer = get(),
+			probeCache = get(),
 			configRepository = get(),
 			appDataPkcs11Dir = pkcs11DropDir(),
 		)
@@ -74,6 +76,7 @@ val jvmRepositoryModule = module {
 		DssTokenService(
 			passwordCallback = get(),
 			pkcs11Discoverer = get(),
+			probeCache = get(),
 			prober = get(),
 			pkcs11CacheInvalidator = get(),
 			pcscMonitorService = get(),

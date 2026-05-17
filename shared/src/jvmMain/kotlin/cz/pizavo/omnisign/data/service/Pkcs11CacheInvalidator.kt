@@ -45,8 +45,10 @@ import java.io.File
  *
  * @property monitor The PC/SC monitor whose [PcscMonitorService.events] flow this service
  *   collects.  Collecting on the flow lazily starts the underlying watcher coroutine.
- * @property discoverer The discoverer whose caches this service invalidates and whose
- *   [Pkcs11Discoverer.discoverTokens] this service drives in the background.
+ * @property discoverer The discoverer whose candidate cache this service invalidates and
+ *   whose [Pkcs11Discoverer.discoverTokens] this service drives in the background.
+ * @property probeCache The shared probe cache cleared on every relevant PC/SC event so a
+ *   hot-inserted card is re-probed on the next discovery cycle.
  * @property configRepository Source of [cz.pizavo.omnisign.domain.model.config.GlobalConfig.customPkcs11Libraries],
  *   re-read on every event so config changes during the session are respected.
  * @property appDataPkcs11Dir Drop directory passed to [Pkcs11Discoverer.discoverTokens] —
@@ -69,6 +71,7 @@ import java.io.File
 class Pkcs11CacheInvalidator(
 	private val monitor: PcscMonitorService,
 	private val discoverer: Pkcs11Discoverer,
+	private val probeCache: Pkcs11ProbeCache,
 	private val configRepository: ConfigRepository,
 	private val appDataPkcs11Dir: File,
 	private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
@@ -107,12 +110,12 @@ class Pkcs11CacheInvalidator(
 						(if (candidateCacheIsCardDependent) " and candidate cache" else "") +
 						" and triggering rediscovery"
 				}
-				discoverer.invalidateProbes()
+				probeCache.invalidateProbes()
 				if (candidateCacheIsCardDependent) discoverer.invalidateCandidates()
 			}
 			is PcscEvent.ReaderConnected, is PcscEvent.ReaderDisconnected -> {
 				logger.info { "$event → invalidating probe and candidate caches and triggering rediscovery" }
-				discoverer.invalidateProbes()
+				probeCache.invalidateProbes()
 				discoverer.invalidateCandidates()
 			}
 		}

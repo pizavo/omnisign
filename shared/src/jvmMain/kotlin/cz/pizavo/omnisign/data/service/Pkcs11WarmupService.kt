@@ -16,7 +16,7 @@ import kotlinx.coroutines.sync.withPermit
  * scans could skip subprocess overhead.  That created a second PKCS#11 consumer alongside
  * SunPKCS11 (which DSS uses for signing) and was a recurring source of subtle interaction
  * bugs.  The current model is **validate-only**: each candidate is probed via subprocess;
- * crashed libraries are recorded in [Pkcs11CrashBlacklist] so [Pkcs11Discoverer.probeLibrary]
+ * crashed libraries are recorded in [Pkcs11CrashBlacklist] so [Pkcs11ProbeCache.probeLibrary]
  * skips them on subsequent calls.  All actual token probing now runs out-of-process.
  *
  * Probes run with at most [maxParallelism] concurrently (default `2`) so weak hardware does
@@ -32,8 +32,9 @@ import kotlinx.coroutines.sync.withPermit
  * cache readers (notably [DssTokenService]'s sign-dialog path) suspend on the unified
  * discovery signal without having to know which producer is currently running.
  *
- * @property discoverer The discoverer used to list candidate library paths and prime its
- *   probe cache with validated identities.
+ * @property discoverer The discoverer used to list candidate library paths and to bracket
+ *   the validation pass in [Pkcs11Discoverer.beginDiscovery] / [Pkcs11Discoverer.endDiscovery].
+ * @property probeCache The shared probe cache primed with each validated library's identities.
  * @property prober Process-isolated probe runner; each candidate is validated by spawning a
  *   probe subprocess through it.
  * @property crashBlacklist The blacklist updated when a subprocess validation crashes.
@@ -49,6 +50,7 @@ import kotlinx.coroutines.sync.withPermit
  */
 class Pkcs11WarmupService(
 	private val discoverer: Pkcs11Discoverer,
+	private val probeCache: Pkcs11ProbeCache,
 	private val prober: Pkcs11Prober,
 	private val crashBlacklist: Pkcs11CrashBlacklist,
 	private val warmupSignal: MutableStateFlow<Boolean>,
@@ -165,7 +167,7 @@ class Pkcs11WarmupService(
 
 				is Pkcs11SubprocessResult.Success -> {
 					val identities = prober.parseIdentities(result.stdout, libraryPath)
-					discoverer.primeCache(libraryPath, identities)
+					probeCache.primeCache(libraryPath, identities)
 					logger.info {
 						"Warmup validated '$name' — library loads cleanly in subprocess " +
 								"(${identities.size} identity(-ies) cached)"

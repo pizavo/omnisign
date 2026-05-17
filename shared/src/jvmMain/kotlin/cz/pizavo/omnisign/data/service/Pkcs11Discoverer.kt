@@ -36,21 +36,14 @@ import javax.smartcardio.TerminalFactory
  * token identity (label and serial number) via `C_GetTokenInfo`.  Multiple middleware DLLs
  * that report the same physical token serial produce a single [TokenInfo].
  *
- * @property crashBlacklist Records libraries whose subprocess validation crashed.  A path is
- *   skipped by [probeLibrary] only while it has crashed at least the [Pkcs11CrashBlacklist]
- *   threshold times within its sliding window; the record then decays and probing resumes,
- *   so a transient SafeNet-style crash does not disable a healthy library for the JVM
- *   lifetime.  Populated by [Pkcs11WarmupService] during startup validation.  All actual
- *   token probing runs out-of-process via [prober] — there is intentionally no in-process
- *   JNA consumer alongside SunPKCS11, which DSS uses for signing.
+ * @property probeCache Caches successful probe results and owns the crash blacklist + the
+ *   process-isolated prober ([Pkcs11ProbeCache]).  Injected so warmup, the invalidator and
+ *   the sign-dialog read path all share one cache instance.
  * @property discoveryGate Concurrency gate ensuring that at most one [discoverTokens] cycle runs
  *   at a time, with at most one additional cycle queued.  When a discovery is already in progress
  *   and a new request arrives, the running cycle's result is discarded and a fresh cycle executes
  *   so every caller receives the latest hardware state.  Defaults to a new instance for backward
  *   compatibility and tests.
- * @property prober Strategy for probing PKCS#11 libraries for hardware token identities,
- *   process-isolated by default ([Pkcs11SubprocessProber]) so a native crash (SIGSEGV) cannot
- *   take down the host JVM.  Injected as a [Pkcs11Prober] so it can be substituted in tests.
  * @property probeParallelism Maximum number of subprocesses [discoverTokens] is allowed to
  *   spawn concurrently.  Each subprocess cold-starts a JVM and calls `C_Initialize` on the
  *   target library; running too many in parallel against the same vendor library (e.g. SafeNet
@@ -76,9 +69,8 @@ import javax.smartcardio.TerminalFactory
  * [discoverTokens] does so internally on every caller's behalf.
  */
 class Pkcs11Discoverer(
-	private val crashBlacklist: Pkcs11CrashBlacklist = Pkcs11CrashBlacklist(),
+	private val probeCache: Pkcs11ProbeCache = Pkcs11ProbeCache(),
 	private val discoveryGate: ConflatedProbeGate<List<TokenInfo>> = ConflatedProbeGate(),
-	private val prober: Pkcs11Prober = Pkcs11SubprocessProber(),
 	private val probeParallelism: Int = DEFAULT_PROBE_PARALLELISM,
 	private val pcscRecovery: PcscContextRecovery = PcscContextRecovery(),
 	private val discoverySignal: Pkcs11DiscoverySignal = Pkcs11DiscoverySignal(),
@@ -101,21 +93,6 @@ class Pkcs11Discoverer(
 	 * End a discovery cycle.  Delegates to [Pkcs11DiscoverySignal.endDiscovery].
 	 */
 	fun endDiscovery() = discoverySignal.endDiscovery()
-	
-	/**
-	 * Per-path cache of successful probe results.
-	 *
-	 * Populated by [probeLibrary] on subprocess success and by [primeCache] when the warmup
-	 * service has a fresh result to share.  Lookups in [probeLibrary] short-circuit any
-	 * present entry without spawning a subprocess.
-	 *
-	 * Entries live indefinitely; freshness is enforced by [Pkcs11CacheInvalidator] reacting
-	 * to PC/SC reader-state events, not by a time-based TTL.  Failed probes are deliberately
-	 * **not** cached: the user might insert the card mid-session and we want the next dialog
-	 * open to see it.  The crash blacklist handles the "library always crashes" case
-	 * separately.
-	 */
-	private val probeCache = ConcurrentHashMap<String, List<Pkcs11TokenIdentity>>()
 	
 	/**
 	 * Cache of [collectCandidates] results, keyed by `(appDataPkcs11Dir, userPkcs11Libraries)`.
@@ -143,73 +120,6 @@ class Pkcs11Discoverer(
 	)
 	
 	/**
-	 * Probe a single PKCS#11 library for token identities, using the cache when possible.
-	 *
-	 * Resolution order:
-	 * 1. **Crash blacklist** — if the path has crashed enough times in the current sliding
-	 *    window ([Pkcs11CrashBlacklist]), return empty without spawning anything.
-	 * 2. **Cache hit** — if a successful probe result is present, return its identities
-	 *    without spawning a subprocess.  This is the hot path that makes a second
-	 *    `probeTokenPresent` call inside the dialog-open flow effectively free.  Cache
-	 *    freshness is enforced by [Pkcs11CacheInvalidator] reacting to PC/SC events.
-	 * 3. **Cache miss** — probe out-of-process via [prober] (default: process-isolated to
-	 *    contain native SIGSEGV).  On non-empty success, populate the cache.  On empty
-	 *    success or failure, leave the cache untouched so a later card insertion is picked
-	 *    up on the next call.
-	 *
-	 * Out-of-process probing remains the cohabitation-safe choice alongside SunPKCS11 —
-	 * see the class-level docs for the rationale behind the in-process path's removal.
-	 *
-	 * @param libraryPath Absolute path to the PKCS#11 shared library to probe.
-	 * @return Token identities found in the library, or an empty list when the library is
-	 *   blacklisted, unreachable, the probe times out, or no tokens are inserted.
-	 */
-	fun probeLibrary(libraryPath: String): List<Pkcs11TokenIdentity> {
-		if (crashBlacklist.isCrashed(libraryPath)) {
-			logger.debug { "Skipping crashed library '$libraryPath'" }
-			return emptyList()
-		}
-		probeCache[libraryPath]?.let {
-			logger.debug { "Probe cache hit for '$libraryPath' (${it.size} identity(-ies))" }
-			return it
-		}
-		val identities = prober.probeIdentities(libraryPath)
-		if (identities.isNotEmpty()) {
-			probeCache[libraryPath] = identities
-		}
-		return identities
-	}
-	
-	/**
-	 * Insert an externally-computed probe result into the cache.
-	 *
-	 * Used by [Pkcs11WarmupService] to share its successful warmup probes with discovery so
-	 * the very first sign-dialog open does not re-spawn subprocesses for libraries the
-	 * warmup just validated.  No-op when [identities] is empty — empty results are never
-	 * cached, so a freshly inserted card is still picked up.
-	 *
-	 * @param libraryPath Absolute path to the PKCS#11 shared library.
-	 * @param identities Identities observed during the priming probe.
-	 */
-	fun primeCache(libraryPath: String, identities: List<Pkcs11TokenIdentity>) {
-		if (identities.isEmpty()) return
-		probeCache[libraryPath] = identities
-		logger.debug { "Probe cache primed for '$libraryPath' (${identities.size} identity(-ies))" }
-	}
-	
-	/**
-	 * Drop every cached probe result so the next [probeLibrary] call re-spawns a subprocess.
-	 *
-	 * Used when the set of *present tokens* may have changed but the set of installed
-	 * libraries has not — typically a card insertion or removal observed via
-	 * [PcscMonitorService.events].
-	 */
-	fun invalidateProbes() {
-		probeCache.clear()
-		logger.debug { "Probe cache cleared" }
-	}
-	
-	/**
 	 * Drop every cached candidate enumeration so the next [collectCandidates] call
 	 * re-runs the OS-native discovery branches.
 	 *
@@ -226,11 +136,12 @@ class Pkcs11Discoverer(
 	 * Drop every cached probe and candidate result.
 	 *
 	 * Intended for explicit user-initiated refresh (a "Rescan tokens" button) and for tests.
-	 * Event-driven invalidation typically uses the finer-grained [invalidateProbes] or
-	 * [invalidateCandidates] instead, depending on which surface actually changed.
+	 * Event-driven invalidation typically uses the finer-grained
+	 * [Pkcs11ProbeCache.invalidateProbes] or [invalidateCandidates] instead, depending on
+	 * which surface actually changed.
 	 */
 	fun invalidateCache() {
-		invalidateProbes()
+		probeCache.invalidateProbes()
 		invalidateCandidates()
 	}
 	
@@ -317,10 +228,10 @@ class Pkcs11Discoverer(
 	 * Discover all PKCS#11 tokens available on the system.
 	 *
 	 * Discovery never blocks on [Pkcs11WarmupService] completion.  Each candidate library is
-	 * probed via [probeLibrary], which returns a cached probe result when one is present
-	 * (the hot path once warmup or an invalidator-driven rediscovery has populated the
-	 * cache) and otherwise spawns an out-of-process [prober] subprocess.  There is no
-	 * in-process probing path.
+	 * probed via [Pkcs11ProbeCache.probeLibrary], which returns a cached probe result when
+	 * one is present (the hot path once warmup or an invalidator-driven rediscovery has
+	 * populated the cache) and otherwise spawns an out-of-process probe subprocess.  There
+	 * is no in-process probing path.
 	 *
 	 * Probing runs in parallel on [Dispatchers.IO] — one coroutine per unique library path —
 	 * so that slow or unresponsive middleware does not delay discovery of other tokens.
@@ -352,7 +263,7 @@ class Pkcs11Discoverer(
 				val probeResults = coroutineScope {
 					candidates.map { (name, path) ->
 						async(Dispatchers.IO) {
-							gate.withPermit { Triple(name, path, probeLibrary(path)) }
+							gate.withPermit { Triple(name, path, probeCache.probeLibrary(path)) }
 						}
 					}.awaitAll()
 				}
@@ -369,9 +280,9 @@ class Pkcs11Discoverer(
 	 *
 	 * This is the **read-only** counterpart to [discoverTokens]: no subprocess is spawned, no
 	 * candidate enumeration is run, no [discoveryGate] is engaged.  It walks the entries that
-	 * earlier discovery cycles (warmup, [discoverTokens], or [primeCache]) populated and runs
-	 * them through [buildTokenInfoList] for the same serial-based dedup that [discoverTokens]
-	 * applies.
+	 * earlier discovery cycles (warmup, [discoverTokens], or [Pkcs11ProbeCache.primeCache])
+	 * populated and runs them through [buildTokenInfoList] for the same serial-based dedup
+	 * that [discoverTokens] applies.
 	 *
 	 * Intended for consumers that should never trigger their own discovery cycle — most
 	 * notably [DssTokenService.discoverTokens] for the sign-dialog hot path.  Pair the call
@@ -380,10 +291,10 @@ class Pkcs11Discoverer(
 	 *
 	 * @return Token info entries built from probe results currently cached; empty when no
 	 *   library has been probed successfully (cold start before warmup, or after
-	 *   [invalidateProbes] when nothing has refilled the cache yet).
+	 *   [Pkcs11ProbeCache.invalidateProbes] when nothing has refilled the cache yet).
 	 */
 	fun getCachedTokens(): List<TokenInfo> {
-		val probedCandidates = probeCache.entries.map { (path, identities) ->
+		val probedCandidates = probeCache.cachedProbes().map { (path, identities) ->
 			Triple(deriveMiddlewareName(path), path, identities)
 		}
 		return buildTokenInfoList(probedCandidates)
