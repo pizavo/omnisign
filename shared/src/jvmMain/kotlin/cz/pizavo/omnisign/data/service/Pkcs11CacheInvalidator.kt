@@ -164,11 +164,14 @@ class Pkcs11CacheInvalidator(
 		try {
 			val config = configRepository.getCurrentConfig()
 			val userLibs = config.global.customPkcs11Libraries.map { it.name to it.path }
-			discoverer.discoverTokens(
+			val tokens = discoverer.discoverTokens(
 				appDataPkcs11Dir = appDataPkcs11Dir,
 				userPkcs11Libraries = userLibs,
 			)
-			logger.debug { "Background rediscovery completed — cache primed for next dialog open" }
+			logger.info {
+				"Background rediscovery completed — ${tokens.size} PKCS#11 token(s) cached: " +
+					tokens.map { it.name }
+			}
 		} catch (e: Throwable) {
 			logger.warn(e) { "Background rediscovery after PC/SC event failed — next dialog open will probe lazily" }
 		}

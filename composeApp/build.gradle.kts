@@ -151,20 +151,32 @@ compose.resources {
 	generateResClass = always
 }
 
+/**
+ * JVM arguments shared by every way the desktop app is launched: the Compose
+ * `application` `run` task, the Compose Hot Reload `hotRunJvm` / `hotRunJvmAsync`
+ * tasks (what the IDE "Run with Compose Hot Reload" gutter invokes), and the packaged
+ * distribution.  Kept as a single source so the Hot Reload run can never silently
+ * drift from `run` and drop `--add-opens` / `--enable-native-access` — that drift is
+ * exactly what left the JDK PC/SC stale-context recovery unable to work under hot
+ * reload.
+ */
+val desktopJvmArgs: List<String> = buildList {
+	add("--enable-native-access=ALL-UNNAMED")
+	add("--add-modules=java.smartcardio")
+	add("--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED")
+	add("-Dsun.java2d.d3d=false")
+	add("-Dsun.awt.wmclass=OmniSign")
+	if (org.gradle.internal.os.OperatingSystem.current().isLinux) {
+		add("--add-opens")
+		add("java.desktop/sun.awt.X11=ALL-UNNAMED")
+	}
+}
+
 compose.desktop {
 	application {
 		mainClass = "cz.pizavo.omnisign.MainKt"
 
-		val jvmArgsList = mutableListOf(
-			"--enable-native-access=ALL-UNNAMED",
-			"--add-modules=java.smartcardio",
-			"-Dsun.java2d.d3d=false",
-			"-Dsun.awt.wmclass=OmniSign",
-		)
-		if (org.gradle.internal.os.OperatingSystem.current().isLinux) {
-			jvmArgsList.addAll(listOf("--add-opens", "java.desktop/sun.awt.X11=ALL-UNNAMED"))
-		}
-		jvmArgs(*jvmArgsList.toTypedArray())
+		jvmArgs(*desktopJvmArgs.toTypedArray())
 
 		jbrHomePath?.let { javaHome = it }
 
@@ -295,6 +307,28 @@ afterEvaluate {
 afterEvaluate {
 	tasks.matching { it.name == "run" }.configureEach {
 		(this as? JavaExec)?.jvmArgs("-XX:ErrorFile=${resolveCrashDir()}/hs_err_pid%p.log")
+	}
+}
+
+/**
+ * Compose Hot Reload's `hotRunJvm` task — `org.jetbrains.compose.reload.gradle.ComposeHotRun`,
+ * a `JavaExec` — is what the IDE "Run with Compose Hot Reload" gutter and the
+ * checked-in `.run/composeApp [Hot Reload]` configuration invoke.  It forks the
+ * application JVM itself and does **not** inherit `compose.desktop.application`
+ * `jvmArgs`, so without this it launches the app without `--add-opens` /
+ * `--enable-native-access`, silently disabling JDK PC/SC stale-context recovery and
+ * native access under hot reload.  Give it the same [desktopJvmArgs] as every other
+ * launch path.
+ *
+ * Only the synchronous `hotRunJvm` is configured: its `[Async]` sibling
+ * `hotRunJvmAsync` is a different type (`ComposeHotAsyncRun`, not a `JavaExec`) that
+ * the IDE gutter does not use.  The non-null `as JavaExec` cast is deliberate — if a
+ * future Compose release changes `hotRunJvm`'s type this fails the build loudly
+ * rather than silently regressing the flags again.
+ */
+afterEvaluate {
+	tasks.matching { it.name == "hotRunJvm" }.configureEach {
+		(this as JavaExec).jvmArgs(desktopJvmArgs)
 	}
 }
 

@@ -27,6 +27,7 @@ import java.security.cert.X509Certificate
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicInteger
+import javax.smartcardio.CardTerminal
 import javax.smartcardio.TerminalFactory
 
 /**
@@ -97,6 +98,10 @@ internal const val DEFAULT_PROBE_TIMEOUT_SECONDS = 30L
  *   `eTPKCS11.dll`) is a well-documented source of intermittent SIGSEGV / `CKR_FUNCTION_FAILED`
  *   responses.  Defaults to `2`, matching [Pkcs11WarmupService] so combined warmup +
  *   discovery never exceed `4` concurrent probes against the same lib in the worst case.
+ * @property pcscRecovery Recovers the JDK's process-wide PC/SC context after the
+ *   `sun.security.smartcardio` stale-context defect so [discoverViaPcsc] can re-enumerate
+ *   readers within the same JVM session instead of returning empty until restart.  See
+ *   [PcscContextRecovery].
  *
  * Cache lifetime is **event-driven**, not time-driven: entries live indefinitely until
  * [Pkcs11CacheInvalidator] observes a PC/SC reader-state change and clears them, or until
@@ -119,6 +124,7 @@ class Pkcs11Discoverer(
 		probeTokenIdentitiesViaSubprocess(path, probeTimeoutSeconds)
 	},
 	private val probeParallelism: Int = DEFAULT_PROBE_PARALLELISM,
+	private val pcscRecovery: PcscContextRecovery = PcscContextRecovery(),
 ) {
 	
 	/**
@@ -679,9 +685,12 @@ class Pkcs11Discoverer(
 	 * `HKLM\SOFTWARE\Microsoft\Cryptography\Calais\SmartCards`.
 	 *
 	 * Returns an empty list when no smart card service is running, no readers are connected,
-	 * or the platform PC/SC stack is unreachable.  Failures (PC/SC down, JNA load issues for
-	 * the registry lookup, exceptions during card connect) are logged and swallowed so
-	 * discovery degrades gracefully to the user-supplied escape hatches in [collectCandidates].
+	 * or the platform PC/SC stack is unreachable.  Genuine per-reader failures (mute card,
+	 * JNA registry load issues, unexpected connect errors) are logged at WARN with their
+	 * stack trace and swallowed; the known stale-context churn during a probe is logged
+	 * concisely at INFO and recovered elsewhere (the watcher and the custom-library path),
+	 * so discovery degrades gracefully to the user-supplied escape hatches in
+	 * [collectCandidates].
 	 *
 	 * The implementation uses [javax.smartcardio] (the same stack [PcscMonitorService] uses
 	 * for hot-insert events) rather than direct `winscard.dll` JNA calls.  Both are equivalent
@@ -689,12 +698,8 @@ class Pkcs11Discoverer(
 	 * have caused silent enumeration failures in the past.
 	 */
 	private fun discoverViaPcsc(): List<Pair<String, String>> {
-		val terminals = runCatching {
-			TerminalFactory.getDefault().terminals().list()
-		}.onFailure { e ->
-			logger.warn(e) { "discoverViaPcsc: PC/SC terminal enumeration failed" }
-		}.getOrDefault(emptyList())
-		
+		val terminals = listPcscTerminals()
+
 		if (terminals.isEmpty()) {
 			logger.info { "discoverViaPcsc: no PC/SC readers detected" }
 			return emptyList()
@@ -725,14 +730,58 @@ class Pkcs11Discoverer(
 					runCatching { card.disconnect(false) }
 				}
 			}.onFailure { e ->
-				logger.warn(e) { "discoverViaPcsc: failed to probe reader '${terminal.name}'" }
+				if (pcscRecovery.isStaleContext(e)) {
+					logger.info { "discoverViaPcsc: reader='${terminal.name}' probe skipped — PC/SC context went stale during the probe (known service churn; recovered by the watcher and the custom-library path)" }
+				} else {
+					logger.warn(e) { "discoverViaPcsc: failed to probe reader '${terminal.name}'" }
+				}
 			}
 		}
 		
 		logger.info { "discoverViaPcsc: returning ${results.size} candidate(s): ${results.map { it.second }}" }
 		return results
 	}
-	
+
+	/**
+	 * Enumerate PC/SC readers, transparently recovering from the JDK
+	 * `sun.security.smartcardio` stale-context defect.
+	 *
+	 * The first failure in a session is typically `SCARD_E_NO_SERVICE` (the Windows
+	 * *Smart Card* service is demand-stopped when no reader is attached); the JDK then
+	 * caches a dead context and every later `list()` throws `SCARD_E_SERVICE_STOPPED`
+	 * for the rest of the session — including the user's manual rescan.  On that
+	 * signature [pcscRecovery] clears the stale handle and the enumeration is retried
+	 * exactly once.  `SCARD_E_NO_READERS_AVAILABLE` is the benign "no token plugged in"
+	 * case — on the first attempt **and** after the reset retry — and degrades to a
+	 * clean empty list logged at INFO (no warning / stack trace).  A genuinely
+	 * persistent failure that survives the reset is logged at WARN with its stack trace
+	 * and degrades to an empty list so discovery falls back to the user-supplied escape
+	 * hatches in [collectCandidates].
+	 */
+	private fun listPcscTerminals(): List<CardTerminal> {
+		return try {
+			TerminalFactory.getDefault().terminals().list()
+		} catch (e: Exception) {
+			if (pcscRecovery.isStaleContext(e) && pcscRecovery.resetContext()) {
+				logger.info { "discoverViaPcsc: stale PC/SC context detected — reset and retrying enumeration" }
+				runCatching { TerminalFactory.getDefault().terminals().list() }
+					.onFailure { retry ->
+						if (pcscRecovery.causeChainContains(retry, PcscContextRecovery.NO_READERS_AVAILABLE)) {
+							logger.info { "discoverViaPcsc: no PC/SC readers detected after context reset" }
+						} else {
+							logger.warn(retry) { "discoverViaPcsc: PC/SC enumeration still failing after context reset" }
+						}
+					}
+					.getOrDefault(emptyList())
+			} else if (pcscRecovery.causeChainContains(e, PcscContextRecovery.NO_READERS_AVAILABLE)) {
+				emptyList()
+			} else {
+				logger.warn(e) { "discoverViaPcsc: PC/SC terminal enumeration failed" }
+				emptyList()
+			}
+		}
+	}
+
 	/**
 	 * Look up the PKCS#11 library for a card by its ATR hex string in
 	 * `HKLM\SOFTWARE\Microsoft\Cryptography\Calais\SmartCards`.

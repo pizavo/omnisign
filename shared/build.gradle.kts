@@ -35,6 +35,7 @@ kotlin {
 					"-Xshare:off",
 					"--enable-native-access=ALL-UNNAMED",
 					"--add-modules=java.smartcardio",
+					"--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED",
 				)
 			}
 		}

@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
@@ -39,14 +40,21 @@ import javax.smartcardio.TerminalFactory
  * @property pollTimeoutMillis How long [CardTerminals.waitForChange] blocks per iteration
  *   before re-polling.  Short enough to react to shutdown promptly; long enough to avoid
  *   busy-spinning.  Defaults to 30 seconds.
+ * @property recovery Recovers the JDK process-wide PC/SC context after the
+ *   `sun.security.smartcardio` stale-context defect so [currentReaders] and the watch
+ *   loop resume within the same JVM session instead of degrading until restart.  See
+ *   [PcscContextRecovery].
+ * @property scope Coroutine scope the background watcher runs on.  Defaults to a private
+ *   [SupervisorJob]-backed [Dispatchers.IO] scope so collector failures never propagate
+ *   and the daemon threads don't keep the JVM alive; tests override with a `TestScope`
+ *   so the no-readers poll can be advanced in virtual time.
  */
 class PcscMonitorService(
 	private val terminalsProvider: () -> CardTerminals? = { defaultTerminals() },
 	private val pollTimeoutMillis: Long = DEFAULT_POLL_TIMEOUT_MILLIS,
+	private val recovery: PcscContextRecovery = PcscContextRecovery(),
+	private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
 ) {
-
-	private val supervisor = SupervisorJob()
-	private val scope = CoroutineScope(Dispatchers.IO + supervisor)
 
 	private val _events = MutableSharedFlow<PcscEvent>(
 		replay = 0,
@@ -75,14 +83,34 @@ class PcscMonitorService(
 	 * Never throws — diagnostic and UI callers can rely on this for graceful rendering.
 	 */
 	fun currentReaders(): List<PcscReader> {
-		val terminals = runCatching { terminalsProvider() }
-			.onFailure { logger.debug(it) { "PC/SC TerminalFactory unavailable" } }
-			.getOrNull()
-			?: return emptyList()
-
-		return runCatching { terminals.list().map { it.snapshot() } }
-			.onFailure { logger.debug(it) { "PC/SC reader enumeration failed" } }
+		return runCatching {
+			withStaleContextRecovery {
+				val terminals = terminalsProvider()
+				terminals?.list()?.map { it.snapshot() } ?: emptyList()
+			}
+		}.onFailure { logger.debug(it) { "PC/SC reader enumeration failed" } }
 			.getOrDefault(emptyList())
+	}
+
+	/**
+	 * Run [block]; if it fails with the JDK stale-PC/SC-context signature, reset the
+	 * context via [recovery] and run [block] exactly once more.  Any other failure, or
+	 * one that survives the reset, propagates to the caller's own handling.
+	 *
+	 * @param block The `javax.smartcardio` operation to run, retryable after a reset.
+	 * @return [block]'s result, from the first attempt or the post-reset retry.
+	 */
+	private fun <T> withStaleContextRecovery(block: () -> T): T {
+		return try {
+			block()
+		} catch (e: Exception) {
+			if (recovery.isStaleContext(e) && recovery.resetContext()) {
+				logger.info { "PC/SC stale context reset — retrying the failed reader operation once" }
+				block()
+			} else {
+				throw e
+			}
+		}
 	}
 
 	/**
@@ -111,22 +139,137 @@ class PcscMonitorService(
 	 * Watch loop: poll the current state of every terminal, compare against the prior
 	 * snapshot, emit diff events.  Uses [CardTerminals.waitForChange] when supported so
 	 * the loop blocks until the OS reports a change rather than busy-polling.
+	 *
+	 * [CardTerminals.waitForChange] failures are classified into three cases so the
+	 * watcher survives the conditions that previously killed it:
+	 *
+	 * - **Stale context** (`SCARD_E_NO_SERVICE` / `SCARD_E_SERVICE_STOPPED` /
+	 *   `SCARD_E_INVALID_HANDLE`): the JDK's process-wide context is dead.  Reset it via
+	 *   [recovery], rebuild [CardTerminals], then **emit any reader-state change that
+	 *   occurred during the stale window** before resuming — a hot-plug there is
+	 *   invisible to [CardTerminals.waitForChange], so without this it would be silently
+	 *   absorbed into the new baseline and never trigger rediscovery.
+	 * - **No readers** ([PcscContextRecovery.NO_READERS_AVAILABLE]): the context is
+	 *   healthy but the reader set is empty, so [CardTerminals.waitForChange] cannot
+	 *   block on it.  Degrade to a fixed-interval snapshot poll ([emitSnapshotDiff] +
+	 *   [NO_READERS_POLL_INTERVAL_MILLIS]) so a hot-insert from a no-reader start is
+	 *   still detected; the next loop turn resumes the event-driven wait once a reader
+	 *   exists, or routes to the stale path if the service has since stopped.
+	 * - **Anything else**: terminate the loop as before.
+	 *
+	 * @param initialTerminals The terminals acquired at watcher start; rebuilt in place
+	 *   after a stale-context recovery.
 	 */
-	private suspend fun runWatchLoop(terminals: CardTerminals) {
+	private suspend fun runWatchLoop(initialTerminals: CardTerminals) {
+		var terminals = initialTerminals
 		var previous = snapshot(terminals)
 		try {
 			while (true) {
-				val changed = runCatching { terminals.waitForChange(pollTimeoutMillis) }
-					.getOrDefault(false)
-				val current = snapshot(terminals)
-				if (changed || current != previous) {
-					emitDiff(previous, current)
-					previous = current
+				val poll = runCatching { terminals.waitForChange(pollTimeoutMillis) }
+				val failure = poll.exceptionOrNull()
+				when {
+					failure != null && recovery.isStaleContext(failure) -> {
+						logger.warn(failure) { "PC/SC watcher hit a stale context — resetting and rebuilding the reader watcher" }
+						terminals = recoverTerminals() ?: run {
+							logger.warn { "PC/SC watcher could not recover the context; reader-state events will not resume until restart" }
+							return
+						}
+						val postReset = snapshot(terminals)
+						if (postReset != previous) {
+							logStaleResetRecovery(previous, postReset)
+							emitDiff(previous, postReset)
+						}
+						previous = postReset
+					}
+
+					failure != null && recovery.causeChainContains(failure, PcscContextRecovery.NO_READERS_AVAILABLE) -> {
+						previous = emitSnapshotDiff(terminals, previous)
+						delay(NO_READERS_POLL_INTERVAL_MILLIS)
+					}
+
+					failure != null -> {
+						logger.warn(failure) { "PC/SC watcher loop terminated; PCSCEvent flow will no longer emit" }
+						return
+					}
+
+					else -> {
+						val current = snapshot(terminals)
+						if (poll.getOrDefault(false) || current != previous) {
+							emitDiff(previous, current)
+							previous = current
+						}
+					}
 				}
 			}
 		} catch (e: Throwable) {
 			logger.warn(e) { "PC/SC watcher loop terminated; PCSCEvent flow will no longer emit" }
 		}
+	}
+
+	/**
+	 * Take a fresh [snapshot] and emit a [PcscEvent] for every difference from
+	 * [previous].
+	 *
+	 * Used by the no-readers polling branch of [runWatchLoop]: while the reader set is
+	 * empty the event-driven [CardTerminals.waitForChange] cannot fire, so a hot-insert
+	 * is observed only by comparing successive snapshots here.
+	 *
+	 * @param terminals The terminals to snapshot.
+	 * @param previous The prior snapshot to diff against.
+	 * @return the snapshot just taken, to become the loop's new baseline.
+	 */
+	private suspend fun emitSnapshotDiff(
+		terminals: CardTerminals,
+		previous: Map<String, PcscReader>,
+	): Map<String, PcscReader> {
+		val current = snapshot(terminals)
+		if (current != previous) emitDiff(previous, current)
+		return current
+	}
+
+	/**
+	 * Log, at INFO, the reader-set change that the stale-context recovery branch is
+	 * about to re-emit.
+	 *
+	 * A non-empty change here means a card/reader was inserted or removed *while the JDK
+	 * PC/SC context was stale*: [CardTerminals.waitForChange] cannot report a change
+	 * that occurred during its own failure, so the stale-recovery branch detects it by
+	 * snapshot diff and emits the corresponding [PcscEvent] itself (driving
+	 * [Pkcs11CacheInvalidator] rediscovery) instead of silently absorbing it into the
+	 * new baseline.  Logged so this recovery is observable in the field.  The caller
+	 * invokes this only when the diff is non-empty.
+	 *
+	 * @param before The reader snapshot from before the stale-context reset.
+	 * @param after The reader snapshot taken immediately after the reset rebuilt the
+	 *   terminals.
+	 */
+	private fun logStaleResetRecovery(
+		before: Map<String, PcscReader>,
+		after: Map<String, PcscReader>,
+	) {
+		val appeared = after.keys - before.keys
+		val vanished = before.keys - after.keys
+		val cardChanged = after.keys.intersect(before.keys)
+			.filter { before.getValue(it).cardPresent != after.getValue(it).cardPresent }
+		logger.info {
+			"PC/SC stale-context reset recovered a reader change that occurred during the " +
+				"stale window — appeared=$appeared vanished=$vanished cardStateChanged=$cardChanged; " +
+				"emitting the event now so rediscovery runs without a manual rescan"
+		}
+	}
+
+	/**
+	 * Reset the stale PC/SC context and re-acquire a fresh [CardTerminals], pausing
+	 * briefly first so a genuinely-down smart-card service cannot spin the watch loop
+	 * hot.
+	 *
+	 * @return the rebuilt terminals, or `null` when the context could not be reset or no
+	 *   terminals factory is available — the watcher then stops until restart.
+	 */
+	private suspend fun recoverTerminals(): CardTerminals? {
+		if (!recovery.resetContext()) return null
+		delay(RECOVERY_BACKOFF_MILLIS)
+		return runCatching { terminalsProvider() }.getOrNull()
 	}
 
 	/**
@@ -196,6 +339,22 @@ class PcscMonitorService(
 		 * cancellation.
 		 */
 		const val DEFAULT_POLL_TIMEOUT_MILLIS = 30_000L
+
+		/**
+		 * Pause after a stale-context reset before re-acquiring terminals in the watch
+		 * loop.  Bounds the loop to one recovery attempt every couple of seconds when the
+		 * smart-card service is genuinely down, instead of hot-spinning on a context that
+		 * cannot yet be re-established.
+		 */
+		const val RECOVERY_BACKOFF_MILLIS = 2_000L
+
+		/**
+		 * Snapshot-poll interval used by [runWatchLoop] while the reader set is empty
+		 * (`SCARD_E_NO_READERS_AVAILABLE`), where [CardTerminals.waitForChange] cannot
+		 * block.  Short enough that a hot-insert from a cold start is picked up
+		 * promptly; long enough not to busy-poll an empty PC/SC subsystem.
+		 */
+		const val NO_READERS_POLL_INTERVAL_MILLIS = 2_000L
 
 		/**
 		 * Buffer capacity on the events flow.  Small because typical reader-state changes

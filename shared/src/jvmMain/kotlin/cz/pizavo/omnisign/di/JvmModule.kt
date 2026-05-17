@@ -32,10 +32,12 @@ import org.koin.dsl.module
  */
 val jvmRepositoryModule = module {
 	single { Pkcs11CrashBlacklist() }
-	single { PcscMonitorService() }
+	single { PcscContextRecovery() }
+	single { PcscMonitorService(recovery = get()) }
 	single {
 		Pkcs11Discoverer(
 			crashBlacklist = get(),
+			pcscRecovery = get(),
 		)
 	}
 	single {

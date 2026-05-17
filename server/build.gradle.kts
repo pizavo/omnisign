@@ -12,11 +12,11 @@ application {
     mainClass.set("cz.pizavo.omnisign.ApplicationKt")
     
     val isDevelopment: Boolean = project.ext.has("development")
-    applicationDefaultJvmArgs = listOf("-Dio.ktor.development=$isDevelopment", "--enable-native-access=ALL-UNNAMED")
+    applicationDefaultJvmArgs = listOf("-Dio.ktor.development=$isDevelopment", "--enable-native-access=ALL-UNNAMED", "--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED")
 }
 
 tasks.named<JavaExec>("run") {
-    jvmArgs("--enable-native-access=ALL-UNNAMED")
+    jvmArgs("--enable-native-access=ALL-UNNAMED", "--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED")
 }
 
 dependencies {
@@ -71,6 +71,7 @@ tasks.withType<Test> {
         "-XX:+EnableDynamicAgentLoading",
         "-Xshare:off",
         "--enable-native-access=ALL-UNNAMED",
+        "--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED",
     )
 }
 
