@@ -11,6 +11,8 @@ import cz.pizavo.omnisign.domain.model.validation.SignatureValidationResult
 import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
 import cz.pizavo.omnisign.domain.model.validation.ValidationReport
 import cz.pizavo.omnisign.domain.model.validation.ValidationResult
+import cz.pizavo.omnisign.domain.model.config.TrustedSourceId
+import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.ValidationRepository
 import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
@@ -25,7 +27,9 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.clearMocks
 import io.mockk.coEvery
+import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -268,6 +272,26 @@ class SignatureViewModelTest : FunSpec({
             formats shouldNotContain ReportExportFormat.XML_DETAILED
             formats shouldNotContain ReportExportFormat.XML_DIAGNOSTIC
             formats shouldNotContain ReportExportFormat.XML_ETSI
+        }
+    }
+
+    test("validation is blocked while a required trusted source is refreshing") {
+        runTest(testDispatcher) {
+            val running = MutableStateFlow<Set<TrustedSourceId>>(emptySet())
+            val port = mockk<TrustedListRefreshPort>()
+            every { port.running } returns running
+
+            val vm = SignatureViewModel(useCase, configRepository, testDispatcher, port)
+            advanceUntilIdle()
+            vm.validationBlocked.value shouldBe false
+
+            running.value = setOf(TrustedSourceId.EuLotl)
+            advanceUntilIdle()
+            vm.validationBlocked.value shouldBe true
+
+            running.value = emptySet()
+            advanceUntilIdle()
+            vm.validationBlocked.value shouldBe false
         }
     }
 })

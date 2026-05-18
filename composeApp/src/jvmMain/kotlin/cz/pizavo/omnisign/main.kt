@@ -22,6 +22,7 @@ import cz.pizavo.omnisign.data.service.NotificationUrgency
 import cz.pizavo.omnisign.data.service.OsNotificationService
 import cz.pizavo.omnisign.data.service.Pkcs11CacheInvalidator
 import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
+import cz.pizavo.omnisign.data.service.TrustedListRefreshScheduler
 import cz.pizavo.omnisign.data.service.pkcs11DropDir
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
@@ -278,6 +279,16 @@ fun main(args: Array<String> = emptyArray()) {
 			} catch (e: Exception) {
 				logger.warn(e) { "PKCS#11 background warmup failed — certificate discovery will use subprocess probing" }
 				koin.get<MutableStateFlow<Boolean>>().value = true
+			}
+		}
+
+		val trustedListScheduler = koin.get<TrustedListRefreshScheduler>()
+		CoroutineScope(Dispatchers.IO).launch {
+			try {
+				logger.info { "Launching trusted-list background warmup and refresh cycle" }
+				trustedListScheduler.run()
+			} catch (e: Exception) {
+				logger.warn(e) { "Trusted-list refresh cycle stopped — validation will fall back to offline-first loading" }
 			}
 		}
 

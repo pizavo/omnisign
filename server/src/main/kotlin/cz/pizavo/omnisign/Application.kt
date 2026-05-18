@@ -5,6 +5,7 @@ import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
 import cz.pizavo.omnisign.data.service.Pkcs11CacheInvalidator
 import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
+import cz.pizavo.omnisign.data.service.TrustedListRefreshScheduler
 import cz.pizavo.omnisign.data.service.pkcs11DropDir
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
@@ -98,6 +99,7 @@ fun main(args: Array<String>) {
 fun Application.moduleWith(serverConfig: ServerConfig) {
 	configureKoin(serverConfig)
 	launchPkcs11WarmupIfNeeded(serverConfig)
+	launchTrustedListRefreshIfNeeded(serverConfig)
 	attachPkcs11CacheInvalidatorIfNeeded(serverConfig)
 	configureDefaultHeaders(hstsConfig = serverConfig.tls?.hsts)
 	configureSerialization()
@@ -229,6 +231,35 @@ private fun Application.launchPkcs11WarmupIfNeeded(serverConfig: ServerConfig) {
 			logger.warn(e) { "PKCS#11 background warmup failed — certificate discovery will use subprocess probing" }
 			val signal by inject<MutableStateFlow<Boolean>>()
 			signal.value = true
+		}
+	}
+}
+
+/**
+ * Launch the process-global trusted-list warmup and refresh cycle on a background
+ * coroutine, so the EU LOTL is parsed once at boot and refreshed coherently on the
+ * configured interval rather than on a validation/signing request's critical path.
+ *
+ * Skipped when neither `VALIDATE` nor `SIGN` is allowed (a `TIMESTAMP`-only server
+ * never builds a trust chain), mirroring [launchPkcs11WarmupIfNeeded]'s gating.
+ *
+ * @param serverConfig Current server configuration.
+ */
+private fun Application.launchTrustedListRefreshIfNeeded(serverConfig: ServerConfig) {
+	val needsTrust = AllowedOperation.VALIDATE in serverConfig.allowedOperations ||
+			AllowedOperation.SIGN in serverConfig.allowedOperations
+	if (!needsTrust) {
+		logger.debug { "Neither VALIDATE nor SIGN enabled — skipping trusted-list refresh cycle" }
+		return
+	}
+
+	val scheduler by inject<TrustedListRefreshScheduler>()
+	CoroutineScope(Dispatchers.IO).launch {
+		try {
+			logger.info { "Launching trusted-list background warmup and refresh cycle" }
+			scheduler.run()
+		} catch (e: Exception) {
+			logger.warn(e) { "Trusted-list refresh cycle stopped — validation will fall back to offline-first loading" }
 		}
 	}
 }

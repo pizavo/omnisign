@@ -84,7 +84,7 @@ class DssValidationRepository(
 			report.copy(
 				signatures = annotatedSignatures,
 				tlWarnings = tlWarnings + verifierWarnings,
-				rawReports = extractRawReports(reports),
+				rawReports = extractRawReports(reports, parameters.rawReportFormats),
 			)
 		}.mapLeft { exception ->
 			ValidationError.ValidationFailed(
@@ -380,14 +380,34 @@ class DssValidationRepository(
 	}
 	
 	/**
-	 * Extract all four raw DSS report XML strings from the [Reports] bundle
-	 * so they can be carried on the domain [ValidationReport] for later export.
+	 * Marshal the raw DSS report XML strings the caller actually requested via
+	 * [ValidationParameters.rawReportFormats] so they can be carried on the domain
+	 * [ValidationReport] for later export.
+	 *
+	 * Each `reports.xml*` getter triggers a JAXB marshalling pass (the diagnostic-data
+	 * report in particular can be large), so formats absent from [formats] are never
+	 * marshaled. An empty [formats] set — the default for the CLI and server, which do
+	 * not expose raw-report export — skips marshalling entirely.
 	 */
-	private fun extractRawReports(reports: Reports): Map<RawReportFormat, String> = buildMap {
-		reports.xmlDetailedReport?.let { put(RawReportFormat.XML_DETAILED, it) }
-		reports.xmlSimpleReport?.let { put(RawReportFormat.XML_SIMPLE, it) }
-		reports.xmlDiagnosticData?.let { put(RawReportFormat.XML_DIAGNOSTIC, it) }
-		reports.xmlValidationReport?.let { put(RawReportFormat.XML_ETSI, it) }
+	private fun extractRawReports(
+		reports: Reports,
+		formats: Set<RawReportFormat>,
+	): Map<RawReportFormat, String> {
+		if (formats.isEmpty()) return emptyMap()
+		return buildMap {
+			if (RawReportFormat.XML_DETAILED in formats) {
+				reports.xmlDetailedReport?.let { put(RawReportFormat.XML_DETAILED, it) }
+			}
+			if (RawReportFormat.XML_SIMPLE in formats) {
+				reports.xmlSimpleReport?.let { put(RawReportFormat.XML_SIMPLE, it) }
+			}
+			if (RawReportFormat.XML_DIAGNOSTIC in formats) {
+				reports.xmlDiagnosticData?.let { put(RawReportFormat.XML_DIAGNOSTIC, it) }
+			}
+			if (RawReportFormat.XML_ETSI in formats) {
+				reports.xmlValidationReport?.let { put(RawReportFormat.XML_ETSI, it) }
+			}
+		}
 	}
 
 	/**

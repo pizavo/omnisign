@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
+import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.service.TokenService
@@ -65,8 +66,12 @@ fun IslandLayout(
 		SignatureViewModel(
 			koin.get<ValidateDocumentUseCase>(),
 			koin.get<ConfigRepository>(),
+			trustedListRefreshPort = koin.getOrNull<TrustedListRefreshPort>(),
 		)
 	}
+	val signatureValidationBlocked by (signatureViewModel?.validationBlocked ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow(false)
+	}).collectAsState()
 	val signatureState by (signatureViewModel?.state ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow<SignaturePanelState>(SignaturePanelState.Idle())
 	}).collectAsState()
@@ -97,6 +102,7 @@ fun IslandLayout(
 			koin.getOrNull<SchedulerPort>(),
 			autoDetectedExecutablePath = resolveExecutablePath(),
 			isLinuxDesktop = linux,
+			trustedListRefreshPort = koin.getOrNull<TrustedListRefreshPort>(),
 		)
 	}
 	val settingsState by (settingsViewModel?.state ?: remember {
@@ -104,6 +110,12 @@ fun IslandLayout(
 	}).collectAsState()
 	val settingsHasChanges by (settingsViewModel?.hasChanges ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow(false)
+	}).collectAsState()
+	val trustedListRefreshing by (settingsViewModel?.trustedListRefreshing ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow(false)
+	}).collectAsState()
+	val trustedListLastRefreshAt by (settingsViewModel?.trustedListLastRefreshAt ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow<kotlin.time.Instant?>(null)
 	}).collectAsState()
 	var showSettingsDialog by remember { mutableStateOf(false) }
 	var initialSettingsCategory by remember { mutableStateOf<SettingsCategory?>(null) }
@@ -252,6 +264,9 @@ fun IslandLayout(
 							}
 						},
 						initialCategory = initialSettingsCategory,
+						trustedListRefreshing = trustedListRefreshing,
+						trustedListLastRefreshAt = trustedListLastRefreshAt,
+						onRefreshTrustedLists = { settingsViewModel?.refreshTrustedListsNow() },
 					)
 				}
 				
@@ -449,6 +464,7 @@ fun IslandLayout(
 									) {
 										IconButton(
 											variant = IconButtonVariant.Ghost,
+											enabled = !signatureValidationBlocked,
 											onClick = { signatureViewModel?.loadSignatures() },
 										) {
 											Icon(

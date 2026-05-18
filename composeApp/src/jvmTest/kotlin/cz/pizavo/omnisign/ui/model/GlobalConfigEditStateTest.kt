@@ -94,5 +94,34 @@ class GlobalConfigEditStateTest : FunSpec({
 	test("default showNativeTitleBarOption is false") {
 		GlobalConfigEditState().showNativeTitleBarOption shouldBe false
 	}
+
+	test("round-trip from and toGlobalConfig preserves trustedListRefreshIntervalHours") {
+		val original = GlobalConfig(trustedListRefreshIntervalHours = 48)
+		val state = GlobalConfigEditState.from(original)
+		state.trustedListRefreshInterval shouldBe "48"
+		state.toGlobalConfig().trustedListRefreshIntervalHours shouldBe 48L
+	}
+
+	test("toGlobalConfig clamps a sub-hour trusted-list interval up to 1") {
+		val state = GlobalConfigEditState(trustedListRefreshInterval = "0")
+		state.toGlobalConfig().trustedListRefreshIntervalHours shouldBe 1L
+	}
+
+	test("toGlobalConfig falls back to 24h when the interval string is blank") {
+		val state = GlobalConfigEditState(trustedListRefreshInterval = "")
+		state.toGlobalConfig().trustedListRefreshIntervalHours shouldBe 24L
+	}
+
+	test("contentEquals detects change in trustedListRefreshInterval") {
+		val a = GlobalConfigEditState(trustedListRefreshInterval = "24")
+		val b = GlobalConfigEditState(trustedListRefreshInterval = "12")
+		a.contentEquals(b) shouldBe false
+	}
+
+	test("isTrustedListRefreshIntervalValid accepts blank and positive, rejects zero") {
+		GlobalConfigEditState(trustedListRefreshInterval = "").isTrustedListRefreshIntervalValid shouldBe true
+		GlobalConfigEditState(trustedListRefreshInterval = "1").isTrustedListRefreshIntervalValid shouldBe true
+		GlobalConfigEditState(trustedListRefreshInterval = "0").isTrustedListRefreshIntervalValid shouldBe false
+	}
 })
 

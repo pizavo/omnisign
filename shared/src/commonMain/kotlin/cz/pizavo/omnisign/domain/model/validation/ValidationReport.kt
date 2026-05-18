@@ -13,8 +13,11 @@ import kotlin.time.Instant
  * @property timestamps Document-level timestamp validation results not associated with a specific signature.
  * @property tlWarnings User-readable notices about trusted list loading issues encountered during validation.
  * @property rawReports Pre-marshaled DSS report XML strings keyed by [RawReportFormat].
- *   Populated on JVM after validation so that the desktop/server UI can export them
- *   without re-running validation. Empty on non-JVM targets.
+ *   Populated on JVM after validation only for the formats the caller requested via
+ *   [cz.pizavo.omnisign.domain.model.parameters.ValidationParameters.rawReportFormats],
+ *   so the desktop UI can export them without re-running validation. Empty when no
+ *   formats were requested (the CLI and server, which do not expose raw-report export)
+ *   and on non-JVM targets.
  */
 data class ValidationReport(
     val documentName: String,
