@@ -27,6 +27,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
+import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
@@ -37,6 +38,7 @@ import cz.pizavo.omnisign.ui.platform.openInFileExplorer
 import cz.pizavo.omnisign.ui.platform.platformFilePath
 import cz.pizavo.omnisign.ui.platform.resolvePkcs11DropDirectory
 import io.github.vinceglb.filekit.PlatformFile
+import kotlin.time.Instant
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import omnisign.composeapp.generated.resources.*
@@ -77,6 +79,9 @@ fun SettingsDialog(
 	onDismiss: () -> Unit,
 	onBuildTl: (() -> Unit)? = null,
 	initialCategory: SettingsCategory? = null,
+	trustedListRefreshing: Boolean = false,
+	trustedListLastRefreshAt: Instant? = null,
+	onRefreshTrustedLists: () -> Unit = {},
 ) {
 	var selectedCategory by remember(initialCategory) {
 		mutableStateOf(initialCategory ?: SettingsCategory.SigningDefaults)
@@ -113,6 +118,9 @@ fun SettingsDialog(
 					state = state,
 					onFieldChange = onFieldChange,
 					onBuildTl = onBuildTl,
+					trustedListRefreshing = trustedListRefreshing,
+					trustedListLastRefreshAt = trustedListLastRefreshAt,
+					onRefreshTrustedLists = onRefreshTrustedLists,
 				)
 			}
 			
@@ -333,6 +341,9 @@ private fun SettingsContentPanel(
 	state: GlobalConfigEditState,
 	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 	onBuildTl: (() -> Unit)? = null,
+	trustedListRefreshing: Boolean = false,
+	trustedListLastRefreshAt: Instant? = null,
+	onRefreshTrustedLists: () -> Unit = {},
 ) {
 	VerticalScrollableColumn(
 		modifier = Modifier.fillMaxSize(),
@@ -373,7 +384,13 @@ private fun SettingsContentPanel(
 			
 			SettingsCategory.OcspCrl -> OcspCrlSection(state = state, onFieldChange = onFieldChange)
 			SettingsCategory.Validation,
-			SettingsCategory.ValidationPolicy -> ValidationPolicySection(state = state, onFieldChange = onFieldChange)
+			SettingsCategory.ValidationPolicy -> ValidationPolicySection(
+				state = state,
+				onFieldChange = onFieldChange,
+				trustedListRefreshing = trustedListRefreshing,
+				trustedListLastRefreshAt = trustedListLastRefreshAt,
+				onRefreshTrustedLists = onRefreshTrustedLists,
+			)
 			
 			SettingsCategory.AlgorithmConstraints -> AlgorithmConstraintsSection(
 				state = state,
@@ -719,6 +736,9 @@ private fun OcspCrlSection(
 private fun ValidationPolicySection(
 	state: GlobalConfigEditState,
 	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
+	trustedListRefreshing: Boolean = false,
+	trustedListLastRefreshAt: Instant? = null,
+	onRefreshTrustedLists: () -> Unit = {},
 ) {
 	DropdownSelector(
 		selected = state.validationPolicyType,
@@ -798,6 +818,55 @@ private fun ValidationPolicySection(
 			checked = state.useEuLotl,
 			onCheckedChange = { value -> onFieldChange { it.copy(useEuLotl = value) } },
 		)
+	}
+	Spacer(modifier = Modifier.height(8.dp))
+
+	UnderlinedTextField(
+		value = state.trustedListRefreshInterval,
+		onValueChange = { value ->
+			if (value.all { c -> c.isDigit() }) {
+				onFieldChange { it.copy(trustedListRefreshInterval = value) }
+			}
+		},
+		label = { Text(text = "Trusted list refresh interval (hours)") },
+		singleLine = true,
+		keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+		modifier = Modifier.fillMaxWidth(),
+	)
+	Spacer(modifier = Modifier.height(12.dp))
+
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.SpaceBetween,
+	) {
+		Column(modifier = Modifier.weight(1f)) {
+			Text(text = "Trusted lists", style = LumoTheme.typography.label1)
+			Text(
+				text = trustedListLastRefreshAt
+					?.let { "Last refreshed: ${it.formatDateTime()}" }
+					?: "Last refreshed: never",
+				style = LumoTheme.typography.body2,
+				color = LumoTheme.colors.textSecondary,
+			)
+		}
+		TooltipBox(
+			tooltip = { Tooltip { Text(text = "Refresh trusted lists now") } },
+			state = rememberTooltipState(),
+		) {
+			IconButton(
+				variant = IconButtonVariant.Ghost,
+				enabled = !trustedListRefreshing,
+				loading = trustedListRefreshing,
+				onClick = onRefreshTrustedLists,
+			) {
+				Icon(
+					painter = painterResource(Res.drawable.icon_refresh),
+					contentDescription = "Refresh trusted lists now",
+					modifier = Modifier.size(20.dp),
+				)
+			}
+		}
 	}
 }
 

@@ -50,9 +50,9 @@ data class CertificateVerifierResult(
  * shared across all callers.
  */
 class DssServiceFactory(
-	private val credentialStore: CredentialStore
+	private val credentialStore: CredentialStore,
+	private val trustedSources: TrustedSourceRegistry = TrustedSourceRegistry(),
 ) {
-	private val trustedSources = TrustedSourceRegistry()
 
 	/**
 	 * Build an [OnlineTSPSource] for [tsConfig], resolving the HTTP Basic password from
@@ -264,6 +264,16 @@ class DssServiceFactory(
 	 */
 	fun refreshTrustedSources() {
 		trustedSources.refreshAll()
+	}
+
+	/**
+	 * Hard-refresh every retained trusted source, forcing a real network
+	 * re-download regardless of cache freshness. Backs the user-initiated
+	 * "Refresh now" (desktop) and `config tl refresh` (CLI); the scheduled cycle
+	 * uses the cache-gated [refreshTrustedSources] instead.
+	 */
+	fun forceRefreshTrustedSources() {
+		trustedSources.forceRefreshAll()
 	}
 
 	/**

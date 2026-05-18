@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.data.repository
 
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedSourceId
 import eu.europa.esig.dss.service.http.commons.CommonsDataLoader
 import eu.europa.esig.dss.service.http.commons.FileCacheDataLoader
 import eu.europa.esig.dss.spi.tsl.TrustedListsCertificateSource
@@ -11,62 +12,57 @@ import eu.europa.esig.dss.tsl.job.TLValidationJob
 import eu.europa.esig.dss.tsl.source.LOTLSource
 import eu.europa.esig.dss.tsl.source.TLSource
 import io.github.oshai.kotlinlogging.KotlinLogging
-import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 import java.util.concurrent.locks.ReentrantLock
 import kotlin.concurrent.withLock
+import kotlin.time.Clock
 
 private val logger = KotlinLogging.logger {}
 
 /**
  * Process-wide registry of retained, identity-keyed DSS trusted-list sources.
  *
- * Replaces the previous single time-keyed `cachedTlSource` with one retained
- * [TLValidationJob] per distinct trust-source identity:
+ * One retained [TLValidationJob] per distinct [TrustedSourceId] (one shared EU
+ * LOTL, one per custom list). Retaining the job is the core optimization: DSS
+ * keys its parse/validation cache by URL inside the job, so a re-refresh skips
+ * re-parsing and re-verifying any list whose downloaded bytes are unchanged.
  *
- * - **EU LOTL** — a single shared entry. Its inputs are constant by construction
- *   ([DssServiceFactory.EU_LOTL_URL], the bundled OJ keystore, pivot support), so
- *   every profile that resolves `useEuLotl = true` shares the same parsed source.
- *   This is the ~28-member-state parse + XML-DSig long pole, paid once.
- * - **Custom TLs** — one entry per distinct `(url, signingCertPath)` pair, shared
- *   across every profile that references the same list.
+ * Locking is **per entry**, not registry-wide: each [RetainedTl] has its own
+ * lock, and acquisition/refresh of one source never blocks a validation that
+ * needs a different source. This is what makes the validation panel's scoped
+ * wait truthful — it contends only on the ids its config needs. The trade-off
+ * is that a refresh cycle updates entries sequentially, so a validation running
+ * mid-cycle may observe one entry refreshed and another not yet; the cadence is
+ * still a single shared interval (no per-source TTL drift).
  *
- * Retaining the [TLValidationJob] instance is the core optimization: DSS keys its
- * parsing/validation cache by URL inside the job's `cacheAccessFactory`, so a
- * subsequent `refresh()` skips re-parsing and re-verifying any trusted list whose
- * downloaded bytes are unchanged. A fresh job (the old behavior) starts with an
- * empty cache and re-does that work every time.
- *
- * Per-verifier composition selects only the sources a given [ResolvedConfig]
- * requires and unions them via [CommonCertificateVerifier.setTrustedCertSources],
- * which preserves each source's trust-service metadata (eIDAS qualification) and
- * keeps profiles isolated from each other's custom lists.
- *
- * Atomicity is provided by DSS itself: the synchronizer builds the new trust map
- * locally and swaps it into the stable source in a single call, and leaves the
- * source untouched entirely when nothing changed — so a validation reading the
- * source concurrently with a background refresh never sees a half-built trust set.
- * Each retained source is therefore bound once and never swapped.
+ * Every acquire/refresh is bracketed with [TrustedListRefreshSignal] begin/end
+ * for its id so consumers can scope their wait precisely.
  */
-class TrustedSourceRegistry {
+class TrustedSourceRegistry(
+	private val signal: TrustedListRefreshSignal = TrustedListRefreshSignal(),
+) {
 
 	/**
-	 * Identity of a retained custom trusted-list entry. Two configurations that
-	 * resolve to the same URL and signing-certificate path share one parsed source.
-	 */
-	private data class CustomTlKey(val url: String, val signingCertPath: String?)
-
-	/**
-	 * A retained trusted-list source: the long-lived [TLValidationJob] (whose cache
-	 * makes re-refreshes cheap), the stable [TrustedListsCertificateSource] it
-	 * populates, and the most recent loading warnings.
+	 * A retained trusted-list source: the long-lived [TLValidationJob] (whose
+	 * cache makes scheduled re-refreshes cheap), the stable
+	 * [TrustedListsCertificateSource] it populates, its own lock, the most recent
+	 * loading warnings, and [buildJob] — the factory used to spin up a *fresh*
+	 * job (empty cache) for a user-initiated hard refresh that must genuinely
+	 * re-download and re-parse.
 	 */
 	private class RetainedTl(
+		val id: TrustedSourceId,
 		val job: TLValidationJob,
 		val source: TrustedListsCertificateSource,
+		val buildJob: (TrustedListsCertificateSource, FileCacheDataLoader) -> TLValidationJob,
 	) {
+		val lock = ReentrantLock()
+
+		@Volatile
+		var initialized = false
+
 		@Volatile
 		var warnings: List<String> = emptyList()
 	}
@@ -79,21 +75,12 @@ class TrustedSourceRegistry {
 	@Volatile
 	var cacheExpirationMillis: Long = DssServiceFactory.TL_CACHE_EXPIRATION_MS
 
-	private val lock = ReentrantLock()
-
-	@Volatile
-	private var lotl: RetainedTl? = null
-
-	private val customs = ConcurrentHashMap<CustomTlKey, RetainedTl>()
+	private val entries = ConcurrentHashMap<TrustedSourceId, RetainedTl>()
 
 	/**
-	 * Shared, bounded, daemon-threaded executor for every retained job.
-	 *
-	 * DSS gives each [TLValidationJob] its own `Executors.newCachedThreadPool()`;
-	 * a single bounded pool instead caps the peak thread/CPU spike during the
-	 * unavoidable changed-content refresh. Daemon threads so a one-shot CLI process
-	 * is never held open by an idle pool. Lazily created so tests that build no job
-	 * (and the no-TL config paths) never allocate it.
+	 * Shared, bounded, daemon-threaded executor for every retained job, capping
+	 * the peak thread/CPU spike of the unavoidable changed-content refresh.
+	 * Lazily created so configs/tests that build no job never allocate it.
 	 */
 	private val executor: ExecutorService by lazy {
 		val poolSize = Runtime.getRuntime().availableProcessors().coerceIn(2, 8)
@@ -106,12 +93,8 @@ class TrustedSourceRegistry {
 	 * Select the trusted sources [config] requires, acquiring (and lazily warming)
 	 * each one, and wire them into [cv] as a single aggregated trusted-cert source.
 	 *
-	 * Mirrors the previous `wireTrustedSources` contract: when no trusted lists and
-	 * no direct certs are configured nothing is wired; when only direct certs are
-	 * configured only those are wired (no TL warnings).
-	 *
-	 * @return The union of loading warnings for the sources this config actually
-	 *   uses, so a profile is never shown warnings about another profile's lists.
+	 * @return the union of loading warnings for the sources this config uses, so a
+	 *   profile is never shown warnings about another profile's lists.
 	 */
 	fun composeInto(cv: CommonCertificateVerifier, config: ResolvedConfig): List<String> {
 		val validation = config.validation
@@ -149,15 +132,54 @@ class TrustedSourceRegistry {
 	}
 
 	/**
-	 * Online-refresh every retained source as one coherent set on the global
-	 * refresh cycle. Cheap when upstream content is unchanged because each retained
-	 * job skips re-parsing/re-verifying unchanged trusted lists.
+	 * Online-refresh every retained source on the global refresh cycle. Each
+	 * entry is refreshed under its own lock and bracketed with the refresh
+	 * signal, so a validation needing a different source is not blocked.
 	 */
 	fun refreshAll() {
-		lock.withLock {
-			lotl?.let { refreshOnline(it) }
-			customs.values.forEach { refreshOnline(it) }
+		entries.values.forEach { entry ->
+			entry.lock.withLock {
+				signal.begin(entry.id)
+				try {
+					refreshOnline(entry, entry.job)
+				} finally {
+					signal.end(entry.id)
+				}
+			}
 		}
+		if (entries.isNotEmpty()) signal.markRefreshed(Clock.System.now())
+	}
+
+	/**
+	 * Hard-refresh every retained source.
+	 *
+	 * Backs the user-initiated "Refresh now" (desktop) and `config tl refresh`
+	 * (CLI). Unlike the cache-gated scheduled [refreshAll], this builds a **fresh**
+	 * [TLValidationJob] per entry with an expiration-zero online loader. A fresh
+	 * job has an empty in-memory cache, so DSS cannot short-circuit on unchanged
+	 * digests — it is forced to actually re-download, re-parse and re-verify every
+	 * list, then synchronize the result into the entry's stable source. Genuinely
+	 * heavy by design; that is what the user asked for. The retained job and its
+	 * cheap cache are left untouched for the scheduled cycle.
+	 */
+	fun forceRefreshAll() {
+		logger.info { "Hard refresh: ${entries.size} retained trusted source(s) to re-download" }
+		entries.values.forEach { entry ->
+			entry.lock.withLock {
+				signal.begin(entry.id)
+				try {
+					logger.info { "Hard-refreshing ${entry.id} (fresh job, forced network re-download)" }
+					val freshLoader = newOnlineLoader().apply {
+						setCacheExpirationTime(FORCE_REFRESH_EXPIRATION_MS)
+					}
+					val freshJob = entry.buildJob(entry.source, freshLoader)
+					refreshOnline(entry, freshJob)
+				} finally {
+					signal.end(entry.id)
+				}
+			}
+		}
+		if (entries.isNotEmpty()) signal.markRefreshed(Clock.System.now())
 	}
 
 	/**
@@ -165,46 +187,26 @@ class TrustedSourceRegistry {
 	 * one-shot CLI relies on the daemon threads instead and need not call this.
 	 */
 	fun shutdown() {
-		if (lotl != null || customs.isNotEmpty()) executor.shutdownNow()
+		if (entries.isNotEmpty()) executor.shutdownNow()
 	}
 
-	/**
-	 * Get the shared EU LOTL entry, building and offline-first warming it on the
-	 * first request under [lock] so concurrent cold callers cannot each launch a
-	 * full LOTL refresh (the server thundering-herd case).
-	 */
-	private fun acquireLotl(): RetainedTl {
-		lotl?.let { return it }
-		lock.withLock {
-			lotl?.let { return it }
-			val source = TrustedListsCertificateSource()
-			val job = newJob(source).apply {
-				setListOfTrustedListSources(
-					LOTLSource().apply {
-						url = DssServiceFactory.EU_LOTL_URL
-						certificateSource = DssServiceFactory.buildOjCertificateSource()
-						isPivotSupport = true
-					}
-				)
-			}
-			val entry = RetainedTl(job, source)
-			refreshOfflineFirst(entry)
-			lotl = entry
-			return entry
+	/** Acquire the shared EU LOTL entry, building + offline-first warming once. */
+	private fun acquireLotl(): RetainedTl = acquire(TrustedSourceId.EuLotl) { source, onlineLoader ->
+		newJob(source, onlineLoader).apply {
+			setListOfTrustedListSources(
+				LOTLSource().apply {
+					url = DssServiceFactory.EU_LOTL_URL
+					certificateSource = DssServiceFactory.buildOjCertificateSource()
+					isPivotSupport = true
+				}
+			)
 		}
 	}
 
-	/**
-	 * Get the retained entry for a custom trusted list, building and offline-first
-	 * warming it once per distinct identity under [lock].
-	 */
-	private fun acquireCustom(config: CustomTrustedListConfig): RetainedTl {
-		val key = CustomTlKey(config.source, config.signingCertPath)
-		customs[key]?.let { return it }
-		lock.withLock {
-			customs[key]?.let { return it }
-			val source = TrustedListsCertificateSource()
-			val job = newJob(source).apply {
+	/** Acquire the retained entry for a custom trusted list by its identity. */
+	private fun acquireCustom(config: CustomTrustedListConfig): RetainedTl =
+		acquire(TrustedSourceId.CustomList(config.source, config.signingCertPath)) { source, onlineLoader ->
+			newJob(source, onlineLoader).apply {
 				setTrustedListSources(
 					TLSource().apply {
 						url = config.source
@@ -214,18 +216,67 @@ class TrustedSourceRegistry {
 					}
 				)
 			}
-			val entry = RetainedTl(job, source)
-			refreshOfflineFirst(entry)
-			customs[key] = entry
-			return entry
+		}
+
+	/**
+	 * Get-or-create the retained entry for [id]. The cheap shell (source + job,
+	 * no network) is created atomically per id; the slow offline-first warm runs
+	 * once under the entry's own lock, bracketed with the refresh signal so the
+	 * first lazy load is visible to scoped waiters.
+	 */
+	private fun acquire(
+		id: TrustedSourceId,
+		buildJob: (TrustedListsCertificateSource, FileCacheDataLoader) -> TLValidationJob,
+	): RetainedTl {
+		entries[id]?.let { if (it.initialized) return it }
+		val entry = entries.computeIfAbsent(id) { key ->
+			val source = TrustedListsCertificateSource()
+			val onlineLoader = newOnlineLoader()
+			RetainedTl(key, buildJob(source, onlineLoader), source, buildJob)
+		}
+		entry.lock.withLock {
+			if (!entry.initialized) {
+				signal.begin(id)
+				try {
+					refreshOfflineFirst(entry)
+				} finally {
+					signal.end(id)
+				}
+				entry.initialized = true
+				signal.markRefreshed(Clock.System.now())
+			}
+		}
+		return entry
+	}
+
+	/**
+	 * Build an online [FileCacheDataLoader] over the persistent cache directory.
+	 *
+	 * Used for the retained job's cache-gated loader, and (with expiration forced
+	 * to zero) for the throwaway loader of a [forceRefreshAll] hard refresh.
+	 */
+	private fun newOnlineLoader(): FileCacheDataLoader {
+		val cacheDir = DssServiceFactory.tlCacheDir().also { it.mkdirs() }
+		return FileCacheDataLoader().apply {
+			setCacheExpirationTime(cacheExpirationMillis)
+			setDataLoader(
+				CommonsDataLoader().apply {
+					timeoutConnection = DssServiceFactory.TL_FETCH_TIMEOUT_MS
+					timeoutSocket = DssServiceFactory.TL_FETCH_TIMEOUT_MS
+				}
+			)
+			setFileCacheDirectory(cacheDir)
 		}
 	}
 
 	/**
 	 * Build a retained [TLValidationJob] bound to [source] with the shared
-	 * executor and persistent offline/online file caches.
+	 * executor, a never-expiring offline cache, and the supplied [onlineLoader].
 	 */
-	private fun newJob(source: TrustedListsCertificateSource): TLValidationJob {
+	private fun newJob(
+		source: TrustedListsCertificateSource,
+		onlineLoader: FileCacheDataLoader,
+	): TLValidationJob {
 		val cacheDir = DssServiceFactory.tlCacheDir().also { it.mkdirs() }
 		return TLValidationJob().apply {
 			setExecutorService(executor)
@@ -236,26 +287,15 @@ class TrustedSourceRegistry {
 					setFileCacheDirectory(cacheDir)
 				}
 			)
-			setOnlineDataLoader(
-				FileCacheDataLoader().apply {
-					setCacheExpirationTime(cacheExpirationMillis)
-					setDataLoader(
-						CommonsDataLoader().apply {
-							timeoutConnection = DssServiceFactory.TL_FETCH_TIMEOUT_MS
-							timeoutSocket = DssServiceFactory.TL_FETCH_TIMEOUT_MS
-						}
-					)
-					setFileCacheDirectory(cacheDir)
-				}
-			)
+			setOnlineDataLoader(onlineLoader)
 		}
 	}
 
 	/**
 	 * Offline-first warm: serve instantly from the on-disk cache (no network, no
-	 * unreachable-host stalls); fall back to a synchronous online refresh only when
-	 * the cache is genuinely cold (first ever run). The scheduled [refreshAll]
-	 * keeps the retained source fresh afterwards without blocking validations.
+	 * unreachable-host stalls); fall back to a synchronous online refresh only
+	 * when the cache is genuinely cold (first ever run). The scheduled
+	 * [refreshAll] keeps the retained source fresh afterwards.
 	 */
 	private fun refreshOfflineFirst(entry: RetainedTl) {
 		runCatching { entry.job.offlineRefresh() }
@@ -268,11 +308,25 @@ class TrustedSourceRegistry {
 	}
 
 	/**
-	 * Online-refresh a single retained entry and refresh its warnings.
+	 * Online-refresh [job] (the retained job for the scheduled cycle, or a fresh
+	 * job for a forced hard refresh), then refresh [entry]'s warnings from it.
 	 */
-	private fun refreshOnline(entry: RetainedTl) {
-		runCatching { entry.job.onlineRefresh() }
-			.onFailure { logger.warn(it) { "Scheduled online TL refresh failed; serving last good trust" } }
-		entry.warnings = DssServiceFactory.collectTlWarnings(entry.job.summary)
+	private fun refreshOnline(entry: RetainedTl, job: TLValidationJob) {
+		val elapsed = kotlin.system.measureTimeMillis {
+			runCatching { job.onlineRefresh() }
+				.onFailure { logger.warn(it) { "Online TL refresh of ${entry.id} failed; serving last good trust" } }
+		}
+		logger.info { "onlineRefresh(${entry.id}) took ${elapsed}ms" }
+		entry.warnings = DssServiceFactory.collectTlWarnings(job.summary)
+	}
+
+	/** Registry constants. */
+	private companion object {
+		/**
+		 * Cache-expiration value that forces [FileCacheDataLoader] to treat every
+		 * cached file as expired (`now - lastModified >= 0` always holds), so a
+		 * hard refresh always re-downloads.
+		 */
+		const val FORCE_REFRESH_EXPIRATION_MS = 0L
 	}
 }

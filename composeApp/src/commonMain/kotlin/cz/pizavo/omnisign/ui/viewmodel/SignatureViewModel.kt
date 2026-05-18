@@ -3,6 +3,9 @@ package cz.pizavo.omnisign.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedSourceId
+import cz.pizavo.omnisign.domain.model.config.requiredTrustedSourceIds
+import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.validation.ReportExportFormat
@@ -18,8 +21,11 @@ import cz.pizavo.omnisign.ui.model.SignaturePanelState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -36,17 +42,60 @@ import kotlinx.coroutines.withContext
  *   so that EU LOTL and custom trusted lists are applied during validation.
  * @param ioDispatcher Dispatcher used for the heavy validation work. Defaults to
  *   [Dispatchers.Default]; tests should substitute a [kotlinx.coroutines.test.StandardTestDispatcher].
+ * @param trustedListRefreshPort Optional refresh signal. When a refresh of a trusted
+ *   source this document's active configuration needs is in flight, validation is
+ *   blocked until it completes. `null` on targets without a DSS backend (web), where
+ *   nothing is ever refreshing.
  */
 class SignatureViewModel(
     private val validateDocumentUseCase: ValidateDocumentUseCase,
     private val configRepository: ConfigRepository,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val trustedListRefreshPort: TrustedListRefreshPort? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow<SignaturePanelState>(SignaturePanelState.Idle())
 
     /** Observable panel state. */
     val state: StateFlow<SignaturePanelState> = _state.asStateFlow()
+
+    /**
+     * Trusted-source ids the active configuration needs, kept current so
+     * [validationBlocked] only reacts to refreshes that would actually contend
+     * with a validation of the current selection.
+     */
+    private val _requiredIds = MutableStateFlow<Set<TrustedSourceId>>(emptySet())
+
+    /**
+     * `true` while a refresh of a trusted source this configuration depends on is
+     * in flight (global only, or global + the active profile's lists). The verify
+     * action is disabled until it clears. Always `false` when no refresh port is
+     * available (web).
+     */
+    val validationBlocked: StateFlow<Boolean> =
+        trustedListRefreshPort?.let { port ->
+            combine(port.running, _requiredIds) { running, required ->
+                required.isNotEmpty() && running.any { it in required }
+            }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+        } ?: MutableStateFlow(false)
+
+    init {
+        viewModelScope.launch { resolveRequiredIds() }
+    }
+
+    /**
+     * Resolve the active configuration and publish the trusted-source ids it
+     * needs. Failures resolve to an empty set (nothing to wait for).
+     */
+    private suspend fun resolveRequiredIds() {
+        val appConfig = configRepository.getCurrentConfig()
+        val resolved = ResolvedConfig.resolve(
+            global = appConfig.global,
+            profile = appConfig.activeProfile?.let { appConfig.profiles[it] },
+            operationOverrides = null,
+        ).getOrNull()
+        _requiredIds.value = resolved?.requiredTrustedSourceIds() ?: emptySet()
+    }
 
     /** File path of the currently loaded document, if any. */
     private var currentFilePath: String? = null
@@ -104,6 +153,7 @@ class SignatureViewModel(
     fun loadSignatures() {
         val path = currentFilePath ?: return
         if (_state.value is SignaturePanelState.Loading) return
+        if (validationBlocked.value) return
 
         _state.update { SignaturePanelState.Loading }
         viewModelScope.launch {
@@ -114,6 +164,7 @@ class SignatureViewModel(
                     profile = appConfig.activeProfile?.let { appConfig.profiles[it] },
                     operationOverrides = null,
                 ).getOrNull()
+                _requiredIds.value = resolvedConfig?.requiredTrustedSourceIds() ?: emptySet()
                 validateDocumentUseCase(
                     ValidationParameters(
                         inputFile = path,

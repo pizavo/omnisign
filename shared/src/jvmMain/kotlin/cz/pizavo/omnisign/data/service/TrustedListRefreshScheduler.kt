@@ -35,34 +35,72 @@ class TrustedListRefreshScheduler(
 ) {
 
 	/**
-	 * Warm every distinct trusted source once, then online-refresh them all as a
-	 * coherent set on each interval tick until the calling coroutine is cancelled.
+	 * Warm every distinct trusted source once (offline-first), then online-refresh
+	 * them all as a coherent set on each interval tick until the calling coroutine
+	 * is cancelled.
+	 *
+	 * The first online refresh is deferred a full interval on purpose: the warmup
+	 * has just loaded the sources, so refreshing immediately would only re-process
+	 * (re-canonicalize/re-digest) data we already have, adding a redundant CPU
+	 * pass at the worst moment — startup.
 	 *
 	 * Suspends for the lifetime of the host; launch it in a background scope. The
 	 * shared refresh executor is released when the coroutine completes.
 	 */
 	suspend fun run() {
 		try {
-			val appConfig = configRepository.getCurrentConfig()
-			val intervalHours = appConfig.global.trustedListRefreshIntervalHours.coerceAtLeast(MIN_INTERVAL_HOURS)
-			val intervalMillis = intervalHours * MILLIS_PER_HOUR
-			factory.configureTrustedListRefreshInterval(intervalMillis)
-
-			val (useEuLotl, customTls) = collectDistinctSources(appConfig)
-			logger.info {
-				"Warming trusted lists (EU LOTL=$useEuLotl, ${customTls.size} custom), " +
-						"refresh every ${intervalHours}h"
-			}
-			factory.warmUpTrustedSources(useEuLotl, customTls)
-
+			val intervalMillis = prime()
 			while (true) {
+				delay(intervalMillis)
 				coroutineContext.ensureActive()
 				factory.refreshTrustedSources()
-				delay(intervalMillis)
 			}
 		} finally {
 			factory.shutdownTrustedSources()
 		}
+	}
+
+	/**
+	 * Trigger an immediate, out-of-cycle **hard** refresh of every distinct
+	 * trusted source and suspend until it completes.
+	 *
+	 * Used by the desktop "Refresh now" control and the CLI `config tl refresh`
+	 * command. Unlike the scheduled cycle this forces a real network re-download
+	 * regardless of cache freshness (the user explicitly asked for fresh data),
+	 * after priming so a freshly added profile's lists are picked up even if they
+	 * were never warmed.
+	 */
+	suspend fun refreshNow() {
+		logger.info { "Manual hard trusted-list refresh requested" }
+		try {
+			prime()
+			factory.forceRefreshTrustedSources()
+			logger.info { "Manual hard trusted-list refresh completed" }
+		} catch (e: Exception) {
+			logger.error(e) { "Manual hard trusted-list refresh failed" }
+			throw e
+		}
+	}
+
+	/**
+	 * Apply the configured refresh interval and ensure every distinct trusted
+	 * source is acquired (offline-first). Shared by [run] and [refreshNow].
+	 *
+	 * @return the resolved refresh interval in milliseconds.
+	 */
+	private suspend fun prime(): Long {
+		val appConfig = configRepository.getCurrentConfig()
+		val intervalHours = appConfig.global.trustedListRefreshIntervalHours.coerceAtLeast(MIN_INTERVAL_HOURS)
+		val intervalMillis = intervalHours * MILLIS_PER_HOUR
+		factory.configureTrustedListRefreshInterval(intervalMillis)
+
+		val (useEuLotl, customTls) = collectDistinctSources(appConfig)
+		logger.info {
+			"Warming trusted lists (EU LOTL=$useEuLotl, ${customTls.size} custom), " +
+					"refresh every ${intervalHours}h"
+		}
+		factory.warmUpTrustedSources(useEuLotl, customTls)
+		return intervalMillis
 	}
 
 	/**

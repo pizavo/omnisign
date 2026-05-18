@@ -8,6 +8,7 @@ import cz.pizavo.omnisign.data.service.*
 import cz.pizavo.omnisign.domain.port.ConfigSerializerRegistry
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
+import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.SigningRepository
@@ -94,8 +95,11 @@ val jvmRepositoryModule = module {
 	singleOf(::KeyringCredentialStore) bind CredentialStore::class
 	
 	single<ConfigRepository> { FileConfigRepository() }
-	singleOf(::DssServiceFactory)
+	singleOf(::TrustedListRefreshSignal)
+	single { TrustedSourceRegistry(get()) }
+	single { DssServiceFactory(get(), get()) }
 	singleOf(::TrustedListRefreshScheduler)
+	single { DssTrustedListRefreshAdapter(get(), get()) } bind TrustedListRefreshPort::class
 	singleOf(::DssWarningSanitizer)
 	singleOf(::TspErrorDetector)
 	singleOf(::DssValidationRepository) bind ValidationRepository::class

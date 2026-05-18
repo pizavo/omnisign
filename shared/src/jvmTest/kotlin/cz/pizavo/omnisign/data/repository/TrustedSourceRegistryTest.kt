@@ -100,9 +100,10 @@ class TrustedSourceRegistryTest : FunSpec({
 		TrustedSourceRegistry().cacheExpirationMillis shouldBe DssServiceFactory.TL_CACHE_EXPIRATION_MS
 	}
 
-	test("warmUp, refreshAll and shutdown are safe no-ops when no trusted lists are used") {
+	test("warmUp, refreshAll, forceRefreshAll and shutdown are safe no-ops when no trusted lists are used") {
 		registry.warmUp(useEuLotl = false, customTls = emptyList())
 		registry.refreshAll()
+		registry.forceRefreshAll()
 		registry.shutdown()
 	}
 }) {

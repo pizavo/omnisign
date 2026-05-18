@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.SchedulerConfig
 import cz.pizavo.omnisign.domain.port.SchedulerPort
+import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
@@ -17,6 +18,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlin.time.Instant
 
 /**
  * ViewModel managing the global configuration settings dialog state.
@@ -43,6 +45,9 @@ import kotlinx.coroutines.withContext
  *   the Appearance > Window section is shown in the settings dialog and the native title bar
  *   preference is loaded/saved via [loadUseNativeTitleBar]/[saveUseNativeTitleBar].
  * @param ioDispatcher Dispatcher for blocking scheduler process calls.
+ * @param trustedListRefreshPort Optional trusted-list refresh backend. Drives the
+ *   "Refresh now" control and the last-refreshed indicator. `null` on targets
+ *   without a DSS backend (web).
  */
 class SettingsViewModel(
     private val getConfigUseCase: GetConfigUseCase,
@@ -53,6 +58,7 @@ class SettingsViewModel(
     private val autoDetectedExecutablePath: String? = null,
     private val isLinuxDesktop: Boolean = false,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val trustedListRefreshPort: TrustedListRefreshPort? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GlobalConfigEditState())
@@ -71,6 +77,36 @@ class SettingsViewModel(
     val hasChanges: StateFlow<Boolean> = combine(_state, _initialState) { current, initial ->
         initial != null && !current.contentEquals(initial)
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+
+    /**
+     * `true` while any trusted-list refresh is in flight. Drives the Settings
+     * refresh control: clickable button when `false`, spinner when `true`.
+     */
+    val trustedListRefreshing: StateFlow<Boolean> =
+        trustedListRefreshPort?.running
+            ?.map { it.isNotEmpty() }
+            ?.stateIn(viewModelScope, SharingStarted.Eagerly, false)
+            ?: MutableStateFlow(false)
+
+    /** When the trusted lists were last refreshed, or `null` if never this process. */
+    val trustedListLastRefreshAt: StateFlow<Instant?> =
+        trustedListRefreshPort?.lastRefreshAt ?: MutableStateFlow<Instant?>(null)
+
+    /**
+     * Trigger an immediate trusted-list refresh. No-op when no refresh backend is
+     * available (web) or a refresh is already running.
+     */
+    fun refreshTrustedListsNow() {
+        val port = trustedListRefreshPort ?: return
+        if (trustedListRefreshing.value) return
+        viewModelScope.launch {
+            try {
+                withContext(ioDispatcher) { port.refreshNow() }
+            } catch (e: Exception) {
+                _state.update { it.copy(error = "Trusted-list refresh failed: ${e.message ?: e::class.simpleName}") }
+            }
+        }
+    }
 
     /**
      * Load the current global configuration from the config store and populate

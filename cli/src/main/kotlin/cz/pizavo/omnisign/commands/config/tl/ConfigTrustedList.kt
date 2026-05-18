@@ -10,7 +10,13 @@ import cz.pizavo.omnisign.commands.config.tl.build.TrustedListBuild
  */
 class ConfigTrustedList : CliktCommand(name = "tl") {
 	init {
-		subcommands(TrustedListAdder(), TrustedListLister(), TrustedListRemover(), TrustedListBuild())
+		subcommands(
+			TrustedListAdder(),
+			TrustedListLister(),
+			TrustedListRemover(),
+			TrustedListRefresh(),
+			TrustedListBuild(),
+		)
 	}
 	
 	override fun help(context: Context): String =
