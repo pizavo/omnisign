@@ -75,12 +75,10 @@ kotlin {
 		}
 	}
 	
-	if (project.findProperty("qodanaAnalysis") == null) {
-		@OptIn(ExperimentalWasmDsl::class)
-		wasmJs {
-			browser()
-			binaries.executable()
-		}
+	@OptIn(ExperimentalWasmDsl::class)
+	wasmJs {
+		browser()
+		binaries.executable()
 	}
 	
 	sourceSets {
