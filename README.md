@@ -11,7 +11,6 @@
 [![CI — Desktop](https://github.com/pizavo/omnisign/actions/workflows/ci-desktop.yml/badge.svg)](https://github.com/pizavo/omnisign/actions/workflows/ci-desktop.yml)
 [![CI — Server](https://github.com/pizavo/omnisign/actions/workflows/ci-server.yml/badge.svg)](https://github.com/pizavo/omnisign/actions/workflows/ci-server.yml)
 [![CI — Web](https://github.com/pizavo/omnisign/actions/workflows/ci-web.yml/badge.svg)](https://github.com/pizavo/omnisign/actions/workflows/ci-web.yml)
-[![Qodana](https://github.com/pizavo/omnisign/actions/workflows/qodana_code_quality.yml/badge.svg)](https://github.com/pizavo/omnisign/actions/workflows/qodana_code_quality.yml)
 
 [![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![Compose Multiplatform](https://img.shields.io/badge/Compose_Multiplatform-1.10.1-4285F4?logo=jetpackcompose&logoColor=white)](https://github.com/JetBrains/compose-multiplatform)
