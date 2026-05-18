@@ -37,6 +37,8 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
  * @property customTrustedLists Registered external trusted list sources.
  * @property trustedCertificates Directly trusted certificates.
  * @property customPkcs11Libraries User-registered PKCS#11 middleware libraries.
+ * @property trustedListRefreshInterval Process-global trusted-list refresh interval in hours,
+ *   stored as a string for the text field. Clamped to a minimum of 1 hour on save.
  * @property renewalJobs Renewal jobs managed in this edit session.
  * @property availableProfiles Names of profiles available for the renewal job profile dropdown.
  * @property activeProfile The currently active profile name, used as the default selection when adding a renewal job.
@@ -83,6 +85,7 @@ data class GlobalConfigEditState(
 	val trustedCertificates: List<TrustedCertificateConfig> = emptyList(),
 	val customPkcs11Libraries: List<CustomPkcs11Library> = emptyList(),
 	val pkcs11ProbeTimeout: String = "30",
+	val trustedListRefreshInterval: String = "24",
 	val renewalJobs: List<RenewalJob> = emptyList(),
 	val availableProfiles: List<String> = emptyList(),
 	val activeProfile: String? = null,
@@ -130,6 +133,15 @@ data class GlobalConfigEditState(
 	 */
 	val isPkcs11ProbeTimeoutValid: Boolean
 		get() = pkcs11ProbeTimeout.isEmpty() || pkcs11ProbeTimeout.toLongOrNull()?.let { it in 1..120 } == true
+
+	/**
+	 * Whether the [trustedListRefreshInterval] string represents a valid interval
+	 * (a positive whole number of hours). Empty strings are treated as valid
+	 * (the default is applied on save).
+	 */
+	val isTrustedListRefreshIntervalValid: Boolean
+		get() = trustedListRefreshInterval.isEmpty() ||
+				trustedListRefreshInterval.toLongOrNull()?.let { it >= 1 } == true
 
 	/**
 	 * Whether the [schedulerHour] string represents a valid hour (0–23).
@@ -180,6 +192,7 @@ data class GlobalConfigEditState(
 				trustedCertificates == other.trustedCertificates &&
 				customPkcs11Libraries == other.customPkcs11Libraries &&
 				pkcs11ProbeTimeout == other.pkcs11ProbeTimeout &&
+				trustedListRefreshInterval == other.trustedListRefreshInterval &&
 				renewalJobs == other.renewalJobs &&
 				schedulerCliPath == other.schedulerCliPath &&
 				schedulerHour == other.schedulerHour &&
@@ -227,6 +240,7 @@ data class GlobalConfigEditState(
 		),
 		customPkcs11Libraries = customPkcs11Libraries,
 		pkcs11ProbeTimeoutSeconds = (pkcs11ProbeTimeout.toLongOrNull() ?: 30).coerceIn(1, 120),
+		trustedListRefreshIntervalHours = (trustedListRefreshInterval.toLongOrNull() ?: 24).coerceAtLeast(1),
 	)
 
 	companion object {
@@ -282,6 +296,7 @@ data class GlobalConfigEditState(
 				trustedCertificates = config.validation.trustedCertificates,
 				customPkcs11Libraries = config.customPkcs11Libraries,
 				pkcs11ProbeTimeout = config.pkcs11ProbeTimeoutSeconds.toString(),
+				trustedListRefreshInterval = config.trustedListRefreshIntervalHours.toString(),
 				renewalJobs = renewalJobs.values.toList(),
 				availableProfiles = availableProfiles,
 				activeProfile = activeProfile,

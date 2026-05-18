@@ -127,6 +127,11 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 		help = "Maximum seconds to wait for a single PKCS#11 library probe (1–120)"
 	).int()
 	
+	private val trustedListRefreshInterval by option(
+		"--trusted-list-refresh-interval",
+		help = "Hours a downloaded trusted list (EU LOTL/custom) is kept before the background refresh re-fetches it (minimum 1)"
+	).int()
+
 	override fun help(context: Context): String =
 		"Set global configuration defaults"
 	
@@ -134,7 +139,8 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 		if (listOf(
 				hashAlgorithm, encryptionAlgorithm, signatureLevel, timestampUrl, timestampUsername,
 				timestampPassword, timestampTimeout, validationPolicy, checkRevocation, useEuLotl,
-				algoExpirationLevel, algoExpirationLevelAfterUpdate, pkcs11ProbeTimeout
+				algoExpirationLevel, algoExpirationLevelAfterUpdate, pkcs11ProbeTimeout,
+				trustedListRefreshInterval
 			)
 				.all { it == null } && algoExpiryOverride.isEmpty()
 				&& disableHashAlgorithm.isEmpty() && enableHashAlgorithm.isEmpty()
@@ -157,6 +163,8 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 				disabledEncryptionAlgorithms = (disabledEncryptionAlgorithms + disableEncryptionAlgorithm) - enableEncryptionAlgorithm.toSet(),
 				pkcs11ProbeTimeoutSeconds = pkcs11ProbeTimeout?.toLong()?.coerceIn(1, 120)
 					?: pkcs11ProbeTimeoutSeconds,
+				trustedListRefreshIntervalHours = trustedListRefreshInterval?.toLong()?.coerceAtLeast(1)
+					?: trustedListRefreshIntervalHours,
 				validation = validation.copy(
 					useEuLotl = useEuLotl?.toBooleanStrictOrNull() ?: validation.useEuLotl,
 					algorithmConstraints = validation.algorithmConstraints.copy(

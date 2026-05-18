@@ -39,6 +39,7 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 				echo("  Check revocation       : ${config.global.validation.checkRevocation}")
 				echo("  Validation policy      : ${config.global.validation.policyType}")
 				echo("  Use EU LOTL            : ${config.global.validation.useEuLotl}")
+				echo("  TL refresh interval    : ${config.global.trustedListRefreshIntervalHours}h")
 				val ac = config.global.validation.algorithmConstraints
 				echo("  Algo expiry level      : ${ac.expirationLevel?.toString()
 					?: "default (${AlgorithmConstraintsConfig.DEFAULT.expirationLevel})"}")
