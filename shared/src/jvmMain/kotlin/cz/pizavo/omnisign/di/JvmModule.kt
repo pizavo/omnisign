@@ -95,6 +95,7 @@ val jvmRepositoryModule = module {
 	
 	single<ConfigRepository> { FileConfigRepository() }
 	singleOf(::DssServiceFactory)
+	singleOf(::TrustedListRefreshScheduler)
 	singleOf(::DssWarningSanitizer)
 	singleOf(::TspErrorDetector)
 	singleOf(::DssValidationRepository) bind ValidationRepository::class

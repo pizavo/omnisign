@@ -85,6 +85,21 @@ data class GlobalConfig(
 	 * this timeout.  Must be in the range 1–120.
 	 */
 	val pkcs11ProbeTimeoutSeconds: Long = 30,
+
+	/**
+	 * How long, in hours, a downloaded trusted list (EU LOTL and custom TLs) is kept
+	 * before the background refresh cycle fetches it again.
+	 *
+	 * This is intentionally a **process-global** setting with no profile or operation
+	 * override: the parsed EU LOTL trust source is shared across every profile, so a
+	 * single coherent refresh interval is the only coherent choice. Modeled on
+	 * [pkcs11ProbeTimeoutSeconds] — a plain global knob that never enters
+	 * [cz.pizavo.omnisign.domain.model.config.ResolvedConfig] resolution.
+	 *
+	 * Consumers clamp this to a minimum of 1 hour so a misconfigured value cannot
+	 * hammer the European Commission's trusted-list endpoints. Defaults to 24 hours.
+	 */
+	val trustedListRefreshIntervalHours: Long = 24,
 )
 
 

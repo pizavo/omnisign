@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.validation.ReportExportFormat
 import cz.pizavo.omnisign.domain.model.validation.SignatureTrustTier
@@ -114,7 +115,11 @@ class SignatureViewModel(
                     operationOverrides = null,
                 ).getOrNull()
                 validateDocumentUseCase(
-                    ValidationParameters(inputFile = path, resolvedConfig = resolvedConfig)
+                    ValidationParameters(
+                        inputFile = path,
+                        resolvedConfig = resolvedConfig,
+                        rawReportFormats = RawReportFormat.entries.toSet(),
+                    )
                 )
             }
             result.fold(
