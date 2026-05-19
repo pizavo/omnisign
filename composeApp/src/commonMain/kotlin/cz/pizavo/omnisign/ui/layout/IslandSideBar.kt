@@ -24,7 +24,8 @@ private val SideBarButtonPadding = PaddingValues(2.dp)
  *
  * Renders one ghost [IconButton] per [SidePanel] entry, wrapped in a [TooltipBox]
  * that shows the panel label on hover. The currently active panel's icon receives a
- * highlighted surface-colored background to indicate selection.
+ * highlighted surface-colored background to indicate selection, and panels in
+ * [indicatedPanels] show a small activity dot in their top-right corner.
  *
  * Panels whose [SidePanel.pinToBottom] flag is `true` are pushed to the bottom of the
  * column via a weighted spacer, producing an IntelliJ-style split sidebar.
@@ -33,6 +34,8 @@ private val SideBarButtonPadding = PaddingValues(2.dp)
  *
  * @param panels Panels to display as icons, pre-filtered by [PanelSide][cz.pizavo.omnisign.ui.model.PanelSide].
  * @param activePanel The currently expanded panel on this side, or `null` if collapsed.
+ * @param indicatedPanels Panels that should display a small activity indicator dot
+ *   (e.g. the Help panel while debug logging is enabled).
  * @param onPanelToggle Callback invoked when an icon is clicked; receives the toggled panel.
  * @param tooltipPlacement Edge on which tooltips appear. Use [TooltipPlacement.End] for the
  *   left sidebar and [TooltipPlacement.Start] for the right sidebar so tooltips point inwards.
@@ -42,6 +45,7 @@ private val SideBarButtonPadding = PaddingValues(2.dp)
 fun IslandSideBar(
 	panels: List<SidePanel>,
 	activePanel: SidePanel?,
+	indicatedPanels: Set<SidePanel> = emptySet(),
 	onPanelToggle: (SidePanel) -> Unit,
 	tooltipPlacement: TooltipPlacement = TooltipPlacement.Top,
 	modifier: Modifier = Modifier,
@@ -60,6 +64,7 @@ fun IslandSideBar(
 			SideBarIcon(
 				panel = panel,
 				isSelected = panel == activePanel,
+				showIndicator = panel in indicatedPanels,
 				onClick = { onPanelToggle(panel) },
 				tooltipPlacement = tooltipPlacement,
 			)
@@ -72,6 +77,7 @@ fun IslandSideBar(
 				SideBarIcon(
 					panel = panel,
 					isSelected = panel == activePanel,
+					showIndicator = panel in indicatedPanels,
 					onClick = { onPanelToggle(panel) },
 					tooltipPlacement = tooltipPlacement,
 				)
@@ -81,10 +87,13 @@ fun IslandSideBar(
 }
 
 /**
- * Single sidebar icon button with tooltip and selection highlight.
+ * Single sidebar icon button with tooltip, selection highlight, and an optional
+ * activity indicator dot.
  *
  * @param panel The [SidePanel] this icon represents.
  * @param isSelected Whether this panel is currently active.
+ * @param showIndicator When `true`, a small dot is overlaid on the icon's
+ *   top-right corner to signal an active background state (e.g. debug logging).
  * @param onClick Callback invoked when the icon is clicked.
  * @param tooltipPlacement Edge on which the tooltip appears.
  */
@@ -92,6 +101,7 @@ fun IslandSideBar(
 private fun SideBarIcon(
 	panel: SidePanel,
 	isSelected: Boolean,
+	showIndicator: Boolean,
 	onClick: () -> Unit,
 	tooltipPlacement: TooltipPlacement = TooltipPlacement.Top,
 ) {
@@ -102,25 +112,37 @@ private fun SideBarIcon(
 	} else {
 		Modifier
 	}
-	
-	TooltipBox(
-		positionProvider = rememberTooltipPositionProvider(tooltipPlacement),
-		tooltip = { Tooltip { Text(text = panel.label) } },
-		state = rememberTooltipState(),
-	) {
-		IconButton(
-			modifier = iconModifier.defaultMinSize(
-				minWidth = SideBarButtonSize,
-				minHeight = SideBarButtonSize,
-			),
-			variant = IconButtonVariant.Ghost,
-			onClick = onClick,
-			contentPadding = SideBarButtonPadding,
+
+	Box {
+		TooltipBox(
+			positionProvider = rememberTooltipPositionProvider(tooltipPlacement),
+			tooltip = { Tooltip { Text(text = panel.label) } },
+			state = rememberTooltipState(),
 		) {
-			Icon(
-				painter = painterResource(panel.icon),
-				contentDescription = panel.contentDescription,
-				modifier = Modifier.size(SideBarIconSize),
+			IconButton(
+				modifier = iconModifier.defaultMinSize(
+					minWidth = SideBarButtonSize,
+					minHeight = SideBarButtonSize,
+				),
+				variant = IconButtonVariant.Ghost,
+				onClick = onClick,
+				contentPadding = SideBarButtonPadding,
+			) {
+				Icon(
+					painter = painterResource(panel.icon),
+					contentDescription = panel.contentDescription,
+					modifier = Modifier.size(SideBarIconSize),
+				)
+			}
+		}
+
+		if (showIndicator) {
+			Box(
+				modifier = Modifier
+					.align(Alignment.TopEnd)
+					.size(7.dp)
+					.clip(RoundedCornerShape(percent = 50))
+					.background(LumoTheme.colors.warning),
 			)
 		}
 	}

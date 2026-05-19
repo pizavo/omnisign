@@ -1,7 +1,7 @@
 package cz.pizavo.omnisign
 
-import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.LoggerContext
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.context
@@ -10,7 +10,11 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.versionOption
 import cz.pizavo.omnisign.cli.BuildConfig
+import cz.pizavo.omnisign.cli.CliExtendedLoggers
 import cz.pizavo.omnisign.cli.OutputConfig
+import cz.pizavo.omnisign.cli.attachLogFileAppender
+import cz.pizavo.omnisign.cli.extendedLibraryLevel
+import cz.pizavo.omnisign.cli.rootLogLevel
 import cz.pizavo.omnisign.commands.Renew
 import cz.pizavo.omnisign.commands.Sign
 import cz.pizavo.omnisign.commands.Timestamp
@@ -25,8 +29,14 @@ import org.slf4j.LoggerFactory
 /**
  * Main CLI entry point for Omnisign application.
  *
- * Provides global flags (`--json`, `--verbose`, `--quiet`) that are propagated to
- * every subcommand via [OutputConfig] stored in the Clikt context object.
+ * Provides global flags (`--json`, `--verbose`, `--debug`, `--debug-extended`,
+ * `--quiet`) that are propagated to every subcommand via [OutputConfig] stored
+ * in the Clikt context object, plus `--log-file` to also write this run's log
+ * to a file. Verbosity is a three-tier ladder: default WARN, `--verbose` raises
+ * stderr to INFO, `--debug` raises it to DEBUG, and `--debug-extended` also
+ * lowers third-party library loggers (DSS, Apache) to DEBUG (it implies
+ * `--debug`). The TSL loggers stay pinned at ERROR via `logback.xml` even
+ * under `--debug-extended`.
  *
  * **Security note — environment variable prefix:** The [Context.autoEnvvarPrefix] is set to
  * `OMNISIGN`, meaning every CLI option can be supplied via an `OMNISIGN_`-prefixed environment
@@ -53,24 +63,58 @@ class Omnisign : CliktCommand(name = "omnisign") {
 	
 	private val verbose by option(
 		"--verbose",
-		help = "Enable verbose (DEBUG-level) logging to stderr"
+		help = "Enable INFO-level logging to stderr"
 	).flag(default = false)
-	
+
+	private val debug by option(
+		"--debug",
+		help = "Enable DEBUG-level logging to stderr (most detail)"
+	).flag(default = false)
+
+	private val debugExtended by option(
+		"--debug-extended",
+		help = "Also lower DSS/Apache library loggers to DEBUG (implies --debug)"
+	).flag(default = false)
+
 	private val quiet by option(
 		"--quiet",
 		help = "Suppress all informational output; only errors are printed"
 	).flag(default = false)
-	
+
+	private val logFile by option(
+		"--log-file",
+		help = "Also write this run's log to PATH (appended; in addition to stderr)",
+		metavar = "PATH",
+	)
+
 	override fun help(context: Context): String =
 		"Digital signature verification, signing and re-timestamping tool"
 	
 	override fun run() {
-		if (verbose) {
-			val root = LoggerFactory.getLogger(Logger.ROOT_LOGGER_NAME) as Logger
-			root.level = Level.DEBUG
+		(LoggerFactory.getILoggerFactory() as? LoggerContext)?.let { ctx ->
+			rootLogLevel(verbose = verbose, debug = debug, extended = debugExtended)?.let { target ->
+				ctx.getLogger(Logger.ROOT_LOGGER_NAME).level = target
+			}
+			extendedLibraryLevel(extended = debugExtended)?.let { target ->
+				for (name in CliExtendedLoggers) ctx.getLogger(name).level = target
+			}
 		}
-		
-		currentContext.findOrSetObject { OutputConfig(json = json, verbose = verbose, quiet = quiet) }
+
+		logFile?.let { path ->
+			if (!attachLogFileAppender(path)) {
+				echo("Warning: could not open log file '$path'; logging to stderr only.", err = true)
+			}
+		}
+
+		currentContext.findOrSetObject {
+			OutputConfig(
+				json = json,
+				verbose = verbose || debug || debugExtended,
+				debug = debug || debugExtended,
+				extended = debugExtended,
+				quiet = quiet,
+			)
+		}
 		
 		if (currentContext.invokedSubcommand == null) echo(getFormattedHelp())
 	}

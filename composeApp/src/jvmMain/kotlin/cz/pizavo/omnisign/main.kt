@@ -213,6 +213,8 @@ fun main(args: Array<String> = emptyArray()) {
 
 	System.setProperty("sun.awt.wmclass", "OmniSign")
 
+	applyPersistedDebugLogging()
+
 	if (args.isNotEmpty() && args[0] == "renew") {
 		runHeadlessRenewal()
 		return

@@ -210,6 +210,7 @@ fun IslandLayout(
 	
 	var activeLeftPanel by remember { mutableStateOf<SidePanel?>(null) }
 	var activeRightPanel by remember { mutableStateOf<SidePanel?>(null) }
+	var debugLoggingOn by remember { mutableStateOf(isDebugLoggingEnabled()) }
 	
 	var leftPanelWidth by remember { mutableStateOf(Dp.Unspecified) }
 	var rightPanelWidth by remember { mutableStateOf(Dp.Unspecified) }
@@ -545,7 +546,12 @@ fun IslandLayout(
 								)
 								
 								SidePanel.TrustedCerts -> TrustedCertsPanel(state = trustedCertsState)
-								
+
+								SidePanel.Help -> HelpPanel(
+									debugLoggingEnabled = debugLoggingOn,
+									onDebugLoggingChange = { debugLoggingOn = it },
+								)
+
 								else -> PanelPlaceholderContent(panel = activeRightPanel)
 							}
 						}
@@ -553,6 +559,7 @@ fun IslandLayout(
 						IslandSideBar(
 							panels = rightPanels,
 							activePanel = activeRightPanel,
+							indicatedPanels = if (debugLoggingOn) setOf(SidePanel.Help) else emptySet(),
 							onPanelToggle = { panel ->
 								activeRightPanel = if (activeRightPanel == panel) null else {
 									if (panel == SidePanel.Profiles) profileViewModel?.refresh()
@@ -590,12 +597,6 @@ private fun PanelPlaceholderContent(panel: SidePanel?) {
 	when (panel) {
 		SidePanel.Profiles -> Text(
 			text = "Configuration profiles will appear here.",
-			style = LumoTheme.typography.body2,
-			color = LumoTheme.colors.textSecondary,
-		)
-		
-		SidePanel.Help -> Text(
-			text = "Help and documentation will appear here.",
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)

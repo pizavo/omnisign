@@ -14,11 +14,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -62,7 +64,9 @@ private val ResizeHandleWidth = 6.dp
  * Wraps its content in a Lumo [Card] with rounded corners and provides a standard
  * header row containing the panel title and a close button. When [onBack] is supplied
  * a back-arrow button is rendered before the title for drill-down navigation.
- * The body is scrollable. The panel is horizontally resizable via a drag handle
+ * The body fills at least the panel height and scrolls when its content is
+ * taller, so a footer pinned with `weight` stays at the bottom while nothing
+ * clips on short windows. The panel is horizontally resizable via a drag handle
  * on its inner edge.
  *
  * @param visible Whether the panel is currently expanded.
@@ -77,7 +81,9 @@ private val ResizeHandleWidth = 6.dp
  * @param headerActions Optional composable slot rendered in the header row between the title and the
  *   close button. Use it for action icons such as export or refresh.
  * @param modifier Optional [Modifier] applied to the [AnimatedVisibility] wrapper.
- * @param content Slot for the panel body, rendered inside a scrollable [Column].
+ * @param content Slot for the panel body, rendered as a [ColumnScope] inside a
+ *   viewport-filling, vertically scrollable [Column]; use `weight` to anchor
+ *   content to the bottom.
  */
 @Composable
 fun IslandSidePanel(
@@ -175,14 +181,27 @@ fun IslandSidePanel(
                     }
                 }
 
-                Column(
+                val scrollState = rememberScrollState()
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState())
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    content = content,
-                )
+                        .weight(1f),
+                ) {
+                    val viewportHeight = maxHeight
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(scrollState),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = viewportHeight)
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            content = content,
+                        )
+                    }
+                }
             }
 
             if (!fromEnd) {
