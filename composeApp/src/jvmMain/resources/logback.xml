@@ -19,11 +19,6 @@
         </encoder>
     </appender>
 
-    <!-- Surface our own code's INFO output in the Run console / log file so PKCS#11
-         discovery, warmup, and cache-invalidator activity is observable.  The DSS noise
-         remains suppressed below; only `cz.pizavo.omnisign.*` logs are elevated. -->
-    <logger name="cz.pizavo.omnisign" level="INFO"/>
-
     <!-- All DSS WARN output is suppressed at the parent level and captured
          programmatically by DssLogCapture during operations. Only ERROR events
          propagate to the root appender. -->
