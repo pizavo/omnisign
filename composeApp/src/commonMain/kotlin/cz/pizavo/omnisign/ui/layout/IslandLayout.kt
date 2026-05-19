@@ -210,6 +210,7 @@ fun IslandLayout(
 	
 	var activeLeftPanel by remember { mutableStateOf<SidePanel?>(null) }
 	var activeRightPanel by remember { mutableStateOf<SidePanel?>(null) }
+	var debugLoggingOn by remember { mutableStateOf(isDebugLoggingEnabled()) }
 	
 	var leftPanelWidth by remember { mutableStateOf(Dp.Unspecified) }
 	var rightPanelWidth by remember { mutableStateOf(Dp.Unspecified) }
@@ -518,7 +519,6 @@ fun IslandLayout(
 							maxPanelWidth = maxRightPanelWidth,
 							onWidthChange = { rightPanelWidth = it },
 							fromEnd = true,
-							scrollable = activeRightPanel != SidePanel.Help,
 							onBack = if (isEditingProfile) {
 								{ profileViewModel?.cancelEdit() }
 							} else null,
@@ -547,7 +547,10 @@ fun IslandLayout(
 								
 								SidePanel.TrustedCerts -> TrustedCertsPanel(state = trustedCertsState)
 
-								SidePanel.Help -> HelpPanel()
+								SidePanel.Help -> HelpPanel(
+									debugLoggingEnabled = debugLoggingOn,
+									onDebugLoggingChange = { debugLoggingOn = it },
+								)
 
 								else -> PanelPlaceholderContent(panel = activeRightPanel)
 							}
@@ -556,6 +559,7 @@ fun IslandLayout(
 						IslandSideBar(
 							panels = rightPanels,
 							activePanel = activeRightPanel,
+							indicatedPanels = if (debugLoggingOn) setOf(SidePanel.Help) else emptySet(),
 							onPanelToggle = { panel ->
 								activeRightPanel = if (activeRightPanel == panel) null else {
 									if (panel == SidePanel.Profiles) profileViewModel?.refresh()

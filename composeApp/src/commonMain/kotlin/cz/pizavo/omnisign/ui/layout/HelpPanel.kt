@@ -2,16 +2,22 @@ package cz.pizavo.omnisign.ui.layout
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.size
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.BuildConfig
 import cz.pizavo.omnisign.lumo.LumoTheme
@@ -19,14 +25,26 @@ import cz.pizavo.omnisign.lumo.components.HorizontalDivider
 import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.IconButton
 import cz.pizavo.omnisign.lumo.components.IconButtonVariant
+import cz.pizavo.omnisign.lumo.components.Switch
 import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.lumo.components.Tooltip
 import cz.pizavo.omnisign.lumo.components.TooltipBox
 import cz.pizavo.omnisign.lumo.components.TooltipPlacement
 import cz.pizavo.omnisign.lumo.components.rememberTooltipPositionProvider
 import cz.pizavo.omnisign.lumo.components.rememberTooltipState
+import cz.pizavo.omnisign.ui.platform.exportSupportLogArchive
+import cz.pizavo.omnisign.ui.platform.isExtendedLoggingEnabled
+import cz.pizavo.omnisign.ui.platform.isSupportLogAvailable
+import cz.pizavo.omnisign.ui.platform.openSupportLogDirectory
+import cz.pizavo.omnisign.ui.platform.setDebugLoggingEnabled
+import cz.pizavo.omnisign.ui.platform.setExtendedLoggingEnabled
+import cz.pizavo.omnisign.ui.toast.LocalToastService
+import cz.pizavo.omnisign.ui.toast.ToastMessage
+import kotlinx.coroutines.launch
 import omnisign.composeapp.generated.resources.Res
+import omnisign.composeapp.generated.resources.icon_download
 import omnisign.composeapp.generated.resources.icon_file_text
+import omnisign.composeapp.generated.resources.icon_folder
 import omnisign.composeapp.generated.resources.icon_github
 import omnisign.composeapp.generated.resources.icon_scale
 import org.jetbrains.compose.resources.DrawableResource
@@ -37,6 +55,15 @@ private const val HelpRepositoryUrl = "https://github.com/pizavo/omnisign"
 
 /** Hosted Docusaurus documentation site the Documentation button opens. */
 private const val HelpDocumentationUrl = "https://pizavo.github.io/omnisign/"
+
+/**
+ * Prefilled GitHub "new issue" URL: pre-selects the `bug` and `desktop` labels
+ * (they must already exist in the repository for GitHub to apply them) and
+ * seeds a body asking the reporter to attach the exported log archive — GitHub
+ * has no URL parameter to attach files automatically.
+ */
+private const val HelpIssueUrl =
+    "https://github.com/pizavo/omnisign/issues/new?labels=bug%2Cdesktop&body=Describe%20the%20issue%20here.%0A%0APlease%20attach%20the%20exported%20log%20archive."
 
 /** Canonical text of the license under which OmniSign is distributed. */
 private const val HelpLicenseUrl = "https://www.gnu.org/licenses/agpl-3.0.html"
@@ -51,81 +78,98 @@ private const val HelpAuthorLine = "© 2026 Pizavo"
  * Help panel body rendered inside the right-hand [IslandSidePanel].
  *
  * Shows the source repository and online documentation as icon buttons at the
- * top, and pins the license, build version and author to the bottom of the
- * panel. External links are opened through [LocalUriHandler] so the panel works
- * unchanged on both the desktop (JVM) and web (Wasm) targets.
+ * top and pins the license, build version and author to the bottom of the
+ * panel. Between them, on the desktop target only, a Support section exposes
+ * log export and debug-logging controls — it is hidden on web, where
+ * [isSupportLogAvailable] is `false`. External links open through
+ * [LocalUriHandler] so the panel works unchanged on desktop (JVM) and web
+ * (Wasm).
  *
- * Expects the host [IslandSidePanel] to be rendered with `scrollable = false`
- * so the root [Column] can claim the full panel height and anchor that group.
+ * Emitted as a [ColumnScope] extension into the host [IslandSidePanel]'s
+ * viewport-filling body; the weighted spacer keeps the license/footer group at
+ * the bottom when there is room and lets the panel scroll when there is not.
+ *
+ * @param debugLoggingEnabled Hoisted debug-logging state, so the sidebar can
+ *   show an active indicator that updates the moment the toggle changes.
+ * @param onDebugLoggingChange Invoked with the new state when the user toggles
+ *   debug logging.
  */
 @Composable
-fun HelpPanel() {
+fun ColumnScope.HelpPanel(
+    debugLoggingEnabled: Boolean,
+    onDebugLoggingChange: (Boolean) -> Unit,
+) {
     val uriHandler = LocalUriHandler.current
 
-    Column(modifier = Modifier.fillMaxSize()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            HelpActionButton(
-                label = "GitHub Repository",
-                icon = Res.drawable.icon_github,
-                contentDescription = "Open the GitHub repository",
-                onClick = { uriHandler.openUri(HelpRepositoryUrl) },
-            )
-            HelpActionButton(
-                label = "Documentation",
-                icon = Res.drawable.icon_file_text,
-                contentDescription = "Open the online documentation",
-                onClick = { uriHandler.openUri(HelpDocumentationUrl) },
-            )
-        }
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HelpActionButton(
+            label = "GitHub Repository",
+            icon = Res.drawable.icon_github,
+            contentDescription = "Open the GitHub repository",
+            onClick = { uriHandler.openUri(HelpRepositoryUrl) },
+        )
+        HelpActionButton(
+            label = "Documentation",
+            icon = Res.drawable.icon_file_text,
+            contentDescription = "Open the online documentation",
+            onClick = { uriHandler.openUri(HelpDocumentationUrl) },
+        )
+    }
 
-        Spacer(modifier = Modifier.weight(1f))
+    if (remember { isSupportLogAvailable() }) {
+        HelpSupportSection(
+            debugEnabled = debugLoggingEnabled,
+            onDebugChange = onDebugLoggingChange,
+        )
+    }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            Icon(
-                painter = painterResource(Res.drawable.icon_scale),
-                contentDescription = null,
-                modifier = Modifier.size(16.dp),
-                tint = LumoTheme.colors.textSecondary,
-            )
-            Text(
-                text = "License",
-                style = LumoTheme.typography.label1,
-                modifier = Modifier.weight(1f),
-            )
-            ExternalLink(
-                text = HelpLicenseName,
-                url = HelpLicenseUrl,
-            )
-        }
+    Spacer(modifier = Modifier.weight(1f))
 
-        Spacer(modifier = Modifier.height(12.dp))
-        HorizontalDivider()
-        Spacer(modifier = Modifier.height(12.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Icon(
+            painter = painterResource(Res.drawable.icon_scale),
+            contentDescription = null,
+            modifier = Modifier.size(16.dp),
+            tint = LumoTheme.colors.textSecondary,
+        )
+        Text(
+            text = "License",
+            style = LumoTheme.typography.label1,
+            modifier = Modifier.weight(1f),
+        )
+        ExternalLink(
+            text = HelpLicenseName,
+            url = HelpLicenseUrl,
+        )
+    }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween,
-        ) {
-            Text(
-                text = "v${BuildConfig.VERSION}",
-                style = LumoTheme.typography.body3,
-                color = LumoTheme.colors.textSecondary,
-            )
-            Text(
-                text = HelpAuthorLine,
-                style = LumoTheme.typography.body3,
-                color = LumoTheme.colors.textSecondary,
-            )
-        }
+    Spacer(modifier = Modifier.height(12.dp))
+    HorizontalDivider()
+    Spacer(modifier = Modifier.height(12.dp))
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Text(
+            text = "v${BuildConfig.VERSION}",
+            style = LumoTheme.typography.body3,
+            color = LumoTheme.colors.textSecondary,
+        )
+        Text(
+            text = HelpAuthorLine,
+            style = LumoTheme.typography.body3,
+            color = LumoTheme.colors.textSecondary,
+        )
     }
 }
 
@@ -161,5 +205,139 @@ private fun HelpActionButton(
                 modifier = Modifier.size(20.dp),
             )
         }
+    }
+}
+
+/**
+ * Desktop-only Support section: export the diagnostic log archive, reveal the
+ * log folder, and toggle debug logging — applied immediately and persisted
+ * across restarts. Rendered only when [isSupportLogAvailable] is `true`; the
+ * web target has no log file or Logback backend.
+ *
+ * @param debugEnabled Hoisted debug-logging state (drives the toggle and the
+ *   visibility of the extended-logging row).
+ * @param onDebugChange Invoked with the new state when debug logging is toggled.
+ */
+@Composable
+private fun HelpSupportSection(
+    debugEnabled: Boolean,
+    onDebugChange: (Boolean) -> Unit,
+) {
+    val scope = rememberCoroutineScope()
+    val toast = LocalToastService.current
+    var extended by remember { mutableStateOf(isExtendedLoggingEnabled()) }
+
+    Spacer(modifier = Modifier.height(16.dp))
+    Text(text = "Support", style = LumoTheme.typography.label1)
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        text = "If something goes wrong, enable debug logging, reproduce the issue, " +
+            "then export the logs and attach them to your report.",
+        style = LumoTheme.typography.body3,
+        color = LumoTheme.colors.textSecondary,
+    )
+
+    Spacer(modifier = Modifier.height(10.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        HelpActionButton(
+            label = "Export logs",
+            icon = Res.drawable.icon_download,
+            contentDescription = "Export logs as a zip archive",
+            onClick = {
+                scope.launch {
+                    val exported = exportSupportLogArchive()
+                    toast?.show(
+                        ToastMessage(if (exported) "Logs exported." else "Log export cancelled."),
+                    )
+                }
+            },
+        )
+        HelpActionButton(
+            label = "Open folder",
+            icon = Res.drawable.icon_folder,
+            contentDescription = "Open the log folder",
+            onClick = {
+                if (!openSupportLogDirectory()) {
+                    toast?.show(ToastMessage("Could not open the log folder."))
+                }
+            },
+        )
+    }
+
+    Spacer(modifier = Modifier.height(12.dp))
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.Center,
+    ) {
+        ExternalLink(text = "Report an issue on GitHub", url = HelpIssueUrl)
+    }
+    Spacer(modifier = Modifier.height(4.dp))
+    Text(
+        text = "Attach the exported log archive to your report.",
+        style = LumoTheme.typography.body3,
+        color = LumoTheme.colors.textSecondary,
+        textAlign = TextAlign.Center,
+        modifier = Modifier.fillMaxWidth(),
+    )
+
+    Spacer(modifier = Modifier.height(12.dp))
+    SupportToggleRow(
+        title = "Debug logging",
+        caption = "Debugging logs for issue resolution. Turn off when done capturing.",
+        checked = debugEnabled,
+        onCheckedChange = {
+            setDebugLoggingEnabled(it)
+            onDebugChange(it)
+        },
+    )
+
+    if (debugEnabled) {
+        Spacer(modifier = Modifier.height(8.dp))
+        SupportToggleRow(
+            title = "Extended logs",
+            caption = "Captures extended logs from third-party libraries. Very verbose; should be enabled only when specifically asked to.",
+            checked = extended,
+            onCheckedChange = {
+                extended = it
+                setExtendedLoggingEnabled(it)
+            },
+        )
+    }
+}
+
+/**
+ * Labelled row pairing a title and caption with a trailing [Switch], used for
+ * the Support section's verbosity toggles.
+ *
+ * @param title Setting name.
+ * @param caption Secondary explanatory line beneath the title.
+ * @param checked Current switch state.
+ * @param onCheckedChange Invoked with the new state when the switch is toggled.
+ */
+@Composable
+private fun SupportToggleRow(
+    title: String,
+    caption: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = title, style = LumoTheme.typography.label1)
+            Text(
+                text = caption,
+                style = LumoTheme.typography.body3,
+                color = LumoTheme.colors.textSecondary,
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
     }
 }

@@ -14,11 +14,13 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsHoveredAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -62,9 +64,10 @@ private val ResizeHandleWidth = 6.dp
  * Wraps its content in a Lumo [Card] with rounded corners and provides a standard
  * header row containing the panel title and a close button. When [onBack] is supplied
  * a back-arrow button is rendered before the title for drill-down navigation.
- * The body scrolls vertically by default; pass [scrollable] = `false` to let the
- * content own the available height (e.g. to pin a footer to the bottom). The panel
- * is horizontally resizable via a drag handle on its inner edge.
+ * The body fills at least the panel height and scrolls when its content is
+ * taller, so a footer pinned with `weight` stays at the bottom while nothing
+ * clips on short windows. The panel is horizontally resizable via a drag handle
+ * on its inner edge.
  *
  * @param visible Whether the panel is currently expanded.
  * @param title Text displayed in the panel header.
@@ -74,15 +77,13 @@ private val ResizeHandleWidth = 6.dp
  * @param maxPanelWidth Maximum width the panel can be resized to.
  * @param onWidthChange Callback invoked with the new width when the user drags the resize handle.
  * @param fromEnd When `true` the panel slides in from the right edge; otherwise from the left.
- * @param scrollable When `true` (default) the body wraps its content in a vertical scroll;
- *   when `false` the body fills the available height so content can use `weight`/alignment
- *   to pin sections (used by the Help panel to anchor its info box to the bottom).
  * @param onBack Optional callback for back navigation; when non-null, a back-arrow icon is shown.
  * @param headerActions Optional composable slot rendered in the header row between the title and the
  *   close button. Use it for action icons such as export or refresh.
  * @param modifier Optional [Modifier] applied to the [AnimatedVisibility] wrapper.
- * @param content Slot for the panel body, rendered inside a [Column] that scrolls
- *   vertically unless [scrollable] is `false`.
+ * @param content Slot for the panel body, rendered as a [ColumnScope] inside a
+ *   viewport-filling, vertically scrollable [Column]; use `weight` to anchor
+ *   content to the bottom.
  */
 @Composable
 fun IslandSidePanel(
@@ -94,7 +95,6 @@ fun IslandSidePanel(
     maxPanelWidth: Dp = panelWidth,
     onWidthChange: (Dp) -> Unit = {},
     fromEnd: Boolean = false,
-    scrollable: Boolean = true,
     onBack: (() -> Unit)? = null,
     headerActions: @Composable (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -182,14 +182,26 @@ fun IslandSidePanel(
                 }
 
                 val scrollState = rememberScrollState()
-                Column(
+                BoxWithConstraints(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f)
-                        .then(if (scrollable) Modifier.verticalScroll(scrollState) else Modifier)
-                        .padding(horizontal = 16.dp, vertical = 8.dp),
-                    content = content,
-                )
+                        .weight(1f),
+                ) {
+                    val viewportHeight = maxHeight
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .verticalScroll(scrollState),
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = viewportHeight)
+                                .padding(horizontal = 16.dp, vertical = 8.dp),
+                            content = content,
+                        )
+                    }
+                }
             }
 
             if (!fromEnd) {

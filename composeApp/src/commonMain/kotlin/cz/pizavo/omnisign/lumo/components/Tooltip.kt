@@ -162,7 +162,7 @@ private class TooltipStateImpl(
 				if (isPersistent) {
 					cancellableShow()
 				} else {
-					withTimeout(BasicTooltipDefaults.TooltipDuration.milliseconds) { cancellableShow() }
+					withTimeout(TooltipDefaults.ShowDuration.milliseconds) { cancellableShow() }
 				}
 			} finally {
 				if (mutatePriority != MutatePriority.PreventUserInput) {
@@ -182,6 +182,14 @@ private class TooltipStateImpl(
 }
 
 object TooltipDefaults {
+	/**
+	 * How long a non-persistent tooltip stays visible before it auto-dismisses,
+	 * in milliseconds. Applies app-wide via [rememberTooltipState]. Kept
+	 * deliberately long so users have time to read longer hints; moving the
+	 * pointer away still dismisses the tooltip earlier.
+	 */
+	val ShowDuration: Long = 30_000L
+
 	val CaretSize = DpSize(12.dp, 6.dp)
 	val MaxWidth = 300.dp
 	val ShadowElevation = 4.dp
