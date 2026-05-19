@@ -62,8 +62,9 @@ private val ResizeHandleWidth = 6.dp
  * Wraps its content in a Lumo [Card] with rounded corners and provides a standard
  * header row containing the panel title and a close button. When [onBack] is supplied
  * a back-arrow button is rendered before the title for drill-down navigation.
- * The body is scrollable. The panel is horizontally resizable via a drag handle
- * on its inner edge.
+ * The body scrolls vertically by default; pass [scrollable] = `false` to let the
+ * content own the available height (e.g. to pin a footer to the bottom). The panel
+ * is horizontally resizable via a drag handle on its inner edge.
  *
  * @param visible Whether the panel is currently expanded.
  * @param title Text displayed in the panel header.
@@ -73,11 +74,15 @@ private val ResizeHandleWidth = 6.dp
  * @param maxPanelWidth Maximum width the panel can be resized to.
  * @param onWidthChange Callback invoked with the new width when the user drags the resize handle.
  * @param fromEnd When `true` the panel slides in from the right edge; otherwise from the left.
+ * @param scrollable When `true` (default) the body wraps its content in a vertical scroll;
+ *   when `false` the body fills the available height so content can use `weight`/alignment
+ *   to pin sections (used by the Help panel to anchor its info box to the bottom).
  * @param onBack Optional callback for back navigation; when non-null, a back-arrow icon is shown.
  * @param headerActions Optional composable slot rendered in the header row between the title and the
  *   close button. Use it for action icons such as export or refresh.
  * @param modifier Optional [Modifier] applied to the [AnimatedVisibility] wrapper.
- * @param content Slot for the panel body, rendered inside a scrollable [Column].
+ * @param content Slot for the panel body, rendered inside a [Column] that scrolls
+ *   vertically unless [scrollable] is `false`.
  */
 @Composable
 fun IslandSidePanel(
@@ -89,6 +94,7 @@ fun IslandSidePanel(
     maxPanelWidth: Dp = panelWidth,
     onWidthChange: (Dp) -> Unit = {},
     fromEnd: Boolean = false,
+    scrollable: Boolean = true,
     onBack: (() -> Unit)? = null,
     headerActions: @Composable (() -> Unit)? = null,
     modifier: Modifier = Modifier,
@@ -175,11 +181,12 @@ fun IslandSidePanel(
                     }
                 }
 
+                val scrollState = rememberScrollState()
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .weight(1f)
-                        .verticalScroll(rememberScrollState())
+                        .then(if (scrollable) Modifier.verticalScroll(scrollState) else Modifier)
                         .padding(horizontal = 16.dp, vertical = 8.dp),
                     content = content,
                 )

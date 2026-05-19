@@ -518,6 +518,7 @@ fun IslandLayout(
 							maxPanelWidth = maxRightPanelWidth,
 							onWidthChange = { rightPanelWidth = it },
 							fromEnd = true,
+							scrollable = activeRightPanel != SidePanel.Help,
 							onBack = if (isEditingProfile) {
 								{ profileViewModel?.cancelEdit() }
 							} else null,
@@ -545,7 +546,9 @@ fun IslandLayout(
 								)
 								
 								SidePanel.TrustedCerts -> TrustedCertsPanel(state = trustedCertsState)
-								
+
+								SidePanel.Help -> HelpPanel()
+
 								else -> PanelPlaceholderContent(panel = activeRightPanel)
 							}
 						}
@@ -590,12 +593,6 @@ private fun PanelPlaceholderContent(panel: SidePanel?) {
 	when (panel) {
 		SidePanel.Profiles -> Text(
 			text = "Configuration profiles will appear here.",
-			style = LumoTheme.typography.body2,
-			color = LumoTheme.colors.textSecondary,
-		)
-		
-		SidePanel.Help -> Text(
-			text = "Help and documentation will appear here.",
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)
