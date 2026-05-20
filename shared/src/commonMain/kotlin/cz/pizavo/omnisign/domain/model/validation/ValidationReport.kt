@@ -16,8 +16,8 @@ import kotlin.time.Instant
  *   Populated on JVM after validation only for the formats the caller requested via
  *   [cz.pizavo.omnisign.domain.model.parameters.ValidationParameters.rawReportFormats],
  *   so the desktop UI can export them without re-running validation. Empty when no
- *   formats were requested (the CLI and server, which do not expose raw-report export)
- *   and on non-JVM targets.
+ *   formats were requested (the CLI by default; the server when its `formats` multipart
+ *   field is absent) and on non-JVM targets.
  */
 data class ValidationReport(
     val documentName: String,

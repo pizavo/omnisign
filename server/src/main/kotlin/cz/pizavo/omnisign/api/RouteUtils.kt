@@ -127,5 +127,45 @@ suspend fun extractFilePart(parts: List<Any>, name: String, maxFileSize: Long = 
 fun extractTextField(parts: List<Any>, name: String): String? =
 	parts.filterIsInstance<PartData.FormItem>().firstOrNull { it.name == name }?.value
 
+/**
+ * Parse a comma-separated multipart field into a [Set] of [E] enum entries.
+ *
+ * The field value is split on `,`, trimmed, and matched against [entries] case-insensitively
+ * by enum name. An empty or missing field resolves to an empty set. Unknown tokens are
+ * rejected eagerly so a typo never silently yields a partial set: a `400 BadRequest` with
+ * the supplied [errorCode] is sent and `null` is returned, signalling to the caller that
+ * a response has already been written and it must return immediately (mirroring the
+ * [requireOperation] convention).
+ *
+ * @param parts Collected multipart parts from [collectParts].
+ * @param fieldName Form field name to read.
+ * @param entries Allowed enum values, typically `MyEnum.entries`.
+ * @param errorCode [ApiError.error] code to use when an unknown token is encountered.
+ * @return The parsed set, or `null` when an error response has already been sent.
+ */
+suspend fun <E : Enum<E>> RoutingCall.parseEnumSetField(
+	parts: List<Any>,
+	fieldName: String,
+	entries: List<E>,
+	errorCode: String,
+): Set<E>? {
+	val raw = extractTextField(parts, fieldName) ?: return emptySet()
+	val tokens = raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+	val byLowerName = entries.associateBy { it.name.lowercase() }
+	val unknown = tokens.filter { it.lowercase() !in byLowerName }
+	if (unknown.isNotEmpty()) {
+		respond(
+			HttpStatusCode.BadRequest,
+			ApiError(
+				error = errorCode,
+				message = "Unknown value(s) for field '$fieldName': ${unknown.joinToString()}. " +
+					"Valid values: ${entries.joinToString { it.name }}.",
+			),
+		)
+		return null
+	}
+	return tokens.mapNotNullTo(mutableSetOf()) { byLowerName[it.lowercase()] }
+}
+
 
 

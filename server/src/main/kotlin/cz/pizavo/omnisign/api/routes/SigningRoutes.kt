@@ -6,10 +6,14 @@ import cz.pizavo.omnisign.api.extractFilePart
 import cz.pizavo.omnisign.api.extractTextField
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.api.model.responses.SigningResultMeta
+import cz.pizavo.omnisign.api.model.responses.toResponse
+import cz.pizavo.omnisign.api.parseEnumSetField
 import cz.pizavo.omnisign.api.requireOperation
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
+import cz.pizavo.omnisign.domain.model.config.OperationConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
@@ -37,6 +41,20 @@ import java.io.File
  * - `noTimestamp` — set to `true` to omit the RFC 3161 timestamp.
  * - `profile` — named configuration profile to use (optional). When omitted, global
  *   defaults apply. No server-side active profile is used as a fallback.
+ * - `disableHashAlgorithm` — comma-separated list of [HashAlgorithm] names to additionally
+ *   disable for this request (optional). Union-merged with the global and profile disabled
+ *   sets via [OperationConfig]; the request is rejected with `422` if the resolved hash
+ *   algorithm ends up in the disabled set. Strictly tightening — cannot re-enable an
+ *   algorithm a higher layer has disabled.
+ * - `disableEncryptionAlgorithm` — comma-separated list of [EncryptionAlgorithm] names to
+ *   additionally disable for this request (optional). Same semantics as `disableHashAlgorithm`.
+ *
+ * The per-request override surface is intentionally limited to these two strictly-tightening
+ * fields: the institution stands the service up to enforce *its* rules, so loosening fields
+ * (alternate TSAs, custom validation policies) are not exposed even though they exist in
+ * [OperationConfig]. The [OperationConfig] passed to [ResolvedConfig.resolve] is assembled
+ * here with only these two fields populated, so a future expansion of the override pipeline
+ * cannot accidentally widen the API surface.
  *
  * This operation is disabled by default and must be explicitly enabled in [ServerConfig.allowedOperations].
  * When [ServerConfig.allowedCertificateAliases] is set, only those aliases may be used.
@@ -70,11 +88,23 @@ fun Route.signingRoutes() {
 		outputFile.deleteOnExit()
 
 		try {
+			val disabledHashAlgorithms = call.parseEnumSetField(
+				parts, "disableHashAlgorithm", HashAlgorithm.entries, "INVALID_ALGORITHM",
+			) ?: return@post
+			val disabledEncryptionAlgorithms = call.parseEnumSetField(
+				parts, "disableEncryptionAlgorithm", EncryptionAlgorithm.entries, "INVALID_ALGORITHM",
+			) ?: return@post
+
 			val profileName = extractTextField(parts, "profile")
 			val appConfig = configRepository.getCurrentConfig()
 			val profileConfig = profileName?.let { appConfig.profiles[it] }
 
-			val resolvedConfig = ResolvedConfig.resolve(appConfig.global, profileConfig, null)
+			val operationOverrides = OperationConfig(
+				disabledHashAlgorithms = disabledHashAlgorithms,
+				disabledEncryptionAlgorithms = disabledEncryptionAlgorithms,
+			).takeIf { disabledHashAlgorithms.isNotEmpty() || disabledEncryptionAlgorithms.isNotEmpty() }
+
+			val resolvedConfig = ResolvedConfig.resolve(appConfig.global, profileConfig, operationOverrides)
 				.fold(
 					ifLeft = { error ->
 						call.respond(
@@ -128,7 +158,8 @@ fun Route.signingRoutes() {
 					val meta = SigningResultMeta(
 						signatureId = result.signatureId,
 						signatureLevel = result.signatureLevel,
-						warnings = result.warnings,
+						annotatedWarnings = result.annotatedWarnings.map { it.toResponse() },
+						hasRevocationWarnings = result.hasRevocationWarnings,
 					)
 					call.response.header("X-OmniSign-Result", serverJson.encodeToString(meta))
 					call.respondFile(outputFile)
