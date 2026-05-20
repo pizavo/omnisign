@@ -15,6 +15,8 @@ import io.ktor.server.auth.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import org.koin.ktor.ext.inject
+import java.security.MessageDigest
+import kotlin.time.Clock
 
 private val logger = KotlinLogging.logger {}
 
@@ -148,6 +150,20 @@ fun Route.authRoutes(config: AuthConfig?) {
 
         config?.providers?.filterIsInstance<HeaderInjectionProviderConfig>()?.forEach { provider ->
             get("/callback/${provider.name}") {
+                val providedSecret = call.request.headers[provider.sharedSecretHeader]
+                if (providedSecret == null || !sharedSecretMatches(providedSecret, provider.sharedSecret)) {
+                    call.respond(
+                        HttpStatusCode.Unauthorized,
+                        ApiError(
+                            error = "INVALID_HEADER_INJECTION_TOKEN",
+                            message = "Header-injection callback rejected: missing or invalid " +
+                                    "'${provider.sharedSecretHeader}' header. The trusted upstream proxy must " +
+                                    "inject this header with the configured shared secret on every authenticated request.",
+                        ),
+                    )
+                    return@get
+                }
+
                 val userId = call.request.headers[provider.userHeader]
                 if (userId.isNullOrBlank()) {
                     call.respond(
@@ -170,6 +186,7 @@ fun Route.authRoutes(config: AuthConfig?) {
                     email = email,
                     displayName = displayName,
                     providerName = provider.name,
+                    authTime = Clock.System.now(),
                 )
 
                 respondWithToken(call, principal, jwtService, config.session.tokenExpirySeconds)
@@ -213,6 +230,20 @@ fun Route.authRoutes(config: AuthConfig?) {
                         ApiError(
                             error = "AUTH_NOT_CONFIGURED",
                             message = "Authentication is not configured on this server",
+                        ),
+                    )
+                    return@post
+                }
+
+                val sessionAge = Clock.System.now().epochSeconds - principal.authTime.epochSeconds
+                if (sessionAge > config.session.maxSessionSeconds) {
+                    call.respond(
+                        HttpStatusCode.Unauthorized,
+                        ApiError(
+                            error = "SESSION_EXPIRED",
+                            message = "Session exceeded the maximum lifetime of " +
+                                    "${config.session.maxSessionSeconds} seconds since the original " +
+                                    "authentication. Re-authenticate via the identity provider.",
                         ),
                     )
                     return@post
@@ -265,6 +296,26 @@ private suspend fun resolvePrincipalFromOidc(
         null
     }
 }
+
+/**
+ * Compare a client-supplied shared secret against the configured value in constant time.
+ *
+ * Uses [MessageDigest.isEqual] which performs a length-independent byte comparison after
+ * the length check, avoiding timing side channels that a naive `==` on Strings would
+ * expose. Returns `false` immediately when lengths differ — a minor leak for HMAC-style
+ * fixed-length secrets, irrelevant here because the configured secret is ≥32 bytes
+ * (enforced by [HeaderInjectionProviderConfig]) so brute-forcing the length is not the
+ * weak link.
+ *
+ * @param provided The value supplied by the inbound request header.
+ * @param expected The configured shared secret from the provider's config.
+ * @return `true` when the two values are byte-for-byte equal.
+ */
+private fun sharedSecretMatches(provided: String, expected: String): Boolean =
+    MessageDigest.isEqual(
+        provided.toByteArray(Charsets.UTF_8),
+        expected.toByteArray(Charsets.UTF_8),
+    )
 
 /**
  * Issue a JWT for [principal] and write a [TokenResponse] JSON body to [call].

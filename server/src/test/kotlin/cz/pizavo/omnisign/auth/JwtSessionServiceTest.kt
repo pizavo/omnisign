@@ -15,7 +15,7 @@ import io.kotest.matchers.string.shouldNotBeEmpty
  */
 class JwtSessionServiceTest : FunSpec({
 
-    val secret = "test-secret-minimum-256-bit-key-padding-for-hmac!!"
+    val secret = "test-jwt-secret-padded-to-at-least-64-bytes-for-hs512-compatibility!!"
 
     val config = SessionConfig(
         algorithm = JwtAlgorithmType.HS512,
@@ -31,6 +31,7 @@ class JwtSessionServiceTest : FunSpec({
         email = "test@example.com",
         displayName = "Test User",
         providerName = "google",
+        authTime = kotlin.time.Clock.System.now(),
     )
 
     test("issue returns a non-empty token string") {
@@ -56,7 +57,7 @@ class JwtSessionServiceTest : FunSpec({
     }
 
     test("verify returns null for a token signed with a different secret") {
-        val otherService = JwtSessionService(config.copy(secret = "completely-different-secret-key-also-long!!"))
+        val otherService = JwtSessionService(config.copy(secret = "different-jwt-secret-also-padded-to-64-bytes-for-hs512-rejection!!"))
         val foreignToken = otherService.issue(principal)
         service.verify(foreignToken).shouldBeNull()
     }

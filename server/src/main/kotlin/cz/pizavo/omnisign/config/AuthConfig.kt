@@ -37,10 +37,17 @@ package cz.pizavo.omnisign.config
  *   Must be combined with a non-empty [providers] list to be functional.
  * @property providers Ordered list of active SSO providers.
  * @property session JWT session token settings.
+ * @property oauthStateSecret HMAC key used to sign and verify the OAuth2 `state` parameter
+ *   on the authorization-code callback (CSRF protection for the login flow). Must be at
+ *   least 32 bytes when supplied. Typically declared via env-var substitution:
+ *   `oauthStateSecret: "${OMNISIGN_OAUTH_NONCE_SECRET}"`. When `null` and OIDC providers
+ *   are configured, the server falls back to an ephemeral random key in development mode
+ *   (with a warning) and fails to start in production.
  */
 data class AuthConfig(
 	val enabled: Boolean = false,
 	val providers: List<SsoProviderConfig> = emptyList(),
 	val session: SessionConfig = SessionConfig(),
+	val oauthStateSecret: String? = null,
 )
 

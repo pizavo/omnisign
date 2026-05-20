@@ -9,6 +9,7 @@ import cz.pizavo.omnisign.config.SsoProviderPreset
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
+import io.ktor.util.NonceManager
 import kotlinx.coroutines.runBlocking
 import org.koin.ktor.ext.inject
 
@@ -23,15 +24,24 @@ private val logger = KotlinLogging.logger {}
  *
  * Two authentication provider families are registered:
  *
- * 1. **`jwt-api`** ([JwtSessionService.AUTH_NAME_JWT]) — validates HS256-signed JWT
- *    Bearer tokens. When [config] is `null` the provider is registered but always
- *    challenges with `401` (no valid token can ever be produced without a configured
- *    secret), effectively disabling authentication while keeping the plugin installed.
+ * 1. **`jwt-api`** ([JwtSessionService.AUTH_NAME_JWT]) — validates HMAC-signed JWT
+ *    (HS256/HS384/HS512) Bearer tokens. When [config] is `null` the provider is
+ *    registered but always challenges with `401` (no valid token can ever be produced
+ *    without a configured secret), effectively disabling authentication while keeping
+ *    the plugin installed.
  *
  * 2. **`oidc-{name}`** — one [OAuthServerSettings.OAuth2ServerSettings] block per
  *    [OidcProviderConfig] in [config]. Each provider's authorization and token endpoints
  *    are resolved from the OIDC discovery document (or hard-coded for GitHub). These
  *    providers are used exclusively by the `/auth/callback/{name}` route.
+ *
+ *    Each `oauth { … }` block is configured with the injected [NonceManager] so the
+ *    OAuth2 `state` parameter is verified on the authorization-code callback. Ktor's
+ *    default `nonceManager` is `GenerateOnlyNonceManager` whose `verifyNonce()` returns
+ *    `true` unconditionally — accepting any state value and exposing the flow to
+ *    login-CSRF / account-fixation attacks. Wiring a [StatelessHmacNonceManager] here
+ *    closes that gap; the HMAC key comes from `OMNISIGN_OAUTH_NONCE_SECRET` (see
+ *    [serverModule][cz.pizavo.omnisign.di.serverModule]).
  *
  * [HeaderInjectionProviderConfig] providers are not registered here; they are handled
  * directly in the `/auth/callback/{name}` route by reading the injected request headers.
@@ -43,6 +53,7 @@ private val logger = KotlinLogging.logger {}
 fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String = "") {
     val jwtService by inject<JwtSessionService>()
     val discoveryService by inject<OidcDiscoveryService>()
+    val oauthNonceManager by inject<NonceManager>()
 
     install(Authentication) {
         bearer(JwtSessionService.AUTH_NAME_JWT) {
@@ -68,6 +79,7 @@ fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String
                         clientSecret = provider.clientSecret,
                         requestMethod = io.ktor.http.HttpMethod.Post,
                         defaultScopes = provider.scopes,
+                        nonceManager = oauthNonceManager,
                     )
                 }
                 client = io.ktor.client.HttpClient(io.ktor.client.engine.cio.CIO)

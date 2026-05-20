@@ -62,9 +62,15 @@ data class OidcProviderConfig(
  * attributes as HTTP request headers. The Ktor server extracts the principal from those
  * headers without performing any OAuth/OIDC handshake itself.
  *
- * **Security**: Only trust this provider when the Ktor server is not directly reachable
- * from untrusted networks — the header values are not cryptographically verified by the
- * application itself. Restrict network access at the OS/firewall level.
+ * **Transport-level integrity is enforced application-side.** Header values cannot be
+ * cryptographically verified by their content alone — an attacker who reaches the Ktor
+ * port directly could otherwise forge any identity by setting [userHeader]. To close
+ * that gap the callback requires a shared secret in [sharedSecretHeader]; the reverse
+ * proxy must inject both the identity headers and the secret, and the Ktor route
+ * rejects any request whose secret value does not match [sharedSecret] (constant-time
+ * comparison). Operators should still restrict network access at the OS/firewall level
+ * — defence in depth — but the secret-check makes header forgery non-trivial even if
+ * the network boundary is misconfigured.
  *
  * Common Shibboleth attribute header names (may vary by IdP / SP configuration):
  * - User principal: `REMOTE_USER` or `X-Remote-User` or `X-Shib-Uid`
@@ -76,6 +82,16 @@ data class OidcProviderConfig(
  * @property emailHeader Header name for the user's e-mail address.
  * @property displayNameHeader Header name for the user's full display name.
  * @property displayName Human-readable label shown in the login UI.
+ * @property sharedSecret Bearer-style shared secret that the trusted reverse proxy must
+ *   inject in [sharedSecretHeader] on every header-injection callback. Required, at
+ *   least 64 bytes of entropy (typically generated with `openssl rand -base64 64`).
+ *   Declare in `server.yml` via env-var substitution to keep it out of the file:
+ *   `sharedSecret: "${OMNISIGN_SHIB_TOKEN}"`. The reverse proxy must be configured
+ *   to inject the same value as the [sharedSecretHeader] header on each authenticated
+ *   request it forwards.
+ * @property sharedSecretHeader Name of the header that carries [sharedSecret]. Defaults
+ *   to `X-Header-Injection-Token`. Pick something unlikely to collide with other
+ *   infrastructure headers; the value is matched case-insensitively by Ktor.
  */
 data class HeaderInjectionProviderConfig(
     override val name: String,
@@ -83,4 +99,30 @@ data class HeaderInjectionProviderConfig(
     val emailHeader: String = "X-Shib-Mail",
     val displayNameHeader: String = "X-Shib-Cn",
     val displayName: String = name,
-) : SsoProviderConfig
+    val sharedSecret: String,
+    val sharedSecretHeader: String = "X-Header-Injection-Token",
+) : SsoProviderConfig {
+    init {
+        require(sharedSecret.toByteArray(Charsets.UTF_8).size >= MIN_SHARED_SECRET_BYTES) {
+            "HeaderInjectionProviderConfig '$name': sharedSecret must be at least " +
+                "$MIN_SHARED_SECRET_BYTES bytes (512 bits) — got " +
+                "${sharedSecret.toByteArray(Charsets.UTF_8).size}. Generate one with " +
+                "`openssl rand -base64 64`."
+        }
+        require(sharedSecretHeader.isNotBlank()) {
+            "HeaderInjectionProviderConfig '$name': sharedSecretHeader must not be blank."
+        }
+    }
+
+    companion object {
+        /**
+         * Minimum acceptable length, in bytes, of the shared secret that the trusted reverse
+         * proxy injects on each header-injection callback. 64 bytes (512 bits) is well above
+         * the brute-force-infeasibility threshold for a bearer-style token (which 32 bytes
+         * would also clear) and matches the floor applied to the server's other secrets
+         * (`MIN_JWT_SECRET_BYTES`, `MIN_NONCE_KEY_BYTES`) for a single uniform rule across
+         * the auth surface.
+         */
+        const val MIN_SHARED_SECRET_BYTES = 64
+    }
+}

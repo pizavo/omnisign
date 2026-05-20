@@ -8,6 +8,7 @@ import io.ktor.http.*
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlin.time.Clock
 
 private val logger = KotlinLogging.logger {}
 
@@ -67,6 +68,7 @@ class OidcUserInfoService(private val httpClient: HttpClient) {
                 ?: claims.string("preferred_username")
                 ?: claims.string("login"),
             providerName = providerName,
+            authTime = Clock.System.now(),
         )
     }
 }

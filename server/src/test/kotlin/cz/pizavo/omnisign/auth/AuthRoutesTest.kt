@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.auth
 
 import cz.pizavo.omnisign.config.AuthConfig
+import cz.pizavo.omnisign.config.HeaderInjectionProviderConfig
 import cz.pizavo.omnisign.config.JwtAlgorithmType
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.SessionConfig
@@ -16,6 +17,8 @@ import io.ktor.server.testing.*
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 /**
  * Integration tests for the `/auth` route group, verifying login discovery, JWT
  * session endpoints, and authentication enforcement on protected routes.
@@ -25,7 +28,7 @@ import kotlinx.serialization.json.jsonPrimitive
  */
 class AuthRoutesTest : FunSpec({
 	
-	val jwtSecret = "test-secret-value-long-enough-for-hmac-256"
+	val jwtSecret = "test-jwt-secret-padded-to-at-least-64-bytes-for-hs512-compatibility!!"
 	val authConfig = AuthConfig(
 		providers = emptyList(),
 		session = SessionConfig(
@@ -73,6 +76,7 @@ class AuthRoutesTest : FunSpec({
 				email = "user@example.com",
 				displayName = "Test User",
 				providerName = "test",
+				authTime = kotlin.time.Clock.System.now(),
 			)
 			val token = jwtService.issue(principal)
 			
@@ -113,6 +117,7 @@ class AuthRoutesTest : FunSpec({
 				email = "refresh@example.com",
 				displayName = "Refresh User",
 				providerName = "test",
+				authTime = kotlin.time.Clock.System.now(),
 			)
 			val originalToken = jwtService.issue(principal)
 
@@ -123,6 +128,59 @@ class AuthRoutesTest : FunSpec({
 
 			val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
 			body["token"]?.jsonPrimitive?.content.shouldNotBeBlank()
+		}
+	}
+
+	test("POST /auth/refresh rejects a token whose authTime exceeds maxSessionSeconds") {
+		testApplication {
+			application { module(ServerConfig(auth = authConfig)) }
+
+			val jwtService = JwtSessionService(authConfig.session.copy(secret = jwtSecret))
+			val tooOldAuthTime = kotlin.time.Clock.System.now() -
+					(authConfig.session.maxSessionSeconds + 60).seconds
+			val expiredSessionPrincipal = AuthenticatedPrincipal(
+				userId = "u-expired",
+				email = "stale@example.com",
+				displayName = null,
+				providerName = "test",
+				authTime = tooOldAuthTime,
+			)
+			val token = jwtService.issue(expiredSessionPrincipal)
+
+			val response = client.post("/auth/refresh") {
+				bearerAuth(token)
+			}
+			response.status shouldBe HttpStatusCode.Unauthorized
+			val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+			body["error"]?.jsonPrimitive?.content shouldBe "SESSION_EXPIRED"
+		}
+	}
+
+	test("POST /auth/refresh preserves the original authTime across the new token") {
+		testApplication {
+			application { module(ServerConfig(auth = authConfig)) }
+
+			val jwtService = JwtSessionService(authConfig.session.copy(secret = jwtSecret))
+			val originalAuthTime = kotlin.time.Clock.System.now() - 30.minutes
+			val principal = AuthenticatedPrincipal(
+				userId = "u-stable",
+				email = "stable@example.com",
+				displayName = null,
+				providerName = "test",
+				authTime = originalAuthTime,
+			)
+			val originalToken = jwtService.issue(principal)
+
+			val response = client.post("/auth/refresh") {
+				bearerAuth(originalToken)
+			}
+			response.status shouldBe HttpStatusCode.OK
+
+			val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+			val refreshedToken = body["token"]!!.jsonPrimitive.content
+			val refreshedPrincipal = jwtService.verify(refreshedToken)
+			refreshedPrincipal shouldNotBe null
+			refreshedPrincipal!!.authTime.epochSeconds shouldBe originalAuthTime.epochSeconds
 		}
 	}
 
@@ -157,6 +215,7 @@ class AuthRoutesTest : FunSpec({
 					email = "admin@example.com",
 					displayName = null,
 					providerName = "test",
+					authTime = kotlin.time.Clock.System.now(),
 				),
 			)
 			
@@ -178,6 +237,61 @@ class AuthRoutesTest : FunSpec({
 			}
 			val response = client.get("/api/v1/health")
 			response.status shouldBe HttpStatusCode.OK
+		}
+	}
+
+	val headerInjectionSecret = "header-injection-secret-padded-to-at-least-64-bytes-for-test-use!"
+	val headerInjectionProvider = HeaderInjectionProviderConfig(
+		name = "shib",
+		userHeader = "X-Remote-User",
+		emailHeader = "X-Shib-Mail",
+		displayNameHeader = "X-Shib-Cn",
+		sharedSecret = headerInjectionSecret,
+	)
+	val headerInjectionAuthConfig = authConfig.copy(providers = listOf(headerInjectionProvider))
+
+	test("header-injection callback rejects requests without the shared-secret header") {
+		testApplication {
+			application { module(ServerConfig(auth = headerInjectionAuthConfig)) }
+			val response = client.get("/auth/callback/shib") {
+				header("X-Remote-User", "attacker@evil.com")
+			}
+			response.status shouldBe HttpStatusCode.Unauthorized
+		}
+	}
+
+	test("header-injection callback rejects requests with a wrong shared-secret value") {
+		testApplication {
+			application { module(ServerConfig(auth = headerInjectionAuthConfig)) }
+			val response = client.get("/auth/callback/shib") {
+				header("X-Header-Injection-Token", "wrong-secret")
+				header("X-Remote-User", "attacker@evil.com")
+			}
+			response.status shouldBe HttpStatusCode.Unauthorized
+		}
+	}
+
+	test("header-injection callback issues a token when the shared secret matches") {
+		testApplication {
+			application { module(ServerConfig(auth = headerInjectionAuthConfig)) }
+			val response = client.get("/auth/callback/shib") {
+				header("X-Header-Injection-Token", headerInjectionSecret)
+				header("X-Remote-User", "alice@example.com")
+				header("X-Shib-Mail", "alice@example.com")
+			}
+			response.status shouldBe HttpStatusCode.OK
+			val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+			body["token"]?.jsonPrimitive?.content.shouldNotBeBlank()
+		}
+	}
+
+	test("header-injection callback rejects when the user header is missing even with a valid secret") {
+		testApplication {
+			application { module(ServerConfig(auth = headerInjectionAuthConfig)) }
+			val response = client.get("/auth/callback/shib") {
+				header("X-Header-Injection-Token", headerInjectionSecret)
+			}
+			response.status shouldBe HttpStatusCode.Unauthorized
 		}
 	}
 })

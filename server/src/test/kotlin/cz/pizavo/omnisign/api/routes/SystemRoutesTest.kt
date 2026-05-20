@@ -25,7 +25,7 @@ import kotlinx.serialization.json.Json
 class SystemRoutesTest : FunSpec({
 
     val json = Json { ignoreUnknownKeys = true }
-    val jwtSecret = "test-secret-value-long-enough-for-hmac-512-algorithm"
+    val jwtSecret = "test-jwt-secret-padded-to-at-least-64-bytes-for-hs512-compatibility!!"
     val authConfig = AuthConfig(
         enabled = true,
         providers = emptyList(),
@@ -130,6 +130,7 @@ class SystemRoutesTest : FunSpec({
                     email = "user@example.com",
                     displayName = null,
                     providerName = "test",
+                    authTime = kotlin.time.Clock.System.now(),
                 ),
             )
 

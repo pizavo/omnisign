@@ -6,6 +6,13 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 
 /**
+ * 64-byte test secret used in tests that construct a [HeaderInjectionProviderConfig].
+ * Length matches the production minimum so deserialization succeeds; value is fixed for
+ * deterministic test output.
+ */
+private const val HEADER_INJECTION_TEST_SECRET = "test-shared-secret-padded-to-at-least-64-bytes-for-test-fixtures!"
+
+/**
  * Unit tests for [ServerConfigLoader] focusing on the SSO provider YAML deserialization
  * via [SsoProviderConfigDeserializer].
  */
@@ -44,6 +51,7 @@ class SsoProviderConfigDeserializerTest : FunSpec({
                   userHeader: "X-Remote-User"
                   emailHeader: "X-Shib-Mail"
                   displayNameHeader: "X-Shib-Cn"
+                  sharedSecret: "$HEADER_INJECTION_TEST_SECRET"
         """.trimIndent()
 
         val config = loader.loadFromString(yaml)
@@ -51,6 +59,8 @@ class SsoProviderConfigDeserializerTest : FunSpec({
         provider.shouldBeInstanceOf<HeaderInjectionProviderConfig>()
         provider.name shouldBe "shibboleth"
         provider.userHeader shouldBe "X-Remote-User"
+        provider.sharedSecret shouldBe HEADER_INJECTION_TEST_SECRET
+        provider.sharedSecretHeader shouldBe "X-Header-Injection-Token"
     }
 
     test("deserializes multiple mixed providers") {
@@ -66,13 +76,38 @@ class SsoProviderConfigDeserializerTest : FunSpec({
                 - type: header-injection
                   name: eduid
                   userHeader: "REMOTE_USER"
+                  sharedSecret: "$HEADER_INJECTION_TEST_SECRET"
         """.trimIndent()
 
         val config = loader.loadFromString(yaml)
         val providers = config.auth!!.providers
         providers.size shouldBe 2
         providers[0].shouldBeInstanceOf<OidcProviderConfig>()
-        providers[1].shouldBeInstanceOf<HeaderInjectionProviderConfig>()    }
+        providers[1].shouldBeInstanceOf<HeaderInjectionProviderConfig>()
+    }
+
+    test("header-injection provider rejects sharedSecret shorter than the minimum") {
+        val yaml = """
+            auth:
+              providers:
+                - type: header-injection
+                  name: shib
+                  sharedSecret: "too-short"
+        """.trimIndent()
+
+        shouldThrow<Exception> { loader.loadFromString(yaml) }
+    }
+
+    test("header-injection provider requires sharedSecret to be present") {
+        val yaml = """
+            auth:
+              providers:
+                - type: header-injection
+                  name: shib
+        """.trimIndent()
+
+        shouldThrow<Exception> { loader.loadFromString(yaml) }
+    }
 
     test("throws on unknown provider type") {
         val yaml = """

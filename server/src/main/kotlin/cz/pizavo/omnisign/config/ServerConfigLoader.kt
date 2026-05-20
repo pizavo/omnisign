@@ -19,6 +19,13 @@ private val logger = KotlinLogging.logger {}
  * 3. `server.yml` in the current working directory.
  * 4. Classpath resource `/server.yml`.
  * 5. Built-in defaults ([ServerConfig] no-arg constructor).
+ *
+ * **Environment variable substitution.** Before parsing, any `${NAME}` placeholder in the
+ * YAML text is replaced with the value of the corresponding environment variable. The
+ * variable name must match `[A-Z_][A-Z0-9_]*` (uppercase, digits, underscores). This is
+ * how secrets enter the config without ever being written to the YAML file itself —
+ * e.g., `secret: "${OMNISIGN_JWT_SECRET}"` reads the secret from the environment at
+ * load time. Missing referenced env vars cause load to fail with a clear error.
  */
 class ServerConfigLoader {
 
@@ -36,20 +43,33 @@ class ServerConfigLoader {
 	 * @return Parsed [ServerConfig], or a default instance when no config file is found.
 	 */
 	fun load(path: String? = null): ServerConfig {
-		val file = resolveFile(path)
+		val rawYaml = readYamlText(path)
+		if (rawYaml == null) {
+			logger.info { "No server configuration found — using defaults" }
+			return ServerConfig()
+		}
+		val expanded = substituteEnvVars(rawYaml)
+		return mapper.readValue(expanded, ServerConfig::class.java)
+	}
+
+	/**
+	 * Resolve and read the YAML text from the first available source, returning `null` when
+	 * none is found so callers can fall back to defaults.
+	 */
+	private fun readYamlText(explicitPath: String?): String? {
+		val file = resolveFile(explicitPath)
 		if (file != null) {
 			logger.info { "Loading server configuration from ${file.absolutePath}" }
-			return mapper.readValue(file, ServerConfig::class.java)
+			return file.readText(Charsets.UTF_8)
 		}
 
 		val resource = javaClass.getResourceAsStream("/$DEFAULT_FILE_NAME")
 		if (resource != null) {
 			logger.info { "Loading server configuration from classpath resource /$DEFAULT_FILE_NAME" }
-			return resource.use { mapper.readValue(it, ServerConfig::class.java) }
+			return resource.use { it.bufferedReader(Charsets.UTF_8).readText() }
 		}
 
-		logger.info { "No server configuration found — using defaults" }
-		return ServerConfig()
+		return null
 	}
 
 	/**
@@ -79,16 +99,38 @@ class ServerConfigLoader {
 	 * Load the server configuration from a raw YAML string.
 	 *
 	 * Primarily intended for testing so that a config can be provided inline without a file.
+	 * Env var substitution is applied here too, matching production behavior.
 	 *
 	 * @param yaml YAML content to parse.
 	 * @return Parsed [ServerConfig].
 	 */
 	fun loadFromString(yaml: String): ServerConfig =
-		mapper.readValue(yaml, ServerConfig::class.java)
+		mapper.readValue(substituteEnvVars(yaml), ServerConfig::class.java)
+
+	/**
+	 * Replace every `${NAME}` placeholder in [yaml] with the value of the corresponding
+	 * environment variable.
+	 *
+	 * The substitution is textual and runs before YAML parsing. Variable names must match
+	 * `[A-Z_][A-Z0-9_]*`. A missing env var causes a clear startup failure naming the variable.
+	 *
+	 * @throws IllegalStateException if a referenced env var is not set.
+	 */
+	private fun substituteEnvVars(yaml: String): String =
+		ENV_VAR_PATTERN.replace(yaml) { match ->
+			val varName = match.groupValues[1]
+			val value = System.getenv(varName)
+				?: error(
+					$$"server.yml references environment variable '${$$varName}' but it is not set. " +
+							"Set $varName before starting the server, or remove the reference from the YAML.",
+				)
+			value
+		}
 
 	companion object {
 		private const val ENV_VAR = "OMNISIGN_SERVER_CONFIG"
 		private const val DEFAULT_FILE_NAME = "server.yml"
+		private val ENV_VAR_PATTERN = Regex("""\$\{([A-Z_][A-Z0-9_]*)}""")
 	}
 }
 
