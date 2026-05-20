@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.api.routes
 
+import cz.pizavo.omnisign.api.model.requests.RefreshTokenRequest
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.api.model.responses.LoginOptionsResponse
 import cz.pizavo.omnisign.api.model.responses.SessionResponse
@@ -12,11 +13,13 @@ import cz.pizavo.omnisign.config.SsoProviderPreset
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.*
 import io.ktor.server.auth.*
+import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import org.koin.ktor.ext.inject
 import java.security.MessageDigest
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.seconds
 
 private val logger = KotlinLogging.logger {}
 
@@ -28,24 +31,28 @@ private val logger = KotlinLogging.logger {}
  * - `GET /auth/login` — returns [LoginOptionsResponse] listing all active providers and
  *   their login URLs. The browser or web UI should redirect to `loginUrl` of the chosen entry.
  *
- * - `GET /auth/callback/{provider}` — OAuth2 authorization-code callback for OIDC providers.
- *   Exchanges the code for an access token, fetches user claims via the IdP's `/userinfo`
- *   endpoint, and responds with a [TokenResponse] containing the OmniSign JWT session token.
- *   For [HeaderInjectionProviderConfig] providers the user identity is read directly from
- *   the request headers set by the upstream Shibboleth SP.
+ * - `GET /auth/callback/{provider}` — OAuth2 authorization-code callback for OIDC providers
+ *   (or trusted-header injection callback for Shibboleth-style providers). Resolves the
+ *   user identity, then mints **both** a short-lived JWT access token and a long-lived
+ *   opaque refresh token (persisted in the [RefreshTokenStore]). Both are returned in
+ *   [TokenResponse].
  *
  * - `GET /auth/session` — returns [SessionResponse] for the caller identified by a valid
  *   JWT Bearer token, or `401 Unauthorized` when no valid token is present.
  *
- * - `POST /auth/refresh` — issues a new JWT with a fully-reset expiry for the caller
- *   identified by a valid Bearer token. Allows long-running sessions without re-login.
- *   Returns `503` when no auth providers are configured.
+ * - `POST /auth/refresh` — accepts a [RefreshTokenRequest] body, atomically consumes the
+ *   refresh token (single-use rotation), and mints a fresh access-token + refresh-token
+ *   pair preserving the original `auth_time`. Rejects with `401 SESSION_EXPIRED` when the
+ *   total session age exceeds [cz.pizavo.omnisign.config.SessionConfig.maxSessionSeconds],
+ *   `401 INVALID_REFRESH_TOKEN` when the token is unknown / expired / already-consumed,
+ *   `503 AUTH_NOT_CONFIGURED` when no auth providers are configured.
  *
- * - `POST /auth/logout` — stateless acknowledgement (JWTs are self-contained; real revocation
- *   requires a deny-list, which is a future extension). Always returns `204 No Content`.
+ * - `POST /auth/logout` — accepts a [RefreshTokenRequest] body and deletes the token from
+ *   the store. Idempotent — always returns `204 No Content`.
  *
- * These routes are always mounted regardless of `requireLogin` so that clients
- * can authenticate even before the application reports them as logged in.
+ * `/auth/login`, `/auth/refresh`, `/auth/logout`, and the callbacks are mounted
+ * unconditionally so clients can authenticate (or end their session) without a JWT.
+ * `/auth/session` is the only route that requires a valid Bearer JWT.
  *
  * @param config Root authentication configuration, or `null` when auth is disabled.
  */
@@ -53,6 +60,7 @@ fun Route.authRoutes(config: AuthConfig?) {
     val jwtService by inject<JwtSessionService>()
     val discoveryService by inject<OidcDiscoveryService>()
     val userInfoService by inject<OidcUserInfoService>()
+    val refreshTokenStore by inject<RefreshTokenStore>()
 
     route("/auth") {
         get("/login") {
@@ -144,7 +152,7 @@ fun Route.authRoutes(config: AuthConfig?) {
                     return@get
                 }
 
-                respondWithToken(call, result.principal, jwtService, config.session.tokenExpirySeconds)
+                respondWithTokens(call, result.principal, jwtService, refreshTokenStore, config.session)
             }
         }
 
@@ -189,7 +197,7 @@ fun Route.authRoutes(config: AuthConfig?) {
                     authTime = Clock.System.now(),
                 )
 
-                respondWithToken(call, principal, jwtService, config.session.tokenExpirySeconds)
+                respondWithTokens(call, principal, jwtService, refreshTokenStore, config.session)
             }
         }
 
@@ -213,47 +221,66 @@ fun Route.authRoutes(config: AuthConfig?) {
                     ),
                 )
             }
+        }
 
-            post("/refresh") {
-                val principal = call.principal<AuthenticatedPrincipal>()
-                    ?: run {
-                        call.respond(
-                            HttpStatusCode.Unauthorized,
-                            ApiError(error = "UNAUTHENTICATED", message = "No valid session token"),
-                        )
-                        return@post
-                    }
-
-                if (config == null) {
-                    call.respond(
-                        HttpStatusCode.ServiceUnavailable,
-                        ApiError(
-                            error = "AUTH_NOT_CONFIGURED",
-                            message = "Authentication is not configured on this server",
-                        ),
-                    )
-                    return@post
-                }
-
-                val sessionAge = Clock.System.now().epochSeconds - principal.authTime.epochSeconds
-                if (sessionAge > config.session.maxSessionSeconds) {
-                    call.respond(
-                        HttpStatusCode.Unauthorized,
-                        ApiError(
-                            error = "SESSION_EXPIRED",
-                            message = "Session exceeded the maximum lifetime of " +
-                                    "${config.session.maxSessionSeconds} seconds since the original " +
-                                    "authentication. Re-authenticate via the identity provider.",
-                        ),
-                    )
-                    return@post
-                }
-
-                respondWithToken(call, principal, jwtService, config.session.tokenExpirySeconds)
+        post("/refresh") {
+            if (config == null) {
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    ApiError(
+                        error = "AUTH_NOT_CONFIGURED",
+                        message = "Authentication is not configured on this server",
+                    ),
+                )
+                return@post
             }
+
+            val request = runCatching { call.receive<RefreshTokenRequest>() }.getOrNull()
+            if (request == null || request.refreshToken.isBlank()) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ApiError(
+                        error = "MISSING_REFRESH_TOKEN",
+                        message = "Request body must be a JSON object with a non-empty `refreshToken` field.",
+                    ),
+                )
+                return@post
+            }
+
+            val principal = refreshTokenStore.consume(request.refreshToken)
+            if (principal == null) {
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    ApiError(
+                        error = "INVALID_REFRESH_TOKEN",
+                        message = "Refresh token is unknown, expired, or has already been used. Re-authenticate via the identity provider.",
+                    ),
+                )
+                return@post
+            }
+
+            val sessionAge = Clock.System.now().epochSeconds - principal.authTime.epochSeconds
+            if (sessionAge > config.session.maxSessionSeconds) {
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    ApiError(
+                        error = "SESSION_EXPIRED",
+                        message = "Session exceeded the maximum lifetime of " +
+                                "${config.session.maxSessionSeconds} seconds since the original " +
+                                "authentication. Re-authenticate via the identity provider.",
+                    ),
+                )
+                return@post
+            }
+
+            respondWithTokens(call, principal, jwtService, refreshTokenStore, config.session)
         }
 
         post("/logout") {
+            val request = runCatching { call.receive<RefreshTokenRequest>() }.getOrNull()
+            if (request != null && request.refreshToken.isNotBlank()) {
+                refreshTokenStore.delete(request.refreshToken)
+            }
             call.respond(HttpStatusCode.NoContent)
         }
     }
@@ -318,19 +345,30 @@ private fun sharedSecretMatches(provided: String, expected: String): Boolean =
     )
 
 /**
- * Issue a JWT for [principal] and write a [TokenResponse] JSON body to [call].
+ * Mint a fresh access + refresh token pair for [principal] and write a [TokenResponse]
+ * JSON body to [call].
+ *
+ * The refresh token is persisted in [refreshTokenStore] with TTL
+ * [cz.pizavo.omnisign.config.SessionConfig.refreshTokenLifetimeSeconds]; the access token
+ * is a signed JWT with TTL [cz.pizavo.omnisign.config.SessionConfig.tokenExpirySeconds].
+ * Called from both initial-login callbacks and `/auth/refresh` — the latter passes the
+ * principal returned by [RefreshTokenStore.consume], whose `authTime` is the original
+ * SSO authentication instant (preserved across rotation).
  */
-private suspend fun respondWithToken(
+private suspend fun respondWithTokens(
     call: RoutingCall,
     principal: AuthenticatedPrincipal,
     jwtService: JwtSessionService,
-    expiresIn: Long,
+    refreshTokenStore: RefreshTokenStore,
+    sessionConfig: cz.pizavo.omnisign.config.SessionConfig,
 ) {
-    val token = jwtService.issue(principal)
+    val jwt = jwtService.issue(principal)
+    val refresh = refreshTokenStore.issue(principal, sessionConfig.refreshTokenLifetimeSeconds.seconds)
     call.respond(
         TokenResponse(
-            token = token,
-            expiresIn = expiresIn,
+            token = jwt,
+            refreshToken = refresh.token,
+            expiresIn = sessionConfig.tokenExpirySeconds,
             user = SessionResponse(
                 userId = principal.userId,
                 email = principal.email,

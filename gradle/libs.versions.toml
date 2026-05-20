@@ -31,6 +31,8 @@ filekit = "0.13.0"
 jbr-api = "1.10.1"
 kotlin-logging = "8.0.01"
 dokka = "2.2.0"
+exposed = "0.61.0"
+sqlite-jdbc = "3.50.3.0"
 
 [libraries]
 kotest-engine = {module = "io.kotest:kotest-framework-engine", version.ref = "kotest" }
@@ -149,6 +151,10 @@ filekit-dialogs-compose = { module = "io.github.vinceglb:filekit-dialogs-compose
 jbr-api = { module = "org.jetbrains.runtime:jbr-api", version.ref = "jbr-api" }
 
 kotlin-logging = { module = "io.github.oshai:kotlin-logging", version.ref = "kotlin-logging" }
+
+exposed-core = { module = "org.jetbrains.exposed:exposed-core", version.ref = "exposed" }
+exposed-jdbc = { module = "org.jetbrains.exposed:exposed-jdbc", version.ref = "exposed" }
+sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
 
 [plugins]
 compose-multiplatform = { id = "org.jetbrains.compose", version.ref = "composeMultiplatform" }

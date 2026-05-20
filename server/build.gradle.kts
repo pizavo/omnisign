@@ -49,6 +49,10 @@ dependencies {
     implementation(libs.jackson.yaml)
     implementation(libs.kotlin.logging)
 
+    implementation(libs.exposed.core)
+    implementation(libs.exposed.jdbc)
+    implementation(libs.sqlite.jdbc)
+
     testImplementation(libs.ktor.server.test)
     testImplementation(libs.ktor.client.mock)
     testImplementation(libs.kotest.engine)

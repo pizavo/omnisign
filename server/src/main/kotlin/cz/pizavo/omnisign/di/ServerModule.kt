@@ -1,9 +1,12 @@
 package cz.pizavo.omnisign.di
 
+import cz.pizavo.omnisign.auth.ExposedRefreshTokenStore
 import cz.pizavo.omnisign.auth.JwtSessionService
 import cz.pizavo.omnisign.auth.OidcDiscoveryService
 import cz.pizavo.omnisign.auth.OidcUserInfoService
+import cz.pizavo.omnisign.auth.RefreshTokenStore
 import cz.pizavo.omnisign.auth.ServerPasswordCallback
+import cz.pizavo.omnisign.auth.sessionsDbFile
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
@@ -18,6 +21,7 @@ import io.ktor.util.StatelessHmacNonceManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.Json
+import org.jetbrains.exposed.sql.Database
 import org.koin.dsl.module
 import kotlin.coroutines.CoroutineContext
 
@@ -45,6 +49,12 @@ import kotlin.coroutines.CoroutineContext
  *   without OIDC providers never hit the resolution and never need to configure the field.
  *   When the binding does resolve the field is required and must be at least
  *   [MIN_NONCE_KEY_BYTES] bytes — startup fails otherwise.
+ * - [Database] singleton: SQLite connection rooted at [sessionsDbFile]. Created lazily
+ *   on first injection; the parent directory is created if it does not exist.
+ * - [RefreshTokenStore] (concrete [ExposedRefreshTokenStore]) for persisting refresh
+ *   tokens across server restarts. Schema is initialised on first injection; the
+ *   binding is lazy so deployments that never reach `/auth/refresh` or `/auth/logout`
+ *   never touch SQLite or write the file to disk.
  * - [OidcDiscoveryService] and [OidcUserInfoService] for the OIDC authorization-code flow.
  *
  * @param serverConfig Preloaded server configuration.
@@ -102,6 +112,16 @@ fun serverModule(serverConfig: ServerConfig) = module {
 					"got ${bytes.size}."
 		}
 		StatelessHmacNonceManager(bytes)
+	}
+
+	single<Database> {
+		val dbFile = sessionsDbFile()
+		dbFile.parentFile?.mkdirs()
+		Database.connect("jdbc:sqlite:${dbFile.absolutePath}", driver = "org.sqlite.JDBC")
+	}
+
+	single<RefreshTokenStore> {
+		ExposedRefreshTokenStore(get()).also { it.initSchema() }
 	}
 }
 

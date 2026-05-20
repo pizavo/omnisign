@@ -14,11 +14,46 @@ import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.server.testing.*
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import org.jetbrains.exposed.sql.Database
+import java.io.File
+import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
+
+/**
+ * Run [block] with [SESSIONS_DB_FILE_PROPERTY] pointing to a unique temp file, isolating the
+ * refresh-token SQLite store from the user's real per-user data directory. Cleans up the
+ * file (and SQLite journal sidecar) afterwards even on test failure.
+ *
+ * @param block Receives the temp DB file so the test can wire a side-channel
+ *   [ExposedRefreshTokenStore] for seeding refresh tokens before the route exercises them.
+ */
+private inline fun <R> withTempSessionsDb(block: (File) -> R): R {
+    val tempDb = File.createTempFile("sessions-test-", ".db").also { it.delete() }
+    System.setProperty(SESSIONS_DB_FILE_PROPERTY, tempDb.absolutePath)
+    try {
+        return block(tempDb)
+    } finally {
+        System.clearProperty(SESSIONS_DB_FILE_PROPERTY)
+        tempDb.delete()
+        File("${tempDb.absolutePath}-journal").delete()
+    }
+}
+
+/**
+ * Create an [ExposedRefreshTokenStore] pointing at [dbFile] for in-test seeding of
+ * refresh tokens. Shares the SQLite file with the application's own store so writes
+ * made here are visible to the running app.
+ */
+private fun testRefreshTokenStore(dbFile: File): ExposedRefreshTokenStore {
+    val database = Database.connect("jdbc:sqlite:${dbFile.absolutePath}", driver = "org.sqlite.JDBC")
+    return ExposedRefreshTokenStore(database).also { it.initSchema() }
+}
 /**
  * Integration tests for the `/auth` route group, verifying login discovery, JWT
  * session endpoints, and authentication enforcement on protected routes.
@@ -99,88 +134,181 @@ class AuthRoutesTest : FunSpec({
 		}
 	}
 
-	test("POST /auth/refresh returns 401 without a token") {
-		testApplication {
-			application { module(ServerConfig(auth = authConfig)) }
-			val response = client.post("/auth/refresh")
-			response.status shouldBe HttpStatusCode.Unauthorized
+	test("POST /auth/refresh returns 400 when the JSON body is missing") {
+		withTempSessionsDb {
+			testApplication {
+				application { module(ServerConfig(auth = authConfig)) }
+				val response = client.post("/auth/refresh")
+				response.status shouldBe HttpStatusCode.BadRequest
+				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+				body["error"]?.jsonPrimitive?.content shouldBe "MISSING_REFRESH_TOKEN"
+			}
 		}
 	}
 
-	test("POST /auth/refresh returns a new token for a valid JWT") {
-		testApplication {
-			application { module(ServerConfig(auth = authConfig)) }
-
-			val jwtService = JwtSessionService(authConfig.session.copy(secret = jwtSecret))
-			val principal = AuthenticatedPrincipal(
-				userId = "u3",
-				email = "refresh@example.com",
-				displayName = "Refresh User",
-				providerName = "test",
-				authTime = kotlin.time.Clock.System.now(),
-			)
-			val originalToken = jwtService.issue(principal)
-
-			val response = client.post("/auth/refresh") {
-				bearerAuth(originalToken)
+	test("POST /auth/refresh returns 401 for an unknown refresh token") {
+		withTempSessionsDb {
+			testApplication {
+				application { module(ServerConfig(auth = authConfig)) }
+				val response = client.post("/auth/refresh") {
+					contentType(ContentType.Application.Json)
+					setBody("""{"refreshToken":"never-issued-by-this-server"}""")
+				}
+				response.status shouldBe HttpStatusCode.Unauthorized
+				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+				body["error"]?.jsonPrimitive?.content shouldBe "INVALID_REFRESH_TOKEN"
 			}
-			response.status shouldBe HttpStatusCode.OK
-
-			val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-			body["token"]?.jsonPrimitive?.content.shouldNotBeBlank()
 		}
 	}
 
-	test("POST /auth/refresh rejects a token whose authTime exceeds maxSessionSeconds") {
-		testApplication {
-			application { module(ServerConfig(auth = authConfig)) }
+	test("POST /auth/refresh returns a new access+refresh pair for a valid refresh token") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				application { module(ServerConfig(auth = authConfig)) }
 
-			val jwtService = JwtSessionService(authConfig.session.copy(secret = jwtSecret))
-			val tooOldAuthTime = kotlin.time.Clock.System.now() -
-					(authConfig.session.maxSessionSeconds + 60).seconds
-			val expiredSessionPrincipal = AuthenticatedPrincipal(
-				userId = "u-expired",
-				email = "stale@example.com",
-				displayName = null,
-				providerName = "test",
-				authTime = tooOldAuthTime,
-			)
-			val token = jwtService.issue(expiredSessionPrincipal)
+				val store = testRefreshTokenStore(tempDb)
+				val principal = AuthenticatedPrincipal(
+					userId = "u3",
+					email = "refresh@example.com",
+					displayName = "Refresh User",
+					providerName = "test",
+					authTime = Clock.System.now(),
+				)
+				val refresh = runBlocking { store.issue(principal, 1.days) }
 
-			val response = client.post("/auth/refresh") {
-				bearerAuth(token)
+				val response = client.post("/auth/refresh") {
+					contentType(ContentType.Application.Json)
+					setBody("""{"refreshToken":"${refresh.token}"}""")
+				}
+				response.status shouldBe HttpStatusCode.OK
+
+				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+				body["token"]?.jsonPrimitive?.content.shouldNotBeBlank()
+				body["refreshToken"]?.jsonPrimitive?.content.shouldNotBeBlank()
+				body["refreshToken"]?.jsonPrimitive?.content shouldNotBe refresh.token
 			}
-			response.status shouldBe HttpStatusCode.Unauthorized
-			val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-			body["error"]?.jsonPrimitive?.content shouldBe "SESSION_EXPIRED"
 		}
 	}
 
-	test("POST /auth/refresh preserves the original authTime across the new token") {
-		testApplication {
-			application { module(ServerConfig(auth = authConfig)) }
+	test("POST /auth/refresh rotates: the consumed refresh token cannot be reused") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				application { module(ServerConfig(auth = authConfig)) }
 
-			val jwtService = JwtSessionService(authConfig.session.copy(secret = jwtSecret))
-			val originalAuthTime = kotlin.time.Clock.System.now() - 30.minutes
-			val principal = AuthenticatedPrincipal(
-				userId = "u-stable",
-				email = "stable@example.com",
-				displayName = null,
-				providerName = "test",
-				authTime = originalAuthTime,
-			)
-			val originalToken = jwtService.issue(principal)
+				val store = testRefreshTokenStore(tempDb)
+				val principal = AuthenticatedPrincipal(
+					userId = "u-rotate",
+					email = "rotate@example.com",
+					displayName = null,
+					providerName = "test",
+					authTime = Clock.System.now(),
+				)
+				val refresh = runBlocking { store.issue(principal, 1.days) }
 
-			val response = client.post("/auth/refresh") {
-				bearerAuth(originalToken)
+				val first = client.post("/auth/refresh") {
+					contentType(ContentType.Application.Json)
+					setBody("""{"refreshToken":"${refresh.token}"}""")
+				}
+				first.status shouldBe HttpStatusCode.OK
+
+				val second = client.post("/auth/refresh") {
+					contentType(ContentType.Application.Json)
+					setBody("""{"refreshToken":"${refresh.token}"}""")
+				}
+				second.status shouldBe HttpStatusCode.Unauthorized
+				val body = Json.parseToJsonElement(second.bodyAsText()).jsonObject
+				body["error"]?.jsonPrimitive?.content shouldBe "INVALID_REFRESH_TOKEN"
 			}
-			response.status shouldBe HttpStatusCode.OK
+		}
+	}
 
-			val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-			val refreshedToken = body["token"]!!.jsonPrimitive.content
-			val refreshedPrincipal = jwtService.verify(refreshedToken)
-			refreshedPrincipal shouldNotBe null
-			refreshedPrincipal!!.authTime.epochSeconds shouldBe originalAuthTime.epochSeconds
+	test("POST /auth/refresh rejects a refresh token whose authTime exceeds maxSessionSeconds") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				application { module(ServerConfig(auth = authConfig)) }
+
+				val store = testRefreshTokenStore(tempDb)
+				val tooOldAuthTime = Clock.System.now() -
+						(authConfig.session.maxSessionSeconds + 60).seconds
+				val expiredSessionPrincipal = AuthenticatedPrincipal(
+					userId = "u-expired",
+					email = "stale@example.com",
+					displayName = null,
+					providerName = "test",
+					authTime = tooOldAuthTime,
+				)
+				val refresh = runBlocking { store.issue(expiredSessionPrincipal, 1.days) }
+
+				val response = client.post("/auth/refresh") {
+					contentType(ContentType.Application.Json)
+					setBody("""{"refreshToken":"${refresh.token}"}""")
+				}
+				response.status shouldBe HttpStatusCode.Unauthorized
+				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+				body["error"]?.jsonPrimitive?.content shouldBe "SESSION_EXPIRED"
+			}
+		}
+	}
+
+	test("POST /auth/refresh preserves the original authTime across the rotated tokens") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				application { module(ServerConfig(auth = authConfig)) }
+
+				val store = testRefreshTokenStore(tempDb)
+				val jwtService = JwtSessionService(authConfig.session.copy(secret = jwtSecret))
+				val originalAuthTime = Clock.System.now() - 30.minutes
+				val principal = AuthenticatedPrincipal(
+					userId = "u-stable",
+					email = "stable@example.com",
+					displayName = null,
+					providerName = "test",
+					authTime = originalAuthTime,
+				)
+				val refresh = runBlocking { store.issue(principal, 1.days) }
+
+				val response = client.post("/auth/refresh") {
+					contentType(ContentType.Application.Json)
+					setBody("""{"refreshToken":"${refresh.token}"}""")
+				}
+				response.status shouldBe HttpStatusCode.OK
+
+				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+				val refreshedAccessToken = body["token"]!!.jsonPrimitive.content
+				val refreshedPrincipal = jwtService.verify(refreshedAccessToken)
+				refreshedPrincipal shouldNotBe null
+				refreshedPrincipal!!.authTime.epochSeconds shouldBe originalAuthTime.epochSeconds
+			}
+		}
+	}
+
+	test("POST /auth/logout deletes the supplied refresh token") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				application { module(ServerConfig(auth = authConfig)) }
+
+				val store = testRefreshTokenStore(tempDb)
+				val principal = AuthenticatedPrincipal(
+					userId = "u-logout",
+					email = "logout@example.com",
+					displayName = null,
+					providerName = "test",
+					authTime = Clock.System.now(),
+				)
+				val refresh = runBlocking { store.issue(principal, 1.days) }
+
+				val logout = client.post("/auth/logout") {
+					contentType(ContentType.Application.Json)
+					setBody("""{"refreshToken":"${refresh.token}"}""")
+				}
+				logout.status shouldBe HttpStatusCode.NoContent
+
+				val refreshAttempt = client.post("/auth/refresh") {
+					contentType(ContentType.Application.Json)
+					setBody("""{"refreshToken":"${refresh.token}"}""")
+				}
+				refreshAttempt.status shouldBe HttpStatusCode.Unauthorized
+			}
 		}
 	}
 
@@ -272,16 +400,19 @@ class AuthRoutesTest : FunSpec({
 	}
 
 	test("header-injection callback issues a token when the shared secret matches") {
-		testApplication {
-			application { module(ServerConfig(auth = headerInjectionAuthConfig)) }
-			val response = client.get("/auth/callback/shib") {
-				header("X-Header-Injection-Token", headerInjectionSecret)
-				header("X-Remote-User", "alice@example.com")
-				header("X-Shib-Mail", "alice@example.com")
+		withTempSessionsDb {
+			testApplication {
+				application { module(ServerConfig(auth = headerInjectionAuthConfig)) }
+				val response = client.get("/auth/callback/shib") {
+					header("X-Header-Injection-Token", headerInjectionSecret)
+					header("X-Remote-User", "alice@example.com")
+					header("X-Shib-Mail", "alice@example.com")
+				}
+				response.status shouldBe HttpStatusCode.OK
+				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+				body["token"]?.jsonPrimitive?.content.shouldNotBeBlank()
+				body["refreshToken"]?.jsonPrimitive?.content.shouldNotBeBlank()
 			}
-			response.status shouldBe HttpStatusCode.OK
-			val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-			body["token"]?.jsonPrimitive?.content.shouldNotBeBlank()
 		}
 	}
 
