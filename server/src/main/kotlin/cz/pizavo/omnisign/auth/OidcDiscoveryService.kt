@@ -19,13 +19,18 @@ private val logger = KotlinLogging.logger {}
  *
  * Only the fields required for the authorization-code flow are captured here.
  *
+ * @property issuer The IdP's canonical issuer URL. Used by [IdTokenVerifier] as the
+ *   expected value of the id_token `iss` claim — OIDC requires the token's issuer to
+ *   match the discovery document's issuer exactly.
  * @property authorizationEndpoint URL of the authorization endpoint.
  * @property tokenEndpoint URL of the token endpoint.
  * @property userInfoEndpoint URL of the UserInfo endpoint.
- * @property jwksUri URL of the JSON Web Key Set (used for token signature verification by Ktor).
+ * @property jwksUri URL of the JSON Web Key Set, fetched by [IdTokenVerifier] to resolve
+ *   the public key used to sign the id_token.
  */
 @Serializable
 data class OidcDiscoveryDocument(
+    @SerialName("issuer") val issuer: String,
     @SerialName("authorization_endpoint") val authorizationEndpoint: String,
     @SerialName("token_endpoint") val tokenEndpoint: String,
     @SerialName("userinfo_endpoint") val userInfoEndpoint: String? = null,

@@ -53,6 +53,8 @@ dependencies {
     implementation(libs.exposed.jdbc)
     implementation(libs.sqlite.jdbc)
 
+    implementation(libs.jwks.rsa)
+
     testImplementation(libs.ktor.server.test)
     testImplementation(libs.ktor.client.mock)
     testImplementation(libs.kotest.engine)

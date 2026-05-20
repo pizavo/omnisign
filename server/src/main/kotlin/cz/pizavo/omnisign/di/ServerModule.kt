@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.di
 
 import cz.pizavo.omnisign.auth.ExposedPkceVerifierStore
 import cz.pizavo.omnisign.auth.ExposedRefreshTokenStore
+import cz.pizavo.omnisign.auth.IdTokenVerifier
 import cz.pizavo.omnisign.auth.JwtSessionService
 import cz.pizavo.omnisign.auth.OidcDiscoveryService
 import cz.pizavo.omnisign.auth.OidcUserInfoService
@@ -66,6 +67,8 @@ import kotlin.coroutines.CoroutineContext
  * - [PkceService] (RFC 7636) — verifier generation, S256 challenge derivation, and the
  *   thin protocol layer over [PkceVerifierStore].
  * - [OidcDiscoveryService] and [OidcUserInfoService] for the OIDC authorization-code flow.
+ * - [IdTokenVerifier] for cryptographic verification of the OIDC `id_token` returned by
+ *   the IdP alongside the access token on the authorization-code callback.
  *
  * @param serverConfig Preloaded server configuration.
  */
@@ -89,6 +92,7 @@ fun serverModule(serverConfig: ServerConfig) = module {
 
 	single<OidcDiscoveryService> { OidcDiscoveryService(get()) }
 	single<OidcUserInfoService> { OidcUserInfoService(get()) }
+	single<IdTokenVerifier> { IdTokenVerifier(get()) }
 
 	single<JwtSessionService> {
 		val config = serverConfig.auth?.session ?: SessionConfig()

@@ -60,6 +60,7 @@ fun Route.authRoutes(config: AuthConfig?) {
     val jwtService by inject<JwtSessionService>()
     val discoveryService by inject<OidcDiscoveryService>()
     val userInfoService by inject<OidcUserInfoService>()
+    val idTokenVerifier by inject<IdTokenVerifier>()
     val refreshTokenStore by inject<RefreshTokenStore>()
 
     route("/auth") {
@@ -115,6 +116,40 @@ fun Route.authRoutes(config: AuthConfig?) {
                     return@get
                 }
 
+                val shouldVerifyIdToken =
+                    provider.verifyIdToken && provider.preset?.requiresManualUrls != true
+                val verifiedIdToken: VerifiedIdToken? = if (shouldVerifyIdToken) {
+                    val idTokenString = oauthPrincipal.extraParameters["id_token"]
+                    if (idTokenString.isNullOrBlank()) {
+                        call.respond(
+                            HttpStatusCode.Unauthorized,
+                            ApiError(
+                                error = "ID_TOKEN_MISSING",
+                                message = "Provider '${provider.name}' did not return an id_token. " +
+                                    "Either the IdP is not OIDC-compliant or the `openid` scope was rejected; " +
+                                    "set verifyIdToken: false in server.yml for non-OIDC providers.",
+                            ),
+                        )
+                        return@get
+                    }
+                    try {
+                        idTokenVerifier.verify(provider, idTokenString)
+                    } catch (e: IdTokenVerificationException) {
+                        logger.warn(e) { "id_token verification failed for provider '${provider.name}'" }
+                        call.respond(
+                            HttpStatusCode.Unauthorized,
+                            ApiError(
+                                error = "ID_TOKEN_INVALID",
+                                message = "id_token from provider '${provider.name}' failed verification: " +
+                                    "${e.message}",
+                            ),
+                        )
+                        return@get
+                    }
+                } else {
+                    null
+                }
+
                 val result = resolvePrincipalFromOidc(
                     provider = provider,
                     oauthToken = oauthPrincipal,
@@ -126,6 +161,23 @@ fun Route.authRoutes(config: AuthConfig?) {
                     call.respond(
                         HttpStatusCode.Unauthorized,
                         ApiError(error = "USERINFO_FAILED", message = "Could not resolve user identity from provider '${provider.name}'"),
+                    )
+                    return@get
+                }
+
+                if (verifiedIdToken != null && verifiedIdToken.subject != result.principal.userId) {
+                    logger.warn {
+                        "id_token sub ('${verifiedIdToken.subject}') does not match UserInfo sub " +
+                            "('${result.principal.userId}') for provider '${provider.name}' — possible " +
+                            "UserInfo substitution or IdP misconfiguration"
+                    }
+                    call.respond(
+                        HttpStatusCode.Unauthorized,
+                        ApiError(
+                            error = "ID_TOKEN_SUB_MISMATCH",
+                            message = "id_token subject does not match UserInfo subject; " +
+                                "rejecting the login to avoid trusting a substituted identity.",
+                        ),
                     )
                     return@get
                 }

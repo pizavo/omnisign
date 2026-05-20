@@ -46,6 +46,14 @@ sealed interface SsoProviderConfig {
  *   Set to `false` only for legacy or homegrown IdPs that reject the `code_challenge` /
  *   `code_verifier` parameters; doing so weakens the flow's security and should be a last
  *   resort.
+ * @property verifyIdToken Whether to parse and cryptographically verify the OIDC `id_token`
+ *   returned by the IdP on every callback. Defaults to `true` — OIDC mandates that any
+ *   provider serving the `openid` scope returns a signed id_token, and verifying its
+ *   signature against the IdP's `jwks_uri` plus its `iss` / `aud` / `exp` claims gives
+ *   defense in depth against UserInfo tampering and against trusting any IdP-shaped
+ *   endpoint that simply returns a plausible identity. Set to `false` for OAuth2-only
+ *   providers that do not issue id_tokens (e.g., GitHub via [SsoProviderPreset.GITHUB]);
+ *   the callback then falls back to UserInfo alone.
  */
 data class OidcProviderConfig(
     override val name: String,
@@ -59,6 +67,7 @@ data class OidcProviderConfig(
     val allowedEmailDomains: List<String>? = null,
     val requiredClaims: Map<String, List<String>>? = null,
     val pkce: Boolean = true,
+    val verifyIdToken: Boolean = true,
 ) : SsoProviderConfig
 
 /**
