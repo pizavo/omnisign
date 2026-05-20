@@ -1,9 +1,12 @@
 package cz.pizavo.omnisign.di
 
+import cz.pizavo.omnisign.auth.ExposedPkceVerifierStore
 import cz.pizavo.omnisign.auth.ExposedRefreshTokenStore
 import cz.pizavo.omnisign.auth.JwtSessionService
 import cz.pizavo.omnisign.auth.OidcDiscoveryService
 import cz.pizavo.omnisign.auth.OidcUserInfoService
+import cz.pizavo.omnisign.auth.PkceService
+import cz.pizavo.omnisign.auth.PkceVerifierStore
 import cz.pizavo.omnisign.auth.RefreshTokenStore
 import cz.pizavo.omnisign.auth.ServerPasswordCallback
 import cz.pizavo.omnisign.auth.sessionsDbFile
@@ -55,6 +58,13 @@ import kotlin.coroutines.CoroutineContext
  *   tokens across server restarts. Schema is initialised on first injection; the
  *   binding is lazy so deployments that never reach `/auth/refresh` or `/auth/logout`
  *   never touch SQLite or write the file to disk.
+ * - [PkceVerifierStore] (concrete [ExposedPkceVerifierStore]) for persisting in-flight
+ *   PKCE code verifiers across the redirect → IdP → callback hop. Shares the same
+ *   sessions database file as [RefreshTokenStore]; schema is initialised on first
+ *   injection. Binding is lazy so deployments without any [OidcProviderConfig] never
+ *   touch SQLite for PKCE either.
+ * - [PkceService] (RFC 7636) — verifier generation, S256 challenge derivation, and the
+ *   thin protocol layer over [PkceVerifierStore].
  * - [OidcDiscoveryService] and [OidcUserInfoService] for the OIDC authorization-code flow.
  *
  * @param serverConfig Preloaded server configuration.
@@ -122,6 +132,14 @@ fun serverModule(serverConfig: ServerConfig) = module {
 
 	single<RefreshTokenStore> {
 		ExposedRefreshTokenStore(get()).also { it.initSchema() }
+	}
+
+	single<PkceVerifierStore> {
+		ExposedPkceVerifierStore(get()).also { it.initSchema() }
+	}
+
+	single<PkceService> {
+		PkceService(get())
 	}
 }
 

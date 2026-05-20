@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.plugins
 
 import cz.pizavo.omnisign.auth.JwtSessionService
 import cz.pizavo.omnisign.auth.OidcDiscoveryService
+import cz.pizavo.omnisign.auth.PkceService
 import cz.pizavo.omnisign.config.AuthConfig
 import cz.pizavo.omnisign.config.HeaderInjectionProviderConfig
 import cz.pizavo.omnisign.config.OidcProviderConfig
@@ -43,6 +44,16 @@ private val logger = KotlinLogging.logger {}
  *    closes that gap; the HMAC key comes from `OMNISIGN_OAUTH_NONCE_SECRET` (see
  *    [serverModule][cz.pizavo.omnisign.di.serverModule]).
  *
+ *    Each `oauth { … }` block also performs PKCE (RFC 7636) via [PkceService] when
+ *    [OidcProviderConfig.pkce] is `true` (the default). `authorizeUrlInterceptor`
+ *    appends `code_challenge` + `code_challenge_method=S256` to the authorize URL,
+ *    keyed on the OAuth `state` parameter Ktor has just generated. `providerLookup`
+ *    consumes the matching verifier from [PkceService] on the callback hop and
+ *    injects it into the token-exchange POST via `extraTokenParameters`. PKCE binds
+ *    the authorization code to the entity that originated the flow, defending against
+ *    code-injection attacks even if the client secret is leaked (RFC 9700 / OAuth 2.1
+ *    requires this for all clients).
+ *
  * [HeaderInjectionProviderConfig] providers are not registered here; they are handled
  * directly in the `/auth/callback/{name}` route by reading the injected request headers.
  *
@@ -54,6 +65,7 @@ fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String
     val jwtService by inject<JwtSessionService>()
     val discoveryService by inject<OidcDiscoveryService>()
     val oauthNonceManager by inject<NonceManager>()
+    val pkceService by inject<PkceService>()
 
     install(Authentication) {
         bearer(JwtSessionService.AUTH_NAME_JWT) {
@@ -71,6 +83,18 @@ fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String
             oauth(authName) {
                 urlProvider = { redirectUrl }
                 providerLookup = {
+                    val verifier: String? = if (provider.pkce) {
+                        parameters["state"]?.let { state ->
+                            runBlocking { pkceService.consume(state) }
+                        }
+                    } else {
+                        null
+                    }
+
+                    val extraTokenParams: List<Pair<String, String>> = listOfNotNull(
+                        verifier?.let { "code_verifier" to it },
+                    )
+
                     OAuthServerSettings.OAuth2ServerSettings(
                         name = provider.name,
                         authorizeUrl = authUrl,
@@ -80,12 +104,26 @@ fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String
                         requestMethod = io.ktor.http.HttpMethod.Post,
                         defaultScopes = provider.scopes,
                         nonceManager = oauthNonceManager,
+                        extraTokenParameters = extraTokenParams,
+                        authorizeUrlInterceptor = {
+                            if (provider.pkce) {
+                                val state = parameters["state"]
+                                    ?: error(
+                                        "Ktor OAuth should have appended `state` to the authorize URL " +
+                                            "before authorizeUrlInterceptor runs — got null for provider '${provider.name}'",
+                                    )
+                                val challenge = runBlocking { pkceService.begin(state) }
+                                parameters.append("code_challenge", challenge.challenge)
+                                parameters.append("code_challenge_method", challenge.method)
+                            }
+                        },
                     )
                 }
                 client = io.ktor.client.HttpClient(io.ktor.client.engine.cio.CIO)
             }
 
-            logger.info { "Registered OIDC provider '${provider.name}' (${provider.displayName}) — redirect: $redirectUrl" }
+            val pkceLabel = if (provider.pkce) " — PKCE enabled" else " — PKCE disabled"
+            logger.info { "Registered OIDC provider '${provider.name}' (${provider.displayName}) — redirect: $redirectUrl$pkceLabel" }
         }
 
         config?.providers?.filterIsInstance<HeaderInjectionProviderConfig>()?.forEach { provider ->

@@ -3,10 +3,14 @@ package cz.pizavo.omnisign.auth
 import cz.pizavo.omnisign.config.AuthConfig
 import cz.pizavo.omnisign.config.HeaderInjectionProviderConfig
 import cz.pizavo.omnisign.config.JwtAlgorithmType
+import cz.pizavo.omnisign.config.OidcProviderConfig
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.SessionConfig
+import cz.pizavo.omnisign.config.SsoProviderPreset
 import cz.pizavo.omnisign.module
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldNotBeBlank
@@ -20,6 +24,8 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.exposed.sql.Database
 import java.io.File
+import java.security.MessageDigest
+import java.util.Base64
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
@@ -423,6 +429,80 @@ class AuthRoutesTest : FunSpec({
 				header("X-Header-Injection-Token", headerInjectionSecret)
 			}
 			response.status shouldBe HttpStatusCode.Unauthorized
+		}
+	}
+
+	val oauthStateSecret = "oauth-state-secret-padded-to-at-least-64-bytes-for-hmac-nonce-key!"
+	fun oidcAuthConfig(pkceEnabled: Boolean) = authConfig.copy(
+		providers = listOf(
+			OidcProviderConfig(
+				name = "github",
+				preset = SsoProviderPreset.GITHUB,
+				clientId = "test-client-id",
+				clientSecret = "test-client-secret",
+				pkce = pkceEnabled,
+			),
+		),
+		oauthStateSecret = oauthStateSecret,
+	)
+
+	test("OIDC /auth/redirect appends code_challenge and code_challenge_method=S256 when PKCE is enabled") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				application { module(ServerConfig(auth = oidcAuthConfig(pkceEnabled = true))) }
+
+				val noRedirectClient = createClient {
+					followRedirects = false
+				}
+				val response = noRedirectClient.get("/auth/redirect/github")
+				response.status shouldBe HttpStatusCode.Found
+
+				val location = response.headers["Location"]
+				location.shouldNotBeNull()
+				val locUrl = Url(location)
+				val challenge = locUrl.parameters["code_challenge"]
+				val method = locUrl.parameters["code_challenge_method"]
+				val state = locUrl.parameters["state"]
+				challenge.shouldNotBeNull()
+				challenge.shouldNotBeBlank()
+				method shouldBe "S256"
+				state.shouldNotBeNull()
+				state.shouldNotBeBlank()
+
+				val verifierStore = ExposedPkceVerifierStore(
+					Database.connect(
+						"jdbc:sqlite:${tempDb.absolutePath}",
+						driver = "org.sqlite.JDBC",
+					),
+				)
+				val storedVerifier = verifierStore.consume(state)
+				storedVerifier.shouldNotBeNull()
+				val expectedChallenge = Base64.getUrlEncoder().withoutPadding().encodeToString(
+					MessageDigest.getInstance("SHA-256")
+						.digest(storedVerifier.toByteArray(Charsets.US_ASCII)),
+				)
+				challenge shouldBe expectedChallenge
+			}
+		}
+	}
+
+	test("OIDC /auth/redirect omits PKCE parameters when provider.pkce is false") {
+		withTempSessionsDb {
+			testApplication {
+				application { module(ServerConfig(auth = oidcAuthConfig(pkceEnabled = false))) }
+
+				val noRedirectClient = createClient {
+					followRedirects = false
+				}
+				val response = noRedirectClient.get("/auth/redirect/github")
+				response.status shouldBe HttpStatusCode.Found
+
+				val location = response.headers["Location"]
+				location.shouldNotBeNull()
+				val locUrl = Url(location)
+				locUrl.parameters["code_challenge"].shouldBeNull()
+				locUrl.parameters["code_challenge_method"].shouldBeNull()
+			}
 		}
 	}
 })

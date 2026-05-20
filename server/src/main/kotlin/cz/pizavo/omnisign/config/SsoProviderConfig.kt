@@ -40,6 +40,12 @@ sealed interface SsoProviderConfig {
  *   the listed values. Both single-valued string claims (e.g. `schac_home_organization`) and
  *   multivalued array claims (e.g. `eduperson_scoped_affiliation`) are supported. Useful for
  *   restricting access by institution or affiliation role without relying on email domain alone.
+ * @property pkce Whether to perform PKCE (RFC 7636) on this provider's authorization-code flow.
+ *   Defaults to `true` — every modern IdP supports PKCE and the OAuth 2.1 BCP (RFC 9700)
+ *   requires it even for confidential clients to defend against authorization-code injection.
+ *   Set to `false` only for legacy or homegrown IdPs that reject the `code_challenge` /
+ *   `code_verifier` parameters; doing so weakens the flow's security and should be a last
+ *   resort.
  */
 data class OidcProviderConfig(
     override val name: String,
@@ -52,6 +58,7 @@ data class OidcProviderConfig(
     val displayName: String = name,
     val allowedEmailDomains: List<String>? = null,
     val requiredClaims: Map<String, List<String>>? = null,
+    val pkce: Boolean = true,
 ) : SsoProviderConfig
 
 /**
