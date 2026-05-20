@@ -3,6 +3,7 @@ package cz.pizavo.omnisign
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
+import cz.pizavo.omnisign.data.service.PcscMonitorService
 import cz.pizavo.omnisign.data.service.Pkcs11CacheInvalidator
 import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
 import cz.pizavo.omnisign.data.service.TrustedListRefreshScheduler
@@ -16,11 +17,10 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import org.koin.ktor.ext.inject
+import org.koin.ktor.ext.get
 import org.koin.ktor.plugin.Koin
 import java.io.File
 import java.security.KeyStore
@@ -202,8 +202,14 @@ private fun Application.attachPkcs11CacheInvalidatorIfNeeded(serverConfig: Serve
 		return
 	}
 
-	val invalidator = inject<Pkcs11CacheInvalidator>().value
+	val invalidator: Pkcs11CacheInvalidator = get()
+	val pcscMonitor: PcscMonitorService = get()
 	logger.debug { "PKCS#11 cache invalidator attached (${invalidator::class.simpleName})" }
+
+	monitor.subscribe(ApplicationStopping) {
+		invalidator.close()
+		pcscMonitor.close()
+	}
 }
 
 /**
@@ -226,10 +232,11 @@ private fun Application.launchPkcs11WarmupIfNeeded(serverConfig: ServerConfig) {
 		return
 	}
 
-	val warmupService by inject<Pkcs11WarmupService>()
-	val configRepo by inject<ConfigRepository>()
+	val warmupService: Pkcs11WarmupService = get()
+	val configRepo: ConfigRepository = get()
+	val signal: MutableStateFlow<Boolean> = get()
 
-	CoroutineScope(Dispatchers.IO).launch {
+	launch(Dispatchers.IO) {
 		try {
 			val config = configRepo.getCurrentConfig()
 			val userLibs = config.global.customPkcs11Libraries.map { it.name to it.path }
@@ -238,7 +245,6 @@ private fun Application.launchPkcs11WarmupIfNeeded(serverConfig: ServerConfig) {
 			warmupService.warmup(appDataPkcs11Dir = pkcs11Dir, userPkcs11Libraries = userLibs)
 		} catch (e: Exception) {
 			logger.warn(e) { "PKCS#11 background warmup failed — certificate discovery will use subprocess probing" }
-			val signal by inject<MutableStateFlow<Boolean>>()
 			signal.value = true
 		}
 	}
@@ -262,8 +268,8 @@ private fun Application.launchTrustedListRefreshIfNeeded(serverConfig: ServerCon
 		return
 	}
 
-	val scheduler by inject<TrustedListRefreshScheduler>()
-	CoroutineScope(Dispatchers.IO).launch {
+	val scheduler: TrustedListRefreshScheduler = get()
+	launch(Dispatchers.IO) {
 		try {
 			logger.info { "Launching trusted-list background warmup and refresh cycle" }
 			scheduler.run()

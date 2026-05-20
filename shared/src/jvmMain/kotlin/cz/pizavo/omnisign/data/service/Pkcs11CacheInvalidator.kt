@@ -5,6 +5,7 @@ import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -83,7 +84,7 @@ class Pkcs11CacheInvalidator(
 	private val appDataPkcs11Dir: File,
 	private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
 	private val candidateCacheIsCardDependent: Boolean = System.getProperty("os.name").lowercase().contains("win"),
-) {
+) : AutoCloseable {
 
 	init {
 		scope.launch {
@@ -96,6 +97,22 @@ class Pkcs11CacheInvalidator(
 			}
 		}
 		logger.info { "Pkcs11CacheInvalidator started — listening for PC/SC reader-state changes" }
+	}
+
+	/**
+	 * Cancel the event-collection coroutine and any in-flight background rediscovery cycles.
+	 *
+	 * Mirrors [PcscMonitorService.close]: bounded-lifecycle hosts (Ktor's `testApplication`)
+	 * call this on application stop so the collector does not survive into the next test,
+	 * which otherwise accumulates one orphan coroutine per `testApplication { … }` and
+	 * eventually OOMs the test JVM.
+	 *
+	 * After [close] the invalidator no longer reacts to PC/SC events — that is by design;
+	 * the next application start constructs a fresh invalidator with its own scope. Safe
+	 * to call multiple times; cancelling an already-cancelled scope is a no-op.
+	 */
+	override fun close() {
+		scope.cancel()
 	}
 
 	/**
