@@ -40,7 +40,7 @@ class SystemRoutesTest : FunSpec({
 
     test("GET /api/v1/health returns 200") {
         testApplication {
-            application { module() }
+            application { module(ServerConfig(allowedOperations = emptySet())) }
             val response = client.get("/api/v1/health")
             response.status shouldBe HttpStatusCode.OK
         }
@@ -48,7 +48,7 @@ class SystemRoutesTest : FunSpec({
 
     test("responses include X-Content-Type-Options: nosniff") {
         testApplication {
-            application { module() }
+            application { module(ServerConfig(allowedOperations = emptySet())) }
             val response = client.get("/api/v1/health")
             response.headers["X-Content-Type-Options"] shouldBe "nosniff"
         }
@@ -56,7 +56,7 @@ class SystemRoutesTest : FunSpec({
 
     test("responses include X-Frame-Options: DENY") {
         testApplication {
-            application { module() }
+            application { module(ServerConfig(allowedOperations = emptySet())) }
             val response = client.get("/api/v1/health")
             response.headers["X-Frame-Options"] shouldBe "DENY"
         }
@@ -64,7 +64,7 @@ class SystemRoutesTest : FunSpec({
 
     test("responses include Referrer-Policy") {
         testApplication {
-            application { module() }
+            application { module(ServerConfig(allowedOperations = emptySet())) }
             val response = client.get("/api/v1/health")
             response.headers["Referrer-Policy"] shouldBe "strict-origin-when-cross-origin"
         }
@@ -72,7 +72,7 @@ class SystemRoutesTest : FunSpec({
 
     test("X-Request-Id is generated and echoed when not provided") {
         testApplication {
-            application { module() }
+            application { module(ServerConfig(allowedOperations = emptySet())) }
             val response = client.get("/api/v1/health")
             response.headers[HttpHeaders.XRequestId].shouldNotBeNull()
         }
@@ -80,7 +80,7 @@ class SystemRoutesTest : FunSpec({
 
     test("X-Request-Id from request is echoed back in the response") {
         testApplication {
-            application { module() }
+            application { module(ServerConfig(allowedOperations = emptySet())) }
             val id = "my-correlation-id-123"
             val response = client.get("/api/v1/health") {
                 header(HttpHeaders.XRequestId, id)
@@ -91,7 +91,7 @@ class SystemRoutesTest : FunSpec({
 
     test("GET /api/v1/capabilities returns authEnabled false when auth not configured") {
         testApplication {
-            application { module(ServerConfig(auth = null)) }
+            application { module(ServerConfig(auth = null, allowedOperations = emptySet())) }
             val response = client.get("/api/v1/capabilities")
             response.status shouldBe HttpStatusCode.OK
             val body = json.decodeFromString<CapabilitiesResponse>(response.bodyAsText())
@@ -101,7 +101,7 @@ class SystemRoutesTest : FunSpec({
 
     test("GET /api/v1/capabilities returns authEnabled true when auth is configured and enabled") {
         testApplication {
-            application { module(ServerConfig(auth = authConfig)) }
+            application { module(ServerConfig(auth = authConfig, allowedOperations = emptySet())) }
             val response = client.get("/api/v1/capabilities")
             response.status shouldBe HttpStatusCode.OK
             val body = json.decodeFromString<CapabilitiesResponse>(response.bodyAsText())
@@ -111,7 +111,7 @@ class SystemRoutesTest : FunSpec({
 
     test("GET /api/v1/capabilities returns empty profiles to unauthenticated callers when auth enabled") {
         testApplication {
-            application { module(ServerConfig(auth = authConfig)) }
+            application { module(ServerConfig(auth = authConfig, allowedOperations = emptySet())) }
             val response = client.get("/api/v1/capabilities")
             response.status shouldBe HttpStatusCode.OK
             val body = json.decodeFromString<CapabilitiesResponse>(response.bodyAsText())
@@ -121,7 +121,7 @@ class SystemRoutesTest : FunSpec({
 
     test("GET /api/v1/capabilities returns profiles to authenticated callers when auth enabled") {
         testApplication {
-            application { module(ServerConfig(auth = authConfig)) }
+            application { module(ServerConfig(auth = authConfig, allowedOperations = emptySet())) }
 
             val jwtService = JwtSessionService(authConfig.session)
             val token = jwtService.issue(

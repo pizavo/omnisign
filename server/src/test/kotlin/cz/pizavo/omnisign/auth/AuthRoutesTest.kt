@@ -60,6 +60,17 @@ private fun testRefreshTokenStore(dbFile: File): ExposedRefreshTokenStore {
     val database = Database.connect("jdbc:sqlite:${dbFile.absolutePath}", driver = "org.sqlite.JDBC")
     return ExposedRefreshTokenStore(database).also { it.initSchema() }
 }
+
+/**
+ * Build a [ServerConfig] suitable for `/auth` integration tests: [auth] under test,
+ * `allowedOperations` cleared to the empty set so the LOTL background warmup and PKCS#11
+ * paths are skipped. Each individual `testApplication` boot drops from ~5s (LOTL XML
+ * fetch + parse) to milliseconds. The auth tests do not exercise DSS, and the protected-
+ * route tests assert only on the auth gate (`shouldNotBe Unauthorized`), which a `503`
+ * from a disabled validate route satisfies equally well.
+ */
+private fun authTestConfig(auth: AuthConfig?): ServerConfig =
+    ServerConfig(auth = auth, allowedOperations = emptySet())
 /**
  * Integration tests for the `/auth` route group, verifying login discovery, JWT
  * session endpoints, and authentication enforcement on protected routes.
@@ -83,7 +94,7 @@ class AuthRoutesTest : FunSpec({
 	
 	test("GET /auth/login returns 503 when no providers are configured") {
 		testApplication {
-			application { module(ServerConfig(auth = authConfig)) }
+			application { module(authTestConfig(authConfig)) }
 			val response = client.get("/auth/login")
 			response.status shouldBe HttpStatusCode.ServiceUnavailable
 		}
@@ -91,7 +102,7 @@ class AuthRoutesTest : FunSpec({
 	
 	test("GET /auth/session returns 401 without a token") {
 		testApplication {
-			application { module(ServerConfig(auth = authConfig)) }
+			application { module(authTestConfig(authConfig)) }
 			val response = client.get("/auth/session")
 			response.status shouldBe HttpStatusCode.Unauthorized
 		}
@@ -99,7 +110,7 @@ class AuthRoutesTest : FunSpec({
 	
 	test("GET /auth/session returns 401 with a malformed bearer token") {
 		testApplication {
-			application { module(ServerConfig(auth = authConfig)) }
+			application { module(authTestConfig(authConfig)) }
 			val response = client.get("/auth/session") {
 				bearerAuth("not-a-valid-jwt")
 			}
@@ -109,7 +120,7 @@ class AuthRoutesTest : FunSpec({
 	
 	test("GET /auth/session returns 200 with a valid JWT") {
 		testApplication {
-			application { module(ServerConfig(auth = authConfig)) }
+			application { module(authTestConfig(authConfig)) }
 			
 			val jwtService = JwtSessionService(authConfig.session.copy(secret = jwtSecret))
 			val principal = AuthenticatedPrincipal(
@@ -134,7 +145,7 @@ class AuthRoutesTest : FunSpec({
 	
 	test("POST /auth/logout always returns 204") {
 		testApplication {
-			application { module(ServerConfig(auth = authConfig)) }
+			application { module(authTestConfig(authConfig)) }
 			val response = client.post("/auth/logout")
 			response.status shouldBe HttpStatusCode.NoContent
 		}
@@ -143,7 +154,7 @@ class AuthRoutesTest : FunSpec({
 	test("POST /auth/refresh returns 400 when the JSON body is missing") {
 		withTempSessionsDb {
 			testApplication {
-				application { module(ServerConfig(auth = authConfig)) }
+				application { module(authTestConfig(authConfig)) }
 				val response = client.post("/auth/refresh")
 				response.status shouldBe HttpStatusCode.BadRequest
 				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
@@ -155,7 +166,7 @@ class AuthRoutesTest : FunSpec({
 	test("POST /auth/refresh returns 401 for an unknown refresh token") {
 		withTempSessionsDb {
 			testApplication {
-				application { module(ServerConfig(auth = authConfig)) }
+				application { module(authTestConfig(authConfig)) }
 				val response = client.post("/auth/refresh") {
 					contentType(ContentType.Application.Json)
 					setBody("""{"refreshToken":"never-issued-by-this-server"}""")
@@ -170,7 +181,7 @@ class AuthRoutesTest : FunSpec({
 	test("POST /auth/refresh returns a new access+refresh pair for a valid refresh token") {
 		withTempSessionsDb { tempDb ->
 			testApplication {
-				application { module(ServerConfig(auth = authConfig)) }
+				application { module(authTestConfig(authConfig)) }
 
 				val store = testRefreshTokenStore(tempDb)
 				val principal = AuthenticatedPrincipal(
@@ -199,7 +210,7 @@ class AuthRoutesTest : FunSpec({
 	test("POST /auth/refresh rotates: the consumed refresh token cannot be reused") {
 		withTempSessionsDb { tempDb ->
 			testApplication {
-				application { module(ServerConfig(auth = authConfig)) }
+				application { module(authTestConfig(authConfig)) }
 
 				val store = testRefreshTokenStore(tempDb)
 				val principal = AuthenticatedPrincipal(
@@ -231,7 +242,7 @@ class AuthRoutesTest : FunSpec({
 	test("POST /auth/refresh rejects a refresh token whose authTime exceeds maxSessionSeconds") {
 		withTempSessionsDb { tempDb ->
 			testApplication {
-				application { module(ServerConfig(auth = authConfig)) }
+				application { module(authTestConfig(authConfig)) }
 
 				val store = testRefreshTokenStore(tempDb)
 				val tooOldAuthTime = Clock.System.now() -
@@ -259,7 +270,7 @@ class AuthRoutesTest : FunSpec({
 	test("POST /auth/refresh preserves the original authTime across the rotated tokens") {
 		withTempSessionsDb { tempDb ->
 			testApplication {
-				application { module(ServerConfig(auth = authConfig)) }
+				application { module(authTestConfig(authConfig)) }
 
 				val store = testRefreshTokenStore(tempDb)
 				val jwtService = JwtSessionService(authConfig.session.copy(secret = jwtSecret))
@@ -291,7 +302,7 @@ class AuthRoutesTest : FunSpec({
 	test("POST /auth/logout deletes the supplied refresh token") {
 		withTempSessionsDb { tempDb ->
 			testApplication {
-				application { module(ServerConfig(auth = authConfig)) }
+				application { module(authTestConfig(authConfig)) }
 
 				val store = testRefreshTokenStore(tempDb)
 				val principal = AuthenticatedPrincipal(
@@ -320,13 +331,7 @@ class AuthRoutesTest : FunSpec({
 
 	test("protected API route returns 401 without token when auth.enabled is true") {
 		testApplication {
-			application {
-				module(
-					ServerConfig(
-						auth = authConfig.copy(enabled = true),
-					),
-				)
-			}
+			application { module(authTestConfig(authConfig.copy(enabled = true))) }
 			val response = client.post("/api/v1/validate")
 			response.status shouldBe HttpStatusCode.Unauthorized
 		}
@@ -334,13 +339,7 @@ class AuthRoutesTest : FunSpec({
 	
 	test("protected API route is accessible with valid token when auth.enabled is true") {
 		testApplication {
-			application {
-				module(
-					ServerConfig(
-						auth = authConfig.copy(enabled = true),
-					),
-				)
-			}
+			application { module(authTestConfig(authConfig.copy(enabled = true))) }
 			
 			val jwtService = JwtSessionService(authConfig.session.copy(secret = jwtSecret))
 			val token = jwtService.issue(
@@ -362,13 +361,7 @@ class AuthRoutesTest : FunSpec({
 	
 	test("health endpoint is always accessible without authentication") {
 		testApplication {
-			application {
-				module(
-					ServerConfig(
-						auth = authConfig.copy(enabled = true),
-					),
-				)
-			}
+			application { module(authTestConfig(authConfig.copy(enabled = true))) }
 			val response = client.get("/api/v1/health")
 			response.status shouldBe HttpStatusCode.OK
 		}
@@ -386,7 +379,7 @@ class AuthRoutesTest : FunSpec({
 
 	test("header-injection callback rejects requests without the shared-secret header") {
 		testApplication {
-			application { module(ServerConfig(auth = headerInjectionAuthConfig)) }
+			application { module(authTestConfig(headerInjectionAuthConfig)) }
 			val response = client.get("/auth/callback/shib") {
 				header("X-Remote-User", "attacker@evil.com")
 			}
@@ -396,7 +389,7 @@ class AuthRoutesTest : FunSpec({
 
 	test("header-injection callback rejects requests with a wrong shared-secret value") {
 		testApplication {
-			application { module(ServerConfig(auth = headerInjectionAuthConfig)) }
+			application { module(authTestConfig(headerInjectionAuthConfig)) }
 			val response = client.get("/auth/callback/shib") {
 				header("X-Header-Injection-Token", "wrong-secret")
 				header("X-Remote-User", "attacker@evil.com")
@@ -408,7 +401,7 @@ class AuthRoutesTest : FunSpec({
 	test("header-injection callback issues a token when the shared secret matches") {
 		withTempSessionsDb {
 			testApplication {
-				application { module(ServerConfig(auth = headerInjectionAuthConfig)) }
+				application { module(authTestConfig(headerInjectionAuthConfig)) }
 				val response = client.get("/auth/callback/shib") {
 					header("X-Header-Injection-Token", headerInjectionSecret)
 					header("X-Remote-User", "alice@example.com")
@@ -424,7 +417,7 @@ class AuthRoutesTest : FunSpec({
 
 	test("header-injection callback rejects when the user header is missing even with a valid secret") {
 		testApplication {
-			application { module(ServerConfig(auth = headerInjectionAuthConfig)) }
+			application { module(authTestConfig(headerInjectionAuthConfig)) }
 			val response = client.get("/auth/callback/shib") {
 				header("X-Header-Injection-Token", headerInjectionSecret)
 			}
@@ -449,7 +442,7 @@ class AuthRoutesTest : FunSpec({
 	test("OIDC /auth/redirect appends code_challenge and code_challenge_method=S256 when PKCE is enabled") {
 		withTempSessionsDb { tempDb ->
 			testApplication {
-				application { module(ServerConfig(auth = oidcAuthConfig(pkceEnabled = true))) }
+				application { module(authTestConfig(oidcAuthConfig(pkceEnabled = true))) }
 
 				val noRedirectClient = createClient {
 					followRedirects = false
@@ -489,7 +482,7 @@ class AuthRoutesTest : FunSpec({
 	test("OIDC /auth/redirect omits PKCE parameters when provider.pkce is false") {
 		withTempSessionsDb {
 			testApplication {
-				application { module(ServerConfig(auth = oidcAuthConfig(pkceEnabled = false))) }
+				application { module(authTestConfig(oidcAuthConfig(pkceEnabled = false))) }
 
 				val noRedirectClient = createClient {
 					followRedirects = false

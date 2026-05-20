@@ -26,7 +26,7 @@ class ConfigRoutesTest : FunSpec({
 
 	test("GET /api/v1/config/global returns 200 with a valid global config response") {
 		testApplication {
-			application { module(ServerConfig()) }
+			application { module(ServerConfig(allowedOperations = emptySet())) }
 			val response = client.get("/api/v1/config/global")
 			response.status shouldBe HttpStatusCode.OK
 			val body = json.decodeFromString<GlobalConfigResponse>(response.bodyAsText())
@@ -37,7 +37,7 @@ class ConfigRoutesTest : FunSpec({
 
 	test("GET /api/v1/config/profiles returns 200 with a valid profile list") {
 		testApplication {
-			application { module(ServerConfig()) }
+			application { module(ServerConfig(allowedOperations = emptySet())) }
 			val response = client.get("/api/v1/config/profiles")
 			response.status shouldBe HttpStatusCode.OK
 			json.decodeFromString<List<ProfileConfigResponse>>(response.bodyAsText())
@@ -46,7 +46,7 @@ class ConfigRoutesTest : FunSpec({
 
 	test("GET /api/v1/config/profiles/{name} returns 404 for unknown profile") {
 		testApplication {
-			application { module(ServerConfig()) }
+			application { module(ServerConfig(allowedOperations = emptySet())) }
 			val response = client.get("/api/v1/config/profiles/nonexistent")
 			response.status shouldBe HttpStatusCode.NotFound
 			val body = json.decodeFromString<ApiError>(response.bodyAsText())
@@ -56,7 +56,7 @@ class ConfigRoutesTest : FunSpec({
 
 	test("GET /api/v1/config/resolved without profile param returns a valid resolved config") {
 		testApplication {
-			application { module(ServerConfig()) }
+			application { module(ServerConfig(allowedOperations = emptySet())) }
 			val response = client.get("/api/v1/config/resolved")
 			response.status shouldBe HttpStatusCode.OK
 			val body = json.decodeFromString<ResolvedConfigResponse>(response.bodyAsText())
@@ -68,7 +68,7 @@ class ConfigRoutesTest : FunSpec({
 
 	test("GET /api/v1/config/resolved with unknown profile returns 404") {
 		testApplication {
-			application { module(ServerConfig()) }
+			application { module(ServerConfig(allowedOperations = emptySet())) }
 			val response = client.get("/api/v1/config/resolved?profile=ghost")
 			response.status shouldBe HttpStatusCode.NotFound
 			val body = json.decodeFromString<ApiError>(response.bodyAsText())
@@ -78,7 +78,7 @@ class ConfigRoutesTest : FunSpec({
 
 	test("GET /api/v1/config/resolved does not fall back to stored activeProfile") {
 		testApplication {
-			application { module(ServerConfig()) }
+			application { module(ServerConfig(allowedOperations = emptySet())) }
 			val resolvedResponse = client.get("/api/v1/config/resolved")
 			resolvedResponse.status shouldBe HttpStatusCode.OK
 			val body = json.decodeFromString<ResolvedConfigResponse>(resolvedResponse.bodyAsText())
@@ -88,7 +88,7 @@ class ConfigRoutesTest : FunSpec({
 
 	test("GET /api/v1/config/profiles returns sorted list") {
 		testApplication {
-			application { module(ServerConfig()) }
+			application { module(ServerConfig(allowedOperations = emptySet())) }
 			val response = client.get("/api/v1/config/profiles")
 			response.status shouldBe HttpStatusCode.OK
 			val body = json.decodeFromString<List<ProfileConfigResponse>>(response.bodyAsText())

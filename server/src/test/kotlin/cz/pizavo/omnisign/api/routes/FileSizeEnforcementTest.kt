@@ -44,7 +44,7 @@ class FileSizeEnforcementTest : FunSpec({
 			application {
 				module(ServerConfig(
 					maxFileSize = 10L,
-					allowedOperations = setOf(AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP),
+					allowedOperations = setOf(AllowedOperation.TIMESTAMP),
 				))
 			}
 			val response = client.post("/api/v1/timestamp") {
