@@ -20,8 +20,15 @@ private val logger = KotlinLogging.logger {}
  * ensures that responses produced by the [io.ktor.server.plugins.ratelimit.RateLimit] plugin
  * also carry a JSON [ApiError] body consistent with the rest of the API. The standard
  * `Retry-After` and `X-RateLimit-*` headers set by the rate limiter are preserved.
+ *
+ * @param development When `true` the catch-all [Throwable] handler echoes `cause.message`
+ *   into the response body's `details` field, easing local debugging. When `false`
+ *   (production / non-development deployments) the field is omitted to avoid leaking
+ *   internal exception messages (JVM stack frames, file paths, library internals, etc.)
+ *   to clients. The unhandled exception is always logged in full server-side at ERROR
+ *   level regardless of this flag.
  */
-fun Application.configureStatusPages() {
+fun Application.configureStatusPages(development: Boolean = false) {
 	install(StatusPages) {
 		status(HttpStatusCode.TooManyRequests) { call, status ->
 			call.respond(
@@ -63,7 +70,7 @@ fun Application.configureStatusPages() {
 				ApiError(
 					error = "INTERNAL_ERROR",
 					message = "An unexpected error occurred",
-					details = cause.message,
+					details = if (development) cause.message else null,
 				),
 			)
 		}

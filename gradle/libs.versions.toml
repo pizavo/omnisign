@@ -72,7 +72,6 @@ ktor-client-core = { module = "io.ktor:ktor-client-core-jvm", version.ref = "kto
 ktor-client-mock = { module = "io.ktor:ktor-client-mock-jvm", version.ref = "ktor" }
 ktor-client-cio = { module = "io.ktor:ktor-client-cio-jvm", version.ref = "ktor" }
 ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation-jvm", version.ref = "ktor" }
-ktor-server-compression = { module = "io.ktor:ktor-server-compression-jvm", version.ref = "ktor" }
 ktor-server-auto-head-response = { module = "io.ktor:ktor-server-auto-head-response-jvm", version.ref = "ktor" }
 ktor-server-https-redirect = { module = "io.ktor:ktor-server-http-redirect-jvm", version.ref = "ktor" }
 ktor-server-headers-default = { module = "io.ktor:ktor-server-default-headers-jvm", version.ref = "ktor" }

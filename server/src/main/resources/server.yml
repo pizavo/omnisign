@@ -11,9 +11,12 @@ port: 50080
 # Port for the TLS (HTTPS) connector when TLS is configured.
 tlsPort: 50443
 
-# When true, Ktor development mode is activated (auto-reload, verbose errors).
-# Must be false in production.
-development: true
+# When true, Ktor development mode is activated (auto-reload, verbose errors,
+# internal exception messages echoed to clients via the catch-all error handler).
+# Refuses to start when combined with a non-loopback host — set it to true only
+# when binding to 127.0.0.1 or ::1 during local development. Must be false in
+# production and any deployment reachable from the network.
+development: false
 
 # When true, TLS is handled by a reverse proxy (e.g., nginx, Caddy, Traefik).
 # The server listens on a plain HTTP connector and trusts X-Forwarded-* headers.
@@ -184,13 +187,13 @@ proxyMode: false
 #       displayNameHeader: "X-Shib-Cn"     # Shibboleth attribute: cn
 
 # Operations the server exposes. Valid values: SIGN, VALIDATE, TIMESTAMP.
-# Defaults to VALIDATE and TIMESTAMP only. SIGN is opt-in because it exposes
-# the server's signing certificates to all API callers.
+# Defaults to VALIDATE only. SIGN and TIMESTAMP are opt-in because they expose
+# the server's signing certificates or timestamping endpoints to all API callers.
 allowedOperations:
   - VALIDATE
-  - TIMESTAMP
-# Uncomment to also enable signing (e.g., for institutional seal/HSM deployments):
+# Uncomment to also enable signing or timestamping (e.g., for institutional seal/HSM deployments):
 #  - SIGN
+#  - TIMESTAMP
 
 # When SIGN is enabled, restrict which certificate aliases may be used via the API.
 # If omitted (null), all discovered signing certificates are available.
@@ -211,7 +214,7 @@ allowedOperations:
 #   # Sending this header over plain HTTP is a protocol error and can lock users out.
 #   # When behind a TLS-terminating proxy, let the proxy inject this header instead.
 #   #
-#   # Start with a short maxAgeSeconds (e.g. 300) during initial rollout; raise to
+#   # Start with a short maxAgeSeconds (e.g., 300) during initial rollout; raise to
 #   # 31536000 (one year) once you are confident HTTPS is stable. preload: true requires
 #   # includeSubDomains: true and maxAgeSeconds >= 31536000, plus manual submission to
 #   # https://hstspreload.org/.
@@ -224,15 +227,6 @@ allowedOperations:
 # cors:
 #   allowedOrigins:
 #     - "https://omnisign.example.com"
-#   allowCredentials: false
-
-# Response compression (gzip + deflate).
-# compression:
-#   enabled: true
-#   gzipPriority: 1.0
-#   gzipMinimumSize: 1024
-#   deflatePriority: 0.9
-#   deflateMinimumSize: 1024
 
 # Maximum upload file size in bytes (default: 100 MB).
 maxFileSize: 104857600

@@ -21,12 +21,11 @@ class ServerConfigLoaderTest : FunSpec({
 		config.host shouldBe "0.0.0.0"
 		config.port shouldBe 50080
 		config.tlsPort shouldBe 50443
-		config.development.shouldBeTrue()
+		config.development.shouldBeFalse()
 		config.proxyMode.shouldBeFalse()
 		config.tls.shouldBeNull()
 		config.cors.shouldBeNull()
-		config.allowedOperations shouldContainExactlyInAnyOrder
-				setOf(AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP)
+		config.allowedOperations shouldContainExactlyInAnyOrder setOf(AllowedOperation.VALIDATE)
 		config.allowedCertificateAliases.shouldBeNull()
 	}
 
@@ -47,7 +46,6 @@ class ServerConfigLoaderTest : FunSpec({
 			cors:
 			  allowedOrigins:
 			    - "https://example.com"
-			  allowCredentials: true
 			maxFileSize: 52428800
 		""".trimIndent()
 
@@ -71,7 +69,6 @@ class ServerConfigLoaderTest : FunSpec({
 
 		config.cors.shouldNotBeNull()
 		config.cors.allowedOrigins shouldBe listOf("https://example.com")
-		config.cors.allowCredentials.shouldBeTrue()
 
 		config.maxFileSize shouldBe 52428800L
 	}
@@ -94,9 +91,8 @@ class ServerConfigLoaderTest : FunSpec({
 		val config = loader.load()
 		config.host shouldBe "0.0.0.0"
 		config.port shouldBe 50080
-		config.development.shouldBeTrue()
-		config.allowedOperations shouldContainExactlyInAnyOrder
-				setOf(AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP)
+		config.development.shouldBeFalse()
+		config.allowedOperations shouldContainExactlyInAnyOrder setOf(AllowedOperation.VALIDATE)
 		config.allowedCertificateAliases.shouldBeNull()
 	}
 

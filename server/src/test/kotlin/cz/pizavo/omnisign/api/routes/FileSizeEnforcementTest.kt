@@ -42,7 +42,10 @@ class FileSizeEnforcementTest : FunSpec({
 	test("timestamp route returns 413 when file exceeds maxFileSize") {
 		testApplication {
 			application {
-				module(ServerConfig(maxFileSize = 10L))
+				module(ServerConfig(
+					maxFileSize = 10L,
+					allowedOperations = setOf(AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP),
+				))
 			}
 			val response = client.post("/api/v1/timestamp") {
 				setBody(MultiPartFormDataContent(formData {

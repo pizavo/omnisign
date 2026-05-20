@@ -36,17 +36,13 @@ fun Application.configureCors(config: CorsConfig?, tlsEnabled: Boolean = false) 
 		
 		allowMethod(HttpMethod.Post)
 		allowMethod(HttpMethod.Get)
-		
+
 		allowHeader(HttpHeaders.ContentType)
 		allowHeader(HttpHeaders.Authorization)
 		allowHeader(HttpHeaders.XRequestId)
-		
+
 		exposeHeader("X-OmniSign-Result")
 		exposeHeader(HttpHeaders.XRequestId)
-
-		if (config.allowCredentials) {
-			allowCredentials = true
-		}
 	}
 }
 

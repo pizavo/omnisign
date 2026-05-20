@@ -10,9 +10,12 @@ package cz.pizavo.omnisign.config
  *   auto-reload and more verbose error pages. Should be `false` in production.
  * @property proxyMode When `true`, TLS termination is handled by a reverse proxy and the server
  *   listens on a plain HTTP connector. `X-Forwarded-*` headers are trusted.
- * @property allowedOperations Set of operations the server exposes. Defaults to [AllowedOperation.VALIDATE]
- *   and [AllowedOperation.TIMESTAMP]. [AllowedOperation.SIGN] is opt-in for institutional deployments
- *   where the server holds an HSM or seal certificate.
+ * @property allowedOperations Set of operations the server exposes. Defaults to
+ *   `setOf(`[AllowedOperation.VALIDATE]`)` — the only operation that exposes no
+ *   server-side signing material or timestamping endpoint to API callers and is therefore
+ *   safe to enable by default. [AllowedOperation.SIGN] and [AllowedOperation.TIMESTAMP]
+ *   are opt-in for institutional deployments where the server holds an HSM/seal
+ *   certificate or runs an institutional TSA proxy.
  * @property allowedCertificateAliases When non-null, only these certificate aliases may be used
  *   for signing via the API. Provides defense-in-depth so that personal certificates installed
  *   on the server are never accidentally exposed. When `null` and signing is enabled, all
@@ -20,7 +23,6 @@ package cz.pizavo.omnisign.config
  * @property tls TLS/SSL keystore settings, including optional nested [HstsConfig].
  *   Ignored when [proxyMode] is `true`.
  * @property cors Cross-Origin Resource Sharing configuration.
- * @property compression Response compression configuration.
  * @property rateLimiting Per-IP request rate limiting for auth and API endpoints.
  *   When `null`, rate limiting is disabled.
  * @property maxFileSize Maximum upload file size in bytes. Defaults to 100 MB.
@@ -34,11 +36,10 @@ data class ServerConfig(
 	val tlsPort: Int = 50443,
 	val development: Boolean = false,
 	val proxyMode: Boolean = false,
-	val allowedOperations: Set<AllowedOperation> = setOf(AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP),
+	val allowedOperations: Set<AllowedOperation> = setOf(AllowedOperation.VALIDATE),
 	val allowedCertificateAliases: List<String>? = null,
 	val tls: TlsConfig? = null,
 	val cors: CorsConfig? = null,
-	val compression: CompressionConfig = CompressionConfig(),
 	val rateLimiting: RateLimitConfig? = null,
 	val maxFileSize: Long = 100L * 1024 * 1024,
 	val auth: AuthConfig? = null,

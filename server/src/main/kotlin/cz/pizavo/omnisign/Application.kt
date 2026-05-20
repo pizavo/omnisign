@@ -45,6 +45,16 @@ fun main(args: Array<String>) {
 	val configPath = args.indexOf("--config").takeIf { it >= 0 }?.let { args.getOrNull(it + 1) }
 	val serverConfig = ServerConfigLoader().load(configPath)
 
+	if (serverConfig.development && !isLoopbackHost(serverConfig.host)) {
+		error(
+			"Refusing to start: development mode (development: true) is incompatible with a " +
+					"non-loopback host '${serverConfig.host}'. Development mode enables verbose " +
+					"error pages and other behaviour that exposes internal details to anyone who " +
+					"can reach the port. Either bind to a loopback address (127.0.0.1 or ::1) or " +
+					"set development: false in server.yml.",
+		)
+	}
+
 	System.setProperty("io.ktor.development", serverConfig.development.toString())
 	if (serverConfig.development) {
 		logger.info { "Development mode is ENABLED" }
@@ -103,10 +113,9 @@ fun Application.moduleWith(serverConfig: ServerConfig) {
 	attachPkcs11CacheInvalidatorIfNeeded(serverConfig)
 	configureDefaultHeaders(hstsConfig = serverConfig.tls?.hsts)
 	configureSerialization()
-	configureStatusPages()
+	configureStatusPages(development = serverConfig.development)
 	configureCallId()
 	configureCallLogging()
-	configureCompression(serverConfig.compression)
 	configureAutoHeadResponse()
 	configureCors(serverConfig.cors, tlsEnabled = serverConfig.tls != null || serverConfig.proxyMode)
 	configureForwardedHeaders(serverConfig.proxyMode)
@@ -263,6 +272,20 @@ private fun Application.launchTrustedListRefreshIfNeeded(serverConfig: ServerCon
 		}
 	}
 }
+
+/**
+ * Determine whether a configured bind host is the loopback interface.
+ *
+ * Strict literal match — no DNS resolution, no IP-range matching. `localhost` is treated as
+ * a loopback alias because that is the universal convention even though it is technically
+ * a hostname. Other 127.0.0.0/8 addresses (e.g. `127.0.0.2`) are NOT recognised here; if
+ * an operator legitimately uses them they must set `development: false`.
+ *
+ * @param host Value of [ServerConfig.host].
+ * @return `true` when [host] is a loopback address or the literal hostname `localhost`.
+ */
+private fun isLoopbackHost(host: String): Boolean =
+	host in setOf("127.0.0.1", "::1", "localhost")
 
 /**
  * Load a JKS or PKCS#12 keystore from the filesystem.
