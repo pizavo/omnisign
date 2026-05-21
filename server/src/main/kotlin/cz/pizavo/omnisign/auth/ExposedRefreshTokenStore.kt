@@ -58,7 +58,7 @@ class ExposedRefreshTokenStore(private val database: Database) : RefreshTokenSto
     private object RefreshTokens : Table("refresh_tokens") {
         val token = varchar("token", 64)
         val userId = varchar("user_id", 256)
-        val email = varchar("email", 320)
+        val email = varchar("email", 320).nullable()
         val displayName = varchar("display_name", 256).nullable()
         val providerName = varchar("provider_name", 64)
         val authTimeEpochSeconds = long("auth_time_epoch_seconds")

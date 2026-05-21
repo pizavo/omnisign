@@ -238,7 +238,6 @@ fun Route.authRoutes(config: AuthConfig?) {
                 }
 
                 val email = call.request.headers[provider.emailHeader]
-                    ?: userId
                 val displayName = call.request.headers[provider.displayNameHeader]
 
                 val principal = AuthenticatedPrincipal(

@@ -49,5 +49,18 @@ class EmailDomainFilterTest : FunSpec({
     test("returns true for subdomain when subdomain is explicitly listed") {
         isEmailDomainAllowed("user@mail.contoso.com", listOf("mail.contoso.com")) shouldBe true
     }
+
+    test("null email under the \"*\" wildcard is admitted (allow-any-authenticated-user)") {
+        isEmailDomainAllowed(null, listOf("*")) shouldBe true
+    }
+
+    test("null email under \"*\" mixed with concrete entries is still admitted") {
+        isEmailDomainAllowed(null, listOf("contoso.com", "*")) shouldBe true
+    }
+
+    test("null email under concrete domains is rejected (fail closed)") {
+        isEmailDomainAllowed(null, listOf("contoso.com")) shouldBe false
+        isEmailDomainAllowed(null, listOf("contoso.com", "fabrikam.com")) shouldBe false
+    }
 })
 

@@ -65,17 +65,17 @@ class JwtSessionService(
         val now = Date()
         val expiry = Date(now.time + config.tokenExpirySeconds * 1_000L)
 
-        return JWT.create()
+        val builder = JWT.create()
             .withIssuer(config.issuer)
             .withAudience(config.audience)
             .withSubject(principal.userId)
-            .withClaim(CLAIM_EMAIL, principal.email)
-            .withClaim(CLAIM_DISPLAY_NAME, principal.displayName)
             .withClaim(CLAIM_PROVIDER, principal.providerName)
             .withClaim(CLAIM_AUTH_TIME, principal.authTime.epochSeconds)
             .withIssuedAt(now)
             .withExpiresAt(expiry)
-            .sign(alg)
+        if (principal.email != null) builder.withClaim(CLAIM_EMAIL, principal.email)
+        if (principal.displayName != null) builder.withClaim(CLAIM_DISPLAY_NAME, principal.displayName)
+        return builder.sign(alg)
     }
 
     /**

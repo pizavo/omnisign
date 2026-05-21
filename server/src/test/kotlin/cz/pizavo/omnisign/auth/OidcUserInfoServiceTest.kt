@@ -65,23 +65,24 @@ class OidcUserInfoServiceTest : FunSpec({
         }
     }
 
-    test("toPrincipal falls back to 'login' for email when 'email' is absent (GitHub)") {
+    test("toPrincipal returns null email when 'email' is absent (GitHub-private-email case)") {
         val claims = buildJsonObject {
             put("sub", "12345678")
             put("login", "octocat")
         }
         val principal = service.toPrincipal(claims, "github")
 
-        principal.email shouldBe "octocat"
+        principal.email shouldBe null
     }
 
-    test("toPrincipal throws when no email claim is present") {
+    test("toPrincipal does NOT synthesise an email from 'login' when 'email' is absent") {
         val claims = buildJsonObject {
             put("sub", "user-abc")
+            put("login", "synthetic-not-email")
         }
-        shouldThrow<IllegalStateException> {
-            service.toPrincipal(claims, "noemail")
-        }
+        val principal = service.toPrincipal(claims, "noemail")
+
+        principal.email shouldBe null
     }
 
     test("toPrincipal falls back to 'preferred_username' for displayName when 'name' is absent") {
