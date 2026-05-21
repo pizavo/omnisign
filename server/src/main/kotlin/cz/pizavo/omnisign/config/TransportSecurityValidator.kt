@@ -37,13 +37,13 @@ package cz.pizavo.omnisign.config
  *   configured.
  */
 fun validateTransportSecurity(serverConfig: ServerConfig) {
-	if (isLoopbackHost(serverConfig.host)) return
+	if (isLoopbackHost(serverConfig.listen.host)) return
 	val proxyEnabled = serverConfig.proxy?.enabled == true
 	if (proxyEnabled) return
 	if (serverConfig.tls != null) return
 
 	throw IllegalArgumentException(
-		"host '${serverConfig.host}' is network-reachable but neither proxy nor TLS is " +
+		"host '${serverConfig.listen.host}' is network-reachable but neither proxy nor TLS is " +
 			"configured. Plain HTTP would expose JWT tokens, OIDC callback parameters, " +
 			"and refresh tokens to any on-path observer. Set proxy.enabled: true (TLS " +
 			"terminated by an upstream reverse proxy) or tls: { keystorePath, … } " +
@@ -67,7 +67,7 @@ fun validateTransportSecurity(serverConfig: ServerConfig) {
  * check in `Application.kt`) need the same set, so the predicate lives here as a
  * single source of truth.
  *
- * @param host The value of [ServerConfig.host].
+ * @param host The value of [ListenConfig.host].
  * @return `true` when [host] is `127.0.0.1`, `::1`, or `localhost`.
  */
 fun isLoopbackHost(host: String): Boolean =

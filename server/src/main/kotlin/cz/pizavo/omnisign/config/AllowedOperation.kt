@@ -1,7 +1,7 @@
 package cz.pizavo.omnisign.config
 
 /**
- * Operations that the server administrator can enable or disable via [ServerConfig.allowedOperations].
+ * Operations that the server administrator can enable or disable via [OperationsConfig.allowed].
  *
  * By default only [VALIDATE] and [TIMESTAMP] are enabled because they do not require
  * private key material from the client. [SIGN] is opt-in for institutional deployments

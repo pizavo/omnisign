@@ -26,21 +26,22 @@ class ServerConfigLoaderTest : FunSpec({
 
 	test("load returns Kotlin defaults when explicit path does not exist (no classpath fallback)") {
 		val config = loader.load("/nonexistent/path.yml")
-		config.host shouldBe "0.0.0.0"
-		config.port shouldBe 50080
+		config.listen.host shouldBe "0.0.0.0"
+		config.listen.port shouldBe 50080
 		config.development.shouldBeFalse()
 		config.proxy.shouldBeNull()
 		config.tls.shouldBeNull()
 		config.cors.shouldBeNull()
 		config.auth.shouldBeNull()
-		config.allowedOperations shouldContainExactlyInAnyOrder setOf(AllowedOperation.VALIDATE)
-		config.allowedCertificateAliases.shouldBeNull()
+		config.operations.allowed shouldContainExactlyInAnyOrder setOf(AllowedOperation.VALIDATE)
+		config.operations.certificateAliases.shouldBeNull()
 	}
 
 	test("load parses a YAML file with all fields") {
 		val yaml = """
-			host: "127.0.0.1"
-			port: 9090
+			listen:
+			  host: "127.0.0.1"
+			  port: 9090
 			development: true
 			proxy:
 			  enabled: true
@@ -64,8 +65,8 @@ class ServerConfigLoaderTest : FunSpec({
 		tmpFile.writeText(yaml)
 
 		val config = loader.load(tmpFile.absolutePath)
-		config.host shouldBe "127.0.0.1"
-		config.port shouldBe 9090
+		config.listen.host shouldBe "127.0.0.1"
+		config.listen.port shouldBe 9090
 		config.development.shouldBeTrue()
 		config.proxy.shouldNotBeNull()
 		config.proxy.enabled.shouldBeTrue()
@@ -138,7 +139,7 @@ class ServerConfigLoaderTest : FunSpec({
 
 	test("load fails fast on an unknown top-level YAML property") {
 		val yaml = """
-			host: "localhost"
+			development: false
 			unknownField: "ignored"
 		""".trimIndent()
 
@@ -172,25 +173,26 @@ class ServerConfigLoaderTest : FunSpec({
 
 	test("load returns Kotlin defaults when called with no path and no CWD server.yml exists") {
 		val config = loader.load()
-		config.host shouldBe "0.0.0.0"
-		config.port shouldBe 50080
+		config.listen.host shouldBe "0.0.0.0"
+		config.listen.port shouldBe 50080
 		config.development.shouldBeFalse()
 		config.cors.shouldBeNull()
 		config.tls.shouldBeNull()
 		config.proxy.shouldBeNull()
 		config.auth.shouldBeNull()
-		config.allowedOperations shouldContainExactlyInAnyOrder setOf(AllowedOperation.VALIDATE)
-		config.allowedCertificateAliases.shouldBeNull()
+		config.operations.allowed shouldContainExactlyInAnyOrder setOf(AllowedOperation.VALIDATE)
+		config.operations.certificateAliases.shouldBeNull()
 	}
 
-	test("load parses allowedOperations including SIGN") {
+	test("load parses operations.allowed including SIGN") {
 		val yaml = """
-			allowedOperations:
-			  - SIGN
-			  - VALIDATE
-			  - TIMESTAMP
-			allowedCertificateAliases:
-			  - "university-seal"
+			operations:
+			  allowed:
+			    - SIGN
+			    - VALIDATE
+			    - TIMESTAMP
+			  certificateAliases:
+			    - "university-seal"
 		""".trimIndent()
 
 		val tmpFile = File.createTempFile("server-ops-", ".yml")
@@ -198,10 +200,10 @@ class ServerConfigLoaderTest : FunSpec({
 		tmpFile.writeText(yaml)
 
 		val config = loader.load(tmpFile.absolutePath)
-		config.allowedOperations shouldContainExactlyInAnyOrder
+		config.operations.allowed shouldContainExactlyInAnyOrder
 				setOf(AllowedOperation.SIGN, AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP)
-		config.allowedCertificateAliases.shouldNotBeNull()
-		config.allowedCertificateAliases shouldBe listOf("university-seal")
+		config.operations.certificateAliases.shouldNotBeNull()
+		config.operations.certificateAliases shouldBe listOf("university-seal")
 	}
 
 	test("load parses rateLimiting zone overrides") {
@@ -228,7 +230,7 @@ class ServerConfigLoaderTest : FunSpec({
 	}
 
 	test("rateLimiting is null when not specified") {
-		val yaml = "host: \"localhost\""
+		val yaml = "development: false"
 
 		val tmpFile = File.createTempFile("server-nrl-", ".yml")
 		tmpFile.deleteOnExit()

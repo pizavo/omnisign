@@ -203,8 +203,9 @@ class SsoProviderConfigDeserializerTest : FunSpec({
 
     test("auth is null when not specified") {
         val yaml = """
-            host: "127.0.0.1"
-            port: 8080
+            listen:
+              host: "127.0.0.1"
+              port: 8080
         """.trimIndent()
 
         val config = loader.loadFromString(yaml)

@@ -81,7 +81,7 @@ fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets) = module {
 	single<PasswordCallback> { ServerPasswordCallback() }
 	single<CoroutineContext> { Dispatchers.IO }
 
-	if (AllowedOperation.SIGN in serverConfig.allowedOperations) {
+	if (AllowedOperation.SIGN in serverConfig.operations.allowed) {
 		single { MutableStateFlow(false) }
 	}
 

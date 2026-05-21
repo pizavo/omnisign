@@ -52,10 +52,10 @@ fun main(args: Array<String>) {
 	val serverConfig = ServerConfigLoader().load(configPath)
 	val secrets = ServerSecrets.resolveFromEnv(serverConfig)
 
-	if (serverConfig.development && !isLoopbackHost(serverConfig.host)) {
+	if (serverConfig.development && !isLoopbackHost(serverConfig.listen.host)) {
 		error(
 			"Refusing to start: development mode (development: true) is incompatible with a " +
-					"non-loopback host '${serverConfig.host}'. Development mode enables verbose " +
+					"non-loopback host '${serverConfig.listen.host}'. Development mode enables verbose " +
 					"error pages and other behaviour that exposes internal details to anyone who " +
 					"can reach the port. Either bind to a loopback address (127.0.0.1 or ::1) or " +
 					"set development: false in server.yml.",
@@ -88,25 +88,25 @@ fun main(args: Array<String>) {
 					privateKeyPassword = { privateKeyPassword.value.toCharArray() },
 				) {
 					port = tlsCfg.port
-					host = serverConfig.host
+					host = serverConfig.listen.host
 				}
 			},
 		) {
 			moduleWith(serverConfig, secrets)
 		}.start(wait = true)
 
-		logger.info { "TLS connector configured on ${serverConfig.host}:${tlsCfg.port} (TLS 1.2/1.3, HTTP/2 ALPN)" }
+		logger.info { "TLS connector configured on ${serverConfig.listen.host}:${tlsCfg.port} (TLS 1.2/1.3, HTTP/2 ALPN)" }
 	} else {
 		if (serverConfig.proxy?.enabled == true) {
-			logger.info { "Proxy mode enabled — plain HTTP on ${serverConfig.host}:${serverConfig.port}" }
+			logger.info { "Proxy mode enabled — plain HTTP on ${serverConfig.listen.host}:${serverConfig.listen.port}" }
 		} else {
-			logger.info { "No TLS configured — plain HTTP on ${serverConfig.host}:${serverConfig.port}" }
+			logger.info { "No TLS configured — plain HTTP on ${serverConfig.listen.host}:${serverConfig.listen.port}" }
 		}
 
 		embeddedServer(
 			Netty,
-			port = serverConfig.port,
-			host = serverConfig.host,
+			port = serverConfig.listen.port,
+			host = serverConfig.listen.host,
 		) {
 			moduleWith(serverConfig, secrets)
 		}.start(wait = true)
@@ -158,19 +158,19 @@ fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets) {
 		}
 	}
 
-	logger.info { "Allowed operations: ${serverConfig.allowedOperations.joinToString { it.name }}" }
+	logger.info { "Allowed operations: ${serverConfig.operations.allowed.joinToString { it.name }}" }
 
-	if (AllowedOperation.SIGN in serverConfig.allowedOperations && authConfig?.enabled != true) {
+	if (AllowedOperation.SIGN in serverConfig.operations.allowed && authConfig?.enabled != true) {
 		logger.warn {
 			"⚠️  SIGN operation is enabled WITHOUT authentication — all configured signing " +
 					"certificates are accessible to any network-reachable client. " +
-					"Set auth.enabled: true or restrict access with allowedCertificateAliases."
+					"Set auth.enabled: true or restrict access with operations.certificateAliases."
 		}
 	}
 
-	if (serverConfig.allowedCertificateAliases != null) {
+	if (serverConfig.operations.certificateAliases != null) {
 		logger.info {
-			"Certificate alias allowlist: ${serverConfig.allowedCertificateAliases.joinToString()}"
+			"Certificate alias allowlist: ${serverConfig.operations.certificateAliases.joinToString()}"
 		}
 	}
 }
@@ -222,7 +222,7 @@ fun Application.configureKoin(serverConfig: ServerConfig, secrets: ServerSecrets
  * @param serverConfig Current server configuration.
  */
 private fun Application.attachPkcs11CacheInvalidatorIfNeeded(serverConfig: ServerConfig) {
-	if (AllowedOperation.SIGN !in serverConfig.allowedOperations) {
+	if (AllowedOperation.SIGN !in serverConfig.operations.allowed) {
 		logger.debug { "SIGN operation not enabled — skipping PKCS#11 cache invalidator" }
 		return
 	}
@@ -245,14 +245,14 @@ private fun Application.attachPkcs11CacheInvalidatorIfNeeded(serverConfig: Serve
  * certificate discovery calls use the fast in-process path rather than spawning
  * unreliable subprocesses.
  *
- * When `SIGN` is not in [ServerConfig.allowedOperations], warmup is skipped entirely
+ * When `SIGN` is not in [OperationsConfig.allowed], warmup is skipped entirely
  * because the certificate discovery route (`GET /api/v1/certificates`) is gated behind
  * `SIGN` and will never be invoked.
  *
  * @param serverConfig Current server configuration.
  */
 private fun Application.launchPkcs11WarmupIfNeeded(serverConfig: ServerConfig) {
-	if (AllowedOperation.SIGN !in serverConfig.allowedOperations) {
+	if (AllowedOperation.SIGN !in serverConfig.operations.allowed) {
 		logger.debug { "SIGN operation not enabled — skipping PKCS#11 warmup" }
 		return
 	}
@@ -286,8 +286,8 @@ private fun Application.launchPkcs11WarmupIfNeeded(serverConfig: ServerConfig) {
  * @param serverConfig Current server configuration.
  */
 private fun Application.launchTrustedListRefreshIfNeeded(serverConfig: ServerConfig) {
-	val needsTrust = AllowedOperation.VALIDATE in serverConfig.allowedOperations ||
-			AllowedOperation.SIGN in serverConfig.allowedOperations
+	val needsTrust = AllowedOperation.VALIDATE in serverConfig.operations.allowed ||
+			AllowedOperation.SIGN in serverConfig.operations.allowed
 	if (!needsTrust) {
 		logger.debug { "Neither VALIDATE nor SIGN enabled — skipping trusted-list refresh cycle" }
 		return
@@ -325,7 +325,7 @@ private fun loadKeyStore(path: String, password: String): KeyStore {
  * Derive the externally reachable base URL for the server.
  *
  * Used to build OAuth2 redirect URIs. Reads the `OMNISIGN_EXTERNAL_URL` environment
- * variable first, falling back to constructing a URL from [ServerConfig.host] and the
+ * variable first, falling back to constructing a URL from [ListenConfig.host] and the
  * active port/scheme.
  *
  * @param serverConfig Current server configuration.
@@ -337,8 +337,8 @@ private fun resolveExternalUrl(serverConfig: ServerConfig): String {
 	val proxyEnabled = serverConfig.proxy?.enabled == true
 	val tlsActive = serverConfig.tls != null && !proxyEnabled
 	val scheme = if (tlsActive) "https" else "http"
-	val port = if (tlsActive) serverConfig.tls.port else serverConfig.port
-	val host = serverConfig.host.let { if (it == "0.0.0.0") "localhost" else it }
+	val port = if (tlsActive) serverConfig.tls.port else serverConfig.listen.port
+	val host = serverConfig.listen.host.let { if (it == "0.0.0.0") "localhost" else it }
 	return "$scheme://$host:$port"
 }
 

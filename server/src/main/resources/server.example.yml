@@ -4,9 +4,13 @@
 # Place it as server.yml in the working directory, set the OMNISIGN_SERVER_CONFIG
 # environment variable, or pass --config <path> on the command line.
 
-# Network interface and port for the plain HTTP connector.
-host: "0.0.0.0"
-port: 50080
+# Network listener: bind host and plain-HTTP port. Loopback hosts (127.0.0.1, ::1,
+# localhost) skip the transport-security check; any other value requires `tls:` or
+# `proxy.enabled: true` below — otherwise startup fails to prevent plain HTTP on a
+# network-reachable interface.
+listen:
+  host: "0.0.0.0"
+  port: 50080
 
 # When true, Ktor development mode is activated (auto-reload, verbose errors,
 # internal exception messages echoed to clients via the catch-all error handler).
@@ -221,20 +225,26 @@ development: false
 #       emailHeader: "X-Shib-Mail"         # Shibboleth attribute: mail
 #       displayNameHeader: "X-Shib-Cn"     # Shibboleth attribute: cn
 
-# Operations the server exposes. Valid values: SIGN, VALIDATE, TIMESTAMP.
-# Defaults to VALIDATE only. SIGN and TIMESTAMP are opt-in because they expose
-# the server's signing certificates or timestamping endpoints to all API callers.
-allowedOperations:
-  - VALIDATE
-# Uncomment to also enable signing or timestamping (e.g., for institutional seal/HSM deployments):
-#  - SIGN
-#  - TIMESTAMP
-
-# When SIGN is enabled, restrict which certificate aliases may be used via the API.
-# If omitted (null), all discovered signing certificates are available.
-# allowedCertificateAliases:
-#   - "university-seal"
-#   - "department-stamp"
+# Operation gating: which API operations the server exposes and which certificate
+# aliases are eligible for signing. The two fields are tightly coupled —
+# certificateAliases only matters when SIGN is in `allowed`.
+#
+# `allowed` defaults to [VALIDATE] only. SIGN and TIMESTAMP are opt-in because they
+# expose the server's signing certificates or timestamping endpoints to all API
+# callers.
+operations:
+  allowed:
+    - VALIDATE
+  # Uncomment to also enable signing or timestamping (e.g., for institutional
+  # seal/HSM deployments):
+  #  - SIGN
+  #  - TIMESTAMP
+  #
+  # When SIGN is enabled, restrict which certificate aliases may be used via the API.
+  # If omitted (null), all discovered signing certificates are available.
+  # certificateAliases:
+  #   - "university-seal"
+  #   - "department-stamp"
 
 # TLS / SSL configuration.
 # Uncomment and fill in to enable direct HTTPS with TLS 1.2/1.3 and HTTP/2. When `host`

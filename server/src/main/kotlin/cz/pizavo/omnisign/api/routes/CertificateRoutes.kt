@@ -15,7 +15,7 @@ import org.koin.ktor.ext.inject
  *
  * `GET /api/v1/certificates` is gated behind [AllowedOperation.SIGN] because it reveals
  * which signing certificates are installed on the server. The response includes signing-capable
- * certificates filtered by [ServerConfig.allowedCertificateAliases] (when set), plus any
+ * certificates filtered by [OperationsConfig.certificateAliases] (when set), plus any
  * per-token warnings and locked-token entries from the discovery process.
  *
  * Certificate discovery is not profile-scoped — available certificates depend only on the
@@ -33,7 +33,7 @@ fun Route.certificateRoutes() {
 				throw OperationException(error)
 			},
 			ifRight = { result ->
-				val allowedAliases = serverConfig.allowedCertificateAliases
+				val allowedAliases = serverConfig.operations.certificateAliases
 				val filtered = if (allowedAliases != null) {
 					result.copy(certificates = result.certificates.filter { it.alias in allowedAliases })
 				} else {

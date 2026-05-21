@@ -3,9 +3,12 @@ package cz.pizavo.omnisign.config
 /**
  * Root server configuration loaded from the `server.yml` file.
  *
- * @property host Network interface the server binds to.
- * @property port Port for the plain HTTP connector (used when reverse-proxy mode is active
- *   via [proxy] or TLS is not configured).
+ * Every config concept lives under a named block — `listen:` for the network bind,
+ * `operations:` for the operation allowlist, plus `tls:` / `proxy:` / `cors:` / `auth:`
+ * / `rateLimiting:` — so the schema is consistent and future field additions land in
+ * the right block without reshaping the root.
+ *
+ * @property listen Network listener: bind host and plain-HTTP port. See [ListenConfig].
  * @property development When `true`, Ktor development mode is activated. This enables
  *   auto-reload and more verbose error pages. Should be `false` in production.
  * @property proxy Reverse-proxy configuration. When `null` or [ProxyConfig.enabled] is
@@ -13,16 +16,8 @@ package cz.pizavo.omnisign.config
  *   headers. When enabled, [ProxyConfig.trusted] must list the IP addresses or CIDR
  *   ranges of the upstream proxies whose forwarded headers are honored; see
  *   [ProxyConfig] for the full validation contract.
- * @property allowedOperations Set of operations the server exposes. Defaults to
- *   `setOf(`[AllowedOperation.VALIDATE]`)` — the only operation that exposes no
- *   server-side signing material or timestamping endpoint to API callers and is therefore
- *   safe to enable by default. [AllowedOperation.SIGN] and [AllowedOperation.TIMESTAMP]
- *   are opt-in for institutional deployments where the server holds an HSM/seal
- *   certificate or runs an institutional TSA proxy.
- * @property allowedCertificateAliases When non-null, only these certificate aliases may be used
- *   for signing via the API. Provides defense-in-depth so that personal certificates installed
- *   on the server are never accidentally exposed. When `null` and signing is enabled, all
- *   discovered signing certificates are available.
+ * @property operations Operation-gating: allowed API operations and certificate-alias
+ *   allowlist for signing. See [OperationsConfig].
  * @property tls TLS/SSL keystore settings, including optional nested [HstsConfig].
  *   Ignored when reverse-proxy mode is active.
  * @property cors Cross-Origin Resource Sharing configuration.
@@ -34,12 +29,10 @@ package cz.pizavo.omnisign.config
  *   authentication on all operational routes.
  */
 data class ServerConfig(
-	val host: String = "0.0.0.0",
-	val port: Int = 50080,
+	val listen: ListenConfig = ListenConfig(),
 	val development: Boolean = false,
 	val proxy: ProxyConfig? = null,
-	val allowedOperations: Set<AllowedOperation> = setOf(AllowedOperation.VALIDATE),
-	val allowedCertificateAliases: List<String>? = null,
+	val operations: OperationsConfig = OperationsConfig(),
 	val tls: TlsConfig? = null,
 	val cors: CorsConfig? = null,
 	val rateLimiting: RateLimitConfig? = null,

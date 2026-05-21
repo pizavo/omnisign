@@ -3,6 +3,8 @@ package cz.pizavo.omnisign.api.routes
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.CorsConfig
+import cz.pizavo.omnisign.config.ListenConfig
+import cz.pizavo.omnisign.config.OperationsConfig
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.module
 import io.kotest.core.spec.style.FunSpec
@@ -24,7 +26,7 @@ class FileSizeEnforcementTest : FunSpec({
 	test("validation route returns 413 when file exceeds maxFileSize") {
 		testApplication {
 			application {
-				module(ServerConfig(host = "127.0.0.1", maxFileSize = 10L, cors = CorsConfig(allowedOrigins = listOf("*"))))
+				module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), maxFileSize = 10L, cors = CorsConfig(allowedOrigins = listOf("*"))))
 			}
 			val response = client.post("/api/v1/validate") {
 				setBody(MultiPartFormDataContent(formData {
@@ -44,9 +46,9 @@ class FileSizeEnforcementTest : FunSpec({
 		testApplication {
 			application {
 				module(ServerConfig(
-					host = "127.0.0.1",
+					listen = ListenConfig(host = "127.0.0.1"),
 					maxFileSize = 10L,
-					allowedOperations = setOf(AllowedOperation.TIMESTAMP),
+					operations = OperationsConfig(allowed = setOf(AllowedOperation.TIMESTAMP)),
 					cors = CorsConfig(allowedOrigins = listOf("*")),
 				))
 			}
@@ -68,9 +70,9 @@ class FileSizeEnforcementTest : FunSpec({
 		testApplication {
 			application {
 				module(ServerConfig(
-					host = "127.0.0.1",
+					listen = ListenConfig(host = "127.0.0.1"),
 					maxFileSize = 10L,
-					allowedOperations = setOf(AllowedOperation.SIGN, AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP),
+					operations = OperationsConfig(allowed = setOf(AllowedOperation.SIGN, AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP)),
 					cors = CorsConfig(allowedOrigins = listOf("*")),
 				))
 			}

@@ -56,8 +56,8 @@ import java.io.File
  * here with only these two fields populated, so a future expansion of the override pipeline
  * cannot accidentally widen the API surface.
  *
- * This operation is disabled by default and must be explicitly enabled in [ServerConfig.allowedOperations].
- * When [ServerConfig.allowedCertificateAliases] is set, only those aliases may be used.
+ * This operation is disabled by default and must be explicitly enabled in [OperationsConfig.allowed].
+ * When [OperationsConfig.certificateAliases] is set, only those aliases may be used.
  *
  * On success the response is the signed PDF with `application/pdf` content type.
  * A `X-OmniSign-Result` header carries [SigningResultMeta] as JSON.
@@ -125,7 +125,7 @@ fun Route.signingRoutes() {
 			val noTimestamp = extractTextField(parts, "noTimestamp")?.toBoolean() == true
 
 			val requestedAlias = extractTextField(parts, "certificateAlias")
-			val allowedAliases = serverConfig.allowedCertificateAliases
+			val allowedAliases = serverConfig.operations.certificateAliases
 			if (allowedAliases != null && requestedAlias != null && requestedAlias !in allowedAliases) {
 				call.respond(
 					HttpStatusCode.Forbidden,

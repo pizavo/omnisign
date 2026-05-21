@@ -4,7 +4,9 @@ import cz.pizavo.omnisign.config.AuthConfig
 import cz.pizavo.omnisign.config.CorsConfig
 import cz.pizavo.omnisign.config.HeaderInjectionProviderConfig
 import cz.pizavo.omnisign.config.JwtAlgorithmType
+import cz.pizavo.omnisign.config.ListenConfig
 import cz.pizavo.omnisign.config.OidcProviderConfig
+import cz.pizavo.omnisign.config.OperationsConfig
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerSecrets
 import cz.pizavo.omnisign.config.SessionConfig
@@ -67,7 +69,7 @@ private fun testRefreshTokenStore(dbFile: File): ExposedRefreshTokenStore {
 
 /**
  * Build a [ServerConfig] suitable for `/auth` integration tests: [auth] under test,
- * `allowedOperations` cleared to the empty set so the LOTL background warmup and PKCS#11
+ * `operations.allowed` cleared to the empty set so the LOTL background warmup and PKCS#11
  * paths are skipped. Each individual `testApplication` boot drops from ~5s (LOTL XML
  * fetch + parse) to milliseconds. The auth tests do not exercise DSS, and the protected-
  * route tests assert only on the auth gate (`shouldNotBe Unauthorized`), which a `503`
@@ -75,9 +77,9 @@ private fun testRefreshTokenStore(dbFile: File): ExposedRefreshTokenStore {
  */
 private fun authTestConfig(auth: AuthConfig?): ServerConfig =
     ServerConfig(
-        host = "127.0.0.1",
+        listen = ListenConfig(host = "127.0.0.1"),
         auth = auth,
-        allowedOperations = emptySet(),
+        operations = OperationsConfig(allowed = emptySet()),
         cors = CorsConfig(allowedOrigins = listOf("*")),
     )
 /**

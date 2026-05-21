@@ -69,7 +69,7 @@ suspend fun RoutingCall.requireOperation(
 	operation: AllowedOperation,
 	serverConfig: ServerConfig,
 ): Boolean {
-	if (operation in serverConfig.allowedOperations) return true
+	if (operation in serverConfig.operations.allowed) return true
 	respond(
 		HttpStatusCode.Forbidden,
 		ApiError(

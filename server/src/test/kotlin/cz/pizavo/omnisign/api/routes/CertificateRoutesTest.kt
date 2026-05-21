@@ -4,6 +4,8 @@ import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.api.model.responses.CertificateListResponse
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.CorsConfig
+import cz.pizavo.omnisign.config.ListenConfig
+import cz.pizavo.omnisign.config.OperationsConfig
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.module
 import io.kotest.core.spec.style.FunSpec
@@ -21,10 +23,10 @@ class CertificateRoutesTest : FunSpec({
 
 	val json = Json { ignoreUnknownKeys = true }
 
-	test("GET /api/v1/certificates returns 403 when SIGN is not in allowedOperations") {
+	test("GET /api/v1/certificates returns 403 when SIGN is not in operations.allowed") {
 		testApplication {
 			application {
-				module(ServerConfig(host = "127.0.0.1", allowedOperations = setOf(AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP), cors = CorsConfig(allowedOrigins = listOf("*"))))
+				module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP)), cors = CorsConfig(allowedOrigins = listOf("*"))))
 			}
 			val response = client.get("/api/v1/certificates")
 			response.status shouldBe HttpStatusCode.Forbidden
@@ -38,11 +40,13 @@ class CertificateRoutesTest : FunSpec({
 			application {
 				module(
 					ServerConfig(
-						host = "127.0.0.1",
-						allowedOperations = setOf(
-							AllowedOperation.SIGN,
-							AllowedOperation.VALIDATE,
-							AllowedOperation.TIMESTAMP,
+						listen = ListenConfig(host = "127.0.0.1"),
+						operations = OperationsConfig(
+							allowed = setOf(
+								AllowedOperation.SIGN,
+								AllowedOperation.VALIDATE,
+								AllowedOperation.TIMESTAMP,
+							),
 						),
 						cors = CorsConfig(allowedOrigins = listOf("*")),
 					),
@@ -55,14 +59,16 @@ class CertificateRoutesTest : FunSpec({
 		}
 	}
 
-	test("GET /api/v1/certificates filters by allowedCertificateAliases") {
+	test("GET /api/v1/certificates filters by operations.certificateAliases") {
 		testApplication {
 			application {
 				module(
 					ServerConfig(
-						host = "127.0.0.1",
-						allowedOperations = setOf(AllowedOperation.SIGN),
-						allowedCertificateAliases = listOf("allowed-alias"),
+						listen = ListenConfig(host = "127.0.0.1"),
+						operations = OperationsConfig(
+							allowed = setOf(AllowedOperation.SIGN),
+							certificateAliases = listOf("allowed-alias"),
+						),
 						cors = CorsConfig(allowedOrigins = listOf("*")),
 					),
 				)

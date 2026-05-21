@@ -18,20 +18,20 @@ class TransportSecurityValidatorTest : FunSpec({
     val proxyEnabled = ProxyConfig(enabled = true, trusted = listOf("127.0.0.1"))
 
     test("loopback bind on 127.0.0.1 passes without TLS or proxy") {
-        validateTransportSecurity(ServerConfig(host = "127.0.0.1", cors = placeholderCors))
+        validateTransportSecurity(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), cors = placeholderCors))
     }
 
     test("loopback bind on ::1 passes without TLS or proxy") {
-        validateTransportSecurity(ServerConfig(host = "::1", cors = placeholderCors))
+        validateTransportSecurity(ServerConfig(listen = ListenConfig(host = "::1"), cors = placeholderCors))
     }
 
     test("loopback bind via localhost alias passes without TLS or proxy") {
-        validateTransportSecurity(ServerConfig(host = "localhost", cors = placeholderCors))
+        validateTransportSecurity(ServerConfig(listen = ListenConfig(host = "localhost"), cors = placeholderCors))
     }
 
     test("non-loopback 0.0.0.0 without TLS or proxy fails with operator-actionable message") {
         val ex = shouldThrow<IllegalArgumentException> {
-            validateTransportSecurity(ServerConfig(host = "0.0.0.0", cors = placeholderCors))
+            validateTransportSecurity(ServerConfig(listen = ListenConfig(host = "0.0.0.0"), cors = placeholderCors))
         }
         ex.message!! shouldContain "0.0.0.0"
         ex.message!! shouldContain "proxy.enabled: true"
@@ -40,20 +40,20 @@ class TransportSecurityValidatorTest : FunSpec({
 
     test("non-loopback with proxy.enabled=true passes") {
         validateTransportSecurity(
-            ServerConfig(host = "0.0.0.0", proxy = proxyEnabled, cors = placeholderCors),
+            ServerConfig(listen = ListenConfig(host = "0.0.0.0"), proxy = proxyEnabled, cors = placeholderCors),
         )
     }
 
     test("non-loopback with tls configured passes") {
         validateTransportSecurity(
-            ServerConfig(host = "0.0.0.0", tls = tlsBlock, cors = placeholderCors),
+            ServerConfig(listen = ListenConfig(host = "0.0.0.0"), tls = tlsBlock, cors = placeholderCors),
         )
     }
 
     test("non-loopback with both proxy and tls passes") {
         validateTransportSecurity(
             ServerConfig(
-                host = "0.0.0.0",
+                listen = ListenConfig(host = "0.0.0.0"),
                 proxy = proxyEnabled,
                 tls = tlsBlock,
                 cors = placeholderCors,
@@ -65,7 +65,7 @@ class TransportSecurityValidatorTest : FunSpec({
         val ex = shouldThrow<IllegalArgumentException> {
             validateTransportSecurity(
                 ServerConfig(
-                    host = "10.0.0.5",
+                    listen = ListenConfig(host = "10.0.0.5"),
                     proxy = ProxyConfig(enabled = false, trusted = emptyList()),
                     cors = placeholderCors,
                 ),
@@ -76,7 +76,7 @@ class TransportSecurityValidatorTest : FunSpec({
 
     test("non-loopback private IP also requires TLS or proxy") {
         shouldThrow<IllegalArgumentException> {
-            validateTransportSecurity(ServerConfig(host = "192.168.1.10", cors = placeholderCors))
+            validateTransportSecurity(ServerConfig(listen = ListenConfig(host = "192.168.1.10"), cors = placeholderCors))
         }
     }
 
