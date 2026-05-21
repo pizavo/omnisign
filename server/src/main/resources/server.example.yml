@@ -4,12 +4,15 @@
 # Place it as server.yml in the working directory, set the OMNISIGN_SERVER_CONFIG
 # environment variable, or pass --config <path> on the command line.
 
-# Network listener: bind host and plain-HTTP port. Loopback hosts (127.0.0.1, ::1,
-# localhost) skip the transport-security check; any other value requires `tls:` or
-# `proxy.enabled: true` below — otherwise startup fails to prevent plain HTTP on a
-# network-reachable interface.
+# Network listener: bind host and plain-HTTP port. The default host is "127.0.0.1"
+# (loopback) so a fresh install is reachable only from the same machine. To accept
+# LAN or public connections, change `host` to "0.0.0.0" (all interfaces) or a
+# specific IP — but the server will then require `tls:` or `proxy.enabled: true`
+# below (loopback hosts are the only ones that skip the transport-security check
+# because plain HTTP on a network-reachable interface would expose JWT tokens and
+# OIDC callback parameters on the wire).
 listen:
-  host: "0.0.0.0"
+  host: "127.0.0.1"
   port: 50080
 
 # When true, Ktor development mode is activated (auto-reload, verbose errors,
