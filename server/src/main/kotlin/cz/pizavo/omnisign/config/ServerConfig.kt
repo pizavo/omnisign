@@ -4,12 +4,17 @@ package cz.pizavo.omnisign.config
  * Root server configuration loaded from the `server.yml` file.
  *
  * @property host Network interface the server binds to.
- * @property port Port for the plain HTTP connector (used when [proxyMode] is `true` or TLS is not configured).
- * @property tlsPort Port for the TLS connector when TLS is configured and [proxyMode] is `false`.
+ * @property port Port for the plain HTTP connector (used when reverse-proxy mode is active
+ *   via [proxy] or TLS is not configured).
+ * @property tlsPort Port for the TLS connector when TLS is configured and [proxy] is `null`
+ *   or disabled.
  * @property development When `true`, Ktor development mode is activated. This enables
  *   auto-reload and more verbose error pages. Should be `false` in production.
- * @property proxyMode When `true`, TLS termination is handled by a reverse proxy and the server
- *   listens on a plain HTTP connector. `X-Forwarded-*` headers are trusted.
+ * @property proxy Reverse-proxy configuration. When `null` or [ProxyConfig.enabled] is
+ *   `false`, the server runs in direct-connection mode and ignores `X-Forwarded-*`
+ *   headers. When enabled, [ProxyConfig.trusted] must list the IP addresses or CIDR
+ *   ranges of the upstream proxies whose forwarded headers are honored; see
+ *   [ProxyConfig] for the full validation contract.
  * @property allowedOperations Set of operations the server exposes. Defaults to
  *   `setOf(`[AllowedOperation.VALIDATE]`)` — the only operation that exposes no
  *   server-side signing material or timestamping endpoint to API callers and is therefore
@@ -21,7 +26,7 @@ package cz.pizavo.omnisign.config
  *   on the server are never accidentally exposed. When `null` and signing is enabled, all
  *   discovered signing certificates are available.
  * @property tls TLS/SSL keystore settings, including optional nested [HstsConfig].
- *   Ignored when [proxyMode] is `true`.
+ *   Ignored when reverse-proxy mode is active.
  * @property cors Cross-Origin Resource Sharing configuration.
  * @property rateLimiting Per-IP request rate limiting for auth and API endpoints.
  *   When `null`, rate limiting is disabled.
@@ -35,7 +40,7 @@ data class ServerConfig(
 	val port: Int = 50080,
 	val tlsPort: Int = 50443,
 	val development: Boolean = false,
-	val proxyMode: Boolean = false,
+	val proxy: ProxyConfig? = null,
 	val allowedOperations: Set<AllowedOperation> = setOf(AllowedOperation.VALIDATE),
 	val allowedCertificateAliases: List<String>? = null,
 	val tls: TlsConfig? = null,

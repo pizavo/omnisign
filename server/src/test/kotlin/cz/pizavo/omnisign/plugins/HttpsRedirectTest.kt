@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.plugins
 
+import cz.pizavo.omnisign.config.ProxyConfig
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.TlsConfig
 import io.kotest.core.spec.style.FunSpec
@@ -18,7 +19,7 @@ class HttpsRedirectTest : FunSpec({
 	test("redirect is not installed when TLS is null") {
 		testApplication {
 			application {
-				configureHttpsRedirect(ServerConfig(tls = null, proxyMode = false))
+				configureHttpsRedirect(ServerConfig(tls = null, proxy = null))
 				routing {
 					get("/test") {
 						call.respondText("ok")
@@ -30,11 +31,12 @@ class HttpsRedirectTest : FunSpec({
 		}
 	}
 
-	test("redirect is not installed when proxyMode is true") {
+	test("redirect is not installed when reverse-proxy mode is enabled") {
 		val tls = TlsConfig(keystorePath = "/tmp/ks.p12", keystorePassword = "pass")
+		val proxy = ProxyConfig(enabled = true, trusted = listOf("127.0.0.1"))
 		testApplication {
 			application {
-				configureHttpsRedirect(ServerConfig(tls = tls, proxyMode = true))
+				configureHttpsRedirect(ServerConfig(tls = tls, proxy = proxy))
 				routing {
 					get("/test") {
 						call.respondText("ok")

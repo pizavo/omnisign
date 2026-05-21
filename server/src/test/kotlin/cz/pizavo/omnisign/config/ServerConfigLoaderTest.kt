@@ -25,7 +25,7 @@ class ServerConfigLoaderTest : FunSpec({
 		config.port shouldBe 50080
 		config.tlsPort shouldBe 50443
 		config.development.shouldBeFalse()
-		config.proxyMode.shouldBeFalse()
+		config.proxy.shouldBeNull()
 		config.tls.shouldBeNull()
 		config.cors.shouldBeNull()
 		config.allowedOperations shouldContainExactlyInAnyOrder setOf(AllowedOperation.VALIDATE)
@@ -38,7 +38,11 @@ class ServerConfigLoaderTest : FunSpec({
 			port: 9090
 			tlsPort: 9443
 			development: true
-			proxyMode: true
+			proxy:
+			  enabled: true
+			  trusted:
+			    - "127.0.0.1"
+			    - "::1"
 			auth:
 			  enabled: true
 			tls:
@@ -61,7 +65,9 @@ class ServerConfigLoaderTest : FunSpec({
 		config.port shouldBe 9090
 		config.tlsPort shouldBe 9443
 		config.development.shouldBeTrue()
-		config.proxyMode.shouldBeTrue()
+		config.proxy.shouldNotBeNull()
+		config.proxy.enabled.shouldBeTrue()
+		config.proxy.trusted shouldBe listOf("127.0.0.1", "::1")
 		config.auth?.enabled.shouldBeTrue()
 
 		config.tls.shouldNotBeNull()

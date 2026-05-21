@@ -3,8 +3,9 @@ package cz.pizavo.omnisign.config
 /**
  * TLS keystore configuration.
  *
- * When present and [ServerConfig.proxyMode] is `false`, the server creates a TLS connector
- * with TLS 1.2/1.3 and HTTP/2 ALPN negotiation. To restrict to TLS 1.3 only, pass
+ * When present and reverse-proxy mode is inactive ([ServerConfig.proxy] absent or
+ * `proxy.enabled: false`), the server creates a TLS connector with TLS 1.2/1.3 and HTTP/2
+ * ALPN negotiation. To restrict to TLS 1.3 only, pass
  * `-Djdk.tls.disabledAlgorithms=TLSv1,TLSv1.1,TLSv1.2` as a JVM argument.
  *
  * @property keystorePath Absolute path to the JKS or PKCS#12 keystore file.

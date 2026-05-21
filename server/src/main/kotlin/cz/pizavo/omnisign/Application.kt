@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
 import cz.pizavo.omnisign.config.validateAuthConfig
+import cz.pizavo.omnisign.config.validateProxyConfig
 import cz.pizavo.omnisign.data.service.PcscMonitorService
 import cz.pizavo.omnisign.data.service.Pkcs11CacheInvalidator
 import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
@@ -33,11 +34,11 @@ private val logger = KotlinLogging.logger {}
  *
  * Loads [ServerConfig] from `server.yml` and starts a Netty embedded server.
  *
- * When TLS is configured and [ServerConfig.proxyMode] is `false`, a TLS connector is created
- * with TLS 1.2/1.3 and HTTP/2 ALPN negotiation enabled. To restrict to TLS 1.3 only, set the
- * JVM system property `-Djdk.tls.disabledAlgorithms=TLSv1,TLSv1.1,TLSv1.2` at launch.
- * Otherwise, a plain HTTP connector
- * is used (suitable for deployment behind a TLS-terminating reverse proxy).
+ * When TLS is configured and reverse-proxy mode is inactive (`proxy` absent or
+ * `proxy.enabled: false`), a TLS connector is created with TLS 1.2/1.3 and HTTP/2 ALPN
+ * negotiation enabled. To restrict to TLS 1.3 only, set the JVM system property
+ * `-Djdk.tls.disabledAlgorithms=TLSv1,TLSv1.1,TLSv1.2` at launch. Otherwise, a plain HTTP
+ * connector is used (suitable for deployment behind a TLS-terminating reverse proxy).
  *
  * The `--config <path>` argument can be passed on the command line to point to a non-default
  * YAML config file location.
@@ -61,7 +62,7 @@ fun main(args: Array<String>) {
 		logger.info { "Development mode is ENABLED" }
 	}
 
-	val tlsCfg = serverConfig.tls?.takeUnless { serverConfig.proxyMode }
+	val tlsCfg = serverConfig.tls?.takeUnless { serverConfig.proxy?.enabled == true }
 
 	if (tlsCfg != null) {
 		val keyStore = loadKeyStore(tlsCfg.keystorePath, tlsCfg.keystorePassword)
@@ -86,7 +87,7 @@ fun main(args: Array<String>) {
 
 		logger.info { "TLS connector configured on ${serverConfig.host}:${serverConfig.tlsPort} (TLS 1.2/1.3, HTTP/2 ALPN)" }
 	} else {
-		if (serverConfig.proxyMode) {
+		if (serverConfig.proxy?.enabled == true) {
 			logger.info { "Proxy mode enabled — plain HTTP on ${serverConfig.host}:${serverConfig.port}" }
 		} else {
 			logger.info { "No TLS configured — plain HTTP on ${serverConfig.host}:${serverConfig.port}" }
@@ -109,6 +110,7 @@ fun main(args: Array<String>) {
  */
 fun Application.moduleWith(serverConfig: ServerConfig) {
 	validateAuthConfig(serverConfig.auth)
+	val parsedProxy = validateProxyConfig(serverConfig.proxy)
 	configureKoin(serverConfig)
 	launchPkcs11WarmupIfNeeded(serverConfig)
 	launchTrustedListRefreshIfNeeded(serverConfig)
@@ -119,8 +121,8 @@ fun Application.moduleWith(serverConfig: ServerConfig) {
 	configureCallId()
 	configureCallLogging()
 	configureAutoHeadResponse()
-	configureCors(serverConfig.cors, tlsEnabled = serverConfig.tls != null || serverConfig.proxyMode)
-	configureForwardedHeaders(serverConfig.proxyMode)
+	configureCors(serverConfig.cors, tlsEnabled = serverConfig.tls != null || parsedProxy.enabled)
+	configureForwardedHeaders(parsedProxy)
 	configureHttpsRedirect(serverConfig)
 	configureRateLimiting(serverConfig.rateLimiting)
 
@@ -325,8 +327,9 @@ private fun loadKeyStore(path: String, password: String): KeyStore {
 private fun resolveExternalUrl(serverConfig: ServerConfig): String {
 	System.getenv("OMNISIGN_EXTERNAL_URL")?.takeIf { it.isNotBlank() }?.let { return it.trimEnd('/') }
 
-	val scheme = if (serverConfig.tls != null && !serverConfig.proxyMode) "https" else "http"
-	val port = if (serverConfig.tls != null && !serverConfig.proxyMode) serverConfig.tlsPort else serverConfig.port
+	val proxyEnabled = serverConfig.proxy?.enabled == true
+	val scheme = if (serverConfig.tls != null && !proxyEnabled) "https" else "http"
+	val port = if (serverConfig.tls != null && !proxyEnabled) serverConfig.tlsPort else serverConfig.port
 	val host = serverConfig.host.let { if (it == "0.0.0.0") "localhost" else it }
 	return "$scheme://$host:$port"
 }

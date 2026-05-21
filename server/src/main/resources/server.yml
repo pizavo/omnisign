@@ -18,14 +18,27 @@ tlsPort: 50443
 # production and any deployment reachable from the network.
 development: false
 
-# When true, TLS is handled by a reverse proxy (e.g., nginx, Caddy, Traefik).
-# The server listens on a plain HTTP connector and trusts X-Forwarded-* headers.
-# TLS v1.3 enforcement is skipped because the proxy handles it.
-proxyMode: false
+# Reverse-proxy configuration. When enabled, TLS termination is delegated to an upstream
+# proxy (e.g., nginx, Caddy, Traefik) and the server listens only on the plain HTTP
+# connector. X-Forwarded-* headers are honored, BUT only when the TCP connection's source
+# IP matches one of the entries in `trusted` — headers arriving from any other peer are
+# ignored so an attacker reaching the Ktor port directly cannot spoof their client IP.
+#
+# proxy.enabled: true REQUIRES a non-empty proxy.trusted list — startup aborts otherwise.
+# Use literal IPs (e.g. "127.0.0.1", "::1") or CIDR ranges (e.g. "10.0.0.0/24").
+# Hostnames and "*" are rejected — hostnames pull in a DNS dependency and resolve
+# inconsistently across platforms (localhost is 127.0.0.1 on some, ::1 on others);
+# "*" would defeat the trust boundary entirely.
+# proxy:
+#   enabled: true
+#   trusted:
+#     - "127.0.0.1"
+#     - "::1"
 
 # In-memory per-IP request rate limiting.
 # When enabled, protects auth and API endpoints from brute-force and DoS attacks.
-# In proxy mode, client IPs are taken from X-Forwarded-For (set by proxyMode: true).
+# In proxy mode, client IPs are taken from X-Forwarded-For only for connections coming
+# from a trusted proxy listed in proxy.trusted above.
 # rateLimiting:
 #   auth:
 #     limit: 20               # max requests per IP per refillPeriodSeconds on /auth/* routes
