@@ -22,12 +22,12 @@ class DefaultHeadersTest : FunSpec({
 		}
 	}
 
-	test("X-Powered-By header is present in responses") {
+	test("X-Powered-By header is not present in responses") {
 		testApplication {
 			configureTestApp()
 			val response = client.get("/test")
 			response.status shouldBe HttpStatusCode.OK
-			response.headers["X-Powered-By"] shouldBe "OmniSign"
+			response.headers["X-Powered-By"].shouldBeNull()
 		}
 	}
 
