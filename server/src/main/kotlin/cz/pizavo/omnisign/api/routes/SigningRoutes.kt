@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.api.routes
 
 import cz.pizavo.omnisign.api.collectParts
+import cz.pizavo.omnisign.api.deleteFileParts
 import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.extractFilePart
 import cz.pizavo.omnisign.api.extractTextField
@@ -73,21 +74,22 @@ fun Route.signingRoutes() {
 		val multipart = call.receiveMultipart()
 		val parts = multipart.collectParts(serverConfig.maxFileSize)
 
-		val inputFile = extractFilePart(parts, "file", serverConfig.maxFileSize)
-		if (inputFile == null) {
-			call.respond(
-				HttpStatusCode.BadRequest,
-				ApiError(error = "MISSING_FILE", message = "Multipart field 'file' is required"),
-			)
-			return@post
-		}
-
-		val outputFile = withContext(Dispatchers.IO) {
-			File.createTempFile("omnisign-signed-", ".pdf")
-		}
-		outputFile.deleteOnExit()
-
+		var outputFile: File? = null
 		try {
+			val inputFile = extractFilePart(parts, "file")
+			if (inputFile == null) {
+				call.respond(
+					HttpStatusCode.BadRequest,
+					ApiError(error = "MISSING_FILE", message = "Multipart field 'file' is required"),
+				)
+				return@post
+			}
+
+			val output = withContext(Dispatchers.IO) {
+				File.createTempFile("omnisign-signed-", ".pdf")
+			}
+			outputFile = output
+
 			val disabledHashAlgorithms = call.parseEnumSetField(
 				parts, "disableHashAlgorithm", HashAlgorithm.entries, "INVALID_ALGORITHM",
 			) ?: return@post
@@ -139,7 +141,7 @@ fun Route.signingRoutes() {
 
 			val parameters = SigningParameters(
 				inputFile = inputFile.absolutePath,
-				outputFile = outputFile.absolutePath,
+				outputFile = output.absolutePath,
 				certificateAlias = requestedAlias,
 				hashAlgorithm = hashAlgorithm,
 				signatureLevel = signatureLevel,
@@ -162,12 +164,12 @@ fun Route.signingRoutes() {
 						hasRevocationWarnings = result.hasRevocationWarnings,
 					)
 					call.response.header("X-OmniSign-Result", serverJson.encodeToString(meta))
-					call.respondFile(outputFile)
+					call.respondFile(output)
 				},
 			)
 		} finally {
-			inputFile.delete()
-			outputFile.delete()
+			parts.deleteFileParts()
+			outputFile?.delete()
 		}
 	}
 }

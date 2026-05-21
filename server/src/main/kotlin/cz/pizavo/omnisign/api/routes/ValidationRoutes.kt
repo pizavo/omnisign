@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.api.routes
 
 import cz.pizavo.omnisign.api.collectParts
+import cz.pizavo.omnisign.api.deleteFileParts
 import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.extractFilePart
 import cz.pizavo.omnisign.api.extractTextField
@@ -67,16 +68,16 @@ fun Route.validationRoutes() {
 		val multipart = call.receiveMultipart()
 		val parts = multipart.collectParts(serverConfig.maxFileSize)
 
-		val inputFile = extractFilePart(parts, "file", serverConfig.maxFileSize)
-		if (inputFile == null) {
-			call.respond(
-				HttpStatusCode.BadRequest,
-				ApiError(error = "MISSING_FILE", message = "Multipart field 'file' is required"),
-			)
-			return@post
-		}
-
 		try {
+			val inputFile = extractFilePart(parts, "file")
+			if (inputFile == null) {
+				call.respond(
+					HttpStatusCode.BadRequest,
+					ApiError(error = "MISSING_FILE", message = "Multipart field 'file' is required"),
+				)
+				return@post
+			}
+
 			val rawReportFormats = call.parseEnumSetField(
 				parts, "formats", RawReportFormat.entries, "INVALID_FORMAT",
 			) ?: return@post
@@ -124,7 +125,7 @@ fun Route.validationRoutes() {
 				},
 			)
 		} finally {
-			inputFile.delete()
+			parts.deleteFileParts()
 		}
 	}
 }
