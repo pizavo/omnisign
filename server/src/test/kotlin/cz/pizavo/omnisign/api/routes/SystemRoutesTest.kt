@@ -89,6 +89,30 @@ class SystemRoutesTest : FunSpec({
         }
     }
 
+    test("X-Request-Id at the 64-character length boundary is accepted and echoed back") {
+        testApplication {
+            application { module(ServerConfig(allowedOperations = emptySet())) }
+            val id = "a".repeat(64)
+            val response = client.get("/api/v1/health") {
+                header(HttpHeaders.XRequestId, id)
+            }
+            response.headers[HttpHeaders.XRequestId] shouldBe id
+        }
+    }
+
+    test("X-Request-Id longer than 64 characters is rejected and replaced with a server-generated ID") {
+        testApplication {
+            application { module(ServerConfig(allowedOperations = emptySet())) }
+            val oversized = "a".repeat(65)
+            val response = client.get("/api/v1/health") {
+                header(HttpHeaders.XRequestId, oversized)
+            }
+            val echoed = response.headers[HttpHeaders.XRequestId]
+            echoed.shouldNotBeNull()
+            (echoed == oversized) shouldBe false
+        }
+    }
+
     test("GET /api/v1/capabilities returns authEnabled false when auth not configured") {
         testApplication {
             application { module(ServerConfig(auth = null, allowedOperations = emptySet())) }
