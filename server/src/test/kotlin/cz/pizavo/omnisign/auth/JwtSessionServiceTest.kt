@@ -16,16 +16,15 @@ import io.kotest.matchers.string.shouldNotBeEmpty
  */
 class JwtSessionServiceTest : FunSpec({
 
-    val secret = "test-jwt-secret-padded-to-at-least-64-bytes-for-hs512-compatibility!!"
+    val secret = "test-jwt-secret-padded-to-at-least-64-bytes-for-hs512-compatibility!!".sensitive()
 
     val config = SessionConfig(
         algorithm = JwtAlgorithmType.HS512,
-        secret = secret.sensitive(),
         issuer = "test-issuer",
         audience = "test-audience",
         tokenExpirySeconds = 3600,
     )
-    val service = JwtSessionService(config)
+    val service = JwtSessionService(config, secret)
 
     val principal = AuthenticatedPrincipal(
         userId = "user-123",
@@ -58,7 +57,8 @@ class JwtSessionServiceTest : FunSpec({
     }
 
     test("verify returns null for a token signed with a different secret") {
-        val otherService = JwtSessionService(config.copy(secret = "different-jwt-secret-also-padded-to-64-bytes-for-hs512-rejection!!".sensitive()))
+        val otherSecret = "different-jwt-secret-also-padded-to-64-bytes-for-hs512-rejection!!".sensitive()
+        val otherService = JwtSessionService(config, otherSecret)
         val foreignToken = otherService.issue(principal)
         service.verify(foreignToken).shouldBeNull()
     }
@@ -68,7 +68,7 @@ class JwtSessionServiceTest : FunSpec({
     }
 
     test("verify returns null for an expired token") {
-        val expiredService = JwtSessionService(config.copy(tokenExpirySeconds = -1))
+        val expiredService = JwtSessionService(config.copy(tokenExpirySeconds = -1), secret)
         val expiredToken = expiredService.issue(principal)
         expiredService.verify(expiredToken).shouldBeNull()
     }
@@ -83,26 +83,26 @@ class JwtSessionServiceTest : FunSpec({
     }
 
     test("HS256 variant round-trips correctly") {
-        val hs256Service = JwtSessionService(config.copy(algorithm = JwtAlgorithmType.HS256))
+        val hs256Service = JwtSessionService(config.copy(algorithm = JwtAlgorithmType.HS256), secret)
         val token = hs256Service.issue(principal)
         hs256Service.verify(token)?.userId shouldBe principal.userId
     }
 
     test("HS384 variant round-trips correctly") {
-        val hs384Service = JwtSessionService(config.copy(algorithm = JwtAlgorithmType.HS384))
+        val hs384Service = JwtSessionService(config.copy(algorithm = JwtAlgorithmType.HS384), secret)
         val token = hs384Service.issue(principal)
         hs384Service.verify(token)?.userId shouldBe principal.userId
     }
 
     test("token from HS512 is not accepted by HS256 service") {
-        val hs256Service = JwtSessionService(config.copy(algorithm = JwtAlgorithmType.HS256))
+        val hs256Service = JwtSessionService(config.copy(algorithm = JwtAlgorithmType.HS256), secret)
         val hs512Token = service.issue(principal)
         hs256Service.verify(hs512Token).shouldBeNull()
     }
 
     test("asymmetric algorithm selection throws IllegalArgumentException") {
         shouldThrow<IllegalArgumentException> {
-            JwtSessionService(config.copy(algorithm = JwtAlgorithmType.ES256))
+            JwtSessionService(config.copy(algorithm = JwtAlgorithmType.ES256), secret)
         }
     }
 })

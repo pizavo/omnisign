@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign
 
 import cz.pizavo.omnisign.api.model.responses.HealthResponse
+import cz.pizavo.omnisign.config.CorsConfig
 import cz.pizavo.omnisign.config.ServerConfig
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
@@ -18,7 +19,7 @@ class ApplicationTest : FunSpec({
 	test("health endpoint responds with ok status") {
 		testApplication {
 			application {
-				module(ServerConfig(allowedOperations = emptySet()))
+				module(ServerConfig(host = "127.0.0.1", allowedOperations = emptySet(), cors = CorsConfig(allowedOrigins = listOf("*"))))
 			}
 			val response = client.get("/api/v1/health")
 			response.status shouldBe HttpStatusCode.OK
@@ -31,7 +32,7 @@ class ApplicationTest : FunSpec({
 	test("unknown endpoint returns 404") {
 		testApplication {
 			application {
-				module(ServerConfig(allowedOperations = emptySet()))
+				module(ServerConfig(host = "127.0.0.1", allowedOperations = emptySet(), cors = CorsConfig(allowedOrigins = listOf("*"))))
 			}
 			val response = client.get("/api/v1/nonexistent")
 			response.status shouldBe HttpStatusCode.NotFound

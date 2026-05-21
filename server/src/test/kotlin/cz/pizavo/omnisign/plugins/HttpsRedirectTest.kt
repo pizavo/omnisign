@@ -3,7 +3,6 @@ package cz.pizavo.omnisign.plugins
 import cz.pizavo.omnisign.config.ProxyConfig
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.TlsConfig
-import cz.pizavo.omnisign.domain.model.value.sensitive
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.ktor.client.request.*
@@ -33,7 +32,7 @@ class HttpsRedirectTest : FunSpec({
 	}
 
 	test("redirect is not installed when reverse-proxy mode is enabled") {
-		val tls = TlsConfig(keystorePath = "/tmp/ks.p12", keystorePassword = "pass".sensitive())
+		val tls = TlsConfig(keystorePath = "/tmp/ks.p12")
 		val proxy = ProxyConfig(enabled = true, trusted = listOf("127.0.0.1"))
 		testApplication {
 			application {

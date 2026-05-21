@@ -6,7 +6,6 @@ import com.auth0.jwk.SigningKeyNotFoundException
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import cz.pizavo.omnisign.config.OidcProviderConfig
-import cz.pizavo.omnisign.domain.model.value.sensitive
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
@@ -38,7 +37,6 @@ class IdTokenVerifierTest : FunSpec({
     val provider = OidcProviderConfig(
         name = "test-idp",
         clientId = "test-client-id",
-        clientSecret = "test-client-secret".sensitive(),
         discoveryUrl = "https://test-idp.example/.well-known/openid-configuration",
         allowedEmailDomains = listOf("*"),
     )

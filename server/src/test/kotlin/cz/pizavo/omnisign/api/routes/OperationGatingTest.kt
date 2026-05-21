@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.api.routes
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.api.model.responses.CapabilitiesResponse
 import cz.pizavo.omnisign.config.AllowedOperation
+import cz.pizavo.omnisign.config.CorsConfig
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.module
 import io.kotest.core.spec.style.FunSpec
@@ -24,7 +25,7 @@ class OperationGatingTest : FunSpec({
 	test("signing route returns 403 when SIGN is not in allowedOperations") {
 		testApplication {
 			application {
-				module(ServerConfig(allowedOperations = setOf(AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP)))
+				module(ServerConfig(host = "127.0.0.1", allowedOperations = setOf(AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP), cors = CorsConfig(allowedOrigins = listOf("*"))))
 			}
 			val response = client.post("/api/v1/sign")
 			response.status shouldBe HttpStatusCode.Forbidden
@@ -36,7 +37,7 @@ class OperationGatingTest : FunSpec({
 	test("validation route returns 403 when VALIDATE is not in allowedOperations") {
 		testApplication {
 			application {
-				module(ServerConfig(allowedOperations = setOf(AllowedOperation.TIMESTAMP)))
+				module(ServerConfig(host = "127.0.0.1", allowedOperations = setOf(AllowedOperation.TIMESTAMP), cors = CorsConfig(allowedOrigins = listOf("*"))))
 			}
 			val response = client.post("/api/v1/validate")
 			response.status shouldBe HttpStatusCode.Forbidden
@@ -48,7 +49,7 @@ class OperationGatingTest : FunSpec({
 	test("timestamp route returns 403 when TIMESTAMP is not in allowedOperations") {
 		testApplication {
 			application {
-				module(ServerConfig(allowedOperations = setOf(AllowedOperation.VALIDATE)))
+				module(ServerConfig(host = "127.0.0.1", allowedOperations = setOf(AllowedOperation.VALIDATE), cors = CorsConfig(allowedOrigins = listOf("*"))))
 			}
 			val response = client.post("/api/v1/timestamp")
 			response.status shouldBe HttpStatusCode.Forbidden
@@ -60,7 +61,7 @@ class OperationGatingTest : FunSpec({
 	test("capabilities endpoint lists allowed operations and profiles") {
 		testApplication {
 			application {
-				module(ServerConfig(allowedOperations = setOf(AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP)))
+				module(ServerConfig(host = "127.0.0.1", allowedOperations = setOf(AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP), cors = CorsConfig(allowedOrigins = listOf("*"))))
 			}
 			val response = client.get("/api/v1/capabilities")
 			response.status shouldBe HttpStatusCode.OK
@@ -75,11 +76,13 @@ class OperationGatingTest : FunSpec({
 			application {
 				module(
 					ServerConfig(
+						host = "127.0.0.1",
 						allowedOperations = setOf(
 							AllowedOperation.SIGN,
 							AllowedOperation.VALIDATE,
 							AllowedOperation.TIMESTAMP,
 						),
+						cors = CorsConfig(allowedOrigins = listOf("*")),
 					),
 				)
 			}
@@ -94,7 +97,7 @@ class OperationGatingTest : FunSpec({
 		val customSize = 50L * 1024 * 1024
 		testApplication {
 			application {
-				module(ServerConfig(maxFileSize = customSize))
+				module(ServerConfig(host = "127.0.0.1", maxFileSize = customSize, cors = CorsConfig(allowedOrigins = listOf("*"))))
 			}
 			val response = client.get("/api/v1/capabilities")
 			response.status shouldBe HttpStatusCode.OK

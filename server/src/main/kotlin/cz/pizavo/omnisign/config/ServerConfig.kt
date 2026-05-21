@@ -6,8 +6,6 @@ package cz.pizavo.omnisign.config
  * @property host Network interface the server binds to.
  * @property port Port for the plain HTTP connector (used when reverse-proxy mode is active
  *   via [proxy] or TLS is not configured).
- * @property tlsPort Port for the TLS connector when TLS is configured and [proxy] is `null`
- *   or disabled.
  * @property development When `true`, Ktor development mode is activated. This enables
  *   auto-reload and more verbose error pages. Should be `false` in production.
  * @property proxy Reverse-proxy configuration. When `null` or [ProxyConfig.enabled] is
@@ -38,7 +36,6 @@ package cz.pizavo.omnisign.config
 data class ServerConfig(
 	val host: String = "0.0.0.0",
 	val port: Int = 50080,
-	val tlsPort: Int = 50443,
 	val development: Boolean = false,
 	val proxy: ProxyConfig? = null,
 	val allowedOperations: Set<AllowedOperation> = setOf(AllowedOperation.VALIDATE),

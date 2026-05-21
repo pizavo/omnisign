@@ -14,6 +14,7 @@ import cz.pizavo.omnisign.auth.sessionsDbFile
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
+import cz.pizavo.omnisign.config.ServerSecrets
 import cz.pizavo.omnisign.config.SessionConfig
 import cz.pizavo.omnisign.platform.PasswordCallback
 import io.ktor.client.*
@@ -40,11 +41,12 @@ import kotlin.coroutines.CoroutineContext
  * - [HttpClient] (CIO engine) with JSON content-negotiation for OIDC discovery and
  *   user-info requests.
  * - [JwtSessionService] for issuing and verifying session tokens. The signing secret is
- *   read from `auth.session.secret` (typically declared in `server.yml` via env-var
- *   substitution: `secret: "${OMNISIGN_JWT_SECRET}"`). When `auth.enabled` is `true` the
- *   field is required and must be at least [MIN_JWT_SECRET_BYTES] bytes — startup fails
- *   otherwise. When `auth.enabled` is `false` the field may be omitted; [JwtSessionService]
- *   becomes inert (`verify` returns `null` for every token, `issue` throws if called).
+ *   resolved from the `OMNISIGN_JWT_SECRET` environment variable at startup (see
+ *   [ServerSecrets]). When `auth.enabled` is `true` the env var is required and the
+ *   resolved value must be at least [MIN_JWT_SECRET_BYTES] bytes — startup fails
+ *   otherwise. When `auth.enabled` is `false` the env var may be omitted;
+ *   [JwtSessionService] becomes inert (`verify` returns `null` for every token,
+ *   `issue` throws if called).
  * - [NonceManager] for OAuth2 `state`-parameter CSRF protection on the authorization-code
  *   callback. Implemented as [StatelessHmacNonceManager]; the HMAC key is read from
  *   `auth.oauthStateSecret` (typically declared via env-var substitution:
@@ -72,8 +74,9 @@ import kotlin.coroutines.CoroutineContext
  *
  * @param serverConfig Preloaded server configuration.
  */
-fun serverModule(serverConfig: ServerConfig) = module {
+fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets) = module {
 	single<ServerConfig> { serverConfig }
+	single<ServerSecrets> { secrets }
 	single<ServerConfigLoader> { ServerConfigLoader() }
 	single<PasswordCallback> { ServerPasswordCallback() }
 	single<CoroutineContext> { Dispatchers.IO }
@@ -96,22 +99,15 @@ fun serverModule(serverConfig: ServerConfig) = module {
 
 	single<JwtSessionService> {
 		val config = serverConfig.auth?.session ?: SessionConfig()
-		val authEnabled = serverConfig.auth?.enabled == true
-		val secret = config.secret
-		if (secret == null) {
-			require(!authEnabled) {
-				"auth.session.secret is required when auth.enabled is true. " +
-						"Declare it in server.yml — typically via env-var substitution: " +
-						"`secret: \"\${OMNISIGN_JWT_SECRET}\"`."
-			}
-		} else {
+		val secret = secrets.jwtSecret
+		if (secret != null) {
 			val secretBytes = secret.value.toByteArray(Charsets.UTF_8).size
 			require(secretBytes >= MIN_JWT_SECRET_BYTES) {
-				"auth.session.secret must be at least $MIN_JWT_SECRET_BYTES bytes (256 bits) — " +
-						"got $secretBytes."
+				"${ServerSecrets.JWT_SECRET_ENV} must be at least $MIN_JWT_SECRET_BYTES bytes " +
+						"(256 bits) — got $secretBytes."
 			}
 		}
-		JwtSessionService(config)
+		JwtSessionService(config, secret)
 	}
 
 	single<NonceManager> {

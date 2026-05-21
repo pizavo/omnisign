@@ -17,10 +17,10 @@ import io.ktor.server.plugins.httpsredirect.*
  */
 fun Application.configureHttpsRedirect(serverConfig: ServerConfig) {
 	if (serverConfig.proxy?.enabled == true) return
-	if (serverConfig.tls == null) return
+	val tls = serverConfig.tls ?: return
 
 	install(HttpsRedirect) {
-		sslPort = serverConfig.tlsPort
+		sslPort = tls.port
 		permanentRedirect = true
 	}
 }

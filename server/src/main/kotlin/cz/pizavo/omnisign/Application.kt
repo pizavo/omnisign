@@ -3,8 +3,12 @@ package cz.pizavo.omnisign
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
+import cz.pizavo.omnisign.config.ServerSecrets
+import cz.pizavo.omnisign.config.isLoopbackHost
 import cz.pizavo.omnisign.config.validateAuthConfig
+import cz.pizavo.omnisign.config.validateCorsConfig
 import cz.pizavo.omnisign.config.validateProxyConfig
+import cz.pizavo.omnisign.config.validateTransportSecurity
 import cz.pizavo.omnisign.data.service.PcscMonitorService
 import cz.pizavo.omnisign.data.service.Pkcs11CacheInvalidator
 import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
@@ -46,6 +50,7 @@ private val logger = KotlinLogging.logger {}
 fun main(args: Array<String>) {
 	val configPath = args.indexOf("--config").takeIf { it >= 0 }?.let { args.getOrNull(it + 1) }
 	val serverConfig = ServerConfigLoader().load(configPath)
+	val secrets = ServerSecrets.resolveFromEnv(serverConfig)
 
 	if (serverConfig.development && !isLoopbackHost(serverConfig.host)) {
 		error(
@@ -65,7 +70,12 @@ fun main(args: Array<String>) {
 	val tlsCfg = serverConfig.tls?.takeUnless { serverConfig.proxy?.enabled == true }
 
 	if (tlsCfg != null) {
-		val keyStore = loadKeyStore(tlsCfg.keystorePath, tlsCfg.keystorePassword.value)
+		val keystorePassword = checkNotNull(secrets.tlsKeystorePassword) {
+			"TLS is configured but tlsKeystorePassword was not resolved — this is a programming " +
+					"error in ServerSecrets.resolveFromEnv (env var should already be required)."
+		}
+		val privateKeyPassword = secrets.tlsPrivateKeyPassword ?: keystorePassword
+		val keyStore = loadKeyStore(tlsCfg.keystorePath, keystorePassword.value)
 
 		embeddedServer(
 			Netty,
@@ -74,18 +84,18 @@ fun main(args: Array<String>) {
 				sslConnector(
 					keyStore = keyStore,
 					keyAlias = tlsCfg.keyAlias,
-					keyStorePassword = { tlsCfg.keystorePassword.value.toCharArray() },
-					privateKeyPassword = { tlsCfg.privateKeyPassword.value.toCharArray() },
+					keyStorePassword = { keystorePassword.value.toCharArray() },
+					privateKeyPassword = { privateKeyPassword.value.toCharArray() },
 				) {
-					port = serverConfig.tlsPort
+					port = tlsCfg.port
 					host = serverConfig.host
 				}
 			},
 		) {
-			moduleWith(serverConfig)
+			moduleWith(serverConfig, secrets)
 		}.start(wait = true)
 
-		logger.info { "TLS connector configured on ${serverConfig.host}:${serverConfig.tlsPort} (TLS 1.2/1.3, HTTP/2 ALPN)" }
+		logger.info { "TLS connector configured on ${serverConfig.host}:${tlsCfg.port} (TLS 1.2/1.3, HTTP/2 ALPN)" }
 	} else {
 		if (serverConfig.proxy?.enabled == true) {
 			logger.info { "Proxy mode enabled — plain HTTP on ${serverConfig.host}:${serverConfig.port}" }
@@ -98,20 +108,25 @@ fun main(args: Array<String>) {
 			port = serverConfig.port,
 			host = serverConfig.host,
 		) {
-			moduleWith(serverConfig)
+			moduleWith(serverConfig, secrets)
 		}.start(wait = true)
 	}
 }
 
 /**
- * Configure the full application module with the given [ServerConfig].
+ * Configure the full application module with the given [ServerConfig] and resolved
+ * [ServerSecrets].
  *
  * @param serverConfig Server configuration instance.
+ * @param secrets Secret values resolved from environment variables. Tests inject an
+ *   explicit instance; production callers obtain it from [ServerSecrets.resolveFromEnv].
  */
-fun Application.moduleWith(serverConfig: ServerConfig) {
+fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets) {
 	validateAuthConfig(serverConfig.auth)
 	val parsedProxy = validateProxyConfig(serverConfig.proxy)
-	configureKoin(serverConfig)
+	val corsConfig = validateCorsConfig(serverConfig.cors)
+	validateTransportSecurity(serverConfig)
+	configureKoin(serverConfig, secrets)
 	launchPkcs11WarmupIfNeeded(serverConfig)
 	launchTrustedListRefreshIfNeeded(serverConfig)
 	attachPkcs11CacheInvalidatorIfNeeded(serverConfig)
@@ -121,7 +136,7 @@ fun Application.moduleWith(serverConfig: ServerConfig) {
 	configureCallId()
 	configureCallLogging()
 	configureAutoHeadResponse()
-	configureCors(serverConfig.cors, tlsEnabled = serverConfig.tls != null || parsedProxy.enabled)
+	configureCors(corsConfig, tlsEnabled = serverConfig.tls != null || parsedProxy.enabled)
 	configureForwardedHeaders(parsedProxy)
 	configureHttpsRedirect(serverConfig)
 	configureRateLimiting(serverConfig.rateLimiting)
@@ -167,20 +182,26 @@ fun Application.moduleWith(serverConfig: ServerConfig) {
  * when no external [ServerConfig] customization is required beyond the YAML file.
  *
  * @param serverConfig Server configuration; defaults to [ServerConfig] with built-in values.
+ * @param secrets Resolved env-var secrets. Defaults to [ServerSecrets.resolveFromEnv]; tests
+ *   typically supply an explicit instance with literal test values so they do not need to
+ *   set process-wide env vars before each run.
  */
-fun Application.module(serverConfig: ServerConfig = ServerConfig()) {
-	moduleWith(serverConfig)
+fun Application.module(
+	serverConfig: ServerConfig = ServerConfig(),
+	secrets: ServerSecrets = ServerSecrets.resolveFromEnv(serverConfig),
+) {
+	moduleWith(serverConfig, secrets)
 }
 
 /**
  * Install Koin DI with shared and server-specific modules.
  */
-fun Application.configureKoin(serverConfig: ServerConfig) {
+fun Application.configureKoin(serverConfig: ServerConfig, secrets: ServerSecrets) {
 	install(Koin) {
 		modules(
 			appModule,
 			jvmRepositoryModule,
-			serverModule(serverConfig),
+			serverModule(serverConfig, secrets),
 		)
 	}
 }
@@ -284,20 +305,6 @@ private fun Application.launchTrustedListRefreshIfNeeded(serverConfig: ServerCon
 }
 
 /**
- * Determine whether a configured bind host is the loopback interface.
- *
- * Strict literal match — no DNS resolution, no IP-range matching. `localhost` is treated as
- * a loopback alias because that is the universal convention even though it is technically
- * a hostname. Other 127.0.0.0/8 addresses (e.g. `127.0.0.2`) are NOT recognised here; if
- * an operator legitimately uses them they must set `development: false`.
- *
- * @param host Value of [ServerConfig.host].
- * @return `true` when [host] is a loopback address or the literal hostname `localhost`.
- */
-private fun isLoopbackHost(host: String): Boolean =
-	host in setOf("127.0.0.1", "::1", "localhost")
-
-/**
  * Load a JKS or PKCS#12 keystore from the filesystem.
  *
  * @param path Absolute path to the keystore file.
@@ -328,8 +335,9 @@ private fun resolveExternalUrl(serverConfig: ServerConfig): String {
 	System.getenv("OMNISIGN_EXTERNAL_URL")?.takeIf { it.isNotBlank() }?.let { return it.trimEnd('/') }
 
 	val proxyEnabled = serverConfig.proxy?.enabled == true
-	val scheme = if (serverConfig.tls != null && !proxyEnabled) "https" else "http"
-	val port = if (serverConfig.tls != null && !proxyEnabled) serverConfig.tlsPort else serverConfig.port
+	val tlsActive = serverConfig.tls != null && !proxyEnabled
+	val scheme = if (tlsActive) "https" else "http"
+	val port = if (tlsActive) serverConfig.tls.port else serverConfig.port
 	val host = serverConfig.host.let { if (it == "0.0.0.0") "localhost" else it }
 	return "$scheme://$host:$port"
 }

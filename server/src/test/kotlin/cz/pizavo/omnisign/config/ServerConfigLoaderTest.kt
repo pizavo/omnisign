@@ -1,7 +1,6 @@
 package cz.pizavo.omnisign.config
 
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException
-import cz.pizavo.omnisign.domain.model.value.sensitive
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.booleans.shouldBeFalse
@@ -14,21 +13,26 @@ import io.kotest.matchers.string.shouldContain
 import java.io.File
 
 /**
- * Verifies [ServerConfigLoader] YAML parsing and fallback behavior.
+ * Verifies [ServerConfigLoader] YAML parsing and the no-config fallback behavior.
+ *
+ * The loader does not consult the JAR's bundled `server.example.yml` as a fallback —
+ * "no config found" deliberately means "use Kotlin defaults", and the validators in
+ * `moduleWith` decide whether those defaults can start a server. These tests pin that
+ * contract.
  */
 class ServerConfigLoaderTest : FunSpec({
 
 	val loader = ServerConfigLoader()
 
-	test("load returns classpath defaults when explicit path does not exist") {
+	test("load returns Kotlin defaults when explicit path does not exist (no classpath fallback)") {
 		val config = loader.load("/nonexistent/path.yml")
 		config.host shouldBe "0.0.0.0"
 		config.port shouldBe 50080
-		config.tlsPort shouldBe 50443
 		config.development.shouldBeFalse()
 		config.proxy.shouldBeNull()
 		config.tls.shouldBeNull()
 		config.cors.shouldBeNull()
+		config.auth.shouldBeNull()
 		config.allowedOperations shouldContainExactlyInAnyOrder setOf(AllowedOperation.VALIDATE)
 		config.allowedCertificateAliases.shouldBeNull()
 	}
@@ -37,7 +41,6 @@ class ServerConfigLoaderTest : FunSpec({
 		val yaml = """
 			host: "127.0.0.1"
 			port: 9090
-			tlsPort: 9443
 			development: true
 			proxy:
 			  enabled: true
@@ -47,10 +50,9 @@ class ServerConfigLoaderTest : FunSpec({
 			auth:
 			  enabled: true
 			tls:
+			  port: 9443
 			  keystorePath: "/tmp/ks.p12"
-			  keystorePassword: "secret"
 			  keyAlias: "mykey"
-			  privateKeyPassword: "privpw"
 			cors:
 			  allowedOrigins:
 			    - "https://example.com"
@@ -64,7 +66,6 @@ class ServerConfigLoaderTest : FunSpec({
 		val config = loader.load(tmpFile.absolutePath)
 		config.host shouldBe "127.0.0.1"
 		config.port shouldBe 9090
-		config.tlsPort shouldBe 9443
 		config.development.shouldBeTrue()
 		config.proxy.shouldNotBeNull()
 		config.proxy.enabled.shouldBeTrue()
@@ -72,15 +73,67 @@ class ServerConfigLoaderTest : FunSpec({
 		config.auth?.enabled.shouldBeTrue()
 
 		config.tls.shouldNotBeNull()
+		config.tls.port shouldBe 9443
 		config.tls.keystorePath shouldBe "/tmp/ks.p12"
-		config.tls.keystorePassword shouldBe "secret".sensitive()
 		config.tls.keyAlias shouldBe "mykey"
-		config.tls.privateKeyPassword shouldBe "privpw".sensitive()
 
 		config.cors.shouldNotBeNull()
 		config.cors.allowedOrigins shouldBe listOf("https://example.com")
 
 		config.maxFileSize shouldBe 52428800L
+	}
+
+	test("load rejects YAML that tries to set tls.keystorePassword (must use env var)") {
+		val yaml = """
+			tls:
+			  keystorePath: "/tmp/ks.p12"
+			  keystorePassword: "should-be-env-var"
+		""".trimIndent()
+
+		val tmpFile = File.createTempFile("server-tls-pwd-", ".yml")
+		tmpFile.deleteOnExit()
+		tmpFile.writeText(yaml)
+
+		val ex = shouldThrow<Exception> { loader.load(tmpFile.absolutePath) }
+		ex.message.shouldNotBeNull()
+		ex.message!! shouldContain "OMNISIGN_TLS_KEYSTORE_PASSWORD"
+	}
+
+	test("load rejects YAML that tries to set auth.session.secret (must use env var)") {
+		val yaml = """
+			auth:
+			  session:
+			    secret: "should-be-env-var"
+		""".trimIndent()
+
+		val tmpFile = File.createTempFile("server-session-secret-", ".yml")
+		tmpFile.deleteOnExit()
+		tmpFile.writeText(yaml)
+
+		val ex = shouldThrow<Exception> { loader.load(tmpFile.absolutePath) }
+		ex.message.shouldNotBeNull()
+		ex.message!! shouldContain "OMNISIGN_JWT_SECRET"
+	}
+
+	test("load rejects YAML that tries to set OIDC clientSecret (must use env var)") {
+		val yaml = """
+			auth:
+			  providers:
+			    - type: oidc
+			      name: google
+			      preset: GOOGLE
+			      clientId: "id"
+			      clientSecret: "should-be-env-var"
+			      allowedEmailDomains: ["*"]
+		""".trimIndent()
+
+		val tmpFile = File.createTempFile("server-client-secret-", ".yml")
+		tmpFile.deleteOnExit()
+		tmpFile.writeText(yaml)
+
+		val ex = shouldThrow<Exception> { loader.load(tmpFile.absolutePath) }
+		ex.message.shouldNotBeNull()
+		ex.message!! shouldContain "OMNISIGN_OIDC_"
 	}
 
 	test("load fails fast on an unknown top-level YAML property") {
@@ -117,11 +170,15 @@ class ServerConfigLoaderTest : FunSpec({
 		ex.message!! shouldContain "enabled"
 	}
 
-	test("load falls back to classpath resource when no explicit path") {
+	test("load returns Kotlin defaults when called with no path and no CWD server.yml exists") {
 		val config = loader.load()
 		config.host shouldBe "0.0.0.0"
 		config.port shouldBe 50080
 		config.development.shouldBeFalse()
+		config.cors.shouldBeNull()
+		config.tls.shouldBeNull()
+		config.proxy.shouldBeNull()
+		config.auth.shouldBeNull()
 		config.allowedOperations shouldContainExactlyInAnyOrder setOf(AllowedOperation.VALIDATE)
 		config.allowedCertificateAliases.shouldBeNull()
 	}
@@ -185,7 +242,6 @@ class ServerConfigLoaderTest : FunSpec({
 		val yaml = """
 			tls:
 			  keystorePath: "/tmp/ks.p12"
-			  keystorePassword: "secret"
 			  hsts:
 			    maxAgeSeconds: 600
 			    includeSubDomains: false
@@ -208,7 +264,6 @@ class ServerConfigLoaderTest : FunSpec({
 		val yaml = """
 			tls:
 			  keystorePath: "/tmp/ks.p12"
-			  keystorePassword: "secret"
 			  hsts: {}
 		""".trimIndent()
 
@@ -228,7 +283,6 @@ class ServerConfigLoaderTest : FunSpec({
 		val yaml = """
 			tls:
 			  keystorePath: "/tmp/ks.p12"
-			  keystorePassword: "secret"
 		""".trimIndent()
 
 		val tmpFile = File.createTempFile("server-nhsts-", ".yml")

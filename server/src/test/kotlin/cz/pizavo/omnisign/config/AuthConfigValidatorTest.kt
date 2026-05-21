@@ -24,7 +24,6 @@ class AuthConfigValidatorTest : FunSpec({
     ) = OidcProviderConfig(
         name = name,
         clientId = "id",
-        clientSecret = "secret".sensitive(),
         discoveryUrl = "https://idp.example/.well-known/openid-configuration",
         allowedEmailDomains = allowedEmailDomains,
         requiredClaims = requiredClaims,

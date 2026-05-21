@@ -6,6 +6,7 @@ import com.auth0.jwt.exceptions.JWTVerificationException
 import cz.pizavo.omnisign.config.JwtAlgorithmType
 import cz.pizavo.omnisign.config.SessionConfig
 import cz.pizavo.omnisign.config.isSymmetric
+import cz.pizavo.omnisign.domain.model.value.Sensitive
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.*
 import kotlin.time.Instant
@@ -23,20 +24,26 @@ private val logger = KotlinLogging.logger {}
  * Tokens embed the [AuthenticatedPrincipal] fields as standard JWT claims and are
  * validated on each API request by the Ktor `bearer` authentication provider.
  *
- * **Null-safe by design.** When [SessionConfig.secret] is `null` the service is
- * "inert" — [verify] returns `null` for every token (no valid tokens exist) and
- * [issue] throws. This is the state when authentication is disabled
+ * **Null-safe by design.** When [secret] is `null` the service is "inert" — [verify]
+ * returns `null` for every token (no valid tokens exist) and [issue] throws. This is
+ * the state when authentication is disabled
  * ([cz.pizavo.omnisign.config.AuthConfig.enabled] = `false`): the bearer authenticator
  * stays registered so routes that always reference it (e.g. `/auth/session`) work, but
  * no signing material exists. The fail-closed verify keeps a 401 response shape for
  * any Bearer header that happens to arrive when auth is off.
  *
- * @param config JWT session configuration (algorithm, secret, issuer, audience, expiry).
+ * @param config JWT session configuration (algorithm, issuer, audience, expiry).
+ * @param secret HMAC signing secret resolved from the `OMNISIGN_JWT_SECRET`
+ *   environment variable at server startup, or `null` when auth is disabled. See
+ *   [cz.pizavo.omnisign.config.ServerSecrets] for the resolution rules.
  */
-class JwtSessionService(private val config: SessionConfig) {
+class JwtSessionService(
+    private val config: SessionConfig,
+    secret: Sensitive<String>?,
+) {
 
-    private val algorithm: Algorithm? = config.secret?.let { secret ->
-        buildAlgorithm(config.algorithm, secret.value)
+    private val algorithm: Algorithm? = secret?.let {
+        buildAlgorithm(config.algorithm, it.value)
     }
 
     /**
@@ -52,7 +59,7 @@ class JwtSessionService(private val config: SessionConfig) {
     fun issue(principal: AuthenticatedPrincipal): String {
         val alg = checkNotNull(algorithm) {
             "JwtSessionService.issue called but no signing secret is configured " +
-                "(auth.session.secret is unset, typically because auth.enabled is false). " +
+                "(OMNISIGN_JWT_SECRET is unset, typically because auth.enabled is false). " +
                 "Issue should not be reachable in this state — check route gating."
         }
         val now = Date()

@@ -19,15 +19,25 @@ private val logger = KotlinLogging.logger {}
  * 1. Explicit [path] argument (e.g. from a CLI flag).
  * 2. `OMNISIGN_SERVER_CONFIG` environment variable.
  * 3. `server.yml` in the current working directory.
- * 4. Classpath resource `/server.yml`.
- * 5. Built-in defaults ([ServerConfig] no-arg constructor).
+ * 4. Built-in defaults ([ServerConfig] no-arg constructor) — with a WARN telling the
+ *    operator how to find the bundled `server.example.yml` template.
+ *
+ * **No classpath fallback.** Earlier revisions silently loaded a bundled `/server.yml`
+ * resource from the JAR when none of the file paths matched. That collapsed three
+ * distinct operator intents — "I want defaults", "I want the shipped example", "I
+ * forgot to create my config" — into the same fail-open runtime, and the example
+ * happened to ship with `development: true` plus other dev-friendly values. The
+ * resource is now named `server.example.yml`, lives in the JAR purely as
+ * documentation (`jar xf <jar> server.example.yml` extracts it), and the loader does
+ * not consult it. Operators who run the JAR without any of paths (1)–(3) get Kotlin
+ * defaults and the validators in `moduleWith` decide whether to start.
  *
  * **Environment variable substitution.** Before parsing, any `${NAME}` placeholder in the
  * YAML text is replaced with the value of the corresponding environment variable. The
  * variable name must match `[A-Z_][A-Z0-9_]*` (uppercase, digits, underscores). This is
- * how secrets enter the config without ever being written to the YAML file itself —
- * e.g., `secret: "${OMNISIGN_JWT_SECRET}"` reads the secret from the environment at
- * load time. Missing referenced env vars cause load to fail with a clear error.
+ * how a small number of non-secret config values (e.g. an external base URL) can come
+ * from the environment. Operator secrets are not loaded this way — see [ServerSecrets].
+ * Missing referenced env vars cause load to fail with a clear error.
  *
  * **Strict unknown-key parsing.** Jackson is configured with
  * [DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES] enabled so any YAML key that does
@@ -54,6 +64,7 @@ class ServerConfigLoader {
 					(SensitiveStringJacksonDeserializer() as JsonDeserializer<Sensitive<*>>),
 				),
 		)
+		.addHandler(RemovedSecretFieldHandler())
 
 	/**
 	 * Load the server configuration from the first available source.
@@ -64,7 +75,14 @@ class ServerConfigLoader {
 	fun load(path: String? = null): ServerConfig {
 		val rawYaml = readYamlText(path)
 		if (rawYaml == null) {
-			logger.info { "No server configuration found — using defaults" }
+			logger.warn {
+				"No server.yml found — using built-in Kotlin defaults, which require an " +
+					"explicit cors: block AND either host: 127.0.0.1 (loopback) or a " +
+					"tls:/proxy: block before the server will start. Copy server.example.yml " +
+					"(bundled in this JAR; extract with `jar xf <jar> server.example.yml`) " +
+					"to server.yml in the working directory, set $ENV_VAR to its path, or " +
+					"pass --config <path>."
+			}
 			return ServerConfig()
 		}
 		val expanded = substituteEnvVars(rawYaml)
@@ -72,23 +90,16 @@ class ServerConfigLoader {
 	}
 
 	/**
-	 * Resolve and read the YAML text from the first available source, returning `null` when
-	 * none is found so callers can fall back to defaults.
+	 * Resolve and read the YAML text from the first filesystem source, returning `null`
+	 * when none is found so [load] can fall back to Kotlin defaults.
+	 *
+	 * Intentionally does NOT consult the JAR's bundled `/server.example.yml` resource —
+	 * the bundled file is documentation, never auto-loaded. See the class-level KDoc.
 	 */
 	private fun readYamlText(explicitPath: String?): String? {
-		val file = resolveFile(explicitPath)
-		if (file != null) {
-			logger.info { "Loading server configuration from ${file.absolutePath}" }
-			return file.readText(Charsets.UTF_8)
-		}
-
-		val resource = javaClass.getResourceAsStream("/$DEFAULT_FILE_NAME")
-		if (resource != null) {
-			logger.info { "Loading server configuration from classpath resource /$DEFAULT_FILE_NAME" }
-			return resource.use { it.bufferedReader(Charsets.UTF_8).readText() }
-		}
-
-		return null
+		val file = resolveFile(explicitPath) ?: return null
+		logger.info { "Loading server configuration from ${file.absolutePath}" }
+		return file.readText(Charsets.UTF_8)
 	}
 
 	/**

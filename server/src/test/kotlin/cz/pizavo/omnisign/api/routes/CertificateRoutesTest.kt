@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.api.routes
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.api.model.responses.CertificateListResponse
 import cz.pizavo.omnisign.config.AllowedOperation
+import cz.pizavo.omnisign.config.CorsConfig
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.module
 import io.kotest.core.spec.style.FunSpec
@@ -23,7 +24,7 @@ class CertificateRoutesTest : FunSpec({
 	test("GET /api/v1/certificates returns 403 when SIGN is not in allowedOperations") {
 		testApplication {
 			application {
-				module(ServerConfig(allowedOperations = setOf(AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP)))
+				module(ServerConfig(host = "127.0.0.1", allowedOperations = setOf(AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP), cors = CorsConfig(allowedOrigins = listOf("*"))))
 			}
 			val response = client.get("/api/v1/certificates")
 			response.status shouldBe HttpStatusCode.Forbidden
@@ -37,11 +38,13 @@ class CertificateRoutesTest : FunSpec({
 			application {
 				module(
 					ServerConfig(
+						host = "127.0.0.1",
 						allowedOperations = setOf(
 							AllowedOperation.SIGN,
 							AllowedOperation.VALIDATE,
 							AllowedOperation.TIMESTAMP,
 						),
+						cors = CorsConfig(allowedOrigins = listOf("*")),
 					),
 				)
 			}
@@ -57,8 +60,10 @@ class CertificateRoutesTest : FunSpec({
 			application {
 				module(
 					ServerConfig(
+						host = "127.0.0.1",
 						allowedOperations = setOf(AllowedOperation.SIGN),
 						allowedCertificateAliases = listOf("allowed-alias"),
+						cors = CorsConfig(allowedOrigins = listOf("*")),
 					),
 				)
 			}

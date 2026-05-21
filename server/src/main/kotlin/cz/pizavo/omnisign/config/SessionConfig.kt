@@ -1,7 +1,5 @@
 package cz.pizavo.omnisign.config
 
-import cz.pizavo.omnisign.domain.model.value.Sensitive
-
 /**
  * Configuration for the JWT session tokens issued to clients after a successful SSO login.
  *
@@ -11,11 +9,12 @@ import cz.pizavo.omnisign.domain.model.value.Sensitive
  * issues and validates tokens. See [JwtAlgorithmType] for a full comparison and for
  * guidance on when asymmetric algorithms (RS* / ES*) are appropriate.
  *
- * The [secret] is read from the YAML field directly. Operators typically declare it via
- * env-var substitution so the actual key value never lands in the YAML file:
- * `secret: "${OMNISIGN_JWT_SECRET}"` is expanded at config-load time. When auth is
- * enabled the secret must be present and at least 64 bytes (enforced in serverModule);
- * when auth is disabled it may be omitted entirely.
+ * The HMAC signing secret is deliberately NOT a field on this class — see [ServerSecrets].
+ * It is resolved at startup from the `OMNISIGN_JWT_SECRET` environment variable; YAML
+ * cannot carry it (a YAML attempt to set `secret:` fails startup with an error pointing
+ * at the env var). When `auth.enabled: true` the env var is required and must be at
+ * least 64 bytes; when auth is disabled it may be omitted entirely and
+ * [cz.pizavo.omnisign.auth.JwtSessionService] becomes inert.
  *
  * ## Access tokens and refresh tokens
  *
@@ -32,10 +31,6 @@ import cz.pizavo.omnisign.domain.model.value.Sensitive
  * by [maxSessionSeconds] independent of refresh-token TTL.
  *
  * @property algorithm JWT signing algorithm. Defaults to [JwtAlgorithmType.HS512].
- * @property secret HMAC signing secret. Ignored for asymmetric algorithms. Typically
- *   declared via env-var substitution in the YAML rather than written inline. Wrapped
- *   in [Sensitive] so the value cannot leak through `toString` (data-class-generated,
- *   logger interpolation, status pages echoing `cause.message`).
  * @property issuer JWT `iss` claim value.
  * @property audience JWT `aud` claim value.
  * @property tokenExpirySeconds Access-token lifetime in seconds. Defaults to 300 (5 min).
@@ -57,7 +52,6 @@ import cz.pizavo.omnisign.domain.model.value.Sensitive
  */
 data class SessionConfig(
     val algorithm: JwtAlgorithmType = JwtAlgorithmType.HS512,
-    val secret: Sensitive<String>? = null,
     val issuer: String = "omnisign",
     val audience: String = "omnisign-api",
     val tokenExpirySeconds: Long = 300,

@@ -32,7 +32,6 @@ class SsoProviderConfigDeserializerTest : FunSpec({
                   name: google
                   preset: GOOGLE
                   clientId: "my-client-id"
-                  clientSecret: "my-client-secret"
                   allowedEmailDomains: ["*"]
         """.trimIndent()
 
@@ -76,7 +75,6 @@ class SsoProviderConfigDeserializerTest : FunSpec({
                   preset: MICROSOFT
                   tenantId: "common"
                   clientId: "ms-id"
-                  clientSecret: "ms-secret"
                   allowedEmailDomains: ["*"]
                 - type: header-injection
                   name: eduid
@@ -134,7 +132,6 @@ class SsoProviderConfigDeserializerTest : FunSpec({
                   preset: MICROSOFT
                   tenantId: "common"
                   clientId: "ms-id"
-                  clientSecret: "ms-secret"
                   allowedEmailDomains:
                     - "contoso.com"
                     - "fabrikam.com"
@@ -154,7 +151,6 @@ class SsoProviderConfigDeserializerTest : FunSpec({
                   name: google
                   preset: GOOGLE
                   clientId: "id"
-                  clientSecret: "secret"
         """.trimIndent()
 
         val ex = shouldThrow<Exception> { loader.loadFromString(yaml) }
@@ -170,7 +166,6 @@ class SsoProviderConfigDeserializerTest : FunSpec({
                   name: eduid
                   preset: EDUID_CZ
                   clientId: "eduid-id"
-                  clientSecret: "eduid-secret"
                   allowedEmailDomains: ["*"]
                   requiredClaims:
                     schac_home_organization:
@@ -197,7 +192,6 @@ class SsoProviderConfigDeserializerTest : FunSpec({
                   name: google
                   preset: GOOGLE
                   clientId: "id"
-                  clientSecret: "secret"
                   allowedEmailDomains: ["*"]
         """.trimIndent()
 

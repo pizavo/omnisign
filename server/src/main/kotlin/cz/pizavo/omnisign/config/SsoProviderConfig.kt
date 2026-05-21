@@ -24,12 +24,15 @@ sealed interface SsoProviderConfig {
  * supply [tenantId] so the discovery URL template can be resolved. See [SsoProviderPreset]
  * KDoc for the expected format of each preset.
  *
+ * The OIDC `client_secret` is deliberately NOT a field on this class — see [ServerSecrets].
+ * It is resolved at startup from a per-provider environment variable named via
+ * [oidcClientSecretEnvVar] (e.g. `name: "google"` → `OMNISIGN_OIDC_GOOGLE_CLIENT_SECRET`).
+ * A YAML attempt to set `clientSecret:` fails startup with an error pointing at the
+ * derived env var.
+ *
  * @property name Unique provider identifier used in callback URLs and UI (e.g. `microsoft`).
  * @property preset Optional well-known preset that fills in default URLs and scopes.
  * @property clientId OAuth2 / OIDC `client_id`.
- * @property clientSecret OAuth2 / OIDC `client_secret`. Wrapped in [Sensitive] so it
- *   cannot leak through `toString` (data-class-generated, logger interpolation, status
- *   pages echoing `cause.message`).
  * @property discoveryUrl Full OIDC discovery document URL. Overrides the preset default.
  * @property tenantId Tenant, realm, or domain string for presets with templated discovery URLs.
  * @property scopes OAuth2 scope list. Overrides the preset default.
@@ -75,7 +78,6 @@ data class OidcProviderConfig(
     override val name: String,
     val preset: SsoProviderPreset? = null,
     val clientId: String,
-    val clientSecret: Sensitive<String>,
     val discoveryUrl: String? = null,
     val tenantId: String? = null,
     val scopes: List<String> = listOf("openid", "email", "profile"),

@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.auth.PkceService
 import cz.pizavo.omnisign.config.AuthConfig
 import cz.pizavo.omnisign.config.HeaderInjectionProviderConfig
 import cz.pizavo.omnisign.config.OidcProviderConfig
+import cz.pizavo.omnisign.config.ServerSecrets
 import cz.pizavo.omnisign.config.SsoProviderPreset
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.server.application.*
@@ -66,6 +67,7 @@ fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String
     val discoveryService by inject<OidcDiscoveryService>()
     val oauthNonceManager by inject<NonceManager>()
     val pkceService by inject<PkceService>()
+    val serverSecrets by inject<ServerSecrets>()
 
     install(Authentication) {
         bearer(JwtSessionService.AUTH_NAME_JWT) {
@@ -79,6 +81,11 @@ fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String
             val redirectUrl = "$externalUrl/auth/callback/${provider.name}"
 
             val (authUrl, tokenUrl) = resolveEndpoints(provider, discoveryService)
+            val clientSecret = checkNotNull(serverSecrets.oidcClientSecrets[provider.name]) {
+                "OIDC client secret for provider '${provider.name}' was not resolved at startup — " +
+                    "this is a programming error in ServerSecrets.resolveFromEnv (every configured " +
+                    "OIDC provider should have its env var resolved)."
+            }
 
             oauth(authName) {
                 urlProvider = { redirectUrl }
@@ -100,7 +107,7 @@ fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String
                         authorizeUrl = authUrl,
                         accessTokenUrl = tokenUrl,
                         clientId = provider.clientId,
-                        clientSecret = provider.clientSecret.value,
+                        clientSecret = clientSecret.value,
                         requestMethod = io.ktor.http.HttpMethod.Post,
                         defaultScopes = provider.scopes,
                         nonceManager = oauthNonceManager,
