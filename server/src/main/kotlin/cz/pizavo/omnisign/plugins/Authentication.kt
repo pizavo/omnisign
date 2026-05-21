@@ -9,6 +9,9 @@ import cz.pizavo.omnisign.config.OidcProviderConfig
 import cz.pizavo.omnisign.config.ServerSecrets
 import cz.pizavo.omnisign.config.SsoProviderPreset
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.ktor.client.HttpClient
+import io.ktor.client.engine.cio.CIO
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
 import io.ktor.util.NonceManager
@@ -126,7 +129,13 @@ fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String
                         },
                     )
                 }
-                client = io.ktor.client.HttpClient(io.ktor.client.engine.cio.CIO)
+                client = HttpClient(CIO) {
+                    install(HttpTimeout) {
+                        requestTimeoutMillis = OAUTH_REQUEST_TIMEOUT_MS
+                        connectTimeoutMillis = OAUTH_CONNECT_TIMEOUT_MS
+                        socketTimeoutMillis = OAUTH_SOCKET_TIMEOUT_MS
+                    }
+                }
             }
 
             val pkceLabel = if (provider.pkce) " — PKCE enabled" else " — PKCE disabled"
@@ -158,5 +167,28 @@ private fun resolveEndpoints(
     val doc = runBlocking { discoveryService.discover(provider) }
     return doc.authorizationEndpoint to doc.tokenEndpoint
 }
+
+/**
+ * End-to-end timeout for a single OAuth token-exchange POST. Chosen large enough to
+ * absorb a slow IdP under modest load (TLS handshake + multiple round trips for a
+ * federated provider can easily span several seconds) but tight enough that a
+ * pathologically slow / hung IdP cannot pin a request thread indefinitely. A hostile
+ * or partitioned IdP that took longer than this would let the request queue grow
+ * unboundedly, exhausting the CIO connection pool — exactly the availability hit
+ * L-4 closes.
+ */
+private const val OAUTH_REQUEST_TIMEOUT_MS = 10_000L
+
+/** TCP connect timeout for the OAuth token-exchange POST. Lower than the overall
+ * request timeout because connect-stage stalls are a different failure mode (DNS
+ * black-hole, dropped SYNs) that should fail fast and try the next configured IdP
+ * (or surface to the user) rather than tie up resources. */
+private const val OAUTH_CONNECT_TIMEOUT_MS = 5_000L
+
+/** Idle-socket timeout for the OAuth token-exchange POST. Mirrors
+ * [OAUTH_REQUEST_TIMEOUT_MS] because the OAuth POST is a single request/response
+ * round-trip with no streaming — the request-level cap is the meaningful one and
+ * the socket timeout exists for symmetry with the connect timeout. */
+private const val OAUTH_SOCKET_TIMEOUT_MS = 10_000L
 
 

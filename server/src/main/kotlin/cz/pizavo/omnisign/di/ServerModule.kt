@@ -19,6 +19,7 @@ import cz.pizavo.omnisign.config.SessionConfig
 import cz.pizavo.omnisign.platform.PasswordCallback
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
+import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.util.NonceManager
@@ -38,8 +39,10 @@ import kotlin.coroutines.CoroutineContext
  * - [ServerConfigLoader] singleton.
  * - [PasswordCallback] that always returns `null` (server cannot prompt interactively).
  * - IO [CoroutineContext] for blocking work.
- * - [HttpClient] (CIO engine) with JSON content-negotiation for OIDC discovery and
- *   user-info requests.
+ * - [HttpClient] (CIO engine) with JSON content-negotiation and per-stage timeouts
+ *   ([HttpTimeout]) for OIDC discovery and user-info requests. The timeouts close the
+ *   availability hit where a slow or hung IdP would otherwise pin a request thread
+ *   indefinitely and drain the CIO connection pool.
  * - [JwtSessionService] for issuing and verifying session tokens. The signing secret is
  *   resolved from the `OMNISIGN_JWT_SECRET` environment variable at startup (see
  *   [ServerSecrets]). When `auth.enabled` is `true` the env var is required and the
@@ -89,6 +92,11 @@ fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets) = module {
 		HttpClient(CIO) {
 			install(ContentNegotiation) {
 				json(Json { ignoreUnknownKeys = true })
+			}
+			install(HttpTimeout) {
+				requestTimeoutMillis = IDP_REQUEST_TIMEOUT_MS
+				connectTimeoutMillis = IDP_CONNECT_TIMEOUT_MS
+				socketTimeoutMillis = IDP_SOCKET_TIMEOUT_MS
 			}
 		}
 	}
@@ -172,4 +180,31 @@ private const val MIN_JWT_SECRET_BYTES = 64
  * Operators generate a compliant key with `openssl rand -base64 64`.
  */
 private const val MIN_NONCE_KEY_BYTES = 64
+
+/**
+ * End-to-end timeout for an OIDC discovery or UserInfo HTTP call.
+ *
+ * 10 seconds — large enough to cover a slow IdP under modest load (TLS handshake +
+ * federated discovery can legitimately span several seconds, especially for the
+ * Czech academic federation chain via eduID.cz) but tight enough that a
+ * pathologically slow or hung IdP cannot pin a request thread indefinitely. Without
+ * this cap, a hostile or partitioned IdP would let the request queue grow
+ * unboundedly and drain the CIO connection pool, blocking all login attempts.
+ */
+private const val IDP_REQUEST_TIMEOUT_MS = 10_000L
+
+/**
+ * TCP connect timeout for an IdP HTTP call. Lower than the overall request timeout
+ * because connect-stage stalls (DNS black-hole, dropped SYNs) are a different
+ * failure mode that should surface fast rather than tie up resources.
+ */
+private const val IDP_CONNECT_TIMEOUT_MS = 5_000L
+
+/**
+ * Idle-socket timeout for an IdP HTTP call. Mirrors [IDP_REQUEST_TIMEOUT_MS] because
+ * the OIDC requests are single request/response round-trips with no streaming — the
+ * request-level cap is the meaningful one; the socket timeout exists for symmetry
+ * with the connect timeout and to surface a half-open TCP connection promptly.
+ */
+private const val IDP_SOCKET_TIMEOUT_MS = 10_000L
 
