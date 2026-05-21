@@ -433,6 +433,7 @@ class AuthRoutesTest : FunSpec({
 				preset = SsoProviderPreset.GITHUB,
 				clientId = "test-client-id",
 				clientSecret = "test-client-secret",
+				allowedEmailDomains = listOf("*"),
 				pkce = pkceEnabled,
 			),
 		),

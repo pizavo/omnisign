@@ -60,6 +60,13 @@ proxyMode: false
 #     # secret: "change-me-use-OMNISIGN_JWT_SECRET-env-var-in-production"
 #   providers:
 #
+#     # `allowedEmailDomains` is REQUIRED on every OIDC provider — there is no implicit
+#     # allow-all default. Pick one of:
+#     #   allowedEmailDomains: ["*"]                    # explicit allow-all (deliberate choice)
+#     #   allowedEmailDomains: ["yourcompany.com"]      # restrict to one domain
+#     #   allowedEmailDomains: ["a.com", "b.org"]       # restrict to several
+#     # An empty list ([]) and a missing field are both rejected at server startup.
+#
 #     # ── Google ───────────────────────────────────────────────────────────────
 #     - type: oidc
 #       name: google
@@ -67,7 +74,7 @@ proxyMode: false
 #       displayName: "Sign in with Google"
 #       clientId: "YOUR_CLIENT_ID.apps.googleusercontent.com"
 #       clientSecret: "YOUR_CLIENT_SECRET"
-#       # allowedEmailDomains: ["yourcompany.com"]   # restrict to org accounts only
+#       allowedEmailDomains: ["yourcompany.com"]   # restrict to org accounts only
 #
 #     # ── Microsoft Entra ID (Azure AD) ────────────────────────────────────────
 #     # tenantId: "common" = multi-tenant, "organizations" = work/school only,
@@ -81,7 +88,7 @@ proxyMode: false
 #       tenantId: "common"
 #       clientId: "YOUR_APPLICATION_CLIENT_ID"
 #       clientSecret: "YOUR_CLIENT_SECRET"
-#       # allowedEmailDomains: ["contoso.com"]   # restrict to contoso.com accounts only
+#       allowedEmailDomains: ["contoso.com"]       # restrict to contoso.com accounts only
 #
 #     # ── Amazon Cognito ───────────────────────────────────────────────────────
 #     # tenantId format: "{region}/{userPoolId}"
@@ -92,6 +99,7 @@ proxyMode: false
 #       tenantId: "eu-central-1/eu-central-1_XXXXXXXXX"
 #       clientId: "YOUR_APP_CLIENT_ID"
 #       clientSecret: "YOUR_APP_CLIENT_SECRET"
+#       allowedEmailDomains: ["*"]                 # private user pool — operator is the boundary
 #
 #     # ── Keycloak (self-hosted) ───────────────────────────────────────────────
 #     # tenantId format: "{host}/{realm}"
@@ -102,6 +110,7 @@ proxyMode: false
 #       tenantId: "keycloak.example.com/myrealm"
 #       clientId: "omnisign"
 #       clientSecret: "YOUR_CLIENT_SECRET"
+#       allowedEmailDomains: ["*"]                 # self-hosted realm — operator is the boundary
 #
 #     # ── GitHub ───────────────────────────────────────────────────────────────
 #     # GitHub uses OAuth2 (not full OIDC). Email scope requires "user:email".
@@ -113,7 +122,7 @@ proxyMode: false
 #       clientId: "YOUR_GITHUB_CLIENT_ID"
 #       clientSecret: "YOUR_GITHUB_CLIENT_SECRET"
 #       scopes: ["read:user", "user:email"]
-#       # allowedEmailDomains: ["yourcompany.com"]
+#       allowedEmailDomains: ["yourcompany.com"]
 #
 #     # ── GitLab ───────────────────────────────────────────────────────────────
 #     - type: oidc
@@ -122,7 +131,7 @@ proxyMode: false
 #       displayName: "Sign in with GitLab"
 #       clientId: "YOUR_GITLAB_APP_ID"
 #       clientSecret: "YOUR_GITLAB_SECRET"
-#       # allowedEmailDomains: ["yourcompany.com"]
+#       allowedEmailDomains: ["yourcompany.com"]
 #
 #     # ── Auth0 ────────────────────────────────────────────────────────────────
 #     # tenantId: your Auth0 domain (e.g. "myapp.eu.auth0.com")
@@ -133,6 +142,7 @@ proxyMode: false
 #       tenantId: "myapp.eu.auth0.com"
 #       clientId: "YOUR_AUTH0_CLIENT_ID"
 #       clientSecret: "YOUR_AUTH0_CLIENT_SECRET"
+#       allowedEmailDomains: ["*"]                 # tenant is the boundary
 #
 #     # ── Apple ────────────────────────────────────────────────────────────────
 #     - type: oidc
@@ -141,6 +151,7 @@ proxyMode: false
 #       displayName: "Sign in with Apple"
 #       clientId: "YOUR_APPLE_SERVICE_ID"
 #       clientSecret: "YOUR_APPLE_CLIENT_SECRET"
+#       allowedEmailDomains: ["yourcompany.com"]   # Apple is public — domain-restrict
 #
 #     # ── eduID.cz / Czech Academic Federation (OIDC mode) ─────────────────────
 #     # Register an OIDC client at https://www.eduid.cz/cs/tech/oidc
@@ -162,14 +173,16 @@ proxyMode: false
 #       clientId: "YOUR_EDUID_CLIENT_ID"
 #       clientSecret: "YOUR_EDUID_CLIENT_SECRET"
 #       scopes: ["openid", "email", "profile", "eduperson_principal_name"]
-#       # Option 1 — restrict to University of Ostrava by email domain:
-#       # allowedEmailDomains: ["osu.cz"]
+#       # Option 1 — restrict to University of Ostrava by email domain (use this line as written):
+#       allowedEmailDomains: ["osu.cz"]
 #       #
-#       # Option 2 — restrict by schac_home_organization (more authoritative than email):
+#       # Option 2 — restrict by schac_home_organization (more authoritative than email).
+#       # Pair with allowedEmailDomains: ["*"] above so the email check doesn't double-restrict.
 #       # requiredClaims:
 #       #   schac_home_organization: ["osu.cz"]
 #       #
-#       # Option 3 — restrict to UO staff and faculty only (excludes students):
+#       # Option 3 — restrict to UO staff and faculty only (excludes students).
+#       # Same note on allowedEmailDomains as Option 2.
 #       # requiredClaims:
 #       #   schac_home_organization: ["osu.cz"]
 #       #   eduperson_scoped_affiliation: ["staff@osu.cz", "faculty@osu.cz"]

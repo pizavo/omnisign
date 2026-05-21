@@ -2,7 +2,9 @@ package cz.pizavo.omnisign.config
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 
 /**
@@ -30,6 +32,7 @@ class SsoProviderConfigDeserializerTest : FunSpec({
                   preset: GOOGLE
                   clientId: "my-client-id"
                   clientSecret: "my-client-secret"
+                  allowedEmailDomains: ["*"]
         """.trimIndent()
 
         val config = loader.loadFromString(yaml)
@@ -73,6 +76,7 @@ class SsoProviderConfigDeserializerTest : FunSpec({
                   tenantId: "common"
                   clientId: "ms-id"
                   clientSecret: "ms-secret"
+                  allowedEmailDomains: ["*"]
                 - type: header-injection
                   name: eduid
                   userHeader: "REMOTE_USER"
@@ -141,7 +145,7 @@ class SsoProviderConfigDeserializerTest : FunSpec({
         provider.allowedEmailDomains shouldBe listOf("contoso.com", "fabrikam.com")
     }
 
-    test("allowedEmailDomains defaults to null when not specified") {
+    test("oidc provider YAML missing allowedEmailDomains is rejected at parse time") {
         val yaml = """
             auth:
               providers:
@@ -152,10 +156,9 @@ class SsoProviderConfigDeserializerTest : FunSpec({
                   clientSecret: "secret"
         """.trimIndent()
 
-        val config = loader.loadFromString(yaml)
-        val provider = config.auth?.providers?.first()
-        provider.shouldBeInstanceOf<OidcProviderConfig>()
-        provider.allowedEmailDomains shouldBe null
+        val ex = shouldThrow<Exception> { loader.loadFromString(yaml) }
+        ex.message.shouldNotBeNull()
+        ex.message!! shouldContain "allowedEmailDomains"
     }
 
     test("deserializes requiredClaims on an oidc provider") {
@@ -167,6 +170,7 @@ class SsoProviderConfigDeserializerTest : FunSpec({
                   preset: EDUID_CZ
                   clientId: "eduid-id"
                   clientSecret: "eduid-secret"
+                  allowedEmailDomains: ["*"]
                   requiredClaims:
                     schac_home_organization:
                       - "osu.cz"
@@ -193,6 +197,7 @@ class SsoProviderConfigDeserializerTest : FunSpec({
                   preset: GOOGLE
                   clientId: "id"
                   clientSecret: "secret"
+                  allowedEmailDomains: ["*"]
         """.trimIndent()
 
         val config = loader.loadFromString(yaml)

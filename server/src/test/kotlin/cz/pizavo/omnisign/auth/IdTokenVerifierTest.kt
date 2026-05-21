@@ -39,6 +39,7 @@ class IdTokenVerifierTest : FunSpec({
         clientId = "test-client-id",
         clientSecret = "test-client-secret",
         discoveryUrl = "https://test-idp.example/.well-known/openid-configuration",
+        allowedEmailDomains = listOf("*"),
     )
 
     val discoveryDoc = OidcDiscoveryDocument(

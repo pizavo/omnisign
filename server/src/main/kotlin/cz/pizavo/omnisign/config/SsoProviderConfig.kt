@@ -30,16 +30,28 @@ sealed interface SsoProviderConfig {
  * @property tenantId Tenant, realm, or domain string for presets with templated discovery URLs.
  * @property scopes OAuth2 scope list. Overrides the preset default.
  * @property displayName Human-readable provider label shown in the login UI.
- * @property allowedEmailDomains When non-null and non-empty, only users whose resolved email
- *   belongs to one of the listed domains are granted a session token. The check runs after the
- *   IdP callback, once the email claim is available. Domains are compared case-insensitively
- *   (e.g. `["contoso.com", "fabrikam.com"]`). When `null`, all authenticated users are accepted
- *   regardless of their email domain.
+ * @property allowedEmailDomains Required, non-empty list controlling which authenticated users
+ *   are granted a session token. Operators must always make a deliberate, explicit choice — there
+ *   is no implicit allow-all default, because for a signing service "didn't think about it",
+ *   "explicitly allow all", and "explicitly deny all" must not collapse into the same runtime
+ *   outcome. Supported forms:
+ *   - `["*"]` — explicit allow-all (parallel to CORS `allowedOrigins: ["*"]`); accept any
+ *     authenticated user regardless of email domain. Use this when the IdP itself is the
+ *     identity boundary (e.g., a private Entra ID tenant the operator controls).
+ *   - `["contoso.com", "fabrikam.com"]` — accept only users whose resolved email domain
+ *     case-insensitively matches one of the listed entries. The check runs after the IdP
+ *     callback, once the email claim is available.
+ *
+ *   Empty list and missing field are both rejected at server startup with a message naming
+ *   the offending provider. See [EmailDomainFilter][isEmailDomainAllowed] for the runtime check.
  * @property requiredClaims When non-null and non-empty, the user's raw IdP claims must satisfy
  *   every entry: for each `(claimName, values)` pair, the claim must contain at least one of
  *   the listed values. Both single-valued string claims (e.g. `schac_home_organization`) and
  *   multivalued array claims (e.g. `eduperson_scoped_affiliation`) are supported. Useful for
  *   restricting access by institution or affiliation role without relying on email domain alone.
+ *
+ *   A `key: []` value list (empty accepted-values list for a key) is rejected at server startup
+ *   — it would reject every login on that claim and is almost certainly a typo.
  * @property pkce Whether to perform PKCE (RFC 7636) on this provider's authorization-code flow.
  *   Defaults to `true` — every modern IdP supports PKCE and the OAuth 2.1 BCP (RFC 9700)
  *   requires it even for confidential clients to defend against authorization-code injection.
@@ -64,7 +76,7 @@ data class OidcProviderConfig(
     val tenantId: String? = null,
     val scopes: List<String> = listOf("openid", "email", "profile"),
     val displayName: String = name,
-    val allowedEmailDomains: List<String>? = null,
+    val allowedEmailDomains: List<String>,
     val requiredClaims: Map<String, List<String>>? = null,
     val pkce: Boolean = true,
     val verifyIdToken: Boolean = true,

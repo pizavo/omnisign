@@ -8,12 +8,13 @@ import io.kotest.matchers.shouldBe
  */
 class EmailDomainFilterTest : FunSpec({
 
-    test("returns true when allowedDomains is null") {
-        isEmailDomainAllowed("user@anydomain.com", null) shouldBe true
+    test("returns true for any email when allowedDomains contains the \"*\" wildcard") {
+        isEmailDomainAllowed("user@anydomain.com", listOf("*")) shouldBe true
+        isEmailDomainAllowed("user@another.example", listOf("*")) shouldBe true
     }
 
-    test("returns true when allowedDomains is empty") {
-        isEmailDomainAllowed("user@anydomain.com", emptyList()) shouldBe true
+    test("returns true when \"*\" is one of several entries (wildcard wins)") {
+        isEmailDomainAllowed("eve@unlisted.com", listOf("contoso.com", "*")) shouldBe true
     }
 
     test("returns true when email domain matches a single allowed domain") {

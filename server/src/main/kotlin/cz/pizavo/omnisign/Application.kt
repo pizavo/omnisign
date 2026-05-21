@@ -3,6 +3,7 @@ package cz.pizavo.omnisign
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
+import cz.pizavo.omnisign.config.validateAuthConfig
 import cz.pizavo.omnisign.data.service.PcscMonitorService
 import cz.pizavo.omnisign.data.service.Pkcs11CacheInvalidator
 import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
@@ -107,6 +108,7 @@ fun main(args: Array<String>) {
  * @param serverConfig Server configuration instance.
  */
 fun Application.moduleWith(serverConfig: ServerConfig) {
+	validateAuthConfig(serverConfig.auth)
 	configureKoin(serverConfig)
 	launchPkcs11WarmupIfNeeded(serverConfig)
 	launchTrustedListRefreshIfNeeded(serverConfig)
