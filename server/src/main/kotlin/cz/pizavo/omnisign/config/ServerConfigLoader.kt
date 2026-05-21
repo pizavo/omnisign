@@ -26,12 +26,23 @@ private val logger = KotlinLogging.logger {}
  * how secrets enter the config without ever being written to the YAML file itself —
  * e.g., `secret: "${OMNISIGN_JWT_SECRET}"` reads the secret from the environment at
  * load time. Missing referenced env vars cause load to fail with a clear error.
+ *
+ * **Strict unknown-key parsing.** Jackson is configured with
+ * [DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES] enabled so any YAML key that does
+ * not map to a property on the corresponding model class causes startup to fail with
+ * `UnrecognizedPropertyException` naming the offending key. The motivation is purely
+ * security: a silent ignore turns typos in security-critical keys into invisibly
+ * disabled defenses — `auth: { enable: true }` (missing the trailing `d`) would parse
+ * as "auth block present but `enabled` defaults to false" and leave every route open;
+ * `tls: { keystorePat: "..." }` would skip TLS entirely; etc. Failing loudly forces
+ * every misconfiguration through an explicit fix instead of through unnoticed
+ * fail-open behavior.
  */
 class ServerConfigLoader {
 
 	private val mapper: ObjectMapper = ObjectMapper(YAMLFactory())
 		.registerKotlinModule()
-		.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
+		.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true)
 		.registerModule(
 			SimpleModule().addDeserializer(SsoProviderConfig::class.java, SsoProviderConfigDeserializer()),
 		)

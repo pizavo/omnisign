@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.config
 
+import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
@@ -7,6 +9,7 @@ import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import java.io.File
 
 /**
@@ -73,7 +76,7 @@ class ServerConfigLoaderTest : FunSpec({
 		config.maxFileSize shouldBe 52428800L
 	}
 
-	test("load ignores unknown YAML properties") {
+	test("load fails fast on an unknown top-level YAML property") {
 		val yaml = """
 			host: "localhost"
 			unknownField: "ignored"
@@ -83,8 +86,28 @@ class ServerConfigLoaderTest : FunSpec({
 		tmpFile.deleteOnExit()
 		tmpFile.writeText(yaml)
 
-		val config = loader.load(tmpFile.absolutePath)
-		config.host shouldBe "localhost"
+		val ex = shouldThrow<UnrecognizedPropertyException> {
+			loader.load(tmpFile.absolutePath)
+		}
+		ex.propertyName shouldBe "unknownField"
+	}
+
+	test("load fails fast on a typo of a security-critical key (auth.enable vs auth.enabled)") {
+		val yaml = """
+			auth:
+			  enable: true
+		""".trimIndent()
+
+		val tmpFile = File.createTempFile("server-auth-typo-", ".yml")
+		tmpFile.deleteOnExit()
+		tmpFile.writeText(yaml)
+
+		val ex = shouldThrow<UnrecognizedPropertyException> {
+			loader.load(tmpFile.absolutePath)
+		}
+		ex.propertyName shouldBe "enable"
+		ex.message.shouldNotBeNull()
+		ex.message!! shouldContain "enabled"
 	}
 
 	test("load falls back to classpath resource when no explicit path") {
