@@ -1,10 +1,12 @@
 package cz.pizavo.omnisign.config
 
 import com.fasterxml.jackson.databind.DeserializationFeature
+import com.fasterxml.jackson.databind.JsonDeserializer
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.module.SimpleModule
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import cz.pizavo.omnisign.domain.model.value.Sensitive
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 
@@ -44,7 +46,13 @@ class ServerConfigLoader {
 		.registerKotlinModule()
 		.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true)
 		.registerModule(
-			SimpleModule().addDeserializer(SsoProviderConfig::class.java, SsoProviderConfigDeserializer()),
+			SimpleModule()
+				.addDeserializer(SsoProviderConfig::class.java, SsoProviderConfigDeserializer())
+				.addDeserializer(
+					Sensitive::class.java,
+					@Suppress("UNCHECKED_CAST")
+					(SensitiveStringJacksonDeserializer() as JsonDeserializer<Sensitive<*>>),
+				),
 		)
 
 	/**

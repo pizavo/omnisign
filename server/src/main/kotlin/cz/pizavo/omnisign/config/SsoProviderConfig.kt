@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.config
 
+import cz.pizavo.omnisign.domain.model.value.Sensitive
+
 /**
  * Sealed hierarchy of supported SSO provider configurations.
  *
@@ -25,7 +27,9 @@ sealed interface SsoProviderConfig {
  * @property name Unique provider identifier used in callback URLs and UI (e.g. `microsoft`).
  * @property preset Optional well-known preset that fills in default URLs and scopes.
  * @property clientId OAuth2 / OIDC `client_id`.
- * @property clientSecret OAuth2 / OIDC `client_secret`.
+ * @property clientSecret OAuth2 / OIDC `client_secret`. Wrapped in [Sensitive] so it
+ *   cannot leak through `toString` (data-class-generated, logger interpolation, status
+ *   pages echoing `cause.message`).
  * @property discoveryUrl Full OIDC discovery document URL. Overrides the preset default.
  * @property tenantId Tenant, realm, or domain string for presets with templated discovery URLs.
  * @property scopes OAuth2 scope list. Overrides the preset default.
@@ -71,7 +75,7 @@ data class OidcProviderConfig(
     override val name: String,
     val preset: SsoProviderPreset? = null,
     val clientId: String,
-    val clientSecret: String,
+    val clientSecret: Sensitive<String>,
     val discoveryUrl: String? = null,
     val tenantId: String? = null,
     val scopes: List<String> = listOf("openid", "email", "profile"),
@@ -116,7 +120,9 @@ data class OidcProviderConfig(
  *   Declare in `server.yml` via env-var substitution to keep it out of the file:
  *   `sharedSecret: "${OMNISIGN_SHIB_TOKEN}"`. The reverse proxy must be configured
  *   to inject the same value as the [sharedSecretHeader] header on each authenticated
- *   request it forwards.
+ *   request it forwards. Wrapped in [Sensitive] so the value cannot leak through
+ *   `toString` (data-class-generated, logger interpolation, status pages echoing
+ *   `cause.message`).
  * @property sharedSecretHeader Name of the header that carries [sharedSecret]. Defaults
  *   to `X-Header-Injection-Token`. Pick something unlikely to collide with other
  *   infrastructure headers; the value is matched case-insensitively by Ktor.
@@ -127,15 +133,15 @@ data class HeaderInjectionProviderConfig(
     val emailHeader: String = "X-Shib-Mail",
     val displayNameHeader: String = "X-Shib-Cn",
     val displayName: String = name,
-    val sharedSecret: String,
+    val sharedSecret: Sensitive<String>,
     val sharedSecretHeader: String = "X-Header-Injection-Token",
 ) : SsoProviderConfig {
     init {
-        require(sharedSecret.toByteArray(Charsets.UTF_8).size >= MIN_SHARED_SECRET_BYTES) {
+        val secretBytes = sharedSecret.value.toByteArray(Charsets.UTF_8).size
+        require(secretBytes >= MIN_SHARED_SECRET_BYTES) {
             "HeaderInjectionProviderConfig '$name': sharedSecret must be at least " +
-                "$MIN_SHARED_SECRET_BYTES bytes (512 bits) — got " +
-                "${sharedSecret.toByteArray(Charsets.UTF_8).size}. Generate one with " +
-                "`openssl rand -base64 64`."
+                "$MIN_SHARED_SECRET_BYTES bytes (512 bits) — got $secretBytes. Generate one " +
+                "with `openssl rand -base64 64`."
         }
         require(sharedSecretHeader.isNotBlank()) {
             "HeaderInjectionProviderConfig '$name': sharedSecretHeader must not be blank."

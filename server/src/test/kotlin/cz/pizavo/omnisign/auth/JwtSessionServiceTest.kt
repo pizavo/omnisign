@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.auth
 
 import cz.pizavo.omnisign.config.JwtAlgorithmType
 import cz.pizavo.omnisign.config.SessionConfig
+import cz.pizavo.omnisign.domain.model.value.sensitive
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldBeNull
@@ -19,7 +20,7 @@ class JwtSessionServiceTest : FunSpec({
 
     val config = SessionConfig(
         algorithm = JwtAlgorithmType.HS512,
-        secret = secret,
+        secret = secret.sensitive(),
         issuer = "test-issuer",
         audience = "test-audience",
         tokenExpirySeconds = 3600,
@@ -57,7 +58,7 @@ class JwtSessionServiceTest : FunSpec({
     }
 
     test("verify returns null for a token signed with a different secret") {
-        val otherService = JwtSessionService(config.copy(secret = "different-jwt-secret-also-padded-to-64-bytes-for-hs512-rejection!!"))
+        val otherService = JwtSessionService(config.copy(secret = "different-jwt-secret-also-padded-to-64-bytes-for-hs512-rejection!!".sensitive()))
         val foreignToken = otherService.issue(principal)
         service.verify(foreignToken).shouldBeNull()
     }

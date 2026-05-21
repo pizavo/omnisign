@@ -100,7 +100,7 @@ fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String
                         authorizeUrl = authUrl,
                         accessTokenUrl = tokenUrl,
                         clientId = provider.clientId,
-                        clientSecret = provider.clientSecret,
+                        clientSecret = provider.clientSecret.value,
                         requestMethod = io.ktor.http.HttpMethod.Post,
                         defaultScopes = provider.scopes,
                         nonceManager = oauthNonceManager,

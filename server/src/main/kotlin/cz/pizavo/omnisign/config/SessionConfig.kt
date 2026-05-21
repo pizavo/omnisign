@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.config
 
+import cz.pizavo.omnisign.domain.model.value.Sensitive
+
 /**
  * Configuration for the JWT session tokens issued to clients after a successful SSO login.
  *
@@ -31,7 +33,9 @@ package cz.pizavo.omnisign.config
  *
  * @property algorithm JWT signing algorithm. Defaults to [JwtAlgorithmType.HS512].
  * @property secret HMAC signing secret. Ignored for asymmetric algorithms. Typically
- *   declared via env-var substitution in the YAML rather than written inline.
+ *   declared via env-var substitution in the YAML rather than written inline. Wrapped
+ *   in [Sensitive] so the value cannot leak through `toString` (data-class-generated,
+ *   logger interpolation, status pages echoing `cause.message`).
  * @property issuer JWT `iss` claim value.
  * @property audience JWT `aud` claim value.
  * @property tokenExpirySeconds Access-token lifetime in seconds. Defaults to 300 (5 min).
@@ -53,7 +57,7 @@ package cz.pizavo.omnisign.config
  */
 data class SessionConfig(
     val algorithm: JwtAlgorithmType = JwtAlgorithmType.HS512,
-    val secret: String? = null,
+    val secret: Sensitive<String>? = null,
     val issuer: String = "omnisign",
     val audience: String = "omnisign-api",
     val tokenExpirySeconds: Long = 300,

@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.config.AuthConfig
 import cz.pizavo.omnisign.config.JwtAlgorithmType
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.SessionConfig
+import cz.pizavo.omnisign.domain.model.value.sensitive
 import cz.pizavo.omnisign.module
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -31,7 +32,7 @@ class SystemRoutesTest : FunSpec({
         providers = emptyList(),
         session = SessionConfig(
             algorithm = JwtAlgorithmType.HS512,
-            secret = jwtSecret,
+            secret = jwtSecret.sensitive(),
             issuer = "omnisign",
             audience = "omnisign-api",
             tokenExpirySeconds = 3600,

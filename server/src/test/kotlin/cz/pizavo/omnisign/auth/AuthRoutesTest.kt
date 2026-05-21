@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.config.OidcProviderConfig
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.SessionConfig
 import cz.pizavo.omnisign.config.SsoProviderPreset
+import cz.pizavo.omnisign.domain.model.value.sensitive
 import cz.pizavo.omnisign.module
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldBeNull
@@ -80,7 +81,7 @@ private fun authTestConfig(auth: AuthConfig?): ServerConfig =
  */
 class AuthRoutesTest : FunSpec({
 	
-	val jwtSecret = "test-jwt-secret-padded-to-at-least-64-bytes-for-hs512-compatibility!!"
+	val jwtSecret = "test-jwt-secret-padded-to-at-least-64-bytes-for-hs512-compatibility!!".sensitive()
 	val authConfig = AuthConfig(
 		providers = emptyList(),
 		session = SessionConfig(
@@ -373,7 +374,7 @@ class AuthRoutesTest : FunSpec({
 		userHeader = "X-Remote-User",
 		emailHeader = "X-Shib-Mail",
 		displayNameHeader = "X-Shib-Cn",
-		sharedSecret = headerInjectionSecret,
+		sharedSecret = headerInjectionSecret.sensitive(),
 	)
 	val headerInjectionAuthConfig = authConfig.copy(providers = listOf(headerInjectionProvider))
 
@@ -425,14 +426,14 @@ class AuthRoutesTest : FunSpec({
 		}
 	}
 
-	val oauthStateSecret = "oauth-state-secret-padded-to-at-least-64-bytes-for-hmac-nonce-key!"
+	val oauthStateSecret = "oauth-state-secret-padded-to-at-least-64-bytes-for-hmac-nonce-key!".sensitive()
 	fun oidcAuthConfig(pkceEnabled: Boolean) = authConfig.copy(
 		providers = listOf(
 			OidcProviderConfig(
 				name = "github",
 				preset = SsoProviderPreset.GITHUB,
 				clientId = "test-client-id",
-				clientSecret = "test-client-secret",
+				clientSecret = "test-client-secret".sensitive(),
 				allowedEmailDomains = listOf("*"),
 				pkce = pkceEnabled,
 			),

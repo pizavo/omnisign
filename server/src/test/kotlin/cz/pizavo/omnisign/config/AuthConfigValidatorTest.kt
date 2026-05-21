@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.config
 
+import cz.pizavo.omnisign.domain.model.value.sensitive
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.string.shouldContain
@@ -23,7 +24,7 @@ class AuthConfigValidatorTest : FunSpec({
     ) = OidcProviderConfig(
         name = name,
         clientId = "id",
-        clientSecret = "secret",
+        clientSecret = "secret".sensitive(),
         discoveryUrl = "https://idp.example/.well-known/openid-configuration",
         allowedEmailDomains = allowedEmailDomains,
         requiredClaims = requiredClaims,
@@ -88,7 +89,7 @@ class AuthConfigValidatorTest : FunSpec({
                 oidc("o", listOf("*")),
                 HeaderInjectionProviderConfig(
                     name = "shib",
-                    sharedSecret = HEADER_INJECTION_TEST_SECRET,
+                    sharedSecret = HEADER_INJECTION_TEST_SECRET.sensitive(),
                 ),
             ),
         )

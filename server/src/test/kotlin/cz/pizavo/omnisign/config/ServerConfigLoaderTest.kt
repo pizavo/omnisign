@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.config
 
 import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException
+import cz.pizavo.omnisign.domain.model.value.sensitive
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.booleans.shouldBeFalse
@@ -72,9 +73,9 @@ class ServerConfigLoaderTest : FunSpec({
 
 		config.tls.shouldNotBeNull()
 		config.tls.keystorePath shouldBe "/tmp/ks.p12"
-		config.tls.keystorePassword shouldBe "secret"
+		config.tls.keystorePassword shouldBe "secret".sensitive()
 		config.tls.keyAlias shouldBe "mykey"
-		config.tls.privateKeyPassword shouldBe "privpw"
+		config.tls.privateKeyPassword shouldBe "privpw".sensitive()
 
 		config.cors.shouldNotBeNull()
 		config.cors.allowedOrigins shouldBe listOf("https://example.com")

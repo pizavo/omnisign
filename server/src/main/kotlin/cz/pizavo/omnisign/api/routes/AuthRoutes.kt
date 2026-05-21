@@ -211,7 +211,7 @@ fun Route.authRoutes(config: AuthConfig?) {
         config?.providers?.filterIsInstance<HeaderInjectionProviderConfig>()?.forEach { provider ->
             get("/callback/${provider.name}") {
                 val providedSecret = call.request.headers[provider.sharedSecretHeader]
-                if (providedSecret == null || !sharedSecretMatches(providedSecret, provider.sharedSecret)) {
+                if (providedSecret == null || !sharedSecretMatches(providedSecret, provider.sharedSecret.value)) {
                     call.respond(
                         HttpStatusCode.Unauthorized,
                         ApiError(

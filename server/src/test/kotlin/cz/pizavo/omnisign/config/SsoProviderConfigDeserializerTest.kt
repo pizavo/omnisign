@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.config
 
+import cz.pizavo.omnisign.domain.model.value.sensitive
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -62,7 +63,7 @@ class SsoProviderConfigDeserializerTest : FunSpec({
         provider.shouldBeInstanceOf<HeaderInjectionProviderConfig>()
         provider.name shouldBe "shibboleth"
         provider.userHeader shouldBe "X-Remote-User"
-        provider.sharedSecret shouldBe HEADER_INJECTION_TEST_SECRET
+        provider.sharedSecret shouldBe HEADER_INJECTION_TEST_SECRET.sensitive()
         provider.sharedSecretHeader shouldBe "X-Header-Injection-Token"
     }
 

@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.config
 
+import cz.pizavo.omnisign.domain.model.value.Sensitive
+
 /**
  * Root authentication configuration block for the OmniSign server.
  *
@@ -42,12 +44,14 @@ package cz.pizavo.omnisign.config
  *   least 32 bytes when supplied. Typically declared via env-var substitution:
  *   `oauthStateSecret: "${OMNISIGN_OAUTH_NONCE_SECRET}"`. When `null` and OIDC providers
  *   are configured, the server falls back to an ephemeral random key in development mode
- *   (with a warning) and fails to start in production.
+ *   (with a warning) and fails to start in production. Wrapped in [Sensitive] so the
+ *   value cannot leak through `toString` (data-class-generated, logger interpolation,
+ *   status pages echoing `cause.message`).
  */
 data class AuthConfig(
 	val enabled: Boolean = false,
 	val providers: List<SsoProviderConfig> = emptyList(),
 	val session: SessionConfig = SessionConfig(),
-	val oauthStateSecret: String? = null,
+	val oauthStateSecret: Sensitive<String>? = null,
 )
 

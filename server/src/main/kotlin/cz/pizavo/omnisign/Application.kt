@@ -65,7 +65,7 @@ fun main(args: Array<String>) {
 	val tlsCfg = serverConfig.tls?.takeUnless { serverConfig.proxy?.enabled == true }
 
 	if (tlsCfg != null) {
-		val keyStore = loadKeyStore(tlsCfg.keystorePath, tlsCfg.keystorePassword)
+		val keyStore = loadKeyStore(tlsCfg.keystorePath, tlsCfg.keystorePassword.value)
 
 		embeddedServer(
 			Netty,
@@ -74,8 +74,8 @@ fun main(args: Array<String>) {
 				sslConnector(
 					keyStore = keyStore,
 					keyAlias = tlsCfg.keyAlias,
-					keyStorePassword = { tlsCfg.keystorePassword.toCharArray() },
-					privateKeyPassword = { tlsCfg.privateKeyPassword.toCharArray() },
+					keyStorePassword = { tlsCfg.keystorePassword.value.toCharArray() },
+					privateKeyPassword = { tlsCfg.privateKeyPassword.value.toCharArray() },
 				) {
 					port = serverConfig.tlsPort
 					host = serverConfig.host

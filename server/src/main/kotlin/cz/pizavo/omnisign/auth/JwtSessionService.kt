@@ -36,7 +36,7 @@ private val logger = KotlinLogging.logger {}
 class JwtSessionService(private val config: SessionConfig) {
 
     private val algorithm: Algorithm? = config.secret?.let { secret ->
-        buildAlgorithm(config.algorithm, secret)
+        buildAlgorithm(config.algorithm, secret.value)
     }
 
     /**

@@ -1,6 +1,5 @@
 package cz.pizavo.omnisign.domain.model.value
 
-import kotlin.jvm.JvmInline
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationException
@@ -26,11 +25,19 @@ import kotlinx.serialization.encoding.Encoder
  *
  * Use the [sensitive] extension on [String] to construct instances concisely.
  *
+ * Implemented as a regular `data class` rather than `@JvmInline value class`
+ * even though only one property is held: when used as a generic type parameter
+ * (`Sensitive<String>`), the JVM erases to the boxed form on every field /
+ * collection / generic-arg site anyway, so the inline-class optimisation does
+ * not apply. Avoiding `@JvmInline` here also dodges a Kotlin reflection bug
+ * where `callBy` cannot invoke a primary constructor that mixes default-valued
+ * parameters with an inline-value-class parameter — Jackson's KotlinModule
+ * hits this path when constructing server config classes such as `TlsConfig`.
+ *
  * @property value The underlying sensitive value.
  */
-@JvmInline
 @Serializable(with = SensitiveSerializer::class)
-value class Sensitive<T>(val value: T) {
+data class Sensitive<T>(val value: T) {
     /**
      * Returns a fixed mask instead of the actual value, preventing accidental
      * exposure in any context where [toString] is called — including logging

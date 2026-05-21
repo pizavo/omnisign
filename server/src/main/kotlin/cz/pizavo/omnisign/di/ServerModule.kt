@@ -105,9 +105,10 @@ fun serverModule(serverConfig: ServerConfig) = module {
 						"`secret: \"\${OMNISIGN_JWT_SECRET}\"`."
 			}
 		} else {
-			require(secret.toByteArray(Charsets.UTF_8).size >= MIN_JWT_SECRET_BYTES) {
+			val secretBytes = secret.value.toByteArray(Charsets.UTF_8).size
+			require(secretBytes >= MIN_JWT_SECRET_BYTES) {
 				"auth.session.secret must be at least $MIN_JWT_SECRET_BYTES bytes (256 bits) — " +
-						"got ${secret.toByteArray(Charsets.UTF_8).size}."
+						"got $secretBytes."
 			}
 		}
 		JwtSessionService(config)
@@ -120,7 +121,7 @@ fun serverModule(serverConfig: ServerConfig) = module {
 					"Declare it in server.yml — typically via env-var substitution: " +
 					"`oauthStateSecret: \"\${OMNISIGN_OAUTH_NONCE_SECRET}\"`."
 		}
-		val bytes = key.toByteArray(Charsets.UTF_8)
+		val bytes = key.value.toByteArray(Charsets.UTF_8)
 		require(bytes.size >= MIN_NONCE_KEY_BYTES) {
 			"auth.oauthStateSecret must be at least $MIN_NONCE_KEY_BYTES bytes (512 bits) — " +
 					"got ${bytes.size}."
