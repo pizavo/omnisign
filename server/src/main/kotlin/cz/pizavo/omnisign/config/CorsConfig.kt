@@ -21,8 +21,8 @@ package cz.pizavo.omnisign.config
  *     when the API is intentionally public, or for local development where the dev
  *     server's port shifts.
  *   - Bare host (`"example.com"`) — accept any scheme/port for that host.
- *   - Host:port (`"example.com:50443"`).
- *   - Full URL with scheme (`"https://example.com:50443"`). The plugin strips
+ *   - Host:port (`"example.com:18443"`).
+ *   - Full URL with scheme (`"https://example.com:18443"`). The plugin strips
  *     `http(s)://` prefixes so all three forms are interchangeable.
  *
  *   Empty list and missing `cors:` block are both rejected at server startup

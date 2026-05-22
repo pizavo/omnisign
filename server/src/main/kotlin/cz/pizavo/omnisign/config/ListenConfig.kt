@@ -31,5 +31,5 @@ package cz.pizavo.omnisign.config
  */
 data class ListenConfig(
 	val host: String = "127.0.0.1",
-	val port: Int = 50080,
+	val port: Int = 18080,
 )

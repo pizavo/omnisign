@@ -17,6 +17,8 @@ application {
 
 tasks.named<JavaExec>("run") {
     jvmArgs("--enable-native-access=ALL-UNNAMED", "--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED")
+    val devServerConfig = file("src/main/resources/server.yml")
+    if (devServerConfig.isFile) args("--config", devServerConfig.absolutePath)
 }
 
 dependencies {

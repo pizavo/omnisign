@@ -13,7 +13,7 @@
 # OIDC callback parameters on the wire).
 listen:
   host: "127.0.0.1"
-  port: 50080
+  port: 18080
 
 # When true, Ktor development mode is activated (auto-reload, verbose errors,
 # internal exception messages echoed to clients via the catch-all error handler).
@@ -271,7 +271,7 @@ operations:
 #   OMNISIGN_TLS_PRIVATE_KEY_PASSWORD    — private-key password (optional; falls back to
 #                                          OMNISIGN_TLS_KEYSTORE_PASSWORD when unset)
 # tls:
-#   port: 50443                       # TLS connector port (default 50443)
+#   port: 18443                       # TLS connector port (default 18443)
 #   keystorePath: "/path/to/keystore.p12"
 #   keyAlias: "omnisign"
 #
@@ -295,8 +295,8 @@ operations:
 # configure CORS", "explicitly allow all", and "explicitly deny all" can never collapse
 # into the same silent-disable runtime.
 #
-# Entries may be bare host ("example.com"), host:port ("example.com:50443"), or full URL
-# ("https://example.com:50443") — the http(s):// prefix is stripped.
+# Entries may be bare host ("example.com"), host:port ("example.com:18443"), or full URL
+# ("https://example.com:18443") — the http(s):// prefix is stripped.
 #
 # The defaults below cover the three common Compose / Wasm / JS local dev-server ports
 # so the local dev workflow works out of the box. Replace them with your production

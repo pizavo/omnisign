@@ -15,7 +15,7 @@ package cz.pizavo.omnisign.config
  * rationale — YAML-stored secrets cross filesystem boundaries that env vars do not,
  * and the shipped `"changeit"` placeholder is a well-known copy-paste trap.
  *
- * @property port Port the TLS connector listens on. Defaults to `50443`. Lives under
+ * @property port Port the TLS connector listens on. Defaults to `18443`. Lives under
  *   `tls:` (rather than at the root) so it is only meaningful when TLS is configured,
  *   matching the nesting pattern of [ProxyConfig] / [CorsConfig] / [AuthConfig].
  * @property keystorePath Absolute path to the JKS or PKCS#12 keystore file.
@@ -27,7 +27,7 @@ package cz.pizavo.omnisign.config
 data class TlsConfig(
 	val keystorePath: String,
 	val keyAlias: String = "omnisign",
-	val port: Int = 50443,
+	val port: Int = 18443,
 	val hsts: HstsConfig? = null,
 )
 

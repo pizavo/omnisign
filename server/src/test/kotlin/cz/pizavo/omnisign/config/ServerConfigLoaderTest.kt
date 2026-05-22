@@ -27,7 +27,7 @@ class ServerConfigLoaderTest : FunSpec({
 	test("load returns Kotlin defaults when explicit path does not exist (no classpath fallback)") {
 		val config = loader.load("/nonexistent/path.yml")
 		config.listen.host shouldBe "127.0.0.1"
-		config.listen.port shouldBe 50080
+		config.listen.port shouldBe 18080
 		config.development.shouldBeFalse()
 		config.proxy.shouldBeNull()
 		config.tls.shouldBeNull()
@@ -174,7 +174,7 @@ class ServerConfigLoaderTest : FunSpec({
 	test("load returns Kotlin defaults when called with no path and no CWD server.yml exists") {
 		val config = loader.load()
 		config.listen.host shouldBe "127.0.0.1"
-		config.listen.port shouldBe 50080
+		config.listen.port shouldBe 18080
 		config.development.shouldBeFalse()
 		config.cors.shouldBeNull()
 		config.tls.shouldBeNull()
