@@ -79,6 +79,7 @@ tasks.withType<Test> {
         "-Xshare:off",
         "--enable-native-access=ALL-UNNAMED",
         "--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED",
+        "-Domnisign.backgroundServices=off",
     )
 }
 

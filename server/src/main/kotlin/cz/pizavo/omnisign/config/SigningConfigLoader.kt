@@ -70,25 +70,6 @@ private abstract class TimestampServerConfigMixin {
  */
 class SigningConfigLoader(private val env: (String) -> String? = System::getenv) {
 
-	private val yamlMapper: ObjectMapper = configure(ObjectMapper(YAMLFactory()))
-	private val jsonMapper: ObjectMapper = configure(ObjectMapper())
-
-	/**
-	 * Apply the shared strict configuration to [mapper]: the Kotlin module, fail-on-unknown
-	 * keys, the [TimestampServerConfigMixin], and the [Sensitive] string deserializer.
-	 */
-	private fun configure(mapper: ObjectMapper): ObjectMapper =
-		mapper.registerKotlinModule()
-			.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true)
-			.addMixIn(TimestampServerConfig::class.java, TimestampServerConfigMixin::class.java)
-			.registerModule(
-				SimpleModule().addDeserializer(
-					Sensitive::class.java,
-					@Suppress("UNCHECKED_CAST")
-					(SensitiveStringJacksonDeserializer() as JsonDeserializer<Sensitive<*>>),
-				),
-			)
-
 	/**
 	 * Load and resolve the signing configuration referenced by [path].
 	 *
@@ -230,5 +211,33 @@ class SigningConfigLoader(private val env: (String) -> String? = System::getenv)
 		 * File extensions scanned inside a [ProfileSources.directories] entry.
 		 */
 		private val PROFILE_EXTENSIONS = setOf("yml", "yaml")
+
+		/**
+		 * Shared strict YAML mapper. Jackson `ObjectMapper`s are thread-safe once configured, so a
+		 * single instance is reused across every [SigningConfigLoader] (one is built per app boot)
+		 * rather than rebuilding the module stack each time.
+		 */
+		private val yamlMapper: ObjectMapper = configure(ObjectMapper(YAMLFactory()))
+
+		/**
+		 * Shared strict JSON mapper, used for `.json` profile/policy files. See [yamlMapper].
+		 */
+		private val jsonMapper: ObjectMapper = configure(ObjectMapper())
+
+		/**
+		 * Apply the shared strict configuration to [mapper]: the Kotlin module, fail-on-unknown
+		 * keys, the [TimestampServerConfigMixin], and the [Sensitive] string deserializer.
+		 */
+		private fun configure(mapper: ObjectMapper): ObjectMapper =
+			mapper.registerKotlinModule()
+				.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true)
+				.addMixIn(TimestampServerConfig::class.java, TimestampServerConfigMixin::class.java)
+				.registerModule(
+					SimpleModule().addDeserializer(
+						Sensitive::class.java,
+						@Suppress("UNCHECKED_CAST")
+						(SensitiveStringJacksonDeserializer() as JsonDeserializer<Sensitive<*>>),
+					),
+				)
 	}
 }

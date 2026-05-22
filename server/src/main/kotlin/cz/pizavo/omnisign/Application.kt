@@ -130,9 +130,11 @@ fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets) {
 	validateTransportSecurity(serverConfig)
 	val signingConfig = SigningConfigLoader().load(serverConfig.signingConfigFile)
 	configureKoin(serverConfig, secrets, signingConfig)
-	launchPkcs11WarmupIfNeeded(serverConfig)
-	launchTrustedListRefreshIfNeeded(serverConfig)
-	attachPkcs11CacheInvalidatorIfNeeded(serverConfig)
+	if (backgroundServicesEnabled()) {
+		launchPkcs11WarmupIfNeeded(serverConfig)
+		launchTrustedListRefreshIfNeeded(serverConfig)
+		attachPkcs11CacheInvalidatorIfNeeded(serverConfig)
+	}
 	configureDefaultHeaders(hstsConfig = serverConfig.tls?.hsts)
 	configureSerialization()
 	configureStatusPages(development = serverConfig.development)
@@ -177,6 +179,19 @@ fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets) {
 		}
 	}
 }
+
+/**
+ * Whether the background warmup/refresh services should start at boot.
+ *
+ * Production defaults to enabled. Tests pass `-Domnisign.backgroundServices=off` so the suite
+ * never reaches out to live trusted-list (LOTL) endpoints: those fetches are slow and
+ * network-flaky, and the blocking downloads they spawn do not honor coroutine cancellation, so
+ * across hundreds of `testApplication` boots they accumulate and exhaust the test JVM heap.
+ *
+ * @return `true` unless the `omnisign.backgroundServices` system property is set to `off`.
+ */
+private fun backgroundServicesEnabled(): Boolean =
+	System.getProperty("omnisign.backgroundServices", "on") != "off"
 
 /**
  * Configure the full application module with default [ServerConfig].
