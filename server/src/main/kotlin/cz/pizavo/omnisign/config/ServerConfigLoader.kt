@@ -32,8 +32,8 @@ private val logger = KotlinLogging.logger {}
  * not consult it. Operators who run the JAR without any of paths (1)–(3) get Kotlin
  * defaults and the validators in `moduleWith` decide whether to start.
  *
- * **Environment variable substitution.** Before parsing, any `${NAME}` placeholder in the
- * YAML text is replaced with the value of the corresponding environment variable. The
+ * **Environment variable substitution.** The YAML is parsed to a tree, then any `${NAME}`
+ * placeholder in a string value is replaced (keys and comments are never substituted). The
  * variable name must match `[A-Z_][A-Z0-9_]*` (uppercase, digits, underscores). This is
  * how a small number of non-secret config values (e.g. an external base URL) can come
  * from the environment. Operator secrets are not loaded this way — see [ServerSecrets].
@@ -50,7 +50,7 @@ private val logger = KotlinLogging.logger {}
  * every misconfiguration through an explicit fix instead of through unnoticed
  * fail-open behavior.
  */
-class ServerConfigLoader {
+class ServerConfigLoader(private val env: (String) -> String? = System::getenv) {
 
 	private val mapper: ObjectMapper = ObjectMapper(YAMLFactory())
 		.registerKotlinModule()
@@ -85,8 +85,9 @@ class ServerConfigLoader {
 			}
 			return ServerConfig()
 		}
-		val expanded = substituteEnvVars(rawYaml)
-		return mapper.readValue(expanded, ServerConfig::class.java)
+		val tree = mapper.readTree(rawYaml)
+		substituteTreeValues(tree, env)
+		return mapper.treeToValue(tree, ServerConfig::class.java)
 	}
 
 	/**
@@ -134,33 +135,15 @@ class ServerConfigLoader {
 	 * @param yaml YAML content to parse.
 	 * @return Parsed [ServerConfig].
 	 */
-	fun loadFromString(yaml: String): ServerConfig =
-		mapper.readValue(substituteEnvVars(yaml), ServerConfig::class.java)
-
-	/**
-	 * Replace every `${NAME}` placeholder in [yaml] with the value of the corresponding
-	 * environment variable.
-	 *
-	 * The substitution is textual and runs before YAML parsing. Variable names must match
-	 * `[A-Z_][A-Z0-9_]*`. A missing env var causes a clear startup failure naming the variable.
-	 *
-	 * @throws IllegalStateException if a referenced env var is not set.
-	 */
-	private fun substituteEnvVars(yaml: String): String =
-		ENV_VAR_PATTERN.replace(yaml) { match ->
-			val varName = match.groupValues[1]
-			val value = System.getenv(varName)
-				?: error(
-					$$"server.yml references environment variable '${$$varName}' but it is not set. " +
-							"Set $varName before starting the server, or remove the reference from the YAML.",
-				)
-			value
-		}
+	fun loadFromString(yaml: String): ServerConfig {
+		val tree = mapper.readTree(yaml)
+		substituteTreeValues(tree, env)
+		return mapper.treeToValue(tree, ServerConfig::class.java)
+	}
 
 	companion object {
 		private const val ENV_VAR = "OMNISIGN_SERVER_CONFIG"
 		private const val DEFAULT_FILE_NAME = "server.yml"
-		private val ENV_VAR_PATTERN = Regex("""\$\{([A-Z_][A-Z0-9_]*)}""")
 	}
 }
 

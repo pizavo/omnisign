@@ -3,12 +3,8 @@ package cz.pizavo.omnisign.config
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.DeserializationFeature
 import com.fasterxml.jackson.databind.JsonDeserializer
-import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.module.SimpleModule
-import com.fasterxml.jackson.databind.node.ArrayNode
-import com.fasterxml.jackson.databind.node.ObjectNode
-import com.fasterxml.jackson.databind.node.TextNode
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
 import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import cz.pizavo.omnisign.domain.model.config.AppConfig
@@ -44,7 +40,7 @@ private abstract class TimestampServerConfigMixin {
  * representation.
  *
  * **Environment substitution.** The document is parsed to a tree first, then every `${NAME}`
- * placeholder inside a string *value* is expanded from the environment via [substituteEnvVars]
+ * placeholder inside a string *value* is expanded from the environment via [substituteTreeValues]
  * (keys and comments are never touched, because comments are already gone after parsing); an
  * unset variable referenced by a value fails fast. Any value can therefore come from the
  * environment, including the TSA password (`password: "${OMNISIGN_TSA_PASSWORD}"`, see
@@ -133,36 +129,8 @@ class SigningConfigLoader(private val env: (String) -> String? = System::getenv)
 	private fun <T> parse(file: File, type: Class<T>): T {
 		val mapper = mapperFor(file)
 		val tree = mapper.readTree(file.readText(Charsets.UTF_8))
-		substituteTreeValues(tree)
+		substituteTreeValues(tree, env)
 		return mapper.treeToValue(tree, type)
-	}
-
-	/**
-	 * Recursively expand `${NAME}` environment placeholders in every string value of [node],
-	 * leaving object keys, numbers, and booleans untouched.
-	 */
-	private fun substituteTreeValues(node: JsonNode) {
-		when (node) {
-			is ObjectNode -> node.fieldNames().asSequence().toList().forEach { name ->
-				when (val child = node.get(name)) {
-					is TextNode -> node.put(name, substituteEnvVars(child.asText(), env))
-					is ObjectNode -> substituteTreeValues(child)
-					is ArrayNode -> substituteTreeValues(child)
-					else -> {}
-				}
-			}
-
-			is ArrayNode -> for (i in 0 until node.size()) {
-				when (val child = node.get(i)) {
-					is TextNode -> node.set(i, TextNode.valueOf(substituteEnvVars(child.asText(), env)))
-					is ObjectNode -> substituteTreeValues(child)
-					is ArrayNode -> substituteTreeValues(child)
-					else -> {}
-				}
-			}
-
-			else -> {}
-		}
 	}
 
 	/**
