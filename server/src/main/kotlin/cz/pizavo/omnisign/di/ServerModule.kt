@@ -12,10 +12,13 @@ import cz.pizavo.omnisign.auth.RefreshTokenStore
 import cz.pizavo.omnisign.auth.ServerPasswordCallback
 import cz.pizavo.omnisign.auth.sessionsDbFile
 import cz.pizavo.omnisign.config.AllowedOperation
+import cz.pizavo.omnisign.config.ReadOnlyConfigRepository
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
 import cz.pizavo.omnisign.config.ServerSecrets
 import cz.pizavo.omnisign.config.SessionConfig
+import cz.pizavo.omnisign.domain.model.config.AppConfig
+import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.platform.PasswordCallback
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
@@ -38,6 +41,9 @@ import kotlin.coroutines.CoroutineContext
  * - [ServerConfig] singleton from the preloaded configuration.
  * - [ServerConfigLoader] singleton.
  * - [PasswordCallback] that always returns `null` (server cannot prompt interactively).
+ * - [ConfigRepository] (read-only [ReadOnlyConfigRepository]) backed by the provider's
+ *   signing.yml, overriding the home-directory `FileConfigRepository` from
+ *   `jvmRepositoryModule` so the server never reads or writes the user's config file.
  * - IO [CoroutineContext] for blocking work.
  * - [HttpClient] (CIO engine) with JSON content-negotiation and per-stage timeouts
  *   ([HttpTimeout]) for OIDC discovery and user-info requests. The timeouts close the
@@ -76,12 +82,16 @@ import kotlin.coroutines.CoroutineContext
  *   the IdP alongside the access token on the authorization-code callback.
  *
  * @param serverConfig Preloaded server configuration.
+ * @param secrets Secret values resolved from environment variables.
+ * @param signingConfig Provider signing/validation policy resolved from signing.yml at
+ *   startup, exposed through the read-only [ConfigRepository] binding.
  */
-fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets) = module {
+fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConfig: AppConfig) = module {
 	single<ServerConfig> { serverConfig }
 	single<ServerSecrets> { secrets }
 	single<ServerConfigLoader> { ServerConfigLoader() }
 	single<PasswordCallback> { ServerPasswordCallback() }
+	single<ConfigRepository> { ReadOnlyConfigRepository(signingConfig) }
 	single<CoroutineContext> { Dispatchers.IO }
 
 	if (AllowedOperation.SIGN in serverConfig.operations.allowed) {

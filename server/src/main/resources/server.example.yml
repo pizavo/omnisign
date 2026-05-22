@@ -249,6 +249,15 @@ operations:
   #   - "university-seal"
   #   - "department-stamp"
 
+# Signing / validation policy file - the server's equivalent of the desktop "global
+# settings + profiles". Loaded READ-ONLY at startup. Holds everything about HOW the server
+# signs and validates: default algorithms, OCSP/CRL timeouts, TSA, validation policy, and
+# named profiles - so this server.yml stays focused on exposure and security. When omitted,
+# the server runs with built-in defaults and no profiles (the home-directory config file is
+# never read). YAML is primary; a path ending in .json is parsed as JSON. Secrets never go
+# in this file (a TSA password is resolved from the environment). See signing.example.yml.
+# signingConfigFile: "/etc/omnisign/signing.yml"
+
 # TLS / SSL configuration.
 # Uncomment and fill in to enable direct HTTPS with TLS 1.2/1.3 and HTTP/2. When `host`
 # is set to anything other than a loopback address (127.0.0.1, ::1, localhost), the

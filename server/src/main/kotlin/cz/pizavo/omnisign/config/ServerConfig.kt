@@ -27,6 +27,12 @@ package cz.pizavo.omnisign.config
  * @property auth SSO authentication configuration. When `null`, no authentication plugin
  *   is installed. Set [AuthConfig.enabled] to `true` within this block to enforce JWT
  *   authentication on all operational routes.
+ * @property signingConfigFile Path to the provider-authored signing/validation policy file
+ *   (`signing.yml`, or a `.json` equivalent) loaded read-only at startup by
+ *   [cz.pizavo.omnisign.config.SigningConfigLoader]. When `null`, the server runs with
+ *   built-in signing defaults and no profiles; the home-directory config file is never read.
+ *   Holds everything about how the server signs and validates so this file stays focused on
+ *   exposure and security.
  */
 data class ServerConfig(
 	val listen: ListenConfig = ListenConfig(),
@@ -38,4 +44,5 @@ data class ServerConfig(
 	val rateLimiting: RateLimitConfig? = null,
 	val maxFileSize: Long = 100L * 1024 * 1024,
 	val auth: AuthConfig? = null,
+	val signingConfigFile: String? = null,
 )

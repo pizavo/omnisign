@@ -1,0 +1,165 @@
+# OmniSign Signing / Validation Policy
+# ====================================
+# Provider-authored, loaded READ-ONLY by the server at startup. Point server.yml's
+# signingConfigFile at this file. This is the server's equivalent of the desktop
+# "global settings + profiles": it carries everything about HOW the server signs and
+# validates. YAML is the primary format; a path ending in .json is parsed as JSON.
+#
+# Secrets never go here as literals. Any value may reference an environment variable with
+# dollar-brace syntax (for example ${...}), expanded at load, so a secret lives in the
+# environment rather than this file. The TSA password works this way (see
+# timestampServer.password below). A referenced-but-unset value fails startup, naming the
+# variable. Substitution applies only to values, not to keys or comments.
+#
+# Unknown keys fail startup (no silent typos). The desktop-only AppConfig fields
+# (activeProfile, tlDrafts, renewalJobs, schedulerConfig) are intentionally not part of
+# this schema and are rejected if present.
+#
+# Every field is shown below. Uncommented entries are the built-in defaults (so this file
+# also works as a starting point); commented entries are optional and show their syntax and
+# the full set of allowed values.
+
+# ----------------------------------------------------------------------------------------
+# Global signing and validation defaults, applied to every operation unless a profile or a
+# per-request override narrows them.
+# ----------------------------------------------------------------------------------------
+global:
+
+  # Hash algorithm for new signatures. One of:
+  #   SHA256 (recommended) | SHA384 | SHA512 | SHA3_256 | SHA3_384 | SHA3_512
+  #   | WHIRLPOOL | RIPEMD160
+  # Note: SHA3_*, WHIRLPOOL and RIPEMD160 are NOT supported by the Windows certificate
+  # store (Windows CNG); use a PKCS#11 or file-based token for those.
+  defaultHashAlgorithm: SHA256
+
+  # Signing-key algorithm. When omitted, DSS infers it from the certificate's key type
+  # (recommended). One of:
+  #   RSA | RSA_SSA_PSS | ECDSA | PLAIN_ECDSA | DSA | EDDSA
+  # Note: EDDSA ignores the hash algorithm (it is intrinsic to the curve).
+  # defaultEncryptionAlgorithm: RSA_SSA_PSS
+
+  # PAdES baseline level for new signatures. One of:
+  #   PADES_BASELINE_B   - basic, no timestamp
+  #   PADES_BASELINE_T   - adds an RFC 3161 signature timestamp (needs timestampServer)
+  #   PADES_BASELINE_LT  - adds long-term revocation material (CRL/OCSP)
+  #   PADES_BASELINE_LTA - adds an archival document timestamp
+  defaultSignatureLevel: PADES_BASELINE_B
+
+  # Hash algorithms forbidden everywhere; a profile or per-request override can never
+  # re-enable them. Same value set as defaultHashAlgorithm.
+  disabledHashAlgorithms:
+    - RIPEMD160
+    - WHIRLPOOL
+
+  # Signing-key algorithms forbidden everywhere. Same value set as defaultEncryptionAlgorithm.
+  # disabledEncryptionAlgorithms:
+  #   - DSA
+
+  # OCSP revocation-check settings.
+  ocsp:
+    timeout: 30000  # milliseconds
+
+  # CRL revocation-check settings.
+  crl:
+    timeout: 30000  # milliseconds
+
+  # RFC 3161 timestamp authority, required for B-T / B-LT / B-LTA. Omit for B only.
+  # The TSA password is supplied from the environment (never stored here) via `password`
+  # referencing an env var; it is held in memory only. The OS-keyring `credentialKey` is NOT
+  # supported on the server and is rejected at startup.
+  # timestampServer:
+  #   url: "http://tsa.example.org/tsr"
+  #   username: "omnisign"
+  #   password: "${OMNISIGN_TSA_PASSWORD}"
+  #   timeout: 30000
+
+  # How existing signatures are validated.
+  validation:
+    # DEFAULT_ETSI (built-in ETSI policy) | CUSTOM_FILE (load customPolicyPath)
+    policyType: DEFAULT_ETSI
+    # DSS validation-policy XML; required when policyType is CUSTOM_FILE.
+    # customPolicyPath: "/etc/omnisign/validation-policy.xml"
+    checkRevocation: true
+    useEuLotl: true
+    # Extra ETSI TS 119612 trusted lists, by reference (not embedded certificates).
+    # `source` is an https:// URL or a file:// path; signingCertPath (optional) verifies the
+    # trusted list's own XML signature.
+    # customTrustedLists:
+    #   - name: "national-tl"
+    #     source: "https://tl.example.gov/tl.xml"
+    #     signingCertPath: "/etc/omnisign/tl-signing.crt"
+    # DISCOURAGED here: inline Base64-DER certificates. Shown for completeness only - the
+    # app-managed trust store will replace this; prefer customTrustedLists (references).
+    # trustedCertificates:
+    #   - name: "internal-root"
+    #     type: ANY                        # ANY | CA | TSA
+    #     subjectDN: "CN=Internal Root CA"
+    #     certificateBase64: "MIID...=="
+    # How the validator reacts to cryptographically expired algorithms.
+    # algorithmConstraints:
+    #   # Severity when an algorithm expired on/before policyUpdateDate. One of:
+    #   #   FAIL | WARN | INFORM | IGNORE
+    #   expirationLevel: FAIL
+    #   # Severity when an algorithm expired AFTER policyUpdateDate.
+    #   expirationLevelAfterUpdate: WARN
+    #   # ISO-8601 date; when omitted the DSS built-in applies (2024-10-13 in DSS 6.3).
+    #   policyUpdateDate: "2024-10-13"
+    #   # Per-algorithm expiration overrides (algorithm name -> ISO-8601 date).
+    #   expirationDateOverrides:
+    #     SHA512: "2035-01-01"
+
+  # Extra PKCS#11 middleware libraries the OS autodiscovery cannot find. Relevant only when
+  # the server signs with a PKCS#11 token.
+  # customPkcs11Libraries:
+  #   - name: "vendor-token"
+  #     path: "/usr/lib/vendor-pkcs11.so"
+
+  # Max seconds to wait for a single PKCS#11 probe subprocess before killing it (1-120).
+  pkcs11ProbeTimeoutSeconds: 30
+
+  # How often (hours) the EU LOTL and custom trusted lists are refreshed (minimum 1).
+  trustedListRefreshIntervalHours: 24
+
+# ----------------------------------------------------------------------------------------
+# Named profiles, supplied via any combination of three sources (inline / files /
+# directories). A profile's identity is its inner `name`; a name appearing in more than one
+# source fails startup. Every per-profile field is optional and overrides the matching
+# `global` value for requests that select the profile (?profile=<name> / the `profile` field).
+# ----------------------------------------------------------------------------------------
+profiles:
+
+  # 1. Defined inline. The first entry lists every overridable field; commented ones inherit.
+  inline:
+    - name: fast
+      # description: "Quick B-level signing"
+      hashAlgorithm: SHA256
+      # encryptionAlgorithm: RSA_SSA_PSS
+      signatureLevel: PADES_BASELINE_B
+      # disabledHashAlgorithms: [RIPEMD160, WHIRLPOOL]
+      # disabledEncryptionAlgorithms: [DSA]
+      # ocsp:
+      #   timeout: 30000
+      # crl:
+      #   timeout: 30000
+      # timestampServer:
+      #   url: "http://tsa.example.org/tsr"
+      #   username: "omnisign"
+      #   password: "${OMNISIGN_TSA_PASSWORD}"
+      # validation:
+      #   policyType: DEFAULT_ETSI
+      #   checkRevocation: true
+      #   useEuLotl: true
+    - name: archival
+      description: "Long-term archival (B-LTA)"
+      hashAlgorithm: SHA512
+      signatureLevel: PADES_BASELINE_LTA
+
+  # 2. Explicit paths, each holding ONE bare profile (the same fields as an inline entry,
+  #    without the leading list dash). Relative paths resolve against this file's directory.
+  # files:
+  #   - profiles/archival-lta.yml
+
+  # 3. Directories scanned recursively for *.yml / *.yaml (hidden entries skipped); each file
+  #    holds ONE bare profile. Relative paths resolve against this file's directory.
+  # directories:
+  #   - profiles/

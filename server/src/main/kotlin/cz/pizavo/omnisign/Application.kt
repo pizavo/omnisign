@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
 import cz.pizavo.omnisign.config.ServerSecrets
+import cz.pizavo.omnisign.config.SigningConfigLoader
 import cz.pizavo.omnisign.config.isLoopbackHost
 import cz.pizavo.omnisign.config.validateAuthConfig
 import cz.pizavo.omnisign.config.validateCorsConfig
@@ -17,6 +18,7 @@ import cz.pizavo.omnisign.data.service.pkcs11DropDir
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
 import cz.pizavo.omnisign.di.serverModule
+import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.plugins.*
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -126,7 +128,8 @@ fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets) {
 	val parsedProxy = validateProxyConfig(serverConfig.proxy)
 	val corsConfig = validateCorsConfig(serverConfig.cors)
 	validateTransportSecurity(serverConfig)
-	configureKoin(serverConfig, secrets)
+	val signingConfig = SigningConfigLoader().load(serverConfig.signingConfigFile)
+	configureKoin(serverConfig, secrets, signingConfig)
 	launchPkcs11WarmupIfNeeded(serverConfig)
 	launchTrustedListRefreshIfNeeded(serverConfig)
 	attachPkcs11CacheInvalidatorIfNeeded(serverConfig)
@@ -196,12 +199,12 @@ fun Application.module(
 /**
  * Install Koin DI with shared and server-specific modules.
  */
-fun Application.configureKoin(serverConfig: ServerConfig, secrets: ServerSecrets) {
+fun Application.configureKoin(serverConfig: ServerConfig, secrets: ServerSecrets, signingConfig: AppConfig) {
 	install(Koin) {
 		modules(
 			appModule,
 			jvmRepositoryModule,
-			serverModule(serverConfig, secrets),
+			serverModule(serverConfig, secrets, signingConfig),
 		)
 	}
 }
