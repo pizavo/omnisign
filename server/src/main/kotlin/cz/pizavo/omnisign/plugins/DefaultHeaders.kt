@@ -5,11 +5,10 @@ import io.ktor.server.application.*
 import io.ktor.server.plugins.defaultheaders.*
 
 /**
- * Install Ktor [DefaultHeaders] plugin that appends standard security and branding
- * response headers to every response.
+ * Install Ktor [DefaultHeaders] plugin that appends standard security response headers to
+ * every response.
  *
  * Header set:
- * - `X-Powered-By: OmniSign` — branded server identifier.
  * - `X-Content-Type-Options: nosniff` — prevents MIME-type sniffing in browsers.
  * - `X-Frame-Options: DENY` — disables framing (clickjacking protection).
  * - `Referrer-Policy: strict-origin-when-cross-origin` — limits referrer leakage
@@ -22,11 +21,16 @@ import io.ktor.server.plugins.defaultheaders.*
  *   [HstsConfig.preload]. Must only be enabled when the server is reachable exclusively
  *   over HTTPS.
  *
+ * No `X-Powered-By` header by deliberate choice — it was a branding artifact, never a
+ * security control. The practical risk of advertising the stack name is small (route
+ * paths, the `omnisign` JWT issuer, and `X-OmniSign-Result` already reveal the product
+ * to anyone who looks), but the header was also an unambiguous self-identification an
+ * operator never opted into, so dropping it is free defense in depth.
+ *
  * @param hstsConfig HSTS configuration, or `null` to omit the header entirely.
  */
 fun Application.configureDefaultHeaders(hstsConfig: HstsConfig? = null) {
 	install(DefaultHeaders) {
-		header("X-Powered-By", "OmniSign")
 		header("X-Content-Type-Options", "nosniff")
 		header("X-Frame-Options", "DENY")
 		header("Referrer-Policy", "strict-origin-when-cross-origin")

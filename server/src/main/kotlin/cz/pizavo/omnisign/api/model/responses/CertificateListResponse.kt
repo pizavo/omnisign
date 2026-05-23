@@ -7,7 +7,7 @@ import kotlinx.serialization.Serializable
  * API response for the `GET /api/v1/certificates` endpoint.
  *
  * @property certificates Signing-capable certificates available on this server,
- *   filtered by [cz.pizavo.omnisign.config.ServerConfig.allowedCertificateAliases] when set.
+ *   filtered by [cz.pizavo.omnisign.config.OperationsConfig.certificateAliases] when set.
  * @property tokenWarnings Per-token warnings collected during discovery. Each entry
  *   describes a token that could not be enumerated and the reason why.
  * @property lockedTokens Tokens that were discovered but skipped because they require

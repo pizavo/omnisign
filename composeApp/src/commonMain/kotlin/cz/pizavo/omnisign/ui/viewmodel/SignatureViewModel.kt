@@ -9,12 +9,10 @@ import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.validation.ReportExportFormat
-import cz.pizavo.omnisign.domain.model.validation.SignatureTrustTier
 import cz.pizavo.omnisign.domain.model.validation.ValidationReport
+import cz.pizavo.omnisign.domain.model.validation.toPlainText
 import cz.pizavo.omnisign.domain.model.validation.json.toJsonReport
 import cz.pizavo.omnisign.domain.model.validation.json.toJsonString
-import cz.pizavo.omnisign.domain.model.value.formatDate
-import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
 import cz.pizavo.omnisign.ui.model.SignaturePanelState
@@ -124,7 +122,7 @@ class SignatureViewModel(
         val report = loaded.report
 
         return when (format) {
-            ReportExportFormat.TXT -> formatReport(report)
+            ReportExportFormat.TXT -> report.toPlainText()
             ReportExportFormat.JSON -> report.toJsonReport().toJsonString()
             else -> {
                 val rawKey = format.rawReportFormat ?: return null
@@ -193,78 +191,6 @@ class SignatureViewModel(
      * suitable for saving to a file. Returns `null` when no report is available.
      */
     fun exportReportText(): String? = exportReport(ReportExportFormat.TXT)
-
-    /**
-     * Format a [ValidationReport] into a human-readable text string.
-     */
-    private fun formatReport(report: ValidationReport): String = buildString {
-        appendLine("OmniSign — Validation Report")
-        appendLine("════════════════════════════════════════")
-        appendLine("Document:        ${report.documentName}")
-        appendLine("Validation time: ${report.validationTime.formatDateTime()}")
-        appendLine("Overall result:  ${report.overallResult}")
-        if (report.overallTrustTier != SignatureTrustTier.NOT_QUALIFIED) {
-            appendLine("Trust tier:      ${report.overallTrustTier.label}")
-        }
-        appendLine()
-
-        if (report.signatures.isEmpty()) {
-            appendLine("No signatures found in the document.")
-        } else {
-            report.signatures.forEachIndexed { index, sig ->
-                appendLine("── Signature ${index + 1} of ${report.signatures.size} ──")
-                appendLine("  Indication:     ${sig.indication}")
-                sig.subIndication?.let { appendLine("  Sub-indication: $it") }
-                appendLine("  Signed by:      ${sig.signedBy}")
-                appendLine("  Level:          ${sig.signatureLevel}")
-                appendLine("  Time:           ${sig.signatureTime.formatDateTime()}")
-                sig.signatureQualification?.let { appendLine("  Qualification:  $it") }
-                if (sig.trustTier != SignatureTrustTier.NOT_QUALIFIED) {
-                    appendLine("  Trust tier:     ${sig.trustTier.label}")
-                }
-                sig.hashAlgorithm?.let { appendLine("  Hash algorithm: $it") }
-                sig.encryptionAlgorithm?.let { appendLine("  Encryption:     $it") }
-                appendLine("  Certificate:")
-                appendLine("    Subject:      ${sig.certificate.subjectDN}")
-                appendLine("    Issuer:       ${sig.certificate.issuerDN}")
-                appendLine("    Serial:       ${sig.certificate.serialNumber}")
-                appendLine("    Valid from:   ${sig.certificate.validFrom.formatDate()}")
-                appendLine("    Valid to:     ${sig.certificate.validTo.formatDate()}")
-                if (sig.certificate.keyUsages.isNotEmpty()) {
-                    appendLine("    Key usages:   ${sig.certificate.keyUsages.joinToString()}")
-                }
-                sig.certificate.publicKeyAlgorithm?.let { appendLine("    Public key:   $it") }
-                sig.certificate.sha256Fingerprint?.let { appendLine("    SHA-256:      $it") }
-                if (sig.errors.isNotEmpty()) {
-                    appendLine("  Errors:")
-                    sig.errors.forEach { appendLine("    • $it") }
-                }
-                if (sig.warnings.isNotEmpty()) {
-                    appendLine("  Warnings:")
-                    sig.warnings.forEach { appendLine("    • $it") }
-                }
-                appendLine()
-            }
-        }
-
-        if (report.timestamps.isNotEmpty()) {
-            appendLine("── Timestamps ──")
-            report.timestamps.forEachIndexed { index, ts ->
-                appendLine("  Timestamp ${index + 1}: ${ts.type}")
-                appendLine("    Indication:      ${ts.indication}")
-                ts.subIndication?.let { appendLine("    Sub-indication:  $it") }
-                appendLine("    Production time: ${ts.productionTime.formatDateTime()}")
-                ts.qualification?.let { appendLine("    Qualification:   $it") }
-                ts.tsaSubjectDN?.let { appendLine("    TSA:             $it") }
-                appendLine()
-            }
-        }
-
-        if (report.tlWarnings.isNotEmpty()) {
-            appendLine("── Trusted List Warnings ──")
-            report.tlWarnings.forEach { appendLine("  ⚠ $it") }
-        }
-    }
 }
 
 

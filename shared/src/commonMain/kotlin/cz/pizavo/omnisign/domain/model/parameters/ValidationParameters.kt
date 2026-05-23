@@ -32,11 +32,12 @@ enum class RawReportFormat {
  *   [rawReportOutputPath] is null. Defaults to [RawReportFormat.XML_DETAILED].
  * @property rawReportFormats Raw DSS report formats to marshal into
  *   [cz.pizavo.omnisign.domain.model.validation.ValidationReport.rawReports]. Each requested
- *   format triggers a separate (potentially expensive) JAXB marshalling pass, so callers that
- *   do not expose raw-report export — the CLI and the server — leave this empty (the default)
- *   and pay no marshalling cost. The desktop UI requests the full set so the user can export
- *   any format on demand without re-validating. Independent of [rawReportOutputPath], which
- *   writes a single format straight to disk.
+ *   format triggers a separate (potentially expensive) JAXB marshalling pass, so the default is
+ *   empty and callers opt in. The desktop UI requests the full set so the user can export any
+ *   format on demand without re-validating. The CLI leaves it empty (it writes a single format
+ *   directly via [rawReportOutputPath]). The server populates it from the optional `formats`
+ *   multipart field on `POST /api/v1/validate`; absent that field it stays empty. Independent
+ *   of [rawReportOutputPath], which writes a single format straight to disk.
  */
 data class ValidationParameters(
 	val inputFile: String,

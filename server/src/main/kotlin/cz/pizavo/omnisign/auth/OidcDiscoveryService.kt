@@ -10,8 +10,23 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlin.time.Clock
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.hours
+import kotlin.time.Instant
 
 private val logger = KotlinLogging.logger {}
+
+/**
+ * Cached OIDC discovery document plus the wall-clock moment it was fetched from the IdP.
+ *
+ * The TTL check in [OidcDiscoveryService.discover] compares `now - cachedAt` against
+ * [OidcDiscoveryService.DISCOVERY_CACHE_TTL] to decide whether to refetch.
+ */
+private data class CachedDiscovery(
+    val document: OidcDiscoveryDocument,
+    val cachedAt: Instant,
+)
 
 /**
  * Minimal OIDC Discovery Document as defined in
@@ -19,13 +34,18 @@ private val logger = KotlinLogging.logger {}
  *
  * Only the fields required for the authorization-code flow are captured here.
  *
+ * @property issuer The IdP's canonical issuer URL. Used by [IdTokenVerifier] as the
+ *   expected value of the id_token `iss` claim — OIDC requires the token's issuer to
+ *   match the discovery document's issuer exactly.
  * @property authorizationEndpoint URL of the authorization endpoint.
  * @property tokenEndpoint URL of the token endpoint.
  * @property userInfoEndpoint URL of the UserInfo endpoint.
- * @property jwksUri URL of the JSON Web Key Set (used for token signature verification by Ktor).
+ * @property jwksUri URL of the JSON Web Key Set, fetched by [IdTokenVerifier] to resolve
+ *   the public key used to sign the id_token.
  */
 @Serializable
 data class OidcDiscoveryDocument(
+    @SerialName("issuer") val issuer: String,
     @SerialName("authorization_endpoint") val authorizationEndpoint: String,
     @SerialName("token_endpoint") val tokenEndpoint: String,
     @SerialName("userinfo_endpoint") val userInfoEndpoint: String? = null,
@@ -35,38 +55,89 @@ data class OidcDiscoveryDocument(
 /**
  * Fetches and caches OIDC discovery documents for configured providers.
  *
- * The discovery document is fetched once on first access and cached in memory for the
- * lifetime of the server process. Failures are propagated as [IllegalStateException] so
- * the server start-up can surface them clearly.
+ * Per-provider entries are cached in memory for [DISCOVERY_CACHE_TTL] (24 hours). On a
+ * cache miss or after the TTL elapses, the document is refetched from the IdP. The
+ * cache is keyed on [OidcProviderConfig.name] (provider names are required to be unique
+ * across providers).
  *
- * @param httpClient Ktor [HttpClient] used for outbound HTTP requests.
+ * **Stale-on-error fallback.** If a refresh attempt fails (network error, IdP
+ * returning a non-2xx response, response parsing failure), the previously-cached
+ * document is served and a warning is logged. This trades strict freshness for
+ * availability — a transient IdP outage does not block all logins; if the operator
+ * has rotated the discovery URL contents and the IdP is down at the moment we try
+ * to fetch, we keep using the last-known-good config until the next successful
+ * refresh. A failure on the **first** fetch (no prior cached entry to fall back to)
+ * propagates as an exception so the operator sees the issue immediately.
+ *
+ * @param httpClient Ktor [HttpClient] used for outbound HTTP requests. The
+ *   per-request timeout configured on this client (see
+ *   [cz.pizavo.omnisign.di.serverModule]) bounds how long a refresh attempt can
+ *   block before the stale-on-error fallback takes over.
+ * @param clock Wall-clock source for TTL bookkeeping. Tests override with a fake
+ *   clock to exercise expiry behavior without sleeping; production uses
+ *   [Clock.System].
  */
-class OidcDiscoveryService(private val httpClient: HttpClient) {
+class OidcDiscoveryService(
+    private val httpClient: HttpClient,
+    private val clock: Clock = Clock.System,
+) {
 
     private val cacheMutex = Mutex()
-    private val cache = java.util.concurrent.ConcurrentHashMap<String, OidcDiscoveryDocument>()
+    private val cache = java.util.concurrent.ConcurrentHashMap<String, CachedDiscovery>()
 
     /**
      * Resolve and return the OIDC discovery document for [provider].
      *
-     * On the first call for a given provider, the document is fetched from the IdP.
-     * Subsequent calls return the cached value.
+     * Cache flow: fast-path returns the in-memory cached entry when it is younger
+     * than [DISCOVERY_CACHE_TTL]. Otherwise acquires the per-service mutex,
+     * re-checks the cache (in case another coroutine has just refreshed it), and
+     * refetches the document from the IdP. On refetch failure with a prior cached
+     * entry the stale entry is served and a warning logged; otherwise the failure
+     * propagates.
      *
      * @param provider OIDC provider configuration.
      * @return Parsed [OidcDiscoveryDocument].
-     * @throws IllegalStateException if the discovery URL cannot be determined or the
-     *   fetch fails.
+     * @throws IllegalStateException if the discovery URL cannot be determined.
+     * @throws Exception on a fetch failure when no prior cached entry exists.
      */
     suspend fun discover(provider: OidcProviderConfig): OidcDiscoveryDocument {
-        cache[provider.name]?.let { return it }
+        val cached = cache[provider.name]
+        if (cached != null && isFresh(cached)) {
+            return cached.document
+        }
+
         return cacheMutex.withLock {
-            cache.getOrPut(provider.name) {
-                val url = resolveDiscoveryUrl(provider)
-                logger.info { "Fetching OIDC discovery document for '${provider.name}' from $url" }
-                httpClient.get(url).body()
+            val current = cache[provider.name]
+            if (current != null && isFresh(current)) {
+                return@withLock current.document
+            }
+
+            val url = resolveDiscoveryUrl(provider)
+            val verb = if (current == null) "Fetching" else "Refreshing"
+            logger.info { "$verb OIDC discovery document for '${provider.name}' from $url" }
+
+            try {
+                val fresh: OidcDiscoveryDocument = httpClient.get(url).body()
+                cache[provider.name] = CachedDiscovery(fresh, clock.now())
+                fresh
+            } catch (e: Exception) {
+                if (current != null) {
+                    logger.warn(e) {
+                        "Failed to refresh OIDC discovery document for '${provider.name}' " +
+                            "(cached at ${current.cachedAt}); serving last-known-good entry " +
+                            "and will retry on the next cache miss"
+                    }
+                    current.document
+                } else {
+                    throw e
+                }
             }
         }
     }
+
+    /** Whether [entry] is still within the [DISCOVERY_CACHE_TTL] window from now. */
+    private fun isFresh(entry: CachedDiscovery): Boolean =
+        clock.now() - entry.cachedAt < DISCOVERY_CACHE_TTL
 
     /**
      * Resolve the effective discovery document URL for [provider], applying any preset
@@ -155,6 +226,22 @@ class OidcDiscoveryService(private val httpClient: HttpClient) {
 
         /** GitHub user-info API endpoint. */
         const val GITHUB_USER_API_URL = "https://api.github.com/user"
+
+        /**
+         * Time-to-live for a cached OIDC discovery entry.
+         *
+         * 24 hours is the conventional value for OIDC discovery caching (the analysis
+         * doc's recommendation, and the value used by several reference implementations
+         * including Spring Security and oidc-client-js). Discovery documents change
+         * rarely in practice — endpoint URLs and `jwks_uri` are typically stable for
+         * the lifetime of the IdP deployment — so a daily refresh is sufficient to
+         * pick up rotation events without imposing meaningful per-request overhead.
+         *
+         * JWS signing-key rotation is handled separately by [IdTokenVerifier]'s
+         * `JwkProviderBuilder` cache (1 hour TTL on the JWKS itself), so a 24-hour TTL
+         * here does not delay key-rotation pickup.
+         */
+        val DISCOVERY_CACHE_TTL: Duration = 24.hours
     }
 }
 

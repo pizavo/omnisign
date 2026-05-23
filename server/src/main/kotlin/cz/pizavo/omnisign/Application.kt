@@ -3,6 +3,14 @@ package cz.pizavo.omnisign
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
+import cz.pizavo.omnisign.config.ServerSecrets
+import cz.pizavo.omnisign.config.SigningConfigLoader
+import cz.pizavo.omnisign.config.isLoopbackHost
+import cz.pizavo.omnisign.config.validateAuthConfig
+import cz.pizavo.omnisign.config.validateCorsConfig
+import cz.pizavo.omnisign.config.validateProxyConfig
+import cz.pizavo.omnisign.config.validateTransportSecurity
+import cz.pizavo.omnisign.data.service.PcscMonitorService
 import cz.pizavo.omnisign.data.service.Pkcs11CacheInvalidator
 import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
 import cz.pizavo.omnisign.data.service.TrustedListRefreshScheduler
@@ -10,17 +18,17 @@ import cz.pizavo.omnisign.data.service.pkcs11DropDir
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
 import cz.pizavo.omnisign.di.serverModule
+import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.plugins.*
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
-import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
-import org.koin.ktor.ext.inject
+import org.koin.ktor.ext.get
 import org.koin.ktor.plugin.Koin
 import java.io.File
 import java.security.KeyStore
@@ -32,11 +40,11 @@ private val logger = KotlinLogging.logger {}
  *
  * Loads [ServerConfig] from `server.yml` and starts a Netty embedded server.
  *
- * When TLS is configured and [ServerConfig.proxyMode] is `false`, a TLS connector is created
- * with TLS 1.2/1.3 and HTTP/2 ALPN negotiation enabled. To restrict to TLS 1.3 only, set the
- * JVM system property `-Djdk.tls.disabledAlgorithms=TLSv1,TLSv1.1,TLSv1.2` at launch.
- * Otherwise, a plain HTTP connector
- * is used (suitable for deployment behind a TLS-terminating reverse proxy).
+ * When TLS is configured and reverse-proxy mode is inactive (`proxy` absent or
+ * `proxy.enabled: false`), a TLS connector is created with TLS 1.2/1.3 and HTTP/2 ALPN
+ * negotiation enabled. To restrict to TLS 1.3 only, set the JVM system property
+ * `-Djdk.tls.disabledAlgorithms=TLSv1,TLSv1.1,TLSv1.2` at launch. Otherwise, a plain HTTP
+ * connector is used (suitable for deployment behind a TLS-terminating reverse proxy).
  *
  * The `--config <path>` argument can be passed on the command line to point to a non-default
  * YAML config file location.
@@ -44,16 +52,32 @@ private val logger = KotlinLogging.logger {}
 fun main(args: Array<String>) {
 	val configPath = args.indexOf("--config").takeIf { it >= 0 }?.let { args.getOrNull(it + 1) }
 	val serverConfig = ServerConfigLoader().load(configPath)
+	val secrets = ServerSecrets.resolveFromEnv(serverConfig)
+
+	if (serverConfig.development && !isLoopbackHost(serverConfig.listen.host)) {
+		error(
+			"Refusing to start: development mode (development: true) is incompatible with a " +
+					"non-loopback host '${serverConfig.listen.host}'. Development mode enables verbose " +
+					"error pages and other behaviour that exposes internal details to anyone who " +
+					"can reach the port. Either bind to a loopback address (127.0.0.1 or ::1) or " +
+					"set development: false in server.yml.",
+		)
+	}
 
 	System.setProperty("io.ktor.development", serverConfig.development.toString())
 	if (serverConfig.development) {
 		logger.info { "Development mode is ENABLED" }
 	}
 
-	val tlsCfg = serverConfig.tls?.takeUnless { serverConfig.proxyMode }
+	val tlsCfg = serverConfig.tls?.takeUnless { serverConfig.proxy?.enabled == true }
 
 	if (tlsCfg != null) {
-		val keyStore = loadKeyStore(tlsCfg.keystorePath, tlsCfg.keystorePassword)
+		val keystorePassword = checkNotNull(secrets.tlsKeystorePassword) {
+			"TLS is configured but tlsKeystorePassword was not resolved — this is a programming " +
+					"error in ServerSecrets.resolveFromEnv (env var should already be required)."
+		}
+		val privateKeyPassword = secrets.tlsPrivateKeyPassword ?: keystorePassword
+		val keyStore = loadKeyStore(tlsCfg.keystorePath, keystorePassword.value)
 
 		embeddedServer(
 			Netty,
@@ -62,54 +86,63 @@ fun main(args: Array<String>) {
 				sslConnector(
 					keyStore = keyStore,
 					keyAlias = tlsCfg.keyAlias,
-					keyStorePassword = { tlsCfg.keystorePassword.toCharArray() },
-					privateKeyPassword = { tlsCfg.privateKeyPassword.toCharArray() },
+					keyStorePassword = { keystorePassword.value.toCharArray() },
+					privateKeyPassword = { privateKeyPassword.value.toCharArray() },
 				) {
-					port = serverConfig.tlsPort
-					host = serverConfig.host
+					port = tlsCfg.port
+					host = serverConfig.listen.host
 				}
 			},
 		) {
-			moduleWith(serverConfig)
+			moduleWith(serverConfig, secrets)
 		}.start(wait = true)
 
-		logger.info { "TLS connector configured on ${serverConfig.host}:${serverConfig.tlsPort} (TLS 1.2/1.3, HTTP/2 ALPN)" }
+		logger.info { "TLS connector configured on ${serverConfig.listen.host}:${tlsCfg.port} (TLS 1.2/1.3, HTTP/2 ALPN)" }
 	} else {
-		if (serverConfig.proxyMode) {
-			logger.info { "Proxy mode enabled — plain HTTP on ${serverConfig.host}:${serverConfig.port}" }
+		if (serverConfig.proxy?.enabled == true) {
+			logger.info { "Proxy mode enabled — plain HTTP on ${serverConfig.listen.host}:${serverConfig.listen.port}" }
 		} else {
-			logger.info { "No TLS configured — plain HTTP on ${serverConfig.host}:${serverConfig.port}" }
+			logger.info { "No TLS configured — plain HTTP on ${serverConfig.listen.host}:${serverConfig.listen.port}" }
 		}
 
 		embeddedServer(
 			Netty,
-			port = serverConfig.port,
-			host = serverConfig.host,
+			port = serverConfig.listen.port,
+			host = serverConfig.listen.host,
 		) {
-			moduleWith(serverConfig)
+			moduleWith(serverConfig, secrets)
 		}.start(wait = true)
 	}
 }
 
 /**
- * Configure the full application module with the given [ServerConfig].
+ * Configure the full application module with the given [ServerConfig] and resolved
+ * [ServerSecrets].
  *
  * @param serverConfig Server configuration instance.
+ * @param secrets Secret values resolved from environment variables. Tests inject an
+ *   explicit instance; production callers obtain it from [ServerSecrets.resolveFromEnv].
  */
-fun Application.moduleWith(serverConfig: ServerConfig) {
-	configureKoin(serverConfig)
-	launchPkcs11WarmupIfNeeded(serverConfig)
-	launchTrustedListRefreshIfNeeded(serverConfig)
-	attachPkcs11CacheInvalidatorIfNeeded(serverConfig)
+fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets) {
+	validateAuthConfig(serverConfig.auth)
+	val parsedProxy = validateProxyConfig(serverConfig.proxy)
+	val corsConfig = validateCorsConfig(serverConfig.cors)
+	validateTransportSecurity(serverConfig)
+	val signingConfig = SigningConfigLoader().load(serverConfig.signingConfigFile)
+	configureKoin(serverConfig, secrets, signingConfig)
+	if (backgroundServicesEnabled()) {
+		launchPkcs11WarmupIfNeeded(serverConfig)
+		launchTrustedListRefreshIfNeeded(serverConfig)
+		attachPkcs11CacheInvalidatorIfNeeded(serverConfig)
+	}
 	configureDefaultHeaders(hstsConfig = serverConfig.tls?.hsts)
 	configureSerialization()
-	configureStatusPages()
+	configureStatusPages(development = serverConfig.development)
 	configureCallId()
 	configureCallLogging()
-	configureCompression(serverConfig.compression)
 	configureAutoHeadResponse()
-	configureCors(serverConfig.cors, tlsEnabled = serverConfig.tls != null || serverConfig.proxyMode)
-	configureForwardedHeaders(serverConfig.proxyMode)
+	configureCors(corsConfig, tlsEnabled = serverConfig.tls != null || parsedProxy.enabled)
+	configureForwardedHeaders(parsedProxy)
 	configureHttpsRedirect(serverConfig)
 	configureRateLimiting(serverConfig.rateLimiting)
 
@@ -130,22 +163,35 @@ fun Application.moduleWith(serverConfig: ServerConfig) {
 		}
 	}
 
-	logger.info { "Allowed operations: ${serverConfig.allowedOperations.joinToString { it.name }}" }
+	logger.info { "Allowed operations: ${serverConfig.operations.allowed.joinToString { it.name }}" }
 
-	if (AllowedOperation.SIGN in serverConfig.allowedOperations && authConfig?.enabled != true) {
+	if (AllowedOperation.SIGN in serverConfig.operations.allowed && authConfig?.enabled != true) {
 		logger.warn {
 			"⚠️  SIGN operation is enabled WITHOUT authentication — all configured signing " +
 					"certificates are accessible to any network-reachable client. " +
-					"Set auth.enabled: true or restrict access with allowedCertificateAliases."
+					"Set auth.enabled: true or restrict access with operations.certificateAliases."
 		}
 	}
 
-	if (serverConfig.allowedCertificateAliases != null) {
+	if (serverConfig.operations.certificateAliases != null) {
 		logger.info {
-			"Certificate alias allowlist: ${serverConfig.allowedCertificateAliases.joinToString()}"
+			"Certificate alias allowlist: ${serverConfig.operations.certificateAliases.joinToString()}"
 		}
 	}
 }
+
+/**
+ * Whether the background warmup/refresh services should start at boot.
+ *
+ * Production defaults to enabled. Tests pass `-Domnisign.backgroundServices=off` so the suite
+ * never reaches out to live trusted-list (LOTL) endpoints: those fetches are slow and
+ * network-flaky, and the blocking downloads they spawn do not honor coroutine cancellation, so
+ * across hundreds of `testApplication` boots they accumulate and exhaust the test JVM heap.
+ *
+ * @return `true` unless the `omnisign.backgroundServices` system property is set to `off`.
+ */
+private fun backgroundServicesEnabled(): Boolean =
+	System.getProperty("omnisign.backgroundServices", "on") != "off"
 
 /**
  * Configure the full application module with default [ServerConfig].
@@ -154,20 +200,26 @@ fun Application.moduleWith(serverConfig: ServerConfig) {
  * when no external [ServerConfig] customization is required beyond the YAML file.
  *
  * @param serverConfig Server configuration; defaults to [ServerConfig] with built-in values.
+ * @param secrets Resolved env-var secrets. Defaults to [ServerSecrets.resolveFromEnv]; tests
+ *   typically supply an explicit instance with literal test values so they do not need to
+ *   set process-wide env vars before each run.
  */
-fun Application.module(serverConfig: ServerConfig = ServerConfig()) {
-	moduleWith(serverConfig)
+fun Application.module(
+	serverConfig: ServerConfig = ServerConfig(),
+	secrets: ServerSecrets = ServerSecrets.resolveFromEnv(serverConfig),
+) {
+	moduleWith(serverConfig, secrets)
 }
 
 /**
  * Install Koin DI with shared and server-specific modules.
  */
-fun Application.configureKoin(serverConfig: ServerConfig) {
+fun Application.configureKoin(serverConfig: ServerConfig, secrets: ServerSecrets, signingConfig: AppConfig) {
 	install(Koin) {
 		modules(
 			appModule,
 			jvmRepositoryModule,
-			serverModule(serverConfig),
+			serverModule(serverConfig, secrets, signingConfig),
 		)
 	}
 }
@@ -188,13 +240,19 @@ fun Application.configureKoin(serverConfig: ServerConfig) {
  * @param serverConfig Current server configuration.
  */
 private fun Application.attachPkcs11CacheInvalidatorIfNeeded(serverConfig: ServerConfig) {
-	if (AllowedOperation.SIGN !in serverConfig.allowedOperations) {
+	if (AllowedOperation.SIGN !in serverConfig.operations.allowed) {
 		logger.debug { "SIGN operation not enabled — skipping PKCS#11 cache invalidator" }
 		return
 	}
 
-	val invalidator = inject<Pkcs11CacheInvalidator>().value
+	val invalidator: Pkcs11CacheInvalidator = get()
+	val pcscMonitor: PcscMonitorService = get()
 	logger.debug { "PKCS#11 cache invalidator attached (${invalidator::class.simpleName})" }
+
+	monitor.subscribe(ApplicationStopping) {
+		invalidator.close()
+		pcscMonitor.close()
+	}
 }
 
 /**
@@ -205,22 +263,23 @@ private fun Application.attachPkcs11CacheInvalidatorIfNeeded(serverConfig: Serve
  * certificate discovery calls use the fast in-process path rather than spawning
  * unreliable subprocesses.
  *
- * When `SIGN` is not in [ServerConfig.allowedOperations], warmup is skipped entirely
+ * When `SIGN` is not in [OperationsConfig.allowed], warmup is skipped entirely
  * because the certificate discovery route (`GET /api/v1/certificates`) is gated behind
  * `SIGN` and will never be invoked.
  *
  * @param serverConfig Current server configuration.
  */
 private fun Application.launchPkcs11WarmupIfNeeded(serverConfig: ServerConfig) {
-	if (AllowedOperation.SIGN !in serverConfig.allowedOperations) {
+	if (AllowedOperation.SIGN !in serverConfig.operations.allowed) {
 		logger.debug { "SIGN operation not enabled — skipping PKCS#11 warmup" }
 		return
 	}
 
-	val warmupService by inject<Pkcs11WarmupService>()
-	val configRepo by inject<ConfigRepository>()
+	val warmupService: Pkcs11WarmupService = get()
+	val configRepo: ConfigRepository = get()
+	val signal: MutableStateFlow<Boolean> = get()
 
-	CoroutineScope(Dispatchers.IO).launch {
+	launch(Dispatchers.IO) {
 		try {
 			val config = configRepo.getCurrentConfig()
 			val userLibs = config.global.customPkcs11Libraries.map { it.name to it.path }
@@ -229,7 +288,6 @@ private fun Application.launchPkcs11WarmupIfNeeded(serverConfig: ServerConfig) {
 			warmupService.warmup(appDataPkcs11Dir = pkcs11Dir, userPkcs11Libraries = userLibs)
 		} catch (e: Exception) {
 			logger.warn(e) { "PKCS#11 background warmup failed — certificate discovery will use subprocess probing" }
-			val signal by inject<MutableStateFlow<Boolean>>()
 			signal.value = true
 		}
 	}
@@ -246,15 +304,15 @@ private fun Application.launchPkcs11WarmupIfNeeded(serverConfig: ServerConfig) {
  * @param serverConfig Current server configuration.
  */
 private fun Application.launchTrustedListRefreshIfNeeded(serverConfig: ServerConfig) {
-	val needsTrust = AllowedOperation.VALIDATE in serverConfig.allowedOperations ||
-			AllowedOperation.SIGN in serverConfig.allowedOperations
+	val needsTrust = AllowedOperation.VALIDATE in serverConfig.operations.allowed ||
+			AllowedOperation.SIGN in serverConfig.operations.allowed
 	if (!needsTrust) {
 		logger.debug { "Neither VALIDATE nor SIGN enabled — skipping trusted-list refresh cycle" }
 		return
 	}
 
-	val scheduler by inject<TrustedListRefreshScheduler>()
-	CoroutineScope(Dispatchers.IO).launch {
+	val scheduler: TrustedListRefreshScheduler = get()
+	launch(Dispatchers.IO) {
 		try {
 			logger.info { "Launching trusted-list background warmup and refresh cycle" }
 			scheduler.run()
@@ -285,7 +343,7 @@ private fun loadKeyStore(path: String, password: String): KeyStore {
  * Derive the externally reachable base URL for the server.
  *
  * Used to build OAuth2 redirect URIs. Reads the `OMNISIGN_EXTERNAL_URL` environment
- * variable first, falling back to constructing a URL from [ServerConfig.host] and the
+ * variable first, falling back to constructing a URL from [ListenConfig.host] and the
  * active port/scheme.
  *
  * @param serverConfig Current server configuration.
@@ -294,9 +352,11 @@ private fun loadKeyStore(path: String, password: String): KeyStore {
 private fun resolveExternalUrl(serverConfig: ServerConfig): String {
 	System.getenv("OMNISIGN_EXTERNAL_URL")?.takeIf { it.isNotBlank() }?.let { return it.trimEnd('/') }
 
-	val scheme = if (serverConfig.tls != null && !serverConfig.proxyMode) "https" else "http"
-	val port = if (serverConfig.tls != null && !serverConfig.proxyMode) serverConfig.tlsPort else serverConfig.port
-	val host = serverConfig.host.let { if (it == "0.0.0.0") "localhost" else it }
+	val proxyEnabled = serverConfig.proxy?.enabled == true
+	val tlsActive = serverConfig.tls != null && !proxyEnabled
+	val scheme = if (tlsActive) "https" else "http"
+	val port = if (tlsActive) serverConfig.tls.port else serverConfig.listen.port
+	val host = serverConfig.listen.host.let { if (it == "0.0.0.0") "localhost" else it }
 	return "$scheme://$host:$port"
 }
 

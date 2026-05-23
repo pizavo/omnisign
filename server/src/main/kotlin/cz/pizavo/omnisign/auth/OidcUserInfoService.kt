@@ -8,6 +8,7 @@ import io.ktor.http.*
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
+import kotlin.time.Clock
 
 private val logger = KotlinLogging.logger {}
 
@@ -42,13 +43,22 @@ class OidcUserInfoService(private val httpClient: HttpClient) {
      * Map a raw claims [JsonObject] to an [AuthenticatedPrincipal] for the given provider.
      *
      * Subject resolution order: `sub` → `id` (GitHub numeric ID) → `login` (GitHub username).
-     * E-mail resolution order: `email` → `login` (GitHub fallback).
+     *   A subject is mandatory — it is the load-bearing identity for every downstream
+     *   consumer (JWT subject, refresh-token lookup, M-3 id_token cross-check). When all
+     *   three candidates are missing the principal cannot be constructed.
+     * Email: `email` claim only; `null` when the IdP does not supply one. The previous
+     *   `?: login` fallback was the L-6 footgun — it synthesised a non-email string
+     *   (e.g. the GitHub login `"octocat"`) and threaded it into the JWT, the
+     *   refresh-token store, and audit logs. Now missing email surfaces as `null` so
+     *   downstream consumers can decide explicitly (see [AuthenticatedPrincipal.email]
+     *   and [isEmailDomainAllowed]).
      * Display name resolution order: `name` → `preferred_username` → `login`.
      *
      * @param claims Raw claims from the IdP's UserInfo endpoint.
      * @param providerName SSO provider name that produced the claims.
-     * @return Populated [AuthenticatedPrincipal].
-     * @throws IllegalStateException if no usable subject or e-mail claim is found.
+     * @return Populated [AuthenticatedPrincipal]; [AuthenticatedPrincipal.email] may be
+     *   `null` when the IdP does not supply an `email` claim.
+     * @throws IllegalStateException if no usable subject claim is found.
      */
     fun toPrincipal(claims: JsonObject, providerName: String): AuthenticatedPrincipal {
         val userId = claims.string("sub")
@@ -56,17 +66,14 @@ class OidcUserInfoService(private val httpClient: HttpClient) {
             ?: claims.string("login")
             ?: error("No subject claim found in user-info response from provider '$providerName'")
 
-        val email = claims.string("email")
-            ?: claims.string("login")
-            ?: error("No email claim found in user-info response from provider '$providerName'")
-
         return AuthenticatedPrincipal(
             userId = userId,
-            email = email,
+            email = claims.string("email"),
             displayName = claims.string("name")
                 ?: claims.string("preferred_username")
                 ?: claims.string("login"),
             providerName = providerName,
+            authTime = Clock.System.now(),
         )
     }
 }

@@ -19,10 +19,13 @@ import kotlinx.serialization.json.Json
  */
 class StatusPagesTest : FunSpec({
 
-	fun ApplicationTestBuilder.configureTestApp(handler: suspend RoutingContext.() -> Unit) {
+	fun ApplicationTestBuilder.configureTestApp(
+		development: Boolean = false,
+		handler: suspend RoutingContext.() -> Unit,
+	) {
 		application {
 			configureSerialization()
-			configureStatusPages()
+			configureStatusPages(development = development)
 			routing {
 				get("/test") { handler() }
 			}
@@ -80,6 +83,28 @@ class StatusPagesTest : FunSpec({
 			response.status shouldBe HttpStatusCode.InternalServerError
 			val body = Json.decodeFromString<ApiError>(response.bodyAsText())
 			body.error shouldBe "INTERNAL_ERROR"
+		}
+	}
+
+	test("generic exception omits details in non-development mode") {
+		testApplication {
+			configureTestApp(development = false) {
+				throw RuntimeException("internal-detail-should-not-leak")
+			}
+			val response = client.get("/test")
+			val body = Json.decodeFromString<ApiError>(response.bodyAsText())
+			body.details shouldBe null
+		}
+	}
+
+	test("generic exception includes details in development mode") {
+		testApplication {
+			configureTestApp(development = true) {
+				throw RuntimeException("dev-mode-debug-detail")
+			}
+			val response = client.get("/test")
+			val body = Json.decodeFromString<ApiError>(response.bodyAsText())
+			body.details shouldBe "dev-mode-debug-detail"
 		}
 	}
 

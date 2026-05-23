@@ -43,7 +43,7 @@ fun Route.systemRoutes() {
 		val appConfig = configRepository.getCurrentConfig()
 		call.respond(
 			CapabilitiesResponse(
-				allowedOperations = serverConfig.allowedOperations.map { it.name },
+				allowedOperations = serverConfig.operations.allowed.map { it.name },
 				profiles = if (authEnabled && !isAuthenticated) emptyList() else appConfig.profiles.keys.toList(),
 				maxFileSize = serverConfig.maxFileSize,
 				authEnabled = authEnabled,

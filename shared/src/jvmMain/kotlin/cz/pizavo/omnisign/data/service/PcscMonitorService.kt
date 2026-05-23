@@ -5,6 +5,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -14,6 +15,7 @@ import javax.smartcardio.CardException
 import javax.smartcardio.CardTerminal
 import javax.smartcardio.CardTerminals
 import javax.smartcardio.TerminalFactory
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Cross-platform PC/SC reader-state observer built on `javax.smartcardio`.
@@ -54,7 +56,7 @@ class PcscMonitorService(
 	private val pollTimeoutMillis: Long = DEFAULT_POLL_TIMEOUT_MILLIS,
 	private val recovery: PcscContextRecovery = PcscContextRecovery(),
 	private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
-) {
+) : AutoCloseable {
 
 	private val _events = MutableSharedFlow<PcscEvent>(
 		replay = 0,
@@ -63,6 +65,24 @@ class PcscMonitorService(
 
 	@Volatile
 	private var watcher: Job? = null
+
+	/**
+	 * Cancel the background watcher coroutine and any pending [waitForChange] iteration.
+	 *
+	 * Used by hosts with a bounded lifecycle (notably the Ktor server's `testApplication`
+	 * teardown) to stop the watcher when the application stops, instead of leaking the
+	 * coroutine across test boundaries. After [close] the service can no longer emit
+	 * events — [events] subscribers see no further values and the snapshot path
+	 * ([currentReaders]) still works because it does not depend on the watcher.
+	 *
+	 * Production daemons (desktop, long-running server) call this at JVM shutdown so the
+	 * background coroutine is cleanly cancelled rather than relying on the daemon-thread
+	 * default. Safe to call multiple times; cancelling an already-cancelled scope is a
+	 * no-op.
+	 */
+	override fun close() {
+		scope.cancel()
+	}
 
 	/**
 	 * Hot stream of reader-state changes.  Subscribers automatically start the background
@@ -268,7 +288,7 @@ class PcscMonitorService(
 	 */
 	private suspend fun recoverTerminals(): CardTerminals? {
 		if (!recovery.resetContext()) return null
-		delay(RECOVERY_BACKOFF_MILLIS)
+		delay(RECOVERY_BACKOFF_MILLIS.milliseconds)
 		return runCatching { terminalsProvider() }.getOrNull()
 	}
 

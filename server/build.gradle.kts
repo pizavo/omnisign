@@ -17,6 +17,8 @@ application {
 
 tasks.named<JavaExec>("run") {
     jvmArgs("--enable-native-access=ALL-UNNAMED", "--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED")
+    val devServerConfig = file("src/main/resources/server.yml")
+    if (devServerConfig.isFile) args("--config", devServerConfig.absolutePath)
 }
 
 dependencies {
@@ -32,7 +34,6 @@ dependencies {
     implementation(libs.ktor.server.auth)
     implementation(libs.ktor.server.auth.jwt)
     implementation(libs.ktor.server.sessions)
-    implementation(libs.ktor.server.compression)
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
     implementation(libs.ktor.client.content.negotiation)
@@ -49,6 +50,12 @@ dependencies {
     implementation(libs.jackson.kotlin)
     implementation(libs.jackson.yaml)
     implementation(libs.kotlin.logging)
+
+    implementation(libs.exposed.core)
+    implementation(libs.exposed.jdbc)
+    implementation(libs.sqlite.jdbc)
+
+    implementation(libs.jwks.rsa)
 
     testImplementation(libs.ktor.server.test)
     testImplementation(libs.ktor.client.mock)
@@ -72,6 +79,7 @@ tasks.withType<Test> {
         "-Xshare:off",
         "--enable-native-access=ALL-UNNAMED",
         "--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED",
+        "-Domnisign.backgroundServices=off",
     )
 }
 

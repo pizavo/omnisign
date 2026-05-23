@@ -6,7 +6,8 @@ package cz.pizavo.omnisign.config
  * ## Choosing an algorithm
  *
  * ### HMAC (symmetric — shared secret)
- * All three variants use the same `auth.session.secret` / `OMNISIGN_JWT_SECRET` value.
+ * All three variants use the same secret value, resolved at startup from the
+ * `OMNISIGN_JWT_SECRET` environment variable (see [ServerSecrets]).
  * The secret must be kept confidential on the server; any party that can verify a token
  * with HMAC can also forge one.
  *

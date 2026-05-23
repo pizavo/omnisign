@@ -14,9 +14,12 @@ package cz.pizavo.omnisign.config
  * Requests that exceed the bucket are rejected with HTTP `429 Too Many Requests`.
  *
  * **Proxy mode note:** The client IP is read from `call.request.origin.remoteAddress`.
- * When [ServerConfig.proxyMode] is `true`, Ktor's `XForwardedHeaders` plugin rewrites
- * this to the real client IP taken from the `X-Forwarded-For` header, so rate limiting
- * correctly tracks individual clients even behind a reverse proxy.
+ * When [ServerConfig.proxy] has `enabled: true` and a non-empty `trusted` list, the
+ * trusted-proxy-aware forwarded-headers plugin rewrites this to the real client IP taken
+ * from `X-Forwarded-For`, but only when the TCP peer matches one of the configured
+ * trusted proxies. Headers arriving from any other peer are ignored, so an attacker who
+ * reaches the Ktor port directly cannot spoof their effective IP to bypass per-client
+ * rate limits.
  *
  * @property auth Rate limit zone for authentication endpoints.
  * @property api Rate limit zone for operational API endpoints.
