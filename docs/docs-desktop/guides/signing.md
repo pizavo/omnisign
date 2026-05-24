@@ -2,6 +2,8 @@
 sidebar_position: 1
 ---
 
+import useBaseUrl from '@docusaurus/useBaseUrl';
+
 # Signing a Document
 
 This guide walks through the process of signing a PDF document using the OmniSign Desktop application.
@@ -19,6 +21,8 @@ The button is only enabled when a document is loaded.
 OmniSign immediately begins discovering certificates from all available sources.
 A loading spinner is shown while discovery is in progress.
 
+<img src={useBaseUrl('/img/desktop/signing-discovery.avif')} alt="Opening the signing dialog and certificate discovery" />
+
 ## 3. Select a certificate
 
 Once discovery completes, the dialog shows a certificate dropdown with all available
@@ -26,8 +30,10 @@ signing certificates. Certificates are gathered from:
 
 - **PKCS#11 hardware tokens** — smart cards, USB tokens. Middleware libraries are
   auto-detected or manually registered in Settings → Tokens → PKCS#11 Libraries.
-- **PKCS#12 files** — click the **Load from file** button to import a `.p12` / `.pfx`
-  keystore. The imported certificates are added to the dropdown immediately.
+- **The operating-system certificate store** — the **Windows certificate store** and the
+  **macOS Keychain** are read automatically where available.
+- **PKCS#12 files** — click the **import button** (the upload icon beside the dropdown) to load
+  a `.p12` / `.pfx` keystore. The imported certificates are added to the dropdown immediately.
 
 Each dropdown entry is **source-aware**: it shows the certificate's common name, its
 *valid until* date, and the **source** it came from — for example
@@ -36,18 +42,37 @@ token's label, the OS certificate store, or the loaded `.p12` file. When the sam
 identity is present on more than one token or store, the source is what tells the
 entries apart, so you can pick the exact key you intend to sign with.
 
+Entries also carry **eIDAS qualification** indicators: a rosette marks a **Qualified** certificate,
+a check-rosette marks a **Qualified (QSCD)** certificate whose key lives on a Qualified
+Signature/Seal Creation Device, and a USB icon marks a certificate held on a **PKCS#11 hardware
+token**. The qualification of the selected certificate is also shown as a badge beneath the dropdown.
+
+![Source-aware certificate dropdown](/img/desktop/signing-cert-dropdown.avif)
+
+A PIN-protected token's certificates are listed **without asking for a PIN** wherever the token
+exposes them as public objects (the case for Czech qualified tokens, for example). You can pick
+such a certificate straight away — the PIN is requested later, when you [sign](#5-sign).
+
 ### Locked tokens
 
-Some hardware tokens require a PIN before their certificates can be listed. These appear
-in a separate **Locked tokens** section with an **Unlock** button next to each. Clicking
-Unlock opens a secure PIN dialog. After unlocking, the token's certificates are added to
-the dropdown.
+A token appears in a separate **Locked tokens** section only when it will **not** reveal its
+certificates without a login. Each locked token has an **Unlock** button that opens a secure PIN
+dialog; after unlocking, that token's certificates are added to the dropdown.
 
 ### Discovery warnings
 
 If any token source encounters issues during discovery (e.g., a PKCS#11 library cannot be
 loaded), a warning banner is shown at the top of the certificate section listing the
 affected tokens and error details.
+
+### When no certificates are found
+
+If discovery turns up nothing, a banner above the dropdown spells out the next steps — insert a
+smart card, import a PKCS#12 file, or add a PKCS#11 library path under Settings → Tokens → PKCS#11
+Libraries — and offers a **Show diagnostic info** button. The same PKCS#11 diagnostic dialog is
+always available from the **info icon** in the dialog header. See
+[Troubleshooting → PKCS#11 tokens not detected](../troubleshooting.md#pkcs11-tokens-not-detected)
+for what the dialog shows and how to fix the common cases.
 
 ### Rescanning for tokens
 
@@ -56,6 +81,8 @@ changed PKCS#11 middleware **while OmniSign is running** — no card or reader e
 otherwise trigger re-detection. The rescan is fire-and-forget: the control is replaced by
 an inline progress indicator while it runs, and the certificate dropdown refreshes
 automatically when it settles.
+
+<img src={useBaseUrl('/img/desktop/signing-rescan.avif')} alt="Rescanning for tokens" />
 
 The refresh is **silent** — a newly detected PIN-required token appears in the
 **Locked tokens** section rather than opening a PIN dialog (unlocking stays an explicit
@@ -138,6 +165,9 @@ remains verifiable indefinitely when combined with periodic re-timestamping.
 Click **Sign** to start the signing operation. A progress indicator is shown while signing
 is in progress; the dialog cannot be dismissed during this phase.
 
+If you chose a certificate from a PIN-protected token that was listed without a PIN, OmniSign
+prompts you for the token PIN at this point.
+
 ### Revocation warning
 
 If the effective level is B-LT or B-LTA and revocation data (CRL/OCSP) cannot be fully
@@ -148,6 +178,8 @@ certificates and warning details. You can:
 - **Continue** — accept the output despite missing revocation data. The signature may be at
   a lower effective level than requested.
 
+![Signing revocation-warning screen](/img/desktop/signing-revocation-warning.avif)
+
 ## 6. Review the result
 
 On success, the dialog shows:
@@ -156,6 +188,8 @@ On success, the dialog shows:
 - The **signature ID** of the created signature.
 - The achieved **PAdES level** (e.g., BASELINE-LTA).
 - Any **warnings** produced during signing, categorized by severity.
+
+![Signing success summary](/img/desktop/signing-success.avif)
 
 Closing the dialog automatically reloads the signed document in the viewer so you can
 inspect it immediately.
@@ -168,6 +202,8 @@ the success screen. You can:
 - **Assign to an existing job** — select a configured renewal job from the dropdown.
 - **Create a new job** — define a new renewal job with a name, glob pattern, buffer days,
   and an optional profile.
+
+![Renewal job offer dialog](/img/desktop/renewal-job-offer.avif)
 
 If the output file is already covered by an existing job (detected from glob patterns), the
 dialog shows the covering job name and no further action is needed.

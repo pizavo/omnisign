@@ -11,6 +11,8 @@ The dialog uses an IntelliJ-style layout: a collapsible category tree on the lef
 content panel on the right. Clicking a group header selects its first child; clicking a
 leaf shows the corresponding form.
 
+![Settings dialog](/img/desktop/settings-overview.avif)
+
 ## Settings categories
 
 ### Signing
@@ -77,6 +79,15 @@ Revocation List requests used during validation and B-LT/B-LTA signing.
 - **EU LOTL** — toggle integration with the EU List of Trusted Lists. When enabled,
   OmniSign loads the EU LOTL at startup and uses it for certificate qualification
   and trust chain resolution.
+- **Trusted list refresh interval (hours)** — how often the EU LOTL and custom lists are
+  refreshed automatically in the background (minimum 1 hour).
+- **Refresh now** — a refresh button, with a "Last refreshed" indicator, forces an immediate
+  online refresh of the EU LOTL and every custom list into the shared cache.
+
+:::note
+While a trusted list the active configuration depends on is being refreshed, the validation
+panel's refresh action is temporarily disabled until it completes.
+:::
 
 #### Algorithm Constraints
 
@@ -93,8 +104,19 @@ Available severity levels: **FAIL**, **WARN**, **INFORM**, **IGNORE**.
 #### Trusted Certificates
 
 Add CA and TSA certificates that should be directly trusted during validation, without
-requiring a full ETSI Trusted List XML document. Click the Add button and select a
-PEM or DER certificate file using the file picker.
+requiring a full ETSI Trusted List XML document. They are wired into DSS alongside any ETSI
+trusted lists and apply to the **global** scope; profile-scoped certificates are managed in the
+[profile editor](profiles.md#trusted-certificates).
+
+For each certificate, choose a **trust role** — **CA**, **TSA**, or **Any** (trusted for both) —
+then pick a `.pem` / `.der` / `.crt` / `.cer` file (or type its path). Additions and removals are
+**staged**: a new certificate shows a **Pending** badge and a removed one stays visible marked
+**Removing** (with an undo button) until you click **Save**; closing the dialog without saving
+discards the staged changes. Adding a certificate whose fingerprint is already trusted in this
+scope is rejected. The read-only [Trusted Certificates panel](trusted-certificates.md) shows the
+resulting global and active-profile certificates.
+
+![Global Trusted Certificates settings](/img/desktop/settings-trusted-certs.avif)
 
 #### Trusted Lists
 
@@ -114,6 +136,14 @@ that are not discovered automatically.
 Each entry is the absolute file path to the middleware shared library (`.dll`, `.so`, or
 `.dylib`).
 
+:::tip Drop directory
+This section also shows an auto-discovery **drop directory**. Copy a PKCS#11 library file
+(`.dll` / `.so` / `.dylib`) into it and OmniSign discovers it automatically — no manual entry
+needed. The path is a clickable link that reveals the folder in your file manager.
+:::
+
+![PKCS#11 Libraries settings](/img/desktop/settings-pkcs11.avif)
+
 ### Archiving
 
 #### Renewal Jobs
@@ -129,6 +159,8 @@ Each job defines:
 | Profile       | Optional profile whose settings are used for the renewal operation.  |
 | Notify        | Whether to send OS notifications on completion or failure.           |
 
+![Renewal Jobs settings](/img/desktop/settings-renewal-jobs.avif)
+
 #### Scheduler
 
 Configure the OS-level daily scheduler that runs renewal jobs automatically.
@@ -140,6 +172,41 @@ Configure the OS-level daily scheduler that runs renewal jobs automatically.
 | Run at (minute) | Minute of the hour (0–59) for the daily run (default: 0).                                                                                         |
 | Log file        | Optional append-only log file path for scheduler output.                                                                                          |
 
+![Scheduler settings](/img/desktop/settings-scheduler.avif)
+
 The scheduler uses **Task Scheduler** on Windows, **cron** on Linux, and **launchd** on
 macOS. The current installation status is shown as a read-only indicator.
+
+At the scheduled time the scheduler launches OmniSign in **headless renewal mode** (no window):
+it checks every configured renewal job, re-timestamps the B-LTA files whose archival timestamp
+falls within the job's buffer window, and appends to the scheduler log file when one is set. Jobs
+with **Notify** enabled raise an OS notification on completion or failure, so unattended renewals
+stay visible. (This is the same batch OmniSign runs when started with the `renew` argument.)
+
+### Backup
+
+#### Import & Export
+
+Export the entire configuration — global settings, every profile, and all referenced trusted
+certificates — to a single ZIP archive, or import an archive to replace the current
+configuration.
+
+- **Export** (download icon) — prompts for a save location and writes the archive.
+- **Import** (upload icon) — asks for confirmation first, because it **replaces all current
+  settings, profiles, and trusted certificates and cannot be undone**, then lets you pick the
+  archive to restore.
+
+This section is available on the desktop app only.
+
+### Appearance (Linux)
+
+#### Window
+
+Choose how the window is framed. This category appears **only on Linux**.
+
+- **Use native title bar** — when on, the toolbar is shown below the native OS title bar; when
+  off (the default), the toolbar is merged into a custom header (client-side decoration) with
+  custom window controls.
+
+Changing this setting requires an application restart to take effect.
 

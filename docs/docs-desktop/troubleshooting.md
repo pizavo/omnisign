@@ -5,8 +5,9 @@ sidebar_position: 6
 # Troubleshooting & Support
 
 If something goes wrong, the desktop app can produce a diagnostic log archive
-you can attach to a bug report. Everything below lives in the **Help** panel —
-open it from the icon at the bottom of the right-hand sidebar.
+you can attach to a bug report. The log and debug-logging controls described first
+live in the **Help** panel — open it from the icon at the bottom of the right-hand
+sidebar. A dedicated section at the end covers the most common hardware-token problem.
 
 ## The Support section
 
@@ -22,6 +23,8 @@ to report a problem:
   exported `.zip` to the issue yourself.
 - **Debug logging** / **Extended logs** — see below.
 
+![Help panel Support section](/img/desktop/help-support-section.avif)
+
 ## Enabling debug logging
 
 By default the app only logs warnings and errors. To capture detail for a bug
@@ -35,6 +38,8 @@ report:
 
 While debug logging is enabled, a small dot appears on the Help icon in the
 sidebar as a reminder, even when the panel is closed.
+
+![Debug-logging indicator dot on the Help icon](/img/desktop/help-debug-dot-icon.avif)
 
 ### Extended logs (advanced)
 
@@ -65,3 +70,34 @@ A useful report includes:
 - The app version (shown at the bottom of the Help panel).
 - The exported log `.zip` — ideally captured with **Debug logging** enabled
   while reproducing the problem.
+
+## PKCS#11 tokens not detected
+
+When a smart card or USB token doesn't appear in the signing dialog's certificate dropdown,
+open the **PKCS#11 diagnostic** dialog: in the signing dialog, click the **info icon** in the
+header, or use the **Show diagnostic info** link in the empty-token banner (it also appears on
+the "no tokens detected" rescan toast). The dialog has three read-only sections:
+
+- **PC/SC readers** — the card readers the OS reports, including the card ATR when one is
+  inserted. An empty list usually means the platform smart-card service is stopped or no
+  compatible reader is connected.
+- **Candidate PKCS#11 libraries** — the middleware libraries discovery would probe right now,
+  merged across OS-native sources, the drop directory, and your custom entries.
+- **Drop directory** — the folder where you can copy a PKCS#11 library file for automatic
+  pickup. The path is clickable and opens your file manager.
+
+![PKCS#11 diagnostic dialog](/img/desktop/pkcs11-diagnostic-dialog.avif)
+
+Common fixes:
+
+1. **Insert the card / plug in the reader.** While the signing dialog is open, inserting a card
+   or reader is detected automatically and the certificate list refreshes.
+2. **Rescan after installing middleware.** If you installed or changed PKCS#11 middleware while
+   OmniSign was running, use **Rescan tokens** in the signing dialog header — no card or reader
+   event would otherwise trigger re-detection.
+3. **Register the library path.** If the middleware isn't advertised to the OS (for example,
+   SafeNet Authentication Client on Windows registers CSP/minidriver entries but no PKCS#11
+   path), add its library under **Settings → Tokens → PKCS#11 Libraries**, or copy the library
+   file into the **drop directory** shown there and in the diagnostic dialog.
+4. **Load the key from a file instead.** If you have a `.p12` / `.pfx` export, use the import
+   button in the signing dialog to sign without the token.

@@ -36,6 +36,16 @@ Remove a registered custom trusted list.
 omnisign config tl remove my-org-tl
 ```
 
+## `config tl refresh`
+
+Force an immediate online refresh of the EU LOTL and every custom trusted list into the shared
+on-disk cache. Useful as a maintenance step so subsequent validations start from a freshly
+refreshed cache instead of paying the download on a validation's critical path.
+
+```bash
+omnisign config tl refresh
+```
+
 ## `config tl build` — Build custom trusted lists
 
 The TL builder lets you create your own ETSI TS 119612-compliant Trusted List XML,
@@ -52,6 +62,9 @@ useful for organisations that need to trust internal CAs.
 | `config tl build service remove <draft> <tsp-name> <service-name>` | Remove a service from a TSP                                |
 | `config tl build compile <draft>`                                  | Compile a draft to a TL XML and optionally register it     |
 | `config tl build delete <draft>`                                   | Delete a draft                                             |
+
+Both `create` and `compile` accept `-p, --profile <name>` to register the compiled list into a
+profile's validation config instead of the global config.
 
 ### `service add` options
 

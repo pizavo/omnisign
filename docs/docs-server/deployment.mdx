@@ -1,0 +1,164 @@
+---
+sidebar_position: 6
+---
+
+# Deployment
+
+import OsTabs from '@site/src/components/OsTabs';
+import TabItem from '@theme/TabItem';
+
+The server ships as a runnable fat JAR. You can run it in a container, as a bare-metal service, or
+behind a reverse proxy. In every case the [configuration](configuration) lives outside the artifact
+and secrets come from the environment.
+
+## Build the artifact
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+```powershell
+.\gradlew.bat :server:buildFatJar
+```
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+```bash
+./gradlew :server:buildFatJar
+```
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+```bash
+./gradlew :server:buildFatJar
+```
+
+</TabItem>
+</OsTabs>
+
+The fat JAR is written to `server/build/libs/server-all.jar`. Requires **JDK 25+**.
+
+## Docker
+
+The image (`server/Dockerfile`, Temurin 25 JRE) expects the fat JAR to already be built — the build
+context is the **repository root**, not `server/`:
+
+```bash
+./gradlew :server:buildFatJar
+docker build -t omnisign-server -f server/Dockerfile .
+```
+
+The image declares a `/app/config` volume and sets `OMNISIGN_SERVER_CONFIG=/app/config/server.yml`,
+so mount a directory containing `server.yml`, `signing.yml`, your trusted-certificate sources, and a
+writable trust-store dir; pass every secret with `-e`:
+
+```bash
+docker run -d --name omnisign-server \
+  -p 18080:18080 \
+  -v "$(pwd)/config:/app/config" \
+  -e OMNISIGN_JWT_SECRET="$(openssl rand -base64 48)" \
+  -e OMNISIGN_OIDC_GOOGLE_CLIENT_SECRET="…" \
+  omnisign-server
+```
+
+Inside `server.yml`, point `signingConfigFile` at `/app/config/signing.yml` and set `trustStoreDir`
+to a path on the volume (e.g. `/app/config/trust-store`) so the reconciled store persists across
+container restarts. Add `-p 18443:18443` when terminating TLS in-process. The image declares a
+`HEALTHCHECK` against `/api/v1/health`.
+
+## Bare-metal service
+
+`installDist` produces a self-contained directory with a launch script and all dependencies:
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+```powershell
+.\gradlew.bat :server:installDist
+# → server\build\install\server\bin\server.bat
+```
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+```bash
+./gradlew :server:installDist
+# → server/build/install/server/bin/server
+```
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+```bash
+./gradlew :server:installDist
+# → server/build/install/server/bin/server
+```
+
+</TabItem>
+</OsTabs>
+
+The launcher resolves its config from `--config <path>`, then `OMNISIGN_SERVER_CONFIG`, then
+`server.yml` in the working directory (see [Configuration](configuration#resolution-order)). Under
+**systemd**, keep secrets in a root-owned `EnvironmentFile` (mode `600`) rather than the unit:
+
+```ini
+# /etc/systemd/system/omnisign-server.service
+[Unit]
+Description=OmniSign Server
+After=network.target
+
+[Service]
+Type=simple
+User=omnisign
+WorkingDirectory=/opt/omnisign
+Environment=OMNISIGN_SERVER_CONFIG=/etc/omnisign/server.yml
+EnvironmentFile=/etc/omnisign/secrets.env
+ExecStart=/opt/omnisign/bin/server
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+```
+
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable --now omnisign-server
+```
+
+## Reverse proxy
+
+The recommended production topology terminates TLS at a reverse proxy and runs OmniSign on loopback.
+Set `proxy.enabled: true` with the proxy's source IP in `proxy.trusted`, keep `listen.host:
+127.0.0.1`, and set `OMNISIGN_EXTERNAL_URL` to the public URL so OAuth2 redirect URIs are correct
+(see [Security → Reverse proxy](security#reverse-proxy)).
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name sign.example.org;
+    ssl_certificate     /etc/ssl/certs/sign.example.org.pem;
+    ssl_certificate_key /etc/ssl/private/sign.example.org.key;
+
+    client_max_body_size 50m;   # keep aligned with server.yml maxFileSize
+
+    location / {
+        proxy_pass http://127.0.0.1:18080;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Forwarded-For   $remote_addr;
+        proxy_set_header X-Forwarded-Proto $scheme;
+    }
+}
+```
+
+```yaml
+# server.yml
+listen:
+  host: 127.0.0.1
+  port: 18080
+proxy:
+  enabled: true
+  trusted: ["127.0.0.1/32"]
+cors:
+  allowedOrigins: ["https://app.example.org"]
+```

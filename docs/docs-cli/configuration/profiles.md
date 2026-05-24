@@ -58,28 +58,32 @@ and the following `--clear-*` flags to unset individual fields:
 
 ## Export and import
 
+A profile is exported to a **ZIP archive** that also bundles the profile's trusted certificates;
+`--format` selects the configuration format stored *inside* the archive. Import accepts a ZIP
+(restoring the bundled certificates) or a legacy plain profile file, auto-detected.
+
 **Export:**
 
 ```bash
-omnisign config profile export university university.json
-omnisign config profile export university university.yaml --format YAML
+omnisign config profile export university university.zip
+omnisign config profile export university university.zip --format YAML
 ```
 
-| Option               | Description                                                                       |
-|----------------------|-----------------------------------------------------------------------------------|
-| `-f, --format <fmt>` | Export format (`JSON`, `XML`, `YAML`). Inferred from file extension when omitted. |
+| Option               | Description                                                                                                         |
+|----------------------|--------------------------------------------------------------------------------------------------------------------|
+| `-f, --format <fmt>` | Format of the configuration inside the archive (`JSON`, `XML`, `YAML`). Inferred from the extension, otherwise JSON. |
 
 **Import:**
 
 ```bash
-omnisign config profile import university.json
-omnisign config profile import university.json --name university-backup
+omnisign config profile import university.zip
+omnisign config profile import university.zip --name university-backup
 ```
 
-| Option              | Description                                                                               |
-|---------------------|-------------------------------------------------------------------------------------------|
-| `-f, --format`      | Import format (`JSON`, `XML`, `YAML`). Inferred from file extension when omitted.         |
-| `-n, --name <name>` | Override the profile name from the file.                                                  |
+| Option              | Description                                                                              |
+|---------------------|-----------------------------------------------------------------------------------------|
+| `-f, --format`      | Format of a legacy plain profile file (`JSON`, `XML`, `YAML`); ignored for ZIP archives. |
+| `-n, --name <name>` | Override the profile name from the file.                                                 |
 
 ## Examples
 

@@ -18,6 +18,8 @@ Open the **Profiles** panel from the right sidebar (user icon). From here you ca
 - **Deactivate** the current profile to revert to global defaults.
 - **Delete** a profile.
 
+![Profiles panel](/img/desktop/profiles-panel.avif)
+
 ## Profile settings
 
 Each profile can override any combination of the following settings. Fields not specified
@@ -57,6 +59,8 @@ The effective signature level is derived from the combination:
 |   Enabled    |   Enabled   |   B-LTA    |
 |   Inherit    |   Inherit   | *(global)* |
 
+![Profile signature-level tri-state toggles](/img/desktop/profile-tristate-toggles.avif)
+
 ### Timestamp server
 
 Override the global TSA for operations using this profile:
@@ -80,8 +84,12 @@ cannot be selected when this profile is active, even if they are allowed globall
 
 ### Trusted certificates
 
-Add CA and TSA certificates scoped to this profile. These are merged with the global
-trusted certificates during config resolution.
+Add CA and TSA certificates scoped to this profile. Choose a **trust role** for each — **CA**,
+**TSA**, or **Any** (trusted for both) — then pick a `.pem` / `.der` / `.crt` / `.cer` file or
+type its path. Additions and removals are **staged**: a new certificate shows a **Pending** badge
+and a removed one stays visible marked **Removing** (with an undo button) until you **Save** the
+profile; closing without saving discards the staged changes. Profile certificates are merged with
+the global trusted certificates during config resolution.
 
 ### Custom trusted lists
 
@@ -97,7 +105,8 @@ operations use the profile's settings merged with the global defaults (three-lay
 global → profile → operation overrides).
 
 :::tip
-You can override the active profile for a single operation using the signing dialog's
-profile selector, without changing the globally active profile.
+The desktop signing and timestamp dialogs always use the **active** profile (merged with the
+global defaults). To run a one-off operation under a different profile without changing the
+active one, use the CLI's `--profile` option.
 :::
 

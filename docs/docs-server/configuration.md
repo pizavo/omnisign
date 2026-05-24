@@ -1,0 +1,171 @@
+---
+sidebar_position: 2
+---
+
+# Configuration (`server.yml`)
+
+`server.yml` controls how the server is **exposed and secured** — the network bind, TLS, CORS,
+reverse proxy, rate limiting, authentication, and which operations are allowed. How the server
+*signs and validates* lives in a separate [`signing.yml`](signing-policy) policy file.
+
+A fully-commented template ships as **`server.example.yml`** (in `server/src/main/resources/`, and
+inside the JAR — extract with `jar xf <jar> server.example.yml`). Copy it to `server.yml` and edit.
+
+## How the configuration is loaded {#resolution-order}
+
+The server resolves its config file from the first source that exists, in order:
+
+1. `--config <path>` on the command line.
+2. The `OMNISIGN_SERVER_CONFIG` environment variable.
+3. `server.yml` in the current working directory.
+4. **Built-in defaults** — used only as a last resort, with a warning. The defaults do **not**
+   start a usable server: a `cors:` block is required, and a non-loopback host requires `tls:` or
+   `proxy:`. There is **no classpath fallback** — the bundled `server.example.yml` is documentation
+   only and is never auto-loaded.
+
+Two parsing rules protect you from silent misconfiguration:
+
+- **Unknown keys fail startup.** A typo like `auth: { enable: true }` (missing `d`) or
+  `tls: { keystorePat: … }` would otherwise silently disable a defense; instead the server refuses
+  to start and names the offending key.
+- **`${VAR}` substitution** — any string *value* may reference an environment variable as `${NAME}`
+  (`[A-Z_][A-Z0-9_]*`), expanded at load. Keys and comments are never substituted; a referenced-but-
+  unset variable fails startup. Use this for non-secret values like an external URL.
+
+## Secrets {#secrets}
+
+Secrets are **environment variables only** — never YAML literals. Setting any of them in YAML fails
+startup with an error naming the variable to use instead (YAML ends up in backups, logs, images, and
+screen-shares; env vars stay in process memory).
+
+| Environment variable                | Purpose                                                            |
+|-------------------------------------|--------------------------------------------------------------------|
+| `OMNISIGN_JWT_SECRET`               | HMAC signing secret for session JWTs (required when auth enabled)  |
+| `OMNISIGN_OIDC_<NAME>_CLIENT_SECRET`| Per-OIDC-provider `client_secret` (`<NAME>` = provider `name`, uppercased, non-alphanumerics → `_`) |
+| `OMNISIGN_TLS_KEYSTORE_PASSWORD`    | TLS keystore password (required when `tls:` is set)                |
+| `OMNISIGN_TLS_PRIVATE_KEY_PASSWORD` | TLS private-key password (optional; falls back to the keystore password) |
+| `OMNISIGN_EXTERNAL_URL`             | Public base URL used to build OAuth2 redirect URIs (recommended in production) |
+
+The TSA password used by [`signing.yml`](signing-policy) is also supplied from the environment, via a
+`${VAR}` reference in that file.
+
+## File reference
+
+Every block is optional unless noted. The most security-relevant blocks are detailed on the
+[Security](security) and [Authentication](authentication) pages; this is the field reference.
+
+### `listen`
+
+Network bind. Defaults to loopback so a fresh install is reachable only from the same machine.
+
+```yaml
+listen:
+  host: "127.0.0.1"   # 0.0.0.0 for all interfaces (then tls: or proxy: is required)
+  port: 18080
+```
+
+### `development`
+
+`true` enables Ktor development mode (auto-reload, verbose error pages that echo internal details).
+**Refuses to start on a non-loopback host.** Must be `false` in production.
+
+### `operations`
+
+Which operations the API exposes, and (for signing) which certificate aliases are eligible. Defaults
+to `VALIDATE` only; `SIGN` and `TIMESTAMP` are opt-in. See [Security → Operation gating](security#operation-gating).
+
+```yaml
+operations:
+  allowed: [VALIDATE]          # add SIGN and/or TIMESTAMP to enable them
+  # certificateAliases: ["university-seal"]   # restrict signing to these aliases
+```
+
+### `proxy`
+
+Reverse-proxy mode. When enabled, TLS is terminated upstream and `X-Forwarded-*` headers are honored
+**only** from the listed trusted IPs/CIDRs. See [Security → Reverse proxy](security#reverse-proxy).
+
+```yaml
+proxy:
+  enabled: true
+  trusted: ["127.0.0.1", "::1"]   # literal IPs or CIDRs; hostnames and "*" rejected
+```
+
+### `tls`
+
+Direct HTTPS (TLS 1.2/1.3 + HTTP/2). Ignored when `proxy.enabled: true`. Passwords come from env vars
+(see [Secrets](#secrets)). See [Security → TLS & HSTS](security#tls--hsts).
+
+```yaml
+tls:
+  port: 18443
+  keystorePath: "/path/to/keystore.p12"
+  keyAlias: "omnisign"
+  hsts:
+    maxAgeSeconds: 31536000
+    includeSubDomains: true
+    preload: false
+```
+
+### `cors`
+
+**Required.** `allowedOrigins` must be a non-empty list or `["*"]` — a missing block and an empty
+list are both rejected so "didn't configure", "allow all", and "deny all" can't collapse into one
+silent state. Entries may be bare host, `host:port`, or a full URL. See
+[Security → CORS](security#cors).
+
+```yaml
+cors:
+  allowedOrigins:
+    - "https://sign.example.com"
+```
+
+### `rateLimiting`
+
+Per-IP token-bucket limits for `/auth/*` and the API routes. Omit to disable. See
+[Security → Rate limiting](security#rate-limiting).
+
+```yaml
+rateLimiting:
+  auth: { limit: 20, refillPeriodSeconds: 60 }
+  api:  { limit: 200, refillPeriodSeconds: 60 }
+```
+
+### `auth`
+
+SSO authentication (OIDC providers / Shibboleth header-injection) and JWT sessions. Covered in full
+on the [Authentication](authentication) page.
+
+### `signingConfigFile`
+
+Path to the [`signing.yml`](signing-policy) policy file (YAML, or `.json`). When omitted, the server
+runs with built-in signing defaults and no profiles.
+
+```yaml
+signingConfigFile: "/etc/omnisign/signing.yml"
+```
+
+### `trustStoreDir`
+
+Filesystem path to the server's writable trust directory, reconciled at boot from the
+`trustedCertificates` declared in `signing.yml`. Defaults to a location beside the config directory.
+Use a volume separate from the read-only policy and certificate files.
+
+### `maxFileSize`
+
+Maximum upload size in bytes. Defaults to `104857600` (100 MB).
+
+## Minimal example
+
+```yaml
+listen:
+  host: "127.0.0.1"
+  port: 18080
+operations:
+  allowed: [VALIDATE]
+cors:
+  allowedOrigins: ["http://localhost:8080"]
+```
+
+See [`server.example.yml`](https://github.com/pizavo/omnisign/blob/main/server/src/main/resources/server.example.yml)
+for the fully-commented template covering every block.

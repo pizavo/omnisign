@@ -1,0 +1,104 @@
+---
+sidebar_position: 1
+slug: /
+---
+
+# OmniSign Web
+
+The OmniSign web frontend is the **desktop app running in a browser** — the same Compose
+Multiplatform UI, compiled to Kotlin/Wasm — backed by an [OmniSign Server](/server/) for the
+operations a browser can't perform locally.
+
+:::note Early preview
+The web frontend is at an early stage. Today it is a **document viewer**: it opens and displays
+PDFs locally. Server-backed signing, validation, and timestamping are **planned** — they will run
+through the [Server API](/server/api-reference) rather than in the browser.
+:::
+
+## Building and running
+
+import OsTabs from '@site/src/components/OsTabs';
+import TabItem from '@theme/TabItem';
+
+### Development server
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+```powershell
+.\gradlew.bat :composeApp:wasmJsBrowserDevelopmentRun
+```
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+```bash
+./gradlew :composeApp:wasmJsBrowserDevelopmentRun
+```
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+```bash
+./gradlew :composeApp:wasmJsBrowserDevelopmentRun
+```
+
+</TabItem>
+</OsTabs>
+
+A local dev server starts and opens the app in your default browser.
+
+### Production build
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+```powershell
+.\gradlew.bat :composeApp:wasmJsBrowserDistribution
+```
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+```bash
+./gradlew :composeApp:wasmJsBrowserDistribution
+```
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+```bash
+./gradlew :composeApp:wasmJsBrowserDistribution
+```
+
+</TabItem>
+</OsTabs>
+
+The bundle is written to `composeApp/build/dist/wasmJs/productionExecutable/` — static files you can
+serve from any web server (and point at an OmniSign Server via CORS; see
+[Server → Security](/server/security)).
+
+## Browser support
+
+The frontend needs **WebAssembly** with **WebAssembly GC**:
+
+| Browser       | Minimum version |
+|---------------|-----------------|
+| Chrome / Edge | 119+            |
+| Firefox       | 120+            |
+| Safari        | 18.2+           |
+
+## Current capabilities
+
+| Feature                              | Status |
+|--------------------------------------|:------:|
+| Open and view PDF documents          |   ✅   |
+| Page navigation and zoom             |   ✅   |
+| Dark / light theme toggle            |   ✅   |
+| Sign documents (via Server API)      |   🚧   |
+| Validate documents (via Server API)  |   🚧   |
+| Timestamp documents (via Server API) |   🚧   |
+
+🚧 = planned. These will be performed by the [OmniSign Server](/server/), which the web app calls
+over HTTP. The same operations are available today in the [Desktop app](/desktop/) and the
+[CLI](/cli/).

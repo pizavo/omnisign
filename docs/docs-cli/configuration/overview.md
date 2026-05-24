@@ -55,7 +55,7 @@ omnisign config set [options]
 | `--timestamp-username <user>`                  | Default TSA HTTP Basic username                                 |
 | `--timestamp-password <pass>`                  | Default TSA password (stored in OS keychain; use `-` to prompt) |
 | `--timestamp-timeout <ms>`                     | Default TSA request timeout in milliseconds                     |
-| `--validation-policy <type>`                   | Default validation policy (`DEFAULT_ETSI`, `CUSTOM`, …)         |
+| `--validation-policy <type>`                   | Default validation policy (`DEFAULT_ETSI` or `CUSTOM_FILE`)     |
 | `--check-revocation <bool>`                    | Enable/disable certificate revocation checking                  |
 | `--use-eu-lotl <bool>`                         | Enable/disable the EU List of Trusted Lists                     |
 | `--algo-expiration-level <level>`              | Severity when an algorithm's expiration date has passed         |
@@ -65,6 +65,8 @@ omnisign config set [options]
 | `--enable-hash-algorithm <alg>`                | Re-enable a globally disabled hash algorithm. Repeatable.       |
 | `--disable-encryption-algorithm <alg>`         | Globally disable an encryption algorithm. Repeatable.           |
 | `--enable-encryption-algorithm <alg>`          | Re-enable a globally disabled encryption algorithm. Repeatable. |
+| `--pkcs11-probe-timeout <1-120>`               | Max seconds to wait for a single PKCS#11 library probe          |
+| `--trusted-list-refresh-interval <hours>`      | Hours a downloaded trusted list is kept before background refresh (min 1) |
 
 ### Example
 
@@ -78,31 +80,37 @@ omnisign config set \
 
 ## `config export`
 
-Export the global configuration (or the full application configuration) to a file.
+Export the global configuration (or the full application configuration), together with the trusted
+certificates it references, to a **ZIP archive**.
 
 ```
 omnisign config export <output-file> [options]
 ```
 
-| Option               | Description                                                                       |
-|----------------------|-----------------------------------------------------------------------------------|
-| `<output-file>`      | **(Required)** Destination file path                                              |
-| `-f, --format <fmt>` | Export format (`JSON`, `XML`, `YAML`). Inferred from extension when omitted.      |
-| `-a, --all`          | Export the full application configuration instead of only the global section.     |
+| Option               | Description                                                                                                                   |
+|----------------------|------------------------------------------------------------------------------------------------------------------------------|
+| `<output-file>`      | **(Required)** Destination archive path (a ZIP, conventionally `.zip`)                                                        |
+| `-f, --format <fmt>` | Format of the configuration *inside* the archive (`JSON`, `XML`, `YAML`). Inferred from the output extension, otherwise JSON. |
+| `-a, --all`          | Export the full application configuration instead of only the global section.                                                 |
+
+The archive always bundles the configuration plus the trusted-certificate material for the exported
+scope, so a restore is self-contained.
 
 ## `config import`
 
-Import a global configuration (or the full application configuration) from a file.
+Import from a ZIP archive produced by `config export` — its bundled trusted certificates are restored
+into the trust store. A legacy plain configuration file (the older text format) is also accepted and
+auto-detected.
 
 ```
 omnisign config import <input-file> [options]
 ```
 
-| Option               | Description                                                                       |
-|----------------------|-----------------------------------------------------------------------------------|
-| `<input-file>`       | **(Required)** Source file path                                                   |
-| `-f, --format <fmt>` | Import format (`JSON`, `XML`, `YAML`). Inferred from extension when omitted.      |
-| `-a, --all`          | Import as a full application configuration, replacing all sections.               |
+| Option               | Description                                                                                                   |
+|----------------------|--------------------------------------------------------------------------------------------------------------|
+| `<input-file>`       | **(Required)** Source path: a ZIP archive, or a legacy plain configuration file                               |
+| `-f, --format <fmt>` | Format of a legacy plain file (`JSON`, `XML`, `YAML`); ignored for ZIP archives, inferred from the extension. |
+| `-a, --all`          | Import as a full application configuration, replacing all sections.                                           |
 
 ## Related pages
 
