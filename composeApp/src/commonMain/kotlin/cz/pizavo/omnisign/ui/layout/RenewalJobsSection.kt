@@ -1,13 +1,18 @@
 package cz.pizavo.omnisign.ui.layout
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -16,6 +21,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.config.RenewalJob
@@ -24,7 +30,6 @@ import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Button
 import cz.pizavo.omnisign.lumo.components.ButtonVariant
 import cz.pizavo.omnisign.lumo.components.Checkbox
-import cz.pizavo.omnisign.lumo.components.Chip
 import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.IconButton
 import cz.pizavo.omnisign.lumo.components.IconButtonVariant
@@ -120,17 +125,7 @@ private fun RenewalJobRow(
 				Text(text = job.name, style = LumoTheme.typography.label1)
 				val profileName = job.profile
 				if (profileName != null) {
-					Chip(
-						label = {
-							Text(
-								text = profileName,
-								style = LumoTheme.typography.body2,
-							)
-						},
-						selected = false,
-						enabled = false,
-						onClick = {},
-					)
+					ProfileBadge(name = profileName)
 				}
 			}
 			job.globs.forEach { glob ->
@@ -172,6 +167,29 @@ private fun RenewalJobRow(
 				modifier = Modifier.size(16.dp),
 			)
 		}
+	}
+}
+
+/**
+ * Blue "info" badge showing a renewal job's profile name.
+ *
+ * Rendered as a tinted, outlined pill in the theme's info accent ([LumoTheme.colors.tertiary]) so
+ * the profile reads as an intentional label rather than a disabled chip.
+ *
+ * @param name The profile name to display.
+ */
+@Composable
+private fun ProfileBadge(name: String) {
+	val shape = RoundedCornerShape(percent = 50)
+	val color = LumoTheme.colors.tertiary
+	Box(
+		modifier = Modifier
+			.clip(shape)
+			.background(color.copy(alpha = 0.18f))
+			.border(width = 1.dp, color = color.copy(alpha = 0.5f), shape = shape)
+			.padding(horizontal = 8.dp, vertical = 4.dp),
+	) {
+		Text(text = name, style = LumoTheme.typography.body2, color = color)
 	}
 }
 
