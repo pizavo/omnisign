@@ -23,6 +23,7 @@ import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.config.CustomPkcs11Library
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
@@ -73,6 +74,9 @@ private val NavItemShape = RoundedCornerShape(6.dp)
  * @param onImportConfig Called when the user imports a full configuration archive (Backup section).
  * @param backupEnabled Whether the Backup export/import controls are enabled (false on platforms
  *   without a file-system backend, e.g. web).
+ * @param onStageTrustedCert Called with the picked certificate bytes, type, and source path to stage
+ *   a global-scope trusted-certificate addition. The certificate is parsed and deduplicated by the
+ *   ViewModel before it is staged; the change is committed to the store on Save.
  */
 @Composable
 fun SettingsDialog(
@@ -89,6 +93,7 @@ fun SettingsDialog(
 	onExportConfig: () -> Unit = {},
 	onImportConfig: () -> Unit = {},
 	backupEnabled: Boolean = false,
+	onStageTrustedCert: (ByteArray, TrustedCertificateType, String) -> Unit = { _, _, _ -> },
 ) {
 	var selectedCategory by remember(initialCategory) {
 		mutableStateOf(initialCategory ?: SettingsCategory.SigningDefaults)
@@ -131,6 +136,7 @@ fun SettingsDialog(
 					onExportConfig = onExportConfig,
 					onImportConfig = onImportConfig,
 					backupEnabled = backupEnabled,
+					onStageTrustedCert = onStageTrustedCert,
 				)
 			}
 
@@ -357,6 +363,7 @@ private fun SettingsContentPanel(
 	onExportConfig: () -> Unit = {},
 	onImportConfig: () -> Unit = {},
 	backupEnabled: Boolean = false,
+	onStageTrustedCert: (ByteArray, TrustedCertificateType, String) -> Unit = { _, _, _ -> },
 ) {
 	VerticalScrollableColumn(
 		modifier = Modifier.fillMaxSize(),
@@ -410,7 +417,11 @@ private fun SettingsContentPanel(
 				onFieldChange = onFieldChange
 			)
 			
-			SettingsCategory.TrustedCertificates -> TrustedCertificatesInfo()
+			SettingsCategory.TrustedCertificates -> TrustedCertificatesSettingsSection(
+				state = state,
+				onFieldChange = onFieldChange,
+				onStageTrustedCert = onStageTrustedCert,
+			)
 
 			SettingsCategory.CustomTrustedLists -> CustomTrustedListsSection(
 				trustedLists = state.customTrustedLists,
@@ -1011,20 +1022,52 @@ private fun AlgorithmConstraintsSection(
 }
 
 /**
- * Informational placeholder for the trusted certificates category.
+ * Global-scope trusted certificates section, backed by the app-managed trust store.
  *
- * Directly trusted certificates are now managed in the dedicated Trusted Certificates side panel,
- * backed by the app-managed trust store, rather than inline in the settings form. This section
- * points the user there.
+ * Lists the global directly-trusted certificates and an inline add form. Additions and removals are
+ * staged into the [GlobalConfigEditState] and committed to the trust store only when the dialog is
+ * saved, so Cancel discards them — consistent with the rest of the settings form. On platforms
+ * without a trust store backend (web) an explanatory message is shown instead of the controls.
+ *
+ * @param state Current global config edit state holding the certificate baseline and staged changes.
+ * @param onFieldChange Called with a transform to update the staged certificate fields.
+ * @param onStageTrustedCert Called with the picked certificate bytes, type, and source to parse and
+ *   stage a global addition (dedup-checked by the ViewModel).
  */
 @Composable
-private fun TrustedCertificatesInfo() {
-	Text(
-		text = "Directly trusted certificates are managed in the Trusted Certificates panel " +
-				"(the certificate icon in the side bar), backed by the app-managed trust store. " +
-				"Open that panel to add or remove trusted CA and TSA certificates per scope.",
-		style = LumoTheme.typography.body2,
-		color = LumoTheme.colors.textSecondary,
+private fun TrustedCertificatesSettingsSection(
+	state: GlobalConfigEditState,
+	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
+	onStageTrustedCert: (ByteArray, TrustedCertificateType, String) -> Unit,
+) {
+	if (!state.trustedCertsAvailable) {
+		Text(
+			text = "Managing trusted certificates is not available on this platform.",
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.textSecondary,
+		)
+		return
+	}
+
+	TrustedCertificatesSection(
+		certificates = state.trustedCertificates,
+		pendingAdditions = state.pendingTrustedCertAdds,
+		pendingRemovals = state.pendingTrustedCertRemovals,
+		onStageAddition = onStageTrustedCert,
+		onStageRemoval = { fingerprint ->
+			onFieldChange { it.copy(pendingTrustedCertRemovals = it.pendingTrustedCertRemovals + fingerprint) }
+		},
+		onUnstageRemoval = { fingerprint ->
+			onFieldChange { it.copy(pendingTrustedCertRemovals = it.pendingTrustedCertRemovals - fingerprint) }
+		},
+		onUnstageAddition = { index ->
+			onFieldChange {
+				it.copy(pendingTrustedCertAdds = it.pendingTrustedCertAdds.filterIndexed { i, _ -> i != index })
+			}
+		},
+		addError = state.trustedCertAddError,
+		onClearError = { onFieldChange { it.copy(trustedCertAddError = null) } },
+		onError = { message -> onFieldChange { it.copy(trustedCertAddError = message) } },
 	)
 }
 

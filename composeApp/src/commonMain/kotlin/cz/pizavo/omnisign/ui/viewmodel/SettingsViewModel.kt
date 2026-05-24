@@ -4,14 +4,18 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.SchedulerConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
+import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
+import cz.pizavo.omnisign.ui.model.PendingTrustedCert
 import cz.pizavo.omnisign.ui.platform.loadUseNativeTitleBar
 import cz.pizavo.omnisign.ui.platform.saveUseNativeTitleBar
 import kotlinx.coroutines.CoroutineDispatcher
@@ -51,6 +55,8 @@ import kotlin.time.Instant
  *   without a DSS backend (web).
  * @param configArchive Optional full-configuration archive port backing the Backup
  *   (export / import) settings section. `null` on targets without a JVM file backend (web).
+ * @param trustStore Optional app-managed trust store backing the Trusted Certificates section.
+ *   `null` on targets without a backend (web), where that section renders unavailable.
  */
 class SettingsViewModel(
     private val getConfigUseCase: GetConfigUseCase,
@@ -63,6 +69,7 @@ class SettingsViewModel(
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val trustedListRefreshPort: TrustedListRefreshPort? = null,
     private val configArchive: ConfigArchivePort? = null,
+    private val trustStore: TrustStore? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GlobalConfigEditState())
@@ -127,6 +134,8 @@ class SettingsViewModel(
                     val installed = withContext(ioDispatcher) {
                         try { schedulerPort?.isInstalled() == true } catch (_: Exception) { false }
                     }
+                    val trustedCerts = trustStore?.list(TrustScope.Global)
+                        ?.fold(ifLeft = { emptyList() }, ifRight = { it }).orEmpty()
                     val editState = GlobalConfigEditState.from(
                         config = appConfig.global,
                         hasStoredPassword = hasStored,
@@ -136,6 +145,9 @@ class SettingsViewModel(
                         schedulerConfig = appConfig.schedulerConfig,
                         schedulerInstalled = installed,
                         schedulerAutoDetectedPath = autoDetectedExecutablePath,
+                        trustedCertificates = trustedCerts,
+                    ).copy(
+                        trustedCertsAvailable = trustStore != null,
                     ).let {
                         if (isLinuxDesktop) it.copy(
                             useNativeTitleBar = loadUseNativeTitleBar() ?: false,
@@ -156,6 +168,51 @@ class SettingsViewModel(
      */
     fun updateState(transform: (GlobalConfigEditState) -> GlobalConfigEditState) {
         _state.update { transform(it) }
+    }
+
+    /**
+     * Parse and stage a global-scope trusted-certificate addition (committed on [save]).
+     *
+     * The certificate is parsed via [cz.pizavo.omnisign.domain.repository.TrustStore.inspect] so the
+     * staged row can show its subject and expiry. If its fingerprint is already trusted in the global
+     * scope (in the baseline minus pending removals, or already staged), nothing is staged and an
+     * "already trusted" message is surfaced via [GlobalConfigEditState.trustedCertAddError]. A parse
+     * failure surfaces the same way. A no-op when no trust store backend is present.
+     *
+     * @param bytes Raw certificate file content (PEM or DER).
+     * @param type Trust role to grant when applied.
+     * @param source Path the certificate was read from, recorded as provenance on save.
+     */
+    fun stageGlobalTrustedCert(bytes: ByteArray, type: TrustedCertificateType, source: String) {
+        val store = trustStore ?: return
+        viewModelScope.launch {
+            withContext(ioDispatcher) { store.inspect(bytes) }.fold(
+                ifLeft = { error -> _state.update { it.copy(trustedCertAddError = error.message) } },
+                ifRight = { parsed ->
+                    _state.update { current ->
+                        val trustedFingerprints = current.trustedCertificates
+                            .filter { it.fingerprint !in current.pendingTrustedCertRemovals }
+                            .map { it.fingerprint } +
+                            current.pendingTrustedCertAdds.map { it.fingerprint }
+                        if (parsed.fingerprint in trustedFingerprints) {
+                            current.copy(trustedCertAddError = "This certificate is already trusted in the global scope.")
+                        } else {
+                            current.copy(
+                                pendingTrustedCertAdds = current.pendingTrustedCertAdds + PendingTrustedCert(
+                                    source = source,
+                                    type = type,
+                                    bytes = bytes,
+                                    fingerprint = parsed.fingerprint,
+                                    subjectDN = parsed.subjectDN,
+                                    notAfter = parsed.notAfter,
+                                ),
+                                trustedCertAddError = null,
+                            )
+                        }
+                    }
+                },
+            )
+        }
     }
 
     /**
@@ -189,9 +246,41 @@ class SettingsViewModel(
                     }
                     storeTsaPasswordIfNeeded(current)
                     if (isLinuxDesktop) saveUseNativeTitleBar(current.useNativeTitleBar)
-                    _state.update { it.copy(saving = false, error = schedulerError, schedulerInstalled = installed) }
-                    _initialState.value = _state.value
-                    if (schedulerError == null) onSuccess()
+
+                    val store = trustStore
+                    val certError = if (store != null) {
+                        withContext(ioDispatcher) {
+                            applyStagedTrustedCertChanges(
+                                store = store,
+                                scope = TrustScope.Global,
+                                removals = current.pendingTrustedCertRemovals,
+                                additions = current.pendingTrustedCertAdds,
+                            )
+                        }
+                    } else {
+                        null
+                    }
+
+                    if (certError != null) {
+                        _state.update { it.copy(saving = false, error = certError, schedulerInstalled = installed) }
+                    } else {
+                        val newBaseline = store
+                            ?.let { withContext(ioDispatcher) { it.list(TrustScope.Global) } }
+                            ?.fold(ifLeft = { emptyList() }, ifRight = { it }).orEmpty()
+                        _state.update {
+                            it.copy(
+                                saving = false,
+                                error = schedulerError,
+                                schedulerInstalled = installed,
+                                trustedCertificates = newBaseline,
+                                pendingTrustedCertAdds = emptyList(),
+                                pendingTrustedCertRemovals = emptySet(),
+                                trustedCertAddError = null,
+                            )
+                        }
+                        _initialState.value = _state.value
+                        if (schedulerError == null) onSuccess()
+                    }
                 },
             )
         }

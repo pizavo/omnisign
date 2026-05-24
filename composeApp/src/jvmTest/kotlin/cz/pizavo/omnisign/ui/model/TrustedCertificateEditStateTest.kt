@@ -13,11 +13,13 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 
 /**
- * Unit tests verifying that trusted certificates are no longer carried by [ProfileEditState] or
- * [GlobalConfigEditState].
+ * Unit tests verifying that trusted certificates never round-trip through the *configuration*.
  *
- * Directly-trusted certificates are now managed solely via the app-managed trust store and the
- * Trusted Certificates panel, so the settings/profile edit forms must neither read nor write them.
+ * Directly-trusted certificates live in the app-managed trust store, not in the config. The edit
+ * states stage certificate changes for the store separately (baseline + pending add/remove), but
+ * [GlobalConfigEditState.from]/[ProfileEditState.from] must ignore any certificates present in a
+ * config's validation block, and `toGlobalConfig`/`toProfileConfig` must never write certificates
+ * back into the config.
  */
 class TrustedCertificateEditStateTest : FunSpec({
 

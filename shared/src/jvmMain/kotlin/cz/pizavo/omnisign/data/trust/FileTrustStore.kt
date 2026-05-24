@@ -142,6 +142,24 @@ class FileTrustStore(
 			}
 		}
 
+	override suspend fun inspect(certBytes: ByteArray): OperationResult<TrustedCertificate> {
+		val x509 = runCatching { parse(certBytes) }.getOrElse {
+			return TrustStoreError.ParseFailed(
+				message = "Could not parse the certificate",
+				details = it.message,
+				cause = it,
+			).left()
+		}
+		val der = x509.encoded
+		return TrustedCertificate(
+			fingerprint = certFingerprint(der),
+			subjectDN = x509.subjectX500Principal.name,
+			notBefore = Instant.fromEpochMilliseconds(x509.notBefore.time),
+			notAfter = Instant.fromEpochMilliseconds(x509.notAfter.time),
+			type = TrustedCertificateType.ANY,
+		).right()
+	}
+
 	override suspend fun setType(
 		scope: TrustScope,
 		fingerprint: String,

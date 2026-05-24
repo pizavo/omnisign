@@ -3,9 +3,13 @@ package cz.pizavo.omnisign.ui.viewmodel
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
+import cz.pizavo.omnisign.domain.model.trust.TrustScope
+import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
+import cz.pizavo.omnisign.ui.model.PendingTrustedCert
 import cz.pizavo.omnisign.ui.model.ProfileEditState
 import cz.pizavo.omnisign.ui.model.ProfileListState
 import cz.pizavo.omnisign.ui.model.ProfilePanelMode
@@ -27,11 +31,14 @@ import kotlinx.coroutines.launch
  * @param manageProfileUseCase Use case for CRUD operations on configuration profiles.
  * @param getConfigUseCase Use-case for reading the current application configuration.
  * @param credentialStore Optional OS credential store for persisting TSA passwords.
+ * @param trustStore Optional app-managed trust store backing the profile's Trusted Certificates
+ *   section. `null` on targets without a backend (web), where that section renders unavailable.
  */
 class ProfileViewModel(
     private val manageProfileUseCase: ManageProfileUseCase,
     private val getConfigUseCase: GetConfigUseCase,
     private val credentialStore: CredentialStore? = null,
+    private val trustStore: TrustStore? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ProfileListState())
@@ -204,7 +211,10 @@ class ProfileViewModel(
                 },
                 ifRight = { profile ->
                     val hasStored = hasStoredTsaPassword(profile)
-                    val editState = ProfileEditState.from(profile, hasStored)
+                    val trustedCerts = trustStore?.list(TrustScope.Profile(name))
+                        ?.fold(ifLeft = { emptyList() }, ifRight = { it }).orEmpty()
+                    val editState = ProfileEditState.from(profile, hasStored, trustedCertificates = trustedCerts)
+                        .copy(trustedCertsAvailable = trustStore != null)
                     _initialEditState.value = editState
                     _state.update {
                         it.copy(
@@ -245,6 +255,53 @@ class ProfileViewModel(
     }
 
     /**
+     * Parse and stage a trusted-certificate addition for the profile being edited (committed on [saveEdit]).
+     *
+     * The certificate is parsed via [cz.pizavo.omnisign.domain.repository.TrustStore.inspect] so the
+     * staged row can show its subject and expiry. If its fingerprint is already trusted in this
+     * profile (in the baseline minus pending removals, or already staged), nothing is staged and an
+     * "already trusted" message is surfaced via [ProfileEditState.trustedCertAddError]. A parse
+     * failure surfaces the same way. A no-op when not editing or when no trust store backend is present.
+     *
+     * @param bytes Raw certificate file content (PEM or DER).
+     * @param type Trust role to grant when applied.
+     * @param source Path the certificate was read from, recorded as provenance on save.
+     */
+    fun stageEditedProfileTrustedCert(bytes: ByteArray, type: TrustedCertificateType, source: String) {
+        val store = trustStore ?: return
+        viewModelScope.launch {
+            store.inspect(bytes).fold(
+                ifLeft = { error -> updateEditState { it.copy(trustedCertAddError = error.message) } },
+                ifRight = { parsed ->
+                    _state.update { current ->
+                        val editState = current.editState ?: return@update current
+                        val trustedFingerprints = editState.trustedCertificates
+                            .filter { it.fingerprint !in editState.pendingTrustedCertRemovals }
+                            .map { it.fingerprint } +
+                            editState.pendingTrustedCertAdds.map { it.fingerprint }
+                        val updated = if (parsed.fingerprint in trustedFingerprints) {
+                            editState.copy(trustedCertAddError = "This certificate is already trusted in this profile.")
+                        } else {
+                            editState.copy(
+                                pendingTrustedCertAdds = editState.pendingTrustedCertAdds + PendingTrustedCert(
+                                    source = source,
+                                    type = type,
+                                    bytes = bytes,
+                                    fingerprint = parsed.fingerprint,
+                                    subjectDN = parsed.subjectDN,
+                                    notAfter = parsed.notAfter,
+                                ),
+                                trustedCertAddError = null,
+                            )
+                        }
+                        current.copy(editState = updated)
+                    }
+                },
+            )
+        }
+    }
+
+    /**
      * Persist the current edit state as a profile and return to the listing view.
      *
      * Converts [ProfileEditState] to a [ProfileConfig], calls [ManageProfileUseCase.upsert],
@@ -263,15 +320,30 @@ class ProfileViewModel(
                     }
                 },
                 ifRight = {
-                    storeTsaPasswordIfNeeded(editState)
-                    _initialEditState.value = null
-                    _state.update {
-                        it.copy(
-                            mode = ProfilePanelMode.Listing,
-                            editState = null,
+                    val store = trustStore
+                    val certError = if (store != null) {
+                        applyStagedTrustedCertChanges(
+                            store = store,
+                            scope = TrustScope.Profile(editState.profileName),
+                            removals = editState.pendingTrustedCertRemovals,
+                            additions = editState.pendingTrustedCertAdds,
                         )
+                    } else {
+                        null
                     }
-                    refresh()
+                    if (certError != null) {
+                        _state.update { it.copy(editState = editState.copy(saving = false, error = certError)) }
+                    } else {
+                        storeTsaPasswordIfNeeded(editState)
+                        _initialEditState.value = null
+                        _state.update {
+                            it.copy(
+                                mode = ProfilePanelMode.Listing,
+                                editState = null,
+                            )
+                        }
+                        refresh()
+                    }
                 },
             )
         }

@@ -7,16 +7,22 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.trust.TrustScope
+import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
+import cz.pizavo.omnisign.ui.model.PendingTrustedCert
+import kotlin.time.Instant
 import cz.pizavo.omnisign.ui.platform.loadUseNativeTitleBar
 import cz.pizavo.omnisign.ui.platform.saveUseNativeTitleBar
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -995,6 +1001,148 @@ class SettingsViewModelTest : FunSpec({
             advanceUntilIdle()
 
             vm.state.value.error.shouldNotBeNull()
+        }
+    }
+
+    test("load populates the trusted certificate baseline from the trust store") {
+        runTest(testDispatcher) {
+            val trustStore: TrustStore = mockk()
+            val cert = TrustedCertificate(
+                fingerprint = "sha256-ca",
+                subjectDN = "CN=ca",
+                notBefore = Instant.parse("2024-01-01T00:00:00Z"),
+                notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+                type = TrustedCertificateType.CA,
+            )
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { trustStore.list(TrustScope.Global) } returns listOf(cert).right()
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, credentialStore = credentialStore,
+                ioDispatcher = testDispatcher, trustStore = trustStore,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.trustedCertificates shouldHaveSize 1
+            vm.state.value.trustedCertsAvailable shouldBe true
+            vm.hasChanges.value shouldBe false
+        }
+    }
+
+    test("save applies staged certificate additions and removals to the trust store") {
+        runTest(testDispatcher) {
+            val trustStore: TrustStore = mockk()
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+            coEvery { trustStore.list(TrustScope.Global) } returns emptyList<TrustedCertificate>().right()
+            coEvery { trustStore.remove(TrustScope.Global, "sha256-old") } returns Unit.right()
+            coEvery {
+                trustStore.add(TrustScope.Global, any(), TrustedCertificateType.CA, "ca.pem")
+            } returns TrustedCertificate(
+                fingerprint = "sha256-new",
+                subjectDN = "CN=new",
+                notBefore = Instant.parse("2024-01-01T00:00:00Z"),
+                notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+                type = TrustedCertificateType.CA,
+            ).right()
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore,
+                ioDispatcher = testDispatcher, trustStore = trustStore,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.updateState {
+                it.copy(
+                    pendingTrustedCertRemovals = setOf("sha256-old"),
+                    pendingTrustedCertAdds = listOf(
+                        PendingTrustedCert(
+                            source = "ca.pem",
+                            type = TrustedCertificateType.CA,
+                            bytes = byteArrayOf(1, 2, 3),
+                            fingerprint = "sha256-new",
+                            subjectDN = "CN=new",
+                            notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+                        ),
+                    ),
+                )
+            }
+            advanceUntilIdle()
+            vm.hasChanges.value shouldBe true
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            advanceUntilIdle()
+
+            successCalled shouldBe true
+            coVerify { trustStore.remove(TrustScope.Global, "sha256-old") }
+            coVerify { trustStore.add(TrustScope.Global, any(), TrustedCertificateType.CA, "ca.pem") }
+            vm.state.value.pendingTrustedCertAdds.shouldBeEmpty()
+            vm.state.value.pendingTrustedCertRemovals.shouldBeEmpty()
+        }
+    }
+
+    test("stageGlobalTrustedCert stages a new certificate with parsed metadata") {
+        runTest(testDispatcher) {
+            val trustStore: TrustStore = mockk()
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { trustStore.list(TrustScope.Global) } returns emptyList<TrustedCertificate>().right()
+            coEvery { trustStore.inspect(any()) } returns TrustedCertificate(
+                fingerprint = "sha256-new",
+                subjectDN = "CN=New CA",
+                notBefore = Instant.parse("2024-01-01T00:00:00Z"),
+                notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+                type = TrustedCertificateType.ANY,
+            ).right()
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, credentialStore = credentialStore,
+                ioDispatcher = testDispatcher, trustStore = trustStore,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.stageGlobalTrustedCert(byteArrayOf(1), TrustedCertificateType.CA, "new.pem")
+            advanceUntilIdle()
+
+            val staged = vm.state.value.pendingTrustedCertAdds
+            staged shouldHaveSize 1
+            staged.first().subjectDN shouldBe "CN=New CA"
+            staged.first().fingerprint shouldBe "sha256-new"
+            staged.first().type shouldBe TrustedCertificateType.CA
+            vm.state.value.trustedCertAddError.shouldBeNull()
+        }
+    }
+
+    test("stageGlobalTrustedCert reports already-trusted when the fingerprint is in the baseline") {
+        runTest(testDispatcher) {
+            val trustStore: TrustStore = mockk()
+            val existing = TrustedCertificate(
+                fingerprint = "sha256-dup",
+                subjectDN = "CN=Existing",
+                notBefore = Instant.parse("2024-01-01T00:00:00Z"),
+                notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+                type = TrustedCertificateType.CA,
+            )
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { trustStore.list(TrustScope.Global) } returns listOf(existing).right()
+            coEvery { trustStore.inspect(any()) } returns existing.copy(type = TrustedCertificateType.ANY).right()
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, credentialStore = credentialStore,
+                ioDispatcher = testDispatcher, trustStore = trustStore,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.stageGlobalTrustedCert(byteArrayOf(9), TrustedCertificateType.CA, "dup.pem")
+            advanceUntilIdle()
+
+            vm.state.value.pendingTrustedCertAdds.shouldBeEmpty()
+            vm.state.value.trustedCertAddError.shouldNotBeNull()
         }
     }
 })

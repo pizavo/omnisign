@@ -6,15 +6,20 @@ import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.trust.TrustScope
+import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.domain.repository.TrustStore
+import cz.pizavo.omnisign.ui.model.PendingTrustedCert
 import cz.pizavo.omnisign.ui.model.ProfilePanelMode
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -25,8 +30,10 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.slot
+import kotlin.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
@@ -805,6 +812,151 @@ class ProfileViewModelTest : FunSpec({
             savedProfile.validation.shouldNotBeNull()
             savedProfile.validation!!.customTrustedLists shouldHaveSize 1
             savedProfile.validation!!.trustedCertificates.shouldBeEmpty()
+        }
+    }
+
+    test("startEdit loads the profile trust scope baseline") {
+        runTest(testDispatcher) {
+            val config = AppConfig(profiles = mapOf("dev" to profile("dev")))
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+            val trustStore: TrustStore = mockk()
+            val cert = TrustedCertificate(
+                fingerprint = "sha256-dev",
+                subjectDN = "CN=dev-ca",
+                notBefore = Instant.parse("2024-01-01T00:00:00Z"),
+                notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+                type = TrustedCertificateType.CA,
+            )
+            coEvery { trustStore.list(TrustScope.Profile("dev")) } returns listOf(cert).right()
+
+            val vm = ProfileViewModel(manageProfile, getConfig, null, trustStore)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            val editState = vm.state.value.editState.shouldNotBeNull()
+            editState.trustedCertificates shouldHaveSize 1
+            editState.trustedCertsAvailable shouldBe true
+            vm.hasEditChanges.value shouldBe false
+        }
+    }
+
+    test("saveEdit applies staged certificate additions and removals to the profile scope") {
+        runTest(testDispatcher) {
+            var currentConfig = AppConfig(profiles = mapOf("dev" to profile("dev")))
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+            val trustStore: TrustStore = mockk()
+            coEvery { trustStore.list(TrustScope.Profile("dev")) } returns emptyList<TrustedCertificate>().right()
+            coEvery { trustStore.remove(TrustScope.Profile("dev"), "sha256-old") } returns Unit.right()
+            coEvery {
+                trustStore.add(TrustScope.Profile("dev"), any(), TrustedCertificateType.CA, "ca.pem")
+            } returns TrustedCertificate(
+                fingerprint = "sha256-new",
+                subjectDN = "CN=new",
+                notBefore = Instant.parse("2024-01-01T00:00:00Z"),
+                notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+                type = TrustedCertificateType.CA,
+            ).right()
+
+            val vm = ProfileViewModel(manageProfile, getConfig, null, trustStore)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState {
+                it.copy(
+                    pendingTrustedCertRemovals = setOf("sha256-old"),
+                    pendingTrustedCertAdds = listOf(
+                        PendingTrustedCert(
+                            source = "ca.pem",
+                            type = TrustedCertificateType.CA,
+                            bytes = byteArrayOf(1, 2, 3),
+                            fingerprint = "sha256-new",
+                            subjectDN = "CN=new",
+                            notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+                        ),
+                    ),
+                )
+            }
+            advanceUntilIdle()
+            vm.hasEditChanges.value shouldBe true
+
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            coVerify { trustStore.remove(TrustScope.Profile("dev"), "sha256-old") }
+            coVerify { trustStore.add(TrustScope.Profile("dev"), any(), TrustedCertificateType.CA, "ca.pem") }
+            vm.state.value.mode shouldBe ProfilePanelMode.Listing
+        }
+    }
+
+    test("stageEditedProfileTrustedCert stages a new certificate with parsed metadata") {
+        runTest(testDispatcher) {
+            val config = AppConfig(profiles = mapOf("dev" to profile("dev")))
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+            val trustStore: TrustStore = mockk()
+            coEvery { trustStore.list(TrustScope.Profile("dev")) } returns emptyList<TrustedCertificate>().right()
+            coEvery { trustStore.inspect(any()) } returns TrustedCertificate(
+                fingerprint = "sha256-new",
+                subjectDN = "CN=New CA",
+                notBefore = Instant.parse("2024-01-01T00:00:00Z"),
+                notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+                type = TrustedCertificateType.ANY,
+            ).right()
+
+            val vm = ProfileViewModel(manageProfile, getConfig, null, trustStore)
+            advanceUntilIdle()
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.stageEditedProfileTrustedCert(byteArrayOf(1), TrustedCertificateType.CA, "new.pem")
+            advanceUntilIdle()
+
+            val es = vm.state.value.editState.shouldNotBeNull()
+            es.pendingTrustedCertAdds shouldHaveSize 1
+            es.pendingTrustedCertAdds.first().subjectDN shouldBe "CN=New CA"
+            es.pendingTrustedCertAdds.first().type shouldBe TrustedCertificateType.CA
+            es.trustedCertAddError.shouldBeNull()
+        }
+    }
+
+    test("stageEditedProfileTrustedCert reports already-trusted when the fingerprint is in the baseline") {
+        runTest(testDispatcher) {
+            val config = AppConfig(profiles = mapOf("dev" to profile("dev")))
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+            val trustStore: TrustStore = mockk()
+            val existing = TrustedCertificate(
+                fingerprint = "sha256-dup",
+                subjectDN = "CN=Existing",
+                notBefore = Instant.parse("2024-01-01T00:00:00Z"),
+                notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+                type = TrustedCertificateType.CA,
+            )
+            coEvery { trustStore.list(TrustScope.Profile("dev")) } returns listOf(existing).right()
+            coEvery { trustStore.inspect(any()) } returns existing.copy(type = TrustedCertificateType.ANY).right()
+
+            val vm = ProfileViewModel(manageProfile, getConfig, null, trustStore)
+            advanceUntilIdle()
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.stageEditedProfileTrustedCert(byteArrayOf(9), TrustedCertificateType.CA, "dup.pem")
+            advanceUntilIdle()
+
+            val es = vm.state.value.editState.shouldNotBeNull()
+            es.pendingTrustedCertAdds.shouldBeEmpty()
+            es.trustedCertAddError.shouldNotBeNull()
         }
     }
 })

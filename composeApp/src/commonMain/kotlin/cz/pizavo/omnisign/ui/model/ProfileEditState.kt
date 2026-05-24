@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
+import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import cz.pizavo.omnisign.lumo.components.TriToggleState
 
 /**
@@ -30,6 +31,13 @@ import cz.pizavo.omnisign.lumo.components.TriToggleState
  * @property disabledHashAlgorithms Hash algorithms disabled by this profile.
  * @property disabledEncryptionAlgorithms Encryption algorithms disabled by this profile.
  * @property customTrustedLists Custom trusted list sources scoped to this profile.
+ * @property trustedCertificates Certificates currently in this profile's app-managed trust scope
+ *   (the baseline loaded when editing started). Display subtracts [pendingTrustedCertRemovals]
+ *   and adds [pendingTrustedCertAdds] on top of this.
+ * @property pendingTrustedCertAdds Certificates staged to be added to this profile's scope on save.
+ * @property pendingTrustedCertRemovals Fingerprints of baseline certificates staged for removal on save.
+ * @property trustedCertsAvailable Whether the trust store backend is wired in (false on web).
+ * @property trustedCertAddError Human-readable error from the last failed certificate add attempt, or `null`.
  * @property saving Whether a save operation is currently in progress.
  * @property error Human-readable error message from the last failed operation, or `null`.
  * @property tlAddError Human-readable error from the last failed trusted list add attempt, or `null`.
@@ -50,6 +58,11 @@ data class ProfileEditState(
 	val disabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
 	val disabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet(),
 	val customTrustedLists: List<CustomTrustedListConfig> = emptyList(),
+	val trustedCertificates: List<TrustedCertificate> = emptyList(),
+	val pendingTrustedCertAdds: List<PendingTrustedCert> = emptyList(),
+	val pendingTrustedCertRemovals: Set<String> = emptySet(),
+	val trustedCertsAvailable: Boolean = true,
+	val trustedCertAddError: String? = null,
 	val saving: Boolean = false,
 	val error: String? = null,
 	val tlAddError: String? = null,
@@ -96,7 +109,9 @@ data class ProfileEditState(
 				timestampTimeout == other.timestampTimeout &&
 				disabledHashAlgorithms == other.disabledHashAlgorithms &&
 				disabledEncryptionAlgorithms == other.disabledEncryptionAlgorithms &&
-				customTrustedLists == other.customTrustedLists
+				customTrustedLists == other.customTrustedLists &&
+				pendingTrustedCertAdds == other.pendingTrustedCertAdds &&
+				pendingTrustedCertRemovals == other.pendingTrustedCertRemovals
 
 	/**
 	 * Convert this UI state back into a persistable [ProfileConfig].
@@ -142,9 +157,14 @@ data class ProfileEditState(
 		 *
 		 * @param profile The source profile configuration.
 		 * @param hasStoredPassword Whether a password is already persisted in the credential store.
+		 * @param trustedCertificates Certificates currently in this profile's app-managed trust scope.
 		 * @return A new edit state pre-populated with the profile's values.
 		 */
-		fun from(profile: ProfileConfig, hasStoredPassword: Boolean = false): ProfileEditState {
+		fun from(
+			profile: ProfileConfig,
+			hasStoredPassword: Boolean = false,
+			trustedCertificates: List<TrustedCertificate> = emptyList(),
+		): ProfileEditState {
 			val (sigTs, archTs) = toToggleStates(profile.signatureLevel)
 			return ProfileEditState(
 				profileName = profile.name,
@@ -162,6 +182,7 @@ data class ProfileEditState(
 				disabledHashAlgorithms = profile.disabledHashAlgorithms,
 				disabledEncryptionAlgorithms = profile.disabledEncryptionAlgorithms,
 				customTrustedLists = profile.validation?.customTrustedLists.orEmpty(),
+				trustedCertificates = trustedCertificates,
 			)
 		}
 
