@@ -1,0 +1,66 @@
+---
+sidebar_position: 1
+slug: /
+---
+
+# OmniSign Server
+
+OmniSign Server is a **Ktor/Netty HTTP backend** that exposes the same PAdES signing, validation,
+and re-timestamping capabilities as the Desktop and CLI apps over a REST API — for organisation-wide
+deployment behind your own authentication and policy.
+
+It is a **provider/operator-facing** component: you deploy it, an administrator configures *how* it
+signs and validates and *who* may reach it, and clients (the [web frontend](/web/), scripts, or other
+services) call its [API](api-reference).
+
+## Architecture
+
+| Component | Technology            | Role                                                  |
+|-----------|-----------------------|-------------------------------------------------------|
+| Server    | Ktor / Netty (JVM)    | REST API for signing, validation, timestamping        |
+| Web       | Compose / Kotlin/Wasm | Optional browser client that calls the server API     |
+| Policy    | `signing.yml`         | Provider-authored signing/validation rules + profiles |
+
+## Two configuration files
+
+The server is configured by **two** files, deliberately separated:
+
+- **[`server.yml`](configuration)** — *exposure and security*: network bind, TLS, CORS, reverse
+  proxy, rate limiting, authentication, and which operations are allowed.
+- **[`signing.yml`](signing-policy)** — *how it signs and validates*: default algorithms, signature
+  level, TSA, validation policy, trusted certificates, and named profiles. This is the server's
+  equivalent of the desktop "global settings + profiles", loaded read-only.
+
+Secrets (the JWT signing key, OIDC client secrets, TLS keystore passwords, TSA passwords) are **never**
+written to either file — they are supplied through [environment variables](configuration#secrets).
+
+## Quick start
+
+The server needs a `server.yml`. Start from the bundled `server.example.yml` (extract it from the JAR
+with `jar xf <jar> server.example.yml`, or copy it from `server/src/main/resources/`):
+
+```bash
+cp server.example.yml server.yml      # then edit cors:/listen: as needed
+./gradlew :server:run                 # use .\gradlew.bat on Windows
+```
+
+With the defaults it binds to **`127.0.0.1:18080`** (loopback) and allows only the **VALIDATE**
+operation. See [Configuration](configuration) for the full file reference and
+[Deployment](deployment) for Docker, systemd, and reverse-proxy setups.
+
+:::warning
+Run behind TLS (or a TLS-terminating reverse proxy) before exposing the server beyond `localhost`.
+Binding to a non-loopback host without `tls:` or `proxy:` is refused at startup. See
+[Security](security).
+:::
+
+## Where to next
+
+| Page                                  | What it covers                                                    |
+|---------------------------------------|------------------------------------------------------------------|
+| [Configuration](configuration)        | The `server.yml` file reference and environment-variable secrets |
+| [Signing policy](signing-policy)      | The `signing.yml` policy file and profiles                       |
+| [Authentication](authentication)      | SSO via OIDC providers and Shibboleth; JWT sessions              |
+| [Security](security)                  | TLS, CORS, rate limiting, proxy trust, and operation gating      |
+| [Deployment](deployment)              | Docker, bare-metal, systemd, reverse proxy                       |
+| [API reference](api-reference)        | Every `/api/v1` and `/auth` endpoint                             |

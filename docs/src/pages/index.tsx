@@ -16,13 +16,6 @@ type DocCard = {
 
 const cards: DocCard[] = [
   {
-    title: 'CLI',
-    to: '/cli/',
-    description:
-      'Sign, validate, and re-timestamp PDF documents from the command line on any OS.',
-    emoji: '⌨️',
-  },
-  {
     title: 'Desktop',
     to: '/desktop/',
     description:
@@ -30,11 +23,25 @@ const cards: DocCard[] = [
     emoji: '🖥️',
   },
   {
-    title: 'Web & Server',
-    to: '/server-web/',
+    title: 'Web',
+    to: '/web/',
     description:
-      'Deploy a Ktor server with a Wasm-powered web frontend for organisation-wide signing and archiving.',
+      'View documents in the browser — the desktop UI compiled to WebAssembly, backed by the server.',
     emoji: '🌐',
+  },
+  {
+    title: 'Server',
+    to: '/server/',
+    description:
+      'Deploy a Ktor HTTP API for organisation-wide validation, signing, and archiving, with SSO.',
+    emoji: '☁️',
+  },
+  {
+    title: 'CLI',
+    to: '/cli/',
+    description:
+      'Sign, validate, and re-timestamp PDF documents from the command line on any OS.',
+    emoji: '⌨️',
   },
 ];
 
@@ -58,7 +65,7 @@ function DocCards() {
       <div className="container">
         <div className="row">
           {cards.map(({title, to, description, emoji}) => (
-            <div key={title} className={clsx('col col--4')}>
+            <div key={title} className={clsx('col col--3')}>
               <Link to={to} className={styles.card}>
                 <div className="text--center padding-horiz--md">
                   <p style={{fontSize: '3rem'}}>{emoji}</p>

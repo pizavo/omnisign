@@ -78,10 +78,26 @@ const config: Config = {
     [
       '@docusaurus/plugin-content-docs',
       {
-        id: 'server-web',
-        path: 'docs-server-web',
-        routeBasePath: 'server-web',
-        sidebarPath: './sidebars-server-web.ts',
+        id: 'web',
+        path: 'docs-web',
+        routeBasePath: 'web',
+        sidebarPath: './sidebars-web.ts',
+        editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
+        lastVersion: 'current',
+        versions: {
+          current: {
+            label: 'Latest',
+          },
+        },
+      },
+    ],
+    [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'server',
+        path: 'docs-server',
+        routeBasePath: 'server',
+        sidebarPath: './sidebars-server.ts',
         editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
         lastVersion: 'current',
         versions: {
@@ -96,8 +112,8 @@ const config: Config = {
       {
         hashed: true,
         docsPluginIdForPreferredVersion: 'desktop',
-        docsDir: ['docs-cli', 'docs-desktop', 'docs-server-web'],
-        docsRouteBasePath: ['cli', 'desktop', 'server-web'],
+        docsDir: ['docs-cli', 'docs-desktop', 'docs-web', 'docs-server'],
+        docsRouteBasePath: ['cli', 'desktop', 'web', 'server'],
       },
     ],
   ],
@@ -121,10 +137,16 @@ const config: Config = {
           activeBaseRegex: '/desktop/',
         },
         {
-          to: '/server-web/',
-          label: 'Web & Server',
+          to: '/web/',
+          label: 'Web',
           position: 'left',
-          activeBaseRegex: '/server-web/',
+          activeBaseRegex: '/web/',
+        },
+        {
+          to: '/server/',
+          label: 'Server',
+          position: 'left',
+          activeBaseRegex: '/server/',
         },
         {
           to: '/cli/',
@@ -163,7 +185,8 @@ const config: Config = {
           title: 'Documentation',
           items: [
             {label: 'Desktop', to: '/desktop/'},
-            {label: 'Web & Server', to: '/server-web/'},
+            {label: 'Web', to: '/web/'},
+            {label: 'Server', to: '/server/'},
             {label: 'CLI', to: '/cli/'},
             {label: 'API Reference', href: 'https://pizavo.github.io/omnisign/api/'},
           ],

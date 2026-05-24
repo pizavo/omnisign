@@ -1,0 +1,81 @@
+---
+sidebar_position: 5
+---
+
+# Security
+
+The server defaults are deliberately closed: it binds to **loopback**, allows only **`VALIDATE`**,
+and refuses to expose itself insecurely. This page covers the transport, network, and operation-level
+controls; the [Configuration](configuration) page has the exact field syntax for each block.
+
+## Transport security
+
+`listen.host` defaults to `127.0.0.1`, reachable only from the same machine. The moment you bind to a
+**non-loopback** host (`0.0.0.0` or a specific IP), the server **requires** either a [`tls:`](#tls--hsts)
+block or [`proxy.enabled: true`](#reverse-proxy) — otherwise startup is refused, because plain HTTP
+on a network-reachable interface would expose JWT bearer tokens, OIDC callback parameters, and refresh
+tokens to any on-path observer.
+
+`development: true` is likewise refused on a non-loopback host: dev mode echoes internal exception
+details to clients. Keep it `false` everywhere except local debugging on `127.0.0.1`.
+
+## TLS & HSTS
+
+A `tls:` block enables direct HTTPS with **TLS 1.2/1.3 and HTTP/2** (ALPN). To force TLS 1.3 only,
+launch with `-Djdk.tls.disabledAlgorithms=TLSv1,TLSv1.1,TLSv1.2`. Keystore and private-key passwords
+come from environment variables (see [Secrets](configuration#secrets)); a `.p12`/`.pfx` path is read
+as PKCS#12, anything else as JKS.
+
+Enable **HSTS** (`tls.hsts`) only when *all* traffic is HTTPS — sending it over plain HTTP can lock
+users out. Start with a short `maxAgeSeconds` (e.g. 300) and raise to a year once stable. Behind a
+TLS-terminating proxy, let the proxy inject HSTS instead.
+
+## CORS
+
+`cors.allowedOrigins` is **required** — a list of explicit origins or `["*"]`. A missing block and an
+empty list are both rejected at startup, so "didn't configure CORS", "allow all", and "deny all" can
+never collapse into the same silent state. Entries may be a bare host, `host:port`, or a full URL.
+Set this to your web frontend's origin(s) before deployment.
+
+## Rate limiting
+
+`rateLimiting` applies per-IP token buckets to the `/auth/*` routes (`auth`) and the operational API
+(`api`); system routes are never limited. Omit the block to disable. Behind a proxy, client IPs are
+taken from `X-Forwarded-For` only for connections from a [trusted proxy](#reverse-proxy).
+
+## Reverse proxy
+
+With `proxy.enabled: true`, TLS is terminated upstream (nginx, Caddy, Traefik) and the server runs on
+the plain-HTTP connector. `X-Forwarded-*` headers are honored **only** when the TCP source IP matches
+an entry in `proxy.trusted` (literal IPs or CIDRs — hostnames and `*` are rejected), so a client
+reaching the Ktor port directly cannot spoof its IP. `proxy.enabled: true` requires a non-empty
+`trusted` list. See [Deployment → Reverse proxy](deployment#reverse-proxy).
+
+## Operation gating {#operation-gating}
+
+`operations.allowed` controls which operations the API exposes. It defaults to **`VALIDATE`** only —
+the one operation that exposes no signing material or timestamping endpoint. **`SIGN`** and
+**`TIMESTAMP`** are opt-in:
+
+```yaml
+operations:
+  allowed: [VALIDATE, SIGN]
+  certificateAliases: ["university-seal"]   # optional allowlist; only meaningful with SIGN
+```
+
+- **`SIGN`** exposes the server's signing certificates (and gates `GET /api/v1/certificates`). When
+  enabled, the server logs a warning unless authentication is on, because every network-reachable
+  client could otherwise sign. Restrict the usable certificates with `certificateAliases` for
+  defense-in-depth.
+- **`TIMESTAMP`** exposes the server's pre-configured TSA via `/api/v1/timestamp`.
+
+Combine the allowlist with [authentication](authentication) for any internet-facing `SIGN` deployment.
+
+## Other hardening
+
+- **Strict config parsing** — unknown `server.yml` keys fail startup so a typo can't silently disable
+  a defense (see [Configuration](configuration)).
+- **Secrets via environment only** — JWT secret, OIDC client secrets, TLS and TSA passwords are never
+  read from YAML.
+- Uploads are streamed to disk and bounded by `maxFileSize`; multiple file parts are rejected.
+- The `X-Powered-By` header is suppressed and a client-supplied `X-Request-Id` is length-bounded.
