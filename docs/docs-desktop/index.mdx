@@ -8,6 +8,8 @@ slug: /
 OmniSign Desktop is a graphical application for signing, validating, and re-timestamping PDF
 documents. Built with Compose Multiplatform, it runs natively on Linux, Windows, and macOS.
 
+![OmniSign Desktop main window](/img/desktop/main-window.avif)
+
 ## Quick start
 
 import OsTabs from '@site/src/components/OsTabs';
@@ -51,9 +53,12 @@ to your Applications folder.
 - **Validate** electronically signed PDFs (including eIDAS EU LOTL validation)
 - **Re-timestamp** existing signatures for digital continuity (archiving)
 - **Extend** signatures to higher PAdES levels (B-T → B-LT → B-LTA)
-- **Certificate discovery** from PKCS#12 files and hardware tokens (PKCS#11)
+- **Certificate discovery** from PKCS#12 files, hardware tokens (PKCS#11), and the OS certificate store
 - **Export** validation reports in TXT, JSON, and multiple XML formats
-- **Build** custom ETSI Trusted Lists for non-EU certificate authorities
+- **Trusted certificates** — manage directly-trusted CA/TSA anchors for the global scope and per profile
+- **Build** custom ETSI Trusted Lists for non-EU certificate authorities, with manual refresh of the EU LOTL and custom lists
 - **Configuration profiles** for different signing workflows
+- **Configuration backup** — export and import the whole configuration (settings, profiles, trusted certificates) as one archive
 - **Automatic renewal scheduling** via OS-native schedulers (Task Scheduler / cron / launchd)
+- **Help & Support** — export logs and toggle debug logging for troubleshooting
 - Wide range of [hash and encryption algorithms](algorithms.md) — SHA-2, SHA-3, Whirlpool, RIPEMD-160, RSA, ECDSA, EdDSA, and more

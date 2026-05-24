@@ -95,7 +95,7 @@ const config: Config = {
       require.resolve('@easyops-cn/docusaurus-search-local'),
       {
         hashed: true,
-        docsPluginIdForPreferredVersion: 'cli',
+        docsPluginIdForPreferredVersion: 'desktop',
         docsDir: ['docs-cli', 'docs-desktop', 'docs-server-web'],
         docsRouteBasePath: ['cli', 'desktop', 'server-web'],
       },
@@ -115,12 +115,6 @@ const config: Config = {
       },
       items: [
         {
-          to: '/cli/',
-          label: 'CLI',
-          position: 'left',
-          activeBaseRegex: '/cli/',
-        },
-        {
           to: '/desktop/',
           label: 'Desktop',
           position: 'left',
@@ -133,19 +127,25 @@ const config: Config = {
           activeBaseRegex: '/server-web/',
         },
         {
+          to: '/cli/',
+          label: 'CLI',
+          position: 'left',
+          activeBaseRegex: '/cli/',
+        },
+        {
           href: 'https://pizavo.github.io/omnisign/api/',
           label: 'API Reference',
           position: 'left',
         },
         {
           type: 'docsVersionDropdown',
-          docsPluginId: 'cli',
+          docsPluginId: 'desktop',
           position: 'right',
           dropdownActiveClassDisabled: true,
         },
         {
           type: 'docsVersionDropdown',
-          docsPluginId: 'desktop',
+          docsPluginId: 'cli',
           position: 'right',
           dropdownActiveClassDisabled: true,
         },
@@ -162,9 +162,9 @@ const config: Config = {
         {
           title: 'Documentation',
           items: [
-            {label: 'CLI', to: '/cli/'},
             {label: 'Desktop', to: '/desktop/'},
             {label: 'Web & Server', to: '/server-web/'},
+            {label: 'CLI', to: '/cli/'},
             {label: 'API Reference', href: 'https://pizavo.github.io/omnisign/api/'},
           ],
         },

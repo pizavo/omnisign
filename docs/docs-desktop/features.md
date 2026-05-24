@@ -27,6 +27,11 @@ sidebar_position: 3
 | Dark / light theme toggle                   |     ✅     |
 | Window position and size persistence        |     ✅     |
 | JBR custom title bar (native frame)         |     ✅     |
+| Trusted certificate management (CA/TSA)     |     ✅     |
+| Configuration export / import (backup)      |     ✅     |
+| Manual trusted-list refresh                 |     ✅     |
+| Support log export & debug logging          |     ✅     |
+| Native vs custom title bar (Linux)          |     ✅     |
 
 ## Toolbar actions
 
@@ -40,11 +45,15 @@ All primary actions are accessible from the toolbar at the top of the window:
 | ⚙️ Settings   | Right    | Opens the global settings dialog.                               |
 | 🌙 / ☀️ Theme | Right    | Toggles between dark and light theme.                           |
 
+![OmniSign toolbar](/img/desktop/toolbar.avif)
+
 ## Sidebar panels
+
+![Right-hand sidebar panel open](/img/desktop/sidebar-panel-open.avif)
 
 | Panel                | Side  | Description                                                |
 |----------------------|-------|------------------------------------------------------------|
 | Signatures           | Left  | Validate and inspect signatures in the loaded document.    |
 | Profiles             | Right | Create, edit, activate, and delete configuration profiles. |
 | Trusted Certificates | Right | Read-only overview of trusted CA/TSA certificates.         |
-| Help                 | Right | Application help and documentation.                        |
+| Help                 | Right | Repo & docs links, plus Support tools (log export, debug logging). |

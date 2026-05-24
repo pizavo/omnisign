@@ -29,7 +29,7 @@ All [config overrides](../configuration/config-overrides) are supported.
 omnisign validate -f contract.pdf
 omnisign validate -f contract.pdf --detailed
 omnisign validate -f contract.pdf --report-out report.xml --report-format XML_SIMPLE
-omnisign validate -f contract.pdf --profile university --validation-policy CUSTOM -p policy.xml
+omnisign validate -f contract.pdf --profile university --validation-policy CUSTOM_FILE -p policy.xml
 ```
 
 ## Sample output

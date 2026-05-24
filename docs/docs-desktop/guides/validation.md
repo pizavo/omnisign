@@ -8,7 +8,8 @@ This guide explains how to validate electronically signed PDF documents using Om
 
 ## 1. Open a signed PDF
 
-Open a signed PDF file using the toolbar folder icon or by dragging it into the window.
+Open a signed PDF file using the toolbar folder icon, which opens a system file picker
+filtered to PDF files.
 
 ## 2. Open the validation panel
 
@@ -20,25 +21,53 @@ start the validation process.
 You can click refresh again at any time to re-validate the document (e.g., after changing
 trust settings or adding trusted certificates).
 
+[media][gif][Clicking the refresh button in the Signatures panel header and the validation report appearing]
+
 ## 3. Read the results
 
-The validation panel displays:
+The panel opens with an **overall result badge** — `VALID`, `INVALID`, or `INDETERMINATE`
+(or `NO SIGNATURES` when the document carries none) — with a [trust-tier](#trust-levels) rosette
+beside it when the signatures are qualified. Below the badge are the **document name** and
+**validation time**, followed by collapsible sections.
 
-- **Overall indication** — `VALID`, `INVALID`, or `INDETERMINATE`
-- **Signature details** — for each signature in the document:
-    - Signer identity (subject DN)
-    - Signature level (B-B, B-T, B-LT, B-LTA)
-    - Signing time
-    - Hash and encryption algorithms used
-    - Certificate details (issuer, validity, serial number, qualification)
-    - Timestamp details (production time, TSA identity)
-- **Errors, warnings, and information** — constraint check results from the ETSI validation engine
+### Signatures
+
+A **Signatures (N)** group lists every signature; its shield icon reflects the aggregate result.
+Expand a signature to see:
+
+- **Indication** / **Sub-indication** — `PASSED`, `FAILED`, or `INDETERMINATE`, plus the ETSI
+  sub-indication when present.
+- **Signed by**, **Level** (e.g. BASELINE-LTA), and signing **Time**.
+- **Qualification** and **Trust** tier (with a rosette for qualified signatures).
+- **Hash algorithm** and **Encryption** algorithm.
+- **Errors**, **Warnings**, **Qualification Errors**, and **Qualification Warnings** — shown when
+  the validation produced any.
+
+Each signature has a nested **Certificate** section (subject, issuer, serial number, validity
+window, key usages, public-key algorithm, and SHA-256 fingerprint) and, when the signature carries
+a signature timestamp, a nested **Signature timestamp** section (production time, qualification, and
+TSA).
+
+![Expanded signature accordion](/img/desktop/validation-signature-accordion.avif)
+
+### Document timestamps
+
+When the document contains document-level timestamps — for example, the archival timestamps in a
+B-LTA file — a **Document Timestamps (N)** group lists each one with its indication, production
+time, qualification, TSA, and any errors or warnings.
+
+### Trusted list warnings
+
+If validation surfaced any trusted-list issues, a **Trusted List Warnings** section appears at the
+bottom of the report.
 
 ## 4. Export a validation report
 
 Click the **download icon** (⬇) in the panel header to open the export format menu.
 Each entry shows the format name, a description, and the file extension. Formats that
 require raw DSS report data are greyed out when the data is not available.
+
+![Validation report export menu](/img/desktop/validation-export-menu.avif)
 
 | Format                       | Extension | Description                                                                        |
 |------------------------------|-----------|------------------------------------------------------------------------------------|
@@ -60,8 +89,15 @@ After selecting a format, a save dialog lets you choose the output location.
 
 ### Trust levels
 
-- **Qualified** — the certificate is issued by a CA in the EU LOTL and meets eIDAS requirements
-- **Not Qualified** — the certificate is not in the EU trust framework (common for institutional certificates)
+Each signature's trust tier is shown with a rosette icon, and an overall rosette appears next to
+the result badge:
+
+- **Qualified (QSCD)** — a qualified certificate whose private key is held on a Qualified
+  Signature/Seal Creation Device — the strongest eIDAS tier.
+- **Qualified** — the certificate meets eIDAS qualified requirements (issued under the EU trust
+  framework), but QSCD status was not confirmed.
+- **Not Qualified** — the certificate is not in the EU trust framework (common for institutional
+  certificates); no rosette is shown.
 
 :::info
 A signature can be cryptographically valid (PASSED) even when the certificate is not qualified.

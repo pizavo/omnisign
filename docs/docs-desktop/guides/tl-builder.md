@@ -16,6 +16,8 @@ The Trusted List builder can be opened from two places:
 - **Profile editor → Trusted Lists** — click the **Build** button within a profile's
   trusted list section.
 
+![Trusted List builder dialog](/img/desktop/tl-builder-dialog.avif)
+
 ## 1. Fill in the list metadata
 
 | Field                    | Description                                                          |

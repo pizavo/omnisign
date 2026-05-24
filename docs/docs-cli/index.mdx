@@ -70,16 +70,34 @@ omnisign validate -f document-signed.pdf
 omnisign timestamp -f document-signed.pdf -o document-lta.pdf --level PADES_BASELINE_LTA
 ```
 
+## More commands
+
+Beyond signing and validation, the CLI provides:
+
+- **`config`** — manage global defaults, [profiles](configuration/profiles),
+  [trusted certificates](configuration/trust), [trusted lists](configuration/trusted-lists), and
+  [PKCS#11 libraries](configuration/pkcs11), and export/import the whole
+  [configuration](configuration/overview).
+- **`certificates list`** — [discover available signing certificates](commands/certificates).
+- **`schedule`** — [install an OS scheduler](commands/schedule) for automatic archival renewal and
+  manage renewal jobs.
+- **`diagnose pkcs11`** — [print a PKCS#11 discovery diagnostic](commands/diagnose) for troubleshooting.
+
+Run `omnisign --help`, or `omnisign <command> --help`, for the full option list of any command.
+
 ## Global flags
 
 Every subcommand inherits these flags from the root `omnisign` command:
 
-| Flag        | Description                                                   |
-|-------------|---------------------------------------------------------------|
-| `--json`    | Emit machine-readable JSON output instead of human-readable text |
-| `--verbose` | Enable verbose (DEBUG-level) logging to stderr                |
-| `--quiet`   | Suppress all informational output; only errors are printed    |
-| `-v, --version` | Print the application version and exit                    |
+| Flag                | Description                                                          |
+|---------------------|---------------------------------------------------------------------|
+| `--json`            | Emit machine-readable JSON output instead of human-readable text    |
+| `--verbose`         | Raise logging to INFO on stderr                                     |
+| `--debug`           | Raise logging to DEBUG on stderr (most detail)                     |
+| `--debug-extended`  | Also lower DSS/Apache library loggers to DEBUG (implies `--debug`)  |
+| `--quiet`           | Suppress all informational output; only errors are printed          |
+| `--log-file <path>` | Also write this run's log to a file (appended, in addition to stderr) |
+| `-v, --version`     | Print the application version and exit                              |
 
 All options can also be set via `OMNISIGN_`-prefixed environment variables
 (e.g. `OMNISIGN_TIMESTAMP_URL`). Explicit command-line flags always take precedence.

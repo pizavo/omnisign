@@ -12,6 +12,8 @@ profile and the global configuration into a single view.
 
 Click the **certificate icon** in the right sidebar to toggle the Trusted Certificates panel.
 
+![Trusted Certificates panel](/img/desktop/trusted-certs-panel.avif)
+
 ## Sections
 
 The panel is divided into two sections, separated by labeled headers:
@@ -32,9 +34,10 @@ Certificates. These are always shown regardless of whether a profile is active.
 Each certificate entry shows:
 
 - **Subject DN** — the distinguished name of the certificate subject.
-- **Issuer** — the issuing certificate authority.
-- **Serial number** — the certificate's serial number.
-- **Usage** — whether the certificate is trusted as a CA, TSA, or both.
+- **Trust role** — a badge showing whether the certificate is trusted as **CA**, **TSA**, or
+  **Any** (both).
+- **Expiry** — the certificate's *not-after* date.
+- **Fingerprint** — a shortened SHA-256 fingerprint (e.g. `sha256-1a2b3c…7d8e9f`).
 
 ## Empty state
 

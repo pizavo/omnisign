@@ -22,7 +22,8 @@ Signature Timestamp (B-LT) is requested, but revocation data cannot be obtained.
 
 ## 1. Open a signed PDF
 
-Open a signed PDF using the toolbar folder icon or by dragging it into the window.
+Open a signed PDF using the toolbar folder icon, which opens a system file picker filtered to
+PDF files.
 
 ## 2. Open the timestamp dialog
 
@@ -38,6 +39,8 @@ Select the operation type from the dropdown:
   may be offered a fallback to BASELINE-T.
 - **Archival Timestamp** — adds an archival document timestamp, extending the document to
   **PAdES BASELINE-LTA**. Also used to renew an existing LTA document.
+
+![Extend Document dialog with the Timestamp Type dropdown](/img/desktop/timestamp-type-dropdown.avif)
 
 :::note
 Some timestamp types may be disabled depending on the document's current signature level.
