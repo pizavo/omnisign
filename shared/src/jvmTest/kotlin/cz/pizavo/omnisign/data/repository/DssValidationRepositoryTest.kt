@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.data.repository
 
+import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.domain.model.error.ValidationError
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
@@ -31,7 +32,7 @@ import java.io.File
  */
 class DssValidationRepositoryTest : FunSpec({
 
-	val repository = DssValidationRepository(DssServiceFactory(mockk(relaxed = true)))
+	val repository = DssValidationRepository(DssServiceFactory(mockk(relaxed = true)), FileTrustStore(tempdir().toPath()))
 	val tmpDir = tempdir()
 
 	fun tmpFile(name: String): File = File(tmpDir, name).also { it.createNewFile() }

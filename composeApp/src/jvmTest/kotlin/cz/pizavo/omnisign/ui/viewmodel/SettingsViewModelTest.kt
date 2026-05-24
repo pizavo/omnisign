@@ -219,58 +219,6 @@ class SettingsViewModelTest : FunSpec({
         }
     }
 
-    test("save persists trusted certificates in global validation config") {
-        runTest(testDispatcher) {
-            coEvery { configRepository.loadConfig() } returns baseConfig.right()
-            coEvery { configRepository.getCurrentConfig() } returns baseConfig
-            val saved = slot<AppConfig>()
-            coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
-
-            val cert = TrustedCertificateConfig(
-                name = "my-ca",
-                type = TrustedCertificateType.CA,
-                certificateBase64 = "AAAA",
-                subjectDN = "CN=My CA",
-            )
-
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
-            vm.load()
-            advanceUntilIdle()
-
-            vm.updateState { it.copy(trustedCertificates = listOf(cert)) }
-
-            var successCalled = false
-            vm.save(onSuccess = { successCalled = true })
-            advanceUntilIdle()
-
-            successCalled shouldBe true
-            saved.captured.global.validation.trustedCertificates shouldHaveSize 1
-            saved.captured.global.validation.trustedCertificates.first().name shouldBe "my-ca"
-        }
-    }
-
-    test("load populates trusted certificates from existing global config") {
-        runTest(testDispatcher) {
-            val cert = TrustedCertificateConfig(
-                name = "existing-ca",
-                type = TrustedCertificateType.ANY,
-                certificateBase64 = "BBBB",
-                subjectDN = "CN=Existing CA",
-            )
-            val globalWithCerts = baseGlobal.copy(
-                validation = ValidationConfig(trustedCertificates = listOf(cert)),
-            )
-            coEvery { configRepository.loadConfig() } returns AppConfig(global = globalWithCerts).right()
-
-            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
-            vm.load()
-            advanceUntilIdle()
-
-            vm.state.value.trustedCertificates shouldHaveSize 1
-            vm.state.value.trustedCertificates.first().name shouldBe "existing-ca"
-        }
-    }
-
     test("hasChanges is false right after load") {
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()

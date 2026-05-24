@@ -1,8 +1,9 @@
 package cz.pizavo.omnisign.ui.model
 
+import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
-import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateRef
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import io.kotest.core.spec.style.FunSpec
@@ -10,116 +11,80 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
-import io.kotest.matchers.shouldBe
 
 /**
- * Unit tests for trusted certificate handling in [ProfileEditState] and [GlobalConfigEditState].
+ * Unit tests verifying that trusted certificates are no longer carried by [ProfileEditState] or
+ * [GlobalConfigEditState].
+ *
+ * Directly-trusted certificates are now managed solely via the app-managed trust store and the
+ * Trusted Certificates panel, so the settings/profile edit forms must neither read nor write them.
  */
 class TrustedCertificateEditStateTest : FunSpec({
 
-    fun cert(name: String, type: TrustedCertificateType = TrustedCertificateType.CA) =
-        TrustedCertificateConfig(
-            name = name,
-            type = type,
-            certificateBase64 = "AAAA",
-            subjectDN = "CN=$name",
-        )
+    fun cert(type: TrustedCertificateType = TrustedCertificateType.CA) =
+        TrustedCertificateRef(inline = "AAAA", type = type)
 
     context("ProfileEditState") {
 
-        test("from() populates trustedCertificates from profile validation config") {
+        test("from() ignores any trusted certificates in the profile validation config") {
             val profile = ProfileConfig(
                 name = "test",
                 validation = ValidationConfig(
-                    trustedCertificates = listOf(cert("ca1"), cert("tsa1", TrustedCertificateType.TSA)),
+                    trustedCertificates = listOf(cert()),
+                    customTrustedLists = listOf(CustomTrustedListConfig(name = "tl", source = "https://x/tl.xml")),
                 ),
             )
 
             val state = ProfileEditState.from(profile)
 
-            state.trustedCertificates shouldHaveSize 2
-            state.trustedCertificates[0].name shouldBe "ca1"
-            state.trustedCertificates[1].type shouldBe TrustedCertificateType.TSA
+            state.customTrustedLists shouldHaveSize 1
         }
 
-        test("from() yields empty list when profile has no validation config") {
-            val profile = ProfileConfig(name = "bare")
-
-            val state = ProfileEditState.from(profile)
-
-            state.trustedCertificates.shouldBeEmpty()
-        }
-
-        test("toProfileConfig() includes validation with trustedCertificates") {
+        test("toProfileConfig() never writes trusted certificates into the config") {
             val state = ProfileEditState(
                 profileName = "p1",
-                trustedCertificates = listOf(cert("root-ca")),
+                customTrustedLists = listOf(CustomTrustedListConfig(name = "tl", source = "https://x/tl.xml")),
             )
 
             val config = state.toProfileConfig()
 
             config.validation.shouldNotBeNull()
-            config.validation!!.trustedCertificates shouldHaveSize 1
-            config.validation!!.trustedCertificates.first().name shouldBe "root-ca"
+            config.validation!!.trustedCertificates.shouldBeEmpty()
         }
 
-        test("toProfileConfig() sets validation to null when no trusted certificates") {
-            val state = ProfileEditState(
-                profileName = "p1",
-                trustedCertificates = emptyList(),
-            )
+        test("toProfileConfig() sets validation to null when no trusted lists") {
+            val state = ProfileEditState(profileName = "p1")
 
             val config = state.toProfileConfig()
 
             config.validation.shouldBeNull()
         }
-
-        test("certAddError defaults to null") {
-            val state = ProfileEditState(profileName = "p")
-
-            state.certAddError.shouldBeNull()
-        }
     }
 
     context("GlobalConfigEditState") {
 
-        test("from() populates trustedCertificates from global validation config") {
+        test("from() ignores any trusted certificates in the global validation config") {
             val global = GlobalConfig(
                 validation = ValidationConfig(
-                    trustedCertificates = listOf(cert("global-ca")),
+                    trustedCertificates = listOf(cert()),
+                    customTrustedLists = listOf(CustomTrustedListConfig(name = "tl", source = "https://x/tl.xml")),
                 ),
             )
 
             val state = GlobalConfigEditState.from(global)
 
-            state.trustedCertificates shouldHaveSize 1
-            state.trustedCertificates.first().name shouldBe "global-ca"
+            state.customTrustedLists shouldHaveSize 1
         }
 
-        test("from() yields empty list when no trusted certificates configured") {
-            val global = GlobalConfig()
-
-            val state = GlobalConfigEditState.from(global)
-
-            state.trustedCertificates.shouldBeEmpty()
-        }
-
-        test("toGlobalConfig() includes trustedCertificates in validation config") {
+        test("toGlobalConfig() never writes trusted certificates into the config") {
             val state = GlobalConfigEditState(
-                trustedCertificates = listOf(cert("root"), cert("intermediate")),
+                customTrustedLists = listOf(CustomTrustedListConfig(name = "tl", source = "https://x/tl.xml")),
             )
 
             val config = state.toGlobalConfig()
 
-            config.validation.trustedCertificates shouldHaveSize 2
-            config.validation.trustedCertificates.map { it.name } shouldBe listOf("root", "intermediate")
-        }
-
-        test("certAddError defaults to null") {
-            val state = GlobalConfigEditState()
-
-            state.certAddError.shouldBeNull()
+            config.validation.trustedCertificates.shouldBeEmpty()
+            config.validation.customTrustedLists shouldHaveSize 1
         }
     }
 })
-

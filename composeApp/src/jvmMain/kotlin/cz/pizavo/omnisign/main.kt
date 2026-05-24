@@ -27,6 +27,7 @@ import cz.pizavo.omnisign.data.service.pkcs11DropDir
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.domain.usecase.MigrateTrustedCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.RenewBatchUseCase
 import cz.pizavo.omnisign.platform.PasswordCallback
 import cz.pizavo.omnisign.ui.platform.*
@@ -263,6 +264,12 @@ fun main(args: Array<String> = emptyArray()) {
 		logger.info { "OmniSign desktop started — log directory: $LOG_DIR" }
 
 		val koin = getKoin()
+		runBlocking {
+			koin.get<MigrateTrustedCertificatesUseCase>()().fold(
+				ifLeft = { logger.warn { "Trusted-certificate migration failed: ${it.message}" } },
+				ifRight = { if (it > 0) logger.info { "Migrated $it inline trusted certificate(s) into the trust store" } },
+			)
+		}
 		val warmupService = koin.get<Pkcs11WarmupService>()
 		val warmupConfigRepo = koin.get<ConfigRepository>()
 
@@ -341,7 +348,13 @@ private fun runHeadlessRenewal() {
 	val renewBatch = koin.get<RenewBatchUseCase>()
 	val notificationService = koin.get<OsNotificationService>()
 
-	val result = runBlocking { renewBatch() }
+	val result = runBlocking {
+		koin.get<MigrateTrustedCertificatesUseCase>()().fold(
+			ifLeft = { logger.warn { "Trusted-certificate migration failed: ${it.message}" } },
+			ifRight = { if (it > 0) logger.info { "Migrated $it inline trusted certificate(s) into the trust store" } },
+		)
+		renewBatch()
+	}
 	stopKoin()
 
 	if (result == null || result.jobs.isEmpty()) {

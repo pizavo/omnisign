@@ -15,6 +15,9 @@ import kotlin.time.Instant
  * @property errors Validation errors for this timestamp.
  * @property warnings Validation warnings for this timestamp.
  * @property infos Informational messages for this timestamp.
+ * @property policyUntrusted True when DSS validated the timestamp but the per-reference trust
+ *   policy distrusts its terminating anchor for timestamping (it is trusted as a CA only).
+ *   Distinct from a cryptographic failure; the reason is appended to [errors].
  */
 data class TimestampValidationResult(
     val timestampId: String,
@@ -26,5 +29,6 @@ data class TimestampValidationResult(
     val tsaSubjectDN: String? = null,
     val errors: List<String> = emptyList(),
     val warnings: List<String> = emptyList(),
-    val infos: List<String> = emptyList()
+    val infos: List<String> = emptyList(),
+    val policyUntrusted: Boolean = false,
 )

@@ -35,11 +35,12 @@ data class ValidationConfig(
 	val customTrustedLists: List<CustomTrustedListConfig> = emptyList(),
 	
 	/**
-	 * Directly trusted certificates stored inline (Base64-encoded DER).
-	 * These are wired into DSS as a [CommonTrustedCertificateSource] alongside
-	 * any trusted lists, without requiring an ETSI TS 119612 XML document.
+	 * Declarative references to directly-trusted certificates, used by the server to provision its
+	 * trust store from `signing.yml` at boot (see [TrustedCertificateRef]). Desktop and CLI manage
+	 * trust through the app-managed [cz.pizavo.omnisign.domain.repository.TrustStore] and leave this
+	 * empty; it is not consulted at validation time (trust is resolved from the store per scope).
 	 */
-	val trustedCertificates: List<TrustedCertificateConfig> = emptyList(),
+	val trustedCertificates: List<TrustedCertificateRef> = emptyList(),
 	
 	/**
 	 * Cryptographic algorithm constraint configuration.

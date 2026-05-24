@@ -88,13 +88,18 @@ global:
     #   - name: "national-tl"
     #     source: "https://tl.example.gov/tl.xml"
     #     signingCertPath: "/etc/omnisign/tl-signing.crt"
-    # DISCOURAGED here: inline Base64-DER certificates. Shown for completeness only - the
-    # app-managed trust store will replace this; prefer customTrustedLists (references).
+    # Directly-trusted certificates, declared by reference and reconciled into the server's
+    # writable trust directory (server.yml `trustStoreDir`) at startup. Each entry sets exactly
+    # one of `path` (authoritative; a PEM/DER file, relative to this file) or `inline` (Base64
+    # DER, for self-contained deployments). `type` is required; `fingerprint` is an optional
+    # integrity pin (sha256-<hex>) that fails startup on mismatch. The bytes are copied into the
+    # trust directory, so the source file may be removed afterward.
     # trustedCertificates:
-    #   - name: "internal-root"
-    #     type: ANY                        # ANY | CA | TSA
-    #     subjectDN: "CN=Internal Root CA"
-    #     certificateBase64: "MIID...=="
+    #   - path: certs/internal-root.pem
+    #     type: ANY                          # ANY | CA | TSA
+    #     fingerprint: "sha256-<hex>"        # optional integrity pin
+    #   - inline: "MIID...=="                # alternative to path (discouraged at scale)
+    #     type: TSA
     # How the validator reacts to cryptographically expired algorithms.
     # algorithmConstraints:
     #   # Severity when an algorithm expired on/before policyUpdateDate. One of:

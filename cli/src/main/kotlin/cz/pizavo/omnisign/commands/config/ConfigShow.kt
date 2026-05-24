@@ -3,7 +3,10 @@ package cz.pizavo.omnisign.commands.config
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.ProgramResult
+import arrow.core.getOrElse
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
+import cz.pizavo.omnisign.domain.model.trust.TrustScope
+import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import java.io.File
 import kotlinx.coroutines.runBlocking
@@ -15,6 +18,7 @@ import org.koin.core.component.inject
  */
 class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 	private val getConfig: GetConfigUseCase by inject()
+	private val trustStore: TrustStore by inject()
 	
 	override fun help(context: Context): String =
 		"Show the current application configuration"
@@ -92,11 +96,11 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 						if (profile.disabledEncryptionAlgorithms.isNotEmpty()) {
 							echo("    Disabled enc   : ${profile.disabledEncryptionAlgorithms.joinToString { it.name }}")
 						}
-						val profileCerts = profile.validation?.trustedCertificates.orEmpty()
+						val profileCerts = trustStore.list(TrustScope.Profile(name)).getOrElse { emptyList() }
 						if (profileCerts.isNotEmpty()) {
 							echo("    Trusted certs  :")
 							profileCerts.forEach { c ->
-								echo("      ${c.name}  [${c.type}]  ${c.subjectDN}")
+								echo("      ${c.subjectDN}  [${c.type}]  ${c.fingerprint}")
 							}
 						}
 					}
@@ -111,14 +115,14 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 						echo("    Path: ${lib.path}")
 					}
 				}
-				val trustedCerts = config.global.validation.trustedCertificates
+				val trustedCerts = trustStore.list(TrustScope.Global).getOrElse { emptyList() }
 				if (trustedCerts.isEmpty()) {
-					echo("\n[Trusted Certificates]\n  (none — add with: config trust add --name <label> --cert <file>)")
+					echo("\n[Trusted Certificates]\n  (none — add with: config trust add --cert <file>)")
 				} else {
 					echo("\n[Trusted Certificates]")
 					trustedCerts.forEach { c ->
-						echo("  ● ${c.name}  [${c.type}]")
-						echo("    Subject: ${c.subjectDN}")
+						echo("  ● ${c.subjectDN}  [${c.type}]")
+						echo("    Fingerprint: ${c.fingerprint}")
 					}
 				}
 				echo("\n═══════════════════════════════════════════════════════════════")

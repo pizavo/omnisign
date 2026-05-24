@@ -33,6 +33,10 @@ package cz.pizavo.omnisign.config
  *   built-in signing defaults and no profiles; the home-directory config file is never read.
  *   Holds everything about how the server signs and validates so this file stays focused on
  *   exposure and security.
+ * @property trustStoreDir Filesystem path to the server's persistent, writable trust directory,
+ *   reconciled at boot from the `signing.yml` `trustedCertificates` references. Should be a volume
+ *   separate from the read-only policy and source cert files. When `null`, the platform default
+ *   location beside the config directory is used.
  */
 data class ServerConfig(
 	val listen: ListenConfig = ListenConfig(),
@@ -45,4 +49,5 @@ data class ServerConfig(
 	val maxFileSize: Long = 100L * 1024 * 1024,
 	val auth: AuthConfig? = null,
 	val signingConfigFile: String? = null,
+	val trustStoreDir: String? = null,
 )

@@ -397,23 +397,8 @@ private fun SettingsContentPanel(
 				onFieldChange = onFieldChange
 			)
 			
-			SettingsCategory.TrustedCertificates -> TrustedCertificatesSection(
-				certificates = state.trustedCertificates,
-				onAdd = { cert ->
-					onFieldChange {
-						it.copy(trustedCertificates = it.trustedCertificates.filter { c -> c.name != cert.name } + cert)
-					}
-				},
-				onRemove = { index ->
-					onFieldChange {
-						it.copy(trustedCertificates = it.trustedCertificates.toMutableList().apply { removeAt(index) })
-					}
-				},
-				addError = state.certAddError,
-				onClearError = { onFieldChange { it.copy(certAddError = null) } },
-				onError = { message -> onFieldChange { it.copy(certAddError = message) } },
-			)
-			
+			SettingsCategory.TrustedCertificates -> TrustedCertificatesInfo()
+
 			SettingsCategory.CustomTrustedLists -> CustomTrustedListsSection(
 				trustedLists = state.customTrustedLists,
 				onAdd = { tl ->
@@ -904,6 +889,24 @@ private fun AlgorithmConstraintsSection(
 		showNullOption = false,
 		itemLabel = { it.name },
 		modifier = Modifier.fillMaxWidth(),
+	)
+}
+
+/**
+ * Informational placeholder for the trusted certificates category.
+ *
+ * Directly trusted certificates are now managed in the dedicated Trusted Certificates side panel,
+ * backed by the app-managed trust store, rather than inline in the settings form. This section
+ * points the user there.
+ */
+@Composable
+private fun TrustedCertificatesInfo() {
+	Text(
+		text = "Directly trusted certificates are managed in the Trusted Certificates panel " +
+				"(the certificate icon in the side bar), backed by the app-managed trust store. " +
+				"Open that panel to add or remove trusted CA and TSA certificates per scope.",
+		style = LumoTheme.typography.body2,
+		color = LumoTheme.colors.textSecondary,
 	)
 }
 

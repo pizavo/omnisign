@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.data.repository
 
+import arrow.core.getOrElse
 import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
@@ -11,6 +12,7 @@ import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.parameters.VisibleSignatureParameters
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.result.SigningResult
+import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.*
 import cz.pizavo.omnisign.domain.service.*
 import eu.europa.esig.dss.enumerations.DigestAlgorithm
@@ -51,6 +53,7 @@ class DssSigningRepository(
 	private val algorithmExpirationChecker: AlgorithmExpirationChecker,
 	private val warningSanitizer: DssWarningSanitizer,
 	private val tspErrorDetector: TspErrorDetector,
+	private val trustStore: TrustStore,
 ) : SigningRepository {
 
 	private var discoveredTokens: List<TokenInfo> = emptyList()
@@ -366,20 +369,22 @@ class DssSigningRepository(
 	/**
 	 * Build a [PAdESService] wired with a certificate verifier, PDF factory, and optional TSA.
 	 *
-	 * Uses [DssServiceFactory.buildSigningCertificateVerifier] which loads EU LOTL and
-	 * custom trusted-list sources so that TSA and certificate chains are properly trusted.
+	 * Uses [DssServiceFactory.buildSigningCertificateVerifier], which loads EU LOTL and custom
+	 * trusted-list sources together with the directly-trusted certificates resolved from the
+	 * [TrustStore] for the active scope, so that TSA and certificate chains are properly trusted.
 	 *
 	 * @param statusAlert A [CollectingStatusAlert] that will capture verifier warnings
 	 *   (missing revocation data, uncovered POE, etc.) fired during the signing operation.
 	 * @return A pair of the wired [PAdESService] and any TL-loading warnings.
 	 */
-	private fun buildSigningService(
+	private suspend fun buildSigningService(
 		resolvedConfig: ResolvedConfig,
 		signatureLevel: DssSignatureLevel,
 		addTimestamp: Boolean,
 		statusAlert: CollectingStatusAlert,
 	): Pair<PAdESService, List<String>> {
-		val (cv, tlWarnings) = dssServiceFactory.buildSigningCertificateVerifier(resolvedConfig) { statusAlert }
+		val anchors = trustStore.resolve(TrustScope.of(resolvedConfig.profileName)).getOrElse { emptyList() }
+		val (cv, tlWarnings) = dssServiceFactory.buildSigningCertificateVerifier(resolvedConfig, anchors) { statusAlert }
 		val service = PAdESService(cv).apply {
 			setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 			resolvedConfig.timestampServer

@@ -13,8 +13,10 @@ import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.model.result.OperationResult
+import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.domain.repository.TrustStore
 import eu.europa.esig.dss.model.FileDocument
 import eu.europa.esig.dss.pades.PAdESSignatureParameters
 import eu.europa.esig.dss.pades.signature.PAdESService
@@ -43,6 +45,7 @@ class DssArchivingRepository(
 	private val dssServiceFactory: DssServiceFactory,
 	private val warningSanitizer: DssWarningSanitizer,
 	private val tspErrorDetector: TspErrorDetector,
+	private val trustStore: TrustStore,
 ) : ArchivingRepository {
 	
 	@Suppress("TooGenericExceptionCaught", "ReturnCount")
@@ -209,19 +212,21 @@ class DssArchivingRepository(
 	/**
 	 * Build a [PAdESService] wired for document extension with revocation and TSA sources.
 	 *
-	 * Loads EU LOTL and custom trusted-list sources so that TSA and certificate chains
-	 * are properly trusted during the extension operation.
+	 * Loads EU LOTL and custom trusted-list sources together with the directly-trusted certificates
+	 * resolved from the [TrustStore] for the active scope, so that TSA and certificate chains are
+	 * properly trusted during the extension operation.
 	 *
 	 * @param statusAlert A [CollectingStatusAlert] that will capture verifier warnings
 	 *   fired during the extension operation.
 	 * @return A pair of the wired [PAdESService] and any TL-loading warnings.
 	 */
-	private fun buildExtendService(
+	private suspend fun buildExtendService(
 		config: ResolvedConfig,
 		tsConfig: TimestampServerConfig,
 		statusAlert: CollectingStatusAlert,
 	): Pair<PAdESService, List<String>> {
-		val (cv, tlWarnings) = dssServiceFactory.buildSigningCertificateVerifier(config) { statusAlert }
+		val anchors = trustStore.resolve(TrustScope.of(config.profileName)).getOrElse { emptyList() }
+		val (cv, tlWarnings) = dssServiceFactory.buildSigningCertificateVerifier(config, anchors) { statusAlert }
 		val service = PAdESService(cv).apply {
 			setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 			setTspSource(dssServiceFactory.buildTspSource(tsConfig))

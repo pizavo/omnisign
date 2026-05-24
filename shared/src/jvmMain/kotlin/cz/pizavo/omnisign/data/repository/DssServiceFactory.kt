@@ -1,8 +1,7 @@
-﻿package cz.pizavo.omnisign.data.repository
+package cz.pizavo.omnisign.data.repository
 
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
-import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import eu.europa.esig.dss.alert.LogOnStatusAlert
@@ -108,8 +107,13 @@ class DssServiceFactory(
 	 * Trusted-list sources are supplied by the shared [TrustedSourceRegistry], which
 	 * retains the parsed EU LOTL and custom-list sources across calls so the LOTL
 	 * parse + signature-verification overhead is incurred at most once and refreshed
-	 * on the background cycle rather than on this call.
+	 * on the background cycle rather than on this call. [directAnchors] (the app-managed
+	 * trust store's certificates for the active scope) are aggregated alongside them.
 	 *
+	 * @param config Resolved configuration driving revocation and trusted-list selection; a `null`
+	 *   config or one with revocation disabled yields a lenient verifier with alerts suppressed.
+	 * @param directAnchors Directly-trusted certificates (from the trust store) aggregated with the
+	 *   trusted-list sources.
 	 * @param alertFactory Optional factory for the [StatusAlert] wired to the verifier
 	 *   alert properties that remain active during signing.  Pass a [CollectingStatusAlert]
 	 *   to capture warnings programmatically; defaults to [LogOnStatusAlert] at WARN level.
@@ -117,6 +121,7 @@ class DssServiceFactory(
 	 */
 	fun buildSigningCertificateVerifier(
 		config: ResolvedConfig?,
+		directAnchors: List<cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor> = emptyList(),
 		alertFactory: () -> StatusAlert = { LogOnStatusAlert(Level.WARN) },
 	): CertificateVerifierResult {
 		val cv = CommonCertificateVerifier()
@@ -156,7 +161,7 @@ class DssServiceFactory(
 			alertOnRevokedCertificate = alert
 		}
 		
-		val tlWarnings = trustedSources.composeInto(cv, config)
+		val tlWarnings = trustedSources.composeInto(cv, config, directAnchors)
 		return CertificateVerifierResult(cv, tlWarnings)
 	}
 
@@ -166,8 +171,13 @@ class DssServiceFactory(
 	 * Loads EU LOTL and custom trusted-list sources so DSS can assess eIDAS qualification
 	 * and build a full trust chain.  Sources come from the shared [TrustedSourceRegistry],
 	 * which retains them across calls so neither the LOTL download nor its parse and
-	 * signature-verification are repeated on every validation.
+	 * signature-verification are repeated on every validation. [directAnchors] (the app-managed
+	 * trust store's certificates for the active scope) are aggregated alongside them.
 	 *
+	 * @param config Resolved configuration driving revocation and trusted-list selection; a `null`
+	 *   config or one with revocation disabled yields a lenient verifier with alerts suppressed.
+	 * @param directAnchors Directly-trusted certificates (from the trust store) aggregated with the
+	 *   trusted-list sources.
 	 * @param alertFactory Optional factory for the [StatusAlert] wired to all five verifier
 	 *   alert properties.  Pass a [CollectingStatusAlert] to capture warnings
 	 *   programmatically; defaults to [LogOnStatusAlert] at WARN level.
@@ -175,6 +185,7 @@ class DssServiceFactory(
 	 */
 	fun buildValidationCertificateVerifier(
 		config: ResolvedConfig?,
+		directAnchors: List<cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor> = emptyList(),
 		alertFactory: () -> StatusAlert = { LogOnStatusAlert(Level.WARN) },
 	): CertificateVerifierResult {
 		val cv = CommonCertificateVerifier()
@@ -213,7 +224,7 @@ class DssServiceFactory(
 			alertOnRevokedCertificate = alert
 		}
 		
-		val tlWarnings = trustedSources.composeInto(cv, config)
+		val tlWarnings = trustedSources.composeInto(cv, config, directAnchors)
 		return CertificateVerifierResult(cv, tlWarnings)
 	}
 	
@@ -354,20 +365,18 @@ class DssServiceFactory(
 		}
 		
 		/**
-		 * Build a [CommonTrustedCertificateSource] from directly trusted certificates
-		 * stored as Base64-encoded DER in the configuration.
+		 * Build a [CommonTrustedCertificateSource] from resolved trust anchors (canonical DER).
 		 *
-		 * @return A populated source, or null when [certs] is empty.
+		 * @return A populated source, or null when [anchors] is empty.
 		 */
-		internal fun buildDirectTrustedCertSource(
-			certs: List<TrustedCertificateConfig>
+		internal fun buildTrustedCertSource(
+			anchors: List<cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor>
 		): CommonTrustedCertificateSource? {
-			if (certs.isEmpty()) return null
+			if (anchors.isEmpty()) return null
 			val source = CommonTrustedCertificateSource()
-			for (cert in certs) {
-				val der = java.util.Base64.getDecoder().decode(cert.certificateBase64)
+			for (anchor in anchors) {
 				val x509 = java.security.cert.CertificateFactory.getInstance("X.509")
-					.generateCertificate(der.inputStream()) as java.security.cert.X509Certificate
+					.generateCertificate(anchor.der.inputStream()) as java.security.cert.X509Certificate
 				source.addCertificate(eu.europa.esig.dss.model.x509.CertificateToken(x509))
 			}
 			return source

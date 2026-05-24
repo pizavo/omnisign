@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.data.repository
 
+import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
@@ -32,7 +33,7 @@ class DssArchivingRepositoryTest : FunSpec({
 	val configRepository: ConfigRepository = mockk()
 	val dssServiceFactory: DssServiceFactory = mockk(relaxed = true)
 	
-	val repository = DssArchivingRepository(configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector())
+	val repository = DssArchivingRepository(configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(), FileTrustStore(tempdir().toPath()))
 	
 	fun configWithoutTsa() = AppConfig(
 		global = GlobalConfig(

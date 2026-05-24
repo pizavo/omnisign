@@ -1,8 +1,6 @@
 package cz.pizavo.omnisign.ui.layout
 
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -11,9 +9,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
-import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
+import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.lumo.LumoTheme
-import cz.pizavo.omnisign.lumo.components.Chip
 import cz.pizavo.omnisign.lumo.components.HorizontalDivider
 import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.Text
@@ -23,17 +21,35 @@ import omnisign.composeapp.generated.resources.icon_certificate
 import org.jetbrains.compose.resources.painterResource
 
 /**
- * Read-only panel showing all trusted certificates effective for the current context.
+ * Panel for viewing and managing directly trusted certificates for the current context.
  *
- * Displays profile-scoped certificates first (when an active profile exists), followed
- * by global certificates, separated by labeled section headers. This gives the user a
- * quick overview of which CAs and TSAs are trusted without navigating into Settings or
- * a profile editor.
+ * The app-managed trust store is the source of truth. The panel shows the global scope and,
+ * when a profile is active, the profile scope in separate labeled sections. Each section lets
+ * the user add a certificate from a file and remove one by its fingerprint.
+ *
+ * On the web target the trust store has no backend; the panel renders an explanatory message
+ * and disables editing rather than crashing.
  *
  * @param state Current [TrustedCertsPanelState] from [cz.pizavo.omnisign.ui.viewmodel.TrustedCertsViewModel].
+ * @param onAdd Called with the target scope, picked certificate file bytes, selected type, and the
+ *   source path the certificate was read from.
+ * @param onRemove Called with the target scope and the fingerprint of the certificate to remove.
+ * @param onClearAddError Called to clear the add error when the user starts a new interaction.
+ * @param onAddError Called with a human-readable message when reading a certificate file fails.
  */
 @Composable
-fun TrustedCertsPanel(state: TrustedCertsPanelState) {
+fun TrustedCertsPanel(
+    state: TrustedCertsPanelState,
+    onAdd: (TrustScope, ByteArray, TrustedCertificateType, String) -> Unit = { _, _, _, _ -> },
+    onRemove: (TrustScope, String) -> Unit = { _, _ -> },
+    onClearAddError: () -> Unit = {},
+    onAddError: (String) -> Unit = {},
+) {
+    if (!state.available) {
+        EmptyState(message = "Managing trusted certificates is not available on this platform.")
+        return
+    }
+
     if (state.error != null) {
         Text(
             text = state.error,
@@ -52,32 +68,21 @@ fun TrustedCertsPanel(state: TrustedCertsPanelState) {
         return
     }
 
-    val hasProfile = state.profileName != null
-    val totalCount = state.profileCertificates.size + state.globalCertificates.size
+    val profileName = state.profileName
 
-    if (totalCount == 0 && !hasProfile) {
-        EmptyState(message = "No trusted certificates configured. Add them in Settings → Validation → Trusted Certificates.")
-        return
-    }
-
-    if (hasProfile) {
-        SectionHeader(label = "Profile — ${state.profileName}")
+    if (profileName != null) {
+        SectionHeader(label = "Profile — $profileName")
         Spacer(modifier = Modifier.height(6.dp))
 
-        if (state.profileCertificates.isEmpty()) {
-            Text(
-                text = "No certificates in this profile.",
-                style = LumoTheme.typography.body2,
-                color = LumoTheme.colors.textSecondary,
-            )
-        } else {
-            state.profileCertificates.forEachIndexed { index, cert ->
-                CertificateRow(cert)
-                if (index < state.profileCertificates.lastIndex) {
-                    Spacer(modifier = Modifier.height(4.dp))
-                }
-            }
-        }
+        val profileScope = TrustScope.Profile(profileName)
+        TrustedCertificatesSection(
+            certificates = state.profileCertificates,
+            onAdd = { bytes, type, source -> onAdd(profileScope, bytes, type, source) },
+            onRemove = { fingerprint -> onRemove(profileScope, fingerprint) },
+            addError = state.addError,
+            onClearError = onClearAddError,
+            onError = onAddError,
+        )
 
         Spacer(modifier = Modifier.height(8.dp))
         HorizontalDivider()
@@ -87,20 +92,14 @@ fun TrustedCertsPanel(state: TrustedCertsPanelState) {
     SectionHeader(label = "Global")
     Spacer(modifier = Modifier.height(6.dp))
 
-    if (state.globalCertificates.isEmpty()) {
-        Text(
-            text = "No global certificates configured.",
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.textSecondary,
-        )
-    } else {
-        state.globalCertificates.forEachIndexed { index, cert ->
-            CertificateRow(cert)
-            if (index < state.globalCertificates.lastIndex) {
-                Spacer(modifier = Modifier.height(4.dp))
-            }
-        }
-    }
+    TrustedCertificatesSection(
+        certificates = state.globalCertificates,
+        onAdd = { bytes, type, source -> onAdd(TrustScope.Global, bytes, type, source) },
+        onRemove = { fingerprint -> onRemove(TrustScope.Global, fingerprint) },
+        addError = if (profileName != null) null else state.addError,
+        onClearError = onClearAddError,
+        onError = onAddError,
+    )
 }
 
 /**
@@ -115,51 +114,6 @@ private fun SectionHeader(label: String) {
         style = LumoTheme.typography.label1,
         color = LumoTheme.colors.text,
     )
-}
-
-/**
- * Single read-only row displaying a trusted certificate's name, type badge, and subject DN.
- *
- * @param cert The certificate entry to display.
- */
-@Composable
-private fun CertificateRow(cert: TrustedCertificateConfig) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Icon(
-            painter = painterResource(Res.drawable.icon_certificate),
-            contentDescription = null,
-            modifier = Modifier.size(16.dp),
-            tint = LumoTheme.colors.textSecondary,
-        )
-        Column(modifier = Modifier.weight(1f)) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                Text(text = cert.name, style = LumoTheme.typography.label1)
-                Chip(
-                    label = {
-                        Text(
-                            text = cert.type.name,
-                            style = LumoTheme.typography.body2,
-                        )
-                    },
-                    selected = false,
-                    enabled = false,
-                    onClick = {},
-                )
-            }
-            Text(
-                text = cert.subjectDN,
-                style = LumoTheme.typography.body2,
-                color = LumoTheme.colors.textSecondary,
-            )
-        }
-    }
 }
 
 /**
@@ -187,4 +141,3 @@ private fun EmptyState(message: String) {
         )
     }
 }
-

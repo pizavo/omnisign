@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.data.repository
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedSourceId
+import cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor
 import eu.europa.esig.dss.service.http.commons.CommonsDataLoader
 import eu.europa.esig.dss.service.http.commons.FileCacheDataLoader
 import eu.europa.esig.dss.spi.tsl.TrustedListsCertificateSource
@@ -90,13 +91,21 @@ class TrustedSourceRegistry(
 	}
 
 	/**
-	 * Select the trusted sources [config] requires, acquiring (and lazily warming)
-	 * each one, and wire them into [cv] as a single aggregated trusted-cert source.
+	 * Select the trusted sources [config] requires (the EU LOTL and its custom lists), acquiring
+	 * (and lazily warming) each one, and wire them — together with the directly-trusted
+	 * [directAnchors] resolved from the app-managed trust store — into [cv] as a single aggregated
+	 * trusted-cert source.
 	 *
+	 * @param directAnchors Directly-trusted certificates (from the trust store) to aggregate
+	 *   alongside the trusted lists; empty when the active scope trusts no direct anchors.
 	 * @return the union of loading warnings for the sources this config uses, so a
 	 *   profile is never shown warnings about another profile's lists.
 	 */
-	fun composeInto(cv: CommonCertificateVerifier, config: ResolvedConfig): List<String> {
+	fun composeInto(
+		cv: CommonCertificateVerifier,
+		config: ResolvedConfig,
+		directAnchors: List<ResolvedTrustAnchor> = emptyList(),
+	): List<String> {
 		val validation = config.validation
 		val sources = mutableListOf<CertificateSource>()
 		val warnings = mutableListOf<String>()
@@ -113,7 +122,7 @@ class TrustedSourceRegistry(
 			warnings += entry.warnings
 		}
 
-		DssServiceFactory.buildDirectTrustedCertSource(validation.trustedCertificates)
+		DssServiceFactory.buildTrustedCertSource(directAnchors)
 			?.let { sources += it }
 
 		if (sources.isNotEmpty()) {

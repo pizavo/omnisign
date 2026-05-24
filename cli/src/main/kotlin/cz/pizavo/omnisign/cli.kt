@@ -8,12 +8,14 @@ import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.domain.usecase.MigrateTrustedCertificatesUseCase
 import cz.pizavo.omnisign.platform.PasswordCallback
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
@@ -73,6 +75,13 @@ fun main(args: Array<String>) {
 				if (needsWarmup) single { MutableStateFlow(false) }
 				single<PasswordCallback> { CliPasswordCallback(terminal) }
 			},
+		)
+	}
+
+	runBlocking {
+		getKoin().get<MigrateTrustedCertificatesUseCase>()().fold(
+			ifLeft = { logger.warn { "Trusted-certificate migration failed: ${it.message}" } },
+			ifRight = { if (it > 0) logger.info { "Migrated $it inline trusted certificate(s) into the trust store" } },
 		)
 	}
 

@@ -134,50 +134,6 @@ fun ProfileEditPanel(
 
     SectionDivider()
 
-    var certsExpanded by remember { mutableStateOf(false) }
-
-    CollapsibleSectionHeader(
-        title = "Trusted Certificates",
-        count = state.trustedCertificates.size,
-        expanded = certsExpanded,
-        onToggle = { certsExpanded = !certsExpanded },
-    )
-
-    AnimatedVisibility(
-        visible = certsExpanded,
-        enter = expandVertically(),
-        exit = shrinkVertically(),
-    ) {
-        Column {
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = "Certificates added here apply only to this profile, in addition to global ones.",
-                style = LumoTheme.typography.body2,
-                color = LumoTheme.colors.textSecondary,
-            )
-            Spacer(modifier = Modifier.height(8.dp))
-
-            TrustedCertificatesSection(
-                certificates = state.trustedCertificates,
-                onAdd = { cert ->
-                    onFieldChange {
-                        it.copy(trustedCertificates = it.trustedCertificates.filter { c -> c.name != cert.name } + cert)
-                    }
-                },
-                onRemove = { index ->
-                    onFieldChange {
-                        it.copy(trustedCertificates = it.trustedCertificates.toMutableList().apply { removeAt(index) })
-                    }
-                },
-                addError = state.certAddError,
-                onClearError = { onFieldChange { it.copy(certAddError = null) } },
-                onError = { message -> onFieldChange { it.copy(certAddError = message) } },
-            )
-        }
-    }
-
-    SectionDivider()
-
     var tlsExpanded by remember { mutableStateOf(false) }
 
     CollapsibleSectionHeader(

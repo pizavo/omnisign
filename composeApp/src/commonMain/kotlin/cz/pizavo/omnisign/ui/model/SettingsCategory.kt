@@ -79,7 +79,7 @@ enum class SettingsCategory(
     /** Directly trusted CA and TSA certificates. */
     TrustedCertificates(
         label = "Trusted Certificates",
-        description = "Directly trusted CA and TSA certificates stored inline. These are wired into DSS alongside any ETSI trusted lists, without requiring an XML document.",
+        description = "Directly trusted CA and TSA certificates, managed in the dedicated Trusted Certificates panel and backed by the app-managed trust store. These are wired into DSS alongside any ETSI trusted lists, without requiring an XML document.",
         parent = Validation,
     ),
 

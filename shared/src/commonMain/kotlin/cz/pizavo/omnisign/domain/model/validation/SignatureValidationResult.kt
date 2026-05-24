@@ -24,6 +24,9 @@ import kotlin.time.Instant
  * @property hashAlgorithm Digest algorithm used in the signature (e.g. "SHA256").
  * @property encryptionAlgorithm Encryption algorithm of the signing key (e.g. "RSA", "ECDSA").
  * @property timestamps Timestamp tokens embedded within or covering this signature (e.g., signature timestamps).
+ * @property policyUntrusted True when DSS validated the signature but the active scope's
+ *   per-reference trust policy distrusts its terminating anchor for signing (it is trusted for
+ *   timestamping only). Distinct from a cryptographic failure; the reason is appended to [errors].
  */
 data class SignatureValidationResult(
     val signatureId: String,
@@ -44,4 +47,5 @@ data class SignatureValidationResult(
     val hashAlgorithm: String? = null,
     val encryptionAlgorithm: String? = null,
     val timestamps: List<TimestampValidationResult> = emptyList(),
+    val policyUntrusted: Boolean = false,
 )
