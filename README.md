@@ -79,12 +79,57 @@ on your machine or on a shared server.
 
 | Platform    | Module                               | Technology             | Description                                                                                                              |
 |-------------|--------------------------------------|------------------------|--------------------------------------------------------------------------------------------------------------------------|
+| **Desktop** | [`composeApp`](composeApp/README.md) | Compose Multiplatform  | Graphical app for Linux, Windows, and macOS with PDF preview, signing, validation, and a settings UI.                    |
+| **Web**     | [`composeApp`](composeApp/README.md) | Compose for Web (Wasm) | Browser-based PDF viewer; signing and validation are planned via the server API.                                         |
+| **Server**  | [`server`](server/README.md)         | Ktor (Kotlin/JVM)      | HTTP API for institutional deployments — sign, validate, and archive from any client.                                    |
 | **CLI**     | [`cli`](cli/README.md)               | Kotlin/JVM             | Full-featured command line for scripting and power users. Ships as a fat JAR and native installers (MSI, DEB, RPM, PKG). |
-| **Desktop** | [`composeApp`](composeApp/README.md) | Compose Multiplatform  | Graphical app for Linux, Windows, and macOS with PDF preview, drag-and-drop, and a settings UI.                          |
-| **Server**  | `server`                             | Ktor (Kotlin/JVM)      | HTTP API for institutional deployments — sign, validate, and archive from any client.                                    |
-| **Web**     | [`composeApp`](composeApp/README.md) | Compose for Web (Wasm) | Browser-based PDF viewer and validation UI (signing operations require the server back-end).                             |
 
-## Project Structure
+## Getting Started
+
+### Desktop app
+
+The simplest way to use OmniSign. Download the installer for your operating system from the
+[**Releases**](https://github.com/pizavo/omnisign/releases) page and run it:
+
+| OS      | Installer                   |
+|---------|-----------------------------|
+| Windows | `.msi` or `.exe`            |
+| macOS   | `.dmg` or `.pkg`            |
+| Linux   | `.deb`, `.rpm`, or AppImage |
+
+Then follow the [Desktop guide](https://pizavo.github.io/omnisign/desktop/) to sign, validate, and
+archive your documents.
+
+### Command line
+
+The CLI ships as native installers (MSI, DEB, RPM, PKG) and a cross-platform fat JAR — ideal for
+scripting and automation with machine-readable JSON output. See the
+[CLI guide](https://pizavo.github.io/omnisign/cli/) and [`cli/README.md`](cli/README.md).
+
+### Self-hosted server
+
+Institutions can deploy the [server](server/README.md) to offer signing and validation over HTTP to
+their users. See the [Server guide](https://pizavo.github.io/omnisign/server/) for configuration,
+authentication, and deployment.
+
+## Documentation
+
+| Resource                                       | Location                                                                                           |
+|------------------------------------------------|----------------------------------------------------------------------------------------------------|
+| **User guides** (Desktop · Web · Server · CLI) | [Documentation site](https://pizavo.github.io/omnisign/) — or run `npm start` inside [`docs/`](docs/) |
+| **API reference** (KDoc)                       | Generated via `./gradlew :dokkaGenerate` → `build/dokka/html/`                                      |
+| **CLI reference**                              | [`cli/README.md`](cli/README.md)                                                                   |
+| **Desktop & Web details**                      | [`composeApp/README.md`](composeApp/README.md)                                                     |
+| **Server reference**                           | [`server/README.md`](server/README.md)                                                             |
+
+---
+
+## For Developers
+
+The rest of this document covers building OmniSign from source and the project internals. For the
+full architecture, module layout, and coding conventions, see [`AGENTS.md`](AGENTS.md).
+
+### Project Structure
 
 ```
 omnisign/
@@ -96,9 +141,9 @@ omnisign/
 └── gradle/         Version catalog and Gradle wrapper
 ```
 
-## Quick Start
+### Building from Source
 
-### Prerequisites
+#### Prerequisites
 
 | Requirement                    | Notes                                                                                                                                                                            |
 |--------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -106,7 +151,7 @@ omnisign/
 | **JetBrains Runtime (JBR) 25** | Required only for the **desktop** target. Install via IntelliJ IDEA Gradle JDK settings or download from [JBR releases](https://github.com/JetBrains/JetBrainsRuntime/releases). |
 | **Gradle**                     | Wrapper included — no global install needed.                                                                                                                                     |
 
-### CLI
+#### CLI
 
 ```shell
 # Build the fat JAR
@@ -120,10 +165,10 @@ java -jar cli/build/libs/omnisign-<version>.jar --help
 ./gradlew :cli:run --args="--help"
 ```
 
-Native installers (MSI, DEB, RPM, PKG, DMG) are also available — see the
+Native installers (MSI, DEB, RPM, PKG, DMG) are built with `:cli:jpackage` — see the
 [CLI README](cli/README.md) for the full command reference, installer packages, and usage examples.
 
-### Desktop
+#### Desktop
 
 ```shell
 ./gradlew :composeApp:run                                   # Linux / macOS
@@ -133,14 +178,16 @@ Native installers (MSI, DEB, RPM, PKG, DMG) are also available — see the
 See the [Compose UI README](composeApp/README.md) for native distribution packaging,
 the web target, architecture details, and feature parity.
 
-### Server
+#### Server
 
 ```shell
 ./gradlew :server:run                                       # Linux / macOS
 .\gradlew.bat :server:run                                   # Windows
 ```
 
-### Web (Wasm)
+See the [Server README](server/README.md) for configuration, authentication, and deployment.
+
+#### Web (Wasm)
 
 ```shell
 ./gradlew :composeApp:wasmJsBrowserDevelopmentRun            # Linux / macOS
@@ -149,16 +196,7 @@ the web target, architecture details, and feature parity.
 
 A local development server starts and opens the app in the default browser.
 
-## Documentation
-
-| Resource                                     | Location                                                                |
-|----------------------------------------------|-------------------------------------------------------------------------|
-| **User guides** (CLI, Desktop, Server & Web) | [`docs/`](docs/) — Docusaurus site, run with `npm start` inside `docs/` |
-| **API reference** (KDoc)                     | Generated via `./gradlew :dokkaGenerate` → `build/dokka/html/`          |
-| **CLI command reference**                    | [`cli/README.md`](cli/README.md)                                        |
-| **Desktop & Web details**                    | [`composeApp/README.md`](composeApp/README.md)                          |
-
-## Testing
+### Testing
 
 The project uses **[Kotest 6](https://kotest.io/)** (FunSpec style),
 **[MockK](https://mockk.io/)**, and
@@ -171,7 +209,7 @@ The project uses **[Kotest 6](https://kotest.io/)** (FunSpec style),
 ./gradlew :composeApp:jvmTest      # Desktop ViewModel tests
 ```
 
-## Key Libraries
+### Key Libraries
 
 | Library                                                                                               | Purpose                                                        |
 |-------------------------------------------------------------------------------------------------------|----------------------------------------------------------------|

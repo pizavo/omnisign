@@ -189,7 +189,7 @@ Supports all [config overrides](#config-overrides).
 omnisign validate -f contract.pdf
 omnisign validate -f contract.pdf --detailed
 omnisign validate -f contract.pdf --report-out report.xml --report-format XML_SIMPLE
-omnisign validate -f contract.pdf --profile university --validation-policy CUSTOM -p policy.xml
+omnisign validate -f contract.pdf --profile university --validation-policy CUSTOM_FILE -p policy.xml
 ```
 
 **Sample output:**
@@ -475,7 +475,7 @@ omnisign config set [options]
 | `--timestamp-username <user>`                  | Default TSA HTTP Basic username                                                   |
 | `--timestamp-password <pass>`                  | Default TSA HTTP Basic password (stored in OS keychain)                           |
 | `--timestamp-timeout <ms>`                     | Default TSA request timeout in milliseconds                                       |
-| `--validation-policy <type>`                   | Default validation policy (`DEFAULT_ETSI`, `CUSTOM`, …)                           |
+| `--validation-policy <type>`                   | Default validation policy (`DEFAULT_ETSI`, `CUSTOM_FILE`)                           |
 | `--check-revocation <bool>`                    | Enable/disable certificate revocation checking                                    |
 | `--use-eu-lotl <bool>`                         | Enable/disable the EU List of Trusted Lists                                       |
 | `--algo-expiration-level <level>`              | Severity when an algorithm's expiration date has passed                           |
@@ -673,41 +673,46 @@ Register custom ETSI Trusted List sources for signature validation.
 #### `config trust` — Manage directly trusted certificates
 
 Register individual CA or TSA certificates as trusted without requiring a full ETSI TS 119612
-trusted list XML. The certificate file is read and parsed at registration time; its DER bytes
-and subject DN are stored inline in the config. The original file is no longer needed afterward.
+trusted list XML. Certificates are imported into the **app-managed trust store**, content-addressed
+by their SHA-256 fingerprint and partitioned into a global scope plus one scope per profile; the
+original file is no longer needed afterward. The fingerprint is the certificate's identity, so no
+name is required.
 
-| Subcommand                   | Description                                       |
-|------------------------------|---------------------------------------------------|
-| `config trust add`           | Trust a certificate directly (no TL XML required) |
-| `config trust list`          | List all directly trusted certificates            |
-| `config trust remove <name>` | Remove a directly trusted certificate             |
+| Subcommand                          | Description                                       |
+|-------------------------------------|---------------------------------------------------|
+| `config trust add`                  | Trust a certificate directly (no TL XML required) |
+| `config trust list`                 | List all directly trusted certificates            |
+| `config trust remove <fingerprint>` | Remove a directly trusted certificate             |
 
 **`config trust add` options:**
 
 | Option                 | Description                                                                                                                 |
 |------------------------|-----------------------------------------------------------------------------------------------------------------------------|
-| `-n, --name <name>`    | **(Required)** Unique label for this trusted certificate                                                                    |
 | `-c, --cert <path>`    | **(Required)** Path to the PEM or DER certificate file                                                                      |
 | `-t, --type <type>`    | Certificate type: `ANY` (both CA and TSA), `CA` (Certificate Authority), or `TSA` (Time Stamping Authority). Default: `ANY` |
-| `-p, --profile <name>` | Store in the given profile instead of the global config                                                                     |
+| `-p, --profile <name>` | Store in the given profile instead of the global scope                                                                      |
+
+`config trust list` prints each certificate's subject, type, expiry, and SHA-256 fingerprint.
+`config trust remove` takes the **fingerprint** as a positional argument and accepts a unique prefix.
+Both accept `-p, --profile <name>` to target a profile scope instead of the global one.
 
 **Examples:**
 
 ```shell
 # Trust a CA certificate globally
-omnisign config trust add --name myca --cert /path/to/ca.pem
+omnisign config trust add --cert /path/to/ca.pem
 
 # Trust a TSA certificate for a specific profile
-omnisign config trust add --name mytsa --cert tsa.der --type TSA --profile university
+omnisign config trust add --cert tsa.der --type TSA --profile university
 
-# List trusted certificates
+# List trusted certificates (shows fingerprints)
 omnisign config trust list
 
 # List trusted certificates from a profile
 omnisign config trust list --profile university
 
-# Remove a trusted certificate
-omnisign config trust remove myca
+# Remove a trusted certificate by fingerprint prefix
+omnisign config trust remove a1b2c3d4
 ```
 
 ---
