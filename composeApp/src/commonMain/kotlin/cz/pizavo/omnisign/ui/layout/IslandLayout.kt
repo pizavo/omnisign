@@ -84,6 +84,7 @@ fun IslandLayout(
 			koin.get<ManageProfileUseCase>(),
 			koin.get<GetConfigUseCase>(),
 			koin.getOrNull<CredentialStore>(),
+			koin.getOrNull<TrustStore>(),
 		)
 	}
 	val profileState by (profileViewModel?.state ?: remember {
@@ -106,6 +107,7 @@ fun IslandLayout(
 			isLinuxDesktop = linux,
 			trustedListRefreshPort = koin.getOrNull<TrustedListRefreshPort>(),
 			configArchive = koin.getOrNull<ConfigArchivePort>(),
+			trustStore = koin.getOrNull<TrustStore>(),
 		)
 	}
 	val settingsState by (settingsViewModel?.state ?: remember {
@@ -227,6 +229,7 @@ fun IslandLayout(
 					onOpenFile = { filePickerLauncher.launch() },
 					onOpenSettings = {
 						settingsViewModel?.load()
+						trustedCertsViewModel?.refresh()
 						showSettingsDialog = true
 					},
 					onSign = {
@@ -253,6 +256,7 @@ fun IslandLayout(
 						onFieldChange = { transform -> settingsViewModel?.updateState(transform) },
 						onSave = {
 							settingsViewModel?.save(onSuccess = {
+								trustedCertsViewModel?.refresh()
 								showSettingsDialog = false
 								initialSettingsCategory = null
 							})
@@ -284,9 +288,12 @@ fun IslandLayout(
 							}
 						},
 						backupEnabled = settingsViewModel?.canBackup == true,
+						onStageTrustedCert = { bytes, type, source ->
+							settingsViewModel?.stageGlobalTrustedCert(bytes, type, source)
+						},
 					)
 				}
-				
+
 				if (showSigningDialog) {
 					SigningDialog(
 						state = signingState,
@@ -559,19 +566,12 @@ fun IslandLayout(
 											showTlBuilderDialog = true
 										}
 									},
+									onStageTrustedCert = { bytes, type, source ->
+										profileViewModel?.stageEditedProfileTrustedCert(bytes, type, source)
+									},
 								)
 								
-								SidePanel.TrustedCerts -> TrustedCertsPanel(
-									state = trustedCertsState,
-									onAdd = { scope, bytes, type, source ->
-										trustedCertsViewModel?.addCertificate(scope, bytes, type, source)
-									},
-									onRemove = { scope, fingerprint ->
-										trustedCertsViewModel?.removeCertificate(scope, fingerprint)
-									},
-									onClearAddError = { trustedCertsViewModel?.clearAddError() },
-									onAddError = { message -> trustedCertsViewModel?.reportAddError(message) },
-								)
+								SidePanel.TrustedCerts -> TrustedCertsPanel(state = trustedCertsState)
 
 								SidePanel.Help -> HelpPanel(
 									debugLoggingEnabled = debugLoggingOn,

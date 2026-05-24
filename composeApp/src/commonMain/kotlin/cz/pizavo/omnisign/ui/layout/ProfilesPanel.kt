@@ -24,6 +24,7 @@ import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.AlertDialog
 import cz.pizavo.omnisign.lumo.components.HorizontalDivider
@@ -73,6 +74,8 @@ private val RowButtonPadding = PaddingValues(2.dp)
  * @param onSaveEdit Called when the user clicks Save in the edit form.
  * @param hasEditChanges Whether any persistable field in the edit form differs from the originally loaded state.
  * @param onBuildTl Called when the user clicks "Build Custom TL", or `null` when unavailable.
+ * @param onStageTrustedCert Called with certificate bytes, type, and source to parse and stage an
+ *   addition to the edited profile's scope (dedup-checked by the ViewModel); committed on Save.
  */
 @Composable
 fun ProfilesPanel(
@@ -88,6 +91,7 @@ fun ProfilesPanel(
     onSaveEdit: () -> Unit,
     hasEditChanges: Boolean = true,
     onBuildTl: (() -> Unit)? = null,
+    onStageTrustedCert: (ByteArray, TrustedCertificateType, String) -> Unit = { _, _, _ -> },
 ) {
     when (state.mode) {
         is ProfilePanelMode.Listing -> ProfileListContent(
@@ -112,6 +116,7 @@ fun ProfilesPanel(
                     globalDisabledEncryptionAlgorithms = state.globalDisabledEncryptionAlgorithms,
                     globalAddArchivalTimestamp = state.globalAddArchivalTimestamp,
                     onBuildTl = onBuildTl,
+                    onStageTrustedCert = onStageTrustedCert,
                 )
             }
         }

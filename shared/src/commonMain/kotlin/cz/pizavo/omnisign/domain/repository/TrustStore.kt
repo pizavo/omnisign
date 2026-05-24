@@ -60,6 +60,19 @@ interface TrustStore {
 	suspend fun list(scope: TrustScope): OperationResult<List<TrustedCertificate>>
 
 	/**
+	 * Parse [certBytes] (PEM or DER) and return its identity and validity without storing it.
+	 *
+	 * Used to preview a certificate before it is staged for addition — to show its subject and
+	 * expiry and to detect whether it is already trusted in a scope (by fingerprint). The returned
+	 * model's [TrustedCertificate.type] is [cz.pizavo.omnisign.domain.model.config.TrustedCertificateType.ANY]
+	 * as a placeholder; the trust role is assigned per reference when the certificate is added.
+	 *
+	 * @param certBytes Raw certificate file content (PEM or DER).
+	 * @return The parsed certificate read model, or a parse error.
+	 */
+	suspend fun inspect(certBytes: ByteArray): OperationResult<TrustedCertificate>
+
+	/**
 	 * Change the trust [type] of the certificate with [fingerprint] within [scope].
 	 *
 	 * @return Unit on success, or [cz.pizavo.omnisign.domain.model.error.TrustStoreError.NotFound]

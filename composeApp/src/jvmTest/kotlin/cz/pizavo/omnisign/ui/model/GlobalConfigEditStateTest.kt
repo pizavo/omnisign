@@ -1,9 +1,13 @@
 package cz.pizavo.omnisign.ui.model
 
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import kotlin.time.Instant
 
 /**
  * Unit tests for [GlobalConfigEditState] computed properties and mapping.
@@ -122,6 +126,54 @@ class GlobalConfigEditStateTest : FunSpec({
 		GlobalConfigEditState(trustedListRefreshInterval = "").isTrustedListRefreshIntervalValid shouldBe true
 		GlobalConfigEditState(trustedListRefreshInterval = "1").isTrustedListRefreshIntervalValid shouldBe true
 		GlobalConfigEditState(trustedListRefreshInterval = "0").isTrustedListRefreshIntervalValid shouldBe false
+	}
+
+	test("from populates the trusted certificate baseline") {
+		val cert = TrustedCertificate(
+			fingerprint = "sha256-aa",
+			subjectDN = "CN=ca",
+			notBefore = Instant.parse("2024-01-01T00:00:00Z"),
+			notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+			type = TrustedCertificateType.CA,
+		)
+		val state = GlobalConfigEditState.from(GlobalConfig(), trustedCertificates = listOf(cert))
+		state.trustedCertificates shouldHaveSize 1
+	}
+
+	test("contentEquals detects a staged certificate addition") {
+		val a = GlobalConfigEditState()
+		val b = GlobalConfigEditState(
+			pendingTrustedCertAdds = listOf(
+				PendingTrustedCert(
+					source = "ca.pem",
+					type = TrustedCertificateType.CA,
+					bytes = byteArrayOf(1),
+					fingerprint = "sha256-ca",
+					subjectDN = "CN=ca",
+					notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+				),
+			),
+		)
+		a.contentEquals(b) shouldBe false
+	}
+
+	test("contentEquals detects a staged certificate removal") {
+		val a = GlobalConfigEditState()
+		val b = GlobalConfigEditState(pendingTrustedCertRemovals = setOf("sha256-aa"))
+		a.contentEquals(b) shouldBe false
+	}
+
+	test("contentEquals ignores the trusted certificate baseline") {
+		val cert = TrustedCertificate(
+			fingerprint = "sha256-aa",
+			subjectDN = "CN=ca",
+			notBefore = Instant.parse("2024-01-01T00:00:00Z"),
+			notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+			type = TrustedCertificateType.CA,
+		)
+		val a = GlobalConfigEditState()
+		val b = GlobalConfigEditState(trustedCertificates = listOf(cert))
+		a.contentEquals(b) shouldBe true
 	}
 })
 

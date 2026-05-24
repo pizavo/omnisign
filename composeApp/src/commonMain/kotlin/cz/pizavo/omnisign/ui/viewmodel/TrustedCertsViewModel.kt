@@ -2,7 +2,6 @@ package cz.pizavo.omnisign.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
@@ -14,16 +13,17 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 /**
- * ViewModel for the trusted certificates management panel.
+ * ViewModel for the read-only trusted certificates overview panel.
  *
  * The app-managed [TrustStore] is the source of truth for directly-trusted certificates.
  * This ViewModel reads the active profile name from the configuration, then lists the
  * certificates referenced by the global scope and the active profile scope so the UI can
- * present them in separate, clearly labeled sections. It also drives adding (from picked
- * certificate file bytes) and removing (by fingerprint) within a chosen [TrustScope].
+ * present them in separate, clearly labeled sections. The panel is view-only; adding and
+ * removing certificates happens in the Settings dialog (global scope) and the profile editor
+ * (profile scope), staged with the rest of those forms.
  *
  * On targets without a [TrustStore] binding (web), [trustStore] is `null`; the panel state
- * is marked unavailable and rendered read-only and empty rather than crashing.
+ * is marked unavailable and rendered empty rather than crashing.
  *
  * @param getConfigUseCase Use-case for reading the current application configuration.
  * @param trustStore App-managed trust store, or `null` when no backend is wired in (web).
@@ -42,10 +42,11 @@ class TrustedCertsViewModel(
      * Reload trusted certificates from the trust store.
      *
      * Resolves the active profile name from the configuration, then lists the global scope
-     * and (when a profile is active) the profile scope. A no-op load that yields an empty,
+     * and (when a profile is active) the active profile scope. A no-op load that yields an empty,
      * unavailable state when no [TrustStore] backend is present.
      *
-     * Call this when the panel becomes visible or after the user adds or removes a certificate.
+     * Call this when the panel becomes visible or after the user saves certificate changes in the
+     * Settings dialog or the profile editor.
      */
     fun refresh() {
         val store = trustStore ?: run {
@@ -76,63 +77,5 @@ class TrustedCertsViewModel(
                 )
             }
         }
-    }
-
-    /**
-     * Import a certificate from picked file [certBytes] into [scope] with the given [type].
-     *
-     * On success the panel is refreshed; on failure the human-readable error is surfaced via
-     * [TrustedCertsPanelState.addError]. A no-op when no [TrustStore] backend is present.
-     *
-     * @param scope Target trust scope (global or a profile).
-     * @param certBytes Raw certificate file content (PEM or DER).
-     * @param type Trust role granted in this scope.
-     * @param source Provenance recorded in the trust index — the path the certificate was read from.
-     */
-    fun addCertificate(scope: TrustScope, certBytes: ByteArray, type: TrustedCertificateType, source: String) {
-        val store = trustStore ?: return
-        _state.update { it.copy(addError = null) }
-        viewModelScope.launch {
-            store.add(scope, certBytes, type, source = source).fold(
-                ifLeft = { error -> _state.update { it.copy(addError = error.message) } },
-                ifRight = { refresh() },
-            )
-        }
-    }
-
-    /**
-     * Remove the certificate with [fingerprint] from [scope].
-     *
-     * On success the panel is refreshed; on failure the human-readable error is surfaced via
-     * [TrustedCertsPanelState.error]. A no-op when no [TrustStore] backend is present.
-     *
-     * @param scope Scope to remove the reference from.
-     * @param fingerprint Algorithm-prefixed SHA-256 fingerprint of the certificate to remove.
-     */
-    fun removeCertificate(scope: TrustScope, fingerprint: String) {
-        val store = trustStore ?: return
-        viewModelScope.launch {
-            store.remove(scope, fingerprint).fold(
-                ifLeft = { error -> _state.update { it.copy(error = error.message) } },
-                ifRight = { refresh() },
-            )
-        }
-    }
-
-    /**
-     * Surface a human-readable certificate add error originating from the UI, such as a failure
-     * to read the picked certificate file before it reaches the store.
-     *
-     * @param message Human-readable error to display.
-     */
-    fun reportAddError(message: String) {
-        _state.update { it.copy(addError = message) }
-    }
-
-    /**
-     * Clear the last certificate add error, typically when the user starts a new interaction.
-     */
-    fun clearAddError() {
-        _state.update { it.copy(addError = null) }
     }
 }

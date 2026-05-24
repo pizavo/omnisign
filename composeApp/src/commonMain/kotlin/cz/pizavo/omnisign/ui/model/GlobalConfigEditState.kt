@@ -5,6 +5,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.*
 import cz.pizavo.omnisign.domain.model.config.service.CrlConfig
 import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
+import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 
 /**
  * Mutable-friendly UI state for the global configuration edit dialog.
@@ -35,6 +36,13 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
  * @property algoExpirationLevel Severity when an algorithm expired before the policy update date.
  * @property algoExpirationLevelAfterUpdate Severity when an algorithm expired after the policy update date.
  * @property customTrustedLists Registered external trusted list sources.
+ * @property trustedCertificates Global-scope directly-trusted certificates currently in the
+ *   app-managed trust store (the baseline loaded when the dialog opened). Display subtracts
+ *   [pendingTrustedCertRemovals] and adds [pendingTrustedCertAdds] on top of this.
+ * @property pendingTrustedCertAdds Certificates staged to be added to the global scope on save.
+ * @property pendingTrustedCertRemovals Fingerprints of baseline certificates staged for removal on save.
+ * @property trustedCertsAvailable Whether the trust store backend is wired in (false on web).
+ * @property trustedCertAddError Human-readable error from the last failed certificate add attempt, or `null`.
  * @property customPkcs11Libraries User-registered PKCS#11 middleware libraries.
  * @property trustedListRefreshInterval Process-global trusted-list refresh interval in hours,
  *   stored as a string for the text field. Clamped to a minimum of 1 hour on save.
@@ -80,6 +88,11 @@ data class GlobalConfigEditState(
 	val algoExpirationLevel: AlgorithmConstraintLevel = AlgorithmConstraintLevel.FAIL,
 	val algoExpirationLevelAfterUpdate: AlgorithmConstraintLevel = AlgorithmConstraintLevel.WARN,
 	val customTrustedLists: List<CustomTrustedListConfig> = emptyList(),
+	val trustedCertificates: List<TrustedCertificate> = emptyList(),
+	val pendingTrustedCertAdds: List<PendingTrustedCert> = emptyList(),
+	val pendingTrustedCertRemovals: Set<String> = emptySet(),
+	val trustedCertsAvailable: Boolean = true,
+	val trustedCertAddError: String? = null,
 	val customPkcs11Libraries: List<CustomPkcs11Library> = emptyList(),
 	val pkcs11ProbeTimeout: String = "30",
 	val trustedListRefreshInterval: String = "24",
@@ -185,6 +198,8 @@ data class GlobalConfigEditState(
 				algoExpirationLevel == other.algoExpirationLevel &&
 				algoExpirationLevelAfterUpdate == other.algoExpirationLevelAfterUpdate &&
 				customTrustedLists == other.customTrustedLists &&
+				pendingTrustedCertAdds == other.pendingTrustedCertAdds &&
+				pendingTrustedCertRemovals == other.pendingTrustedCertRemovals &&
 				customPkcs11Libraries == other.customPkcs11Libraries &&
 				pkcs11ProbeTimeout == other.pkcs11ProbeTimeout &&
 				trustedListRefreshInterval == other.trustedListRefreshInterval &&
@@ -249,6 +264,7 @@ data class GlobalConfigEditState(
 		 * @param activeProfile The currently active profile name, or `null` if none is active.
 		 * @param schedulerConfig Persisted scheduler settings.
 		 * @param schedulerAutoDetectedPath Auto-detected executable path, or `null` when unavailable.
+		 * @param trustedCertificates Global-scope certificates currently in the app-managed trust store.
 		 * @return A new edit state pre-populated with the config's values.
 		 */
 		fun from(
@@ -260,6 +276,7 @@ data class GlobalConfigEditState(
 			schedulerConfig: SchedulerConfig = SchedulerConfig(),
 			schedulerInstalled: Boolean = false,
 			schedulerAutoDetectedPath: String? = null,
+			trustedCertificates: List<TrustedCertificate> = emptyList(),
 		): GlobalConfigEditState {
 			val level = config.defaultSignatureLevel
 			return GlobalConfigEditState(
@@ -287,6 +304,7 @@ data class GlobalConfigEditState(
 				algoExpirationLevelAfterUpdate = config.validation.algorithmConstraints.expirationLevelAfterUpdate
 					?: AlgorithmConstraintLevel.WARN,
 				customTrustedLists = config.validation.customTrustedLists,
+				trustedCertificates = trustedCertificates,
 				customPkcs11Libraries = config.customPkcs11Libraries,
 				pkcs11ProbeTimeout = config.pkcs11ProbeTimeoutSeconds.toString(),
 				trustedListRefreshInterval = config.trustedListRefreshIntervalHours.toString(),

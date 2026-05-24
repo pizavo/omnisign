@@ -1,13 +1,18 @@
 package cz.pizavo.omnisign.ui.layout
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -15,6 +20,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.unit.dp
@@ -22,7 +29,6 @@ import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.lumo.LumoTheme
-import cz.pizavo.omnisign.lumo.components.Chip
 import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.IconButton
 import cz.pizavo.omnisign.lumo.components.IconButtonVariant
@@ -31,6 +37,7 @@ import cz.pizavo.omnisign.lumo.components.Tooltip
 import cz.pizavo.omnisign.lumo.components.TooltipBox
 import cz.pizavo.omnisign.lumo.components.rememberTooltipState
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
+import cz.pizavo.omnisign.ui.model.PendingTrustedCert
 import cz.pizavo.omnisign.ui.platform.platformFilePath
 import cz.pizavo.omnisign.ui.platform.readCertificateFileBytes
 import cz.pizavo.omnisign.ui.platform.readCertificateFileBytesFromPath
@@ -39,26 +46,61 @@ import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.name
 import omnisign.composeapp.generated.resources.Res
+import omnisign.composeapp.generated.resources.icon_arrow_left
 import omnisign.composeapp.generated.resources.icon_folder
 import omnisign.composeapp.generated.resources.icon_plus
 import omnisign.composeapp.generated.resources.icon_x
 import org.jetbrains.compose.resources.painterResource
 
 /**
- * Reusable section for listing, adding, and removing directly trusted certificates within a scope.
+ * Read-only list of directly trusted certificates for the overview panel.
  *
- * Displays the [TrustedCertificate]s currently referenced by the scope, each with a type badge,
- * expiry, and a short fingerprint, followed by an inline form for adding a certificate via a file
- * picker or manual path entry. The form has no name field — a certificate is identified by its
- * fingerprint. The component is agnostic of storage scope; callers wire it into the panel for the
- * global or a profile scope.
+ * Renders each [TrustedCertificate] with a type badge, expiry, and a short fingerprint, without
+ * any add or remove affordances. Used by the Trusted Certificates side panel, which is a view-only
+ * overview; mutation happens in the Settings dialog (global scope) and the profile editor.
  *
  * @param certificates The certificates currently referenced by the scope.
- * @param enabled Whether the add/remove controls are interactive. `false` disables editing
- *   (e.g. on the web target where no trust store backend exists).
- * @param onAdd Called with the picked certificate file bytes, the selected type, and the source
- *   path (the picked file path or the typed path) the certificate was read from.
- * @param onRemove Called with the fingerprint of the certificate to remove.
+ */
+@Composable
+fun TrustedCertificateList(certificates: List<TrustedCertificate>) {
+    if (certificates.isEmpty()) {
+        Text(
+            text = "No trusted certificates registered.",
+            style = LumoTheme.typography.body2,
+            color = LumoTheme.colors.textSecondary,
+        )
+        return
+    }
+    certificates.forEachIndexed { index, cert ->
+        TrustedCertificateRow(certificate = cert)
+        if (index < certificates.lastIndex) {
+            Spacer(modifier = Modifier.height(4.dp))
+        }
+    }
+}
+
+/**
+ * Reusable editor section for staging additions and removals of directly trusted certificates within a scope.
+ *
+ * Displays the baseline [certificates] currently in the scope (minus any staged for removal), then the
+ * staged [pendingAdditions], followed by an inline form for adding a certificate via a file picker or
+ * manual path entry. Removing a baseline certificate or unstaging a pending one only changes the staged
+ * set; nothing is written to the trust store until the host form is saved, so Cancel discards an
+ * accidental removal. The component is agnostic of storage scope; callers wire it into the Settings
+ * dialog for the global scope or the profile editor for a profile scope.
+ *
+ * Certificates staged for removal stay visible, marked "Removing" with an undo button, so the user
+ * can review exactly which certificate they are about to remove before saving — mirroring how a
+ * staged addition is marked "Pending".
+ *
+ * @param certificates Baseline certificates in the scope (the snapshot loaded when editing began).
+ * @param pendingAdditions Certificates staged for addition but not yet written.
+ * @param pendingRemovals Fingerprints of baseline certificates staged for removal.
+ * @param onStageAddition Called with the picked certificate file bytes, the selected type, and the
+ *   source path (the picked file path or the typed path) to stage an addition.
+ * @param onStageRemoval Called with the fingerprint of a baseline certificate to stage its removal.
+ * @param onUnstageRemoval Called with the fingerprint of a certificate whose staged removal is undone.
+ * @param onUnstageAddition Called with the index (into [pendingAdditions]) of a staged addition to drop.
  * @param addError Human-readable error from the last failed Add attempt, or `null`.
  * @param onClearError Called to clear [addError] when the user starts a new interaction.
  * @param onError Called with a human-readable message when reading a certificate file fails.
@@ -66,56 +108,74 @@ import org.jetbrains.compose.resources.painterResource
 @Composable
 fun TrustedCertificatesSection(
     certificates: List<TrustedCertificate>,
-    enabled: Boolean = true,
-    onAdd: (ByteArray, TrustedCertificateType, String) -> Unit,
-    onRemove: (String) -> Unit,
+    pendingAdditions: List<PendingTrustedCert>,
+    pendingRemovals: Set<String>,
+    onStageAddition: (ByteArray, TrustedCertificateType, String) -> Unit,
+    onStageRemoval: (String) -> Unit,
+    onUnstageRemoval: (String) -> Unit,
+    onUnstageAddition: (Int) -> Unit,
     addError: String? = null,
     onClearError: () -> Unit = {},
     onError: (String) -> Unit = {},
 ) {
-    if (certificates.isEmpty()) {
+    if (certificates.isEmpty() && pendingAdditions.isEmpty()) {
         Text(
             text = "No trusted certificates registered.",
             style = LumoTheme.typography.body2,
             color = LumoTheme.colors.textSecondary,
         )
     } else {
-        certificates.forEachIndexed { index, cert ->
+        certificates.forEach { cert ->
+            val markedForRemoval = cert.fingerprint in pendingRemovals
             TrustedCertificateRow(
                 certificate = cert,
-                enabled = enabled,
-                onRemove = { onRemove(cert.fingerprint) },
+                markedForRemoval = markedForRemoval,
+                onAction = {
+                    if (markedForRemoval) onUnstageRemoval(cert.fingerprint)
+                    else onStageRemoval(cert.fingerprint)
+                },
             )
-            if (index < certificates.lastIndex) {
-                Spacer(modifier = Modifier.height(4.dp))
-            }
+            Spacer(modifier = Modifier.height(4.dp))
+        }
+        pendingAdditions.forEachIndexed { index, pending ->
+            PendingTrustedCertRow(
+                pending = pending,
+                onRemove = { onUnstageAddition(index) },
+            )
+            Spacer(modifier = Modifier.height(4.dp))
         }
     }
 
-    if (enabled) {
-        Spacer(modifier = Modifier.height(12.dp))
+    Spacer(modifier = Modifier.height(12.dp))
 
-        TrustedCertificateAddForm(
-            onAdd = onAdd,
-            error = addError,
-            onClearError = onClearError,
-            onError = onError,
-        )
-    }
+    TrustedCertificateAddForm(
+        onAdd = onStageAddition,
+        error = addError,
+        onClearError = onClearError,
+        onError = onError,
+    )
 }
 
 /**
- * Single row displaying a referenced trusted certificate with its type, expiry, and a remove button.
+ * Single row displaying a referenced trusted certificate with its type, expiry, and an optional
+ * action button.
+ *
+ * When [markedForRemoval] is true the row carries a "Removing" badge and its action button becomes
+ * an undo affordance, so a staged removal stays visible (with its full details) until saved — the
+ * user can review exactly what they are removing and reverse it. When [onAction] is `null` the row
+ * is read-only (no button), as in the overview panel.
  *
  * @param certificate The certificate to display.
- * @param enabled Whether the remove button is interactive.
- * @param onRemove Callback invoked when the user clicks the remove button.
+ * @param markedForRemoval Whether this certificate is staged for removal.
+ * @param onAction Callback invoked when the user clicks the action button: it stages a removal for a
+ *   normal row, or undoes the staged removal when [markedForRemoval] is true. `null` renders the row
+ *   read-only.
  */
 @Composable
 private fun TrustedCertificateRow(
     certificate: TrustedCertificate,
-    enabled: Boolean,
-    onRemove: () -> Unit,
+    markedForRemoval: Boolean = false,
+    onAction: (() -> Unit)? = null,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -123,22 +183,16 @@ private fun TrustedCertificateRow(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Column(modifier = Modifier.weight(1f)) {
+            Text(text = certificate.subjectDN, style = LumoTheme.typography.label1)
+            Spacer(modifier = Modifier.height(2.dp))
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text(text = certificate.subjectDN, style = LumoTheme.typography.label1)
-                Chip(
-                    label = {
-                        Text(
-                            text = certificate.type.name,
-                            style = LumoTheme.typography.body2,
-                        )
-                    },
-                    selected = false,
-                    enabled = false,
-                    onClick = {},
-                )
+                StatusBadge(text = certificate.type.name, color = LumoTheme.colors.tertiary)
+                if (markedForRemoval) {
+                    StatusBadge(text = "Removing", color = LumoTheme.colors.error)
+                }
             }
             Text(
                 text = "Expires ${certificate.notAfter.formatDateTime()}",
@@ -151,14 +205,75 @@ private fun TrustedCertificateRow(
                 color = LumoTheme.colors.textSecondary,
             )
         }
+        if (onAction != null) {
+            IconButton(
+                variant = IconButtonVariant.Ghost,
+                onClick = onAction,
+            ) {
+                Icon(
+                    painter = painterResource(
+                        if (markedForRemoval) Res.drawable.icon_arrow_left else Res.drawable.icon_x,
+                    ),
+                    contentDescription = if (markedForRemoval) {
+                        "Undo removal of ${certificate.subjectDN}"
+                    } else {
+                        "Remove ${certificate.subjectDN}"
+                    },
+                    modifier = Modifier.size(16.dp),
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Single row for a certificate staged for addition but not yet saved.
+ *
+ * Shows the source path and the chosen trust type with a "Pending" badge, and a remove button that
+ * drops the staged addition. Parsed details (subject, expiry, fingerprint) are not shown because the
+ * certificate is only parsed when the addition is applied to the store on save.
+ *
+ * @param pending The staged addition to display.
+ * @param onRemove Callback invoked when the user drops this staged addition.
+ */
+@Composable
+private fun PendingTrustedCertRow(
+    pending: PendingTrustedCert,
+    onRemove: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(text = pending.subjectDN, style = LumoTheme.typography.label1)
+            Spacer(modifier = Modifier.height(2.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                StatusBadge(text = pending.type.name, color = LumoTheme.colors.tertiary)
+                StatusBadge(text = "Pending", color = LumoTheme.colors.success)
+            }
+            Text(
+                text = "Expires ${pending.notAfter.formatDateTime()}",
+                style = LumoTheme.typography.body2,
+                color = LumoTheme.colors.textSecondary,
+            )
+            Text(
+                text = shortFingerprint(pending.fingerprint),
+                style = LumoTheme.typography.body2,
+                color = LumoTheme.colors.textSecondary,
+            )
+        }
         IconButton(
             variant = IconButtonVariant.Ghost,
-            enabled = enabled,
             onClick = onRemove,
         ) {
             Icon(
                 painter = painterResource(Res.drawable.icon_x),
-                contentDescription = "Remove ${certificate.subjectDN}",
+                contentDescription = "Drop staged certificate ${pending.subjectDN}",
                 modifier = Modifier.size(16.dp),
             )
         }
@@ -294,6 +409,29 @@ private fun TrustedCertificateAddForm(
             style = LumoTheme.typography.body2,
             color = LumoTheme.colors.error,
         )
+    }
+}
+
+/**
+ * A small rounded badge rendered as a tinted, outlined pill in the given accent [color].
+ *
+ * Used for the certificate type (blue "info" accent), a staged addition (green "Pending"), and a
+ * staged removal (red "Removing"), so each reads as an intentional label rather than a disabled chip.
+ *
+ * @param text The badge label.
+ * @param color The accent color used for the text, the faint background tint, and the outline.
+ */
+@Composable
+private fun StatusBadge(text: String, color: Color) {
+    val shape = RoundedCornerShape(percent = 50)
+    Box(
+        modifier = Modifier
+            .clip(shape)
+            .background(color.copy(alpha = 0.18f))
+            .border(width = 1.dp, color = color.copy(alpha = 0.5f), shape = shape)
+            .padding(horizontal = 8.dp, vertical = 4.dp),
+    ) {
+        Text(text = text, style = LumoTheme.typography.body2, color = color)
     }
 }
 

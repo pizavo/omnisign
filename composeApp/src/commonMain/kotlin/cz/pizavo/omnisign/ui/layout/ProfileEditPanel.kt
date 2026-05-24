@@ -29,6 +29,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.lumo.LumoTheme
@@ -78,6 +79,8 @@ import org.jetbrains.compose.resources.painterResource
  *   When `true` and the profile's archival toggle is INHERIT, the signature timestamp
  *   toggle is forced to `ENABLED` and disabled.
  * @param onBuildTl Called when the user clicks "Build Custom TL", or `null` when unavailable.
+ * @param onStageTrustedCert Called with the picked certificate bytes, type, and source to parse and
+ *   stage an addition to this profile's scope (dedup-checked by the ViewModel); committed on Save.
  */
 @Composable
 fun ProfileEditPanel(
@@ -89,6 +92,7 @@ fun ProfileEditPanel(
     globalDisabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet(),
     globalAddArchivalTimestamp: Boolean = false,
     onBuildTl: (() -> Unit)? = null,
+    onStageTrustedCert: (ByteArray, TrustedCertificateType, String) -> Unit = { _, _, _ -> },
 ) {
     if (state.error != null) {
         Text(
@@ -176,6 +180,74 @@ fun ProfileEditPanel(
                 onError = { message -> onFieldChange { it.copy(tlAddError = message) } },
                 onBuild = onBuildTl,
             )
+        }
+    }
+
+    SectionDivider()
+
+    var certsExpanded by remember { mutableStateOf(false) }
+
+    val trustedCertCount = state.trustedCertificates.count {
+        it.fingerprint !in state.pendingTrustedCertRemovals
+    } + state.pendingTrustedCertAdds.size
+
+    CollapsibleSectionHeader(
+        title = "Trusted Certificates",
+        count = trustedCertCount,
+        expanded = certsExpanded,
+        onToggle = { certsExpanded = !certsExpanded },
+    )
+
+    AnimatedVisibility(
+        visible = certsExpanded,
+        enter = expandVertically(),
+        exit = shrinkVertically(),
+    ) {
+        Column {
+            Spacer(modifier = Modifier.height(4.dp))
+            Text(
+                text = "Certificates added here are trusted only for this profile, in addition to global ones. " +
+                        "Changes are staged and applied when you Save; Cancel discards them.",
+                style = LumoTheme.typography.body2,
+                color = LumoTheme.colors.textSecondary,
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (!state.trustedCertsAvailable) {
+                Text(
+                    text = "Managing trusted certificates is not available on this platform.",
+                    style = LumoTheme.typography.body2,
+                    color = LumoTheme.colors.textSecondary,
+                )
+            } else {
+                TrustedCertificatesSection(
+                    certificates = state.trustedCertificates,
+                    pendingAdditions = state.pendingTrustedCertAdds,
+                    pendingRemovals = state.pendingTrustedCertRemovals,
+                    onStageAddition = onStageTrustedCert,
+                    onStageRemoval = { fingerprint ->
+                        onFieldChange {
+                            it.copy(pendingTrustedCertRemovals = it.pendingTrustedCertRemovals + fingerprint)
+                        }
+                    },
+                    onUnstageRemoval = { fingerprint ->
+                        onFieldChange {
+                            it.copy(pendingTrustedCertRemovals = it.pendingTrustedCertRemovals - fingerprint)
+                        }
+                    },
+                    onUnstageAddition = { index ->
+                        onFieldChange {
+                            it.copy(
+                                pendingTrustedCertAdds =
+                                    it.pendingTrustedCertAdds.filterIndexed { i, _ -> i != index },
+                            )
+                        }
+                    },
+                    addError = state.trustedCertAddError,
+                    onClearError = { onFieldChange { it.copy(trustedCertAddError = null) } },
+                    onError = { message -> onFieldChange { it.copy(trustedCertAddError = message) } },
+                )
+            }
         }
     }
 

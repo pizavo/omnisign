@@ -194,4 +194,17 @@ class FileTrustStoreTest : FunSpec({
 		store.add(TrustScope.Profile("p1"), der("P1"), TrustedCertificateType.ANY).shouldBeRight()
 		store.scopes().shouldBeRight() shouldBe setOf(TrustScope.Global, TrustScope.Profile("p1"))
 	}
+
+	test("inspect parses a certificate without storing it") {
+		val store = newStore()
+		val parsed = store.inspect(der("Inspector")).shouldBeRight()
+		parsed.fingerprint shouldStartWith "sha256-"
+		store.list(TrustScope.Global).shouldBeRight() shouldHaveSize 0
+	}
+
+	test("inspect returns ParseFailed on non-certificate bytes") {
+		val store = newStore()
+		store.inspect(byteArrayOf(1, 2, 3)).shouldBeLeft()
+			.shouldBeInstanceOf<TrustStoreError.ParseFailed>()
+	}
 })
