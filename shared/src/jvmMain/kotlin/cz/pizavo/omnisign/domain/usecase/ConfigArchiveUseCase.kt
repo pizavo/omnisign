@@ -9,6 +9,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.ConfigFormat
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
+import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import kotlinx.serialization.SerializationException
@@ -47,7 +48,17 @@ class ConfigArchiveUseCase(
 	private val configRepository: ConfigRepository,
 	private val exportImport: ExportImportConfigUseCase,
 	private val trustStore: TrustStore,
-) {
+) : ConfigArchivePort {
+	/**
+	 * Build the full-configuration archive in the default JSON format ([ConfigArchivePort]).
+	 */
+	override suspend fun exportFullConfig(): OperationResult<ByteArray> = exportApp(ConfigFormat.JSON)
+
+	/**
+	 * Replace the entire configuration from a full-configuration [archive] ([ConfigArchivePort]).
+	 */
+	override suspend fun importFullConfig(archive: ByteArray): OperationResult<Unit> = importApp(archive)
+
 	/**
 	 * Export the full application configuration (global + every profile) and the trust material of
 	 * all of their scopes as an archive.

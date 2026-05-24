@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
@@ -104,6 +105,7 @@ fun IslandLayout(
 			autoDetectedExecutablePath = resolveExecutablePath(),
 			isLinuxDesktop = linux,
 			trustedListRefreshPort = koin.getOrNull<TrustedListRefreshPort>(),
+			configArchive = koin.getOrNull<ConfigArchivePort>(),
 		)
 	}
 	val settingsState by (settingsViewModel?.state ?: remember {
@@ -269,6 +271,19 @@ fun IslandLayout(
 						trustedListRefreshing = trustedListRefreshing,
 						trustedListLastRefreshAt = trustedListLastRefreshAt,
 						onRefreshTrustedLists = { settingsViewModel?.refreshTrustedListsNow() },
+						onExportConfig = {
+							scope.launch {
+								val bytes = settingsViewModel?.buildConfigArchive() ?: return@launch
+								exportConfigArchive(bytes, "omnisign-config")
+							}
+						},
+						onImportConfig = {
+							scope.launch {
+								val bytes = importConfigArchive() ?: return@launch
+								settingsViewModel?.importConfiguration(bytes)
+							}
+						},
+						backupEnabled = settingsViewModel?.canBackup == true,
 					)
 				}
 				

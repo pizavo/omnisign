@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.CredentialStore
@@ -922,6 +923,78 @@ class SettingsViewModelTest : FunSpec({
             } finally {
                 unmockkStatic(::loadUseNativeTitleBar)
             }
+        }
+    }
+
+    test("canBackup is false when no archive backend is wired") {
+        runTest(testDispatcher) {
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, ioDispatcher = testDispatcher)
+            vm.canBackup shouldBe false
+        }
+    }
+
+    test("buildConfigArchive returns the archive bytes from the use case") {
+        runTest(testDispatcher) {
+            val archive = mockk<ConfigArchivePort>()
+            coEvery { archive.exportFullConfig() } returns byteArrayOf(1, 2, 3).right()
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configArchive = archive,
+                ioDispatcher = UnconfinedTestDispatcher(testDispatcher.scheduler),
+            )
+
+            vm.canBackup shouldBe true
+            vm.buildConfigArchive() shouldBe byteArrayOf(1, 2, 3)
+        }
+    }
+
+    test("buildConfigArchive surfaces an export error and returns null") {
+        runTest(testDispatcher) {
+            val archive = mockk<ConfigArchivePort>()
+            coEvery { archive.exportFullConfig() } returns
+                ConfigurationError.InvalidConfiguration("export failed").left()
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configArchive = archive,
+                ioDispatcher = UnconfinedTestDispatcher(testDispatcher.scheduler),
+            )
+
+            vm.buildConfigArchive().shouldBeNull()
+            vm.state.value.error.shouldNotBeNull()
+        }
+    }
+
+    test("importConfiguration imports the archive and reloads the state") {
+        runTest(testDispatcher) {
+            val archive = mockk<ConfigArchivePort>()
+            coEvery { archive.importFullConfig(any()) } returns Unit.right()
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configArchive = archive,
+                ioDispatcher = UnconfinedTestDispatcher(testDispatcher.scheduler),
+            )
+
+            vm.importConfiguration(byteArrayOf(9))
+            advanceUntilIdle()
+
+            coVerify { archive.importFullConfig(byteArrayOf(9)) }
+            vm.state.value.defaultHashAlgorithm shouldBe HashAlgorithm.SHA256
+            vm.state.value.error.shouldBeNull()
+        }
+    }
+
+    test("importConfiguration surfaces an import error") {
+        runTest(testDispatcher) {
+            val archive = mockk<ConfigArchivePort>()
+            coEvery { archive.importFullConfig(any()) } returns
+                ConfigurationError.InvalidConfiguration("bad archive").left()
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configArchive = archive,
+                ioDispatcher = UnconfinedTestDispatcher(testDispatcher.scheduler),
+            )
+
+            vm.importConfiguration(byteArrayOf(0))
+            advanceUntilIdle()
+
+            vm.state.value.error.shouldNotBeNull()
         }
     }
 })

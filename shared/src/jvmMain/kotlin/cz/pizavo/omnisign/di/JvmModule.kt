@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.data.serializer.XmlConfigSerializer
 import cz.pizavo.omnisign.data.serializer.YamlConfigSerializer
 import cz.pizavo.omnisign.data.service.*
 import cz.pizavo.omnisign.domain.port.ConfigSerializerRegistry
+import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
@@ -120,7 +121,7 @@ val jvmRepositoryModule = module {
 		)
 	}
 	single { ExportImportConfigUseCase(get(), get()) }
-	single { ConfigArchiveUseCase(get(), get(), get()) }
+	single { ConfigArchiveUseCase(get(), get(), get()) } bind ConfigArchivePort::class
 	singleOf(::RenewBatchUseCase)
 	single { MigrateTrustedCertificatesUseCase(get(), get()) }
 	

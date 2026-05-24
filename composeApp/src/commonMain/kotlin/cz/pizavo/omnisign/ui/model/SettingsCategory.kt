@@ -123,6 +123,19 @@ enum class SettingsCategory(
         parent = Tokens,
     ),
 
+    /** Top-level group for configuration backup (export / import). */
+    Backup(
+        label = "Backup",
+        description = "Export the full configuration to a ZIP archive, or import one to replace it.",
+    ),
+
+    /** Export / import the full configuration as a single archive. */
+    ConfigBackup(
+        label = "Import & Export",
+        description = "Export the entire configuration — global settings, every profile, and all trusted certificates — to a single ZIP archive, or import an archive to replace the current configuration.",
+        parent = Backup,
+    ),
+
     /** Top-level group for desktop appearance settings (Linux only). */
     Appearance(
         label = "Appearance",

@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.SchedulerConfig
+import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -48,6 +49,8 @@ import kotlin.time.Instant
  * @param trustedListRefreshPort Optional trusted-list refresh backend. Drives the
  *   "Refresh now" control and the last-refreshed indicator. `null` on targets
  *   without a DSS backend (web).
+ * @param configArchive Optional full-configuration archive port backing the Backup
+ *   (export / import) settings section. `null` on targets without a JVM file backend (web).
  */
 class SettingsViewModel(
     private val getConfigUseCase: GetConfigUseCase,
@@ -59,6 +62,7 @@ class SettingsViewModel(
     private val isLinuxDesktop: Boolean = false,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val trustedListRefreshPort: TrustedListRefreshPort? = null,
+    private val configArchive: ConfigArchivePort? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GlobalConfigEditState())
@@ -264,6 +268,42 @@ class SettingsViewModel(
                 port.uninstall()
             } catch (_: Exception) { }
             return null
+        }
+    }
+
+    /** Whether configuration export/import is available (JVM desktop only). */
+    val canBackup: Boolean get() = configArchive != null
+
+    /**
+     * Build the full-configuration export archive — a ZIP of the configuration plus the trusted
+     * certificates referenced by the global and profile scopes.
+     *
+     * @return The archive bytes, or `null` when no archive backend is available or the export
+     *   failed (the failure reason is surfaced via [state]'s `error`).
+     */
+    suspend fun buildConfigArchive(): ByteArray? {
+        val archive = configArchive ?: return null
+        return withContext(ioDispatcher) { archive.exportFullConfig() }.fold(
+            ifLeft = { error -> _state.update { it.copy(error = error.message) }; null },
+            ifRight = { it },
+        )
+    }
+
+    /**
+     * Import a full-configuration archive, replacing the entire current configuration, then reload
+     * the edit state so the dialog reflects the imported values. Failures are surfaced via
+     * [state]'s `error`.
+     *
+     * @param bytes The ZIP archive bytes chosen by the user.
+     */
+    fun importConfiguration(bytes: ByteArray) {
+        val archive = configArchive ?: return
+        _state.update { it.copy(error = null) }
+        viewModelScope.launch {
+            withContext(ioDispatcher) { archive.importFullConfig(bytes) }.fold(
+                ifLeft = { error -> _state.update { it.copy(error = error.message) } },
+                ifRight = { load() },
+            )
         }
     }
 
