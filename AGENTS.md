@@ -21,13 +21,14 @@ Aggregated Dokka API docs are generated via `.\gradlew.bat :dokkaGenerate` → `
 ### shared module layout (clean-architecture)
 
 - `commonMain` — platform-agnostic domain: models, use cases, repository/port interfaces, error types, `platform/PasswordCallback.kt`, `Constants.kt`. **No DSS imports here.**
-  - `domain/model/config/` — `AppConfig`, `GlobalConfig`, `ProfileConfig`, `OperationConfig`, `ResolvedConfig`, `AlgorithmConstraintsConfig`, `SchedulerConfig`, `RenewalJob`, `TrustedCertificateConfig`, `CustomTrustedListConfig`, `EtsiConstants`, `service/` (CRL/OCSP/TSP configs), `enums/` (domain enums with `dssName`).
+  - `domain/model/config/` — `AppConfig`, `GlobalConfig`, `ProfileConfig`, `OperationConfig`, `ResolvedConfig`, `AlgorithmConstraintsConfig`, `SchedulerConfig`, `RenewalJob`, `TrustedCertificateRef` (server `signing.yml` trust declarations), `TrustedCertificateType`, `CustomTrustedListConfig`, `EtsiConstants`, `service/` (CRL/OCSP/TSP configs), `enums/` (domain enums with `dssName`).
   - `domain/model/parameters/` — `SigningParameters`, `ValidationParameters`, `ArchivingParameters`, `VisibleSignatureParameters`.
   - `domain/model/result/` — `OperationResult`, `SigningResult`, `ArchivingResult`, `AnnotatedWarning`, `RenewBatchResult`, `DocumentTimestampInfo`.
   - `domain/model/validation/` — `ValidationReport`, `ValidationResult`, `SignatureValidationResult`, `TimestampValidationResult`, `SignatureTrustTier`, `ReportExportFormat`, `json/` (JSON report serialization).
   - `domain/model/signature/` — `CertificateInfo`, `Signature`, `TimestampInfo`.
   - `domain/model/value/` — `Sensitive<T>`, `InstantFormatter` (multiplatform date formatting).
-  - `domain/model/error/` — `OperationError`, `SigningError`, `ValidationError`, `ArchivingError`, `ConfigurationError` (sealed interfaces).
+  - `domain/model/trust/` — `TrustScope`, `TrustedCertificate`, `ResolvedTrustAnchor` (app-managed trust-store models; the `TrustStore` port is in `domain/repository/`, the content-addressed `FileTrustStore` in `jvmMain/data/trust/`).
+  - `domain/model/error/` — `OperationError`, `SigningError`, `ValidationError`, `ArchivingError`, `ConfigurationError`, `TrustStoreError` (sealed interfaces).
   - `domain/service/` — `AlgorithmExpirationChecker`, `CredentialStore`, `TokenService`, `SigningToken`, `TokenInfo`, `CertificateEntry`.
   - `domain/port/` — `ConfigSerializer`, `ConfigSerializerRegistry`, `SchedulerPort`, `TrustedListCompilerPort`.
   - `domain/repository/` — `SigningRepository`, `ValidationRepository`, `ArchivingRepository`, `ConfigRepository`, `AvailableCertificateInfo`, `CertificateDiscoveryResult`.

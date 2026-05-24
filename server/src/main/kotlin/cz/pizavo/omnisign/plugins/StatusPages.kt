@@ -110,6 +110,10 @@ private suspend fun ApplicationCall.respondOperationError(error: OperationError)
 		is ConfigurationError.LoadFailed -> HttpStatusCode.InternalServerError to "CONFIG_LOAD_FAILED"
 		is ConfigurationError.SaveFailed -> HttpStatusCode.InternalServerError to "CONFIG_SAVE_FAILED"
 		is ConfigurationError.InvalidConfiguration -> HttpStatusCode.UnprocessableEntity to "INVALID_CONFIGURATION"
+
+		is TrustStoreError.NotFound -> HttpStatusCode.NotFound to "TRUST_CERT_NOT_FOUND"
+		is TrustStoreError.ParseFailed -> HttpStatusCode.BadRequest to "INVALID_CERTIFICATE"
+		is TrustStoreError.StorageFailed -> HttpStatusCode.InternalServerError to "TRUST_STORE_FAILED"
 	}
 
 	logger.warn { "$errorType: ${error.message}" }

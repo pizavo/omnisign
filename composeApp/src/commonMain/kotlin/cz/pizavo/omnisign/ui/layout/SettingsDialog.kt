@@ -69,6 +69,10 @@ private val NavItemShape = RoundedCornerShape(6.dp)
  * @param initialCategory Optional [SettingsCategory] to preselect when the dialog opens.
  *   The `remember` is keyed on this value, so callers can deep-link to a specific tab by
  *   toggling it before showing the dialog.  Defaults to [SettingsCategory.SigningDefaults].
+ * @param onExportConfig Called when the user exports the full configuration archive (Backup section).
+ * @param onImportConfig Called when the user imports a full configuration archive (Backup section).
+ * @param backupEnabled Whether the Backup export/import controls are enabled (false on platforms
+ *   without a file-system backend, e.g. web).
  */
 @Composable
 fun SettingsDialog(
@@ -82,6 +86,9 @@ fun SettingsDialog(
 	trustedListRefreshing: Boolean = false,
 	trustedListLastRefreshAt: Instant? = null,
 	onRefreshTrustedLists: () -> Unit = {},
+	onExportConfig: () -> Unit = {},
+	onImportConfig: () -> Unit = {},
+	backupEnabled: Boolean = false,
 ) {
 	var selectedCategory by remember(initialCategory) {
 		mutableStateOf(initialCategory ?: SettingsCategory.SigningDefaults)
@@ -121,9 +128,12 @@ fun SettingsDialog(
 					trustedListRefreshing = trustedListRefreshing,
 					trustedListLastRefreshAt = trustedListLastRefreshAt,
 					onRefreshTrustedLists = onRefreshTrustedLists,
+					onExportConfig = onExportConfig,
+					onImportConfig = onImportConfig,
+					backupEnabled = backupEnabled,
 				)
 			}
-			
+
 			HorizontalDivider()
 			
 			SettingsFooter(saving = state.saving, hasChanges = hasChanges, onCancel = onDismiss, onSave = onSave)
@@ -344,6 +354,9 @@ private fun SettingsContentPanel(
 	trustedListRefreshing: Boolean = false,
 	trustedListLastRefreshAt: Instant? = null,
 	onRefreshTrustedLists: () -> Unit = {},
+	onExportConfig: () -> Unit = {},
+	onImportConfig: () -> Unit = {},
+	backupEnabled: Boolean = false,
 ) {
 	VerticalScrollableColumn(
 		modifier = Modifier.fillMaxSize(),
@@ -397,23 +410,8 @@ private fun SettingsContentPanel(
 				onFieldChange = onFieldChange
 			)
 			
-			SettingsCategory.TrustedCertificates -> TrustedCertificatesSection(
-				certificates = state.trustedCertificates,
-				onAdd = { cert ->
-					onFieldChange {
-						it.copy(trustedCertificates = it.trustedCertificates.filter { c -> c.name != cert.name } + cert)
-					}
-				},
-				onRemove = { index ->
-					onFieldChange {
-						it.copy(trustedCertificates = it.trustedCertificates.toMutableList().apply { removeAt(index) })
-					}
-				},
-				addError = state.certAddError,
-				onClearError = { onFieldChange { it.copy(certAddError = null) } },
-				onError = { message -> onFieldChange { it.copy(certAddError = message) } },
-			)
-			
+			SettingsCategory.TrustedCertificates -> TrustedCertificatesInfo()
+
 			SettingsCategory.CustomTrustedLists -> CustomTrustedListsSection(
 				trustedLists = state.customTrustedLists,
 				onAdd = { tl ->
@@ -444,6 +442,13 @@ private fun SettingsContentPanel(
 			
 			SettingsCategory.Scheduler -> SchedulerSection(state = state, onFieldChange = onFieldChange)
 			
+			SettingsCategory.Backup,
+			SettingsCategory.ConfigBackup -> ConfigBackupSection(
+				enabled = backupEnabled,
+				onExport = onExportConfig,
+				onImport = onImportConfig,
+			)
+
 			SettingsCategory.Appearance,
 			SettingsCategory.WindowTitleBar -> AppearanceWindowSection(state = state, onFieldChange = onFieldChange)
 		}
@@ -483,6 +488,104 @@ private fun SettingsFooter(
 			loading = saving,
 			onClick = onSave,
 		)
+	}
+}
+
+/**
+ * Configuration backup section: export the full configuration to a ZIP archive, or import one to
+ * replace it. Import is a destructive, whole-configuration replace, so it is confirmed inline.
+ *
+ * @param enabled Whether export/import is available (false on platforms without a file-system
+ *   backend, e.g. web).
+ * @param onExport Called when the user starts an export.
+ * @param onImport Called when the user confirms an import.
+ */
+@Composable
+private fun ConfigBackupSection(
+	enabled: Boolean,
+	onExport: () -> Unit,
+	onImport: () -> Unit,
+) {
+	var confirmingImport by remember { mutableStateOf(false) }
+
+	Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+		TooltipBox(
+			tooltip = { Tooltip { Text(text = "Export configuration to a ZIP archive") } },
+			state = rememberTooltipState(),
+		) {
+			IconButton(
+				variant = IconButtonVariant.PrimaryOutlined,
+				enabled = enabled,
+				onClick = onExport,
+			) {
+				Icon(
+					painter = painterResource(Res.drawable.icon_download),
+					contentDescription = "Export configuration",
+					modifier = Modifier.size(20.dp),
+				)
+			}
+		}
+		TooltipBox(
+			tooltip = { Tooltip { Text(text = "Import a ZIP archive (replaces the current configuration)") } },
+			state = rememberTooltipState(),
+		) {
+			IconButton(
+				variant = IconButtonVariant.PrimaryOutlined,
+				enabled = enabled,
+				onClick = { confirmingImport = true },
+			) {
+				Icon(
+					painter = painterResource(Res.drawable.icon_upload),
+					contentDescription = "Import configuration",
+					modifier = Modifier.size(20.dp),
+				)
+			}
+		}
+	}
+
+	if (confirmingImport) {
+		Spacer(modifier = Modifier.height(16.dp))
+		Text(
+			text = "Import replaces all current settings, profiles, and trusted certificates and cannot be undone.",
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.error,
+		)
+		Spacer(modifier = Modifier.height(8.dp))
+		Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+			TooltipBox(
+				tooltip = { Tooltip { Text(text = "Cancel") } },
+				state = rememberTooltipState(),
+			) {
+				IconButton(
+					variant = IconButtonVariant.Ghost,
+					onClick = { confirmingImport = false },
+				) {
+					Icon(
+						painter = painterResource(Res.drawable.icon_x),
+						contentDescription = "Cancel import",
+						modifier = Modifier.size(20.dp),
+					)
+				}
+			}
+			TooltipBox(
+				tooltip = { Tooltip { Text(text = "Choose an archive and replace the configuration") } },
+				state = rememberTooltipState(),
+			) {
+				IconButton(
+					variant = IconButtonVariant.Destructive,
+					onClick = {
+						confirmingImport = false
+						onImport()
+					},
+				) {
+					Icon(
+						painter = painterResource(Res.drawable.icon_check),
+						contentDescription = "Confirm import and replace",
+						modifier = Modifier.size(20.dp),
+					)
+				}
+			}
+		}
 	}
 }
 
@@ -904,6 +1007,24 @@ private fun AlgorithmConstraintsSection(
 		showNullOption = false,
 		itemLabel = { it.name },
 		modifier = Modifier.fillMaxWidth(),
+	)
+}
+
+/**
+ * Informational placeholder for the trusted certificates category.
+ *
+ * Directly trusted certificates are now managed in the dedicated Trusted Certificates side panel,
+ * backed by the app-managed trust store, rather than inline in the settings form. This section
+ * points the user there.
+ */
+@Composable
+private fun TrustedCertificatesInfo() {
+	Text(
+		text = "Directly trusted certificates are managed in the Trusted Certificates panel " +
+				"(the certificate icon in the side bar), backed by the app-managed trust store. " +
+				"Open that panel to add or remove trusted CA and TSA certificates per scope.",
+		style = LumoTheme.typography.body2,
+		color = LumoTheme.colors.textSecondary,
 	)
 }
 

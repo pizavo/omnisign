@@ -5,6 +5,7 @@ import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
 import cz.pizavo.omnisign.config.ServerSecrets
 import cz.pizavo.omnisign.config.SigningConfigLoader
+import cz.pizavo.omnisign.config.TrustReconciler
 import cz.pizavo.omnisign.config.isLoopbackHost
 import cz.pizavo.omnisign.config.validateAuthConfig
 import cz.pizavo.omnisign.config.validateCorsConfig
@@ -28,9 +29,11 @@ import io.ktor.server.netty.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 import org.koin.ktor.ext.get
 import org.koin.ktor.plugin.Koin
 import java.io.File
+import java.nio.file.Path
 import java.security.KeyStore
 
 private val logger = KotlinLogging.logger {}
@@ -130,6 +133,7 @@ fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets) {
 	validateTransportSecurity(serverConfig)
 	val signingConfig = SigningConfigLoader().load(serverConfig.signingConfigFile)
 	configureKoin(serverConfig, secrets, signingConfig)
+	reconcileTrustIfConfigured(serverConfig, signingConfig)
 	if (backgroundServicesEnabled()) {
 		launchPkcs11WarmupIfNeeded(serverConfig)
 		launchTrustedListRefreshIfNeeded(serverConfig)
@@ -222,6 +226,25 @@ fun Application.configureKoin(serverConfig: ServerConfig, secrets: ServerSecrets
 			serverModule(serverConfig, secrets, signingConfig),
 		)
 	}
+}
+
+/**
+ * Reconcile the server's trust directory from the `signing.yml` `trustedCertificates` references,
+ * synchronously at boot so requests never see a partially-provisioned trust set.
+ *
+ * Skipped when no signing policy file is configured — there is no declarative trust to provision,
+ * and the trust directory is left untouched. A fatal reconcile condition (integrity mismatch,
+ * unresolvable reference, malformed entry) throws out of [TrustReconciler.reconcile], aborting
+ * startup.
+ *
+ * @param serverConfig Current server configuration.
+ * @param signingConfig Provider signing/validation policy resolved from signing.yml.
+ */
+private fun Application.reconcileTrustIfConfigured(serverConfig: ServerConfig, signingConfig: AppConfig) {
+	val signingFile = serverConfig.signingConfigFile ?: return
+	val baseDir = File(signingFile).absoluteFile.parentFile?.toPath() ?: Path.of(".").toAbsolutePath()
+	val reconciler: TrustReconciler = get()
+	runBlocking { reconciler.reconcile(signingConfig, baseDir) }
 }
 
 /**

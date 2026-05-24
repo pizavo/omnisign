@@ -7,10 +7,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.service.TokenService
 import cz.pizavo.omnisign.domain.usecase.*
@@ -103,6 +105,7 @@ fun IslandLayout(
 			autoDetectedExecutablePath = resolveExecutablePath(),
 			isLinuxDesktop = linux,
 			trustedListRefreshPort = koin.getOrNull<TrustedListRefreshPort>(),
+			configArchive = koin.getOrNull<ConfigArchivePort>(),
 		)
 	}
 	val settingsState by (settingsViewModel?.state ?: remember {
@@ -170,7 +173,7 @@ fun IslandLayout(
 	
 	val trustedCertsViewModel: TrustedCertsViewModel? = remember {
 		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
-		TrustedCertsViewModel(koin.get<GetConfigUseCase>())
+		TrustedCertsViewModel(koin.get<GetConfigUseCase>(), koin.getOrNull<TrustStore>())
 	}
 	val trustedCertsState by (trustedCertsViewModel?.state ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow(TrustedCertsPanelState())
@@ -268,6 +271,19 @@ fun IslandLayout(
 						trustedListRefreshing = trustedListRefreshing,
 						trustedListLastRefreshAt = trustedListLastRefreshAt,
 						onRefreshTrustedLists = { settingsViewModel?.refreshTrustedListsNow() },
+						onExportConfig = {
+							scope.launch {
+								val bytes = settingsViewModel?.buildConfigArchive() ?: return@launch
+								exportConfigArchive(bytes, "omnisign-config")
+							}
+						},
+						onImportConfig = {
+							scope.launch {
+								val bytes = importConfigArchive() ?: return@launch
+								settingsViewModel?.importConfiguration(bytes)
+							}
+						},
+						backupEnabled = settingsViewModel?.canBackup == true,
 					)
 				}
 				
@@ -545,7 +561,17 @@ fun IslandLayout(
 									},
 								)
 								
-								SidePanel.TrustedCerts -> TrustedCertsPanel(state = trustedCertsState)
+								SidePanel.TrustedCerts -> TrustedCertsPanel(
+									state = trustedCertsState,
+									onAdd = { scope, bytes, type, source ->
+										trustedCertsViewModel?.addCertificate(scope, bytes, type, source)
+									},
+									onRemove = { scope, fingerprint ->
+										trustedCertsViewModel?.removeCertificate(scope, fingerprint)
+									},
+									onClearAddError = { trustedCertsViewModel?.clearAddError() },
+									onAddError = { message -> trustedCertsViewModel?.reportAddError(message) },
+								)
 
 								SidePanel.Help -> HelpPanel(
 									debugLoggingEnabled = debugLoggingOn,

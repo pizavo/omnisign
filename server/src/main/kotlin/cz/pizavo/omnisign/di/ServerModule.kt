@@ -17,8 +17,11 @@ import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
 import cz.pizavo.omnisign.config.ServerSecrets
 import cz.pizavo.omnisign.config.SessionConfig
+import cz.pizavo.omnisign.config.TrustReconciler
+import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.platform.PasswordCallback
 import io.ktor.client.*
 import io.ktor.client.engine.cio.*
@@ -32,6 +35,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.Json
 import org.jetbrains.exposed.sql.Database
 import org.koin.dsl.module
+import java.nio.file.Path
 import kotlin.coroutines.CoroutineContext
 
 /**
@@ -44,6 +48,11 @@ import kotlin.coroutines.CoroutineContext
  * - [ConfigRepository] (read-only [ReadOnlyConfigRepository]) backed by the provider's
  *   signing.yml, overriding the home-directory `FileConfigRepository` from
  *   `jvmRepositoryModule` so the server never reads or writes the user's config file.
+ * - [TrustStore] (content-addressed [FileTrustStore]) rooted at the server's writable trust
+ *   directory ([ServerConfig.trustStoreDir], or a server-local default), overriding the
+ *   `jvmRepositoryModule` binding so the server never touches a co-located desktop trust store.
+ * - [TrustReconciler] that provisions that trust store from the signing.yml trust references at
+ *   boot; invoked from `Application.moduleWith`.
  * - IO [CoroutineContext] for blocking work.
  * - [HttpClient] (CIO engine) with JSON content-negotiation and per-stage timeouts
  *   ([HttpTimeout]) for OIDC discovery and user-info requests. The timeouts close the
@@ -93,6 +102,9 @@ fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConf
 	single<PasswordCallback> { ServerPasswordCallback() }
 	single<ConfigRepository> { ReadOnlyConfigRepository(signingConfig) }
 	single<CoroutineContext> { Dispatchers.IO }
+
+	single<TrustStore> { FileTrustStore(serverTrustDir(serverConfig)) }
+	single { TrustReconciler(get()) }
 
 	if (AllowedOperation.SIGN in serverConfig.operations.allowed) {
 		single { MutableStateFlow(false) }
@@ -161,6 +173,17 @@ fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConf
 		PkceService(get())
 	}
 }
+
+/**
+ * Resolve the server's writable trust directory: [ServerConfig.trustStoreDir] when set, otherwise a
+ * server-local `trusted-certs` directory. Deliberately not the desktop default location, so a
+ * co-located desktop install's trust store is never touched by the server reconcile.
+ *
+ * @param serverConfig Current server configuration.
+ * @return The trust directory path.
+ */
+private fun serverTrustDir(serverConfig: ServerConfig): Path =
+	serverConfig.trustStoreDir?.let { Path.of(it) } ?: Path.of("trusted-certs")
 
 /**
  * Minimum acceptable length, in bytes, of the JWT signing secret.

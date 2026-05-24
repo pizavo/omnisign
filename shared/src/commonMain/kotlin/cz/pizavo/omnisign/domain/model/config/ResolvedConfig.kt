@@ -30,7 +30,13 @@ data class ResolvedConfig(
 	val crl: CrlConfig,
 	val validation: ValidationConfig,
 	val disabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
-	val disabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet()
+	val disabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet(),
+	/**
+	 * Name of the profile this config was resolved for, or `null` for a global-only resolution.
+	 * Carried so trust resolution can select the matching
+	 * [cz.pizavo.omnisign.domain.model.trust.TrustScope].
+	 */
+	val profileName: String? = null,
 ) {
 	companion object {
 		/**
@@ -115,7 +121,8 @@ data class ResolvedConfig(
 					?: global.crl,
 				validation = resolvedValidation,
 				disabledHashAlgorithms = disabledHash,
-				disabledEncryptionAlgorithms = disabledEncryption
+				disabledEncryptionAlgorithms = disabledEncryption,
+				profileName = profile?.name,
 			).right()
 		}
 
@@ -171,12 +178,6 @@ data class ResolvedConfig(
 				profile?.customTrustedLists?.forEach { put(it.name, it) }
 				operation?.customTrustedLists?.forEach { put(it.name, it) }
 			}.values.toList()
-			
-			val mergedCerts = buildMap<String, TrustedCertificateConfig> {
-				if (!excludeGlobalTls) global.trustedCertificates.forEach { put(it.name, it) }
-				profile?.trustedCertificates?.forEach { put(it.name, it) }
-				operation?.trustedCertificates?.forEach { put(it.name, it) }
-			}.values.toList()
 
 			return ValidationConfig(
 				policyType = operation?.policyType ?: profile?.policyType ?: global.policyType,
@@ -184,7 +185,6 @@ data class ResolvedConfig(
 				checkRevocation = operation?.checkRevocation ?: profile?.checkRevocation ?: global.checkRevocation,
 				useEuLotl = operation?.useEuLotl ?: profile?.useEuLotl ?: global.useEuLotl,
 				customTrustedLists = mergedTls,
-				trustedCertificates = mergedCerts,
 				algorithmConstraints = mergeAlgorithmConstraints(
 					global.algorithmConstraints,
 					profile?.algorithmConstraints,

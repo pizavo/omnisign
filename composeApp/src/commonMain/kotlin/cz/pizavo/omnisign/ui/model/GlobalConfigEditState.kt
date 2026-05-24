@@ -35,7 +35,6 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
  * @property algoExpirationLevel Severity when an algorithm expired before the policy update date.
  * @property algoExpirationLevelAfterUpdate Severity when an algorithm expired after the policy update date.
  * @property customTrustedLists Registered external trusted list sources.
- * @property trustedCertificates Directly trusted certificates.
  * @property customPkcs11Libraries User-registered PKCS#11 middleware libraries.
  * @property trustedListRefreshInterval Process-global trusted-list refresh interval in hours,
  *   stored as a string for the text field. Clamped to a minimum of 1 hour on save.
@@ -52,7 +51,6 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
  * @property schedulerInstalled Whether the OS scheduler job is currently registered (read-only, queried on the load).
  * @property saving Whether a save operation is currently in progress.
  * @property error Human-readable error message from the last failed operation, or `null`.
- * @property certAddError Human-readable error from the last failed trusted certificate add attempt, or `null`.
  * @property tlAddError Human-readable error from the last failed trusted list add attempt, or `null`.
  * @property renewalJobAddError Human-readable error from the last failed renewal job add attempt, or `null`.
  * @property useNativeTitleBar Whether to use the native OS title bar instead of the merged custom toolbar on Linux.
@@ -82,7 +80,6 @@ data class GlobalConfigEditState(
 	val algoExpirationLevel: AlgorithmConstraintLevel = AlgorithmConstraintLevel.FAIL,
 	val algoExpirationLevelAfterUpdate: AlgorithmConstraintLevel = AlgorithmConstraintLevel.WARN,
 	val customTrustedLists: List<CustomTrustedListConfig> = emptyList(),
-	val trustedCertificates: List<TrustedCertificateConfig> = emptyList(),
 	val customPkcs11Libraries: List<CustomPkcs11Library> = emptyList(),
 	val pkcs11ProbeTimeout: String = "30",
 	val trustedListRefreshInterval: String = "24",
@@ -97,7 +94,6 @@ data class GlobalConfigEditState(
 	val schedulerInstalled: Boolean = false,
 	val saving: Boolean = false,
 	val error: String? = null,
-	val certAddError: String? = null,
 	val tlAddError: String? = null,
 	val renewalJobAddError: String? = null,
 	val useNativeTitleBar: Boolean = false,
@@ -165,7 +161,7 @@ data class GlobalConfigEditState(
 
 	/**
 	 * Compare only the persistable content fields of two states, ignoring
-	 * transient UI properties like [saving], [error], [certAddError], and [tlAddError].
+	 * transient UI properties like [saving], [error], and [tlAddError].
 	 */
 	fun contentEquals(other: GlobalConfigEditState): Boolean =
 		defaultHashAlgorithm == other.defaultHashAlgorithm &&
@@ -189,7 +185,6 @@ data class GlobalConfigEditState(
 				algoExpirationLevel == other.algoExpirationLevel &&
 				algoExpirationLevelAfterUpdate == other.algoExpirationLevelAfterUpdate &&
 				customTrustedLists == other.customTrustedLists &&
-				trustedCertificates == other.trustedCertificates &&
 				customPkcs11Libraries == other.customPkcs11Libraries &&
 				pkcs11ProbeTimeout == other.pkcs11ProbeTimeout &&
 				trustedListRefreshInterval == other.trustedListRefreshInterval &&
@@ -232,7 +227,6 @@ data class GlobalConfigEditState(
 			checkRevocation = checkRevocation,
 			useEuLotl = useEuLotl,
 			customTrustedLists = customTrustedLists,
-			trustedCertificates = trustedCertificates,
 			algorithmConstraints = AlgorithmConstraintsConfig(
 				expirationLevel = algoExpirationLevel,
 				expirationLevelAfterUpdate = algoExpirationLevelAfterUpdate,
@@ -293,7 +287,6 @@ data class GlobalConfigEditState(
 				algoExpirationLevelAfterUpdate = config.validation.algorithmConstraints.expirationLevelAfterUpdate
 					?: AlgorithmConstraintLevel.WARN,
 				customTrustedLists = config.validation.customTrustedLists,
-				trustedCertificates = config.validation.trustedCertificates,
 				customPkcs11Libraries = config.customPkcs11Libraries,
 				pkcs11ProbeTimeout = config.pkcs11ProbeTimeoutSeconds.toString(),
 				trustedListRefreshInterval = config.trustedListRefreshIntervalHours.toString(),

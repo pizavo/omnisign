@@ -1,21 +1,26 @@
 package cz.pizavo.omnisign.di
 
 import cz.pizavo.omnisign.data.repository.*
+import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.data.serializer.JsonConfigSerializer
 import cz.pizavo.omnisign.data.serializer.XmlConfigSerializer
 import cz.pizavo.omnisign.data.serializer.YamlConfigSerializer
 import cz.pizavo.omnisign.data.service.*
 import cz.pizavo.omnisign.domain.port.ConfigSerializerRegistry
+import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.SigningRepository
+import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.repository.ValidationRepository
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.service.TokenService
+import cz.pizavo.omnisign.domain.usecase.ConfigArchiveUseCase
 import cz.pizavo.omnisign.domain.usecase.ExportImportConfigUseCase
+import cz.pizavo.omnisign.domain.usecase.MigrateTrustedCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.RenewBatchUseCase
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koin.core.module.dsl.singleOf
@@ -95,6 +100,7 @@ val jvmRepositoryModule = module {
 	singleOf(::KeyringCredentialStore) bind CredentialStore::class
 	
 	single<ConfigRepository> { FileConfigRepository() }
+	single<TrustStore> { FileTrustStore() }
 	singleOf(::TrustedListRefreshSignal)
 	single { TrustedSourceRegistry(get()) }
 	single { DssServiceFactory(get(), get()) }
@@ -107,7 +113,6 @@ val jvmRepositoryModule = module {
 	singleOf(::DssArchivingRepository) bind ArchivingRepository::class
 	singleOf(::TrustedListCompiler)
 	singleOf(::DssTrustedListCompilerAdapter) bind TrustedListCompilerPort::class
-	singleOf(::TrustedCertificateReader)
 	singleOf(::SelfExecutableResolver)
 	
 	single {
@@ -116,7 +121,9 @@ val jvmRepositoryModule = module {
 		)
 	}
 	single { ExportImportConfigUseCase(get(), get()) }
+	single { ConfigArchiveUseCase(get(), get(), get()) } bind ConfigArchivePort::class
 	singleOf(::RenewBatchUseCase)
+	single { MigrateTrustedCertificatesUseCase(get(), get()) }
 	
 	single<OsSchedulerService> {
 		val os = System.getProperty("os.name", "").lowercase()

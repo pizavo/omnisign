@@ -1,10 +1,12 @@
 package cz.pizavo.omnisign.data.repository
 
 import arrow.core.Either
+import arrow.core.getOrElse
 import arrow.core.left
 import cz.pizavo.omnisign.ades.policy.AdESPolicy
 import cz.pizavo.omnisign.data.util.toKotlinInstant
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
@@ -13,9 +15,13 @@ import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
+import cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor
+import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.model.validation.*
+import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.repository.ValidationRepository
 import eu.europa.esig.dss.detailedreport.DetailedReport
+import eu.europa.esig.dss.diagnostic.CertificateWrapper
 import eu.europa.esig.dss.diagnostic.DiagnosticData
 import eu.europa.esig.dss.diagnostic.TimestampWrapper
 import eu.europa.esig.dss.enumerations.Indication
@@ -23,6 +29,7 @@ import eu.europa.esig.dss.enumerations.SignatureQualification
 import eu.europa.esig.dss.enumerations.SubIndication
 import eu.europa.esig.dss.enumerations.TimestampQualification
 import eu.europa.esig.dss.model.FileDocument
+import eu.europa.esig.dss.model.x509.CertificateToken
 import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.simplereport.SimpleReport
 import eu.europa.esig.dss.validation.SignedDocumentValidator
@@ -32,12 +39,18 @@ import java.io.File
 /**
  * JVM implementation of [ValidationRepository] using the EU DSS library.
  *
- * Builds a certificate verifier with online CRL/OCSP sources, AIA support,
- * and optional EU LOTL, or custom trusted lists — all driven by the [ResolvedConfig]
- * supplied in [ValidationParameters].
+ * Builds a certificate verifier with online CRL/OCSP sources, AIA support, optional EU LOTL and
+ * custom trusted lists, and the directly-trusted certificates resolved from the [TrustStore] for
+ * the active scope — all driven by the [ResolvedConfig] supplied in [ValidationParameters].
+ *
+ * Per-reference trust types are enforced as a post-validation downgrade: a signature or timestamp
+ * DSS accepts is flagged [SignatureValidationResult.policyUntrusted] /
+ * [TimestampValidationResult.policyUntrusted] when its terminating store anchor is trusted only for
+ * the other role (see [isDowngradedByPolicy]).
  */
 class DssValidationRepository(
-	private val dssServiceFactory: DssServiceFactory
+	private val dssServiceFactory: DssServiceFactory,
+	private val trustStore: TrustStore,
 ) : ValidationRepository {
 	
 	private val adeSPolicy = AdESPolicy()
@@ -54,8 +67,10 @@ class DssValidationRepository(
 			}
 			
 			val statusAlert = CollectingStatusAlert()
+			val directAnchors = trustStore.resolve(TrustScope.of(parameters.resolvedConfig?.profileName))
+				.getOrElse { emptyList() }
 			val (cv, tlWarnings) = dssServiceFactory.buildValidationCertificateVerifier(
-				parameters.resolvedConfig
+				parameters.resolvedConfig, directAnchors
 			) { statusAlert }
 			val validator = SignedDocumentValidator.fromDocument(FileDocument(file))
 				.apply {
@@ -77,7 +92,7 @@ class DssValidationRepository(
 			val verifierWarnings = statusAlert.drain()
 			val disabledHash = parameters.resolvedConfig?.disabledHashAlgorithms ?: emptySet()
 			val disabledEncryption = parameters.resolvedConfig?.disabledEncryptionAlgorithms ?: emptySet()
-			val report = convertReports(reports, file.name)
+			val report = convertReports(reports, file.name, anchorTypeByDssId(directAnchors))
 			val annotatedSignatures = report.signatures.map { sig ->
 				annotateDisabledAlgorithms(sig, disabledHash, disabledEncryption)
 			}
@@ -125,14 +140,24 @@ class DssValidationRepository(
 	
 	/**
 	 * Convert DSS [Reports] into our domain [ValidationReport].
+	 *
+	 * The overall result is VALID only when every signature passed *and* none was downgraded by the
+	 * per-reference trust policy ([SignatureValidationResult.policyUntrusted]).
+	 *
+	 * @param anchorTypes DSS certificate id → per-reference trust type for the store-managed anchors,
+	 *   used to apply the post-validation downgrade.
 	 */
-	private fun convertReports(reports: Reports, documentName: String): ValidationReport {
+	private fun convertReports(
+		reports: Reports,
+		documentName: String,
+		anchorTypes: Map<String, TrustedCertificateType>,
+	): ValidationReport {
 		val simpleReport = reports.simpleReport
 		val detailedReport = reports.detailedReport
 		val diagnosticData = reports.diagnosticData
 		
 		val allTimestampResults = diagnosticData.getTimestampList().associate { tsw ->
-			tsw.id to convertTimestamp(tsw, simpleReport, detailedReport)
+			tsw.id to convertTimestamp(tsw, simpleReport, detailedReport, anchorTypes)
 		}
 		
 		val signatureTimestampIds = mutableSetOf<String>()
@@ -147,7 +172,7 @@ class DssValidationRepository(
 			
 			val sigTimestamps = sigTsIds.mapNotNull { tsId -> allTimestampResults[tsId] }
 			
-			convertSignature(simpleReport, diagnosticData, sigId).copy(
+			convertSignature(simpleReport, diagnosticData, sigId, anchorTypes).copy(
 				timestamps = sigTimestamps
 			)
 		}
@@ -157,7 +182,8 @@ class DssValidationRepository(
 			.values.toList()
 		
 		val overallResult = when {
-			signatures.all { it.indication == ValidationIndication.TOTAL_PASSED } -> ValidationResult.VALID
+			signatures.all { it.indication == ValidationIndication.TOTAL_PASSED } &&
+				signatures.none { it.policyUntrusted } -> ValidationResult.VALID
 			signatures.any { it.indication == ValidationIndication.TOTAL_FAILED } -> ValidationResult.INVALID
 			else -> ValidationResult.INDETERMINATE
 		}
@@ -201,7 +227,8 @@ class DssValidationRepository(
 	private fun convertTimestamp(
 		tsw: TimestampWrapper,
 		simpleReport: SimpleReport,
-		detailedReport: DetailedReport
+		detailedReport: DetailedReport,
+		anchorTypes: Map<String, TrustedCertificateType>,
 	): TimestampValidationResult {
 		val id = tsw.id
 		
@@ -255,7 +282,11 @@ class DssValidationRepository(
 		val infos = bbb?.conclusion?.infos?.map { it.value } ?: emptyList()
 		
 		val tsaSubjectDN = tsw.signingCertificate?.getCertificateDN()
-		
+		val policyUntrusted = isDowngradedByPolicy(
+			managedAnchorTypes(tsw.certificateChain, anchorTypes),
+			TrustedCertificateType.TSA,
+		)
+
 		return TimestampValidationResult(
 			timestampId = id,
 			type = tsw.type?.name?.replace('_', ' ')?.lowercase()?.replaceFirstChar { it.uppercase() } ?: "Unknown",
@@ -264,9 +295,10 @@ class DssValidationRepository(
 			productionTime = tsw.productionTime?.toKotlinInstant() ?: kotlin.time.Instant.fromEpochSeconds(0),
 			qualification = qualification,
 			tsaSubjectDN = tsaSubjectDN,
-			errors = errors,
+			errors = if (policyUntrusted) errors + TIMESTAMP_POLICY_MESSAGE else errors,
 			warnings = warnings,
-			infos = infos
+			infos = infos,
+			policyUntrusted = policyUntrusted,
 		)
 	}
 	
@@ -277,7 +309,8 @@ class DssValidationRepository(
 	private fun convertSignature(
 		simpleReport: SimpleReport,
 		diagnosticData: DiagnosticData,
-		signatureId: String
+		signatureId: String,
+		anchorTypes: Map<String, TrustedCertificateType>,
 	): SignatureValidationResult {
 		val indication = when (simpleReport.getIndication(signatureId)) {
 			Indication.TOTAL_PASSED, Indication.PASSED -> ValidationIndication.TOTAL_PASSED
@@ -299,6 +332,10 @@ class DssValidationRepository(
 		
 		val sigWrapper = diagnosticData.getSignatureById(signatureId)
 		val signingCert = sigWrapper?.signingCertificate
+		val policyUntrusted = isDowngradedByPolicy(
+			managedAnchorTypes(sigWrapper?.certificateChain ?: emptyList(), anchorTypes),
+			TrustedCertificateType.CA,
+		)
 		
 		val sha256Fingerprint = signingCert?.digestAlgoAndValue?.digestValue?.let { bytes ->
 			bytes.joinToString(":") { "%02X".format(it) }
@@ -327,7 +364,7 @@ class DssValidationRepository(
 			signatureId = signatureId,
 			indication = indication,
 			subIndication = simpleReport.getSubIndication(signatureId)?.toString(),
-			errors = errors,
+			errors = if (policyUntrusted) errors + SIGNATURE_POLICY_MESSAGE else errors,
 			warnings = warnings,
 			infos = infos,
 			qualificationErrors = qualificationErrors,
@@ -341,6 +378,7 @@ class DssValidationRepository(
 			trustTier = trustTier,
 			hashAlgorithm = sigWrapper?.digestAlgorithm?.name,
 			encryptionAlgorithm = sigWrapper?.encryptionAlgorithm?.name,
+			policyUntrusted = policyUntrusted,
 		)
 	}
 	
@@ -425,5 +463,34 @@ class DssValidationRepository(
 			RawReportFormat.XML_ETSI -> reports.xmlValidationReport
 		}
 		File(outputPath).also { it.parentFile?.mkdirs() }.writeText(xml)
+	}
+
+	/**
+	 * Map each resolved anchor's DSS certificate id to its per-reference trust type, so a
+	 * component's terminating trusted anchor can be matched back to the policy it carries.
+	 */
+	private fun anchorTypeByDssId(
+		anchors: List<ResolvedTrustAnchor>,
+	): Map<String, TrustedCertificateType> = anchors.associate { anchor ->
+		val x509 = java.security.cert.CertificateFactory.getInstance("X.509")
+			.generateCertificate(anchor.der.inputStream()) as java.security.cert.X509Certificate
+		CertificateToken(x509).getDSSIdAsString() to anchor.type
+	}
+
+	/**
+	 * The per-reference types of the store-managed anchors that terminate [chain] - empty when
+	 * trust came from a trusted list or an anchor the store does not manage.
+	 */
+	private fun managedAnchorTypes(
+		chain: List<CertificateWrapper>,
+		anchorTypes: Map<String, TrustedCertificateType>,
+	): List<TrustedCertificateType> =
+		chain.filter { it.isTrusted }.mapNotNull { anchorTypes[it.id] }
+
+	private companion object {
+		const val SIGNATURE_POLICY_MESSAGE =
+			"Signature distrusted by policy: its trust anchor is trusted for timestamping only, not for signing"
+		const val TIMESTAMP_POLICY_MESSAGE =
+			"Timestamp distrusted by policy: its trust anchor is trusted as a certificate authority only, not for timestamping"
 	}
 }

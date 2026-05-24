@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.data.repository
 
 import arrow.core.left
 import arrow.core.right
+import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
@@ -42,6 +43,7 @@ class DssSigningRepositoryTest : FunSpec({
 	val repository = DssSigningRepository(
 		tokenService, configRepository, credentialStore, dssServiceFactory,
 		AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
+		FileTrustStore(tempdir().toPath()),
 	)
 	
 	fun defaultConfig() = AppConfig(

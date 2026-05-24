@@ -1,25 +1,24 @@
 package cz.pizavo.omnisign.data.repository
 
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
-import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.CrlConfig
 import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
+import cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor
 import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
-import java.util.Base64
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.toJavaInstant
 
 /**
  * Verifies the network-free invariants of [TrustedSourceRegistry]: the
- * direct-trusted-cert composition contract, per-config isolation (no trust
+ * direct-trusted-anchor composition contract, per-call isolation (no trust
  * bleed between configurations sharing one registry), and that the warmup /
  * refresh / shutdown entry points are safe no-ops when no trusted lists are
  * configured. EU LOTL paths are intentionally not exercised here because they
@@ -39,17 +38,14 @@ class TrustedSourceRegistryTest : FunSpec({
 		validation = validation,
 	)
 
-	fun trustedCert(name: String): TrustedCertificateConfig {
-		val cert = generateSelfSignedCert()
-		return TrustedCertificateConfig(
-			name = name,
+	fun anchor(): ResolvedTrustAnchor =
+		ResolvedTrustAnchor(
+			fingerprint = "sha256-test",
 			type = TrustedCertificateType.ANY,
-			certificateBase64 = Base64.getEncoder().encodeToString(cert.encoded),
-			subjectDN = cert.subjectX500Principal.name,
+			der = generateSelfSignedCert().encoded,
 		)
-	}
 
-	test("composeInto wires nothing and returns no warnings when no TL and no direct certs") {
+	test("composeInto wires nothing and returns no warnings when no TL and no direct anchors") {
 		val cv = CommonCertificateVerifier()
 		val warnings = registry.composeInto(
 			cv,
@@ -59,16 +55,12 @@ class TrustedSourceRegistryTest : FunSpec({
 		cv.trustedCertSources.numberOfCertificates shouldBe 0
 	}
 
-	test("composeInto wires only direct trusted certs and returns no TL warnings") {
+	test("composeInto wires only direct trusted anchors and returns no TL warnings") {
 		val cv = CommonCertificateVerifier()
 		val warnings = registry.composeInto(
 			cv,
-			configWith(
-				ValidationConfig(
-					useEuLotl = false,
-					trustedCertificates = listOf(trustedCert("ca-a")),
-				)
-			)
+			configWith(ValidationConfig(useEuLotl = false)),
+			directAnchors = listOf(anchor()),
 		)
 		warnings.shouldBeEmpty()
 		cv.trustedCertSources.numberOfCertificates shouldBe 1
@@ -78,18 +70,15 @@ class TrustedSourceRegistryTest : FunSpec({
 		val cvA = CommonCertificateVerifier()
 		registry.composeInto(
 			cvA,
-			configWith(ValidationConfig(useEuLotl = false, trustedCertificates = listOf(trustedCert("ca-a"))))
+			configWith(ValidationConfig(useEuLotl = false)),
+			directAnchors = listOf(anchor()),
 		)
 
 		val cvB = CommonCertificateVerifier()
 		registry.composeInto(
 			cvB,
-			configWith(
-				ValidationConfig(
-					useEuLotl = false,
-					trustedCertificates = listOf(trustedCert("ca-b1"), trustedCert("ca-b2")),
-				)
-			)
+			configWith(ValidationConfig(useEuLotl = false)),
+			directAnchors = listOf(anchor(), anchor()),
 		)
 
 		cvA.trustedCertSources.numberOfCertificates shouldBe 1

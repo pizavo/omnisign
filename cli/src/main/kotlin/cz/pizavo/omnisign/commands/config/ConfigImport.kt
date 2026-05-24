@@ -8,54 +8,64 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
 import cz.pizavo.omnisign.domain.model.config.enums.ConfigFormat
+import cz.pizavo.omnisign.domain.usecase.ConfigArchiveUseCase
 import cz.pizavo.omnisign.domain.usecase.ExportImportConfigUseCase
 import kotlinx.coroutines.runBlocking
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.nio.file.Path
-import kotlin.io.path.readText
+import kotlin.io.path.readBytes
 
 /**
- * CLI subcommand that imports a global or full application configuration from a file.
+ * CLI subcommand that imports a global or full application configuration.
+ *
+ * A ZIP archive produced by `config export` is detected automatically and its bundled trusted
+ * certificates are restored into the trust store; a plain configuration file (the legacy text
+ * format) is still accepted, with its format inferred from the extension or `--format`.
  *
  * Usage examples:
  * ```
- * omnisign config import global.json
- * omnisign config import global.yaml --format yaml
- * omnisign config import full-config.xml --all
+ * omnisign config import global.zip
+ * omnisign config import full.zip --all
+ * omnisign config import legacy-global.yaml
  * ```
  */
 class ConfigImport : CliktCommand(name = "import"), KoinComponent {
+	private val archive: ConfigArchiveUseCase by inject()
 	private val exportImport: ExportImportConfigUseCase by inject()
-	
+
 	private val inputFile by argument(
-		help = "Source file path. The format is inferred from the file extension when --format is omitted."
+		help = "Source file path: a ZIP archive, or a plain configuration file in the legacy text format."
 	)
-	
+
 	private val format by option(
 		"--format", "-f",
-		help = "Import format (${ConfigFormat.entries.joinToString { it.name }}). " +
-				"Inferred from the input file extension when omitted."
+		help = "Format of a legacy plain configuration file (${ConfigFormat.entries.joinToString { it.name }}). " +
+				"Ignored for ZIP archives; inferred from the input file extension when omitted."
 	).enum<ConfigFormat>()
-	
+
 	private val all by option(
 		"--all", "-a",
 		help = "Import as a full application configuration, replacing all sections."
 	).flag()
-	
+
 	override fun help(context: Context): String =
-		"Import a global (or full) configuration from a file"
-	
+		"Import a global (or full) configuration from a ZIP archive or legacy text file"
+
 	override fun run(): Unit = runBlocking {
-		val resolvedFormat = resolveFormat(inputFile, format) ?: throw ProgramResult(1)
-		val text = runCatching { Path.of(inputFile).readText() }.getOrElse { e ->
+		val bytes = runCatching { Path.of(inputFile).readBytes() }.getOrElse { e ->
 			echo("❌ Cannot read file '$inputFile': ${e.message}", err = true)
 			throw ProgramResult(1)
 		}
-		
-		val result = if (all) exportImport.importApp(text, resolvedFormat)
-		else exportImport.importGlobal(text, resolvedFormat)
-		
+
+		val result = if (ConfigArchiveUseCase.isArchive(bytes)) {
+			if (all) archive.importApp(bytes) else archive.importGlobal(bytes)
+		} else {
+			val resolvedFormat = resolveFormat(inputFile, format) ?: throw ProgramResult(1)
+			val text = bytes.decodeToString()
+			if (all) exportImport.importApp(text, resolvedFormat) else exportImport.importGlobal(text, resolvedFormat)
+		}
+
 		result.fold(
 			ifLeft = { error ->
 				echo("❌ Import failed: ${error.message}", err = true)
@@ -64,11 +74,11 @@ class ConfigImport : CliktCommand(name = "import"), KoinComponent {
 			},
 			ifRight = {
 				val scope = if (all) "full application" else "global"
-				echo("✅ $scope configuration imported from $inputFile (${resolvedFormat.name})")
+				echo("✅ $scope configuration imported from $inputFile")
 			}
 		)
 	}
-	
+
 	private fun resolveFormat(filePath: String, explicit: ConfigFormat?): ConfigFormat? {
 		if (explicit != null) return explicit
 		val extension = filePath.substringAfterLast('.', "")
@@ -83,4 +93,3 @@ class ConfigImport : CliktCommand(name = "import"), KoinComponent {
 		return inferred
 	}
 }
-

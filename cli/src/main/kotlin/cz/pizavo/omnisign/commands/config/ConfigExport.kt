@@ -8,75 +8,65 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
 import cz.pizavo.omnisign.domain.model.config.enums.ConfigFormat
-import cz.pizavo.omnisign.domain.usecase.ExportImportConfigUseCase
+import cz.pizavo.omnisign.domain.usecase.ConfigArchiveUseCase
 import kotlinx.coroutines.runBlocking
 import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 import java.nio.file.Path
-import kotlin.io.path.writeText
+import kotlin.io.path.writeBytes
 
 /**
- * CLI subcommand that exports the global configuration section to a file.
+ * CLI subcommand that exports the global (or full) configuration, together with its directly
+ * trusted certificates, to a ZIP archive.
+ *
+ * The archive always bundles the configuration text and any trusted-certificate material for the
+ * exported scope(s); `--format` selects the configuration format *inside* the archive.
  *
  * Usage examples:
  * ```
- * omnisign config export global.json
- * omnisign config export global.yaml --format yaml
- * omnisign config export global.xml
+ * omnisign config export global.zip
+ * omnisign config export global.zip --format yaml
+ * omnisign config export full.zip --all
  * ```
  */
 class ConfigExport : CliktCommand(name = "export"), KoinComponent {
-	private val exportImport: ExportImportConfigUseCase by inject()
-	
+	private val archive: ConfigArchiveUseCase by inject()
+
 	private val outputFile by argument(
-		help = "Destination file path. The format is inferred from the file extension when --format is omitted."
+		help = "Destination archive path (a ZIP, conventionally .zip)."
 	)
-	
+
 	private val format by option(
 		"--format", "-f",
-		help = "Export format (${ConfigFormat.entries.joinToString { it.name }}). " +
-				"Inferred from the output file extension when omitted."
+		help = "Configuration format inside the archive (${ConfigFormat.entries.joinToString { it.name }}). " +
+				"Inferred from the output file extension when recognized, otherwise JSON."
 	).enum<ConfigFormat>()
-	
+
 	private val all by option(
 		"--all", "-a",
 		help = "Export the full application configuration instead of only the global section."
 	).flag()
-	
+
 	override fun help(context: Context): String =
-		"Export the global (or full) configuration to a file"
-	
+		"Export the global (or full) configuration and its trusted certificates to a ZIP archive"
+
 	override fun run(): Unit = runBlocking {
-		val resolvedFormat = resolveFormat(outputFile, format) ?: throw ProgramResult(1)
-		val result = if (all) exportImport.exportApp(resolvedFormat)
-		else exportImport.exportGlobal(resolvedFormat)
-		
+		val resolvedFormat = format
+			?: ConfigFormat.fromExtension(outputFile.substringAfterLast('.', ""))
+			?: ConfigFormat.JSON
+		val result = if (all) archive.exportApp(resolvedFormat) else archive.exportGlobal(resolvedFormat)
+
 		result.fold(
 			ifLeft = { error ->
 				echo("❌ Export failed: ${error.message}", err = true)
 				if (error.details != null) echo("Details: ${error.details}", err = true)
 				throw ProgramResult(1)
 			},
-			ifRight = { text ->
-				Path.of(outputFile).writeText(text)
+			ifRight = { bytes ->
+				Path.of(outputFile).writeBytes(bytes)
 				val scope = if (all) "full application" else "global"
-				echo("✅ $scope configuration exported to $outputFile (${resolvedFormat.name})")
+				echo("✅ $scope configuration exported to $outputFile (${resolvedFormat.name} archive)")
 			}
 		)
 	}
-	
-	private fun resolveFormat(filePath: String, explicit: ConfigFormat?): ConfigFormat? {
-		if (explicit != null) return explicit
-		val extension = filePath.substringAfterLast('.', "")
-		val inferred = ConfigFormat.fromExtension(extension)
-		if (inferred == null) {
-			echo(
-				"❌ Cannot infer format from extension '.$extension'. " +
-						"Use --format to specify it explicitly.",
-				err = true
-			)
-		}
-		return inferred
-	}
 }
-

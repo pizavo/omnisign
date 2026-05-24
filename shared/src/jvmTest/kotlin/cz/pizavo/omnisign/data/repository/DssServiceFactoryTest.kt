@@ -1,7 +1,6 @@
 package cz.pizavo.omnisign.data.repository
 
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
-import cz.pizavo.omnisign.domain.model.config.TrustedCertificateConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
@@ -12,7 +11,6 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
-import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -165,38 +163,15 @@ class DssServiceFactoryTest : FunSpec({
 		DssServiceFactory.EU_LOTL_URL shouldContain "lotl"
 	}
 	
-	// ── buildDirectTrustedCertSource ─────────────────────────────────────────
-	
-	test("buildDirectTrustedCertSource returns null for empty list") {
-		DssServiceFactory.buildDirectTrustedCertSource(emptyList()) shouldBe null
-	}
-	
-	test("buildDirectTrustedCertSource builds source from Base64 DER certs") {
+	test("signing verifier with direct anchors has wired trusted source") {
 		val selfSigned = generateSelfSignedCert()
-		val base64 = Base64.getEncoder().encodeToString(selfSigned.encoded)
-		val cert = TrustedCertificateConfig(
-			name = "test-ca",
+		val anchor = cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor(
+			fingerprint = "sha256-test",
 			type = TrustedCertificateType.ANY,
-			certificateBase64 = base64,
-			subjectDN = selfSigned.subjectX500Principal.name,
+			der = selfSigned.encoded,
 		)
-		val source = DssServiceFactory.buildDirectTrustedCertSource(listOf(cert))
-		source.shouldNotBeNull()
-		source.certificates shouldHaveSize 1
-	}
-	
-	test("signing verifier with trusted certs has wired trusted source") {
-		val selfSigned = generateSelfSignedCert()
-		val base64 = Base64.getEncoder().encodeToString(selfSigned.encoded)
-		val config = minimalConfig().copy(
-			validation = ValidationConfig(
-				useEuLotl = false,
-				trustedCertificates = listOf(
-					TrustedCertificateConfig("test-ca", TrustedCertificateType.ANY, base64, "CN=Test")
-				)
-			)
-		)
-		val result = factory.buildSigningCertificateVerifier(config)
+		val config = minimalConfig().copy(validation = ValidationConfig(useEuLotl = false))
+		val result = factory.buildSigningCertificateVerifier(config, directAnchors = listOf(anchor))
 		result.verifier.trustedCertSources.shouldNotBeNull()
 		result.verifier.trustedCertSources.numberOfCertificates shouldBe 1
 	}
