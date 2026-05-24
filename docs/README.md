@@ -1,41 +1,43 @@
-# Website
+# OmniSign Documentation
 
-This website is built using [Docusaurus](https://docusaurus.io/), a modern static website generator.
+The OmniSign user documentation, built with [Docusaurus](https://docusaurus.io/). It hosts the
+guides for the **Desktop**, **Web**, **Server**, and **CLI** surfaces and is published at
+**[pizavo.github.io/omnisign](https://pizavo.github.io/omnisign/)**.
 
 ## Installation
 
 ```bash
-yarn
+npm install
 ```
 
-## Local Development
+## Local development
 
 ```bash
-yarn start
+npm start
 ```
 
-This command starts a local development server and opens up a browser window. Most changes are reflected live without having to restart the server.
+Starts a local development server and opens a browser window. Most changes are reflected live
+without restarting the server.
 
 ## Build
 
 ```bash
-yarn build
+npm run build
 ```
 
-This command generates static content into the `build` directory and can be served using any static contents hosting service.
+Generates static content into the `build/` directory, servable by any static host. The build runs
+with `onBrokenLinks: 'throw'`, so a broken link or anchor fails the build — run it before pushing
+documentation changes.
+
+## API reference
+
+The KDoc/API reference shown under `/api/` is generated separately from the Kotlin sources with
+`./gradlew :dokkaGenerate` (from the repository root) and copied into `static/api/` during the CI
+build. It is not produced by `npm run build`.
 
 ## Deployment
 
-Using SSH:
-
-```bash
-USE_SSH=true yarn deploy
-```
-
-Not using SSH:
-
-```bash
-GIT_USER=<Your GitHub username> yarn deploy
-```
-
-If you are using GitHub pages for hosting, this command is a convenient way to build the website and push to the `gh-pages` branch.
+Deployment is automatic. The **Deploy Docs — GitHub Pages** workflow
+(`.github/workflows/deploy-docs.yml`) rebuilds and publishes the site to GitHub Pages on every push
+to `main` that touches `docs/**` or any module's `src/**` (and can also be triggered manually via
+*workflow_dispatch*). No manual deploy step is required.
