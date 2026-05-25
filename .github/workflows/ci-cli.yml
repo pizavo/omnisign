@@ -19,6 +19,9 @@ on:
       - 'gradle.properties'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   build:
     name: Build & Test — ${{ matrix.os }}

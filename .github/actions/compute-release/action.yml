@@ -1,0 +1,84 @@
+name: 'Compute release version & notes'
+description: 'Computes the next semantic version tag and generates component-scoped release notes with git-cliff.'
+
+inputs:
+  tag-prefix:
+    description: 'Tag series prefix (cli, server, desktop, web).'
+    required: true
+  module-path:
+    description: 'Primary module directory for path scoping (cli, server, composeApp).'
+    required: true
+  github-token:
+    description: 'Token for the git-cliff GitHub integration (commit authors, contributors).'
+    required: true
+  release-as:
+    description: 'Optional explicit version (e.g. 1.0.0) to force instead of the computed bump.'
+    required: false
+    default: ''
+
+outputs:
+  version:
+    description: 'Bare semantic version, e.g. 1.13.2.'
+    value: ${{ steps.cliff.outputs.version }}
+  tag:
+    description: 'Full tag, e.g. cli/v1.13.2.'
+    value: ${{ steps.cliff.outputs.tag }}
+  should_release:
+    description: 'true when there are releasable changes (or release-as was given).'
+    value: ${{ steps.cliff.outputs.should_release }}
+
+runs:
+  using: composite
+  steps:
+    - uses: taiki-e/install-action@v2
+      with:
+        tool: git-cliff@2.13.1
+
+    - name: Compute version & notes
+      id: cliff
+      shell: bash
+      env:
+        GITHUB_TOKEN: ${{ inputs.github-token }}
+        TAG_PREFIX: ${{ inputs.tag-prefix }}
+        MODULE_PATH: ${{ inputs.module-path }}
+        RELEASE_AS: ${{ inputs.release-as }}
+      run: |
+        inc=(--include-path "${MODULE_PATH}/**" --include-path 'shared/**' --include-path 'gradle/**' --include-path '*.gradle.kts' --include-path 'gradle.properties')
+        pattern="${TAG_PREFIX}/v.*"
+        latest=$(git tag --list "${TAG_PREFIX}/v*" --sort=-v:refname | head -n1)
+
+        if [ -n "$RELEASE_AS" ]; then
+          tag="${TAG_PREFIX}/v${RELEASE_AS#v}"
+          should_release=true
+        else
+          # `|| true` so a non-zero git-cliff/grep (e.g. "nothing to bump" or no
+          # tags yet) yields an empty tag instead of aborting under set -eo pipefail.
+          bumped=$(git cliff --tag-pattern "$pattern" "${inc[@]}" --bumped-version 2>/dev/null || true)
+          tag=$(printf '%s\n' "$bumped" | grep -Eo "${TAG_PREFIX}/v[0-9]+\.[0-9]+\.[0-9]+" | tail -n1 || true)
+          if [ -z "$tag" ] || [ "$tag" = "$latest" ]; then should_release=false; else should_release=true; fi
+        fi
+
+        # Only render notes when we are actually releasing (avoids a no-commit /
+        # no-tag render aborting the step); empty placeholder otherwise.
+        : > release-notes.md
+        if [ "$should_release" = "true" ]; then
+          if [ -n "$RELEASE_AS" ]; then
+            git cliff --tag-pattern "$pattern" "${inc[@]}" --unreleased --tag "$tag" -o release-notes.md
+          else
+            git cliff --tag-pattern "$pattern" "${inc[@]}" --unreleased --bump -o release-notes.md
+          fi
+        fi
+
+        echo "tag=$tag" >> "$GITHUB_OUTPUT"
+        echo "version=${tag#${TAG_PREFIX}/v}" >> "$GITHUB_OUTPUT"
+        echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
+        if [ "$should_release" != "true" ]; then
+          echo "::notice::No unreleased ${TAG_PREFIX} changes since ${latest:-<none>} — nothing to release."
+        fi
+        {
+          echo "## ${TAG_PREFIX} release preview"
+          echo "- previous: \`${latest:-<none>}\`"
+          echo "- next: \`${tag:-<none>}\`"
+          echo ""
+          cat release-notes.md
+        } >> "$GITHUB_STEP_SUMMARY"

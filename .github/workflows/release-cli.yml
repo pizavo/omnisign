@@ -1,27 +1,56 @@
 name: Release — CLI
 
 on:
-  push:
-    tags:
-      - 'cli/v*'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Preview the computed version and notes without tagging or releasing"
+        type: boolean
+        default: false
+      release_as:
+        description: "Force an explicit version (e.g. 1.0.0) instead of the computed bump; leave empty to auto-compute"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
 
 env:
   WIX_VERSION: '6.0.2'
 
 jobs:
   prepare:
-    name: Extract version
+    name: Compute version & notes
     runs-on: ubuntu-latest
     outputs:
-      version: ${{ steps.version.outputs.version }}
+      version: ${{ steps.r.outputs.version }}
+      tag: ${{ steps.r.outputs.tag }}
+      should_release: ${{ steps.r.outputs.should_release }}
     steps:
-      - name: Extract version from tag
-        id: version
-        run: echo "version=${GITHUB_REF_NAME#cli/v}" >> $GITHUB_OUTPUT
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - id: r
+        uses: ./.github/actions/compute-release
+        with:
+          tag-prefix: cli
+          module-path: cli
+          github-token: ${{ github.token }}
+          release-as: ${{ github.event.inputs.release_as }}
+
+      - name: Upload release notes
+        if: steps.r.outputs.should_release == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: release-notes
+          path: release-notes.md
+          if-no-files-found: error
 
   test:
     name: Test — ${{ matrix.os }}
     needs: prepare
+    if: ${{ needs.prepare.outputs.should_release == 'true' && github.event.inputs.dry_run != 'true' }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -38,6 +67,7 @@ jobs:
   build-linux:
     name: Package — Linux
     needs: [prepare, test]
+    if: ${{ needs.prepare.outputs.should_release == 'true' && github.event.inputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
@@ -97,6 +127,7 @@ jobs:
   build-windows:
     name: Package — Windows
     needs: [prepare, test]
+    if: ${{ needs.prepare.outputs.should_release == 'true' && github.event.inputs.dry_run != 'true' }}
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v6
@@ -150,6 +181,7 @@ jobs:
   build-macos:
     name: Package — macOS
     needs: [prepare, test]
+    if: ${{ needs.prepare.outputs.should_release == 'true' && github.event.inputs.dry_run != 'true' }}
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v6
@@ -186,47 +218,30 @@ jobs:
 
   release:
     name: Create GitHub Release
-    needs: [build-linux, build-windows, build-macos]
+    needs: [prepare, build-linux, build-windows, build-macos]
+    if: ${{ needs.prepare.outputs.should_release == 'true' && github.event.inputs.dry_run != 'true' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
 
     steps:
-      - name: Download all artifacts
+      - name: Download build artifacts
         uses: actions/download-artifact@v8
         with:
+          pattern: cli-*
           path: artifacts/
           merge-multiple: true
 
-      - name: Generate release notes
-        id: notes
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          prev_tag=$(gh api "repos/${{ github.repository }}/releases" \
-            --jq '[.[] | select(.tag_name | startswith("cli/v")) | .tag_name] | first' \
-            2>/dev/null || echo "")
-
-          args=(--method POST
-                -f tag_name="${{ github.ref_name }}"
-                -f configuration_file_path=".github/release-cli.yml")
-
-          if [ -n "$prev_tag" ]; then
-            args+=(-f previous_tag_name="$prev_tag")
-          fi
-
-          notes=$(gh api "repos/${{ github.repository }}/releases/generate-notes" \
-            "${args[@]}" --jq '.body')
-
-          {
-            echo "body<<EOF"
-            echo "$notes"
-            echo "EOF"
-          } >> $GITHUB_OUTPUT
+      - name: Download release notes
+        uses: actions/download-artifact@v8
+        with:
+          name: release-notes
+          path: notes/
 
       - name: Create release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
-          name: "CLI ${{ github.ref_name }}"
-          body: ${{ steps.notes.outputs.body }}
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: "CLI v${{ needs.prepare.outputs.version }}"
+          body_path: notes/release-notes.md
           files: artifacts/*

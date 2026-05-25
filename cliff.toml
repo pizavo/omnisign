@@ -1,0 +1,82 @@
+# git-cliff configuration for OmniSign — POC
+#
+# One shared config for all four components. Component scoping is NOT hardcoded
+# here; it is passed per run on the command line so this file stays generic:
+#
+#   git-cliff <prevTag>..HEAD \
+#     --tag-pattern 'cli/v.*' \
+#     --include-path 'cli/**' --include-path 'shared/**' \
+#     --include-path 'gradle/**' --include-path '*.gradle.kts' \
+#     --include-path 'gradle.properties' \
+#     --unreleased --bump
+#
+# --tag-pattern picks the component's tag series (so the version bumps from the
+# right previous tag); --include-path is the "this component + the shared core +
+# build infra" set, mirrored from each ci-*.yml `paths:` filter.
+
+[changelog]
+# Empty header/footer: output drops straight into a GitHub Release body, which
+# already shows the tag as its title. No in-repo CHANGELOG.md is kept.
+header = ""
+footer = ""
+# Render the grouped sections, then first-time contributors, then the compare
+# link. The `<!-- N -->` prefixes on group names force section order (group_by
+# sorts alphabetically otherwise); striptags removes them at render time.
+# PR number + author come from the GitHub integration ([remote.github] below)
+# and fall back to the short commit hash when a commit has no associated PR.
+body = """
+{% if version %}## [{{ version | split(pat="/") | last }}] - {{ timestamp | date(format="%Y-%m-%d") }}{% else %}## [Unreleased]{% endif %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+- {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message | upper_first }}{% if commit.remote.pr_number %} (#{{ commit.remote.pr_number }}){% else %} ({{ commit.id | truncate(length=7, end="") }}){% endif %}{% if commit.remote.username %} by @{{ commit.remote.username }}{% endif %}
+{%- endfor %}
+{% endfor %}
+{%- if github.contributors | filter(attribute="is_first_time", value=true) | length > 0 %}
+### New Contributors
+{% for contributor in github.contributors | filter(attribute="is_first_time", value=true) %}
+- @{{ contributor.username }} made their first contribution{% if contributor.pr_number %} in #{{ contributor.pr_number }}{% endif %}
+{%- endfor %}
+{% endif %}
+{%- if previous and previous.version %}
+**Full Changelog**: https://github.com/pizavo/omnisign/compare/{{ previous.version }}...{{ version }}
+{% endif %}
+"""
+trim = true
+
+[git]
+# Parse Conventional Commits and drop anything that isn't one (merge commits,
+# ad-hoc messages) so "Merge pull request #.." lines never reach the notes.
+conventional_commits = true
+filter_unconventional = true
+# Keep breaking changes even if their type would otherwise be hidden
+# (e.g. a `refactor!:` that changes a public API).
+protect_breaking_commits = true
+
+# First match wins. Visible sections first (ordered via the <!-- N --> prefix),
+# everything else skipped so the notes stay user-facing.
+commit_parsers = [
+  { message = '^[a-z]+(\(.+\))?!:', group = "<!-- 0 -->Breaking Changes" },
+  { message = "^feat", group = "<!-- 1 -->Features" },
+  { message = "^fix", group = "<!-- 2 -->Bug Fixes" },
+  { message = "^perf", group = "<!-- 3 -->Performance" },
+  { message = "^revert", group = "<!-- 4 -->Reverts" },
+  { message = "^docs", skip = true },
+  { message = "^test", skip = true },
+  { message = "^refactor", skip = true },
+  { message = "^style", skip = true },
+  { message = "^chore", skip = true },
+  { message = "^build", skip = true },
+  { message = "^ci", skip = true },
+  { message = ".*", skip = true },
+]
+
+# Newest commits first within each section.
+sort_commits = "newest"
+
+# GitHub integration: enriches commits with their PR number + author and builds
+# the first-time-contributor list. The token is supplied via the GITHUB_TOKEN
+# env var (never hardcoded); on a public repo a read-only token is enough.
+[remote.github]
+owner = "pizavo"
+repo = "omnisign"
