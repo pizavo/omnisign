@@ -51,12 +51,6 @@ const config: Config = {
         routeBasePath: 'cli',
         sidebarPath: './sidebars-cli.ts',
         editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
-        lastVersion: 'current',
-        versions: {
-          current: {
-            label: 'v1.11.0',
-          },
-        },
       },
     ],
     [
@@ -67,12 +61,6 @@ const config: Config = {
         routeBasePath: 'desktop',
         sidebarPath: './sidebars-desktop.ts',
         editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
-        lastVersion: 'current',
-        versions: {
-          current: {
-            label: 'v1.3.0',
-          },
-        },
       },
     ],
     [
@@ -83,12 +71,6 @@ const config: Config = {
         routeBasePath: 'web',
         sidebarPath: './sidebars-web.ts',
         editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
-        lastVersion: 'current',
-        versions: {
-          current: {
-            label: 'Latest',
-          },
-        },
       },
     ],
     [
@@ -99,12 +81,6 @@ const config: Config = {
         routeBasePath: 'server',
         sidebarPath: './sidebars-server.ts',
         editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
-        lastVersion: 'current',
-        versions: {
-          current: {
-            label: 'Latest',
-          },
-        },
       },
     ],
     [
@@ -158,18 +134,6 @@ const config: Config = {
           href: 'https://pizavo.github.io/omnisign/api/',
           label: 'API Reference',
           position: 'left',
-        },
-        {
-          type: 'docsVersionDropdown',
-          docsPluginId: 'desktop',
-          position: 'right',
-          dropdownActiveClassDisabled: true,
-        },
-        {
-          type: 'docsVersionDropdown',
-          docsPluginId: 'cli',
-          position: 'right',
-          dropdownActiveClassDisabled: true,
         },
         {
           href: 'https://github.com/pizavo/omnisign',
