@@ -11,12 +11,6 @@ on:
       - 'gradle.properties'
   pull_request:
     branches: [main]
-    paths:
-      - 'composeApp/**'
-      - 'shared/**'
-      - 'gradle/**'
-      - '*.gradle.kts'
-      - 'gradle.properties'
   workflow_dispatch:
 
 permissions:
@@ -24,19 +18,27 @@ permissions:
 
 jobs:
   build:
-    name: Build & Test — ${{ matrix.os }}
+    name: Desktop — ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, windows-latest, macos-latest]
-
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        uses: ./.github/actions/detect-changes
+        with:
+          module-path: composeApp
 
       - uses: ./.github/actions/setup-gradle
+        if: steps.detect.outputs.relevant == 'true'
 
       - name: Build and test
+        if: steps.detect.outputs.relevant == 'true'
         run: ./gradlew :shared:jvmTest :composeApp:jvmTest :composeApp:createDistributable
 
       - name: Upload jpackage logs
@@ -48,4 +50,3 @@ jobs:
             composeApp/build/compose/logs/
             composeApp/build/compose/tmp/*.args.txt
           if-no-files-found: ignore
-

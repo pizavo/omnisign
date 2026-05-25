@@ -11,12 +11,6 @@ on:
       - 'gradle.properties'
   pull_request:
     branches: [main]
-    paths:
-      - 'server/**'
-      - 'shared/**'
-      - 'gradle/**'
-      - '*.gradle.kts'
-      - 'gradle.properties'
   workflow_dispatch:
 
 permissions:
@@ -24,13 +18,21 @@ permissions:
 
 jobs:
   build:
-    name: Build & Test
+    name: Server
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        uses: ./.github/actions/detect-changes
+        with:
+          module-path: server
 
       - uses: ./.github/actions/setup-gradle
+        if: steps.detect.outputs.relevant == 'true'
 
       - name: Build and test
+        if: steps.detect.outputs.relevant == 'true'
         run: ./gradlew :shared:jvmTest :server:test :server:buildFatJar

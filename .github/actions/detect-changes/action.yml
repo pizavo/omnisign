@@ -1,0 +1,44 @@
+name: 'Detect relevant changes'
+description: 'Outputs relevant=true when a PR or push touched the component, the shared core, or build infra; workflow_dispatch is always relevant.'
+
+inputs:
+  module-path:
+    description: 'Primary module directory for this component (cli, server, composeApp).'
+    required: true
+
+outputs:
+  relevant:
+    description: 'true when the component build should run.'
+    value: ${{ steps.detect.outputs.relevant }}
+
+runs:
+  using: composite
+  steps:
+    - id: detect
+      shell: bash
+      env:
+        MODULE_PATH: ${{ inputs.module-path }}
+        EVENT: ${{ github.event_name }}
+        PR_BASE: ${{ github.event.pull_request.base.sha }}
+        PR_HEAD: ${{ github.event.pull_request.head.sha }}
+        PUSH_BEFORE: ${{ github.event.before }}
+        PUSH_AFTER: ${{ github.sha }}
+      run: |
+        # Manual dispatch always builds; no diff to compute.
+        if [ "$EVENT" = "workflow_dispatch" ]; then
+          echo "relevant=true" >> "$GITHUB_OUTPUT"; exit 0
+        fi
+        if [ "$EVENT" = "pull_request" ]; then base="$PR_BASE"; head="$PR_HEAD"; else base="$PUSH_BEFORE"; head="$PUSH_AFTER"; fi
+        # New branch / unknown base -> build to be safe.
+        if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
+          echo "relevant=true" >> "$GITHUB_OUTPUT"; exit 0
+        fi
+        # `:(glob)` keeps the *.gradle.kts match root-only (mirrors the on.push paths filter);
+        # `|| true` so an empty diff doesn't trip the action's set -eo pipefail.
+        changed=$(git diff --name-only "$base" "$head" -- "${MODULE_PATH}/" 'shared/' 'gradle/' ':(glob)*.gradle.kts' 'gradle.properties' || true)
+        if [ -n "$changed" ]; then
+          echo "relevant=true" >> "$GITHUB_OUTPUT"
+        else
+          echo "relevant=false" >> "$GITHUB_OUTPUT"
+        fi
+        echo "module=$MODULE_PATH event=$EVENT base=${base:0:7} head=${head:0:7} -> relevant=$([ -n "$changed" ] && echo true || echo false)"
