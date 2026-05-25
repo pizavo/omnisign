@@ -6,6 +6,8 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.mockk
 import java.io.File
 
 /**
@@ -13,11 +15,17 @@ import java.io.File
  * recognition, the OS-source fan-out, and the candidate-enumeration cache.
  *
  * The PC/SC + Calais branch ([Pkcs11PcscCalaisResolver]) is Windows-only and not exercised
- * here; these tests cover the OS-agnostic surface and the Linux/macOS p11-kit-proxy branch.
+ * here; the Linux libp11-kit branch ([Pkcs11LibP11KitModuleResolver]) is driven through a
+ * mock so no discovery subprocess is spawned.  These tests cover the OS-agnostic surface, the
+ * Linux module-enumeration branch, and the macOS p11-kit-proxy branch.
  */
 class Pkcs11CandidateCollectorTest : FunSpec({
 
-	fun collector() = Pkcs11CandidateCollector()
+	fun collector() = Pkcs11CandidateCollector(
+		libP11KitModuleResolver = mockk<Pkcs11LibP11KitModuleResolver> {
+			every { resolveModulePaths() } returns emptyList()
+		},
+	)
 
 	test("isPkcs11FileName matches known PKCS11 naming patterns") {
 		val c = collector()
@@ -116,6 +124,20 @@ class Pkcs11CandidateCollectorTest : FunSpec({
 	test("discoverViaOs returns empty list without throwing on unknown OS") {
 		runCatching { collector().discoverViaOs(os = "haiku", jvmIs64Bit = true) }
 			.isSuccess.shouldBeTrue()
+	}
+
+	test("discoverViaOs on Linux resolves libp11-kit modules and names them") {
+		val opensc = File.createTempFile("opensc-pkcs11", ".so").also { it.deleteOnExit() }
+		val resolver = mockk<Pkcs11LibP11KitModuleResolver> {
+			every { resolveModulePaths() } returns listOf(opensc.absolutePath)
+		}
+		val c = Pkcs11CandidateCollector(libP11KitModuleResolver = resolver)
+
+		val result = c.discoverViaOs(os = "linux", jvmIs64Bit = true)
+
+		result.shouldHaveSize(1)
+		result.first().first shouldBe "OpenSC"
+		result.first().second shouldBe opensc.absolutePath
 	}
 
 	test("discoverViaP11KitProxy returns empty list when no proxy path exists") {

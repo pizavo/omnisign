@@ -17,8 +17,12 @@ sealed interface Pkcs11SubprocessResult {
 	 *
 	 * @property pid PID of the child process.
 	 * @property stdout Full standard output captured from the subprocess.
+	 * @property stderr Standard error captured from the subprocess, truncated by
+	 *   [Pkcs11SubprocessProber] to keep log output bounded.  A worker that exits cleanly may
+	 *   still report a non-fatal diagnostic here (e.g. `Pkcs11ModuleDiscoveryWorker` noting
+	 *   that libp11-kit could not be loaded); defaults to empty.
 	 */
-	data class Success(val pid: Long, val stdout: String) : Pkcs11SubprocessResult
+	data class Success(val pid: Long, val stdout: String, val stderr: String = "") : Pkcs11SubprocessResult
 
 	/**
 	 * Subprocess exited with a non-zero code (native crash, probing error, etc.).

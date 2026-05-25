@@ -47,12 +47,14 @@ private val WARMUP_SUBCOMMANDS = setOf("sign", "certificates")
  * shared warmup-ready flow until warmup completes, ensuring the fast in-process probing
  * path is always available.
  *
- * When invoked with `probe <libraryPath>`, the app acts as a thin wrapper around
- * [cz.pizavo.omnisign.data.service.Pkcs11ProbeWorker] to probe a single PKCS#11
- * library in an isolated subprocess.  This mode is used by the PKCS#11 discovery
- * layer in jpackage distributions where the `java` binary is not bundled in the
- * runtime image.  It exits immediately via [exitProcess] without starting Koin
- * or the Clikt command tree.
+ * When invoked with `probe <libraryPath>` (probe a single PKCS#11 library) or
+ * `discover-modules` (enumerate the p11-kit-registered modules via libp11-kit), the app acts
+ * as a thin wrapper around the corresponding isolated worker
+ * ([cz.pizavo.omnisign.data.service.Pkcs11ProbeWorker] /
+ * [cz.pizavo.omnisign.data.service.Pkcs11ModuleDiscoveryWorker]).  These modes are used by
+ * the PKCS#11 discovery layer in jpackage distributions where the `java` binary is not
+ * bundled in the runtime image.  Each exits immediately via [exitProcess] without starting
+ * Koin or the Clikt command tree.
  *
  * [exitProcess] is called unconditionally so the JVM terminates immediately
  * even when third-party libraries (e.g., DSS's Apache HttpClient connection
@@ -61,6 +63,10 @@ private val WARMUP_SUBCOMMANDS = setOf("sign", "certificates")
 fun main(args: Array<String>) {
 	if (args.size >= 2 && args[0] == "probe") {
 		cz.pizavo.omnisign.data.service.Pkcs11ProbeWorker.main(args.drop(1).toTypedArray())
+		exitProcess(0)
+	}
+	if (args.isNotEmpty() && args[0] == "discover-modules") {
+		cz.pizavo.omnisign.data.service.Pkcs11ModuleDiscoveryWorker.main(args.drop(1).toTypedArray())
 		exitProcess(0)
 	}
 
