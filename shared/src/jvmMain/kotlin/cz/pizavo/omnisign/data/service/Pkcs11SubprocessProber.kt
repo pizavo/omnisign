@@ -17,17 +17,19 @@ import kotlin.concurrent.thread
  * cohesive component.  A fatal native crash (e.g. SafeNet `libeTPKCS15.so` SIGSEGV with
  * no card) only kills the child process — the host JVM continues.
  *
- * @property probeTimeoutSeconds Wall-clock kill timeout for [probeIdentities]; a safety
- *   net for middleware that hangs (crashed probes exit immediately regardless).
+ * @property probeTimeout Process-global probe-timeout holder ([Pkcs11ProbeTimeout]); read at
+ *   spawn time so [probeIdentities] honours the configured `pkcs11ProbeTimeoutSeconds`.  A
+ *   safety net for middleware that hangs (crashed probes exit immediately regardless).
  */
 class Pkcs11SubprocessProber(
-	private val probeTimeoutSeconds: Long = Pkcs11Prober.DEFAULT_PROBE_TIMEOUT_SECONDS,
+	private val probeTimeout: Pkcs11ProbeTimeout = Pkcs11ProbeTimeout(),
 ) : Pkcs11Prober {
 
 	/** Probe [libraryPath] for token identities; see [Pkcs11Prober.probeIdentities]. */
 	override fun probeIdentities(libraryPath: String): List<Pkcs11TokenIdentity> {
+		val timeoutSeconds = probeTimeout.seconds
 		return runCatching {
-			when (val result = runProbe(libraryPath, probeTimeoutSeconds)) {
+			when (val result = runProbe(libraryPath, timeoutSeconds)) {
 				null -> {
 					logger.warn { "Cannot resolve probe command — skipping probe for '$libraryPath'" }
 					emptyList()
@@ -35,7 +37,7 @@ class Pkcs11SubprocessProber(
 
 				is Pkcs11SubprocessResult.TimedOut -> {
 					logger.warn {
-						"PKCS#11 probe subprocess pid=${result.pid} for '$libraryPath' timed out after ${probeTimeoutSeconds}s"
+						"PKCS#11 probe subprocess pid=${result.pid} for '$libraryPath' timed out after ${timeoutSeconds}s"
 					}
 					emptyList()
 				}

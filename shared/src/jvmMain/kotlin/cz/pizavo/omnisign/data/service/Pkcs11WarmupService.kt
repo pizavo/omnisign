@@ -46,7 +46,8 @@ import kotlinx.coroutines.sync.withPermit
  *   any subsequent invalidator-launched rediscovery cycles.
  * @property discoverySignal Shared discovery-running signal bracketed around the validation
  *   pass so passive readers see warmup as an in-flight cycle ([Pkcs11DiscoverySignal]).
- * @property probeTimeoutSeconds Timeout for each subprocess probe during warmup.
+ * @property probeTimeout Process-global probe-timeout holder ([Pkcs11ProbeTimeout]); read at
+ *   spawn time so each warmup probe honours the configured `pkcs11ProbeTimeoutSeconds`.
  * @property maxParallelism Upper bound on concurrent warmup probes.  Each probe spawns a
  *   fresh JVM subprocess; running too many in parallel on weak hardware causes cold-start
  *   contention and false timeouts.  Defaults to `2`.
@@ -58,7 +59,7 @@ class Pkcs11WarmupService(
 	private val crashBlacklist: Pkcs11CrashBlacklist,
 	private val warmupSignal: MutableStateFlow<Boolean>,
 	private val discoverySignal: Pkcs11DiscoverySignal,
-	private val probeTimeoutSeconds: Long = Pkcs11Prober.DEFAULT_PROBE_TIMEOUT_SECONDS,
+	private val probeTimeout: Pkcs11ProbeTimeout = Pkcs11ProbeTimeout(),
 	private val maxParallelism: Int = DEFAULT_MAX_PARALLELISM,
 ) {
 
@@ -87,7 +88,7 @@ class Pkcs11WarmupService(
 		discoverySignal.beginDiscovery()
 		try {
 			logger.info {
-				"Starting PKCS#11 background warmup (timeout=${probeTimeoutSeconds}s, " +
+				"Starting PKCS#11 background warmup (timeout=${probeTimeout.seconds}s, " +
 						"maxParallelism=$maxParallelism)"
 			}
 			val startTime = System.currentTimeMillis()
@@ -142,8 +143,9 @@ class Pkcs11WarmupService(
 	private fun warmupSingleLibrary(name: String, libraryPath: String) {
 		logger.debug { "Warmup probing '$name' at '$libraryPath'" }
 
+		val timeoutSeconds = probeTimeout.seconds
 		try {
-			when (val result = prober.runProbe(libraryPath, probeTimeoutSeconds)) {
+			when (val result = prober.runProbe(libraryPath, timeoutSeconds)) {
 				null -> {
 					logger.warn { "Cannot resolve probe command for '$name' ('$libraryPath') — skipping warmup" }
 				}
@@ -151,7 +153,7 @@ class Pkcs11WarmupService(
 				is Pkcs11SubprocessResult.TimedOut -> {
 					logger.warn {
 						"Warmup subprocess pid=${result.pid} for '$name' ('$libraryPath') timed out " +
-								"after ${probeTimeoutSeconds}s — will retry via subprocess on demand"
+								"after ${timeoutSeconds}s — will retry via subprocess on demand"
 					}
 				}
 

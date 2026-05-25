@@ -48,6 +48,12 @@ import org.jetbrains.compose.resources.painterResource
 private val NavPanelWidth = 220.dp
 private val NavItemShape = RoundedCornerShape(6.dp)
 
+/** Max height of the custom-PKCS#11-library list before it scrolls within its own viewport. */
+private val Pkcs11ListMaxHeight = 240.dp
+
+/** Library count above which the custom-PKCS#11-library list gets its own scroll area. */
+private const val Pkcs11ListScrollThreshold = 5
+
 /**
  * Full-screen modal dialog for editing the global application configuration.
  *
@@ -1086,38 +1092,25 @@ private fun Pkcs11Section(
 	state: GlobalConfigEditState,
 	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 ) {
+	UnderlinedTextField(
+		value = state.pkcs11ProbeTimeout,
+		onValueChange = { value ->
+			if (value.all { c -> c.isDigit() }) {
+				onFieldChange { it.copy(pkcs11ProbeTimeout = value) }
+			}
+		},
+		label = { Text(text = "Probe timeout (seconds, 1-120)") },
+		singleLine = true,
+		keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+	)
+	Spacer(modifier = Modifier.height(16.dp))
+
 	val dropDir = remember { resolvePkcs11DropDirectory() }
 	if (dropDir != null) {
 		Pkcs11DropDirectoryHint(path = dropDir, onOpen = { openInFileExplorer(dropDir) })
 		Spacer(modifier = Modifier.height(12.dp))
 	}
 
-	if (state.customPkcs11Libraries.isEmpty()) {
-		Text(
-			text = "No custom PKCS#11 libraries registered.",
-			style = LumoTheme.typography.body2,
-			color = LumoTheme.colors.textSecondary,
-		)
-	} else {
-		state.customPkcs11Libraries.forEachIndexed { index, lib ->
-			Pkcs11LibraryRow(
-				library = lib,
-				onRemove = {
-					onFieldChange {
-						it.copy(customPkcs11Libraries = it.customPkcs11Libraries.toMutableList().apply {
-							removeAt(index)
-						})
-					}
-				},
-			)
-			if (index < state.customPkcs11Libraries.lastIndex) {
-				Spacer(modifier = Modifier.height(4.dp))
-			}
-		}
-	}
-	
-	Spacer(modifier = Modifier.height(12.dp))
-	
 	Pkcs11AddRow(
 		onAdd = { name, path ->
 			onFieldChange {
@@ -1130,6 +1123,61 @@ private fun Pkcs11Section(
 			}
 		},
 	)
+	Spacer(modifier = Modifier.height(12.dp))
+
+	if (state.customPkcs11Libraries.isEmpty()) {
+		Text(
+			text = "No custom PKCS#11 libraries registered.",
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.textSecondary,
+		)
+	} else {
+		val reversedEntries = state.customPkcs11Libraries.withIndex().reversed()
+		if (reversedEntries.size > Pkcs11ListScrollThreshold) {
+			VerticalScrollableColumn(
+				modifier = Modifier.fillMaxWidth().heightIn(max = Pkcs11ListMaxHeight),
+				contentPadding = PaddingValues(end = 12.dp),
+			) {
+				Pkcs11LibraryRows(entries = reversedEntries, onFieldChange = onFieldChange)
+			}
+		} else {
+			Pkcs11LibraryRows(entries = reversedEntries, onFieldChange = onFieldChange)
+		}
+	}
+}
+
+/**
+ * Render the custom PKCS#11 library rows (already in display order) with a remove action and
+ * inter-row spacing.
+ *
+ * Extracted so both the inline layout (short lists) and the scrollable-box layout (long lists)
+ * in [Pkcs11Section] share one row-rendering path.
+ *
+ * @param entries Indexed libraries in display order; [IndexedValue.index] is the original
+ *   position in `customPkcs11Libraries`, used so Remove deletes the correct entry regardless
+ *   of the (reversed) display order.
+ * @param onFieldChange Edit-state field updater used to apply a removal.
+ */
+@Composable
+private fun Pkcs11LibraryRows(
+	entries: List<IndexedValue<CustomPkcs11Library>>,
+	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
+) {
+	entries.forEachIndexed { displayPos, entry ->
+		Pkcs11LibraryRow(
+			library = entry.value,
+			onRemove = {
+				onFieldChange {
+					it.copy(customPkcs11Libraries = it.customPkcs11Libraries.toMutableList().apply {
+						removeAt(entry.index)
+					})
+				}
+			},
+		)
+		if (displayPos < entries.lastIndex) {
+			Spacer(modifier = Modifier.height(4.dp))
+		}
+	}
 }
 
 /**

@@ -133,6 +133,11 @@ Register custom PKCS#11 middleware library paths for hardware token discovery. O
 auto-detects common middleware on supported platforms; use this section to add libraries
 that are not discovered automatically.
 
+- **Probe timeout (seconds)** — the maximum time OmniSign waits for a single PKCS#11 library
+  probe before terminating it. Each library is probed in an isolated subprocess, so middleware
+  that hangs during initialization cannot stall token discovery; this value bounds that wait.
+  Allowed range 1-120 seconds; defaults to 30.
+
 Each entry is the absolute file path to the middleware shared library (`.dll`, `.so`, or
 `.dylib`).
 

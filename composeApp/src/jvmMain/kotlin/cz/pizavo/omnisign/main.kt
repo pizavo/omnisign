@@ -21,6 +21,7 @@ import com.jetbrains.WindowMove
 import cz.pizavo.omnisign.data.service.NotificationUrgency
 import cz.pizavo.omnisign.data.service.OsNotificationService
 import cz.pizavo.omnisign.data.service.Pkcs11CacheInvalidator
+import cz.pizavo.omnisign.data.service.Pkcs11ProbeTimeout
 import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
 import cz.pizavo.omnisign.data.service.TrustedListRefreshScheduler
 import cz.pizavo.omnisign.data.service.pkcs11DropDir
@@ -284,6 +285,7 @@ fun main(args: Array<String> = emptyArray()) {
 		CoroutineScope(Dispatchers.IO).launch {
 			try {
 				val config = warmupConfigRepo.getCurrentConfig()
+				koin.get<Pkcs11ProbeTimeout>().update(config.global.pkcs11ProbeTimeoutSeconds)
 				val userLibs = config.global.customPkcs11Libraries.map { it.name to it.path }
 				val pkcs11Dir = pkcs11DropDir()
 				logger.info { "Launching PKCS#11 background warmup (${userLibs.size} user lib(s), dropDir=$pkcs11Dir)" }

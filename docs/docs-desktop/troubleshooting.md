@@ -99,5 +99,10 @@ Common fixes:
    SafeNet Authentication Client on Windows registers CSP/minidriver entries but no PKCS#11
    path), add its library under **Settings → Tokens → PKCS#11 Libraries**, or copy the library
    file into the **drop directory** shown there and in the diagnostic dialog.
-4. **Load the key from a file instead.** If you have a `.p12` / `.pfx` export, use the import
+4. **Raise the probe timeout for slow middleware.** If the diagnostic shows a candidate library
+   whose probe *times out* on a low-powered machine, increase **Probe timeout** under
+   **Settings → Tokens → PKCS#11 Libraries**. This only helps middleware that is merely slow to
+   initialize — a library that always times out regardless is likely incompatible, so remove it
+   and rely on a registered driver (such as OpenSC) instead.
+5. **Load the key from a file instead.** If you have a `.p12` / `.pfx` export, use the import
    button in the signing dialog to sign without the token.
