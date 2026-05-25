@@ -29,6 +29,7 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -700,6 +701,45 @@ class SigningViewModelTest : FunSpec({
 			flow.value = false
 			advanceUntilIdle()
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>().refreshing shouldBe false
+		}
+	}
+
+	test("rediscovery keeps refreshing true until the cert list is refreshed (no empty-state flash)") {
+		runTest(testDispatcher) {
+			val flow = MutableStateFlow(false)
+			val localTokenService = mockk<TokenService>().also { every { it.discoveryRunning } returns flow }
+			val refreshGate = CompletableDeferred<Unit>()
+			var calls = 0
+			coEvery { signingRepository.listAvailableCertificates(false) } coAnswers {
+				calls++
+				if (calls == 1) {
+					CertificateDiscoveryResult(certificates = emptyList()).right()
+				} else {
+					refreshGate.await()
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+				}
+			}
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, localTokenService, ioDispatcher = testDispatcher)
+			vm.open("/tmp/test.pdf")
+			advanceUntilIdle()
+			vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>().refreshing shouldBe false
+
+			flow.value = true
+			advanceUntilIdle()
+			vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>().refreshing shouldBe true
+
+			flow.value = false
+			advanceUntilIdle()
+			val midState = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
+			midState.refreshing shouldBe true
+			midState.certificates shouldHaveSize 0
+
+			refreshGate.complete(Unit)
+			advanceUntilIdle()
+			val finalState = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
+			finalState.refreshing shouldBe false
+			finalState.certificates shouldHaveSize 1
 		}
 	}
 
