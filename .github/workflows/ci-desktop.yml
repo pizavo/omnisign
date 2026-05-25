@@ -17,24 +17,8 @@ permissions:
   contents: read
 
 jobs:
-  changes:
-    name: Detect changes
-    runs-on: ubuntu-latest
-    outputs:
-      relevant: ${{ steps.c.outputs.relevant }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          fetch-depth: 0
-      - id: c
-        uses: ./.github/actions/detect-changes
-        with:
-          module-path: composeApp
-
   build:
-    name: Build & Test — ${{ matrix.os }}
-    needs: changes
-    if: ${{ needs.changes.outputs.relevant == 'true' }}
+    name: Desktop — ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -42,10 +26,19 @@ jobs:
         os: [ubuntu-latest, windows-latest, macos-latest]
     steps:
       - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        uses: ./.github/actions/detect-changes
+        with:
+          module-path: composeApp
 
       - uses: ./.github/actions/setup-gradle
+        if: steps.detect.outputs.relevant == 'true'
 
       - name: Build and test
+        if: steps.detect.outputs.relevant == 'true'
         run: ./gradlew :shared:jvmTest :composeApp:jvmTest :composeApp:createDistributable
 
       - name: Upload jpackage logs
@@ -57,16 +50,3 @@ jobs:
             composeApp/build/compose/logs/
             composeApp/build/compose/tmp/*.args.txt
           if-no-files-found: ignore
-
-  ci-desktop:
-    name: ci-desktop
-    needs: [changes, build]
-    if: always()
-    runs-on: ubuntu-latest
-    steps:
-      - name: Gate
-        run: |
-          echo "changes=${{ needs.changes.result }}/${{ needs.changes.outputs.relevant }} build=${{ needs.build.result }}"
-          if [ "${{ needs.changes.result }}" != "success" ]; then echo "::error::change detection did not succeed"; exit 1; fi
-          if [ "${{ needs.build.result }}" = "failure" ] || [ "${{ needs.build.result }}" = "cancelled" ]; then echo "::error::Desktop build/test failed"; exit 1; fi
-          echo "OK (build: ${{ needs.build.result }})"
