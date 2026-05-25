@@ -3,6 +3,8 @@ package cz.pizavo.omnisign.data.service
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.mockk
 
 /**
  * Verifies [Pkcs11ProbeCache]'s probe delegation, crash-blacklist short-circuit, and the
@@ -20,11 +22,8 @@ class Pkcs11ProbeCacheTest : FunSpec({
 	 * exercised by [Pkcs11ProbeCache]; the subprocess-level methods are unused here.
 	 */
 	fun proberOf(probe: (String) -> List<Pkcs11TokenIdentity>): Pkcs11Prober =
-		object : Pkcs11Prober {
-			override fun probeIdentities(libraryPath: String) = probe(libraryPath)
-			override fun runProbe(libraryPath: String, timeoutSeconds: Long): Pkcs11SubprocessResult? = null
-			override fun runCertProbe(libraryPath: String, timeoutSeconds: Long): Pkcs11SubprocessResult? = null
-			override fun parseIdentities(stdout: String, libraryPath: String) = emptyList<Pkcs11TokenIdentity>()
+		mockk<Pkcs11Prober>(relaxed = true) {
+			every { probeIdentities(any()) } answers { probe(firstArg()) }
 		}
 
 	test("probeLibrary delegates to the configured prober") {
