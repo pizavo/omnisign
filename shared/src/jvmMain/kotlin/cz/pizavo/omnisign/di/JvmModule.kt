@@ -40,10 +40,11 @@ val jvmRepositoryModule = module {
 	single { Pkcs11CrashBlacklist() }
 	single { PcscContextRecovery() }
 	single { Pkcs11DiscoverySignal() }
-	single<Pkcs11Prober> { Pkcs11SubprocessProber() }
+	single { Pkcs11ProbeTimeout() }
+	single<Pkcs11Prober> { Pkcs11SubprocessProber(probeTimeout = get()) }
 	single { Pkcs11ProbeCache(crashBlacklist = get(), prober = get()) }
 	single { Pkcs11PcscCalaisResolver(pcscRecovery = get()) }
-	single { Pkcs11LibP11KitModuleResolver(prober = get()) }
+	single { Pkcs11LibP11KitModuleResolver(prober = get(), probeTimeout = get()) }
 	single { Pkcs11CandidateCollector(pcscCalaisResolver = get(), libP11KitModuleResolver = get()) }
 	single { Pkcs11TokenInfoDeduplicator() }
 	single { PcscMonitorService(recovery = get()) }
@@ -63,6 +64,7 @@ val jvmRepositoryModule = module {
 			crashBlacklist = get(),
 			warmupSignal = getOrNull<MutableStateFlow<Boolean>>() ?: MutableStateFlow(true),
 			discoverySignal = get(),
+			probeTimeout = get(),
 		)
 	}
 	single { Pkcs11NoLoginCertProbe() }
@@ -84,6 +86,7 @@ val jvmRepositoryModule = module {
 			candidateCollector = get(),
 			configRepository = get(),
 			appDataPkcs11Dir = pkcs11DropDir(),
+			probeTimeout = get(),
 		)
 	}
 	single {

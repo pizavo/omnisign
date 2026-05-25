@@ -24,12 +24,13 @@ import java.io.File
  * @property prober Process-isolated worker runner used to spawn the libp11-kit module
  *   discovery subprocess; injected so the native enumeration stays out of the host JVM and
  *   the resolver remains unit-testable.
- * @property probeTimeoutSeconds Wall-clock kill timeout for the discovery subprocess; a
- *   safety net for the unlikely case of a module whose `dlopen` constructor hangs.
+ * @property probeTimeout Process-global probe-timeout holder ([Pkcs11ProbeTimeout]); read at
+ *   spawn time so the discovery subprocess honours the configured `pkcs11ProbeTimeoutSeconds`.
+ *   A safety net for the unlikely case of a module whose `dlopen` constructor hangs.
  */
 class Pkcs11LibP11KitModuleResolver(
 	private val prober: Pkcs11Prober = Pkcs11SubprocessProber(),
-	private val probeTimeoutSeconds: Long = Pkcs11Prober.DEFAULT_PROBE_TIMEOUT_SECONDS,
+	private val probeTimeout: Pkcs11ProbeTimeout = Pkcs11ProbeTimeout(),
 ) {
 
 	/**
@@ -44,7 +45,7 @@ class Pkcs11LibP11KitModuleResolver(
 	 *   possibly empty (no p11-kit, no registered modules, or discovery failed).
 	 */
 	fun resolveModulePaths(): List<String> {
-		val discovered = prober.discoverModulePaths(probeTimeoutSeconds)
+		val discovered = prober.discoverModulePaths(probeTimeout.seconds)
 			.map { it.trim() }
 			.filter { it.isNotEmpty() }
 			.distinct()

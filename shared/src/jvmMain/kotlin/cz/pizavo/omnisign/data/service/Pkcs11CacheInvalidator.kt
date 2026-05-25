@@ -61,6 +61,9 @@ import java.io.File
  * @property appDataPkcs11Dir Drop directory passed to [Pkcs11Discoverer.discoverTokens] —
  *   must match the directory used by [DssTokenService.discoverTokens] so the populated
  *   cache entry has the same key the dialog will look up.
+ * @property probeTimeout Process-global probe-timeout holder, refreshed from
+ *   `GlobalConfig.pkcs11ProbeTimeoutSeconds` on every rediscovery so an operator-edited
+ *   timeout takes effect on the next cycle without a restart ([Pkcs11ProbeTimeout]).
  * @property scope Coroutine scope used both for the event collector and for proactively
  *   launched rediscovery cycles.  Defaults to a private [SupervisorJob]-backed
  *   [Dispatchers.IO] scope; tests override with a `TestScope` so they can advance
@@ -82,6 +85,7 @@ class Pkcs11CacheInvalidator(
 	private val candidateCollector: Pkcs11CandidateCollector,
 	private val configRepository: ConfigRepository,
 	private val appDataPkcs11Dir: File,
+	private val probeTimeout: Pkcs11ProbeTimeout = Pkcs11ProbeTimeout(),
 	private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
 	private val candidateCacheIsCardDependent: Boolean = System.getProperty("os.name").lowercase().contains("win"),
 ) : AutoCloseable {
@@ -181,15 +185,16 @@ class Pkcs11CacheInvalidator(
 	 * with fresh hardware state.  The result is discarded; the populated cache is the
 	 * useful side effect.
 	 *
-	 * Re-reads user libraries on every call because the user may edit
-	 * [cz.pizavo.omnisign.domain.model.config.GlobalConfig.customPkcs11Libraries] mid-session
-	 * via Global Settings.  Failures are logged but never propagated — a failed background
-	 * cycle simply leaves the cache empty, and the next dialog open falls back to the
-	 * normal lazy-probe path.
+	 * Re-reads user libraries and the probe timeout on every call because the user may edit
+	 * [cz.pizavo.omnisign.domain.model.config.GlobalConfig.customPkcs11Libraries] or
+	 * `pkcs11ProbeTimeoutSeconds` mid-session via Global Settings.  Failures are logged but
+	 * never propagated — a failed background cycle simply leaves the cache empty, and the next
+	 * dialog open falls back to the normal lazy-probe path.
 	 */
 	private suspend fun runRediscovery() {
 		try {
 			val config = configRepository.getCurrentConfig()
+			probeTimeout.update(config.global.pkcs11ProbeTimeoutSeconds)
 			val userLibs = config.global.customPkcs11Libraries.map { it.name to it.path }
 			val tokens = discoverer.discoverTokens(
 				appDataPkcs11Dir = appDataPkcs11Dir,

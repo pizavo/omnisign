@@ -116,6 +116,23 @@ class GlobalConfigEditStateTest : FunSpec({
 		state.toGlobalConfig().trustedListRefreshIntervalHours shouldBe 24L
 	}
 
+	test("round-trip from and toGlobalConfig preserves pkcs11ProbeTimeoutSeconds") {
+		val original = GlobalConfig(pkcs11ProbeTimeoutSeconds = 60)
+		val state = GlobalConfigEditState.from(original)
+		state.pkcs11ProbeTimeout shouldBe "60"
+		state.toGlobalConfig().pkcs11ProbeTimeoutSeconds shouldBe 60L
+	}
+
+	test("toGlobalConfig clamps the probe timeout into the 1..120 range") {
+		GlobalConfigEditState(pkcs11ProbeTimeout = "0").toGlobalConfig().pkcs11ProbeTimeoutSeconds shouldBe 1L
+		GlobalConfigEditState(pkcs11ProbeTimeout = "999").toGlobalConfig().pkcs11ProbeTimeoutSeconds shouldBe 120L
+	}
+
+	test("toGlobalConfig falls back to 30s when the probe timeout string is blank") {
+		val state = GlobalConfigEditState(pkcs11ProbeTimeout = "")
+		state.toGlobalConfig().pkcs11ProbeTimeoutSeconds shouldBe 30L
+	}
+
 	test("contentEquals detects change in trustedListRefreshInterval") {
 		val a = GlobalConfigEditState(trustedListRefreshInterval = "24")
 		val b = GlobalConfigEditState(trustedListRefreshInterval = "12")
