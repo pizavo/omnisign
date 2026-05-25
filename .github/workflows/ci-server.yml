@@ -11,22 +11,31 @@ on:
       - 'gradle.properties'
   pull_request:
     branches: [main]
-    paths:
-      - 'server/**'
-      - 'shared/**'
-      - 'gradle/**'
-      - '*.gradle.kts'
-      - 'gradle.properties'
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
+  changes:
+    name: Detect changes
+    runs-on: ubuntu-latest
+    outputs:
+      relevant: ${{ steps.c.outputs.relevant }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - id: c
+        uses: ./.github/actions/detect-changes
+        with:
+          module-path: server
+
   build:
     name: Build & Test
+    needs: changes
+    if: ${{ needs.changes.outputs.relevant == 'true' }}
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v6
 
@@ -34,3 +43,16 @@ jobs:
 
       - name: Build and test
         run: ./gradlew :shared:jvmTest :server:test :server:buildFatJar
+
+  ci-server:
+    name: ci-server
+    needs: [changes, build]
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Gate
+        run: |
+          echo "changes=${{ needs.changes.result }}/${{ needs.changes.outputs.relevant }} build=${{ needs.build.result }}"
+          if [ "${{ needs.changes.result }}" != "success" ]; then echo "::error::change detection did not succeed"; exit 1; fi
+          if [ "${{ needs.build.result }}" = "failure" ] || [ "${{ needs.build.result }}" = "cancelled" ]; then echo "::error::Server build/test failed"; exit 1; fi
+          echo "OK (build: ${{ needs.build.result }})"
