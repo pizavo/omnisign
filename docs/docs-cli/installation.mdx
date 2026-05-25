@@ -9,19 +9,15 @@ import TabItem from '@theme/TabItem';
 
 ## Prerequisites
 
-OmniSign CLI requires **Java 25** or newer.
+The native installers bundle their own Java runtime, so **no separate Java
+installation is required** to run OmniSign CLI. Java is only needed if you use
+the fat JAR distribution or run from source.
 
 <OsTabs>
 <TabItem value="windows" label="Windows">
 
-Verify your Java version:
-
-```powershell
-java -version
-```
-
-If Java is not installed, download it from
-[Adoptium](https://adoptium.net/) or install via winget:
+A Java runtime is bundled with the MSI installer. To run the fat JAR, install
+**Java 25** or newer from [Adoptium](https://adoptium.net/) or via winget:
 
 ```powershell
 winget install EclipseAdoptium.Temurin.25.JDK
@@ -30,13 +26,8 @@ winget install EclipseAdoptium.Temurin.25.JDK
 </TabItem>
 <TabItem value="linux" label="Linux">
 
-Verify your Java version:
-
-```bash
-java -version
-```
-
-Install via your package manager if needed:
+A Java runtime is bundled with the DEB/RPM package. To run the fat JAR, install
+**Java 25** or newer via your package manager:
 
 ```bash
 # Debian / Ubuntu
@@ -49,13 +40,8 @@ sudo dnf install temurin-25-jdk
 </TabItem>
 <TabItem value="macos" label="macOS">
 
-Verify your Java version:
-
-```bash
-java -version
-```
-
-Install via Homebrew if needed:
+A Java runtime is bundled with the DMG installer. To run the fat JAR, install
+**Java 25** or newer via Homebrew:
 
 ```bash
 brew install --cask temurin@25
