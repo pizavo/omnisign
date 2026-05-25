@@ -378,10 +378,10 @@ registerJPackageTask(
 		"--resource-dir", "$jpackageResourcesDir/linux-deb",
 		"--linux-app-category", "utils",
 		"--linux-deb-maintainer", "pizavo@gmail.com",
+		"--linux-package-name", "omnisign-cli",
 	),
 	resourceDirPath = "$jpackageResourcesDir/linux-deb",
 )
-renamePackageOutput("jpackageDeb", "deb")
 
 registerJPackageTask(
 	name = "jpackageRpm",
@@ -393,10 +393,10 @@ registerJPackageTask(
 		"--resource-dir", "$jpackageResourcesDir/linux-rpm",
 		"--linux-app-category", "utils",
 		"--linux-rpm-license-type", "AGPLv3+",
+		"--linux-package-name", "omnisign-cli",
 	),
 	resourceDirPath = "$jpackageResourcesDir/linux-rpm",
 )
-renamePackageOutput("jpackageRpm", "rpm")
 
 registerJPackageTask(
 	name = "jpackageLinuxImage",

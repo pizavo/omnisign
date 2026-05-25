@@ -40,12 +40,13 @@ import kotlinx.coroutines.flow.update
  *
  * While the dialog is in [SigningDialogState.Ready], the ViewModel observes
  * [TokenService.discoveryRunning] and reacts to background PKCS#11 cycles triggered by PC/SC
- * reader-state events (card inserted / removed, reader plugged / unplugged).  The flag is
- * mirrored into [SigningDialogState.Ready.refreshing] so the UI can show a small inline
- * indicator, and every transition back to `false` triggers a silent (non-prompting)
- * re-fetch of the certificate list with selection preservation: the current
- * [SigningDialogState.Ready.selectedAlias] is kept when the alias is still present in the
- * refreshed list, otherwise it is cleared.
+ * reader-state events (card inserted / removed, reader plugged / unplugged).  A running cycle
+ * sets [SigningDialogState.Ready.refreshing] so the UI can show a small inline indicator;
+ * when the cycle ends, the certificate list is re-fetched **before** the flag is cleared, so
+ * the indicator stays up until the refreshed list is in place and the empty-state banner
+ * never flashes back in the gap.  The re-fetch is silent (non-prompting) and preserves
+ * selection: the current [SigningDialogState.Ready.selectedAlias] is kept when the alias is
+ * still present in the refreshed list, otherwise it is cleared.
  *
  * @param signDocumentUseCase Use-case for performing the signing operation.
  * @param listCertificatesUseCase Use-case for discovering available signing certificates.
@@ -132,14 +133,19 @@ class SigningViewModel(
 	init {
 		viewModelScope.launch {
 			tokenService.discoveryRunning.drop(1).collect { running ->
-				_state.update { current ->
-					if (current is SigningDialogState.Ready) current.copy(refreshing = running)
-					else current
-				}
-				if (!running) {
+				if (running) {
+					_state.update { current ->
+						if (current is SigningDialogState.Ready) current.copy(refreshing = true)
+						else current
+					}
+				} else {
 					val userRescan = pendingUserRescan
 					pendingUserRescan = false
 					refreshCertificatesIfReady()
+					_state.update { current ->
+						if (current is SigningDialogState.Ready) current.copy(refreshing = false)
+						else current
+					}
 					if (userRescan) {
 						emitRescanToast()
 					}

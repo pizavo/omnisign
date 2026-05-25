@@ -11,7 +11,8 @@ import java.util.concurrent.ConcurrentHashMap
  * Sources, merged in this order (first wins on path collision):
  * 1. OS-native sources ([discoverViaOs]) — PC/SC + Calais on Windows (via
  *    [Pkcs11PcscCalaisResolver]), `security` / `pluginkit` plus the p11-kit proxy on
- *    macOS, the p11-kit proxy on Linux.
+ *    macOS, and the p11-kit-registered modules via libp11-kit
+ *    ([Pkcs11LibP11KitModuleResolver]) on Linux.
  * 2. App-data drop directory — any PKCS#11-named file under `<appDataDir>/omnisign/pkcs11/`.
  * 3. User-supplied paths — entries from
  *    [cz.pizavo.omnisign.domain.model.config.GlobalConfig.customPkcs11Libraries].
@@ -24,18 +25,22 @@ import java.util.concurrent.ConcurrentHashMap
  *
  * @property pcscCalaisResolver Windows PC/SC + Calais ATR → library-path resolver; only
  *   consulted on Windows.  Injected so the smart-card stack stays isolated and testable.
+ * @property libP11KitModuleResolver Linux libp11-kit module enumerator; only consulted on
+ *   Linux.  Injected so the native enumeration (run in a subprocess) stays isolated and the
+ *   collector remains unit-testable.
  */
 class Pkcs11CandidateCollector(
 	private val pcscCalaisResolver: Pkcs11PcscCalaisResolver = Pkcs11PcscCalaisResolver(),
+	private val libP11KitModuleResolver: Pkcs11LibP11KitModuleResolver = Pkcs11LibP11KitModuleResolver(),
 ) {
 
 	/**
 	 * Cache of [collectCandidates] results, keyed by `(appDataPkcs11Dir, userPkcs11Libraries)`.
 	 *
 	 * `collectCandidates` is the cold dominator of every dialog open: PC/SC enumeration on
-	 * Windows, and the p11-kit proxy on Linux (plus `security` / `pluginkit` on macOS).
-	 * Entries live indefinitely and are cleared by [Pkcs11CacheInvalidator] on reader plug /
-	 * unplug events; explicit user rescan goes through [invalidateCandidates].
+	 * Windows, and libp11-kit module enumeration on Linux (plus `security` / `pluginkit` on
+	 * macOS).  Entries live indefinitely and are cleared by [Pkcs11CacheInvalidator] on
+	 * reader plug / unplug events; explicit user rescan goes through [invalidateCandidates].
 	 */
 	private val candidateCache = ConcurrentHashMap<CandidateCacheKey, List<Pair<String, String>>>()
 
@@ -158,18 +163,17 @@ class Pkcs11CandidateCollector(
 	 *   (`SCardListReaders` → `HKLM\SOFTWARE\Microsoft\Cryptography\Calais\SmartCards`).
 	 * - **macOS**: `security list-smartcards`, `pluginkit -mAT com.apple.ctk.token`, plus the
 	 *   p11-kit *proxy* if the user installed p11-kit via Homebrew.
-	 * - **Linux**: the p11-kit *proxy* library.
+	 * - **Linux**: the PKCS#11 modules registered with p11-kit, enumerated via libp11-kit
+	 *   ([Pkcs11LibP11KitModuleResolver]).
 	 *
-	 * The proxy is a single PKCS#11 module that aggregates every module registered with
-	 * p11-kit, so probing it loads the whole p11-kit registry in one subprocess instead of
-	 * N — meaningful on multi-token systems and noticeable even with our parallelism cap of
-	 * two.  It also honours `.module` directives a naive parser ignores (`disable-in:`,
-	 * `enable-in:`, priority ordering, env-var overrides).  Every modern distribution that
-	 * ships `.module` files also ships the proxy in the same package
-	 * (Fedora `p11-kit`, Debian/Ubuntu `p11-kit-modules`, Arch `p11-kit`,
-	 * Homebrew `p11-kit`), so the proxy is the OS-manager surface — direct `.module` parsing
-	 * adds no realistic coverage.  Users with non-registering middleware drop the library
-	 * into `<appData>/omnisign/pkcs11/` or add it to `customPkcs11Libraries`.
+	 * On Linux the registry is queried directly: libp11-kit reports the individual configured
+	 * modules (e.g. `opensc-pkcs11.so`) — honouring `.module` directives such as `disable-in:`
+	 * and priority ordering — so each real module is probed on its own, with no hard-coded
+	 * path guessing and without the slot renumbering the aggregating proxy introduces.  macOS
+	 * still loads the p11-kit *proxy* (a single module aggregating the whole registry) when
+	 * present via Homebrew, since that is the only p11-kit surface readily offered there.
+	 * Users with non-registering middleware drop the library into `<appData>/omnisign/pkcs11/`
+	 * or add it to `customPkcs11Libraries`.
 	 *
 	 * The platform-specific branches are independent and run in parallel via short-lived
 	 * worker threads.
@@ -191,7 +195,7 @@ class Pkcs11CandidateCollector(
 			)
 
 			else -> listOf(
-				{ discoverViaP11KitProxy() },
+				{ libP11KitModuleResolver.resolveModulePaths().map { deriveMiddlewareName(it) to it } },
 			)
 		}
 
@@ -323,13 +327,17 @@ class Pkcs11CandidateCollector(
 	}
 
 	/**
-	 * Load the p11-kit proxy module if present on the system.
+	 * Load the p11-kit proxy module if present, used by the **macOS** branch of [discoverViaOs]
+	 * when p11-kit was installed via Homebrew.
 	 *
 	 * The proxy is a single PKCS#11 library that aggregates every module registered with
 	 * p11-kit, so loading it exposes all system-registered tokens through one entry point.
 	 * Only the first existing path from [P11_KIT_PROXY_PATHS] is returned — multiple proxy
 	 * installations on the same machine are uncommon and the serial-number deduplication
 	 * in [Pkcs11TokenInfoDeduplicator] would collapse them anyway.
+	 *
+	 * Linux does not use this path: it enumerates the individual registered modules via
+	 * libp11-kit ([Pkcs11LibP11KitModuleResolver]) instead of guessing the proxy location.
 	 *
 	 * Returns an empty list when the proxy library is not found; [discoverViaOs] then simply
 	 * contributes no candidates from this source (users with non-registering middleware use
@@ -374,20 +382,15 @@ class Pkcs11CandidateCollector(
 		val P11_STANDALONE_PATTERN = Regex("""p11(?!\d)""")
 
 		/**
-		 * Ordered candidate paths for the p11-kit proxy PKCS#11 module.
+		 * Ordered candidate paths for the p11-kit proxy PKCS#11 module on **macOS Homebrew**.
 		 *
-		 * The proxy aggregates all modules registered with p11-kit and exposes their slots
-		 * through a single library entry point.  Paths cover the multiarch layouts used by
-		 * Debian/Ubuntu, RPM-based distributions, and manual installations on Linux, plus
-		 * Homebrew (`brew install p11-kit`) on Intel and Apple Silicon macOS.
+		 * On Linux the registered modules are enumerated directly via libp11-kit
+		 * ([Pkcs11LibP11KitModuleResolver]) instead of guessing the proxy location, so only
+		 * the Homebrew layouts (Apple Silicon and Intel) remain here for the macOS branch.
 		 */
 		val P11_KIT_PROXY_PATHS = listOf(
-			"/usr/lib/x86_64-linux-gnu/pkcs11/p11-kit-proxy.so",
-			"/usr/lib/aarch64-linux-gnu/pkcs11/p11-kit-proxy.so",
-			"/usr/lib64/pkcs11/p11-kit-proxy.so",
-			"/usr/lib/pkcs11/p11-kit-proxy.so",
-			"/usr/local/lib/pkcs11/p11-kit-proxy.so",
 			"/opt/homebrew/lib/pkcs11/p11-kit-proxy.so",
+			"/usr/local/lib/pkcs11/p11-kit-proxy.so",
 		)
 	}
 }

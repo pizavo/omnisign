@@ -6,6 +6,8 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.mockk.every
+import io.mockk.mockk
 import java.io.File
 
 /**
@@ -28,11 +30,8 @@ class Pkcs11DiscovererTest : FunSpec({
 	 * unused here.
 	 */
 	fun proberOf(probe: (String) -> List<Pkcs11TokenIdentity>): Pkcs11Prober =
-		object : Pkcs11Prober {
-			override fun probeIdentities(libraryPath: String) = probe(libraryPath)
-			override fun runProbe(libraryPath: String, timeoutSeconds: Long): Pkcs11SubprocessResult? = null
-			override fun runCertProbe(libraryPath: String, timeoutSeconds: Long): Pkcs11SubprocessResult? = null
-			override fun parseIdentities(stdout: String, libraryPath: String) = emptyList<Pkcs11TokenIdentity>()
+		mockk<Pkcs11Prober>(relaxed = true) {
+			every { probeIdentities(any()) } answers { probe(firstArg()) }
 		}
 
 	/**

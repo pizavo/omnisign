@@ -43,7 +43,8 @@ val jvmRepositoryModule = module {
 	single<Pkcs11Prober> { Pkcs11SubprocessProber() }
 	single { Pkcs11ProbeCache(crashBlacklist = get(), prober = get()) }
 	single { Pkcs11PcscCalaisResolver(pcscRecovery = get()) }
-	single { Pkcs11CandidateCollector(pcscCalaisResolver = get()) }
+	single { Pkcs11LibP11KitModuleResolver(prober = get()) }
+	single { Pkcs11CandidateCollector(pcscCalaisResolver = get(), libP11KitModuleResolver = get()) }
 	single { Pkcs11TokenInfoDeduplicator() }
 	single { PcscMonitorService(recovery = get()) }
 	single {

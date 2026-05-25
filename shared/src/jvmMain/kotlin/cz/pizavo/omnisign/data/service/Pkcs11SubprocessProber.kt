@@ -76,6 +76,57 @@ class Pkcs11SubprocessProber(
 		return runResolvedProbeSubprocess(command + "--certs", libraryPath, timeoutSeconds)
 	}
 
+	/** Enumerate p11-kit-registered module paths; see [Pkcs11Prober.discoverModulePaths]. */
+	override fun discoverModulePaths(timeoutSeconds: Long): List<String> {
+		val command = resolveWorkerCommand(
+			Pkcs11ModuleDiscoveryWorker::class.java.name,
+			"discover-modules",
+			emptyList(),
+		)
+		if (command == null) {
+			logger.warn { "Cannot resolve module-discovery command — skipping libp11-kit discovery" }
+			return emptyList()
+		}
+		return runCatching {
+			when (val result = runResolvedProbeSubprocess(command, "libp11-kit module discovery", timeoutSeconds)) {
+				is Pkcs11SubprocessResult.TimedOut -> {
+					logger.warn {
+						"libp11-kit module-discovery subprocess pid=${result.pid} timed out after ${timeoutSeconds}s"
+					}
+					emptyList()
+				}
+
+				is Pkcs11SubprocessResult.Crashed -> {
+					logger.warn {
+						buildString {
+							append("libp11-kit module-discovery subprocess pid=${result.pid} exited with code ${result.exitCode}")
+							if (result.stderr.isNotEmpty()) append("\n  stderr: ${result.stderr}")
+						}
+					}
+					emptyList()
+				}
+
+				is Pkcs11SubprocessResult.Success -> {
+					val paths = result.stdout.lines().map { it.trim() }.filter { it.isNotEmpty() }
+					if (result.stderr.isNotEmpty()) {
+						if (paths.isEmpty()) {
+							logger.warn {
+								"libp11-kit module-discovery subprocess pid=${result.pid} produced no modules — " +
+										"stderr: ${result.stderr}"
+							}
+						} else {
+							logger.debug { "libp11-kit module-discovery subprocess pid=${result.pid} stderr: ${result.stderr}" }
+						}
+					}
+					paths
+				}
+			}
+		}.getOrElse { e ->
+			logger.warn(e) { "Failed to spawn libp11-kit module-discovery subprocess" }
+			emptyList()
+		}
+	}
+
 	/**
 	 * Parse a probe subprocess's `stdout` into [Pkcs11TokenIdentity] rows.
 	 *
@@ -149,23 +200,43 @@ class Pkcs11SubprocessProber(
 	}
 
 	/**
-	 * Build the [Pkcs11ProbeWorker] subprocess command line.
+	 * Build the [Pkcs11ProbeWorker] subprocess command line for [libraryPath].
 	 *
-	 * 1. `java` binary in `java.home/bin/` (standard JVM) — requires
-	 *    [resolveProbeClasspath].
-	 * 2. Native launcher fallback ([ProcessHandle.current]) invoked with `probe` —
-	 *    jpackage strips the `java` binary but the native launcher is always present.
+	 * Thin wrapper over [resolveWorkerCommand] for the single-library probe worker.
 	 *
 	 * @param libraryPath Absolute path to the PKCS#11 shared library to probe.
 	 * @return the command list, or `null` when no usable executable can be found.
 	 */
-	private fun resolveProbeCommand(libraryPath: String): List<String>? {
+	private fun resolveProbeCommand(libraryPath: String): List<String>? =
+		resolveWorkerCommand(Pkcs11ProbeWorker::class.java.name, "probe", listOf(libraryPath))
+
+	/**
+	 * Build a worker subprocess command line, shared by every isolated worker.
+	 *
+	 * 1. `java` binary in `java.home/bin/` (standard JVM) — requires [resolveProbeClasspath],
+	 *    invoking `<workerClassName> <trailingArgs...>`.
+	 * 2. Native launcher fallback ([ProcessHandle.current]) invoked with
+	 *    `<nativeSubcommand> <trailingArgs...>` — jpackage strips the `java` binary but the
+	 *    native launcher is always present and dispatches the subcommand to the same worker.
+	 *
+	 * @param workerClassName Fully-qualified name of the worker's `@JvmStatic main` class
+	 *   (the `java -cp` entry point).
+	 * @param nativeSubcommand Argument the native launcher dispatches on (e.g. `probe`,
+	 *   `discover-modules`).
+	 * @param trailingArgs Arguments passed to the worker after the entry point / subcommand.
+	 * @return the command list, or `null` when no usable executable can be found.
+	 */
+	private fun resolveWorkerCommand(
+		workerClassName: String,
+		nativeSubcommand: String,
+		trailingArgs: List<String>,
+	): List<String>? {
 		val javaBinaryName = if (System.getProperty("os.name").lowercase().contains("win")) "java.exe" else "java"
 		val javaExecutable = Path.of(System.getProperty("java.home"), "bin", javaBinaryName).toString()
 		if (File(javaExecutable).exists()) {
 			val classpath = resolveProbeClasspath()
 			if (classpath == null) {
-				logger.warn { "java binary found but classpath resolution failed — cannot probe '$libraryPath'" }
+				logger.warn { "java binary found but classpath resolution failed — cannot spawn '$nativeSubcommand' worker" }
 				return null
 			}
 			return buildList {
@@ -174,7 +245,10 @@ class Pkcs11SubprocessProber(
 				System.getProperty("omnisign.crash.dir")?.let { crashDir ->
 					add("-XX:ErrorFile=$crashDir/hs_err_pid%p.log")
 				}
-				addAll(listOf("-cp", classpath, Pkcs11ProbeWorker::class.java.name, libraryPath))
+				add("-cp")
+				add(classpath)
+				add(workerClassName)
+				addAll(trailingArgs)
 			}
 		}
 
@@ -182,11 +256,15 @@ class Pkcs11SubprocessProber(
 
 		val nativeLauncher = ProcessHandle.current().info().command().orElse(null)
 		if (nativeLauncher != null && File(nativeLauncher).exists()) {
-			logger.info { "Using native launcher for PKCS#11 probe: $nativeLauncher" }
-			return listOf(nativeLauncher, "probe", libraryPath)
+			logger.info { "Using native launcher for '$nativeSubcommand': $nativeLauncher" }
+			return buildList {
+				add(nativeLauncher)
+				add(nativeSubcommand)
+				addAll(trailingArgs)
+			}
 		}
 
-		logger.warn { "Neither java binary nor native launcher found — cannot spawn probe for '$libraryPath'" }
+		logger.warn { "Neither java binary nor native launcher found — cannot spawn '$nativeSubcommand' worker" }
 		return null
 	}
 
@@ -197,14 +275,14 @@ class Pkcs11SubprocessProber(
 	 */
 	private fun runResolvedProbeSubprocess(
 		command: List<String>,
-		libraryPath: String,
+		description: String,
 		timeoutSeconds: Long,
 	): Pkcs11SubprocessResult {
-		logger.debug { "Spawning PKCS#11 subprocess: ${command.first()}, library=$libraryPath" }
+		logger.debug { "Spawning PKCS#11 subprocess: ${command.first()}, target=$description" }
 
 		val process = ProcessBuilder(command).start()
 		val pid = process.pid()
-		logger.debug { "PKCS#11 subprocess pid=$pid started for '$libraryPath'" }
+		logger.debug { "PKCS#11 subprocess pid=$pid started for '$description'" }
 
 		try {
 			val stdoutResult = CompletableFuture<String>()
@@ -240,10 +318,13 @@ class Pkcs11SubprocessProber(
 			val stdout = runCatching {
 				stdoutResult.get(STREAM_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
 			}.getOrDefault("")
-			return Pkcs11SubprocessResult.Success(pid, stdout)
+			val stderr = runCatching {
+				stderrResult.get(STREAM_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+			}.getOrDefault("")
+			return Pkcs11SubprocessResult.Success(pid, stdout, stderr.take(MAX_STDERR_LOG_CHARS))
 		} finally {
 			if (process.isAlive) {
-				logger.debug { "Destroying leaked subprocess pid=$pid for '$libraryPath'" }
+				logger.debug { "Destroying leaked subprocess pid=$pid for '$description'" }
 				process.destroyForcibly()
 			}
 		}

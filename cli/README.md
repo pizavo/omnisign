@@ -67,8 +67,10 @@ During installation a dialog lets you choose between a system-wide installation
 
 ### Linux — DEB / RPM
 
-Both packages install the application to `/opt/omnisign/` and create a
+Both packages install the application to `/opt/omnisign-cli/` and create a
 `/usr/local/bin/omnisign` symlink so the command is available immediately.
+The distinct `omnisign-cli` package name lets the CLI coexist with the desktop
+application (package `omnisign`, installed under `/opt/omnisign/`).
 
 ```shell
 # Debian / Ubuntu

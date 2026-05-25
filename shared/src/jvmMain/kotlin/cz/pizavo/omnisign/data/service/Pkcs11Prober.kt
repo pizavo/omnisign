@@ -1,14 +1,15 @@
 package cz.pizavo.omnisign.data.service
 
 /**
- * Runs isolated PKCS#11 probe subprocesses and interprets their outcome.
+ * Runs isolated PKCS#11 worker subprocesses and interprets their outcome.
  *
  * The single seam through which discovery, warmup, diagnostics and token-presence
- * checks reach the (process-isolated) `Pkcs11ProbeWorker`.  Injected as a Koin
- * singleton so consumers depend on this abstraction rather than on top-level
- * functions — replacing the former `tokenProber` lambda + `mockkStatic(::runProbeSubprocess)`
- * coupling, and consolidating probe-spawn logic that was previously split across
- * `Pkcs11Discoverer` and `Pkcs11SubprocessResult`.
+ * checks reach the process-isolated workers — `Pkcs11ProbeWorker` for probing a single
+ * library and `Pkcs11ModuleDiscoveryWorker` for enumerating p11-kit-registered modules.
+ * Injected as a Koin singleton so consumers depend on this abstraction rather than on
+ * top-level functions — replacing the former `tokenProber` lambda +
+ * `mockkStatic(::runProbeSubprocess)` coupling, and consolidating probe-spawn logic that
+ * was previously split across `Pkcs11Discoverer` and `Pkcs11SubprocessResult`.
  */
 interface Pkcs11Prober {
 
@@ -55,6 +56,20 @@ interface Pkcs11Prober {
 	 *   each resulting identity for traceability.
 	 */
 	fun parseIdentities(stdout: String, libraryPath: String): List<Pkcs11TokenIdentity>
+
+	/**
+	 * Enumerate the absolute paths of the PKCS#11 modules registered with the system's
+	 * p11-kit, by spawning an isolated `Pkcs11ModuleDiscoveryWorker` subprocess that loads
+	 * (but does not initialise) the configured modules via libp11-kit.
+	 *
+	 * Returns an empty list when libp11-kit is unavailable, no module is registered, the
+	 * command cannot be resolved, or the subprocess crashes or times out — never throws.  The
+	 * paths are unfiltered; callers (notably [Pkcs11LibP11KitModuleResolver]) drop non-signing
+	 * modules such as the p11-kit trust policy module.
+	 *
+	 * @param timeoutSeconds Wall-clock kill timeout; only reached when the subprocess hangs.
+	 */
+	fun discoverModulePaths(timeoutSeconds: Long = DEFAULT_PROBE_TIMEOUT_SECONDS): List<String>
 
 	companion object {
 
