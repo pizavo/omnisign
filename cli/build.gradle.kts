@@ -277,7 +277,7 @@ val commonJpackageArgsList: List<String> = listOf(
 	"--description", "Multiplatform digital signature verification, signing and re-timestamping tool",
 	"--copyright", "Copyright (C) 2026 Pizavo",
 	"--main-class", "cz.pizavo.omnisign.CliKt",
-	"--add-modules", "java.logging,java.naming,java.desktop,java.management,java.smartcardio,java.sql,java.xml.crypto,jdk.unsupported",
+	"--add-modules", "java.logging,java.naming,java.desktop,java.management,java.smartcardio,java.sql,java.xml.crypto,jdk.crypto.cryptoki,jdk.unsupported",
 	"--java-options", "--enable-native-access=ALL-UNNAMED",
 	"--java-options", "--add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED",
 )
