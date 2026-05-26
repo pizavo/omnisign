@@ -157,6 +157,9 @@ kotlin {
 			implementation(libs.jbr.api)
 			implementation(libs.logback)
 		}
+		wasmJsMain.dependencies {
+			implementation(npm("mupdf", libs.versions.mupdf.get()))
+		}
 	}
 }
 
