@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/pizavo/omnisign/security/advisories/new
+    about: Report security issues privately via GitHub Security Advisories — not public issues.
+  - name: Documentation
+    url: https://pizavo.github.io/omnisign/
+    about: Usage and configuration guides for OmniSign.
