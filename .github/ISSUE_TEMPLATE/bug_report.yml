@@ -1,0 +1,74 @@
+name: Bug report
+description: Report a problem with OmniSign
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for filing a bug. Please do **not** report security vulnerabilities here — use [private security advisories](https://github.com/pizavo/omnisign/security/advisories/new) instead.
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform(s)
+      description: Which platform(s) does this affect? Select all that apply.
+      multiple: true
+      options:
+        - CLI
+        - Desktop
+        - Server
+        - Web
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: The component version (or commit) you are running.
+      placeholder: v1.13.1
+    validations:
+      required: true
+  - type: dropdown
+    id: os
+    attributes:
+      label: Operating system(s)
+      description: Which OS(es) did you observe this on? Select all that apply.
+      multiple: true
+      options:
+        - Windows
+        - macOS
+        - Linux
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: Describe the bug and what you expected to happen instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1.
+        2.
+        3.
+    validations:
+      required: true
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant logs or output
+      description: For the CLI, --debug and --log-file help. Rendered as code, so no backticks needed.
+      render: shell
+    validations:
+      required: false
+  - type: input
+    id: env
+    attributes:
+      label: Environment details
+      description: JDK version, PKCS#11 token/middleware, or other relevant setup.
+      placeholder: JDK 25, ICA SecureStore PKCS#11
+    validations:
+      required: false

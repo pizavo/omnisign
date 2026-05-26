@@ -17,12 +17,10 @@ captures
 !*.xcworkspace/contents.xcworkspacedata
 **/xcshareddata/WorkspaceSettings.xcsettings
 node_modules/
-.github/!workflows/
-.github/!actions
-.github/*.*
 hs_err_pid*.log
 core.*
 # Logback's literal dir when ${omnisign.log.dir} is unresolved at init (logback.xml now has a :- fallback; this is belt-and-suspenders)
 **/*.dir_IS_UNDEFINED/
 
 /server/src/main/resources/server.yml
+/.github/copilot-instructions.md

@@ -1,0 +1,38 @@
+name: Feature request
+description: Suggest an enhancement for OmniSign
+labels: ["enhancement"]
+body:
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform(s)
+      description: Which platform(s) would this affect? Select all that apply.
+      multiple: true
+      options:
+        - CLI
+        - Desktop
+        - Server
+        - Web
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or motivation
+      description: What are you trying to do, and what is getting in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: Proposed solution
+      description: What would you like to happen?
+    validations:
+      required: false
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives considered
+      description: Other approaches or workarounds you have thought about.
+    validations:
+      required: false
