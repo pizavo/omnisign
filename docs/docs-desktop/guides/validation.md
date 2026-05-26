@@ -2,6 +2,8 @@
 sidebar_position: 2
 ---
 
+import useBaseUrl from '@docusaurus/useBaseUrl';
+
 # Validating Signatures
 
 This guide explains how to validate electronically signed PDF documents using OmniSign Desktop.
@@ -21,7 +23,7 @@ start the validation process.
 You can click refresh again at any time to re-validate the document (e.g., after changing
 trust settings or adding trusted certificates).
 
-[media][gif][Clicking the refresh button in the Signatures panel header and the validation report appearing]
+<img src={useBaseUrl('/img/desktop/validation-refresh.avif')} alt="Refreshing the Signatures panel to validate the document" />
 
 ## 3. Read the results
 
