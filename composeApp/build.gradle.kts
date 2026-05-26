@@ -229,6 +229,7 @@ compose.desktop {
 				"java.sql",
 				"java.xml",
 				"java.xml.crypto",
+				"jdk.crypto.cryptoki",
 				"jdk.unsupported",
 			)
 			
