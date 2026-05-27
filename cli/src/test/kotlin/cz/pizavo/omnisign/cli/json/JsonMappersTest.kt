@@ -59,14 +59,15 @@ class JsonMappersTest : FunSpec({
 
 	test("SigningResult.toJsonResult maps all fields") {
 		val result = SigningResult(
-			outputFile = "/out.pdf",
+			outputBytes = ByteArray(0),
+			outputName = "out.pdf",
 			signatureId = "sig-1",
 			signatureLevel = "PAdES-BASELINE-B",
 			annotatedWarnings = listOf(AnnotatedWarning("w1")),
 			rawWarnings = listOf("raw1"),
 		)
 
-		val json = result.toJsonResult()
+		val json = result.toJsonResult("/out.pdf")
 		json.success shouldBe true
 		json.outputFile shouldBe "/out.pdf"
 		json.signatureId shouldBe "sig-1"

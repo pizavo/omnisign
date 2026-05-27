@@ -18,8 +18,13 @@ fun OperationError.toJsonError(): JsonError =
 
 /**
  * Convert a domain [SigningResult] to a success [JsonSigningResult] DTO.
+ *
+ * @param outputFile Absolute path the CLI wrote the signed bytes to, surfaced in the JSON
+ *   summary so machine-readable consumers can locate the file. The domain [SigningResult]
+ *   carries only the bytes and the suggested document name — the on-disk location is
+ *   chosen at the CLI boundary.
  */
-fun SigningResult.toJsonResult(): JsonSigningResult =
+fun SigningResult.toJsonResult(outputFile: String): JsonSigningResult =
 	JsonSigningResult(
 		success = true,
 		outputFile = outputFile,

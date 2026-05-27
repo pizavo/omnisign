@@ -3,11 +3,10 @@ package cz.pizavo.omnisign.api.routes
 import cz.pizavo.omnisign.api.collectParts
 import cz.pizavo.omnisign.api.deleteFileParts
 import cz.pizavo.omnisign.api.exception.OperationException
-import cz.pizavo.omnisign.api.extractFilePart
 import cz.pizavo.omnisign.api.extractTextField
+import cz.pizavo.omnisign.api.model.FilePartData
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.api.model.responses.SigningResultMeta
-import cz.pizavo.omnisign.api.model.responses.toResponse
 import cz.pizavo.omnisign.api.parseEnumSetField
 import cz.pizavo.omnisign.api.requireOperation
 import cz.pizavo.omnisign.config.AllowedOperation
@@ -25,10 +24,7 @@ import io.ktor.http.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.koin.ktor.ext.inject
-import java.io.File
 
 /**
  * Mount signing API routes under `/api/v1/sign`.
@@ -74,21 +70,15 @@ fun Route.signingRoutes() {
 		val multipart = call.receiveMultipart()
 		val parts = multipart.collectParts(serverConfig.maxFileSize)
 
-		var outputFile: File? = null
 		try {
-			val inputFile = extractFilePart(parts, "file")
-			if (inputFile == null) {
+			val filePart = parts.filterIsInstance<FilePartData>().firstOrNull { it.name == "file" }
+			if (filePart == null) {
 				call.respond(
 					HttpStatusCode.BadRequest,
 					ApiError(error = "MISSING_FILE", message = "Multipart field 'file' is required"),
 				)
 				return@post
 			}
-
-			val output = withContext(Dispatchers.IO) {
-				File.createTempFile("omnisign-signed-", ".pdf")
-			}
-			outputFile = output
 
 			val disabledHashAlgorithms = call.parseEnumSetField(
 				parts, "disableHashAlgorithm", HashAlgorithm.entries, "INVALID_ALGORITHM",
@@ -140,8 +130,8 @@ fun Route.signingRoutes() {
 			}
 
 			val parameters = SigningParameters(
-				inputFile = inputFile.absolutePath,
-				outputFile = output.absolutePath,
+				inputBytes = filePart.file.readBytes(),
+				inputName = filePart.originalFileName ?: filePart.file.name,
 				certificateAlias = requestedAlias,
 				hashAlgorithm = hashAlgorithm,
 				signatureLevel = signatureLevel,
@@ -160,16 +150,15 @@ fun Route.signingRoutes() {
 					val meta = SigningResultMeta(
 						signatureId = result.signatureId,
 						signatureLevel = result.signatureLevel,
-						annotatedWarnings = result.annotatedWarnings.map { it.toResponse() },
+						annotatedWarnings = result.annotatedWarnings,
 						hasRevocationWarnings = result.hasRevocationWarnings,
 					)
 					call.response.header("X-OmniSign-Result", serverJson.encodeToString(meta))
-					call.respondFile(output)
+					call.respondBytes(result.outputBytes, ContentType.Application.Pdf)
 				},
 			)
 		} finally {
 			parts.deleteFileParts()
-			outputFile?.delete()
 		}
 	}
 }

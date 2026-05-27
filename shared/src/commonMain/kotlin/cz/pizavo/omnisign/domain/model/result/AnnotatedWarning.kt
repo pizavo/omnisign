@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.domain.model.result
 
+import kotlinx.serialization.Serializable
+
 /**
  * A warning message enriched with the identifiers of the affected entities.
  *
@@ -18,6 +20,7 @@ package cz.pizavo.omnisign.domain.model.result
  *   CN or DN). Only populated for certificates whose metadata was available at the time
  *   the warning was captured.
  */
+@Serializable
 data class AnnotatedWarning(
 	val summary: String,
 	val affectedIds: List<String> = emptyList(),

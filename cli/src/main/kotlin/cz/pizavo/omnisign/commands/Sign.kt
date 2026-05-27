@@ -130,9 +130,10 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 		}
 		val resolvedConfig = resolvedConfigResult.getOrNull()!!
 		
+		val outputPath = outputFile.toAbsolutePath().toString()
 		val parameters = SigningParameters(
-			inputFile = inputFile.toAbsolutePath().toString(),
-			outputFile = outputFile.toAbsolutePath().toString(),
+			inputBytes = inputFile.toFile().readBytes(),
+			inputName = inputFile.fileName.toString(),
 			certificateAlias = certificate,
 			hashAlgorithm = resolvedConfig.hashAlgorithm,
 			signatureLevel = resolvedConfig.signatureLevel,
@@ -143,7 +144,7 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 			visibleSignature = buildVisibleSignatureParameters(),
 			resolvedConfig = resolvedConfig
 		)
-		
+
 		signUseCase(parameters).fold(
 			ifLeft = { error ->
 				if (output.json) {
@@ -163,8 +164,9 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 				throw ProgramResult(1)
 			},
 			ifRight = { result ->
+				outputFile.toFile().also { it.parentFile?.mkdirs() }.writeBytes(result.outputBytes)
 				if (output.json) {
-					echo(Json.encodeToString(result.toJsonResult()))
+					echo(Json.encodeToString(result.toJsonResult(outputPath)))
 				} else {
 					result.warnings.forEach { warning ->
 						echo("⚠️ Warning: $warning", err = true)
@@ -175,7 +177,7 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 							echo("    • $raw", err = true)
 						}
 					}
-					printSigningResult(result.outputFile, result.signatureId, result.signatureLevel)
+					printSigningResult(outputPath, result.signatureId, result.signatureLevel)
 				}
 			}
 		)

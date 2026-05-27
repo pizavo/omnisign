@@ -143,7 +143,7 @@ fun Route.timestampRoutes() {
 				ifRight = { result ->
 					val meta = TimestampResultMeta(
 						newLevel = result.newSignatureLevel,
-						annotatedWarnings = result.annotatedWarnings.map { it.toResponse() },
+						annotatedWarnings = result.annotatedWarnings,
 					)
 					call.response.header("X-OmniSign-Result", serverJson.encodeToString(meta))
 					call.respondFile(output)

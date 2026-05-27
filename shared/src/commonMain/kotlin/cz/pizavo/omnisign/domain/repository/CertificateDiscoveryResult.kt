@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.domain.repository
 
+import kotlinx.serialization.Serializable
+
 /**
  * Result of a certificate discovery operation.
  *
@@ -9,6 +11,7 @@ package cz.pizavo.omnisign.domain.repository
  * [lockedTokens] lists tokens that were skipped because they require a PIN that was not supplied
  * during silent discovery; the UI can offer to unlock them interactively.
  */
+@Serializable
 data class CertificateDiscoveryResult(
     val certificates: List<AvailableCertificateInfo>,
     val tokenWarnings: List<TokenDiscoveryWarning> = emptyList(),
@@ -23,6 +26,7 @@ data class CertificateDiscoveryResult(
  * @property message Short description of why the token could not be accessed.
  * @property details Optional underlying exception message for deeper diagnostics.
  */
+@Serializable
 data class TokenDiscoveryWarning(
     val tokenId: String,
     val tokenName: String,
@@ -40,6 +44,7 @@ data class TokenDiscoveryWarning(
  * @property tokenName Human-readable display name of the token.
  * @property tokenTypeName Name of the [cz.pizavo.omnisign.domain.model.config.enums.TokenType].
  */
+@Serializable
 data class LockedTokenInfo(
     val tokenId: String,
     val tokenName: String,

@@ -150,7 +150,7 @@ fun IslandLayout(
 				koin.get<UnlockTokenUseCase>(),
 				koin.get<LoadFileCertificatesUseCase>(),
 				koin.get<ConfigRepository>(),
-				koin.get<TokenService>(),
+				koin.getOrNull<TokenService>(),
 				renewalJobAssigner,
 				toastService = toastService,
 			)
@@ -250,9 +250,9 @@ fun IslandLayout(
 						showSettingsDialog = true
 					},
 					onSign = {
-						val filePath = pdfState.document?.filePath
-						if (filePath != null) {
-							signingViewModel?.open(filePath)
+						val doc = pdfState.document
+						if (doc != null) {
+							signingViewModel?.open(doc)
 							showSigningDialog = true
 						}
 					},
