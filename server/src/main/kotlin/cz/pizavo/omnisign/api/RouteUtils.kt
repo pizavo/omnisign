@@ -65,7 +65,7 @@ suspend fun MultiPartData.collectParts(maxFileSize: Long = Long.MAX_VALUE): List
 				}
 				createdFiles.add(tempFile)
 				streamPartToFile(part, tempFile, maxFileSize)
-				result.add(FilePartData(part.name, tempFile))
+				result.add(FilePartData(part.name, tempFile, part.originalFileName))
 			} else {
 				result.add(part)
 			}

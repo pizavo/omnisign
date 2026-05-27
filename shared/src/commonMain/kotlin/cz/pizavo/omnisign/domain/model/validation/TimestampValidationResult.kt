@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.domain.model.validation
 
+import kotlinx.serialization.Serializable
 import kotlin.time.Instant
 
 /**
@@ -19,6 +20,7 @@ import kotlin.time.Instant
  *   policy distrusts its terminating anchor for timestamping (it is trusted as a CA only).
  *   Distinct from a cryptographic failure; the reason is appended to [errors].
  */
+@Serializable
 data class TimestampValidationResult(
     val timestampId: String,
     val type: String,

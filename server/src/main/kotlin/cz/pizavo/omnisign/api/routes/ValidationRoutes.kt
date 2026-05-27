@@ -3,8 +3,8 @@ package cz.pizavo.omnisign.api.routes
 import cz.pizavo.omnisign.api.collectParts
 import cz.pizavo.omnisign.api.deleteFileParts
 import cz.pizavo.omnisign.api.exception.OperationException
-import cz.pizavo.omnisign.api.extractFilePart
 import cz.pizavo.omnisign.api.extractTextField
+import cz.pizavo.omnisign.api.model.FilePartData
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.api.parseEnumSetField
 import cz.pizavo.omnisign.api.requireOperation
@@ -16,8 +16,6 @@ import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
-import cz.pizavo.omnisign.domain.model.validation.json.toJsonReport
-import cz.pizavo.omnisign.domain.model.validation.json.toJsonString
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
 import io.ktor.http.*
@@ -69,8 +67,8 @@ fun Route.validationRoutes() {
 		val parts = multipart.collectParts(serverConfig.maxFileSize)
 
 		try {
-			val inputFile = extractFilePart(parts, "file")
-			if (inputFile == null) {
+			val filePart = parts.filterIsInstance<FilePartData>().firstOrNull { it.name == "file" }
+			if (filePart == null) {
 				call.respond(
 					HttpStatusCode.BadRequest,
 					ApiError(error = "MISSING_FILE", message = "Multipart field 'file' is required"),
@@ -110,7 +108,8 @@ fun Route.validationRoutes() {
 				)
 
 			val parameters = ValidationParameters(
-				inputFile = inputFile.absolutePath,
+				inputBytes = filePart.file.readBytes(),
+				inputName = filePart.originalFileName ?: filePart.file.name,
 				resolvedConfig = resolvedConfig,
 				rawReportFormats = rawReportFormats,
 			)
@@ -120,8 +119,7 @@ fun Route.validationRoutes() {
 					throw OperationException(error)
 				},
 				ifRight = { report ->
-					val jsonReport = report.toJsonReport().toJsonString()
-					call.respondText(jsonReport, ContentType.Application.Json)
+					call.respond(report)
 				},
 			)
 		} finally {

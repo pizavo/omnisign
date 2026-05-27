@@ -1,9 +1,10 @@
 package cz.pizavo.omnisign.di
 
 import cz.pizavo.omnisign.data.remote.RemoteCapabilitiesRepository
+import cz.pizavo.omnisign.data.remote.RemoteValidationRepository
 import cz.pizavo.omnisign.domain.repository.CapabilitiesRepository
+import cz.pizavo.omnisign.domain.repository.ValidationRepository
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.js.Js
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
 import io.ktor.serialization.kotlinx.json.json
@@ -14,18 +15,18 @@ import org.koin.dsl.module
 /**
  * Koin module wiring the web target's data layer.
  *
- * Builds a single Ktor [HttpClient] backed by the `Js` engine — the
- * fetch-based engine Ktor publishes for the JavaScript and `wasmJs` targets,
- * which works in browser hosts (the CIO engine is also offered for `wasmJs`
- * but relies on Node's `net` module and therefore only runs under Node-Wasm).
- * Content negotiation is installed with kotlinx-serialization, and a default
- * request URL is anchored at [serverBaseUrl]. Binds each remote-backed repository
- * implementation against its platform-agnostic interface declared in
- * `shared/commonMain`.
+ * Builds a single Ktor [HttpClient] with kotlinx-serialization content
+ * negotiation installed and a default request URL anchored at [serverBaseUrl],
+ * then binds each remote-backed repository implementation against its
+ * platform-agnostic interface declared in `shared/commonMain`. `expectSuccess`
+ * is enabled so non-2xx HTTP responses surface as `ResponseException` instead
+ * of being silently coerced through Ktor's response transformers; the
+ * `Remote*Repository` impls catch those and map them to a domain
+ * `OperationError`.
  *
- * Currently only [CapabilitiesRepository] is wired; further `Remote*Repository`
- * bindings (validation, signing, timestamp, configuration) will be added to
- * this module as those features land on the web target.
+ * Currently wires [CapabilitiesRepository] and [ValidationRepository]; further
+ * `Remote*Repository` bindings (signing, timestamp, configuration) will be
+ * added as those features land on the web target.
  *
  * @param serverBaseUrl Origin of the OmniSign server (e.g.
  *   `"https://omnisign.example.com"`). All HTTP requests are issued relative
@@ -36,6 +37,7 @@ import org.koin.dsl.module
 fun webDataModule(serverBaseUrl: String): Module = module {
     single {
         HttpClient {
+            expectSuccess = true
             install(ContentNegotiation) {
                 json(
                     Json {
@@ -52,4 +54,5 @@ fun webDataModule(serverBaseUrl: String): Module = module {
         }
     }
     single<CapabilitiesRepository> { RemoteCapabilitiesRepository(get()) }
+    single<ValidationRepository> { RemoteValidationRepository(get()) }
 }

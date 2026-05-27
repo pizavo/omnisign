@@ -69,7 +69,7 @@ fun IslandLayout(
 			val koin = KoinPlatform.getKoinOrNull() ?: return@runCatching null
 			SignatureViewModel(
 				koin.get<ValidateDocumentUseCase>(),
-				koin.get<ConfigRepository>(),
+				koin.getOrNull<ConfigRepository>(),
 				trustedListRefreshPort = koin.getOrNull<TrustedListRefreshPort>(),
 			)
 		}.recover { if (it is NoDefinitionFoundException || it.cause is NoDefinitionFoundException) null else throw it }.getOrNull()
@@ -221,7 +221,7 @@ fun IslandLayout(
 			scope.launch {
 				val document = loadPdfFromPlatformFile(platformFile)
 				pdfViewModel.onDocumentLoaded(document)
-				signatureViewModel?.onDocumentChanged(document.filePath)
+				signatureViewModel?.onDocumentChanged(document)
 				timestampViewModel?.onDocumentChanged(document.filePath)
 			}
 		}
@@ -667,7 +667,7 @@ private suspend fun reloadDocument(
 ) {
 	val doc = loadPdfFromPath(filePath) ?: return
 	pdfViewModel.onDocumentLoaded(doc)
-	signatureViewModel?.onDocumentChanged(filePath)
+	signatureViewModel?.onDocumentChanged(doc)
 	timestampViewModel?.onDocumentChanged(filePath)
 }
 

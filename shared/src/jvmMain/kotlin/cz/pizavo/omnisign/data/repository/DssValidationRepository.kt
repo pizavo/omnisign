@@ -28,7 +28,7 @@ import eu.europa.esig.dss.enumerations.Indication
 import eu.europa.esig.dss.enumerations.SignatureQualification
 import eu.europa.esig.dss.enumerations.SubIndication
 import eu.europa.esig.dss.enumerations.TimestampQualification
-import eu.europa.esig.dss.model.FileDocument
+import eu.europa.esig.dss.model.InMemoryDocument
 import eu.europa.esig.dss.model.x509.CertificateToken
 import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.simplereport.SimpleReport
@@ -57,42 +57,35 @@ class DssValidationRepository(
 	
 	override suspend fun validateDocument(parameters: ValidationParameters): OperationResult<ValidationReport> {
 		return Either.catch {
-			val file = File(parameters.inputFile)
-			
-			if (!file.exists()) {
-				return ValidationError.InvalidDocument(
-					message = "File not found: ${parameters.inputFile}",
-					details = null
-				).left()
-			}
-			
+			val document = InMemoryDocument(parameters.inputBytes, parameters.inputName)
+
 			val statusAlert = CollectingStatusAlert()
 			val directAnchors = trustStore.resolve(TrustScope.of(parameters.resolvedConfig?.profileName))
 				.getOrElse { emptyList() }
 			val (cv, tlWarnings) = dssServiceFactory.buildValidationCertificateVerifier(
 				parameters.resolvedConfig, directAnchors
 			) { statusAlert }
-			val validator = SignedDocumentValidator.fromDocument(FileDocument(file))
+			val validator = SignedDocumentValidator.fromDocument(document)
 				.apply {
 					setCertificateVerifier(cv)
 					if (this is PDFDocumentValidator) {
 						setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 					}
 				}
-			
-			
+
+
 			val reports = resolveValidationPolicy(parameters.resolvedConfig, parameters.customPolicyPath)
 				?.let { validator.validateDocument(it) }
 				?: validator.validateDocument()
-			
+
 			parameters.rawReportOutputPath?.let { outPath ->
 				writeRawReport(reports, outPath, parameters.rawReportFormat)
 			}
-			
+
 			val verifierWarnings = statusAlert.drain()
 			val disabledHash = parameters.resolvedConfig?.disabledHashAlgorithms ?: emptySet()
 			val disabledEncryption = parameters.resolvedConfig?.disabledEncryptionAlgorithms ?: emptySet()
-			val report = convertReports(reports, file.name, anchorTypeByDssId(directAnchors))
+			val report = convertReports(reports, parameters.inputName, anchorTypeByDssId(directAnchors))
 			val annotatedSignatures = report.signatures.map { sig ->
 				annotateDisabledAlgorithms(sig, disabledHash, disabledEncryption)
 			}

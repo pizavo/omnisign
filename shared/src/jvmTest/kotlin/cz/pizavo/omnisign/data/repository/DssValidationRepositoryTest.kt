@@ -106,17 +106,14 @@ class DssValidationRepositoryTest : FunSpec({
 
 	// ── validateDocument error handling ──────────────────────────────────────
 
-	test("validateDocument returns InvalidDocument when the input file does not exist") {
-		repository.validateDocument(
-			ValidationParameters(inputFile = "/nonexistent/file.pdf")
-		).shouldBeLeft().shouldBeInstanceOf<ValidationError.InvalidDocument>()
-	}
-
-	test("validateDocument returns ValidationFailed when the file is not a valid PDF") {
+	test("validateDocument returns ValidationFailed when the input bytes are not a valid PDF") {
 		val notAPdf = tmpFile("not-a-pdf.pdf").also { it.writeText("this is not a PDF") }
 
 		repository.validateDocument(
-			ValidationParameters(inputFile = notAPdf.absolutePath)
+			ValidationParameters(
+				inputBytes = notAPdf.readBytes(),
+				inputName = notAPdf.name,
+			)
 		).shouldBeLeft().shouldBeInstanceOf<ValidationError.ValidationFailed>()
 	}
 
