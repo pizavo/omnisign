@@ -59,3 +59,23 @@ fun ProfileConfig.toResponse() = ProfileConfigResponse(
 	validation = validation,
 )
 
+/**
+ * Reverse-map a [ProfileConfigResponse] back into a [ProfileConfig].
+ *
+ * Mirrors the sanitization: the rebuilt profile carries a [TimestampServerConfig]
+ * with no credential material (server keeps that on its side). Suitable for read-only
+ * consumption by the web client.
+ */
+fun ProfileConfigResponse.toConfig() = ProfileConfig(
+	name = name,
+	description = description,
+	hashAlgorithm = hashAlgorithm,
+	encryptionAlgorithm = encryptionAlgorithm,
+	disabledHashAlgorithms = disabledHashAlgorithms,
+	disabledEncryptionAlgorithms = disabledEncryptionAlgorithms,
+	signatureLevel = signatureLevel,
+	timestampServer = timestampServer?.toConfig(),
+	ocsp = ocsp,
+	crl = crl,
+	validation = validation,
+)

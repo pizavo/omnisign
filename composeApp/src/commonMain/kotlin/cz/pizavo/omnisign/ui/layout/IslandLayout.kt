@@ -69,7 +69,7 @@ fun IslandLayout(
 			val koin = KoinPlatform.getKoinOrNull() ?: return@runCatching null
 			SignatureViewModel(
 				koin.get<ValidateDocumentUseCase>(),
-				koin.getOrNull<ConfigRepository>(),
+				koin.get<ConfigRepository>(),
 				trustedListRefreshPort = koin.getOrNull<TrustedListRefreshPort>(),
 			)
 		}.recover { if (it is NoDefinitionFoundException || it.cause is NoDefinitionFoundException) null else throw it }.getOrNull()

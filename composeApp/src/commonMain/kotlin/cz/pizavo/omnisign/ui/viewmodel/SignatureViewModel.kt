@@ -38,10 +38,10 @@ import kotlinx.coroutines.withContext
  *
  * @param validateDocumentUseCase Use case for validating a signed PDF.
  * @param configRepository Repository for retrieving the current application configuration
- *   so that EU LOTL and custom trusted lists are applied during in-process validation.
- *   `null` on targets without a local config store (web), where the server-backed
- *   [ValidateDocumentUseCase] receives [ValidationParameters.resolvedConfig] as `null` and
- *   the server resolves against its own configuration.
+ *   so that EU LOTL and custom trusted lists are applied during validation. On the JVM
+ *   it loads from the local config store; on the web target the
+ *   [cz.pizavo.omnisign.data.remote.RemoteConfigRepository] returns a sanitized view
+ *   of the server's `signing.yml`.
  * @param ioDispatcher Dispatcher used for the heavy validation work. Defaults to
  *   [Dispatchers.Default]; tests should substitute a [kotlinx.coroutines.test.StandardTestDispatcher].
  * @param trustedListRefreshPort Optional refresh signal. When a refresh of a trusted
@@ -51,7 +51,7 @@ import kotlinx.coroutines.withContext
  */
 class SignatureViewModel(
     private val validateDocumentUseCase: ValidateDocumentUseCase,
-    private val configRepository: ConfigRepository?,
+    private val configRepository: ConfigRepository,
     private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
     private val trustedListRefreshPort: TrustedListRefreshPort? = null,
 ) : ViewModel() {
@@ -82,16 +82,14 @@ class SignatureViewModel(
         } ?: MutableStateFlow(false)
 
     init {
-        if (configRepository != null) {
-            viewModelScope.launch { resolveRequiredIds(configRepository) }
-        }
+        viewModelScope.launch { resolveRequiredIds() }
     }
 
     /**
      * Resolve the active configuration and publish the trusted-source ids it
      * needs. Failures resolve to an empty set (nothing to wait for).
      */
-    private suspend fun resolveRequiredIds(configRepository: ConfigRepository) {
+    private suspend fun resolveRequiredIds() {
         val appConfig = configRepository.getCurrentConfig()
         val resolved = ResolvedConfig.resolve(
             global = appConfig.global,
@@ -163,20 +161,19 @@ class SignatureViewModel(
         _state.update { SignaturePanelState.Loading }
         viewModelScope.launch {
             val result = withContext(ioDispatcher) {
-                val resolvedConfig = configRepository?.let { repo ->
-                    val appConfig = repo.getCurrentConfig()
-                    ResolvedConfig.resolve(
-                        global = appConfig.global,
-                        profile = appConfig.activeProfile?.let { appConfig.profiles[it] },
-                        operationOverrides = null,
-                    ).getOrNull()
-                }
+                val appConfig = configRepository.getCurrentConfig()
+                val resolvedConfig = ResolvedConfig.resolve(
+                    global = appConfig.global,
+                    profile = appConfig.activeProfile?.let { appConfig.profiles[it] },
+                    operationOverrides = null,
+                ).getOrNull()
                 _requiredIds.value = resolvedConfig?.requiredTrustedSourceIds() ?: emptySet()
                 validateDocumentUseCase(
                     ValidationParameters(
                         inputBytes = document.data,
                         inputName = document.name,
                         resolvedConfig = resolvedConfig,
+                        profileName = appConfig.activeProfile,
                         rawReportFormats = RawReportFormat.entries.toSet(),
                     )
                 )
