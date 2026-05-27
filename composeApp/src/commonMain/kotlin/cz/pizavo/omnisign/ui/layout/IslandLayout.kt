@@ -31,6 +31,7 @@ import kotlinx.coroutines.launch
 import omnisign.composeapp.generated.resources.Res
 import omnisign.composeapp.generated.resources.icon_refresh
 import org.jetbrains.compose.resources.painterResource
+import org.koin.core.error.NoDefinitionFoundException
 import org.koin.mp.KoinPlatform
 
 /**
@@ -64,12 +65,14 @@ fun IslandLayout(
 	val scope = rememberCoroutineScope()
 	
 	val signatureViewModel: SignatureViewModel? = remember {
-		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
-		SignatureViewModel(
-			koin.get<ValidateDocumentUseCase>(),
-			koin.get<ConfigRepository>(),
-			trustedListRefreshPort = koin.getOrNull<TrustedListRefreshPort>(),
-		)
+		runCatching {
+			val koin = KoinPlatform.getKoinOrNull() ?: return@runCatching null
+			SignatureViewModel(
+				koin.get<ValidateDocumentUseCase>(),
+				koin.get<ConfigRepository>(),
+				trustedListRefreshPort = koin.getOrNull<TrustedListRefreshPort>(),
+			)
+		}.recover { if (it is NoDefinitionFoundException || it.cause is NoDefinitionFoundException) null else throw it }.getOrNull()
 	}
 	val signatureValidationBlocked by (signatureViewModel?.validationBlocked ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow(false)
@@ -79,13 +82,15 @@ fun IslandLayout(
 	}).collectAsState()
 	
 	val profileViewModel: ProfileViewModel? = remember {
-		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
-		ProfileViewModel(
-			koin.get<ManageProfileUseCase>(),
-			koin.get<GetConfigUseCase>(),
-			koin.getOrNull<CredentialStore>(),
-			koin.getOrNull<TrustStore>(),
-		)
+		runCatching {
+			val koin = KoinPlatform.getKoinOrNull() ?: return@runCatching null
+			ProfileViewModel(
+				koin.get<ManageProfileUseCase>(),
+				koin.get<GetConfigUseCase>(),
+				koin.getOrNull<CredentialStore>(),
+				koin.getOrNull<TrustStore>(),
+			)
+		}.recover { if (it is NoDefinitionFoundException || it.cause is NoDefinitionFoundException) null else throw it }.getOrNull()
 	}
 	val profileState by (profileViewModel?.state ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow(ProfileListState())
@@ -95,20 +100,22 @@ fun IslandLayout(
 	}).collectAsState()
 	
 	val settingsViewModel: SettingsViewModel? = remember {
-		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
-		val linux = isLinuxPlatform()
-		SettingsViewModel(
-			koin.get<GetConfigUseCase>(),
-			koin.get<SetGlobalConfigUseCase>(),
-			koin.getOrNull<ConfigRepository>(),
-			koin.getOrNull<CredentialStore>(),
-			koin.getOrNull<SchedulerPort>(),
-			autoDetectedExecutablePath = resolveExecutablePath(),
-			isLinuxDesktop = linux,
-			trustedListRefreshPort = koin.getOrNull<TrustedListRefreshPort>(),
-			configArchive = koin.getOrNull<ConfigArchivePort>(),
-			trustStore = koin.getOrNull<TrustStore>(),
-		)
+		runCatching {
+			val koin = KoinPlatform.getKoinOrNull() ?: return@runCatching null
+			val linux = isLinuxPlatform()
+			SettingsViewModel(
+				koin.get<GetConfigUseCase>(),
+				koin.get<SetGlobalConfigUseCase>(),
+				koin.getOrNull<ConfigRepository>(),
+				koin.getOrNull<CredentialStore>(),
+				koin.getOrNull<SchedulerPort>(),
+				autoDetectedExecutablePath = resolveExecutablePath(),
+				isLinuxDesktop = linux,
+				trustedListRefreshPort = koin.getOrNull<TrustedListRefreshPort>(),
+				configArchive = koin.getOrNull<ConfigArchivePort>(),
+				trustStore = koin.getOrNull<TrustStore>(),
+			)
+		}.recover { if (it is NoDefinitionFoundException || it.cause is NoDefinitionFoundException) null else throw it }.getOrNull()
 	}
 	val settingsState by (settingsViewModel?.state ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow(GlobalConfigEditState())
@@ -126,24 +133,28 @@ fun IslandLayout(
 	var initialSettingsCategory by remember { mutableStateOf<SettingsCategory?>(null) }
 	
 	val renewalJobAssigner: RenewalJobAssigner? = remember {
-		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
-		RenewalJobAssigner(koin.get<ConfigRepository>())
+		runCatching {
+			val koin = KoinPlatform.getKoinOrNull() ?: return@runCatching null
+			RenewalJobAssigner(koin.get<ConfigRepository>())
+		}.recover { if (it is NoDefinitionFoundException || it.cause is NoDefinitionFoundException) null else throw it }.getOrNull()
 	}
 	
 	val toastService = remember { ToastService() }
 	
 	val signingViewModel: SigningViewModel? = remember {
-		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
-		SigningViewModel(
-			koin.get<SignDocumentUseCase>(),
-			koin.get<ListCertificatesUseCase>(),
-			koin.get<UnlockTokenUseCase>(),
-			koin.get<LoadFileCertificatesUseCase>(),
-			koin.get<ConfigRepository>(),
-			koin.get<TokenService>(),
-			renewalJobAssigner,
-			toastService = toastService,
-		)
+		runCatching {
+			val koin = KoinPlatform.getKoinOrNull() ?: return@runCatching null
+			SigningViewModel(
+				koin.get<SignDocumentUseCase>(),
+				koin.get<ListCertificatesUseCase>(),
+				koin.get<UnlockTokenUseCase>(),
+				koin.get<LoadFileCertificatesUseCase>(),
+				koin.get<ConfigRepository>(),
+				koin.get<TokenService>(),
+				renewalJobAssigner,
+				toastService = toastService,
+			)
+		}.recover { if (it is NoDefinitionFoundException || it.cause is NoDefinitionFoundException) null else throw it }.getOrNull()
 	}
 	val signingState by (signingViewModel?.state ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow<SigningDialogState>(SigningDialogState.Idle)
@@ -157,13 +168,15 @@ fun IslandLayout(
 	var showSigningDialog by remember { mutableStateOf(false) }
 	
 	val timestampViewModel: TimestampViewModel? = remember {
-		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
-		TimestampViewModel(
-			koin.get<ExtendDocumentUseCase>(),
-			koin.get<GetDocumentTimestampInfoUseCase>(),
-			koin.get<ConfigRepository>(),
-			renewalJobAssigner,
-		)
+		runCatching {
+			val koin = KoinPlatform.getKoinOrNull() ?: return@runCatching null
+			TimestampViewModel(
+				koin.get<ExtendDocumentUseCase>(),
+				koin.get<GetDocumentTimestampInfoUseCase>(),
+				koin.get<ConfigRepository>(),
+				renewalJobAssigner,
+			)
+		}.recover { if (it is NoDefinitionFoundException || it.cause is NoDefinitionFoundException) null else throw it }.getOrNull()
 	}
 	val timestampState by (timestampViewModel?.state ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow<TimestampDialogState>(TimestampDialogState.Idle)
@@ -174,16 +187,20 @@ fun IslandLayout(
 	var showTimestampDialog by remember { mutableStateOf(false) }
 	
 	val trustedCertsViewModel: TrustedCertsViewModel? = remember {
-		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
-		TrustedCertsViewModel(koin.get<GetConfigUseCase>(), koin.getOrNull<TrustStore>())
+		runCatching {
+			val koin = KoinPlatform.getKoinOrNull() ?: return@runCatching null
+			TrustedCertsViewModel(koin.get<GetConfigUseCase>(), koin.getOrNull<TrustStore>())
+		}.recover { if (it is NoDefinitionFoundException || it.cause is NoDefinitionFoundException) null else throw it }.getOrNull()
 	}
 	val trustedCertsState by (trustedCertsViewModel?.state ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow(TrustedCertsPanelState())
 	}).collectAsState()
 	
 	val tlBuilderViewModel: TlBuilderViewModel? = remember {
-		val koin = KoinPlatform.getKoinOrNull() ?: return@remember null
-		TlBuilderViewModel(koin.getOrNull<TrustedListCompilerPort>())
+		runCatching {
+			val koin = KoinPlatform.getKoinOrNull() ?: return@runCatching null
+			TlBuilderViewModel(koin.getOrNull<TrustedListCompilerPort>())
+		}.recover { if (it is NoDefinitionFoundException || it.cause is NoDefinitionFoundException) null else throw it }.getOrNull()
 	}
 	val tlBuilderState by (tlBuilderViewModel?.state ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow<TlBuilderDialogState>(TlBuilderDialogState.Idle)
