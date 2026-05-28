@@ -95,10 +95,11 @@ class RenewBatchUseCaseTest : FunSpec({
         coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
         coEvery {
             archivingRepository.extendDocument(
-                match { it.inputFile == file.absolutePath && it.outputFile == file.absolutePath }
+                match { it.inputName == file.name }
             )
         } returns ArchivingResult(
-            outputFile = file.absolutePath,
+            outputBytes = ByteArray(0),
+            outputName = file.name,
             newSignatureLevel = "PAdES-BASELINE-LTA",
         ).right()
 
@@ -139,12 +140,13 @@ class RenewBatchUseCaseTest : FunSpec({
 
         coEvery { archivingRepository.needsArchivalRenewal(any(), any()) } returns true.right()
         coEvery {
-            archivingRepository.extendDocument(match { it.inputFile == bad.absolutePath })
+            archivingRepository.extendDocument(match { it.inputName == bad.name })
         } returns ArchivingError.ExtensionFailed("boom").left()
         coEvery {
-            archivingRepository.extendDocument(match { it.inputFile == good.absolutePath })
+            archivingRepository.extendDocument(match { it.inputName == good.name })
         } returns ArchivingResult(
-            outputFile = good.absolutePath,
+            outputBytes = ByteArray(0),
+            outputName = good.name,
             newSignatureLevel = "PAdES-BASELINE-LTA",
         ).right()
 

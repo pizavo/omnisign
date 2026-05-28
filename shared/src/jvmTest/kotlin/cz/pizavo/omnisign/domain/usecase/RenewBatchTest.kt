@@ -42,7 +42,7 @@ class RenewBatchTest : FunSpec({
 					ifLeft = { errors++ },
 					ifRight = { needs ->
 						if (!needs) { skipped++; return@fold }
-						extend(ArchivingParameters(inputFile = path, outputFile = path))
+						extend(ArchivingParameters(inputBytes = File(path).readBytes(), inputName = File(path).name))
 							.fold(ifLeft = { errors++ }, ifRight = { renewed++ })
 					}
 				)
@@ -67,8 +67,8 @@ class RenewBatchTest : FunSpec({
 	test("files needing renewal are extended in-place") {
 		val file = tmpFile("expiring.pdf").absolutePath
 		coEvery { archivingRepository.needsArchivalRenewal(file, any()) } returns true.right()
-		coEvery { archivingRepository.extendDocument(match { it.inputFile == file && it.outputFile == file }) } returns
-			ArchivingResult(outputFile = file, newSignatureLevel = "PADES_BASELINE_LTA").right()
+		coEvery { archivingRepository.extendDocument(match { it.inputName == File(file).name }) } returns
+			ArchivingResult(outputBytes = ByteArray(0), outputName = File(file).name, newSignatureLevel = "PADES_BASELINE_LTA").right()
 		
 		val job = RenewalJob(name = "j", globs = emptyList())
 		val (renewed, skipped, errors) = runBatch(mapOf("j" to job), mapOf("j" to listOf(file)))
@@ -83,10 +83,10 @@ class RenewBatchTest : FunSpec({
 		val good = tmpFile("good.pdf").absolutePath
 		
 		coEvery { archivingRepository.needsArchivalRenewal(any(), any()) } returns true.right()
-		coEvery { archivingRepository.extendDocument(match { it.inputFile == bad }) } returns
+		coEvery { archivingRepository.extendDocument(match { it.inputName == File(bad).name }) } returns
 			ArchivingError.ExtensionFailed("boom").left()
-		coEvery { archivingRepository.extendDocument(match { it.inputFile == good }) } returns
-			ArchivingResult(outputFile = good, newSignatureLevel = "PADES_BASELINE_LTA").right()
+		coEvery { archivingRepository.extendDocument(match { it.inputName == File(good).name }) } returns
+			ArchivingResult(outputBytes = ByteArray(0), outputName = File(good).name, newSignatureLevel = "PADES_BASELINE_LTA").right()
 		
 		val job = RenewalJob(name = "j", globs = emptyList())
 		val (renewed, skipped, errors) = runBatch(mapOf("j" to job), mapOf("j" to listOf(bad, good)))

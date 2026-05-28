@@ -90,7 +90,7 @@ class TimestampTest : FunSpec({
 		val output = tmpFile("output.pdf")
 
 		coEvery { archivingRepository.extendDocument(any()) } returns ArchivingResult(
-			outputFile = output.absolutePath,
+			outputBytes = ByteArray(0), outputName = output.name,
 			newSignatureLevel = "PAdES-BASELINE-T",
 		).right()
 
@@ -121,7 +121,7 @@ class TimestampTest : FunSpec({
 		val output = tmpFile("output3.pdf")
 
 		coEvery { archivingRepository.extendDocument(any()) } returns ArchivingResult(
-			outputFile = output.absolutePath,
+			outputBytes = ByteArray(0), outputName = output.name,
 			newSignatureLevel = "PAdES-BASELINE-LTA",
 		).right()
 

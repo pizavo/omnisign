@@ -222,7 +222,7 @@ fun IslandLayout(
 				val document = loadPdfFromPlatformFile(platformFile)
 				pdfViewModel.onDocumentLoaded(document)
 				signatureViewModel?.onDocumentChanged(document)
-				timestampViewModel?.onDocumentChanged(document.filePath)
+				timestampViewModel?.onDocumentChanged(document)
 			}
 		}
 	}
@@ -257,9 +257,9 @@ fun IslandLayout(
 						}
 					},
 					onTimestamp = {
-						val filePath = pdfState.document?.filePath
-						if (filePath != null) {
-							timestampViewModel?.open(filePath)
+						val doc = pdfState.document
+						if (doc != null) {
+							timestampViewModel?.open(doc)
 							showTimestampDialog = true
 						}
 					},
@@ -668,7 +668,7 @@ private suspend fun reloadDocument(
 	val doc = loadPdfFromPath(filePath) ?: return
 	pdfViewModel.onDocumentLoaded(doc)
 	signatureViewModel?.onDocumentChanged(doc)
-	timestampViewModel?.onDocumentChanged(filePath)
+	timestampViewModel?.onDocumentChanged(doc)
 }
 
 

@@ -12,6 +12,7 @@ import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ExtendDocumentUseCase
 import cz.pizavo.omnisign.domain.usecase.GetDocumentTimestampInfoUseCase
+import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.TimestampDialogState
 import cz.pizavo.omnisign.ui.model.TimestampType
 import io.kotest.core.spec.style.FunSpec
@@ -59,6 +60,9 @@ class TimestampViewModelTest : FunSpec({
 		Dispatchers.resetMain()
 	}
 
+	fun sampleDoc(filePath: String? = "/tmp/signed.pdf", name: String = "signed.pdf"): PdfDocumentInfo =
+		PdfDocumentInfo(name = name, data = ByteArray(0), pageCount = 1, filePath = filePath)
+
 	fun buildVm() = TimestampViewModel(extendUseCase, getTimestampInfoUseCase, configRepository, ioDispatcher = testDispatcher)
 
 	test("initial state is Idle") {
@@ -68,10 +72,10 @@ class TimestampViewModelTest : FunSpec({
 	test("open transitions to Ready with Archival Timestamp as default") {
 		runTest(testDispatcher) {
 			val vm = buildVm()
-			vm.onDocumentChanged("/tmp/signed.pdf")
+			vm.onDocumentChanged(sampleDoc())
 			advanceUntilIdle()
 
-			vm.open("/tmp/signed.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
@@ -86,10 +90,10 @@ class TimestampViewModelTest : FunSpec({
 			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns hasDocTs.right()
 
 			val vm = buildVm()
-			vm.onDocumentChanged("/tmp/signed.pdf")
+			vm.onDocumentChanged(sampleDoc())
 			advanceUntilIdle()
 
-			vm.open("/tmp/signed.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
@@ -100,11 +104,12 @@ class TimestampViewModelTest : FunSpec({
 
 	test("onDocumentChanged pre-fetches timestamp info for the given file") {
 		runTest(testDispatcher) {
+			val doc = sampleDoc(filePath = "/tmp/test-doc.pdf", name = "test-doc.pdf")
 			val vm = buildVm()
-			vm.onDocumentChanged("/tmp/test-doc.pdf")
+			vm.onDocumentChanged(doc)
 			advanceUntilIdle()
 
-			coVerify(exactly = 1) { archivingRepository.getDocumentTimestampInfo("/tmp/test-doc.pdf") }
+			coVerify(exactly = 1) { archivingRepository.getDocumentTimestampInfo(doc.data) }
 		}
 	}
 
@@ -114,7 +119,7 @@ class TimestampViewModelTest : FunSpec({
 					ArchivingError.ExtensionFailed(message = "corrupt file").left()
 
 			val vm = buildVm()
-			vm.open("/tmp/signed.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
@@ -125,10 +130,10 @@ class TimestampViewModelTest : FunSpec({
 	test("updateState modifies Ready state") {
 		runTest(testDispatcher) {
 			val vm = buildVm()
-			vm.onDocumentChanged("/tmp/signed.pdf")
+			vm.onDocumentChanged(sampleDoc())
 			advanceUntilIdle()
 
-			vm.open("/tmp/signed.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP) }
@@ -142,15 +147,15 @@ class TimestampViewModelTest : FunSpec({
 		runTest(testDispatcher) {
 			coEvery { archivingRepository.extendDocument(any()) } returns
 					ArchivingResult(
-						outputFile = "/tmp/signed-extended.pdf",
+						outputBytes = ByteArray(0), outputName = "signed-extended.pdf",
 						newSignatureLevel = "PAdES-BASELINE-LTA",
 					).right()
 
 			val vm = buildVm()
-			vm.onDocumentChanged("/tmp/signed.pdf")
+			vm.onDocumentChanged(sampleDoc())
 			advanceUntilIdle()
 
-			vm.open("/tmp/signed.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.extend()
@@ -171,10 +176,10 @@ class TimestampViewModelTest : FunSpec({
 					).left()
 
 			val vm = buildVm()
-			vm.onDocumentChanged("/tmp/signed.pdf")
+			vm.onDocumentChanged(sampleDoc())
 			advanceUntilIdle()
 
-			vm.open("/tmp/signed.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.extend()
@@ -195,10 +200,10 @@ class TimestampViewModelTest : FunSpec({
 					).left()
 
 			val vm = buildVm()
-			vm.onDocumentChanged("/tmp/signed.pdf")
+			vm.onDocumentChanged(sampleDoc())
 			advanceUntilIdle()
 
-			vm.open("/tmp/signed.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP) }
@@ -220,10 +225,10 @@ class TimestampViewModelTest : FunSpec({
 					).left()
 
 			val vm = buildVm()
-			vm.onDocumentChanged("/tmp/signed.pdf")
+			vm.onDocumentChanged(sampleDoc())
 			advanceUntilIdle()
 
-			vm.open("/tmp/signed.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP) }
@@ -245,10 +250,10 @@ class TimestampViewModelTest : FunSpec({
 					).left()
 
 			val vm = buildVm()
-			vm.onDocumentChanged("/tmp/signed.pdf")
+			vm.onDocumentChanged(sampleDoc())
 			advanceUntilIdle()
 
-			vm.open("/tmp/signed.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.extend()
@@ -269,17 +274,17 @@ class TimestampViewModelTest : FunSpec({
 					).left()
 				} else {
 					ArchivingResult(
-						outputFile = "/tmp/signed-extended.pdf",
+						outputBytes = ByteArray(0), outputName = "signed-extended.pdf",
 						newSignatureLevel = "PADES_BASELINE_T",
 					).right()
 				}
 			}
 
 			val vm = buildVm()
-			vm.onDocumentChanged("/tmp/signed.pdf")
+			vm.onDocumentChanged(sampleDoc())
 			advanceUntilIdle()
 
-			vm.open("/tmp/signed.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP) }
@@ -307,10 +312,10 @@ class TimestampViewModelTest : FunSpec({
 					).left()
 
 			val vm = buildVm()
-			vm.onDocumentChanged("/tmp/signed.pdf")
+			vm.onDocumentChanged(sampleDoc())
 			advanceUntilIdle()
 
-			vm.open("/tmp/signed.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP) }
@@ -329,10 +334,10 @@ class TimestampViewModelTest : FunSpec({
 	test("dismiss resets state to Idle") {
 		runTest(testDispatcher) {
 			val vm = buildVm()
-			vm.onDocumentChanged("/tmp/signed.pdf")
+			vm.onDocumentChanged(sampleDoc())
 			advanceUntilIdle()
 
-			vm.open("/tmp/signed.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.dismiss()
@@ -351,16 +356,16 @@ class TimestampViewModelTest : FunSpec({
 			coEvery { configRepository.getCurrentConfig() } returns ltaConfig
 			coEvery { archivingRepository.extendDocument(any()) } returns
 					ArchivingResult(
-						outputFile = "/tmp/signed-extended.pdf",
+						outputBytes = ByteArray(0), outputName = "signed-extended.pdf",
 						newSignatureLevel = "PAdES-BASELINE-LTA",
 					).right()
 
 			val assigner = RenewalJobAssigner(configRepository)
 			val vm = TimestampViewModel(extendUseCase, getTimestampInfoUseCase, configRepository, assigner, testDispatcher)
-			vm.onDocumentChanged("/tmp/signed.pdf")
+			vm.onDocumentChanged(sampleDoc())
 			advanceUntilIdle()
 
-			vm.open("/tmp/signed.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(addToRenewalJob = true) }
@@ -379,16 +384,16 @@ class TimestampViewModelTest : FunSpec({
 		runTest(testDispatcher) {
 			coEvery { archivingRepository.extendDocument(any()) } returns
 					ArchivingResult(
-						outputFile = "/tmp/signed-extended.pdf",
+						outputBytes = ByteArray(0), outputName = "signed-extended.pdf",
 						newSignatureLevel = "PAdES-BASELINE-LTA",
 					).right()
 
 			val assigner = RenewalJobAssigner(configRepository)
 			val vm = TimestampViewModel(extendUseCase, getTimestampInfoUseCase, configRepository, assigner, testDispatcher)
-			vm.onDocumentChanged("/tmp/signed.pdf")
+			vm.onDocumentChanged(sampleDoc())
 			advanceUntilIdle()
 
-			vm.open("/tmp/signed.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.extend()
@@ -403,16 +408,16 @@ class TimestampViewModelTest : FunSpec({
 		runTest(testDispatcher) {
 			coEvery { archivingRepository.extendDocument(any()) } returns
 					ArchivingResult(
-						outputFile = "/tmp/signed-extended.pdf",
+						outputBytes = ByteArray(0), outputName = "signed-extended.pdf",
 						newSignatureLevel = "PAdES-BASELINE-LT",
 					).right()
 
 			val assigner = RenewalJobAssigner(configRepository)
 			val vm = TimestampViewModel(extendUseCase, getTimestampInfoUseCase, configRepository, assigner, testDispatcher)
-			vm.onDocumentChanged("/tmp/signed.pdf")
+			vm.onDocumentChanged(sampleDoc())
 			advanceUntilIdle()
 
-			vm.open("/tmp/signed.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP, addToRenewalJob = true) }
@@ -430,16 +435,16 @@ class TimestampViewModelTest : FunSpec({
 			coEvery { configRepository.getCurrentConfig() } returns ltaConfig
 			coEvery { archivingRepository.extendDocument(any()) } returns
 					ArchivingResult(
-						outputFile = "/tmp/signed-extended.pdf",
+						outputBytes = ByteArray(0), outputName = "signed-extended.pdf",
 						newSignatureLevel = "PAdES-BASELINE-LTA",
 					).right()
 
 			val assigner = RenewalJobAssigner(configRepository)
 			val vm = TimestampViewModel(extendUseCase, getTimestampInfoUseCase, configRepository, assigner, testDispatcher)
-			vm.onDocumentChanged("/tmp/signed.pdf")
+			vm.onDocumentChanged(sampleDoc())
 			advanceUntilIdle()
 
-			vm.open("/tmp/signed.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(addToRenewalJob = true) }

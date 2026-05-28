@@ -36,8 +36,13 @@ fun SigningResult.toJsonResult(outputFile: String): JsonSigningResult =
 
 /**
  * Convert a domain [ArchivingResult] to a success [JsonExtensionResult] DTO.
+ *
+ * @param outputFile Absolute path the CLI wrote the extended bytes to, surfaced in the JSON
+ *   summary so machine-readable consumers can locate the file. The domain [ArchivingResult]
+ *   carries only the bytes and the suggested document name — the on-disk location is chosen
+ *   at the CLI boundary.
  */
-fun ArchivingResult.toJsonResult(): JsonExtensionResult =
+fun ArchivingResult.toJsonResult(outputFile: String): JsonExtensionResult =
 	JsonExtensionResult(
 		success = true,
 		outputFile = outputFile,

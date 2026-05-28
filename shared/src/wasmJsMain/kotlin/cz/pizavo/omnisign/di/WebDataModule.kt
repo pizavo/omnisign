@@ -1,9 +1,11 @@
 package cz.pizavo.omnisign.di
 
+import cz.pizavo.omnisign.data.remote.RemoteArchivingRepository
 import cz.pizavo.omnisign.data.remote.RemoteCapabilitiesRepository
 import cz.pizavo.omnisign.data.remote.RemoteConfigRepository
 import cz.pizavo.omnisign.data.remote.RemoteSigningRepository
 import cz.pizavo.omnisign.data.remote.RemoteValidationRepository
+import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.CapabilitiesRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.SigningRepository
@@ -28,9 +30,9 @@ import org.koin.dsl.module
  * `Remote*Repository` impls catch those and map them to a domain
  * `OperationError`.
  *
- * Currently wires [CapabilitiesRepository], [ValidationRepository],
- * [ConfigRepository], and [SigningRepository]; the timestamp `Remote*Repository`
- * binding will be added as that feature lands on the web target.
+ * Wires [CapabilitiesRepository], [ValidationRepository], [ConfigRepository],
+ * [SigningRepository], and [ArchivingRepository] against their remote-backed
+ * implementations.
  *
  * @param serverBaseUrl Origin of the OmniSign server (e.g.
  *   `"https://omnisign.example.com"`). All HTTP requests are issued relative
@@ -61,4 +63,5 @@ fun webDataModule(serverBaseUrl: String): Module = module {
     single<ValidationRepository> { RemoteValidationRepository(get()) }
     single<ConfigRepository> { RemoteConfigRepository(get()) }
     single<SigningRepository> { RemoteSigningRepository(get()) }
+    single<ArchivingRepository> { RemoteArchivingRepository(get()) }
 }
