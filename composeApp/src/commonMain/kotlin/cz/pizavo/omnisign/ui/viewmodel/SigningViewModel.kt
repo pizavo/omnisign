@@ -172,8 +172,11 @@ class SigningViewModel(
 	 *   use case and its `filePath` (when present) seeds the suggested output path on the
 	 *   desktop. On the web target [PdfDocumentInfo.filePath] is `null`; the dialog falls
 	 *   back to deriving the suggested name from [PdfDocumentInfo.name].
+	 * @param allowTimestamping Whether the server permits timestamping. When `false` the
+	 *   signature / archival timestamp options are forced off (and hidden in the dialog) so
+	 *   signing produces a B-B signature. Defaults to `true` (desktop / no server gating).
 	 */
-	fun open(document: PdfDocumentInfo) {
+	fun open(document: PdfDocumentInfo, allowTimestamping: Boolean = true) {
 		currentDocument = document
 		_state.value = SigningDialogState.Loading
 
@@ -211,9 +214,9 @@ class SigningViewModel(
 								},
 								ifRight = { discovery ->
 									val level = config.signatureLevel
-									val addSigTs = level == SignatureLevel.PADES_BASELINE_LT ||
-											level == SignatureLevel.PADES_BASELINE_LTA
-									val addArchTs = level == SignatureLevel.PADES_BASELINE_LTA
+									val addSigTs = allowTimestamping && (level == SignatureLevel.PADES_BASELINE_LT ||
+											level == SignatureLevel.PADES_BASELINE_LTA)
+									val addArchTs = allowTimestamping && level == SignatureLevel.PADES_BASELINE_LTA
 
 									val suggestedOutput = document.filePath?.let {
 										buildSuggestedOutputPath(it, "-signed")

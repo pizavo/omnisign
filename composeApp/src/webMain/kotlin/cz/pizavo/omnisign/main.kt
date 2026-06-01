@@ -4,13 +4,8 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.webDataModule
-import cz.pizavo.omnisign.domain.repository.CapabilitiesRepository
 import cz.pizavo.omnisign.ui.platform.MuPdfShim
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.launch
 import org.koin.core.context.startKoin
-import org.koin.mp.KoinPlatform.getKoin
 
 /**
  * Web (Wasm) entry point for the OmniSign Compose Multiplatform UI.
@@ -25,31 +20,17 @@ import org.koin.mp.KoinPlatform.getKoin
  *     [BuildConfig.SERVER_URL], which is empty by default ("same origin" with
  *     the server hosting the bundle) and overridable via the
  *     `OMNISIGN_SERVER_URL` env var at build time.
- *  3. Fire a fire-and-forget round-trip against [CapabilitiesRepository.get]
- *     and log the response. This is purely a wire-verification surface for
- *     chunk-A of the FE-for-server build-out; user-visible consumption of the
- *     capabilities (hiding disabled operation buttons, redirecting to login
- *     when `authEnabled = true`, …) lands in subsequent chunks.
- *  4. Mount the Compose viewport.
+ *  3. Mount the Compose viewport. The server's capabilities (which operations the
+ *     server exposes) are fetched by
+ *     [cz.pizavo.omnisign.ui.viewmodel.CapabilitiesViewModel] once the UI composes,
+ *     narrowing the visible affordances (e.g. hiding the Sign / Timestamp buttons or
+ *     the validation panel) to what the server allows.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
     MuPdfShim.init()
     startKoin {
         modules(appModule, webDataModule(BuildConfig.SERVER_URL))
-    }
-
-    CoroutineScope(Dispatchers.Default).launch {
-        runCatching {
-            getKoin().get<CapabilitiesRepository>().get()
-        }.fold(
-            onSuccess = { caps ->
-                println("OmniSign capabilities: allowedOperations=${caps.allowedOperations}, profiles=${caps.profiles}, maxFileSize=${caps.maxFileSize}, authEnabled=${caps.authEnabled}")
-            },
-            onFailure = { err ->
-                println("OmniSign capabilities fetch failed: ${err::class.simpleName}: ${err.message}")
-            },
-        )
     }
 
     ComposeViewport {

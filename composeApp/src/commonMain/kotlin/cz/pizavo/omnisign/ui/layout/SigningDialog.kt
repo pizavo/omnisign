@@ -46,6 +46,10 @@ import org.jetbrains.compose.resources.painterResource
  * - [SigningDialogState.Error]: error message with a retry option.
  *
  * @param state Current signing dialog state from [cz.pizavo.omnisign.ui.viewmodel.SigningViewModel].
+ * @param canTimestamp Whether the server permits timestamping. When `false` the signature /
+ *   archival timestamp options are hidden, constraining the form to B-B signatures (signing-time
+ *   timestamps use the server's TSA, which a TIMESTAMP-disabled institution does not want
+ *   produced). The ViewModel additionally clamps the level so a hidden option can't leak through.
  * @param onFieldChange Called with a transform to update a field in the [SigningDialogState.Ready] state.
  * @param onSign Called when the user clicks the Sign button.
  * @param onAbortRevocation Called when the user aborts after a revocation warning.
@@ -65,6 +69,7 @@ import org.jetbrains.compose.resources.painterResource
 @Composable
 fun SigningDialog(
 	state: SigningDialogState,
+	canTimestamp: Boolean = true,
 	onFieldChange: ((SigningDialogState.Ready) -> SigningDialogState.Ready) -> Unit,
 	onSign: () -> Unit,
 	onAbortRevocation: () -> Unit,
@@ -101,6 +106,7 @@ fun SigningDialog(
 					is SigningDialogState.Loading -> LoadingContent("Discovering certificates...")
 					is SigningDialogState.Ready -> SigningFormContent(
 						state = state,
+						canTimestamp = canTimestamp,
 						onFieldChange = onFieldChange,
 						onUnlockToken = onUnlockToken,
 						onImportPkcs12 = onImportPkcs12,
@@ -241,10 +247,13 @@ private fun SigningDialogHeader(
  * @param onFieldChange Called with a transform to update a field.
  * @param onUnlockToken Called with a token ID when the user clicks Unlock.
  * @param onImportPkcs12 Called with the file path when the user imports a PKCS#12 file.
+ * @param canTimestamp Whether the server permits timestamping; when `false` the signature /
+ *   archival timestamp options are not rendered.
  */
 @Composable
 private fun SigningFormContent(
 	state: SigningDialogState.Ready,
+	canTimestamp: Boolean,
 	onFieldChange: ((SigningDialogState.Ready) -> SigningDialogState.Ready) -> Unit,
 	onUnlockToken: (tokenId: String) -> Unit,
 	onImportPkcs12: (filePath: String) -> Unit,
@@ -369,6 +378,7 @@ private fun SigningFormContent(
 			)
 		}
 		
+		if (canTimestamp) {
 		Row(
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -426,6 +436,8 @@ private fun SigningFormContent(
 			}
 		}
 		
+		}
+
 		UnderlinedTextField(
 			value = state.reason,
 			onValueChange = { v -> onFieldChange { it.copy(reason = v) } },

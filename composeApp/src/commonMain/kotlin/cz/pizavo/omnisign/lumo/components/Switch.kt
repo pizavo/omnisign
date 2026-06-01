@@ -61,6 +61,7 @@ fun Switch(
 ) {
     val scope = rememberCoroutineScope()
     val pressed by interactionSource.collectIsPressedAsState()
+    val effectiveEnabled = enabled && !LocalReadOnly.current
 
     val animationState =
         remember {
@@ -76,7 +77,7 @@ fun Switch(
             Modifier.toggleable(
                 value = checked,
                 onValueChange = onCheckedChange,
-                enabled = enabled,
+                enabled = effectiveEnabled,
                 role = Role.Switch,
                 interactionSource = interactionSource,
                 indication = null,
@@ -88,7 +89,7 @@ fun Switch(
     SwitchComponent(
         modifier = modifier.then(toggleableModifier),
         checked = checked,
-        enabled = enabled,
+        enabled = effectiveEnabled,
         colors = colors,
         interactionSource = interactionSource,
         thumbContent = thumbContent,

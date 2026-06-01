@@ -37,6 +37,7 @@ import cz.pizavo.omnisign.lumo.components.textfield.base.TextFieldHorizontalPadd
 import cz.pizavo.omnisign.lumo.components.textfield.base.TextFieldMinHeight
 import cz.pizavo.omnisign.lumo.components.textfield.base.TextFieldVerticalPadding
 import cz.pizavo.omnisign.lumo.components.textfield.base.UnfocusedOutlineThickness
+import cz.pizavo.omnisign.lumo.components.LocalReadOnly
 import cz.pizavo.omnisign.lumo.components.textfield.base.containerUnderline
 
 @Composable
@@ -66,9 +67,10 @@ fun UnderlinedTextField(
     colors: TextFieldColors = UnderlinedTextFieldDefaults.colors(),
     cursorBrush: Brush = SolidColor(colors.cursorColor(isError).value),
 ) {
+    val effectiveEnabled = enabled && !LocalReadOnly.current
     val textColor =
         textStyle.color.takeOrElse {
-            colors.textColor(enabled, isError, interactionSource).value
+            colors.textColor(effectiveEnabled, isError, interactionSource).value
         }
     val mergedTextStyle = textStyle.merge(TextStyle(color = textColor))
 
@@ -82,7 +84,7 @@ fun UnderlinedTextField(
                     .fillMaxWidth(),
             value = value,
             onValueChange = onValueChange,
-            enabled = enabled,
+            enabled = effectiveEnabled,
             readOnly = readOnly,
             textStyle = mergedTextStyle,
             keyboardOptions = keyboardOptions,
@@ -106,7 +108,7 @@ fun UnderlinedTextField(
                     prefix = prefix,
                     suffix = suffix,
                     supportingText = supportingText,
-                    enabled = enabled,
+                    enabled = effectiveEnabled,
                     isError = isError,
                     interactionSource = interactionSource,
                     colors = colors,
@@ -143,9 +145,10 @@ fun UnderlinedTextField(
     colors: TextFieldColors = UnderlinedTextFieldDefaults.colors(),
     cursorBrush: Brush = SolidColor(colors.cursorColor(isError).value),
 ) {
+    val effectiveEnabled = enabled && !LocalReadOnly.current
     val textColor =
         textStyle.color.takeOrElse {
-            colors.textColor(enabled, isError, interactionSource).value
+            colors.textColor(effectiveEnabled, isError, interactionSource).value
         }
     val mergedTextStyle = textStyle.merge(TextStyle(color = textColor))
 
@@ -159,7 +162,7 @@ fun UnderlinedTextField(
                     .fillMaxWidth(),
             value = value,
             onValueChange = onValueChange,
-            enabled = enabled,
+            enabled = effectiveEnabled,
             readOnly = readOnly,
             textStyle = mergedTextStyle,
             keyboardOptions = keyboardOptions,
@@ -183,7 +186,7 @@ fun UnderlinedTextField(
                     prefix = prefix,
                     suffix = suffix,
                     supportingText = supportingText,
-                    enabled = enabled,
+                    enabled = effectiveEnabled,
                     isError = isError,
                     interactionSource = interactionSource,
                     colors = UnderlinedTextFieldDefaults.colors(),

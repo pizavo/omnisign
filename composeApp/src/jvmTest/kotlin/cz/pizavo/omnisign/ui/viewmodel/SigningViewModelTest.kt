@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
+import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.domain.model.result.SigningResult
@@ -85,6 +86,46 @@ class SigningViewModelTest : FunSpec({
 	test("initial state is Idle") {
 		val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
 		vm.state.value.shouldBeInstanceOf<SigningDialogState.Idle>()
+	}
+
+	test("open with allowTimestamping=false forces timestamps off even when config defaults to B-LTA") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { configRepository.getCurrentConfig() } returns AppConfig(
+				global = GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA),
+				profiles = emptyMap(),
+			)
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc(), allowTimestamping = false)
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
+			state.addSignatureTimestamp shouldBe false
+			state.addArchivalTimestamp shouldBe false
+			state.effectiveSignatureLevel shouldBe SignatureLevel.PADES_BASELINE_B
+		}
+	}
+
+	test("open with allowTimestamping=true keeps the config-derived B-LTA timestamps") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { configRepository.getCurrentConfig() } returns AppConfig(
+				global = GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA),
+				profiles = emptyMap(),
+			)
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc(), allowTimestamping = true)
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
+			state.addSignatureTimestamp shouldBe true
+			state.addArchivalTimestamp shouldBe true
+			state.effectiveSignatureLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+		}
 	}
 
 	test("open transitions to Ready with discovered certificates") {

@@ -11,6 +11,7 @@ import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
+import cz.pizavo.omnisign.domain.repository.CapabilitiesRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.service.CredentialStore
@@ -63,6 +64,11 @@ fun IslandLayout(
 	val pdfViewModel: PdfViewerViewModel = viewModel { PdfViewerViewModel() }
 	val pdfState by pdfViewModel.state.collectAsState()
 	val scope = rememberCoroutineScope()
+
+	val capabilitiesViewModel = remember {
+		CapabilitiesViewModel(KoinPlatform.getKoinOrNull()?.getOrNull<CapabilitiesRepository>())
+	}
+	val capabilities by capabilitiesViewModel.capabilities.collectAsState()
 	
 	val signatureViewModel: SignatureViewModel? = remember {
 		runCatching {
@@ -227,7 +233,11 @@ fun IslandLayout(
 		}
 	}
 	
-	val leftPanels = remember { SidePanel.entries.filter { it.side == PanelSide.Left } }
+	val leftPanels = remember(capabilities.canValidate) {
+			SidePanel.entries.filter {
+				it.side == PanelSide.Left && (it != SidePanel.Signature || capabilities.canValidate)
+			}
+		}
 	val rightPanels = remember { SidePanel.entries.filter { it.side == PanelSide.Right } }
 	
 	var activeLeftPanel by remember { mutableStateOf<SidePanel?>(null) }
@@ -252,7 +262,7 @@ fun IslandLayout(
 					onSign = {
 						val doc = pdfState.document
 						if (doc != null) {
-							signingViewModel?.open(doc)
+							signingViewModel?.open(doc, allowTimestamping = capabilities.canTimestamp)
 							showSigningDialog = true
 						}
 					},
@@ -263,6 +273,8 @@ fun IslandLayout(
 							showTimestampDialog = true
 						}
 					},
+					canSign = capabilities.canSign,
+					canTimestamp = capabilities.canTimestamp,
 					fileLoaded = pdfState.document != null,
 				)
 				
@@ -305,6 +317,7 @@ fun IslandLayout(
 							}
 						},
 						backupEnabled = settingsViewModel?.canBackup == true,
+						readOnly = isWebPlatform(),
 						onStageTrustedCert = { bytes, type, source ->
 							settingsViewModel?.stageGlobalTrustedCert(bytes, type, source)
 						},
@@ -314,6 +327,7 @@ fun IslandLayout(
 				if (showSigningDialog) {
 					SigningDialog(
 						state = signingState,
+						canTimestamp = capabilities.canTimestamp,
 						onFieldChange = { transform -> signingViewModel?.updateState(transform) },
 						onSign = { signingViewModel?.sign() },
 						onAbortRevocation = { signingViewModel?.abortAfterRevocationWarning() },
@@ -567,6 +581,7 @@ fun IslandLayout(
 							when (activeRightPanel) {
 								SidePanel.Profiles -> ProfilesPanel(
 									state = profileState,
+									readOnly = isWebPlatform(),
 									onToggleActive = { profileViewModel?.toggleActive(it) },
 									onEdit = { profileViewModel?.startEdit(it) },
 									onDelete = { profileViewModel?.delete(it) },

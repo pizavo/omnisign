@@ -56,6 +56,12 @@ import org.koin.ktor.ext.inject
  * This operation is disabled by default and must be explicitly enabled in [OperationsConfig.allowed].
  * When [OperationsConfig.certificateAliases] is set, only those aliases may be used.
  *
+ * A request whose effective signature level embeds an RFC 3161 timestamp (any level above
+ * `PADES_BASELINE_B`, or any request that does not opt out via `noTimestamp`) is rejected with
+ * `422 TIMESTAMP_NOT_ALLOWED` when [AllowedOperation.TIMESTAMP] is not enabled. This keeps a
+ * timestamping-disabled provider from handing callers the opaque "no timestamp server configured"
+ * failure deeper in the signing pipeline when no TSA was set up alongside the disabled operation.
+ *
  * On success the response is the signed PDF with `application/pdf` content type.
  * A `X-OmniSign-Result` header carries [SigningResultMeta] as JSON.
  */
@@ -124,6 +130,21 @@ fun Route.signingRoutes() {
 					ApiError(
 						error = "CERTIFICATE_NOT_ALLOWED",
 						message = "Certificate alias '$requestedAlias' is not in the server's allowed list",
+					),
+				)
+				return@post
+			}
+
+			val effectiveLevel = signatureLevel ?: resolvedConfig.signatureLevel
+			val requiresTimestamp = !noTimestamp || effectiveLevel != SignatureLevel.PADES_BASELINE_B
+			if (requiresTimestamp && AllowedOperation.TIMESTAMP !in serverConfig.operations.allowed) {
+				call.respond(
+					HttpStatusCode.UnprocessableEntity,
+					ApiError(
+						error = "TIMESTAMP_NOT_ALLOWED",
+						message = "Signing at $effectiveLevel embeds an RFC 3161 timestamp, but the TIMESTAMP " +
+							"operation is not enabled on this server. Request PADES_BASELINE_B without a timestamp, " +
+							"or ask the administrator to enable TIMESTAMP.",
 					),
 				)
 				return@post
