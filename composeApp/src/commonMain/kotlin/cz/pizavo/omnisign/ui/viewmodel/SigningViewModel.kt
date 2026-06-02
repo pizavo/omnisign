@@ -106,6 +106,7 @@ class SigningViewModel(
 
 	private var currentDocument: PdfDocumentInfo? = null
 	private var resolvedConfig: ResolvedConfig? = null
+	private var activeProfileName: String? = null
 	private var lastReadyState: SigningDialogState.Ready? = null
 	private var addToRenewalJobFlag: Boolean = false
 	private var cachedRenewalJobs: List<RenewalJob> = emptyList()
@@ -189,6 +190,7 @@ class SigningViewModel(
 					val appConfig = appConfigDeferred.await()
 					cachedRenewalJobs = appConfig.renewalJobs.values.toList()
 					val activeProfile = appConfig.activeProfile
+					activeProfileName = activeProfile
 					val profileConfig = activeProfile?.let { appConfig.profiles[it] }
 
 					val configResult = ResolvedConfig.resolve(
@@ -415,6 +417,7 @@ class SigningViewModel(
 					contactInfo = ready.contactInfo.ifBlank { null },
 					addTimestamp = ready.effectiveAddTimestamp,
 					resolvedConfig = config,
+					profileName = activeProfileName,
 				)
 
 				signDocumentUseCase(parameters).fold(
@@ -496,6 +499,7 @@ class SigningViewModel(
 	fun dismiss() {
 		_state.value = SigningDialogState.Idle
 		resolvedConfig = null
+		activeProfileName = null
 		lastReadyState = null
 	}
 

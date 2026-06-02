@@ -2,10 +2,13 @@ package cz.pizavo.omnisign
 
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
+import cz.pizavo.omnisign.data.remote.BrowserProfileSelectionStore
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.webDataModule
+import cz.pizavo.omnisign.ui.platform.LocalStorageProfileSelectionStore
 import cz.pizavo.omnisign.ui.platform.MuPdfShim
 import org.koin.core.context.startKoin
+import org.koin.dsl.module
 
 /**
  * Web (Wasm) entry point for the OmniSign Compose Multiplatform UI.
@@ -29,8 +32,11 @@ import org.koin.core.context.startKoin
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
     MuPdfShim.init()
+    val webPlatformModule = module {
+        single<BrowserProfileSelectionStore> { LocalStorageProfileSelectionStore() }
+    }
     startKoin {
-        modules(appModule, webDataModule(BuildConfig.SERVER_URL))
+        modules(appModule, webDataModule(BuildConfig.SERVER_URL), webPlatformModule)
     }
 
     ComposeViewport {

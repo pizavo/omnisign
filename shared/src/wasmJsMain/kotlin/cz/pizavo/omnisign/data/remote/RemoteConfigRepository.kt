@@ -37,20 +37,32 @@ import kotlinx.coroutines.sync.withLock
  * server is stripped of credential material via
  * [cz.pizavo.omnisign.api.model.responses.TimestampServerSummary.toConfig], and
  * the AppConfig-level fields that have no server-side analogue
- * (`activeProfile`, `tlDrafts`, `renewalJobs`, `schedulerConfig`) are left at
- * their empty defaults.
+ * (`tlDrafts`, `renewalJobs`, `schedulerConfig`) are left at their empty defaults.
+ *
+ * The `activeProfile` field is layered on top of the server response from the
+ * client-side [profileSelectionStore]: the persisted selection is reflected in the
+ * cached [AppConfig] so subsequent `getCurrentConfig` calls already carry it. When
+ * the persisted name does not appear in the server's profile list, it is dropped
+ * from both the cache and the store — the UI would have nothing to highlight for
+ * an orphaned name and the server would reject the eventual operation anyway.
  *
  * [saveConfig] always returns [ConfigurationError.SaveFailed] because the
  * server's `signing.yml` is provider-authored and the web target has no write
- * surface against it. A `getCurrentConfig` failure surfaces as a synchronous
- * fallback to an empty [AppConfig], matching the JVM `FileConfigRepository`'s
- * behavior when its on-disk config is missing.
+ * surface against it. [setActiveProfile] is the exception: it persists the new
+ * selection in [profileSelectionStore] (not to the server) and reflects it in the
+ * cache. A `getCurrentConfig` failure surfaces as a synchronous fallback to an
+ * empty [AppConfig], matching the JVM `FileConfigRepository`'s behavior when its
+ * on-disk config is missing.
  *
  * @param client Pre-configured Ktor client with kotlinx-serialization content
  *   negotiation installed and a default request URL pointing at the OmniSign server.
+ * @param profileSelectionStore Browser-side store for the user's active-profile
+ *   selection. The repository owns the cache layering; the store owns the
+ *   localStorage round-trip.
  */
 class RemoteConfigRepository(
     private val client: HttpClient,
+    private val profileSelectionStore: BrowserProfileSelectionStore,
 ) : ConfigRepository {
 
     private val mutex = Mutex()
@@ -75,9 +87,20 @@ class RemoteConfigRepository(
         )
     }
 
+    override suspend fun setActiveProfile(name: String?): OperationResult<Unit> = mutex.withLock {
+        profileSelectionStore.write(name)
+        cachedConfig = cachedConfig?.copy(activeProfile = name)
+        Unit.right()
+    }
+
     /**
      * Issue the `GET /api/v1/config/global` and `GET /api/v1/config/profiles`
-     * requests, build the sanitized [AppConfig], and populate [cachedConfig] on success.
+     * requests, build the sanitized [AppConfig], layer the persisted active-profile
+     * selection on top, and populate [cachedConfig] on success.
+     *
+     * When the persisted active-profile name is absent from the freshly fetched
+     * profile map, the entry is cleared from [profileSelectionStore] before
+     * caching — the UI never carries an invisible selection.
      *
      * Must be called while holding [mutex] — both public entry points
      * ([loadConfig] and [getCurrentConfig]) wrap their invocation in `mutex.withLock`
@@ -88,9 +111,16 @@ class RemoteConfigRepository(
         Either.catch {
             val global: GlobalConfigResponse = client.get("api/v1/config/global").body()
             val profiles: List<ProfileConfigResponse> = client.get("api/v1/config/profiles").body()
+            val profileMap = profiles.associateBy { it.name }.mapValues { it.value.toConfig() }
+            val persistedActive = profileSelectionStore.read()
+            val active = persistedActive?.takeIf { it in profileMap }
+            if (active == null && persistedActive != null) {
+                profileSelectionStore.write(null)
+            }
             AppConfig(
                 global = global.toConfig(),
-                profiles = profiles.associateBy { it.name }.mapValues { it.value.toConfig() },
+                profiles = profileMap,
+                activeProfile = active,
             )
         }.fold(
             ifLeft = { exception ->

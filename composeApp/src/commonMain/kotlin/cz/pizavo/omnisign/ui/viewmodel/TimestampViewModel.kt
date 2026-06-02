@@ -75,6 +75,7 @@ class TimestampViewModel(
 
 	private var currentDocument: PdfDocumentInfo? = null
 	private var resolvedConfig: ResolvedConfig? = null
+	private var activeProfileName: String? = null
 	private var lastReadyState: TimestampDialogState.Ready? = null
 	private var documentAlreadyContainsLtData: Boolean = false
 	private var addToRenewalJobFlag: Boolean = false
@@ -143,6 +144,7 @@ class TimestampViewModel(
 				val appConfig = configRepository.getCurrentConfig()
 				cachedRenewalJobs = appConfig.renewalJobs.values.toList()
 				val activeProfile = appConfig.activeProfile
+				activeProfileName = activeProfile
 				val profileConfig = activeProfile?.let { appConfig.profiles[it] }
 
 				val configResult = ResolvedConfig.resolve(
@@ -248,6 +250,7 @@ class TimestampViewModel(
 					inputName = document.name,
 					targetLevel = targetLevel,
 					resolvedConfig = config,
+					profileName = activeProfileName,
 				)
 
 				extendDocumentUseCase(parameters).fold(
@@ -322,6 +325,7 @@ class TimestampViewModel(
 					inputName = document.name,
 					targetLevel = SignatureLevel.PADES_BASELINE_T,
 					resolvedConfig = config,
+					profileName = activeProfileName,
 				)
 
 				extendDocumentUseCase(parameters).fold(
@@ -373,6 +377,7 @@ class TimestampViewModel(
 	fun dismiss() {
 		_state.value = TimestampDialogState.Idle
 		resolvedConfig = null
+		activeProfileName = null
 		lastReadyState = null
 		documentAlreadyContainsLtData = false
 	}

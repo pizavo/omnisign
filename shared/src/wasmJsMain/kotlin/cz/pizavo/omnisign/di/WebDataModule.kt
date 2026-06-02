@@ -61,7 +61,7 @@ fun webDataModule(serverBaseUrl: String): Module = module {
     }
     single<CapabilitiesRepository> { RemoteCapabilitiesRepository(get()) }
     single<ValidationRepository> { RemoteValidationRepository(get()) }
-    single<ConfigRepository> { RemoteConfigRepository(get()) }
+    single<ConfigRepository> { RemoteConfigRepository(get(), get()) }
     single<SigningRepository> { RemoteSigningRepository(get()) }
     single<ArchivingRepository> { RemoteArchivingRepository(get()) }
 }
