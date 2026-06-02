@@ -26,6 +26,32 @@ sealed interface SigningDialogState {
 	data object Loading : SigningDialogState
 
 	/**
+	 * Signing is blocked before the form opens because the resolved configuration mandates a
+	 * signature level that embeds an RFC 3161 timestamp (any level above
+	 * [SignatureLevel.PADES_BASELINE_B]), but the server holding the signing identity has its
+	 * timestamping operation disabled.
+	 *
+	 * Reached from [cz.pizavo.omnisign.ui.viewmodel.SigningViewModel.open] when its
+	 * `allowTimestamping` flag is `false` (the server omits `TIMESTAMP` from its capabilities)
+	 * and the resolved [requiredLevel] is not [SignatureLevel.PADES_BASELINE_B]. Signing here
+	 * would silently downgrade to B-B, dropping the timestamp the profile requires — so the
+	 * dialog refuses rather than emit a weaker signature under the profile's name. The user must
+	 * select a profile whose level the server can satisfy, or ask the administrator to enable
+	 * timestamping.
+	 *
+	 * Mirrors the server-side `TIMESTAMP_NOT_ALLOWED` guard so the same policy holds whether the
+	 * client pre-checks it or a request reaches the server directly.
+	 *
+	 * @property profileName Name of the active profile that mandates [requiredLevel], or `null`
+	 *   when the level comes from the global default rather than a named profile.
+	 * @property requiredLevel The resolved signature level that requires a timestamp.
+	 */
+	data class TimestampingUnavailable(
+		val profileName: String?,
+		val requiredLevel: SignatureLevel,
+	) : SigningDialogState
+
+	/**
 	 * Certificates have been loaded and the signing form is ready for user input.
 	 *
 	 * @property certificates Available signing certificates.

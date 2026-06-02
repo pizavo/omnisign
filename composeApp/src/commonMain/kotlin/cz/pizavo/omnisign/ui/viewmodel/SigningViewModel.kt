@@ -173,9 +173,12 @@ class SigningViewModel(
 	 *   use case and its `filePath` (when present) seeds the suggested output path on the
 	 *   desktop. On the web target [PdfDocumentInfo.filePath] is `null`; the dialog falls
 	 *   back to deriving the suggested name from [PdfDocumentInfo.name].
-	 * @param allowTimestamping Whether the server permits timestamping. When `false` the
-	 *   signature / archival timestamp options are forced off (and hidden in the dialog) so
-	 *   signing produces a B-B signature. Defaults to `true` (desktop / no server gating).
+	 * @param allowTimestamping Whether the server permits timestamping. When `false` and the
+	 *   resolved signature level requires a timestamp (any level above B-B), the dialog refuses
+	 *   to open the form and transitions to [SigningDialogState.TimestampingUnavailable] rather
+	 *   than silently downgrading to B-B under the profile's name. When `false` and the resolved
+	 *   level is already B-B, the form opens normally with the timestamp options hidden. Defaults
+	 *   to `true` (desktop / no server gating), where the resolved level is honored as-is.
 	 */
 	fun open(document: PdfDocumentInfo, allowTimestamping: Boolean = true) {
 		currentDocument = document
@@ -207,6 +210,13 @@ class SigningViewModel(
 						},
 						ifRight = { config ->
 							resolvedConfig = config
+							if (!allowTimestamping && config.signatureLevel != SignatureLevel.PADES_BASELINE_B) {
+								_state.value = SigningDialogState.TimestampingUnavailable(
+									profileName = activeProfile,
+									requiredLevel = config.signatureLevel,
+								)
+								return@fold
+							}
 							discoveryDeferred.await().fold(
 								ifLeft = { error ->
 									_state.value = SigningDialogState.Error(

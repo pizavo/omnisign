@@ -88,12 +88,53 @@ class SigningViewModelTest : FunSpec({
 		vm.state.value.shouldBeInstanceOf<SigningDialogState.Idle>()
 	}
 
-	test("open with allowTimestamping=false forces timestamps off even when config defaults to B-LTA") {
+	test("open with allowTimestamping=false blocks when the config level requires a timestamp") {
 		runTest(testDispatcher) {
 			coEvery { signingRepository.listAvailableCertificates(false) } returns
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 			coEvery { configRepository.getCurrentConfig() } returns AppConfig(
 				global = GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA),
+				profiles = emptyMap(),
+			)
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc(), allowTimestamping = false)
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.TimestampingUnavailable>()
+			state.requiredLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+			state.profileName.shouldBeNull()
+		}
+	}
+
+	test("open with allowTimestamping=false names the active profile that mandates a timestamp") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { configRepository.getCurrentConfig() } returns AppConfig(
+				global = GlobalConfig(),
+				profiles = mapOf(
+					"archival" to ProfileConfig(name = "archival", signatureLevel = SignatureLevel.PADES_BASELINE_LTA),
+				),
+				activeProfile = "archival",
+			)
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc(), allowTimestamping = false)
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.TimestampingUnavailable>()
+			state.requiredLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+			state.profileName shouldBe "archival"
+		}
+	}
+
+	test("open with allowTimestamping=false still opens the form for a B-B config") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { configRepository.getCurrentConfig() } returns AppConfig(
+				global = GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_B),
 				profiles = emptyMap(),
 			)
 
