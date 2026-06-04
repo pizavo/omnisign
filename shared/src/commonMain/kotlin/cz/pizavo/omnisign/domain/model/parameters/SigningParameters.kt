@@ -22,6 +22,10 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
  *   JVM and as the multipart `filename=` on web).
  * @property certificateAlias Alias identifying which certificate to use; null selects the first
  *   available on JVM, or the server default on web.
+ * @property certificateSlotId For a PKCS#11 selection, the slot the chosen certificate lives in,
+ *   so signing pins to the slot holding its private key on cards that present several
+ *   token-present slots; null lets sign-time resolution locate the slot by [certificateAlias].
+ *   JVM-only; the web target ignores this field.
  * @property hashAlgorithm Hash algorithm for the signature digest; falls back to the resolved
  *   config default.
  * @property encryptionAlgorithm Encryption (signing key) algorithm override; null lets DSS
@@ -51,6 +55,7 @@ data class SigningParameters(
 	val inputBytes: ByteArray,
 	val inputName: String,
 	val certificateAlias: String? = null,
+	val certificateSlotId: Long? = null,
 	val hashAlgorithm: HashAlgorithm? = null,
 	val encryptionAlgorithm: EncryptionAlgorithm? = null,
 	val signatureLevel: SignatureLevel? = null,
@@ -70,6 +75,7 @@ data class SigningParameters(
 		return inputName == other.inputName &&
 			inputBytes.contentEquals(other.inputBytes) &&
 			certificateAlias == other.certificateAlias &&
+			certificateSlotId == other.certificateSlotId &&
 			hashAlgorithm == other.hashAlgorithm &&
 			encryptionAlgorithm == other.encryptionAlgorithm &&
 			signatureLevel == other.signatureLevel &&
@@ -88,6 +94,7 @@ data class SigningParameters(
 		var result = inputBytes.contentHashCode()
 		result = 31 * result + inputName.hashCode()
 		result = 31 * result + (certificateAlias?.hashCode() ?: 0)
+		result = 31 * result + (certificateSlotId?.hashCode() ?: 0)
 		result = 31 * result + (hashAlgorithm?.hashCode() ?: 0)
 		result = 31 * result + (encryptionAlgorithm?.hashCode() ?: 0)
 		result = 31 * result + (signatureLevel?.hashCode() ?: 0)

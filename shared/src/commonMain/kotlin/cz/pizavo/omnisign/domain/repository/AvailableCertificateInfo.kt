@@ -17,6 +17,12 @@ import kotlin.time.Instant
  * distinguish the same certificate present on more than one source. [alias] embeds the
  * same provenance (`…@<sourceId>`) so selection and signing resolve to the chosen source.
  *
+ * [pkcs11SlotId] carries the PKCS#11 slot the certificate lives in (`null` for non-PKCS#11
+ * sources) so the UI can hand it back as
+ * [cz.pizavo.omnisign.domain.model.parameters.SigningParameters.certificateSlotId]; signing
+ * then opens the slot that holds the chosen certificate's private key, which matters when a
+ * card presents several token-present slots.
+ *
  * Not to be confused with [cz.pizavo.omnisign.domain.model.signature.CertificateInfo],
  * which holds certificate details extracted during validation.
  */
@@ -32,4 +38,5 @@ data class AvailableCertificateInfo(
     val keyUsages: List<String> = emptyList(),
     val isQualified: Boolean? = null,
     val isQscd: Boolean? = null,
+    val pkcs11SlotId: Long? = null,
 )

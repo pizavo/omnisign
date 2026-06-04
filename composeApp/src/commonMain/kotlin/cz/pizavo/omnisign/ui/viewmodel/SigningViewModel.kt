@@ -416,10 +416,13 @@ class SigningViewModel(
 
 		viewModelScope.launch {
 			withContext(ioDispatcher) {
+				val selectedSlot = ready.certificates
+					.firstOrNull { it.alias == ready.selectedAlias }?.pkcs11SlotId
 				val parameters = SigningParameters(
 					inputBytes = document.data,
 					inputName = document.name,
 					certificateAlias = ready.selectedAlias,
+					certificateSlotId = selectedSlot,
 					hashAlgorithm = ready.hashAlgorithm ?: config.hashAlgorithm,
 					signatureLevel = ready.effectiveSignatureLevel,
 					reason = ready.reason.ifBlank { null },
