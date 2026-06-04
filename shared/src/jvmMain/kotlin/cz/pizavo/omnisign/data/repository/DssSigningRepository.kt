@@ -415,6 +415,10 @@ class DssSigningRepository(
 	 * The PIN obtained from the credential store or the user is reused for both
 	 * [TokenService.loadCertificatesSilent] and [TokenService.getSigningToken] so it is never
 	 * entered twice and never discarded.
+	 *
+	 * Within each token, [tryResolveFromToken] opens the PKCS#11 slot that actually holds the
+	 * selected certificate's private key, which need not be the slot discovery pinned the
+	 * [TokenInfo] to on a card that presents several token-present slots.
 	 */
 	private suspend fun resolvePrivateKey(
 		parameters: SigningParameters
@@ -447,11 +451,62 @@ class DssSigningRepository(
 	}
 	
 	/**
-	 * Attempt to load certificates from [tokenInfo] and resolve a signing key matching [parameters].
+	 * Resolve a signing key for [parameters] from [tokenInfo], opening the PKCS#11 slot that
+	 * actually holds the selected certificate's private key.
 	 *
-	 * @return A [ResolvedKey] when the token contains a matching certificate, null otherwise.
+	 * A card can present more than one token-present slot, yet discovery collapses it to a
+	 * single [TokenInfo] pinned to the first slot seen.  Signing must therefore target the
+	 * slot of the *chosen* certificate, resolved in two steps:
+	 *
+	 * 1. The token's pinned slot is tried first, overridden by
+	 *    [SigningParameters.certificateSlotId] when the UI supplied it from the selected
+	 *    certificate — so the common path needs no extra probe.
+	 * 2. Only when that misses (the alias is absent from the pinned slot) *and* the caller
+	 *    gave an alias without a slot — e.g. the CLI `--alias` path — the all-slots no-login
+	 *    probe locates the alias's real slot and resolution is retried there.
+	 *
+	 * Slot overriding applies to PKCS#11 tokens only; other token types resolve unchanged.
+	 *
+	 * @return A [ResolvedKey] when a matching certificate and key are found, null otherwise.
 	 */
 	private suspend fun tryResolveFromToken(
+		tokenInfo: TokenInfo,
+		password: String,
+		parameters: SigningParameters,
+	): ResolvedKey? {
+		val primaryToken = parameters.certificateSlotId
+			?.takeIf { tokenInfo.type == TokenType.PKCS11 }
+			?.let { tokenInfo.copy(pkcs11SlotId = it) }
+			?: tokenInfo
+		resolveKeyFromSlot(primaryToken, password, parameters)?.let { return it }
+
+		if (tokenInfo.type != TokenType.PKCS11 ||
+			parameters.certificateSlotId != null ||
+			parameters.certificateAlias == null
+		) {
+			return null
+		}
+
+		val aliasSlot = tokenService.listCertificatesNoLogin(tokenInfo).getOrNull()
+			?.firstOrNull { it.alias == parameters.certificateAlias }
+			?.pkcs11SlotId
+		if (aliasSlot == null || aliasSlot == tokenInfo.pkcs11SlotId) return null
+
+		return resolveKeyFromSlot(tokenInfo.copy(pkcs11SlotId = aliasSlot), password, parameters)
+	}
+
+	/**
+	 * Load certificates from [tokenInfo] at whatever slot it is pinned to and resolve a
+	 * signing key matching [parameters].
+	 *
+	 * The [CertificateEntry] selected here carries the pinned [TokenInfo], so the DSS token
+	 * built by [TokenService.getSigningToken] opens the same slot the certificates were read
+	 * from — keeping listing and signing on one slot.
+	 *
+	 * @return A [ResolvedKey] when a matching certificate and key are present on that slot,
+	 *   null otherwise.
+	 */
+	private suspend fun resolveKeyFromSlot(
 		tokenInfo: TokenInfo,
 		password: String,
 		parameters: SigningParameters,
@@ -462,14 +517,14 @@ class DssSigningRepository(
 		} else {
 			certs.firstOrNull()
 		} ?: return null
-		
+
 		val dssToken = tokenService.getSigningToken(selected, password).getOrNull()
 			?.getDssToken() as? AbstractSignatureTokenConnection ?: return null
-		
+
 		val key = dssToken.keys.find { k ->
 			k.certificate.certificate.subjectX500Principal.toString() == selected.subjectDN
 		} ?: dssToken.keys.firstOrNull() ?: return null
-		
+
 		return ResolvedKey(key, dssToken, tokenInfo.type)
 	}
 	
@@ -514,6 +569,7 @@ class DssSigningRepository(
 			keyUsages = cert.keyUsages,
 			isQualified = cert.isQualified,
 			isQscd = cert.isQscd,
+			pkcs11SlotId = cert.pkcs11SlotId,
 		)
 	}
 	

@@ -20,6 +20,12 @@ import kotlin.time.Instant
  *   (`id-etsi-qcs-QcSSCD`, OID `0.4.0.1862.1.4`), indicating the private key is protected
  *   by a Qualified Signature/Seal Creation Device.  `null` when the QCStatements extension
  *   is absent or unreadable.
+ * @property pkcs11SlotId For a PKCS#11 certificate, the slot the certificate object was
+ *   discovered in.  A card may present more than one token-present slot (dual-interface
+ *   readers, p11-kit-proxy aggregation, multiple on-card applications); because the
+ *   certificate and its private key are co-located in the same slot, signing pins the
+ *   token to this slot to reach the matching key rather than guessing from discovery order.
+ *   `null` for non-PKCS#11 sources or when the slot is unknown.
  */
 data class CertificateEntry(
     val alias: String,
@@ -32,4 +38,5 @@ data class CertificateEntry(
     val tokenInfo: TokenInfo,
     val isQualified: Boolean? = null,
     val isQscd: Boolean? = null,
+    val pkcs11SlotId: Long? = null,
 )

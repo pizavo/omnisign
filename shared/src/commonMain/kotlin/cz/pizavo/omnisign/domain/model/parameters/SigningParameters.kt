@@ -11,6 +11,9 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
  * @property inputFile Absolute path to the PDF file to sign.
  * @property outputFile Absolute path for the signed output file.
  * @property certificateAlias Alias identifying which certificate to use; null selects the first available.
+ * @property certificateSlotId For a PKCS#11 selection, the slot the chosen certificate lives in,
+ *   so signing pins to the slot holding its private key on cards that present several
+ *   token-present slots; null lets sign-time resolution locate the slot by [certificateAlias].
  * @property hashAlgorithm Hash algorithm for the signature digest; falls back to the resolved config default.
  * @property encryptionAlgorithm Encryption (signing key) algorithm override; null lets DSS infer from the certificate key type.
  * @property signatureLevel PAdES level for the signature; falls back to the resolved config default.
@@ -25,6 +28,7 @@ data class SigningParameters(
 	val inputFile: String,
 	val outputFile: String,
 	val certificateAlias: String? = null,
+	val certificateSlotId: Long? = null,
 	val hashAlgorithm: HashAlgorithm? = null,
 	val encryptionAlgorithm: EncryptionAlgorithm? = null,
 	val signatureLevel: SignatureLevel? = null,
