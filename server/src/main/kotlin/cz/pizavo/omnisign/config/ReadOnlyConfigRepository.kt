@@ -44,4 +44,20 @@ class ReadOnlyConfigRepository(private val config: AppConfig) : ConfigRepository
 	 * Return the fixed startup configuration.
 	 */
 	override suspend fun getCurrentConfig(): AppConfig = config
+
+	/**
+	 * Reject the active-profile update for the same reason [saveConfig] does: the server's
+	 * configuration is fixed at startup. The server is stateless for the per-session active
+	 * profile — operation routes apply whichever profile the request carries in its `profile`
+	 * field — so there is no notion of a server-side active-profile selection to update.
+	 *
+	 * @param name Ignored.
+	 * @return A [ConfigurationError.SaveFailed] describing the read-only contract.
+	 */
+	override suspend fun setActiveProfile(name: String?): OperationResult<Unit> =
+		ConfigurationError.SaveFailed(
+			message = "Server signing configuration is read-only",
+			details = "The server has no per-session active profile; operations apply the " +
+				"profile carried in each request explicitly.",
+		).left()
 }

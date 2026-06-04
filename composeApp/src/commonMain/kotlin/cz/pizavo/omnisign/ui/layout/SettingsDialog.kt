@@ -80,6 +80,9 @@ private const val Pkcs11ListScrollThreshold = 5
  * @param onImportConfig Called when the user imports a full configuration archive (Backup section).
  * @param backupEnabled Whether the Backup export/import controls are enabled (false on platforms
  *   without a file-system backend, e.g. web).
+ * @param readOnly When `true`, the entire settings form renders view-only: every input is disabled,
+ *   the Save button is hidden, and host-only categories (PKCS#11 libraries, scheduler, renewal jobs)
+ *   are removed from the navigation. Used by the web target, whose configuration is server-owned.
  * @param onStageTrustedCert Called with the picked certificate bytes, type, and source path to stage
  *   a global-scope trusted-certificate addition. The certificate is parsed and deduplicated by the
  *   ViewModel before it is staged; the change is committed to the store on Save.
@@ -99,15 +102,20 @@ fun SettingsDialog(
 	onExportConfig: () -> Unit = {},
 	onImportConfig: () -> Unit = {},
 	backupEnabled: Boolean = false,
+	readOnly: Boolean = false,
 	onStageTrustedCert: (ByteArray, TrustedCertificateType, String) -> Unit = { _, _, _ -> },
 ) {
 	var selectedCategory by remember(initialCategory) {
 		mutableStateOf(initialCategory ?: SettingsCategory.SigningDefaults)
 	}
-	
-	val visibleGroups = remember(state.showNativeTitleBarOption) {
+
+	val visibleGroups = remember(state.showNativeTitleBarOption, readOnly) {
 		SettingsCategory.groups.filter { group ->
-			group != SettingsCategory.Appearance || state.showNativeTitleBarOption
+			when (group) {
+				SettingsCategory.Appearance -> state.showNativeTitleBarOption
+				SettingsCategory.Archiving, SettingsCategory.Tokens -> !readOnly
+				else -> true
+			}
 		}
 	}
 	
@@ -131,24 +139,26 @@ fun SettingsDialog(
 				
 				VerticalDivider()
 				
-				SettingsContentPanel(
-					category = selectedCategory,
-					state = state,
-					onFieldChange = onFieldChange,
-					onBuildTl = onBuildTl,
-					trustedListRefreshing = trustedListRefreshing,
-					trustedListLastRefreshAt = trustedListLastRefreshAt,
-					onRefreshTrustedLists = onRefreshTrustedLists,
-					onExportConfig = onExportConfig,
-					onImportConfig = onImportConfig,
-					backupEnabled = backupEnabled,
-					onStageTrustedCert = onStageTrustedCert,
-				)
+				CompositionLocalProvider(LocalReadOnly provides readOnly) {
+					SettingsContentPanel(
+						category = selectedCategory,
+						state = state,
+						onFieldChange = onFieldChange,
+						onBuildTl = onBuildTl,
+						trustedListRefreshing = trustedListRefreshing,
+						trustedListLastRefreshAt = trustedListLastRefreshAt,
+						onRefreshTrustedLists = onRefreshTrustedLists,
+						onExportConfig = onExportConfig,
+						onImportConfig = onImportConfig,
+						backupEnabled = backupEnabled,
+						onStageTrustedCert = onStageTrustedCert,
+					)
+				}
 			}
 
 			HorizontalDivider()
 			
-			SettingsFooter(saving = state.saving, hasChanges = hasChanges, onCancel = onDismiss, onSave = onSave)
+			SettingsFooter(saving = state.saving, hasChanges = hasChanges, onCancel = onDismiss, onSave = onSave, readOnly = readOnly)
 		}
 	}
 }
@@ -479,6 +489,7 @@ private fun SettingsContentPanel(
  * @param hasChanges Whether any persistable field differs from the originally loaded state.
  * @param onCancel Callback invoked when Cancel is clicked.
  * @param onSave Callback invoked when Save is clicked.
+ * @param readOnly When `true`, the Save button is hidden so the footer offers only Cancel.
  */
 @Composable
 private fun SettingsFooter(
@@ -486,6 +497,7 @@ private fun SettingsFooter(
 	hasChanges: Boolean,
 	onCancel: () -> Unit,
 	onSave: () -> Unit,
+	readOnly: Boolean = false,
 ) {
 	Row(
 		modifier = Modifier
@@ -498,13 +510,15 @@ private fun SettingsFooter(
 			variant = ButtonVariant.Ghost,
 			onClick = onCancel,
 		)
-		Button(
-			text = "Save",
-			variant = ButtonVariant.Primary,
-			enabled = hasChanges && !saving,
-			loading = saving,
-			onClick = onSave,
-		)
+		if (!readOnly) {
+			Button(
+				text = "Save",
+				variant = ButtonVariant.Primary,
+				enabled = hasChanges && !saving,
+				loading = saving,
+				onClick = onSave,
+			)
+		}
 	}
 }
 

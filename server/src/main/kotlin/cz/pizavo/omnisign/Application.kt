@@ -9,6 +9,7 @@ import cz.pizavo.omnisign.config.TrustReconciler
 import cz.pizavo.omnisign.config.isLoopbackHost
 import cz.pizavo.omnisign.config.validateAuthConfig
 import cz.pizavo.omnisign.config.validateCorsConfig
+import cz.pizavo.omnisign.config.validateOperationsConfig
 import cz.pizavo.omnisign.config.validateProxyConfig
 import cz.pizavo.omnisign.config.validateTransportSecurity
 import cz.pizavo.omnisign.data.service.PcscMonitorService
@@ -131,6 +132,7 @@ fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets) {
 	val parsedProxy = validateProxyConfig(serverConfig.proxy)
 	val corsConfig = validateCorsConfig(serverConfig.cors)
 	validateTransportSecurity(serverConfig)
+	validateOperationsConfig(serverConfig.operations)
 	val signingConfig = SigningConfigLoader().load(serverConfig.signingConfigFile)
 	configureKoin(serverConfig, secrets, signingConfig)
 	reconcileTrustIfConfigured(serverConfig, signingConfig)

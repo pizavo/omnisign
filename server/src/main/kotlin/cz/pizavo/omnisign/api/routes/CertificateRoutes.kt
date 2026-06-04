@@ -1,7 +1,6 @@
 package cz.pizavo.omnisign.api.routes
 
 import cz.pizavo.omnisign.api.exception.OperationException
-import cz.pizavo.omnisign.api.model.responses.toResponse
 import cz.pizavo.omnisign.api.requireOperation
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
@@ -39,7 +38,7 @@ fun Route.certificateRoutes() {
 				} else {
 					result
 				}
-				call.respond(filtered.toResponse())
+				call.respond(filtered)
 			},
 		)
 	}

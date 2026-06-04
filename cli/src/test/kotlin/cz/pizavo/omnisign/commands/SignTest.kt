@@ -110,7 +110,8 @@ class SignTest : FunSpec({
 		val output = tmpFile("output.pdf")
 		
 		coEvery { signingRepository.signDocument(any()) } returns SigningResult(
-			outputFile = output.absolutePath,
+			outputBytes = ByteArray(0),
+			outputName = output.name,
 			signatureId = "sig-123",
 			signatureLevel = "PAdES-BASELINE-B",
 		).right()
@@ -143,7 +144,8 @@ class SignTest : FunSpec({
 		val output = tmpFile("output3.pdf")
 		
 		coEvery { signingRepository.signDocument(any()) } returns SigningResult(
-			outputFile = output.absolutePath,
+			outputBytes = ByteArray(0),
+			outputName = output.name,
 			signatureId = "sig-json",
 			signatureLevel = "PAdES-BASELINE-T",
 		).right()

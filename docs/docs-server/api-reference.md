@@ -70,7 +70,7 @@ The TSA is always the server's configured one — clients cannot supply TSA cred
 
 Pre-flight a signed PDF to learn which target levels are valid extensions (without full validation).
 Requires **`TIMESTAMP`**. Field: `file` (required). **Response** `200`: a JSON
-`DocumentTimestampInfoResponse`.
+`DocumentTimestampInfo` (`hasDocumentTimestamp`, `containsLtData`).
 
 ### `GET /api/v1/certificates`
 

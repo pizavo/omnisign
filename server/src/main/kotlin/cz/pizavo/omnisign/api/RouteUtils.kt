@@ -65,7 +65,7 @@ suspend fun MultiPartData.collectParts(maxFileSize: Long = Long.MAX_VALUE): List
 				}
 				createdFiles.add(tempFile)
 				streamPartToFile(part, tempFile, maxFileSize)
-				result.add(FilePartData(part.name, tempFile))
+				result.add(FilePartData(part.name, tempFile, part.originalFileName))
 			} else {
 				result.add(part)
 			}
@@ -138,30 +138,6 @@ suspend fun RoutingCall.requireOperation(
 		),
 	)
 	return false
-}
-
-/**
- * Return the temp file backing the uploaded file part named [name], or `null` if no such
- * part is present.
- *
- * The file was already streamed to disk by [collectParts]; this just locates the matching
- * [FilePartData] and returns its [FilePartData.file]. Size enforcement happened during
- * streaming, so there is no secondary size check here. The returned file's lifecycle is
- * owned by the caller — delete it (and any other file parts) via [deleteFileParts] in a
- * `finally`.
- *
- * @param parts Collected multipart parts from [collectParts].
- * @param name Expected form field name.
- * @return The temporary [File] containing the upload, or `null` if not found.
- */
-fun extractFilePart(parts: List<Any>, name: String): File? {
-	val filePart = parts.filterIsInstance<FilePartData>().firstOrNull { it.name == name }
-	if (filePart == null) {
-		logger.debug { "extractFilePart: no FilePartData with name='$name' in ${parts.size} parts" }
-		return null
-	}
-	logger.debug { "extractFilePart: streamed file at ${filePart.file.absolutePath}" }
-	return filePart.file
 }
 
 /**

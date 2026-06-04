@@ -14,8 +14,10 @@ import cz.pizavo.omnisign.domain.usecase.ListCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.LoadFileCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
 import cz.pizavo.omnisign.domain.usecase.UnlockTokenUseCase
+import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
 import cz.pizavo.omnisign.ui.model.SigningDialogState
+import cz.pizavo.omnisign.ui.platform.writeBytesToPath
 import cz.pizavo.omnisign.ui.toast.ToastDuration
 import cz.pizavo.omnisign.ui.toast.ToastMessage
 import cz.pizavo.omnisign.ui.toast.ToastService
@@ -55,6 +57,8 @@ import kotlinx.coroutines.flow.update
  * @param configRepository Repository for reading the current application configuration.
  * @param tokenService Source of [TokenService.discoveryRunning] for background-discovery
  *   observability that drives the inline indicator and the auto-refresh of the certificate list.
+ *   `null` on the web target where token discovery happens server-side; the ViewModel skips the
+ *   discovery-watch coroutine and the rescan/diagnostic affordances in that case.
  * @param renewalJobAssigner Shared helper for renewal job persistence and coverage checks.
  * @param toastService Application-wide toast dispatcher.  When non-null, [rescan] emits a
  *   user-visible acknowledgement toast through it (with a "Show diagnostic info" action
@@ -68,7 +72,7 @@ class SigningViewModel(
 	private val unlockTokenUseCase: UnlockTokenUseCase,
 	private val loadFileCertificatesUseCase: LoadFileCertificatesUseCase,
 	private val configRepository: ConfigRepository,
-	private val tokenService: TokenService,
+	private val tokenService: TokenService?,
 	private val renewalJobAssigner: RenewalJobAssigner? = null,
 	private val toastService: ToastService? = null,
 	private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
@@ -100,8 +104,9 @@ class SigningViewModel(
 	 */
 	val diagnosticSnapshot: StateFlow<Pkcs11DiagnosticSnapshot?> = _diagnosticSnapshot.asStateFlow()
 
-	private var currentFilePath: String? = null
+	private var currentDocument: PdfDocumentInfo? = null
 	private var resolvedConfig: ResolvedConfig? = null
+	private var activeProfileName: String? = null
 	private var lastReadyState: SigningDialogState.Ready? = null
 	private var addToRenewalJobFlag: Boolean = false
 	private var cachedRenewalJobs: List<RenewalJob> = emptyList()
@@ -131,23 +136,25 @@ class SigningViewModel(
 	private var pendingUserRescan: Boolean = false
 
 	init {
-		viewModelScope.launch {
-			tokenService.discoveryRunning.drop(1).collect { running ->
-				if (running) {
-					_state.update { current ->
-						if (current is SigningDialogState.Ready) current.copy(refreshing = true)
-						else current
-					}
-				} else {
-					val userRescan = pendingUserRescan
-					pendingUserRescan = false
-					refreshCertificatesIfReady()
-					_state.update { current ->
-						if (current is SigningDialogState.Ready) current.copy(refreshing = false)
-						else current
-					}
-					if (userRescan) {
-						emitRescanToast()
+		tokenService?.let { service ->
+			viewModelScope.launch {
+				service.discoveryRunning.drop(1).collect { running ->
+					if (running) {
+						_state.update { current ->
+							if (current is SigningDialogState.Ready) current.copy(refreshing = true)
+							else current
+						}
+					} else {
+						val userRescan = pendingUserRescan
+						pendingUserRescan = false
+						refreshCertificatesIfReady()
+						_state.update { current ->
+							if (current is SigningDialogState.Ready) current.copy(refreshing = false)
+							else current
+						}
+						if (userRescan) {
+							emitRescanToast()
+						}
 					}
 				}
 			}
@@ -162,10 +169,19 @@ class SigningViewModel(
 	 * [SigningDialogState.Ready] on success, or to [SigningDialogState.Error]
 	 * on failure.
 	 *
-	 * @param filePath Absolute path to the PDF document to sign.
+	 * @param document Document loaded by the viewer; its bytes are forwarded to the signing
+	 *   use case and its `filePath` (when present) seeds the suggested output path on the
+	 *   desktop. On the web target [PdfDocumentInfo.filePath] is `null`; the dialog falls
+	 *   back to deriving the suggested name from [PdfDocumentInfo.name].
+	 * @param allowTimestamping Whether the server permits timestamping. When `false` and the
+	 *   resolved signature level requires a timestamp (any level above B-B), the dialog refuses
+	 *   to open the form and transitions to [SigningDialogState.TimestampingUnavailable] rather
+	 *   than silently downgrading to B-B under the profile's name. When `false` and the resolved
+	 *   level is already B-B, the form opens normally with the timestamp options hidden. Defaults
+	 *   to `true` (desktop / no server gating), where the resolved level is honored as-is.
 	 */
-	fun open(filePath: String) {
-		currentFilePath = filePath
+	fun open(document: PdfDocumentInfo, allowTimestamping: Boolean = true) {
+		currentDocument = document
 		_state.value = SigningDialogState.Loading
 
 		viewModelScope.launch {
@@ -177,6 +193,7 @@ class SigningViewModel(
 					val appConfig = appConfigDeferred.await()
 					cachedRenewalJobs = appConfig.renewalJobs.values.toList()
 					val activeProfile = appConfig.activeProfile
+					activeProfileName = activeProfile
 					val profileConfig = activeProfile?.let { appConfig.profiles[it] }
 
 					val configResult = ResolvedConfig.resolve(
@@ -193,6 +210,13 @@ class SigningViewModel(
 						},
 						ifRight = { config ->
 							resolvedConfig = config
+							if (!allowTimestamping && config.signatureLevel != SignatureLevel.PADES_BASELINE_B) {
+								_state.value = SigningDialogState.TimestampingUnavailable(
+									profileName = activeProfile,
+									requiredLevel = config.signatureLevel,
+								)
+								return@fold
+							}
 							discoveryDeferred.await().fold(
 								ifLeft = { error ->
 									_state.value = SigningDialogState.Error(
@@ -202,11 +226,13 @@ class SigningViewModel(
 								},
 								ifRight = { discovery ->
 									val level = config.signatureLevel
-									val addSigTs = level == SignatureLevel.PADES_BASELINE_LT ||
-											level == SignatureLevel.PADES_BASELINE_LTA
-									val addArchTs = level == SignatureLevel.PADES_BASELINE_LTA
+									val addSigTs = allowTimestamping && (level == SignatureLevel.PADES_BASELINE_LT ||
+											level == SignatureLevel.PADES_BASELINE_LTA)
+									val addArchTs = allowTimestamping && level == SignatureLevel.PADES_BASELINE_LTA
 
-									val suggestedOutput = buildSuggestedOutputPath(filePath, "-signed")
+									val suggestedOutput = document.filePath?.let {
+										buildSuggestedOutputPath(it, "-signed")
+									} ?: document.name
 									val coveringJob = RenewalJobAssigner.findCoveringJob(
 										suggestedOutput, cachedRenewalJobs,
 									)
@@ -379,7 +405,7 @@ class SigningViewModel(
 	 */
 	fun sign() {
 		val ready = _state.value as? SigningDialogState.Ready ?: return
-		val inputFile = currentFilePath ?: return
+		val document = currentDocument ?: return
 		val config = resolvedConfig ?: return
 
 		lastReadyState = ready
@@ -391,8 +417,8 @@ class SigningViewModel(
 		viewModelScope.launch {
 			withContext(ioDispatcher) {
 				val parameters = SigningParameters(
-					inputFile = inputFile,
-					outputFile = ready.outputPath,
+					inputBytes = document.data,
+					inputName = document.name,
 					certificateAlias = ready.selectedAlias,
 					hashAlgorithm = ready.hashAlgorithm ?: config.hashAlgorithm,
 					signatureLevel = ready.effectiveSignatureLevel,
@@ -401,6 +427,7 @@ class SigningViewModel(
 					contactInfo = ready.contactInfo.ifBlank { null },
 					addTimestamp = ready.effectiveAddTimestamp,
 					resolvedConfig = config,
+					profileName = activeProfileName,
 				)
 
 				signDocumentUseCase(parameters).fold(
@@ -411,24 +438,33 @@ class SigningViewModel(
 						)
 					},
 					ifRight = { result ->
+						val writeError = writeBytesToPath(ready.outputPath, result.outputBytes)
+						if (writeError != null) {
+							_state.value = SigningDialogState.Error(
+								message = "Failed to write signed document",
+								details = writeError,
+							)
+							return@fold
+						}
+
 						val levelRequiresRevocation =
 							ready.effectiveSignatureLevel >= SignatureLevel.PADES_BASELINE_LT
 
 						if (result.hasRevocationWarnings && levelRequiresRevocation) {
 							_state.value = SigningDialogState.RevocationWarning(
 								warnings = result.annotatedWarnings,
-								outputFile = result.outputFile,
+								outputFile = ready.outputPath,
 								signatureId = result.signatureId,
 								signatureLevel = result.signatureLevel,
 							)
 						} else {
 							_state.value = SigningDialogState.Success(
-								outputFile = result.outputFile,
+								outputFile = ready.outputPath,
 								signatureId = result.signatureId,
 								signatureLevel = result.signatureLevel,
 								warnings = result.annotatedWarnings,
 							)
-							populateRenewalOfferIfNeeded(result.outputFile)
+							populateRenewalOfferIfNeeded(ready.outputPath)
 						}
 					},
 				)
@@ -473,6 +509,7 @@ class SigningViewModel(
 	fun dismiss() {
 		_state.value = SigningDialogState.Idle
 		resolvedConfig = null
+		activeProfileName = null
 		lastReadyState = null
 	}
 
@@ -548,7 +585,7 @@ class SigningViewModel(
 	 */
 	fun rescan() {
 		pendingUserRescan = true
-		tokenService.rescanTokens()
+		tokenService?.rescanTokens()
 	}
 
 	/**
@@ -561,9 +598,10 @@ class SigningViewModel(
 	 * refreshes the snapshot.
 	 */
 	fun showDiagnostic() {
+		val service = tokenService ?: return
 		viewModelScope.launch {
 			withContext(ioDispatcher) {
-				val snapshot = runCatching { tokenService.getDiagnosticSnapshot() }
+				val snapshot = runCatching { service.getDiagnosticSnapshot() }
 					.getOrDefault(Pkcs11DiagnosticSnapshot.EMPTY)
 				_diagnosticSnapshot.value = snapshot
 			}

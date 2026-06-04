@@ -124,10 +124,25 @@ class RenewBatchUseCase(
                             return@fold
                         }
 
+                        val inputBytes = runCatching { file.readBytes() }.getOrNull()
+                        if (inputBytes == null) {
+                            totalErrors++
+                            jobErrors++
+                            appendLog(job.logFile, "[ERROR] $path — renewal failed: could not read file")
+                            fileStatuses.add(
+                                RenewFileStatus(
+                                    path = path,
+                                    status = RenewFileStatus.Status.ERROR,
+                                    message = "Could not read file",
+                                )
+                            )
+                            return@fold
+                        }
+
                         extendDocumentUseCase(
                             ArchivingParameters(
-                                inputFile = path,
-                                outputFile = path,
+                                inputBytes = inputBytes,
+                                inputName = file.name,
                                 targetLevel = SignatureLevel.PADES_BASELINE_LTA,
                                 resolvedConfig = resolvedConfig,
                             )
@@ -145,6 +160,20 @@ class RenewBatchUseCase(
                                 )
                             },
                             ifRight = { result ->
+                                val writeError = runCatching { file.writeBytes(result.outputBytes) }.exceptionOrNull()
+                                if (writeError != null) {
+                                    totalErrors++
+                                    jobErrors++
+                                    appendLog(job.logFile, "[ERROR] $path — renewal failed: ${writeError.message}")
+                                    fileStatuses.add(
+                                        RenewFileStatus(
+                                            path = path,
+                                            status = RenewFileStatus.Status.ERROR,
+                                            message = writeError.message,
+                                        )
+                                    )
+                                    return@fold
+                                }
                                 totalRenewed++
                                 jobRenewed++
                                 appendLog(job.logFile, "[RENEWED] $path")

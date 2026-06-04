@@ -147,11 +147,11 @@ class ManageProfileUseCaseTest : FunSpec({
 	test("setActive activates an existing profile") {
 		val existing = baseConfig.copy(profiles = mapOf("p1" to profile("p1")))
 		coEvery { configRepository.getCurrentConfig() } returns existing
-		val saved = slot<AppConfig>()
-		coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+		val captured = slot<String?>()
+		coEvery { configRepository.setActiveProfile(captureNullable(captured)) } returns Unit.right()
 
 		useCase.setActive("p1").shouldBeRight()
-		saved.captured.activeProfile shouldBe "p1"
+		captured.captured shouldBe "p1"
 	}
 
 	test("setActive with null clears the active profile") {
@@ -160,11 +160,11 @@ class ManageProfileUseCaseTest : FunSpec({
 			activeProfile = "p1"
 		)
 		coEvery { configRepository.getCurrentConfig() } returns existing
-		val saved = slot<AppConfig>()
-		coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+		val captured = slot<String?>()
+		coEvery { configRepository.setActiveProfile(captureNullable(captured)) } returns Unit.right()
 
 		useCase.setActive(null).shouldBeRight()
-		saved.captured.activeProfile.shouldBeNull()
+		captured.captured.shouldBeNull()
 	}
 
 	test("setActive returns error for unknown profile") {
@@ -172,6 +172,7 @@ class ManageProfileUseCaseTest : FunSpec({
 
 		useCase.setActive("ghost").shouldBeLeft()
 			.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+		coVerify(exactly = 0) { configRepository.setActiveProfile(any()) }
 	}
 
 	test("get returns the requested profile") {

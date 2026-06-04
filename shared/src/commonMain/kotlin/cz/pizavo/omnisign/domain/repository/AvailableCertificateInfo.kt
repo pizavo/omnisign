@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.domain.repository
 
+import kotlinx.serialization.Serializable
 import kotlin.time.Instant
 
 /**
@@ -19,6 +20,7 @@ import kotlin.time.Instant
  * Not to be confused with [cz.pizavo.omnisign.domain.model.signature.CertificateInfo],
  * which holds certificate details extracted during validation.
  */
+@Serializable
 data class AvailableCertificateInfo(
     val alias: String,
     val subjectDN: String,

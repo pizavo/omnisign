@@ -24,3 +24,4 @@ core.*
 
 /server/src/main/resources/server.yml
 /.github/copilot-instructions.md
+/server/src/main/resources/signing.yml

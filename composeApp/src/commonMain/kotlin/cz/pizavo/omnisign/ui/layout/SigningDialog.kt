@@ -1,4 +1,4 @@
-﻿package cz.pizavo.omnisign.ui.layout
+package cz.pizavo.omnisign.ui.layout
 
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.*
@@ -12,6 +12,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
+import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.value.formatDate
 import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
@@ -46,6 +47,12 @@ import org.jetbrains.compose.resources.painterResource
  * - [SigningDialogState.Error]: error message with a retry option.
  *
  * @param state Current signing dialog state from [cz.pizavo.omnisign.ui.viewmodel.SigningViewModel].
+ * @param canTimestamp Whether the server permits timestamping. When `false` the signature /
+ *   archival timestamp options are hidden, constraining the form to B-B signatures (signing-time
+ *   timestamps use the server's TSA, which a TIMESTAMP-disabled institution does not want
+ *   produced). When the resolved level *requires* a timestamp the ViewModel blocks before this
+ *   form opens (see [SigningDialogState.TimestampingUnavailable]), so a hidden option can never
+ *   silently downgrade a timestamped profile to B-B.
  * @param onFieldChange Called with a transform to update a field in the [SigningDialogState.Ready] state.
  * @param onSign Called when the user clicks the Sign button.
  * @param onAbortRevocation Called when the user aborts after a revocation warning.
@@ -65,6 +72,7 @@ import org.jetbrains.compose.resources.painterResource
 @Composable
 fun SigningDialog(
 	state: SigningDialogState,
+	canTimestamp: Boolean = true,
 	onFieldChange: ((SigningDialogState.Ready) -> SigningDialogState.Ready) -> Unit,
 	onSign: () -> Unit,
 	onAbortRevocation: () -> Unit,
@@ -99,8 +107,10 @@ fun SigningDialog(
 				when (state) {
 					is SigningDialogState.Idle -> {}
 					is SigningDialogState.Loading -> LoadingContent("Discovering certificates...")
+					is SigningDialogState.TimestampingUnavailable -> TimestampingUnavailableContent(state)
 					is SigningDialogState.Ready -> SigningFormContent(
 						state = state,
+						canTimestamp = canTimestamp,
 						onFieldChange = onFieldChange,
 						onUnlockToken = onUnlockToken,
 						onImportPkcs12 = onImportPkcs12,
@@ -241,10 +251,14 @@ private fun SigningDialogHeader(
  * @param onFieldChange Called with a transform to update a field.
  * @param onUnlockToken Called with a token ID when the user clicks Unlock.
  * @param onImportPkcs12 Called with the file path when the user imports a PKCS#12 file.
+ * @param canTimestamp Whether the server permits timestamping; when `false` the signature /
+ *   archival timestamp options are not rendered. Configurations that *require* a timestamp are
+ *   blocked before this form opens, so hiding only ever drops genuinely optional timestamps.
  */
 @Composable
 private fun SigningFormContent(
 	state: SigningDialogState.Ready,
+	canTimestamp: Boolean,
 	onFieldChange: ((SigningDialogState.Ready) -> SigningDialogState.Ready) -> Unit,
 	onUnlockToken: (tokenId: String) -> Unit,
 	onImportPkcs12: (filePath: String) -> Unit,
@@ -369,6 +383,7 @@ private fun SigningFormContent(
 			)
 		}
 		
+		if (canTimestamp) {
 		Row(
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.spacedBy(16.dp),
@@ -426,6 +441,8 @@ private fun SigningFormContent(
 			}
 		}
 		
+		}
+
 		UnderlinedTextField(
 			value = state.reason,
 			onValueChange = { v -> onFieldChange { it.copy(reason = v) } },
@@ -635,6 +652,13 @@ private fun SigningDialogFooter(
 				)
 			}
 			
+			is SigningDialogState.TimestampingUnavailable -> {
+				Button(
+					text = "Close",
+					variant = ButtonVariant.SecondaryOutlined,
+					onClick = onDismiss,
+				)
+			}
 			else -> {}
 		}
 	}
@@ -1014,6 +1038,64 @@ private fun EmptyTokenBanner(onShowDiagnostic: (() -> Unit)? = null) {
 				)
 			}
 		}
+	}
+}
+
+/**
+ * Blocking screen shown when the resolved profile / configuration mandates a timestamped
+ * signature level but the server has timestamping disabled.
+ *
+ * Explains the conflict and the two ways out (pick a profile whose level the server can
+ * satisfy, or ask the administrator to enable timestamping). There is no Sign affordance —
+ * the footer shows only Close — because producing a B-B signature here would silently violate
+ * the profile's required level. Mirrors the server-side `TIMESTAMP_NOT_ALLOWED` rejection.
+ *
+ * @param state The [SigningDialogState.TimestampingUnavailable] state carrying the active
+ *   profile name (when any) and the level that requires a timestamp.
+ */
+@Composable
+private fun TimestampingUnavailableContent(state: SigningDialogState.TimestampingUnavailable) {
+	val levelLabel = when (state.requiredLevel) {
+		SignatureLevel.PADES_BASELINE_T -> "B-T"
+		SignatureLevel.PADES_BASELINE_LT -> "B-LT"
+		SignatureLevel.PADES_BASELINE_LTA -> "B-LTA"
+		SignatureLevel.PADES_BASELINE_B -> "B-B"
+	}
+	val intro = if (state.profileName != null) {
+		"The profile \"${state.profileName}\" requires PAdES $levelLabel, which embeds a trusted timestamp."
+	} else {
+		"The configured signature level PAdES $levelLabel embeds a trusted timestamp."
+	}
+	Column(
+		modifier = Modifier
+			.fillMaxSize()
+			.padding(24.dp),
+		verticalArrangement = Arrangement.spacedBy(8.dp),
+	) {
+		Row(
+			horizontalArrangement = Arrangement.spacedBy(6.dp),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			Icon(
+				painter = painterResource(Res.drawable.icon_alert_warning),
+				contentDescription = null,
+				modifier = Modifier.size(20.dp),
+				tint = LumoTheme.colors.warning,
+			)
+			Text(text = "Timestamping unavailable", style = LumoTheme.typography.h4)
+		}
+		Text(
+			text = "$intro This server has timestamping disabled, so it can only produce basic " +
+				"(B-B) signatures. Signing here would drop the required timestamp.",
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.textSecondary,
+		)
+		Text(
+			text = "Select a profile that does not require a timestamp, or ask the server " +
+				"administrator to enable the timestamping operation.",
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.textSecondary,
+		)
 	}
 }
 

@@ -3,12 +3,10 @@ package cz.pizavo.omnisign.api.routes
 import cz.pizavo.omnisign.api.collectParts
 import cz.pizavo.omnisign.api.deleteFileParts
 import cz.pizavo.omnisign.api.exception.OperationException
-import cz.pizavo.omnisign.api.extractFilePart
 import cz.pizavo.omnisign.api.extractTextField
+import cz.pizavo.omnisign.api.model.FilePartData
 import cz.pizavo.omnisign.api.model.responses.ApiError
-import cz.pizavo.omnisign.api.model.responses.DocumentTimestampInfoResponse
 import cz.pizavo.omnisign.api.model.responses.TimestampResultMeta
-import cz.pizavo.omnisign.api.model.responses.toResponse
 import cz.pizavo.omnisign.api.parseEnumSetField
 import cz.pizavo.omnisign.api.requireOperation
 import cz.pizavo.omnisign.config.AllowedOperation
@@ -27,10 +25,7 @@ import io.ktor.http.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import org.koin.ktor.ext.inject
-import java.io.File
 
 /**
  * Mount timestamping/extension API routes under `/api/v1/timestamp`.
@@ -62,7 +57,8 @@ import java.io.File
  * A `X-OmniSign-Result` header carries [TimestampResultMeta] as JSON.
  *
  * `POST /api/v1/timestamp/inspect` performs a lightweight pre-flight inspection of a signed
- * PDF and returns a [DocumentTimestampInfoResponse] JSON body. Clients use it to decide
+ * PDF and returns a [cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo] JSON body.
+ * Clients use it to decide
  * which target PAdES levels are valid extensions for the document (e.g. disabling B-T when
  * the document is already at B-LTA, avoiding a no-op B-LT extension when LT-data is present)
  * without running a full validation. Accepts the same `file` multipart field as the main
@@ -81,21 +77,15 @@ fun Route.timestampRoutes() {
 		val multipart = call.receiveMultipart()
 		val parts = multipart.collectParts(serverConfig.maxFileSize)
 
-		var outputFile: File? = null
 		try {
-			val inputFile = extractFilePart(parts, "file")
-			if (inputFile == null) {
+			val filePart = parts.filterIsInstance<FilePartData>().firstOrNull { it.name == "file" }
+			if (filePart == null) {
 				call.respond(
 					HttpStatusCode.BadRequest,
 					ApiError(error = "MISSING_FILE", message = "Multipart field 'file' is required"),
 				)
 				return@post
 			}
-
-			val output = withContext(Dispatchers.IO) {
-				File.createTempFile("omnisign-timestamped-", ".pdf")
-			}
-			outputFile = output
 
 			val disabledHashAlgorithms = call.parseEnumSetField(
 				parts, "disableHashAlgorithm", HashAlgorithm.entries, "INVALID_ALGORITHM",
@@ -130,8 +120,8 @@ fun Route.timestampRoutes() {
 				?: SignatureLevel.PADES_BASELINE_LTA
 
 			val parameters = ArchivingParameters(
-				inputFile = inputFile.absolutePath,
-				outputFile = output.absolutePath,
+				inputBytes = filePart.file.readBytes(),
+				inputName = filePart.originalFileName ?: filePart.file.name,
 				targetLevel = targetLevel,
 				resolvedConfig = resolvedConfig,
 			)
@@ -143,15 +133,14 @@ fun Route.timestampRoutes() {
 				ifRight = { result ->
 					val meta = TimestampResultMeta(
 						newLevel = result.newSignatureLevel,
-						annotatedWarnings = result.annotatedWarnings.map { it.toResponse() },
+						annotatedWarnings = result.annotatedWarnings,
 					)
 					call.response.header("X-OmniSign-Result", serverJson.encodeToString(meta))
-					call.respondFile(output)
+					call.respondBytes(result.outputBytes, ContentType.Application.Pdf)
 				},
 			)
 		} finally {
 			parts.deleteFileParts()
-			outputFile?.delete()
 		}
 	}
 
@@ -162,8 +151,8 @@ fun Route.timestampRoutes() {
 		val parts = multipart.collectParts(serverConfig.maxFileSize)
 
 		try {
-			val inputFile = extractFilePart(parts, "file")
-			if (inputFile == null) {
+			val filePart = parts.filterIsInstance<FilePartData>().firstOrNull { it.name == "file" }
+			if (filePart == null) {
 				call.respond(
 					HttpStatusCode.BadRequest,
 					ApiError(error = "MISSING_FILE", message = "Multipart field 'file' is required"),
@@ -171,12 +160,12 @@ fun Route.timestampRoutes() {
 				return@post
 			}
 
-			inspectUseCase(inputFile.absolutePath).fold(
+			inspectUseCase(filePart.file.readBytes()).fold(
 				ifLeft = { error ->
 					throw OperationException(error)
 				},
 				ifRight = { info ->
-					call.respond(info.toResponse())
+					call.respond(info)
 				},
 			)
 		} finally {

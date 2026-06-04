@@ -108,6 +108,11 @@ class FileConfigRepository(
             )
         }
     }
+
+    override suspend fun setActiveProfile(name: String?): OperationResult<Unit> {
+        val current = getCurrentConfig()
+        return saveConfig(current.copy(activeProfile = name))
+    }
     
     companion object {
         /**

@@ -7,3 +7,8 @@ package cz.pizavo.omnisign.ui.platform
 actual fun isLinuxPlatform(): Boolean =
 	System.getProperty("os.name").lowercase().let { !it.contains("win") && !it.contains("mac") }
 
+/**
+ * JVM implementation — the desktop target is never the web platform.
+ */
+actual fun isWebPlatform(): Boolean = false
+

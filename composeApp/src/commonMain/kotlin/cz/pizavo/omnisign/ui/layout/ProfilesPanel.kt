@@ -43,6 +43,7 @@ import omnisign.composeapp.generated.resources.Res
 import omnisign.composeapp.generated.resources.icon_cancel
 import omnisign.composeapp.generated.resources.icon_check
 import omnisign.composeapp.generated.resources.icon_delete
+import omnisign.composeapp.generated.resources.icon_eye
 import omnisign.composeapp.generated.resources.icon_pencil
 import omnisign.composeapp.generated.resources.icon_profile_add
 import omnisign.composeapp.generated.resources.icon_profile_deselect
@@ -73,6 +74,8 @@ private val RowButtonPadding = PaddingValues(2.dp)
  * @param onFieldChange Called with a transform to update a single field in the edit form.
  * @param onSaveEdit Called when the user clicks Save in the edit form.
  * @param hasEditChanges Whether any persistable field in the edit form differs from the originally loaded state.
+ * @param readOnly When `true` (the web target, whose server config is read-only) the panel hides
+ *   the "Add profile" action and renders the per-profile edit action as a view (eye) affordance.
  * @param onBuildTl Called when the user clicks "Build Custom TL", or `null` when unavailable.
  * @param onStageTrustedCert Called with certificate bytes, type, and source to parse and stage an
  *   addition to the edited profile's scope (dedup-checked by the ViewModel); committed on Save.
@@ -90,12 +93,14 @@ fun ProfilesPanel(
     onFieldChange: ((ProfileEditState) -> ProfileEditState) -> Unit,
     onSaveEdit: () -> Unit,
     hasEditChanges: Boolean = true,
+    readOnly: Boolean = false,
     onBuildTl: (() -> Unit)? = null,
     onStageTrustedCert: (ByteArray, TrustedCertificateType, String) -> Unit = { _, _, _ -> },
 ) {
     when (state.mode) {
         is ProfilePanelMode.Listing -> ProfileListContent(
             state = state,
+            readOnly = readOnly,
             onToggleActive = onToggleActive,
             onEdit = onEdit,
             onDelete = onDelete,
@@ -112,6 +117,7 @@ fun ProfilesPanel(
                     onFieldChange = onFieldChange,
                     onSave = onSaveEdit,
                     hasChanges = hasEditChanges,
+                    readOnly = readOnly,
                     globalDisabledHashAlgorithms = state.globalDisabledHashAlgorithms,
                     globalDisabledEncryptionAlgorithms = state.globalDisabledEncryptionAlgorithms,
                     globalAddArchivalTimestamp = state.globalAddArchivalTimestamp,
@@ -129,6 +135,7 @@ fun ProfilesPanel(
 @Composable
 private fun ProfileListContent(
     state: ProfileListState,
+    readOnly: Boolean,
     onToggleActive: (String) -> Unit,
     onEdit: (String) -> Unit,
     onDelete: (String) -> Unit,
@@ -166,6 +173,7 @@ private fun ProfileListContent(
     ProfileToolbar(
         hasActiveProfile = state.activeProfile != null,
         creatingNew = state.creatingNew,
+        readOnly = readOnly,
         onAdd = onAdd,
         onDeselectActive = onDeselectActive,
     )
@@ -195,6 +203,7 @@ private fun ProfileListContent(
             ProfileRow(
                 profile = profile,
                 isActive = profile.name == state.activeProfile,
+                readOnly = readOnly,
                 onToggleActive = { onToggleActive(profile.name) },
                 onEdit = { onEdit(profile.name) },
                 onRequestDelete = { pendingDeleteProfile = profile.name },
@@ -211,6 +220,7 @@ private fun ProfileListContent(
  *
  * @param hasActiveProfile Whether any profile is currently active.
  * @param creatingNew Whether the inline creation row is currently displayed.
+ * @param readOnly When `true`, the Add-profile button is hidden (config is read-only on web).
  * @param onAdd Called when the add-profile button is clicked.
  * @param onDeselectActive Called when the Deselect button is clicked.
  */
@@ -218,6 +228,7 @@ private fun ProfileListContent(
 private fun ProfileToolbar(
     hasActiveProfile: Boolean,
     creatingNew: Boolean,
+    readOnly: Boolean,
     onAdd: () -> Unit,
     onDeselectActive: () -> Unit,
 ) {
@@ -226,25 +237,27 @@ private fun ProfileToolbar(
         horizontalArrangement = Arrangement.End,
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        TooltipBox(
-            tooltip = { Tooltip { Text(text = "Add profile") } },
-            state = rememberTooltipState(),
-        ) {
-            IconButton(
-                modifier = Modifier.defaultMinSize(
-                    minWidth = RowButtonSize,
-                    minHeight = RowButtonSize,
-                ),
-                variant = IconButtonVariant.Ghost,
-                enabled = !creatingNew,
-                onClick = onAdd,
-                contentPadding = RowButtonPadding,
+        if (!readOnly) {
+            TooltipBox(
+                tooltip = { Tooltip { Text(text = "Add profile") } },
+                state = rememberTooltipState(),
             ) {
-                Icon(
-                    painter = painterResource(Res.drawable.icon_profile_add),
-                    contentDescription = "Add profile",
-                    modifier = Modifier.size(RowIconSize),
-                )
+                IconButton(
+                    modifier = Modifier.defaultMinSize(
+                        minWidth = RowButtonSize,
+                        minHeight = RowButtonSize,
+                    ),
+                    variant = IconButtonVariant.Ghost,
+                    enabled = !creatingNew,
+                    onClick = onAdd,
+                    contentPadding = RowButtonPadding,
+                ) {
+                    Icon(
+                        painter = painterResource(Res.drawable.icon_profile_add),
+                        contentDescription = "Add profile",
+                        modifier = Modifier.size(RowIconSize),
+                    )
+                }
             }
         }
 
@@ -359,14 +372,16 @@ private fun NewProfileRow(
  *
  * @param profile The [ProfileConfig] to render.
  * @param isActive Whether this profile is the currently active one.
+ * @param readOnly When `true`, the edit affordance is shown as a view (eye) icon instead of a pencil.
  * @param onToggleActive Called when the select/deselect icon is clicked.
- * @param onEdit Called when the edit icon is clicked.
+ * @param onEdit Called when the edit/view icon is clicked.
  * @param onRequestDelete Called when the delete icon is clicked to request confirmation.
  */
 @Composable
 private fun ProfileRow(
     profile: ProfileConfig,
     isActive: Boolean,
+    readOnly: Boolean,
     onToggleActive: () -> Unit,
     onEdit: () -> Unit,
     onRequestDelete: () -> Unit,
@@ -418,8 +433,14 @@ private fun ProfileRow(
             }
         }
 
+        val editLabel = if (readOnly) "View profile" else "Edit profile"
+        val editIcon = if (readOnly)
+            painterResource(Res.drawable.icon_eye)
+        else
+            painterResource(Res.drawable.icon_pencil)
+
         TooltipBox(
-            tooltip = { Tooltip { Text(text = "Edit profile") } },
+            tooltip = { Tooltip { Text(text = editLabel) } },
             state = rememberTooltipState(),
         ) {
             IconButton(
@@ -432,31 +453,33 @@ private fun ProfileRow(
                 contentPadding = RowButtonPadding,
             ) {
                 Icon(
-                    painter = painterResource(Res.drawable.icon_pencil),
-                    contentDescription = "Edit profile",
+                    painter = editIcon,
+                    contentDescription = editLabel,
                     modifier = Modifier.size(RowIconSize),
                 )
             }
         }
 
-        TooltipBox(
-            tooltip = { Tooltip { Text(text = "Delete profile") } },
-            state = rememberTooltipState(),
-        ) {
-            IconButton(
-                modifier = Modifier.defaultMinSize(
-                    minWidth = RowButtonSize,
-                    minHeight = RowButtonSize,
-                ),
-                variant = IconButtonVariant.DestructiveGhost,
-                onClick = onRequestDelete,
-                contentPadding = RowButtonPadding,
+        if (!readOnly) {
+            TooltipBox(
+                tooltip = { Tooltip { Text(text = "Delete profile") } },
+                state = rememberTooltipState(),
             ) {
-                Icon(
-                    painter = painterResource(Res.drawable.icon_delete),
-                    contentDescription = "Delete profile",
-                    modifier = Modifier.size(RowIconSize),
-                )
+                IconButton(
+                    modifier = Modifier.defaultMinSize(
+                        minWidth = RowButtonSize,
+                        minHeight = RowButtonSize,
+                    ),
+                    variant = IconButtonVariant.DestructiveGhost,
+                    onClick = onRequestDelete,
+                    contentPadding = RowButtonPadding,
+                ) {
+                    Icon(
+                        painter = painterResource(Res.drawable.icon_delete),
+                        contentDescription = "Delete profile",
+                        modifier = Modifier.size(RowIconSize),
+                    )
+                }
             }
         }
     }

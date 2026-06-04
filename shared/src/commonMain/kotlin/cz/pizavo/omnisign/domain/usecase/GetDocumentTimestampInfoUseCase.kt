@@ -15,10 +15,10 @@ class GetDocumentTimestampInfoUseCase(
     private val archivingRepository: ArchivingRepository
 ) {
     /**
-     * @param filePath Absolute path to the PDF document to inspect.
+     * @param inputBytes Raw bytes of the PDF document to inspect.
      * @return A [DocumentTimestampInfo] summarising the document state, or an error.
      */
-    suspend operator fun invoke(filePath: String): OperationResult<DocumentTimestampInfo> =
-        archivingRepository.getDocumentTimestampInfo(filePath)
+    suspend operator fun invoke(inputBytes: ByteArray): OperationResult<DocumentTimestampInfo> =
+        archivingRepository.getDocumentTimestampInfo(inputBytes)
 }
 

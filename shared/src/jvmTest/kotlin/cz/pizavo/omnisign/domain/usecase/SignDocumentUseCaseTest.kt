@@ -27,15 +27,16 @@ class SignDocumentUseCaseTest : FunSpec({
 	val useCase = SignDocumentUseCase(signingRepository)
 
 	val params = SigningParameters(
-		inputFile = "/tmp/input.pdf",
-		outputFile = "/tmp/output.pdf",
+		inputBytes = ByteArray(0),
+		inputName = "input.pdf",
 	)
 
 	beforeTest { clearMocks(signingRepository) }
 
 	test("delegates to repository and returns signing result on success") {
 		val expected = SigningResult(
-			outputFile = "/tmp/output.pdf",
+			outputBytes = ByteArray(0),
+			outputName = "output.pdf",
 			signatureId = "sig-1",
 			signatureLevel = "PAdES-BASELINE-B",
 		)
@@ -68,7 +69,8 @@ class SignDocumentUseCaseTest : FunSpec({
 
 	test("forwards exact parameters to repository") {
 		coEvery { signingRepository.signDocument(any()) } returns SigningResult(
-			outputFile = "/tmp/output.pdf",
+			outputBytes = ByteArray(0),
+			outputName = "output.pdf",
 			signatureId = "sig-2",
 			signatureLevel = "PAdES-BASELINE-T",
 		).right()
@@ -79,7 +81,8 @@ class SignDocumentUseCaseTest : FunSpec({
 
 	test("propagates warnings from signing result") {
 		val expected = SigningResult(
-			outputFile = "/tmp/output.pdf",
+			outputBytes = ByteArray(0),
+			outputName = "output.pdf",
 			signatureId = "sig-3",
 			signatureLevel = "PAdES-BASELINE-LT",
 			annotatedWarnings = listOf(AnnotatedWarning("Revocation data fetch slow")),

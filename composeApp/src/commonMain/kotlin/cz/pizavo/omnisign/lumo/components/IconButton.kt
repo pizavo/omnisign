@@ -75,12 +75,13 @@ private fun IconButtonComponent(
     interactionSource: MutableInteractionSource,
     content: @Composable () -> Unit,
 ) {
-    val containerColor = style.colors.containerColor(enabled).value
-    val contentColor = style.colors.contentColor(enabled).value
-    val borderColor = style.colors.borderColor(enabled).value
+    val effectiveEnabled = enabled && !LocalReadOnly.current
+    val containerColor = style.colors.containerColor(effectiveEnabled).value
+    val contentColor = style.colors.contentColor(effectiveEnabled).value
+    val borderColor = style.colors.borderColor(effectiveEnabled).value
     val borderStroke = if (borderColor != null) BorderStroke(IconButtonDefaults.OutlineHeight, borderColor) else null
 
-    val shadowElevation = style.elevation?.shadowElevation(enabled, interactionSource)?.value ?: 0.dp
+    val shadowElevation = style.elevation?.shadowElevation(effectiveEnabled, interactionSource)?.value ?: 0.dp
 
     Surface(
         onClick = onClick,
@@ -89,7 +90,7 @@ private fun IconButtonComponent(
                 minWidth = IconButtonDefaults.ButtonSize,
                 minHeight = IconButtonDefaults.ButtonSize,
             ).semantics { role = Role.Button },
-        enabled = enabled,
+        enabled = effectiveEnabled,
         shape = style.shape,
         color = containerColor,
         contentColor = contentColor,

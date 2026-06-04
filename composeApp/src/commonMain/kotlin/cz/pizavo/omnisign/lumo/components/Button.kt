@@ -68,9 +68,10 @@ internal fun ButtonComponent(
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
     content: (@Composable () -> Unit)? = null,
 ) {
-    val containerColor = style.colors.containerColor(enabled).value
-    val contentColor = style.colors.contentColor(enabled).value
-    val borderColor = style.colors.borderColor(enabled).value
+    val effectiveEnabled = enabled && !LocalReadOnly.current
+    val containerColor = style.colors.containerColor(effectiveEnabled).value
+    val contentColor = style.colors.contentColor(effectiveEnabled).value
+    val borderColor = style.colors.borderColor(effectiveEnabled).value
     val borderStroke =
         if (borderColor != null) {
             BorderStroke(
@@ -81,7 +82,7 @@ internal fun ButtonComponent(
             null
         }
 
-    val shadowElevation = style.elevation?.shadowElevation(enabled, interactionSource)?.value ?: 0.dp
+    val shadowElevation = style.elevation?.shadowElevation(effectiveEnabled, interactionSource)?.value ?: 0.dp
 
 //    in case of full width button
 //    val buttonModifier = modifier.fillMaxWidth()
@@ -92,7 +93,7 @@ internal fun ButtonComponent(
             modifier
                 .defaultMinSize(minHeight = ButtonDefaults.MinHeight)
                 .semantics { role = Role.Button },
-        enabled = enabled,
+        enabled = effectiveEnabled,
         shape = style.shape,
         color = containerColor,
         contentColor = contentColor,

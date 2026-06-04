@@ -48,10 +48,10 @@ interface ArchivingRepository {
 	 *
 	 * This is a fast operation that does not fetch CRL/OCSP data or load trusted lists.
 	 *
-	 * @param filePath Absolute path to the PDF document to inspect.
+	 * @param inputBytes Raw bytes of the PDF document to inspect.
 	 * @return A [DocumentTimestampInfo] summarising the document state, or an error.
 	 */
-	suspend fun getDocumentTimestampInfo(filePath: String): OperationResult<DocumentTimestampInfo>
+	suspend fun getDocumentTimestampInfo(inputBytes: ByteArray): OperationResult<DocumentTimestampInfo>
 	
 	companion object {
 		/** Default number of days before expiry at which archival renewal is triggered. */

@@ -105,7 +105,8 @@ class Validate : CliktCommand(
 		val resolvedConfig = resolvedConfigResult.getOrNull()!!
 		
 		val parameters = ValidationParameters(
-			inputFile = file.toAbsolutePath().toString(),
+			inputBytes = file.toFile().readBytes(),
+			inputName = file.fileName.toString(),
 			customPolicyPath = policy?.toAbsolutePath()?.toString(),
 			resolvedConfig = resolvedConfig,
 			rawReportOutputPath = reportOut?.toAbsolutePath()?.toString(),

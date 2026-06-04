@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.api.model.responses.GlobalConfigResponse
 import cz.pizavo.omnisign.api.model.responses.ProfileConfigResponse
 import cz.pizavo.omnisign.api.model.responses.ResolvedConfigResponse
+import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.CorsConfig
 import cz.pizavo.omnisign.config.ListenConfig
 import cz.pizavo.omnisign.config.OperationsConfig
@@ -29,7 +30,7 @@ class ConfigRoutesTest : FunSpec({
 
 	test("GET /api/v1/config/global returns 200 with a valid global config response") {
 		testApplication {
-			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
 			val response = client.get("/api/v1/config/global")
 			response.status shouldBe HttpStatusCode.OK
 			val body = json.decodeFromString<GlobalConfigResponse>(response.bodyAsText())
@@ -40,7 +41,7 @@ class ConfigRoutesTest : FunSpec({
 
 	test("GET /api/v1/config/profiles returns 200 with a valid profile list") {
 		testApplication {
-			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
 			val response = client.get("/api/v1/config/profiles")
 			response.status shouldBe HttpStatusCode.OK
 			json.decodeFromString<List<ProfileConfigResponse>>(response.bodyAsText())
@@ -49,7 +50,7 @@ class ConfigRoutesTest : FunSpec({
 
 	test("GET /api/v1/config/profiles/{name} returns 404 for unknown profile") {
 		testApplication {
-			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
 			val response = client.get("/api/v1/config/profiles/nonexistent")
 			response.status shouldBe HttpStatusCode.NotFound
 			val body = json.decodeFromString<ApiError>(response.bodyAsText())
@@ -59,7 +60,7 @@ class ConfigRoutesTest : FunSpec({
 
 	test("GET /api/v1/config/resolved without profile param returns a valid resolved config") {
 		testApplication {
-			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
 			val response = client.get("/api/v1/config/resolved")
 			response.status shouldBe HttpStatusCode.OK
 			val body = json.decodeFromString<ResolvedConfigResponse>(response.bodyAsText())
@@ -71,7 +72,7 @@ class ConfigRoutesTest : FunSpec({
 
 	test("GET /api/v1/config/resolved with unknown profile returns 404") {
 		testApplication {
-			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
 			val response = client.get("/api/v1/config/resolved?profile=ghost")
 			response.status shouldBe HttpStatusCode.NotFound
 			val body = json.decodeFromString<ApiError>(response.bodyAsText())
@@ -81,7 +82,7 @@ class ConfigRoutesTest : FunSpec({
 
 	test("GET /api/v1/config/resolved does not fall back to stored activeProfile") {
 		testApplication {
-			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
 			val resolvedResponse = client.get("/api/v1/config/resolved")
 			resolvedResponse.status shouldBe HttpStatusCode.OK
 			val body = json.decodeFromString<ResolvedConfigResponse>(resolvedResponse.bodyAsText())
@@ -91,7 +92,7 @@ class ConfigRoutesTest : FunSpec({
 
 	test("GET /api/v1/config/profiles returns sorted list") {
 		testApplication {
-			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
 			val response = client.get("/api/v1/config/profiles")
 			response.status shouldBe HttpStatusCode.OK
 			val body = json.decodeFromString<List<ProfileConfigResponse>>(response.bodyAsText())

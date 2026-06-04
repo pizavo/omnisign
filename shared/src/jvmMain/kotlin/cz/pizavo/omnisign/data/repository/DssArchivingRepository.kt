@@ -18,6 +18,7 @@ import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import eu.europa.esig.dss.model.FileDocument
+import eu.europa.esig.dss.model.InMemoryDocument
 import eu.europa.esig.dss.pades.PAdESSignatureParameters
 import eu.europa.esig.dss.pades.signature.PAdESService
 import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
@@ -51,13 +52,6 @@ class DssArchivingRepository(
 	@Suppress("TooGenericExceptionCaught", "ReturnCount")
 	override suspend fun extendDocument(parameters: ArchivingParameters): OperationResult<ArchivingResult> {
 		return try {
-			val inputFile = File(parameters.inputFile)
-			if (!inputFile.exists()) {
-				return ArchivingError.ExtensionFailed(
-					message = "Input file not found: ${parameters.inputFile}"
-				).left()
-			}
-			
 			val config = configRepository.getCurrentConfig()
 			val resolvedConfig = parameters.resolvedConfig ?: ResolvedConfig.resolve(
 				global = config.global,
@@ -87,16 +81,20 @@ class DssArchivingRepository(
 			val extendParams = PAdESSignatureParameters().apply { setSignatureLevel(dssLevel) }
 			logCapture.start()
 			try {
-				val extendedDocument = service.extendDocument(FileDocument(inputFile), extendParams)
-				
+				val extendedDocument = service.extendDocument(
+					InMemoryDocument(parameters.inputBytes, parameters.inputName), extendParams,
+				)
+
 				val warnings = tlWarnings + statusAlert.drain() + logCapture.stop()
 				val sanitized = warningSanitizer.sanitize(warnings)
-				
-				val outputFile = File(parameters.outputFile).also { it.parentFile?.mkdirs() }
-				withContext(Dispatchers.IO) { outputFile.outputStream().use { extendedDocument.writeTo(it) } }
-				
+
+				val outputBytes = withContext(Dispatchers.IO) {
+					extendedDocument.openStream().use { it.readAllBytes() }
+				}
+
 				ArchivingResult(
-					outputFile = parameters.outputFile,
+					outputBytes = outputBytes,
+					outputName = parameters.inputName,
 					newSignatureLevel = parameters.targetLevel.name,
 					annotatedWarnings = sanitized.annotatedSummaries,
 					rawWarnings = sanitized.raw,
@@ -176,16 +174,9 @@ class DssArchivingRepository(
 	}
 	
 	@Suppress("TooGenericExceptionCaught")
-	override suspend fun getDocumentTimestampInfo(filePath: String): OperationResult<DocumentTimestampInfo> {
+	override suspend fun getDocumentTimestampInfo(inputBytes: ByteArray): OperationResult<DocumentTimestampInfo> {
 		return try {
-			val file = File(filePath)
-			if (!file.exists()) {
-				return ArchivingError.ExtensionFailed(
-					message = "File not found: $filePath"
-				).left()
-			}
-			
-			Loader.loadPDF(file).use { pdf ->
+			Loader.loadPDF(inputBytes).use { pdf ->
 				val hasDocumentTimestamp = pdf.signatureDictionaries.any { sig ->
 					sig.subFilter == PADES_TIMESTAMP_SUBFILTER
 				}

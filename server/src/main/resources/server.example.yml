@@ -235,6 +235,9 @@ development: false
 # `allowed` defaults to [VALIDATE] only. SIGN and TIMESTAMP are opt-in because they
 # expose the server's signing certificates or timestamping endpoints to all API
 # callers.
+#
+# At least one operation must be enabled: an explicit `allowed: []` is rejected at startup.
+# Omit the whole operations block for the validate-only default; you cannot disable everything.
 operations:
   allowed:
     - VALIDATE

@@ -12,6 +12,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.shouldBe
 import io.ktor.client.request.*
+import io.ktor.client.request.forms.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
 import io.ktor.server.testing.*
@@ -33,6 +34,36 @@ class OperationGatingTest : FunSpec({
 			response.status shouldBe HttpStatusCode.Forbidden
 			val body = json.decodeFromString<ApiError>(response.bodyAsText())
 			body.error shouldBe "OPERATION_DISABLED"
+		}
+	}
+
+	test("signing route returns 422 when the level needs a timestamp but TIMESTAMP is not allowed") {
+		testApplication {
+			application {
+				module(
+					ServerConfig(
+						listen = ListenConfig(host = "127.0.0.1"),
+						operations = OperationsConfig(allowed = setOf(AllowedOperation.SIGN, AllowedOperation.VALIDATE)),
+						cors = CorsConfig(allowedOrigins = listOf("*")),
+					),
+				)
+			}
+			val response = client.post("/api/v1/sign") {
+				setBody(
+					MultiPartFormDataContent(
+						formData {
+							append("file", ByteArray(64), Headers.build {
+								append(HttpHeaders.ContentDisposition, "filename=\"a.pdf\"")
+								append(HttpHeaders.ContentType, ContentType.Application.Pdf.toString())
+							})
+							append("signatureLevel", "PADES_BASELINE_T")
+						},
+					),
+				)
+			}
+			response.status shouldBe HttpStatusCode.UnprocessableEntity
+			val body = json.decodeFromString<ApiError>(response.bodyAsText())
+			body.error shouldBe "TIMESTAMP_NOT_ALLOWED"
 		}
 	}
 

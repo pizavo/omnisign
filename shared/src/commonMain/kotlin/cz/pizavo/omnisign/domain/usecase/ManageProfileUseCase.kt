@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.domain.usecase
 
+import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.result.OperationResult
@@ -66,6 +67,11 @@ class ManageProfileUseCase(
     /**
      * Set the active profile.
      *
+     * Delegates the actual persistence to [ConfigRepository.setActiveProfile] — on the JVM
+     * that writes the new value into the on-disk [AppConfig.activeProfile], on the web target
+     * that writes it to a browser-side store and never round-trips the selection through the
+     * server.
+     *
      * @param name The profile name to activate, or null to clear the active profile.
      * @return Unit on success or an error if the named profile does not exist.
      */
@@ -76,8 +82,7 @@ class ManageProfileUseCase(
                 message = "Profile '$name' does not exist"
             ).left()
         }
-        val updated = current.copy(activeProfile = name)
-        return configRepository.saveConfig(updated)
+        return configRepository.setActiveProfile(name)
     }
 
     /**
