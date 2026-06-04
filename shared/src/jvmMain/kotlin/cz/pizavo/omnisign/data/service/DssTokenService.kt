@@ -198,9 +198,10 @@ class DssTokenService(
 	 * Runs the out-of-process `--certs` probe ([runCertProbeSubprocess]) so a misbehaving
 	 * module cannot crash this JVM, parses the returned DER, and builds [CertificateEntry]s
 	 * whose [CertificateEntry.alias] is the same deterministic, content-derived value the
-	 * PIN path ([loadCertificatesInternal]) produces — so a certificate listed here resolves
-	 * to the same key when [DssSigningRepository] later signs with the PIN, with no change
-	 * to the signing logic.
+	 * PIN path ([loadCertificatesInternal]) produces, and whose [CertificateEntry.pkcs11SlotId]
+	 * records the exact slot each object was enumerated in — so a certificate listed here
+	 * resolves to the same key, in the same slot, when [DssSigningRepository] later signs with
+	 * the PIN, even on a card that presents more than one token-present slot.
 	 *
 	 * Returns an empty list (never an error) for non-PKCS#11 tokens, when the probe fails,
 	 * or when the token exposes no public certificates — callers then fall back to the
@@ -280,6 +281,7 @@ class DssTokenService(
 					tokenInfo = tokenInfo,
 					isQualified = isQualified,
 					isQscd = isQscd,
+					pkcs11SlotId = tokenInfo.pkcs11SlotId,
 				)
 			}
 			token.close()
@@ -318,9 +320,14 @@ class DssTokenService(
 	}
 
 	/**
-	 * Build a [CertificateEntry] from a no-login-parsed certificate, mirroring exactly the
-	 * field derivation of [loadCertificatesInternal] (same alias, DN formatting, validity,
-	 * key usages, and QC-statement extraction) so the two paths are interchangeable.
+	 * Build a [CertificateEntry] from a no-login-parsed certificate, mirroring the field
+	 * derivation of [loadCertificatesInternal] (same alias, DN formatting, validity, key
+	 * usages, and QC-statement extraction) so the two paths are interchangeable.
+	 *
+	 * [CertificateEntry.pkcs11SlotId] is taken from the probe's per-certificate
+	 * [Pkcs11NoLoginParsedCert.slotId] — the exact slot the object was enumerated in — so a
+	 * card that exposes several token-present slots resolves each certificate to the slot
+	 * that holds its key, even though discovery collapses the card to a single [TokenInfo].
 	 */
 	private fun Pkcs11NoLoginParsedCert.toCertificateEntry(tokenInfo: TokenInfo): CertificateEntry {
 		val (isQualified, isQscd) = extractQcStatements(certificate)
@@ -335,6 +342,7 @@ class DssTokenService(
 			tokenInfo = tokenInfo,
 			isQualified = isQualified,
 			isQscd = isQscd,
+			pkcs11SlotId = slotId,
 		)
 	}
 

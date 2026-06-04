@@ -54,6 +54,23 @@ class DssSigningRepositoryTest : FunSpec({
 	)
 	
 	fun tmpFile(name: String) = File(tmpDir, name).also { it.createNewFile() }
+
+	fun signingTokenFor(subjectDN: String): SigningToken {
+		val mockX509 = mockk<java.security.cert.X509Certificate> {
+			every { subjectX500Principal } returns javax.security.auth.x500.X500Principal(subjectDN)
+		}
+		val mockCertToken = mockk<eu.europa.esig.dss.model.x509.CertificateToken> {
+			every { certificate } returns mockX509
+		}
+		val mockKey = mockk<eu.europa.esig.dss.token.DSSPrivateKeyEntry> {
+			every { certificate } returns mockCertToken
+			every { certificateChain } returns arrayOf(mockCertToken)
+		}
+		val mockDssToken = mockk<eu.europa.esig.dss.token.AbstractSignatureTokenConnection>(relaxed = true) {
+			every { keys } returns listOf(mockKey)
+		}
+		return mockk<SigningToken> { every { getDssToken() } returns mockDssToken }
+	}
 	
 	test("signDocument returns TokenAccessError when token discovery fails") {
 		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
@@ -401,6 +418,79 @@ class DssSigningRepositoryTest : FunSpec({
 		repository.signDocument(params)
 
 		io.mockk.coVerify(exactly = 0) { tokenService.requestPin(qscd) }
+	}
+
+	test("signDocument pins the PKCS#11 token to the slot supplied in SigningParameters") {
+		val card = TokenInfo(
+			id = "pkcs11-XYZ", name = "Card", type = TokenType.PKCS11,
+			path = "/lib/opensc.so", requiresPin = true, pkcs11SlotId = 0L,
+		)
+		val slotBToken = card.copy(pkcs11SlotId = 12L)
+		val cert = CertificateEntry(
+			alias = "User-7@pkcs11-XYZ", subjectDN = "CN=User", issuerDN = "CN=CA",
+			serialNumber = "7", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
+			keyUsages = emptyList(), tokenInfo = slotBToken, pkcs11SlotId = 12L,
+		)
+
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
+		coEvery { tokenService.discoverTokens() } returns listOf(card).right()
+		coEvery { tokenService.probeTokenPresent(card) } returns true
+		coEvery { credentialStore.getPassword(any(), "pkcs11-XYZ") } returns "1234"
+		coEvery { tokenService.loadCertificatesSilent(slotBToken, "1234") } returns listOf(cert).right()
+		coEvery { tokenService.getSigningToken(cert, "1234") } returns signingTokenFor("CN=User").right()
+
+		val params = SigningParameters(
+			inputBytes = tmpFile("slot-input.pdf").readBytes(),
+			inputName = "slot-input.pdf",
+			certificateAlias = "User-7@pkcs11-XYZ",
+			certificateSlotId = 12L,
+			addTimestamp = false,
+		)
+
+		repository.signDocument(params)
+
+		io.mockk.coVerify { tokenService.loadCertificatesSilent(slotBToken, "1234") }
+		io.mockk.coVerify(exactly = 0) { tokenService.loadCertificatesSilent(card, "1234") }
+	}
+
+	test("signDocument falls back to the all-slots probe to find an alias in a non-pinned slot") {
+		val card = TokenInfo(
+			id = "pkcs11-XYZ", name = "Card", type = TokenType.PKCS11,
+			path = "/lib/opensc.so", requiresPin = true, pkcs11SlotId = 0L,
+		)
+		val slotBToken = card.copy(pkcs11SlotId = 12L)
+		val slotACert = CertificateEntry(
+			alias = "Other-1@pkcs11-XYZ", subjectDN = "CN=Other", issuerDN = "CN=CA",
+			serialNumber = "1", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
+			keyUsages = emptyList(), tokenInfo = card, pkcs11SlotId = 0L,
+		)
+		val slotBCert = CertificateEntry(
+			alias = "User-7@pkcs11-XYZ", subjectDN = "CN=User", issuerDN = "CN=CA",
+			serialNumber = "7", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
+			keyUsages = emptyList(), tokenInfo = slotBToken, pkcs11SlotId = 12L,
+		)
+
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
+		coEvery { tokenService.discoverTokens() } returns listOf(card).right()
+		coEvery { tokenService.probeTokenPresent(card) } returns true
+		coEvery { credentialStore.getPassword(any(), "pkcs11-XYZ") } returns "1234"
+		coEvery { tokenService.loadCertificatesSilent(card, "1234") } returns listOf(slotACert).right()
+		coEvery { tokenService.listCertificatesNoLogin(card) } returns listOf(slotACert, slotBCert).right()
+		coEvery { tokenService.loadCertificatesSilent(slotBToken, "1234") } returns listOf(slotBCert).right()
+		coEvery { tokenService.getSigningToken(slotBCert, "1234") } returns signingTokenFor("CN=User").right()
+
+		val params = SigningParameters(
+			inputBytes = tmpFile("fallback-input.pdf").readBytes(),
+			inputName = "fallback-input.pdf",
+			certificateAlias = "User-7@pkcs11-XYZ",
+			addTimestamp = false,
+		)
+
+		repository.signDocument(params)
+
+		io.mockk.coVerify { tokenService.listCertificatesNoLogin(card) }
+		io.mockk.coVerify { tokenService.loadCertificatesSilent(slotBToken, "1234") }
+		io.mockk.coVerify { tokenService.getSigningToken(slotBCert, "1234") }
 	}
 
 	test("listAvailableCertificates uses stored password for PIN token") {
