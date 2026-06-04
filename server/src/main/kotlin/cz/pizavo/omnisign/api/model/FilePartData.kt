@@ -21,8 +21,13 @@ import java.io.File
  * @property name Form field name.
  * @property file Temporary file holding the streamed upload. The caller owns its
  *   lifecycle and must delete it once the request is done (see [cz.pizavo.omnisign.api.deleteFileParts]).
+ * @property originalFileName File name taken from the multipart `Content-Disposition`
+ *   `filename` attribute, or `null` when the client did not send one. Useful to surface
+ *   the client-side name in domain artifacts (e.g., `documentName` on a validation
+ *   report) instead of the generated temp file name.
  */
 class FilePartData(
 	val name: String?,
 	val file: File,
+	val originalFileName: String? = null,
 )

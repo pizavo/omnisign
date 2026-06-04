@@ -17,7 +17,6 @@ import cz.pizavo.omnisign.domain.repository.*
 import cz.pizavo.omnisign.domain.service.*
 import eu.europa.esig.dss.enumerations.DigestAlgorithm
 import eu.europa.esig.dss.enumerations.SignaturePackaging
-import eu.europa.esig.dss.model.FileDocument
 import eu.europa.esig.dss.model.InMemoryDocument
 import eu.europa.esig.dss.model.SignatureValue
 import eu.europa.esig.dss.model.ToBeSigned
@@ -61,12 +60,7 @@ class DssSigningRepository(
 	@Suppress("TooGenericExceptionCaught", "CyclomaticComplexMethod", "LongMethod", "ReturnCount")
 	override suspend fun signDocument(parameters: SigningParameters): OperationResult<SigningResult> {
 		return try {
-			val inputFile = File(parameters.inputFile)
-			if (!inputFile.exists()) {
-				return SigningError.InvalidParameters(
-					message = "Input file not found: ${parameters.inputFile}"
-				).left()
-			}
+			val document = InMemoryDocument(parameters.inputBytes, parameters.inputName)
 			
 			val resolvedConfigResult = resolveConfig(parameters)
 			if (resolvedConfigResult.isLeft()) return resolvedConfigResult.leftOrNull()!!.left()
@@ -134,21 +128,23 @@ class DssSigningRepository(
 			val certIdNames = buildCertIdNames(privateKey)
 			logCapture.start()
 			try {
-				val dataToSign: ToBeSigned = service.getDataToSign(FileDocument(inputFile), signatureParams)
+				val dataToSign: ToBeSigned = service.getDataToSign(document, signatureParams)
 				val signatureValue: SignatureValue = tokenConnection.sign(dataToSign, digestAlgorithm, privateKey)
-				val signedDocument = service.signDocument(FileDocument(inputFile), signatureParams, signatureValue)
-				
+				val signedDocument = service.signDocument(document, signatureParams, signatureValue)
+
 				signingWarnings += statusAlert.drain()
 				signingWarnings += logCapture.stop()
-				
+
 				val sanitized = warningSanitizer.sanitize(signingWarnings, certIdNames, SIGNING_SUPPRESSED_CATEGORIES)
-				
-				val outputFile = File(parameters.outputFile).also { it.parentFile?.mkdirs() }
-				withContext(Dispatchers.IO) { outputFile.outputStream().use { signedDocument.writeTo(it) } }
-				
+
+				val outputBytes = withContext(Dispatchers.IO) {
+					signedDocument.openStream().use { it.readAllBytes() }
+				}
+
 				SigningResult(
-					outputFile = parameters.outputFile,
-					signatureId = extractSignatureId(parameters.outputFile),
+					outputBytes = outputBytes,
+					outputName = parameters.inputName,
+					signatureId = extractSignatureId(parameters.inputName),
 					signatureLevel = effectiveLevel.name,
 					annotatedWarnings = sanitized.annotatedSummaries,
 					rawWarnings = sanitized.raw,
@@ -647,9 +643,9 @@ class DssSigningRepository(
 	/**
 	 * Derive a stable signature identifier from the output file name and a timestamp.
 	 */
-	private fun extractSignatureId(outputPath: String): String {
-		val name = File(outputPath).nameWithoutExtension
-		return "sig-$name-${System.currentTimeMillis()}"
+	private fun extractSignatureId(documentName: String): String {
+		val baseName = documentName.substringBeforeLast('.').ifEmpty { documentName }
+		return "sig-$baseName-${System.currentTimeMillis()}"
 	}
 	
 	/**

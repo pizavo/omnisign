@@ -74,6 +74,12 @@ kotlin {
 			implementation(libs.decoroutinator.jvm)
 			implementation(libs.logback)
 		}
+		wasmJsMain.dependencies {
+			implementation(libs.ktor.client.core)
+			implementation(libs.ktor.client.content.negotiation)
+			implementation(libs.ktor.serialization.json)
+			implementation(libs.ktor.client.cio)
+		}
 		jvmMain.dependencies {
 			implementation(project.dependencies.platform(libs.dss.bom))
 			

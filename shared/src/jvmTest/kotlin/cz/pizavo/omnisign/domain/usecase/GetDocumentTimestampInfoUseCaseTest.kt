@@ -24,40 +24,40 @@ class GetDocumentTimestampInfoUseCaseTest : FunSpec({
 	val repo: ArchivingRepository = mockk()
 	val useCase = GetDocumentTimestampInfoUseCase(repo)
 
-	val filePath = "/tmp/signed.pdf"
+	val inputBytes = byteArrayOf(1, 2, 3)
 
 	beforeTest { clearMocks(repo) }
 
 	test("returns timestamp info on success") {
 		val info = DocumentTimestampInfo(hasDocumentTimestamp = true, containsLtData = true)
-		coEvery { repo.getDocumentTimestampInfo(filePath) } returns info.right()
+		coEvery { repo.getDocumentTimestampInfo(inputBytes) } returns info.right()
 
-		useCase(filePath).shouldBeRight() shouldBe info
+		useCase(inputBytes).shouldBeRight() shouldBe info
 	}
 
 	test("returns info for unsigned document") {
 		val info = DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = false)
-		coEvery { repo.getDocumentTimestampInfo(filePath) } returns info.right()
+		coEvery { repo.getDocumentTimestampInfo(inputBytes) } returns info.right()
 
-		val result = useCase(filePath).shouldBeRight()
+		val result = useCase(inputBytes).shouldBeRight()
 		result.hasDocumentTimestamp shouldBe false
 		result.containsLtData shouldBe false
 	}
 
 	test("propagates error from repository") {
-		coEvery { repo.getDocumentTimestampInfo(filePath) } returns
+		coEvery { repo.getDocumentTimestampInfo(inputBytes) } returns
 			ArchivingError.ExtensionFailed(message = "Cannot read file").left()
 
-		useCase(filePath).shouldBeLeft()
+		useCase(inputBytes).shouldBeLeft()
 			.shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
 			.message shouldBe "Cannot read file"
 	}
 
-	test("forwards exact file path to repository") {
+	test("forwards exact bytes to repository") {
 		val info = DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = true)
 		coEvery { repo.getDocumentTimestampInfo(any()) } returns info.right()
 
-		useCase(filePath)
-		coVerify(exactly = 1) { repo.getDocumentTimestampInfo(filePath) }
+		useCase(inputBytes)
+		coVerify(exactly = 1) { repo.getDocumentTimestampInfo(inputBytes) }
 	}
 })

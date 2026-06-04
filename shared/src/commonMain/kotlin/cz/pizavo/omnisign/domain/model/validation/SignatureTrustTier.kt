@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.domain.model.validation
 
+import kotlinx.serialization.Serializable
+
 /**
  * Trust tier classification for a validated signature based on its eIDAS qualification.
  *
@@ -17,6 +19,7 @@ package cz.pizavo.omnisign.domain.model.validation
  *
  * @property label Human-readable label for display in UIs and reports.
  */
+@Serializable
 enum class SignatureTrustTier(val label: String) {
 	/** Qualified certificate on a QSCD (eIDAS Annex I and Annex III). */
 	QUALIFIED_QSCD("Qualified"),

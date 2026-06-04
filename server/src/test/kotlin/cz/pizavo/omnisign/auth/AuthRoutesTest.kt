@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.auth
 
 import cz.pizavo.omnisign.config.AuthConfig
+import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.CorsConfig
 import cz.pizavo.omnisign.config.HeaderInjectionProviderConfig
 import cz.pizavo.omnisign.config.JwtAlgorithmType
@@ -79,7 +80,7 @@ private fun authTestConfig(auth: AuthConfig?): ServerConfig =
     ServerConfig(
         listen = ListenConfig(host = "127.0.0.1"),
         auth = auth,
-        operations = OperationsConfig(allowed = emptySet()),
+        operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)),
         cors = CorsConfig(allowedOrigins = listOf("*")),
     )
 /**

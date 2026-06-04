@@ -42,8 +42,6 @@ class DssArchivingRepositoryTest : FunSpec({
 		)
 	)
 	
-	fun tmpFile(name: String) = File(tmpDir, name).also { it.createNewFile() }
-	
 	/**
 	 * Create a minimal valid PDF file with no signatures.
 	 */
@@ -73,36 +71,25 @@ class DssArchivingRepositoryTest : FunSpec({
 		return file
 	}
 	
-	test("extendDocument returns ExtensionFailed when input file does not exist") {
-		coEvery { configRepository.getCurrentConfig() } returns configWithoutTsa()
-		
-		repository.extendDocument(
-			ArchivingParameters(
-				inputFile = "/nonexistent/signed.pdf",
-				outputFile = tmpFile("out.pdf").absolutePath
-			)
-		).shouldBeLeft().shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
-	}
-	
 	test("extendDocument returns ExtensionFailed when no TSA is configured") {
 		coEvery { configRepository.getCurrentConfig() } returns configWithoutTsa()
-		
+
 		repository.extendDocument(
 			ArchivingParameters(
-				inputFile = tmpFile("signed.pdf").absolutePath,
-				outputFile = tmpFile("out2.pdf").absolutePath,
+				inputBytes = ByteArray(0),
+				inputName = "signed.pdf",
 				targetLevel = SignatureLevel.PADES_BASELINE_T
 			)
 		).shouldBeLeft().shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
 	}
-	
+
 	test("extendDocument returns ExtensionFailed when target level is B-B") {
 		coEvery { configRepository.getCurrentConfig() } returns configWithoutTsa()
-		
+
 		repository.extendDocument(
 			ArchivingParameters(
-				inputFile = tmpFile("signed2.pdf").absolutePath,
-				outputFile = tmpFile("out3.pdf").absolutePath,
+				inputBytes = ByteArray(0),
+				inputName = "signed2.pdf",
 				targetLevel = SignatureLevel.PADES_BASELINE_B
 			)
 		).shouldBeLeft().shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
@@ -114,29 +101,22 @@ class DssArchivingRepositoryTest : FunSpec({
 			.shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
 	}
 	
-	test("getDocumentTimestampInfo returns ExtensionFailed for a non-existent file") {
-		repository.getDocumentTimestampInfo("/nonexistent/doc.pdf")
-			.shouldBeLeft()
-			.shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
-	}
-	
 	test("getDocumentTimestampInfo reports no timestamps and no LT data for a plain PDF") {
 		val pdf = createPlainPdf("plain.pdf")
-		val info = repository.getDocumentTimestampInfo(pdf.absolutePath).shouldBeRight()
+		val info = repository.getDocumentTimestampInfo(pdf.readBytes()).shouldBeRight()
 		info.hasDocumentTimestamp.shouldBeFalse()
 		info.containsLtData.shouldBeFalse()
 	}
-	
+
 	test("getDocumentTimestampInfo detects LT data when DSS dictionary is present") {
 		val pdf = createPdfWithDssDictionary("with-dss.pdf")
-		val info = repository.getDocumentTimestampInfo(pdf.absolutePath).shouldBeRight()
+		val info = repository.getDocumentTimestampInfo(pdf.readBytes()).shouldBeRight()
 		info.hasDocumentTimestamp.shouldBeFalse()
 		info.containsLtData.shouldBeTrue()
 	}
-	
-	test("getDocumentTimestampInfo returns error for a corrupt file") {
-		val corrupt = File(tmpDir, "corrupt.pdf").also { it.writeText("not a PDF") }
-		repository.getDocumentTimestampInfo(corrupt.absolutePath)
+
+	test("getDocumentTimestampInfo returns error for corrupt bytes") {
+		repository.getDocumentTimestampInfo("not a PDF".toByteArray())
 			.shouldBeLeft()
 			.shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
 	}

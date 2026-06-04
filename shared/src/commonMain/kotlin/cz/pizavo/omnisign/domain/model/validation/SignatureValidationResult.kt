@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.domain.model.validation
 
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
+import kotlinx.serialization.Serializable
 import kotlin.time.Instant
 
 /**
@@ -28,6 +29,7 @@ import kotlin.time.Instant
  *   per-reference trust policy distrusts its terminating anchor for signing (it is trusted for
  *   timestamping only). Distinct from a cryptographic failure; the reason is appended to [errors].
  */
+@Serializable
 data class SignatureValidationResult(
     val signatureId: String,
     val indication: ValidationIndication,

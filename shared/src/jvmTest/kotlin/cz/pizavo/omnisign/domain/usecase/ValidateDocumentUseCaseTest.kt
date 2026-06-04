@@ -28,7 +28,7 @@ class ValidateDocumentUseCaseTest : FunSpec({
 
 	val repo: ValidationRepository = mockk()
 	val useCase = ValidateDocumentUseCase(repo)
-	val params = ValidationParameters(inputFile = "/tmp/signed.pdf")
+	val params = ValidationParameters(inputBytes = ByteArray(0), inputName = "signed.pdf")
 
 	beforeTest { clearMocks(repo) }
 

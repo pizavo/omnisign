@@ -1,9 +1,14 @@
 package cz.pizavo.omnisign.ui.platform
 
 /**
- * Wasm/JS stub for [getPdfPageCount].
+ * Wasm/JS implementation of [getPdfPageCount] backed by the
+ * [MuPdfShim] JavaScript binding around the
+ * [`mupdf`](https://www.npmjs.com/package/mupdf) WebAssembly engine.
  *
- * Not yet implemented — returns 0.
+ * Mirrors the JVM/PDFBox semantics: a fresh document is opened, the count is
+ * read, and the document handle is destroyed on the JS side before this
+ * function returns. The MuPDF WebAssembly module is pre-initialized at app
+ * boot in `main.kt`, so the call is effectively synchronous in practice.
  */
-actual fun getPdfPageCount(pdfData: ByteArray): Int = 0
-
+actual fun getPdfPageCount(pdfData: ByteArray): Int =
+    MuPdfShim.getPageCount(pdfData.toUint8Array())

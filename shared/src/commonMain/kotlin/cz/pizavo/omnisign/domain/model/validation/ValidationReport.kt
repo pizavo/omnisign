@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.domain.model.validation
 
 import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
+import kotlinx.serialization.Serializable
 import kotlin.time.Instant
 
 /**
@@ -19,6 +20,7 @@ import kotlin.time.Instant
  *   formats were requested (the CLI by default; the server when its `formats` multipart
  *   field is absent) and on non-JVM targets.
  */
+@Serializable
 data class ValidationReport(
     val documentName: String,
     val validationTime: Instant,

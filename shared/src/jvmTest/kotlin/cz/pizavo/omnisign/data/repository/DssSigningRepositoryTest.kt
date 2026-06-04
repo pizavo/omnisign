@@ -72,19 +72,6 @@ class DssSigningRepositoryTest : FunSpec({
 		return mockk<SigningToken> { every { getDssToken() } returns mockDssToken }
 	}
 	
-	test("signDocument returns InvalidParameters when input file does not exist") {
-		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
-		
-		val params = SigningParameters(
-			inputFile = "/nonexistent/file.pdf",
-			outputFile = tmpFile("out.pdf").absolutePath
-		)
-		
-		repository.signDocument(params)
-			.shouldBeLeft()
-			.shouldBeInstanceOf<SigningError.InvalidParameters>()
-	}
-	
 	test("signDocument returns TokenAccessError when token discovery fails") {
 		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
 		coEvery { tokenService.discoverTokens() } returns SigningError.TokenAccessError(
@@ -92,8 +79,8 @@ class DssSigningRepositoryTest : FunSpec({
 		).left()
 		
 		val params = SigningParameters(
-			inputFile = tmpFile("input.pdf").absolutePath,
-			outputFile = tmpFile("out.pdf").absolutePath,
+			inputBytes = tmpFile("input.pdf").readBytes(),
+			inputName = "input.pdf",
 			addTimestamp = false
 		)
 		
@@ -107,8 +94,8 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { tokenService.discoverTokens() } returns emptyList<TokenInfo>().right()
 		
 		val params = SigningParameters(
-			inputFile = tmpFile("input2.pdf").absolutePath,
-			outputFile = tmpFile("out2.pdf").absolutePath,
+			inputBytes = tmpFile("input2.pdf").readBytes(),
+			inputName = "input2.pdf",
 			addTimestamp = false
 		)
 		
@@ -131,8 +118,8 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { tokenService.loadCertificatesSilent(tokenInfo, "") } returns listOf(certEntry).right()
 
 		val params = SigningParameters(
-			inputFile = tmpFile("input3.pdf").absolutePath,
-			outputFile = tmpFile("out3.pdf").absolutePath,
+			inputBytes = tmpFile("input3.pdf").readBytes(),
+			inputName = "input3.pdf",
 			certificateAlias = "nonexistent-alias",
 			addTimestamp = false
 		)
@@ -159,8 +146,8 @@ class DssSigningRepositoryTest : FunSpec({
 		).left()
 
 		val params = SigningParameters(
-			inputFile = tmpFile("input4.pdf").absolutePath,
-			outputFile = tmpFile("out4.pdf").absolutePath,
+			inputBytes = tmpFile("input4.pdf").readBytes(),
+			inputName = "input4.pdf",
 			addTimestamp = false
 		)
 
@@ -264,8 +251,8 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { tokenService.loadCertificatesSilent(tokenInfo, "") } returns listOf(certEntry).right()
 
 		val params = SigningParameters(
-			inputFile = tmpFile("input5.pdf").absolutePath,
-			outputFile = tmpFile("out5.pdf").absolutePath,
+			inputBytes = tmpFile("input5.pdf").readBytes(),
+			inputName = "input5.pdf",
 			addTimestamp = true
 		)
 
@@ -278,8 +265,8 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
 		
 		val params = SigningParameters(
-			inputFile = tmpFile("input6.pdf").absolutePath,
-			outputFile = tmpFile("out6.pdf").absolutePath,
+			inputBytes = tmpFile("input6.pdf").readBytes(),
+			inputName = "input6.pdf",
 			hashAlgorithm = HashAlgorithm.WHIRLPOOL,
 			encryptionAlgorithm = EncryptionAlgorithm.RSA,
 			addTimestamp = false
@@ -294,8 +281,8 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
 		
 		val params = SigningParameters(
-			inputFile = tmpFile("input7.pdf").absolutePath,
-			outputFile = tmpFile("out7.pdf").absolutePath,
+			inputBytes = tmpFile("input7.pdf").readBytes(),
+			inputName = "input7.pdf",
 			hashAlgorithm = HashAlgorithm.RIPEMD160,
 			encryptionAlgorithm = EncryptionAlgorithm.DSA,
 			addTimestamp = false
@@ -422,8 +409,8 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { tokenService.getSigningToken(winCert, "") } returns mockSigningToken.right()
 
 		val params = SigningParameters(
-			inputFile = tmpFile("pin-skip-input.pdf").absolutePath,
-			outputFile = tmpFile("pin-skip-out.pdf").absolutePath,
+			inputBytes = tmpFile("pin-skip-input.pdf").readBytes(),
+			inputName = "pin-skip-input.pdf",
 			certificateAlias = "win-cert",
 			addTimestamp = false,
 		)

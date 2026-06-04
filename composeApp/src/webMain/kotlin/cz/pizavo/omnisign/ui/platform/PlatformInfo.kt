@@ -5,3 +5,8 @@ package cz.pizavo.omnisign.ui.platform
  */
 actual fun isLinuxPlatform(): Boolean = false
 
+/**
+ * Wasm/JS implementation — this is the web target.
+ */
+actual fun isWebPlatform(): Boolean = true
+

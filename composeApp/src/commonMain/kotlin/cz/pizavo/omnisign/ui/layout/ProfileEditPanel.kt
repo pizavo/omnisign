@@ -70,6 +70,8 @@ import org.jetbrains.compose.resources.painterResource
  * @param onFieldChange Callback accepting a transform function to update a single field.
  * @param onSave Called when the user clicks the Save button.
  * @param hasChanges Whether any persistable field differs from the originally loaded state.
+ * @param readOnly When `true` (web target, read-only server config) every input is disabled, the
+ *   Save button and the editable Trusted Lists section are hidden, so the profile is view-only.
  * @param globalDisabledHashAlgorithms Hash algorithms disabled at the global level.
  *   These appear greyed-out in the algorithm selector and are always shown as
  *   disabled in the chip toggles.
@@ -88,6 +90,7 @@ fun ProfileEditPanel(
     onFieldChange: ((ProfileEditState) -> ProfileEditState) -> Unit,
     onSave: () -> Unit,
     hasChanges: Boolean = true,
+    readOnly: Boolean = false,
     globalDisabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
     globalDisabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet(),
     globalAddArchivalTimestamp: Boolean = false,
@@ -111,13 +114,14 @@ fun ProfileEditPanel(
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    DescriptionSection(state = state, onFieldChange = onFieldChange)
+    DescriptionSection(state = state, onFieldChange = onFieldChange, readOnly = readOnly)
 
     SectionDivider()
 
     AlgorithmSection(
         state = state,
         onFieldChange = onFieldChange,
+        readOnly = readOnly,
         globalDisabledHashAlgorithms = globalDisabledHashAlgorithms,
         globalDisabledEncryptionAlgorithms = globalDisabledEncryptionAlgorithms,
         globalAddArchivalTimestamp = globalAddArchivalTimestamp,
@@ -125,17 +129,19 @@ fun ProfileEditPanel(
 
     SectionDivider()
 
-    TimestampSection(state = state, onFieldChange = onFieldChange)
+    TimestampSection(state = state, onFieldChange = onFieldChange, readOnly = readOnly)
 
     SectionDivider()
 
     DisabledAlgorithmsSection(
         state = state,
         onFieldChange = onFieldChange,
+        readOnly = readOnly,
         globalDisabledHashAlgorithms = globalDisabledHashAlgorithms,
         globalDisabledEncryptionAlgorithms = globalDisabledEncryptionAlgorithms,
     )
 
+    if (!readOnly) {
     SectionDivider()
 
     var tlsExpanded by remember { mutableStateOf(false) }
@@ -181,6 +187,7 @@ fun ProfileEditPanel(
                 onBuild = onBuildTl,
             )
         }
+    }
     }
 
     SectionDivider()
@@ -251,18 +258,20 @@ fun ProfileEditPanel(
         }
     }
 
-    Spacer(modifier = Modifier.height(16.dp))
+    if (!readOnly) {
+        Spacer(modifier = Modifier.height(16.dp))
 
-    Button(
-        text = "Save",
-        variant = ButtonVariant.Primary,
-        enabled = hasChanges && !state.saving,
-        loading = state.saving,
-        onClick = onSave,
-        modifier = Modifier.fillMaxWidth(),
-    )
+        Button(
+            text = "Save",
+            variant = ButtonVariant.Primary,
+            enabled = hasChanges && !state.saving,
+            loading = state.saving,
+            onClick = onSave,
+            modifier = Modifier.fillMaxWidth(),
+        )
 
-    Spacer(modifier = Modifier.height(8.dp))
+        Spacer(modifier = Modifier.height(8.dp))
+    }
 }
 
 /**
@@ -272,6 +281,7 @@ fun ProfileEditPanel(
 private fun DescriptionSection(
     state: ProfileEditState,
     onFieldChange: ((ProfileEditState) -> ProfileEditState) -> Unit,
+    readOnly: Boolean,
 ) {
     UnderlinedTextField(
         value = state.description,
@@ -280,6 +290,7 @@ private fun DescriptionSection(
         placeholder = { Text(text = "Optional profile description") },
         singleLine = false,
         minLines = 3,
+        enabled = !readOnly,
         modifier = Modifier.fillMaxWidth(),
     )
 }
@@ -299,6 +310,7 @@ private fun DescriptionSection(
 private fun AlgorithmSection(
     state: ProfileEditState,
     onFieldChange: ((ProfileEditState) -> ProfileEditState) -> Unit,
+    readOnly: Boolean,
     globalDisabledHashAlgorithms: Set<HashAlgorithm>,
     globalDisabledEncryptionAlgorithms: Set<EncryptionAlgorithm>,
     globalAddArchivalTimestamp: Boolean,
@@ -317,6 +329,7 @@ private fun AlgorithmSection(
         label = { Text(text = "Hash algorithm") },
         disabledOptions = globalDisabledHashAlgorithms,
         itemLabel = { it.name },
+        enabled = !readOnly,
         modifier = Modifier.fillMaxWidth(),
     )
 
@@ -329,6 +342,7 @@ private fun AlgorithmSection(
         label = { Text(text = "Encryption algorithm") },
         disabledOptions = globalDisabledEncryptionAlgorithms,
         itemLabel = { it.name },
+        enabled = !readOnly,
         modifier = Modifier.fillMaxWidth(),
     )
 
@@ -368,7 +382,7 @@ private fun AlgorithmSection(
         } else {
             TriStateToggle(
                 state = state.signatureTimestampOverride,
-                onStateChange = { value -> onFieldChange { it.copy(signatureTimestampOverride = value) } },
+                onStateChange = { value -> if (!readOnly) onFieldChange { it.copy(signatureTimestampOverride = value) } },
             )
         }
     }
@@ -390,7 +404,7 @@ private fun AlgorithmSection(
         TriStateToggle(
             state = state.archivalTimestampOverride,
             onStateChange = { value ->
-                onFieldChange {
+                if (!readOnly) onFieldChange {
                     if (value == TriToggleState.ENABLED) {
                         it.copy(
                             archivalTimestampOverride = value,
@@ -412,6 +426,7 @@ private fun AlgorithmSection(
 private fun TimestampSection(
     state: ProfileEditState,
     onFieldChange: ((ProfileEditState) -> ProfileEditState) -> Unit,
+    readOnly: Boolean,
 ) {
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -422,6 +437,7 @@ private fun TimestampSection(
         Switch(
             checked = state.timestampEnabled,
             onCheckedChange = { value -> onFieldChange { it.copy(timestampEnabled = value) } },
+            enabled = !readOnly,
         )
     }
 
@@ -434,6 +450,7 @@ private fun TimestampSection(
             label = { Text(text = "URL") },
             placeholder = { Text(text = "https://tsa.example.com/tsr") },
             singleLine = true,
+            enabled = !readOnly,
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -445,6 +462,7 @@ private fun TimestampSection(
             label = { Text(text = "Username") },
             placeholder = { Text(text = "Optional") },
             singleLine = true,
+            enabled = !readOnly,
             modifier = Modifier.fillMaxWidth(),
         )
 
@@ -454,6 +472,7 @@ private fun TimestampSection(
             value = state.timestampPassword,
             onValueChange = { value -> onFieldChange { it.copy(timestampPassword = value) } },
             hasStoredPassword = state.hasStoredPassword,
+            readOnly = readOnly,
         )
 
         Spacer(modifier = Modifier.height(8.dp))
@@ -468,6 +487,7 @@ private fun TimestampSection(
             label = { Text(text = "Timeout (ms)") },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+            enabled = !readOnly,
             modifier = Modifier.fillMaxWidth(),
         )
     }
@@ -478,12 +498,17 @@ private fun TimestampSection(
  *
  * Algorithms already disabled at the global level are shown as selected and
  * non-interactive (greyed-out) because they cannot be re-enabled from a profile.
+ *
+ * When [readOnly] (web view-only) the chips keep their normal — not greyed — appearance and
+ * only their toggle is suppressed, so a profile's own disabled algorithms stay visually distinct
+ * from the globally-disabled (greyed) ones.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun DisabledAlgorithmsSection(
     state: ProfileEditState,
     onFieldChange: ((ProfileEditState) -> ProfileEditState) -> Unit,
+    readOnly: Boolean,
     globalDisabledHashAlgorithms: Set<HashAlgorithm>,
     globalDisabledEncryptionAlgorithms: Set<EncryptionAlgorithm>,
 ) {
@@ -502,7 +527,7 @@ private fun DisabledAlgorithmsSection(
                 selected = disabled,
                 enabled = !globallyDisabled,
                 onClick = {
-                    onFieldChange {
+                    if (!readOnly) onFieldChange {
                         val updated = if (disabled) {
                             it.disabledHashAlgorithms - algo
                         } else {
@@ -532,7 +557,7 @@ private fun DisabledAlgorithmsSection(
                 selected = disabled,
                 enabled = !globallyDisabled,
                 onClick = {
-                    onFieldChange {
+                    if (!readOnly) onFieldChange {
                         val updated = if (disabled) {
                             it.disabledEncryptionAlgorithms - algo
                         } else {
@@ -562,6 +587,7 @@ private fun PasswordField(
     value: String,
     onValueChange: (String) -> Unit,
     hasStoredPassword: Boolean,
+    readOnly: Boolean,
 ) {
     var visible by remember { mutableStateOf(false) }
 
@@ -583,6 +609,7 @@ private fun PasswordField(
         singleLine = true,
         visualTransformation = if (visible) VisualTransformation.None else PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+        enabled = !readOnly,
         modifier = Modifier.fillMaxWidth(),
         trailingIcon = {
             IconButton(

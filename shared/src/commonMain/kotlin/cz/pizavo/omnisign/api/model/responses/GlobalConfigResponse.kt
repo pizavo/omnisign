@@ -54,3 +54,24 @@ fun GlobalConfig.toResponse() = GlobalConfigResponse(
 	validation = validation,
 )
 
+/**
+ * Reverse-map a [GlobalConfigResponse] back into a [GlobalConfig].
+ *
+ * The fields the server intentionally omits from its sanitized response —
+ * `customPkcs11Libraries`, `pkcs11ProbeTimeoutSeconds`, and
+ * `trustedListRefreshIntervalHours` — are reconstructed with their domain defaults
+ * since they only describe internal server state. The resulting `GlobalConfig` is
+ * suitable for read-only consumption (UI surface, [cz.pizavo.omnisign.domain.model.config.ResolvedConfig.resolve]
+ * downstream of a remote fetch) but not for round-tripping back into a server save.
+ */
+fun GlobalConfigResponse.toConfig() = GlobalConfig(
+	defaultHashAlgorithm = defaultHashAlgorithm,
+	defaultEncryptionAlgorithm = defaultEncryptionAlgorithm,
+	defaultSignatureLevel = defaultSignatureLevel,
+	disabledHashAlgorithms = disabledHashAlgorithms,
+	disabledEncryptionAlgorithms = disabledEncryptionAlgorithms,
+	timestampServer = timestampServer?.toConfig(),
+	ocsp = ocsp,
+	crl = crl,
+	validation = validation,
+)

@@ -128,6 +128,7 @@ private fun ChipComponent(
     trailingIcon: @Composable (() -> Unit)? = null,
     label: @Composable () -> Unit,
 ) {
+    val effectiveEnabled = enabled && !LocalReadOnly.current
     val containerColor = style.colors.containerColor(enabled, selected).value
     val contentColor = style.colors.contentColor(enabled, selected).value
     val borderColor = style.colors.borderColor(enabled, selected).value
@@ -146,7 +147,7 @@ private fun ChipComponent(
     Surface(
         onClick = onClick,
         modifier = modifier.semantics { role = Role.Button },
-        enabled = enabled,
+        enabled = effectiveEnabled,
         shape = style.shape,
         color = containerColor,
         contentColor = contentColor,

@@ -114,8 +114,8 @@ class ProfileViewModelTest : FunSpec({
             )
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
-            val saved = slot<AppConfig>()
-            coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+            val captured = slot<String?>()
+            coEvery { configRepository.setActiveProfile(captureNullable(captured)) } returns Unit.right()
 
             val vm = ProfileViewModel(manageProfile, getConfig)
             advanceUntilIdle()
@@ -126,7 +126,7 @@ class ProfileViewModelTest : FunSpec({
             advanceUntilIdle()
 
             vm.state.value.activeProfile shouldBe "dev"
-            saved.captured.activeProfile shouldBe "dev"
+            captured.captured shouldBe "dev"
         }
     }
 
@@ -138,8 +138,8 @@ class ProfileViewModelTest : FunSpec({
             )
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
-            val saved = slot<AppConfig>()
-            coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+            val captured = slot<String?>()
+            coEvery { configRepository.setActiveProfile(captureNullable(captured)) } returns Unit.right()
 
             val vm = ProfileViewModel(manageProfile, getConfig)
             advanceUntilIdle()
@@ -150,7 +150,7 @@ class ProfileViewModelTest : FunSpec({
             advanceUntilIdle()
 
             vm.state.value.activeProfile.shouldBeNull()
-            saved.captured.activeProfile.shouldBeNull()
+            captured.captured.shouldBeNull()
         }
     }
 

@@ -15,6 +15,7 @@ import cz.pizavo.omnisign.domain.model.validation.json.toJsonReport
 import cz.pizavo.omnisign.domain.model.validation.json.toJsonString
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
+import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.SignaturePanelState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -37,7 +38,10 @@ import kotlinx.coroutines.withContext
  *
  * @param validateDocumentUseCase Use case for validating a signed PDF.
  * @param configRepository Repository for retrieving the current application configuration
- *   so that EU LOTL and custom trusted lists are applied during validation.
+ *   so that EU LOTL and custom trusted lists are applied during validation. On the JVM
+ *   it loads from the local config store; on the web target the
+ *   [cz.pizavo.omnisign.data.remote.RemoteConfigRepository] returns a sanitized view
+ *   of the server's `signing.yml`.
  * @param ioDispatcher Dispatcher used for the heavy validation work. Defaults to
  *   [Dispatchers.Default]; tests should substitute a [kotlinx.coroutines.test.StandardTestDispatcher].
  * @param trustedListRefreshPort Optional refresh signal. When a refresh of a trusted
@@ -95,8 +99,8 @@ class SignatureViewModel(
         _requiredIds.value = resolved?.requiredTrustedSourceIds() ?: emptySet()
     }
 
-    /** File path of the currently loaded document, if any. */
-    private var currentFilePath: String? = null
+    /** Currently loaded document, if any. */
+    private var currentDocument: PdfDocumentInfo? = null
 
     /**
      * Return the list of [ReportExportFormat] entries that can be used for the
@@ -136,11 +140,12 @@ class SignatureViewModel(
      *
      * Resets the panel to [SignaturePanelState.Idle].
      *
-     * @param filePath Absolute path to the new document, or `null` when no document is open.
+     * @param document Newly loaded document holding its in-memory bytes and name, or
+     *   `null` when no document is open.
      */
-    fun onDocumentChanged(filePath: String?) {
-        currentFilePath = filePath
-        _state.update { SignaturePanelState.Idle(hasDocument = filePath != null) }
+    fun onDocumentChanged(document: PdfDocumentInfo?) {
+        currentDocument = document
+        _state.update { SignaturePanelState.Idle(hasDocument = document != null) }
     }
 
     /**
@@ -149,7 +154,7 @@ class SignatureViewModel(
      * No-op when there is no document loaded or when a load is already in progress.
      */
     fun loadSignatures() {
-        val path = currentFilePath ?: return
+        val document = currentDocument ?: return
         if (_state.value is SignaturePanelState.Loading) return
         if (validationBlocked.value) return
 
@@ -165,8 +170,10 @@ class SignatureViewModel(
                 _requiredIds.value = resolvedConfig?.requiredTrustedSourceIds() ?: emptySet()
                 validateDocumentUseCase(
                     ValidationParameters(
-                        inputFile = path,
+                        inputBytes = document.data,
+                        inputName = document.name,
                         resolvedConfig = resolvedConfig,
+                        profileName = appConfig.activeProfile,
                         rawReportFormats = RawReportFormat.entries.toSet(),
                     )
                 )

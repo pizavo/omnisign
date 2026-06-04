@@ -59,6 +59,8 @@ private val DropdownMaxHeight = 260.dp
  *   popup. When provided it replaces the default single-line [Text] in each row, enabling
  *   rich layouts such as icons or multi-line content. [itemLabel] is still used for the
  *   trigger-field value display and the null / "inherit" row.
+ * @param enabled When `false` the field is greyed out and clicking it does not open the dropdown
+ *   (used to present the selector as view-only, e.g. profiles on the web target).
  * @param modifier Optional [Modifier] applied to the outer [Box].
  */
 @Composable
@@ -72,6 +74,7 @@ fun <T> DropdownSelector(
     disabledOptions: Set<T> = emptySet(),
     itemLabel: (T) -> String = { it.toString() },
     itemContent: (@Composable (T) -> Unit)? = null,
+    enabled: Boolean = true,
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
@@ -81,7 +84,7 @@ fun <T> DropdownSelector(
 
     LaunchedEffect(interactionSource) {
         interactionSource.interactions.collect { interaction ->
-            if (interaction is PressInteraction.Release) {
+            if (interaction is PressInteraction.Release && enabled) {
                 expanded = true
             }
         }
@@ -92,6 +95,7 @@ fun <T> DropdownSelector(
             value = displayText,
             onValueChange = {},
             readOnly = true,
+            enabled = enabled,
             singleLine = true,
             modifier = Modifier
                 .fillMaxWidth()

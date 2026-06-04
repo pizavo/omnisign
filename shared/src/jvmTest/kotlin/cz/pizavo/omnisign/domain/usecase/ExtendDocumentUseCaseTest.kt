@@ -26,8 +26,8 @@ class ExtendDocumentUseCaseTest : FunSpec({
 	val useCase = ExtendDocumentUseCase(repo)
 
 	val params = ArchivingParameters(
-		inputFile = "/tmp/signed.pdf",
-		outputFile = "/tmp/extended.pdf",
+		inputBytes = ByteArray(0),
+		inputName = "signed.pdf",
 		targetLevel = SignatureLevel.PADES_BASELINE_LTA,
 	)
 
@@ -35,7 +35,7 @@ class ExtendDocumentUseCaseTest : FunSpec({
 
 	test("returns archiving result on success") {
 		val expected = ArchivingResult(
-			outputFile = "/tmp/extended.pdf",
+			outputBytes = ByteArray(0), outputName = "extended.pdf",
 			newSignatureLevel = "PAdES-BASELINE-LTA",
 		)
 		coEvery { repo.extendDocument(params) } returns expected.right()
@@ -64,7 +64,7 @@ class ExtendDocumentUseCaseTest : FunSpec({
 
 	test("forwards exact parameters to repository") {
 		coEvery { repo.extendDocument(any()) } returns ArchivingResult(
-			outputFile = "/tmp/extended.pdf",
+			outputBytes = ByteArray(0), outputName = "extended.pdf",
 			newSignatureLevel = "PAdES-BASELINE-T",
 		).right()
 

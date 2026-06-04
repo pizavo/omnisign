@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
+import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.domain.model.result.SigningResult
@@ -16,6 +17,7 @@ import cz.pizavo.omnisign.domain.usecase.ListCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.LoadFileCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
 import cz.pizavo.omnisign.domain.usecase.UnlockTokenUseCase
+import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.SigningDialogState
 import cz.pizavo.omnisign.ui.toast.ToastService
 import io.kotest.core.spec.style.FunSpec
@@ -54,6 +56,9 @@ class SigningViewModelTest : FunSpec({
 	val loadFileCertsUseCase = LoadFileCertificatesUseCase(signingRepository)
 	val testDispatcher = StandardTestDispatcher()
 
+	fun sampleDoc(filePath: String? = "/tmp/test.pdf", name: String = "test.pdf"): PdfDocumentInfo =
+		PdfDocumentInfo(name = name, data = ByteArray(0), pageCount = 1, filePath = filePath)
+
 	val sampleCert = AvailableCertificateInfo(
 		alias = "test-cert",
 		subjectDN = "CN=Test",
@@ -83,13 +88,94 @@ class SigningViewModelTest : FunSpec({
 		vm.state.value.shouldBeInstanceOf<SigningDialogState.Idle>()
 	}
 
+	test("open with allowTimestamping=false blocks when the config level requires a timestamp") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { configRepository.getCurrentConfig() } returns AppConfig(
+				global = GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA),
+				profiles = emptyMap(),
+			)
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc(), allowTimestamping = false)
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.TimestampingUnavailable>()
+			state.requiredLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+			state.profileName.shouldBeNull()
+		}
+	}
+
+	test("open with allowTimestamping=false names the active profile that mandates a timestamp") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { configRepository.getCurrentConfig() } returns AppConfig(
+				global = GlobalConfig(),
+				profiles = mapOf(
+					"archival" to ProfileConfig(name = "archival", signatureLevel = SignatureLevel.PADES_BASELINE_LTA),
+				),
+				activeProfile = "archival",
+			)
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc(), allowTimestamping = false)
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.TimestampingUnavailable>()
+			state.requiredLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+			state.profileName shouldBe "archival"
+		}
+	}
+
+	test("open with allowTimestamping=false still opens the form for a B-B config") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { configRepository.getCurrentConfig() } returns AppConfig(
+				global = GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_B),
+				profiles = emptyMap(),
+			)
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc(), allowTimestamping = false)
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
+			state.addSignatureTimestamp shouldBe false
+			state.addArchivalTimestamp shouldBe false
+			state.effectiveSignatureLevel shouldBe SignatureLevel.PADES_BASELINE_B
+		}
+	}
+
+	test("open with allowTimestamping=true keeps the config-derived B-LTA timestamps") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { configRepository.getCurrentConfig() } returns AppConfig(
+				global = GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA),
+				profiles = emptyMap(),
+			)
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc(), allowTimestamping = true)
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
+			state.addSignatureTimestamp shouldBe true
+			state.addArchivalTimestamp shouldBe true
+			state.effectiveSignatureLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+		}
+	}
+
 	test("open transitions to Ready with discovered certificates") {
 		runTest(testDispatcher) {
 			coEvery { signingRepository.listAvailableCertificates(false) } returns
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
@@ -113,7 +199,7 @@ class SigningViewModelTest : FunSpec({
 					).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
@@ -127,7 +213,7 @@ class SigningViewModelTest : FunSpec({
 					SigningError.TokenAccessError(message = "Failed").left()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Error>()
@@ -141,7 +227,7 @@ class SigningViewModelTest : FunSpec({
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(reason = "Test reason") }
@@ -157,13 +243,14 @@ class SigningViewModelTest : FunSpec({
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 			coEvery { signingRepository.signDocument(any()) } returns
 					SigningResult(
-						outputFile = "/tmp/test-signed.pdf",
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
 						signatureId = "sig-1",
 						signatureLevel = "PAdES-BASELINE-B",
 					).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(selectedAlias = "test-cert") }
@@ -184,7 +271,7 @@ class SigningViewModelTest : FunSpec({
 					SigningError.SigningFailed(message = "Signing error", details = "bad key").left()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(selectedAlias = "test-cert") }
@@ -203,7 +290,7 @@ class SigningViewModelTest : FunSpec({
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.dismiss()
@@ -232,7 +319,7 @@ class SigningViewModelTest : FunSpec({
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
@@ -253,7 +340,8 @@ class SigningViewModelTest : FunSpec({
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 			coEvery { signingRepository.signDocument(any()) } returns
 					SigningResult(
-						outputFile = "/tmp/test-signed.pdf",
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
 						signatureId = "sig-1",
 						signatureLevel = "PAdES-BASELINE-LT",
 						annotatedWarnings = listOf(AnnotatedWarning("Revocation data missing")),
@@ -261,7 +349,7 @@ class SigningViewModelTest : FunSpec({
 					).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 			vm.updateState { it.copy(selectedAlias = "test-cert") }
 			vm.sign()
@@ -279,7 +367,8 @@ class SigningViewModelTest : FunSpec({
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 			coEvery { signingRepository.signDocument(any()) } returns
 					SigningResult(
-						outputFile = "/tmp/test-signed.pdf",
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
 						signatureId = "sig-1",
 						signatureLevel = "PAdES-BASELINE-B",
 						annotatedWarnings = listOf(AnnotatedWarning("Revocation data missing")),
@@ -287,7 +376,7 @@ class SigningViewModelTest : FunSpec({
 					).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(selectedAlias = "test-cert", addSignatureTimestamp = false, addArchivalTimestamp = false) }
@@ -310,7 +399,8 @@ class SigningViewModelTest : FunSpec({
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 			coEvery { signingRepository.signDocument(any()) } returns
 					SigningResult(
-						outputFile = "/tmp/test-signed.pdf",
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
 						signatureId = "sig-1",
 						signatureLevel = "PAdES-BASELINE-LT",
 						annotatedWarnings = listOf(AnnotatedWarning("Revocation data missing")),
@@ -318,7 +408,7 @@ class SigningViewModelTest : FunSpec({
 					).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 			vm.updateState { it.copy(selectedAlias = "test-cert") }
 			vm.sign()
@@ -344,7 +434,8 @@ class SigningViewModelTest : FunSpec({
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 			coEvery { signingRepository.signDocument(any()) } returns
 					SigningResult(
-						outputFile = "/tmp/test-signed.pdf",
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
 						signatureId = "sig-1",
 						signatureLevel = "PAdES-BASELINE-LT",
 						annotatedWarnings = listOf(AnnotatedWarning("Revocation data missing")),
@@ -352,7 +443,7 @@ class SigningViewModelTest : FunSpec({
 					).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 			vm.updateState { it.copy(selectedAlias = "test-cert") }
 			vm.sign()
@@ -379,14 +470,15 @@ class SigningViewModelTest : FunSpec({
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 			coEvery { signingRepository.signDocument(any()) } returns
 					SigningResult(
-						outputFile = "/tmp/test-signed.pdf",
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
 						signatureId = "sig-1",
 						signatureLevel = "PAdES-BASELINE-LTA",
 					).right()
 
 			val assigner = RenewalJobAssigner(configRepository)
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, assigner, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(selectedAlias = "test-cert", addToRenewalJob = true) }
@@ -407,14 +499,15 @@ class SigningViewModelTest : FunSpec({
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 			coEvery { signingRepository.signDocument(any()) } returns
 					SigningResult(
-						outputFile = "/tmp/test-signed.pdf",
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
 						signatureId = "sig-1",
 						signatureLevel = "PAdES-BASELINE-B",
 					).right()
 
 			val assigner = RenewalJobAssigner(configRepository)
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, assigner, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(selectedAlias = "test-cert") }
@@ -446,14 +539,15 @@ class SigningViewModelTest : FunSpec({
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 			coEvery { signingRepository.signDocument(any()) } returns
 					SigningResult(
-						outputFile = "/tmp/test-signed.pdf",
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
 						signatureId = "sig-1",
 						signatureLevel = "PAdES-BASELINE-LTA",
 					).right()
 
 			val assigner = RenewalJobAssigner(configRepository)
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, assigner, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			val ready = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
@@ -481,14 +575,15 @@ class SigningViewModelTest : FunSpec({
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 			coEvery { signingRepository.signDocument(any()) } returns
 					SigningResult(
-						outputFile = "/tmp/test-signed.pdf",
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
 						signatureId = "sig-1",
 						signatureLevel = "PAdES-BASELINE-LTA",
 					).right()
 
 			val assigner = RenewalJobAssigner(configRepository)
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, assigner, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(selectedAlias = "test-cert", addToRenewalJob = true) }
@@ -513,7 +608,7 @@ class SigningViewModelTest : FunSpec({
 					).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
@@ -545,7 +640,7 @@ class SigningViewModelTest : FunSpec({
 			coEvery { signingRepository.unlockToken("pkcs11-1") } returns listOf(unlockedCert).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.unlockToken("pkcs11-1")
@@ -572,7 +667,7 @@ class SigningViewModelTest : FunSpec({
 					SigningError.TokenAccessError(message = "PIN cancelled").left()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.unlockToken("pkcs11-1")
@@ -600,7 +695,7 @@ class SigningViewModelTest : FunSpec({
 					SigningError.TokenAccessError(message = "Wrong PIN").left()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.unlockToken("pkcs11-1")
@@ -650,7 +745,7 @@ class SigningViewModelTest : FunSpec({
 					listOf(fileCert).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.loadPkcs12File("/tmp/cert.p12")
@@ -670,7 +765,7 @@ class SigningViewModelTest : FunSpec({
 					SigningError.TokenAccessError(message = "Wrong password").left()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.loadPkcs12File("/tmp/bad.p12")
@@ -691,7 +786,7 @@ class SigningViewModelTest : FunSpec({
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, localTokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			flow.value = true
@@ -721,7 +816,7 @@ class SigningViewModelTest : FunSpec({
 			}
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, localTokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>().refreshing shouldBe false
 
@@ -753,7 +848,7 @@ class SigningViewModelTest : FunSpec({
 					CertificateDiscoveryResult(certificates = listOf(refreshedCert)).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, localTokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 			vm.updateState { it.copy(selectedAlias = "test-cert") }
 
@@ -777,7 +872,7 @@ class SigningViewModelTest : FunSpec({
 					CertificateDiscoveryResult(certificates = emptyList()).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, localTokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 			vm.updateState { it.copy(selectedAlias = "test-cert") }
 
@@ -800,7 +895,7 @@ class SigningViewModelTest : FunSpec({
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, localTokenService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			flow.value = true
@@ -845,7 +940,7 @@ class SigningViewModelTest : FunSpec({
 
 			val toastService = ToastService()
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, localTokenService, toastService = toastService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.rescan()
@@ -885,7 +980,7 @@ class SigningViewModelTest : FunSpec({
 
 			val toastService = ToastService()
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, localTokenService, toastService = toastService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			vm.rescan()
@@ -911,7 +1006,7 @@ class SigningViewModelTest : FunSpec({
 
 			val toastService = ToastService()
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, localTokenService, toastService = toastService, ioDispatcher = testDispatcher)
-			vm.open("/tmp/test.pdf")
+			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			flow.value = true

@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.domain.model.signature
 
+import kotlinx.serialization.Serializable
 import kotlin.time.Instant
 
 /**
@@ -15,6 +16,7 @@ import kotlin.time.Instant
  * @property publicKeyAlgorithm Algorithm of the public key (e.g. "RSA", "EC").
  * @property sha256Fingerprint SHA-256 fingerprint of the certificate in colon-separated hex notation.
  */
+@Serializable
 data class CertificateInfo(
     val subjectDN: String,
     val issuerDN: String,

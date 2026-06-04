@@ -1,7 +1,7 @@
 package cz.pizavo.omnisign.api.routes
 
 import cz.pizavo.omnisign.api.model.responses.ApiError
-import cz.pizavo.omnisign.api.model.responses.CertificateListResponse
+import cz.pizavo.omnisign.domain.repository.CertificateDiscoveryResult
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.CorsConfig
 import cz.pizavo.omnisign.config.ListenConfig
@@ -54,7 +54,7 @@ class CertificateRoutesTest : FunSpec({
 			}
 			val response = client.get("/api/v1/certificates")
 			response.status shouldBe HttpStatusCode.OK
-			val body = json.decodeFromString<CertificateListResponse>(response.bodyAsText())
+			val body = json.decodeFromString<CertificateDiscoveryResult>(response.bodyAsText())
 			body.certificates shouldBe body.certificates
 		}
 	}
@@ -75,7 +75,7 @@ class CertificateRoutesTest : FunSpec({
 			}
 			val response = client.get("/api/v1/certificates")
 			response.status shouldBe HttpStatusCode.OK
-			val body = json.decodeFromString<CertificateListResponse>(response.bodyAsText())
+			val body = json.decodeFromString<CertificateDiscoveryResult>(response.bodyAsText())
 			body.certificates.forEach { cert ->
 				cert.alias shouldBe "allowed-alias"
 			}

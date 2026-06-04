@@ -34,3 +34,18 @@ fun TimestampServerConfig.toSummary() = TimestampServerSummary(
 	timeout = timeout,
 )
 
+/**
+ * Reverse-map a sanitized [TimestampServerSummary] back into a [TimestampServerConfig]
+ * by leaving `credentialKey` and `runtimePassword` `null`.
+ *
+ * Web clients use this to fold the server-supplied summary into a domain config they
+ * never sign with — the timestamp credentials live on the server side and are never
+ * sent over the wire, so the round-tripped value can drive read-only UI but is not
+ * suitable for issuing TSA requests directly.
+ */
+fun TimestampServerSummary.toConfig() = TimestampServerConfig(
+	url = url,
+	username = username,
+	credentialKey = null,
+	timeout = timeout,
+)

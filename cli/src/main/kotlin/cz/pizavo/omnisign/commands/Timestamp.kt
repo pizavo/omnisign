@@ -100,12 +100,12 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
 		val resolvedConfig = resolvedConfigResult.getOrNull()!!
 		
 		val parameters = ArchivingParameters(
-			inputFile = inputFile.toAbsolutePath().toString(),
-			outputFile = outputFile.toAbsolutePath().toString(),
+			inputBytes = inputFile.toFile().readBytes(),
+			inputName = inputFile.fileName.toString(),
 			targetLevel = targetLevel,
 			resolvedConfig = resolvedConfig
 		)
-		
+
 		extendUseCase(parameters).fold(
 			ifLeft = { error ->
 				if (output.json) {
@@ -124,8 +124,10 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
 				throw ProgramResult(1)
 			},
 			ifRight = { result ->
+				val outputPath = outputFile.toAbsolutePath().toString()
+				outputFile.toFile().also { it.parentFile?.mkdirs() }.writeBytes(result.outputBytes)
 				if (output.json) {
-					echo(Json.encodeToString(result.toJsonResult()))
+					echo(Json.encodeToString(result.toJsonResult(outputPath)))
 				} else {
 					result.warnings.forEach { warning ->
 						echo("⚠️ Warning: $warning", err = true)
@@ -136,7 +138,7 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
 							echo("    • $raw", err = true)
 						}
 					}
-					printExtensionResult(result.outputFile, result.newSignatureLevel)
+					printExtensionResult(outputPath, result.newSignatureLevel)
 				}
 			}
 		)

@@ -11,6 +11,7 @@ import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.ui.platform.*
 import omnisign.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
 
 private val CompactButtonSize = 32.dp
@@ -52,7 +53,11 @@ private val CompactButtonPadding = PaddingValues(2.dp)
  * @param onOpenSettings Callback invoked when the user clicks the settings gear button.
  * @param onSign Callback invoked when the user clicks the Sign button.
  * @param onTimestamp Callback invoked when the user clicks the Timestamp button.
- * @param fileLoaded Whether a PDF document is currently loaded. When `false` the
+ * @param canSign Whether the server permits signing. When `false` the Sign button is not
+ *   rendered at all (the web target hides operations the server disallows; desktop passes `true`).
+ * @param canTimestamp Whether the server permits timestamping / extension. When `false` the
+ *   Timestamp button is not rendered.
+ * @param fileLoaded Whether a PDF document is currently loaded. When `false` the rendered
  *   Sign and Timestamp buttons are disabled.
  * @param modifier Optional [Modifier] applied to the toolbar root.
  */
@@ -64,6 +69,8 @@ fun IslandToolbar(
 	onOpenSettings: () -> Unit,
 	onSign: () -> Unit,
 	onTimestamp: () -> Unit,
+	canSign: Boolean = true,
+	canTimestamp: Boolean = true,
 	fileLoaded: Boolean = false,
 	modifier: Modifier = Modifier,
 ) {
@@ -148,48 +155,24 @@ fun IslandToolbar(
 					verticalAlignment = Alignment.CenterVertically,
 					horizontalArrangement = Arrangement.spacedBy(4.dp),
 				) {
-					TooltipBox(
-						tooltip = { Tooltip { Text(text = "Sign") } },
-						state = rememberTooltipState(),
-					) {
-						IconButton(
-							modifier = Modifier.defaultMinSize(
-								minWidth = CompactButtonSize,
-								minHeight = CompactButtonSize,
-							),
-							variant = IconButtonVariant.Ghost,
+					if (canSign) {
+						ToolbarActionButton(
+							tooltip = "Sign",
+							icon = Res.drawable.icon_sign,
+							contentDescription = "Sign document",
 							enabled = fileLoaded,
 							onClick = onSign,
-							contentPadding = CompactButtonPadding,
-						) {
-							Icon(
-								painter = painterResource(Res.drawable.icon_sign),
-								contentDescription = "Sign document",
-								modifier = Modifier.size(22.dp),
-							)
-						}
+						)
 					}
 
-					TooltipBox(
-						tooltip = { Tooltip { Text(text = "Timestamp") } },
-						state = rememberTooltipState(),
-					) {
-						IconButton(
-							modifier = Modifier.defaultMinSize(
-								minWidth = CompactButtonSize,
-								minHeight = CompactButtonSize,
-							),
-							variant = IconButtonVariant.Ghost,
+					if (canTimestamp) {
+						ToolbarActionButton(
+							tooltip = "Timestamp",
+							icon = Res.drawable.icon_stamp,
+							contentDescription = "Timestamp document",
 							enabled = fileLoaded,
 							onClick = onTimestamp,
-							contentPadding = CompactButtonPadding,
-						) {
-							Icon(
-								painter = painterResource(Res.drawable.icon_stamp),
-								contentDescription = "Timestamp document",
-								modifier = Modifier.size(22.dp),
-							)
-						}
+						)
 					}
 				}
 
@@ -259,6 +242,48 @@ fun IslandToolbar(
 				
 				windowControls?.invoke()
 			}
+		}
+	}
+}
+
+/**
+ * A compact ghost icon button for a centred toolbar action (Sign / Timestamp), wrapped in a
+ * hover tooltip. Extracted so the two near-identical action buttons share one definition and
+ * can be rendered conditionally on the server's capabilities.
+ *
+ * @param tooltip Tooltip text shown on hover.
+ * @param icon Icon drawable resource.
+ * @param contentDescription Accessibility description for the icon.
+ * @param enabled Whether the button is interactive.
+ * @param onClick Click handler invoked when the button is pressed.
+ */
+@Composable
+private fun ToolbarActionButton(
+	tooltip: String,
+	icon: DrawableResource,
+	contentDescription: String,
+	enabled: Boolean,
+	onClick: () -> Unit,
+) {
+	TooltipBox(
+		tooltip = { Tooltip { Text(text = tooltip) } },
+		state = rememberTooltipState(),
+	) {
+		IconButton(
+			modifier = Modifier.defaultMinSize(
+				minWidth = CompactButtonSize,
+				minHeight = CompactButtonSize,
+			),
+			variant = IconButtonVariant.Ghost,
+			enabled = enabled,
+			onClick = onClick,
+			contentPadding = CompactButtonPadding,
+		) {
+			Icon(
+				painter = painterResource(icon),
+				contentDescription = contentDescription,
+				modifier = Modifier.size(22.dp),
+			)
 		}
 	}
 }

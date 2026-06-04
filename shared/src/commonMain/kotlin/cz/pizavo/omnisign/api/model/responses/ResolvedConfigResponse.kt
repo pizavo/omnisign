@@ -57,4 +57,3 @@ fun ResolvedConfig.toResponse(resolvedProfileName: String?) = ResolvedConfigResp
 	disabledHashAlgorithms = disabledHashAlgorithms,
 	disabledEncryptionAlgorithms = disabledEncryptionAlgorithms,
 )
-

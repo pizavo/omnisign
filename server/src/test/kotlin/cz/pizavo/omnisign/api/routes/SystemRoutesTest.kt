@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.api.model.responses.CapabilitiesResponse
 import cz.pizavo.omnisign.auth.AuthenticatedPrincipal
 import cz.pizavo.omnisign.auth.JwtSessionService
 import cz.pizavo.omnisign.config.AuthConfig
+import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.CorsConfig
 import cz.pizavo.omnisign.config.JwtAlgorithmType
 import cz.pizavo.omnisign.config.ListenConfig
@@ -50,7 +51,7 @@ class SystemRoutesTest : FunSpec({
 
     test("GET /api/v1/health returns 200") {
         testApplication {
-            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
             val response = client.get("/api/v1/health")
             response.status shouldBe HttpStatusCode.OK
         }
@@ -58,7 +59,7 @@ class SystemRoutesTest : FunSpec({
 
     test("responses include X-Content-Type-Options: nosniff") {
         testApplication {
-            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
             val response = client.get("/api/v1/health")
             response.headers["X-Content-Type-Options"] shouldBe "nosniff"
         }
@@ -66,7 +67,7 @@ class SystemRoutesTest : FunSpec({
 
     test("responses include X-Frame-Options: DENY") {
         testApplication {
-            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
             val response = client.get("/api/v1/health")
             response.headers["X-Frame-Options"] shouldBe "DENY"
         }
@@ -74,7 +75,7 @@ class SystemRoutesTest : FunSpec({
 
     test("responses include Referrer-Policy") {
         testApplication {
-            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
             val response = client.get("/api/v1/health")
             response.headers["Referrer-Policy"] shouldBe "strict-origin-when-cross-origin"
         }
@@ -82,7 +83,7 @@ class SystemRoutesTest : FunSpec({
 
     test("X-Request-Id is generated and echoed when not provided") {
         testApplication {
-            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
             val response = client.get("/api/v1/health")
             response.headers[HttpHeaders.XRequestId].shouldNotBeNull()
         }
@@ -90,7 +91,7 @@ class SystemRoutesTest : FunSpec({
 
     test("X-Request-Id from request is echoed back in the response") {
         testApplication {
-            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
             val id = "my-correlation-id-123"
             val response = client.get("/api/v1/health") {
                 header(HttpHeaders.XRequestId, id)
@@ -101,7 +102,7 @@ class SystemRoutesTest : FunSpec({
 
     test("X-Request-Id at the 64-character length boundary is accepted and echoed back") {
         testApplication {
-            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
             val id = "a".repeat(64)
             val response = client.get("/api/v1/health") {
                 header(HttpHeaders.XRequestId, id)
@@ -112,7 +113,7 @@ class SystemRoutesTest : FunSpec({
 
     test("X-Request-Id longer than 64 characters is rejected and replaced with a server-generated ID") {
         testApplication {
-            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
             val oversized = "a".repeat(65)
             val response = client.get("/api/v1/health") {
                 header(HttpHeaders.XRequestId, oversized)
@@ -125,7 +126,7 @@ class SystemRoutesTest : FunSpec({
 
     test("GET /api/v1/capabilities returns authEnabled false when auth not configured") {
         testApplication {
-            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), auth = null, operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), auth = null, operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
             val response = client.get("/api/v1/capabilities")
             response.status shouldBe HttpStatusCode.OK
             val body = json.decodeFromString<CapabilitiesResponse>(response.bodyAsText())
@@ -135,7 +136,7 @@ class SystemRoutesTest : FunSpec({
 
     test("GET /api/v1/capabilities returns authEnabled true when auth is configured and enabled") {
         testApplication {
-            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), auth = authConfig, operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*"))), authSecrets) }
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), auth = authConfig, operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*"))), authSecrets) }
             val response = client.get("/api/v1/capabilities")
             response.status shouldBe HttpStatusCode.OK
             val body = json.decodeFromString<CapabilitiesResponse>(response.bodyAsText())
@@ -145,7 +146,7 @@ class SystemRoutesTest : FunSpec({
 
     test("GET /api/v1/capabilities returns empty profiles to unauthenticated callers when auth enabled") {
         testApplication {
-            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), auth = authConfig, operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*"))), authSecrets) }
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), auth = authConfig, operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*"))), authSecrets) }
             val response = client.get("/api/v1/capabilities")
             response.status shouldBe HttpStatusCode.OK
             val body = json.decodeFromString<CapabilitiesResponse>(response.bodyAsText())
@@ -155,7 +156,7 @@ class SystemRoutesTest : FunSpec({
 
     test("GET /api/v1/capabilities returns profiles to authenticated callers when auth enabled") {
         testApplication {
-            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), auth = authConfig, operations = OperationsConfig(allowed = emptySet()), cors = CorsConfig(allowedOrigins = listOf("*"))), authSecrets) }
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), auth = authConfig, operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*"))), authSecrets) }
 
             val jwtService = JwtSessionService(authConfig.session, jwtSecret)
             val token = jwtService.issue(

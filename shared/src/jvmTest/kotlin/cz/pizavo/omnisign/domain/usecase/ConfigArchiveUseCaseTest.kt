@@ -48,6 +48,11 @@ class ConfigArchiveUseCaseTest : FunSpec({
 		}
 
 		override suspend fun getCurrentConfig(): AppConfig = current
+
+		override suspend fun setActiveProfile(name: String?): OperationResult<Unit> {
+			current = current.copy(activeProfile = name)
+			return Unit.right()
+		}
 	}
 
 	fun newStore() = FileTrustStore(Files.createTempDirectory("archive-test"))

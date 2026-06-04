@@ -16,6 +16,7 @@ import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.ValidationRepository
 import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
+import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.SignaturePanelState
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
@@ -49,6 +50,9 @@ class SignatureViewModelTest : FunSpec({
     val configRepository = mockk<ConfigRepository>()
     val useCase = ValidateDocumentUseCase(validationRepository)
     val testDispatcher = StandardTestDispatcher()
+
+    fun samplePdfDoc(filePath: String, name: String = "doc.pdf"): PdfDocumentInfo =
+        PdfDocumentInfo(name = name, data = ByteArray(0), pageCount = 1, filePath = filePath)
 
     val sampleReport = ValidationReport(
         documentName = "test.pdf",
@@ -91,7 +95,7 @@ class SignatureViewModelTest : FunSpec({
 
     test("onDocumentChanged sets Idle with hasDocument true") {
         val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
-        vm.onDocumentChanged("/path/to/file.pdf")
+        vm.onDocumentChanged(samplePdfDoc("/path/to/file.pdf"))
 
         val state = vm.state.value.shouldBeInstanceOf<SignaturePanelState.Idle>()
         state.hasDocument shouldBe true
@@ -99,7 +103,7 @@ class SignatureViewModelTest : FunSpec({
 
     test("onDocumentChanged with null resets to Idle without document") {
         val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
-        vm.onDocumentChanged("/path/to/file.pdf")
+        vm.onDocumentChanged(samplePdfDoc("/path/to/file.pdf"))
         vm.onDocumentChanged(null)
 
         val state = vm.state.value.shouldBeInstanceOf<SignaturePanelState.Idle>()
@@ -121,7 +125,7 @@ class SignatureViewModelTest : FunSpec({
             coEvery { validationRepository.validateDocument(any()) } returns sampleReport.right()
 
             val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
-            vm.onDocumentChanged("/path/to/signed.pdf")
+            vm.onDocumentChanged(samplePdfDoc("/path/to/signed.pdf"))
             vm.loadSignatures()
             advanceUntilIdle()
 
@@ -137,7 +141,7 @@ class SignatureViewModelTest : FunSpec({
                     ValidationError.ValidationFailed(message = "Corrupted PDF").left()
 
             val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
-            vm.onDocumentChanged("/path/to/bad.pdf")
+            vm.onDocumentChanged(samplePdfDoc("/path/to/bad.pdf"))
             vm.loadSignatures()
             advanceUntilIdle()
 
@@ -151,12 +155,12 @@ class SignatureViewModelTest : FunSpec({
             coEvery { validationRepository.validateDocument(any()) } returns sampleReport.right()
 
             val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
-            vm.onDocumentChanged("/first.pdf")
+            vm.onDocumentChanged(samplePdfDoc("/first.pdf"))
             vm.loadSignatures()
             advanceUntilIdle()
             vm.state.value.shouldBeInstanceOf<SignaturePanelState.Loaded>()
 
-            vm.onDocumentChanged("/second.pdf")
+            vm.onDocumentChanged(samplePdfDoc("/second.pdf"))
             val state = vm.state.value.shouldBeInstanceOf<SignaturePanelState.Idle>()
             state.hasDocument shouldBe true
         }
@@ -173,7 +177,7 @@ class SignatureViewModelTest : FunSpec({
             coEvery { validationRepository.validateDocument(any()) } returns sampleReport.right()
 
             val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
-            vm.onDocumentChanged("/path/to/file.pdf")
+            vm.onDocumentChanged(samplePdfDoc("/path/to/file.pdf"))
             vm.loadSignatures()
             advanceUntilIdle()
 
@@ -199,7 +203,7 @@ class SignatureViewModelTest : FunSpec({
             coEvery { validationRepository.validateDocument(any()) } returns sampleReport.right()
 
             val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
-            vm.onDocumentChanged("/path/to/file.pdf")
+            vm.onDocumentChanged(samplePdfDoc("/path/to/file.pdf"))
             vm.loadSignatures()
             advanceUntilIdle()
 
@@ -224,7 +228,7 @@ class SignatureViewModelTest : FunSpec({
             coEvery { validationRepository.validateDocument(any()) } returns reportWithRaw.right()
 
             val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
-            vm.onDocumentChanged("/path/to/file.pdf")
+            vm.onDocumentChanged(samplePdfDoc("/path/to/file.pdf"))
             vm.loadSignatures()
             advanceUntilIdle()
 
@@ -245,7 +249,7 @@ class SignatureViewModelTest : FunSpec({
             coEvery { validationRepository.validateDocument(any()) } returns sampleReport.right()
 
             val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
-            vm.onDocumentChanged("/path/to/file.pdf")
+            vm.onDocumentChanged(samplePdfDoc("/path/to/file.pdf"))
             vm.loadSignatures()
             advanceUntilIdle()
 
@@ -263,7 +267,7 @@ class SignatureViewModelTest : FunSpec({
             coEvery { validationRepository.validateDocument(any()) } returns reportWithRaw.right()
 
             val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
-            vm.onDocumentChanged("/path/to/file.pdf")
+            vm.onDocumentChanged(samplePdfDoc("/path/to/file.pdf"))
             vm.loadSignatures()
             advanceUntilIdle()
 

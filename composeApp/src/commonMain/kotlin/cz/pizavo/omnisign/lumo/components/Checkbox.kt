@@ -91,6 +91,7 @@ fun TriStateCheckbox(
     colors: CheckboxColors = CheckboxDefaults.colors(),
     interactionSource: MutableInteractionSource = remember { MutableInteractionSource() },
 ) {
+    val effectiveEnabled = enabled && !LocalReadOnly.current
     val toggleableModifier =
         if (onClick != null) {
             Modifier
@@ -98,7 +99,7 @@ fun TriStateCheckbox(
                 .triStateToggleable(
                     state = state,
                     onClick = onClick,
-                    enabled = enabled,
+                    enabled = effectiveEnabled,
                     role = Role.Checkbox,
                     interactionSource = interactionSource,
                     indication =
@@ -111,7 +112,7 @@ fun TriStateCheckbox(
             Modifier
         }
     CheckboxComponent(
-        enabled = enabled,
+        enabled = effectiveEnabled,
         value = state,
         modifier =
             modifier

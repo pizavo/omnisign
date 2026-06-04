@@ -11,9 +11,11 @@ import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ExtendDocumentUseCase
 import cz.pizavo.omnisign.domain.usecase.GetDocumentTimestampInfoUseCase
+import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
 import cz.pizavo.omnisign.ui.model.TimestampDialogState
 import cz.pizavo.omnisign.ui.model.TimestampType
+import cz.pizavo.omnisign.ui.platform.writeBytesToPath
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -71,8 +73,9 @@ class TimestampViewModel(
 	 */
 	val pendingRenewalOffer: StateFlow<RenewalJobOfferState?> = _pendingRenewalOffer.asStateFlow()
 
-	private var currentFilePath: String? = null
+	private var currentDocument: PdfDocumentInfo? = null
 	private var resolvedConfig: ResolvedConfig? = null
+	private var activeProfileName: String? = null
 	private var lastReadyState: TimestampDialogState.Ready? = null
 	private var documentAlreadyContainsLtData: Boolean = false
 	private var addToRenewalJobFlag: Boolean = false
@@ -87,20 +90,20 @@ class TimestampViewModel(
 	/**
 	 * Notify the ViewModel that a new PDF document has been loaded (or cleared).
 	 *
-	 * When [filePath] is non-null, a background pre-fetch of the document's
+	 * When [document] is non-null, a background pre-fetch of the document's
 	 * timestamp state is triggered so that [open] can skip the heavyweight DSS
 	 * inspection and transition to [TimestampDialogState.Ready] instantly.
 	 *
-	 * @param filePath Absolute path to the new document, or `null` when no document is open.
+	 * @param document The newly loaded document, or `null` when no document is open.
 	 */
-	fun onDocumentChanged(filePath: String?) {
+	fun onDocumentChanged(document: PdfDocumentInfo?) {
 		prefetchJob?.cancel()
 		cachedTimestampInfo = null
-		currentFilePath = filePath
-		if (filePath != null) {
+		currentDocument = document
+		if (document != null) {
 			prefetchJob = viewModelScope.launch {
 				withContext(ioDispatcher) {
-					val tsInfo = getDocumentTimestampInfoUseCase(filePath).getOrNull()
+					val tsInfo = getDocumentTimestampInfoUseCase(document.data).getOrNull()
 						?: DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = false)
 					cachedTimestampInfo = tsInfo
 				}
@@ -119,17 +122,20 @@ class TimestampViewModel(
 	 * Configuration is always resolved freshly because the user may have changed
 	 * profiles or settings since the document was loaded.
 	 *
-	 * @param filePath Absolute path to the signed PDF document to extend.
+	 * @param document The signed PDF document to extend; its bytes are forwarded to the
+	 *   extension use case and its `filePath` (when present) seeds the suggested output path
+	 *   on the desktop. On the web target [PdfDocumentInfo.filePath] is `null`; the dialog
+	 *   falls back to deriving the suggested name from [PdfDocumentInfo.name].
 	 */
-	fun open(filePath: String) {
-		currentFilePath = filePath
+	fun open(document: PdfDocumentInfo) {
+		currentDocument = document
 
 		viewModelScope.launch {
 			prefetchJob?.join()
 
 			val tsInfo = cachedTimestampInfo
 				?: withContext(ioDispatcher) {
-					getDocumentTimestampInfoUseCase(filePath).getOrNull()
+					getDocumentTimestampInfoUseCase(document.data).getOrNull()
 						?: DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = false)
 				}
 			documentAlreadyContainsLtData = tsInfo.containsLtData
@@ -138,6 +144,7 @@ class TimestampViewModel(
 				val appConfig = configRepository.getCurrentConfig()
 				cachedRenewalJobs = appConfig.renewalJobs.values.toList()
 				val activeProfile = appConfig.activeProfile
+				activeProfileName = activeProfile
 				val profileConfig = activeProfile?.let { appConfig.profiles[it] }
 
 				val configResult = ResolvedConfig.resolve(
@@ -154,7 +161,9 @@ class TimestampViewModel(
 					},
 					ifRight = { config ->
 						resolvedConfig = config
-						val suggestedOutput = SigningViewModel.buildSuggestedOutputPath(filePath, "-extended")
+						val suggestedOutput = document.filePath?.let {
+							SigningViewModel.buildSuggestedOutputPath(it, "-extended")
+						} ?: document.name
 						val disabledTypes = if (tsInfo.hasDocumentTimestamp) {
 							setOf(TimestampType.SIGNATURE_TIMESTAMP)
 						} else {
@@ -225,7 +234,7 @@ class TimestampViewModel(
 	 */
 	fun extend() {
 		val ready = _state.value as? TimestampDialogState.Ready ?: return
-		val inputFile = currentFilePath ?: return
+		val document = currentDocument ?: return
 		val config = resolvedConfig ?: return
 
 		addToRenewalJobFlag = ready.addToRenewalJob &&
@@ -237,10 +246,11 @@ class TimestampViewModel(
 			withContext(ioDispatcher) {
 				val targetLevel = ready.timestampType.targetLevel
 				val parameters = ArchivingParameters(
-					inputFile = inputFile,
-					outputFile = ready.outputPath,
+					inputBytes = document.data,
+					inputName = document.name,
 					targetLevel = targetLevel,
 					resolvedConfig = config,
+					profileName = activeProfileName,
 				)
 
 				extendDocumentUseCase(parameters).fold(
@@ -274,12 +284,20 @@ class TimestampViewModel(
 						}
 					},
 					ifRight = { result ->
+						val writeError = writeBytesToPath(ready.outputPath, result.outputBytes)
+						if (writeError != null) {
+							_state.value = TimestampDialogState.Error(
+								message = "Failed to write extended document",
+								details = writeError,
+							)
+							return@fold
+						}
 						_state.value = TimestampDialogState.Success(
-							outputFile = result.outputFile,
+							outputFile = ready.outputPath,
 							newLevel = result.newSignatureLevel,
 							warnings = result.annotatedWarnings,
 						)
-						populateRenewalOfferIfNeeded(result.outputFile)
+						populateRenewalOfferIfNeeded(ready.outputPath)
 					},
 				)
 			}
@@ -294,7 +312,7 @@ class TimestampViewModel(
 	 */
 	fun acceptRevocationWarning() {
 		if (_state.value !is TimestampDialogState.RevocationWarning) return
-		val inputFile = currentFilePath ?: return
+		val document = currentDocument ?: return
 		val config = resolvedConfig ?: return
 		val ready = lastReadyState ?: return
 
@@ -303,10 +321,11 @@ class TimestampViewModel(
 		viewModelScope.launch {
 			withContext(ioDispatcher) {
 				val parameters = ArchivingParameters(
-					inputFile = inputFile,
-					outputFile = ready.outputPath,
+					inputBytes = document.data,
+					inputName = document.name,
 					targetLevel = SignatureLevel.PADES_BASELINE_T,
 					resolvedConfig = config,
+					profileName = activeProfileName,
 				)
 
 				extendDocumentUseCase(parameters).fold(
@@ -316,9 +335,17 @@ class TimestampViewModel(
 							details = error.details,
 						)
 					},
-				ifRight = { result ->
+					ifRight = { result ->
+						val writeError = writeBytesToPath(ready.outputPath, result.outputBytes)
+						if (writeError != null) {
+							_state.value = TimestampDialogState.Error(
+								message = "Failed to write extended document",
+								details = writeError,
+							)
+							return@fold
+						}
 						_state.value = TimestampDialogState.Success(
-							outputFile = result.outputFile,
+							outputFile = ready.outputPath,
 							newLevel = result.newSignatureLevel,
 							warnings = result.annotatedWarnings,
 						)
@@ -350,6 +377,7 @@ class TimestampViewModel(
 	fun dismiss() {
 		_state.value = TimestampDialogState.Idle
 		resolvedConfig = null
+		activeProfileName = null
 		lastReadyState = null
 		documentAlreadyContainsLtData = false
 	}
