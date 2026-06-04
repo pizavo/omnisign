@@ -5,6 +5,7 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -204,6 +205,16 @@ class ServerConfigLoaderTest : FunSpec({
 				setOf(AllowedOperation.SIGN, AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP)
 		config.operations.certificateAliases.shouldNotBeNull()
 		config.operations.certificateAliases shouldBe listOf("university-seal")
+	}
+
+	test("load parses an explicit empty operations.allowed as an empty set") {
+		val yaml = """
+			operations:
+			  allowed: []
+		""".trimIndent()
+
+		val config = loader.loadFromString(yaml)
+		config.operations.allowed.shouldBeEmpty()
 	}
 
 	test("load parses rateLimiting zone overrides") {
