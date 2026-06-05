@@ -369,7 +369,7 @@ private fun SignatureTimestampAccordion(timestamp: TimestampValidationResult) {
     SectionAccordion(
         title = "Signature timestamp",
         indication = timestamp.indication,
-        initiallyExpanded = false,
+        initiallyExpanded = true,
     ) {
         Column(
             modifier = Modifier.padding(start = 4.dp),
