@@ -3,7 +3,6 @@ package cz.pizavo.omnisign.ui.layout
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
-import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -23,10 +22,11 @@ private val TIMESTAMP_COUNT_PATTERN = Regex("""\d+ timestamps?""")
 /**
  * Renders a single warning row with a warning icon and annotated summary text.
  *
- * When the warning has [AnnotatedWarning.affectedIds], the certificate or timestamp
- * count mention in the summary is rendered as underlined, clickable text with a hand
- * cursor. Clicking the underlined span opens a small dialog listing the affected DSS
- * identifiers with selectable text so the user can copy them.
+ * The summary is wrapped in [SelectableContent] so it can be selected and copied. When the
+ * warning has [AnnotatedWarning.affectedIds], the certificate or timestamp count mention is
+ * rendered as an underlined, clickable span (which stays clickable inside the selection
+ * scope); clicking it opens a small dialog listing the affected DSS identifiers, also
+ * selectable, so the user can copy them.
  *
  * @param warning The annotated warning to display.
  * @param modifier Optional modifier for the row.
@@ -47,14 +47,16 @@ fun WarningRow(
 			modifier = Modifier.padding(top = 3.dp).size(14.dp),
 			tint = LumoTheme.colors.warning,
 		)
-		if (warning.affectedIds.isNotEmpty()) {
-			AnnotatedWarningText(warning)
-		} else {
-			Text(
-				text = warning.summary,
-				style = LumoTheme.typography.body2,
-				color = LumoTheme.colors.warning,
-			)
+		SelectableContent {
+			if (warning.affectedIds.isNotEmpty()) {
+				AnnotatedWarningText(warning)
+			} else {
+				Text(
+					text = warning.summary,
+					style = LumoTheme.typography.body2,
+					color = LumoTheme.colors.warning,
+				)
+			}
 		}
 	}
 }
@@ -134,7 +136,7 @@ private fun AnnotatedWarningText(warning: AnnotatedWarning) {
  *
  * When a human-readable name is available in [idNames] for a given ID, it is displayed
  * as the primary label with the raw DSS identifier shown underneath in secondary style.
- * All text is wrapped in a [SelectionContainer] so the user can select and copy
+ * All text is wrapped in a [SelectableContent] so the user can select and copy
  * identifiers for searching or troubleshooting purposes.
  *
  * @param title Dialog heading (e.g. "Affected Certificates").
@@ -162,7 +164,7 @@ private fun AffectedEntitiesDialog(
 					color = LumoTheme.colors.text,
 				)
 				Spacer(Modifier.height(12.dp))
-				SelectionContainer {
+				SelectableContent {
 					Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
 						ids.forEach { id ->
 							val name = idNames[id]

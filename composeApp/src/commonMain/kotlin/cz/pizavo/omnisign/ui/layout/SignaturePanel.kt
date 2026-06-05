@@ -8,6 +8,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.model.value.formatDate
@@ -86,7 +89,10 @@ private fun LoadingContent() {
 }
 
 /**
- * Error state with a retry button.
+ * Error state with a selectable message and a retry button.
+ *
+ * The failure message is wrapped in a [SelectableContent] so it can be copied (e.g.
+ * into a bug report); the retry [Button] stays outside the selection scope.
  */
 @Composable
 private fun ErrorContent(
@@ -98,11 +104,13 @@ private fun ErrorContent(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            text = message,
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.error,
-        )
+        SelectableContent {
+            Text(
+                text = message,
+                style = LumoTheme.typography.body2,
+                color = LumoTheme.colors.error,
+            )
+        }
         Button(
             text = "Retry",
             variant = ButtonVariant.PrimaryOutlined,
@@ -112,12 +120,26 @@ private fun ErrorContent(
 }
 
 /**
- * Successfully loaded report renders the overall result badge, document metadata,
- * a collapsible "Signatures" group, a collapsible "Document Timestamps" group, and
- * optional trusted-list warnings.
+ * Successfully loaded report. The whole report is wrapped in a [SelectableContent] so
+ * its validation details — overall result, document metadata, signature and timestamp
+ * fields, certificate details, and any trusted-list warnings — can be selected and
+ * copied in one sweep. Collapsible section headers stay selectable too, so a copied
+ * selection keeps its structure; only currently-expanded sections contribute text.
  */
 @Composable
 private fun ReportContent(report: ValidationReport) {
+    SelectableContent {
+        ReportDetails(report = report)
+    }
+}
+
+/**
+ * Renders the report's content column: overall result badge, document metadata, the
+ * collapsible "Signatures" and "Document Timestamps" groups, and optional trusted-list
+ * warnings. Hosted inside [ReportContent]'s [SelectableContent].
+ */
+@Composable
+private fun ReportDetails(report: ValidationReport) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -566,17 +588,23 @@ private fun NestedAccordion(
 }
 
 /**
- * A horizontal label–value pair.
+ * A label–value pair rendered as a single [Text].
+ *
+ * Label and value are combined into one `AnnotatedString` — the label styled in the
+ * secondary colour via a [SpanStyle] — so the pair is one selectable node and copies to
+ * the clipboard on a single line ("label: value") instead of splitting across two when
+ * selected inside the report's [SelectableContent].
  */
 @Composable
 private fun LabelValue(label: String, value: String) {
-    Row(
+    Text(
+        text = buildAnnotatedString {
+            withStyle(SpanStyle(color = LumoTheme.colors.textSecondary)) { append("$label: ") }
+            append(value)
+        },
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(text = "$label:", style = LumoTheme.typography.body2, color = LumoTheme.colors.textSecondary)
-        Text(text = value, style = LumoTheme.typography.body2)
-    }
+        style = LumoTheme.typography.body2,
+    )
 }
 
 /**

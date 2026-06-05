@@ -32,6 +32,7 @@ import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.IconButton
 import cz.pizavo.omnisign.lumo.components.IconButtonVariant
+import cz.pizavo.omnisign.lumo.components.SelectableContent
 import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.lumo.components.Tooltip
 import cz.pizavo.omnisign.lumo.components.TooltipBox
@@ -404,11 +405,13 @@ private fun TrustedCertificateAddForm(
 
     if (error != null) {
         Spacer(modifier = Modifier.height(4.dp))
-        Text(
-            text = error,
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.error,
-        )
+        SelectableContent {
+            Text(
+                text = error,
+                style = LumoTheme.typography.body2,
+                color = LumoTheme.colors.error,
+            )
+        }
     }
 }
 

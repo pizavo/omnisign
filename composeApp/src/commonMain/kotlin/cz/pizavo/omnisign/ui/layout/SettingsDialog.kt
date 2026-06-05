@@ -386,11 +386,13 @@ private fun SettingsContentPanel(
 		contentPadding = PaddingValues(24.dp),
 	) {
 		if (state.error != null) {
-			Text(
-				text = state.error,
-				style = LumoTheme.typography.body2,
-				color = LumoTheme.colors.error,
-			)
+			SelectableContent {
+				Text(
+					text = state.error,
+					style = LumoTheme.typography.body2,
+					color = LumoTheme.colors.error,
+				)
+			}
 			Spacer(modifier = Modifier.height(8.dp))
 		}
 		

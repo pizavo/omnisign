@@ -234,11 +234,13 @@ private fun TimestampRevocationWarningContent(state: TimestampDialogState.Revoca
 					modifier = Modifier.padding(top = 3.dp).size(14.dp),
 					tint = LumoTheme.colors.warning,
 				)
-				Text(
-					text = warning,
-					style = LumoTheme.typography.body2,
-					color = LumoTheme.colors.warning,
-				)
+				SelectableContent {
+					Text(
+						text = warning,
+						style = LumoTheme.typography.body2,
+						color = LumoTheme.colors.warning,
+					)
+				}
 			}
 		}
 	}

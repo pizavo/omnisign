@@ -40,6 +40,7 @@ import cz.pizavo.omnisign.lumo.components.HorizontalDivider
 import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.IconButton
 import cz.pizavo.omnisign.lumo.components.IconButtonVariant
+import cz.pizavo.omnisign.lumo.components.SelectableContent
 import cz.pizavo.omnisign.lumo.components.Switch
 import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.lumo.components.Tooltip
@@ -98,11 +99,13 @@ fun ProfileEditPanel(
     onStageTrustedCert: (ByteArray, TrustedCertificateType, String) -> Unit = { _, _, _ -> },
 ) {
     if (state.error != null) {
-        Text(
-            text = state.error,
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.error,
-        )
+        SelectableContent {
+            Text(
+                text = state.error,
+                style = LumoTheme.typography.body2,
+                color = LumoTheme.colors.error,
+            )
+        }
         Spacer(modifier = Modifier.height(8.dp))
     }
 
