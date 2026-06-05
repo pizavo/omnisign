@@ -500,6 +500,55 @@ class DssServiceFactory(
 				.orEmpty()
 		}
 
+		/** System property toggling JDK AIA *caIssuers* fetching during path building. */
+		private const val AIA_CA_ISSUERS_PROPERTY = "com.sun.security.enableAIAcaIssuers"
+
+		/**
+		 * System property holding the allowlist of permitted AIA fetch locations
+		 * (deny-all by default on recent JDKs).
+		 */
+		private const val ALLOWED_AIA_LOCATIONS_PROPERTY = "com.sun.security.allowedAIALocations"
+
+		/**
+		 * The single AIA location permitted by [enableAiaCaIssuerFetching]: DigiCert's
+		 * public certificate repository, source of the one intermediate the known
+		 * incomplete-chain endpoint (`eidas.gov.ie`) omits.
+		 */
+		private const val DIGICERT_AIA_REPOSITORY = "http://cacerts.digicert.com"
+
+		/**
+		 * Enable JDK AIA *caIssuers* fetching, narrowly allowlisted to DigiCert's public
+		 * certificate repository, so trusted-list endpoints that serve an **incomplete**
+		 * TLS chain can still be validated.
+		 *
+		 * Some member-state endpoints (currently `eidas.gov.ie`) present only their leaf
+		 * certificate, omitting the intermediate CA. Adding a *root* (as the bundled
+		 * [TL_TRANSPORT_ROOT_RESOURCES] do) cannot bridge a missing *intermediate*;
+		 * instead the JDK must fetch it from the leaf's Authority Information Access
+		 * `caIssuers` URL. That fetching is off by default ([AIA_CA_ISSUERS_PROPERTY])
+		 * and, on recent JDKs, additionally gated by a deny-all
+		 * [ALLOWED_AIA_LOCATIONS_PROPERTY] filter — so both are set.
+		 *
+		 * The allowlist is pinned to [DIGICERT_AIA_REPOSITORY] alone: it confines
+		 * fetches to one public CA repository (no SSRF surface from arbitrary AIA URLs
+		 * in hostile certificates), and trust is unaffected regardless — a fetched
+		 * intermediate must still chain to a trusted root, so a spoofed or compromised
+		 * repository can at worst deny service, never forge trust. Fetching is a pure
+		 * fallback: a complete chain never triggers it.
+		 *
+		 * Both properties are process-global and read by the JDK before the first TLS
+		 * handshake, so call this once at host startup ahead of any network use. A value
+		 * an operator has already set for either property is respected and left intact.
+		 */
+		fun enableAiaCaIssuerFetching() {
+			if (System.getProperty(AIA_CA_ISSUERS_PROPERTY) == null) {
+				System.setProperty(AIA_CA_ISSUERS_PROPERTY, "true")
+			}
+			if (System.getProperty(ALLOWED_AIA_LOCATIONS_PROPERTY) == null) {
+				System.setProperty(ALLOWED_AIA_LOCATIONS_PROPERTY, DIGICERT_AIA_REPOSITORY)
+			}
+		}
+
 		/**
 		 * Inspect a post-refresh [TLValidationJobSummary] and return user-readable warning strings
 		 * for every member-state trusted list that could not be downloaded or parsed.

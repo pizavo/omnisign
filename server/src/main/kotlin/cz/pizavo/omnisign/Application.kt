@@ -54,6 +54,8 @@ private val logger = KotlinLogging.logger {}
  * YAML config file location.
  */
 fun main(args: Array<String>) {
+	cz.pizavo.omnisign.data.repository.DssServiceFactory.enableAiaCaIssuerFetching()
+
 	val configPath = args.indexOf("--config").takeIf { it >= 0 }?.let { args.getOrNull(it + 1) }
 	val serverConfig = ServerConfigLoader().load(configPath)
 	val secrets = ServerSecrets.resolveFromEnv(serverConfig)

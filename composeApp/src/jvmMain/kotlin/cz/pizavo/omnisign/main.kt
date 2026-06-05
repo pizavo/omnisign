@@ -219,6 +219,8 @@ fun main(args: Array<String> = emptyArray()) {
 		exitProcess(0)
 	}
 
+	cz.pizavo.omnisign.data.repository.DssServiceFactory.enableAiaCaIssuerFetching()
+
 	System.setProperty("sun.awt.wmclass", "OmniSign")
 
 	applyPersistedDebugLogging()

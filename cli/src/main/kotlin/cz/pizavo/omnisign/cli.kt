@@ -71,6 +71,8 @@ fun main(args: Array<String>) {
 		exitProcess(0)
 	}
 
+	cz.pizavo.omnisign.data.repository.DssServiceFactory.enableAiaCaIssuerFetching()
+
 	val terminal = Terminal()
 	val needsWarmup = args.firstOrNull { !it.startsWith("-") } in WARMUP_SUBCOMMANDS
 
