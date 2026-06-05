@@ -6,6 +6,8 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import eu.europa.esig.dss.alert.LogOnStatusAlert
 import eu.europa.esig.dss.alert.StatusAlert
+import eu.europa.esig.dss.model.DSSDocument
+import eu.europa.esig.dss.model.InMemoryDocument
 import eu.europa.esig.dss.model.tsl.TLValidationJobSummary
 import eu.europa.esig.dss.pdf.PdfMemoryUsageSetting
 import eu.europa.esig.dss.pdf.pdfbox.PdfBoxNativeObjectFactory
@@ -19,7 +21,13 @@ import eu.europa.esig.dss.spi.x509.CommonTrustedCertificateSource
 import eu.europa.esig.dss.spi.x509.KeyStoreCertificateSource
 import eu.europa.esig.dss.spi.x509.aia.DefaultAIASource
 import org.slf4j.event.Level
+import java.io.ByteArrayOutputStream
 import java.io.File
+import java.security.KeyStore
+import java.security.cert.CertificateFactory
+import java.security.cert.X509Certificate
+import javax.net.ssl.TrustManagerFactory
+import javax.net.ssl.X509TrustManager
 
 /**
  * Result of building a [CommonCertificateVerifier] with optional trusted-list wiring.
@@ -381,7 +389,117 @@ class DssServiceFactory(
 			}
 			return source
 		}
-		
+
+		/**
+		 * Classpath locations (DER) of the national eIDAS roots that augment the
+		 * platform trust for trusted-list **transport**. Each is the exact CA anchor a
+		 * member-state TL endpoint chains to over TLS but JetBrains Runtime's trimmed
+		 * `cacerts` omits: `AC RAIZ FNMT-RCM` (ES, tsl.digital.gob.es),
+		 * `Certum Trusted Root CA` (PL, www.nccert.pl), and
+		 * `Microsec e-Szigno Root CA 2009` (HU, www.nmhh.hu).
+		 *
+		 * Exported from a full Mozilla-tracking `cacerts` (Temurin). Extend this list
+		 * only when another member-state endpoint is observed failing for a missing
+		 * root — not pre-emptively, to keep the bundled set minimal.
+		 */
+		private val TL_TRANSPORT_ROOT_RESOURCES = listOf(
+			"/tl-transport-roots/ac-raiz-fnmt-rcm.der",
+			"/tl-transport-roots/certum-trusted-root-ca.der",
+			"/tl-transport-roots/microsec-e-szigno-root-ca-2009.der",
+		)
+
+		/** Keystore type of the in-memory [configureTlTransportTrust] truststore. */
+		private const val TL_TRUSTSTORE_TYPE = "PKCS12"
+
+		/**
+		 * Throwaway integrity password for the in-memory TL-transport truststore.
+		 * **Not a secret**: the store is never persisted and holds only public CA
+		 * certificates; PKCS#12 simply requires a password to seal the document.
+		 */
+		private const val TL_TRUSTSTORE_PASSWORD = "omnisign-tl-transport"
+
+		/**
+		 * In-memory PKCS#12 truststore for trusted-list **transport**: the running
+		 * JVM's default trust anchors augmented with the bundled national eIDAS roots
+		 * in [TL_TRANSPORT_ROOT_RESOURCES].
+		 *
+		 * Built once per process — the trust material is constant and shared by every
+		 * online loader, so re-enumerating the platform anchors and re-serializing the
+		 * keystore on each loader would be wasted work.
+		 *
+		 * On a JVM whose `cacerts` already carries these roots (Temurin on the
+		 * server/CLI) the augmentation is a harmless superset; on JetBrains Runtime
+		 * (desktop), whose trimmed `cacerts` omits them, it supplies the otherwise
+		 * missing anchors so the ES/PL/HU member-state lists can be fetched over TLS.
+		 * Full certification-path validation is preserved — no trust-all strategy is
+		 * used, so transport authenticity is not weakened.
+		 */
+		private val tlTransportTrustStore: DSSDocument by lazy { buildTlTransportTrustStore() }
+
+		/**
+		 * Apply the augmented [tlTransportTrustStore] to [loader] so trusted-list
+		 * downloads succeed on JVMs whose default `cacerts` lacks the bundled national
+		 * roots. The supplied truststore **replaces** the loader's default SSL trust
+		 * (Apache's builder does not union a configured store with `cacerts`), which is
+		 * why [tlTransportTrustStore] is itself a superset of the platform anchors.
+		 */
+		internal fun configureTlTransportTrust(loader: CommonsDataLoader) {
+			loader.setSslTruststore(tlTransportTrustStore)
+			loader.setSslTruststoreType(TL_TRUSTSTORE_TYPE)
+			loader.setSslTruststorePassword(TL_TRUSTSTORE_PASSWORD.toCharArray())
+		}
+
+		/**
+		 * Build [tlTransportTrustStore]: load every platform trust anchor under a
+		 * distinct alias, add each bundled root from [TL_TRANSPORT_ROOT_RESOURCES] the
+		 * platform does not already trust (deduplicated by encoded form, so a full
+		 * `cacerts` gains no duplicate), and serialize the result to an in-memory
+		 * PKCS#12 document.
+		 */
+		private fun buildTlTransportTrustStore(): DSSDocument {
+			val keyStore = KeyStore.getInstance(TL_TRUSTSTORE_TYPE).apply { load(null, null) }
+			val certFactory = CertificateFactory.getInstance("X.509")
+
+			val platformAnchors = platformTrustAnchors()
+			platformAnchors.forEachIndexed { index, anchor ->
+				keyStore.setCertificateEntry("default-$index", anchor)
+			}
+
+			val trusted = platformAnchors.toHashSet()
+			TL_TRANSPORT_ROOT_RESOURCES.forEachIndexed { index, resource ->
+				val root = DssServiceFactory::class.java.getResourceAsStream(resource)?.use { stream ->
+					certFactory.generateCertificate(stream) as X509Certificate
+				} ?: error("Bundled TL-transport root not found on classpath: $resource")
+				if (trusted.add(root)) {
+					keyStore.setCertificateEntry("bundled-$index", root)
+				}
+			}
+
+			val bytes = ByteArrayOutputStream().use { out ->
+				keyStore.store(out, TL_TRUSTSTORE_PASSWORD.toCharArray())
+				out.toByteArray()
+			}
+			return InMemoryDocument(bytes)
+		}
+
+		/**
+		 * The running JVM's default X.509 trust anchors — the issuers a default
+		 * [TrustManagerFactory] (initialized from the platform `cacerts`) would accept.
+		 * Empty only on a JVM exposing no default [X509TrustManager], which does not
+		 * occur in practice.
+		 */
+		private fun platformTrustAnchors(): List<X509Certificate> {
+			val trustManagerFactory =
+				TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm())
+			trustManagerFactory.init(null as KeyStore?)
+			return trustManagerFactory.trustManagers
+				.filterIsInstance<X509TrustManager>()
+				.firstOrNull()
+				?.acceptedIssuers
+				?.toList()
+				.orEmpty()
+		}
+
 		/**
 		 * Inspect a post-refresh [TLValidationJobSummary] and return user-readable warning strings
 		 * for every member-state trusted list that could not be downloaded or parsed.

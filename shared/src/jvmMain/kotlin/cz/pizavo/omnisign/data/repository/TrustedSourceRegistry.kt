@@ -261,6 +261,12 @@ class TrustedSourceRegistry(
 	/**
 	 * Build an online [FileCacheDataLoader] over the persistent cache directory.
 	 *
+	 * The underlying [CommonsDataLoader] is given the augmented TL-transport trust
+	 * ([DssServiceFactory.configureTlTransportTrust]) so member-state lists whose
+	 * TLS chains anchor in national eIDAS roots absent from a trimmed `cacerts`
+	 * (JetBrains Runtime on the desktop) still download; full path validation is
+	 * preserved.
+	 *
 	 * Used for the retained job's cache-gated loader, and (with expiration forced
 	 * to zero) for the throwaway loader of a [forceRefreshAll] hard refresh.
 	 */
@@ -272,6 +278,7 @@ class TrustedSourceRegistry(
 				CommonsDataLoader().apply {
 					timeoutConnection = DssServiceFactory.TL_FETCH_TIMEOUT_MS
 					timeoutSocket = DssServiceFactory.TL_FETCH_TIMEOUT_MS
+					DssServiceFactory.configureTlTransportTrust(this)
 				}
 			)
 			setFileCacheDirectory(cacheDir)
