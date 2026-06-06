@@ -53,6 +53,7 @@ class JsonReportSerializationTest : FunSpec({
                         indication = ValidationIndication.TOTAL_PASSED,
                         productionTime = Instant.parse("2026-03-28T11:00:01Z"),
                         tsaSubjectDN = "CN=TSA",
+                        euLotlBacked = true,
                     )
                 ),
             )
@@ -92,6 +93,7 @@ class JsonReportSerializationTest : FunSpec({
         sig.errors shouldBe listOf("err1")
         sig.warnings shouldBe listOf("warn1")
         sig.timestamps.size shouldBe 1
+        sig.timestamps.first().euLotlBacked shouldBe true
     }
 
     test("toJsonReport maps certificate fields") {
@@ -134,6 +136,7 @@ class JsonReportSerializationTest : FunSpec({
         ts.type shouldBe "Document timestamp"
         ts.indication shouldBe "INDETERMINATE"
         ts.subIndication shouldBe "NO_POE"
+        ts.euLotlBacked shouldBe false
     }
 })
 

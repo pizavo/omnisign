@@ -313,6 +313,9 @@ class Validate : CliktCommand(
 				if (ts.tsaSubjectDN != null) {
 					echo("│       TSA:              ${ts.tsaSubjectDN}")
 				}
+				if (ts.euLotlBacked) {
+					echo("│       EU LOTL:          Yes")
+				}
 				if (ts.errors.isNotEmpty()) {
 					echo("│       ❌ Errors:")
 					ts.errors.forEach { echo("│          • $it") }
@@ -376,6 +379,9 @@ class Validate : CliktCommand(
 			}
 			if (timestamp.tsaSubjectDN != null) {
 				echo("│     TSA:           ${timestamp.tsaSubjectDN}")
+			}
+			if (timestamp.euLotlBacked) {
+				echo("│     EU LOTL:       Yes")
 			}
 			if (timestamp.errors.isNotEmpty()) {
 				echo("│     ❌ Errors:")

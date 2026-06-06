@@ -24,6 +24,7 @@ fun ValidationReport.toPlainText(): String = buildString {
 		appendLine("${pad}Production time: ${ts.productionTime.formatDateTime()}")
 		ts.qualification?.let { appendLine("${pad}Qualification:   $it") }
 		ts.tsaSubjectDN?.let { appendLine("${pad}TSA:             $it") }
+		if (ts.euLotlBacked) appendLine("${pad}EU LOTL:         Yes")
 		if (ts.errors.isNotEmpty()) {
 			appendLine("${pad}Errors:")
 			ts.errors.forEach { appendLine("$pad  • $it") }

@@ -95,6 +95,7 @@ data class JsonTimestampResult(
 	val productionTime: String,
 	val qualification: String? = null,
 	val tsaSubjectDN: String? = null,
+	val euLotlBacked: Boolean = false,
 	val errors: List<String> = emptyList(),
 	val warnings: List<String> = emptyList(),
 	val infos: List<String> = emptyList(),

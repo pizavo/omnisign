@@ -13,6 +13,8 @@ import kotlin.time.Instant
  * @property productionTime Point in time at which the timestamp was produced.
  * @property qualification Optional qualification level (e.g. QTSA).
  * @property tsaSubjectDN Distinguished name of the Timestamp Authority's certificate subject.
+ * @property euLotlBacked True when the TSA's trust anchor is on the EU LOTL (or a national trusted
+ *   list that is a member of it), as opposed to a commercial or user-added custom-trusted TSA.
  * @property errors Validation errors for this timestamp.
  * @property warnings Validation warnings for this timestamp.
  * @property infos Informational messages for this timestamp.
@@ -29,6 +31,7 @@ data class TimestampValidationResult(
     val productionTime: Instant,
     val qualification: String? = null,
     val tsaSubjectDN: String? = null,
+    val euLotlBacked: Boolean = false,
     val errors: List<String> = emptyList(),
     val warnings: List<String> = emptyList(),
     val infos: List<String> = emptyList(),

@@ -23,7 +23,6 @@ import cz.pizavo.omnisign.domain.repository.ValidationRepository
 import eu.europa.esig.dss.detailedreport.DetailedReport
 import eu.europa.esig.dss.diagnostic.CertificateWrapper
 import eu.europa.esig.dss.diagnostic.DiagnosticData
-import eu.europa.esig.dss.diagnostic.SignatureWrapper
 import eu.europa.esig.dss.diagnostic.TimestampWrapper
 import eu.europa.esig.dss.enumerations.Indication
 import eu.europa.esig.dss.enumerations.SignatureQualification
@@ -289,6 +288,7 @@ class DssValidationRepository(
 			productionTime = tsw.productionTime?.toKotlinInstant() ?: kotlin.time.Instant.fromEpochSeconds(0),
 			qualification = qualification,
 			tsaSubjectDN = tsaSubjectDN,
+			euLotlBacked = isEuLotlBacked(tsw.certificateChain),
 			errors = if (policyUntrusted) errors + TIMESTAMP_POLICY_MESSAGE else errors,
 			warnings = warnings,
 			infos = infos,
@@ -337,7 +337,7 @@ class DssValidationRepository(
 		
 		val dssQualification = simpleReport.getSignatureQualification(signatureId)
 		val trustTier = dssQualification?.toTrustTier() ?: SignatureTrustTier.NOT_QUALIFIED
-		val euLotlBacked = isEuLotlBacked(sigWrapper)
+		val euLotlBacked = isEuLotlBacked(sigWrapper?.certificateChain)
 		
 		val certificate = CertificateInfo(
 			subjectDN = signingCert?.getCertificateDN() ?: signedBy,
@@ -379,16 +379,16 @@ class DssValidationRepository(
 	}
 	
 	/**
-	 * Whether the signature's eIDAS qualification trust anchor is published on the EU LOTL
-	 * (or a national trusted list that is a member of it), as opposed to a user-added custom
-	 * trusted list.
+	 * Whether a certificate chain's eIDAS trust anchor is published on the EU LOTL (or a national
+	 * trusted list that is a member of it), as opposed to a user-added custom trusted list. Applies
+	 * to both signing certificates and TSA certificates.
 	 *
-	 * Walks the signing certificate chain and checks the trust services that govern its trust
-	 * anchor: the signature is EU-LOTL-backed when any such service's trusted list (or the list
-	 * of trusted lists it belongs to) is the EU LOTL ([DssServiceFactory.EU_LOTL_URL]).
+	 * Walks [certificateChain] and checks the trust services that govern its trust anchor: it is
+	 * EU-LOTL-backed when any such service's trusted list (or the list of trusted lists it belongs
+	 * to) is the EU LOTL ([DssServiceFactory.EU_LOTL_URL]).
 	 */
-	private fun isEuLotlBacked(sigWrapper: SignatureWrapper?): Boolean {
-		val chain = sigWrapper?.certificateChain ?: return false
+	private fun isEuLotlBacked(certificateChain: List<CertificateWrapper>?): Boolean {
+		val chain = certificateChain ?: return false
 		return chain.any { cert ->
 			cert.trustServices.any { ts ->
 				ts.listOfTrustedLists?.url == DssServiceFactory.EU_LOTL_URL ||

@@ -424,6 +424,9 @@ private fun SignatureTimestampAccordion(timestamp: TimestampValidationResult) {
         title = "Signature timestamp",
         indication = timestamp.indication,
         initiallyExpanded = true,
+        trailingIcon = if (timestamp.euLotlBacked) Res.drawable.icon_eu else null,
+        trailingTint = LumoTheme.colors.icons.euStars,
+        trailingTooltip = if (timestamp.euLotlBacked) "On the EU LOTL" else null,
     ) {
         Column(
             modifier = Modifier.padding(start = 4.dp),
@@ -481,6 +484,9 @@ private fun TimestampAccordion(
         title = "Timestamp ${index + 1} of $total — ${timestamp.type}",
         indication = timestamp.indication,
         initiallyExpanded = false,
+        trailingIcon = if (timestamp.euLotlBacked) Res.drawable.icon_eu else null,
+        trailingTint = LumoTheme.colors.icons.euStars,
+        trailingTooltip = if (timestamp.euLotlBacked) "On the EU LOTL" else null,
     ) {
         Column(
             modifier = Modifier.padding(start = 4.dp),

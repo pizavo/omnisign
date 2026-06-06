@@ -87,6 +87,7 @@ fun TimestampValidationResult.toJsonReport(): JsonTimestampReport =
         productionTime = productionTime.toString(),
         qualification = qualification,
         tsaSubjectDN = tsaSubjectDN,
+        euLotlBacked = euLotlBacked,
         errors = errors,
         warnings = warnings,
         infos = infos,

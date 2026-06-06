@@ -64,4 +64,11 @@ class ValidationReportTextTest : FunSpec({
 		text shouldContain "Production time:"
 		text shouldContain "QTSA"
 	}
+
+	test("renders EU LOTL for a LOTL-backed timestamp") {
+		val backed = report.copy(
+			timestamps = listOf(timestamp("Archive timestamp", "CN=Archive TSA").copy(euLotlBacked = true)),
+		)
+		backed.toPlainText() shouldContain "EU LOTL:"
+	}
 })
