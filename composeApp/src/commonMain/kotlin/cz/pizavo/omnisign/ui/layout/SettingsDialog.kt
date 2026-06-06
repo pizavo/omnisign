@@ -28,6 +28,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
+import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
@@ -98,6 +99,7 @@ fun SettingsDialog(
 	initialCategory: SettingsCategory? = null,
 	trustedListRefreshing: Boolean = false,
 	trustedListLastRefreshAt: Instant? = null,
+	trustedListLoadProgress: TrustedListLoadProgress = TrustedListLoadProgress(),
 	onRefreshTrustedLists: () -> Unit = {},
 	onExportConfig: () -> Unit = {},
 	onImportConfig: () -> Unit = {},
@@ -147,6 +149,7 @@ fun SettingsDialog(
 						onBuildTl = onBuildTl,
 						trustedListRefreshing = trustedListRefreshing,
 						trustedListLastRefreshAt = trustedListLastRefreshAt,
+						trustedListLoadProgress = trustedListLoadProgress,
 						onRefreshTrustedLists = onRefreshTrustedLists,
 						onExportConfig = onExportConfig,
 						onImportConfig = onImportConfig,
@@ -375,6 +378,7 @@ private fun SettingsContentPanel(
 	onBuildTl: (() -> Unit)? = null,
 	trustedListRefreshing: Boolean = false,
 	trustedListLastRefreshAt: Instant? = null,
+	trustedListLoadProgress: TrustedListLoadProgress = TrustedListLoadProgress(),
 	onRefreshTrustedLists: () -> Unit = {},
 	onExportConfig: () -> Unit = {},
 	onImportConfig: () -> Unit = {},
@@ -427,6 +431,7 @@ private fun SettingsContentPanel(
 				onFieldChange = onFieldChange,
 				trustedListRefreshing = trustedListRefreshing,
 				trustedListLastRefreshAt = trustedListLastRefreshAt,
+				trustedListLoadProgress = trustedListLoadProgress,
 				onRefreshTrustedLists = onRefreshTrustedLists,
 			)
 			
@@ -874,6 +879,7 @@ private fun ValidationPolicySection(
 	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 	trustedListRefreshing: Boolean = false,
 	trustedListLastRefreshAt: Instant? = null,
+	trustedListLoadProgress: TrustedListLoadProgress = TrustedListLoadProgress(),
 	onRefreshTrustedLists: () -> Unit = {},
 ) {
 	DropdownSelector(
@@ -1026,6 +1032,11 @@ private fun ValidationPolicySection(
 				)
 			}
 		}
+	}
+
+	if (trustedListRefreshing) {
+		Spacer(modifier = Modifier.height(8.dp))
+		TrustedListLoadingBar(progress = trustedListLoadProgress)
 	}
 }
 

@@ -12,6 +12,7 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.model.value.formatDate
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
@@ -31,17 +32,30 @@ import org.jetbrains.compose.resources.painterResource
  *
  * @param state Current panel state from [cz.pizavo.omnisign.ui.viewmodel.SignatureViewModel].
  * @param onLoadSignatures Callback invoked when the user requests signature retrieval.
+ * @param validationBlocked Whether a trusted-list refresh the current configuration needs is in
+ *   flight; when `true` a [TrustedListLoadingBar] is shown above the panel content.
+ * @param trustedListLoadProgress Trusted-list load progress feeding the bar (determinate once the lists are known).
  */
 @Composable
 fun SignaturePanel(
     state: SignaturePanelState,
     onLoadSignatures: () -> Unit,
+    validationBlocked: Boolean = false,
+    trustedListLoadProgress: TrustedListLoadProgress = TrustedListLoadProgress(),
 ) {
-    when (state) {
-        is SignaturePanelState.Idle -> IdleContent(hasDocument = state.hasDocument)
-        is SignaturePanelState.Loading -> LoadingContent()
-        is SignaturePanelState.Loaded -> ReportContent(report = state.report, alertIfNotEuLotl = state.alertIfNotEuLotl)
-        is SignaturePanelState.Error -> ErrorContent(message = state.message, onRetry = onLoadSignatures)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (validationBlocked) {
+            TrustedListLoadingBar(progress = trustedListLoadProgress)
+        }
+        when (state) {
+            is SignaturePanelState.Idle -> IdleContent(hasDocument = state.hasDocument)
+            is SignaturePanelState.Loading -> LoadingContent()
+            is SignaturePanelState.Loaded -> ReportContent(report = state.report, alertIfNotEuLotl = state.alertIfNotEuLotl)
+            is SignaturePanelState.Error -> ErrorContent(message = state.message, onRetry = onLoadSignatures)
+        }
     }
 }
 

@@ -83,6 +83,9 @@ fun IslandLayout(
 	val signatureValidationBlocked by (signatureViewModel?.validationBlocked ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow(false)
 	}).collectAsState()
+	val signatureTrustedListProgress by (signatureViewModel?.trustedListLoadProgress ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow(cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress())
+	}).collectAsState()
 	val signatureState by (signatureViewModel?.state ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow<SignaturePanelState>(SignaturePanelState.Idle())
 	}).collectAsState()
@@ -134,6 +137,9 @@ fun IslandLayout(
 	}).collectAsState()
 	val trustedListLastRefreshAt by (settingsViewModel?.trustedListLastRefreshAt ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow<kotlin.time.Instant?>(null)
+	}).collectAsState()
+	val trustedListLoadProgress by (settingsViewModel?.trustedListLoadProgress ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow(cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress())
 	}).collectAsState()
 	var showSettingsDialog by remember { mutableStateOf(false) }
 	var initialSettingsCategory by remember { mutableStateOf<SettingsCategory?>(null) }
@@ -303,6 +309,7 @@ fun IslandLayout(
 						initialCategory = initialSettingsCategory,
 						trustedListRefreshing = trustedListRefreshing,
 						trustedListLastRefreshAt = trustedListLastRefreshAt,
+						trustedListLoadProgress = trustedListLoadProgress,
 						onRefreshTrustedLists = { settingsViewModel?.refreshTrustedListsNow() },
 						onExportConfig = {
 							scope.launch {
@@ -538,6 +545,8 @@ fun IslandLayout(
 								SidePanel.Signature -> SignaturePanel(
 									state = signatureState,
 									onLoadSignatures = { signatureViewModel?.loadSignatures() },
+									validationBlocked = signatureValidationBlocked,
+									trustedListLoadProgress = signatureTrustedListProgress,
 								)
 								
 								else -> {}

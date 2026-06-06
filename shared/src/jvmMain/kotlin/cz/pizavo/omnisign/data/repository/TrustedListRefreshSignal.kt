@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.data.repository
 
 import cz.pizavo.omnisign.domain.model.config.TrustedSourceId
+import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -67,5 +68,20 @@ class TrustedListRefreshSignal {
 	 */
 	fun markRefreshed(at: Instant) {
 		_lastRefreshAt.value = at
+	}
+
+	private val _trustedListProgress = MutableStateFlow(TrustedListLoadProgress())
+
+	/** Live loading progress across all trusted lists of the in-flight refresh; idle when none. */
+	val trustedListProgress: StateFlow<TrustedListLoadProgress> = _trustedListProgress.asStateFlow()
+
+	/** Publish the running (loaded, total) trusted-list task counts of the in-flight refresh. */
+	fun reportTrustedListProgress(loaded: Int, total: Int) {
+		_trustedListProgress.value = TrustedListLoadProgress(loaded = loaded, total = total)
+	}
+
+	/** Clear trusted-list progress back to zero — when a refresh session starts and when it ends. */
+	fun resetTrustedListProgress() {
+		_trustedListProgress.value = TrustedListLoadProgress()
 	}
 }

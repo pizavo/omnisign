@@ -12,6 +12,7 @@ import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
 import cz.pizavo.omnisign.domain.model.validation.ValidationReport
 import cz.pizavo.omnisign.domain.model.validation.ValidationResult
 import cz.pizavo.omnisign.domain.model.config.TrustedSourceId
+import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.ValidationRepository
@@ -344,6 +345,7 @@ class SignatureViewModelTest : FunSpec({
             val running = MutableStateFlow<Set<TrustedSourceId>>(emptySet())
             val port = mockk<TrustedListRefreshPort>()
             every { port.running } returns running
+            every { port.trustedListLoadProgress } returns MutableStateFlow(TrustedListLoadProgress())
 
             val vm = SignatureViewModel(useCase, configRepository, testDispatcher, port)
             advanceUntilIdle()
