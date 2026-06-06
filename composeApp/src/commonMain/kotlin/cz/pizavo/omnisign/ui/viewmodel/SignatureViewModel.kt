@@ -136,6 +136,16 @@ class SignatureViewModel(
     }
 
     /**
+     * Suggested default file name (without the format's [extension][ReportExportFormat.extension])
+     * for exporting the current report in [format], derived from the validated document's name.
+     * Returns `null` when no report is loaded.
+     */
+    fun suggestedReportFileName(format: ReportExportFormat): String? {
+        val loaded = _state.value as? SignaturePanelState.Loaded ?: return null
+        return format.suggestedBaseName(loaded.report.documentName)
+    }
+
+    /**
      * Notify the ViewModel that a new PDF document has been loaded (or cleared).
      *
      * Resets the panel to [SignaturePanelState.Idle].

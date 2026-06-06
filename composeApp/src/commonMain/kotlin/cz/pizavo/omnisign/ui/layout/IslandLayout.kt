@@ -505,7 +505,8 @@ fun IslandLayout(
 												scope.launch {
 													exportTextToFile(
 														text = text,
-														suggestedName = "validation-report",
+														suggestedName = signatureViewModel.suggestedReportFileName(format)
+															?: "validation-report",
 														extension = format.extension,
 													)
 												}

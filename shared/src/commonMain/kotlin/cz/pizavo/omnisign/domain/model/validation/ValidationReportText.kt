@@ -7,8 +7,9 @@ import cz.pizavo.omnisign.domain.model.value.formatDateTime
  * Render this [ValidationReport] as a human-readable plain-text summary.
  *
  * The format mirrors what desktop users see when they export a validation report as `.txt`:
- * a header, per-signature blocks (indication, signer, level, certificate details, errors and
- * warnings), a timestamps block, and finally any trusted-list warnings. The result is a pure
+ * a header, per-signature blocks (indication, signer, level, certificate details, errors,
+ * warnings, and any embedded signature/archive timestamps), a document-level timestamps block,
+ * and finally any trusted-list warnings. The result is a pure
  * projection of the domain model — no DSS interaction, no I/O — so it is safe to call on any
  * Kotlin target and is the natural pairing of [cz.pizavo.omnisign.domain.model.validation.json.toJsonReport]
  * for callers that want a text equivalent.
@@ -17,6 +18,22 @@ import cz.pizavo.omnisign.domain.model.value.formatDateTime
  *   `appendLine`'s platform default line separator.
  */
 fun ValidationReport.toPlainText(): String = buildString {
+	fun StringBuilder.appendTimestampDetails(ts: TimestampValidationResult, pad: String) {
+		appendLine("${pad}Indication:      ${ts.indication}")
+		ts.subIndication?.let { appendLine("${pad}Sub-indication:  $it") }
+		appendLine("${pad}Production time: ${ts.productionTime.formatDateTime()}")
+		ts.qualification?.let { appendLine("${pad}Qualification:   $it") }
+		ts.tsaSubjectDN?.let { appendLine("${pad}TSA:             $it") }
+		if (ts.errors.isNotEmpty()) {
+			appendLine("${pad}Errors:")
+			ts.errors.forEach { appendLine("$pad  • $it") }
+		}
+		if (ts.warnings.isNotEmpty()) {
+			appendLine("${pad}Warnings:")
+			ts.warnings.forEach { appendLine("$pad  • $it") }
+		}
+	}
+
 	appendLine("OmniSign — Validation Report")
 	appendLine("════════════════════════════════════════")
 	appendLine("Document:        $documentName")
@@ -46,6 +63,7 @@ fun ValidationReport.toPlainText(): String = buildString {
 			}
 			sig.hashAlgorithm?.let { appendLine("  Hash algorithm: $it") }
 			sig.encryptionAlgorithm?.let { appendLine("  Encryption:     $it") }
+			appendLine()
 			appendLine("  Certificate:")
 			appendLine("    Subject:      ${sig.certificate.subjectDN}")
 			appendLine("    Issuer:       ${sig.certificate.issuerDN}")
@@ -65,19 +83,23 @@ fun ValidationReport.toPlainText(): String = buildString {
 				appendLine("  Warnings:")
 				sig.warnings.forEach { appendLine("    • $it") }
 			}
+			if (sig.timestamps.isNotEmpty()) {
+				appendLine()
+				appendLine("  Timestamps (${sig.timestamps.size}):")
+				sig.timestamps.forEachIndexed { tsIndex, ts ->
+					appendLine("    ${tsIndex + 1}. ${ts.type}")
+					appendTimestampDetails(ts, "      ")
+				}
+			}
 			appendLine()
 		}
 	}
 
 	if (timestamps.isNotEmpty()) {
-		appendLine("── Timestamps ──")
+		appendLine("── Document Timestamps ──")
 		timestamps.forEachIndexed { index, ts ->
-			appendLine("  Timestamp ${index + 1}: ${ts.type}")
-			appendLine("    Indication:      ${ts.indication}")
-			ts.subIndication?.let { appendLine("    Sub-indication:  $it") }
-			appendLine("    Production time: ${ts.productionTime.formatDateTime()}")
-			ts.qualification?.let { appendLine("    Qualification:   $it") }
-			ts.tsaSubjectDN?.let { appendLine("    TSA:             $it") }
+			appendLine("  ${index + 1}. ${ts.type}")
+			appendTimestampDetails(ts, "    ")
 			appendLine()
 		}
 	}

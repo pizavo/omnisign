@@ -358,4 +358,23 @@ class SignatureViewModelTest : FunSpec({
             vm.validationBlocked.value shouldBe false
         }
     }
+
+    test("suggestedReportFileName derives the name from the loaded document") {
+        runTest(testDispatcher) {
+            coEvery { validationRepository.validateDocument(any()) } returns sampleReport.right()
+
+            val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
+            vm.onDocumentChanged(samplePdfDoc("/path/to/test.pdf"))
+            vm.loadSignatures()
+            advanceUntilIdle()
+
+            vm.suggestedReportFileName(ReportExportFormat.TXT) shouldBe "test.report"
+            vm.suggestedReportFileName(ReportExportFormat.XML_SIMPLE) shouldBe "test.simple"
+        }
+    }
+
+    test("suggestedReportFileName is null when no report is loaded") {
+        val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
+        vm.suggestedReportFileName(ReportExportFormat.TXT).shouldBeNull()
+    }
 })

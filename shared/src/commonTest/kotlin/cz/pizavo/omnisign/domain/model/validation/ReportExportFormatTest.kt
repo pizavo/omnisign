@@ -48,6 +48,35 @@ class ReportExportFormatTest : FunSpec({
     test("all six formats are present") {
         ReportExportFormat.entries.size shouldBe 6
     }
+
+    test("fileStem is 'report' for TXT and JSON and the variant name for XML") {
+        ReportExportFormat.TXT.fileStem shouldBe "report"
+        ReportExportFormat.JSON.fileStem shouldBe "report"
+        ReportExportFormat.XML_SIMPLE.fileStem shouldBe "simple"
+        ReportExportFormat.XML_DETAILED.fileStem shouldBe "detailed"
+        ReportExportFormat.XML_DIAGNOSTIC.fileStem shouldBe "diagnostic"
+        ReportExportFormat.XML_ETSI.fileStem shouldBe "etsi"
+    }
+
+    test("suggestedBaseName drops the source extension and appends the file stem") {
+        ReportExportFormat.TXT.suggestedBaseName("contract.pdf") shouldBe "contract.report"
+        ReportExportFormat.JSON.suggestedBaseName("contract.pdf") shouldBe "contract.report"
+        ReportExportFormat.XML_SIMPLE.suggestedBaseName("contract.pdf") shouldBe "contract.simple"
+    }
+
+    test("suggestedBaseName falls back to validation-report for a blank name") {
+        ReportExportFormat.TXT.suggestedBaseName("") shouldBe "validation-report.report"
+    }
+
+    test("the four XML variants yield distinct file names for one document") {
+        val names = listOf(
+            ReportExportFormat.XML_SIMPLE,
+            ReportExportFormat.XML_DETAILED,
+            ReportExportFormat.XML_DIAGNOSTIC,
+            ReportExportFormat.XML_ETSI,
+        ).map { "${it.suggestedBaseName("doc.pdf")}.${it.extension}" }
+        names.toSet().size shouldBe 4
+    }
 })
 
 
