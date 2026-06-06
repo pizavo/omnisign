@@ -22,6 +22,7 @@ import cz.pizavo.omnisign.lumo.components.TriToggleState
  * @property encryptionAlgorithm Selected encryption algorithm override, or `null` to inherit.
  * @property signatureTimestampOverride Tri-state toggle for the signature timestamp (B-LT) override.
  * @property archivalTimestampOverride Tri-state toggle for the archival timestamp (B-LTA) override.
+ * @property alertIfNotEuLotlOverride Tri-state override for the "alert if not on EU LOTL" validation setting.
  * @property timestampEnabled Whether the timestamp server section is enabled.
  * @property timestampUrl TSA endpoint URL.
  * @property timestampUsername HTTP Basic auth username for the TSA.
@@ -49,6 +50,7 @@ data class ProfileEditState(
 	val encryptionAlgorithm: EncryptionAlgorithm? = null,
 	val signatureTimestampOverride: TriToggleState = TriToggleState.INHERIT,
 	val archivalTimestampOverride: TriToggleState = TriToggleState.INHERIT,
+	val alertIfNotEuLotlOverride: TriToggleState = TriToggleState.INHERIT,
 	val timestampEnabled: Boolean = false,
 	val timestampUrl: String = "",
 	val timestampUsername: String = "",
@@ -101,6 +103,7 @@ data class ProfileEditState(
 				encryptionAlgorithm == other.encryptionAlgorithm &&
 				signatureTimestampOverride == other.signatureTimestampOverride &&
 				archivalTimestampOverride == other.archivalTimestampOverride &&
+				alertIfNotEuLotlOverride == other.alertIfNotEuLotlOverride &&
 				timestampEnabled == other.timestampEnabled &&
 				timestampUrl == other.timestampUrl &&
 				timestampUsername == other.timestampUsername &&
@@ -141,12 +144,20 @@ data class ProfileEditState(
 		},
 		disabledHashAlgorithms = disabledHashAlgorithms,
 		disabledEncryptionAlgorithms = disabledEncryptionAlgorithms,
-		validation = if (customTrustedLists.isNotEmpty()) {
-			ValidationConfig(
-				customTrustedLists = customTrustedLists,
-			)
-		} else {
-			null
+		validation = run {
+			val alertOverride = when (alertIfNotEuLotlOverride) {
+				TriToggleState.ENABLED -> true
+				TriToggleState.DISABLED -> false
+				TriToggleState.INHERIT -> null
+			}
+			if (customTrustedLists.isNotEmpty() || alertOverride != null) {
+				ValidationConfig(
+					customTrustedLists = customTrustedLists,
+					alertIfNotEuLotl = alertOverride,
+				)
+			} else {
+				null
+			}
 		},
 	)
 
@@ -173,6 +184,11 @@ data class ProfileEditState(
 				encryptionAlgorithm = profile.encryptionAlgorithm,
 				signatureTimestampOverride = sigTs,
 				archivalTimestampOverride = archTs,
+				alertIfNotEuLotlOverride = when (profile.validation?.alertIfNotEuLotl) {
+					true -> TriToggleState.ENABLED
+					false -> TriToggleState.DISABLED
+					null -> TriToggleState.INHERIT
+				},
 				timestampEnabled = profile.timestampServer != null,
 				timestampUrl = profile.timestampServer?.url.orEmpty(),
 				timestampUsername = profile.timestampServer?.username.orEmpty(),

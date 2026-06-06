@@ -54,6 +54,7 @@ data class JsonSignatureResult(
 	val signatureTime: String,
 	val qualification: String? = null,
 	val trustTier: String? = null,
+	val euLotlBacked: Boolean = false,
 	val hashAlgorithm: String? = null,
 	val encryptionAlgorithm: String? = null,
 	val certificate: JsonCertificateInfo,

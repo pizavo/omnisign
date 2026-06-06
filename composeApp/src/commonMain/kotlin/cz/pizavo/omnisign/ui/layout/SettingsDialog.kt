@@ -957,6 +957,29 @@ private fun ValidationPolicySection(
 	}
 	Spacer(modifier = Modifier.height(8.dp))
 
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.SpaceBetween,
+	) {
+		Row(
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(4.dp),
+		) {
+			Text(text = "Alert if not on EU LOTL", style = LumoTheme.typography.label1)
+			InfoTooltip(
+				text = "Flag signatures whose trust anchor is not on the EU LOTL. " +
+					"Requires the EU List of Trusted Lists to be enabled.",
+			)
+		}
+		Switch(
+			checked = state.alertIfNotEuLotl,
+			onCheckedChange = { value -> onFieldChange { it.copy(alertIfNotEuLotl = value) } },
+			enabled = state.useEuLotl,
+		)
+	}
+	Spacer(modifier = Modifier.height(8.dp))
+
 	UnderlinedTextField(
 		value = state.trustedListRefreshInterval,
 		onValueChange = { value ->

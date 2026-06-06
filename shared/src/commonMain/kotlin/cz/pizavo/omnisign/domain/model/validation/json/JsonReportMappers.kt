@@ -46,6 +46,7 @@ fun SignatureValidationResult.toJsonReport(): JsonSignatureReport =
         signatureTime = signatureTime.toString(),
         qualification = signatureQualification,
         trustTier = trustTier.name,
+        euLotlBacked = euLotlBacked,
         hashAlgorithm = hashAlgorithm,
         encryptionAlgorithm = encryptionAlgorithm,
         certificate = certificate.toJsonReport(),

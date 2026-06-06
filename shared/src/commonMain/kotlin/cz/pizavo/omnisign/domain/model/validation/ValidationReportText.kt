@@ -41,6 +41,9 @@ fun ValidationReport.toPlainText(): String = buildString {
 			if (sig.trustTier != SignatureTrustTier.NOT_QUALIFIED) {
 				appendLine("  Trust tier:     ${sig.trustTier.label}")
 			}
+			if (sig.euLotlBacked) {
+				appendLine("  EU LOTL:        Yes")
+			}
 			sig.hashAlgorithm?.let { appendLine("  Hash algorithm: $it") }
 			sig.encryptionAlgorithm?.let { appendLine("  Encryption:     $it") }
 			appendLine("  Certificate:")

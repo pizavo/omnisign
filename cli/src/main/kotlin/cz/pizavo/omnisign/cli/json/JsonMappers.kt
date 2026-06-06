@@ -91,6 +91,7 @@ private fun SignatureValidationResult.toJson(): JsonSignatureResult =
 		signatureTime = signatureTime.toString(),
 		qualification = signatureQualification,
 		trustTier = trustTier.name,
+		euLotlBacked = euLotlBacked,
 		hashAlgorithm = hashAlgorithm,
 		encryptionAlgorithm = encryptionAlgorithm,
 		certificate = certificate.toJson(),

@@ -43,6 +43,7 @@ class JsonReportSerializationTest : FunSpec({
                 certificate = sampleCert,
                 hashAlgorithm = "SHA256",
                 encryptionAlgorithm = "RSA",
+                euLotlBacked = true,
                 errors = listOf("err1"),
                 warnings = listOf("warn1"),
                 timestamps = listOf(
@@ -87,6 +88,7 @@ class JsonReportSerializationTest : FunSpec({
         sig.signatureLevel shouldBe "PAdES-BASELINE-LTA"
         sig.hashAlgorithm shouldBe "SHA256"
         sig.encryptionAlgorithm shouldBe "RSA"
+        sig.euLotlBacked shouldBe true
         sig.errors shouldBe listOf("err1")
         sig.warnings shouldBe listOf("warn1")
         sig.timestamps.size shouldBe 1

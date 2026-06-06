@@ -144,6 +144,27 @@ fun ProfileEditPanel(
         globalDisabledEncryptionAlgorithms = globalDisabledEncryptionAlgorithms,
     )
 
+    SectionDivider()
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(text = "Alert if not on EU LOTL", style = LumoTheme.typography.body2)
+            InfoTooltip(text = "Flag signatures whose trust anchor is not on the EU LOTL")
+        }
+        TriStateToggle(
+            state = state.alertIfNotEuLotlOverride,
+            onStateChange = { value -> if (!readOnly) onFieldChange { it.copy(alertIfNotEuLotlOverride = value) } },
+            enabled = !readOnly,
+        )
+    }
+
     if (!readOnly) {
     SectionDivider()
 

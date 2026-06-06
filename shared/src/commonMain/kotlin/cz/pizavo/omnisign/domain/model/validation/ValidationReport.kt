@@ -52,4 +52,13 @@ data class ValidationReport(
                 .minOfOrNull { it.trustTier }
                 ?: SignatureTrustTier.NOT_QUALIFIED
         }
+
+    /**
+     * Whether every signature's trust anchor is on the EU LOTL (or a national trusted list that is
+     * a member of it): true when there is at least one signature and all of them are
+     * [SignatureValidationResult.euLotlBacked]. Purely reflects trust-anchor membership — independent
+     * of the qualification tier ([overallTrustTier]) and of overall validity ([overallResult]).
+     */
+    val overallEuLotlBacked: Boolean
+        get() = signatures.isNotEmpty() && signatures.all { it.euLotlBacked }
 }

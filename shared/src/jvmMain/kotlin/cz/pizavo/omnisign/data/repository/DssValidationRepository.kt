@@ -23,6 +23,7 @@ import cz.pizavo.omnisign.domain.repository.ValidationRepository
 import eu.europa.esig.dss.detailedreport.DetailedReport
 import eu.europa.esig.dss.diagnostic.CertificateWrapper
 import eu.europa.esig.dss.diagnostic.DiagnosticData
+import eu.europa.esig.dss.diagnostic.SignatureWrapper
 import eu.europa.esig.dss.diagnostic.TimestampWrapper
 import eu.europa.esig.dss.enumerations.Indication
 import eu.europa.esig.dss.enumerations.SignatureQualification
@@ -336,6 +337,7 @@ class DssValidationRepository(
 		
 		val dssQualification = simpleReport.getSignatureQualification(signatureId)
 		val trustTier = dssQualification?.toTrustTier() ?: SignatureTrustTier.NOT_QUALIFIED
+		val euLotlBacked = isEuLotlBacked(sigWrapper)
 		
 		val certificate = CertificateInfo(
 			subjectDN = signingCert?.getCertificateDN() ?: signedBy,
@@ -369,12 +371,34 @@ class DssValidationRepository(
 			certificate = certificate,
 			signatureQualification = signatureQualification,
 			trustTier = trustTier,
+			euLotlBacked = euLotlBacked,
 			hashAlgorithm = sigWrapper?.digestAlgorithm?.name,
 			encryptionAlgorithm = sigWrapper?.encryptionAlgorithm?.name,
 			policyUntrusted = policyUntrusted,
 		)
 	}
 	
+	/**
+	 * Whether the signature's eIDAS qualification trust anchor is published on the EU LOTL
+	 * (or a national trusted list that is a member of it), as opposed to a user-added custom
+	 * trusted list.
+	 *
+	 * Walks the signing certificate chain and checks the trust services that govern its trust
+	 * anchor: the signature is EU-LOTL-backed when any such service's trusted list (or the list
+	 * of trusted lists it belongs to) is the EU LOTL ([DssServiceFactory.EU_LOTL_URL]).
+	 */
+	private fun isEuLotlBacked(sigWrapper: SignatureWrapper?): Boolean {
+		val chain = sigWrapper?.certificateChain ?: return false
+		return chain.any { cert ->
+			cert.trustServices.any { ts ->
+				ts.listOfTrustedLists?.url == DssServiceFactory.EU_LOTL_URL ||
+					ts.trustedList?.let {
+						it.url == DssServiceFactory.EU_LOTL_URL || it.parent?.url == DssServiceFactory.EU_LOTL_URL
+					} == true
+			}
+		}
+	}
+
 	/**
 	 * Append warnings to a [SignatureValidationResult] when the signature's hash or
 	 * encryption algorithm is in the disabled set.

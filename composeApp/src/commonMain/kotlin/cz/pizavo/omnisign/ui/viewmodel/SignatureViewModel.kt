@@ -160,6 +160,7 @@ class SignatureViewModel(
 
         _state.update { SignaturePanelState.Loading }
         viewModelScope.launch {
+            var alertIfNotEuLotl = false
             val result = withContext(ioDispatcher) {
                 val appConfig = configRepository.getCurrentConfig()
                 val resolvedConfig = ResolvedConfig.resolve(
@@ -168,6 +169,7 @@ class SignatureViewModel(
                     operationOverrides = null,
                 ).getOrNull()
                 _requiredIds.value = resolvedConfig?.requiredTrustedSourceIds() ?: emptySet()
+                alertIfNotEuLotl = resolvedConfig?.validation?.let { it.useEuLotl && it.alertIfNotEuLotl == true } == true
                 validateDocumentUseCase(
                     ValidationParameters(
                         inputBytes = document.data,
@@ -187,7 +189,7 @@ class SignatureViewModel(
                     }
                 },
                 ifRight = { report ->
-                    _state.update { SignaturePanelState.Loaded(report) }
+                    _state.update { SignaturePanelState.Loaded(report, alertIfNotEuLotl = alertIfNotEuLotl) }
                 },
             )
         }

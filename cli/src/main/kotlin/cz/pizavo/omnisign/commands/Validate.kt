@@ -234,6 +234,9 @@ class Validate : CliktCommand(
 		if (signature.trustTier != SignatureTrustTier.NOT_QUALIFIED) {
 			echo("│  Trust tier:       ${signature.trustTier.label}")
 		}
+		if (signature.euLotlBacked) {
+			echo("│  EU LOTL:          Yes")
+		}
 		if (signature.hashAlgorithm != null || signature.encryptionAlgorithm != null) {
 			val algStr = listOfNotNull(signature.hashAlgorithm, signature.encryptionAlgorithm).joinToString(" / ")
 			echo("│  Algorithms:       $algStr")

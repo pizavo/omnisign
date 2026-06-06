@@ -26,8 +26,13 @@ sealed interface SignaturePanelState {
      * Validation completed successfully.
      *
      * @property report The full validation report returned by DSS.
+     * @property alertIfNotEuLotl Effective "alert if not on EU LOTL" flag — true only when EU LOTL
+     *   usage is also enabled; flags signatures whose trust anchor is not on the EU LOTL.
      */
-    data class Loaded(val report: ValidationReport) : SignaturePanelState
+    data class Loaded(
+        val report: ValidationReport,
+        val alertIfNotEuLotl: Boolean = false,
+    ) : SignaturePanelState
 
     /**
      * Validation failed with an error.

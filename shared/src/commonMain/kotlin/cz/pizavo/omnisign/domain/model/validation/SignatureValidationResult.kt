@@ -22,6 +22,10 @@ import kotlin.time.Instant
  * @property certificate Signing certificate details.
  * @property signatureQualification eIDAS qualification of the signature (e.g. "QESig", "AdESig").
  * @property trustTier Derived eIDAS trust tier based on the signature qualification — see [SignatureTrustTier].
+ * @property euLotlBacked True when the signature's eIDAS qualification trust anchor is on the EU
+ *   LOTL (or a national trusted list that is a member of it), as opposed to a user-added custom
+ *   trusted list. Together with a [SignatureTrustTier.QUALIFIED_QSCD] tier this marks an
+ *   EU-recognised Qualified Electronic Signature.
  * @property hashAlgorithm Digest algorithm used in the signature (e.g. "SHA256").
  * @property encryptionAlgorithm Encryption algorithm of the signing key (e.g. "RSA", "ECDSA").
  * @property timestamps Timestamp tokens embedded within or covering this signature (e.g., signature timestamps).
@@ -46,6 +50,7 @@ data class SignatureValidationResult(
     val certificate: CertificateInfo,
     val signatureQualification: String? = null,
     val trustTier: SignatureTrustTier = SignatureTrustTier.NOT_QUALIFIED,
+    val euLotlBacked: Boolean = false,
     val hashAlgorithm: String? = null,
     val encryptionAlgorithm: String? = null,
     val timestamps: List<TimestampValidationResult> = emptyList(),

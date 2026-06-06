@@ -135,6 +135,66 @@ class SignatureViewModelTest : FunSpec({
         }
     }
 
+    test("loadSignatures sets alertIfNotEuLotl when EU LOTL usage and the alert are both on") {
+        runTest(testDispatcher) {
+            val base = AppConfig()
+            coEvery { configRepository.getCurrentConfig() } returns base.copy(
+                global = base.global.copy(
+                    validation = base.global.validation.copy(useEuLotl = true, alertIfNotEuLotl = true),
+                ),
+            )
+            coEvery { validationRepository.validateDocument(any()) } returns sampleReport.right()
+
+            val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
+            vm.onDocumentChanged(samplePdfDoc("/path/to/signed.pdf"))
+            vm.loadSignatures()
+            advanceUntilIdle()
+
+            val state = vm.state.value.shouldBeInstanceOf<SignaturePanelState.Loaded>()
+            state.alertIfNotEuLotl shouldBe true
+        }
+    }
+
+    test("loadSignatures gates alertIfNotEuLotl to false when EU LOTL usage is off") {
+        runTest(testDispatcher) {
+            val base = AppConfig()
+            coEvery { configRepository.getCurrentConfig() } returns base.copy(
+                global = base.global.copy(
+                    validation = base.global.validation.copy(useEuLotl = false, alertIfNotEuLotl = true),
+                ),
+            )
+            coEvery { validationRepository.validateDocument(any()) } returns sampleReport.right()
+
+            val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
+            vm.onDocumentChanged(samplePdfDoc("/path/to/signed.pdf"))
+            vm.loadSignatures()
+            advanceUntilIdle()
+
+            val state = vm.state.value.shouldBeInstanceOf<SignaturePanelState.Loaded>()
+            state.alertIfNotEuLotl shouldBe false
+        }
+    }
+
+    test("loadSignatures leaves alertIfNotEuLotl false when the alert setting is off") {
+        runTest(testDispatcher) {
+            val base = AppConfig()
+            coEvery { configRepository.getCurrentConfig() } returns base.copy(
+                global = base.global.copy(
+                    validation = base.global.validation.copy(useEuLotl = true, alertIfNotEuLotl = false),
+                ),
+            )
+            coEvery { validationRepository.validateDocument(any()) } returns sampleReport.right()
+
+            val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
+            vm.onDocumentChanged(samplePdfDoc("/path/to/signed.pdf"))
+            vm.loadSignatures()
+            advanceUntilIdle()
+
+            val state = vm.state.value.shouldBeInstanceOf<SignaturePanelState.Loaded>()
+            state.alertIfNotEuLotl shouldBe false
+        }
+    }
+
     test("loadSignatures transitions to Error on failure") {
         runTest(testDispatcher) {
             coEvery { validationRepository.validateDocument(any()) } returns
