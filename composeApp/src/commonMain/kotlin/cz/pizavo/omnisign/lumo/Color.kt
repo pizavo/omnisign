@@ -53,6 +53,9 @@ val Yellow200: Color = Color(0xFFFFECB3)
 val Yellow100: Color = Color(0xFFFFF3D6)
 val Yellow50: Color = Color(0xFFFFF9EC)
 
+val EuYellow: Color = Color(0xFFFFCC00)
+val EuYellowDark: Color = Color(0xFFB8860B)
+
 val Green950: Color = Color(0xFF0B4627)
 val Green900: Color = Color(0xFF16643B)
 val Green800: Color = Color(0xFF1A7544)
@@ -76,6 +79,7 @@ data class IconColors(
     val folder: Color,
     val trustQualified: Color,
     val trustQualifiedQscd: Color,
+    val euStars: Color,
 )
 
 @Immutable
@@ -143,6 +147,7 @@ internal val LightColors =
             folder = Blue900,
             trustQualified = Blue800,
             trustQualifiedQscd = Blue1100,
+            euStars = EuYellowDark,
         ),
     )
 
@@ -179,6 +184,7 @@ internal val DarkColors =
             folder = Yellow400,
             trustQualified = Blue600,
             trustQualifiedQscd = Blue900,
+            euStars = EuYellow,
         ),
     )
 

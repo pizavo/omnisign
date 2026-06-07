@@ -27,6 +27,13 @@ data class ValidationConfig(
 	 * Whether to use EU LOTL (List of Trusted Lists).
 	 */
 	val useEuLotl: Boolean = true,
+
+	/**
+	 * Whether to flag signatures whose trust anchor is not on the EU LOTL. When set, the
+	 * validation UI marks each non-EU-LOTL signature with a crossed EU emblem. `null` inherits
+	 * the higher layer (profile inherits global); resolved consumers treat null as `false`.
+	 */
+	val alertIfNotEuLotl: Boolean? = null,
 	
 	/**
 	 * Custom trusted list sources registered for this validation context.

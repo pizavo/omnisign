@@ -184,6 +184,7 @@ data class ResolvedConfig(
 				customPolicyPath = operation?.customPolicyPath ?: profile?.customPolicyPath ?: global.customPolicyPath,
 				checkRevocation = operation?.checkRevocation ?: profile?.checkRevocation ?: global.checkRevocation,
 				useEuLotl = operation?.useEuLotl ?: profile?.useEuLotl ?: global.useEuLotl,
+				alertIfNotEuLotl = operation?.alertIfNotEuLotl ?: profile?.alertIfNotEuLotl ?: global.alertIfNotEuLotl,
 				customTrustedLists = mergedTls,
 				algorithmConstraints = mergeAlgorithmConstraints(
 					global.algorithmConstraints,

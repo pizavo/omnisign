@@ -288,6 +288,7 @@ class DssValidationRepository(
 			productionTime = tsw.productionTime?.toKotlinInstant() ?: kotlin.time.Instant.fromEpochSeconds(0),
 			qualification = qualification,
 			tsaSubjectDN = tsaSubjectDN,
+			euLotlBacked = isEuLotlBacked(tsw.certificateChain),
 			errors = if (policyUntrusted) errors + TIMESTAMP_POLICY_MESSAGE else errors,
 			warnings = warnings,
 			infos = infos,
@@ -336,6 +337,7 @@ class DssValidationRepository(
 		
 		val dssQualification = simpleReport.getSignatureQualification(signatureId)
 		val trustTier = dssQualification?.toTrustTier() ?: SignatureTrustTier.NOT_QUALIFIED
+		val euLotlBacked = isEuLotlBacked(sigWrapper?.certificateChain)
 		
 		val certificate = CertificateInfo(
 			subjectDN = signingCert?.getCertificateDN() ?: signedBy,
@@ -369,12 +371,34 @@ class DssValidationRepository(
 			certificate = certificate,
 			signatureQualification = signatureQualification,
 			trustTier = trustTier,
+			euLotlBacked = euLotlBacked,
 			hashAlgorithm = sigWrapper?.digestAlgorithm?.name,
 			encryptionAlgorithm = sigWrapper?.encryptionAlgorithm?.name,
 			policyUntrusted = policyUntrusted,
 		)
 	}
 	
+	/**
+	 * Whether a certificate chain's eIDAS trust anchor is published on the EU LOTL (or a national
+	 * trusted list that is a member of it), as opposed to a user-added custom trusted list. Applies
+	 * to both signing certificates and TSA certificates.
+	 *
+	 * Walks [certificateChain] and checks the trust services that govern its trust anchor: it is
+	 * EU-LOTL-backed when any such service's trusted list (or the list of trusted lists it belongs
+	 * to) is the EU LOTL ([DssServiceFactory.EU_LOTL_URL]).
+	 */
+	private fun isEuLotlBacked(certificateChain: List<CertificateWrapper>?): Boolean {
+		val chain = certificateChain ?: return false
+		return chain.any { cert ->
+			cert.trustServices.any { ts ->
+				ts.listOfTrustedLists?.url == DssServiceFactory.EU_LOTL_URL ||
+					ts.trustedList?.let {
+						it.url == DssServiceFactory.EU_LOTL_URL || it.parent?.url == DssServiceFactory.EU_LOTL_URL
+					} == true
+			}
+		}
+	}
+
 	/**
 	 * Append warnings to a [SignatureValidationResult] when the signature's hash or
 	 * encryption algorithm is in the disabled set.

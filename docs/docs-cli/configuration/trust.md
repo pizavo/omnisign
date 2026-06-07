@@ -23,7 +23,7 @@ Import a PEM or DER certificate into the trust store.
 | `-t, --type <type>`    | Trust role: `ANY` (both CA and TSA), `CA`, or `TSA`. Default: `ANY` |
 | `-p, --profile <name>` | Store in the given profile's scope instead of the global scope      |
 
-On success the subject DN and fingerprint are printed. The original file is not needed afterwards.
+On success the subject DN and fingerprint are printed. The original file is not needed afterward.
 
 ## `config trust list`
 

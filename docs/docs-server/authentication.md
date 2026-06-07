@@ -47,7 +47,7 @@ uppercased, non-alphanumerics → `_`; e.g. `name: google` → `OMNISIGN_OIDC_GO
 | `APPLE`         | —                                 | public IdP — domain-restrict                       |
 | `EDUID_CZ`      | —                                 | Czech academic federation (see below)             |
 
-`allowedEmailDomains` is mandatory — pick `["*"]` (deliberate allow-all, e.g. a private Cognito pool
+`allowedEmailDomains` is mandatory — pick `["*"]` (deliberate allow-all, e.g., a private Cognito pool
 or self-hosted Keycloak realm), `["yourcompany.com"]`, or several. An empty list or a missing field
 is rejected at startup. `requiredClaims` (a map of claim → allowed values, at least one must match)
 adds finer control.

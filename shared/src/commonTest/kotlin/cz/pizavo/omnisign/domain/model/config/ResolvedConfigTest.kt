@@ -152,5 +152,27 @@ class ResolvedConfigTest : FunSpec({
 			profile = AlgorithmConstraintsConfig()
 		).expirationDateOverrides["RIPEMD160"] shouldBe "2030-01-01"
 	}
+
+	test("alertIfNotEuLotl resolves operation over profile over global, null inherits") {
+		fun resolved(global: Boolean?, profile: Boolean?, operation: Boolean?): Boolean? =
+			ResolvedConfig.resolve(
+				global = GlobalConfig(
+					defaultHashAlgorithm = HashAlgorithm.SHA256,
+					defaultSignatureLevel = SignatureLevel.PADES_BASELINE_B,
+					validation = ValidationConfig(alertIfNotEuLotl = global),
+				),
+				profile = ProfileConfig(
+					name = "p",
+					validation = profile?.let { ValidationConfig(alertIfNotEuLotl = it) },
+				),
+				operationOverrides = operation?.let { OperationConfig(validation = ValidationConfig(alertIfNotEuLotl = it)) },
+			).getOrElse { error -> throw AssertionError(error.message) }.validation.alertIfNotEuLotl
+
+		resolved(global = true, profile = null, operation = null) shouldBe true
+		resolved(global = true, profile = false, operation = null) shouldBe false
+		resolved(global = false, profile = true, operation = null) shouldBe true
+		resolved(global = false, profile = false, operation = true) shouldBe true
+		resolved(global = null, profile = null, operation = null).shouldBeNull()
+	}
 })
 

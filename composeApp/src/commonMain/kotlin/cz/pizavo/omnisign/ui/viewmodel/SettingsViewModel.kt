@@ -8,6 +8,7 @@ import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.port.SchedulerPort
+import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
@@ -102,6 +103,13 @@ class SettingsViewModel(
     /** When the trusted lists were last refreshed, or `null` if never this process. */
     val trustedListLastRefreshAt: StateFlow<Instant?> =
         trustedListRefreshPort?.lastRefreshAt ?: MutableStateFlow<Instant?>(null)
+
+    /**
+     * Live progress of loading the trusted lists (EU LOTL members + custom lists), driving the
+     * determinate refresh bar in Settings. Idle when no refresh backend is available (web).
+     */
+    val trustedListLoadProgress: StateFlow<TrustedListLoadProgress> =
+        trustedListRefreshPort?.trustedListLoadProgress ?: MutableStateFlow(TrustedListLoadProgress())
 
     /**
      * Trigger an immediate trusted-list refresh. No-op when no refresh backend is

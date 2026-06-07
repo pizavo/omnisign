@@ -33,6 +33,7 @@ import cz.pizavo.omnisign.lumo.components.Checkbox
 import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.IconButton
 import cz.pizavo.omnisign.lumo.components.IconButtonVariant
+import cz.pizavo.omnisign.lumo.components.SelectableContent
 import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
@@ -228,11 +229,13 @@ private fun RenewalJobAddForm(
 	var notify by remember { mutableStateOf(true) }
 
 	if (error != null) {
-		Text(
-			text = error,
-			style = LumoTheme.typography.body2,
-			color = LumoTheme.colors.error,
-		)
+		SelectableContent {
+			Text(
+				text = error,
+				style = LumoTheme.typography.body2,
+				color = LumoTheme.colors.error,
+			)
+		}
 		Spacer(modifier = Modifier.height(4.dp))
 	}
 

@@ -22,18 +22,16 @@ sealed interface TimestampDialogState {
 	 * @property disabledTypes Timestamp types that are not selectable (e.g. when the
 	 *   document already has a document timestamp, [TimestampType.SIGNATURE_TIMESTAMP]
 	 *   is disabled because DSS would reject the level degradation).
-	 * @property outputPath Suggested output file path.
-	 * @property addToRenewalJob Whether the output file should be added to a renewal job after a successful LTA extension.
-	 * @property coveringRenewalJobName Name of the existing renewal job that already covers [outputPath],
-	 *   or `null` when no coverage exists. When non-null the "Add to renewal job" checkbox is
-	 *   forced checked and disabled because the file will be renewed regardless.
+	 * @property suggestedName Default file-name stem (no extension) for the save dialog, e.g. `contract-extended`.
+	 * @property inputDirectory Source-document directory used as the save dialog's initial location; `null` on the web target.
+	 * @property addToRenewalJob Whether to offer adding the output file to a renewal job after a successful LTA extension.
 	 */
 	data class Ready(
 		val timestampType: TimestampType = TimestampType.ARCHIVAL_TIMESTAMP,
 		val disabledTypes: Set<TimestampType> = emptySet(),
-		val outputPath: String = "",
+		val suggestedName: String = "",
+		val inputDirectory: String? = null,
 		val addToRenewalJob: Boolean = false,
-		val coveringRenewalJobName: String? = null,
 	) : TimestampDialogState
 
 	/**

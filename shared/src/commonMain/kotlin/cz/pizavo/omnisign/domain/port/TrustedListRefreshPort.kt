@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.domain.port
 
 import cz.pizavo.omnisign.domain.model.config.TrustedSourceId
+import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.time.Instant
 
@@ -21,6 +22,14 @@ interface TrustedListRefreshPort {
 	 * Empty when idle. Scoped so a consumer can wait only for the ids it needs.
 	 */
 	val running: StateFlow<Set<TrustedSourceId>>
+
+	/**
+	 * Live progress of loading the trusted lists (the EU LOTL's member-state lists and any custom
+	 * lists) for the in-flight refresh. [TrustedListLoadProgress.total] is `0` (render indeterminate)
+	 * until the lists are scheduled; it then counts them to completion, resetting to zero between
+	 * refreshes. Always `TrustedListLoadProgress()` on targets without a DSS backend.
+	 */
+	val trustedListLoadProgress: StateFlow<TrustedListLoadProgress>
 
 	/**
 	 * When the trusted sources were last successfully refreshed, or `null` if no

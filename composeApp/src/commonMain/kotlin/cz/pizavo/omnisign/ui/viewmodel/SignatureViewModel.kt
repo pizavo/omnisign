@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedSourceId
 import cz.pizavo.omnisign.domain.model.config.requiredTrustedSourceIds
+import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
@@ -81,6 +82,13 @@ class SignatureViewModel(
             }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
         } ?: MutableStateFlow(false)
 
+    /**
+     * Live progress of loading the trusted lists (EU LOTL members + custom lists), driving the
+     * panel's determinate bar while [validationBlocked]. Idle when no refresh port is available (web).
+     */
+    val trustedListLoadProgress: StateFlow<TrustedListLoadProgress> =
+        trustedListRefreshPort?.trustedListLoadProgress ?: MutableStateFlow(TrustedListLoadProgress())
+
     init {
         viewModelScope.launch { resolveRequiredIds() }
     }
@@ -136,6 +144,16 @@ class SignatureViewModel(
     }
 
     /**
+     * Suggested default file name (without the format's [extension][ReportExportFormat.extension])
+     * for exporting the current report in [format], derived from the validated document's name.
+     * Returns `null` when no report is loaded.
+     */
+    fun suggestedReportFileName(format: ReportExportFormat): String? {
+        val loaded = _state.value as? SignaturePanelState.Loaded ?: return null
+        return format.suggestedBaseName(loaded.report.documentName)
+    }
+
+    /**
      * Notify the ViewModel that a new PDF document has been loaded (or cleared).
      *
      * Resets the panel to [SignaturePanelState.Idle].
@@ -160,6 +178,7 @@ class SignatureViewModel(
 
         _state.update { SignaturePanelState.Loading }
         viewModelScope.launch {
+            var alertIfNotEuLotl = false
             val result = withContext(ioDispatcher) {
                 val appConfig = configRepository.getCurrentConfig()
                 val resolvedConfig = ResolvedConfig.resolve(
@@ -168,6 +187,7 @@ class SignatureViewModel(
                     operationOverrides = null,
                 ).getOrNull()
                 _requiredIds.value = resolvedConfig?.requiredTrustedSourceIds() ?: emptySet()
+                alertIfNotEuLotl = resolvedConfig?.validation?.let { it.useEuLotl && it.alertIfNotEuLotl == true } == true
                 validateDocumentUseCase(
                     ValidationParameters(
                         inputBytes = document.data,
@@ -187,7 +207,7 @@ class SignatureViewModel(
                     }
                 },
                 ifRight = { report ->
-                    _state.update { SignaturePanelState.Loaded(report) }
+                    _state.update { SignaturePanelState.Loaded(report, alertIfNotEuLotl = alertIfNotEuLotl) }
                 },
             )
         }

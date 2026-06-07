@@ -35,6 +35,9 @@ class TlBuilderViewModelTest : FunSpec({
 	val compilerPort: TrustedListCompilerPort = mockk()
 	val testDispatcher = StandardTestDispatcher()
 
+	// Destination the save dialog would return; compilation writes the XML here.
+	val outPath = "/output/test.xml"
+
 	beforeTest {
 		clearMocks(compilerPort)
 		Dispatchers.setMain(testDispatcher)
@@ -53,12 +56,12 @@ class TlBuilderViewModelTest : FunSpec({
 		vm.state.value.shouldBeInstanceOf<TlBuilderDialogState.Editing>()
 	}
 
-	test("open with default output dir pre-fills outputPath") {
+	test("open with default output dir pre-fills outputDirectory") {
 		val vm = TlBuilderViewModel(compilerPort, testDispatcher)
 		vm.open("/some/dir")
 
 		val editing = vm.state.value as TlBuilderDialogState.Editing
-		editing.outputPath shouldBe "/some/dir/"
+		editing.outputDirectory shouldBe "/some/dir"
 	}
 
 	test("dismiss resets to Idle") {
@@ -118,7 +121,7 @@ class TlBuilderViewModelTest : FunSpec({
 	test("compile with empty name shows validation error") {
 		val vm = TlBuilderViewModel(compilerPort, testDispatcher)
 		vm.open()
-		vm.compile()
+		vm.compile(outPath)
 
 		val editing = vm.state.value as TlBuilderDialogState.Editing
 		editing.error shouldBe "Name is required."
@@ -132,10 +135,9 @@ class TlBuilderViewModelTest : FunSpec({
 				name = "test",
 				territory = "CZ",
 				schemeOperatorName = "Operator",
-				outputPath = "/out.xml",
 			)
 		}
-		vm.compile()
+		vm.compile(outPath)
 
 		val editing = vm.state.value as TlBuilderDialogState.Editing
 		editing.error shouldBe "At least one Trust Service Provider is required."
@@ -149,7 +151,6 @@ class TlBuilderViewModelTest : FunSpec({
 				name = "test",
 				territory = "CZ",
 				schemeOperatorName = "Operator",
-				outputPath = "/out.xml",
 				tsps = listOf(
 					TspEditState(
 						name = "TSP1",
@@ -158,7 +159,7 @@ class TlBuilderViewModelTest : FunSpec({
 				),
 			)
 		}
-		vm.compile()
+		vm.compile(outPath)
 
 		val editing = vm.state.value as TlBuilderDialogState.Editing
 		editing.error shouldBe "TSP 'TSP1', Service 'Svc1': type identifier is required."
@@ -171,7 +172,7 @@ class TlBuilderViewModelTest : FunSpec({
 			val vm = TlBuilderViewModel(compilerPort, testDispatcher)
 			vm.open()
 			vm.updateState { validEditingState() }
-			vm.compile()
+			vm.compile(outPath)
 
 			advanceUntilIdle()
 
@@ -192,7 +193,7 @@ class TlBuilderViewModelTest : FunSpec({
 			val vm = TlBuilderViewModel(compilerPort, testDispatcher)
 			vm.open()
 			vm.updateState { validEditingState().copy(registerAfterCompile = false) }
-			vm.compile()
+			vm.compile(outPath)
 
 			advanceUntilIdle()
 
@@ -210,7 +211,7 @@ class TlBuilderViewModelTest : FunSpec({
 			val vm = TlBuilderViewModel(compilerPort, testDispatcher)
 			vm.open()
 			vm.updateState { validEditingState() }
-			vm.compile()
+			vm.compile(outPath)
 
 			advanceUntilIdle()
 
@@ -223,7 +224,7 @@ class TlBuilderViewModelTest : FunSpec({
 		val vm = TlBuilderViewModel(compilerPort = null, testDispatcher)
 		vm.open()
 		vm.updateState { validEditingState() }
-		vm.compile()
+		vm.compile(outPath)
 
 		val error = vm.state.value.shouldBeInstanceOf<TlBuilderDialogState.Error>()
 		error.message shouldBe "Trusted list compilation is not available on this platform."
@@ -232,7 +233,7 @@ class TlBuilderViewModelTest : FunSpec({
 	test("updateState clears error when field changes") {
 		val vm = TlBuilderViewModel(compilerPort, testDispatcher)
 		vm.open()
-		vm.compile()
+		vm.compile(outPath)
 		val withError = vm.state.value as TlBuilderDialogState.Editing
 		withError.error.shouldNotBeNull()
 
@@ -250,7 +251,6 @@ private fun validEditingState(): TlBuilderDialogState.Editing = TlBuilderDialogS
 	name = "test",
 	territory = "CZ",
 	schemeOperatorName = "Test Operator",
-	outputPath = "/output/test.xml",
 	registerAfterCompile = true,
 	tsps = listOf(
 		TspEditState(

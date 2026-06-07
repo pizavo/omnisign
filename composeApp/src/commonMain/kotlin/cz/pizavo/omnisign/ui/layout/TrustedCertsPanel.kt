@@ -12,6 +12,7 @@ import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.HorizontalDivider
 import cz.pizavo.omnisign.lumo.components.Icon
+import cz.pizavo.omnisign.lumo.components.SelectableContent
 import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.ui.model.TrustedCertsPanelState
 import omnisign.composeapp.generated.resources.Res
@@ -39,11 +40,13 @@ fun TrustedCertsPanel(state: TrustedCertsPanelState) {
     }
 
     if (state.error != null) {
-        Text(
-            text = state.error,
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.error,
-        )
+        SelectableContent {
+            Text(
+                text = state.error,
+                style = LumoTheme.typography.body2,
+                color = LumoTheme.colors.error,
+            )
+        }
         Spacer(modifier = Modifier.height(8.dp))
     }
 

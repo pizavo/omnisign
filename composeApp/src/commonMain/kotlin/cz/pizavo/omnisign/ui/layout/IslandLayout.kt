@@ -83,6 +83,9 @@ fun IslandLayout(
 	val signatureValidationBlocked by (signatureViewModel?.validationBlocked ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow(false)
 	}).collectAsState()
+	val signatureTrustedListProgress by (signatureViewModel?.trustedListLoadProgress ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow(cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress())
+	}).collectAsState()
 	val signatureState by (signatureViewModel?.state ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow<SignaturePanelState>(SignaturePanelState.Idle())
 	}).collectAsState()
@@ -134,6 +137,9 @@ fun IslandLayout(
 	}).collectAsState()
 	val trustedListLastRefreshAt by (settingsViewModel?.trustedListLastRefreshAt ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow<kotlin.time.Instant?>(null)
+	}).collectAsState()
+	val trustedListLoadProgress by (settingsViewModel?.trustedListLoadProgress ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow(cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress())
 	}).collectAsState()
 	var showSettingsDialog by remember { mutableStateOf(false) }
 	var initialSettingsCategory by remember { mutableStateOf<SettingsCategory?>(null) }
@@ -303,6 +309,7 @@ fun IslandLayout(
 						initialCategory = initialSettingsCategory,
 						trustedListRefreshing = trustedListRefreshing,
 						trustedListLastRefreshAt = trustedListLastRefreshAt,
+						trustedListLoadProgress = trustedListLoadProgress,
 						onRefreshTrustedLists = { settingsViewModel?.refreshTrustedListsNow() },
 						onExportConfig = {
 							scope.launch {
@@ -329,7 +336,14 @@ fun IslandLayout(
 						state = signingState,
 						canTimestamp = capabilities.canTimestamp,
 						onFieldChange = { transform -> signingViewModel?.updateState(transform) },
-						onSign = { signingViewModel?.sign() },
+						onSign = {
+							(signingState as? SigningDialogState.Ready)?.let { ready ->
+								scope.launch {
+									val path = chooseSaveDestination(ready.suggestedName, "pdf", ready.inputDirectory)
+									if (path != null) signingViewModel?.sign(path)
+								}
+							}
+						},
 						onAbortRevocation = { signingViewModel?.abortAfterRevocationWarning() },
 						onAcceptRevocation = { signingViewModel?.acceptRevocationWarning() },
 						onUnlockToken = { tokenId -> signingViewModel?.unlockToken(tokenId) },
@@ -371,7 +385,14 @@ fun IslandLayout(
 					TimestampDialog(
 						state = timestampState,
 						onFieldChange = { transform -> timestampViewModel?.updateState(transform) },
-						onExtend = { timestampViewModel?.extend() },
+						onExtend = {
+							(timestampState as? TimestampDialogState.Ready)?.let { ready ->
+								scope.launch {
+									val path = chooseSaveDestination(ready.suggestedName, "pdf", ready.inputDirectory)
+									if (path != null) timestampViewModel?.extend(path)
+								}
+							}
+						},
 						onAbortRevocation = { timestampViewModel?.abortAfterRevocationWarning() },
 						onAcceptRevocation = { timestampViewModel?.acceptRevocationWarning() },
 						onDismiss = {
@@ -418,7 +439,18 @@ fun IslandLayout(
 								svcIndex
 							)
 						},
-						onCompile = { tlBuilderViewModel?.compile() },
+						onCompile = {
+							(tlBuilderState as? TlBuilderDialogState.Editing)?.let { editing ->
+								scope.launch {
+									val path = chooseSaveDestination(
+										suggestedName = editing.name.ifBlank { "trusted-list" },
+										extension = "xml",
+										initialDirectory = editing.outputDirectory.ifBlank { null },
+									)
+									if (path != null) tlBuilderViewModel?.compile(path)
+								}
+							}
+						},
 						onDismiss = {
 							val successState = tlBuilderState as? TlBuilderDialogState.Success
 							val tlConfig = successState?.tlConfig
@@ -505,7 +537,8 @@ fun IslandLayout(
 												scope.launch {
 													exportTextToFile(
 														text = text,
-														suggestedName = "validation-report",
+														suggestedName = signatureViewModel.suggestedReportFileName(format)
+															?: "validation-report",
 														extension = format.extension,
 													)
 												}
@@ -537,6 +570,8 @@ fun IslandLayout(
 								SidePanel.Signature -> SignaturePanel(
 									state = signatureState,
 									onLoadSignatures = { signatureViewModel?.loadSignatures() },
+									validationBlocked = signatureValidationBlocked,
+									trustedListLoadProgress = signatureTrustedListProgress,
 								)
 								
 								else -> {}

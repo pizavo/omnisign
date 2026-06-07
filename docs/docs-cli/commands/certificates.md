@@ -46,13 +46,13 @@ line is added:
 
 ## Token warnings
 
-When a token source cannot be accessed (e.g. a smart card is not inserted, a PKCS#12 file
+When a token source cannot be accessed (e.g., a smart card is not inserted, a PKCS#12 file
 has an incorrect password, or a PKCS#11 library cannot be loaded), a per-token warning is
 printed to stderr. These warnings explain why expected certificates may be absent from the
 listing.
 
 When a PKCS#11 token requires a PIN, OmniSign prompts for it interactively unless `--no-prompt`
-is set. Tokens left locked — because the prompt was cancelled, `--no-prompt` was used, or no TTY
+is set. Tokens left locked — because the prompt was canceled, `--no-prompt` was used, or no TTY
 is attached — are listed on stderr so you know their certificates were not enumerated.
 
 ## JSON output

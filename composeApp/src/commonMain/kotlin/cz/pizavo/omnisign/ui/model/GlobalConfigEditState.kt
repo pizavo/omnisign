@@ -33,6 +33,7 @@ import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
  * @property customPolicyPath Path to a custom validation policy file.
  * @property checkRevocation Whether to check certificate revocation status.
  * @property useEuLotl Whether to use the EU List of Trusted Lists.
+ * @property alertIfNotEuLotl Whether the validation UI flags signatures not anchored on the EU LOTL.
  * @property algoExpirationLevel Severity when an algorithm expired before the policy update date.
  * @property algoExpirationLevelAfterUpdate Severity when an algorithm expired after the policy update date.
  * @property customTrustedLists Registered external trusted list sources.
@@ -85,6 +86,7 @@ data class GlobalConfigEditState(
 	val customPolicyPath: String = "",
 	val checkRevocation: Boolean = true,
 	val useEuLotl: Boolean = true,
+	val alertIfNotEuLotl: Boolean = false,
 	val algoExpirationLevel: AlgorithmConstraintLevel = AlgorithmConstraintLevel.FAIL,
 	val algoExpirationLevelAfterUpdate: AlgorithmConstraintLevel = AlgorithmConstraintLevel.WARN,
 	val customTrustedLists: List<CustomTrustedListConfig> = emptyList(),
@@ -195,6 +197,7 @@ data class GlobalConfigEditState(
 				customPolicyPath == other.customPolicyPath &&
 				checkRevocation == other.checkRevocation &&
 				useEuLotl == other.useEuLotl &&
+				alertIfNotEuLotl == other.alertIfNotEuLotl &&
 				algoExpirationLevel == other.algoExpirationLevel &&
 				algoExpirationLevelAfterUpdate == other.algoExpirationLevelAfterUpdate &&
 				customTrustedLists == other.customTrustedLists &&
@@ -241,6 +244,7 @@ data class GlobalConfigEditState(
 			customPolicyPath = customPolicyPath.ifBlank { null },
 			checkRevocation = checkRevocation,
 			useEuLotl = useEuLotl,
+			alertIfNotEuLotl = alertIfNotEuLotl,
 			customTrustedLists = customTrustedLists,
 			algorithmConstraints = AlgorithmConstraintsConfig(
 				expirationLevel = algoExpirationLevel,
@@ -299,6 +303,7 @@ data class GlobalConfigEditState(
 				customPolicyPath = config.validation.customPolicyPath.orEmpty(),
 				checkRevocation = config.validation.checkRevocation,
 				useEuLotl = config.validation.useEuLotl,
+				alertIfNotEuLotl = config.validation.alertIfNotEuLotl ?: false,
 				algoExpirationLevel = config.validation.algorithmConstraints.expirationLevel
 					?: AlgorithmConstraintLevel.FAIL,
 				algoExpirationLevelAfterUpdate = config.validation.algorithmConstraints.expirationLevelAfterUpdate

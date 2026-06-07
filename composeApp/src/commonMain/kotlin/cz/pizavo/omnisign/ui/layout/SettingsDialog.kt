@@ -28,6 +28,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
+import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
@@ -98,6 +99,7 @@ fun SettingsDialog(
 	initialCategory: SettingsCategory? = null,
 	trustedListRefreshing: Boolean = false,
 	trustedListLastRefreshAt: Instant? = null,
+	trustedListLoadProgress: TrustedListLoadProgress = TrustedListLoadProgress(),
 	onRefreshTrustedLists: () -> Unit = {},
 	onExportConfig: () -> Unit = {},
 	onImportConfig: () -> Unit = {},
@@ -147,6 +149,7 @@ fun SettingsDialog(
 						onBuildTl = onBuildTl,
 						trustedListRefreshing = trustedListRefreshing,
 						trustedListLastRefreshAt = trustedListLastRefreshAt,
+						trustedListLoadProgress = trustedListLoadProgress,
 						onRefreshTrustedLists = onRefreshTrustedLists,
 						onExportConfig = onExportConfig,
 						onImportConfig = onImportConfig,
@@ -375,6 +378,7 @@ private fun SettingsContentPanel(
 	onBuildTl: (() -> Unit)? = null,
 	trustedListRefreshing: Boolean = false,
 	trustedListLastRefreshAt: Instant? = null,
+	trustedListLoadProgress: TrustedListLoadProgress = TrustedListLoadProgress(),
 	onRefreshTrustedLists: () -> Unit = {},
 	onExportConfig: () -> Unit = {},
 	onImportConfig: () -> Unit = {},
@@ -386,11 +390,13 @@ private fun SettingsContentPanel(
 		contentPadding = PaddingValues(24.dp),
 	) {
 		if (state.error != null) {
-			Text(
-				text = state.error,
-				style = LumoTheme.typography.body2,
-				color = LumoTheme.colors.error,
-			)
+			SelectableContent {
+				Text(
+					text = state.error,
+					style = LumoTheme.typography.body2,
+					color = LumoTheme.colors.error,
+				)
+			}
 			Spacer(modifier = Modifier.height(8.dp))
 		}
 		
@@ -425,6 +431,7 @@ private fun SettingsContentPanel(
 				onFieldChange = onFieldChange,
 				trustedListRefreshing = trustedListRefreshing,
 				trustedListLastRefreshAt = trustedListLastRefreshAt,
+				trustedListLoadProgress = trustedListLoadProgress,
 				onRefreshTrustedLists = onRefreshTrustedLists,
 			)
 			
@@ -872,6 +879,7 @@ private fun ValidationPolicySection(
 	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 	trustedListRefreshing: Boolean = false,
 	trustedListLastRefreshAt: Instant? = null,
+	trustedListLoadProgress: TrustedListLoadProgress = TrustedListLoadProgress(),
 	onRefreshTrustedLists: () -> Unit = {},
 ) {
 	DropdownSelector(
@@ -955,6 +963,29 @@ private fun ValidationPolicySection(
 	}
 	Spacer(modifier = Modifier.height(8.dp))
 
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.SpaceBetween,
+	) {
+		Row(
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(4.dp),
+		) {
+			Text(text = "Alert if not on EU LOTL", style = LumoTheme.typography.label1)
+			InfoTooltip(
+				text = "Flag signatures whose trust anchor is not on the EU LOTL. " +
+					"Requires the EU List of Trusted Lists to be enabled.",
+			)
+		}
+		Switch(
+			checked = state.alertIfNotEuLotl,
+			onCheckedChange = { value -> onFieldChange { it.copy(alertIfNotEuLotl = value) } },
+			enabled = state.useEuLotl,
+		)
+	}
+	Spacer(modifier = Modifier.height(8.dp))
+
 	UnderlinedTextField(
 		value = state.trustedListRefreshInterval,
 		onValueChange = { value ->
@@ -1001,6 +1032,11 @@ private fun ValidationPolicySection(
 				)
 			}
 		}
+	}
+
+	if (trustedListRefreshing) {
+		Spacer(modifier = Modifier.height(8.dp))
+		TrustedListLoadingBar(progress = trustedListLoadProgress)
 	}
 }
 

@@ -235,11 +235,13 @@ private fun RenewalOfferFormContent(
 					modifier = Modifier.size(14.dp),
 					tint = LumoTheme.colors.error,
 				)
-				Text(
-					text = state.error,
-					style = LumoTheme.typography.body2,
-					color = LumoTheme.colors.error,
-				)
+				SelectableContent {
+					Text(
+						text = state.error,
+						style = LumoTheme.typography.body2,
+						color = LumoTheme.colors.error,
+					)
+				}
 			}
 		}
 

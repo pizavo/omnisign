@@ -8,7 +8,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.model.value.formatDate
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
@@ -28,17 +32,30 @@ import org.jetbrains.compose.resources.painterResource
  *
  * @param state Current panel state from [cz.pizavo.omnisign.ui.viewmodel.SignatureViewModel].
  * @param onLoadSignatures Callback invoked when the user requests signature retrieval.
+ * @param validationBlocked Whether a trusted-list refresh the current configuration needs is in
+ *   flight; when `true` a [TrustedListLoadingBar] is shown above the panel content.
+ * @param trustedListLoadProgress Trusted-list load progress feeding the bar (determinate once the lists are known).
  */
 @Composable
 fun SignaturePanel(
     state: SignaturePanelState,
     onLoadSignatures: () -> Unit,
+    validationBlocked: Boolean = false,
+    trustedListLoadProgress: TrustedListLoadProgress = TrustedListLoadProgress(),
 ) {
-    when (state) {
-        is SignaturePanelState.Idle -> IdleContent(hasDocument = state.hasDocument)
-        is SignaturePanelState.Loading -> LoadingContent()
-        is SignaturePanelState.Loaded -> ReportContent(report = state.report)
-        is SignaturePanelState.Error -> ErrorContent(message = state.message, onRetry = onLoadSignatures)
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(12.dp),
+    ) {
+        if (validationBlocked) {
+            TrustedListLoadingBar(progress = trustedListLoadProgress)
+        }
+        when (state) {
+            is SignaturePanelState.Idle -> IdleContent(hasDocument = state.hasDocument)
+            is SignaturePanelState.Loading -> LoadingContent()
+            is SignaturePanelState.Loaded -> ReportContent(report = state.report, alertIfNotEuLotl = state.alertIfNotEuLotl)
+            is SignaturePanelState.Error -> ErrorContent(message = state.message, onRetry = onLoadSignatures)
+        }
     }
 }
 
@@ -86,7 +103,10 @@ private fun LoadingContent() {
 }
 
 /**
- * Error state with a retry button.
+ * Error state with a selectable message and a retry button.
+ *
+ * The failure message is wrapped in a [SelectableContent] so it can be copied (e.g.
+ * into a bug report); the retry [Button] stays outside the selection scope.
  */
 @Composable
 private fun ErrorContent(
@@ -98,11 +118,13 @@ private fun ErrorContent(
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        Text(
-            text = message,
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.error,
-        )
+        SelectableContent {
+            Text(
+                text = message,
+                style = LumoTheme.typography.body2,
+                color = LumoTheme.colors.error,
+            )
+        }
         Button(
             text = "Retry",
             variant = ButtonVariant.PrimaryOutlined,
@@ -112,17 +134,31 @@ private fun ErrorContent(
 }
 
 /**
- * Successfully loaded report renders the overall result badge, document metadata,
- * a collapsible "Signatures" group, a collapsible "Document Timestamps" group, and
- * optional trusted-list warnings.
+ * Successfully loaded report. The whole report is wrapped in a [SelectableContent] so
+ * its validation details — overall result, document metadata, signature and timestamp
+ * fields, certificate details, and any trusted-list warnings — can be selected and
+ * copied in one sweep. Collapsible section headers stay selectable too, so a copied
+ * selection keeps its structure; only currently-expanded sections contribute text.
  */
 @Composable
-private fun ReportContent(report: ValidationReport) {
+private fun ReportContent(report: ValidationReport, alertIfNotEuLotl: Boolean) {
+    SelectableContent {
+        ReportDetails(report = report, alertIfNotEuLotl = alertIfNotEuLotl)
+    }
+}
+
+/**
+ * Renders the report's content column: overall result badge, document metadata, the
+ * collapsible "Signatures" and "Document Timestamps" groups, and optional trusted-list
+ * warnings. Hosted inside [ReportContent]'s [SelectableContent].
+ */
+@Composable
+private fun ReportDetails(report: ValidationReport, alertIfNotEuLotl: Boolean) {
     Column(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        OverallResultBadge(report = report)
+        OverallResultBadge(report = report, alertIfNotEuLotl = alertIfNotEuLotl)
 
         Spacer(modifier = Modifier.height(4.dp))
 
@@ -140,7 +176,7 @@ private fun ReportContent(report: ValidationReport) {
             Spacer(modifier = Modifier.height(4.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(4.dp))
-            SignaturesGroup(signatures = report.signatures)
+            SignaturesGroup(signatures = report.signatures, alertIfNotEuLotl = alertIfNotEuLotl)
         }
 
         if (report.timestamps.isNotEmpty()) {
@@ -188,7 +224,7 @@ private fun ReportContent(report: ValidationReport) {
  * individual signature accordions.
  */
 @Composable
-private fun OverallResultBadge(report: ValidationReport) {
+private fun OverallResultBadge(report: ValidationReport, alertIfNotEuLotl: Boolean) {
     if (report.signatures.isEmpty()) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -245,6 +281,26 @@ private fun OverallResultBadge(report: ValidationReport) {
                 )
             }
         }
+        val euOnLotl = report.overallEuLotlBacked
+        val euIcon = when {
+            euOnLotl -> Res.drawable.icon_eu
+            alertIfNotEuLotl && report.signatures.any { !it.euLotlBacked } -> Res.drawable.icon_eu_crossed
+            else -> null
+        }
+        if (euIcon != null) {
+            Spacer(modifier = Modifier.size(4.dp))
+            TooltipBox(
+                tooltip = { Tooltip { Text(text = if (euOnLotl) "On the EU LOTL" else "Not on the EU LOTL") } },
+                state = rememberTooltipState(),
+            ) {
+                Icon(
+                    painter = painterResource(euIcon),
+                    contentDescription = if (euOnLotl) "On the EU LOTL" else "Not on the EU LOTL",
+                    modifier = Modifier.size(22.dp),
+                    tint = if (euOnLotl) LumoTheme.colors.icons.euStars else LumoTheme.colors.error,
+                )
+            }
+        }
     }
 }
 
@@ -253,7 +309,7 @@ private fun OverallResultBadge(report: ValidationReport) {
  * sign of all contained signatures.
  */
 @Composable
-private fun SignaturesGroup(signatures: List<SignatureValidationResult>) {
+private fun SignaturesGroup(signatures: List<SignatureValidationResult>, alertIfNotEuLotl: Boolean) {
     val aggregateIndication = aggregateSignatureIndication(signatures)
 
     SectionAccordion(
@@ -268,7 +324,7 @@ private fun SignaturesGroup(signatures: List<SignatureValidationResult>) {
                     HorizontalDivider()
                     Spacer(modifier = Modifier.height(2.dp))
                 }
-                SignatureAccordion(index = index, total = signatures.size, signature = sig)
+                SignatureAccordion(index = index, total = signatures.size, signature = sig, alertIfNotEuLotl = alertIfNotEuLotl)
             }
         }
     }
@@ -284,14 +340,26 @@ private fun SignatureAccordion(
     index: Int,
     total: Int,
     signature: SignatureValidationResult,
+    alertIfNotEuLotl: Boolean,
 ) {
     SectionAccordion(
         title = "Signature ${index + 1} of $total — ${signature.signedBy}",
         indication = signature.indication,
         initiallyExpanded = false,
-        trailingIcon = trustTierIcon(signature.trustTier),
-        trailingTint = trustTierColor(signature.trustTier),
-        trailingTooltip = signature.trustTier.takeIf { it != SignatureTrustTier.NOT_QUALIFIED }?.label,
+        precedingIcon = trustTierIcon(signature.trustTier),
+        precedingTint = trustTierColor(signature.trustTier),
+        precedingTooltip = signature.trustTier.takeIf { it != SignatureTrustTier.NOT_QUALIFIED }?.label,
+        trailingIcon = when {
+            signature.euLotlBacked -> Res.drawable.icon_eu
+            alertIfNotEuLotl -> Res.drawable.icon_eu_crossed
+            else -> null
+        },
+        trailingTint = if (signature.euLotlBacked) LumoTheme.colors.icons.euStars else LumoTheme.colors.error,
+        trailingTooltip = when {
+            signature.euLotlBacked -> "On the EU LOTL"
+            alertIfNotEuLotl -> "Not on the EU LOTL"
+            else -> null
+        },
     ) {
         Column(
             modifier = Modifier.padding(start = 4.dp),
@@ -369,7 +437,10 @@ private fun SignatureTimestampAccordion(timestamp: TimestampValidationResult) {
     SectionAccordion(
         title = "Signature timestamp",
         indication = timestamp.indication,
-        initiallyExpanded = false,
+        initiallyExpanded = true,
+        trailingIcon = if (timestamp.euLotlBacked) Res.drawable.icon_eu else null,
+        trailingTint = LumoTheme.colors.icons.euStars,
+        trailingTooltip = if (timestamp.euLotlBacked) "On the EU LOTL" else null,
     ) {
         Column(
             modifier = Modifier.padding(start = 4.dp),
@@ -427,6 +498,9 @@ private fun TimestampAccordion(
         title = "Timestamp ${index + 1} of $total — ${timestamp.type}",
         indication = timestamp.indication,
         initiallyExpanded = false,
+        trailingIcon = if (timestamp.euLotlBacked) Res.drawable.icon_eu else null,
+        trailingTint = LumoTheme.colors.icons.euStars,
+        trailingTooltip = if (timestamp.euLotlBacked) "On the EU LOTL" else null,
     ) {
         Column(
             modifier = Modifier.padding(start = 4.dp),
@@ -445,9 +519,9 @@ private fun TimestampAccordion(
 }
 
 /**
- * Accordion header with a shield icon reflecting the [indication], a title, an optional
- * [trailingIcon] (e.g., a rosette for qualified signatures) with an optional hover
- * [trailingTooltip], and a rotating chevron.
+ * Accordion header with a shield icon reflecting the [indication], a title, then up to two
+ * trailing decoration icons — [precedingIcon] (e.g. the qualification rosette) followed by
+ * [trailingIcon] (e.g. the EU-LOTL emblem) — each with an optional hover tooltip, and a chevron.
  * Used for top-level groups and individual signature/timestamp items.
  */
 @Composable
@@ -458,6 +532,9 @@ private fun SectionAccordion(
     trailingIcon: DrawableResource? = null,
     trailingTint: Color = Color.Unspecified,
     trailingTooltip: String? = null,
+    precedingIcon: DrawableResource? = null,
+    precedingTint: Color = Color.Unspecified,
+    precedingTooltip: String? = null,
     content: @Composable () -> Unit,
 ) {
     val state = rememberAccordionState(expanded = initiallyExpanded)
@@ -485,24 +562,44 @@ private fun SectionAccordion(
                     style = LumoTheme.typography.h4,
                     modifier = Modifier.weight(1f),
                 )
-                if (trailingIcon != null) {
-                    val iconContent = @Composable {
-                        Icon(
-                            painter = painterResource(trailingIcon),
-                            contentDescription = trailingTooltip ?: "Qualified",
-                            modifier = Modifier.size(18.dp),
-                            tint = trailingTint,
-                        )
-                    }
-                    if (trailingTooltip != null) {
-                        TooltipBox(
-                            tooltip = { Tooltip { Text(text = trailingTooltip) } },
-                            state = rememberTooltipState(),
-                        ) {
-                            iconContent()
+                if (precedingIcon != null || trailingIcon != null) {
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        if (precedingIcon != null) {
+                            TooltipBox(
+                                tooltip = { Tooltip { Text(text = precedingTooltip ?: "EU qualified") } },
+                                state = rememberTooltipState(),
+                            ) {
+                                Icon(
+                                    painter = painterResource(precedingIcon),
+                                    contentDescription = precedingTooltip ?: "EU qualified",
+                                    modifier = Modifier.size(18.dp),
+                                    tint = precedingTint,
+                                )
+                            }
                         }
-                    } else {
-                        iconContent()
+                        if (trailingIcon != null) {
+                            val iconContent = @Composable {
+                                Icon(
+                                    painter = painterResource(trailingIcon),
+                                    contentDescription = trailingTooltip ?: "Qualified",
+                                    modifier = Modifier.size(18.dp),
+                                    tint = trailingTint,
+                                )
+                            }
+                            if (trailingTooltip != null) {
+                                TooltipBox(
+                                    tooltip = { Tooltip { Text(text = trailingTooltip) } },
+                                    state = rememberTooltipState(),
+                                ) {
+                                    iconContent()
+                                }
+                            } else {
+                                iconContent()
+                            }
+                        }
                     }
                 }
                 Icon(
@@ -566,17 +663,23 @@ private fun NestedAccordion(
 }
 
 /**
- * A horizontal label–value pair.
+ * A label–value pair rendered as a single [Text].
+ *
+ * Label and value are combined into one `AnnotatedString` — the label styled in the
+ * secondary colour via a [SpanStyle] — so the pair is one selectable node and copies to
+ * the clipboard on a single line ("label: value") instead of splitting across two when
+ * selected inside the report's [SelectableContent].
  */
 @Composable
 private fun LabelValue(label: String, value: String) {
-    Row(
+    Text(
+        text = buildAnnotatedString {
+            withStyle(SpanStyle(color = LumoTheme.colors.textSecondary)) { append("$label: ") }
+            append(value)
+        },
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        Text(text = "$label:", style = LumoTheme.typography.body2, color = LumoTheme.colors.textSecondary)
-        Text(text = value, style = LumoTheme.typography.body2)
-    }
+        style = LumoTheme.typography.body2,
+    )
 }
 
 /**

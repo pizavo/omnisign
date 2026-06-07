@@ -50,7 +50,7 @@ class TlBuilderViewModel(
 	 */
 	fun open(defaultOutputDir: String = "") {
 		_state.value = TlBuilderDialogState.Editing(
-			outputPath = if (defaultOutputDir.isNotBlank()) "$defaultOutputDir/" else "",
+			outputDirectory = defaultOutputDir,
 		)
 	}
 
@@ -112,10 +112,13 @@ class TlBuilderViewModel(
 	}
 
 	/**
-	 * Validate the current form, compile the trusted list to XML, and
-	 * transition to [TlBuilderDialogState.Success] or [TlBuilderDialogState.Error].
+	 * Validate the current form, compile the trusted list to XML at [outputPath] (chosen via
+	 * the native save dialog), and transition to [TlBuilderDialogState.Success] or
+	 * [TlBuilderDialogState.Error].
+	 *
+	 * @param outputPath Absolute destination path for the compiled trusted-list XML.
 	 */
-	fun compile() {
+	fun compile(outputPath: String) {
 		val editing = _state.value as? TlBuilderDialogState.Editing ?: return
 		val error = validate(editing)
 		if (error != null) {
@@ -132,7 +135,6 @@ class TlBuilderViewModel(
 
 		_state.value = TlBuilderDialogState.Compiling
 		val draft = toDraft(editing)
-		val outputPath = editing.outputPath.trim()
 
 		viewModelScope.launch {
 			withContext(ioDispatcher) {
@@ -176,7 +178,6 @@ class TlBuilderViewModel(
 		if (editing.name.isBlank()) return "Name is required."
 		if (editing.territory.isBlank()) return "Territory code is required."
 		if (editing.schemeOperatorName.isBlank()) return "Scheme operator name is required."
-		if (editing.outputPath.isBlank()) return "Output file path is required."
 		if (editing.tsps.isEmpty()) return "At least one Trust Service Provider is required."
 
 		editing.tsps.forEachIndexed { tspIdx, tsp ->

@@ -91,6 +91,39 @@ class TrustedSourceRegistry(
 	}
 
 	/**
+	 * Counting wrapper over [executor] shared by every retained job (EU LOTL and custom lists), so
+	 * the desktop can show a determinate "loaded of N" bar covering all trusted lists fetched in a
+	 * refresh. It delegates execution to the shared pool (no extra threads) and reports per-list
+	 * task progress to [signal]; its counters span a whole refresh via [withProgressSession].
+	 */
+	private val countingExecutor: CountingExecutorService by lazy {
+		CountingExecutorService(executor) { submitted, completed ->
+			signal.reportTrustedListProgress(loaded = completed, total = submitted)
+		}
+	}
+
+	/**
+	 * Depth of in-flight refresh operations sharing one progress reading. The outermost operation
+	 * zeroes the counters and the last to finish clears them, so a whole cycle accumulates into a
+	 * single cumulative bar instead of resetting per source.
+	 */
+	private val progressSessionDepth = java.util.concurrent.atomic.AtomicInteger(0)
+
+	/**
+	 * Run [block] as one progress session: zero the shared [countingExecutor] counters when the
+	 * outermost session starts and clear the published progress when it ends, so the count spans
+	 * every source the refresh touches (the EU LOTL's member-state lists and each custom list).
+	 */
+	private fun <T> withProgressSession(block: () -> T): T {
+		if (progressSessionDepth.getAndIncrement() == 0) countingExecutor.reset()
+		try {
+			return block()
+		} finally {
+			if (progressSessionDepth.decrementAndGet() == 0) signal.resetTrustedListProgress()
+		}
+	}
+
+	/**
 	 * Select the trusted sources [config] requires (the EU LOTL and its custom lists), acquiring
 	 * (and lazily warming) each one, and wire them — together with the directly-trusted
 	 * [directAnchors] resolved from the app-managed trust store — into [cv] as a single aggregated
@@ -105,7 +138,7 @@ class TrustedSourceRegistry(
 		cv: CommonCertificateVerifier,
 		config: ResolvedConfig,
 		directAnchors: List<ResolvedTrustAnchor> = emptyList(),
-	): List<String> {
+	): List<String> = withProgressSession {
 		val validation = config.validation
 		val sources = mutableListOf<CertificateSource>()
 		val warnings = mutableListOf<String>()
@@ -128,14 +161,14 @@ class TrustedSourceRegistry(
 		if (sources.isNotEmpty()) {
 			cv.setTrustedCertSources(*sources.toTypedArray())
 		}
-		return warnings
+		warnings
 	}
 
 	/**
 	 * Ensure the entries for [useEuLotl] and [customTls] exist and are loaded.
 	 * Used by the startup warmup so the first validation hits warm sources.
 	 */
-	fun warmUp(useEuLotl: Boolean, customTls: List<CustomTrustedListConfig>) {
+	fun warmUp(useEuLotl: Boolean, customTls: List<CustomTrustedListConfig>) = withProgressSession {
 		if (useEuLotl) acquireLotl()
 		customTls.forEach { acquireCustom(it) }
 	}
@@ -145,7 +178,7 @@ class TrustedSourceRegistry(
 	 * entry is refreshed under its own lock and bracketed with the refresh
 	 * signal, so a validation needing a different source is not blocked.
 	 */
-	fun refreshAll() {
+	fun refreshAll() = withProgressSession {
 		entries.values.forEach { entry ->
 			entry.lock.withLock {
 				signal.begin(entry.id)
@@ -171,7 +204,7 @@ class TrustedSourceRegistry(
 	 * heavy by design; that is what the user asked for. The retained job and its
 	 * cheap cache are left untouched for the scheduled cycle.
 	 */
-	fun forceRefreshAll() {
+	fun forceRefreshAll() = withProgressSession {
 		logger.info { "Hard refresh: ${entries.size} retained trusted source(s) to re-download" }
 		entries.values.forEach { entry ->
 			entry.lock.withLock {
@@ -201,7 +234,7 @@ class TrustedSourceRegistry(
 
 	/** Acquire the shared EU LOTL entry, building + offline-first warming once. */
 	private fun acquireLotl(): RetainedTl = acquire(TrustedSourceId.EuLotl) { source, onlineLoader ->
-		newJob(source, onlineLoader).apply {
+		newJob(source, onlineLoader, countingExecutor).apply {
 			setListOfTrustedListSources(
 				LOTLSource().apply {
 					url = DssServiceFactory.EU_LOTL_URL
@@ -215,7 +248,7 @@ class TrustedSourceRegistry(
 	/** Acquire the retained entry for a custom trusted list by its identity. */
 	private fun acquireCustom(config: CustomTrustedListConfig): RetainedTl =
 		acquire(TrustedSourceId.CustomList(config.source, config.signingCertPath)) { source, onlineLoader ->
-			newJob(source, onlineLoader).apply {
+			newJob(source, onlineLoader, countingExecutor).apply {
 				setTrustedListSources(
 					TLSource().apply {
 						url = config.source
@@ -292,10 +325,11 @@ class TrustedSourceRegistry(
 	private fun newJob(
 		source: TrustedListsCertificateSource,
 		onlineLoader: FileCacheDataLoader,
+		executorService: ExecutorService,
 	): TLValidationJob {
 		val cacheDir = DssServiceFactory.tlCacheDir().also { it.mkdirs() }
 		return TLValidationJob().apply {
-			setExecutorService(executor)
+			setExecutorService(executorService)
 			setTrustedListCertificateSource(source)
 			setOfflineDataLoader(
 				FileCacheDataLoader().apply {

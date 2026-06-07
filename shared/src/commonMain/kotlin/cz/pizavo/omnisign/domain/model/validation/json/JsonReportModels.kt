@@ -62,6 +62,7 @@ data class JsonSignatureReport(
     val signatureTime: String,
     val qualification: String? = null,
     val trustTier: String? = null,
+    val euLotlBacked: Boolean = false,
     val hashAlgorithm: String? = null,
     val encryptionAlgorithm: String? = null,
     val certificate: JsonCertificateReport,
@@ -110,6 +111,7 @@ data class JsonCertificateReport(
  * @property productionTime ISO-8601 timestamp production time.
  * @property qualification Qualification level label.
  * @property tsaSubjectDN TSA certificate subject distinguished name.
+ * @property euLotlBacked True when the TSA's trust anchor is on the EU LOTL.
  * @property errors Validation errors.
  * @property warnings Validation warnings.
  * @property infos Informational messages.
@@ -123,6 +125,7 @@ data class JsonTimestampReport(
     val productionTime: String,
     val qualification: String? = null,
     val tsaSubjectDN: String? = null,
+    val euLotlBacked: Boolean = false,
     val errors: List<String> = emptyList(),
     val warnings: List<String> = emptyList(),
     val infos: List<String> = emptyList(),

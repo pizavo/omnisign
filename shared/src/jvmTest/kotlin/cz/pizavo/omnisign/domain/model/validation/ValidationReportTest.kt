@@ -21,6 +21,7 @@ class ValidationReportTest : FunSpec({
 	fun sig(
 		indication: ValidationIndication = ValidationIndication.TOTAL_PASSED,
 		tier: SignatureTrustTier = SignatureTrustTier.NOT_QUALIFIED,
+		euLotlBacked: Boolean = false,
 	) = SignatureValidationResult(
 		signatureId = "s",
 		indication = indication,
@@ -29,6 +30,7 @@ class ValidationReportTest : FunSpec({
 		signatureTime = Instant.parse("2026-01-01T00:00:00Z"),
 		certificate = baseCert,
 		trustTier = tier,
+		euLotlBacked = euLotlBacked,
 	)
 
 	fun report(
@@ -118,6 +120,48 @@ class ValidationReportTest : FunSpec({
 				sig(tier = SignatureTrustTier.NOT_QUALIFIED),
 			),
 		).overallTrustTier shouldBe SignatureTrustTier.NOT_QUALIFIED
+	}
+
+	test("overallEuLotlBacked is false when there are no signatures") {
+		report().overallEuLotlBacked shouldBe false
+	}
+
+	test("overallEuLotlBacked is true when every signature's cert is on the LOTL") {
+		report(
+			signatures = listOf(
+				sig(euLotlBacked = true),
+				sig(euLotlBacked = true),
+			),
+		).overallEuLotlBacked shouldBe true
+	}
+
+	test("overallEuLotlBacked is false when any signature's cert is not on the LOTL") {
+		report(
+			signatures = listOf(
+				sig(euLotlBacked = true),
+				sig(euLotlBacked = false),
+			),
+		).overallEuLotlBacked shouldBe false
+	}
+
+	test("overallEuLotlBacked counts a failed signature's cert: false when it is off the LOTL") {
+		report(
+			overall = ValidationResult.INVALID,
+			signatures = listOf(
+				sig(euLotlBacked = true),
+				sig(indication = ValidationIndication.TOTAL_FAILED, euLotlBacked = false),
+			),
+		).overallEuLotlBacked shouldBe false
+	}
+
+	test("overallEuLotlBacked is independent of overall validity: true when all certs on the LOTL despite a failed signature") {
+		report(
+			overall = ValidationResult.INVALID,
+			signatures = listOf(
+				sig(euLotlBacked = true),
+				sig(indication = ValidationIndication.TOTAL_FAILED, euLotlBacked = true),
+			),
+		).overallEuLotlBacked shouldBe true
 	}
 })
 

@@ -27,9 +27,9 @@ fun LumoTheme(
     content: @Composable () -> Unit,
 ) {
     val rippleIndication = ripple()
-    val selectionColors = rememberTextSelectionColors(LightColors)
     val typography = provideTypography()
     val colors = if (isDarkTheme) DarkColors else LightColors
+    val selectionColors = rememberTextSelectionColors(colors)
 
     CompositionLocalProvider(
         LocalColors provides colors,
@@ -38,8 +38,9 @@ fun LumoTheme(
         LocalTextSelectionColors provides selectionColors,
         LocalContentColor provides colors.contentColorFor(colors.background),
         LocalTextStyle provides typography.body1,
-        content = content,
-    )
+    ) {
+        ProvidePlatformContextMenu(content)
+    }
 }
 
 @Composable

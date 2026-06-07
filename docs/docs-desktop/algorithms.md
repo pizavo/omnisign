@@ -18,7 +18,7 @@ The hash algorithm controls the digest computed over the signed portion of the d
 | SHA-256    | SHA-2              | 256-bit | Widely recommended baseline.    |
 | SHA-384    | SHA-2              | 384-bit | Stronger SHA-2 variant.         |
 | SHA-512    | SHA-2              | 512-bit | Strongest SHA-2 variant.        |
-| SHA3-256   | SHA-3 (Keccak)     | 256-bit | NIST standardised 2015.         |
+| SHA3-256   | SHA-3 (Keccak)     | 256-bit | NIST standardized 2015.         |
 | SHA3-384   | SHA-3 (Keccak)     | 384-bit | SHA-3 family.                   |
 | SHA3-512   | SHA-3 (Keccak)     | 512-bit | SHA-3 family.                   |
 | Whirlpool  | ISO/IEC 10118-3    | 512-bit | Miyaguchi–Preneel construction. |

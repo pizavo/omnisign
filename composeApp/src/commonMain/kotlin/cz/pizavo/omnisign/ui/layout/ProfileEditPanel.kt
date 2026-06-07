@@ -40,6 +40,7 @@ import cz.pizavo.omnisign.lumo.components.HorizontalDivider
 import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.IconButton
 import cz.pizavo.omnisign.lumo.components.IconButtonVariant
+import cz.pizavo.omnisign.lumo.components.SelectableContent
 import cz.pizavo.omnisign.lumo.components.Switch
 import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.lumo.components.Tooltip
@@ -98,11 +99,13 @@ fun ProfileEditPanel(
     onStageTrustedCert: (ByteArray, TrustedCertificateType, String) -> Unit = { _, _, _ -> },
 ) {
     if (state.error != null) {
-        Text(
-            text = state.error,
-            style = LumoTheme.typography.body2,
-            color = LumoTheme.colors.error,
-        )
+        SelectableContent {
+            Text(
+                text = state.error,
+                style = LumoTheme.typography.body2,
+                color = LumoTheme.colors.error,
+            )
+        }
         Spacer(modifier = Modifier.height(8.dp))
     }
 
@@ -140,6 +143,27 @@ fun ProfileEditPanel(
         globalDisabledHashAlgorithms = globalDisabledHashAlgorithms,
         globalDisabledEncryptionAlgorithms = globalDisabledEncryptionAlgorithms,
     )
+
+    SectionDivider()
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(text = "Alert if not on EU LOTL", style = LumoTheme.typography.body2)
+            InfoTooltip(text = "Flag signatures whose trust anchor is not on the EU LOTL")
+        }
+        TriStateToggle(
+            state = state.alertIfNotEuLotlOverride,
+            onStateChange = { value -> if (!readOnly) onFieldChange { it.copy(alertIfNotEuLotlOverride = value) } },
+            enabled = !readOnly,
+        )
+    }
 
     if (!readOnly) {
     SectionDivider()

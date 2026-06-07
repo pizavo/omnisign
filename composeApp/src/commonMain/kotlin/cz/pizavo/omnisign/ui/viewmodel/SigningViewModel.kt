@@ -230,12 +230,7 @@ class SigningViewModel(
 											level == SignatureLevel.PADES_BASELINE_LTA)
 									val addArchTs = allowTimestamping && level == SignatureLevel.PADES_BASELINE_LTA
 
-									val suggestedOutput = document.filePath?.let {
-										buildSuggestedOutputPath(it, "-signed")
-									} ?: document.name
-									val coveringJob = RenewalJobAssigner.findCoveringJob(
-										suggestedOutput, cachedRenewalJobs,
-									)
+									val sourceName = document.filePath ?: document.name
 									val restoredAlias = lastSelectedAlias
 										?.takeIf { alias -> discovery.certificates.any { it.alias == alias } }
 									val ready = SigningDialogState.Ready(
@@ -250,9 +245,8 @@ class SigningViewModel(
 										configAddSignatureTimestamp = addSigTs,
 										configAddArchivalTimestamp = addArchTs,
 										disabledHashAlgorithms = config.disabledHashAlgorithms,
-										outputPath = suggestedOutput,
-										addToRenewalJob = coveringJob != null,
-										coveringRenewalJobName = coveringJob?.name,
+										suggestedName = suggestedSaveName(sourceName, "-signed"),
+										inputDirectory = document.filePath?.let { parentDirectory(it) },
 									)
 									lastReadyState = ready
 									_state.value = ready
@@ -268,10 +262,6 @@ class SigningViewModel(
 	/**
 	 * Apply a field-level transformation to the current [SigningDialogState.Ready] state.
 	 *
-	 * After applying the transform, renewal job coverage is recomputed for the
-	 * (possibly changed) output path. When the output path is covered by an
-	 * existing job, [SigningDialogState.Ready.addToRenewalJob] is forced to `true`.
-	 *
 	 * Has no effect when the state is not [SigningDialogState.Ready].
 	 *
 	 * @param transform Function that receives the current ready state and returns the updated one.
@@ -281,17 +271,7 @@ class SigningViewModel(
 			if (current is SigningDialogState.Ready) {
 				val transformed = transform(current)
 				lastSelectedAlias = transformed.selectedAlias
-				val coveringJob = RenewalJobAssigner.findCoveringJob(
-					transformed.outputPath, cachedRenewalJobs,
-				)
-				if (coveringJob != null) {
-					transformed.copy(
-						coveringRenewalJobName = coveringJob.name,
-						addToRenewalJob = true,
-					)
-				} else {
-					transformed.copy(coveringRenewalJobName = null)
-				}
+				transformed
 			} else {
 				current
 			}
@@ -393,7 +373,8 @@ class SigningViewModel(
 	}
 
 	/**
-	 * Execute the signing operation with the current form state.
+	 * Execute the signing operation, writing the signed document to [outputPath] — the
+	 * destination the user chose in the native save dialog.
 	 *
 	 * Transitions from [SigningDialogState.Ready] through [SigningDialogState.Signing]
 	 * to either [SigningDialogState.Success], [SigningDialogState.RevocationWarning],
@@ -402,16 +383,23 @@ class SigningViewModel(
 	 * When the effective level is ≥ B-LT and the signing result contains revocation
 	 * warnings, the dialog transitions to [SigningDialogState.RevocationWarning]
 	 * instead of [SigningDialogState.Success] so the user can decide to abort or continue.
+	 *
+	 * Renewal-job coverage is resolved here against [outputPath]: when the path is already
+	 * covered no follow-up offer is shown; otherwise, after a successful B-LTA signing and
+	 * when the user opted in, a [RenewalJobOfferState] is populated.
+	 *
+	 * @param outputPath Absolute destination path for the signed document.
 	 */
-	fun sign() {
+	fun sign(outputPath: String) {
 		val ready = _state.value as? SigningDialogState.Ready ?: return
 		val document = currentDocument ?: return
 		val config = resolvedConfig ?: return
 
 		lastReadyState = ready
+		val coveringJob = RenewalJobAssigner.findCoveringJob(outputPath, cachedRenewalJobs)
 		addToRenewalJobFlag = ready.addToRenewalJob &&
 				ready.addArchivalTimestamp &&
-				ready.coveringRenewalJobName == null
+				coveringJob == null
 		_state.value = SigningDialogState.Signing
 
 		viewModelScope.launch {
@@ -441,7 +429,7 @@ class SigningViewModel(
 						)
 					},
 					ifRight = { result ->
-						val writeError = writeBytesToPath(ready.outputPath, result.outputBytes)
+						val writeError = writeBytesToPath(outputPath, result.outputBytes)
 						if (writeError != null) {
 							_state.value = SigningDialogState.Error(
 								message = "Failed to write signed document",
@@ -456,18 +444,18 @@ class SigningViewModel(
 						if (result.hasRevocationWarnings && levelRequiresRevocation) {
 							_state.value = SigningDialogState.RevocationWarning(
 								warnings = result.annotatedWarnings,
-								outputFile = ready.outputPath,
+								outputFile = outputPath,
 								signatureId = result.signatureId,
 								signatureLevel = result.signatureLevel,
 							)
 						} else {
 							_state.value = SigningDialogState.Success(
-								outputFile = ready.outputPath,
+								outputFile = outputPath,
 								signatureId = result.signatureId,
 								signatureLevel = result.signatureLevel,
 								warnings = result.annotatedWarnings,
 							)
-							populateRenewalOfferIfNeeded(ready.outputPath)
+							populateRenewalOfferIfNeeded(outputPath)
 						}
 					},
 				)
@@ -715,19 +703,31 @@ class SigningViewModel(
 
 	companion object {
 		/**
-		 * Build a suggested output file path by inserting a suffix before the file extension.
+		 * Derive a default save-dialog file-name stem from a source path or name.
 		 *
-		 * @param inputPath Original file path.
-		 * @param suffix Suffix to append (e.g. "-signed").
-		 * @return Suggested output path.
+		 * Strips any directory and extension and appends [suffix] — e.g. `/docs/contract.pdf`
+		 * with `-signed` yields `contract-signed`. The save dialog appends the extension.
+		 *
+		 * @param inputPathOrName Source document path or bare file name.
+		 * @param suffix Suffix to append to the stem (e.g. "-signed").
+		 * @return The suggested file-name stem, without a directory or extension.
 		 */
-		internal fun buildSuggestedOutputPath(inputPath: String, suffix: String): String {
-			val lastDot = inputPath.lastIndexOf('.')
-			return if (lastDot > 0) {
-				"${inputPath.substring(0, lastDot)}$suffix${inputPath.substring(lastDot)}"
-			} else {
-				"$inputPath$suffix"
-			}
+		internal fun suggestedSaveName(inputPathOrName: String, suffix: String): String {
+			val fileName = inputPathOrName.substringAfterLast('/').substringAfterLast('\\')
+			val lastDot = fileName.lastIndexOf('.')
+			val stem = if (lastDot > 0) fileName.substring(0, lastDot) else fileName
+			return "$stem$suffix"
+		}
+
+		/**
+		 * Return the directory component of [path], or `null` when it has none.
+		 *
+		 * @param path A file path using `/` or `\` separators.
+		 * @return The parent directory, or `null` when [path] is a bare file name.
+		 */
+		internal fun parentDirectory(path: String): String? {
+			val separator = maxOf(path.lastIndexOf('/'), path.lastIndexOf('\\'))
+			return if (separator > 0) path.substring(0, separator) else null
 		}
 	}
 }

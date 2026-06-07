@@ -428,14 +428,10 @@ private fun SigningFormContent(
 						onCheckedChange = { checked ->
 							onFieldChange { it.copy(addToRenewalJob = checked) }
 						},
-						enabled = state.coveringRenewalJobName == null,
 					)
 					Text(text = "Add to renewal job", style = LumoTheme.typography.body2)
 					InfoTooltip(
-						text = if (state.coveringRenewalJobName != null)
-							"Already covered by \"${state.coveringRenewalJobName}\""
-						else
-							"Set up automatic archival renewal after signing",
+						text = "Offer to set up automatic archival renewal after signing",
 					)
 				}
 			}
@@ -471,14 +467,6 @@ private fun SigningFormContent(
 				modifier = Modifier.weight(1f),
 			)
 		}
-		
-		UnderlinedTextField(
-			value = state.outputPath,
-			onValueChange = { v -> onFieldChange { it.copy(outputPath = v) } },
-			singleLine = true,
-			label = { Text("Output file path") },
-			modifier = Modifier.fillMaxWidth(),
-		)
 	}
 }
 
@@ -618,7 +606,7 @@ private fun SigningDialogFooter(
 				Button(
 					text = "Sign",
 					variant = ButtonVariant.Primary,
-					enabled = state.outputPath.isNotBlank() && state.selectedAlias != null,
+					enabled = state.selectedAlias != null,
 					onClick = onSign,
 				)
 			}
@@ -687,7 +675,9 @@ internal fun LoadingContent(message: String) {
  * Error display with the message and optional details.
  *
  * DSS exception messages often contain internal identifiers (e.g. `S-<hex>`, `C-<hex>`)
- * that are meaningless to end users. [sanitizeDssDetails] strips them before display.
+ * that are meaningless to end users. [sanitizeDssDetails] strips them before display. The
+ * message and details are wrapped in [SelectableContent] so they can be copied (e.g. into a
+ * bug report).
  *
  * @param message Primary error message.
  * @param details Optional detailed error information.
@@ -710,14 +700,16 @@ internal fun ErrorContent(message: String, details: String?) {
 				modifier = Modifier.size(20.dp),
 				tint = LumoTheme.colors.error,
 			)
-			Text(text = message, style = LumoTheme.typography.h4)
+			SelectableContent { Text(text = message, style = LumoTheme.typography.h4) }
 		}
 		if (!details.isNullOrBlank()) {
-			Text(
-				text = sanitizeDssDetails(details),
-				style = LumoTheme.typography.body2,
-				color = LumoTheme.colors.textSecondary,
-			)
+			SelectableContent {
+				Text(
+					text = sanitizeDssDetails(details),
+					style = LumoTheme.typography.body2,
+					color = LumoTheme.colors.textSecondary,
+				)
+			}
 		}
 	}
 }
@@ -966,11 +958,13 @@ private fun TokenWarningRow(message: String) {
 			modifier = Modifier.padding(top = 3.dp).size(14.dp),
 			tint = LumoTheme.colors.warning,
 		)
-		Text(
-			text = message,
-			style = LumoTheme.typography.body2,
-			color = LumoTheme.colors.warning,
-		)
+		SelectableContent {
+			Text(
+				text = message,
+				style = LumoTheme.typography.body2,
+				color = LumoTheme.colors.warning,
+			)
+		}
 	}
 }
 

@@ -2,6 +2,8 @@
 sidebar_position: 4
 ---
 
+import AppIcon from '@site/src/components/AppIcon';
+
 # Profiles
 
 Configuration profiles let you maintain separate sets of settings for different use cases —
@@ -10,7 +12,7 @@ and another for internal document signing with different settings.
 
 ## Managing profiles
 
-Open the **Profiles** panel from the right sidebar (user icon). From here you can:
+Open the **Profiles** panel from the right sidebar (user icon <AppIcon name="profile" label="Profiles panel" />). From here you can:
 
 - **Create** a new profile with custom settings.
 - **Edit** an existing profile — opens a dedicated edit form in the same panel.
@@ -70,7 +72,7 @@ Override the global TSA for operations using this profile:
 | TSA URL  | HTTPS endpoint of the timestamp authority.                         |
 | Username | HTTP Basic authentication username (if required).                  |
 | Password | HTTP Basic authentication password.                                |
-| Timeout  | Request timeout in milliseconds (default: 30 000).                 |
+| Timeout  | Request timeout in milliseconds (default: 30,000).                 |
 
 :::note
 The TSA password is stored in the operating system's native credential store — never in
@@ -82,11 +84,21 @@ the configuration file. A stored-password indicator appears when a credential al
 Disable specific hash or encryption algorithms for this profile. Disabled algorithms
 cannot be selected when this profile is active, even if they are allowed globally.
 
+### Validation overrides
+
+**Alert if not on EU LOTL** is a tri-state toggle (inherit / on / off) that overrides the global
+[Alert if not on EU LOTL](settings.md#policy--trust) validation setting for operations using this
+profile. **Inherit** uses the global value; **on** flags off-LOTL signatures with the red crossed
+EU emblem; **off** suppresses the alert even when it is on globally. The flag follows the same
+operation → profile → global merge as every other setting. See
+[Validating Signatures → EU LOTL membership](validation.md#eu-lotl-membership) for what the emblem
+means.
+
 ### Trusted certificates
 
 Add CA and TSA certificates scoped to this profile. Choose a **trust role** for each — **CA**,
 **TSA**, or **Any** (trusted for both) — then pick a `.pem` / `.der` / `.crt` / `.cer` file or
-type its path. Additions and removals are **staged**: a new certificate shows a **Pending** badge
+type its path. Additions and removals are **staged**: a new certificate shows a **Pending** badge, 
 and a removed one stays visible marked **Removing** (with an undo button) until you **Save** the
 profile; closing without saving discards the staged changes. Profile certificates are merged with
 the global trusted certificates during config resolution.
