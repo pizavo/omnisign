@@ -336,7 +336,14 @@ fun IslandLayout(
 						state = signingState,
 						canTimestamp = capabilities.canTimestamp,
 						onFieldChange = { transform -> signingViewModel?.updateState(transform) },
-						onSign = { signingViewModel?.sign() },
+						onSign = {
+							(signingState as? SigningDialogState.Ready)?.let { ready ->
+								scope.launch {
+									val path = chooseSaveDestination(ready.suggestedName, "pdf", ready.inputDirectory)
+									if (path != null) signingViewModel?.sign(path)
+								}
+							}
+						},
 						onAbortRevocation = { signingViewModel?.abortAfterRevocationWarning() },
 						onAcceptRevocation = { signingViewModel?.acceptRevocationWarning() },
 						onUnlockToken = { tokenId -> signingViewModel?.unlockToken(tokenId) },
@@ -378,7 +385,14 @@ fun IslandLayout(
 					TimestampDialog(
 						state = timestampState,
 						onFieldChange = { transform -> timestampViewModel?.updateState(transform) },
-						onExtend = { timestampViewModel?.extend() },
+						onExtend = {
+							(timestampState as? TimestampDialogState.Ready)?.let { ready ->
+								scope.launch {
+									val path = chooseSaveDestination(ready.suggestedName, "pdf", ready.inputDirectory)
+									if (path != null) timestampViewModel?.extend(path)
+								}
+							}
+						},
 						onAbortRevocation = { timestampViewModel?.abortAfterRevocationWarning() },
 						onAcceptRevocation = { timestampViewModel?.acceptRevocationWarning() },
 						onDismiss = {
@@ -425,7 +439,18 @@ fun IslandLayout(
 								svcIndex
 							)
 						},
-						onCompile = { tlBuilderViewModel?.compile() },
+						onCompile = {
+							(tlBuilderState as? TlBuilderDialogState.Editing)?.let { editing ->
+								scope.launch {
+									val path = chooseSaveDestination(
+										suggestedName = editing.name.ifBlank { "trusted-list" },
+										extension = "xml",
+										initialDirectory = editing.outputDirectory.ifBlank { null },
+									)
+									if (path != null) tlBuilderViewModel?.compile(path)
+								}
+							}
+						},
 						onDismiss = {
 							val successState = tlBuilderState as? TlBuilderDialogState.Success
 							val tlConfig = successState?.tlConfig

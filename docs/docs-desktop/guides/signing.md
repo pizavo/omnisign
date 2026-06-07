@@ -148,13 +148,14 @@ Optional fields embedded in the PDF signature dictionary:
 
 ### Output file
 
-The **Output file** field is pre-filled with a suggested path. Edit it to write elsewhere.
+You choose where to save the signed document when you click **Sign** — a native **Save As**
+dialog opens, pre-filled with a suggested name based on the source document.
 
 ### Add to renewal job
 
-When the effective level is B-LTA, an **Add to renewal job** checkbox appears. If the output
-path is already covered by an existing renewal job's glob patterns, the checkbox is forced
-on and disabled — the file will be renewed automatically regardless.
+When the effective level is B-LTA, an **Add to renewal job** checkbox appears. Check it to be
+offered automatic archival renewal after signing. If the file you save to is already covered by
+an existing renewal job's glob patterns, it is renewed regardless and no offer is shown.
 
 :::tip
 For long-lived documents, use **B-LTA** (Long-Term Archival) to ensure the signature
@@ -163,8 +164,9 @@ remains verifiable indefinitely when combined with periodic re-timestamping.
 
 ## 5. Sign
 
-Click **Sign** to start the signing operation. A progress indicator is shown while signing
-is in progress; the dialog cannot be dismissed during this phase.
+Click **Sign** and choose where to save the signed document in the **Save As** dialog. A
+progress indicator is shown while signing is in progress; the dialog cannot be dismissed during
+this phase.
 
 If you chose a certificate from a PIN-protected token that was listed without a PIN, OmniSign
 prompts you for the token PIN at this point.

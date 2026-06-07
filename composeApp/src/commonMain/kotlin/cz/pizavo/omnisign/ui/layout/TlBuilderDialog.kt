@@ -244,17 +244,6 @@ private fun TlBuilderFormContent(
 		Text(text = "Output", style = LumoTheme.typography.h4)
 		Spacer(modifier = Modifier.height(4.dp))
 
-		UnderlinedTextField(
-			value = state.outputPath,
-			onValueChange = { v -> onFieldChange { it.copy(outputPath = v, error = null) } },
-			label = { Text("Output file path") },
-			placeholder = { Text("/path/to/output.xml") },
-			singleLine = true,
-			modifier = Modifier.fillMaxWidth(),
-		)
-
-		Spacer(modifier = Modifier.height(8.dp))
-
 		Row(
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.spacedBy(8.dp),

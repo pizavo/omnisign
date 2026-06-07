@@ -152,14 +152,6 @@ private fun TimestampFormContent(
 			modifier = Modifier.fillMaxWidth(),
 		)
 
-		UnderlinedTextField(
-			value = state.outputPath,
-			onValueChange = { v -> onFieldChange { it.copy(outputPath = v) } },
-			singleLine = true,
-			label = { Text("Output file path") },
-			modifier = Modifier.fillMaxWidth(),
-		)
-
 		if (state.timestampType == TimestampType.ARCHIVAL_TIMESTAMP) {
 			Row(
 				verticalAlignment = Alignment.CenterVertically,
@@ -170,14 +162,10 @@ private fun TimestampFormContent(
 					onCheckedChange = { checked ->
 						onFieldChange { it.copy(addToRenewalJob = checked) }
 					},
-					enabled = state.coveringRenewalJobName == null,
 				)
 				Text(text = "Add to renewal job", style = LumoTheme.typography.body2)
 				InfoTooltip(
-					text = if (state.coveringRenewalJobName != null)
-						"Already covered by \"${state.coveringRenewalJobName}\""
-					else
-						"Set up automatic archival renewal after extending",
+					text = "Offer to set up automatic archival renewal after extending",
 				)
 			}
 		}
@@ -334,7 +322,7 @@ private fun TimestampDialogFooter(
 				Button(
 					text = "Extend",
 					variant = ButtonVariant.Primary,
-					enabled = state.outputPath.isNotBlank(),
+					enabled = state.timestampType !in state.disabledTypes,
 					onClick = onExtend,
 				)
 			}

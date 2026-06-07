@@ -22,7 +22,7 @@ sealed interface TlBuilderDialogState {
 	 * @property territory ISO 3166-1 alpha-2 territory code (e.g. `CZ`, `SK`).
 	 * @property schemeOperatorName Name of the entity publishing this trusted list.
 	 * @property tsps Mutable list of Trust Service Provider drafts.
-	 * @property outputPath File path where the compiled XML will be written.
+	 * @property outputDirectory Initial directory for the save dialog; the file name defaults to [name].
 	 * @property registerAfterCompile Whether to register the compiled file as a custom TL source.
 	 * @property error Human-readable validation or compilation error, or `null`.
 	 */
@@ -31,7 +31,7 @@ sealed interface TlBuilderDialogState {
 		val territory: String = "XX",
 		val schemeOperatorName: String = "",
 		val tsps: List<TspEditState> = emptyList(),
-		val outputPath: String = "",
+		val outputDirectory: String = "",
 		val registerAfterCompile: Boolean = true,
 		val error: String? = null,
 	) : TlBuilderDialogState

@@ -50,23 +50,17 @@ For example, if the document already has a document timestamp, the Signature Tim
 option is grayed out because DSS would reject the level degradation.
 :::
 
-## 4. Configure the output path
+## 4. Add to renewal job
 
-The **Output file** field is pre-filled with a suggested path based on the input file name.
-Edit it if you want to write to a different location.
-
-### Add to renewal job
-
-When the selected target is B-LTA, an **Add to renewal job** checkbox appears. Checking it
-will offer to assign the output file to a renewal job after a successful extension,
-ensuring automatic digital continuity.
-
-If the output file is already covered by an existing renewal job's glob patterns, the
-checkbox is forced on and disabled — the file will be renewed regardless.
+When the selected target is B-LTA, an **Add to renewal job** checkbox appears. Check it to be
+offered automatic archival renewal after a successful extension, ensuring digital continuity. If
+the file you save to is already covered by an existing renewal job's glob patterns, it is renewed
+regardless and no offer is shown.
 
 ## 5. Extend
 
-Click **Extend** to start the operation.
+Click **Extend** and choose where to save the extended document in the **Save As** dialog (it is
+pre-filled with a suggested name based on the input file). The operation then runs.
 
 ### Revocation warning
 

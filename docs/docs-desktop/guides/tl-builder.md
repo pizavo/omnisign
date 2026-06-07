@@ -22,10 +22,9 @@ The Trusted List builder can be opened from two places:
 
 | Field                    | Description                                                          |
 |--------------------------|----------------------------------------------------------------------|
-| **Name**                 | Unique identifier for the list (also used as the default file stem). |
+| **Name**                 | Unique identifier for the list (also the suggested file name when you save). |
 | **Territory**            | ISO 3166-1 alpha-2 code (e.g. `CZ`, `SK`, `XX` for custom).          |
 | **Scheme Operator Name** | Name of the entity publishing this trusted list.                     |
-| **Output path**          | File path where the compiled XML will be written.                    |
 
 ## 2. Add Trust Service Providers (TSPs)
 
@@ -61,9 +60,10 @@ opened. When unchecked, the XML is written to disk but not registered.
 
 ## 4. Compile
 
-Click **Compile** to generate the Trusted List XML. The compiler validates all required
-fields and writes the output file. On success, the dialog shows the output path and — when
-registration is enabled — the resulting trusted list entry that was added.
+Click **Compile & Save** and choose where to write the Trusted List XML in the **Save As**
+dialog (pre-filled with the list name). The compiler validates all required fields and writes
+the file. On success, the dialog shows the output path and — when registration is enabled — the
+resulting trusted list entry that was added.
 
 ### Errors
 

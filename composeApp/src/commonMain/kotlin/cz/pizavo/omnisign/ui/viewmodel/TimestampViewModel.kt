@@ -77,6 +77,7 @@ class TimestampViewModel(
 	private var resolvedConfig: ResolvedConfig? = null
 	private var activeProfileName: String? = null
 	private var lastReadyState: TimestampDialogState.Ready? = null
+	private var pendingOutputPath: String? = null
 	private var documentAlreadyContainsLtData: Boolean = false
 	private var addToRenewalJobFlag: Boolean = false
 	private var cachedRenewalJobs: List<RenewalJob> = emptyList()
@@ -161,23 +162,17 @@ class TimestampViewModel(
 					},
 					ifRight = { config ->
 						resolvedConfig = config
-						val suggestedOutput = document.filePath?.let {
-							SigningViewModel.buildSuggestedOutputPath(it, "-extended")
-						} ?: document.name
+						val sourceName = document.filePath ?: document.name
 						val disabledTypes = if (tsInfo.hasDocumentTimestamp) {
 							setOf(TimestampType.SIGNATURE_TIMESTAMP)
 						} else {
 							emptySet()
 						}
-						val coveringJob = RenewalJobAssigner.findCoveringJob(
-							suggestedOutput, cachedRenewalJobs,
-						)
 						val ready = TimestampDialogState.Ready(
 							timestampType = TimestampType.ARCHIVAL_TIMESTAMP,
 							disabledTypes = disabledTypes,
-							outputPath = suggestedOutput,
-							addToRenewalJob = coveringJob != null,
-							coveringRenewalJobName = coveringJob?.name,
+							suggestedName = SigningViewModel.suggestedSaveName(sourceName, "-extended"),
+							inputDirectory = document.filePath?.let { SigningViewModel.parentDirectory(it) },
 						)
 						lastReadyState = ready
 						_state.value = ready
@@ -190,10 +185,6 @@ class TimestampViewModel(
 	/**
 	 * Apply a field-level transformation to the current [TimestampDialogState.Ready] state.
 	 *
-	 * After applying the transform, renewal job coverage is recomputed for the
-	 * (possibly changed) output path. When the output path is covered by an
-	 * existing job, [TimestampDialogState.Ready.addToRenewalJob] is forced to `true`.
-	 *
 	 * Has no effect when the state is not [TimestampDialogState.Ready].
 	 *
 	 * @param transform Function that receives the current ready state and returns the updated one.
@@ -201,18 +192,7 @@ class TimestampViewModel(
 	fun updateState(transform: (TimestampDialogState.Ready) -> TimestampDialogState.Ready) {
 		_state.update { current ->
 			if (current is TimestampDialogState.Ready) {
-				val transformed = transform(current)
-				val coveringJob = RenewalJobAssigner.findCoveringJob(
-					transformed.outputPath, cachedRenewalJobs,
-				)
-				val updated = if (coveringJob != null) {
-					transformed.copy(
-						coveringRenewalJobName = coveringJob.name,
-						addToRenewalJob = true,
-					)
-				} else {
-					transformed.copy(coveringRenewalJobName = null)
-				}
+				val updated = transform(current)
 				lastReadyState = updated
 				updated
 			} else {
@@ -222,7 +202,8 @@ class TimestampViewModel(
 	}
 
 	/**
-	 * Execute the extension operation with the current form state.
+	 * Execute the extension operation, writing the extended document to [outputPath] — the
+	 * destination the user chose in the native save dialog.
 	 *
 	 * Transitions from [TimestampDialogState.Ready] through [TimestampDialogState.Extending]
 	 * to either [TimestampDialogState.Success], [TimestampDialogState.RevocationWarning],
@@ -230,16 +211,20 @@ class TimestampViewModel(
 	 *
 	 * When extending to B-LT and the operation fails with a revocation error,
 	 * the ViewModel checks whether a B-T fallback is possible (the document must not
-	 * already contain LT-level data).
+	 * already contain LT-level data); the fallback reuses [outputPath].
+	 *
+	 * @param outputPath Absolute destination path for the extended document.
 	 */
-	fun extend() {
+	fun extend(outputPath: String) {
 		val ready = _state.value as? TimestampDialogState.Ready ?: return
 		val document = currentDocument ?: return
 		val config = resolvedConfig ?: return
 
+		pendingOutputPath = outputPath
+		val coveringJob = RenewalJobAssigner.findCoveringJob(outputPath, cachedRenewalJobs)
 		addToRenewalJobFlag = ready.addToRenewalJob &&
 				ready.timestampType == TimestampType.ARCHIVAL_TIMESTAMP &&
-				ready.coveringRenewalJobName == null
+				coveringJob == null
 		_state.value = TimestampDialogState.Extending
 
 		viewModelScope.launch {
@@ -284,7 +269,7 @@ class TimestampViewModel(
 						}
 					},
 					ifRight = { result ->
-						val writeError = writeBytesToPath(ready.outputPath, result.outputBytes)
+						val writeError = writeBytesToPath(outputPath, result.outputBytes)
 						if (writeError != null) {
 							_state.value = TimestampDialogState.Error(
 								message = "Failed to write extended document",
@@ -293,11 +278,11 @@ class TimestampViewModel(
 							return@fold
 						}
 						_state.value = TimestampDialogState.Success(
-							outputFile = ready.outputPath,
+							outputFile = outputPath,
 							newLevel = result.newSignatureLevel,
 							warnings = result.annotatedWarnings,
 						)
-						populateRenewalOfferIfNeeded(ready.outputPath)
+						populateRenewalOfferIfNeeded(outputPath)
 					},
 				)
 			}
@@ -314,7 +299,7 @@ class TimestampViewModel(
 		if (_state.value !is TimestampDialogState.RevocationWarning) return
 		val document = currentDocument ?: return
 		val config = resolvedConfig ?: return
-		val ready = lastReadyState ?: return
+		val outputPath = pendingOutputPath ?: return
 
 		_state.value = TimestampDialogState.Extending
 
@@ -336,7 +321,7 @@ class TimestampViewModel(
 						)
 					},
 					ifRight = { result ->
-						val writeError = writeBytesToPath(ready.outputPath, result.outputBytes)
+						val writeError = writeBytesToPath(outputPath, result.outputBytes)
 						if (writeError != null) {
 							_state.value = TimestampDialogState.Error(
 								message = "Failed to write extended document",
@@ -345,7 +330,7 @@ class TimestampViewModel(
 							return@fold
 						}
 						_state.value = TimestampDialogState.Success(
-							outputFile = ready.outputPath,
+							outputFile = outputPath,
 							newLevel = result.newSignatureLevel,
 							warnings = result.annotatedWarnings,
 						)
@@ -379,6 +364,7 @@ class TimestampViewModel(
 		resolvedConfig = null
 		activeProfileName = null
 		lastReadyState = null
+		pendingOutputPath = null
 		documentAlreadyContainsLtData = false
 	}
 

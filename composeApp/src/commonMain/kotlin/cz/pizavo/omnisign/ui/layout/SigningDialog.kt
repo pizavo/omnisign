@@ -428,14 +428,10 @@ private fun SigningFormContent(
 						onCheckedChange = { checked ->
 							onFieldChange { it.copy(addToRenewalJob = checked) }
 						},
-						enabled = state.coveringRenewalJobName == null,
 					)
 					Text(text = "Add to renewal job", style = LumoTheme.typography.body2)
 					InfoTooltip(
-						text = if (state.coveringRenewalJobName != null)
-							"Already covered by \"${state.coveringRenewalJobName}\""
-						else
-							"Set up automatic archival renewal after signing",
+						text = "Offer to set up automatic archival renewal after signing",
 					)
 				}
 			}
@@ -471,14 +467,6 @@ private fun SigningFormContent(
 				modifier = Modifier.weight(1f),
 			)
 		}
-		
-		UnderlinedTextField(
-			value = state.outputPath,
-			onValueChange = { v -> onFieldChange { it.copy(outputPath = v) } },
-			singleLine = true,
-			label = { Text("Output file path") },
-			modifier = Modifier.fillMaxWidth(),
-		)
 	}
 }
 
@@ -618,7 +606,7 @@ private fun SigningDialogFooter(
 				Button(
 					text = "Sign",
 					variant = ButtonVariant.Primary,
-					enabled = state.outputPath.isNotBlank() && state.selectedAlias != null,
+					enabled = state.selectedAlias != null,
 					onClick = onSign,
 				)
 			}

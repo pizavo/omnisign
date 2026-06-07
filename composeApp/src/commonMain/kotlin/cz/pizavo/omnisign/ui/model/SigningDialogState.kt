@@ -64,15 +64,13 @@ sealed interface SigningDialogState {
 	 * @property reason Reason for signing.
 	 * @property location Location of signing.
 	 * @property contactInfo Contact information of the signer.
-	 * @property outputPath Suggested output file path.
+	 * @property suggestedName Default file-name stem (no extension) for the save dialog, e.g. `contract-signed`.
+	 * @property inputDirectory Source-document directory used as the save dialog's initial location; `null` on the web target.
 	 * @property configHashAlgorithm Default hash algorithm from the resolved configuration.
 	 * @property configAddSignatureTimestamp Whether the resolved config enables signature timestamps.
 	 * @property configAddArchivalTimestamp Whether the resolved config enables archival timestamps.
 	 * @property disabledHashAlgorithms Hash algorithms that are disabled in the current config.
-	 * @property addToRenewalJob Whether the output file should be added to a renewal job after a successful LTA signing.
-	 * @property coveringRenewalJobName Name of the existing renewal job that already covers [outputPath],
-	 *   or `null` when no coverage exists. When non-null, the "Add to renewal job" checkbox is
-	 *   forced checked and disabled because the file will be renewed regardless.
+	 * @property addToRenewalJob Whether to offer adding the output file to a renewal job after a successful LTA signing.
 	 * @property refreshing `true` while a background PKCS#11 discovery cycle is in flight after the
 	 *   dialog has already opened — typically triggered by a PC/SC reader-state event (card inserted /
 	 *   removed, reader plugged / unplugged).  The UI binds a small inline indicator to this flag and
@@ -90,13 +88,13 @@ sealed interface SigningDialogState {
 		val reason: String = "",
 		val location: String = "",
 		val contactInfo: String = "",
-		val outputPath: String = "",
+		val suggestedName: String = "",
+		val inputDirectory: String? = null,
 		val configHashAlgorithm: HashAlgorithm = HashAlgorithm.SHA256,
 		val configAddSignatureTimestamp: Boolean = false,
 		val configAddArchivalTimestamp: Boolean = false,
 		val disabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
 		val addToRenewalJob: Boolean = false,
-		val coveringRenewalJobName: String? = null,
 		val refreshing: Boolean = false,
 	) : SigningDialogState {
 

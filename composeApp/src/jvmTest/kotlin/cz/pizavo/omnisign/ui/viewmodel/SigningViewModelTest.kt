@@ -59,6 +59,9 @@ class SigningViewModelTest : FunSpec({
 	fun sampleDoc(filePath: String? = "/tmp/test.pdf", name: String = "test.pdf"): PdfDocumentInfo =
 		PdfDocumentInfo(name = name, data = ByteArray(0), pageCount = 1, filePath = filePath)
 
+	// Destination the save dialog would return; signing writes the produced bytes here.
+	val signedPath = "/tmp/test-signed.pdf"
+
 	val sampleCert = AvailableCertificateInfo(
 		alias = "test-cert",
 		subjectDN = "CN=Test",
@@ -182,7 +185,7 @@ class SigningViewModelTest : FunSpec({
 			state.certificates shouldHaveSize 1
 			state.certificates.first().alias shouldBe "test-cert"
 			state.selectedAlias.shouldBeNull()
-			state.outputPath shouldContain "-signed"
+			state.suggestedName shouldContain "-signed"
 			state.configHashAlgorithm shouldBe HashAlgorithm.SHA256
 		}
 	}
@@ -254,7 +257,7 @@ class SigningViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(selectedAlias = "test-cert") }
-			vm.sign()
+			vm.sign(signedPath)
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
@@ -275,7 +278,7 @@ class SigningViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(selectedAlias = "test-cert") }
-			vm.sign()
+			vm.sign(signedPath)
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Error>()
@@ -299,12 +302,17 @@ class SigningViewModelTest : FunSpec({
 		}
 	}
 
-	test("buildSuggestedOutputPath inserts suffix before extension") {
-		SigningViewModel.buildSuggestedOutputPath("/tmp/doc.pdf", "-signed") shouldBe "/tmp/doc-signed.pdf"
+	test("suggestedSaveName strips directory and extension and appends the suffix") {
+		SigningViewModel.suggestedSaveName("/tmp/doc.pdf", "-signed") shouldBe "doc-signed"
 	}
 
-	test("buildSuggestedOutputPath handles no extension") {
-		SigningViewModel.buildSuggestedOutputPath("/tmp/doc", "-signed") shouldBe "/tmp/doc-signed"
+	test("suggestedSaveName handles a bare name without extension") {
+		SigningViewModel.suggestedSaveName("doc", "-signed") shouldBe "doc-signed"
+	}
+
+	test("parentDirectory returns the directory or null for a bare name") {
+		SigningViewModel.parentDirectory("/tmp/doc.pdf") shouldBe "/tmp"
+		SigningViewModel.parentDirectory("doc.pdf").shouldBeNull()
 	}
 
 	test("open derives addSignatureTimestamp from config level B-LT") {
@@ -352,7 +360,7 @@ class SigningViewModelTest : FunSpec({
 			vm.open(sampleDoc())
 			advanceUntilIdle()
 			vm.updateState { it.copy(selectedAlias = "test-cert") }
-			vm.sign()
+			vm.sign(signedPath)
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.RevocationWarning>()
@@ -380,7 +388,7 @@ class SigningViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(selectedAlias = "test-cert", addSignatureTimestamp = false, addArchivalTimestamp = false) }
-			vm.sign()
+			vm.sign(signedPath)
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
@@ -411,7 +419,7 @@ class SigningViewModelTest : FunSpec({
 			vm.open(sampleDoc())
 			advanceUntilIdle()
 			vm.updateState { it.copy(selectedAlias = "test-cert") }
-			vm.sign()
+			vm.sign(signedPath)
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.RevocationWarning>()
@@ -446,7 +454,7 @@ class SigningViewModelTest : FunSpec({
 			vm.open(sampleDoc())
 			advanceUntilIdle()
 			vm.updateState { it.copy(selectedAlias = "test-cert") }
-			vm.sign()
+			vm.sign(signedPath)
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.RevocationWarning>()
@@ -482,7 +490,7 @@ class SigningViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(selectedAlias = "test-cert", addToRenewalJob = true) }
-			vm.sign()
+			vm.sign(signedPath)
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
@@ -511,7 +519,7 @@ class SigningViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(selectedAlias = "test-cert") }
-			vm.sign()
+			vm.sign(signedPath)
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
@@ -519,7 +527,7 @@ class SigningViewModelTest : FunSpec({
 		}
 	}
 
-	test("covered output path auto-checks addToRenewalJob and skips offer dialog") {
+	test("signing to a covered output path skips the renewal offer") {
 		runTest(testDispatcher) {
 			val existingJob = RenewalJob(
 				name = "archive",
@@ -550,12 +558,10 @@ class SigningViewModelTest : FunSpec({
 			vm.open(sampleDoc())
 			advanceUntilIdle()
 
-			val ready = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
-			ready.addToRenewalJob shouldBe true
-			ready.coveringRenewalJobName shouldBe "archive"
+			vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
 
-			vm.updateState { it.copy(selectedAlias = "test-cert") }
-			vm.sign()
+			vm.updateState { it.copy(selectedAlias = "test-cert", addToRenewalJob = true) }
+			vm.sign(signedPath)
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
@@ -587,7 +593,7 @@ class SigningViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(selectedAlias = "test-cert", addToRenewalJob = true) }
-			vm.sign()
+			vm.sign(signedPath)
 			advanceUntilIdle()
 
 			vm.pendingRenewalOffer.value.shouldNotBeNull()
