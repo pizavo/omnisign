@@ -2,6 +2,8 @@
 sidebar_position: 5
 ---
 
+import AppIcon from '@site/src/components/AppIcon';
+
 # Extending Signatures (Timestamping)
 
 This guide explains how to extend an already-signed PDF to a higher PAdES level using the
@@ -22,12 +24,12 @@ Signature Timestamp (B-LT) is requested, but revocation data cannot be obtained.
 
 ## 1. Open a signed PDF
 
-Open a signed PDF using the toolbar folder icon, which opens a system file picker filtered to
+Open a signed PDF using the toolbar folder icon <AppIcon name="folder" color="folder" label="Open file" />, which opens a system file picker filtered to
 PDF files.
 
 ## 2. Open the timestamp dialog
 
-Click the **stamp icon** in the center of the toolbar. The button is only enabled when a
+Click the **stamp icon** <AppIcon name="stamp" label="Timestamp" /> in the center of the toolbar. The button is only enabled when a
 document is loaded.
 
 ## 3. Choose the timestamp type
@@ -45,7 +47,7 @@ Select the operation type from the dropdown:
 :::note
 Some timestamp types may be disabled depending on the document's current signature level.
 For example, if the document already has a document timestamp, the Signature Timestamp
-option is greyed out because DSS would reject the level degradation.
+option is grayed out because DSS would reject the level degradation.
 :::
 
 ## 4. Configure the output path

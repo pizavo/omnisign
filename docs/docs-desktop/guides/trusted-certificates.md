@@ -2,6 +2,8 @@
 sidebar_position: 7
 ---
 
+import AppIcon from '@site/src/components/AppIcon';
+
 # Trusted Certificates Panel
 
 The Trusted Certificates panel provides a read-only overview of all CA and TSA certificates
@@ -10,7 +12,7 @@ profile and the global configuration into a single view.
 
 ## Opening the panel
 
-Click the **certificate icon** in the right sidebar to toggle the Trusted Certificates panel.
+Click the **certificate icon** <AppIcon name="certificate" label="Trusted Certificates panel" /> in the right sidebar to toggle the Trusted Certificates panel.
 
 ![Trusted Certificates panel](/img/desktop/trusted-certs-panel.avif)
 

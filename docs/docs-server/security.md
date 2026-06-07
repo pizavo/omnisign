@@ -12,7 +12,7 @@ controls; the [Configuration](configuration) page has the exact field syntax for
 
 `listen.host` defaults to `127.0.0.1`, reachable only from the same machine. The moment you bind to a
 **non-loopback** host (`0.0.0.0` or a specific IP), the server **requires** either a [`tls:`](#tls--hsts)
-block or [`proxy.enabled: true`](#reverse-proxy) — otherwise startup is refused, because plain HTTP
+block or [`proxy.enabled: true`](#reverse-proxy). Otherwise startup is refused: plain HTTP
 on a network-reachable interface would expose JWT bearer tokens, OIDC callback parameters, and refresh
 tokens to any on-path observer.
 
@@ -27,7 +27,7 @@ come from environment variables (see [Secrets](configuration#secrets)); a `.p12`
 as PKCS#12, anything else as JKS.
 
 Enable **HSTS** (`tls.hsts`) only when *all* traffic is HTTPS — sending it over plain HTTP can lock
-users out. Start with a short `maxAgeSeconds` (e.g. 300) and raise to a year once stable. Behind a
+users out. Start with a short `maxAgeSeconds` (e.g., 300) and raise to a year once stable. Behind a
 TLS-terminating proxy, let the proxy inject HSTS instead.
 
 ## CORS

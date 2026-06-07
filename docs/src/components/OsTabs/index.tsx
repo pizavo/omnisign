@@ -1,8 +1,9 @@
 import type {ReactNode} from 'react';
 import Tabs from '@theme/Tabs';
+import type {Props as TabsProps} from '@theme/Tabs';
 
 interface OsTabsProps {
-  children: ReactNode;
+  children: TabsProps['children'];
 }
 
 /**

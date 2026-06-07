@@ -10,7 +10,7 @@ state and produce structured reports intended for ad-hoc troubleshooting and bug
 ## `diagnose pkcs11`
 
 Print a verbose, ground-truth PKCS#11 discovery report for the current host. Use it when a smart
-card or token is not showing up in `certificates list` or the signing flow, or to compare behaviour
+card or token is not showing up in `certificates list` or the signing flow, or to compare behavior
 across machines.
 
 ```bash
@@ -49,7 +49,7 @@ omnisign diagnose pkcs11 > pkcs11-diagnostic.txt
 
 :::tip
 If a candidate library is listed but its probe shows `CRASHED` or `TIMED OUT`, the middleware is
-present but failing to initialise — often a 32-bit/64-bit mismatch or a missing native dependency.
+present but failing to initialize — often a 32-bit/64-bit mismatch or a missing native dependency.
 A library that is missing entirely usually means it needs registering with
 [`config pkcs11 add`](../configuration/pkcs11) or dropping into the drop directory.
 :::

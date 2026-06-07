@@ -3,6 +3,7 @@ sidebar_position: 2
 ---
 
 import useBaseUrl from '@docusaurus/useBaseUrl';
+import AppIcon from '@site/src/components/AppIcon';
 
 # Validating Signatures
 
@@ -10,27 +11,40 @@ This guide explains how to validate electronically signed PDF documents using Om
 
 ## 1. Open a signed PDF
 
-Open a signed PDF file using the toolbar folder icon, which opens a system file picker
+Open a signed PDF file using the toolbar folder icon <AppIcon name="folder" color="folder" label="Open file" />, which opens a system file picker
 filtered to PDF files.
 
 ## 2. Open the validation panel
 
-Click the **signature icon** in the left sidebar to open the Signatures panel.
-When the panel first opens, it shows a prompt to use the **refresh** button (↻) in the
+Click the **signature icon** <AppIcon name="signature" label="Signatures panel" /> in the left sidebar to open the Signatures panel.
+When the panel first opens, it shows a prompt to use the **refresh** button <AppIcon name="refresh" label="Refresh" /> in the
 panel header to retrieve and validate signature information. Click the refresh button to
 start the validation process.
 
 You can click refresh again at any time to re-validate the document (e.g., after changing
 trust settings or adding trusted certificates).
 
+If a trusted list the active configuration depends on is being downloaded or refreshed when you
+validate, a **Loading trusted lists…** progress bar appears at the top of the panel and the refresh
+action waits until it finishes. The bar is indeterminate until the EU LOTL has been fetched and the
+member-state and custom lists are known, then becomes a determinate *"loaded of N"* bar.
+
 <img src={useBaseUrl('/img/desktop/validation-refresh.avif')} alt="Refreshing the Signatures panel to validate the document" />
 
 ## 3. Read the results
 
 The panel opens with an **overall result badge** — `VALID`, `INVALID`, or `INDETERMINATE`
-(or `NO SIGNATURES` when the document carries none) — with a [trust-tier](#trust-levels) rosette
-beside it when the signatures are qualified. Below the badge are the **document name** and
-**validation time**, followed by collapsible sections.
+(or `NO SIGNATURES` when the document carries none). Beside it are a [trust-tier](#trust-levels)
+rosette when the signatures are qualified and an [EU-LOTL emblem](#eu-lotl-membership) showing
+whether their trust anchors are on the EU List of Trusted Lists. Below the badge are the
+**document name** and **validation time**, followed by collapsible sections.
+
+:::tip Selecting and copying
+The whole report is selectable — drag to highlight any part and press `Ctrl/Cmd+C`, or
+right-click and choose **Copy**. Label–value rows copy as a single `label: value` line so a
+pasted selection stays readable, and only currently expanded sections contribute text. Warning
+and error messages are selectable in the same way.
+:::
 
 ### Signatures
 
@@ -39,16 +53,20 @@ Expand a signature to see:
 
 - **Indication** / **Sub-indication** — `PASSED`, `FAILED`, or `INDETERMINATE`, plus the ETSI
   sub-indication when present.
-- **Signed by**, **Level** (e.g. BASELINE-LTA), and signing **Time**.
+- **Signed by**, **Level** (e.g., BASELINE-LTA), and signing **Time**.
 - **Qualification** and **Trust** tier (with a rosette for qualified signatures).
 - **Hash algorithm** and **Encryption** algorithm.
 - **Errors**, **Warnings**, **Qualification Errors**, and **Qualification Warnings** — shown when
   the validation produced any.
 
 Each signature has a nested **Certificate** section (subject, issuer, serial number, validity
-window, key usages, public-key algorithm, and SHA-256 fingerprint) and, when the signature carries
-a signature timestamp, a nested **Signature timestamp** section (production time, qualification, and
-TSA).
+window, key usages, public-key algorithm, and SHA-256 fingerprint). When the signature carries a
+signature timestamp, it also has a nested **Signature timestamp** section (production time,
+qualification, and TSA), expanded by default.
+
+A signature's header carries up to two emblems: the qualification [rosette](#trust-levels) first,
+then the [EU-LOTL emblem](#eu-lotl-membership). The two are independent — a signature can be on the
+EU LOTL without being qualified, and vice versa.
 
 ![Expanded signature accordion](/img/desktop/validation-signature-accordion.avif)
 
@@ -56,18 +74,20 @@ TSA).
 
 When the document contains document-level timestamps — for example, the archival timestamps in a
 B-LTA file — a **Document Timestamps (N)** group lists each one with its indication, production
-time, qualification, TSA, and any errors or warnings.
+time, qualification, TSA, and any errors or warnings. A timestamp whose TSA is anchored on the EU
+LOTL shows the yellow [EU-LOTL emblem](#eu-lotl-membership) in its header. Timestamps never show
+the off-LOTL alert: off-LOTL commercial TSAs are common and perfectly valid.
 
 ### Trusted list warnings
 
-If validation surfaced any trusted-list issues, a **Trusted List Warnings** section appears at the
+If validation surfaces any trusted-list issues, a **Trusted List Warnings** section appears at the
 bottom of the report.
 
 ## 4. Export a validation report
 
-Click the **download icon** (⬇) in the panel header to open the export format menu.
+Click the **download icon** <AppIcon name="download" label="Export report" /> in the panel header to open the export format menu.
 Each entry shows the format name, a description, and the file extension. Formats that
-require raw DSS report data are greyed out when the data is not available.
+require raw DSS report data are grayed out when the data is not available.
 
 ![Validation report export menu](/img/desktop/validation-export-menu.avif)
 
@@ -78,9 +98,25 @@ require raw DSS report data are greyed out when the data is not available.
 | XML — Detailed Report        | `.xml`    | ETSI EN 319 102-1 detailed report with per-check building-block results.           |
 | XML — Simple Report          | `.xml`    | DSS simple report — concise per-signature summary in XML.                          |
 | XML — Diagnostic Data        | `.xml`    | Full low-level cryptographic evidence (certificates, revocation data, timestamps). |
-| XML — ETSI Validation Report | `.xml`    | ETSI TS 119 102-2 SVR — standardised interoperable validation report.              |
+| XML — ETSI Validation Report | `.xml`    | ETSI TS 119 102-2 SVR — standardized interoperable validation report.              |
 
-After selecting a format, a save dialog lets you choose the output location.
+The suggested file name embeds the **source document** and the **report kind**, so the variants no
+longer overwrite one another (previously every XML format defaulted to `validation-report.xml`).
+For `contract.pdf` the defaults are:
+
+| Format                       | Suggested name            |
+|------------------------------|---------------------------|
+| Plain Text                   | `contract.report.txt`     |
+| JSON                         | `contract.report.json`    |
+| XML — Simple Report          | `contract.simple.xml`     |
+| XML — Detailed Report        | `contract.detailed.xml`   |
+| XML — Diagnostic Data        | `contract.diagnostic.xml` |
+| XML — ETSI Validation Report | `contract.etsi.xml`       |
+
+The Plain Text report renders each signature's embedded signature and archival timestamps inline,
+followed by a separate **Document Timestamps** block. Both the text and JSON reports record EU-LOTL
+membership (an `EU LOTL: Yes` line, or `euLotlBacked` in JSON) on every signature and timestamp that
+has it. After selecting a format, a save dialog lets you choose the output location.
 
 ## Understanding results
 
@@ -94,10 +130,8 @@ After selecting a format, a save dialog lets you choose the output location.
 Each signature's trust tier is shown with a rosette icon, and an overall rosette appears next to
 the result badge:
 
-- **Qualified (QSCD)** — a qualified certificate whose private key is held on a Qualified
-  Signature/Seal Creation Device — the strongest eIDAS tier.
-- **Qualified** — the certificate meets eIDAS qualified requirements (issued under the EU trust
-  framework), but QSCD status was not confirmed.
+- <AppIcon name="rosette_check" color="qualifiedQscd" label="Qualified (QSCD) rosette"></AppIcon> **Qualified (QSCD)** — a qualified certificate whose private key is held on a Qualified Signature/Seal Creation Device — the strongest eIDAS tier.
+- <AppIcon name="rosette" color="qualified" label="Qualified rosette"></AppIcon> **Qualified** — the certificate meets eIDAS qualified requirements (issued under the EU trust framework), but QSCD status was not confirmed.
 - **Not Qualified** — the certificate is not in the EU trust framework (common for institutional
   certificates); no rosette is shown.
 
@@ -105,6 +139,32 @@ the result badge:
 A signature can be cryptographically valid (PASSED) even when the certificate is not qualified.
 Qualification relates to eIDAS legal standing, not cryptographic strength.
 :::
+
+### EU LOTL membership
+
+The **EU-LOTL emblem** is a separate indicator from the qualification rosette. It reflects only
+*where the trust anchor comes from*. The question is whether the signing certificate (or a
+timestamp's TSA) chains up to a list on the **EU List of Trusted Lists** — the LOTL, or a national
+list that is a member of it — rather than to a user-added custom trusted list. It is independent of
+both the qualification tier and overall validity.
+
+- <AppIcon name="eu" color="euStars" label="On the EU LOTL"></AppIcon> **Yellow circle of stars** — the trust anchor is on the EU LOTL.
+- <AppIcon name="eu_crossed" color="error" label="Not on the EU LOTL"></AppIcon> **Red crossed emblem** — the trust anchor is **not** on the EU LOTL. This appears only when the **Alert if not on EU LOTL** setting is on (see below); otherwise off-LOTL signatures show no emblem at all.
+
+The overall badge follows the same rule against the whole document: it shows the yellow emblem when
+**every** signature is on the LOTL, and — when the alert is on — the red crossed emblem when **any**
+signature is not.
+
+#### Alert if not on EU LOTL
+
+By default, off-LOTL signatures are shown without any emblem. Turn on
+**Settings → Validation → Policy & Trust → Alert if not on EU LOTL** to flag every off-LOTL
+signature with the red crossed emblem. This is useful when you only accept EU-recognized trust
+anchors. The alert can also be set per profile (inherit / on / off); see
+[Profiles → Validation overrides](profiles.md#validation-overrides).
+
+The alert depends on EU LOTL usage: when **EU LOTL** is disabled, the switch is grayed out (its value
+is preserved), since there is no LOTL to check membership against. This alert never flags timestamps.
 
 ### Common warnings
 

@@ -2,11 +2,13 @@
 sidebar_position: 6
 ---
 
+import AppIcon from '@site/src/components/AppIcon';
+
 # Troubleshooting & Support
 
 If something goes wrong, the desktop app can produce a diagnostic log archive
 you can attach to a bug report. The log and debug-logging controls described first
-live in the **Help** panel — open it from the icon at the bottom of the right-hand
+live in the **Help** panel — open it from the <AppIcon name="help" label="Help panel" /> icon at the bottom of the right-hand
 sidebar. A dedicated section at the end covers the most common hardware-token problem.
 
 ## The Support section
@@ -27,7 +29,7 @@ to report a problem:
 
 ## Enabling debug logging
 
-By default the app only logs warnings and errors. To capture detail for a bug
+By default, the app only logs warnings and errors. To capture detail for a bug
 report:
 
 1. Turn on **Debug logging**. It applies immediately — no restart — and is
@@ -36,7 +38,7 @@ report:
 3. Use **Export logs** and attach the `.zip` to your report.
 4. Turn **Debug logging** back off when you're done.
 
-While debug logging is enabled, a small dot appears on the Help icon in the
+While debug logging is enabled, a small dot appears on the Help icon <AppIcon name="help" label="Help panel" /> in the
 sidebar as a reminder, even when the panel is closed.
 
 ![Debug-logging indicator dot on the Help icon](/img/desktop/help-debug-dot-icon.avif)
@@ -52,10 +54,10 @@ otherwise. It is only available while **Debug logging** is on.
 
 Logs rotate daily and are kept for 30 days. The directory is:
 
-| Platform | Location                                            |
-|----------|-----------------------------------------------------|
-| Windows  | `%LOCALAPPDATA%\omnisign\logs`                      |
-| macOS    | `~/Library/Logs/omnisign`                           |
+| Platform | Location                                                    |
+|----------|-------------------------------------------------------------|
+| Windows  | `%LOCALAPPDATA%\omnisign\logs`                              |
+| macOS    | `~/Library/Logs/omnisign`                                   |
 | Linux    | `$XDG_STATE_HOME/omnisign` (else `~/.local/state/omnisign`) |
 
 The current log is `omnisign.log`; older days are gzip-compressed
@@ -74,8 +76,8 @@ A useful report includes:
 ## PKCS#11 tokens not detected
 
 When a smart card or USB token doesn't appear in the signing dialog's certificate dropdown,
-open the **PKCS#11 diagnostic** dialog: in the signing dialog, click the **info icon** in the
-header, or use the **Show diagnostic info** link in the empty-token banner (it also appears on
+open the **PKCS#11 diagnostic** dialog. Open it from the **info icon** <AppIcon name="alert_info" label="Diagnostic info" /> in the signing dialog
+header, or from the **Show diagnostic info** link in the empty-token banner (which also appears on
 the "no tokens detected" rescan toast). The dialog has three read-only sections:
 
 - **PC/SC readers** — the card readers the OS reports, including the card ATR when one is
@@ -95,14 +97,14 @@ Common fixes:
 2. **Rescan after installing middleware.** If you installed or changed PKCS#11 middleware while
    OmniSign was running, use **Rescan tokens** in the signing dialog header — no card or reader
    event would otherwise trigger re-detection.
-3. **Register the library path.** If the middleware isn't advertised to the OS (for example,
-   SafeNet Authentication Client on Windows registers CSP/minidriver entries but no PKCS#11
-   path), add its library under **Settings → Tokens → PKCS#11 Libraries**, or copy the library
-   file into the **drop directory** shown there and in the diagnostic dialog.
+3. **Register the library path.** If the middleware isn't advertised to the OS, add its library
+   under **Settings → Tokens → PKCS#11 Libraries**, or copy the library file into the **drop
+   directory** (shown there and in the diagnostic dialog). SafeNet Authentication Client on Windows,
+   for example, registers CSP/minidriver entries but no PKCS#11 path.
 4. **Raise the probe timeout for slow middleware.** If the diagnostic shows a candidate library
    whose probe *times out* on a low-powered machine, increase **Probe timeout** under
    **Settings → Tokens → PKCS#11 Libraries**. This only helps middleware that is merely slow to
    initialize — a library that always times out regardless is likely incompatible, so remove it
    and rely on a registered driver (such as OpenSC) instead.
 5. **Load the key from a file instead.** If you have a `.p12` / `.pfx` export, use the import
-   button in the signing dialog to sign without the token.
+   button <AppIcon name="upload" label="Import PKCS#12 file" /> in the signing dialog to sign without the token.

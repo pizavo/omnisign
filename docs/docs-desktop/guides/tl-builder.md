@@ -44,8 +44,8 @@ Within each TSP card, click **Add Service** to register a trust service. Each se
 | Field                  | Description                                                                  |
 |------------------------|------------------------------------------------------------------------------|
 | **Name**               | Human-readable name of the service.                                          |
-| **Type identifier**    | ETSI service type URI. A dropdown provides common hints (e.g. CA/QC, TSA).   |
-| **Status**             | ETSI service status URI. A dropdown provides common hints (e.g. granted).    |
+| **Type identifier**    | ETSI service type URI. A dropdown provides common hints (e.g., CA/QC, TSA).  |
+| **Status**             | ETSI service status URI. A dropdown provides common hints (e.g., granted).   |
 | **Certificate**        | Path to the PEM or DER certificate file. Use the file picker to browse.      |
 
 :::tip

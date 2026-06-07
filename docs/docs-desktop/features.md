@@ -2,6 +2,8 @@
 sidebar_position: 3
 ---
 
+import AppIcon from '@site/src/components/AppIcon';
+
 # Features
 
 | Feature                                     | Supported |
@@ -10,9 +12,12 @@ sidebar_position: 3
 | Page navigation and zoom (25 %–400 %)       |     ✅     |
 | Sign PDF documents (PAdES B / B-LT / B-LTA) |     ✅     |
 | Validate signed PDFs (PAdES B–LTA)          |     ✅     |
+| EU LOTL emblems (signatures & timestamps)   |     ✅     |
+| Off-LOTL alert (global + per-profile)       |     ✅     |
 | Timestamp extension (B-LT / B-LTA)          |     ✅     |
 | Revocation warning handling                 |     ✅     |
 | Export validation report (TXT, JSON, XML)   |     ✅     |
+| Selectable / copyable report text           |     ✅     |
 | Configuration profiles (CRUD)               |     ✅     |
 | Settings dialog (IntelliJ-style categories) |     ✅     |
 | Trusted certificates overview panel         |     ✅     |
@@ -30,6 +35,7 @@ sidebar_position: 3
 | Trusted certificate management (CA/TSA)     |     ✅     |
 | Configuration export / import (backup)      |     ✅     |
 | Manual trusted-list refresh                 |     ✅     |
+| Trusted-list load progress bar              |     ✅     |
 | Support log export & debug logging          |     ✅     |
 | Native vs custom title bar (Linux)          |     ✅     |
 
@@ -37,13 +43,13 @@ sidebar_position: 3
 
 All primary actions are accessible from the toolbar at the top of the window:
 
-| Button        | Location | Description                                                     |
-|---------------|----------|-----------------------------------------------------------------|
-| 📂 Open file  | Left     | Opens a system file picker for PDF files.                       |
-| ✒️ Sign       | Centre   | Opens the signing dialog (requires a loaded PDF).               |
-| 🕐 Timestamp  | Centre   | Opens the timestamp / extension dialog (requires a loaded PDF). |
-| ⚙️ Settings   | Right    | Opens the global settings dialog.                               |
-| 🌙 / ☀️ Theme | Right    | Toggles between dark and light theme.                           |
+| Button                                                                                        | Location | Description                                                     |
+|-----------------------------------------------------------------------------------------------|----------|-----------------------------------------------------------------|
+| <AppIcon name="folder" color="folder" label="Open file" /> Open file                          | Left     | Opens a system file picker for PDF files.                       |
+| <AppIcon name="sign" label="Sign" /> Sign                                                     | Center   | Opens the signing dialog (requires a loaded PDF).               |
+| <AppIcon name="stamp" label="Timestamp" /> Timestamp                                          | Center   | Opens the timestamp / extension dialog (requires a loaded PDF). |
+| <AppIcon name="settings" label="Settings" /> Settings                                         | Right    | Opens the global settings dialog.                               |
+| <AppIcon name="moon" label="Dark theme" /> / <AppIcon name="sun" label="Light theme" /> Theme | Right    | Toggles between dark and light theme.                           |
 
 ![OmniSign toolbar](/img/desktop/toolbar.avif)
 
@@ -51,9 +57,9 @@ All primary actions are accessible from the toolbar at the top of the window:
 
 ![Right-hand sidebar panel open](/img/desktop/sidebar-panel-open.avif)
 
-| Panel                | Side  | Description                                                |
-|----------------------|-------|------------------------------------------------------------|
-| Signatures           | Left  | Validate and inspect signatures in the loaded document.    |
-| Profiles             | Right | Create, edit, activate, and delete configuration profiles. |
-| Trusted Certificates | Right | Read-only overview of trusted CA/TSA certificates.         |
-| Help                 | Right | Repo & docs links, plus Support tools (log export, debug logging). |
+| Panel                                                                                  | Side  | Description                                                        |
+|----------------------------------------------------------------------------------------|-------|--------------------------------------------------------------------|
+| <AppIcon name="signature" label="Signatures panel" /> Signatures                       | Left  | Validate and inspect signatures in the loaded document.            |
+| <AppIcon name="profile" label="Profiles panel" /> Profiles                             | Right | Create, edit, activate, and delete configuration profiles.         |
+| <AppIcon name="certificate" label="Trusted Certificates panel" /> Trusted Certificates | Right | Read-only overview of trusted CA/TSA certificates.                 |
+| <AppIcon name="help" label="Help panel" /> Help                                        | Right | Repo & docs links, plus Support tools (log export, debug logging). |

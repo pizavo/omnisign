@@ -6,7 +6,7 @@ sidebar_position: 2
 
 Profiles let you store sets of configuration values that can be activated per-operation
 with `--profile <name>`. This is useful when you work with multiple timestamp servers,
-different signature levels, or organisation-specific validation policies.
+different signature levels, or organization-specific validation policies.
 
 ## Profile management
 

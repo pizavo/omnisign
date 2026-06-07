@@ -79,11 +79,13 @@ Overall:       ✅ VALID
 │     Indication:    ✅ PASSED
 │     Produced:      Sat Mar 21 20:43:08 CET 2026
 │     TSA:           CN=tsa.example.com, O=TSA Provider
+│     EU LOTL:       Yes
 │
 │  2. Document timestamp
 │     Indication:    ✅ PASSED
 │     Produced:      Sat Mar 21 20:43:09 CET 2026
 │     TSA:           CN=tsa.example.com, O=TSA Provider
+│     EU LOTL:       Yes
 │
 └───────────────────────────────────────────────────────────────
 
@@ -117,6 +119,15 @@ a network error), a notice is printed below the report header. This does not aff
 cryptographic validity of the signature. Only the eIDAS qualification assessment for signing
 certificates issued by the affected member state may be unavailable.
 
+### EU LOTL membership
+
+A signature or timestamp whose trust anchor is on the **EU List of Trusted Lists** (the LOTL, or a
+national list that is a member of it) prints an `EU LOTL: Yes` line. The line is omitted when the
+trust anchor comes from a custom trusted list or is unknown. That is why the example signature
+above — whose chain does not reach a trusted list — has no such line, while its timestamps do (a
+common case: a non-eIDAS signing certificate combined with a qualified TSA). This reflects only trust-anchor
+membership and is independent of the qualification tier and the overall result.
+
 ### INDETERMINATE timestamps in valid LTA signatures
 
 In a freshly created PAdES-BASELINE-LTA document it is normal for both timestamps to show
@@ -134,5 +145,6 @@ omnisign --json validate -f contract.pdf
 ```
 
 Returns a JSON object with `success`, `documentName`, `overallResult`, `signatures`,
-`timestamps`, and optional `error` fields. Useful for automated validation pipelines.
+`timestamps`, and optional `error` fields. Useful for automated validation pipelines. Each
+signature and timestamp carries a boolean `euLotlBacked` field mirroring the `EU LOTL` line above.
 

@@ -1,0 +1,60 @@
+/* Inline icon shared by the docs, fed by scripts/generate-icons.mjs. */
+.icon {
+  display: inline-block;
+  vertical-align: -0.18em;
+  flex-shrink: 0;
+}
+
+/*
+ * Semantic tints mirror the desktop Lumo theme (cz.pizavo.omnisign.lumo.Color).
+ * Default (light) values first, dark-theme overrides below.
+ */
+.euStars {
+  color: #b8860b;
+}
+.error {
+  color: #de1135;
+}
+.success {
+  color: #1daf61;
+}
+.warning {
+  color: #b89200;
+}
+.qualified {
+  color: #3f7ef2;
+}
+.qualifiedQscd {
+  color: #0e55d8;
+}
+.folder {
+  color: #276ef1;
+}
+.muted {
+  color: #5e5e5e;
+}
+
+[data-theme='dark'] .euStars {
+  color: #ffcc00;
+}
+[data-theme='dark'] .error {
+  color: #fc7f79;
+}
+[data-theme='dark'] .success {
+  color: #178c4e;
+}
+[data-theme='dark'] .warning {
+  color: #ffd54f;
+}
+[data-theme='dark'] .qualified {
+  color: #6f9ef5;
+}
+[data-theme='dark'] .qualifiedQscd {
+  color: #276ef1;
+}
+[data-theme='dark'] .folder {
+  color: #ffd54f;
+}
+[data-theme='dark'] .muted {
+  color: #dfdfdf;
+}

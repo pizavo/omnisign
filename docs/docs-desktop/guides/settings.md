@@ -2,10 +2,12 @@
 sidebar_position: 3
 ---
 
+import AppIcon from '@site/src/components/AppIcon';
+
 # Settings
 
 The Settings dialog configures global defaults for all signing and validation operations.
-Open it via the **gear icon** (⚙️) in the toolbar.
+Open it via the **gear icon** <AppIcon name="settings" label="Settings" /> in the toolbar.
 
 The dialog uses an IntelliJ-style layout: a collapsible category tree on the left and a
 content panel on the right. Clicking a group header selects its first child; clicking a
@@ -50,7 +52,7 @@ Configure the RFC 3161 timestamp server (TSA) used for B-T, B-LT, and B-LTA sign
 | TSA URL  | HTTPS endpoint of the timestamp authority                          |
 | Username | HTTP Basic authentication username (if required)                   |
 | Password | HTTP Basic authentication password                                 |
-| Timeout  | Request timeout in milliseconds (default: 30 000)                  |
+| Timeout  | Request timeout in milliseconds (default: 30,000)                  |
 
 :::note
 The TSA password is stored in the operating system's native credential store
@@ -66,8 +68,8 @@ Revocation List requests used during validation and B-LT/B-LTA signing.
 
 | Setting      | Description                                     | Default |
 |--------------|-------------------------------------------------|---------|
-| OCSP timeout | OCSP request timeout in milliseconds            | 30 000  |
-| CRL timeout  | CRL request timeout in milliseconds             | 30 000  |
+| OCSP timeout | OCSP request timeout in milliseconds            | 30,000  |
+| CRL timeout  | CRL request timeout in milliseconds             | 30,000  |
 
 ### Validation
 
@@ -79,10 +81,17 @@ Revocation List requests used during validation and B-LT/B-LTA signing.
 - **EU LOTL** — toggle integration with the EU List of Trusted Lists. When enabled,
   OmniSign loads the EU LOTL at startup and uses it for certificate qualification
   and trust chain resolution.
+- **Alert if not on EU LOTL** — when on, the validation panel flags every signature whose trust
+  anchor is not on the EU LOTL with a red crossed EU emblem (per signature and in the overall
+  badge). It requires **EU LOTL** to be enabled: when EU LOTL is off, the switch is disabled and
+  shows an info hint, and its value is preserved so re-enabling EU LOTL restores it. See
+  [Validating Signatures → EU LOTL membership](validation.md#eu-lotl-membership).
 - **Trusted list refresh interval (hours)** — how often the EU LOTL and custom lists are
   refreshed automatically in the background (minimum 1 hour).
 - **Refresh now** — a refresh button, with a "Last refreshed" indicator, forces an immediate
-  online refresh of the EU LOTL and every custom list into the shared cache.
+  online refresh of the EU LOTL and every custom list into the shared cache. While the refresh
+  runs, a **Loading trusted lists…** progress bar appears below the row — indeterminate until the
+  member-state and custom lists are known, then a determinate *"loaded of N"* count.
 
 :::note
 While a trusted list the active configuration depends on is being refreshed, the validation
@@ -136,7 +145,7 @@ that are not discovered automatically.
 - **Probe timeout (seconds)** — the maximum time OmniSign waits for a single PKCS#11 library
   probe before terminating it. Each library is probed in an isolated subprocess, so middleware
   that hangs during initialization cannot stall token discovery; this value bounds that wait.
-  Allowed range 1-120 seconds; defaults to 30.
+  Allowed range 1–120 seconds; defaults to 30.
 
 Each entry is the absolute file path to the middleware shared library (`.dll`, `.so`, or
 `.dylib`).
@@ -196,8 +205,8 @@ Export the entire configuration — global settings, every profile, and all refe
 certificates — to a single ZIP archive, or import an archive to replace the current
 configuration.
 
-- **Export** (download icon) — prompts for a save location and writes the archive.
-- **Import** (upload icon) — asks for confirmation first, because it **replaces all current
+- **Export** <AppIcon name="download" label="Export" /> — prompts for a save location and writes the archive.
+- **Import** <AppIcon name="upload" label="Import" /> — asks for confirmation first, because it **replaces all current
   settings, profiles, and trusted certificates and cannot be undone**, then lets you pick the
   archive to restore.
 
