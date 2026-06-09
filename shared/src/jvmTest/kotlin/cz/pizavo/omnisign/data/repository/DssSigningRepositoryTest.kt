@@ -55,19 +55,25 @@ class DssSigningRepositoryTest : FunSpec({
 	
 	fun tmpFile(name: String) = File(tmpDir, name).also { it.createNewFile() }
 
-	fun signingTokenFor(subjectDN: String): SigningToken {
+	fun dssKey(subjectDN: String, issuerDN: String, serial: String): eu.europa.esig.dss.token.DSSPrivateKeyEntry {
 		val mockX509 = mockk<java.security.cert.X509Certificate> {
 			every { subjectX500Principal } returns javax.security.auth.x500.X500Principal(subjectDN)
+			every { issuerX500Principal } returns javax.security.auth.x500.X500Principal(issuerDN)
+			every { serialNumber } returns java.math.BigInteger(serial)
 		}
 		val mockCertToken = mockk<eu.europa.esig.dss.model.x509.CertificateToken> {
 			every { certificate } returns mockX509
 		}
-		val mockKey = mockk<eu.europa.esig.dss.token.DSSPrivateKeyEntry> {
+		return mockk<eu.europa.esig.dss.token.DSSPrivateKeyEntry> {
 			every { certificate } returns mockCertToken
 			every { certificateChain } returns arrayOf(mockCertToken)
 		}
+	}
+
+	fun signingTokenFor(vararg entries: CertificateEntry): SigningToken {
+		val keyEntries = entries.map { dssKey(it.subjectDN, it.issuerDN, it.serialNumber) }
 		val mockDssToken = mockk<eu.europa.esig.dss.token.AbstractSignatureTokenConnection>(relaxed = true) {
-			every { keys } returns listOf(mockKey)
+			every { keys } returns keyEntries
 		}
 		return mockk<SigningToken> { every { getDssToken() } returns mockDssToken }
 	}
@@ -383,30 +389,13 @@ class DssSigningRepositoryTest : FunSpec({
 			keyUsages = emptyList(), tokenInfo = winStore,
 		)
 
-		val mockX509 = mockk<java.security.cert.X509Certificate> {
-			every { subjectX500Principal } returns javax.security.auth.x500.X500Principal("CN=WinUser")
-		}
-		val mockCertToken = mockk<eu.europa.esig.dss.model.x509.CertificateToken> {
-			every { certificate } returns mockX509
-		}
-		val mockKey = mockk<eu.europa.esig.dss.token.DSSPrivateKeyEntry> {
-			every { certificate } returns mockCertToken
-			every { certificateChain } returns arrayOf(mockCertToken)
-		}
-		val mockDssToken = mockk<eu.europa.esig.dss.token.AbstractSignatureTokenConnection>(relaxed = true) {
-			every { keys } returns listOf(mockKey)
-		}
-		val mockSigningToken = mockk<SigningToken> {
-			every { getDssToken() } returns mockDssToken
-		}
-
 		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
 		coEvery { tokenService.discoverTokens() } returns listOf(qscd, winStore).right()
 		coEvery { tokenService.probeTokenPresent(qscd) } returns true
 		coEvery { tokenService.probeTokenPresent(winStore) } returns true
 		coEvery { credentialStore.getPassword(any(), "qscd-1") } returns null
 		coEvery { tokenService.loadCertificatesSilent(winStore, "") } returns listOf(winCert).right()
-		coEvery { tokenService.getSigningToken(winCert, "") } returns mockSigningToken.right()
+		coEvery { tokenService.getSigningToken(winCert, "") } returns signingTokenFor(winCert).right()
 
 		val params = SigningParameters(
 			inputBytes = tmpFile("pin-skip-input.pdf").readBytes(),
@@ -437,7 +426,7 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { tokenService.probeTokenPresent(card) } returns true
 		coEvery { credentialStore.getPassword(any(), "pkcs11-XYZ") } returns "1234"
 		coEvery { tokenService.loadCertificatesSilent(slotBToken, "1234") } returns listOf(cert).right()
-		coEvery { tokenService.getSigningToken(cert, "1234") } returns signingTokenFor("CN=User").right()
+		coEvery { tokenService.getSigningToken(cert, "1234") } returns signingTokenFor(cert).right()
 
 		val params = SigningParameters(
 			inputBytes = tmpFile("slot-input.pdf").readBytes(),
@@ -477,7 +466,7 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { tokenService.loadCertificatesSilent(card, "1234") } returns listOf(slotACert).right()
 		coEvery { tokenService.listCertificatesNoLogin(card) } returns listOf(slotACert, slotBCert).right()
 		coEvery { tokenService.loadCertificatesSilent(slotBToken, "1234") } returns listOf(slotBCert).right()
-		coEvery { tokenService.getSigningToken(slotBCert, "1234") } returns signingTokenFor("CN=User").right()
+		coEvery { tokenService.getSigningToken(slotBCert, "1234") } returns signingTokenFor(slotBCert).right()
 
 		val params = SigningParameters(
 			inputBytes = tmpFile("fallback-input.pdf").readBytes(),
@@ -491,6 +480,31 @@ class DssSigningRepositoryTest : FunSpec({
 		io.mockk.coVerify { tokenService.listCertificatesNoLogin(card) }
 		io.mockk.coVerify { tokenService.loadCertificatesSilent(slotBToken, "1234") }
 		io.mockk.coVerify { tokenService.getSigningToken(slotBCert, "1234") }
+	}
+
+	test("selectSigningKey resolves the certificate by serial when several share a subject DN") {
+		val expiredKey = dssKey(subjectDN = "CN=User", issuerDN = "CN=CA", serial = "100")
+		val validKey = dssKey(subjectDN = "CN=User", issuerDN = "CN=CA", serial = "200")
+		val selectedValid = CertificateEntry(
+			alias = "User-c8@pkcs11-XYZ", subjectDN = "CN=User", issuerDN = "CN=CA",
+			serialNumber = "200", validFrom = Instant.parse("2025-01-01T00:00:00Z"),
+			validTo = Instant.parse("2027-01-01T00:00:00Z"), keyUsages = emptyList(),
+			tokenInfo = TokenInfo(id = "pkcs11-XYZ", name = "Card", type = TokenType.PKCS11, requiresPin = true),
+		)
+
+		selectSigningKey(listOf(expiredKey, validKey), selectedValid) shouldBe validKey
+	}
+
+	test("selectSigningKey falls back to the first key when no certificate matches") {
+		val onlyKey = dssKey(subjectDN = "CN=User", issuerDN = "CN=CA", serial = "100")
+		val selectedUnknown = CertificateEntry(
+			alias = "User-ff@pkcs11-XYZ", subjectDN = "CN=User", issuerDN = "CN=CA",
+			serialNumber = "999", validFrom = Instant.parse("2024-01-01T00:00:00Z"),
+			validTo = Instant.parse("2026-01-01T00:00:00Z"), keyUsages = emptyList(),
+			tokenInfo = TokenInfo(id = "pkcs11-XYZ", name = "Card", type = TokenType.PKCS11, requiresPin = true),
+		)
+
+		selectSigningKey(listOf(onlyKey), selectedUnknown) shouldBe onlyKey
 	}
 
 	test("listAvailableCertificates uses stored password for PIN token") {

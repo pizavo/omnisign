@@ -497,7 +497,10 @@ class DssSigningRepository(
 	 *
 	 * The [CertificateEntry] selected here carries the pinned [TokenInfo], so the DSS token
 	 * built by [TokenService.getSigningToken] opens the same slot the certificates were read
-	 * from — keeping listing and signing on one slot.
+	 * from — keeping listing and signing on one slot.  The private key is then matched to the
+	 * selected certificate by [selectSigningKey], which keys on issuer and serial so a slot
+	 * holding several certificates with the same subject (e.g. a renewed certificate beside its
+	 * expired predecessor) still signs with the chosen one.
 	 *
 	 * @return A [ResolvedKey] when a matching certificate and key are present on that slot,
 	 *   null otherwise.
@@ -517,9 +520,7 @@ class DssSigningRepository(
 		val dssToken = tokenService.getSigningToken(selected, password).getOrNull()
 			?.getDssToken() as? AbstractSignatureTokenConnection ?: return null
 
-		val key = dssToken.keys.find { k ->
-			k.certificate.certificate.subjectX500Principal.toString() == selected.subjectDN
-		} ?: dssToken.keys.firstOrNull() ?: return null
+		val key = selectSigningKey(dssToken.keys, selected) ?: return null
 
 		return ResolvedKey(key, dssToken, tokenInfo.type)
 	}
