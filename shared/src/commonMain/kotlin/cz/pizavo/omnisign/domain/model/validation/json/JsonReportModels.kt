@@ -44,6 +44,7 @@ data class JsonValidationReport(
  * @property hashAlgorithm Digest algorithm name.
  * @property encryptionAlgorithm Encryption algorithm name.
  * @property certificate Signing certificate details.
+ * @property revocations Revocation checks DSS found or performed for the signing certificate.
  * @property errors AdES validation errors.
  * @property warnings AdES validation warnings.
  * @property infos AdES informational messages.
@@ -66,6 +67,7 @@ data class JsonSignatureReport(
     val hashAlgorithm: String? = null,
     val encryptionAlgorithm: String? = null,
     val certificate: JsonCertificateReport,
+    val revocations: List<JsonRevocationReport> = emptyList(),
     val errors: List<String> = emptyList(),
     val warnings: List<String> = emptyList(),
     val infos: List<String> = emptyList(),
@@ -99,6 +101,38 @@ data class JsonCertificateReport(
     val isQualified: Boolean = false,
     val publicKeyAlgorithm: String? = null,
     val sha256Fingerprint: String? = null,
+)
+
+/**
+ * Serializable DTO for one revocation check performed for the signing certificate.
+ *
+ * @property method Revocation mechanism — "OCSP" or "CRL".
+ * @property status Status the responder asserted — "GOOD", "REVOKED", or "UNKNOWN".
+ * @property revoked True when [status] is "REVOKED".
+ * @property embedded Whether the token came from inside the document (vs. a remote fetch or cache).
+ * @property sealedByTimestamp Whether a document/archive timestamp covers the token (proof-of-existence).
+ * @property origin Raw DSS revocation origin (e.g. "DSS_DICTIONARY", "EXTERNAL").
+ * @property sourceUrl Address the token was obtained from, when DSS recorded one; `null` for embedded tokens.
+ * @property producedAt ISO-8601 responder production time (OCSP `producedAt` / CRL signing time).
+ * @property thisUpdate ISO-8601 start of the validity window the responder vouches for.
+ * @property nextUpdate ISO-8601 end of the validity window.
+ * @property revocationDate ISO-8601 revocation date; only meaningful when [revoked].
+ * @property reason Revocation reason code; only meaningful when [revoked].
+ */
+@Serializable
+data class JsonRevocationReport(
+    val method: String,
+    val status: String,
+    val revoked: Boolean,
+    val embedded: Boolean,
+    val sealedByTimestamp: Boolean,
+    val origin: String,
+    val sourceUrl: String? = null,
+    val producedAt: String? = null,
+    val thisUpdate: String? = null,
+    val nextUpdate: String? = null,
+    val revocationDate: String? = null,
+    val reason: String? = null,
 )
 
 /**

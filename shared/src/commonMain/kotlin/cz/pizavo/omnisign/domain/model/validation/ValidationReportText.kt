@@ -33,6 +33,16 @@ fun ValidationReport.toPlainText(): String = buildString {
 			appendLine("${pad}Warnings:")
 			ts.warnings.forEach { appendLine("$pad  • $it") }
 		}
+		if (ts.infos.isNotEmpty()) {
+			appendLine("${pad}Information:")
+			ts.infos.forEach { appendLine("$pad  • $it") }
+		}
+	}
+
+	fun StringBuilder.appendMessages(title: String, messages: List<String>) {
+		if (messages.isEmpty()) return
+		appendLine("  $title:")
+		messages.forEach { appendLine("    • $it") }
 	}
 
 	appendLine("OmniSign — Validation Report")
@@ -76,14 +86,24 @@ fun ValidationReport.toPlainText(): String = buildString {
 			}
 			sig.certificate.publicKeyAlgorithm?.let { appendLine("    Public key:   $it") }
 			sig.certificate.sha256Fingerprint?.let { appendLine("    SHA-256:      $it") }
-			if (sig.errors.isNotEmpty()) {
-				appendLine("  Errors:")
-				sig.errors.forEach { appendLine("    • $it") }
+			if (sig.revocations.isNotEmpty()) {
+				appendLine()
+				appendLine("  Revocation:")
+				sig.revocations.revocationConclusion(sig.signatureTime)?.let { appendLine("    $it") }
+				val labelWidth = sig.revocations.flatMap { it.displayRows() }.maxOf { it.first.length } + 1
+				sig.revocations.forEach { revocation ->
+					appendLine()
+					revocation.displayRows().forEach { (label, value) ->
+						appendLine("    ${"$label:".padEnd(labelWidth)} $value")
+					}
+				}
 			}
-			if (sig.warnings.isNotEmpty()) {
-				appendLine("  Warnings:")
-				sig.warnings.forEach { appendLine("    • $it") }
-			}
+			appendMessages("Errors", sig.errors)
+			appendMessages("Warnings", sig.warnings)
+			appendMessages("Qualification Errors", sig.qualificationErrors)
+			appendMessages("Qualification Warnings", sig.qualificationWarnings)
+			appendMessages("Information", sig.infos)
+			appendMessages("Qualification Information", sig.qualificationInfos)
 			if (sig.timestamps.isNotEmpty()) {
 				appendLine()
 				appendLine("  Timestamps (${sig.timestamps.size}):")

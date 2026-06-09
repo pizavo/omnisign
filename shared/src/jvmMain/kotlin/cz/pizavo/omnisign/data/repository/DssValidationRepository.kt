@@ -152,7 +152,9 @@ class DssValidationRepository(
 		val allTimestampResults = diagnosticData.getTimestampList().associate { tsw ->
 			tsw.id to convertTimestamp(tsw, simpleReport, detailedReport, anchorTypes)
 		}
-		
+
+		val sealedRevocationIds = timestampSealedRevocationIds(diagnosticData, allTimestampResults)
+
 		val signatureTimestampIds = mutableSetOf<String>()
 		
 		val signatures = simpleReport.signatureIdList.map { sigId ->
@@ -165,7 +167,7 @@ class DssValidationRepository(
 			
 			val sigTimestamps = sigTsIds.mapNotNull { tsId -> allTimestampResults[tsId] }
 			
-			convertSignature(simpleReport, diagnosticData, sigId, anchorTypes).copy(
+			convertSignature(simpleReport, diagnosticData, sigId, anchorTypes, sealedRevocationIds).copy(
 				timestamps = sigTimestamps
 			)
 		}
@@ -299,12 +301,17 @@ class DssValidationRepository(
 	/**
 	 * Convert a single DSS signature entry into a [SignatureValidationResult],
 	 * pulling rich certificate details from the [DiagnosticData].
+	 *
+	 * @param sealedRevocationIds Ids of revocation tokens protected by a document/archive timestamp
+	 *   (see [timestampSealedRevocationIds]), used to mark the signing certificate's revocation
+	 *   evidence as timestamp-sealed.
 	 */
 	private fun convertSignature(
 		simpleReport: SimpleReport,
 		diagnosticData: DiagnosticData,
 		signatureId: String,
 		anchorTypes: Map<String, TrustedCertificateType>,
+		sealedRevocationIds: Set<String>,
 	): SignatureValidationResult {
 		val indication = when (simpleReport.getIndication(signatureId)) {
 			Indication.TOTAL_PASSED, Indication.PASSED -> ValidationIndication.TOTAL_PASSED
@@ -326,6 +333,7 @@ class DssValidationRepository(
 		
 		val sigWrapper = diagnosticData.getSignatureById(signatureId)
 		val signingCert = sigWrapper?.signingCertificate
+		val revocations = signingCert?.let { extractRevocations(it, sealedRevocationIds) } ?: emptyList()
 		val policyUntrusted = isDowngradedByPolicy(
 			managedAnchorTypes(sigWrapper?.certificateChain ?: emptyList(), anchorTypes),
 			TrustedCertificateType.CA,
@@ -375,8 +383,59 @@ class DssValidationRepository(
 			hashAlgorithm = sigWrapper?.digestAlgorithm?.name,
 			encryptionAlgorithm = sigWrapper?.encryptionAlgorithm?.name,
 			policyUntrusted = policyUntrusted,
+			revocations = revocations,
 		)
 	}
+
+	/**
+	 * Ids of revocation tokens covered by a document- or archive-timestamp that did not fail
+	 * validation. Such a timestamp seals the embedded revocation data, giving it a
+	 * proof-of-existence — the basis for the "no remote check needed, provably contemporaneous"
+	 * statement on a PAdES-BASELINE-LTA (or any archive-timestamped) signature.
+	 */
+	private fun timestampSealedRevocationIds(
+		diagnosticData: DiagnosticData,
+		timestampResults: Map<String, TimestampValidationResult>,
+	): Set<String> =
+		diagnosticData.getTimestampList()
+			.filter {
+				it.type == eu.europa.esig.dss.enumerations.TimestampType.DOCUMENT_TIMESTAMP ||
+					it.type == eu.europa.esig.dss.enumerations.TimestampType.ARCHIVE_TIMESTAMP
+			}
+			.filter { timestampResults[it.id]?.indication != ValidationIndication.TOTAL_FAILED }
+			.flatMap { it.timestampedRevocations }
+			.map { it.id }
+			.toSet()
+
+	/**
+	 * Map *every* revocation token DSS holds for the signing certificate into [RevocationInfo],
+	 * newest first, so the caller can present all of them — typically an embedded token sealed at
+	 * signing time and a fresh one fetched online during validation — without choosing between them.
+	 * [sealedRevocationIds] marks tokens a document/archive timestamp protects (see
+	 * [timestampSealedRevocationIds]).
+	 */
+	private fun extractRevocations(
+		signingCert: CertificateWrapper,
+		sealedRevocationIds: Set<String>,
+	): List<RevocationInfo> =
+		signingCert.certificateRevocationData
+			.sortedByDescending { it.productionDate?.time ?: Long.MIN_VALUE }
+			.map { revocation ->
+				RevocationInfo(
+					method = revocation.revocationType?.name ?: "Unknown",
+					status = revocation.status?.name ?: "UNKNOWN",
+					revoked = revocation.isRevoked,
+					embedded = revocation.isInternalRevocationOrigin,
+					sealedByTimestamp = revocation.id in sealedRevocationIds,
+					origin = revocation.origin?.name ?: "Unknown",
+					sourceUrl = revocation.sourceAddress?.takeIf { it.isNotBlank() },
+					producedAt = revocation.productionDate?.toKotlinInstant(),
+					thisUpdate = revocation.thisUpdate?.toKotlinInstant(),
+					nextUpdate = revocation.nextUpdate?.toKotlinInstant(),
+					revocationDate = revocation.revocationDate?.toKotlinInstant(),
+					reason = revocation.reason?.name,
+				)
+			}
 	
 	/**
 	 * Whether a certificate chain's eIDAS trust anchor is published on the EU LOTL (or a national

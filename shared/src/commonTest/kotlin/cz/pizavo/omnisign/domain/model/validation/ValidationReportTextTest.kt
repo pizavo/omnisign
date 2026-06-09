@@ -71,4 +71,54 @@ class ValidationReportTextTest : FunSpec({
 		)
 		backed.toPlainText() shouldContain "EU LOTL:"
 	}
+
+	test("renders the revocation conclusion and method-aware fields per token") {
+		val withRevocation = report.copy(
+			signatures = listOf(
+				report.signatures.first().copy(
+					revocations = listOf(
+						RevocationInfo(
+							method = "OCSP",
+							status = "GOOD",
+							revoked = false,
+							embedded = true,
+							sealedByTimestamp = true,
+							origin = "DSS_DICTIONARY",
+							producedAt = Instant.parse("2026-02-01T09:00:00Z"),
+						),
+					),
+				),
+			),
+		)
+
+		val text = withRevocation.toPlainText()
+
+		text shouldContain "Revocation:"
+		text shouldContain "The signing certificate was not revoked as of"
+		text shouldContain "Embedded in document, sealed by document timestamp"
+		text shouldContain "Response produced:"
+	}
+
+	test("renders qualification and informational messages") {
+		val withMessages = report.copy(
+			signatures = listOf(
+				report.signatures.first().copy(
+					qualificationErrors = listOf("qual-err"),
+					qualificationWarnings = listOf("qual-warn"),
+					infos = listOf("an-info"),
+					qualificationInfos = listOf("qual-info"),
+				),
+			),
+		)
+
+		val text = withMessages.toPlainText()
+
+		text shouldContain "Qualification Errors:"
+		text shouldContain "qual-err"
+		text shouldContain "Qualification Warnings:"
+		text shouldContain "Information:"
+		text shouldContain "an-info"
+		text shouldContain "Qualification Information:"
+		text shouldContain "qual-info"
+	}
 })

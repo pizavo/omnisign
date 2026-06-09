@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.domain.model.validation.json
 
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
+import cz.pizavo.omnisign.domain.model.validation.RevocationInfo
 import cz.pizavo.omnisign.domain.model.validation.SignatureTrustTier
 import cz.pizavo.omnisign.domain.model.validation.SignatureValidationResult
 import cz.pizavo.omnisign.domain.model.validation.TimestampValidationResult
@@ -50,6 +51,7 @@ fun SignatureValidationResult.toJsonReport(): JsonSignatureReport =
         hashAlgorithm = hashAlgorithm,
         encryptionAlgorithm = encryptionAlgorithm,
         certificate = certificate.toJsonReport(),
+        revocations = revocations.map { it.toJsonReport() },
         errors = errors,
         warnings = warnings,
         infos = infos,
@@ -73,6 +75,26 @@ fun CertificateInfo.toJsonReport(): JsonCertificateReport =
         isQualified = isQualified,
         publicKeyAlgorithm = publicKeyAlgorithm,
         sha256Fingerprint = sha256Fingerprint,
+    )
+
+/**
+ * Convert a domain [RevocationInfo] to a [JsonRevocationReport] DTO. Times are emitted as ISO-8601
+ * strings; absent times stay `null`.
+ */
+fun RevocationInfo.toJsonReport(): JsonRevocationReport =
+    JsonRevocationReport(
+        method = method,
+        status = status,
+        revoked = revoked,
+        embedded = embedded,
+        sealedByTimestamp = sealedByTimestamp,
+        origin = origin,
+        sourceUrl = sourceUrl,
+        producedAt = producedAt?.toString(),
+        thisUpdate = thisUpdate?.toString(),
+        nextUpdate = nextUpdate?.toString(),
+        revocationDate = revocationDate?.toString(),
+        reason = reason,
     )
 
 /**

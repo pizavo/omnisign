@@ -16,6 +16,7 @@ import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.model.value.formatDate
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
+import kotlin.time.Instant
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.ui.model.SignaturePanelState
@@ -389,9 +390,20 @@ private fun SignatureAccordion(
                 messages = signature.qualificationWarnings,
                 color = LumoTheme.colors.warning,
             )
+            MessageList(title = "Information", messages = signature.infos, color = LumoTheme.colors.textSecondary)
+            MessageList(
+                title = "Qualification Information",
+                messages = signature.qualificationInfos,
+                color = LumoTheme.colors.textSecondary,
+            )
 
             Spacer(modifier = Modifier.height(4.dp))
             CertificateAccordion(signature = signature)
+
+            signature.revocations.takeIf { it.isNotEmpty() }?.let { revocations ->
+                Spacer(modifier = Modifier.height(4.dp))
+                RevocationAccordion(revocations = revocations, asOf = signature.signatureTime)
+            }
 
             signature.timestamps.firstOrNull()?.let { ts ->
                 Spacer(modifier = Modifier.height(4.dp))
@@ -426,6 +438,57 @@ private fun CertificateAccordion(signature: SignatureValidationResult) {
 }
 
 /**
+ * Nested collapsible section presenting the signing certificate's revocation evidence: a one-line
+ * conclusion as of the best-signature-time, followed by every revocation check DSS found or
+ * performed — each shown in full, so an embedded token and a live online check both appear rather
+ * than one being chosen.
+ *
+ * @param asOf The point in time the conclusion is stated against (best-signature-time).
+ */
+@Composable
+private fun RevocationAccordion(revocations: List<RevocationInfo>, asOf: Instant) {
+    val title = if (revocations.size > 1) "Revocation checks (${revocations.size})" else "Revocation check"
+    NestedAccordion(title = title) {
+        Column(
+            modifier = Modifier.padding(start = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            val revokedAtSigning = revocations.signingTimeRepresentative()?.revoked == true
+            revocations.revocationConclusion(asOf)?.let { conclusion ->
+                Text(
+                    text = conclusion,
+                    style = LumoTheme.typography.body2,
+                    color = if (revokedAtSigning) LumoTheme.colors.error else LumoTheme.colors.textSecondary,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(2.dp))
+            }
+            revocations.forEachIndexed { index, revocation ->
+                if (index > 0) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
+                RevocationEntry(revocation = revocation)
+            }
+        }
+    }
+}
+
+/**
+ * Structured fields for a single revocation token, sourced from the shared
+ * [cz.pizavo.omnisign.domain.model.validation.displayRows] so the panel and the plain-text report
+ * render identical labels and values.
+ */
+@Composable
+private fun RevocationEntry(revocation: RevocationInfo) {
+    revocation.displayRows().forEach { (label, value) ->
+        LabelValue(label = label, value = value)
+    }
+}
+
+/**
  * Collapsible section for the single signature-level timestamp.
  *
  * PAdES allows at most one signature timestamp per signature, so this renders
@@ -454,6 +517,7 @@ private fun SignatureTimestampAccordion(timestamp: TimestampValidationResult) {
 
             MessageList(title = "Errors", messages = timestamp.errors, color = LumoTheme.colors.error)
             MessageList(title = "Warnings", messages = timestamp.warnings, color = LumoTheme.colors.warning)
+            MessageList(title = "Information", messages = timestamp.infos, color = LumoTheme.colors.textSecondary)
         }
     }
 }
@@ -514,6 +578,7 @@ private fun TimestampAccordion(
 
             MessageList(title = "Errors", messages = timestamp.errors, color = LumoTheme.colors.error)
             MessageList(title = "Warnings", messages = timestamp.warnings, color = LumoTheme.colors.warning)
+            MessageList(title = "Information", messages = timestamp.infos, color = LumoTheme.colors.textSecondary)
         }
     }
 }
