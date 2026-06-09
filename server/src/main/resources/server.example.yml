@@ -247,7 +247,9 @@ operations:
   #  - TIMESTAMP
   #
   # When SIGN is enabled, restrict which certificate aliases may be used via the API.
-  # If omitted (null), all discovered signing certificates are available.
+  # If omitted (null), all discovered signing certificates are available. An explicit empty
+  # list ([]) while SIGN is enabled is rejected at startup — it would permit no certificate
+  # at all, making SIGN useless.
   # certificateAliases:
   #   - "university-seal"
   #   - "department-stamp"
