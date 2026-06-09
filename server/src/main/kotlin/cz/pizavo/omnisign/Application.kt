@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.config.ServerSecrets
 import cz.pizavo.omnisign.config.SigningConfigLoader
 import cz.pizavo.omnisign.config.TrustReconciler
 import cz.pizavo.omnisign.config.isLoopbackHost
+import cz.pizavo.omnisign.config.unsatisfiableSigningTargets
 import cz.pizavo.omnisign.config.validateAuthConfig
 import cz.pizavo.omnisign.config.validateCorsConfig
 import cz.pizavo.omnisign.config.validateOperationsConfig
@@ -178,6 +179,16 @@ fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets) {
 			"⚠️  SIGN operation is enabled WITHOUT authentication — all configured signing " +
 					"certificates are accessible to any network-reachable client. " +
 					"Set auth.enabled: true or restrict access with operations.certificateAliases."
+		}
+	}
+
+	val unsatisfiableTargets = unsatisfiableSigningTargets(serverConfig.operations, signingConfig)
+	if (unsatisfiableTargets.isNotEmpty()) {
+		logger.warn {
+			"⚠️  SIGN is enabled but TIMESTAMP is not — the following signing targets require an " +
+					"RFC 3161 timestamp and will reject every sign request with TIMESTAMP_NOT_ALLOWED: " +
+					"${unsatisfiableTargets.joinToString()}. Enable the TIMESTAMP operation, or lower " +
+					"their signature level to PADES_BASELINE_B."
 		}
 	}
 

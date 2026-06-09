@@ -11,7 +11,8 @@ import io.kotest.matchers.string.shouldContain
  * Pins the operator-facing contract: an empty `operations.allowed` is a startup failure whose
  * message names the field and lists the operations, while any non-empty set — a single
  * operation or a combination — is accepted. Disabling a subset is valid; disabling everything
- * is not.
+ * is not. An empty `operations.certificateAliases` is likewise rejected while SIGN is enabled
+ * (no certificate would be usable) but left alone when SIGN is off, where the field is inert.
  */
 class OperationsConfigValidatorTest : FunSpec({
 
@@ -48,6 +49,40 @@ class OperationsConfigValidatorTest : FunSpec({
                         AllowedOperation.SIGN,
                         AllowedOperation.TIMESTAMP,
                     ),
+                ),
+            )
+        }
+    }
+
+    test("rejects an empty certificateAliases while SIGN is enabled") {
+        val ex = shouldThrow<IllegalArgumentException> {
+            validateOperationsConfig(
+                OperationsConfig(
+                    allowed = setOf(AllowedOperation.SIGN, AllowedOperation.VALIDATE),
+                    certificateAliases = emptyList(),
+                ),
+            )
+        }
+        ex.message!! shouldContain "certificateAliases"
+    }
+
+    test("accepts an empty certificateAliases when SIGN is not enabled") {
+        shouldNotThrowAny {
+            validateOperationsConfig(
+                OperationsConfig(
+                    allowed = setOf(AllowedOperation.VALIDATE),
+                    certificateAliases = emptyList(),
+                ),
+            )
+        }
+    }
+
+    test("accepts a non-empty certificateAliases with SIGN enabled") {
+        shouldNotThrowAny {
+            validateOperationsConfig(
+                OperationsConfig(
+                    allowed = setOf(AllowedOperation.SIGN),
+                    certificateAliases = listOf("university-seal"),
                 ),
             )
         }

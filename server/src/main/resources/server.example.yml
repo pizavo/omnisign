@@ -247,7 +247,9 @@ operations:
   #  - TIMESTAMP
   #
   # When SIGN is enabled, restrict which certificate aliases may be used via the API.
-  # If omitted (null), all discovered signing certificates are available.
+  # If omitted (null), all discovered signing certificates are available. An explicit empty
+  # list ([]) while SIGN is enabled is rejected at startup — it would permit no certificate
+  # at all, making SIGN useless.
   # certificateAliases:
   #   - "university-seal"
   #   - "department-stamp"
@@ -260,6 +262,14 @@ operations:
 # never read). YAML is primary; a path ending in .json is parsed as JSON. Secrets never go
 # in this file (a TSA password is resolved from the environment). See signing.example.yml.
 # signingConfigFile: "/etc/omnisign/signing.yml"
+
+# Persistent, writable directory for the server's trust store, reconciled at startup from the
+# signing.yml `trustedCertificates` references (content-addressed DER files plus a CBOR index).
+# Keep it separate from the read-only policy and source cert files above. When omitted, it
+# defaults to a `trusted-certs` directory in the server's working directory — in the Docker
+# image that resolves to /app/trusted-certs, which is a mounted volume, so leave it unset there.
+# Set it only to relocate the store onto a specific mount.
+# trustStoreDir: "/var/lib/omnisign/trusted-certs"
 
 # TLS / SSL configuration.
 # Uncomment and fill in to enable direct HTTPS with TLS 1.2/1.3 and HTTP/2. When `host`

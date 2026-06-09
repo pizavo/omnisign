@@ -20,7 +20,9 @@ package cz.pizavo.omnisign.config
  *   for signing via the API. Provides defense-in-depth so that personal certificates
  *   installed on the server are never accidentally exposed. When `null` and
  *   [AllowedOperation.SIGN] is in [allowed], all discovered signing certificates are
- *   available. Meaningless when [AllowedOperation.SIGN] is not in [allowed].
+ *   available. An explicitly empty list while SIGN is enabled is rejected at startup by
+ *   [validateOperationsConfig] — it would permit no certificate at all. Meaningless when
+ *   [AllowedOperation.SIGN] is not in [allowed].
  */
 data class OperationsConfig(
 	val allowed: Set<AllowedOperation> = setOf(AllowedOperation.VALIDATE),

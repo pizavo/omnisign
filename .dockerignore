@@ -1,0 +1,12 @@
+# Keep the Docker build context small. Both server/Dockerfile and
+# composeApp/Dockerfile build from the repo root but only copy pre-built
+# artifacts under */build/, so those are deliberately NOT ignored here; the
+# entries below are heavy paths that neither image copies from.
+.git
+.github
+.gradle
+.kotlin
+.idea
+**/node_modules
+docs
+*.iml
