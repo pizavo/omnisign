@@ -263,6 +263,14 @@ operations:
 # in this file (a TSA password is resolved from the environment). See signing.example.yml.
 # signingConfigFile: "/etc/omnisign/signing.yml"
 
+# Persistent, writable directory for the server's trust store, reconciled at startup from the
+# signing.yml `trustedCertificates` references (content-addressed DER files plus a CBOR index).
+# Keep it separate from the read-only policy and source cert files above. When omitted, it
+# defaults to a `trusted-certs` directory in the server's working directory — in the Docker
+# image that resolves to /app/trusted-certs, which is a mounted volume, so leave it unset there.
+# Set it only to relocate the store onto a specific mount.
+# trustStoreDir: "/var/lib/omnisign/trusted-certs"
+
 # TLS / SSL configuration.
 # Uncomment and fill in to enable direct HTTPS with TLS 1.2/1.3 and HTTP/2. When `host`
 # is set to anything other than a loopback address (127.0.0.1, ::1, localhost), the

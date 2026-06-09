@@ -35,8 +35,8 @@ package cz.pizavo.omnisign.config
  *   exposure and security.
  * @property trustStoreDir Filesystem path to the server's persistent, writable trust directory,
  *   reconciled at boot from the `signing.yml` `trustedCertificates` references. Should be a volume
- *   separate from the read-only policy and source cert files. When `null`, the platform default
- *   location beside the config directory is used.
+ *   separate from the read-only policy and source cert files. When `null`, a `trusted-certs`
+ *   directory in the server's working directory is used.
  */
 data class ServerConfig(
 	val listen: ListenConfig = ListenConfig(),
