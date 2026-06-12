@@ -4,6 +4,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -12,6 +15,8 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
+import cz.pizavo.omnisign.domain.model.signature.CertificateChainLink
 import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.model.value.formatDate
@@ -433,6 +438,10 @@ private fun CertificateAccordion(signature: SignatureValidationResult) {
             }
             signature.certificate.publicKeyAlgorithm?.let { LabelValue(label = "Public key", value = it) }
             signature.certificate.sha256Fingerprint?.let { LabelValue(label = "SHA-256", value = it) }
+            ViewFullCertificateAction(
+                chain = signature.certificate.chain,
+                trustRole = TrustedCertificateType.CA,
+            )
         }
     }
 }
@@ -489,6 +498,50 @@ private fun RevocationEntry(revocation: RevocationInfo) {
 }
 
 /**
+ * "View full certificate" affordance: a ghost icon-button and label that opens the
+ * [CertificateDetailsDialog] on [chain], adding any trust granted from that dialog with [trustRole]
+ * (a signature's chain anchors as a CA, a timestamp's as a TSA). Renders nothing when [chain] is
+ * empty — the certificates' DER bytes were not available to parse.
+ *
+ * @param chain The certificate chain to inspect, leaf-first.
+ * @param trustRole Trust role granted when a certificate is added to the trust store from the dialog.
+ */
+@Composable
+private fun ViewFullCertificateAction(chain: List<CertificateChainLink>, trustRole: TrustedCertificateType) {
+    if (chain.isEmpty()) return
+    var showDetails by remember { mutableStateOf(false) }
+    Spacer(modifier = Modifier.height(4.dp))
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        IconButton(
+            variant = IconButtonVariant.Ghost,
+            onClick = { showDetails = true },
+        ) {
+            Icon(
+                painter = painterResource(Res.drawable.icon_certificate_2),
+                contentDescription = "View full certificate",
+                modifier = Modifier.size(18.dp),
+                tint = LumoTheme.colors.textSecondary,
+            )
+        }
+        Text(
+            text = "View full certificate",
+            style = LumoTheme.typography.body2,
+            color = LumoTheme.colors.textSecondary,
+        )
+    }
+    if (showDetails) {
+        CertificateDetailsDialog(
+            chain = chain,
+            trustRole = trustRole,
+            onDismiss = { showDetails = false },
+        )
+    }
+}
+
+/**
  * Collapsible section for the single signature-level timestamp.
  *
  * PAdES allows at most one signature timestamp per signature, so this renders
@@ -514,6 +567,7 @@ private fun SignatureTimestampAccordion(timestamp: TimestampValidationResult) {
             LabelValue(label = "Production time", value = timestamp.productionTime.formatDateTime())
             timestamp.qualification?.let { LabelValue(label = "Qualification", value = it) }
             timestamp.tsaSubjectDN?.let { LabelValue(label = "TSA", value = it) }
+            ViewFullCertificateAction(chain = timestamp.chain, trustRole = TrustedCertificateType.TSA)
 
             MessageList(title = "Errors", messages = timestamp.errors, color = LumoTheme.colors.error)
             MessageList(title = "Warnings", messages = timestamp.warnings, color = LumoTheme.colors.warning)
@@ -575,6 +629,7 @@ private fun TimestampAccordion(
             LabelValue(label = "Production time", value = timestamp.productionTime.formatDateTime())
             timestamp.qualification?.let { LabelValue(label = "Qualification", value = it) }
             timestamp.tsaSubjectDN?.let { LabelValue(label = "TSA", value = it) }
+            ViewFullCertificateAction(chain = timestamp.chain, trustRole = TrustedCertificateType.TSA)
 
             MessageList(title = "Errors", messages = timestamp.errors, color = LumoTheme.colors.error)
             MessageList(title = "Warnings", messages = timestamp.warnings, color = LumoTheme.colors.warning)

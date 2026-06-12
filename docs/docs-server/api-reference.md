@@ -48,7 +48,9 @@ Validate a PDF's signatures. Requires **`VALIDATE`** (enabled by default).
 | `formats`            |          | Comma-separated `RawReportFormat` names to include raw XML reports; unknown names → `400 INVALID_FORMAT`. |
 | `disableHashAlgorithm` / `disableEncryptionAlgorithm` | | Tightening overrides.                  |
 
-**Response** `200`: a JSON validation report.
+**Response** `200`: a JSON validation report. Each signature and document timestamp carries its
+full certificate chain — every certificate's parsed fields and extensions, plus which certificates
+are trusted and via which source (a trusted list, the global trust, or a profile's).
 
 ### `POST /api/v1/timestamp`
 

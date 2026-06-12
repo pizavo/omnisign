@@ -60,15 +60,86 @@ Expand a signature to see:
   the validation produced any.
 
 Each signature has a nested **Certificate** section (subject, issuer, serial number, validity
-window, key usages, public-key algorithm, and SHA-256 fingerprint). When the signature carries a
-signature timestamp, it also has a nested **Signature timestamp** section (production time,
-qualification, and TSA), expanded by default.
+window, key usages, public-key algorithm, and SHA-256 fingerprint), ending with a **View full
+certificate** link <AppIcon name="certificate_2" label="View full certificate" /> that opens
+[the full certificate view](#the-full-certificate-view). When DSS found or ran any revocation checks
+for the signing certificate, a nested **Revocation check** section follows — see
+[Revocation evidence](#revocation-evidence). When the signature carries a signature timestamp, it
+also has a nested **Signature timestamp** section (production time, qualification, and TSA), expanded
+by default.
 
 A signature's header carries up to two emblems: the qualification [rosette](#trust-levels) first,
 then the [EU-LOTL emblem](#eu-lotl-membership). The two are independent — a signature can be on the
 EU LOTL without being qualified, and vice versa.
 
 ![Expanded signature accordion](/img/desktop/validation-signature-accordion.avif)
+
+### Revocation evidence
+
+When DSS found or performed revocation checks for the signing certificate, the **Certificate**
+section is followed by a **Revocation check** section (**Revocation checks (N)** for more than one).
+It opens with a one-line conclusion as of the **best-signature-time** — *"The signing certificate was
+not revoked as of …"*, shown in red when the certificate was revoked at that time — then lists every
+check in full. Each shows its **Status** (`GOOD` / `REVOKED` / `UNKNOWN`), **Method**
+(`OCSP` / `CRL`), **Source** (embedded in the document — and whether a document timestamp seals it —
+or retrieved online during validation), the responder or CRL distribution-point URL when known,
+method-aware times (OCSP: *Response produced* / *Status as of* / *Fresh until*; CRL: *CRL issued* /
+*Next CRL by*), and the revocation date and reason when revoked.
+
+Every check is listed rather than one being chosen, so an embedded token sealed at signing and a
+fresh one fetched during validation both appear — a stale embedded result never masks a fresh one,
+or vice versa.
+
+### The full certificate view
+
+A **View full certificate** link appears under each signature's **Certificate** section and under
+every timestamp. It opens a dialog showing the certificate's whole chain: a left-hand list with one
+row per certificate — the trust anchor at the top, intermediates below it, and the end-entity at the
+bottom — joined by a dashed connector and marked by role:
+
+- <AppIcon name="key" color="certSigningKey" label="End-entity" /> the **signing** or **timestamp** certificate,
+- <AppIcon name="circle" color="certIntermediate" label="Intermediate" /> an **intermediate CA**,
+- <AppIcon name="circle_filled" color="certRoot" label="Root" /> the **root**.
+
+Selecting a row shows that certificate's full parsed dump in the right pane — every field and
+extension, with readable distinguished names, key usages, certificate policies, and AIA/CRL
+distribution points. The pane is selectable, so any value can be copied.
+
+#### Which certificates are already trusted
+
+Each certificate trusted **under the environment the validation ran in** — the trusted lists in
+effect plus the global and active-profile trust stores — carries a trust indicator on its row:
+
+- <AppIcon name="anchor" color="trustQualified" label="Trust anchor" /> a **blue anchor** on the *effective trust anchor*,
+  the lowest trusted certificate in the chain, where the path's trust is realised;
+- <AppIcon name="check" color="success" label="Trusted" /> a **green check** on any other trusted
+  certificate above it.
+
+Hovering shows where the trust comes from — a trusted list's name (e.g. *EU LOTL*), the *Global trust
+store*, or `Profile: <name>` — and a certificate may be vouched for by several sources at once.
+
+#### Exporting a certificate
+
+The **download icon** <AppIcon name="download" label="Export certificate" /> in the header saves the
+selected certificate. Pick any of the offered extensions — `.cer` / `.der` (DER binary) or `.pem` /
+`.crt` (PEM Base64), with `.cer` as the default — and OmniSign encodes the file to match the
+extension you choose.
+
+#### Adding a certificate to your trusted certificates
+
+The **shield icon** <AppIcon name="shield_plus" label="Add to trusted certificates" /> trusts the
+selected certificate directly. With no profile active it is added to the **global** store on click;
+with a profile active, a menu offers **Global** or the active profile. The trust role follows the
+context — a certificate from a **signature's** chain is trusted as a **CA**, one from a
+**timestamp's** chain as a **TSA**. The change commits immediately (no staging); re-validate with the
+refresh button to see it reflected.
+
+:::note Trust is per role
+Trusting a certificate from a signature's chain (CA) does not by itself trust it for timestamps, or
+vice versa — trust it from both views if you need both roles. Certificates already on a trusted list
+are unaffected. You can review and re-type trusted certificates anytime under
+[Trusted Certificates](trusted-certificates.md).
+:::
 
 ### Document timestamps
 
@@ -77,6 +148,10 @@ B-LTA file — a **Document Timestamps (N)** group lists each one with its indic
 time, qualification, TSA, and any errors or warnings. A timestamp whose TSA is anchored on the EU
 LOTL shows the yellow [EU-LOTL emblem](#eu-lotl-membership) in its header. Timestamps never show
 the off-LOTL alert: off-LOTL commercial TSAs are common and perfectly valid.
+
+Like a signature's certificate, each timestamp carries a **View full certificate** link that opens
+[the full certificate view](#the-full-certificate-view) for the TSA's chain — where the TSA can be
+inspected and, if you choose, trusted as a **TSA**.
 
 ### Trusted list warnings
 

@@ -4,6 +4,9 @@ import arrow.core.Either
 import arrow.core.getOrElse
 import arrow.core.left
 import cz.pizavo.omnisign.ades.policy.AdESPolicy
+import cz.pizavo.omnisign.data.trust.certFingerprint
+import cz.pizavo.omnisign.data.util.extractCertificateDetails
+import cz.pizavo.omnisign.data.util.readableDistinguishedName
 import cz.pizavo.omnisign.data.util.toKotlinInstant
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
@@ -14,7 +17,10 @@ import cz.pizavo.omnisign.domain.model.error.ValidationError
 import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.result.OperationResult
+import cz.pizavo.omnisign.domain.model.signature.CertificateChainLink
+import cz.pizavo.omnisign.domain.model.signature.CertificateDetailSection
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
+import cz.pizavo.omnisign.domain.model.signature.CertificateTrustSource
 import cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.model.validation.*
@@ -27,6 +33,7 @@ import eu.europa.esig.dss.diagnostic.TimestampWrapper
 import eu.europa.esig.dss.enumerations.Indication
 import eu.europa.esig.dss.enumerations.SignatureQualification
 import eu.europa.esig.dss.enumerations.SubIndication
+import eu.europa.esig.dss.enumerations.TokenExtractionStrategy
 import eu.europa.esig.dss.enumerations.TimestampQualification
 import eu.europa.esig.dss.model.InMemoryDocument
 import eu.europa.esig.dss.model.x509.CertificateToken
@@ -68,6 +75,7 @@ class DssValidationRepository(
 			val validator = SignedDocumentValidator.fromDocument(document)
 				.apply {
 					setCertificateVerifier(cv)
+					setTokenExtractionStrategy(TokenExtractionStrategy.EXTRACT_CERTIFICATES_ONLY)
 					if (this is PDFDocumentValidator) {
 						setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 					}
@@ -85,7 +93,18 @@ class DssValidationRepository(
 			val verifierWarnings = statusAlert.drain()
 			val disabledHash = parameters.resolvedConfig?.disabledHashAlgorithms ?: emptySet()
 			val disabledEncryption = parameters.resolvedConfig?.disabledEncryptionAlgorithms ?: emptySet()
-			val report = convertReports(reports, parameters.inputName, anchorTypeByDssId(directAnchors))
+
+			val profileName = parameters.resolvedConfig?.profileName
+			val globalTrustedFingerprints = trustStore.list(TrustScope.Global)
+				.getOrElse { emptyList() }.map { it.fingerprint }.toSet()
+			val profileTrustedFingerprints = profileName
+				?.let { name -> trustStore.list(TrustScope.Profile(name)).getOrElse { emptyList() }.map { it.fingerprint }.toSet() }
+				?: emptySet()
+			val trustSourcesOf: (CertificateWrapper) -> List<CertificateTrustSource> = { cert ->
+				trustSourcesFor(cert, globalTrustedFingerprints, profileTrustedFingerprints, profileName)
+			}
+
+			val report = convertReports(reports, parameters.inputName, anchorTypeByDssId(directAnchors), trustSourcesOf)
 			val annotatedSignatures = report.signatures.map { sig ->
 				annotateDisabledAlgorithms(sig, disabledHash, disabledEncryption)
 			}
@@ -144,13 +163,14 @@ class DssValidationRepository(
 		reports: Reports,
 		documentName: String,
 		anchorTypes: Map<String, TrustedCertificateType>,
+		trustSourcesOf: (CertificateWrapper) -> List<CertificateTrustSource>,
 	): ValidationReport {
 		val simpleReport = reports.simpleReport
 		val detailedReport = reports.detailedReport
 		val diagnosticData = reports.diagnosticData
 		
 		val allTimestampResults = diagnosticData.getTimestampList().associate { tsw ->
-			tsw.id to convertTimestamp(tsw, simpleReport, detailedReport, anchorTypes)
+			tsw.id to convertTimestamp(tsw, simpleReport, detailedReport, anchorTypes, trustSourcesOf)
 		}
 
 		val sealedRevocationIds = timestampSealedRevocationIds(diagnosticData, allTimestampResults)
@@ -167,7 +187,7 @@ class DssValidationRepository(
 			
 			val sigTimestamps = sigTsIds.mapNotNull { tsId -> allTimestampResults[tsId] }
 			
-			convertSignature(simpleReport, diagnosticData, sigId, anchorTypes, sealedRevocationIds).copy(
+			convertSignature(simpleReport, diagnosticData, sigId, anchorTypes, sealedRevocationIds, trustSourcesOf).copy(
 				timestamps = sigTimestamps
 			)
 		}
@@ -224,6 +244,7 @@ class DssValidationRepository(
 		simpleReport: SimpleReport,
 		detailedReport: DetailedReport,
 		anchorTypes: Map<String, TrustedCertificateType>,
+		trustSourcesOf: (CertificateWrapper) -> List<CertificateTrustSource>,
 	): TimestampValidationResult {
 		val id = tsw.id
 		
@@ -276,7 +297,7 @@ class DssValidationRepository(
 		val warnings = bbb?.conclusion?.warnings?.map { it.value } ?: emptyList()
 		val infos = bbb?.conclusion?.infos?.map { it.value } ?: emptyList()
 		
-		val tsaSubjectDN = tsw.signingCertificate?.getCertificateDN()
+		val tsaSubjectDN = tsw.signingCertificate?.getCertificateDN()?.let(::readableDistinguishedName)
 		val policyUntrusted = isDowngradedByPolicy(
 			managedAnchorTypes(tsw.certificateChain, anchorTypes),
 			TrustedCertificateType.TSA,
@@ -295,6 +316,7 @@ class DssValidationRepository(
 			warnings = warnings,
 			infos = infos,
 			policyUntrusted = policyUntrusted,
+			chain = buildCertificateChain(tsw.certificateChain, trustSourcesOf),
 		)
 	}
 	
@@ -312,6 +334,7 @@ class DssValidationRepository(
 		signatureId: String,
 		anchorTypes: Map<String, TrustedCertificateType>,
 		sealedRevocationIds: Set<String>,
+		trustSourcesOf: (CertificateWrapper) -> List<CertificateTrustSource>,
 	): SignatureValidationResult {
 		val indication = when (simpleReport.getIndication(signatureId)) {
 			Indication.TOTAL_PASSED, Indication.PASSED -> ValidationIndication.TOTAL_PASSED
@@ -348,8 +371,8 @@ class DssValidationRepository(
 		val euLotlBacked = isEuLotlBacked(sigWrapper?.certificateChain)
 		
 		val certificate = CertificateInfo(
-			subjectDN = signingCert?.getCertificateDN() ?: signedBy,
-			issuerDN = signingCert?.getCertificateIssuerDN() ?: "Unknown",
+			subjectDN = signingCert?.getCertificateDN()?.let(::readableDistinguishedName) ?: signedBy,
+			issuerDN = signingCert?.getCertificateIssuerDN()?.let(::readableDistinguishedName) ?: "Unknown",
 			serialNumber = signingCert?.serialNumber ?: "Unknown",
 			validFrom = signingCert?.notBefore?.toKotlinInstant() ?: kotlin.time.Instant.fromEpochSeconds(0),
 			validTo = signingCert?.notAfter?.toKotlinInstant() ?: kotlin.time.Instant.fromEpochSeconds(0),
@@ -357,6 +380,7 @@ class DssValidationRepository(
 			isQualified = trustTier != SignatureTrustTier.NOT_QUALIFIED,
 			publicKeyAlgorithm = signingCert?.encryptionAlgorithm?.name,
 			sha256Fingerprint = sha256Fingerprint,
+			chain = buildCertificateChain(sigWrapper?.certificateChain, trustSourcesOf),
 		)
 		
 		val signatureQualification = dssQualification
@@ -408,6 +432,79 @@ class DssValidationRepository(
 			.toSet()
 
 	/**
+	 * Build the signing certificate's full chain (leaf-first, up to the trust anchor) as
+	 * [CertificateChainLink]s, parsing every certificate's DER into a complete field dump. A
+	 * certificate whose binaries DSS did not extract is skipped. Drives the full-certificate dialog.
+	 */
+	private fun buildCertificateChain(
+		chain: List<CertificateWrapper>?,
+		trustSourcesOf: (CertificateWrapper) -> List<CertificateTrustSource>,
+	): List<CertificateChainLink> =
+		chain.orEmpty().mapNotNull { cert ->
+			val der = cert.binaries ?: return@mapNotNull null
+			val details = extractCertificateDetails(der)
+			CertificateChainLink(
+				commonName = subjectCommonName(details),
+				subjectDN = readableDistinguishedName(cert.getCertificateDN()),
+				selfSigned = cert.getCertificateDN() == cert.getCertificateIssuerDN(),
+				trustedVia = trustSourcesOf(cert),
+				details = details,
+				der = der,
+			)
+		}
+
+	/**
+	 * The trust sources that vouch for [cert] under the validation's environment — empty unless
+	 * [cert] is itself a trust anchor ([CertificateWrapper.isTrusted]). This gate matters because
+	 * DSS's `trustServices` reflects a certificate's chain relationship to a trusted-list CA and is
+	 * populated on the leaf too; only the anchor is actually trusted, so a leaf covered by a
+	 * TL-listed CA must not be marked.
+	 *
+	 * For an anchor, store membership is matched against our own per-scope fingerprints (so global
+	 * and profile are attributed distinctly); a trusted certificate not in our store is anchored by
+	 * a trusted list, named EU LOTL when it is backed by it.
+	 */
+	private fun trustSourcesFor(
+		cert: CertificateWrapper,
+		globalTrustedFingerprints: Set<String>,
+		profileTrustedFingerprints: Set<String>,
+		profileName: String?,
+	): List<CertificateTrustSource> {
+		if (!cert.isTrusted) return emptyList()
+		val fingerprint = cert.binaries?.let { certFingerprint(it) }
+		val storeSources = buildList {
+			if (fingerprint != null) {
+				if (fingerprint in globalTrustedFingerprints) add(CertificateTrustSource.GlobalStore)
+				if (profileName != null && fingerprint in profileTrustedFingerprints) {
+					add(CertificateTrustSource.ProfileStore(profileName))
+				}
+			}
+		}
+		return storeSources.ifEmpty {
+			listOf(CertificateTrustSource.TrustedList(if (isEuLotlBackedCert(cert)) "EU LOTL" else "Trusted list"))
+		}
+	}
+
+	/** Whether [cert]'s trust services place it on the EU LOTL (or a national list that is a member). */
+	private fun isEuLotlBackedCert(cert: CertificateWrapper): Boolean =
+		cert.trustServices.any { ts ->
+			ts.listOfTrustedLists?.url == DssServiceFactory.EU_LOTL_URL ||
+				ts.trustedList?.let {
+					it.url == DssServiceFactory.EU_LOTL_URL || it.parent?.url == DssServiceFactory.EU_LOTL_URL
+				} == true
+		}
+
+	/**
+	 * Pull the subject common name out of an already-parsed [details] dump for a concise chain-row
+	 * label, or `null` when the subject carries none. Reads the "Subject" section's CN field produced
+	 * by [extractCertificateDetails]; on absence returns `null` so the caller shows the full DN.
+	 */
+	private fun subjectCommonName(details: List<CertificateDetailSection>): String? =
+		details.firstOrNull { it.title == "Subject" }
+			?.fields?.firstOrNull { it.label.endsWith("(CN)") }
+			?.value
+
+	/**
 	 * Map *every* revocation token DSS holds for the signing certificate into [RevocationInfo],
 	 * newest first, so the caller can present all of them — typically an embedded token sealed at
 	 * signing time and a fresh one fetched online during validation — without choosing between them.
@@ -446,17 +543,8 @@ class DssValidationRepository(
 	 * EU-LOTL-backed when any such service's trusted list (or the list of trusted lists it belongs
 	 * to) is the EU LOTL ([DssServiceFactory.EU_LOTL_URL]).
 	 */
-	private fun isEuLotlBacked(certificateChain: List<CertificateWrapper>?): Boolean {
-		val chain = certificateChain ?: return false
-		return chain.any { cert ->
-			cert.trustServices.any { ts ->
-				ts.listOfTrustedLists?.url == DssServiceFactory.EU_LOTL_URL ||
-					ts.trustedList?.let {
-						it.url == DssServiceFactory.EU_LOTL_URL || it.parent?.url == DssServiceFactory.EU_LOTL_URL
-					} == true
-			}
-		}
-	}
+	private fun isEuLotlBacked(certificateChain: List<CertificateWrapper>?): Boolean =
+		certificateChain?.any { isEuLotlBackedCert(it) } ?: false
 
 	/**
 	 * Append warnings to a [SignatureValidationResult] when the signature's hash or

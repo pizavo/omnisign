@@ -27,6 +27,18 @@
 .qualifiedQscd {
   color: #0e55d8;
 }
+.trustQualified {
+  color: #3f7ef2;
+}
+.certSigningKey {
+  color: #16643b;
+}
+.certIntermediate {
+  color: #0e55d8;
+}
+.certRoot {
+  color: #5b21b6;
+}
 .folder {
   color: #276ef1;
 }
@@ -51,6 +63,18 @@
 }
 [data-theme='dark'] .qualifiedQscd {
   color: #276ef1;
+}
+[data-theme='dark'] .trustQualified {
+  color: #6f9ef5;
+}
+[data-theme='dark'] .certSigningKey {
+  color: #1daf61;
+}
+[data-theme='dark'] .certIntermediate {
+  color: #578ef4;
+}
+[data-theme='dark'] .certRoot {
+  color: #7c3aed;
 }
 [data-theme='dark'] .folder {
   color: #ffd54f;

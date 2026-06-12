@@ -14,6 +14,10 @@ type IconColor =
   | 'warning'
   | 'qualified'
   | 'qualifiedQscd'
+  | 'trustQualified'
+  | 'certSigningKey'
+  | 'certIntermediate'
+  | 'certRoot'
   | 'folder'
   | 'muted';
 

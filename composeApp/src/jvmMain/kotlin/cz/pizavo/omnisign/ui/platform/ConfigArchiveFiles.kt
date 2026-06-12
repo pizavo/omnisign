@@ -11,7 +11,7 @@ import io.github.vinceglb.filekit.write
  * JVM implementation — opens a native save dialog via FileKit and writes the ZIP archive bytes.
  */
 actual suspend fun exportConfigArchive(bytes: ByteArray, suggestedName: String): Boolean {
-    val destination = FileKit.openFileSaver(suggestedName = suggestedName, extension = "zip") ?: return false
+    val destination = FileKit.openFileSaver(suggestedName = suggestedName, defaultExtension = "zip") ?: return false
     destination.write(bytes)
     return true
 }
