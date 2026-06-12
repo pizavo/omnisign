@@ -1,8 +1,13 @@
 package cz.pizavo.omnisign.domain.model.validation
 
+import cz.pizavo.omnisign.domain.model.signature.CertificateChainLink
+import cz.pizavo.omnisign.domain.model.signature.CertificateDetailSection
+import cz.pizavo.omnisign.domain.model.signature.CertificateField
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
+import cz.pizavo.omnisign.domain.model.signature.CertificateTrustSource
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import kotlin.time.Instant
 
 /**
@@ -120,5 +125,48 @@ class ValidationReportTextTest : FunSpec({
 		text shouldContain "an-info"
 		text shouldContain "Qualification Information:"
 		text shouldContain "qual-info"
+	}
+
+	test("renders the certificate chain with roles and trust sources, expanding detail only when detailed") {
+		val chained = report.copy(
+			signatures = listOf(
+				report.signatures.first().copy(
+					certificate = cert.copy(
+						chain = listOf(
+							CertificateChainLink(
+								commonName = "Leaf Signer",
+								subjectDN = "CN=Leaf Signer",
+								selfSigned = false,
+								trustedVia = emptyList(),
+								details = listOf(
+									CertificateDetailSection("Extensions", listOf(CertificateField("Custom Extension", "critical-value"))),
+								),
+								der = byteArrayOf(1),
+							),
+							CertificateChainLink(
+								commonName = "Trust Root",
+								subjectDN = "CN=Trust Root",
+								selfSigned = true,
+								trustedVia = listOf(CertificateTrustSource.TrustedList("EU LOTL")),
+								details = listOf(
+									CertificateDetailSection("Subject", listOf(CertificateField("CN", "Trust Root"))),
+								),
+								der = byteArrayOf(2),
+							),
+						),
+					),
+				),
+			),
+		)
+
+		val summary = chained.toPlainText()
+		summary shouldContain "Certificate chain:"
+		summary shouldContain "Signing certificate: Leaf Signer"
+		summary shouldContain "Root CA: Trust Root [trusted via EU LOTL]"
+		summary shouldNotContain "Custom Extension"
+
+		val detailed = chained.toPlainText(detailed = true)
+		detailed shouldContain "Custom Extension"
+		detailed shouldContain "critical-value"
 	}
 })

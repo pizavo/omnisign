@@ -1,5 +1,9 @@
 package cz.pizavo.omnisign.domain.model.validation
 
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
+import cz.pizavo.omnisign.domain.model.signature.CertificateChainLink
+import cz.pizavo.omnisign.domain.model.signature.displayLabel
+import cz.pizavo.omnisign.domain.model.signature.roleLabel
 import cz.pizavo.omnisign.domain.model.value.formatDate
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
 
@@ -7,17 +11,20 @@ import cz.pizavo.omnisign.domain.model.value.formatDateTime
  * Render this [ValidationReport] as a human-readable plain-text summary.
  *
  * The format mirrors what desktop users see when they export a validation report as `.txt`:
- * a header, per-signature blocks (indication, signer, level, certificate details, errors,
+ * a header, per-signature blocks (indication, signer, level, certificate details, the certificate chain, revocation evidence, errors,
  * warnings, and any embedded signature/archive timestamps), a document-level timestamps block,
  * and finally any trusted-list warnings. The result is a pure
  * projection of the domain model — no DSS interaction, no I/O — so it is safe to call on any
  * Kotlin target and is the natural pairing of [cz.pizavo.omnisign.domain.model.validation.json.toJsonReport]
  * for callers that want a text equivalent.
  *
+ * @param detailed When `true`, every certificate in a chain is followed by its full parsed dump —
+ *   each [cz.pizavo.omnisign.domain.model.signature.CertificateDetailSection] and field; when
+ *   `false`, the chain is a one-line-per-certificate summary (role, common name, trust source).
  * @return Multi-line text representation of the report. Lines are separated with
  *   `appendLine`'s platform default line separator.
  */
-fun ValidationReport.toPlainText(): String = buildString {
+fun ValidationReport.toPlainText(detailed: Boolean = false): String = buildString {
 	fun StringBuilder.appendTimestampDetails(ts: TimestampValidationResult, pad: String) {
 		appendLine("${pad}Indication:      ${ts.indication}")
 		ts.subIndication?.let { appendLine("${pad}Sub-indication:  $it") }
@@ -25,6 +32,7 @@ fun ValidationReport.toPlainText(): String = buildString {
 		ts.qualification?.let { appendLine("${pad}Qualification:   $it") }
 		ts.tsaSubjectDN?.let { appendLine("${pad}TSA:             $it") }
 		if (ts.euLotlBacked) appendLine("${pad}EU LOTL:         Yes")
+		appendCertificateChain(ts.chain, TrustedCertificateType.TSA, pad, detailed)
 		if (ts.errors.isNotEmpty()) {
 			appendLine("${pad}Errors:")
 			ts.errors.forEach { appendLine("$pad  • $it") }
@@ -86,6 +94,7 @@ fun ValidationReport.toPlainText(): String = buildString {
 			}
 			sig.certificate.publicKeyAlgorithm?.let { appendLine("    Public key:   $it") }
 			sig.certificate.sha256Fingerprint?.let { appendLine("    SHA-256:      $it") }
+			appendCertificateChain(sig.certificate.chain, TrustedCertificateType.CA, "  ", detailed)
 			if (sig.revocations.isNotEmpty()) {
 				appendLine()
 				appendLine("  Revocation:")
@@ -128,5 +137,50 @@ fun ValidationReport.toPlainText(): String = buildString {
 	if (tlWarnings.isNotEmpty()) {
 		appendLine("── Trusted List Warnings ──")
 		tlWarnings.forEach { appendLine("  ⚠ $it") }
+	}
+}
+
+/**
+ * Append [chain] to this builder, rendered top-down for reading — the trust anchor first, the
+ * end-entity last (the reverse of the leaf-first storage order) — one line per certificate carrying
+ * its [roleLabel], common name, and any trust sources. When [detailed], each certificate is followed
+ * by its full parsed dump (every [cz.pizavo.omnisign.domain.model.signature.CertificateDetailSection]
+ * and field, each value's continuation lines indented). Renders nothing when [chain] is empty.
+ *
+ * @param leafRole What the chain anchors, used to label the leaf — [TrustedCertificateType.TSA] for a
+ *   timestamp's chain, otherwise a signature's.
+ * @param pad Indentation for the "Certificate chain:" header; entries and details nest beneath it.
+ * @param detailed Whether to append each certificate's full parsed dump under its summary line.
+ */
+private fun StringBuilder.appendCertificateChain(
+	chain: List<CertificateChainLink>,
+	leafRole: TrustedCertificateType,
+	pad: String,
+	detailed: Boolean,
+) {
+	if (chain.isEmpty()) return
+	val entryPad = "$pad  "
+	val sectionPad = "$entryPad  "
+	val fieldPad = "$sectionPad  "
+	appendLine("${pad}Certificate chain:")
+	for (index in chain.indices.reversed()) {
+		val link = chain[index]
+		val role = link.roleLabel(isLeaf = index == 0, isTop = index == chain.lastIndex, leafRole = leafRole)
+		val trust = if (link.trustedVia.isEmpty()) {
+			""
+		} else {
+			" [trusted via ${link.trustedVia.joinToString(", ") { it.displayLabel() }}]"
+		}
+		appendLine("$entryPad${role}: ${link.commonName ?: link.subjectDN}$trust")
+		if (detailed) {
+			link.details.forEach { section ->
+				appendLine("$sectionPad${section.title}:")
+				section.fields.forEach { field ->
+					val valueLines = field.value.split("\n")
+					appendLine("$fieldPad${field.label}: ${valueLines.first()}")
+					valueLines.drop(1).forEach { appendLine("$fieldPad  $it") }
+				}
+			}
+		}
 	}
 }

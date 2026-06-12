@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.cli.json
 
+import cz.pizavo.omnisign.domain.model.validation.json.JsonValidationReport
 import kotlinx.serialization.Serializable
 
 /**
@@ -17,99 +18,24 @@ data class JsonSigningResult(
 )
 
 /**
- * JSON-serializable DTO for the result of a validation operation.
+ * JSON-serializable DTO for the result of a validation operation — a thin CLI envelope around the
+ * shared [JsonValidationReport]. On success [report] carries the validation data and [error] is null;
+ * on failure [report] is null and [error] describes what went wrong, so stdout stays parseable JSON
+ * either way. The desktop and server surface failures through the UI and HTTP status instead, which
+ * is why the shared report itself carries no `success`/`error` fields.
+ *
+ * @property success Whether the operation ran to completion — distinct from the signatures' verdict,
+ *   which lives in [report]'s `overallResult`.
+ * @property report The validation report; null when the operation failed.
+ * @property rawReportPath Absolute path the raw DSS report was written to, when `--report-out` was given.
+ * @property error Operation-level failure detail; null on success.
  */
 @Serializable
 data class JsonValidationResult(
 	val success: Boolean,
-	val documentName: String? = null,
-	val validationTime: String? = null,
-	val overallResult: String? = null,
-	val overallTrustTier: String? = null,
-	val signatures: List<JsonSignatureResult> = emptyList(),
-	val timestamps: List<JsonTimestampResult> = emptyList(),
-	val summary: JsonValidationSummary? = null,
-	val tlWarnings: List<String> = emptyList(),
+	val report: JsonValidationReport? = null,
 	val rawReportPath: String? = null,
 	val error: JsonError? = null,
-)
-
-/**
- * JSON-serializable DTO for a single signature within a validation report.
- *
- * @property errors AdES validation errors.
- * @property warnings AdES validation warnings.
- * @property infos AdES informational messages.
- * @property qualificationErrors eIDAS qualification errors.
- * @property qualificationWarnings eIDAS qualification warnings.
- * @property qualificationInfos eIDAS qualification informational messages.
- */
-@Serializable
-data class JsonSignatureResult(
-	val signatureId: String,
-	val indication: String,
-	val subIndication: String? = null,
-	val signedBy: String,
-	val signatureLevel: String,
-	val signatureTime: String,
-	val qualification: String? = null,
-	val trustTier: String? = null,
-	val euLotlBacked: Boolean = false,
-	val hashAlgorithm: String? = null,
-	val encryptionAlgorithm: String? = null,
-	val certificate: JsonCertificateInfo,
-	val errors: List<String> = emptyList(),
-	val warnings: List<String> = emptyList(),
-	val infos: List<String> = emptyList(),
-	val qualificationErrors: List<String> = emptyList(),
-	val qualificationWarnings: List<String> = emptyList(),
-	val qualificationInfos: List<String> = emptyList(),
-	val timestamps: List<JsonTimestampResult> = emptyList(),
-)
-
-/**
- * JSON-serializable DTO for certificate information.
- */
-@Serializable
-data class JsonCertificateInfo(
-	val subjectDN: String,
-	val issuerDN: String,
-	val serialNumber: String,
-	val validFrom: String,
-	val validTo: String,
-	val keyUsages: List<String> = emptyList(),
-	val isQualified: Boolean = false,
-	val publicKeyAlgorithm: String? = null,
-	val sha256Fingerprint: String? = null,
-)
-
-/**
- * JSON-serializable DTO for a single timestamp within a validation report.
- */
-@Serializable
-data class JsonTimestampResult(
-	val timestampId: String,
-	val type: String,
-	val indication: String,
-	val subIndication: String? = null,
-	val productionTime: String,
-	val qualification: String? = null,
-	val tsaSubjectDN: String? = null,
-	val euLotlBacked: Boolean = false,
-	val errors: List<String> = emptyList(),
-	val warnings: List<String> = emptyList(),
-	val infos: List<String> = emptyList(),
-)
-
-/**
- * JSON-serializable DTO for the validation summary.
- */
-@Serializable
-data class JsonValidationSummary(
-	val total: Int,
-	val passed: Int,
-	val failed: Int,
-	val indeterminate: Int,
 )
 
 /**

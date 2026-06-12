@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.domain.model.signature
 
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import kotlinx.serialization.Serializable
 
 /**
@@ -61,4 +62,21 @@ data class CertificateChainLink(
         result = 31 * result + der.contentHashCode()
         return result
     }
+}
+
+/**
+ * This certificate's display role, derived from its position in the (leaf-first) chain and what the
+ * chain anchors: the leaf is the signing or timestamp certificate, the topmost is a root (when
+ * self-signed) or a non-self-signed certificate authority, and anything between is an intermediate
+ * CA. Shared by the certificate-details dialog and the plain-text report so the labels never drift.
+ *
+ * @param isLeaf Whether this is the end-entity certificate (index 0 of the chain).
+ * @param isTop Whether this is the topmost certificate (the last entry).
+ * @param leafRole What the chain anchors — [TrustedCertificateType.TSA] labels the leaf a timestamp
+ *   certificate; any other value labels it a signing certificate.
+ */
+fun CertificateChainLink.roleLabel(isLeaf: Boolean, isTop: Boolean, leafRole: TrustedCertificateType): String = when {
+    isLeaf -> if (leafRole == TrustedCertificateType.TSA) "Timestamp certificate" else "Signing certificate"
+    isTop -> if (selfSigned) "Root CA" else "Certificate Authority"
+    else -> "Intermediate CA"
 }

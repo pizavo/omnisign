@@ -1,6 +1,10 @@
 package cz.pizavo.omnisign.domain.model.validation.json
 
+import cz.pizavo.omnisign.domain.model.signature.CertificateChainLink
+import cz.pizavo.omnisign.domain.model.signature.CertificateDetailSection
+import cz.pizavo.omnisign.domain.model.signature.CertificateField
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
+import cz.pizavo.omnisign.domain.model.signature.CertificateTrustSource
 import cz.pizavo.omnisign.domain.model.validation.RevocationInfo
 import cz.pizavo.omnisign.domain.model.validation.SignatureValidationResult
 import cz.pizavo.omnisign.domain.model.validation.TimestampValidationResult
@@ -163,6 +167,38 @@ class JsonReportSerializationTest : FunSpec({
         ts.indication shouldBe "INDETERMINATE"
         ts.subIndication shouldBe "NO_POE"
         ts.euLotlBacked shouldBe false
+    }
+
+    test("toJsonReport maps the certificate chain with trust sources and detail sections") {
+        val withChain = sampleReport.copy(
+            signatures = listOf(
+                sampleReport.signatures.first().copy(
+                    certificate = sampleCert.copy(
+                        chain = listOf(
+                            CertificateChainLink(
+                                commonName = "Alice",
+                                subjectDN = "CN=Alice",
+                                selfSigned = false,
+                                trustedVia = listOf(CertificateTrustSource.GlobalStore),
+                                details = listOf(
+                                    CertificateDetailSection("Subject", listOf(CertificateField("CN", "Alice"))),
+                                ),
+                                der = byteArrayOf(1, 2),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val cert = withChain.toJsonReport().signatures.first().certificate
+        cert.chain.size shouldBe 1
+        val link = cert.chain.first()
+        link.commonName shouldBe "Alice"
+        link.selfSigned shouldBe false
+        link.trustedVia.single().type shouldBe "GLOBAL_STORE"
+        link.details.single().title shouldBe "Subject"
+        link.details.single().fields.single().label shouldBe "CN"
     }
 })
 

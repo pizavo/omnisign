@@ -40,6 +40,8 @@ import androidx.compose.ui.window.PopupProperties
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.signature.CertificateChainLink
 import cz.pizavo.omnisign.domain.model.signature.CertificateTrustSource
+import cz.pizavo.omnisign.domain.model.signature.displayLabel
+import cz.pizavo.omnisign.domain.model.signature.roleLabel
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Dialog
 import cz.pizavo.omnisign.lumo.components.HorizontalDivider
@@ -235,22 +237,23 @@ private fun CertificateChainNav(
     ) {
         for (index in chain.indices.reversed()) {
             val link = chain[index]
-            val role: String
+            val role = link.roleLabel(
+                isLeaf = index == 0,
+                isTop = index == chain.lastIndex,
+                leafRole = trustRole,
+            )
             val icon: DrawableResource
             val iconTint: Color
             when {
                 index == 0 -> {
-                    role = if (trustRole == TrustedCertificateType.TSA) "Timestamp certificate" else "Signing certificate"
                     icon = Res.drawable.icon_key
                     iconTint = LumoTheme.colors.icons.certSigningKey
                 }
                 index == chain.lastIndex -> {
-                    role = if (link.selfSigned) "Root CA" else "Certificate Authority"
                     icon = Res.drawable.icon_circle_filled
                     iconTint = LumoTheme.colors.icons.certRoot
                 }
                 else -> {
-                    role = "Intermediate CA"
                     icon = Res.drawable.icon_circle
                     iconTint = LumoTheme.colors.icons.certIntermediate
                 }
@@ -392,7 +395,7 @@ private fun CertificateChainNavItem(
                     TooltipBox(
                         tooltip = {
                             Tooltip {
-                                Text(text = prefix + trustedVia.joinToString(", ") { trustSourceLabel(it) })
+                                Text(text = prefix + trustedVia.joinToString(", ") { it.displayLabel() })
                             }
                         },
                         state = rememberTooltipState(),
@@ -537,13 +540,6 @@ private fun CertificateTrustMenuRow(label: String, onClick: () -> Unit) {
     ) {
         Text(text = label, style = LumoTheme.typography.body2, color = LumoTheme.colors.text)
     }
-}
-
-/** Human-readable label for a [CertificateTrustSource], shown in the trusted-anchor tooltip. */
-private fun trustSourceLabel(source: CertificateTrustSource): String = when (source) {
-    is CertificateTrustSource.TrustedList -> source.name
-    CertificateTrustSource.GlobalStore -> "Global trust store"
-    is CertificateTrustSource.ProfileStore -> "Profile: ${source.profileName}"
 }
 
 /**

@@ -22,3 +22,14 @@ sealed interface CertificateTrustSource {
     @Serializable
     data class ProfileStore(val profileName: String) : CertificateTrustSource
 }
+
+/**
+ * Human-readable label for this trust source — the trusted list's name, `"Global trust store"`, or
+ * `"Profile: <name>"`. Shared by every surface that names a certificate's trust origin (the
+ * certificate-details dialog, the plain-text report, the CLI) so the wording never drifts.
+ */
+fun CertificateTrustSource.displayLabel(): String = when (this) {
+    is CertificateTrustSource.TrustedList -> name
+    CertificateTrustSource.GlobalStore -> "Global trust store"
+    is CertificateTrustSource.ProfileStore -> "Profile: $profileName"
+}

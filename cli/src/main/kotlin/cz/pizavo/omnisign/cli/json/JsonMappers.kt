@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.domain.model.error.OperationError
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.SigningResult
 import cz.pizavo.omnisign.domain.model.validation.*
+import cz.pizavo.omnisign.domain.model.validation.json.toJsonReport
 import cz.pizavo.omnisign.domain.repository.CertificateDiscoveryResult
 
 /**
@@ -52,90 +53,15 @@ fun ArchivingResult.toJsonResult(outputFile: String): JsonExtensionResult =
 	)
 
 /**
- * Convert a domain [ValidationReport] to a [JsonValidationResult] DTO.
+ * Convert a domain [ValidationReport] to a success [JsonValidationResult] — the shared
+ * [cz.pizavo.omnisign.domain.model.validation.json.JsonValidationReport] wrapped in the CLI's success
+ * envelope.
  */
-fun ValidationReport.toJsonResult(rawReportPath: String? = null): JsonValidationResult {
-	val passed = signatures.count { it.indication == ValidationIndication.TOTAL_PASSED }
-	val failed = signatures.count { it.indication == ValidationIndication.TOTAL_FAILED }
-	val indeterminate = signatures.count { it.indication == ValidationIndication.INDETERMINATE }
-	
-	return JsonValidationResult(
+fun ValidationReport.toJsonResult(rawReportPath: String? = null): JsonValidationResult =
+	JsonValidationResult(
 		success = true,
-		documentName = documentName,
-		validationTime = validationTime.toString(),
-		overallResult = overallResult.name,
-		overallTrustTier = overallTrustTier.takeIf { it != SignatureTrustTier.NOT_QUALIFIED }?.name,
-		signatures = signatures.map { it.toJson() },
-		timestamps = timestamps.map { it.toJson() },
-		summary = JsonValidationSummary(
-			total = signatures.size,
-			passed = passed,
-			failed = failed,
-			indeterminate = indeterminate,
-		),
+		report = toJsonReport(),
 		rawReportPath = rawReportPath,
-		tlWarnings = tlWarnings,
-	)
-}
-
-/**
- * Convert a domain [SignatureValidationResult] to a [JsonSignatureResult] DTO.
- */
-private fun SignatureValidationResult.toJson(): JsonSignatureResult =
-	JsonSignatureResult(
-		signatureId = signatureId,
-		indication = indication.name,
-		subIndication = subIndication,
-		signedBy = signedBy,
-		signatureLevel = signatureLevel,
-		signatureTime = signatureTime.toString(),
-		qualification = signatureQualification,
-		trustTier = trustTier.name,
-		euLotlBacked = euLotlBacked,
-		hashAlgorithm = hashAlgorithm,
-		encryptionAlgorithm = encryptionAlgorithm,
-		certificate = certificate.toJson(),
-		errors = errors,
-		warnings = warnings,
-		infos = infos,
-		qualificationErrors = qualificationErrors,
-		qualificationWarnings = qualificationWarnings,
-		qualificationInfos = qualificationInfos,
-		timestamps = timestamps.map { it.toJson() },
-	)
-
-/**
- * Convert a domain [cz.pizavo.omnisign.domain.model.signature.CertificateInfo] to a [JsonCertificateInfo] DTO.
- */
-private fun cz.pizavo.omnisign.domain.model.signature.CertificateInfo.toJson(): JsonCertificateInfo =
-	JsonCertificateInfo(
-		subjectDN = subjectDN,
-		issuerDN = issuerDN,
-		serialNumber = serialNumber,
-		validFrom = validFrom.toString(),
-		validTo = validTo.toString(),
-		keyUsages = keyUsages,
-		isQualified = isQualified,
-		publicKeyAlgorithm = publicKeyAlgorithm,
-		sha256Fingerprint = sha256Fingerprint,
-	)
-
-/**
- * Convert a domain [TimestampValidationResult] to a [JsonTimestampResult] DTO.
- */
-private fun TimestampValidationResult.toJson(): JsonTimestampResult =
-	JsonTimestampResult(
-		timestampId = timestampId,
-		type = type,
-		indication = indication.name,
-		subIndication = subIndication,
-		productionTime = productionTime.toString(),
-		qualification = qualification,
-		tsaSubjectDN = tsaSubjectDN,
-		euLotlBacked = euLotlBacked,
-		errors = errors,
-		warnings = warnings,
-		infos = infos,
 	)
 
 /**
