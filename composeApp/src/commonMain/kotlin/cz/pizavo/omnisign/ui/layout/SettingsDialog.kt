@@ -1042,6 +1042,10 @@ private fun ValidationPolicySection(
 
 /**
  * Algorithm constraint level selectors for validation.
+ *
+ * `IGNORE` is intentionally not offered here — it skips the expiration check silently, producing no
+ * message — so the lightest selectable level is `INFORM`, which still surfaces an informational note
+ * in the validation report. `IGNORE` remains valid in config files (CLI / server).
  */
 @Composable
 private fun AlgorithmConstraintsSection(
@@ -1050,7 +1054,7 @@ private fun AlgorithmConstraintsSection(
 ) {
 	DropdownSelector(
 		selected = state.algoExpirationLevel,
-		options = AlgorithmConstraintLevel.entries.toList(),
+		options = AlgorithmConstraintLevel.entries.filter { it != AlgorithmConstraintLevel.IGNORE },
 		onSelect = { value ->
 			onFieldChange { it.copy(algoExpirationLevel = value ?: AlgorithmConstraintLevel.FAIL) }
 		},
@@ -1064,7 +1068,7 @@ private fun AlgorithmConstraintsSection(
 	
 	DropdownSelector(
 		selected = state.algoExpirationLevelAfterUpdate,
-		options = AlgorithmConstraintLevel.entries.toList(),
+		options = AlgorithmConstraintLevel.entries.filter { it != AlgorithmConstraintLevel.IGNORE },
 		onSelect = { value ->
 			onFieldChange {
 				it.copy(algoExpirationLevelAfterUpdate = value ?: AlgorithmConstraintLevel.WARN)
