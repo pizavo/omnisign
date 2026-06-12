@@ -210,6 +210,11 @@ the result badge:
 - **Not Qualified** — the certificate is not in the EU trust framework (common for institutional
   certificates); no rosette is shown.
 
+When a signature reaches the **Qualified (QSCD)** tier, the report also states it in words under the
+signature's **Qualification Information**: *"The private key resides in a QSCD at both issuance and
+signing time."* — the positive counterpart of the two *"…does not reside in a QSCD…"* warnings DSS
+raises when it does not.
+
 :::info
 A signature can be cryptographically valid (PASSED) even when the certificate is not qualified.
 Qualification relates to eIDAS legal standing, not cryptographic strength.

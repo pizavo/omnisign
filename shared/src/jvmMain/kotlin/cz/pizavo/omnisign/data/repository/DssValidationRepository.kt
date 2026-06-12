@@ -347,7 +347,10 @@ class DssValidationRepository(
 		val infos = simpleReport.getAdESValidationInfo(signatureId).map { it.value }
 		val qualificationErrors = simpleReport.getQualificationErrors(signatureId).map { it.value }
 		val qualificationWarnings = simpleReport.getQualificationWarnings(signatureId).map { it.value }
-		val qualificationInfos = simpleReport.getQualificationInfo(signatureId).map { it.value }
+		val dssQualification = simpleReport.getSignatureQualification(signatureId)
+		val trustTier = dssQualification?.toTrustTier() ?: SignatureTrustTier.NOT_QUALIFIED
+		val qualificationInfos = simpleReport.getQualificationInfo(signatureId).map { it.value } +
+			listOfNotNull(trustTier.qscdResidenceInfo())
 		
 		val signedBy = simpleReport.getSignedBy(signatureId) ?: "Unknown"
 		val signatureLevel = simpleReport.getSignatureFormat(signatureId)?.toString() ?: "Unknown"
@@ -366,8 +369,6 @@ class DssValidationRepository(
 			bytes.joinToString(":") { "%02X".format(it) }
 		}
 		
-		val dssQualification = simpleReport.getSignatureQualification(signatureId)
-		val trustTier = dssQualification?.toTrustTier() ?: SignatureTrustTier.NOT_QUALIFIED
 		val euLotlBacked = isEuLotlBacked(sigWrapper?.certificateChain)
 		
 		val certificate = CertificateInfo(
