@@ -82,6 +82,12 @@ fun ValidationReport.toPlainText(detailed: Boolean = false): String = buildStrin
 			}
 			sig.hashAlgorithm?.let { appendLine("  Hash algorithm: $it") }
 			sig.encryptionAlgorithm?.let { appendLine("  Encryption:     $it") }
+			appendMessages("Errors", sig.errors)
+			appendMessages("Warnings", sig.warnings)
+			appendMessages("Qualification Errors", sig.qualificationErrors)
+			appendMessages("Qualification Warnings", sig.qualificationWarnings)
+			appendMessages("Information", sig.infos)
+			appendMessages("Qualification Information", sig.qualificationInfos)
 			appendLine()
 			appendLine("  Certificate:")
 			appendLine("    Subject:      ${sig.certificate.subjectDN}")
@@ -107,12 +113,6 @@ fun ValidationReport.toPlainText(detailed: Boolean = false): String = buildStrin
 					}
 				}
 			}
-			appendMessages("Errors", sig.errors)
-			appendMessages("Warnings", sig.warnings)
-			appendMessages("Qualification Errors", sig.qualificationErrors)
-			appendMessages("Qualification Warnings", sig.qualificationWarnings)
-			appendMessages("Information", sig.infos)
-			appendMessages("Qualification Information", sig.qualificationInfos)
 			if (sig.timestamps.isNotEmpty()) {
 				appendLine()
 				appendLine("  Timestamps (${sig.timestamps.size}):")
