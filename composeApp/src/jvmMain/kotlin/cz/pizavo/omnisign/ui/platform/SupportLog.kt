@@ -185,7 +185,7 @@ actual suspend fun exportSupportLogArchive(): Boolean {
     val stamp = LocalDateTime.now().format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))
     val destination = FileKit.openFileSaver(
         suggestedName = "omnisign-logs-$stamp",
-        extension = "zip",
+        defaultExtension = "zip",
     ) ?: return false
     return try {
         destination.write(bytes)

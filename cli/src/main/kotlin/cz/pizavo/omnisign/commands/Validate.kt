@@ -21,8 +21,6 @@ import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.validation.*
-import cz.pizavo.omnisign.domain.model.value.formatDate
-import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ValidateDocumentUseCase
 import cz.pizavo.omnisign.platform.PasswordCallback
@@ -41,43 +39,43 @@ class Validate : CliktCommand(
 	private val configRepository: ConfigRepository by inject()
 	private val passwordCallback: PasswordCallback by inject()
 	private val output by requireObject<OutputConfig>()
-	
+
 	private val file by option("-f", "--file", help = "Path to the PDF file to validate")
 		.path(
 			mustExist = true,
 			canBeDir = false,
 			mustBeReadable = true,
 		).required()
-	
+
 	private val policy by option("-p", "--policy", help = "Path to custom validation policy file")
 		.path(mustExist = true, canBeDir = false, mustBeReadable = true)
-	
+
 	private val profile by option(
 		"--profile",
 		help = "Use a named configuration profile for this operation"
 	)
-	
+
 	private val detailed by option(
 		"-d",
 		"--detailed",
-		help = "Show detailed validation output including certificate key usages, timestamp IDs, and resolved configuration"
+		help = "Show detailed validation output: every certificate's full parsed dump, the raw DSS signature/timestamp IDs, and the resolved configuration"
 	).flag(default = false)
-	
+
 	private val reportOut by option(
 		"--report-out",
 		help = "Write the raw DSS report to this file path (XML format chosen by --report-format)"
 	).path(canBeDir = false)
-	
+
 	private val reportFormat by option(
 		"--report-format",
 		help = "Format of the raw report written by --report-out (${RawReportFormat.entries.joinToString { it.name }}). Default: XML_DETAILED"
 	).enum<RawReportFormat>().default(RawReportFormat.XML_DETAILED)
-	
+
 	private val configOverrides by OperationConfigOptions()
-	
+
 	override fun help(context: Context): String =
 		"Validate a signed PDF document"
-	
+
 	override fun run(): Unit = runBlocking {
 		val appConfig = configRepository.getCurrentConfig()
 		val activeProfile = profile
@@ -103,7 +101,7 @@ class Validate : CliktCommand(
 			throw ProgramResult(1)
 		}
 		val resolvedConfig = resolvedConfigResult.getOrNull()!!
-		
+
 		val parameters = ValidationParameters(
 			inputBytes = file.toFile().readBytes(),
 			inputName = file.fileName.toString(),
@@ -112,7 +110,7 @@ class Validate : CliktCommand(
 			rawReportOutputPath = reportOut?.toAbsolutePath()?.toString(),
 			rawReportFormat = reportFormat,
 		)
-		
+
 		validateUseCase(parameters).fold(
 			ifLeft = { error ->
 				if (output.json) {
@@ -140,304 +138,47 @@ class Validate : CliktCommand(
 			}
 		)
 	}
-	
+
 	/**
-	 * Print the full validation report.
+	 * Print the validation report as plain text via [toPlainText] — the same rendering the desktop
+	 * `.txt` export uses, so the terminal and the export never drift and both carry the full
+	 * certificate chain and revocation evidence. [detailed] is forwarded to expand every certificate
+	 * into its full parsed dump.
 	 *
-	 * Normal mode already shows all cryptographically meaningful data: indication,
-	 * qualification, algorithms, certificate identity, and TSA identity.
-	 * When [detailed] is true, additional low-level fields are appended: the raw DSS
-	 * signature/timestamp IDs, certificate key usages, public key algorithm, SHA-256
-	 * fingerprint, timestamp info messages, and the resolved configuration block.
+	 * Two CLI-only additions wrap that shared body: in [detailed] mode the resolved configuration that
+	 * was actually applied, and — for a [ValidationResult.VALID] signature whose timestamps report
+	 * [ValidationIndication.INDETERMINATE] — a note explaining why that is expected and not a problem.
 	 */
 	private fun printValidationReport(
 		report: ValidationReport,
 		parameters: ValidationParameters,
 		resolvedConfig: ResolvedConfig?,
 	) {
-		echo("═══════════════════════════════════════════════════════════════")
-		echo("                    VALIDATION REPORT")
-		echo("═══════════════════════════════════════════════════════════════")
-		echo("Document:      ${report.documentName}")
-		echo("Validated at:  ${report.validationTime.formatDateTime()}")
-		echo("Overall:       ${formatOverallResult(report.overallResult)}")
-		if (report.overallTrustTier != SignatureTrustTier.NOT_QUALIFIED) {
-			echo("Trust tier:    ${report.overallTrustTier.label}")
-		}
-		
+		echo(report.toPlainText(detailed = detailed))
+
 		if (detailed) {
-			echo("───────────────────────────────────────────────────────────────")
+			echo("── Configuration ──")
 			val policyType = resolvedConfig?.validation?.policyType?.name ?: "DEFAULT_ETSI"
-			val effectivePolicyPath = parameters.customPolicyPath
-				?: resolvedConfig?.validation?.customPolicyPath
-			echo("Policy:        $policyType${effectivePolicyPath?.let { " ($it)" } ?: ""}")
-			echo("Revocation:    ${if (resolvedConfig?.validation?.checkRevocation != false) "Enabled" else "Disabled"}")
-			echo("EU LOTL:       ${if (resolvedConfig?.validation?.useEuLotl != false) "Enabled" else "Disabled"}")
+			val effectivePolicyPath = parameters.customPolicyPath ?: resolvedConfig?.validation?.customPolicyPath
+			echo("Policy: $policyType${effectivePolicyPath?.let { " ($it)" } ?: ""}")
+			echo("Revocation: ${if (resolvedConfig?.validation?.checkRevocation != false) "Enabled" else "Disabled"}")
+			echo("EU LOTL: ${if (resolvedConfig?.validation?.useEuLotl != false) "Enabled" else "Disabled"}")
 			val trustedLists = resolvedConfig?.validation?.customTrustedLists.orEmpty()
 			if (trustedLists.isNotEmpty()) {
 				echo("Trusted lists:")
-				trustedLists.forEach { echo("  • ${it.name} (${it.source})") }
+				trustedLists.forEach { echo("• ${it.name} (${it.source})") }
 			}
 		}
-		
-		echo("═══════════════════════════════════════════════════════════════")
-		
-		if (report.tlWarnings.isNotEmpty()) {
+
+		val expectedIndeterminate = report.overallResult == ValidationResult.VALID &&
+			report.timestamps.any { it.indication == ValidationIndication.INDETERMINATE }
+		if (expectedIndeterminate) {
 			echo("")
-			report.tlWarnings.forEach { echo("⚠️ $it") }
-		}
-		
-		if (report.signatures.isEmpty()) {
-			echo("\n⚠️ No signatures found in the document.")
-			return
-		}
-		
-		report.signatures.forEachIndexed { index, signature ->
-			printSignature(index, report.signatures.size, signature)
-		}
-		
-		if (report.timestamps.isNotEmpty()) {
-			printTimestamps(report.timestamps, report.overallResult)
-		}
-		
-		echo("\n═══════════════════════════════════════════════════════════════")
-		echo(formatSummary(report))
-		echo("═══════════════════════════════════════════════════════════════")
-	}
-	
-	/**
-	 * Print a single signature block.
-	 *
-	 * Normal mode shows all cryptographically relevant facts: indication, signer,
-	 * level, the best signature time, qualification, hash and encryption algorithms,
-	 * and full certificate identity fields.
-	 *
-	 * In [detailed] mode additional fields are included: the raw DSS signature ID,
-	 * certificate key usages, public key algorithm, and the SHA-256 fingerprint.
-	 */
-	private fun printSignature(index: Int, total: Int, signature: SignatureValidationResult) {
-		echo("\n┌─ Signature ${index + 1} of $total")
-		echo("│")
-		if (detailed) {
-			echo("│  ID:               ${signature.signatureId}")
-		}
-		echo("│  Indication:       ${formatIndication(signature.indication)}")
-		if (signature.subIndication != null) {
-			echo("│  Sub-indication:   ${signature.subIndication}")
-		}
-		echo("│  Signed by:        ${signature.signedBy}")
-		echo("│  Signature level:  ${signature.signatureLevel}")
-		echo("│  Signature time:   ${signature.signatureTime.formatDateTime()}")
-		if (signature.signatureQualification != null) {
-			echo("│  Qualification:    ${signature.signatureQualification}")
-		}
-		if (signature.trustTier != SignatureTrustTier.NOT_QUALIFIED) {
-			echo("│  Trust tier:       ${signature.trustTier.label}")
-		}
-		if (signature.euLotlBacked) {
-			echo("│  EU LOTL:          Yes")
-		}
-		if (signature.hashAlgorithm != null || signature.encryptionAlgorithm != null) {
-			val algStr = listOfNotNull(signature.hashAlgorithm, signature.encryptionAlgorithm).joinToString(" / ")
-			echo("│  Algorithms:       $algStr")
-		}
-		echo("│")
-		echo("│  Certificate:")
-		echo("│    Subject:        ${signature.certificate.subjectDN}")
-		echo("│    Issuer:         ${signature.certificate.issuerDN}")
-		echo("│    Serial:         ${signature.certificate.serialNumber}")
-		echo("│    Valid from:     ${signature.certificate.validFrom.formatDate()}")
-		echo("│    Valid to:       ${signature.certificate.validTo.formatDate()}")
-		echo("│    Qualified:      ${if (signature.certificate.isQualified) "Yes" else "No"}")
-		
-		if (detailed) {
-			if (signature.certificate.publicKeyAlgorithm != null) {
-				echo("│    Public key:     ${signature.certificate.publicKeyAlgorithm}")
-			}
-			if (signature.certificate.keyUsages.isNotEmpty()) {
-				echo("│    Key usages:     ${signature.certificate.keyUsages.joinToString(", ")}")
-			}
-			if (signature.certificate.sha256Fingerprint != null) {
-				echo("│    SHA-256:        ${signature.certificate.sha256Fingerprint}")
-			}
-		}
-		
-		if (signature.errors.isNotEmpty()) {
-			echo("│")
-			echo("│  ❌ Errors:")
-			signature.errors.forEach { error ->
-				echo("│     • $error")
-			}
-		}
-		
-		if (signature.warnings.isNotEmpty()) {
-			echo("│")
-			echo("│  ⚠️ Warnings:")
-			signature.warnings.forEach { warning ->
-				echo("│     • $warning")
-			}
-		}
-		
-		if (signature.infos.isNotEmpty()) {
-			echo("│")
-			echo("│  ℹ️ Information:")
-			signature.infos.forEach { info ->
-				echo("│     • $info")
-			}
-		}
-		
-		val hasQualificationNotes = signature.qualificationErrors.isNotEmpty() ||
-				signature.qualificationWarnings.isNotEmpty() ||
-				signature.qualificationInfos.isNotEmpty()
-		if (hasQualificationNotes) {
-			echo("│")
-			echo("│  🔒 Qualification:")
-			(signature.qualificationErrors + signature.qualificationWarnings + signature.qualificationInfos)
-				.forEach { note -> echo("│     ℹ️ $note") }
-		}
-		
-		if (signature.timestamps.isNotEmpty()) {
-			echo("│")
-			echo("│  🕒 Timestamps (${signature.timestamps.size}):")
-			signature.timestamps.forEachIndexed { tsIndex, ts ->
-				val tsNum = "${tsIndex + 1}/${signature.timestamps.size}"
-				echo("│     [$tsNum] ${ts.type}")
-				echo("│       Indication:       ${formatIndication(ts.indication)}")
-				if (ts.subIndication != null) {
-					echo("│       Sub-indication:   ${ts.subIndication}")
-				}
-				echo("│       Production time:  ${ts.productionTime.formatDateTime()}")
-				if (ts.qualification != null) {
-					echo("│       Qualification:    ${ts.qualification}")
-				}
-				if (ts.tsaSubjectDN != null) {
-					echo("│       TSA:              ${ts.tsaSubjectDN}")
-				}
-				if (ts.euLotlBacked) {
-					echo("│       EU LOTL:          Yes")
-				}
-				if (ts.errors.isNotEmpty()) {
-					echo("│       ❌ Errors:")
-					ts.errors.forEach { echo("│          • $it") }
-				}
-				if (ts.warnings.isNotEmpty()) {
-					echo("│       ⚠️ Warnings:")
-					ts.warnings.forEach { echo("│          • $it") }
-				}
-				if (detailed && ts.infos.isNotEmpty()) {
-					echo("│       ℹ️ Information:")
-					ts.infos.forEach { echo("│          • $it") }
-				}
-			}
-		}
-		
-		echo("└" + "─".repeat(63))
-	}
-	
-	/**
-	 * Print the document-level timestamps block.
-	 *
-	 * Normal mode shows type, indication, sub-indication, production time, qualification,
-	 * and the TSA subject DN. In [detailed] mode the raw DSS timestamp token ID and
-	 * informational messages are also included. Timestamps associated with a specific
-	 * signature are printed in the corresponding signature block instead.
-	 *
-	 * When any timestamp is [ValidationIndication.INDETERMINATE] within an otherwise
-	 * [ValidationResult.VALID] signature, an informational note is prepended explaining
-	 * that this is expected behavior for PAdES-BASELINE-LTA and does not affect the
-	 * overall validity.
-	 */
-	private fun printTimestamps(timestamps: List<TimestampValidationResult>, overallResult: ValidationResult) {
-		echo("\n┌─ Document Timestamps (${timestamps.size})")
-
-		val hasExpectedIndeterminate = overallResult == ValidationResult.VALID &&
-				timestamps.any { it.indication == ValidationIndication.INDETERMINATE }
-		if (hasExpectedIndeterminate) {
-			echo("│")
-			echo("│  ℹ️ Timestamps marked INDETERMINATE are a normal artefact of DSS's strict")
-			echo("│     ETSI EN 319 102-1 standalone validation. Each timestamp is checked in")
-			echo("│     isolation before being aggregated into the overall result, so the TSA")
-			echo("│     certificate revocation cannot always be proven at the exact timestamp")
-			echo("│     production time. PDF readers (e.g. Adobe) report both timestamps as")
-			echo("│     valid because they use a simpler PKIX chain check. The ✅ PASSED above")
-			echo("│     is the authoritative result. Renew the archive timestamp periodically")
-			echo("│     (digital continuity) to keep the chain cryptographically provable.")
-		}
-		timestamps.forEachIndexed { index, timestamp ->
-			echo("│")
-			echo("│  ${index + 1}. ${timestamp.type}")
-			if (detailed) {
-				echo("│     ID:            ${timestamp.timestampId}")
-			}
-			echo("│     Indication:    ${formatTimestampIndication(timestamp.indication, overallResult)}")
-			if (timestamp.subIndication != null) {
-				echo("│     Sub-indication: ${timestamp.subIndication}")
-			}
-			echo("│     Produced:      ${timestamp.productionTime.formatDateTime()}")
-			if (timestamp.qualification != null) {
-				echo("│     Qualification: ${timestamp.qualification}")
-			}
-			if (timestamp.tsaSubjectDN != null) {
-				echo("│     TSA:           ${timestamp.tsaSubjectDN}")
-			}
-			if (timestamp.euLotlBacked) {
-				echo("│     EU LOTL:       Yes")
-			}
-			if (timestamp.errors.isNotEmpty()) {
-				echo("│     ❌ Errors:")
-				timestamp.errors.forEach { echo("│        • $it") }
-			}
-			if (timestamp.warnings.isNotEmpty()) {
-				echo("│     ⚠️ Warnings:")
-				timestamp.warnings.forEach { echo("│        • $it") }
-			}
-			if (detailed && timestamp.infos.isNotEmpty()) {
-				echo("│     ℹ️ Information:")
-				timestamp.infos.forEach { echo("│        • $it") }
-			}
-		}
-		echo("│")
-		echo("└" + "─".repeat(63))
-	}
-	
-	private fun formatOverallResult(result: ValidationResult): String = when (result) {
-		ValidationResult.VALID -> "✅ VALID"
-		ValidationResult.INVALID -> "❌ INVALID"
-		ValidationResult.INDETERMINATE -> "⚠️ INDETERMINATE"
-	}
-	
-	private fun formatIndication(indication: ValidationIndication): String = when (indication) {
-		ValidationIndication.TOTAL_PASSED -> "✅ PASSED"
-		ValidationIndication.TOTAL_FAILED -> "❌ FAILED"
-		ValidationIndication.INDETERMINATE -> "⚠️ INDETERMINATE"
-	}
-
-	/**
-	 * Format a timestamp indication, using ℹ️ instead of ⚠️ for [ValidationIndication.INDETERMINATE]
-	 * when [overallResult] is [ValidationResult.VALID].
-	 *
-	 * In a valid LTA signature, INDETERMINATE timestamps are an expected artifact of DSS's strict
-	 * standalone ETSI EN 319 102-1 validation — not a real problem — so the warning emoji would be
-	 * misleading.
-	 */
-	private fun formatTimestampIndication(indication: ValidationIndication, overallResult: ValidationResult): String =
-		if (indication == ValidationIndication.INDETERMINATE && overallResult == ValidationResult.VALID) {
-			"ℹ️  INDETERMINATE"
-		} else {
-			formatIndication(indication)
-		}
-	
-	private fun formatSummary(report: ValidationReport): String {
-		val passed = report.signatures.count { it.indication == ValidationIndication.TOTAL_PASSED }
-		val failed = report.signatures.count { it.indication == ValidationIndication.TOTAL_FAILED }
-		val indeterminate = report.signatures.count { it.indication == ValidationIndication.INDETERMINATE }
-		
-		return buildString {
-			append("Summary: ")
-			append("$passed passed")
-			if (failed > 0) append(", $failed failed")
-			if (indeterminate > 0) append(", $indeterminate indeterminate")
-			append(" (${report.signatures.size} total)")
+			echo("Note: timestamps shown INDETERMINATE are a normal artefact of DSS's strict ETSI EN")
+			echo("319 102-1 standalone validation — each timestamp is verified in isolation, so the TSA")
+			echo("certificate's revocation cannot always be proven at its exact production time. The")
+			echo("overall result above is authoritative; renew the archive timestamp periodically to keep")
+			echo("the chain cryptographically provable.")
 		}
 	}
 }

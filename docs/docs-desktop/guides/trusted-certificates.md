@@ -41,6 +41,16 @@ Each certificate entry shows:
 - **Expiry** — the certificate's *not-after* date.
 - **Fingerprint** — a shortened SHA-256 fingerprint (e.g. `sha256-1a2b3c…7d8e9f`).
 
+## Adding a certificate from a validation report
+
+You can trust a certificate straight from a validation report, without opening Settings or a profile
+editor. In the Signatures panel, open a signature's or timestamp's
+[full certificate view](validation.md#the-full-certificate-view), select a certificate, and click the
+**shield icon** <AppIcon name="shield_plus" label="Add to trusted certificates" />. With no profile
+active it goes to the **global** store; with a profile active, you choose **Global** or the active
+profile. The trust role is taken from context — **CA** from a signature's chain, **TSA** from a
+timestamp's. Unlike the profile editor and Settings, this commits immediately (there is no staging).
+
 ## Empty state
 
 When no trusted certificates are configured, the panel shows a prompt directing you to

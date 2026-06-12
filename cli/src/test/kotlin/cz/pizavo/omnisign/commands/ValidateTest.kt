@@ -9,7 +9,11 @@ import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ValidationError
+import cz.pizavo.omnisign.domain.model.signature.CertificateChainLink
+import cz.pizavo.omnisign.domain.model.signature.CertificateDetailSection
+import cz.pizavo.omnisign.domain.model.signature.CertificateField
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
+import cz.pizavo.omnisign.domain.model.signature.CertificateTrustSource
 import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.ValidationRepository
@@ -97,7 +101,7 @@ class ValidateTest : FunSpec({
 		
 		val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
 		
-		result.output shouldContain "VALIDATION REPORT"
+		result.output shouldContain "Validation Report"
 		result.output shouldContain "test.pdf"
 		result.output shouldContain "VALID"
 		result.output shouldContain "Test Signer"
@@ -221,11 +225,7 @@ class ValidateTest : FunSpec({
 		
 		val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
 		
-		val separator = "═".repeat(63)
-		val firstEnd = result.output.indexOf(separator)
-		val secondStart = result.output.indexOf(separator, firstEnd + separator.length)
-		val thirdStart = result.output.indexOf(separator, secondStart + separator.length)
-		val header = result.output.substring(0, thirdStart)
+		val header = result.output.substringBefore("── Signature")
 		header shouldContain "Trust tier:"
 		header shouldContain "Qualified"
 		result.statusCode shouldBe 0
@@ -246,11 +246,7 @@ class ValidateTest : FunSpec({
 		
 		val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
 		
-		val separator = "═".repeat(63)
-		val firstEnd = result.output.indexOf(separator)
-		val secondStart = result.output.indexOf(separator, firstEnd + separator.length)
-		val thirdStart = result.output.indexOf(separator, secondStart + separator.length)
-		val header = result.output.substring(0, thirdStart)
+		val header = result.output.substringBefore("── Signature")
 		header shouldNotContain "Trust tier:"
 		result.statusCode shouldBe 0
 	}
@@ -270,6 +266,47 @@ class ValidateTest : FunSpec({
 		
 		result.output shouldContain "\"overallTrustTier\":\"QUALIFIED_QSCD\""
 		result.statusCode shouldBe 0
+	}
+
+	test("certificate chain is summarised by default and fully dumped with --detailed") {
+		val input = tmpFile("chain.pdf")
+		val reportWithChain = sampleReport.copy(
+			signatures = listOf(
+				sampleReport.signatures.first().copy(
+					certificate = sampleReport.signatures.first().certificate.copy(
+						chain = listOf(
+							CertificateChainLink(
+								commonName = "Test",
+								subjectDN = "CN=Test",
+								selfSigned = false,
+								trustedVia = emptyList(),
+								details = listOf(
+									CertificateDetailSection("Extensions", listOf(CertificateField("Custom Extension", "xyz"))),
+								),
+								der = byteArrayOf(1),
+							),
+							CertificateChainLink(
+								commonName = "Root",
+								subjectDN = "CN=Root",
+								selfSigned = true,
+								trustedVia = listOf(CertificateTrustSource.GlobalStore),
+								details = emptyList(),
+								der = byteArrayOf(2),
+							),
+						),
+					),
+				),
+			),
+		)
+		coEvery { validationRepository.validateDocument(any()) } returns reportWithChain.right()
+
+		val summary = Omnisign().test(listOf("validate", "-f", input.absolutePath))
+		summary.output shouldContain "Certificate chain:"
+		summary.output shouldContain "Signing certificate: Test"
+		summary.output shouldNotContain "Custom Extension"
+
+		val detailed = Omnisign().test(listOf("validate", "-f", input.absolutePath, "--detailed"))
+		detailed.output shouldContain "Custom Extension"
 	}
 })
 

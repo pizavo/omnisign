@@ -119,7 +119,7 @@ class JsonMappersTest : FunSpec({
 
 		val json = report.toJsonResult()
 		json.success shouldBe true
-		val summary = json.summary.shouldNotBeNull()
+		val summary = json.report.shouldNotBeNull().summary.shouldNotBeNull()
 		summary.total shouldBe 2
 		summary.passed shouldBe 1
 		summary.failed shouldBe 1
@@ -145,7 +145,7 @@ class JsonMappersTest : FunSpec({
 		)
 
 		val json = report.toJsonResult()
-		json.overallTrustTier.shouldBeNull()
+		json.report.shouldNotBeNull().overallTrustTier.shouldBeNull()
 	}
 
 	test("ValidationReport.toJsonResult includes qualified overall trust tier") {
@@ -167,7 +167,7 @@ class JsonMappersTest : FunSpec({
 		)
 
 		val json = report.toJsonResult()
-		json.overallTrustTier shouldBe "QUALIFIED_QSCD"
+		json.report.shouldNotBeNull().overallTrustTier shouldBe "QUALIFIED_QSCD"
 	}
 
 	test("ValidationReport.toJsonResult passes rawReportPath") {

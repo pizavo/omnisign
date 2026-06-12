@@ -1,6 +1,11 @@
 package cz.pizavo.omnisign.domain.model.validation.json
 
+import cz.pizavo.omnisign.domain.model.signature.CertificateChainLink
+import cz.pizavo.omnisign.domain.model.signature.CertificateDetailSection
+import cz.pizavo.omnisign.domain.model.signature.CertificateField
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
+import cz.pizavo.omnisign.domain.model.signature.CertificateTrustSource
+import cz.pizavo.omnisign.domain.model.validation.RevocationInfo
 import cz.pizavo.omnisign.domain.model.validation.SignatureTrustTier
 import cz.pizavo.omnisign.domain.model.validation.SignatureValidationResult
 import cz.pizavo.omnisign.domain.model.validation.TimestampValidationResult
@@ -50,6 +55,7 @@ fun SignatureValidationResult.toJsonReport(): JsonSignatureReport =
         hashAlgorithm = hashAlgorithm,
         encryptionAlgorithm = encryptionAlgorithm,
         certificate = certificate.toJsonReport(),
+        revocations = revocations.map { it.toJsonReport() },
         errors = errors,
         warnings = warnings,
         infos = infos,
@@ -73,6 +79,67 @@ fun CertificateInfo.toJsonReport(): JsonCertificateReport =
         isQualified = isQualified,
         publicKeyAlgorithm = publicKeyAlgorithm,
         sha256Fingerprint = sha256Fingerprint,
+        chain = chain.map { it.toJsonReport() },
+    )
+
+/**
+ * Convert a domain [CertificateChainLink] to a [JsonCertificateChainLink] DTO. The raw DER bytes are
+ * not carried — the report surfaces only the parsed detail.
+ */
+fun CertificateChainLink.toJsonReport(): JsonCertificateChainLink =
+    JsonCertificateChainLink(
+        commonName = commonName,
+        subjectDN = subjectDN,
+        selfSigned = selfSigned,
+        trustedVia = trustedVia.map { it.toJsonReport() },
+        details = details.map { it.toJsonReport() },
+    )
+
+/**
+ * Convert a domain [CertificateTrustSource] to a [JsonTrustSource] DTO.
+ */
+fun CertificateTrustSource.toJsonReport(): JsonTrustSource = when (this) {
+    is CertificateTrustSource.TrustedList -> JsonTrustSource(type = "TRUSTED_LIST", name = name)
+    CertificateTrustSource.GlobalStore -> JsonTrustSource(type = "GLOBAL_STORE")
+    is CertificateTrustSource.ProfileStore -> JsonTrustSource(type = "PROFILE_STORE", name = profileName)
+}
+
+/**
+ * Convert a domain [CertificateDetailSection] to a [JsonCertificateDetailSection] DTO.
+ */
+fun CertificateDetailSection.toJsonReport(): JsonCertificateDetailSection =
+    JsonCertificateDetailSection(
+        title = title,
+        fields = fields.map { it.toJsonReport() },
+    )
+
+/**
+ * Convert a domain [CertificateField] to a [JsonCertificateField] DTO.
+ */
+fun CertificateField.toJsonReport(): JsonCertificateField =
+    JsonCertificateField(
+        label = label,
+        value = value,
+    )
+
+/**
+ * Convert a domain [RevocationInfo] to a [JsonRevocationReport] DTO. Times are emitted as ISO-8601
+ * strings; absent times stay `null`.
+ */
+fun RevocationInfo.toJsonReport(): JsonRevocationReport =
+    JsonRevocationReport(
+        method = method,
+        status = status,
+        revoked = revoked,
+        embedded = embedded,
+        sealedByTimestamp = sealedByTimestamp,
+        origin = origin,
+        sourceUrl = sourceUrl,
+        producedAt = producedAt?.toString(),
+        thisUpdate = thisUpdate?.toString(),
+        nextUpdate = nextUpdate?.toString(),
+        revocationDate = revocationDate?.toString(),
+        reason = reason,
     )
 
 /**
@@ -91,5 +158,6 @@ fun TimestampValidationResult.toJsonReport(): JsonTimestampReport =
         errors = errors,
         warnings = warnings,
         infos = infos,
+        chain = chain.map { it.toJsonReport() },
     )
 

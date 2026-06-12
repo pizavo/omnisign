@@ -108,7 +108,11 @@ ETSI TS 119 312 expiration date. Two separate settings are available:
 | Expiration (before policy update date)  | Severity when the algorithm expired before the date  | FAIL    |
 | Expiration (after policy update date)   | Severity when the algorithm expired after the date   | WARN    |
 
-Available severity levels: **FAIL**, **WARN**, **INFORM**, **IGNORE**.
+Available severity levels: **FAIL** (validation fails), **WARN** (reported as a warning), and
+**INFORM** (reported as an informational note in the report, with no effect on the overall result).
+A fourth level, **IGNORE**, skips the check silently with no message; it is intentionally not offered
+in the app — so an expired algorithm is never hidden without a trace — and is reserved for config
+files (CLI / server).
 
 #### Trusted Certificates
 

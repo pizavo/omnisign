@@ -10,9 +10,10 @@ Multiplatform UI, compiled to Kotlin/Wasm — backed by an [OmniSign Server](/se
 operations a browser can't perform locally.
 
 :::note Early preview
-The web frontend is at an early stage. Today it is a **document viewer**: it opens and displays
-PDFs locally. Server-backed signing, validation, and timestamping are **planned** — they will run
-through the [Server API](/server/api-reference) rather than in the browser.
+The web frontend is at an early stage. It opens and displays PDFs locally and **validates** signed
+PDFs through a connected [OmniSign Server](/server/) — the [Server API](/server/api-reference) runs
+the validation engine, since the browser can't. Server-backed **signing** and **timestamping** are
+still **planned**.
 :::
 
 ## Building and running
@@ -95,10 +96,27 @@ The frontend needs **WebAssembly** with **WebAssembly GC**:
 | Open and view PDF documents          |   ✅   |
 | Page navigation and zoom             |   ✅   |
 | Dark / light theme toggle            |   ✅   |
+| Validate documents (via Server API)  |   ✅   |
 | Sign documents (via Server API)      |   🚧   |
-| Validate documents (via Server API)  |   🚧   |
 | Timestamp documents (via Server API) |   🚧   |
 
-🚧 = planned. These will be performed by the [OmniSign Server](/server/), which the web app calls
-over HTTP. The same operations are available today in the [Desktop app](/desktop/) and the
+✅ = available; 🚧 = planned. The *via Server API* operations run on a connected
+[OmniSign Server](/server/) the web app calls over HTTP — validation works today; signing and
+timestamping are planned. All three are available now in the [Desktop app](/desktop/) and the
 [CLI](/cli/).
+
+## Validating documents
+
+Open a signed PDF and use the **Signatures** panel exactly as in the
+[Desktop app](/desktop/guides/validation) — the report, the EU LOTL emblems, the revocation evidence,
+and the [full certificate view](/desktop/guides/validation#the-full-certificate-view) all render the
+same, since the web frontend is the same Compose UI. The work runs on the
+[Server](/server/api-reference), which parses each certificate and returns the chain to the browser.
+
+Two things differ in the browser:
+
+- **Adding a certificate to your trusted certificates isn't available.** The server's trust store is
+  provider-managed and read-only to clients, and the browser has no local trust store of its own, so
+  the *add to trusted* action in the certificate view is desktop-only.
+- **Exporting a certificate downloads a `.cer` file** instead of opening a save dialog with a format
+  picker — the browser has no native "save as type" choice.

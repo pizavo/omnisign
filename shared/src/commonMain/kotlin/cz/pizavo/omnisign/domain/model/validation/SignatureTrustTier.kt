@@ -31,3 +31,17 @@ enum class SignatureTrustTier(val label: String) {
 	NOT_QUALIFIED("Not qualified"),
 }
 
+/**
+ * A one-line confirmation — for the qualification-info surface — that the signing key resides in a
+ * qualified signature creation device. Returned only for [QUALIFIED_QSCD], the tier DSS assigns when
+ * the QSCD condition holds at both the certificate's issuance time and the best-signature time; it is
+ * the positive inverse of DSS's two "private key does not reside in a QSCD …" qualification warnings,
+ * and (since either failing check drops the `_QSCD` qualification) cannot coexist with them. `null`
+ * for the other tiers, where no such confirmation applies.
+ */
+fun SignatureTrustTier.qscdResidenceInfo(): String? = when (this) {
+	SignatureTrustTier.QUALIFIED_QSCD ->
+		"The private key resides in a QSCD at both issuance and signing time."
+	SignatureTrustTier.QUALIFIED, SignatureTrustTier.NOT_QUALIFIED -> null
+}
+

@@ -4,6 +4,9 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
@@ -12,10 +15,13 @@ import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
+import cz.pizavo.omnisign.domain.model.signature.CertificateChainLink
 import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.model.value.formatDate
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
+import kotlin.time.Instant
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.ui.model.SignaturePanelState
@@ -389,9 +395,20 @@ private fun SignatureAccordion(
                 messages = signature.qualificationWarnings,
                 color = LumoTheme.colors.warning,
             )
+            MessageList(title = "Information", messages = signature.infos, color = LumoTheme.colors.textSecondary)
+            MessageList(
+                title = "Qualification Information",
+                messages = signature.qualificationInfos,
+                color = LumoTheme.colors.textSecondary,
+            )
 
             Spacer(modifier = Modifier.height(4.dp))
             CertificateAccordion(signature = signature)
+
+            signature.revocations.takeIf { it.isNotEmpty() }?.let { revocations ->
+                Spacer(modifier = Modifier.height(4.dp))
+                RevocationAccordion(revocations = revocations, asOf = signature.signatureTime)
+            }
 
             signature.timestamps.firstOrNull()?.let { ts ->
                 Spacer(modifier = Modifier.height(4.dp))
@@ -421,7 +438,106 @@ private fun CertificateAccordion(signature: SignatureValidationResult) {
             }
             signature.certificate.publicKeyAlgorithm?.let { LabelValue(label = "Public key", value = it) }
             signature.certificate.sha256Fingerprint?.let { LabelValue(label = "SHA-256", value = it) }
+            ViewFullCertificateAction(
+                chain = signature.certificate.chain,
+                trustRole = TrustedCertificateType.CA,
+            )
         }
+    }
+}
+
+/**
+ * Nested collapsible section presenting the signing certificate's revocation evidence: a one-line
+ * conclusion as of the best-signature-time, followed by every revocation check DSS found or
+ * performed — each shown in full, so an embedded token and a live online check both appear rather
+ * than one being chosen.
+ *
+ * @param asOf The point in time the conclusion is stated against (best-signature-time).
+ */
+@Composable
+private fun RevocationAccordion(revocations: List<RevocationInfo>, asOf: Instant) {
+    val title = if (revocations.size > 1) "Revocation checks (${revocations.size})" else "Revocation check"
+    NestedAccordion(title = title) {
+        Column(
+            modifier = Modifier.padding(start = 4.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            val revokedAtSigning = revocations.signingTimeRepresentative()?.revoked == true
+            revocations.revocationConclusion(asOf)?.let { conclusion ->
+                Text(
+                    text = conclusion,
+                    style = LumoTheme.typography.body2,
+                    color = if (revokedAtSigning) LumoTheme.colors.error else LumoTheme.colors.textSecondary,
+                )
+                Spacer(modifier = Modifier.height(2.dp))
+                HorizontalDivider()
+                Spacer(modifier = Modifier.height(2.dp))
+            }
+            revocations.forEachIndexed { index, revocation ->
+                if (index > 0) {
+                    Spacer(modifier = Modifier.height(2.dp))
+                    HorizontalDivider()
+                    Spacer(modifier = Modifier.height(2.dp))
+                }
+                RevocationEntry(revocation = revocation)
+            }
+        }
+    }
+}
+
+/**
+ * Structured fields for a single revocation token, sourced from the shared
+ * [cz.pizavo.omnisign.domain.model.validation.displayRows] so the panel and the plain-text report
+ * render identical labels and values.
+ */
+@Composable
+private fun RevocationEntry(revocation: RevocationInfo) {
+    revocation.displayRows().forEach { (label, value) ->
+        LabelValue(label = label, value = value)
+    }
+}
+
+/**
+ * "View full certificate" affordance: a ghost icon-button and label that opens the
+ * [CertificateDetailsDialog] on [chain], adding any trust granted from that dialog with [trustRole]
+ * (a signature's chain anchors as a CA, a timestamp's as a TSA). Renders nothing when [chain] is
+ * empty — the certificates' DER bytes were not available to parse.
+ *
+ * @param chain The certificate chain to inspect, leaf-first.
+ * @param trustRole Trust role granted when a certificate is added to the trust store from the dialog.
+ */
+@Composable
+private fun ViewFullCertificateAction(chain: List<CertificateChainLink>, trustRole: TrustedCertificateType) {
+    if (chain.isEmpty()) return
+    var showDetails by remember { mutableStateOf(false) }
+    Spacer(modifier = Modifier.height(4.dp))
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        IconButton(
+            variant = IconButtonVariant.Ghost,
+            onClick = { showDetails = true },
+        ) {
+            Icon(
+                painter = painterResource(Res.drawable.icon_certificate_2),
+                contentDescription = "View full certificate",
+                modifier = Modifier.size(18.dp),
+                tint = LumoTheme.colors.textSecondary,
+            )
+        }
+        Text(
+            text = "View full certificate",
+            style = LumoTheme.typography.body2,
+            color = LumoTheme.colors.textSecondary,
+        )
+    }
+    if (showDetails) {
+        CertificateDetailsDialog(
+            chain = chain,
+            trustRole = trustRole,
+            onDismiss = { showDetails = false },
+        )
     }
 }
 
@@ -451,9 +567,11 @@ private fun SignatureTimestampAccordion(timestamp: TimestampValidationResult) {
             LabelValue(label = "Production time", value = timestamp.productionTime.formatDateTime())
             timestamp.qualification?.let { LabelValue(label = "Qualification", value = it) }
             timestamp.tsaSubjectDN?.let { LabelValue(label = "TSA", value = it) }
+            ViewFullCertificateAction(chain = timestamp.chain, trustRole = TrustedCertificateType.TSA)
 
             MessageList(title = "Errors", messages = timestamp.errors, color = LumoTheme.colors.error)
             MessageList(title = "Warnings", messages = timestamp.warnings, color = LumoTheme.colors.warning)
+            MessageList(title = "Information", messages = timestamp.infos, color = LumoTheme.colors.textSecondary)
         }
     }
 }
@@ -511,9 +629,11 @@ private fun TimestampAccordion(
             LabelValue(label = "Production time", value = timestamp.productionTime.formatDateTime())
             timestamp.qualification?.let { LabelValue(label = "Qualification", value = it) }
             timestamp.tsaSubjectDN?.let { LabelValue(label = "TSA", value = it) }
+            ViewFullCertificateAction(chain = timestamp.chain, trustRole = TrustedCertificateType.TSA)
 
             MessageList(title = "Errors", messages = timestamp.errors, color = LumoTheme.colors.error)
             MessageList(title = "Warnings", messages = timestamp.warnings, color = LumoTheme.colors.warning)
+            MessageList(title = "Information", messages = timestamp.infos, color = LumoTheme.colors.textSecondary)
         }
     }
 }

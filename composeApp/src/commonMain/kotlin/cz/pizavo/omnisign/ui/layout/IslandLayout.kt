@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
@@ -28,7 +29,9 @@ import cz.pizavo.omnisign.ui.viewmodel.*
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import omnisign.composeapp.generated.resources.Res
 import omnisign.composeapp.generated.resources.icon_refresh
 import org.jetbrains.compose.resources.painterResource
@@ -252,8 +255,28 @@ fun IslandLayout(
 	
 	var leftPanelWidth by remember { mutableStateOf(Dp.Unspecified) }
 	var rightPanelWidth by remember { mutableStateOf(Dp.Unspecified) }
-	
-	CompositionLocalProvider(LocalToastService provides toastService) {
+
+	val trustStore = remember { KoinPlatform.getKoinOrNull()?.getOrNull<TrustStore>() }
+	val activeProfileName = profileState.activeProfile
+	val trustedCertAdder = remember(trustStore, activeProfileName) {
+		trustStore?.let { store ->
+			TrustedCertificateAdder(activeProfileName = activeProfileName) { der, toActiveProfile, type ->
+				withContext(Dispatchers.Default) {
+					store.add(
+						scope = TrustScope.of(if (toActiveProfile) activeProfileName else null),
+						certBytes = der,
+						type = type,
+						source = "validation report",
+					).fold(ifLeft = { it.message }, ifRight = { null })
+				}
+			}
+		}
+	}
+
+	CompositionLocalProvider(
+		LocalToastService provides toastService,
+		LocalTrustedCertificateAdder provides trustedCertAdder,
+	) {
 		Box(modifier = modifier.fillMaxSize()) {
 			Column(modifier = Modifier.fillMaxSize()) {
 				IslandToolbar(

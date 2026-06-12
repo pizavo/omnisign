@@ -32,6 +32,10 @@ import kotlin.time.Instant
  * @property policyUntrusted True when DSS validated the signature but the active scope's
  *   per-reference trust policy distrusts its terminating anchor for signing (it is trusted for
  *   timestamping only). Distinct from a cryptographic failure; the reason is appended to [errors].
+ * @property revocations Every revocation check DSS found or performed for the signing certificate
+ *   (method, responder, times, and whether the data was embedded in the document and timestamp-
+ *   sealed). Often holds both an embedded token and a fresh online one; all are surfaced rather
+ *   than one being chosen. Empty when no revocation data is available for the signature.
  */
 @Serializable
 data class SignatureValidationResult(
@@ -55,4 +59,5 @@ data class SignatureValidationResult(
     val encryptionAlgorithm: String? = null,
     val timestamps: List<TimestampValidationResult> = emptyList(),
     val policyUntrusted: Boolean = false,
+    val revocations: List<RevocationInfo> = emptyList(),
 )

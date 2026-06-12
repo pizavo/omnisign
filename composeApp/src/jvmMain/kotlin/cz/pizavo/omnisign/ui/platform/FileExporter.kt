@@ -11,7 +11,7 @@ import io.github.vinceglb.filekit.write
 actual suspend fun exportTextToFile(text: String, suggestedName: String, extension: String) {
     val dest = FileKit.openFileSaver(
         suggestedName = suggestedName,
-        extension = extension,
+        defaultExtension = extension,
     ) ?: return
     dest.write(text.encodeToByteArray())
 }

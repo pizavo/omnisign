@@ -9,4 +9,5 @@ actual suspend fun chooseSaveDestination(
 	suggestedName: String,
 	extension: String,
 	initialDirectory: String?,
+	allowedExtensions: Set<String>,
 ): String? = "$suggestedName.$extension"

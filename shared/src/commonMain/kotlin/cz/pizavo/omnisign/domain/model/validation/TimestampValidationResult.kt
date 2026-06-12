@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.domain.model.validation
 
+import cz.pizavo.omnisign.domain.model.signature.CertificateChainLink
 import kotlinx.serialization.Serializable
 import kotlin.time.Instant
 
@@ -21,6 +22,10 @@ import kotlin.time.Instant
  * @property policyUntrusted True when DSS validated the timestamp but the per-reference trust
  *   policy distrusts its terminating anchor for timestamping (it is trusted as a CA only).
  *   Distinct from a cryptographic failure; the reason is appended to [errors].
+ * @property chain The TSA certificate's full certificate chain, each entry parsed into a complete
+ *   dump of every field and extension for the full-certificate view. Ordered leaf-first (the TSA
+ *   signing certificate) up to the trust anchor last. Populated on the JVM from each certificate's
+ *   DER bytes; empty when those bytes were not available.
  */
 @Serializable
 data class TimestampValidationResult(
@@ -36,4 +41,5 @@ data class TimestampValidationResult(
     val warnings: List<String> = emptyList(),
     val infos: List<String> = emptyList(),
     val policyUntrusted: Boolean = false,
+    val chain: List<CertificateChainLink> = emptyList(),
 )

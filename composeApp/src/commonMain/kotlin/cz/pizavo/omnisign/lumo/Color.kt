@@ -68,6 +68,10 @@ val Green200: Color = Color(0xFFC2F5DA)
 val Green100: Color = Color(0xFFD0FBE9)
 val Green50: Color = Color(0xFFE0FAEC)
 
+val Purple900: Color = Color(0xFF5B21B6)
+val Purple700: Color = Color(0xFF7C3AED)
+val Purple400: Color = Color(0xFFA78BFA)
+
 /**
  * Theme-aware tint colors for specific icon types.
  *
@@ -80,6 +84,10 @@ data class IconColors(
     val trustQualified: Color,
     val trustQualifiedQscd: Color,
     val euStars: Color,
+    val certSigningKey: Color,
+    val certIntermediate: Color,
+    val certRoot: Color,
+    val certConnector: Color,
 )
 
 @Immutable
@@ -148,6 +156,10 @@ internal val LightColors =
             trustQualified = Blue800,
             trustQualifiedQscd = Blue1100,
             euStars = EuYellowDark,
+            certSigningKey = Green900,
+            certIntermediate = Blue1100,
+            certRoot = Purple900,
+            certConnector = Gray500,
         ),
     )
 
@@ -185,6 +197,10 @@ internal val DarkColors =
             trustQualified = Blue600,
             trustQualifiedQscd = Blue900,
             euStars = EuYellow,
+            certSigningKey = Green600,
+            certIntermediate = Blue700,
+            certRoot = Purple700,
+            certConnector = Gray500,
         ),
     )
 

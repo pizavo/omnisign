@@ -44,6 +44,7 @@ data class JsonValidationReport(
  * @property hashAlgorithm Digest algorithm name.
  * @property encryptionAlgorithm Encryption algorithm name.
  * @property certificate Signing certificate details.
+ * @property revocations Revocation checks DSS found or performed for the signing certificate.
  * @property errors AdES validation errors.
  * @property warnings AdES validation warnings.
  * @property infos AdES informational messages.
@@ -66,6 +67,7 @@ data class JsonSignatureReport(
     val hashAlgorithm: String? = null,
     val encryptionAlgorithm: String? = null,
     val certificate: JsonCertificateReport,
+    val revocations: List<JsonRevocationReport> = emptyList(),
     val errors: List<String> = emptyList(),
     val warnings: List<String> = emptyList(),
     val infos: List<String> = emptyList(),
@@ -87,6 +89,8 @@ data class JsonSignatureReport(
  * @property isQualified Whether the certificate is qualified under eIDAS.
  * @property publicKeyAlgorithm Public key algorithm name.
  * @property sha256Fingerprint Colon-separated hex SHA-256 fingerprint.
+ * @property chain The certificate's full chain (leaf-first), each entry parsed into titled detail
+ *   sections; empty when the chain was not available.
  */
 @Serializable
 data class JsonCertificateReport(
@@ -99,6 +103,97 @@ data class JsonCertificateReport(
     val isQualified: Boolean = false,
     val publicKeyAlgorithm: String? = null,
     val sha256Fingerprint: String? = null,
+    val chain: List<JsonCertificateChainLink> = emptyList(),
+)
+
+/**
+ * Serializable DTO for one certificate in a chain — its display identity, trust sources, and full
+ * parsed detail. Mirrors [cz.pizavo.omnisign.domain.model.signature.CertificateChainLink] minus the
+ * raw DER bytes, which the report does not surface.
+ *
+ * @property commonName Subject common name, or `null` when the subject carries none.
+ * @property subjectDN Full subject distinguished name.
+ * @property selfSigned Whether subject and issuer match (a self-issued root).
+ * @property trustedVia Trust sources vouching for this certificate under the validation environment;
+ *   empty when it is not trusted there.
+ * @property details Complete parsed dump grouped into titled sections.
+ */
+@Serializable
+data class JsonCertificateChainLink(
+    val commonName: String? = null,
+    val subjectDN: String,
+    val selfSigned: Boolean = false,
+    val trustedVia: List<JsonTrustSource> = emptyList(),
+    val details: List<JsonCertificateDetailSection> = emptyList(),
+)
+
+/**
+ * Serializable DTO for a certificate trust source.
+ *
+ * @property type Source kind — `"TRUSTED_LIST"`, `"GLOBAL_STORE"`, or `"PROFILE_STORE"`.
+ * @property name The trusted list's name (`TRUSTED_LIST`) or the profile name (`PROFILE_STORE`);
+ *   `null` for the global store.
+ */
+@Serializable
+data class JsonTrustSource(
+    val type: String,
+    val name: String? = null,
+)
+
+/**
+ * Serializable DTO for a titled group of certificate fields within a [JsonCertificateChainLink].
+ *
+ * @property title Section heading (e.g. "Subject", "Validity", "Extensions").
+ * @property fields Ordered fields in the section.
+ */
+@Serializable
+data class JsonCertificateDetailSection(
+    val title: String,
+    val fields: List<JsonCertificateField> = emptyList(),
+)
+
+/**
+ * Serializable DTO for a single parsed certificate field.
+ *
+ * @property label Field name, or the dotted OID when the field is non-standard.
+ * @property value Rendered field value; may span multiple lines.
+ */
+@Serializable
+data class JsonCertificateField(
+    val label: String,
+    val value: String,
+)
+
+/**
+ * Serializable DTO for one revocation check performed for the signing certificate.
+ *
+ * @property method Revocation mechanism — "OCSP" or "CRL".
+ * @property status Status the responder asserted — "GOOD", "REVOKED", or "UNKNOWN".
+ * @property revoked True when [status] is "REVOKED".
+ * @property embedded Whether the token came from inside the document (vs. a remote fetch or cache).
+ * @property sealedByTimestamp Whether a document/archive timestamp covers the token (proof-of-existence).
+ * @property origin Raw DSS revocation origin (e.g. "DSS_DICTIONARY", "EXTERNAL").
+ * @property sourceUrl Address the token was obtained from, when DSS recorded one; `null` for embedded tokens.
+ * @property producedAt ISO-8601 responder production time (OCSP `producedAt` / CRL signing time).
+ * @property thisUpdate ISO-8601 start of the validity window the responder vouches for.
+ * @property nextUpdate ISO-8601 end of the validity window.
+ * @property revocationDate ISO-8601 revocation date; only meaningful when [revoked].
+ * @property reason Revocation reason code; only meaningful when [revoked].
+ */
+@Serializable
+data class JsonRevocationReport(
+    val method: String,
+    val status: String,
+    val revoked: Boolean,
+    val embedded: Boolean,
+    val sealedByTimestamp: Boolean,
+    val origin: String,
+    val sourceUrl: String? = null,
+    val producedAt: String? = null,
+    val thisUpdate: String? = null,
+    val nextUpdate: String? = null,
+    val revocationDate: String? = null,
+    val reason: String? = null,
 )
 
 /**
@@ -115,6 +210,8 @@ data class JsonCertificateReport(
  * @property errors Validation errors.
  * @property warnings Validation warnings.
  * @property infos Informational messages.
+ * @property chain The TSA certificate's full chain (leaf-first), each entry parsed into titled
+ *   detail sections; empty when the chain was not available.
  */
 @Serializable
 data class JsonTimestampReport(
@@ -129,6 +226,7 @@ data class JsonTimestampReport(
     val errors: List<String> = emptyList(),
     val warnings: List<String> = emptyList(),
     val infos: List<String> = emptyList(),
+    val chain: List<JsonCertificateChainLink> = emptyList(),
 )
 
 /**

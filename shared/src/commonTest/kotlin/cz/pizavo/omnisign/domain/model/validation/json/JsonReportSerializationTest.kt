@@ -1,6 +1,11 @@
 package cz.pizavo.omnisign.domain.model.validation.json
 
+import cz.pizavo.omnisign.domain.model.signature.CertificateChainLink
+import cz.pizavo.omnisign.domain.model.signature.CertificateDetailSection
+import cz.pizavo.omnisign.domain.model.signature.CertificateField
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
+import cz.pizavo.omnisign.domain.model.signature.CertificateTrustSource
+import cz.pizavo.omnisign.domain.model.validation.RevocationInfo
 import cz.pizavo.omnisign.domain.model.validation.SignatureValidationResult
 import cz.pizavo.omnisign.domain.model.validation.TimestampValidationResult
 import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
@@ -41,6 +46,17 @@ class JsonReportSerializationTest : FunSpec({
                 signatureLevel = "PAdES-BASELINE-LTA",
                 signatureTime = Instant.parse("2026-03-28T11:00:00Z"),
                 certificate = sampleCert,
+                revocations = listOf(
+                    RevocationInfo(
+                        method = "OCSP",
+                        status = "GOOD",
+                        revoked = false,
+                        embedded = true,
+                        sealedByTimestamp = true,
+                        origin = "DSS_DICTIONARY",
+                        producedAt = Instant.parse("2026-03-28T11:00:00Z"),
+                    ),
+                ),
                 hashAlgorithm = "SHA256",
                 encryptionAlgorithm = "RSA",
                 euLotlBacked = true,
@@ -108,6 +124,19 @@ class JsonReportSerializationTest : FunSpec({
         cert.sha256Fingerprint shouldBe "AA:BB:CC"
     }
 
+    test("toJsonReport maps revocation checks") {
+        val revocations = sampleReport.toJsonReport().signatures.first().revocations
+
+        revocations.size shouldBe 1
+        val revocation = revocations.first()
+        revocation.method shouldBe "OCSP"
+        revocation.status shouldBe "GOOD"
+        revocation.embedded shouldBe true
+        revocation.sealedByTimestamp shouldBe true
+        revocation.origin shouldBe "DSS_DICTIONARY"
+        revocation.producedAt shouldBe "2026-03-28T11:00:00Z"
+    }
+
     test("toJsonReport maps summary counters") {
         val summary = sampleReport.toJsonReport().summary!!
 
@@ -125,6 +154,7 @@ class JsonReportSerializationTest : FunSpec({
         json shouldContain "contract.pdf"
         json shouldContain "\"signatures\""
         json shouldContain "\"certificate\""
+        json shouldContain "\"revocations\""
         json shouldContain "\"summary\""
         json shouldContain "\"tlWarnings\""
     }
@@ -137,6 +167,38 @@ class JsonReportSerializationTest : FunSpec({
         ts.indication shouldBe "INDETERMINATE"
         ts.subIndication shouldBe "NO_POE"
         ts.euLotlBacked shouldBe false
+    }
+
+    test("toJsonReport maps the certificate chain with trust sources and detail sections") {
+        val withChain = sampleReport.copy(
+            signatures = listOf(
+                sampleReport.signatures.first().copy(
+                    certificate = sampleCert.copy(
+                        chain = listOf(
+                            CertificateChainLink(
+                                commonName = "Alice",
+                                subjectDN = "CN=Alice",
+                                selfSigned = false,
+                                trustedVia = listOf(CertificateTrustSource.GlobalStore),
+                                details = listOf(
+                                    CertificateDetailSection("Subject", listOf(CertificateField("CN", "Alice"))),
+                                ),
+                                der = byteArrayOf(1, 2),
+                            ),
+                        ),
+                    ),
+                ),
+            ),
+        )
+
+        val cert = withChain.toJsonReport().signatures.first().certificate
+        cert.chain.size shouldBe 1
+        val link = cert.chain.first()
+        link.commonName shouldBe "Alice"
+        link.selfSigned shouldBe false
+        link.trustedVia.single().type shouldBe "GLOBAL_STORE"
+        link.details.single().title shouldBe "Subject"
+        link.details.single().fields.single().label shouldBe "CN"
     }
 })
 
