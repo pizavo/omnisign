@@ -303,6 +303,44 @@ class RenewBatchUseCaseTest : FunSpec({
         files shouldHaveSize 0
     }
 
+    test("resolveGlobs matches files in nested subdirectories") {
+        val root = File(tmpDir, "nested-glob").also { it.mkdirs() }
+        File(root, "a").mkdirs()
+        File(root, "a/mid.pdf").createNewFile()
+        File(root, "a/b").mkdirs()
+        File(root, "a/b/deep.pdf").createNewFile()
+        File(root, "a/b/notes.txt").createNewFile()
+
+        val uc = useCaseWith(baseConfig)
+        val glob = root.absolutePath.replace('\\', '/') + "/**/*.pdf"
+        val files = uc.resolveGlobs(listOf(glob))
+
+        files.map { it.name }.sorted() shouldContainExactly listOf("deep.pdf", "mid.pdf")
+    }
+
+    test("probeDirectoryWritable returns null and leaves no probe file for a writable directory") {
+        val dir = subDir("probe-ok")
+        val target = File(dir, "doc.pdf")
+
+        val uc = useCaseWith(baseConfig)
+        val error = uc.probeDirectoryWritable(target)
+
+        error.shouldBeNull()
+        dir.listFiles()!!.toList().shouldBeEmpty()
+    }
+
+    test("probeDirectoryWritable reports an error and leaks nothing when the directory is not writable") {
+        val dir = subDir("probe-fail")
+        File(dir, "occupied").writeText("a file, not a directory")
+        val target = File(dir, "occupied/doc.pdf")
+
+        val uc = useCaseWith(baseConfig)
+        val error = uc.probeDirectoryWritable(target)
+
+        error.shouldNotBeNull()
+        dir.listFiles { f -> f.isFile }!!.map { it.name } shouldContainExactly listOf("occupied")
+    }
+
     test("writeAtomically replaces existing file content and leaves no temporary files") {
         val dir = subDir("atomic-replace")
         val target = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }

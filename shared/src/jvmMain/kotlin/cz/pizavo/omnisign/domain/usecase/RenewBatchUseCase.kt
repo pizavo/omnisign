@@ -12,14 +12,20 @@ import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
 import cz.pizavo.omnisign.domain.model.result.RenewJobResult
 import cz.pizavo.omnisign.domain.port.RenewalLock
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.FileVisitResult
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.SimpleFileVisitor
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
+import java.nio.file.attribute.BasicFileAttributes
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import kotlin.io.path.absolutePathString
@@ -29,6 +35,8 @@ import kotlin.io.path.moveTo
 import kotlin.io.path.writeBytes
 import kotlin.time.Clock
 import kotlin.time.toJavaInstant
+
+private val logger = KotlinLogging.logger {}
 
 /**
  * Executes all configured renewal jobs (or a single named job), checking each
@@ -109,7 +117,7 @@ class RenewBatchUseCase(
         val jobResults = mutableListOf<RenewJobResult>()
 
         for ((_, job) in jobsToRun) {
-            val files = resolveGlobs(job.globs)
+            val files = resolveGlobs(job.globs, job.logFile)
             if (files.isEmpty()) {
                 jobResults.add(RenewJobResult(name = job.name, notify = job.notify))
                 continue
@@ -165,6 +173,21 @@ class RenewBatchUseCase(
                             jobRenewed++
                             appendLog(job.logFile, "[DRY-RUN] $path — would be re-timestamped")
                             fileStatuses.add(RenewFileStatus(path = path, status = RenewFileStatus.Status.DRY_RUN))
+                            return@fold
+                        }
+
+                        val writabilityError = probeDirectoryWritable(file)
+                        if (writabilityError != null) {
+                            totalErrors++
+                            jobErrors++
+                            appendLog(job.logFile, "[ERROR] $path — $writabilityError")
+                            fileStatuses.add(
+                                RenewFileStatus(
+                                    path = path,
+                                    status = RenewFileStatus.Status.ERROR,
+                                    message = writabilityError,
+                                )
+                            )
                             return@fold
                         }
 
@@ -250,6 +273,7 @@ class RenewBatchUseCase(
                                 }
                                 if (job.backupRetention > 0) {
                                     runCatching { pruneBackups(file, job.backupRetention) }
+                                        .onFailure { logger.warn(it) { "Could not prune old backups for $path" } }
                                 }
                                 totalRenewed++
                                 jobRenewed++
@@ -299,8 +323,14 @@ class RenewBatchUseCase(
      * Matching uses the relative tail of the glob pattern against the relative
      * path from the root directory, avoiding platform-specific backslash
      * escaping issues with [java.nio.file.PathMatcher] on Windows.
+     *
+     * The walk is fault-tolerant: an unreadable directory (or one that becomes
+     * inaccessible mid-walk) is skipped rather than aborting the whole batch, so a
+     * single permission problem cannot stop every job from renewing. Each skipped path is
+     * logged to the application log and appended to [logFile] when one is configured, so the
+     * gap is never silent.
      */
-    internal fun resolveGlobs(globs: List<String>): List<File> {
+    internal fun resolveGlobs(globs: List<String>, logFile: String? = null): List<File> {
         val seen = LinkedHashSet<String>()
         val results = mutableListOf<File>()
 
@@ -325,17 +355,40 @@ class RenewBatchUseCase(
             val tail = normalised.substring(lastSlash + 1)
             val matcher = rootPath.fileSystem.getPathMatcher("glob:$tail")
 
-            Files.walk(rootPath)
-                .filter { path ->
-                    Files.isRegularFile(path) && matcher.matches(rootPath.relativize(path))
-                }
-                .sorted()
-                .forEach { path ->
-                    val abs = path.toAbsolutePath().normalize().toString()
-                    if (seen.add(abs)) results.add(path.toFile())
-                }
+            val matched = mutableListOf<Path>()
+            try {
+                Files.walkFileTree(rootPath, object : SimpleFileVisitor<Path>() {
+                    override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
+                        if (attrs.isRegularFile && matcher.matches(rootPath.relativize(file))) {
+                            matched.add(file)
+                        }
+                        return FileVisitResult.CONTINUE
+                    }
+
+                    override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult {
+                        logSkippedGlobPath(file, exc, logFile)
+                        return FileVisitResult.CONTINUE
+                    }
+                })
+            } catch (e: IOException) {
+                logSkippedGlobPath(rootPath, e, logFile)
+            }
+            matched.sorted().forEach { path ->
+                val abs = path.toAbsolutePath().normalize().toString()
+                if (seen.add(abs)) results.add(path.toFile())
+            }
         }
         return results
+    }
+
+    /**
+     * Log a glob-walk path that had to be skipped because it could not be read — once to the
+     * application log and, when configured, to the job's [logFile] — so an unreadable directory
+     * never silently excludes files from renewal.
+     */
+    private fun logSkippedGlobPath(path: Path, cause: Exception, logFile: String?) {
+        logger.warn(cause) { "Renewal could not access $path — skipping it" }
+        appendLog(logFile, "[WARN] skipped unreadable path: $path — ${cause.message}")
     }
 
     /**
@@ -411,6 +464,32 @@ class RenewBatchUseCase(
     }
 
     /**
+     * Confirm [file]'s directory accepts writes before the expensive timestamp call, by creating and
+     * immediately deleting a probe file there. Returns an error message when the directory cannot be
+     * written (so the renewal is skipped without a wasted TSA round-trip), or `null` when it is
+     * writable. The probe file is always removed — even if anything fails — so none is left behind.
+     *
+     * @param file The document about to be renewed.
+     * @return `null` when the directory is writable, or a human-readable reason it is not.
+     */
+    internal fun probeDirectoryWritable(file: File): String? {
+        val directory = file.absoluteFile.toPath().parent
+            ?: return "could not resolve a directory for $file"
+        var probe: Path? = null
+        return try {
+            probe = createTempFile(directory, ".${file.name}.probe.", ".tmp")
+            null
+        } catch (e: Exception) {
+            "cannot write to $directory (check permissions and free space): ${e.message}"
+        } finally {
+            probe?.let { p ->
+                runCatching { p.deleteIfExists() }
+                    .onFailure { logger.warn(it) { "Could not delete writability-probe file $p" } }
+            }
+        }
+    }
+
+    /**
      * Re-run the coverage-aware renewal check on the just-produced [outputBytes] before they
      * overwrite [file]. A sound renewal must parse and report that it *no longer* needs renewal;
      * otherwise the extension produced a malformed or no-stronger document and the original must be
@@ -463,14 +542,16 @@ class RenewBatchUseCase(
 
     /**
      * Append a single structured log line to [logFile], prefixed with an
-     * ISO-8601 timestamp. Silently ignores write failures.
+     * ISO-8601 timestamp. A write failure is reported to the application log and otherwise
+     * ignored, so a broken job log file never aborts a renewal run.
      */
     private fun appendLog(logFile: String?, message: String) {
         if (logFile == null) return
         try {
             File(logFile).apply { parentFile?.mkdirs() }
                 .appendText("${Clock.System.now()} $message\n")
-        } catch (_: Exception) {
+        } catch (e: Exception) {
+            logger.warn(e) { "Could not write to renewal log file $logFile" }
         }
     }
 
