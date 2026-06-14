@@ -145,6 +145,11 @@ private fun RenewalJobRow(
 					color = LumoTheme.colors.textSecondary,
 				)
 				Text(
+					text = "Backups: ${if (job.backupRetention > 0) job.backupRetention.toString() else "off"}",
+					style = LumoTheme.typography.body2,
+					color = LumoTheme.colors.textSecondary,
+				)
+				Text(
 					text = if (job.notify) "Notify: on" else "Notify: off",
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.textSecondary,
@@ -224,6 +229,7 @@ private fun RenewalJobAddForm(
 	var name by remember { mutableStateOf("") }
 	var globs by remember { mutableStateOf("") }
 	var bufferDays by remember { mutableStateOf(ArchivingRepository.DEFAULT_RENEWAL_BUFFER_DAYS.toString()) }
+	var backupRetention by remember { mutableStateOf(RenewalJob.DEFAULT_BACKUP_RETENTION.toString()) }
 	var profile by remember { mutableStateOf(activeProfile) }
 	var logFile by remember { mutableStateOf("") }
 	var notify by remember { mutableStateOf(true) }
@@ -283,6 +289,18 @@ private fun RenewalJobAddForm(
 			},
 			label = { Text(text = "Buffer days") },
 			placeholder = { Text(text = "${ArchivingRepository.DEFAULT_RENEWAL_BUFFER_DAYS}") },
+			singleLine = true,
+			keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+			modifier = Modifier.width(120.dp),
+		)
+		UnderlinedTextField(
+			value = backupRetention,
+			onValueChange = {
+				backupRetention = it
+				onClearError()
+			},
+			label = { Text(text = "Backups") },
+			placeholder = { Text(text = "${RenewalJob.DEFAULT_BACKUP_RETENTION}") },
 			singleLine = true,
 			keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
 			modifier = Modifier.width(120.dp),
@@ -348,6 +366,7 @@ private fun RenewalJobAddForm(
 				val trimmedName = name.trim()
 				val parsedGlobs = globs.split(",").map { it.trim() }.filter { it.isNotEmpty() }
 				val parsedBuffer = bufferDays.toIntOrNull()
+				val parsedBackups = backupRetention.toIntOrNull()
 
 				if (parsedGlobs.isEmpty()) {
 					onError("At least one glob pattern is required.")
@@ -355,6 +374,10 @@ private fun RenewalJobAddForm(
 				}
 				if (parsedBuffer == null || parsedBuffer <= 0) {
 					onError("Buffer days must be a positive integer.")
+					return@Button
+				}
+				if (parsedBackups == null || parsedBackups < 0) {
+					onError("Backups must be 0 or a positive integer.")
 					return@Button
 				}
 
@@ -366,11 +389,13 @@ private fun RenewalJobAddForm(
 						profile = profile,
 						logFile = logFile.trim().ifBlank { null },
 						notify = notify,
+						backupRetention = parsedBackups,
 					)
 				)
 				name = ""
 				globs = ""
 				bufferDays = ArchivingRepository.DEFAULT_RENEWAL_BUFFER_DAYS.toString()
+				backupRetention = RenewalJob.DEFAULT_BACKUP_RETENTION.toString()
 				profile = activeProfile
 				logFile = ""
 				notify = true

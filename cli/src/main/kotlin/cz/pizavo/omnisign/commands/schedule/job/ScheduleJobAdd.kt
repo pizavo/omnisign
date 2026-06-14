@@ -31,6 +31,11 @@ class ScheduleJobAdd : CliktCommand(name = "add"), KoinComponent {
 		help = "Days before timestamp certificate expiry at which re-timestamping is triggered. " +
 				"Default: ${ArchivingRepository.DEFAULT_RENEWAL_BUFFER_DAYS}"
 	).int().default(ArchivingRepository.DEFAULT_RENEWAL_BUFFER_DAYS)
+	private val backups by option(
+		"-B", "--backups",
+		help = "Number of timestamped pre-renewal .bak copies to keep per file (0 disables backups). " +
+				"Default: ${RenewalJob.DEFAULT_BACKUP_RETENTION}"
+	).int().default(RenewalJob.DEFAULT_BACKUP_RETENTION)
 	private val profile by option(
 		"--profile",
 		help = "Named configuration profile to use for TSA and revocation settings."
@@ -54,6 +59,7 @@ class ScheduleJobAdd : CliktCommand(name = "add"), KoinComponent {
 			profile = profile,
 			logFile = logFile,
 			notify = !noNotify,
+			backupRetention = backups,
 		)
 		manageJobs.upsert(job).fold(
 			ifLeft = { echo("Failed to save job: ${it.message}", err = true) },
@@ -61,6 +67,7 @@ class ScheduleJobAdd : CliktCommand(name = "add"), KoinComponent {
 				echo("Renewal job '$name' saved.")
 				echo("   Globs        : ${globs.joinToString()}")
 				echo("   Buffer days  : $bufferDays")
+				echo("   Backups      : $backups")
 				echo("   Notify       : ${!noNotify}")
 				profile?.let { p -> echo("   Profile      : $p") }
 				logFile?.let { l -> echo("   Log file     : $l") }

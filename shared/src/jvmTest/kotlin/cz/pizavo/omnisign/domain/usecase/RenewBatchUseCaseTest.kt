@@ -366,6 +366,59 @@ class RenewBatchUseCaseTest : FunSpec({
         result.success shouldBe false
         coVerify(exactly = 0) { archivingRepository.needsArchivalRenewal(any(), any()) }
     }
+
+    test("writes a timestamped backup of the original before renewing in place") {
+        val dir = subDir("backup-write")
+        val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingResult(outputBytes = "RENEWED".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA").right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 3)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.renewed shouldBe 1
+        file.readText() shouldBe "RENEWED"
+        val backups = dir.listFiles { f -> f.name.endsWith(".bak") }!!.toList()
+        backups shouldHaveSize 1
+        backups.first().readText() shouldBe "ORIGINAL"
+    }
+
+    test("writes no backup when backupRetention is zero") {
+        val dir = subDir("backup-off")
+        val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingResult(outputBytes = "RENEWED".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA").right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        uc()
+
+        file.readText() shouldBe "RENEWED"
+        dir.listFiles { f -> f.name.endsWith(".bak") }!!.toList().shouldBeEmpty()
+    }
+
+    test("pruneBackups keeps only the newest N and ignores unrelated files") {
+        val dir = subDir("backup-prune")
+        val file = File(dir, "doc.pdf").apply { writeText("live") }
+        listOf("20200101T000000Z", "20210101T000000Z", "20220101T000000Z", "20230101T000000Z").forEach {
+            File(dir, "doc.pdf.$it.bak").writeText("backup-$it")
+        }
+        File(dir, "doc.pdf.bak").writeText("unrelated manual backup")
+
+        val uc = useCaseWith(baseConfig)
+        uc.pruneBackups(file, 2)
+
+        val remaining = dir.listFiles { f -> f.name.endsWith(".bak") }!!.map { it.name }.sorted()
+        remaining shouldContainExactly listOf(
+            "doc.pdf.20220101T000000Z.bak",
+            "doc.pdf.20230101T000000Z.bak",
+            "doc.pdf.bak",
+        )
+    }
 })
 
 

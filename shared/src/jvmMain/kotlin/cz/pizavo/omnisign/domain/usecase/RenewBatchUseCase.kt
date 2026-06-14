@@ -20,10 +20,13 @@ import java.nio.file.Files
 import java.nio.file.Paths
 import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
+import java.time.ZoneOffset
+import java.time.format.DateTimeFormatter
 import kotlin.io.path.createTempFile
 import kotlin.io.path.deleteIfExists
 import kotlin.io.path.moveTo
 import kotlin.time.Clock
+import kotlin.time.toJavaInstant
 
 /**
  * Executes all configured renewal jobs (or a single named job), checking each
@@ -199,6 +202,22 @@ class RenewBatchUseCase(
                                 )
                             },
                             ifRight = { result ->
+                                if (job.backupRetention > 0) {
+                                    val backupError = runCatching { writeBackup(file, inputBytes) }.exceptionOrNull()
+                                    if (backupError != null) {
+                                        totalErrors++
+                                        jobErrors++
+                                        appendLog(job.logFile, "[ERROR] $path — backup failed: ${backupError.message}")
+                                        fileStatuses.add(
+                                            RenewFileStatus(
+                                                path = path,
+                                                status = RenewFileStatus.Status.ERROR,
+                                                message = "Backup failed: ${backupError.message}",
+                                            )
+                                        )
+                                        return@fold
+                                    }
+                                }
                                 val writeError = runCatching { writeAtomically(file, result.outputBytes) }.exceptionOrNull()
                                 if (writeError != null) {
                                     totalErrors++
@@ -212,6 +231,9 @@ class RenewBatchUseCase(
                                         )
                                     )
                                     return@fold
+                                }
+                                if (job.backupRetention > 0) {
+                                    runCatching { pruneBackups(file, job.backupRetention) }
                                 }
                                 totalRenewed++
                                 jobRenewed++
@@ -339,6 +361,40 @@ class RenewBatchUseCase(
     }
 
     /**
+     * Write a timestamped backup of [originalBytes] beside [file] as `<name>.<utc>.bak`, so a bad
+     * renewal can be rolled back. The name embeds a UTC instant in basic ISO form (no `:`, so it is
+     * a valid filename on Windows). Written via [writeAtomically], so the backup is always complete
+     * or absent.
+     *
+     * @param file The document about to be renewed.
+     * @param originalBytes The pre-renewal content to preserve.
+     * @return The backup file that was written.
+     */
+    internal fun writeBackup(file: File, originalBytes: ByteArray): File {
+        val timestamp = BACKUP_TIMESTAMP.format(Clock.System.now().toJavaInstant())
+        val backupFile = File(file.absoluteFile.parentFile, "${file.name}.$timestamp.bak")
+        writeAtomically(backupFile, originalBytes)
+        return backupFile
+    }
+
+    /**
+     * Delete the oldest timestamped backups of [file], keeping only the newest [retention]. Only the
+     * backups this class writes — named `<file.name>.<utc-timestamp>.bak` — are considered, so an
+     * unrelated `.bak` file is never touched; basic-ISO timestamps sort chronologically by name.
+     *
+     * @param file The renewed document whose sibling backups should be pruned.
+     * @param retention The number of newest backups to keep.
+     */
+    internal fun pruneBackups(file: File, retention: Int) {
+        val pattern = Regex("^${Regex.escape(file.name)}\\.\\d{8}T\\d{6}Z\\.bak$")
+        val backups = file.absoluteFile.parentFile
+            ?.listFiles { candidate -> candidate.isFile && pattern.matches(candidate.name) }
+            ?.sortedBy { it.name }
+            ?: return
+        backups.dropLast(retention).forEach { it.delete() }
+    }
+
+    /**
      * Build a [ResolvedConfig] for a renewal job, honoring the job's optional
      * profile override.
      */
@@ -366,6 +422,15 @@ class RenewBatchUseCase(
                 .appendText("${Clock.System.now()} $message\n")
         } catch (_: Exception) {
         }
+    }
+
+    companion object {
+        /**
+         * Formats the UTC instant embedded in a backup file name, in basic ISO-8601
+         * (e.g. `20260614T020000Z`) so the name is a valid filename on Windows (no `:`).
+         */
+        private val BACKUP_TIMESTAMP: DateTimeFormatter =
+            DateTimeFormatter.ofPattern("yyyyMMdd'T'HHmmss'Z'").withZone(ZoneOffset.UTC)
     }
 }
 
