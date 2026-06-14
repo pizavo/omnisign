@@ -29,13 +29,19 @@ interface ArchivingRepository {
 	suspend fun extendDocument(parameters: ArchivingParameters): OperationResult<ArchivingResult>
 	
 	/**
-	 * Check whether the archival timestamps in [filePath] are close to expiry and the
-	 * document should be re-timestamped.
+	 * Check whether [filePath] should be re-timestamped to keep its archival protection current.
 	 *
-	 * @param filePath Absolute path to the B-LTA document to inspect.
-	 * @param renewalBufferDays Number of days before timestamp certificate expiry at which
+	 * The decision is **coverage-aware**: renewal is needed when a timestamp that no current
+	 * document timestamp seals is approaching the expiry of its signing (TSA) certificate — either
+	 * the outermost document timestamp itself (the B-LTA seal), the signature timestamp of a B-LT
+	 * document with no seal yet, or a signature timestamp applied after the last archival timestamp.
+	 * Timestamps already covered by a still-valid document timestamp are ignored, so a document is
+	 * not re-timestamped on every scheduler run once one of its inner timestamps ages.
+	 *
+	 * @param filePath Absolute path to the PAdES document to inspect.
+	 * @param renewalBufferDays Number of days before a timestamp certificate's expiry at which
 	 *   renewal is considered necessary. Defaults to [DEFAULT_RENEWAL_BUFFER_DAYS].
-	 * @return True if any timestamp signing certificate expires within the renewal window.
+	 * @return True if an uncovered timestamp's signing certificate expires within the renewal window.
 	 */
 	suspend fun needsArchivalRenewal(
 		filePath: String,

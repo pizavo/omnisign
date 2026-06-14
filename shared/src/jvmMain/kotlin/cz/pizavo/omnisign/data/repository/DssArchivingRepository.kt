@@ -17,6 +17,8 @@ import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
+import eu.europa.esig.dss.diagnostic.TimestampWrapper
+import eu.europa.esig.dss.enumerations.TimestampType
 import eu.europa.esig.dss.model.FileDocument
 import eu.europa.esig.dss.model.InMemoryDocument
 import eu.europa.esig.dss.pades.PAdESSignatureParameters
@@ -30,6 +32,7 @@ import org.apache.pdfbox.cos.COSName
 import java.io.File
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
+import kotlin.time.Instant
 
 /**
  * JVM implementation of [ArchivingRepository] backed by the EU DSS library.
@@ -157,13 +160,8 @@ class DssArchivingRepository(
 			}
 			val diagnosticData = validator.validateDocument().diagnosticData
 			val renewalThreshold = Clock.System.now() + renewalBufferDays.days
-			
-			val needsRenewal = diagnosticData.getTimestampList().any { ts ->
-				val notAfter = ts.signingCertificate?.notAfter ?: return@any false
-				notAfter.toKotlinInstant() < renewalThreshold
-			}
-			
-			needsRenewal.right()
+
+			needsRenewal(diagnosticData.getTimestampList(), renewalThreshold).right()
 		} catch (e: Exception) {
 			ArchivingError.ExtensionFailed(
 				message = "Failed to check archival renewal status",
@@ -171,6 +169,68 @@ class DssArchivingRepository(
 				cause = e
 			).left()
 		}
+	}
+
+	/**
+	 * Decide whether [timestamps] — the full timestamp list of a validated PAdES document — call
+	 * for archival re-timestamping against [renewalThreshold].
+	 *
+	 * The rule is **coverage-aware**: only a timestamp that no other timestamp seals can drive a
+	 * renewal. Renewal is triggered when an *uncovered* signature- or document-timestamp has a
+	 * signing (TSA) certificate expiring before [renewalThreshold]. This single predicate collapses
+	 * the three renewal cases:
+	 *
+	 * 1. the outermost document timestamp (the B-LTA seal, which nothing covers) is itself aging;
+	 * 2. a B-LT document with no document timestamp yet has an aging signature timestamp;
+	 * 3. a signature timestamp applied after the last archival timestamp — and therefore not sealed
+	 *    by it — is aging.
+	 *
+	 * Timestamps already sealed by a current document timestamp are deliberately ignored: that seal
+	 * carries their proof-of-existence, so re-timestamping them would grow the file on every
+	 * scheduler run without adding protection. In a PAdES archival chain each document timestamp
+	 * covers every earlier token, so an aged inner timestamp never re-triggers renewal once a fresher
+	 * seal exists.
+	 *
+	 * @param timestamps All timestamps DSS reported for the document, in any order.
+	 * @param renewalThreshold The instant (now + renewal buffer) a certificate must outlast to be
+	 *   considered safe.
+	 * @return `true` if at least one uncovered, renewal-relevant timestamp expires within the window.
+	 */
+	internal fun needsRenewal(
+		timestamps: List<TimestampWrapper>,
+		renewalThreshold: Instant,
+	): Boolean {
+		val coveredTimestampIds = timestamps.flatMapTo(mutableSetOf()) { seal ->
+			seal.timestampedTimestamps.map { it.id }
+		}
+		return timestamps.any { timestamp ->
+			timestamp.id !in coveredTimestampIds &&
+				drivesArchivalRenewal(timestamp) &&
+				signingCertificateExpiresBefore(timestamp, renewalThreshold)
+		}
+	}
+
+	/**
+	 * Whether [timestamp] is a timestamp type whose expiry can drive archival renewal: a PAdES
+	 * signature timestamp (B-T) or a document/archive timestamp (the B-LTA seal). Content-,
+	 * validation-data- and VRI-timestamps never trigger renewal on their own.
+	 */
+	private fun drivesArchivalRenewal(timestamp: TimestampWrapper): Boolean =
+		timestamp.type == TimestampType.SIGNATURE_TIMESTAMP ||
+			timestamp.type == TimestampType.DOCUMENT_TIMESTAMP ||
+			timestamp.type == TimestampType.ARCHIVE_TIMESTAMP
+
+	/**
+	 * Whether [timestamp]'s signing (TSA) certificate expires strictly before [renewalThreshold].
+	 * A timestamp whose signing certificate DSS could not resolve cannot anchor a renewal decision
+	 * and is treated as not-expiring.
+	 */
+	private fun signingCertificateExpiresBefore(
+		timestamp: TimestampWrapper,
+		renewalThreshold: Instant,
+	): Boolean {
+		val notAfter = timestamp.signingCertificate?.notAfter ?: return false
+		return notAfter.toKotlinInstant() < renewalThreshold
 	}
 	
 	@Suppress("TooGenericExceptionCaught")

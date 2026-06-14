@@ -19,7 +19,8 @@ import kotlin.time.Clock
 /**
  * Executes all configured renewal jobs (or a single named job), checking each
  * matching B-LTA PDF against its renewal buffer and re-timestamping in place
- * any file whose archival timestamp is nearing expiry.
+ * any file whose outermost document timestamp — or a signature timestamp not yet
+ * sealed by one — is nearing the expiry of its signing certificate.
  *
  * This use case encapsulates the core batch logic shared by the CLI `renew`
  * command and the desktop app's headless renewal mode. Presentation concerns

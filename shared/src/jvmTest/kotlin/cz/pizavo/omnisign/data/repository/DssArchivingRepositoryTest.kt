@@ -8,6 +8,13 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import eu.europa.esig.dss.diagnostic.TimestampWrapper
+import eu.europa.esig.dss.diagnostic.jaxb.XmlCertificate
+import eu.europa.esig.dss.diagnostic.jaxb.XmlSigningCertificate
+import eu.europa.esig.dss.diagnostic.jaxb.XmlTimestamp
+import eu.europa.esig.dss.diagnostic.jaxb.XmlTimestampedObject
+import eu.europa.esig.dss.enumerations.TimestampType
+import eu.europa.esig.dss.enumerations.TimestampedObjectType
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
@@ -21,6 +28,8 @@ import org.apache.pdfbox.cos.COSDictionary
 import org.apache.pdfbox.cos.COSName
 import org.apache.pdfbox.pdmodel.PDDocument
 import java.io.File
+import java.util.Date
+import kotlin.time.Instant
 
 /**
  * Verifies [DssArchivingRepository] error handling and lightweight PDF inspection
@@ -119,6 +128,86 @@ class DssArchivingRepositoryTest : FunSpec({
 		repository.getDocumentTimestampInfo("not a PDF".toByteArray())
 			.shouldBeLeft()
 			.shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
+	}
+
+	val renewalThreshold = Instant.parse("2026-09-11T00:00:00Z")
+	val agingCert = Instant.parse("2026-09-01T00:00:00Z") // expires before the threshold → inside the window
+	val freshCert = Instant.parse("2027-09-01T00:00:00Z") // expires well after the threshold → safe
+
+	/**
+	 * Build a DSS [TimestampWrapper] over a hand-assembled [XmlTimestamp] for renewal-decision tests:
+	 * [type] sets the timestamp category, [expiry] the signing certificate's `notAfter` (null = no
+	 * resolvable signing certificate), and [covers] the ids of the timestamps this one seals.
+	 */
+	fun timestamp(
+		id: String,
+		type: TimestampType,
+		expiry: Instant?,
+		covers: List<String> = emptyList(),
+	): TimestampWrapper = TimestampWrapper(
+		XmlTimestamp().apply {
+			this.id = id
+			this.type = type
+			expiry?.let {
+				signingCertificate = XmlSigningCertificate().apply {
+					certificate = XmlCertificate().apply {
+						this.id = "$id-cert"
+						notAfter = Date(it.toEpochMilliseconds())
+					}
+				}
+			}
+			timestampedObjects = covers.map { coveredId ->
+				XmlTimestampedObject().apply {
+					category = TimestampedObjectType.TIMESTAMP
+					token = XmlTimestamp().apply { this.id = coveredId }
+				}
+			}
+		}
+	)
+
+	test("needsRenewal skips a stale signature timestamp sealed by a fresh document timestamp") {
+		val timestamps = listOf(
+			timestamp("sig", TimestampType.SIGNATURE_TIMESTAMP, expiry = agingCert),
+			timestamp("doc", TimestampType.DOCUMENT_TIMESTAMP, expiry = freshCert, covers = listOf("sig")),
+		)
+		repository.needsRenewal(timestamps, renewalThreshold).shouldBeFalse()
+	}
+
+	test("needsRenewal triggers when a B-LT signature timestamp is aging and unsealed") {
+		val timestamps = listOf(
+			timestamp("sig", TimestampType.SIGNATURE_TIMESTAMP, expiry = agingCert),
+		)
+		repository.needsRenewal(timestamps, renewalThreshold).shouldBeTrue()
+	}
+
+	test("needsRenewal triggers when the outermost document timestamp is aging") {
+		val timestamps = listOf(
+			timestamp("sig", TimestampType.SIGNATURE_TIMESTAMP, expiry = freshCert),
+			timestamp("doc", TimestampType.DOCUMENT_TIMESTAMP, expiry = agingCert, covers = listOf("sig")),
+		)
+		repository.needsRenewal(timestamps, renewalThreshold).shouldBeTrue()
+	}
+
+	test("needsRenewal triggers for a signature added after archival that the seal does not cover") {
+		val timestamps = listOf(
+			timestamp("sig1", TimestampType.SIGNATURE_TIMESTAMP, expiry = freshCert),
+			timestamp("doc", TimestampType.DOCUMENT_TIMESTAMP, expiry = freshCert, covers = listOf("sig1")),
+			timestamp("sig2", TimestampType.SIGNATURE_TIMESTAMP, expiry = agingCert),
+		)
+		repository.needsRenewal(timestamps, renewalThreshold).shouldBeTrue()
+	}
+
+	test("needsRenewal ignores an aged inner timestamp covered by a fresh outer timestamp in the chain") {
+		val timestamps = listOf(
+			timestamp("sig", TimestampType.SIGNATURE_TIMESTAMP, expiry = agingCert),
+			timestamp("doc1", TimestampType.DOCUMENT_TIMESTAMP, expiry = agingCert, covers = listOf("sig")),
+			timestamp("doc2", TimestampType.DOCUMENT_TIMESTAMP, expiry = freshCert, covers = listOf("sig", "doc1")),
+		)
+		repository.needsRenewal(timestamps, renewalThreshold).shouldBeFalse()
+	}
+
+	test("needsRenewal returns false for a document with no timestamps") {
+		repository.needsRenewal(emptyList(), renewalThreshold).shouldBeFalse()
 	}
 })
 
