@@ -48,6 +48,9 @@ class RenewBatchUseCaseTest : FunSpec({
 
     beforeTest {
         clearMocks(archivingRepository, configRepository)
+        coEvery {
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+        } returns false.right()
     }
 
     fun subDir(name: String) = File(tmpDir, name).also { it.mkdirs() }
@@ -146,7 +149,8 @@ class RenewBatchUseCaseTest : FunSpec({
         val bad = File(dir, "iso-bad.pdf").also { it.createNewFile() }
         val good = File(dir, "iso-good.pdf").also { it.createNewFile() }
 
-        coEvery { archivingRepository.needsArchivalRenewal(any(), any()) } returns true.right()
+        coEvery { archivingRepository.needsArchivalRenewal(bad.absolutePath, any()) } returns true.right()
+        coEvery { archivingRepository.needsArchivalRenewal(good.absolutePath, any()) } returns true.right()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName == bad.name })
         } returns ArchivingError.ExtensionFailed("boom").left()
@@ -418,6 +422,47 @@ class RenewBatchUseCaseTest : FunSpec({
             "doc.pdf.20230101T000000Z.bak",
             "doc.pdf.bak",
         )
+    }
+
+    test("keeps the original and errors when the renewed output still needs renewal") {
+        val dir = subDir("verify-loop")
+        val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery {
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+        } returns true.right()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingResult(outputBytes = "RENEWED".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA").right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 3)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.renewed shouldBe 0
+        result.errors shouldBe 1
+        file.readText() shouldBe "ORIGINAL"
+        dir.listFiles { f -> f.name.endsWith(".bak") }!!.toList().shouldBeEmpty()
+    }
+
+    test("keeps the original and errors when the renewed output fails validation") {
+        val dir = subDir("verify-bad")
+        val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery {
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+        } returns ArchivingError.ExtensionFailed("not a valid PDF").left()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingResult(outputBytes = "GARBAGE".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA").right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.renewed shouldBe 0
+        result.errors shouldBe 1
+        file.readText() shouldBe "ORIGINAL"
     }
 })
 

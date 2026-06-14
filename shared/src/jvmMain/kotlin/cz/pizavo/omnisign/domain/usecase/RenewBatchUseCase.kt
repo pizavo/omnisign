@@ -22,9 +22,11 @@ import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import kotlin.io.path.absolutePathString
 import kotlin.io.path.createTempFile
 import kotlin.io.path.deleteIfExists
 import kotlin.io.path.moveTo
+import kotlin.io.path.writeBytes
 import kotlin.time.Clock
 import kotlin.time.toJavaInstant
 
@@ -202,6 +204,20 @@ class RenewBatchUseCase(
                                 )
                             },
                             ifRight = { result ->
+                                val validationError = verifyRenewedOutput(file, result.outputBytes, job.renewalBufferDays)
+                                if (validationError != null) {
+                                    totalErrors++
+                                    jobErrors++
+                                    appendLog(job.logFile, "[ERROR] $path — $validationError")
+                                    fileStatuses.add(
+                                        RenewFileStatus(
+                                            path = path,
+                                            status = RenewFileStatus.Status.ERROR,
+                                            message = validationError,
+                                        )
+                                    )
+                                    return@fold
+                                }
                                 if (job.backupRetention > 0) {
                                     val backupError = runCatching { writeBackup(file, inputBytes) }.exceptionOrNull()
                                     if (backupError != null) {
@@ -392,6 +408,40 @@ class RenewBatchUseCase(
             ?.sortedBy { it.name }
             ?: return
         backups.dropLast(retention).forEach { it.delete() }
+    }
+
+    /**
+     * Re-run the coverage-aware renewal check on the just-produced [outputBytes] before they
+     * overwrite [file]. A sound renewal must parse and report that it *no longer* needs renewal;
+     * otherwise the extension produced a malformed or no-stronger document and the original must be
+     * preserved rather than replaced.
+     *
+     * The bytes are checked through a short-lived verify file in [file]'s own directory — the same
+     * path that decides renewal in the first place — which is always deleted afterwards.
+     *
+     * @return `null` when the renewed document is sound, or a human-readable reason it is not.
+     */
+    private suspend fun verifyRenewedOutput(file: File, outputBytes: ByteArray, bufferDays: Int): String? {
+        val directory = file.absoluteFile.toPath().parent
+            ?: return "could not resolve a directory to validate the renewed document"
+        val verifyFile = try {
+            createTempFile(directory, ".${file.name}.verify.", ".pdf")
+        } catch (e: Exception) {
+            return "could not stage the renewed document for validation: ${e.message}"
+        }
+        return try {
+            verifyFile.writeBytes(outputBytes)
+            checkRenewalUseCase(verifyFile.absolutePathString(), bufferDays).fold(
+                ifLeft = { "the renewed document failed validation: ${it.message}" },
+                ifRight = { stillNeedsRenewal ->
+                    if (stillNeedsRenewal) "the renewed document still reports that it needs renewal" else null
+                },
+            )
+        } catch (e: Exception) {
+            "could not validate the renewed document: ${e.message}"
+        } finally {
+            verifyFile.deleteIfExists()
+        }
     }
 
     /**
