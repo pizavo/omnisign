@@ -10,6 +10,7 @@ import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.RenewBatchResult
 import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
 import cz.pizavo.omnisign.domain.model.result.RenewJobResult
+import cz.pizavo.omnisign.domain.port.RenewalLock
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import java.io.File
 import java.nio.ByteBuffer
@@ -37,27 +38,56 @@ import kotlin.time.Clock
  * @param checkRenewalUseCase Checks whether a single document needs renewal.
  * @param extendDocumentUseCase Extends a document to the target PAdES level.
  * @param configRepository Provides the current [AppConfig] with renewal jobs.
+ * @param renewalLock Host-wide guard that prevents two renewal runs from re-timestamping the
+ *   same documents at once.
  */
 class RenewBatchUseCase(
     private val checkRenewalUseCase: CheckArchivalRenewalUseCase,
     private val extendDocumentUseCase: ExtendDocumentUseCase,
     private val configRepository: ConfigRepository,
+    private val renewalLock: RenewalLock,
 ) {
 
     /**
      * Run renewal jobs and return an aggregated [RenewBatchResult].
      *
+     * The run is guarded by a host-wide [RenewalLock]: when another renewal process already holds
+     * the lock, this call does nothing and returns a result with [RenewBatchResult.alreadyRunning]
+     * set, so two schedulers — or a manual run overlapping the scheduled one — can never
+     * re-timestamp the same documents concurrently. If the lock cannot be established at all, the
+     * run is **not** attempted and a result with [RenewBatchResult.lockError] is returned.
+     *
      * @param jobName Optional name of a single job to execute. When `null`, all
      *   configured jobs are processed.
      * @param dryRun When `true`, files that need renewal are reported but not
      *   modified.
-     * @return A [RenewBatchResult] summarising every job and file outcome, or
-     *   `null` when the requested [jobName] does not exist.
+     * @return A [RenewBatchResult] summarising every job and file outcome; a result with
+     *   [RenewBatchResult.alreadyRunning] when another run holds the lock; a result with
+     *   [RenewBatchResult.lockError] when the lock could not be acquired; or `null` when the
+     *   requested [jobName] does not exist.
      */
     suspend operator fun invoke(
         jobName: String? = null,
         dryRun: Boolean = false,
     ): RenewBatchResult? {
+        val lock = try {
+            renewalLock.tryAcquire()
+        } catch (e: Exception) {
+            return RenewBatchResult(lockError = e.message ?: "the renewal lock could not be acquired")
+        }
+        if (lock == null) return RenewBatchResult(alreadyRunning = true)
+        return try {
+            runBatch(jobName, dryRun)
+        } finally {
+            lock.close()
+        }
+    }
+
+    /**
+     * Execute the configured renewal jobs while the [RenewalLock] is held; see [invoke] for the
+     * parameters and return value.
+     */
+    private suspend fun runBatch(jobName: String?, dryRun: Boolean): RenewBatchResult? {
         val appConfig = configRepository.getCurrentConfig()
 
         val jobsToRun = if (jobName != null) {

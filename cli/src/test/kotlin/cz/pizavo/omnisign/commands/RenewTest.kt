@@ -160,4 +160,24 @@ class RenewTest : FunSpec({
 
 		verify(exactly = 0) { notificationService.notify(any(), any(), any()) }
 	}
+
+	test("already-running run is reported and exits cleanly") {
+		coEvery { renewBatchUseCase(jobName = null, dryRun = false) } returns
+			RenewBatchResult(alreadyRunning = true)
+
+		val result = Omnisign().test(listOf("renew"))
+
+		result.output shouldContain "in progress"
+		result.statusCode shouldBe 0
+	}
+
+	test("lock acquisition failure is reported as an error and exits non-zero") {
+		coEvery { renewBatchUseCase(jobName = null, dryRun = false) } returns
+			RenewBatchResult(lockError = "lock file unwritable")
+
+		val result = Omnisign().test(listOf("renew"))
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "lock"
+	}
 })

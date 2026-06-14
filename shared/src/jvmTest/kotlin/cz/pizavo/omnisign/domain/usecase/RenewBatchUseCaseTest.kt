@@ -12,6 +12,7 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
+import cz.pizavo.omnisign.domain.port.RenewalLock
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import io.kotest.assertions.throwables.shouldThrow
@@ -26,8 +27,11 @@ import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import java.io.File
+import java.io.IOException
 
 /**
  * Unit tests for [RenewBatchUseCase].
@@ -40,6 +44,7 @@ class RenewBatchUseCaseTest : FunSpec({
 
     val checkRenewal = CheckArchivalRenewalUseCase(archivingRepository)
     val extend = ExtendDocumentUseCase(archivingRepository)
+    val grantingLock: RenewalLock = mockk { every { tryAcquire() } returns AutoCloseable {} }
 
     beforeTest {
         clearMocks(archivingRepository, configRepository)
@@ -58,7 +63,7 @@ class RenewBatchUseCaseTest : FunSpec({
 
     fun useCaseWith(appConfig: AppConfig): RenewBatchUseCase {
         coEvery { configRepository.getCurrentConfig() } returns appConfig
-        return RenewBatchUseCase(checkRenewal, extend, configRepository)
+        return RenewBatchUseCase(checkRenewal, extend, configRepository, grantingLock)
     }
 
     test("returns null when requested job name does not exist") {
@@ -325,6 +330,41 @@ class RenewBatchUseCaseTest : FunSpec({
 
         sentinel.readText() shouldBe "ORIGINAL"
         dir.listFiles { f -> f.isFile }!!.toList().shouldBeEmpty()
+    }
+
+    test("returns an alreadyRunning result and does no work when the lock is held") {
+        val busyLock: RenewalLock = mockk { every { tryAcquire() } returns null }
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, busyLock)
+
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.alreadyRunning shouldBe true
+        result.checked shouldBe 0
+        coVerify(exactly = 0) { archivingRepository.needsArchivalRenewal(any(), any()) }
+    }
+
+    test("releases the renewal lock after the batch completes") {
+        val handle = mockk<AutoCloseable>(relaxed = true)
+        val lock: RenewalLock = mockk { every { tryAcquire() } returns handle }
+        coEvery { configRepository.getCurrentConfig() } returns baseConfig
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, lock)
+
+        uc()
+
+        verify { handle.close() }
+    }
+
+    test("reports a lock error and does no work when the lock cannot be acquired") {
+        val failingLock: RenewalLock = mockk { every { tryAcquire() } throws IOException("disk on fire") }
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, failingLock)
+
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.lockError shouldBe "disk on fire"
+        result.success shouldBe false
+        coVerify(exactly = 0) { archivingRepository.needsArchivalRenewal(any(), any()) }
     }
 })
 

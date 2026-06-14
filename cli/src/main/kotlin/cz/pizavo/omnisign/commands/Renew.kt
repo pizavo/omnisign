@@ -70,6 +70,31 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 			throw ProgramResult(1)
 		}
 
+		if (result.alreadyRunning) {
+			if (output.json) {
+				echo(Json.encodeToString(JsonRenewalResult(success = true, alreadyRunning = true)))
+			} else {
+				echo("⏳ Another renewal run is already in progress — skipping.")
+			}
+			return@runBlocking
+		}
+
+		if (result.lockError != null) {
+			if (output.json) {
+				echo(
+					Json.encodeToString(
+						JsonRenewalResult(
+							success = false,
+							error = JsonError(message = "Could not acquire the renewal lock: ${result.lockError}"),
+						)
+					)
+				)
+			} else {
+				echo("❌ Could not acquire the renewal lock: ${result.lockError}", err = true)
+			}
+			throw ProgramResult(1)
+		}
+
 		if (result.jobs.isEmpty()) {
 			if (output.json) {
 				echo(Json.encodeToString(JsonRenewalResult(success = true, dryRun = dryRun)))
