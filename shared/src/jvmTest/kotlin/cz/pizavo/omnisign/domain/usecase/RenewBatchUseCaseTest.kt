@@ -14,8 +14,11 @@ import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -289,6 +292,39 @@ class RenewBatchUseCaseTest : FunSpec({
         val nonExistent = File(tmpDir, "nonexistent").absolutePath.replace('\\', '/') + "/*.pdf"
         val files = uc.resolveGlobs(listOf(nonExistent))
         files shouldHaveSize 0
+    }
+
+    test("writeAtomically replaces existing file content and leaves no temporary files") {
+        val dir = subDir("atomic-replace")
+        val target = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
+
+        val uc = useCaseWith(baseConfig)
+        uc.writeAtomically(target, "RENEWED".toByteArray())
+
+        target.readText() shouldBe "RENEWED"
+        dir.listFiles()!!.map { it.name } shouldContainExactly listOf("doc.pdf")
+    }
+
+    test("writeAtomically creates the target when it does not yet exist") {
+        val dir = subDir("atomic-create")
+        val target = File(dir, "fresh.pdf")
+
+        val uc = useCaseWith(baseConfig)
+        uc.writeAtomically(target, "DATA".toByteArray())
+
+        target.readText() shouldBe "DATA"
+    }
+
+    test("writeAtomically preserves the original and cleans up its temp file when the move fails") {
+        val dir = subDir("atomic-fail")
+        val unreplaceableTarget = File(dir, "occupied").apply { mkdirs() }
+        val sentinel = File(unreplaceableTarget, "keep.txt").apply { writeText("ORIGINAL") }
+
+        val uc = useCaseWith(baseConfig)
+        shouldThrow<Exception> { uc.writeAtomically(unreplaceableTarget, "RENEWED".toByteArray()) }
+
+        sentinel.readText() shouldBe "ORIGINAL"
+        dir.listFiles { f -> f.isFile }!!.toList().shouldBeEmpty()
     }
 })
 

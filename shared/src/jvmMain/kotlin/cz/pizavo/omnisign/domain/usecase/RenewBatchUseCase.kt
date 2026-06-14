@@ -12,8 +12,16 @@ import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
 import cz.pizavo.omnisign.domain.model.result.RenewJobResult
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import java.io.File
+import java.nio.ByteBuffer
+import java.nio.channels.FileChannel
+import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
 import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption
+import kotlin.io.path.createTempFile
+import kotlin.io.path.deleteIfExists
+import kotlin.io.path.moveTo
 import kotlin.time.Clock
 
 /**
@@ -161,7 +169,7 @@ class RenewBatchUseCase(
                                 )
                             },
                             ifRight = { result ->
-                                val writeError = runCatching { file.writeBytes(result.outputBytes) }.exceptionOrNull()
+                                val writeError = runCatching { writeAtomically(file, result.outputBytes) }.exceptionOrNull()
                                 if (writeError != null) {
                                     totalErrors++
                                     jobErrors++
@@ -260,6 +268,44 @@ class RenewBatchUseCase(
                 }
         }
         return results
+    }
+
+    /**
+     * Atomically replace [target]'s contents with [bytes].
+     *
+     * The bytes are written and flushed to a temporary file in [target]'s own directory and
+     * then moved over [target] with [StandardCopyOption.ATOMIC_MOVE]. The existing file is never
+     * truncated in place, so an interrupted run — a crash, a kill, power loss, or a full disk —
+     * can never leave a half-written or empty file where a valid archive used to be: a reader
+     * sees either the original document or the fully renewed one. The temporary file shares the
+     * target's directory so the move stays on one filesystem (a cross-device move cannot be
+     * atomic) and is removed again if any step fails.
+     *
+     * @param target The file whose contents are replaced.
+     * @param bytes The complete renewed document.
+     */
+    internal fun writeAtomically(target: File, bytes: ByteArray) {
+        val targetPath = target.toPath()
+        val directory = requireNotNull(targetPath.toAbsolutePath().parent) {
+            "Cannot resolve a parent directory for $target"
+        }
+        val tempFile = createTempFile(directory, ".${target.name}.", ".tmp")
+        try {
+            FileChannel.open(tempFile, StandardOpenOption.WRITE).use { channel ->
+                val buffer = ByteBuffer.wrap(bytes)
+                while (buffer.hasRemaining()) {
+                    channel.write(buffer)
+                }
+                channel.force(true)
+            }
+            try {
+                tempFile.moveTo(targetPath, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+            } catch (_: AtomicMoveNotSupportedException) {
+                tempFile.moveTo(targetPath, StandardCopyOption.REPLACE_EXISTING)
+            }
+        } finally {
+            tempFile.deleteIfExists()
+        }
     }
 
     /**
