@@ -4,7 +4,7 @@ package cz.pizavo.omnisign.domain.port
  * Platform-agnostic port for managing the OS-level daily renewal scheduler.
  *
  * On JVM the implementation delegates to [cz.pizavo.omnisign.data.service.OsSchedulerService]
- * (crontab on Linux/macOS, Task Scheduler on Windows). Other platforms may leave
+ * (systemd on Linux, launchd on macOS, Task Scheduler on Windows). Other platforms may leave
  * this port unregistered, in which case the scheduler controls are hidden in the UI.
  */
 interface SchedulerPort {

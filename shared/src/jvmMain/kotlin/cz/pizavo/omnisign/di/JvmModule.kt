@@ -135,7 +135,11 @@ val jvmRepositoryModule = module {
 	
 	single<OsSchedulerService> {
 		val os = System.getProperty("os.name", "").lowercase()
-		if (os.contains("win")) WindowsTaskSchedulerService() else CrontabSchedulerService()
+		when {
+			os.contains("win") -> WindowsTaskSchedulerService()
+			os.contains("mac") -> LaunchdSchedulerService()
+			else -> SystemdSchedulerService()
+		}
 	}
 	
 	single<SchedulerPort> { SchedulerPortAdapter(get()) }

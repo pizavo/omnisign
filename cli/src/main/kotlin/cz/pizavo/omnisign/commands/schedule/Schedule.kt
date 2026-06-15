@@ -7,7 +7,7 @@ import cz.pizavo.omnisign.commands.schedule.job.ScheduleJob
 
 /**
  * Top-level CLI command that groups all subcommands for managing the OS-level daily
- * renewal cron job and the [cz.pizavo.omnisign.domain.model.config.RenewalJob] entries
+ * renewal job and the [cz.pizavo.omnisign.domain.model.config.RenewalJob] entries
  * stored in the application configuration.
  */
 class Schedule : CliktCommand(name = "schedule") {

@@ -56,12 +56,17 @@ class ScheduleInstall : CliktCommand(name = "install"), KoinComponent {
 			throw ProgramResult(1)
 		}
 		
-		scheduler.install(
-			cliExecutablePath = resolvedCliPath,
-			runAtHour = hour,
-			runAtMinute = minute,
-			logFilePath = logFile,
-		)
+		try {
+			scheduler.install(
+				cliExecutablePath = resolvedCliPath,
+				runAtHour = hour,
+				runAtMinute = minute,
+				logFilePath = logFile,
+			)
+		} catch (e: Exception) {
+			echo(e.message ?: "Failed to install the renewal scheduler.", err = true)
+			throw ProgramResult(1)
+		}
 		
 		echo("✅ Daily renewal job installed.")
 		echo("   Binary : $resolvedCliPath")

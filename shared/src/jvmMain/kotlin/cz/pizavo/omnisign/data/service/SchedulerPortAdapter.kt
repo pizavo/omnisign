@@ -5,7 +5,7 @@ import cz.pizavo.omnisign.domain.port.SchedulerPort
 /**
  * JVM implementation of [SchedulerPort] that delegates to an [OsSchedulerService].
  *
- * @param delegate The platform-specific scheduler service (crontab or schtasks).
+ * @param delegate The platform-specific scheduler service (systemd, launchd, or Task Scheduler).
  */
 class SchedulerPortAdapter(
 	private val delegate: OsSchedulerService,

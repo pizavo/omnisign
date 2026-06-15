@@ -26,7 +26,7 @@ import org.koin.core.component.inject
  * (or a single named job), checks each matching B-LTA PDF against its renewal buffer, and
  * re-timestamps in-place any file whose archival timestamp is nearing expiry.
  *
- * This command is designed to be invoked by the OS-level daily cron job registered via
+ * This command is designed to be invoked by the OS-level daily scheduled job registered via
  * `omnisign schedule install`, but can also be run manually at any time.
  *
  * The core batch logic is delegated to [RenewBatchUseCase]; this command handles
