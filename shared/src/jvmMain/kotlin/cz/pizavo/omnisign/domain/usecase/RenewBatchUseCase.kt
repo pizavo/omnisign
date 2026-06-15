@@ -10,7 +10,12 @@ import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.RenewBatchResult
 import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
 import cz.pizavo.omnisign.domain.model.result.RenewJobResult
+import cz.pizavo.omnisign.domain.model.result.RenewalRunError
+import cz.pizavo.omnisign.domain.model.result.RenewalRunJobSummary
+import cz.pizavo.omnisign.domain.model.result.RenewalRunOutcome
+import cz.pizavo.omnisign.domain.model.result.RenewalRunRecord
 import cz.pizavo.omnisign.domain.port.RenewalLock
+import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
@@ -53,12 +58,15 @@ private val logger = KotlinLogging.logger {}
  * @param configRepository Provides the current [AppConfig] with renewal jobs.
  * @param renewalLock Host-wide guard that prevents two renewal runs from re-timestamping the
  *   same documents at once.
+ * @param runRecordStore Persists a summary of each run so the CLI and desktop can surface last-run
+ *   status (when it ran, whether it succeeded, and any failures since the last success).
  */
 class RenewBatchUseCase(
     private val checkRenewalUseCase: CheckArchivalRenewalUseCase,
     private val extendDocumentUseCase: ExtendDocumentUseCase,
     private val configRepository: ConfigRepository,
     private val renewalLock: RenewalLock,
+    private val runRecordStore: RenewalRunRecordStore,
 ) {
 
     /**
@@ -86,13 +94,61 @@ class RenewBatchUseCase(
         val lock = try {
             renewalLock.tryAcquire()
         } catch (e: Exception) {
-            return RenewBatchResult(lockError = e.message ?: "the renewal lock could not be acquired")
+            val result = RenewBatchResult(lockError = e.message ?: "the renewal lock could not be acquired")
+            recordRun(result)
+            return result
         }
         if (lock == null) return RenewBatchResult(alreadyRunning = true)
         return try {
-            runBatch(jobName, dryRun)
+            runBatch(jobName, dryRun).also { result ->
+                if (result != null && !dryRun) recordRun(result)
+            }
         } finally {
             lock.close()
+        }
+    }
+
+    /**
+     * Persist a [RenewalRunRecord] summarising [result], carrying the last-success timestamp
+     * forward and counting consecutive failures since it. Never called for dry-runs or for runs
+     * skipped because another run held the lock. A persistence failure is logged and otherwise
+     * ignored, so status bookkeeping can never break a run.
+     */
+    private fun recordRun(result: RenewBatchResult) {
+        try {
+            val now = Clock.System.now()
+            val previous = runRecordStore.load()
+            val outcome = when {
+                result.lockError != null -> RenewalRunOutcome.FAILED
+                result.errors > 0 -> RenewalRunOutcome.COMPLETED_WITH_ERRORS
+                else -> RenewalRunOutcome.SUCCESS
+            }
+            val succeeded = outcome == RenewalRunOutcome.SUCCESS
+            val errorDetails = result.jobs.flatMap { job ->
+                job.files
+                    .filter { it.status == RenewFileStatus.Status.ERROR || it.status == RenewFileStatus.Status.CONFIG_ERROR }
+                    .map { RenewalRunError(path = it.path, message = it.message ?: "unknown error") }
+            }
+            val warnings = result.jobs.flatMap { it.files }.flatMap { it.warnings }.distinct()
+            val jobs = result.jobs.map { RenewalRunJobSummary(name = it.name, renewed = it.renewed, errors = it.errors) }
+            runRecordStore.save(
+                RenewalRunRecord(
+                    lastRunAt = now,
+                    outcome = outcome,
+                    checked = result.checked,
+                    renewed = result.renewed,
+                    skipped = result.skipped,
+                    errors = result.errors,
+                    failureReason = result.lockError,
+                    errorDetails = errorDetails,
+                    warnings = warnings,
+                    jobs = jobs,
+                    lastSuccessAt = if (succeeded) now else previous?.lastSuccessAt,
+                    failuresSinceSuccess = if (succeeded) 0 else (previous?.failuresSinceSuccess ?: 0) + 1,
+                )
+            )
+        } catch (e: Exception) {
+            logger.warn(e) { "Could not persist the renewal run record" }
         }
     }
 

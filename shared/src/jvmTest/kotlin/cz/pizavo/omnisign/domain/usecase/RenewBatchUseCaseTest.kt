@@ -12,7 +12,10 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
+import cz.pizavo.omnisign.domain.model.result.RenewalRunOutcome
+import cz.pizavo.omnisign.domain.model.result.RenewalRunRecord
 import cz.pizavo.omnisign.domain.port.RenewalLock
+import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import io.kotest.assertions.throwables.shouldThrow
@@ -32,6 +35,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import java.io.File
 import java.io.IOException
+import kotlin.time.Instant
 
 /**
  * Unit tests for [RenewBatchUseCase].
@@ -45,9 +49,10 @@ class RenewBatchUseCaseTest : FunSpec({
     val checkRenewal = CheckArchivalRenewalUseCase(archivingRepository)
     val extend = ExtendDocumentUseCase(archivingRepository)
     val grantingLock: RenewalLock = mockk { every { tryAcquire() } returns AutoCloseable {} }
+    val runRecordStore: RenewalRunRecordStore = mockk(relaxed = true)
 
     beforeTest {
-        clearMocks(archivingRepository, configRepository)
+        clearMocks(archivingRepository, configRepository, runRecordStore)
         coEvery {
             archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
         } returns false.right()
@@ -66,7 +71,7 @@ class RenewBatchUseCaseTest : FunSpec({
 
     fun useCaseWith(appConfig: AppConfig): RenewBatchUseCase {
         coEvery { configRepository.getCurrentConfig() } returns appConfig
-        return RenewBatchUseCase(checkRenewal, extend, configRepository, grantingLock)
+        return RenewBatchUseCase(checkRenewal, extend, configRepository, grantingLock, runRecordStore)
     }
 
     test("returns null when requested job name does not exist") {
@@ -376,7 +381,7 @@ class RenewBatchUseCaseTest : FunSpec({
 
     test("returns an alreadyRunning result and does no work when the lock is held") {
         val busyLock: RenewalLock = mockk { every { tryAcquire() } returns null }
-        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, busyLock)
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, busyLock, runRecordStore)
 
         val result = uc()
 
@@ -390,7 +395,7 @@ class RenewBatchUseCaseTest : FunSpec({
         val handle = mockk<AutoCloseable>(relaxed = true)
         val lock: RenewalLock = mockk { every { tryAcquire() } returns handle }
         coEvery { configRepository.getCurrentConfig() } returns baseConfig
-        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, lock)
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, lock, runRecordStore)
 
         uc()
 
@@ -399,7 +404,7 @@ class RenewBatchUseCaseTest : FunSpec({
 
     test("reports a lock error and does no work when the lock cannot be acquired") {
         val failingLock: RenewalLock = mockk { every { tryAcquire() } throws IOException("disk on fire") }
-        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, failingLock)
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, failingLock, runRecordStore)
 
         val result = uc()
 
@@ -501,6 +506,103 @@ class RenewBatchUseCaseTest : FunSpec({
         result.renewed shouldBe 0
         result.errors shouldBe 1
         file.readText() shouldBe "ORIGINAL"
+    }
+
+    test("records a successful run, resetting the failure counter") {
+        val dir = subDir("rec-success")
+        val file = File(dir, "ok.pdf").also { it.writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingResult(outputBytes = "RENEWED".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA").right()
+        every { runRecordStore.load() } returns null
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        uc()
+
+        verify {
+            runRecordStore.save(
+                match {
+                    it.outcome == RenewalRunOutcome.SUCCESS &&
+                        it.renewed == 1 &&
+                        it.failuresSinceSuccess == 0 &&
+                        it.lastSuccessAt != null
+                }
+            )
+        }
+    }
+
+    test("records a partial run, incrementing failures and carrying last success forward") {
+        val dir = subDir("rec-partial")
+        val file = File(dir, "bad.pdf").also { it.writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingError.ExtensionFailed("tsa down").left()
+        val previousSuccess = Instant.fromEpochSeconds(1_000_000)
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = previousSuccess,
+            outcome = RenewalRunOutcome.SUCCESS,
+            lastSuccessAt = previousSuccess,
+            failuresSinceSuccess = 0,
+        )
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        uc()
+
+        verify {
+            runRecordStore.save(
+                match {
+                    it.outcome == RenewalRunOutcome.COMPLETED_WITH_ERRORS &&
+                        it.failuresSinceSuccess == 1 &&
+                        it.lastSuccessAt == previousSuccess &&
+                        it.errorDetails.isNotEmpty()
+                }
+            )
+        }
+    }
+
+    test("records a failed run when the lock cannot be acquired") {
+        val failingLock: RenewalLock = mockk { every { tryAcquire() } throws RuntimeException("disk full") }
+        every { runRecordStore.load() } returns null
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, failingLock, runRecordStore)
+
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.lockError.shouldNotBeNull()
+        verify {
+            runRecordStore.save(
+                match {
+                    it.outcome == RenewalRunOutcome.FAILED &&
+                        it.failureReason != null &&
+                        it.failuresSinceSuccess == 1
+                }
+            )
+        }
+    }
+
+    test("does not record a dry-run") {
+        val dir = subDir("rec-dry")
+        val file = File(dir, "dry.pdf").also { it.writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        uc(dryRun = true)
+
+        verify(exactly = 0) { runRecordStore.save(any()) }
+    }
+
+    test("does not record a run skipped because another run holds the lock") {
+        val busyLock: RenewalLock = mockk { every { tryAcquire() } returns null }
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, busyLock, runRecordStore)
+
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.alreadyRunning shouldBe true
+        verify(exactly = 0) { runRecordStore.save(any()) }
     }
 })
 

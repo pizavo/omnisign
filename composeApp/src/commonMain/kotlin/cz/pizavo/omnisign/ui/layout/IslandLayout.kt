@@ -9,6 +9,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
+import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
@@ -126,6 +127,7 @@ fun IslandLayout(
 				trustedListRefreshPort = koin.getOrNull<TrustedListRefreshPort>(),
 				configArchive = koin.getOrNull<ConfigArchivePort>(),
 				trustStore = koin.getOrNull<TrustStore>(),
+				renewalRunRecordStore = koin.getOrNull<RenewalRunRecordStore>(),
 			)
 		}.recover { if (it is NoDefinitionFoundException || it.cause is NoDefinitionFoundException) null else throw it }.getOrNull()
 	}

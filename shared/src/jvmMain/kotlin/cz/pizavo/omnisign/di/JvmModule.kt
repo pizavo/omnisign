@@ -9,6 +9,7 @@ import cz.pizavo.omnisign.data.service.*
 import cz.pizavo.omnisign.domain.port.ConfigSerializerRegistry
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.port.RenewalLock
+import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
@@ -129,6 +130,9 @@ val jvmRepositoryModule = module {
 	single { ConfigArchiveUseCase(get(), get(), get()) } bind ConfigArchivePort::class
 	single<RenewalLock> {
 		FileRenewalLock(FileConfigRepository.getDefaultConfigPath().resolveSibling("renewal.lock"))
+	}
+	single<RenewalRunRecordStore> {
+		FileRenewalRunRecordStore(FileConfigRepository.getDefaultConfigPath().resolveSibling("last-renewal.json"))
 	}
 	singleOf(::RenewBatchUseCase)
 	single { MigrateTrustedCertificatesUseCase(get(), get()) }

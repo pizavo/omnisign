@@ -7,9 +7,12 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.result.RenewalRunOutcome
+import cz.pizavo.omnisign.domain.model.result.RenewalRunRecord
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
+import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
@@ -58,6 +61,31 @@ class SettingsViewModelTest : FunSpec({
 
     afterTest {
         Dispatchers.resetMain()
+    }
+
+    test("load populates the most recent renewal run record") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            val recordStore: RenewalRunRecordStore = mockk()
+            val record = RenewalRunRecord(
+                lastRunAt = Instant.fromEpochSeconds(1_700_000_000),
+                outcome = RenewalRunOutcome.SUCCESS,
+                lastSuccessAt = Instant.fromEpochSeconds(1_700_000_000),
+            )
+            every { recordStore.load() } returns record
+
+            val vm = SettingsViewModel(
+                getConfig,
+                setGlobalConfig,
+                credentialStore = credentialStore,
+                renewalRunRecordStore = recordStore,
+                ioDispatcher = testDispatcher,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.renewalRunRecord shouldBe record
+        }
     }
 
     test("load populates state from current global config") {

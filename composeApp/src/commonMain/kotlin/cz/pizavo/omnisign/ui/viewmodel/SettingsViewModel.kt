@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.domain.model.config.SchedulerConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
+import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
@@ -71,6 +72,7 @@ class SettingsViewModel(
     private val trustedListRefreshPort: TrustedListRefreshPort? = null,
     private val configArchive: ConfigArchivePort? = null,
     private val trustStore: TrustStore? = null,
+    private val renewalRunRecordStore: RenewalRunRecordStore? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GlobalConfigEditState())
@@ -142,6 +144,9 @@ class SettingsViewModel(
                     val installed = withContext(ioDispatcher) {
                         try { schedulerPort?.isInstalled() == true } catch (_: Exception) { false }
                     }
+                    val runRecord = withContext(ioDispatcher) {
+                        try { renewalRunRecordStore?.load() } catch (_: Exception) { null }
+                    }
                     val trustedCerts = trustStore?.list(TrustScope.Global)
                         ?.fold(ifLeft = { emptyList() }, ifRight = { it }).orEmpty()
                     val editState = GlobalConfigEditState.from(
@@ -156,6 +161,7 @@ class SettingsViewModel(
                         trustedCertificates = trustedCerts,
                     ).copy(
                         trustedCertsAvailable = trustStore != null,
+                        renewalRunRecord = runRecord,
                     ).let {
                         if (isLinuxDesktop) it.copy(
                             useNativeTitleBar = loadUseNativeTitleBar() ?: false,

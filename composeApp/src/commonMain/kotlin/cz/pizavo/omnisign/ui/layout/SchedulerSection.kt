@@ -9,6 +9,8 @@ import androidx.compose.ui.input.pointer.PointerIcon
 import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import cz.pizavo.omnisign.domain.model.result.label
+import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
@@ -18,6 +20,8 @@ import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import omnisign.composeapp.generated.resources.Res
+import omnisign.composeapp.generated.resources.icon_alert_warning
+import omnisign.composeapp.generated.resources.icon_circle_filled
 import omnisign.composeapp.generated.resources.icon_folder
 import org.jetbrains.compose.resources.painterResource
 
@@ -41,9 +45,16 @@ fun SchedulerSection(
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.spacedBy(6.dp),
 	) {
+		Icon(
+			painter = painterResource(Res.drawable.icon_circle_filled),
+			contentDescription = null,
+			tint = if (state.schedulerInstalled) LumoTheme.colors.success
+			else LumoTheme.colors.textDisabled,
+			modifier = Modifier.size(10.dp),
+		)
 		Text(
-			text = if (state.schedulerInstalled) "✅ Scheduler is installed"
-			else "⚪ Scheduler is not installed",
+			text = if (state.schedulerInstalled) "Scheduler is installed"
+			else "Scheduler is not installed",
 			style = LumoTheme.typography.label1,
 			color = if (state.schedulerInstalled) LumoTheme.colors.success
 			else LumoTheme.colors.textSecondary,
@@ -52,6 +63,43 @@ fun SchedulerSection(
 			text = "The scheduler is automatically installed when renewal jobs are " +
 					"configured, and removed when all renewal jobs are deleted.",
 		)
+	}
+
+	state.renewalRunRecord?.let { record ->
+		if (state.renewalJobs.isNotEmpty() || state.schedulerInstalled) {
+			Spacer(modifier = Modifier.height(12.dp))
+			Text(
+				text = "Last successful run: ${record.lastSuccessAt?.formatDateTime() ?: "never"}",
+				style = LumoTheme.typography.body2,
+				color = LumoTheme.colors.textSecondary,
+			)
+			Spacer(modifier = Modifier.height(4.dp))
+			Text(
+				text = "Last run: ${record.lastRunAt.formatDateTime()} — ${record.outcome.label} " +
+						"(checked ${record.checked}, renewed ${record.renewed}, errors ${record.errors})",
+				style = LumoTheme.typography.body2,
+				color = LumoTheme.colors.textSecondary,
+			)
+			if (record.failuresSinceSuccess > 0) {
+				Spacer(modifier = Modifier.height(4.dp))
+				Row(
+					verticalAlignment = Alignment.CenterVertically,
+					horizontalArrangement = Arrangement.spacedBy(4.dp),
+				) {
+					Icon(
+						painter = painterResource(Res.drawable.icon_alert_warning),
+						contentDescription = null,
+						tint = LumoTheme.colors.warning,
+						modifier = Modifier.size(14.dp),
+					)
+					Text(
+						text = "${record.failuresSinceSuccess} unsuccessful run(s) since the last success.",
+						style = LumoTheme.typography.body2,
+						color = LumoTheme.colors.warning,
+					)
+				}
+			}
+		}
 	}
 
 	Spacer(modifier = Modifier.height(16.dp))
