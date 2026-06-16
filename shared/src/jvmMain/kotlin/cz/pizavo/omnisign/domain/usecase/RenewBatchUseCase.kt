@@ -182,6 +182,7 @@ class RenewBatchUseCase(
             val resolvedConfigResult = resolveJobConfig(appConfig, job)
             if (resolvedConfigResult.isLeft()) {
                 val error = resolvedConfigResult.leftOrNull()!!
+                logger.warn { "Renewal job '${job.name}' configuration error — ${error.message}" }
                 totalErrors++
                 jobResults.add(
                     RenewJobResult(
@@ -211,7 +212,7 @@ class RenewBatchUseCase(
                     ifLeft = { error ->
                         totalErrors++
                         jobErrors++
-                        appendLog(job.logFile, "[ERROR] $path — ${error.message}")
+                        logFileError(job.logFile, path, error.message)
                         fileStatuses.add(
                             RenewFileStatus(path = path, status = RenewFileStatus.Status.ERROR, message = error.message)
                         )
@@ -236,7 +237,7 @@ class RenewBatchUseCase(
                         if (writabilityError != null) {
                             totalErrors++
                             jobErrors++
-                            appendLog(job.logFile, "[ERROR] $path — $writabilityError")
+                            logFileError(job.logFile, path, writabilityError)
                             fileStatuses.add(
                                 RenewFileStatus(
                                     path = path,
@@ -251,7 +252,7 @@ class RenewBatchUseCase(
                         if (inputBytes == null) {
                             totalErrors++
                             jobErrors++
-                            appendLog(job.logFile, "[ERROR] $path — renewal failed: could not read file")
+                            logFileError(job.logFile, path, "renewal failed: could not read file")
                             fileStatuses.add(
                                 RenewFileStatus(
                                     path = path,
@@ -273,7 +274,7 @@ class RenewBatchUseCase(
                             ifLeft = { error ->
                                 totalErrors++
                                 jobErrors++
-                                appendLog(job.logFile, "[ERROR] $path — renewal failed: ${error.message}")
+                                logFileError(job.logFile, path, "renewal failed: ${error.message}")
                                 fileStatuses.add(
                                     RenewFileStatus(
                                         path = path,
@@ -287,7 +288,7 @@ class RenewBatchUseCase(
                                 if (validationError != null) {
                                     totalErrors++
                                     jobErrors++
-                                    appendLog(job.logFile, "[ERROR] $path — $validationError")
+                                    logFileError(job.logFile, path, validationError)
                                     fileStatuses.add(
                                         RenewFileStatus(
                                             path = path,
@@ -302,7 +303,7 @@ class RenewBatchUseCase(
                                     if (backupError != null) {
                                         totalErrors++
                                         jobErrors++
-                                        appendLog(job.logFile, "[ERROR] $path — backup failed: ${backupError.message}")
+                                        logFileError(job.logFile, path, "backup failed: ${backupError.message}")
                                         fileStatuses.add(
                                             RenewFileStatus(
                                                 path = path,
@@ -317,7 +318,7 @@ class RenewBatchUseCase(
                                 if (writeError != null) {
                                     totalErrors++
                                     jobErrors++
-                                    appendLog(job.logFile, "[ERROR] $path — renewal failed: ${writeError.message}")
+                                    logFileError(job.logFile, path, "renewal failed: ${writeError.message}")
                                     fileStatuses.add(
                                         RenewFileStatus(
                                             path = path,
@@ -609,6 +610,21 @@ class RenewBatchUseCase(
         } catch (e: Exception) {
             logger.warn(e) { "Could not write to renewal log file $logFile" }
         }
+    }
+
+    /**
+     * Record a per-file renewal failure both to the application log — so it is captured even when
+     * no job [logFile] is configured — and to the job's [logFile] audit trail, mirroring
+     * [logSkippedGlobPath] for the error case. The caller still updates its counters and the
+     * [RenewFileStatus] list.
+     *
+     * @param logFile The job's optional audit-log file path.
+     * @param path The document that failed renewal.
+     * @param reason A human-readable description of the failure.
+     */
+    private fun logFileError(logFile: String?, path: String, reason: String) {
+        logger.warn { "Renewal failed for $path — $reason" }
+        appendLog(logFile, "[ERROR] $path — $reason")
     }
 
     companion object {

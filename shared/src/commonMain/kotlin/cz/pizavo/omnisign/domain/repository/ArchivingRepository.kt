@@ -38,10 +38,18 @@ interface ArchivingRepository {
 	 * Timestamps already covered by a still-valid document timestamp are ignored, so a document is
 	 * not re-timestamped on every scheduler run once one of its inner timestamps ages.
 	 *
+	 * When a renewal-relevant timestamp's signing certificate cannot be resolved — so its expiry is
+	 * unknown — the status cannot be determined and a
+	 * [cz.pizavo.omnisign.domain.model.error.ArchivingError.RenewalStatusUndeterminable] is returned
+	 * rather than silently treating the document as not needing renewal.
+	 *
 	 * @param filePath Absolute path to the PAdES document to inspect.
 	 * @param renewalBufferDays Number of days before a timestamp certificate's expiry at which
 	 *   renewal is considered necessary. Defaults to [DEFAULT_RENEWAL_BUFFER_DAYS].
-	 * @return True if an uncovered timestamp's signing certificate expires within the renewal window.
+	 * @return `true` when an uncovered timestamp's signing certificate expires within the renewal
+	 *   window, `false` when none does, or an [cz.pizavo.omnisign.domain.model.error.ArchivingError]
+	 *   (e.g. [cz.pizavo.omnisign.domain.model.error.ArchivingError.RenewalStatusUndeterminable] when
+	 *   a relevant timestamp's certificate cannot be resolved).
 	 */
 	suspend fun needsArchivalRenewal(
 		filePath: String,

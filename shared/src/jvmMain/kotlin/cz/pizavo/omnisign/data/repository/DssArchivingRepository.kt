@@ -161,7 +161,14 @@ class DssArchivingRepository(
 			val diagnosticData = validator.validateDocument().diagnosticData
 			val renewalThreshold = Clock.System.now() + renewalBufferDays.days
 
-			needsRenewal(diagnosticData.getTimestampList(), renewalThreshold).right()
+			when (needsRenewal(diagnosticData.getTimestampList(), renewalThreshold)) {
+				RenewalDecision.NEEDED -> true.right()
+				RenewalDecision.NOT_NEEDED -> false.right()
+				RenewalDecision.UNDETERMINABLE -> ArchivingError.RenewalStatusUndeterminable(
+					message = "Cannot determine whether the document needs renewal: a timestamp's signing certificate could not be resolved",
+					details = "$filePath has a renewal-relevant timestamp whose signing (TSA) certificate — and thus its expiry — DSS could not resolve; the document may be missing the LT/LTA validation material required to assess it",
+				).left()
+			}
 		} catch (e: Exception) {
 			ArchivingError.ExtensionFailed(
 				message = "Failed to check archival renewal status",
@@ -194,19 +201,24 @@ class DssArchivingRepository(
 	 * @param timestamps All timestamps DSS reported for the document, in any order.
 	 * @param renewalThreshold The instant (now + renewal buffer) a certificate must outlast to be
 	 *   considered safe.
-	 * @return `true` if at least one uncovered, renewal-relevant timestamp expires within the window.
+	 * @return [RenewalDecision.NEEDED] when at least one uncovered, renewal-relevant timestamp expires
+	 *   within the window; [RenewalDecision.UNDETERMINABLE] when none clearly does but one has an
+	 *   unresolvable signing certificate; otherwise [RenewalDecision.NOT_NEEDED].
 	 */
 	internal fun needsRenewal(
 		timestamps: List<TimestampWrapper>,
 		renewalThreshold: Instant,
-	): Boolean {
+	): RenewalDecision {
 		val coveredTimestampIds = timestamps.flatMapTo(mutableSetOf()) { seal ->
 			seal.timestampedTimestamps.map { it.id }
 		}
-		return timestamps.any { timestamp ->
-			timestamp.id !in coveredTimestampIds &&
-				drivesArchivalRenewal(timestamp) &&
-				signingCertificateExpiresBefore(timestamp, renewalThreshold)
+		val expiries = timestamps
+			.filter { it.id !in coveredTimestampIds && drivesArchivalRenewal(it) }
+			.map { signingCertificateNotAfter(it) }
+		return when {
+			expiries.any { it != null && it < renewalThreshold } -> RenewalDecision.NEEDED
+			expiries.any { it == null } -> RenewalDecision.UNDETERMINABLE
+			else -> RenewalDecision.NOT_NEEDED
 		}
 	}
 
@@ -221,17 +233,14 @@ class DssArchivingRepository(
 			timestamp.type == TimestampType.ARCHIVE_TIMESTAMP
 
 	/**
-	 * Whether [timestamp]'s signing (TSA) certificate expires strictly before [renewalThreshold].
-	 * A timestamp whose signing certificate DSS could not resolve cannot anchor a renewal decision
-	 * and is treated as not-expiring.
+	 * The `notAfter` instant of [timestamp]'s signing (TSA) certificate, or `null` when DSS could not
+	 * resolve that certificate — and therefore its expiry is unknown. A conformant PAdES LT/LTA
+	 * archive embeds the validation material needed to resolve it, so `null` marks a non-conformant or
+	 * lower-level document rather than a safe one, and [needsRenewal] reports it as
+	 * [RenewalDecision.UNDETERMINABLE] instead of silently treating it as not-expiring.
 	 */
-	private fun signingCertificateExpiresBefore(
-		timestamp: TimestampWrapper,
-		renewalThreshold: Instant,
-	): Boolean {
-		val notAfter = timestamp.signingCertificate?.notAfter ?: return false
-		return notAfter.toKotlinInstant() < renewalThreshold
-	}
+	private fun signingCertificateNotAfter(timestamp: TimestampWrapper): Instant? =
+		timestamp.signingCertificate?.notAfter?.toKotlinInstant()
 	
 	@Suppress("TooGenericExceptionCaught")
 	override suspend fun getDocumentTimestampInfo(inputBytes: ByteArray): OperationResult<DocumentTimestampInfo> {

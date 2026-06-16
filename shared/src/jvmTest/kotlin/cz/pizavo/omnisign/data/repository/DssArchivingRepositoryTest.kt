@@ -21,6 +21,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
 import io.mockk.mockk
@@ -170,14 +171,14 @@ class DssArchivingRepositoryTest : FunSpec({
 			timestamp("sig", TimestampType.SIGNATURE_TIMESTAMP, expiry = agingCert),
 			timestamp("doc", TimestampType.DOCUMENT_TIMESTAMP, expiry = freshCert, covers = listOf("sig")),
 		)
-		repository.needsRenewal(timestamps, renewalThreshold).shouldBeFalse()
+		repository.needsRenewal(timestamps, renewalThreshold) shouldBe RenewalDecision.NOT_NEEDED
 	}
 
 	test("needsRenewal triggers when a B-LT signature timestamp is aging and unsealed") {
 		val timestamps = listOf(
 			timestamp("sig", TimestampType.SIGNATURE_TIMESTAMP, expiry = agingCert),
 		)
-		repository.needsRenewal(timestamps, renewalThreshold).shouldBeTrue()
+		repository.needsRenewal(timestamps, renewalThreshold) shouldBe RenewalDecision.NEEDED
 	}
 
 	test("needsRenewal triggers when the outermost document timestamp is aging") {
@@ -185,7 +186,7 @@ class DssArchivingRepositoryTest : FunSpec({
 			timestamp("sig", TimestampType.SIGNATURE_TIMESTAMP, expiry = freshCert),
 			timestamp("doc", TimestampType.DOCUMENT_TIMESTAMP, expiry = agingCert, covers = listOf("sig")),
 		)
-		repository.needsRenewal(timestamps, renewalThreshold).shouldBeTrue()
+		repository.needsRenewal(timestamps, renewalThreshold) shouldBe RenewalDecision.NEEDED
 	}
 
 	test("needsRenewal triggers for a signature added after archival that the seal does not cover") {
@@ -194,7 +195,7 @@ class DssArchivingRepositoryTest : FunSpec({
 			timestamp("doc", TimestampType.DOCUMENT_TIMESTAMP, expiry = freshCert, covers = listOf("sig1")),
 			timestamp("sig2", TimestampType.SIGNATURE_TIMESTAMP, expiry = agingCert),
 		)
-		repository.needsRenewal(timestamps, renewalThreshold).shouldBeTrue()
+		repository.needsRenewal(timestamps, renewalThreshold) shouldBe RenewalDecision.NEEDED
 	}
 
 	test("needsRenewal ignores an aged inner timestamp covered by a fresh outer timestamp in the chain") {
@@ -203,11 +204,42 @@ class DssArchivingRepositoryTest : FunSpec({
 			timestamp("doc1", TimestampType.DOCUMENT_TIMESTAMP, expiry = agingCert, covers = listOf("sig")),
 			timestamp("doc2", TimestampType.DOCUMENT_TIMESTAMP, expiry = freshCert, covers = listOf("sig", "doc1")),
 		)
-		repository.needsRenewal(timestamps, renewalThreshold).shouldBeFalse()
+		repository.needsRenewal(timestamps, renewalThreshold) shouldBe RenewalDecision.NOT_NEEDED
 	}
 
 	test("needsRenewal returns false for a document with no timestamps") {
-		repository.needsRenewal(emptyList(), renewalThreshold).shouldBeFalse()
+		repository.needsRenewal(emptyList(), renewalThreshold) shouldBe RenewalDecision.NOT_NEEDED
+	}
+
+	test("needsRenewal reports undeterminable when the only relevant timestamp has an unresolvable signing cert") {
+		val timestamps = listOf(
+			timestamp("sig", TimestampType.SIGNATURE_TIMESTAMP, expiry = null),
+		)
+		repository.needsRenewal(timestamps, renewalThreshold) shouldBe RenewalDecision.UNDETERMINABLE
+	}
+
+	test("needsRenewal prefers a clear renewal over an unresolvable signing cert") {
+		val timestamps = listOf(
+			timestamp("sig-unresolvable", TimestampType.SIGNATURE_TIMESTAMP, expiry = null),
+			timestamp("sig-aging", TimestampType.SIGNATURE_TIMESTAMP, expiry = agingCert),
+		)
+		repository.needsRenewal(timestamps, renewalThreshold) shouldBe RenewalDecision.NEEDED
+	}
+
+	test("needsRenewal ignores an unresolvable signing cert on a timestamp sealed by a fresh document timestamp") {
+		val timestamps = listOf(
+			timestamp("sig", TimestampType.SIGNATURE_TIMESTAMP, expiry = null),
+			timestamp("doc", TimestampType.DOCUMENT_TIMESTAMP, expiry = freshCert, covers = listOf("sig")),
+		)
+		repository.needsRenewal(timestamps, renewalThreshold) shouldBe RenewalDecision.NOT_NEEDED
+	}
+
+	test("needsRenewal reports undeterminable when a safe timestamp coexists with an unresolvable uncovered one") {
+		val timestamps = listOf(
+			timestamp("sig-fresh", TimestampType.SIGNATURE_TIMESTAMP, expiry = freshCert),
+			timestamp("sig-unresolvable", TimestampType.SIGNATURE_TIMESTAMP, expiry = null),
+		)
+		repository.needsRenewal(timestamps, renewalThreshold) shouldBe RenewalDecision.UNDETERMINABLE
 	}
 })
 
