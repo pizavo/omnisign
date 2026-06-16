@@ -8,6 +8,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
+import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import eu.europa.esig.dss.diagnostic.TimestampWrapper
 import eu.europa.esig.dss.diagnostic.jaxb.XmlBasicSignature
@@ -49,7 +50,7 @@ class DssArchivingRepositoryTest : FunSpec({
 	val configRepository: ConfigRepository = mockk()
 	val dssServiceFactory: DssServiceFactory = mockk(relaxed = true)
 	
-	val repository = DssArchivingRepository(configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(), FileTrustStore(tempdir().toPath()))
+	val repository = DssArchivingRepository(configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(), FileTrustStore(tempdir().toPath()), mockk<RenewalCheckCache>(relaxed = true))
 
 	val cryptographicSuite = AdESPolicy().cryptographicSuite()
 	
@@ -319,6 +320,41 @@ class DssArchivingRepositoryTest : FunSpec({
 			),
 		)
 		repository.needsRenewal(timestamps, renewalThreshold, cryptographicSuite) shouldBe RenewalDecision.NOT_NEEDED
+	}
+
+	test("earliestRenewalAt returns the soonest signing-cert expiry among relevant timestamps") {
+		val timestamps = listOf(
+			timestamp("sig1", TimestampType.SIGNATURE_TIMESTAMP, expiry = freshCert),
+			timestamp("sig2", TimestampType.SIGNATURE_TIMESTAMP, expiry = agingCert),
+		)
+		repository.earliestRenewalAt(timestamps, cryptographicSuite) shouldBe agingCert
+	}
+
+	test("earliestRenewalAt ignores timestamps sealed by a fresh document timestamp") {
+		val timestamps = listOf(
+			timestamp("sig", TimestampType.SIGNATURE_TIMESTAMP, expiry = agingCert),
+			timestamp("doc", TimestampType.DOCUMENT_TIMESTAMP, expiry = freshCert, covers = listOf("sig")),
+		)
+		repository.earliestRenewalAt(timestamps, cryptographicSuite) shouldBe freshCert
+	}
+
+	test("earliestRenewalAt reflects an algorithm expiry sooner than the signing cert") {
+		val timestamps = listOf(
+			timestamp("sig", TimestampType.SIGNATURE_TIMESTAMP, expiry = freshCert, messageImprintDigest = DigestAlgorithm.SHA1),
+		)
+		val due = repository.earliestRenewalAt(timestamps, cryptographicSuite)
+		(due!! < freshCert).shouldBeTrue()
+	}
+
+	test("earliestRenewalAt returns null when a relevant timestamp's signing cert is unresolvable") {
+		val timestamps = listOf(
+			timestamp("sig", TimestampType.SIGNATURE_TIMESTAMP, expiry = null),
+		)
+		repository.earliestRenewalAt(timestamps, cryptographicSuite) shouldBe null
+	}
+
+	test("earliestRenewalAt returns null when no timestamp drives renewal") {
+		repository.earliestRenewalAt(emptyList(), cryptographicSuite) shouldBe null
 	}
 })
 

@@ -8,6 +8,7 @@ import cz.pizavo.omnisign.data.serializer.YamlConfigSerializer
 import cz.pizavo.omnisign.data.service.*
 import cz.pizavo.omnisign.domain.port.ConfigSerializerRegistry
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
+import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.port.RenewalLock
 import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.port.SchedulerPort
@@ -133,6 +134,9 @@ val jvmRepositoryModule = module {
 	}
 	single<RenewalRunRecordStore> {
 		FileRenewalRunRecordStore(FileConfigRepository.getDefaultConfigPath().resolveSibling("last-renewal.json"))
+	}
+	single<RenewalCheckCache> {
+		FileRenewalCheckCache(FileConfigRepository.getDefaultConfigPath().resolveSibling("renewal-check-cache.json"))
 	}
 	singleOf(::RenewBatchUseCase)
 	single { MigrateTrustedCertificatesUseCase(get(), get()) }

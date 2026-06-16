@@ -14,7 +14,9 @@ import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.model.result.OperationResult
+import cz.pizavo.omnisign.domain.model.result.RenewalCheckCacheEntry
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
+import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
@@ -55,6 +57,7 @@ class DssArchivingRepository(
 	private val warningSanitizer: DssWarningSanitizer,
 	private val tspErrorDetector: TspErrorDetector,
 	private val trustStore: TrustStore,
+	private val renewalCheckCache: RenewalCheckCache,
 ) : ArchivingRepository {
 	
 	private val adesPolicy = AdESPolicy()
@@ -170,20 +173,48 @@ class DssArchivingRepository(
 				).left()
 			}
 			
+			val now = Clock.System.now()
+			val renewalThreshold = now + renewalBufferDays.days
+
+			val cached = renewalCheckCache.get(filePath)
+			if (cached != null &&
+				cached.sizeBytes == file.length() &&
+				cached.lastModifiedMillis == file.lastModified() &&
+				now < cached.earliestRenewalAt - renewalBufferDays.days
+			) {
+				return false.right()
+			}
+
 			val document = FileDocument(file)
 			val validator = PDFDocumentValidator(document).apply {
 				setCertificateVerifier(CommonCertificateVerifier())
 			}
-			val diagnosticData = validator.validateDocument().diagnosticData
-			val renewalThreshold = Clock.System.now() + renewalBufferDays.days
+			val timestamps = validator.validateDocument().diagnosticData.getTimestampList()
 
-			when (needsRenewal(diagnosticData.getTimestampList(), renewalThreshold, renewalCryptographicSuite)) {
-				RenewalDecision.NEEDED -> true.right()
-				RenewalDecision.NOT_NEEDED -> false.right()
-				RenewalDecision.UNDETERMINABLE -> ArchivingError.RenewalStatusUndeterminable(
-					message = "Cannot determine whether the document needs renewal: a timestamp's signing certificate could not be resolved",
-					details = "$filePath has a renewal-relevant timestamp whose signing (TSA) certificate — and thus its expiry — DSS could not resolve; the document may be missing the LT/LTA validation material required to assess it",
-				).left()
+			when (needsRenewal(timestamps, renewalThreshold, renewalCryptographicSuite)) {
+				RenewalDecision.NEEDED -> {
+					renewalCheckCache.remove(filePath)
+					true.right()
+				}
+				RenewalDecision.NOT_NEEDED -> {
+					val due = earliestRenewalAt(timestamps, renewalCryptographicSuite)
+					if (due != null) {
+						renewalCheckCache.put(
+							filePath,
+							RenewalCheckCacheEntry(file.length(), file.lastModified(), due),
+						)
+					} else {
+						renewalCheckCache.remove(filePath)
+					}
+					false.right()
+				}
+				RenewalDecision.UNDETERMINABLE -> {
+					renewalCheckCache.remove(filePath)
+					ArchivingError.RenewalStatusUndeterminable(
+						message = "Cannot determine whether the document needs renewal: a timestamp's signing certificate could not be resolved",
+						details = "$filePath has a renewal-relevant timestamp whose signing (TSA) certificate — and thus its expiry — DSS could not resolve; the document may be missing the LT/LTA validation material required to assess it",
+					).left()
+				}
 			}
 		} catch (e: Exception) {
 			ArchivingError.ExtensionFailed(
@@ -231,10 +262,7 @@ class DssArchivingRepository(
 		renewalThreshold: Instant,
 		cryptographicSuite: CryptographicSuite?,
 	): RenewalDecision {
-		val coveredTimestampIds = timestamps.flatMapTo(mutableSetOf()) { seal ->
-			seal.timestampedTimestamps.map { it.id }
-		}
-		val relevant = timestamps.filter { it.id !in coveredTimestampIds && drivesArchivalRenewal(it) }
+		val relevant = relevantTimestamps(timestamps)
 		val needed = relevant.any { timestamp ->
 			val notAfter = signingCertificateNotAfter(timestamp)
 			(notAfter != null && notAfter < renewalThreshold) ||
@@ -245,6 +273,18 @@ class DssArchivingRepository(
 			relevant.any { signingCertificateNotAfter(it) == null } -> RenewalDecision.UNDETERMINABLE
 			else -> RenewalDecision.NOT_NEEDED
 		}
+	}
+
+	/**
+	 * The timestamps that can drive archival renewal: those no other timestamp seals (uncovered)
+	 * whose type is a signature- or document/archive-timestamp. Covered timestamps are excluded
+	 * because a current document timestamp already carries their proof-of-existence.
+	 */
+	private fun relevantTimestamps(timestamps: List<TimestampWrapper>): List<TimestampWrapper> {
+		val coveredTimestampIds = timestamps.flatMapTo(mutableSetOf()) { seal ->
+			seal.timestampedTimestamps.map { it.id }
+		}
+		return timestamps.filter { it.id !in coveredTimestampIds && drivesArchivalRenewal(it) }
 	}
 
 	/**
@@ -317,6 +357,44 @@ class DssArchivingRepository(
 				?.let { it < renewalThreshold } == true)
 	}
 	
+	/**
+	 * The expiration instants of [timestamp]'s cryptographic algorithms under [suite] — the
+	 * message-imprint digest, the TSA signature digest, and the TSA signature algorithm with its key
+	 * size — for those that have a defined expiry. Algorithms with no expiry are omitted, and a null
+	 * [suite] yields an empty list.
+	 */
+	private fun algorithmExpiries(timestamp: TimestampWrapper, suite: CryptographicSuite?): List<Instant> {
+		if (suite == null) return emptyList()
+		val instants = mutableListOf<Instant>()
+		for (digest in listOfNotNull(timestamp.messageImprint?.digestMethod, timestamp.digestAlgorithm)) {
+			CryptographicSuiteUtils.getExpirationDate(suite, digest)?.toKotlinInstant()?.let { instants += it }
+		}
+		val encryption = timestamp.encryptionAlgorithm
+		val keySize = timestamp.keyLengthUsedToSignThisToken?.toIntOrNull()?.takeIf { it > 0 }
+		if (encryption != null && keySize != null) {
+			CryptographicSuiteUtils.getExpirationDate(suite, encryption, keySize)?.toKotlinInstant()?.let { instants += it }
+		}
+		return instants
+	}
+
+	/**
+	 * The earliest instant at which [timestamps] will need archival renewal: the soonest expiry —
+	 * signing-certificate or algorithm — among the uncovered, renewal-relevant timestamps, judged
+	 * with [suite]. Returns `null` when no determinable due date exists: either nothing drives
+	 * renewal, or a relevant timestamp's signing certificate is unresolvable. Used to cache how long
+	 * a not-yet-due document may be skipped; stays consistent with [needsRenewal], which reports
+	 * renewal as needed once the renewal threshold reaches this instant.
+	 */
+	@Suppress("ReturnCount")
+	internal fun earliestRenewalAt(timestamps: List<TimestampWrapper>, suite: CryptographicSuite?): Instant? {
+		val relevant = relevantTimestamps(timestamps)
+		if (relevant.isEmpty()) return null
+		return relevant.minOf { timestamp ->
+			val notAfter = signingCertificateNotAfter(timestamp) ?: return null
+			(listOf(notAfter) + algorithmExpiries(timestamp, suite)).min()
+		}
+	}
+
 	@Suppress("TooGenericExceptionCaught")
 	override suspend fun getDocumentTimestampInfo(inputBytes: ByteArray): OperationResult<DocumentTimestampInfo> {
 		return try {
