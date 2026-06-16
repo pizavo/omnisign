@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.data.repository
 import arrow.core.getOrElse
 import arrow.core.left
 import arrow.core.right
+import cz.pizavo.omnisign.ades.policy.AdESPolicy
 import cz.pizavo.omnisign.data.util.toKotlinInstant
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
@@ -18,13 +19,17 @@ import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import eu.europa.esig.dss.diagnostic.TimestampWrapper
+import eu.europa.esig.dss.enumerations.DigestAlgorithm
+import eu.europa.esig.dss.enumerations.EncryptionAlgorithm
 import eu.europa.esig.dss.enumerations.TimestampType
 import eu.europa.esig.dss.model.FileDocument
 import eu.europa.esig.dss.model.InMemoryDocument
+import eu.europa.esig.dss.model.policy.CryptographicSuite
 import eu.europa.esig.dss.pades.PAdESSignatureParameters
 import eu.europa.esig.dss.pades.signature.PAdESService
 import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
+import eu.europa.esig.dss.validation.policy.CryptographicSuiteUtils
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.apache.pdfbox.Loader
@@ -52,6 +57,17 @@ class DssArchivingRepository(
 	private val trustStore: TrustStore,
 ) : ArchivingRepository {
 	
+	private val adesPolicy = AdESPolicy()
+
+	/**
+	 * The DSS cryptographic suite (the bundled ETSI schedule) used to decide whether a timestamp's
+	 * algorithms have aged out. Built once and reused across files; null when the policy cannot be
+	 * loaded, in which case algorithm obsolescence is simply not evaluated.
+	 */
+	private val renewalCryptographicSuite: CryptographicSuite? by lazy {
+		runCatching { adesPolicy.cryptographicSuite() }.getOrNull()
+	}
+
 	@Suppress("TooGenericExceptionCaught", "ReturnCount")
 	override suspend fun extendDocument(parameters: ArchivingParameters): OperationResult<ArchivingResult> {
 		return try {
@@ -161,7 +177,7 @@ class DssArchivingRepository(
 			val diagnosticData = validator.validateDocument().diagnosticData
 			val renewalThreshold = Clock.System.now() + renewalBufferDays.days
 
-			when (needsRenewal(diagnosticData.getTimestampList(), renewalThreshold)) {
+			when (needsRenewal(diagnosticData.getTimestampList(), renewalThreshold, renewalCryptographicSuite)) {
 				RenewalDecision.NEEDED -> true.right()
 				RenewalDecision.NOT_NEEDED -> false.right()
 				RenewalDecision.UNDETERMINABLE -> ArchivingError.RenewalStatusUndeterminable(
@@ -183,14 +199,17 @@ class DssArchivingRepository(
 	 * for archival re-timestamping against [renewalThreshold].
 	 *
 	 * The rule is **coverage-aware**: only a timestamp that no other timestamp seals can drive a
-	 * renewal. Renewal is triggered when an *uncovered* signature- or document-timestamp has a
-	 * signing (TSA) certificate expiring before [renewalThreshold]. This single predicate collapses
-	 * the three renewal cases:
+	 * renewal. An *uncovered* signature- or document-timestamp triggers renewal when either its
+	 * signing (TSA) certificate expires before [renewalThreshold], or one of its cryptographic
+	 * algorithms — the message-imprint digest, the TSA signature digest, or the TSA signature
+	 * algorithm with its key size — is no longer acceptable or expires before [renewalThreshold]
+	 * under [cryptographicSuite]. This collapses the renewal cases:
 	 *
 	 * 1. the outermost document timestamp (the B-LTA seal, which nothing covers) is itself aging;
 	 * 2. a B-LT document with no document timestamp yet has an aging signature timestamp;
 	 * 3. a signature timestamp applied after the last archival timestamp — and therefore not sealed
-	 *    by it — is aging.
+	 *    by it — is aging;
+	 * 4. any of the above is sealed with a hash or signature algorithm that has weakened.
 	 *
 	 * Timestamps already sealed by a current document timestamp are deliberately ignored: that seal
 	 * carries their proof-of-existence, so re-timestamping them would grow the file on every
@@ -199,25 +218,31 @@ class DssArchivingRepository(
 	 * seal exists.
 	 *
 	 * @param timestamps All timestamps DSS reported for the document, in any order.
-	 * @param renewalThreshold The instant (now + renewal buffer) a certificate must outlast to be
-	 *   considered safe.
-	 * @return [RenewalDecision.NEEDED] when at least one uncovered, renewal-relevant timestamp expires
-	 *   within the window; [RenewalDecision.UNDETERMINABLE] when none clearly does but one has an
-	 *   unresolvable signing certificate; otherwise [RenewalDecision.NOT_NEEDED].
+	 * @param renewalThreshold The instant (now + renewal buffer) a certificate or algorithm must
+	 *   outlast to be considered safe.
+	 * @param cryptographicSuite The cryptographic schedule used to judge algorithm obsolescence, or
+	 *   null to skip the algorithm check and decide on certificate expiry alone.
+	 * @return [RenewalDecision.NEEDED] when at least one uncovered, renewal-relevant timestamp has an
+	 *   expiring certificate or a weakening algorithm; [RenewalDecision.UNDETERMINABLE] when none does
+	 *   but one has an unresolvable signing certificate; otherwise [RenewalDecision.NOT_NEEDED].
 	 */
 	internal fun needsRenewal(
 		timestamps: List<TimestampWrapper>,
 		renewalThreshold: Instant,
+		cryptographicSuite: CryptographicSuite?,
 	): RenewalDecision {
 		val coveredTimestampIds = timestamps.flatMapTo(mutableSetOf()) { seal ->
 			seal.timestampedTimestamps.map { it.id }
 		}
-		val expiries = timestamps
-			.filter { it.id !in coveredTimestampIds && drivesArchivalRenewal(it) }
-			.map { signingCertificateNotAfter(it) }
+		val relevant = timestamps.filter { it.id !in coveredTimestampIds && drivesArchivalRenewal(it) }
+		val needed = relevant.any { timestamp ->
+			val notAfter = signingCertificateNotAfter(timestamp)
+			(notAfter != null && notAfter < renewalThreshold) ||
+				algorithmsExpireBefore(timestamp, cryptographicSuite, renewalThreshold)
+		}
 		return when {
-			expiries.any { it != null && it < renewalThreshold } -> RenewalDecision.NEEDED
-			expiries.any { it == null } -> RenewalDecision.UNDETERMINABLE
+			needed -> RenewalDecision.NEEDED
+			relevant.any { signingCertificateNotAfter(it) == null } -> RenewalDecision.UNDETERMINABLE
 			else -> RenewalDecision.NOT_NEEDED
 		}
 	}
@@ -241,6 +266,56 @@ class DssArchivingRepository(
 	 */
 	private fun signingCertificateNotAfter(timestamp: TimestampWrapper): Instant? =
 		timestamp.signingCertificate?.notAfter?.toKotlinInstant()
+
+	/**
+	 * Whether any cryptographic algorithm protecting [timestamp] is no longer acceptable, or expires
+	 * before [renewalThreshold], under [suite]: the message-imprint digest (the hash binding the
+	 * timestamp to the data), the TSA signature digest, and the TSA signature algorithm with its key
+	 * size. When [suite] is null the algorithms cannot be judged and this returns false, leaving the
+	 * certificate-expiry rule to decide.
+	 */
+	private fun algorithmsExpireBefore(
+		timestamp: TimestampWrapper,
+		suite: CryptographicSuite?,
+		renewalThreshold: Instant,
+	): Boolean {
+		if (suite == null) return false
+		val digests = listOfNotNull(timestamp.messageImprint?.digestMethod, timestamp.digestAlgorithm)
+		val encryption = timestamp.encryptionAlgorithm
+		return digests.any { digestExpiresBefore(suite, it, renewalThreshold) } ||
+			(encryption != null &&
+				encryptionExpiresBefore(suite, encryption, timestamp.keyLengthUsedToSignThisToken, renewalThreshold))
+	}
+
+	/**
+	 * Whether [digest] is no longer acceptable under [suite], or its expiration date precedes
+	 * [renewalThreshold].
+	 */
+	private fun digestExpiresBefore(
+		suite: CryptographicSuite,
+		digest: DigestAlgorithm,
+		renewalThreshold: Instant,
+	): Boolean =
+		!CryptographicSuiteUtils.isDigestAlgorithmReliable(suite, digest) ||
+			(CryptographicSuiteUtils.getExpirationDate(suite, digest)?.toKotlinInstant()
+				?.let { it < renewalThreshold } == true)
+
+	/**
+	 * Whether [encryption] at [keyLength] bits is no longer acceptable under [suite], or its
+	 * expiration date precedes [renewalThreshold]. A missing or non-numeric [keyLength] cannot be
+	 * judged and is treated as not expiring.
+	 */
+	private fun encryptionExpiresBefore(
+		suite: CryptographicSuite,
+		encryption: EncryptionAlgorithm,
+		keyLength: String?,
+		renewalThreshold: Instant,
+	): Boolean {
+		val keySize = keyLength?.toIntOrNull()?.takeIf { it > 0 } ?: return false
+		return !CryptographicSuiteUtils.isEncryptionAlgorithmWithKeySizeReliable(suite, encryption, keySize) ||
+			(CryptographicSuiteUtils.getExpirationDate(suite, encryption, keySize)?.toKotlinInstant()
+				?.let { it < renewalThreshold } == true)
+	}
 	
 	@Suppress("TooGenericExceptionCaught")
 	override suspend fun getDocumentTimestampInfo(inputBytes: ByteArray): OperationResult<DocumentTimestampInfo> {

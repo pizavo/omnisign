@@ -38,6 +38,10 @@ interface ArchivingRepository {
 	 * Timestamps already covered by a still-valid document timestamp are ignored, so a document is
 	 * not re-timestamped on every scheduler run once one of its inner timestamps ages.
 	 *
+	 * Renewal is likewise needed when such a timestamp's cryptographic algorithms have aged out — its
+	 * message-imprint or TSA-signature digest, or the TSA signature key — judged against the standard
+	 * cryptographic schedule, so a document is re-protected before its primitives are challenged.
+	 *
 	 * When a renewal-relevant timestamp's signing certificate cannot be resolved — so its expiry is
 	 * unknown — the status cannot be determined and a
 	 * [cz.pizavo.omnisign.domain.model.error.ArchivingError.RenewalStatusUndeterminable] is returned
