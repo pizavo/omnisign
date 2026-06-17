@@ -381,6 +381,10 @@ class RenewBatchUseCase(
      * path from the root directory, avoiding platform-specific backslash
      * escaping issues with [java.nio.file.PathMatcher] on Windows.
      *
+     * Wildcard matches are restricted to `.pdf` files (case-insensitive), since renewal handles PDFs
+     * only; any non-PDF files a wildcard happens to match are counted and logged rather than silently
+     * dropped. A literal (wildcard-free) path is taken as-is.
+     *
      * The walk is fault-tolerant: an unreadable directory (or one that becomes
      * inaccessible mid-walk) is skipped rather than aborting the whole batch, so a
      * single permission problem cannot stop every job from renewing. Each skipped path is
@@ -413,11 +417,16 @@ class RenewBatchUseCase(
             val matcher = rootPath.fileSystem.getPathMatcher("glob:$tail")
 
             val matched = mutableListOf<Path>()
+            var nonPdfCount = 0
             try {
                 Files.walkFileTree(rootPath, object : SimpleFileVisitor<Path>() {
                     override fun visitFile(file: Path, attrs: BasicFileAttributes): FileVisitResult {
                         if (attrs.isRegularFile && matcher.matches(rootPath.relativize(file))) {
-                            matched.add(file)
+                            if (file.fileName.toString().endsWith(".pdf", ignoreCase = true)) {
+                                matched.add(file)
+                            } else {
+                                nonPdfCount++
+                            }
                         }
                         return FileVisitResult.CONTINUE
                     }
@@ -433,6 +442,10 @@ class RenewBatchUseCase(
             matched.sorted().forEach { path ->
                 val abs = path.toAbsolutePath().normalize().toString()
                 if (seen.add(abs)) results.add(path.toFile())
+            }
+            if (nonPdfCount > 0) {
+                logger.info { "Renewal glob '$glob' matched $nonPdfCount non-PDF file(s); renewal handles PDFs only, ignoring them" }
+                appendLog(logFile, "[SKIP] $glob — ignored $nonPdfCount non-PDF file(s) (PDFs only)")
             }
         }
         return results

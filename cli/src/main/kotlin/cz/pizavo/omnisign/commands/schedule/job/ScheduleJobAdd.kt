@@ -8,6 +8,9 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
+import cz.pizavo.omnisign.data.util.absoluteGlobExample
+import cz.pizavo.omnisign.data.util.absolutizeGlob
+import cz.pizavo.omnisign.data.util.isAbsoluteGlobRoot
 import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.usecase.ManageRenewalJobsUseCase
@@ -24,7 +27,9 @@ class ScheduleJobAdd : CliktCommand(name = "add"), KoinComponent {
 	private val name by argument(help = "Unique name for this renewal job")
 	private val globs by option(
 		"-g", "--glob",
-		help = "Glob pattern matching PDF files to watch. Can be specified multiple times."
+		help = "Glob pattern matching PDF files to watch; a relative pattern (e.g. ./*.pdf) is " +
+				"resolved against the current directory and stored as an absolute one. " +
+				"Can be specified multiple times."
 	).multiple(required = true)
 	private val bufferDays by option(
 		"-b", "--buffer-days",
@@ -52,9 +57,19 @@ class ScheduleJobAdd : CliktCommand(name = "add"), KoinComponent {
 	override fun help(context: Context): String = "Add or replace a renewal job"
 	
 	override fun run(): Unit = runBlocking {
+		val resolvedGlobs = globs.map { absolutizeGlob(it) }
+		val nonAbsolute = resolvedGlobs.filterNot { isAbsoluteGlobRoot(it) }
+		if (nonAbsolute.isNotEmpty()) {
+			echo("Renewal globs must be absolute paths; rejected: ${nonAbsolute.joinToString()}", err = true)
+			echo("Example: ${absoluteGlobExample()}", err = true)
+			return@runBlocking
+		}
+		globs.zip(resolvedGlobs)
+			.filter { (original, resolved) -> original != resolved }
+			.forEach { (original, resolved) -> echo("Resolved relative glob '$original' to '$resolved'") }
 		val job = RenewalJob(
 			name = name,
-			globs = globs,
+			globs = resolvedGlobs,
 			renewalBufferDays = bufferDays,
 			profile = profile,
 			logFile = logFile,
@@ -65,7 +80,7 @@ class ScheduleJobAdd : CliktCommand(name = "add"), KoinComponent {
 			ifLeft = { echo("Failed to save job: ${it.message}", err = true) },
 			ifRight = {
 				echo("Renewal job '$name' saved.")
-				echo("   Globs        : ${globs.joinToString()}")
+				echo("   Globs        : ${resolvedGlobs.joinToString()}")
 				echo("   Buffer days  : $bufferDays")
 				echo("   Backups      : $backups")
 				echo("   Notify       : ${!noNotify}")

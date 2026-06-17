@@ -323,6 +323,19 @@ class RenewBatchUseCaseTest : FunSpec({
         files.map { it.name }.sorted() shouldContainExactly listOf("deep.pdf", "mid.pdf")
     }
 
+    test("resolveGlobs restricts a broad wildcard to PDF files") {
+        val sub = File(tmpDir, "broad-glob").also { it.mkdirs() }
+        File(sub, "a.pdf").createNewFile()
+        File(sub, "notes.txt").createNewFile()
+        File(sub, "image.png").createNewFile()
+
+        val uc = useCaseWith(baseConfig)
+        val glob = sub.absolutePath.replace('\\', '/') + "/*"
+        val files = uc.resolveGlobs(listOf(glob))
+
+        files.map { it.name } shouldContainExactly listOf("a.pdf")
+    }
+
     test("probeDirectoryWritable returns null and leaves no probe file for a writable directory") {
         val dir = subDir("probe-ok")
         val target = File(dir, "doc.pdf")
