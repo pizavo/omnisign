@@ -139,6 +139,7 @@ val jvmRepositoryModule = module {
 		FileRenewalCheckCache(FileConfigRepository.getDefaultConfigPath().resolveSibling("renewal-check-cache.json"))
 	}
 	singleOf(::RenewBatchUseCase)
+	singleOf(::RenewalNotifier)
 	single { MigrateTrustedCertificatesUseCase(get(), get()) }
 	
 	single<OsSchedulerService> {

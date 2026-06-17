@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.commands
 import com.github.ajalt.clikt.testing.test
 import cz.pizavo.omnisign.Omnisign
 import cz.pizavo.omnisign.data.service.OsNotificationService
+import cz.pizavo.omnisign.data.service.RenewalNotifier
 import cz.pizavo.omnisign.domain.model.result.RenewBatchResult
 import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
 import cz.pizavo.omnisign.domain.model.result.RenewJobResult
@@ -34,6 +35,7 @@ class RenewTest : FunSpec({
 			module {
 				single { renewBatchUseCase }
 				single { notificationService }
+				single { RenewalNotifier(get()) }
 				single<PasswordCallback> { mockk() }
 			},
 			mode = KoinLifecycleMode.Test
