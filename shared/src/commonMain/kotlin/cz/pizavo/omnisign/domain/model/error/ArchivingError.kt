@@ -45,4 +45,24 @@ sealed interface ArchivingError : OperationError {
         override val details: String? = null,
         override val cause: Throwable? = null
     ) : ArchivingError
+
+    /**
+     * The input PDF is encrypted or password-protected, so the in-place modification an extension
+     * requires is not possible. Supplying the document's password is out of scope for unattended
+     * renewal and archiving.
+     */
+    data class EncryptedDocument(
+        override val message: String,
+        override val details: String? = null,
+        override val cause: Throwable? = null
+    ) : ArchivingError
+
+    /**
+     * The input is not a valid PDF, or is corrupted, and could not be parsed for extension.
+     */
+    data class MalformedDocument(
+        override val message: String,
+        override val details: String? = null,
+        override val cause: Throwable? = null
+    ) : ArchivingError
 }

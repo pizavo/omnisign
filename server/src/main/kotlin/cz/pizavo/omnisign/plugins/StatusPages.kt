@@ -107,6 +107,8 @@ private suspend fun ApplicationCall.respondOperationError(error: OperationError)
 		is ArchivingError.ExtensionFailed -> HttpStatusCode.InternalServerError to "EXTENSION_FAILED"
 		is ArchivingError.TimestampFailed -> HttpStatusCode.BadGateway to "TIMESTAMP_FAILED"
 		is ArchivingError.RenewalStatusUndeterminable -> HttpStatusCode.UnprocessableEntity to "RENEWAL_STATUS_UNDETERMINABLE"
+		is ArchivingError.EncryptedDocument -> HttpStatusCode.UnprocessableEntity to "ENCRYPTED_DOCUMENT"
+		is ArchivingError.MalformedDocument -> HttpStatusCode.BadRequest to "MALFORMED_DOCUMENT"
 
 		is ConfigurationError.LoadFailed -> HttpStatusCode.InternalServerError to "CONFIG_LOAD_FAILED"
 		is ConfigurationError.SaveFailed -> HttpStatusCode.InternalServerError to "CONFIG_SAVE_FAILED"

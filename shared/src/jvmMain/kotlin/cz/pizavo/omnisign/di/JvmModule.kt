@@ -115,6 +115,8 @@ val jvmRepositoryModule = module {
 	single { DssTrustedListRefreshAdapter(get(), get()) } bind TrustedListRefreshPort::class
 	singleOf(::DssWarningSanitizer)
 	singleOf(::TspErrorDetector)
+	singleOf(::RevocationErrorDetector)
+	singleOf(::DocumentInputErrorDetector)
 	singleOf(::DssValidationRepository) bind ValidationRepository::class
 	singleOf(::DssSigningRepository) bind SigningRepository::class
 	singleOf(::DssArchivingRepository) bind ArchivingRepository::class

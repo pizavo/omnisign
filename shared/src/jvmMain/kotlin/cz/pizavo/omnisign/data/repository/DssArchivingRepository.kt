@@ -56,6 +56,8 @@ class DssArchivingRepository(
 	private val dssServiceFactory: DssServiceFactory,
 	private val warningSanitizer: DssWarningSanitizer,
 	private val tspErrorDetector: TspErrorDetector,
+	private val revocationErrorDetector: RevocationErrorDetector,
+	private val documentInputErrorDetector: DocumentInputErrorDetector,
 	private val trustStore: TrustStore,
 	private val renewalCheckCache: RenewalCheckCache,
 ) : ArchivingRepository {
@@ -138,13 +140,23 @@ class DssArchivingRepository(
 				).left()
 			}
 			
-			val isRevocationError = e.message?.let {
-				it.contains("revocation", ignoreCase = true) ||
-						it.contains("OCSP", ignoreCase = true) ||
-						it.contains("CRL", ignoreCase = true)
-			} ?: false
-			
-			if (isRevocationError) {
+			if (documentInputErrorDetector.isEncrypted(e)) {
+				return ArchivingError.EncryptedDocument(
+					message = "The PDF is encrypted or password-protected and cannot be extended",
+					details = e.message,
+					cause = e,
+				).left()
+			}
+
+			if (documentInputErrorDetector.isMalformed(e)) {
+				return ArchivingError.MalformedDocument(
+					message = "The file is not a valid PDF or could not be parsed",
+					details = e.message,
+					cause = e,
+				).left()
+			}
+
+			if (revocationErrorDetector.isRevocationException(e)) {
 				ArchivingError.RevocationInfoError(
 					message = "Failed to obtain revocation information",
 					details = e.message,
