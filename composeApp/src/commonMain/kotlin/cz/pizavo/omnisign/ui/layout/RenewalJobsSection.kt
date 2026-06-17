@@ -5,6 +5,8 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -13,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -22,6 +25,9 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.pointer.PointerIcon
+import androidx.compose.ui.input.pointer.pointerHoverIcon
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.config.RenewalJob
@@ -30,14 +36,31 @@ import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Button
 import cz.pizavo.omnisign.lumo.components.ButtonVariant
 import cz.pizavo.omnisign.lumo.components.Checkbox
+import cz.pizavo.omnisign.lumo.components.Chip
 import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.IconButton
 import cz.pizavo.omnisign.lumo.components.IconButtonVariant
 import cz.pizavo.omnisign.lumo.components.SelectableContent
 import cz.pizavo.omnisign.lumo.components.Text
+import cz.pizavo.omnisign.lumo.components.Tooltip
+import cz.pizavo.omnisign.lumo.components.TooltipBox
+import cz.pizavo.omnisign.lumo.components.rememberTooltipState
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
+import cz.pizavo.omnisign.ui.model.GlobChip
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
+import cz.pizavo.omnisign.ui.platform.absoluteGlobExample
+import cz.pizavo.omnisign.ui.platform.globNeedsFilePattern
+import cz.pizavo.omnisign.ui.platform.globTargetExists
+import cz.pizavo.omnisign.ui.platform.isAbsoluteGlob
+import cz.pizavo.omnisign.ui.platform.platformFilePath
+import io.github.vinceglb.filekit.PlatformFile
+import io.github.vinceglb.filekit.dialogs.FileKitMode
+import io.github.vinceglb.filekit.dialogs.FileKitType
+import io.github.vinceglb.filekit.dialogs.compose.rememberDirectoryPickerLauncher
+import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import omnisign.composeapp.generated.resources.Res
+import omnisign.composeapp.generated.resources.icon_file_text
+import omnisign.composeapp.generated.resources.icon_folder
 import omnisign.composeapp.generated.resources.icon_x
 import org.jetbrains.compose.resources.painterResource
 
@@ -145,6 +168,11 @@ private fun RenewalJobRow(
 					color = LumoTheme.colors.textSecondary,
 				)
 				Text(
+					text = "Backups: ${if (job.backupRetention > 0) job.backupRetention.toString() else "off"}",
+					style = LumoTheme.typography.body2,
+					color = LumoTheme.colors.textSecondary,
+				)
+				Text(
 					text = if (job.notify) "Notify: on" else "Notify: off",
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.textSecondary,
@@ -222,11 +250,21 @@ private fun RenewalJobAddForm(
 	onAdd: (RenewalJob) -> Unit,
 ) {
 	var name by remember { mutableStateOf("") }
-	var globs by remember { mutableStateOf("") }
+	var globChips by remember { mutableStateOf(listOf<GlobChip>()) }
+	var globInput by remember { mutableStateOf("") }
+	var globError by remember { mutableStateOf<String?>(null) }
 	var bufferDays by remember { mutableStateOf(ArchivingRepository.DEFAULT_RENEWAL_BUFFER_DAYS.toString()) }
+	var backupRetention by remember { mutableStateOf(RenewalJob.DEFAULT_BACKUP_RETENTION.toString()) }
 	var profile by remember { mutableStateOf(activeProfile) }
 	var logFile by remember { mutableStateOf("") }
 	var notify by remember { mutableStateOf(true) }
+
+	val commitGlobs: (String) -> Unit = { text ->
+		val (chips, invalid) = parseGlobChips(text, globChips)
+		globChips = chips
+		globInput = invalid.joinToString(", ")
+		globError = invalid.takeIf { it.isNotEmpty() }?.let { globErrorMessage(it) }
+	}
 
 	if (error != null) {
 		SelectableContent {
@@ -239,34 +277,52 @@ private fun RenewalJobAddForm(
 		Spacer(modifier = Modifier.height(4.dp))
 	}
 
-	Row(
+	UnderlinedTextField(
+		value = name,
+		onValueChange = {
+			name = it
+			onClearError()
+		},
+		label = { Text(text = "Name") },
+		placeholder = { Text(text = "Job name") },
+		singleLine = true,
 		modifier = Modifier.fillMaxWidth(),
-		horizontalArrangement = Arrangement.spacedBy(8.dp),
-		verticalAlignment = Alignment.Bottom,
-	) {
-		UnderlinedTextField(
-			value = name,
-			onValueChange = {
-				name = it
-				onClearError()
-			},
-			label = { Text(text = "Name") },
-			placeholder = { Text(text = "Job name") },
-			singleLine = true,
-			modifier = Modifier.weight(1f),
-		)
-		UnderlinedTextField(
-			value = globs,
-			onValueChange = {
-				globs = it
-				onClearError()
-			},
-			label = { Text(text = "Glob patterns (comma-separated)") },
-			placeholder = { Text(text = "/docs/**/*.pdf, /archive/*.pdf") },
-			singleLine = true,
-			modifier = Modifier.weight(2f),
-		)
-	}
+	)
+
+	Spacer(modifier = Modifier.height(8.dp))
+
+	GlobChipField(
+		chips = globChips,
+		input = globInput,
+		error = globError,
+		onInputChange = { raw ->
+			if (raw.contains(',') || raw.contains(';')) {
+				commitGlobs(raw)
+			} else {
+				globInput = raw
+				globError = null
+			}
+			onClearError()
+		},
+		onCommit = {
+			commitGlobs(globInput)
+			onClearError()
+		},
+		onRemove = { index ->
+			globChips = globChips.toMutableList().apply { removeAt(index) }
+		},
+		onAddGlobs = { paths ->
+			val (chips, invalid) = addGlobChips(paths, globChips)
+			globChips = chips
+			globError = invalid.takeIf { it.isNotEmpty() }?.let { globErrorMessage(it) }
+			onClearError()
+		},
+		onFolderPicked = { glob ->
+			globInput = glob
+			globError = null
+			onClearError()
+		},
+	)
 
 	Spacer(modifier = Modifier.height(8.dp))
 
@@ -283,6 +339,18 @@ private fun RenewalJobAddForm(
 			},
 			label = { Text(text = "Buffer days") },
 			placeholder = { Text(text = "${ArchivingRepository.DEFAULT_RENEWAL_BUFFER_DAYS}") },
+			singleLine = true,
+			keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+			modifier = Modifier.width(120.dp),
+		)
+		UnderlinedTextField(
+			value = backupRetention,
+			onValueChange = {
+				backupRetention = it
+				onClearError()
+			},
+			label = { Text(text = "Backups") },
+			placeholder = { Text(text = "${RenewalJob.DEFAULT_BACKUP_RETENTION}") },
 			singleLine = true,
 			keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
 			modifier = Modifier.width(120.dp),
@@ -343,13 +411,20 @@ private fun RenewalJobAddForm(
 		Button(
 			text = "Add",
 			variant = ButtonVariant.PrimaryOutlined,
-			enabled = name.isNotBlank() && globs.isNotBlank(),
+			enabled = name.isNotBlank() && (globChips.isNotEmpty() || globInput.isNotBlank()),
 			onClick = {
 				val trimmedName = name.trim()
-				val parsedGlobs = globs.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+				val (chips, invalid) = parseGlobChips(globInput, globChips)
+				globChips = chips
+				globInput = invalid.joinToString(", ")
 				val parsedBuffer = bufferDays.toIntOrNull()
+				val parsedBackups = backupRetention.toIntOrNull()
 
-				if (parsedGlobs.isEmpty()) {
+				if (invalid.isNotEmpty()) {
+					globError = globErrorMessage(invalid)
+					return@Button
+				}
+				if (chips.isEmpty()) {
 					onError("At least one glob pattern is required.")
 					return@Button
 				}
@@ -357,26 +432,242 @@ private fun RenewalJobAddForm(
 					onError("Buffer days must be a positive integer.")
 					return@Button
 				}
+				if (parsedBackups == null || parsedBackups < 0) {
+					onError("Backups must be 0 or a positive integer.")
+					return@Button
+				}
 
 				onAdd(
 					RenewalJob(
 						name = trimmedName,
-						globs = parsedGlobs,
+						globs = chips.map { it.glob },
 						renewalBufferDays = parsedBuffer,
 						profile = profile,
 						logFile = logFile.trim().ifBlank { null },
 						notify = notify,
+						backupRetention = parsedBackups,
 					)
 				)
 				name = ""
-				globs = ""
+				globChips = emptyList()
+				globInput = ""
+				globError = null
 				bufferDays = ArchivingRepository.DEFAULT_RENEWAL_BUFFER_DAYS.toString()
+				backupRetention = RenewalJob.DEFAULT_BACKUP_RETENTION.toString()
 				profile = activeProfile
 				logFile = ""
 				notify = true
 			},
 		)
 	}
+}
+
+/**
+ * Split [text] on `,`/`;`, then partition each non-blank token against [existing]: a duplicate is
+ * dropped, a non-absolute glob is collected as invalid (rejected), and an absolute glob becomes a
+ * [GlobChip] flagged with whether its target currently exists.
+ *
+ * @return the resulting chip list (existing plus accepted) and the rejected, non-absolute tokens.
+ */
+internal fun parseGlobChips(
+	text: String,
+	existing: List<GlobChip>,
+): Pair<List<GlobChip>, List<String>> =
+	addGlobChips(text.split(',', ';').map { it.trim() }.filter { it.isNotEmpty() }, existing)
+
+/**
+ * Validate [tokens] against [existing]: drop duplicates, reject non-absolute globs and bare
+ * directories (which match no files), and turn each accepted absolute glob into a [GlobChip] flagged
+ * with whether its target currently exists. Used directly by the file picker (whose paths are
+ * already split) and via [parseGlobChips] for typed or pasted text.
+ *
+ * @return the resulting chip list (existing plus accepted) and the rejected tokens.
+ */
+internal fun addGlobChips(
+	tokens: List<String>,
+	existing: List<GlobChip>,
+): Pair<List<GlobChip>, List<String>> {
+	val chips = existing.toMutableList()
+	val invalid = mutableListOf<String>()
+	tokens.forEach { token ->
+		when {
+			chips.any { it.glob == token } -> Unit
+			!isAbsoluteGlob(token) || globNeedsFilePattern(token) -> invalid += token
+			else -> chips += GlobChip(
+				glob = token,
+				warning = when {
+					globTargetsNonPdf(token) -> "matches no PDFs (non-PDF extension)"
+					!globTargetExists(token) -> "target directory not found"
+					else -> null
+				},
+			)
+		}
+	}
+	return chips to invalid
+}
+
+/**
+ * The inline error for rejected glob [tokens]: each must be an absolute path ending in a file
+ * pattern (a bare directory matches nothing).
+ */
+private fun globErrorMessage(tokens: List<String>): String =
+	"Each glob must be an absolute path with a file pattern (e.g. ${absoluteGlobExample()}): " +
+		tokens.joinToString()
+
+/**
+ * Whether [glob]'s filename pattern explicitly targets a non-PDF extension (e.g. `*.xml`,
+ * `notes.txt`), so it can only ever match non-PDF files. A pattern with no concrete extension (`*`,
+ * `report-*`), a `.pdf` extension, or a wildcard inside the extension (`*.{pdf,xml}`) is not flagged.
+ */
+internal fun globTargetsNonPdf(glob: String): Boolean {
+	val name = glob.substringAfterLast('/').substringAfterLast('\\')
+	val dotIndex = name.lastIndexOf('.')
+	if (dotIndex == -1) return false
+	val extension = name.substring(dotIndex + 1)
+	if (extension.isEmpty() || extension.any { it == '*' || it == '?' || it == '[' || it == '{' || it == '}' }) {
+		return false
+	}
+	return !extension.equals("pdf", ignoreCase = true)
+}
+
+/**
+ * Editable list of renewal globs: committed globs render as removable [GlobChip]s (amber when their
+ * target directory is missing), and the field below commits its text on Enter or a `,`/`;`
+ * delimiter. Non-absolute globs are rejected via [error]; missing-directory globs are accepted but
+ * flagged.
+ *
+ * @param chips The committed globs.
+ * @param input The in-progress glob text.
+ * @param error An inline error for rejected (non-absolute) globs, or `null`.
+ * @param onInputChange Called with the raw field text on every keystroke.
+ * @param onCommit Called when the user presses Enter, to commit the current [input].
+ * @param onRemove Called with the index of a chip to remove.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun GlobChipField(
+	chips: List<GlobChip>,
+	input: String,
+	error: String?,
+	onInputChange: (String) -> Unit,
+	onCommit: () -> Unit,
+	onRemove: (Int) -> Unit,
+	onAddGlobs: (List<String>) -> Unit,
+	onFolderPicked: (String) -> Unit,
+) {
+	val filePicker = rememberFilePickerLauncher(
+		type = FileKitType.File(extensions = listOf("pdf")),
+		mode = FileKitMode.Multiple(),
+	) { files: List<PlatformFile>? ->
+		val paths = files?.mapNotNull { platformFilePath(it)?.replace('\\', '/') }.orEmpty()
+		if (paths.isNotEmpty()) onAddGlobs(paths)
+	}
+	val folderPicker = rememberDirectoryPickerLauncher { directory: PlatformFile? ->
+		val path = directory?.let { platformFilePath(it) }?.replace('\\', '/')?.trimEnd('/')
+		if (path != null) onFolderPicked("$path/**/*.pdf")
+	}
+
+	if (chips.isNotEmpty()) {
+		FlowRow(
+			modifier = Modifier.fillMaxWidth(),
+			horizontalArrangement = Arrangement.spacedBy(6.dp),
+			verticalArrangement = Arrangement.spacedBy(6.dp),
+		) {
+			chips.forEachIndexed { index, chip ->
+				GlobChipItem(chip = chip, onRemove = { onRemove(index) })
+			}
+		}
+		Spacer(modifier = Modifier.height(6.dp))
+	}
+
+	UnderlinedTextField(
+		value = input,
+		onValueChange = onInputChange,
+		label = { Text(text = "Glob patterns") },
+		placeholder = { Text(text = absoluteGlobExample()) },
+		singleLine = true,
+		isError = error != null,
+		supportingText = error?.let { message -> @Composable { Text(text = message) } },
+		keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+		keyboardActions = KeyboardActions(onDone = { onCommit() }),
+		trailingIcon = {
+			Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+				TooltipBox(
+					tooltip = { Tooltip { Text(text = "Select files") } },
+					state = rememberTooltipState(),
+				) {
+					IconButton(
+						modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
+						variant = IconButtonVariant.Ghost,
+						onClick = { filePicker.launch() },
+					) {
+						Icon(
+							painter = painterResource(Res.drawable.icon_file_text),
+							contentDescription = "Select files",
+							modifier = Modifier.size(18.dp),
+						)
+					}
+				}
+				TooltipBox(
+					tooltip = { Tooltip { Text(text = "Pre-select folder") } },
+					state = rememberTooltipState(),
+				) {
+					IconButton(
+						modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
+						variant = IconButtonVariant.Ghost,
+						onClick = { folderPicker.launch() },
+					) {
+						Icon(
+							painter = painterResource(Res.drawable.icon_folder),
+							contentDescription = "Pre-select folder",
+							modifier = Modifier.size(18.dp),
+						)
+					}
+				}
+			}
+		},
+		modifier = Modifier.fillMaxWidth(),
+	)
+
+	val warnings = chips.mapNotNull { it.warning }.distinct()
+	if (error == null && warnings.isNotEmpty()) {
+		Spacer(modifier = Modifier.height(4.dp))
+		Text(
+			text = "Amber globs (allowed — double-check): ${warnings.joinToString("; ")}.",
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.warning,
+		)
+	}
+}
+
+/**
+ * A single renewal glob chip: shows the glob with an × affordance (the whole chip is clickable to
+ * remove) and is tinted amber when its target directory is missing.
+ *
+ * @param chip The glob and its existence flag.
+ * @param onRemove Called when the chip is clicked, to remove it.
+ */
+@Composable
+private fun GlobChipItem(chip: GlobChip, onRemove: () -> Unit) {
+	val tint = if (chip.warning == null) LumoTheme.colors.onSurface else LumoTheme.colors.warning
+	Chip(
+		onClick = onRemove,
+		label = {
+			Text(
+				text = chip.glob,
+				style = LumoTheme.typography.body2,
+				color = tint,
+			)
+		},
+		trailingIcon = {
+			Icon(
+				painter = painterResource(Res.drawable.icon_x),
+				contentDescription = "Remove ${chip.glob}",
+				tint = tint,
+				modifier = Modifier.size(14.dp),
+			)
+		},
+	)
 }
 
 

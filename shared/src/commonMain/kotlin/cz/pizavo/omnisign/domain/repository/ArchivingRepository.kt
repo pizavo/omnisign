@@ -29,13 +29,31 @@ interface ArchivingRepository {
 	suspend fun extendDocument(parameters: ArchivingParameters): OperationResult<ArchivingResult>
 	
 	/**
-	 * Check whether the archival timestamps in [filePath] are close to expiry and the
-	 * document should be re-timestamped.
+	 * Check whether [filePath] should be re-timestamped to keep its archival protection current.
 	 *
-	 * @param filePath Absolute path to the B-LTA document to inspect.
-	 * @param renewalBufferDays Number of days before timestamp certificate expiry at which
+	 * The decision is **coverage-aware**: renewal is needed when a timestamp that no current
+	 * document timestamp seals is approaching the expiry of its signing (TSA) certificate — either
+	 * the outermost document timestamp itself (the B-LTA seal), the signature timestamp of a B-LT
+	 * document with no seal yet, or a signature timestamp applied after the last archival timestamp.
+	 * Timestamps already covered by a still-valid document timestamp are ignored, so a document is
+	 * not re-timestamped on every scheduler run once one of its inner timestamps ages.
+	 *
+	 * Renewal is likewise needed when such a timestamp's cryptographic algorithms have aged out — its
+	 * message-imprint or TSA-signature digest, or the TSA signature key — judged against the standard
+	 * cryptographic schedule, so a document is re-protected before its primitives are challenged.
+	 *
+	 * When a renewal-relevant timestamp's signing certificate cannot be resolved — so its expiry is
+	 * unknown — the status cannot be determined and a
+	 * [cz.pizavo.omnisign.domain.model.error.ArchivingError.RenewalStatusUndeterminable] is returned
+	 * rather than silently treating the document as not needing renewal.
+	 *
+	 * @param filePath Absolute path to the PAdES document to inspect.
+	 * @param renewalBufferDays Number of days before a timestamp certificate's expiry at which
 	 *   renewal is considered necessary. Defaults to [DEFAULT_RENEWAL_BUFFER_DAYS].
-	 * @return True if any timestamp signing certificate expires within the renewal window.
+	 * @return `true` when an uncovered timestamp's signing certificate expires within the renewal
+	 *   window, `false` when none does, or an [cz.pizavo.omnisign.domain.model.error.ArchivingError]
+	 *   (e.g. [cz.pizavo.omnisign.domain.model.error.ArchivingError.RenewalStatusUndeterminable] when
+	 *   a relevant timestamp's certificate cannot be resolved).
 	 */
 	suspend fun needsArchivalRenewal(
 		filePath: String,

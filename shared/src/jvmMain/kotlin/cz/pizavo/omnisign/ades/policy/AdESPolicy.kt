@@ -54,6 +54,23 @@ open class AdESPolicy {
 		}
 		return policy
 	}
+
+	/**
+	 * Build the [CryptographicSuite] DSS applies to signatures — loading the default ETSI policy
+	 * with [algorithmConstraints] patched in — so callers can query algorithm acceptability and
+	 * expiration dates (e.g. to decide whether a timestamp's algorithms have aged out and the
+	 * document needs archival renewal).
+	 *
+	 * @param algorithmConstraints Optional overrides to apply; when null the bundled ETSI
+	 *   cryptographic schedule is used as-is.
+	 * @return the signature-context cryptographic suite, or null when the loaded policy does not
+	 *   expose one.
+	 */
+	open fun cryptographicSuite(algorithmConstraints: AlgorithmConstraintsConfig? = null): CryptographicSuite? {
+		val policy = load(policyFile = null, algorithmConstraints = algorithmConstraints)
+		if (policy !is EtsiValidationPolicy) return null
+		return runCatching { policy.getSignatureCryptographicConstraint(Context.SIGNATURE) }.getOrNull()
+	}
 	
 	/**
 	 * Patch the algorithm expiration levels on every [CryptographicSuite] section exposed

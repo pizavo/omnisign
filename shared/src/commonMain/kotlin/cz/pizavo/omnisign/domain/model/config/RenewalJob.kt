@@ -20,6 +20,9 @@ import kotlinx.serialization.Serializable
  *   is written when null.
  * @property notify When true (the default), the OS notification centre alerts the user about
  *   renewal failures and successful re-timestampings. Set to false for headless deployments.
+ * @property backupRetention Number of timestamped `.bak` copies of the pre-renewal document to keep
+ *   beside each renewed file. `0` disables backups; otherwise the oldest beyond this many are pruned
+ *   after each successful renewal. Defaults to [DEFAULT_BACKUP_RETENTION].
  */
 @Serializable
 data class RenewalJob(
@@ -29,4 +32,10 @@ data class RenewalJob(
 	val profile: String? = null,
 	val logFile: String? = null,
 	val notify: Boolean = true,
-)
+	val backupRetention: Int = DEFAULT_BACKUP_RETENTION,
+) {
+	companion object {
+		/** Default number of timestamped pre-renewal backups retained per file. */
+		const val DEFAULT_BACKUP_RETENTION: Int = 3
+	}
+}

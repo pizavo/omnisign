@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.commands
 import com.github.ajalt.clikt.testing.test
 import cz.pizavo.omnisign.Omnisign
 import cz.pizavo.omnisign.data.service.OsNotificationService
+import cz.pizavo.omnisign.data.service.RenewalNotifier
 import cz.pizavo.omnisign.domain.model.result.RenewBatchResult
 import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
 import cz.pizavo.omnisign.domain.model.result.RenewJobResult
@@ -34,6 +35,7 @@ class RenewTest : FunSpec({
 			module {
 				single { renewBatchUseCase }
 				single { notificationService }
+				single { RenewalNotifier(get()) }
 				single<PasswordCallback> { mockk() }
 			},
 			mode = KoinLifecycleMode.Test
@@ -159,5 +161,25 @@ class RenewTest : FunSpec({
 		Omnisign().test(listOf("renew", "--dry-run"))
 
 		verify(exactly = 0) { notificationService.notify(any(), any(), any()) }
+	}
+
+	test("already-running run is reported and exits cleanly") {
+		coEvery { renewBatchUseCase(jobName = null, dryRun = false) } returns
+			RenewBatchResult(alreadyRunning = true)
+
+		val result = Omnisign().test(listOf("renew"))
+
+		result.output shouldContain "in progress"
+		result.statusCode shouldBe 0
+	}
+
+	test("lock acquisition failure is reported as an error and exits non-zero") {
+		coEvery { renewBatchUseCase(jobName = null, dryRun = false) } returns
+			RenewBatchResult(lockError = "lock file unwritable")
+
+		val result = Omnisign().test(listOf("renew"))
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "lock"
 	}
 })

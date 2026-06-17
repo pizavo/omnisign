@@ -13,7 +13,11 @@ class CheckArchivalRenewalUseCase(
 	/**
 	 * Check if the document at [filePath] needs re-timestamping.
 	 *
-	 * @param filePath Path to the B-LTA PDF to inspect.
+	 * Delegates to [ArchivingRepository.needsArchivalRenewal], whose coverage-aware rule re-times
+	 * only the outermost document timestamp and any signature timestamp not sealed by it — never a
+	 * timestamp a current document timestamp already covers.
+	 *
+	 * @param filePath Path to the PAdES document to inspect.
 	 * @param renewalBufferDays Days before timestamp certificate expiry at which renewal is
 	 *   triggered. Defaults to [DEFAULT_RENEWAL_BUFFER_DAYS].
 	 * @return True if renewal is needed, or an error.

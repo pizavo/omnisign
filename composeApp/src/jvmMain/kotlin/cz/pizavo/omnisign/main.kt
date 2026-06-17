@@ -18,8 +18,7 @@ import androidx.compose.ui.window.*
 import com.jetbrains.JBR
 import com.jetbrains.WindowDecorations
 import com.jetbrains.WindowMove
-import cz.pizavo.omnisign.data.service.NotificationUrgency
-import cz.pizavo.omnisign.data.service.OsNotificationService
+import cz.pizavo.omnisign.data.service.RenewalNotifier
 import cz.pizavo.omnisign.data.service.Pkcs11CacheInvalidator
 import cz.pizavo.omnisign.data.service.Pkcs11ProbeTimeout
 import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
@@ -356,7 +355,7 @@ private fun runHeadlessRenewal() {
 
 	val koin = koinApp.koin
 	val renewBatch = koin.get<RenewBatchUseCase>()
-	val notificationService = koin.get<OsNotificationService>()
+	val renewalNotifier = koin.get<RenewalNotifier>()
 
 	val result = runBlocking {
 		koin.get<MigrateTrustedCertificatesUseCase>()().fold(
@@ -366,6 +365,16 @@ private fun runHeadlessRenewal() {
 		renewBatch()
 	}
 	stopKoin()
+
+	if (result?.alreadyRunning == true) {
+		logger.info { "Another renewal run is already in progress — skipping." }
+		exitProcess(0)
+	}
+
+	if (result?.lockError != null) {
+		logger.error { "Renewal aborted — could not acquire the renewal lock: ${result.lockError}" }
+		exitProcess(1)
+	}
 
 	if (result == null || result.jobs.isEmpty()) {
 		logger.info { "No renewal jobs configured — exiting." }
@@ -377,28 +386,7 @@ private fun runHeadlessRenewal() {
 				"skipped=${result.skipped}, errors=${result.errors}"
 	}
 
-	for (job in result.jobs) {
-		if (!job.notify) continue
-		when {
-			job.errors > 0 && job.renewed > 0 -> notificationService.notify(
-				title = "OmniSign — Renewal partial failure (${job.name})",
-				body = "${job.renewed} file(s) re-timestamped, ${job.errors} error(s). Check the log for details.",
-				urgency = NotificationUrgency.CRITICAL,
-			)
-
-			job.errors > 0 -> notificationService.notify(
-				title = "OmniSign — Renewal failed (${job.name})",
-				body = "${job.errors} file(s) could not be re-timestamped. Digital continuity may be at risk.",
-				urgency = NotificationUrgency.CRITICAL,
-			)
-
-			job.renewed > 0 -> notificationService.notify(
-				title = "OmniSign — Renewal complete (${job.name})",
-				body = "${job.renewed} file(s) successfully re-timestamped.",
-				urgency = NotificationUrgency.NORMAL,
-			)
-		}
-	}
+	renewalNotifier.notify(result)
 
 	exitProcess(if (result.success) 0 else 1)
 }

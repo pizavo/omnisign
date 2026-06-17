@@ -5,6 +5,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.*
 import cz.pizavo.omnisign.domain.model.config.service.CrlConfig
 import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
+import cz.pizavo.omnisign.domain.model.result.RenewalRunRecord
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 
 /**
@@ -58,6 +59,7 @@ import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
  * @property schedulerMinute Minute (0–59) for the daily scheduler run.
  * @property schedulerLogFile Optional append-only log file path for scheduler output.
  * @property schedulerInstalled Whether the OS scheduler job is currently registered (read-only, queried on the load).
+ * @property renewalRunRecord Status of the most recent renewal batch run (read-only, queried on load), or `null` when none has run or no backend is available.
  * @property saving Whether a save operation is currently in progress.
  * @property error Human-readable error message from the last failed operation, or `null`.
  * @property tlAddError Human-readable error from the last failed trusted list add attempt, or `null`.
@@ -107,6 +109,7 @@ data class GlobalConfigEditState(
 	val schedulerMinute: String = "0",
 	val schedulerLogFile: String = "",
 	val schedulerInstalled: Boolean = false,
+	val renewalRunRecord: RenewalRunRecord? = null,
 	val saving: Boolean = false,
 	val error: String? = null,
 	val tlAddError: String? = null,

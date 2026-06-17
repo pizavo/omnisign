@@ -37,6 +37,7 @@ import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.name
 import omnisign.composeapp.generated.resources.Res
+import omnisign.composeapp.generated.resources.icon_alert_warning
 import omnisign.composeapp.generated.resources.icon_folder
 import omnisign.composeapp.generated.resources.icon_x
 import org.jetbrains.compose.resources.painterResource
@@ -246,11 +247,22 @@ private fun TrustedListAddForm(
 
 	if (sourceWarning) {
 		Spacer(modifier = Modifier.height(4.dp))
-		Text(
-			text = "⚠ Source should start with https:// or file:/// — other schemes may not be supported by DSS.",
-			style = LumoTheme.typography.body2,
-			color = LumoTheme.colors.warning,
-		)
+		Row(
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(4.dp),
+		) {
+			Icon(
+				painter = painterResource(Res.drawable.icon_alert_warning),
+				contentDescription = null,
+				tint = LumoTheme.colors.warning,
+				modifier = Modifier.size(14.dp),
+			)
+			Text(
+				text = "Source should start with https:// or file:/// — other schemes may not be supported by DSS.",
+				style = LumoTheme.typography.body2,
+				color = LumoTheme.colors.warning,
+			)
+		}
 	}
 
 	Spacer(modifier = Modifier.height(8.dp))

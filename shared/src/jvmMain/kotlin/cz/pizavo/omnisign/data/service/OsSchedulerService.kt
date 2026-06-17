@@ -6,8 +6,8 @@ package cz.pizavo.omnisign.data.service
  *
  * Only one system-wide job is needed because `omnisign renew` iterates all configured
  * [cz.pizavo.omnisign.domain.model.config.RenewalJob] entries in a single run.
- * Platform-specific implementations use `crontab` (Linux / macOS) or `schtasks`
- * (Windows) via [ProcessBuilder]; no external library is required.
+ * Platform-specific implementations use systemd user timers (Linux), launchd LaunchAgents
+ * (macOS), or Task Scheduler (Windows) via [ProcessBuilder]; no external library is required.
  */
 interface OsSchedulerService {
 	/**
@@ -39,7 +39,7 @@ interface OsSchedulerService {
 	fun isInstalled(): Boolean
 	
 	companion object {
-		/** Tag embedded in the crontab comment / task name to identify our entry. */
+		/** Identifier for the registered job — the Windows task name and the systemd unit base name. */
 		const val JOB_TAG = "omnisign-renewal"
 	}
 }

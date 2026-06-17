@@ -12,10 +12,17 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
+import cz.pizavo.omnisign.domain.model.result.RenewalRunOutcome
+import cz.pizavo.omnisign.domain.model.result.RenewalRunRecord
+import cz.pizavo.omnisign.domain.port.RenewalLock
+import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -23,8 +30,12 @@ import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import java.io.File
+import java.io.IOException
+import kotlin.time.Instant
 
 /**
  * Unit tests for [RenewBatchUseCase].
@@ -37,9 +48,14 @@ class RenewBatchUseCaseTest : FunSpec({
 
     val checkRenewal = CheckArchivalRenewalUseCase(archivingRepository)
     val extend = ExtendDocumentUseCase(archivingRepository)
+    val grantingLock: RenewalLock = mockk { every { tryAcquire() } returns AutoCloseable {} }
+    val runRecordStore: RenewalRunRecordStore = mockk(relaxed = true)
 
     beforeTest {
-        clearMocks(archivingRepository, configRepository)
+        clearMocks(archivingRepository, configRepository, runRecordStore)
+        coEvery {
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+        } returns false.right()
     }
 
     fun subDir(name: String) = File(tmpDir, name).also { it.mkdirs() }
@@ -55,7 +71,7 @@ class RenewBatchUseCaseTest : FunSpec({
 
     fun useCaseWith(appConfig: AppConfig): RenewBatchUseCase {
         coEvery { configRepository.getCurrentConfig() } returns appConfig
-        return RenewBatchUseCase(checkRenewal, extend, configRepository)
+        return RenewBatchUseCase(checkRenewal, extend, configRepository, grantingLock, runRecordStore)
     }
 
     test("returns null when requested job name does not exist") {
@@ -138,7 +154,8 @@ class RenewBatchUseCaseTest : FunSpec({
         val bad = File(dir, "iso-bad.pdf").also { it.createNewFile() }
         val good = File(dir, "iso-good.pdf").also { it.createNewFile() }
 
-        coEvery { archivingRepository.needsArchivalRenewal(any(), any()) } returns true.right()
+        coEvery { archivingRepository.needsArchivalRenewal(bad.absolutePath, any()) } returns true.right()
+        coEvery { archivingRepository.needsArchivalRenewal(good.absolutePath, any()) } returns true.right()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName == bad.name })
         } returns ArchivingError.ExtensionFailed("boom").left()
@@ -289,6 +306,316 @@ class RenewBatchUseCaseTest : FunSpec({
         val nonExistent = File(tmpDir, "nonexistent").absolutePath.replace('\\', '/') + "/*.pdf"
         val files = uc.resolveGlobs(listOf(nonExistent))
         files shouldHaveSize 0
+    }
+
+    test("resolveGlobs matches files in nested subdirectories") {
+        val root = File(tmpDir, "nested-glob").also { it.mkdirs() }
+        File(root, "a").mkdirs()
+        File(root, "a/mid.pdf").createNewFile()
+        File(root, "a/b").mkdirs()
+        File(root, "a/b/deep.pdf").createNewFile()
+        File(root, "a/b/notes.txt").createNewFile()
+
+        val uc = useCaseWith(baseConfig)
+        val glob = root.absolutePath.replace('\\', '/') + "/**/*.pdf"
+        val files = uc.resolveGlobs(listOf(glob))
+
+        files.map { it.name }.sorted() shouldContainExactly listOf("deep.pdf", "mid.pdf")
+    }
+
+    test("resolveGlobs restricts a broad wildcard to PDF files") {
+        val sub = File(tmpDir, "broad-glob").also { it.mkdirs() }
+        File(sub, "a.pdf").createNewFile()
+        File(sub, "notes.txt").createNewFile()
+        File(sub, "image.png").createNewFile()
+
+        val uc = useCaseWith(baseConfig)
+        val glob = sub.absolutePath.replace('\\', '/') + "/*"
+        val files = uc.resolveGlobs(listOf(glob))
+
+        files.map { it.name } shouldContainExactly listOf("a.pdf")
+    }
+
+    test("probeDirectoryWritable returns null and leaves no probe file for a writable directory") {
+        val dir = subDir("probe-ok")
+        val target = File(dir, "doc.pdf")
+
+        val uc = useCaseWith(baseConfig)
+        val error = uc.probeDirectoryWritable(target)
+
+        error.shouldBeNull()
+        dir.listFiles()!!.toList().shouldBeEmpty()
+    }
+
+    test("probeDirectoryWritable reports an error and leaks nothing when the directory is not writable") {
+        val dir = subDir("probe-fail")
+        File(dir, "occupied").writeText("a file, not a directory")
+        val target = File(dir, "occupied/doc.pdf")
+
+        val uc = useCaseWith(baseConfig)
+        val error = uc.probeDirectoryWritable(target)
+
+        error.shouldNotBeNull()
+        dir.listFiles { f -> f.isFile }!!.map { it.name } shouldContainExactly listOf("occupied")
+    }
+
+    test("writeAtomically replaces existing file content and leaves no temporary files") {
+        val dir = subDir("atomic-replace")
+        val target = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
+
+        val uc = useCaseWith(baseConfig)
+        uc.writeAtomically(target, "RENEWED".toByteArray())
+
+        target.readText() shouldBe "RENEWED"
+        dir.listFiles()!!.map { it.name } shouldContainExactly listOf("doc.pdf")
+    }
+
+    test("writeAtomically creates the target when it does not yet exist") {
+        val dir = subDir("atomic-create")
+        val target = File(dir, "fresh.pdf")
+
+        val uc = useCaseWith(baseConfig)
+        uc.writeAtomically(target, "DATA".toByteArray())
+
+        target.readText() shouldBe "DATA"
+    }
+
+    test("writeAtomically preserves the original and cleans up its temp file when the move fails") {
+        val dir = subDir("atomic-fail")
+        val unreplaceableTarget = File(dir, "occupied").apply { mkdirs() }
+        val sentinel = File(unreplaceableTarget, "keep.txt").apply { writeText("ORIGINAL") }
+
+        val uc = useCaseWith(baseConfig)
+        shouldThrow<Exception> { uc.writeAtomically(unreplaceableTarget, "RENEWED".toByteArray()) }
+
+        sentinel.readText() shouldBe "ORIGINAL"
+        dir.listFiles { f -> f.isFile }!!.toList().shouldBeEmpty()
+    }
+
+    test("returns an alreadyRunning result and does no work when the lock is held") {
+        val busyLock: RenewalLock = mockk { every { tryAcquire() } returns null }
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, busyLock, runRecordStore)
+
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.alreadyRunning shouldBe true
+        result.checked shouldBe 0
+        coVerify(exactly = 0) { archivingRepository.needsArchivalRenewal(any(), any()) }
+    }
+
+    test("releases the renewal lock after the batch completes") {
+        val handle = mockk<AutoCloseable>(relaxed = true)
+        val lock: RenewalLock = mockk { every { tryAcquire() } returns handle }
+        coEvery { configRepository.getCurrentConfig() } returns baseConfig
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, lock, runRecordStore)
+
+        uc()
+
+        verify { handle.close() }
+    }
+
+    test("reports a lock error and does no work when the lock cannot be acquired") {
+        val failingLock: RenewalLock = mockk { every { tryAcquire() } throws IOException("disk on fire") }
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, failingLock, runRecordStore)
+
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.lockError shouldBe "disk on fire"
+        result.success shouldBe false
+        coVerify(exactly = 0) { archivingRepository.needsArchivalRenewal(any(), any()) }
+    }
+
+    test("writes a timestamped backup of the original before renewing in place") {
+        val dir = subDir("backup-write")
+        val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingResult(outputBytes = "RENEWED".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA").right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 3)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.renewed shouldBe 1
+        file.readText() shouldBe "RENEWED"
+        val backups = dir.listFiles { f -> f.name.endsWith(".bak") }!!.toList()
+        backups shouldHaveSize 1
+        backups.first().readText() shouldBe "ORIGINAL"
+    }
+
+    test("writes no backup when backupRetention is zero") {
+        val dir = subDir("backup-off")
+        val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingResult(outputBytes = "RENEWED".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA").right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        uc()
+
+        file.readText() shouldBe "RENEWED"
+        dir.listFiles { f -> f.name.endsWith(".bak") }!!.toList().shouldBeEmpty()
+    }
+
+    test("pruneBackups keeps only the newest N and ignores unrelated files") {
+        val dir = subDir("backup-prune")
+        val file = File(dir, "doc.pdf").apply { writeText("live") }
+        listOf("20200101T000000Z", "20210101T000000Z", "20220101T000000Z", "20230101T000000Z").forEach {
+            File(dir, "doc.pdf.$it.bak").writeText("backup-$it")
+        }
+        File(dir, "doc.pdf.bak").writeText("unrelated manual backup")
+
+        val uc = useCaseWith(baseConfig)
+        uc.pruneBackups(file, 2)
+
+        val remaining = dir.listFiles { f -> f.name.endsWith(".bak") }!!.map { it.name }.sorted()
+        remaining shouldContainExactly listOf(
+            "doc.pdf.20220101T000000Z.bak",
+            "doc.pdf.20230101T000000Z.bak",
+            "doc.pdf.bak",
+        )
+    }
+
+    test("keeps the original and errors when the renewed output still needs renewal") {
+        val dir = subDir("verify-loop")
+        val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery {
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+        } returns true.right()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingResult(outputBytes = "RENEWED".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA").right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 3)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.renewed shouldBe 0
+        result.errors shouldBe 1
+        file.readText() shouldBe "ORIGINAL"
+        dir.listFiles { f -> f.name.endsWith(".bak") }!!.toList().shouldBeEmpty()
+    }
+
+    test("keeps the original and errors when the renewed output fails validation") {
+        val dir = subDir("verify-bad")
+        val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery {
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+        } returns ArchivingError.ExtensionFailed("not a valid PDF").left()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingResult(outputBytes = "GARBAGE".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA").right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.renewed shouldBe 0
+        result.errors shouldBe 1
+        file.readText() shouldBe "ORIGINAL"
+    }
+
+    test("records a successful run, resetting the failure counter") {
+        val dir = subDir("rec-success")
+        val file = File(dir, "ok.pdf").also { it.writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingResult(outputBytes = "RENEWED".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA").right()
+        every { runRecordStore.load() } returns null
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        uc()
+
+        verify {
+            runRecordStore.save(
+                match {
+                    it.outcome == RenewalRunOutcome.SUCCESS &&
+                        it.renewed == 1 &&
+                        it.failuresSinceSuccess == 0 &&
+                        it.lastSuccessAt != null
+                }
+            )
+        }
+    }
+
+    test("records a partial run, incrementing failures and carrying last success forward") {
+        val dir = subDir("rec-partial")
+        val file = File(dir, "bad.pdf").also { it.writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingError.ExtensionFailed("tsa down").left()
+        val previousSuccess = Instant.fromEpochSeconds(1_000_000)
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = previousSuccess,
+            outcome = RenewalRunOutcome.SUCCESS,
+            lastSuccessAt = previousSuccess,
+            failuresSinceSuccess = 0,
+        )
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        uc()
+
+        verify {
+            runRecordStore.save(
+                match {
+                    it.outcome == RenewalRunOutcome.COMPLETED_WITH_ERRORS &&
+                        it.failuresSinceSuccess == 1 &&
+                        it.lastSuccessAt == previousSuccess &&
+                        it.errorDetails.isNotEmpty()
+                }
+            )
+        }
+    }
+
+    test("records a failed run when the lock cannot be acquired") {
+        val failingLock: RenewalLock = mockk { every { tryAcquire() } throws RuntimeException("disk full") }
+        every { runRecordStore.load() } returns null
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, failingLock, runRecordStore)
+
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.lockError.shouldNotBeNull()
+        verify {
+            runRecordStore.save(
+                match {
+                    it.outcome == RenewalRunOutcome.FAILED &&
+                        it.failureReason != null &&
+                        it.failuresSinceSuccess == 1
+                }
+            )
+        }
+    }
+
+    test("does not record a dry-run") {
+        val dir = subDir("rec-dry")
+        val file = File(dir, "dry.pdf").also { it.writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        uc(dryRun = true)
+
+        verify(exactly = 0) { runRecordStore.save(any()) }
+    }
+
+    test("does not record a run skipped because another run holds the lock") {
+        val busyLock: RenewalLock = mockk { every { tryAcquire() } returns null }
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, busyLock, runRecordStore)
+
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.alreadyRunning shouldBe true
+        verify(exactly = 0) { runRecordStore.save(any()) }
     }
 })
 

@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.data.service
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.string.shouldContain
 
 /**
  * Verifies [WindowsTaskSchedulerService] install/uninstall/idempotency.
@@ -61,6 +62,13 @@ class WindowsTaskSchedulerServiceTest : FunSpec({
 	test("uninstall on absent task does not throw").config(enabled = isWindows()) {
 		service.uninstall()
 		service.isInstalled().shouldBeFalse()
+	}
+
+	test("buildRegisterScript enables StartWhenAvailable for missed-run catch-up") {
+		val script = service.buildRegisterScript("C:\\omnisign\\omnisign.exe", "renew", "02:00")
+		script shouldContain "New-ScheduledTaskSettingsSet -StartWhenAvailable"
+		script shouldContain "-Settings \$settings"
+		script shouldContain "New-ScheduledTaskTrigger -Daily -At '02:00'"
 	}
 })
 

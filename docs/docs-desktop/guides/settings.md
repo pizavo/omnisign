@@ -192,8 +192,12 @@ Configure the OS-level daily scheduler that runs renewal jobs automatically.
 
 ![Scheduler settings](/img/desktop/settings-scheduler.avif)
 
-The scheduler uses **Task Scheduler** on Windows, **cron** on Linux, and **launchd** on
-macOS. The current installation status is shown as a read-only indicator.
+The scheduler uses **Task Scheduler** on Windows, **systemd user timers** on Linux, and
+**launchd** on macOS. Each catches up a run missed while the machine was off or asleep,
+executing it once as soon as the machine is next available rather than skipping it until the
+next day. (On Linux a systemd user instance is required; where none exists — containers, some
+WSL setups — OmniSign instead prints the command to schedule renewal with another tool.) The
+current installation status is shown as a read-only indicator.
 
 At the scheduled time the scheduler launches OmniSign in **headless renewal mode** (no window):
 it checks every configured renewal job, re-timestamps the B-LTA files whose archival timestamp

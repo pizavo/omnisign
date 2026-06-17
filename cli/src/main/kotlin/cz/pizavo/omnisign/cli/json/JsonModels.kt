@@ -100,6 +100,7 @@ data class JsonRenewalResult(
 	val skipped: Int = 0,
 	val errors: Int = 0,
 	val dryRun: Boolean = false,
+	val alreadyRunning: Boolean = false,
 	val jobs: List<JsonRenewalJobResult> = emptyList(),
 	val error: JsonError? = null,
 )

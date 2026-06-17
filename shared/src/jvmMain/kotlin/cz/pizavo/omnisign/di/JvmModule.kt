@@ -8,6 +8,9 @@ import cz.pizavo.omnisign.data.serializer.YamlConfigSerializer
 import cz.pizavo.omnisign.data.service.*
 import cz.pizavo.omnisign.domain.port.ConfigSerializerRegistry
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
+import cz.pizavo.omnisign.domain.port.RenewalCheckCache
+import cz.pizavo.omnisign.domain.port.RenewalLock
+import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
@@ -112,6 +115,8 @@ val jvmRepositoryModule = module {
 	single { DssTrustedListRefreshAdapter(get(), get()) } bind TrustedListRefreshPort::class
 	singleOf(::DssWarningSanitizer)
 	singleOf(::TspErrorDetector)
+	singleOf(::RevocationErrorDetector)
+	singleOf(::DocumentInputErrorDetector)
 	singleOf(::DssValidationRepository) bind ValidationRepository::class
 	singleOf(::DssSigningRepository) bind SigningRepository::class
 	singleOf(::DssArchivingRepository) bind ArchivingRepository::class
@@ -126,12 +131,26 @@ val jvmRepositoryModule = module {
 	}
 	single { ExportImportConfigUseCase(get(), get()) }
 	single { ConfigArchiveUseCase(get(), get(), get()) } bind ConfigArchivePort::class
+	single<RenewalLock> {
+		FileRenewalLock(FileConfigRepository.getDefaultConfigPath().resolveSibling("renewal.lock"))
+	}
+	single<RenewalRunRecordStore> {
+		FileRenewalRunRecordStore(FileConfigRepository.getDefaultConfigPath().resolveSibling("last-renewal.json"))
+	}
+	single<RenewalCheckCache> {
+		FileRenewalCheckCache(FileConfigRepository.getDefaultConfigPath().resolveSibling("renewal-check-cache.json"))
+	}
 	singleOf(::RenewBatchUseCase)
+	singleOf(::RenewalNotifier)
 	single { MigrateTrustedCertificatesUseCase(get(), get()) }
 	
 	single<OsSchedulerService> {
 		val os = System.getProperty("os.name", "").lowercase()
-		if (os.contains("win")) WindowsTaskSchedulerService() else CrontabSchedulerService()
+		when {
+			os.contains("win") -> WindowsTaskSchedulerService()
+			os.contains("mac") -> LaunchdSchedulerService()
+			else -> SystemdSchedulerService()
+		}
 	}
 	
 	single<SchedulerPort> { SchedulerPortAdapter(get()) }

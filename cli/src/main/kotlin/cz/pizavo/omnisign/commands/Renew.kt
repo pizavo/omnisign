@@ -11,8 +11,7 @@ import cz.pizavo.omnisign.cli.json.JsonError
 import cz.pizavo.omnisign.cli.json.JsonRenewalFileResult
 import cz.pizavo.omnisign.cli.json.JsonRenewalJobResult
 import cz.pizavo.omnisign.cli.json.JsonRenewalResult
-import cz.pizavo.omnisign.data.service.NotificationUrgency
-import cz.pizavo.omnisign.data.service.OsNotificationService
+import cz.pizavo.omnisign.data.service.RenewalNotifier
 import cz.pizavo.omnisign.domain.model.result.RenewBatchResult
 import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
 import cz.pizavo.omnisign.domain.usecase.RenewBatchUseCase
@@ -26,7 +25,7 @@ import org.koin.core.component.inject
  * (or a single named job), checks each matching B-LTA PDF against its renewal buffer, and
  * re-timestamps in-place any file whose archival timestamp is nearing expiry.
  *
- * This command is designed to be invoked by the OS-level daily cron job registered via
+ * This command is designed to be invoked by the OS-level daily scheduled job registered via
  * `omnisign schedule install`, but can also be run manually at any time.
  *
  * The core batch logic is delegated to [RenewBatchUseCase]; this command handles
@@ -35,7 +34,7 @@ import org.koin.core.component.inject
 class Renew : CliktCommand(name = "renew"), KoinComponent {
 
 	private val renewBatchUseCase: RenewBatchUseCase by inject()
-	private val notificationService: OsNotificationService by inject()
+	private val renewalNotifier: RenewalNotifier by inject()
 	private val output by requireObject<OutputConfig>()
 
 	private val jobName by option(
@@ -70,6 +69,31 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 			throw ProgramResult(1)
 		}
 
+		if (result.alreadyRunning) {
+			if (output.json) {
+				echo(Json.encodeToString(JsonRenewalResult(success = true, alreadyRunning = true)))
+			} else {
+				echo("⏳ Another renewal run is already in progress — skipping.")
+			}
+			return@runBlocking
+		}
+
+		if (result.lockError != null) {
+			if (output.json) {
+				echo(
+					Json.encodeToString(
+						JsonRenewalResult(
+							success = false,
+							error = JsonError(message = "Could not acquire the renewal lock: ${result.lockError}"),
+						)
+					)
+				)
+			} else {
+				echo("❌ Could not acquire the renewal lock: ${result.lockError}", err = true)
+			}
+			throw ProgramResult(1)
+		}
+
 		if (result.jobs.isEmpty()) {
 			if (output.json) {
 				echo(Json.encodeToString(JsonRenewalResult(success = true, dryRun = dryRun)))
@@ -80,7 +104,7 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 		}
 
 		printResults(result)
-		sendNotifications(result)
+		renewalNotifier.notify(result)
 
 		if (result.errors > 0) throw ProgramResult(1)
 	}
@@ -155,43 +179,6 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 			echo("  Skipped : ${result.skipped}")
 			echo("  Errors  : ${result.errors}")
 			echo("═══════════════════════════════════════════════════════════════")
-		}
-	}
-
-	/**
-	 * Fire OS notifications for each job that requested them.
-	 */
-	private fun sendNotifications(result: RenewBatchResult) {
-		if (result.dryRun) return
-		for (job in result.jobs) {
-			if (!job.notify) continue
-			notifyJobResult(job.name, job.renewed, job.errors)
-		}
-	}
-
-	/**
-	 * Fire a single summary OS notification for one completed job run.
-	 * No notification is sent when everything was skipped (nothing actionable happened).
-	 */
-	private fun notifyJobResult(jobName: String, renewed: Int, errors: Int) {
-		when {
-			errors > 0 && renewed > 0 -> notificationService.notify(
-				title = "omnisign — Renewal partial failure ($jobName)",
-				body = "$renewed file(s) re-timestamped, $errors error(s). Check the log for details.",
-				urgency = NotificationUrgency.CRITICAL,
-			)
-
-			errors > 0 -> notificationService.notify(
-				title = "omnisign — Renewal failed ($jobName)",
-				body = "$errors file(s) could not be re-timestamped. Digital continuity may be at risk. Check the log.",
-				urgency = NotificationUrgency.CRITICAL,
-			)
-
-			renewed > 0 -> notificationService.notify(
-				title = "omnisign — Renewal complete ($jobName)",
-				body = "$renewed file(s) successfully re-timestamped.",
-				urgency = NotificationUrgency.NORMAL,
-			)
 		}
 	}
 }

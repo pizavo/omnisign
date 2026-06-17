@@ -9,6 +9,10 @@ package cz.pizavo.omnisign.data.service
  * [ProcessBuilder] escapes embedded double-quotes with backslashes (`\"`) but
  * `schtasks /create /tr` does not use the MSVC quoting convention.
  *
+ * The registered task sets `StartWhenAvailable`, so a daily run missed while the machine was
+ * off or asleep is caught up once the machine is next available instead of being skipped
+ * until the next day.
+ *
  * **isInstalled** and **uninstall** use the lightweight `schtasks` CLI instead
  * because their arguments are simple strings with no quoting ambiguity, and
  * `schtasks` starts significantly faster than PowerShell (no .NET runtime init).
@@ -26,17 +30,33 @@ class WindowsTaskSchedulerService : OsSchedulerService {
 	) {
 		val startTime = "%02d:%02d".format(runAtHour, runAtMinute)
 		val (exe, args) = buildAction(cliExecutablePath, logFilePath)
-		val psCommand = buildString {
+		run("powershell", "-NoProfile", "-NonInteractive", "-Command", buildRegisterScript(exe, args, startTime))
+	}
+
+	/**
+	 * Build the PowerShell command that registers (or replaces) the daily task.
+	 *
+	 * The task settings enable `StartWhenAvailable`, so a run missed because the machine was
+	 * off or asleep at [startTime] is executed as soon as the machine is next available rather
+	 * than skipped until the following day. Task Scheduler coalesces multiple missed
+	 * occurrences into a single catch-up run.
+	 *
+	 * @param exe Executable to launch (the OmniSign binary, or `cmd` when redirecting output).
+	 * @param args Arguments passed to [exe].
+	 * @param startTime Daily trigger time in `HH:mm` form.
+	 * @return The PowerShell command passed to `powershell -Command`.
+	 */
+	internal fun buildRegisterScript(exe: String, args: String, startTime: String): String =
+		buildString {
 			append("\$action = New-ScheduledTaskAction")
 			append(" -Execute '${exe.escapeSingleQuote()}'")
 			append(" -Argument '${args.escapeSingleQuote()}'")
 			append("; \$trigger = New-ScheduledTaskTrigger -Daily -At '${startTime}'")
+			append("; \$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable")
 			append("; Register-ScheduledTask")
 			append(" -TaskName '${OsSchedulerService.JOB_TAG}'")
-			append(" -Action \$action -Trigger \$trigger -Force | Out-Null")
+			append(" -Action \$action -Trigger \$trigger -Settings \$settings -Force | Out-Null")
 		}
-		run("powershell", "-NoProfile", "-NonInteractive", "-Command", psCommand)
-	}
 
 	override fun uninstall() {
 		runQuietly("schtasks", "/delete", "/tn", OsSchedulerService.JOB_TAG, "/f")
