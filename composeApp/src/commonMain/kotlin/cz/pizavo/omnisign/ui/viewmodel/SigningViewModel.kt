@@ -16,6 +16,7 @@ import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
 import cz.pizavo.omnisign.domain.usecase.UnlockTokenUseCase
 import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
+import cz.pizavo.omnisign.ui.model.RenewalOfferError
 import cz.pizavo.omnisign.ui.model.SigningDialogState
 import cz.pizavo.omnisign.ui.platform.writeBytesToPath
 import cz.pizavo.omnisign.ui.toast.ToastDuration
@@ -517,7 +518,7 @@ class SigningViewModel(
 				if (result != null) {
 					_pendingRenewalOffer.value = offer.copy(assignedJobName = result, error = null)
 				} else {
-					_pendingRenewalOffer.value = offer.copy(error = "Job '$jobName' not found.")
+					_pendingRenewalOffer.value = offer.copy(error = RenewalOfferError.JobNotFound(jobName))
 				}
 			}
 		}
@@ -537,8 +538,8 @@ class SigningViewModel(
 					onSuccess = { name ->
 						_pendingRenewalOffer.value = offer.copy(assignedJobName = name, error = null)
 					},
-					onFailure = { e ->
-						_pendingRenewalOffer.value = offer.copy(error = e.message)
+					onFailure = { _ ->
+						_pendingRenewalOffer.value = offer.copy(error = RenewalOfferError.JobAlreadyExists(job.name))
 					},
 				)
 			}

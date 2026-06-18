@@ -13,6 +13,7 @@ import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
+import cz.pizavo.omnisign.ui.model.resolve
 import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
@@ -235,7 +236,7 @@ private fun RenewalOfferFormContent(
 				)
 				SelectableContent {
 					Text(
-						text = state.error,
+						text = state.error.resolve(),
 						style = LumoTheme.typography.body2,
 						color = LumoTheme.colors.error,
 					)

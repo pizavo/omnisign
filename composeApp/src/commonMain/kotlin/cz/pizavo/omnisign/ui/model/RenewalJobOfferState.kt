@@ -13,7 +13,7 @@ import cz.pizavo.omnisign.domain.model.config.RenewalJob
  * @property coveringJob The existing job whose glob patterns already match [outputFile],
  *   or `null` when no such job exists.
  * @property assignedJobName Name of the job the file was assigned to, set after a successful assignment.
- * @property error Human-readable error from the last failed assignment attempt, or `null`.
+ * @property error The error from the last failed assignment attempt, or `null`.
  */
 data class RenewalJobOfferState(
 	val outputFile: String,
@@ -22,6 +22,6 @@ data class RenewalJobOfferState(
 	val activeProfile: String? = null,
 	val coveringJob: RenewalJob? = null,
 	val assignedJobName: String? = null,
-	val error: String? = null,
+	val error: RenewalOfferError? = null,
 )
 

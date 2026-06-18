@@ -10,4 +10,6 @@
 	<string name="renewaloffer_name_label">Name</string>
 	<string name="renewaloffer_profile_label">Profile</string>
 	<string name="renewaloffer_create_assign">Create &amp; assign</string>
+	<string name="renewaloffer_job_not_found">Job \'%1$s\' not found.</string>
+	<string name="renewaloffer_job_already_exists">A renewal job named \'%1$s\' already exists.</string>
 </resources>

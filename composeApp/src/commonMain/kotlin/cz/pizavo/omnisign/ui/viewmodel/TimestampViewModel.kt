@@ -13,6 +13,7 @@ import cz.pizavo.omnisign.domain.usecase.ExtendDocumentUseCase
 import cz.pizavo.omnisign.domain.usecase.GetDocumentTimestampInfoUseCase
 import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
+import cz.pizavo.omnisign.ui.model.RenewalOfferError
 import cz.pizavo.omnisign.ui.model.TimestampDialogState
 import cz.pizavo.omnisign.ui.model.TimestampType
 import cz.pizavo.omnisign.ui.platform.writeBytesToPath
@@ -381,7 +382,7 @@ class TimestampViewModel(
 				if (result != null) {
 					_pendingRenewalOffer.value = offer.copy(assignedJobName = result, error = null)
 				} else {
-					_pendingRenewalOffer.value = offer.copy(error = "Job '$jobName' not found.")
+					_pendingRenewalOffer.value = offer.copy(error = RenewalOfferError.JobNotFound(jobName))
 				}
 			}
 		}
@@ -402,8 +403,8 @@ class TimestampViewModel(
 						onSuccess = { name ->
 							_pendingRenewalOffer.value = offer.copy(assignedJobName = name, error = null)
 						},
-						onFailure = { e ->
-							_pendingRenewalOffer.value = offer.copy(error = e.message)
+						onFailure = { _ ->
+							_pendingRenewalOffer.value = offer.copy(error = RenewalOfferError.JobAlreadyExists(job.name))
 						},
 					)
 				}
