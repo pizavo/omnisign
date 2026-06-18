@@ -1,0 +1,12 @@
+<resources>
+	<string name="customtl_no_lists">No custom trusted lists registered.</string>
+	<string name="customtl_build_button">Build Custom TL</string>
+	<string name="customtl_signed_badge">Signed</string>
+	<string name="customtl_name_label">Name</string>
+	<string name="customtl_name_placeholder">Label</string>
+	<string name="customtl_source_label">Source (URL or file path)</string>
+	<string name="customtl_source_placeholder">https://… or file:///…</string>
+	<string name="customtl_source_warning">Source should start with https:// or file:/// — other schemes may not be supported by DSS.</string>
+	<string name="customtl_cert_label">Signing certificate (optional)</string>
+	<string name="customtl_browse_cert_description">Browse for signing certificate</string>
+</resources>

@@ -1,0 +1,34 @@
+<resources>
+	<string name="signing_header_title">Sign Document</string>
+	<string name="signing_rescan_tokens">Rescan tokens</string>
+	<string name="signing_show_pkcs11_diagnostic_info">Show PKCS#11 diagnostic info</string>
+	<string name="signing_discovering_certificates">Discovering certificates...</string>
+	<string name="signing_signing_document">Signing document...</string>
+	<string name="signing_certificate_label">Certificate</string>
+	<string name="signing_select_certificate_placeholder">Select a certificate…</string>
+	<string name="signing_import_pkcs12_file">Import PKCS#12 file</string>
+	<string name="signing_hash_algorithm_label">Hash Algorithm</string>
+	<string name="signing_add_to_renewal_job_tooltip">Offer to set up automatic archival renewal after signing</string>
+	<string name="signing_reason_label">Reason (optional)</string>
+	<string name="signing_location_label">Location (optional)</string>
+	<string name="signing_contact_info_label">Contact Info (optional)</string>
+	<string name="signing_document_signed_successfully">Document signed successfully</string>
+	<string name="signing_output_file_label">Output file</string>
+	<string name="signing_signature_id_label">Signature ID</string>
+	<string name="signing_signature_level_label">Signature level</string>
+	<string name="signing_revocation_warning_body">The document was signed, but revocation information (CRL/OCSP) could not be embedded. Without this data the signature may not be suitable for long-term validation.</string>
+	<string name="signing_unlock">Unlock</string>
+	<string name="signing_cert_qualified_qscd">Qualified (QSCD)</string>
+	<string name="signing_cert_qualified">Qualified</string>
+	<string name="signing_cert_on_pkcs11_token">On PKCS#11 hardware token</string>
+	<string name="signing_cert_not_qualified">Not qualified</string>
+	<string name="signing_cert_qscd_tooltip">The certificate carries the QcSSCD statement — the private key is stored on a Qualified Signature/Seal Creation Device.</string>
+	<string name="signing_cert_qualified_tooltip">The certificate carries the QcCompliance statement, but QSCD status was not confirmed.</string>
+	<string name="signing_cert_not_qualified_tooltip">The certificate does not carry QCStatements indicating eIDAS qualification.</string>
+	<string name="signing_no_tokens_detected">No tokens detected.</string>
+	<string name="signing_no_tokens_hint_smartcard">Insert a smart card to load its certificates, or use the import button to load a PKCS#12 file.</string>
+	<string name="signing_no_tokens_hint_library">If your PKCS#11 token isn\'t picked up automatically, add its library path under Global Settings → PKCS#11 Libraries.</string>
+	<string name="signing_show_diagnostic_info">Show diagnostic info</string>
+	<string name="signing_timestamping_unavailable">Timestamping unavailable</string>
+	<string name="signing_timestamping_select_profile">Select a profile that does not require a timestamp, or ask the server administrator to enable the timestamping operation.</string>
+</resources>

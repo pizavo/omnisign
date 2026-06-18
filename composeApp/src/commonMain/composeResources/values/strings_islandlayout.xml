@@ -1,0 +1,5 @@
+<resources>
+	<string name="islandlayout_refresh_signatures">Refresh signatures</string>
+	<string name="islandlayout_edit_profile">Edit Profile</string>
+	<string name="islandlayout_profiles_placeholder">Configuration profiles will appear here.</string>
+</resources>

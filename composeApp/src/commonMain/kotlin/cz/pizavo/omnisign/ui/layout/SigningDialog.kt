@@ -32,6 +32,7 @@ import io.github.vinceglb.filekit.name
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Full-screen modal dialog for configuring and executing a document signing operation.
@@ -106,7 +107,7 @@ fun SigningDialog(
 			Box(modifier = Modifier.weight(1f)) {
 				when (state) {
 					is SigningDialogState.Idle -> {}
-					is SigningDialogState.Loading -> LoadingContent("Discovering certificates...")
+					is SigningDialogState.Loading -> LoadingContent(stringResource(Res.string.signing_discovering_certificates))
 					is SigningDialogState.TimestampingUnavailable -> TimestampingUnavailableContent(state)
 					is SigningDialogState.Ready -> SigningFormContent(
 						state = state,
@@ -117,7 +118,7 @@ fun SigningDialog(
 						onShowDiagnostic = onShowDiagnostic,
 					)
 
-					is SigningDialogState.Signing -> LoadingContent("Signing document...")
+					is SigningDialogState.Signing -> LoadingContent(stringResource(Res.string.signing_signing_document))
 					is SigningDialogState.RevocationWarning -> RevocationWarningContent(state)
 					is SigningDialogState.Success -> SigningSuccessContent(state)
 					is SigningDialogState.Error -> ErrorContent(
@@ -190,14 +191,14 @@ private fun SigningDialogHeader(
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.spacedBy(10.dp),
 		) {
-			Text(text = "Sign Document", style = LumoTheme.typography.h3)
+			Text(text = stringResource(Res.string.signing_header_title), style = LumoTheme.typography.h3)
 			when {
 				refreshing -> CircularProgressIndicator(
 					modifier = Modifier.size(14.dp),
 					strokeWidth = 2.dp,
 				)
 				onRescan != null -> TooltipBox(
-					tooltip = { Tooltip { Text(text = "Rescan tokens") } },
+					tooltip = { Tooltip { Text(text = stringResource(Res.string.signing_rescan_tokens)) } },
 					state = rememberTooltipState(),
 				) {
 					IconButton(
@@ -206,7 +207,7 @@ private fun SigningDialogHeader(
 					) {
 						Icon(
 							painter = painterResource(Res.drawable.icon_refresh),
-							contentDescription = "Rescan tokens",
+							contentDescription = stringResource(Res.string.signing_rescan_tokens),
 							modifier = Modifier.size(16.dp),
 						)
 					}
@@ -214,7 +215,7 @@ private fun SigningDialogHeader(
 			}
 			if (onShowDiagnostic != null) {
 				TooltipBox(
-					tooltip = { Tooltip { Text(text = "Show PKCS#11 diagnostic info") } },
+					tooltip = { Tooltip { Text(text = stringResource(Res.string.signing_show_pkcs11_diagnostic_info)) } },
 					state = rememberTooltipState(),
 				) {
 					IconButton(
@@ -223,7 +224,7 @@ private fun SigningDialogHeader(
 					) {
 						Icon(
 							painter = painterResource(Res.drawable.icon_alert_info),
-							contentDescription = "Show PKCS#11 diagnostic info",
+							contentDescription = stringResource(Res.string.signing_show_pkcs11_diagnostic_info),
 							modifier = Modifier.size(16.dp),
 						)
 					}
@@ -237,7 +238,7 @@ private fun SigningDialogHeader(
 		) {
 			Icon(
 				painter = painterResource(Res.drawable.icon_x),
-				contentDescription = "Close",
+				contentDescription = stringResource(Res.string.action_close),
 				modifier = Modifier.size(20.dp),
 			)
 		}
@@ -331,8 +332,8 @@ private fun SigningFormContent(
 					selected = state.selectedAlias,
 					options = certOptions,
 					onSelect = { alias -> onFieldChange { it.copy(selectedAlias = alias) } },
-					label = { Text("Certificate") },
-					nullLabel = "Select a certificate\u2026",
+					label = { Text(stringResource(Res.string.signing_certificate_label)) },
+					nullLabel = stringResource(Res.string.signing_select_certificate_placeholder),
 					showNullOption = false,
 					itemLabel = { alias ->
 						val cert = state.certificates.find { it.alias == alias }
@@ -355,7 +356,7 @@ private fun SigningFormContent(
 				) {
 					Icon(
 						painter = painterResource(Res.drawable.icon_upload),
-						contentDescription = "Import PKCS#12 file",
+						contentDescription = stringResource(Res.string.signing_import_pkcs12_file),
 						modifier = Modifier.size(20.dp),
 					)
 				}
@@ -374,7 +375,7 @@ private fun SigningFormContent(
 				selected = state.hashAlgorithm,
 				options = HashAlgorithm.entries.toList(),
 				onSelect = { alg -> onFieldChange { it.copy(hashAlgorithm = alg) } },
-				label = { Text("Hash Algorithm") },
+				label = { Text(stringResource(Res.string.signing_hash_algorithm_label)) },
 				nullLabel = "Default (${state.configHashAlgorithm.name})",
 				showNullOption = true,
 				disabledOptions = state.disabledHashAlgorithms,
@@ -397,8 +398,8 @@ private fun SigningFormContent(
 					onCheckedChange = { checked -> onFieldChange { it.copy(addSignatureTimestamp = checked) } },
 					enabled = !state.addArchivalTimestamp,
 				)
-				Text(text = "Signature timestamp", style = LumoTheme.typography.body2)
-				InfoTooltip(text = "Produces PAdES BASELINE B-LT")
+				Text(text = stringResource(Res.string.label_signature_timestamp), style = LumoTheme.typography.body2)
+				InfoTooltip(text = stringResource(Res.string.label_produces_b_lt))
 			}
 			
 			Row(
@@ -414,8 +415,8 @@ private fun SigningFormContent(
 						}
 					},
 				)
-				Text(text = "Archival timestamp", style = LumoTheme.typography.body2)
-				InfoTooltip(text = "Produces PAdES BASELINE B-LTA")
+				Text(text = stringResource(Res.string.label_archival_timestamp), style = LumoTheme.typography.body2)
+				InfoTooltip(text = stringResource(Res.string.label_produces_b_lta))
 			}
 			
 			if (state.addArchivalTimestamp) {
@@ -429,9 +430,9 @@ private fun SigningFormContent(
 							onFieldChange { it.copy(addToRenewalJob = checked) }
 						},
 					)
-					Text(text = "Add to renewal job", style = LumoTheme.typography.body2)
+					Text(text = stringResource(Res.string.label_add_to_renewal_job), style = LumoTheme.typography.body2)
 					InfoTooltip(
-						text = "Offer to set up automatic archival renewal after signing",
+						text = stringResource(Res.string.signing_add_to_renewal_job_tooltip),
 					)
 				}
 			}
@@ -443,7 +444,7 @@ private fun SigningFormContent(
 			value = state.reason,
 			onValueChange = { v -> onFieldChange { it.copy(reason = v) } },
 			singleLine = true,
-			label = { Text("Reason (optional)") },
+			label = { Text(stringResource(Res.string.signing_reason_label)) },
 			modifier = Modifier.fillMaxWidth(),
 		)
 		
@@ -455,7 +456,7 @@ private fun SigningFormContent(
 				value = state.location,
 				onValueChange = { v -> onFieldChange { it.copy(location = v) } },
 				singleLine = true,
-				label = { Text("Location (optional)") },
+				label = { Text(stringResource(Res.string.signing_location_label)) },
 				modifier = Modifier.weight(1f),
 			)
 			
@@ -463,7 +464,7 @@ private fun SigningFormContent(
 				value = state.contactInfo,
 				onValueChange = { v -> onFieldChange { it.copy(contactInfo = v) } },
 				singleLine = true,
-				label = { Text("Contact Info (optional)") },
+				label = { Text(stringResource(Res.string.signing_contact_info_label)) },
 				modifier = Modifier.weight(1f),
 			)
 		}
@@ -493,14 +494,14 @@ private fun SigningSuccessContent(state: SigningDialogState.Success) {
 				modifier = Modifier.size(20.dp),
 				tint = LumoTheme.colors.success,
 			)
-			Text(text = "Document signed successfully", style = LumoTheme.typography.h4)
+			Text(text = stringResource(Res.string.signing_document_signed_successfully), style = LumoTheme.typography.h4)
 		}
 		
 		Spacer(modifier = Modifier.height(8.dp))
 		
-		SigningResultRow(label = "Output file", value = state.outputFile)
-		SigningResultRow(label = "Signature ID", value = state.signatureId)
-		SigningResultRow(label = "Signature level", value = state.signatureLevel)
+		SigningResultRow(label = stringResource(Res.string.signing_output_file_label), value = state.outputFile)
+		SigningResultRow(label = stringResource(Res.string.signing_signature_id_label), value = state.signatureId)
+		SigningResultRow(label = stringResource(Res.string.signing_signature_level_label), value = state.signatureLevel)
 		
 		if (state.warnings.isNotEmpty()) {
 			Spacer(modifier = Modifier.height(8.dp))
@@ -552,15 +553,13 @@ private fun RevocationWarningContent(state: SigningDialogState.RevocationWarning
 				modifier = Modifier.size(20.dp),
 				tint = LumoTheme.colors.warning,
 			)
-			Text(text = "Revocation data unavailable", style = LumoTheme.typography.h4)
+			Text(text = stringResource(Res.string.label_revocation_unavailable), style = LumoTheme.typography.h4)
 		}
 		
 		Spacer(modifier = Modifier.height(4.dp))
 		
 		Text(
-			text = "The document was signed, but revocation information (CRL/OCSP) could not " +
-					"be embedded. Without this data the signature may not be suitable for " +
-					"long-term validation.",
+			text = stringResource(Res.string.signing_revocation_warning_body),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)
@@ -599,12 +598,12 @@ private fun SigningDialogFooter(
 		when (state) {
 			is SigningDialogState.Ready -> {
 				Button(
-					text = "Cancel",
+					text = stringResource(Res.string.action_cancel),
 					variant = ButtonVariant.SecondaryOutlined,
 					onClick = onDismiss,
 				)
 				Button(
-					text = "Sign",
+					text = stringResource(Res.string.action_sign),
 					variant = ButtonVariant.Primary,
 					enabled = state.selectedAlias != null,
 					onClick = onSign,
@@ -613,12 +612,12 @@ private fun SigningDialogFooter(
 			
 			is SigningDialogState.RevocationWarning -> {
 				Button(
-					text = "Continue anyway",
+					text = stringResource(Res.string.action_continue_anyway),
 					variant = ButtonVariant.SecondaryOutlined,
 					onClick = onAcceptRevocation,
 				)
 				Button(
-					text = "Abort",
+					text = stringResource(Res.string.action_abort),
 					variant = ButtonVariant.Primary,
 					onClick = onAbortRevocation,
 				)
@@ -626,23 +625,23 @@ private fun SigningDialogFooter(
 			
 			is SigningDialogState.Success -> {
 				Button(
-					text = "Close",
+					text = stringResource(Res.string.action_close),
 					variant = ButtonVariant.Primary,
 					onClick = onDismiss,
 				)
 			}
-			
+
 			is SigningDialogState.Error -> {
 				Button(
-					text = "Close",
+					text = stringResource(Res.string.action_close),
 					variant = ButtonVariant.SecondaryOutlined,
 					onClick = onDismiss,
 				)
 			}
-			
+
 			is SigningDialogState.TimestampingUnavailable -> {
 				Button(
-					text = "Close",
+					text = stringResource(Res.string.action_close),
 					variant = ButtonVariant.SecondaryOutlined,
 					onClick = onDismiss,
 				)
@@ -760,7 +759,7 @@ private fun LockedTokensAccordion(
 				)
 				Icon(
 					painter = painterResource(Res.drawable.icon_chevron_down),
-					contentDescription = if (accordionState.expanded) "Collapse" else "Expand",
+					contentDescription = if (accordionState.expanded) stringResource(Res.string.action_collapse) else stringResource(Res.string.action_expand),
 					modifier = Modifier.size(14.dp).rotate(chevronRotation),
 					tint = LumoTheme.colors.textSecondary,
 				)
@@ -784,7 +783,7 @@ private fun LockedTokensAccordion(
 								modifier = Modifier.weight(1f),
 							)
 							TooltipBox(
-								tooltip = { Tooltip { Text("Unlock") } },
+								tooltip = { Tooltip { Text(stringResource(Res.string.signing_unlock)) } },
 							) {
 								IconButton(
 									variant = IconButtonVariant.Ghost,
@@ -792,7 +791,7 @@ private fun LockedTokensAccordion(
 								) {
 									Icon(
 										painter = painterResource(Res.drawable.icon_lock_open),
-										contentDescription = "Unlock",
+										contentDescription = stringResource(Res.string.signing_unlock),
 										modifier = Modifier.size(20.dp),
 									)
 								}
@@ -843,13 +842,13 @@ private fun CertDropdownRow(alias: String, cert: AvailableCertificateInfo?) {
 				when {
 					cert.isQscd == true -> Icon(
 						painter = painterResource(Res.drawable.icon_rosette_check),
-						contentDescription = "Qualified (QSCD)",
+						contentDescription = stringResource(Res.string.signing_cert_qualified_qscd),
 						modifier = Modifier.size(14.dp),
 						tint = LumoTheme.colors.icons.trustQualifiedQscd,
 					)
 					cert.isQualified == true -> Icon(
 						painter = painterResource(Res.drawable.icon_rosette),
-						contentDescription = "Qualified",
+						contentDescription = stringResource(Res.string.signing_cert_qualified),
 						modifier = Modifier.size(14.dp),
 						tint = LumoTheme.colors.icons.trustQualified,
 					)
@@ -857,7 +856,7 @@ private fun CertDropdownRow(alias: String, cert: AvailableCertificateInfo?) {
 				if (cert.tokenType == TokenType.PKCS11.name) {
 					Icon(
 						painter = painterResource(Res.drawable.icon_device_usb),
-						contentDescription = "On PKCS#11 hardware token",
+						contentDescription = stringResource(Res.string.signing_cert_on_pkcs11_token),
 						modifier = Modifier.size(14.dp),
 						tint = LumoTheme.colors.success,
 					)
@@ -899,20 +898,20 @@ private fun CertQualificationBadge(cert: AvailableCertificateInfo) {
 		cert.isQscd == true -> BadgeConfig(
 			icon = Res.drawable.icon_rosette_check,
 			tint = LumoTheme.colors.icons.trustQualifiedQscd,
-			label = "Qualified (QSCD)",
-			tooltip = "The certificate carries the QcSSCD statement — the private key is stored on a Qualified Signature/Seal Creation Device.",
+			label = stringResource(Res.string.signing_cert_qualified_qscd),
+			tooltip = stringResource(Res.string.signing_cert_qscd_tooltip),
 		)
 		cert.isQualified == true -> BadgeConfig(
 			icon = Res.drawable.icon_rosette,
 			tint = LumoTheme.colors.icons.trustQualified,
-			label = "Qualified",
-			tooltip = "The certificate carries the QcCompliance statement, but QSCD status was not confirmed.",
+			label = stringResource(Res.string.signing_cert_qualified),
+			tooltip = stringResource(Res.string.signing_cert_qualified_tooltip),
 		)
 		cert.isQualified == false -> BadgeConfig(
 			icon = Res.drawable.icon_shield_x,
 			tint = LumoTheme.colors.textSecondary,
-			label = "Not qualified",
-			tooltip = "The certificate does not carry QCStatements indicating eIDAS qualification.",
+			label = stringResource(Res.string.signing_cert_not_qualified),
+			tooltip = stringResource(Res.string.signing_cert_not_qualified_tooltip),
 		)
 		else -> return
 	}
@@ -1008,25 +1007,25 @@ private fun EmptyTokenBanner(onShowDiagnostic: (() -> Unit)? = null) {
 		)
 		Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
 			Text(
-				text = "No tokens detected.",
+				text = stringResource(Res.string.signing_no_tokens_detected),
 				style = LumoTheme.typography.body2,
 				fontWeight = FontWeight.SemiBold,
 				color = LumoTheme.colors.text,
 			)
 			Text(
-				text = "Insert a smart card to load its certificates, or use the import button to load a PKCS#12 file.",
+				text = stringResource(Res.string.signing_no_tokens_hint_smartcard),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)
 			Text(
-				text = "If your PKCS#11 token isn't picked up automatically, add its library path under Global Settings → PKCS#11 Libraries.",
+				text = stringResource(Res.string.signing_no_tokens_hint_library),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)
 			if (onShowDiagnostic != null) {
 				Button(
 					variant = ButtonVariant.PrimaryGhost,
-					text = "Show diagnostic info",
+					text = stringResource(Res.string.signing_show_diagnostic_info),
 					onClick = onShowDiagnostic,
 					modifier = Modifier.padding(top = 2.dp),
 				)
@@ -1076,7 +1075,7 @@ private fun TimestampingUnavailableContent(state: SigningDialogState.Timestampin
 				modifier = Modifier.size(20.dp),
 				tint = LumoTheme.colors.warning,
 			)
-			Text(text = "Timestamping unavailable", style = LumoTheme.typography.h4)
+			Text(text = stringResource(Res.string.signing_timestamping_unavailable), style = LumoTheme.typography.h4)
 		}
 		Text(
 			text = "$intro This server has timestamping disabled, so it can only produce basic " +
@@ -1085,8 +1084,7 @@ private fun TimestampingUnavailableContent(state: SigningDialogState.Timestampin
 			color = LumoTheme.colors.textSecondary,
 		)
 		Text(
-			text = "Select a profile that does not require a timestamp, or ask the server " +
-				"administrator to enable the timestamping operation.",
+			text = stringResource(Res.string.signing_timestamping_select_profile),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)

@@ -1,0 +1,14 @@
+<resources>
+	<string name="profileedit_alert_eu_lotl_tooltip">Flag signatures whose trust anchor is not on the EU LOTL</string>
+	<string name="profileedit_trusted_lists_title">Trusted Lists</string>
+	<string name="profileedit_trusted_lists_description">Custom ETSI Trusted List sources added here apply only to this profile, in addition to global ones.</string>
+	<string name="profileedit_trusted_certs_title">Trusted Certificates</string>
+	<string name="profileedit_trusted_certs_description">Certificates added here are trusted only for this profile, in addition to global ones. Changes are staged and applied when you Save; Cancel discards them.</string>
+	<string name="profileedit_description_label">Description</string>
+	<string name="profileedit_description_placeholder">Optional profile description</string>
+	<string name="profileedit_algorithms_timestamps_section">Algorithms &amp; Timestamps</string>
+	<string name="profileedit_timestamp_overrides_section">Timestamp level overrides</string>
+	<string name="profileedit_archival_required_by_profile">Required by this profile\'s archival timestamp (B-LTA)</string>
+	<string name="profileedit_archival_required_by_global">Required by global archival timestamp setting (B-LTA)</string>
+	<string name="profileedit_timestamp_server_label">Timestamp server</string>
+</resources>

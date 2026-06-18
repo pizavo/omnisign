@@ -1,0 +1,5 @@
+<resources>
+	<string name="exportreport_tooltip">Export report</string>
+	<string name="exportreport_icon_content_description">Export validation report</string>
+	<string name="exportreport_section_label">Export format</string>
+</resources>

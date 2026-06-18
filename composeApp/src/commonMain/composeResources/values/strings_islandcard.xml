@@ -1,0 +1,4 @@
+<resources>
+	<string name="islandcard_content_description">Main document area</string>
+	<string name="islandcard_placeholder_label">Document Viewer</string>
+</resources>

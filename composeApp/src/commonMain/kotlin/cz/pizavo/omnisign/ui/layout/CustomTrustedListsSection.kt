@@ -36,11 +36,9 @@ import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.name
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_alert_warning
-import omnisign.composeapp.generated.resources.icon_folder
-import omnisign.composeapp.generated.resources.icon_x
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Reusable section for listing, adding, and removing custom ETSI Trusted List sources.
@@ -71,7 +69,7 @@ fun CustomTrustedListsSection(
 ) {
 	if (trustedLists.isEmpty()) {
 		Text(
-			text = "No custom trusted lists registered.",
+			text = stringResource(Res.string.customtl_no_lists),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)
@@ -99,7 +97,7 @@ fun CustomTrustedListsSection(
 	if (onBuild != null) {
 		Spacer(modifier = Modifier.height(12.dp))
 		Button(
-			text = "Build Custom TL",
+			text = stringResource(Res.string.customtl_build_button),
 			variant = ButtonVariant.SecondaryOutlined,
 			onClick = onBuild,
 		)
@@ -132,7 +130,7 @@ private fun TrustedListRow(
 					Chip(
 						label = {
 							Text(
-								text = "Signed",
+								text = stringResource(Res.string.customtl_signed_badge),
 								style = LumoTheme.typography.body2,
 							)
 						},
@@ -223,8 +221,8 @@ private fun TrustedListAddForm(
 				name = it
 				onClearError()
 			},
-			label = { Text(text = "Name") },
-			placeholder = { Text(text = "Label") },
+			label = { Text(text = stringResource(Res.string.customtl_name_label)) },
+			placeholder = { Text(text = stringResource(Res.string.customtl_name_placeholder)) },
 			singleLine = true,
 			modifier = Modifier.weight(1f),
 		)
@@ -234,8 +232,8 @@ private fun TrustedListAddForm(
 				source = it
 				onClearError()
 			},
-			label = { Text(text = "Source (URL or file path)") },
-			placeholder = { Text(text = "https://… or file:///…") },
+			label = { Text(text = stringResource(Res.string.customtl_source_label)) },
+			placeholder = { Text(text = stringResource(Res.string.customtl_source_placeholder)) },
 			singleLine = true,
 			modifier = Modifier.weight(2f),
 		)
@@ -258,7 +256,7 @@ private fun TrustedListAddForm(
 				modifier = Modifier.size(14.dp),
 			)
 			Text(
-				text = "Source should start with https:// or file:/// — other schemes may not be supported by DSS.",
+				text = stringResource(Res.string.customtl_source_warning),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.warning,
 			)
@@ -278,13 +276,13 @@ private fun TrustedListAddForm(
 				signingCertPath = it
 				onClearError()
 			},
-			label = { Text(text = "Signing certificate (optional)") },
+			label = { Text(text = stringResource(Res.string.customtl_cert_label)) },
 			placeholder = { Text(text = "/path/to/tl-signer.pem") },
 			singleLine = true,
 			modifier = Modifier.weight(1f),
 			trailingIcon = {
 				TooltipBox(
-					tooltip = { Tooltip { Text(text = "Browse") } },
+					tooltip = { Tooltip { Text(text = stringResource(Res.string.action_browse)) } },
 					state = rememberTooltipState(),
 				) {
 					IconButton(
@@ -294,7 +292,7 @@ private fun TrustedListAddForm(
 					) {
 						Icon(
 							painter = painterResource(Res.drawable.icon_folder),
-							contentDescription = "Browse for signing certificate",
+							contentDescription = stringResource(Res.string.customtl_browse_cert_description),
 							modifier = Modifier.size(18.dp),
 						)
 					}
@@ -302,7 +300,7 @@ private fun TrustedListAddForm(
 			},
 		)
 		Button(
-			text = "Add",
+			text = stringResource(Res.string.action_add),
 			variant = ButtonVariant.PrimaryOutlined,
 			enabled = name.isNotBlank() && source.isNotBlank(),
 			onClick = {

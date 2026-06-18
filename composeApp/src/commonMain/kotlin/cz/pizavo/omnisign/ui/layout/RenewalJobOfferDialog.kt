@@ -14,11 +14,9 @@ import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
 import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_alert_warning
-import omnisign.composeapp.generated.resources.icon_check
-import omnisign.composeapp.generated.resources.icon_x
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Modal dialog for assigning a newly created B-LTA document to a renewal job.
@@ -92,14 +90,14 @@ private fun RenewalOfferHeader(onClose: () -> Unit) {
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.SpaceBetween,
 	) {
-		Text(text = "Add to Renewal Job", style = LumoTheme.typography.h3)
+		Text(text = stringResource(Res.string.renewaloffer_title), style = LumoTheme.typography.h3)
 		IconButton(
 			variant = IconButtonVariant.Ghost,
 			onClick = onClose,
 		) {
 			Icon(
 				painter = painterResource(Res.drawable.icon_x),
-				contentDescription = "Close",
+				contentDescription = stringResource(Res.string.action_close),
 				modifier = Modifier.size(20.dp),
 			)
 		}
@@ -129,7 +127,7 @@ private fun RenewalOfferAssignedContent(jobName: String) {
 				modifier = Modifier.size(20.dp),
 				tint = LumoTheme.colors.success,
 			)
-			Text(text = "File added to renewal job", style = LumoTheme.typography.h4)
+			Text(text = stringResource(Res.string.renewaloffer_assigned_heading), style = LumoTheme.typography.h4)
 		}
 		Spacer(modifier = Modifier.height(4.dp))
 		Text(
@@ -164,7 +162,7 @@ private fun RenewalOfferAlreadyCoveredContent(coveringJob: RenewalJob) {
 				modifier = Modifier.size(20.dp),
 				tint = LumoTheme.colors.success,
 			)
-			Text(text = "Already covered by a renewal job", style = LumoTheme.typography.h4)
+			Text(text = stringResource(Res.string.renewaloffer_covered_heading), style = LumoTheme.typography.h4)
 		}
 		Spacer(modifier = Modifier.height(4.dp))
 		Text(
@@ -207,14 +205,14 @@ private fun RenewalOfferFormContent(
 		verticalArrangement = Arrangement.spacedBy(12.dp),
 	) {
 		Text(
-			text = "Set up automatic archival renewal for the signed B-LTA document.",
+			text = stringResource(Res.string.renewaloffer_intro),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)
 
 		Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 			Text(
-				text = "File:",
+				text = stringResource(Res.string.renewaloffer_file_label),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)
@@ -250,8 +248,8 @@ private fun RenewalOfferFormContent(
 				selected = selectedExistingJob,
 				options = state.existingJobs.map { it.name },
 				onSelect = { selectedExistingJob = it },
-				label = { Text(text = "Existing job") },
-				nullLabel = "Create new job",
+				label = { Text(text = stringResource(Res.string.renewaloffer_existing_job_label)) },
+				nullLabel = stringResource(Res.string.renewaloffer_create_new_job),
 				showNullOption = true,
 				itemLabel = { it },
 				modifier = Modifier.fillMaxWidth(),
@@ -267,7 +265,7 @@ private fun RenewalOfferFormContent(
 			)
 		} else {
 			Spacer(modifier = Modifier.height(4.dp))
-			Text(text = "New renewal job", style = LumoTheme.typography.label1)
+			Text(text = stringResource(Res.string.renewaloffer_new_job_section), style = LumoTheme.typography.label1)
 
 			Row(
 				modifier = Modifier.fillMaxWidth(),
@@ -277,15 +275,15 @@ private fun RenewalOfferFormContent(
 				UnderlinedTextField(
 					value = newJobName,
 					onValueChange = { newJobName = it },
-					label = { Text(text = "Name") },
-					placeholder = { Text(text = "Job name") },
+					label = { Text(text = stringResource(Res.string.renewaloffer_name_label)) },
+					placeholder = { Text(text = stringResource(Res.string.label_job_name)) },
 					singleLine = true,
 					modifier = Modifier.weight(1f),
 				)
 				UnderlinedTextField(
 					value = newJobBufferDays,
 					onValueChange = { newJobBufferDays = it },
-					label = { Text(text = "Buffer days") },
+					label = { Text(text = stringResource(Res.string.label_buffer_days)) },
 					placeholder = { Text(text = "${ArchivingRepository.DEFAULT_RENEWAL_BUFFER_DAYS}") },
 					singleLine = true,
 					keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -297,8 +295,8 @@ private fun RenewalOfferFormContent(
 				selected = newJobProfile,
 				options = state.availableProfiles,
 				onSelect = { newJobProfile = it },
-				label = { Text(text = "Profile") },
-				nullLabel = "None (global settings only)",
+				label = { Text(text = stringResource(Res.string.renewaloffer_profile_label)) },
+				nullLabel = stringResource(Res.string.label_profile_none),
 				showNullOption = true,
 				itemLabel = { it },
 				modifier = Modifier.fillMaxWidth(),
@@ -307,7 +305,7 @@ private fun RenewalOfferFormContent(
 			UnderlinedTextField(
 				value = newJobLogFile,
 				onValueChange = { newJobLogFile = it },
-				label = { Text(text = "Log file (optional)") },
+				label = { Text(text = stringResource(Res.string.label_log_file_optional)) },
 				placeholder = { Text(text = "/var/log/omnisign-renewal.log") },
 				singleLine = true,
 				modifier = Modifier.fillMaxWidth(),
@@ -327,10 +325,10 @@ private fun RenewalOfferFormContent(
 						checked = newJobNotify,
 						onCheckedChange = { newJobNotify = it },
 					)
-					Text(text = "Desktop notifications", style = LumoTheme.typography.body2)
+					Text(text = stringResource(Res.string.label_desktop_notifications), style = LumoTheme.typography.body2)
 				}
 				Button(
-					text = "Create & assign",
+					text = stringResource(Res.string.renewaloffer_create_assign),
 					variant = ButtonVariant.Primary,
 					enabled = newJobName.isNotBlank(),
 					onClick = {
@@ -371,7 +369,7 @@ private fun RenewalOfferFooter(
 		horizontalArrangement = Arrangement.spacedBy(8.dp, alignment = Alignment.End),
 	) {
 		Button(
-			text = "Close",
+			text = stringResource(Res.string.action_close),
 			variant = if (isAssigned) ButtonVariant.Primary else ButtonVariant.SecondaryOutlined,
 			onClick = onDismiss,
 		)

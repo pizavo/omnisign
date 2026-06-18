@@ -20,6 +20,7 @@ import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.ServiceEditState
 import cz.pizavo.omnisign.ui.model.TlBuilderDialogState
 import cz.pizavo.omnisign.ui.model.TspEditState
+import cz.pizavo.omnisign.ui.model.resolve
 import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
 import cz.pizavo.omnisign.ui.platform.platformFilePath
 import io.github.vinceglb.filekit.PlatformFile
@@ -28,6 +29,7 @@ import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.name
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Modal dialog for building a custom ETSI TS 119612 Trusted List from scratch.
@@ -87,7 +89,7 @@ fun TlBuilderDialog(
 						onRemoveService = onRemoveService,
 					)
 
-					is TlBuilderDialogState.Compiling -> LoadingContent("Compiling trusted list…")
+					is TlBuilderDialogState.Compiling -> LoadingContent(stringResource(Res.string.tlbuilder_compiling))
 					is TlBuilderDialogState.Success -> TlBuilderSuccessContent(state)
 					is TlBuilderDialogState.Error -> ErrorContent(
 						message = state.message,
@@ -122,7 +124,7 @@ private fun TlBuilderHeader(onClose: () -> Unit, closeable: Boolean) {
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.SpaceBetween,
 	) {
-		Text(text = "Build Custom Trusted List", style = LumoTheme.typography.h3)
+		Text(text = stringResource(Res.string.tlbuilder_dialog_title), style = LumoTheme.typography.h3)
 		IconButton(
 			variant = IconButtonVariant.Ghost,
 			enabled = closeable,
@@ -130,7 +132,7 @@ private fun TlBuilderHeader(onClose: () -> Unit, closeable: Boolean) {
 		) {
 			Icon(
 				painter = painterResource(Res.drawable.icon_x),
-				contentDescription = "Close",
+				contentDescription = stringResource(Res.string.action_close),
 				modifier = Modifier.size(20.dp),
 			)
 		}
@@ -156,14 +158,14 @@ private fun TlBuilderFormContent(
 	) {
 		if (state.error != null) {
 			Text(
-				text = state.error,
+				text = state.error.resolve(),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.error,
 			)
 			Spacer(modifier = Modifier.height(8.dp))
 		}
 
-		Text(text = "Scheme Information", style = LumoTheme.typography.h4)
+		Text(text = stringResource(Res.string.tlbuilder_scheme_information), style = LumoTheme.typography.h4)
 		Spacer(modifier = Modifier.height(4.dp))
 
 		Row(
@@ -173,16 +175,16 @@ private fun TlBuilderFormContent(
 			UnderlinedTextField(
 				value = state.name,
 				onValueChange = { v -> onFieldChange { it.copy(name = v, error = null) } },
-				label = { Text("Name") },
-				placeholder = { Text("my-trusted-list") },
+				label = { Text(stringResource(Res.string.tlbuilder_field_name)) },
+				placeholder = { Text(stringResource(Res.string.tlbuilder_field_name_placeholder)) },
 				singleLine = true,
 				modifier = Modifier.weight(2f),
 			)
 			UnderlinedTextField(
 				value = state.territory,
 				onValueChange = { v -> onFieldChange { it.copy(territory = v.take(2).uppercase(), error = null) } },
-				label = { Text("Territory") },
-				placeholder = { Text("CZ") },
+				label = { Text(stringResource(Res.string.tlbuilder_field_territory)) },
+				placeholder = { Text(stringResource(Res.string.tlbuilder_field_territory_placeholder)) },
 				singleLine = true,
 				modifier = Modifier.weight(1f),
 			)
@@ -193,8 +195,8 @@ private fun TlBuilderFormContent(
 		UnderlinedTextField(
 			value = state.schemeOperatorName,
 			onValueChange = { v -> onFieldChange { it.copy(schemeOperatorName = v, error = null) } },
-			label = { Text("Scheme operator name") },
-			placeholder = { Text("Organisation publishing this trusted list") },
+			label = { Text(stringResource(Res.string.tlbuilder_field_scheme_operator_name)) },
+			placeholder = { Text(stringResource(Res.string.tlbuilder_field_scheme_operator_name_placeholder)) },
 			singleLine = true,
 			modifier = Modifier.fillMaxWidth(),
 		)
@@ -208,9 +210,9 @@ private fun TlBuilderFormContent(
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.SpaceBetween,
 		) {
-			Text(text = "Trust Service Providers", style = LumoTheme.typography.h4)
+			Text(text = stringResource(Res.string.tlbuilder_trust_service_providers), style = LumoTheme.typography.h4)
 			Button(
-				text = "Add TSP",
+				text = stringResource(Res.string.tlbuilder_add_tsp),
 				variant = ButtonVariant.PrimaryOutlined,
 				onClick = onAddTsp,
 			)
@@ -219,7 +221,7 @@ private fun TlBuilderFormContent(
 		if (state.tsps.isEmpty()) {
 			Spacer(modifier = Modifier.height(8.dp))
 			Text(
-				text = "No TSPs added yet. Click `Add TSP` to get started.",
+				text = stringResource(Res.string.tlbuilder_no_tsps),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)
@@ -241,7 +243,7 @@ private fun TlBuilderFormContent(
 		HorizontalDivider()
 		Spacer(modifier = Modifier.height(12.dp))
 
-		Text(text = "Output", style = LumoTheme.typography.h4)
+		Text(text = stringResource(Res.string.tlbuilder_output), style = LumoTheme.typography.h4)
 		Spacer(modifier = Modifier.height(4.dp))
 
 		Row(
@@ -253,7 +255,7 @@ private fun TlBuilderFormContent(
 				onCheckedChange = { checked -> onFieldChange { it.copy(registerAfterCompile = checked) } },
 			)
 			Text(
-				text = "Register as a custom trusted list source after compiling",
+				text = stringResource(Res.string.tlbuilder_register_after_compile),
 				style = LumoTheme.typography.body2,
 			)
 		}
@@ -304,7 +306,7 @@ private fun TspCard(
 				) {
 					Icon(
 						painter = painterResource(Res.drawable.icon_chevron_down),
-						contentDescription = if (tsp.expanded) "Collapse" else "Expand",
+						contentDescription = if (tsp.expanded) stringResource(Res.string.action_collapse) else stringResource(Res.string.action_expand),
 						modifier = Modifier
 							.size(14.dp)
 							.graphicsLayer(rotationZ = chevronRotation),
@@ -326,7 +328,7 @@ private fun TspCard(
 				IconButton(variant = IconButtonVariant.Ghost, onClick = onRemove) {
 					Icon(
 						painter = painterResource(Res.drawable.icon_x),
-						contentDescription = "Remove TSP",
+						contentDescription = stringResource(Res.string.tlbuilder_remove_tsp),
 						modifier = Modifier.size(16.dp),
 					)
 				}
@@ -347,8 +349,8 @@ private fun TspCard(
 							)
 						}
 					},
-					label = { Text("TSP name") },
-					placeholder = { Text("Official name") },
+					label = { Text(stringResource(Res.string.tlbuilder_field_tsp_name)) },
+					placeholder = { Text(stringResource(Res.string.tlbuilder_field_tsp_name_placeholder)) },
 					singleLine = true,
 					modifier = Modifier.fillMaxWidth(),
 				)
@@ -370,7 +372,7 @@ private fun TspCard(
 								)
 							}
 						},
-						label = { Text("Trade name (optional)") },
+						label = { Text(stringResource(Res.string.tlbuilder_field_trade_name)) },
 						singleLine = true,
 						modifier = Modifier.weight(1f),
 					)
@@ -385,8 +387,8 @@ private fun TspCard(
 								)
 							}
 						},
-						label = { Text("Info URL (optional)") },
-						placeholder = { Text("https://…") },
+						label = { Text(stringResource(Res.string.tlbuilder_field_info_url)) },
+						placeholder = { Text(stringResource(Res.string.tlbuilder_field_info_url_placeholder)) },
 						singleLine = true,
 						modifier = Modifier.weight(1f),
 					)
@@ -399,9 +401,9 @@ private fun TspCard(
 					verticalAlignment = Alignment.CenterVertically,
 					horizontalArrangement = Arrangement.SpaceBetween,
 				) {
-					Text(text = "Services", style = LumoTheme.typography.label1)
+					Text(text = stringResource(Res.string.tlbuilder_services), style = LumoTheme.typography.label1)
 					Button(
-						text = "Add Service",
+						text = stringResource(Res.string.tlbuilder_add_service),
 						variant = ButtonVariant.SecondaryOutlined,
 						onClick = onAddService,
 					)
@@ -421,7 +423,7 @@ private fun TspCard(
 				if (tsp.services.isEmpty()) {
 					Spacer(modifier = Modifier.height(4.dp))
 					Text(
-						text = "No services yet.",
+						text = stringResource(Res.string.tlbuilder_no_services),
 						style = LumoTheme.typography.body2,
 						color = LumoTheme.colors.textSecondary,
 					)
@@ -460,7 +462,7 @@ private fun ServiceRow(
 				IconButton(variant = IconButtonVariant.Ghost, onClick = onRemove) {
 					Icon(
 						painter = painterResource(Res.drawable.icon_x),
-						contentDescription = "Remove service",
+						contentDescription = stringResource(Res.string.tlbuilder_remove_service),
 						modifier = Modifier.size(14.dp),
 					)
 				}
@@ -482,7 +484,7 @@ private fun ServiceRow(
 						)
 					}
 				},
-				label = { Text("Service name") },
+				label = { Text(stringResource(Res.string.tlbuilder_field_service_name)) },
 				singleLine = true,
 				modifier = Modifier.fillMaxWidth(),
 			)
@@ -505,7 +507,7 @@ private fun ServiceRow(
 						)
 					}
 				},
-				label = "Type identifier",
+				label = stringResource(Res.string.tlbuilder_field_type_identifier),
 				placeholder = "http://uri.etsi.org/TrstSvc/Svctype/…",
 				hints = SERVICE_TYPE_HINTS,
 			)
@@ -528,7 +530,7 @@ private fun ServiceRow(
 						)
 					}
 				},
-				label = "Status",
+				label = stringResource(Res.string.tlbuilder_field_status),
 				placeholder = "http://uri.etsi.org/TrstSvc/TrustedList/Svcstatus/…",
 				hints = SERVICE_STATUS_HINTS,
 			)
@@ -582,7 +584,7 @@ private fun EtsiUriField(
 			modifier = Modifier.fillMaxWidth(),
 			trailingIcon = {
 				TooltipBox(
-					tooltip = { Tooltip { Text("Show common URIs") } },
+					tooltip = { Tooltip { Text(stringResource(Res.string.tlbuilder_show_common_uris)) } },
 					state = rememberTooltipState(),
 				) {
 					IconButton(
@@ -592,7 +594,7 @@ private fun EtsiUriField(
 					) {
 						Icon(
 							painter = painterResource(Res.drawable.icon_chevron_down),
-							contentDescription = "Show URI hints",
+							contentDescription = stringResource(Res.string.tlbuilder_show_uri_hints),
 							modifier = Modifier.size(16.dp),
 						)
 					}
@@ -653,13 +655,13 @@ private fun ServiceCertificateField(
 	UnderlinedTextField(
 		value = value,
 		onValueChange = onValueChange,
-		label = { Text("Certificate path") },
+		label = { Text(stringResource(Res.string.tlbuilder_field_certificate_path)) },
 		placeholder = { Text("/path/to/certificate.pem") },
 		singleLine = true,
 		modifier = Modifier.fillMaxWidth(),
 		trailingIcon = {
 			TooltipBox(
-				tooltip = { Tooltip { Text("Browse") } },
+				tooltip = { Tooltip { Text(stringResource(Res.string.action_browse)) } },
 				state = rememberTooltipState(),
 			) {
 				IconButton(
@@ -669,7 +671,7 @@ private fun ServiceCertificateField(
 				) {
 					Icon(
 						painter = painterResource(Res.drawable.icon_folder),
-						contentDescription = "Browse for certificate",
+						contentDescription = stringResource(Res.string.tlbuilder_browse_for_certificate),
 						modifier = Modifier.size(18.dp),
 					)
 				}
@@ -699,14 +701,14 @@ private fun TlBuilderSuccessContent(state: TlBuilderDialogState.Success) {
 				modifier = Modifier.size(20.dp),
 				tint = LumoTheme.colors.success,
 			)
-			Text(text = "Trusted list compiled successfully", style = LumoTheme.typography.h4)
+			Text(text = stringResource(Res.string.tlbuilder_compiled_successfully), style = LumoTheme.typography.h4)
 		}
 
 		Spacer(modifier = Modifier.height(8.dp))
 
 		Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 			Text(
-				text = "Output file:",
+				text = stringResource(Res.string.label_output_file),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)
@@ -716,7 +718,7 @@ private fun TlBuilderSuccessContent(state: TlBuilderDialogState.Success) {
 		if (state.tlConfig != null) {
 			Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 				Text(
-					text = "Registered as:",
+					text = stringResource(Res.string.tlbuilder_registered_as_label),
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.textSecondary,
 				)
@@ -724,7 +726,7 @@ private fun TlBuilderSuccessContent(state: TlBuilderDialogState.Success) {
 			}
 		} else {
 			Text(
-				text = "Not registered — you can register it manually later.",
+				text = stringResource(Res.string.tlbuilder_not_registered),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)
@@ -750,12 +752,12 @@ private fun TlBuilderFooter(
 		when (state) {
 			is TlBuilderDialogState.Editing -> {
 				Button(
-					text = "Cancel",
+					text = stringResource(Res.string.action_cancel),
 					variant = ButtonVariant.SecondaryOutlined,
 					onClick = onDismiss,
 				)
 				Button(
-					text = "Compile & Save",
+					text = stringResource(Res.string.tlbuilder_compile_and_save),
 					variant = ButtonVariant.Primary,
 					onClick = onCompile,
 				)
@@ -764,7 +766,7 @@ private fun TlBuilderFooter(
 			is TlBuilderDialogState.Success,
 			is TlBuilderDialogState.Error -> {
 				Button(
-					text = "Close",
+					text = stringResource(Res.string.action_close),
 					variant = ButtonVariant.Primary,
 					onClick = onDismiss,
 				)

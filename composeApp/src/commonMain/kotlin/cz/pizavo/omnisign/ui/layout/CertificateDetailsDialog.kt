@@ -62,18 +62,10 @@ import cz.pizavo.omnisign.ui.platform.writeBytesToPath
 import cz.pizavo.omnisign.ui.toast.LocalToastService
 import cz.pizavo.omnisign.ui.toast.ToastMessage
 import kotlinx.coroutines.launch
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_anchor
-import omnisign.composeapp.generated.resources.icon_certificate_2
-import omnisign.composeapp.generated.resources.icon_check
-import omnisign.composeapp.generated.resources.icon_circle
-import omnisign.composeapp.generated.resources.icon_circle_filled
-import omnisign.composeapp.generated.resources.icon_download
-import omnisign.composeapp.generated.resources.icon_key
-import omnisign.composeapp.generated.resources.icon_shield_plus
-import omnisign.composeapp.generated.resources.icon_x
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 private val CertNavWidth = 240.dp
 private val CertNavItemShape = RoundedCornerShape(6.dp)
@@ -140,14 +132,14 @@ fun CertificateDetailsDialog(
                         modifier = Modifier.size(22.dp),
                         tint = LumoTheme.colors.textSecondary,
                     )
-                    Text(text = "Certificate", style = LumoTheme.typography.h3, modifier = Modifier.weight(1f))
+                    Text(text = stringResource(Res.string.certdetails_title), style = LumoTheme.typography.h3, modifier = Modifier.weight(1f))
                     chain.getOrNull(selectedIndex)?.let { link ->
                         if (trustAdder != null) {
                             CertificateTrustButton(adder = trustAdder, der = link.der, trustRole = trustRole)
                         }
                     }
                     TooltipBox(
-                        tooltip = { Tooltip { Text(text = "Export the selected certificate") } },
+                        tooltip = { Tooltip { Text(text = stringResource(Res.string.certdetails_export_tooltip)) } },
                         state = rememberTooltipState(),
                     ) {
                         IconButton(
@@ -177,7 +169,7 @@ fun CertificateDetailsDialog(
                         ) {
                             Icon(
                                 painter = painterResource(Res.drawable.icon_download),
-                                contentDescription = "Export the selected certificate",
+                                contentDescription = stringResource(Res.string.certdetails_export_tooltip),
                                 modifier = Modifier.size(20.dp),
                             )
                         }
@@ -185,7 +177,7 @@ fun CertificateDetailsDialog(
                     IconButton(variant = IconButtonVariant.Ghost, onClick = onDismiss) {
                         Icon(
                             painter = painterResource(Res.drawable.icon_x),
-                            contentDescription = "Close",
+                            contentDescription = stringResource(Res.string.action_close),
                             modifier = Modifier.size(20.dp),
                         )
                     }
@@ -402,7 +394,7 @@ private fun CertificateChainNavItem(
                     ) {
                         Icon(
                             painter = painterResource(if (isTrustAnchor) Res.drawable.icon_anchor else Res.drawable.icon_check),
-                            contentDescription = if (isTrustAnchor) "Trust anchor" else "Trusted",
+                            contentDescription = if (isTrustAnchor) stringResource(Res.string.certdetails_trust_anchor_label) else stringResource(Res.string.certdetails_trusted_label),
                             modifier = Modifier.size(14.dp),
                             tint = if (isTrustAnchor) LumoTheme.colors.icons.trustQualified else LumoTheme.colors.success,
                         )
@@ -488,7 +480,7 @@ private fun CertificateTrustButton(
     }
 
     TooltipBox(
-        tooltip = { Tooltip { Text(text = "Add to trusted certificates") } },
+        tooltip = { Tooltip { Text(text = stringResource(Res.string.certdetails_trust_add_tooltip)) } },
         state = rememberTooltipState(),
     ) {
         IconButton(
@@ -497,7 +489,7 @@ private fun CertificateTrustButton(
         ) {
             Icon(
                 painter = painterResource(Res.drawable.icon_shield_plus),
-                contentDescription = "Add to trusted certificates",
+                contentDescription = stringResource(Res.string.certdetails_trust_add_tooltip),
                 modifier = Modifier.size(20.dp),
             )
         }
@@ -514,7 +506,7 @@ private fun CertificateTrustButton(
                     border = BorderStroke(1.dp, LumoTheme.colors.outline),
                 ) {
                     Column(modifier = Modifier.width(CertTrustMenuWidth)) {
-                        CertificateTrustMenuRow(label = "Global", onClick = { commit(toActiveProfile = false) })
+                        CertificateTrustMenuRow(label = stringResource(Res.string.certdetails_scope_global), onClick = { commit(toActiveProfile = false) })
                         adder.activeProfileName?.let { name ->
                             CertificateTrustMenuRow(
                                 label = "Profile: $name",

@@ -19,11 +19,9 @@ import cz.pizavo.omnisign.ui.platform.platformFilePath
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_alert_warning
-import omnisign.composeapp.generated.resources.icon_circle_filled
-import omnisign.composeapp.generated.resources.icon_folder
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Settings section for configuring the OS-level daily renewal scheduler.
@@ -53,15 +51,14 @@ fun SchedulerSection(
 			modifier = Modifier.size(10.dp),
 		)
 		Text(
-			text = if (state.schedulerInstalled) "Scheduler is installed"
-			else "Scheduler is not installed",
+			text = if (state.schedulerInstalled) stringResource(Res.string.scheduler_installed)
+			else stringResource(Res.string.scheduler_not_installed),
 			style = LumoTheme.typography.label1,
 			color = if (state.schedulerInstalled) LumoTheme.colors.success
 			else LumoTheme.colors.textSecondary,
 		)
 		InfoTooltip(
-			text = "The scheduler is automatically installed when renewal jobs are " +
-					"configured, and removed when all renewal jobs are deleted.",
+			text = stringResource(Res.string.scheduler_auto_install_tooltip),
 		)
 	}
 
@@ -110,7 +107,7 @@ fun SchedulerSection(
 			horizontalArrangement = Arrangement.spacedBy(4.dp),
 		) {
 			Text(
-				text = "Executable:",
+				text = stringResource(Res.string.scheduler_executable_label),
 				style = LumoTheme.typography.label1,
 				color = LumoTheme.colors.textSecondary,
 			)
@@ -132,13 +129,13 @@ fun SchedulerSection(
 		UnderlinedTextField(
 			value = state.schedulerCliPath,
 			onValueChange = { value -> onFieldChange { it.copy(schedulerCliPath = value) } },
-			label = { Text(text = "OmniSign executable path") },
-			placeholder = { Text(text = "/usr/bin/omnisign") },
+			label = { Text(text = stringResource(Res.string.scheduler_cli_path_label)) },
+			placeholder = { Text(text = stringResource(Res.string.scheduler_cli_path_placeholder)) },
 			singleLine = true,
 			modifier = Modifier.fillMaxWidth(),
 			trailingIcon = {
 				TooltipBox(
-					tooltip = { Tooltip { Text(text = "Browse") } },
+					tooltip = { Tooltip { Text(text = stringResource(Res.string.action_browse)) } },
 					state = rememberTooltipState(),
 				) {
 					IconButton(
@@ -148,7 +145,7 @@ fun SchedulerSection(
 					) {
 						Icon(
 							painter = painterResource(Res.drawable.icon_folder),
-							contentDescription = "Browse for OmniSign executable",
+							contentDescription = stringResource(Res.string.scheduler_browse_content_desc),
 							modifier = Modifier.size(18.dp),
 						)
 					}
@@ -171,7 +168,7 @@ fun SchedulerSection(
 					onFieldChange { it.copy(schedulerHour = value) }
 				}
 			},
-			label = { Text(text = "Hour (0\u201323)") },
+			label = { Text(text = stringResource(Res.string.scheduler_hour_label)) },
 			isError = !state.isSchedulerHourValid,
 			singleLine = true,
 			keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -184,7 +181,7 @@ fun SchedulerSection(
 					onFieldChange { it.copy(schedulerMinute = value) }
 				}
 			},
-			label = { Text(text = "Minute (0\u201359)") },
+			label = { Text(text = stringResource(Res.string.scheduler_minute_label)) },
 			isError = !state.isSchedulerMinuteValid,
 			singleLine = true,
 			keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -209,8 +206,8 @@ fun SchedulerSection(
 	UnderlinedTextField(
 		value = state.schedulerLogFile,
 		onValueChange = { value -> onFieldChange { it.copy(schedulerLogFile = value) } },
-		label = { Text(text = "Log file (optional)") },
-		placeholder = { Text(text = "/var/log/omnisign-renewal.log") },
+		label = { Text(text = stringResource(Res.string.label_log_file_optional)) },
+		placeholder = { Text(text = stringResource(Res.string.scheduler_log_file_placeholder)) },
 		singleLine = true,
 		modifier = Modifier.fillMaxWidth(),
 	)
@@ -218,14 +215,14 @@ fun SchedulerSection(
 	if (state.renewalJobs.isEmpty()) {
 		Spacer(modifier = Modifier.height(12.dp))
 		Text(
-			text = "No renewal jobs configured — the scheduler will be uninstalled on save.",
+			text = stringResource(Res.string.scheduler_no_jobs_hint),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)
 	} else if (state.schedulerAutoDetectedPath == null && state.schedulerCliPath.isBlank()) {
 		Spacer(modifier = Modifier.height(12.dp))
 		Text(
-			text = "Could not auto-detect the executable path. Please specify it manually to enable scheduler installation.",
+			text = stringResource(Res.string.scheduler_no_auto_detect_hint),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.warning,
 		)

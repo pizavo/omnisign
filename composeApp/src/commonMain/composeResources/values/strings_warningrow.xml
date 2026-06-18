@@ -1,0 +1,4 @@
+<resources>
+	<string name="warningrow_affected_timestamps">Affected Timestamps</string>
+	<string name="warningrow_affected_certificates">Affected Certificates</string>
+</resources>

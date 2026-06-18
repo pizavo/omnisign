@@ -1,0 +1,20 @@
+<resources>
+	<string name="action_ok">OK</string>
+	<string name="action_cancel">Zrušit</string>
+	<string name="action_save">Uložit</string>
+	<string name="action_close">Zavřít</string>
+	<string name="action_delete">Smazat</string>
+	<string name="timestamp_dialog_title">Rozšířit dokument</string>
+	<string name="timestamp_extending">Rozšiřování dokumentu...</string>
+	<string name="timestamp_type_label">Typ časového razítka</string>
+	<string name="timestamp_add_to_renewal">Přidat do úlohy obnovy</string>
+	<string name="timestamp_add_to_renewal_tooltip">Po rozšíření nabídnout nastavení automatické archivní obnovy</string>
+	<string name="timestamp_revocation_title">Informace o zneplatnění nejsou dostupné</string>
+	<string name="timestamp_revocation_message">Rozšíření na úroveň B-LT selhalo, protože se nepodařilo získat informace o zneplatnění (CRL/OCSP). Můžete pokračovat rozšířením na úroveň B-T (pouze časové razítko podpisu, bez dat o zneplatnění), nebo akci přerušit a zkusit to znovu později.</string>
+	<string name="timestamp_success_title">Dokument byl úspěšně rozšířen</string>
+	<string name="timestamp_output_file_label">Výstupní soubor:</string>
+	<string name="timestamp_new_level_label">Nová úroveň:</string>
+	<string name="timestamp_extend_button">Rozšířit</string>
+	<string name="timestamp_continue_anyway">Přesto pokračovat</string>
+	<string name="timestamp_abort">Přerušit</string>
+</resources>

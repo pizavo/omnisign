@@ -1,0 +1,19 @@
+<resources>
+	<string name="help_action_github_repository">GitHub Repository</string>
+	<string name="help_cd_open_github_repository">Open the GitHub repository</string>
+	<string name="help_action_documentation">Documentation</string>
+	<string name="help_cd_open_documentation">Open the online documentation</string>
+	<string name="help_label_license">License</string>
+	<string name="help_section_support">Support</string>
+	<string name="help_support_description">If something goes wrong, enable debug logging, reproduce the issue, then export the logs and attach them to your report.</string>
+	<string name="help_action_export_logs">Export logs</string>
+	<string name="help_cd_export_logs">Export logs as a zip archive</string>
+	<string name="help_action_open_folder">Open folder</string>
+	<string name="help_cd_open_log_folder">Open the log folder</string>
+	<string name="help_action_report_issue">Report an issue on GitHub</string>
+	<string name="help_support_attach_logs">Attach the exported log archive to your report.</string>
+	<string name="help_toggle_debug_logging_title">Debug logging</string>
+	<string name="help_toggle_debug_logging_caption">Debugging logs for issue resolution. Turn off when done capturing.</string>
+	<string name="help_toggle_extended_logs_title">Extended logs</string>
+	<string name="help_toggle_extended_logs_caption">Captures extended logs from third-party libraries. Very verbose; should be enabled only when specifically asked to.</string>
+</resources>

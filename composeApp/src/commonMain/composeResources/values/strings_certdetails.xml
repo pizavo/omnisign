@@ -1,0 +1,10 @@
+<resources>
+	<string name="certdetails_title">Certificate</string>
+	<string name="certdetails_export_tooltip">Export the selected certificate</string>
+	<string name="certdetails_export_success">Certificate exported.</string>
+	<string name="certdetails_trust_anchor_label">Trust anchor</string>
+	<string name="certdetails_trusted_label">Trusted</string>
+	<string name="certdetails_trust_success">Added to trusted certificates.</string>
+	<string name="certdetails_trust_add_tooltip">Add to trusted certificates</string>
+	<string name="certdetails_scope_global">Global</string>
+</resources>

@@ -45,10 +45,9 @@ import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.lumo.components.card.Card
 import cz.pizavo.omnisign.lumo.components.card.CardDefaults
 import cz.pizavo.omnisign.ui.platform.HorizontalResizePointerIcon
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_arrow_left
-import omnisign.composeapp.generated.resources.icon_x
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /** Fraction of the available pane width used as the default side-panel width. */
 const val IslandSidePanelDefaultFraction = 0.25f
@@ -158,7 +157,7 @@ fun IslandSidePanel(
                             ) {
                                 Icon(
                                     painter = painterResource(Res.drawable.icon_arrow_left),
-                                    contentDescription = "Back",
+                                    contentDescription = stringResource(Res.string.islandsidepanel_back_arrow),
                                     modifier = Modifier.size(20.dp),
                                 )
                             }
@@ -175,7 +174,7 @@ fun IslandSidePanel(
                         ) {
                             Icon(
                                 painter = painterResource(Res.drawable.icon_x),
-                                contentDescription = "Close panel",
+                                contentDescription = stringResource(Res.string.islandsidepanel_close_panel),
                             )
                         }
                     }

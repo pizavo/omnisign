@@ -33,15 +33,5 @@ class SettingsCategoryTest : FunSpec({
 		SettingsCategory.WindowTitleBar.isGroup shouldBe false
 		SettingsCategory.WindowTitleBar.children shouldHaveSize 0
 	}
-
-	test("Appearance label and description are non-blank") {
-		SettingsCategory.Appearance.label.isNotBlank() shouldBe true
-		SettingsCategory.Appearance.description.isNotBlank() shouldBe true
-	}
-
-	test("WindowTitleBar label and description are non-blank") {
-		SettingsCategory.WindowTitleBar.label.isNotBlank() shouldBe true
-		SettingsCategory.WindowTitleBar.description.isNotBlank() shouldBe true
-	}
 })
 

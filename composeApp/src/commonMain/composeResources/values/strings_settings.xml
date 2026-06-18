@@ -1,0 +1,37 @@
+<resources>
+	<string name="settings_close_description">Close settings</string>
+	<string name="settings_backup_export_tooltip">Export configuration to a ZIP archive</string>
+	<string name="settings_backup_export_description">Export configuration</string>
+	<string name="settings_backup_import_tooltip">Import a ZIP archive (replaces the current configuration)</string>
+	<string name="settings_backup_import_description">Import configuration</string>
+	<string name="settings_backup_import_warning">Import replaces all current settings, profiles, and trusted certificates and cannot be undone.</string>
+	<string name="settings_backup_cancel_import_description">Cancel import</string>
+	<string name="settings_backup_confirm_import_tooltip">Choose an archive and replace the configuration</string>
+	<string name="settings_backup_confirm_import_description">Confirm import and replace</string>
+	<string name="settings_signing_encryption_auto_detect">Auto-detect from certificate</string>
+	<string name="settings_signing_timestamp_level_label">Timestamp level</string>
+	<string name="settings_tsp_enable_label">Enable timestamp server</string>
+	<string name="settings_ocsp_timeout_label">OCSP timeout (ms)</string>
+	<string name="settings_crl_timeout_label">CRL timeout (ms)</string>
+	<string name="settings_validation_policy_label">Validation policy</string>
+	<string name="settings_validation_custom_policy_path_label">Custom policy file path</string>
+	<string name="settings_browse_policy_file_description">Browse for policy file</string>
+	<string name="settings_validation_check_revocation">Check certificate revocation</string>
+	<string name="settings_validation_use_eu_lotl">Use EU List of Trusted Lists</string>
+	<string name="settings_validation_alert_not_eu_lotl_tooltip">Flag signatures whose trust anchor is not on the EU LOTL. Requires the EU List of Trusted Lists to be enabled.</string>
+	<string name="settings_validation_tl_refresh_interval_label">Trusted list refresh interval (hours)</string>
+	<string name="settings_validation_trusted_lists_label">Trusted lists</string>
+	<string name="settings_validation_refresh_tl_tooltip">Refresh trusted lists now</string>
+	<string name="settings_algo_expiration_level_label">Expiration level (before policy update)</string>
+	<string name="settings_algo_expiration_level_after_label">Expiration level (after policy update)</string>
+	<string name="settings_pkcs11_probe_timeout_label">Probe timeout (seconds, 1-120)</string>
+	<string name="settings_pkcs11_drop_dir_hint">Tip: drop a PKCS#11 library file (.dll / .so / .dylib) into the directory below and it will be discovered automatically — no entry needed here.</string>
+	<string name="settings_pkcs11_no_libraries">No custom PKCS#11 libraries registered.</string>
+	<string name="settings_pkcs11_add_name_label">Name</string>
+	<string name="settings_pkcs11_add_name_placeholder">Label</string>
+	<string name="settings_pkcs11_add_path_label">Path</string>
+	<string name="settings_pkcs11_browse_library_description">Browse for PKCS#11 library</string>
+	<string name="settings_appearance_native_title_bar_label">Use native title bar</string>
+	<string name="settings_appearance_native_title_bar_description">Display the toolbar below the native OS title bar instead of merging it into a custom header.</string>
+	<string name="settings_appearance_restart_required">Requires an application restart to take effect.</string>
+</resources>

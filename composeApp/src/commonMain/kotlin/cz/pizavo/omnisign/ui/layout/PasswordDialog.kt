@@ -16,6 +16,8 @@ import cz.pizavo.omnisign.lumo.components.ButtonVariant
 import cz.pizavo.omnisign.lumo.components.Dialog
 import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
+import omnisign.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Modal dialog that prompts the user for a password or PIN.
@@ -69,7 +71,7 @@ fun PasswordDialog(
 				onValueChange = { password = it },
 				singleLine = true,
 				visualTransformation = PasswordVisualTransformation(),
-				label = { Text("Password") },
+				label = { Text(stringResource(Res.string.label_password)) },
 				keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
 				keyboardActions = KeyboardActions(
 					onDone = { if (password.isNotEmpty()) onConfirm(password) },
@@ -86,12 +88,12 @@ fun PasswordDialog(
 				horizontalArrangement = Arrangement.spacedBy(8.dp, alignment = androidx.compose.ui.Alignment.End),
 			) {
 				Button(
-					text = "Cancel",
+					text = stringResource(Res.string.action_cancel),
 					variant = ButtonVariant.SecondaryOutlined,
 					onClick = onCancel,
 				)
 				Button(
-					text = "Confirm",
+					text = stringResource(Res.string.action_confirm),
 					variant = ButtonVariant.Primary,
 					enabled = password.isNotEmpty(),
 					onClick = { onConfirm(password) },

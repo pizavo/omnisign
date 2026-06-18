@@ -1,4 +1,4 @@
-package cz.pizavo.omnisign.ui.layout
+﻿package cz.pizavo.omnisign.ui.layout
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -33,9 +33,9 @@ import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_refresh
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 import org.koin.core.error.NoDefinitionFoundException
 import org.koin.mp.KoinPlatform
 
@@ -541,7 +541,7 @@ fun IslandLayout(
 						
 						IslandSidePanel(
 							visible = activeLeftPanel != null,
-							title = activeLeftPanel?.label ?: "",
+							title = activeLeftPanel?.label() ?: "",
 							onClose = { activeLeftPanel = null },
 							panelWidth = effectiveLeftWidth.coerceAtMost(maxLeftPanelWidth),
 							defaultWidth = defaultPanelWidth,
@@ -572,7 +572,7 @@ fun IslandLayout(
 									}
 									
 									TooltipBox(
-										tooltip = { Tooltip { Text(text = "Refresh signatures") } },
+										tooltip = { Tooltip { Text(text = stringResource(Res.string.islandlayout_refresh_signatures)) } },
 										state = rememberTooltipState(),
 									) {
 										IconButton(
@@ -582,7 +582,7 @@ fun IslandLayout(
 										) {
 											Icon(
 												painter = painterResource(Res.drawable.icon_refresh),
-												contentDescription = "Refresh signatures",
+												contentDescription = stringResource(Res.string.islandlayout_refresh_signatures),
 												modifier = Modifier.size(20.dp),
 											)
 										}
@@ -618,8 +618,8 @@ fun IslandLayout(
 						
 						val isEditingProfile = activeRightPanel == SidePanel.Profiles &&
 								profileState.mode is ProfilePanelMode.Editing
-						val rightPanelTitle = if (isEditingProfile) "Edit Profile"
-						else activeRightPanel?.label ?: ""
+						val rightPanelTitle = if (isEditingProfile) stringResource(Res.string.islandlayout_edit_profile)
+						else activeRightPanel?.label() ?: ""
 						
 						IslandSidePanel(
 							visible = activeRightPanel != null,
@@ -714,7 +714,7 @@ fun IslandLayout(
 private fun PanelPlaceholderContent(panel: SidePanel?) {
 	when (panel) {
 		SidePanel.Profiles -> Text(
-			text = "Configuration profiles will appear here.",
+			text = stringResource(Res.string.islandlayout_profiles_placeholder),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)

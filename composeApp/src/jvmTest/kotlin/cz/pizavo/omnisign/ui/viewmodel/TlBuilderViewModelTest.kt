@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.ui.model.ServiceEditState
 import cz.pizavo.omnisign.ui.model.TlBuilderDialogState
+import cz.pizavo.omnisign.ui.model.TlValidationError
 import cz.pizavo.omnisign.ui.model.TspEditState
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
@@ -124,7 +125,7 @@ class TlBuilderViewModelTest : FunSpec({
 		vm.compile(outPath)
 
 		val editing = vm.state.value as TlBuilderDialogState.Editing
-		editing.error shouldBe "Name is required."
+		editing.error shouldBe TlValidationError.NameRequired
 	}
 
 	test("compile with empty TSPs shows validation error") {
@@ -140,7 +141,7 @@ class TlBuilderViewModelTest : FunSpec({
 		vm.compile(outPath)
 
 		val editing = vm.state.value as TlBuilderDialogState.Editing
-		editing.error shouldBe "At least one Trust Service Provider is required."
+		editing.error shouldBe TlValidationError.TspRequired
 	}
 
 	test("compile with incomplete service shows validation error") {
@@ -162,7 +163,7 @@ class TlBuilderViewModelTest : FunSpec({
 		vm.compile(outPath)
 
 		val editing = vm.state.value as TlBuilderDialogState.Editing
-		editing.error shouldBe "TSP 'TSP1', Service 'Svc1': type identifier is required."
+		editing.error shouldBe TlValidationError.ServiceTypeRequired("TSP1", "Svc1")
 	}
 
 	test("compile with valid data and successful compilation transitions to Success") {

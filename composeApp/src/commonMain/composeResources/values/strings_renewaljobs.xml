@@ -1,0 +1,13 @@
+<resources>
+	<string name="renewaljobs_empty">No renewal jobs configured.</string>
+	<string name="renewaljobs_field_name_label">Name</string>
+	<string name="renewaljobs_field_backups_label">Backups</string>
+	<string name="renewaljobs_field_profile_label">Profile</string>
+	<string name="renewaljobs_field_log_file_placeholder">/var/log/omnisign-renewal.log</string>
+	<string name="renewaljobs_field_globs_label">Glob patterns</string>
+	<string name="renewaljobs_action_select_files">Select files</string>
+	<string name="renewaljobs_action_select_folder">Pre-select folder</string>
+	<string name="renewaljobs_error_glob_required">At least one glob pattern is required.</string>
+	<string name="renewaljobs_error_buffer_days_invalid">Buffer days must be a positive integer.</string>
+	<string name="renewaljobs_error_backups_invalid">Backups must be 0 or a positive integer.</string>
+</resources>

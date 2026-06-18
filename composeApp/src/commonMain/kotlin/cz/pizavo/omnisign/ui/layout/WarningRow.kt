@@ -12,9 +12,9 @@ import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_alert_warning
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 private val CERT_COUNT_PATTERN = Regex("""\d+ certificates?""")
 private val TIMESTAMP_COUNT_PATTERN = Regex("""\d+ timestamps?""")
@@ -118,9 +118,9 @@ private fun AnnotatedWarningText(warning: AnnotatedWarning) {
 	
 	if (showDialog) {
 		val entityLabel = if (warning.affectedIds.any { it.startsWith("T-") })
-			"Affected Timestamps"
+			stringResource(Res.string.warningrow_affected_timestamps)
 		else
-			"Affected Certificates"
+			stringResource(Res.string.warningrow_affected_certificates)
 		
 		AffectedEntitiesDialog(
 			title = entityLabel,
@@ -194,7 +194,7 @@ private fun AffectedEntitiesDialog(
 				Spacer(Modifier.height(16.dp))
 				Button(
 					variant = ButtonVariant.Ghost,
-					text = "Close",
+					text = stringResource(Res.string.action_close),
 					onClick = onDismiss,
 					modifier = Modifier.align(Alignment.End),
 				)
