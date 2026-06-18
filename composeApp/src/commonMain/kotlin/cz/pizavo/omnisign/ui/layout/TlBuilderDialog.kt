@@ -91,10 +91,7 @@ fun TlBuilderDialog(
 
 					is TlBuilderDialogState.Compiling -> LoadingContent(stringResource(Res.string.tlbuilder_compiling))
 					is TlBuilderDialogState.Success -> TlBuilderSuccessContent(state)
-					is TlBuilderDialogState.Error -> ErrorContent(
-						message = state.message,
-						details = state.details,
-					)
+					is TlBuilderDialogState.Error -> ErrorContent(error = state.content)
 				}
 			}
 

@@ -5,6 +5,7 @@ import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListDraft
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
+import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.ServiceEditState
 import cz.pizavo.omnisign.ui.model.TlBuilderDialogState
 import cz.pizavo.omnisign.ui.model.TlValidationError
@@ -217,7 +218,7 @@ class TlBuilderViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			val error = vm.state.value.shouldBeInstanceOf<TlBuilderDialogState.Error>()
-			error.message shouldBe "Write failed"
+			error.content shouldBe ErrorMessage.Domain("Write failed", null)
 		}
 	}
 
@@ -228,7 +229,7 @@ class TlBuilderViewModelTest : FunSpec({
 		vm.compile(outPath)
 
 		val error = vm.state.value.shouldBeInstanceOf<TlBuilderDialogState.Error>()
-		error.message shouldBe "Trusted list compilation is not available on this platform."
+		error.content shouldBe ErrorMessage.CompilerUnavailable
 	}
 
 	test("updateState clears error when field changes") {

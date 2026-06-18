@@ -11,6 +11,7 @@ import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ExtendDocumentUseCase
 import cz.pizavo.omnisign.domain.usecase.GetDocumentTimestampInfoUseCase
+import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
 import cz.pizavo.omnisign.ui.model.RenewalOfferError
@@ -158,7 +159,7 @@ class TimestampViewModel(
 				configResult.fold(
 					ifLeft = { error ->
 						_state.value = TimestampDialogState.Error(
-							message = "Configuration error: ${error.message}",
+							content = ErrorMessage.ConfigResolution(error.message),
 						)
 					},
 					ifRight = { config ->
@@ -247,11 +248,7 @@ class TimestampViewModel(
 						if (isRevocationError && isLtExtension) {
 							if (documentAlreadyContainsLtData) {
 								_state.value = TimestampDialogState.Error(
-									message = "Revocation data could not be refreshed",
-									details = "The document already contains LT-level data. " +
-											"Falling back to B-T is not possible because it " +
-											"would degrade the existing signature level.\n\n" +
-											(error.details ?: ""),
+									content = ErrorMessage.RevocationRefreshFailed(error.details),
 								)
 							} else {
 								_state.value = TimestampDialogState.RevocationWarning(
@@ -264,8 +261,7 @@ class TimestampViewModel(
 							}
 						} else {
 							_state.value = TimestampDialogState.Error(
-								message = error.message,
-								details = error.details,
+								content = ErrorMessage.Domain(error.message, error.details),
 							)
 						}
 					},
@@ -273,8 +269,7 @@ class TimestampViewModel(
 						val writeError = writeBytesToPath(outputPath, result.outputBytes)
 						if (writeError != null) {
 							_state.value = TimestampDialogState.Error(
-								message = "Failed to write extended document",
-								details = writeError,
+								content = ErrorMessage.WriteFailed(signed = false, reason = writeError),
 							)
 							return@fold
 						}
@@ -317,16 +312,14 @@ class TimestampViewModel(
 				extendDocumentUseCase(parameters).fold(
 					ifLeft = { error ->
 						_state.value = TimestampDialogState.Error(
-							message = error.message,
-							details = error.details,
+							content = ErrorMessage.Domain(error.message, error.details),
 						)
 					},
 					ifRight = { result ->
 						val writeError = writeBytesToPath(outputPath, result.outputBytes)
 						if (writeError != null) {
 							_state.value = TimestampDialogState.Error(
-								message = "Failed to write extended document",
-								details = writeError,
+								content = ErrorMessage.WriteFailed(signed = false, reason = writeError),
 							)
 							return@fold
 						}

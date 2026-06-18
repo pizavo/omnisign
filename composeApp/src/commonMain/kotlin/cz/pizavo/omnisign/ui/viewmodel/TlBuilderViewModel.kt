@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.domain.model.config.CustomTrustedListDraft
 import cz.pizavo.omnisign.domain.model.config.TrustServiceDraft
 import cz.pizavo.omnisign.domain.model.config.TrustServiceProviderDraft
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
+import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.ServiceEditState
 import cz.pizavo.omnisign.ui.model.TlBuilderDialogState
 import cz.pizavo.omnisign.ui.model.TlValidationError
@@ -129,7 +130,7 @@ class TlBuilderViewModel(
 
 		if (compilerPort == null) {
 			_state.value = TlBuilderDialogState.Error(
-				message = "Trusted list compilation is not available on this platform.",
+				content = ErrorMessage.CompilerUnavailable,
 			)
 			return
 		}
@@ -143,8 +144,7 @@ class TlBuilderViewModel(
 			}.fold(
 				ifLeft = { opError ->
 					_state.value = TlBuilderDialogState.Error(
-						message = opError.message,
-						details = opError.details,
+						content = ErrorMessage.Domain(opError.message, opError.details),
 					)
 				},
 				ifRight = {

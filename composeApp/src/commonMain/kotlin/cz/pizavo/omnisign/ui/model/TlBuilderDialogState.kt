@@ -55,13 +55,9 @@ sealed interface TlBuilderDialogState {
 	/**
 	 * Compilation failed.
 	 *
-	 * @property message Human-readable error summary.
-	 * @property details Optional technical details (e.g., stack trace excerpt).
+	 * @property content Locale-agnostic error data the UI resolves to display text.
 	 */
-	data class Error(
-		val message: String,
-		val details: String? = null,
-	) : TlBuilderDialogState
+	data class Error(val content: ErrorMessage) : TlBuilderDialogState
 }
 
 /**

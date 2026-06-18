@@ -66,10 +66,7 @@ fun TimestampDialog(
 					is TimestampDialogState.Extending -> LoadingContent(stringResource(Res.string.timestamp_extending))
 					is TimestampDialogState.RevocationWarning -> TimestampRevocationWarningContent(state)
 					is TimestampDialogState.Success -> TimestampSuccessContent(state)
-					is TimestampDialogState.Error -> ErrorContent(
-						message = state.message,
-						details = state.details,
-					)
+					is TimestampDialogState.Error -> ErrorContent(error = state.content)
 				}
 			}
 

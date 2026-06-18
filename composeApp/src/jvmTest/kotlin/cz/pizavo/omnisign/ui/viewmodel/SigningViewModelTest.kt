@@ -17,6 +17,7 @@ import cz.pizavo.omnisign.domain.usecase.ListCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.LoadFileCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
 import cz.pizavo.omnisign.domain.usecase.UnlockTokenUseCase
+import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.SigningDialogState
 import cz.pizavo.omnisign.ui.toast.ToastService
@@ -220,7 +221,7 @@ class SigningViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Error>()
-			state.message shouldBe "Failed"
+			state.content shouldBe ErrorMessage.Domain("Failed", null)
 		}
 	}
 
@@ -282,8 +283,7 @@ class SigningViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Error>()
-			state.message shouldBe "Signing error"
-			state.details shouldBe "bad key"
+			state.content shouldBe ErrorMessage.Domain("Signing error", "bad key")
 		}
 	}
 

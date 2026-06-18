@@ -1,0 +1,8 @@
+<resources>
+	<string name="error_config_resolution">Configuration error: %1$s</string>
+	<string name="error_write_signed">Failed to write signed document</string>
+	<string name="error_write_extended">Failed to write extended document</string>
+	<string name="error_revocation_refresh_failed">Revocation data could not be refreshed</string>
+	<string name="error_revocation_lt_degrade">The document already contains LT-level data. Falling back to B-T is not possible because it would degrade the existing signature level.</string>
+	<string name="error_compiler_unavailable">Trusted list compilation is not available on this platform.</string>
+</resources>

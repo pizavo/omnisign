@@ -22,6 +22,7 @@ import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.progressindicators.CircularProgressIndicator
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
+import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.SigningDialogState
 import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
 import cz.pizavo.omnisign.ui.platform.platformFilePath
@@ -121,10 +122,7 @@ fun SigningDialog(
 					is SigningDialogState.Signing -> LoadingContent(stringResource(Res.string.signing_signing_document))
 					is SigningDialogState.RevocationWarning -> RevocationWarningContent(state)
 					is SigningDialogState.Success -> SigningSuccessContent(state)
-					is SigningDialogState.Error -> ErrorContent(
-						message = state.message,
-						details = state.details,
-					)
+					is SigningDialogState.Error -> ErrorContent(error = state.content)
 				}
 			}
 
@@ -671,18 +669,24 @@ internal fun LoadingContent(message: String) {
 }
 
 /**
- * Error display with the message and optional details.
+ * Error display that resolves an [ErrorMessage] to a primary message and optional details.
  *
  * DSS exception messages often contain internal identifiers (e.g. `S-<hex>`, `C-<hex>`)
  * that are meaningless to end users. [sanitizeDssDetails] strips them before display. The
  * message and details are wrapped in [SelectableContent] so they can be copied (e.g. into a
  * bug report).
  *
- * @param message Primary error message.
- * @param details Optional detailed error information.
+ * @param error Locale-agnostic error data emitted by a view model.
  */
 @Composable
-internal fun ErrorContent(message: String, details: String?) {
+internal fun ErrorContent(error: ErrorMessage) {
+	val (message, details) = when (error) {
+		is ErrorMessage.Domain -> error.message to error.details
+		is ErrorMessage.ConfigResolution -> stringResource(Res.string.error_config_resolution, error.detail) to null
+		is ErrorMessage.WriteFailed -> stringResource(if (error.signed) Res.string.error_write_signed else Res.string.error_write_extended) to error.reason
+		is ErrorMessage.RevocationRefreshFailed -> stringResource(Res.string.error_revocation_refresh_failed) to (stringResource(Res.string.error_revocation_lt_degrade) + (error.domainDetails?.let { "\n\n$it" } ?: ""))
+		ErrorMessage.CompilerUnavailable -> stringResource(Res.string.error_compiler_unavailable) to null
+	}
 	Column(
 		modifier = Modifier
 			.fillMaxSize()

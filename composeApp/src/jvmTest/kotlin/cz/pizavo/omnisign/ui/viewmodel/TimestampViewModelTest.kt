@@ -12,6 +12,7 @@ import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ExtendDocumentUseCase
 import cz.pizavo.omnisign.domain.usecase.GetDocumentTimestampInfoUseCase
+import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.TimestampDialogState
 import cz.pizavo.omnisign.ui.model.TimestampType
@@ -189,8 +190,7 @@ class TimestampViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Error>()
-			state.message shouldBe "Extension failed"
-			state.details shouldBe "TSA unavailable"
+			state.content shouldBe ErrorMessage.Domain("Extension failed", "TSA unavailable")
 		}
 	}
 
@@ -239,8 +239,7 @@ class TimestampViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Error>()
-			state.message shouldContain "Revocation data could not be refreshed"
-			state.details shouldContain "degrade"
+			state.content.shouldBeInstanceOf<ErrorMessage.RevocationRefreshFailed>()
 		}
 	}
 

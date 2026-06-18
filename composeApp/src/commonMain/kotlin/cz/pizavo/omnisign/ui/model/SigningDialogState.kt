@@ -163,11 +163,7 @@ sealed interface SigningDialogState {
 	/**
 	 * Signing or certificate loading failed.
 	 *
-	 * @property message Error message.
-	 * @property details Optional detailed error information.
+	 * @property content Locale-agnostic error data the UI resolves to display text.
 	 */
-	data class Error(
-		val message: String,
-		val details: String? = null,
-	) : SigningDialogState
+	data class Error(val content: ErrorMessage) : SigningDialogState
 }

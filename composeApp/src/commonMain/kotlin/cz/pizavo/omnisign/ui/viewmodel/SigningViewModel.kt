@@ -14,6 +14,7 @@ import cz.pizavo.omnisign.domain.usecase.ListCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.LoadFileCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
 import cz.pizavo.omnisign.domain.usecase.UnlockTokenUseCase
+import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
 import cz.pizavo.omnisign.ui.model.RenewalOfferError
@@ -206,7 +207,7 @@ class SigningViewModel(
 					configResult.fold(
 						ifLeft = { error ->
 							_state.value = SigningDialogState.Error(
-								message = "Configuration error: ${error.message}",
+								content = ErrorMessage.ConfigResolution(error.message),
 							)
 						},
 						ifRight = { config ->
@@ -221,8 +222,7 @@ class SigningViewModel(
 							discoveryDeferred.await().fold(
 								ifLeft = { error ->
 									_state.value = SigningDialogState.Error(
-										message = error.message,
-										details = error.details,
+										content = ErrorMessage.Domain(error.message, error.details),
 									)
 								},
 								ifRight = { discovery ->
@@ -425,16 +425,14 @@ class SigningViewModel(
 				signDocumentUseCase(parameters).fold(
 					ifLeft = { error ->
 						_state.value = SigningDialogState.Error(
-							message = error.message,
-							details = error.details,
+							content = ErrorMessage.Domain(error.message, error.details),
 						)
 					},
 					ifRight = { result ->
 						val writeError = writeBytesToPath(outputPath, result.outputBytes)
 						if (writeError != null) {
 							_state.value = SigningDialogState.Error(
-								message = "Failed to write signed document",
-								details = writeError,
+								content = ErrorMessage.WriteFailed(signed = true, reason = writeError),
 							)
 							return@fold
 						}
