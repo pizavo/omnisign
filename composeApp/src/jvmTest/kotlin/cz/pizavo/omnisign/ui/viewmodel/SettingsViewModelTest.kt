@@ -21,6 +21,7 @@ import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
 import cz.pizavo.omnisign.ui.model.PendingTrustedCert
+import cz.pizavo.omnisign.ui.model.SettingsError
 import kotlin.time.Instant
 import cz.pizavo.omnisign.ui.platform.loadUseNativeTitleBar
 import cz.pizavo.omnisign.ui.platform.saveUseNativeTitleBar
@@ -811,7 +812,7 @@ class SettingsViewModelTest : FunSpec({
 
             successCalled shouldBe false
             vm.state.value.error.shouldNotBeNull()
-            vm.state.value.error shouldBe "Failed to install OS scheduler: schtasks failed (exit 1): Access is denied."
+            vm.state.value.error shouldBe SettingsError.SchedulerInstallFailed("schtasks failed (exit 1): Access is denied.")
             vm.state.value.schedulerInstalled shouldBe false
             vm.state.value.saving shouldBe false
         }

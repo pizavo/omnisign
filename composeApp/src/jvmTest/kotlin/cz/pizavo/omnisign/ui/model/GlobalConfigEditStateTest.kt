@@ -63,7 +63,7 @@ class GlobalConfigEditStateTest : FunSpec({
 
 	test("contentEquals ignores transient fields") {
 		val a = GlobalConfigEditState(saving = false, error = null)
-		val b = GlobalConfigEditState(saving = true, error = "fail")
+		val b = GlobalConfigEditState(saving = true, error = SettingsError.Domain("fail"))
 		a.contentEquals(b) shouldBe true
 	}
 

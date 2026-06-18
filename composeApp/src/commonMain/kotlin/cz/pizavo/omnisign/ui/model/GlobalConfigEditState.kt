@@ -44,7 +44,8 @@ import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
  * @property pendingTrustedCertAdds Certificates staged to be added to the global scope on save.
  * @property pendingTrustedCertRemovals Fingerprints of baseline certificates staged for removal on save.
  * @property trustedCertsAvailable Whether the trust store backend is wired in (false on web).
- * @property trustedCertAddError Human-readable error from the last failed certificate add attempt, or `null`.
+ * @property trustedCertAddError Error from the last failed certificate add attempt, or `null`. Emitted
+ *   as locale-agnostic data; the UI resolves it to a message via [TrustedCertAddError.resolve].
  * @property customPkcs11Libraries User-registered PKCS#11 middleware libraries.
  * @property trustedListRefreshInterval Process-global trusted-list refresh interval in hours,
  *   stored as a string for the text field. Clamped to a minimum of 1 hour on save.
@@ -61,7 +62,8 @@ import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
  * @property schedulerInstalled Whether the OS scheduler job is currently registered (read-only, queried on the load).
  * @property renewalRunRecord Status of the most recent renewal batch run (read-only, queried on load), or `null` when none has run or no backend is available.
  * @property saving Whether a save operation is currently in progress.
- * @property error Human-readable error message from the last failed operation, or `null`.
+ * @property error Error from the last failed operation, or `null`. Emitted as locale-agnostic data;
+ *   the UI resolves it to a message via [SettingsError.resolve].
  * @property tlAddError Human-readable error from the last failed trusted list add attempt, or `null`.
  * @property renewalJobAddError Human-readable error from the last failed renewal job add attempt, or `null`.
  * @property useNativeTitleBar Whether to use the native OS title bar instead of the merged custom toolbar on Linux.
@@ -96,7 +98,7 @@ data class GlobalConfigEditState(
 	val pendingTrustedCertAdds: List<PendingTrustedCert> = emptyList(),
 	val pendingTrustedCertRemovals: Set<String> = emptySet(),
 	val trustedCertsAvailable: Boolean = true,
-	val trustedCertAddError: String? = null,
+	val trustedCertAddError: TrustedCertAddError? = null,
 	val customPkcs11Libraries: List<CustomPkcs11Library> = emptyList(),
 	val pkcs11ProbeTimeout: String = "30",
 	val trustedListRefreshInterval: String = "24",
@@ -111,7 +113,7 @@ data class GlobalConfigEditState(
 	val schedulerInstalled: Boolean = false,
 	val renewalRunRecord: RenewalRunRecord? = null,
 	val saving: Boolean = false,
-	val error: String? = null,
+	val error: SettingsError? = null,
 	val tlAddError: String? = null,
 	val renewalJobAddError: String? = null,
 	val useNativeTitleBar: Boolean = false,

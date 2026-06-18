@@ -18,6 +18,8 @@ import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
 import cz.pizavo.omnisign.ui.model.PendingTrustedCert
+import cz.pizavo.omnisign.ui.model.SettingsError
+import cz.pizavo.omnisign.ui.model.TrustedCertAddError
 import cz.pizavo.omnisign.ui.platform.loadUseNativeTitleBar
 import cz.pizavo.omnisign.ui.platform.saveUseNativeTitleBar
 import kotlinx.coroutines.CoroutineDispatcher
@@ -124,7 +126,7 @@ class SettingsViewModel(
             try {
                 withContext(ioDispatcher) { port.refreshNow() }
             } catch (e: Exception) {
-                _state.update { it.copy(error = "Trusted-list refresh failed: ${e.message ?: e::class.simpleName}") }
+                _state.update { it.copy(error = SettingsError.RefreshFailed(e.message ?: e::class.simpleName.orEmpty())) }
             }
         }
     }
@@ -137,7 +139,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             getConfigUseCase().fold(
                 ifLeft = { error ->
-                    _state.update { it.copy(error = error.message) }
+                    _state.update { it.copy(error = SettingsError.Domain(error.message)) }
                 },
                 ifRight = { appConfig ->
                     val hasStored = hasStoredTsaPassword(appConfig.global)
@@ -201,7 +203,7 @@ class SettingsViewModel(
         val store = trustStore ?: return
         viewModelScope.launch {
             withContext(ioDispatcher) { store.inspect(bytes) }.fold(
-                ifLeft = { error -> _state.update { it.copy(trustedCertAddError = error.message) } },
+                ifLeft = { error -> _state.update { it.copy(trustedCertAddError = TrustedCertAddError.Domain(error.message)) } },
                 ifRight = { parsed ->
                     _state.update { current ->
                         val trustedFingerprints = current.trustedCertificates
@@ -209,7 +211,7 @@ class SettingsViewModel(
                             .map { it.fingerprint } +
                             current.pendingTrustedCertAdds.map { it.fingerprint }
                         if (parsed.fingerprint in trustedFingerprints) {
-                            current.copy(trustedCertAddError = "This certificate is already trusted in the global scope.")
+                            current.copy(trustedCertAddError = TrustedCertAddError.AlreadyTrusted)
                         } else {
                             current.copy(
                                 pendingTrustedCertAdds = current.pendingTrustedCertAdds + PendingTrustedCert(
@@ -242,14 +244,14 @@ class SettingsViewModel(
     fun save(onSuccess: () -> Unit = {}) {
         val current = _state.value
         if (current.hasSchedulerTimeError) {
-            _state.update { it.copy(error = "Scheduler time is invalid — hour must be 0\u201323, minute must be 0\u201359.") }
+            _state.update { it.copy(error = SettingsError.SchedulerTimeInvalid) }
             return
         }
         _state.update { it.copy(saving = true, error = null) }
         viewModelScope.launch {
             setGlobalConfigUseCase { current.toGlobalConfig() }.fold(
                 ifLeft = { error ->
-                    _state.update { it.copy(saving = false, error = error.message) }
+                    _state.update { it.copy(saving = false, error = SettingsError.Domain(error.message)) }
                 },
                 ifRight = {
                     saveAppLevelConfig(current)
@@ -276,7 +278,7 @@ class SettingsViewModel(
                     }
 
                     if (certError != null) {
-                        _state.update { it.copy(saving = false, error = certError, schedulerInstalled = installed) }
+                        _state.update { it.copy(saving = false, error = SettingsError.Domain(certError), schedulerInstalled = installed) }
                     } else {
                         val newBaseline = store
                             ?.let { withContext(ioDispatcher) { it.list(TrustScope.Global) } }
@@ -348,10 +350,10 @@ class SettingsViewModel(
      * scheduler is uninstalled.
      * If the [schedulerPort] is not available the method is a no-op.
      *
-     * @return A human-readable error message when the scheduler operation failed,
-     *   or `null` on success.
+     * @return A [SettingsError.SchedulerInstallFailed] when the scheduler install failed,
+     *   or `null` on success (including the uninstall path).
      */
-    private fun syncScheduler(editState: GlobalConfigEditState): String? {
+    private fun syncScheduler(editState: GlobalConfigEditState): SettingsError.SchedulerInstallFailed? {
         val port = schedulerPort ?: return null
         val exePath = editState.effectiveSchedulerExecutablePath
         if (editState.renewalJobs.isNotEmpty() && exePath != null) {
@@ -364,7 +366,7 @@ class SettingsViewModel(
                 )
                 null
             } catch (e: Exception) {
-                "Failed to install OS scheduler: ${e.message ?: "unknown error"}"
+                SettingsError.SchedulerInstallFailed(e.message ?: "unknown error")
             }
         } else {
             try {
@@ -387,7 +389,7 @@ class SettingsViewModel(
     suspend fun buildConfigArchive(): ByteArray? {
         val archive = configArchive ?: return null
         return withContext(ioDispatcher) { archive.exportFullConfig() }.fold(
-            ifLeft = { error -> _state.update { it.copy(error = error.message) }; null },
+            ifLeft = { error -> _state.update { it.copy(error = SettingsError.Domain(error.message)) }; null },
             ifRight = { it },
         )
     }
@@ -404,7 +406,7 @@ class SettingsViewModel(
         _state.update { it.copy(error = null) }
         viewModelScope.launch {
             withContext(ioDispatcher) { archive.importFullConfig(bytes) }.fold(
-                ifLeft = { error -> _state.update { it.copy(error = error.message) } },
+                ifLeft = { error -> _state.update { it.copy(error = SettingsError.Domain(error.message)) } },
                 ifRight = { load() },
             )
         }

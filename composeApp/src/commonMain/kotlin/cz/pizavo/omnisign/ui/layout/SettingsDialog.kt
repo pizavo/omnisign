@@ -35,6 +35,8 @@ import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
 import cz.pizavo.omnisign.ui.model.SettingsCategory
+import cz.pizavo.omnisign.ui.model.TrustedCertAddError
+import cz.pizavo.omnisign.ui.model.resolve
 import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
 import cz.pizavo.omnisign.ui.platform.openInFileExplorer
 import cz.pizavo.omnisign.ui.platform.platformFilePath
@@ -390,10 +392,11 @@ private fun SettingsContentPanel(
 		modifier = Modifier.fillMaxSize(),
 		contentPadding = PaddingValues(24.dp),
 	) {
-		if (state.error != null) {
+		val errorText = state.error?.resolve()
+		if (errorText != null) {
 			SelectableContent {
 				Text(
-					text = state.error,
+					text = errorText,
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.error,
 				)
@@ -1125,9 +1128,9 @@ private fun TrustedCertificatesSettingsSection(
 				it.copy(pendingTrustedCertAdds = it.pendingTrustedCertAdds.filterIndexed { i, _ -> i != index })
 			}
 		},
-		addError = state.trustedCertAddError,
+		addError = state.trustedCertAddError?.resolve(),
 		onClearError = { onFieldChange { it.copy(trustedCertAddError = null) } },
-		onError = { message -> onFieldChange { it.copy(trustedCertAddError = message) } },
+		onError = { message -> onFieldChange { it.copy(trustedCertAddError = TrustedCertAddError.Domain(message)) } },
 	)
 }
 
