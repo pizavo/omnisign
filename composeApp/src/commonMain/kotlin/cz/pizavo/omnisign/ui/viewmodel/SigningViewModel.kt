@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
+import cz.pizavo.omnisign.domain.model.error.localizableText
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.Pkcs11DiagnosticSnapshot
@@ -213,7 +214,7 @@ class SigningViewModel(
 					configResult.fold(
 						ifLeft = { error ->
 							_state.value = SigningDialogState.Error(
-								content = ErrorMessage.ConfigResolution(error.message),
+								content = ErrorMessage.ConfigResolution(error.localizableText()),
 							)
 						},
 						ifRight = { config ->
@@ -228,7 +229,7 @@ class SigningViewModel(
 							discoveryDeferred.await().fold(
 								ifLeft = { error ->
 									_state.value = SigningDialogState.Error(
-										content = ErrorMessage.Domain(error.message, error.details),
+										content = ErrorMessage.Domain(error.localizableText(), error.details),
 									)
 								},
 								ifRight = { discovery ->
@@ -311,7 +312,7 @@ class SigningViewModel(
 											cz.pizavo.omnisign.domain.repository.TokenDiscoveryWarning(
 												tokenId = tokenId,
 												tokenName = current.lockedTokens.find { it.tokenId == tokenId }?.tokenName ?: tokenId,
-												message = error.message,
+												message = error.localizableText(),
 												details = error.details,
 											),
 								)
@@ -356,7 +357,7 @@ class SigningViewModel(
 									tokenWarnings = current.tokenWarnings + cz.pizavo.omnisign.domain.repository.TokenDiscoveryWarning(
 										tokenId = "file-$filePath",
 										tokenName = filePath.substringAfterLast('/').substringAfterLast('\\'),
-										message = error.message,
+										message = error.localizableText(),
 										details = error.details,
 									),
 								)
@@ -431,7 +432,7 @@ class SigningViewModel(
 				signDocumentUseCase(parameters).fold(
 					ifLeft = { error ->
 						_state.value = SigningDialogState.Error(
-							content = ErrorMessage.Domain(error.message, error.details),
+							content = ErrorMessage.Domain(error.localizableText(), error.details),
 						)
 					},
 					ifRight = { result ->

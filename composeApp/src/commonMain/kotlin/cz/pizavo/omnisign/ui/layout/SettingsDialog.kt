@@ -28,6 +28,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.lumo.LumoTheme
@@ -1130,7 +1131,7 @@ private fun TrustedCertificatesSettingsSection(
 		},
 		addError = state.trustedCertAddError?.resolve(),
 		onClearError = { onFieldChange { it.copy(trustedCertAddError = null) } },
-		onError = { message -> onFieldChange { it.copy(trustedCertAddError = TrustedCertAddError.Domain(message)) } },
+		onError = { message -> onFieldChange { it.copy(trustedCertAddError = TrustedCertAddError.Domain(LocalizableText.Literal(message))) } },
 	)
 }
 

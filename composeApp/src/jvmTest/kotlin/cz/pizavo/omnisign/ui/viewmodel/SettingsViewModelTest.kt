@@ -9,6 +9,7 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.result.RenewalRunOutcome
 import cz.pizavo.omnisign.domain.model.result.RenewalRunRecord
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
@@ -109,7 +110,7 @@ class SettingsViewModelTest : FunSpec({
     test("load surfaces error when config loading fails") {
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns ConfigurationError.InvalidConfiguration(
-                message = "corrupt file"
+                LocalizableText.Literal("corrupt file")
             ).left()
 
             val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
@@ -986,7 +987,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             val archive = mockk<ConfigArchivePort>()
             coEvery { archive.exportFullConfig() } returns
-                ConfigurationError.InvalidConfiguration("export failed").left()
+                ConfigurationError.InvalidConfiguration(LocalizableText.Literal("export failed")).left()
             val vm = SettingsViewModel(
                 getConfig, setGlobalConfig, configArchive = archive,
                 ioDispatcher = UnconfinedTestDispatcher(testDispatcher.scheduler),
@@ -1020,7 +1021,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             val archive = mockk<ConfigArchivePort>()
             coEvery { archive.importFullConfig(any()) } returns
-                ConfigurationError.InvalidConfiguration("bad archive").left()
+                ConfigurationError.InvalidConfiguration(LocalizableText.Literal("bad archive")).left()
             val vm = SettingsViewModel(
                 getConfig, setGlobalConfig, configArchive = archive,
                 ioDispatcher = UnconfinedTestDispatcher(testDispatcher.scheduler),

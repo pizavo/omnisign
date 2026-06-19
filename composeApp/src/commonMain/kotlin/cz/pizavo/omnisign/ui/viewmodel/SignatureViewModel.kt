@@ -5,6 +5,7 @@ import androidx.lifecycle.viewModelScope
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedSourceId
 import cz.pizavo.omnisign.domain.model.config.requiredTrustedSourceIds
+import cz.pizavo.omnisign.domain.model.error.localizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
@@ -202,7 +203,7 @@ class SignatureViewModel(
                 ifLeft = { error ->
                     _state.update {
                         SignaturePanelState.Error(
-                            message = error.message,
+                            text = error.localizableText(),
                         )
                     }
                 },

@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.domain.repository
 
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import kotlinx.serialization.Serializable
 
 /**
@@ -23,14 +24,14 @@ data class CertificateDiscoveryResult(
  *
  * @property tokenId Stable token identifier matching [cz.pizavo.omnisign.domain.service.TokenInfo.id].
  * @property tokenName Human-readable display name of the token.
- * @property message Short description of why the token could not be accessed.
+ * @property message Locale-agnostic description of why the token could not be accessed, resolved to display text by the UI.
  * @property details Optional underlying exception message for deeper diagnostics.
  */
 @Serializable
 data class TokenDiscoveryWarning(
     val tokenId: String,
     val tokenName: String,
-    val message: String,
+    val message: LocalizableText,
     val details: String? = null,
 )
 

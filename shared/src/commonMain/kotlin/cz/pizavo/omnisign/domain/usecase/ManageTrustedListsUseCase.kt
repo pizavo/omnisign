@@ -5,6 +5,7 @@ import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.*
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.result.OperationResult
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 
 /**
@@ -33,9 +34,7 @@ class ManageTrustedListsUseCase(
 		
 		if (profileName != null) {
 			val profile = current.profiles[profileName]
-				?: return ConfigurationError.InvalidConfiguration(
-					message = "No profile named '$profileName' found"
-				).left()
+				?: return ConfigurationError.noProfileNamed(profileName).left()
 			val existingValidation = profile.validation ?: ValidationConfig()
 			val updatedValidation = existingValidation.copy(
 				customTrustedLists = existingValidation.customTrustedLists.filter { it.name != tl.name } + tl
@@ -74,16 +73,12 @@ class ManageTrustedListsUseCase(
 		
 		if (profileName != null) {
 			val profile = current.profiles[profileName]
-				?: return ConfigurationError.InvalidConfiguration(
-					message = "No profile named '$profileName' found"
-				).left()
-			
+				?: return ConfigurationError.noProfileNamed(profileName).left()
+
 			val existingValidation = profile.validation ?: ValidationConfig()
-			
+
 			if (existingValidation.customTrustedLists.none { it.name == name }) {
-				return ConfigurationError.InvalidConfiguration(
-					message = "No trusted list named '$name' found in profile '$profileName'"
-				).left()
+				return ConfigurationError.trustedListNotFoundInProfile(name, profileName).left()
 			}
 			
 			val updatedValidation = existingValidation.copy(
@@ -99,9 +94,7 @@ class ManageTrustedListsUseCase(
 		val existing = current.global.validation.customTrustedLists
 		
 		if (existing.none { it.name == name }) {
-			return ConfigurationError.InvalidConfiguration(
-				message = "No trusted list named '$name' found"
-			).left()
+			return ConfigurationError.trustedListNotFound(name).left()
 		}
 		
 		val newConfig = current.copy(
@@ -128,10 +121,8 @@ class ManageTrustedListsUseCase(
 		
 		if (profileName != null) {
 			val profile = current.profiles[profileName]
-				?: return ConfigurationError.InvalidConfiguration(
-					message = "No profile named '$profileName' found"
-				).left()
-			
+				?: return ConfigurationError.noProfileNamed(profileName).left()
+
 			return (profile.validation?.customTrustedLists ?: emptyList()).right()
 		}
 		
@@ -157,7 +148,9 @@ class ManageTrustedListsUseCase(
 	suspend fun getDraft(name: String): OperationResult<CustomTrustedListDraft> =
 		configRepository.getCurrentConfig().tlDrafts[name]?.right()
 			?: ConfigurationError.InvalidConfiguration(
-				message = "No TL draft named '$name' found. Create one first with: config tl build create $name"
+				LocalizableText.Literal(
+					"No TL draft named '$name' found. Create one first with: config tl build create $name"
+				)
 			).left()
 	
 	/**
@@ -174,9 +167,7 @@ class ManageTrustedListsUseCase(
 	suspend fun deleteDraft(name: String): OperationResult<Unit> =
 		configRepository.getCurrentConfig().run {
 			if (!tlDrafts.containsKey(name)) {
-				return ConfigurationError.InvalidConfiguration(
-					message = "No TL draft named '$name' found"
-				).left()
+				return ConfigurationError.draftNotFound(name).left()
 			}
 			
 			configRepository.saveConfig(copy(tlDrafts = tlDrafts - name))
@@ -210,11 +201,9 @@ class ManageTrustedListsUseCase(
 			ifLeft = { it.left() },
 			ifRight = { draft ->
 				if (draft.trustServiceProviders.none { it.name == tspName }) {
-					return ConfigurationError.InvalidConfiguration(
-						message = "No TSP named '$tspName' in draft '$draftName'"
-					).left()
+					return ConfigurationError.tspNotFound(tspName, draftName).left()
 				}
-				
+
 				upsertDraft(
 					draft.copy(
 						trustServiceProviders = draft.trustServiceProviders.filter { it.name != tspName }
@@ -239,10 +228,8 @@ class ManageTrustedListsUseCase(
 			ifLeft = { it.left() },
 			ifRight = { draft ->
 				val tsp = draft.trustServiceProviders.find { it.name == tspName }
-					?: return ConfigurationError.InvalidConfiguration(
-						message = "No TSP named '$tspName' in draft '$draftName'"
-					).left()
-				
+					?: return ConfigurationError.tspNotFound(tspName, draftName).left()
+
 				tsp
 					.run { services.filter { it.name != service.name } + service }
 					.let {
@@ -276,16 +263,12 @@ class ManageTrustedListsUseCase(
 		serviceName: String
 	): OperationResult<Unit> {
 		val tsp = draft.trustServiceProviders.find { it.name == tspName }
-			?: return ConfigurationError.InvalidConfiguration(
-				message = "No TSP named '$tspName' in draft '${draft.name}'"
-			).left()
-		
+			?: return ConfigurationError.tspNotFound(tspName, draft.name).left()
+
 		if (tsp.services.none { it.name == serviceName }) {
-			return ConfigurationError.InvalidConfiguration(
-				message = "No service named '$serviceName' in TSP '$tspName'"
-			).left()
+			return ConfigurationError.serviceNotFound(serviceName, tspName).left()
 		}
-		
+
 		return draft.trustServiceProviders.map { t ->
 			if (t.name == tspName) t.copy(services = t.services.filter { it.name != serviceName }) else t
 		}.let { upsertDraft(draft.copy(trustServiceProviders = it)) }

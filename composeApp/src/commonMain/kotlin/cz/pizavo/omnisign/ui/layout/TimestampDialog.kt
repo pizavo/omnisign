@@ -10,6 +10,7 @@ import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.TimestampDialogState
 import cz.pizavo.omnisign.ui.model.TimestampType
+import cz.pizavo.omnisign.ui.model.localized
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
@@ -217,7 +218,7 @@ private fun TimestampRevocationWarningContent(state: TimestampDialogState.Revoca
 				)
 				SelectableContent {
 					Text(
-						text = warning,
+						text = warning.localized(),
 						style = LumoTheme.typography.body2,
 						color = LumoTheme.colors.warning,
 					)

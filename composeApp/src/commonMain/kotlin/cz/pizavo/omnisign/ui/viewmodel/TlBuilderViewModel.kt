@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListDraft
 import cz.pizavo.omnisign.domain.model.config.TrustServiceDraft
 import cz.pizavo.omnisign.domain.model.config.TrustServiceProviderDraft
+import cz.pizavo.omnisign.domain.model.error.localizableText
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.ServiceEditState
@@ -144,7 +145,7 @@ class TlBuilderViewModel(
 			}.fold(
 				ifLeft = { opError ->
 					_state.value = TlBuilderDialogState.Error(
-						content = ErrorMessage.Domain(opError.message, opError.details),
+						content = ErrorMessage.Domain(opError.localizableText(), opError.details),
 					)
 				},
 				ifRight = {

@@ -14,6 +14,7 @@ import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.value.formatDate
 import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
 import cz.pizavo.omnisign.domain.repository.LockedTokenInfo
@@ -24,6 +25,7 @@ import cz.pizavo.omnisign.lumo.components.progressindicators.CircularProgressInd
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.SigningDialogState
+import cz.pizavo.omnisign.ui.model.localized
 import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
 import cz.pizavo.omnisign.ui.platform.platformFilePath
 import io.github.vinceglb.filekit.PlatformFile
@@ -682,8 +684,8 @@ internal fun LoadingContent(message: String) {
 @Composable
 internal fun ErrorContent(error: ErrorMessage) {
 	val (message, details) = when (error) {
-		is ErrorMessage.Domain -> error.message to error.details
-		is ErrorMessage.ConfigResolution -> stringResource(Res.string.error_config_resolution, error.detail) to null
+		is ErrorMessage.Domain -> error.text.localized() to error.details
+		is ErrorMessage.ConfigResolution -> stringResource(Res.string.error_config_resolution, error.text.localized()) to null
 		is ErrorMessage.WriteFailed -> stringResource(if (error.signed) Res.string.error_write_signed else Res.string.error_write_extended) to error.reason
 		is ErrorMessage.RevocationRefreshFailed -> stringResource(Res.string.error_revocation_refresh_failed) to (stringResource(Res.string.error_revocation_lt_degrade) + (error.domainDetails?.let { "\n\n$it" } ?: ""))
 		ErrorMessage.CompilerUnavailable -> stringResource(Res.string.error_compiler_unavailable) to null
@@ -950,7 +952,7 @@ private fun CertQualificationBadge(cert: AvailableCertificateInfo) {
  * @param message Warning text to display.
  */
 @Composable
-private fun TokenWarningRow(message: String) {
+private fun TokenWarningRow(message: LocalizableText) {
 	Row(
 		horizontalArrangement = Arrangement.spacedBy(4.dp),
 		verticalAlignment = Alignment.Top,
@@ -964,7 +966,7 @@ private fun TokenWarningRow(message: String) {
 		)
 		SelectableContent {
 			Text(
-				text = message,
+				text = message.localized(),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.warning,
 			)

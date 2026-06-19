@@ -65,16 +65,8 @@ abstract class JacksonConfigSerializer(
 			.fold(onSuccess = { it.right() }, onFailure = { deserializeError(it).left() })
 	
 	private fun serializeError(cause: Throwable): ConfigurationError.SaveFailed =
-		ConfigurationError.SaveFailed(
-			message = "Failed to serialize configuration to ${format.name}",
-			details = cause.message,
-			cause = cause
-		)
-	
+		ConfigurationError.serializeFailed(format.name, details = cause.message, cause = cause)
+
 	private fun deserializeError(cause: Throwable): ConfigurationError.LoadFailed =
-		ConfigurationError.LoadFailed(
-			message = "Failed to deserialize configuration from ${format.name}",
-			details = cause.message,
-			cause = cause
-		)
+		ConfigurationError.deserializeFailed(format.name, details = cause.message, cause = cause)
 }

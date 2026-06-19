@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.domain.model.result.SigningResult
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.SigningRepository
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
@@ -47,7 +48,7 @@ class SignDocumentUseCaseTest : FunSpec({
 
 	test("propagates signing failure from repository") {
 		coEvery { signingRepository.signDocument(params) } returns SigningError.SigningFailed(
-			message = "Token not found",
+			text = LocalizableText.Literal("Token not found"),
 		).left()
 
 		useCase(params).shouldBeLeft()
@@ -57,7 +58,7 @@ class SignDocumentUseCaseTest : FunSpec({
 
 	test("propagates token access error from repository") {
 		coEvery { signingRepository.signDocument(params) } returns SigningError.TokenAccessError(
-			message = "PKCS#11 unavailable",
+			text = LocalizableText.Literal("PKCS#11 unavailable"),
 			details = "libpkcs11.so not found",
 		).left()
 

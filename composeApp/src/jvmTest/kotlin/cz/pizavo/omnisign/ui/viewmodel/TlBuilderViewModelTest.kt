@@ -4,6 +4,7 @@ import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListDraft
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.ServiceEditState
@@ -207,7 +208,7 @@ class TlBuilderViewModelTest : FunSpec({
 	test("compile with compiler failure transitions to Error") {
 		runTest(testDispatcher) {
 			every { compilerPort.compileTo(any(), any()) } returns ConfigurationError.SaveFailed(
-				message = "Write failed"
+				LocalizableText.Literal("Write failed")
 			).left()
 
 			val vm = TlBuilderViewModel(compilerPort, testDispatcher)
@@ -218,7 +219,7 @@ class TlBuilderViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			val error = vm.state.value.shouldBeInstanceOf<TlBuilderDialogState.Error>()
-			error.content shouldBe ErrorMessage.Domain("Write failed", null)
+			error.content shouldBe ErrorMessage.Domain(LocalizableText.Literal("Write failed"), null)
 		}
 	}
 

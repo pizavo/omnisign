@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.domain.usecase
 import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository.Companion.DEFAULT_RENEWAL_BUFFER_DAYS
 import io.kotest.assertions.arrow.core.shouldBeLeft
@@ -48,7 +49,7 @@ class CheckArchivalRenewalUseCaseTest : FunSpec({
 
 	test("propagates error from repository") {
 		coEvery { repo.needsArchivalRenewal(filePath, DEFAULT_RENEWAL_BUFFER_DAYS) } returns
-			ArchivingError.ExtensionFailed(message = "File not found").left()
+			ArchivingError.ExtensionFailed(text = LocalizableText.Literal("File not found")).left()
 
 		useCase(filePath).shouldBeLeft()
 			.shouldBeInstanceOf<ArchivingError.ExtensionFailed>()

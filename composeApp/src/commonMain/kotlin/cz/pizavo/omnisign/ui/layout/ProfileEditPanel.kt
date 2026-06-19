@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Button
 import cz.pizavo.omnisign.lumo.components.ButtonVariant
@@ -275,7 +276,7 @@ fun ProfileEditPanel(
                     },
                     addError = state.trustedCertAddError?.resolve(),
                     onClearError = { onFieldChange { it.copy(trustedCertAddError = null) } },
-                    onError = { message -> onFieldChange { it.copy(trustedCertAddError = TrustedCertAddError.Domain(message)) } },
+                    onError = { message -> onFieldChange { it.copy(trustedCertAddError = TrustedCertAddError.Domain(LocalizableText.Literal(message))) } },
                 )
             }
         }

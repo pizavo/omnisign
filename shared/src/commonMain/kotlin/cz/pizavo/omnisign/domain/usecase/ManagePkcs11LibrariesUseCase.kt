@@ -45,9 +45,7 @@ class ManagePkcs11LibrariesUseCase(
     suspend fun removeLibrary(name: String): OperationResult<Unit> {
         val current = configRepository.getCurrentConfig()
         if (current.global.customPkcs11Libraries.none { it.name == name }) {
-            return ConfigurationError.InvalidConfiguration(
-                message = "No PKCS#11 library named '$name' is registered"
-            ).left()
+            return ConfigurationError.pkcs11LibraryNotFound(name).left()
         }
         val updated = current.copy(
             global = current.global.copy(

@@ -17,6 +17,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.signature.CertificateChainLink
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.model.value.formatDate
@@ -25,6 +26,7 @@ import kotlin.time.Instant
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.ui.model.SignaturePanelState
+import cz.pizavo.omnisign.ui.model.localized
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
@@ -61,7 +63,7 @@ fun SignaturePanel(
             is SignaturePanelState.Idle -> IdleContent(hasDocument = state.hasDocument)
             is SignaturePanelState.Loading -> LoadingContent()
             is SignaturePanelState.Loaded -> ReportContent(report = state.report, alertIfNotEuLotl = state.alertIfNotEuLotl)
-            is SignaturePanelState.Error -> ErrorContent(message = state.message, onRetry = onLoadSignatures)
+            is SignaturePanelState.Error -> ErrorContent(text = state.text, onRetry = onLoadSignatures)
         }
     }
 }
@@ -117,7 +119,7 @@ private fun LoadingContent() {
  */
 @Composable
 private fun ErrorContent(
-    message: String,
+    text: LocalizableText,
     onRetry: () -> Unit,
 ) {
     Column(
@@ -127,7 +129,7 @@ private fun ErrorContent(
     ) {
         SelectableContent {
             Text(
-                text = message,
+                text = text.localized(),
                 style = LumoTheme.typography.body2,
                 color = LumoTheme.colors.error,
             )

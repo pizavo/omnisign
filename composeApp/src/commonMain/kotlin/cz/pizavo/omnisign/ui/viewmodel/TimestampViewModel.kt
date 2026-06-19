@@ -6,8 +6,10 @@ import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
+import cz.pizavo.omnisign.domain.model.error.localizableText
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ExtendDocumentUseCase
 import cz.pizavo.omnisign.domain.usecase.GetDocumentTimestampInfoUseCase
@@ -159,7 +161,7 @@ class TimestampViewModel(
 				configResult.fold(
 					ifLeft = { error ->
 						_state.value = TimestampDialogState.Error(
-							content = ErrorMessage.ConfigResolution(error.message),
+							content = ErrorMessage.ConfigResolution(error.localizableText()),
 						)
 					},
 					ifRight = { config ->
@@ -253,15 +255,15 @@ class TimestampViewModel(
 							} else {
 								_state.value = TimestampDialogState.RevocationWarning(
 									warnings = listOfNotNull(
-										error.message,
-										error.details,
+										error.localizableText(),
+										error.details?.let { LocalizableText.Literal(it) },
 									),
 									details = error.details,
 								)
 							}
 						} else {
 							_state.value = TimestampDialogState.Error(
-								content = ErrorMessage.Domain(error.message, error.details),
+								content = ErrorMessage.Domain(error.localizableText(), error.details),
 							)
 						}
 					},
@@ -312,7 +314,7 @@ class TimestampViewModel(
 				extendDocumentUseCase(parameters).fold(
 					ifLeft = { error ->
 						_state.value = TimestampDialogState.Error(
-							content = ErrorMessage.Domain(error.message, error.details),
+							content = ErrorMessage.Domain(error.localizableText(), error.details),
 						)
 					},
 					ifRight = { result ->

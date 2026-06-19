@@ -114,10 +114,9 @@ class DssValidationRepository(
 				rawReports = extractRawReports(reports, parameters.rawReportFormats),
 			)
 		}.mapLeft { exception ->
-			ValidationError.ValidationFailed(
-				message = "Validation failed",
+			ValidationError.validationFailed(
 				details = exception.message,
-				cause = exception
+				cause = exception,
 			)
 		}
 	}

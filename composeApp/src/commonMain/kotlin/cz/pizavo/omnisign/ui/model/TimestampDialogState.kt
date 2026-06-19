@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.ui.model
 
 import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 
 /**
  * UI state for the timestamp / extension dialog.
@@ -47,11 +48,11 @@ sealed interface TimestampDialogState {
 	 * does not already contain LT-level data — if it does, an [Error] is shown
 	 * instead.
 	 *
-	 * @property warnings Revocation-related warnings / error details.
+	 * @property warnings Revocation-related warnings / error details, each resolved to display text by the UI.
 	 * @property details Optional detailed error information from DSS.
 	 */
 	data class RevocationWarning(
-		val warnings: List<String>,
+		val warnings: List<LocalizableText>,
 		val details: String? = null,
 	) : TimestampDialogState
 

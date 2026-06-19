@@ -27,17 +27,11 @@ class ManageProfileUseCase(
     suspend fun upsert(profile: ProfileConfig): OperationResult<Unit> {
         val ha = profile.hashAlgorithm
         if (ha != null && ha in profile.disabledHashAlgorithms) {
-            return ConfigurationError.InvalidConfiguration(
-                message = "Profile '${profile.name}' disables its own hash algorithm override ${ha.name}; " +
-                        "remove the override or remove it from the disabled set"
-            ).left()
+            return ConfigurationError.profileDisablesOwnHash(profile.name, ha.name).left()
         }
         val ea = profile.encryptionAlgorithm
         if (ea != null && ea in profile.disabledEncryptionAlgorithms) {
-            return ConfigurationError.InvalidConfiguration(
-                message = "Profile '${profile.name}' disables its own encryption algorithm override ${ea.name}; " +
-                        "remove the override or remove it from the disabled set"
-            ).left()
+            return ConfigurationError.profileDisablesOwnEncryption(profile.name, ea.name).left()
         }
         val current = configRepository.getCurrentConfig()
         val updated = current.copy(profiles = current.profiles + (profile.name to profile))
@@ -53,9 +47,7 @@ class ManageProfileUseCase(
     suspend fun remove(name: String): OperationResult<Unit> {
         val current = configRepository.getCurrentConfig()
         if (!current.profiles.containsKey(name)) {
-            return ConfigurationError.InvalidConfiguration(
-                message = "Profile '$name' does not exist"
-            ).left()
+            return ConfigurationError.profileNotFound(name).left()
         }
         val updated = current.copy(
             profiles = current.profiles - name,
@@ -78,9 +70,7 @@ class ManageProfileUseCase(
     suspend fun setActive(name: String?): OperationResult<Unit> {
         val current = configRepository.getCurrentConfig()
         if (name != null && !current.profiles.containsKey(name)) {
-            return ConfigurationError.InvalidConfiguration(
-                message = "Profile '$name' does not exist"
-            ).left()
+            return ConfigurationError.profileNotFound(name).left()
         }
         return configRepository.setActiveProfile(name)
     }
@@ -94,9 +84,7 @@ class ManageProfileUseCase(
     suspend fun get(name: String): OperationResult<ProfileConfig> {
         val current = configRepository.getCurrentConfig()
         return current.profiles[name]?.right()
-            ?: ConfigurationError.InvalidConfiguration(
-                message = "Profile '$name' does not exist"
-            ).left()
+            ?: ConfigurationError.profileNotFound(name).left()
     }
 
     /**

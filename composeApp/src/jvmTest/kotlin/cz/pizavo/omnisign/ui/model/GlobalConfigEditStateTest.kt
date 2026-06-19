@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.ui.model
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
@@ -63,7 +64,7 @@ class GlobalConfigEditStateTest : FunSpec({
 
 	test("contentEquals ignores transient fields") {
 		val a = GlobalConfigEditState(saving = false, error = null)
-		val b = GlobalConfigEditState(saving = true, error = SettingsError.Domain("fail"))
+		val b = GlobalConfigEditState(saving = true, error = SettingsError.Domain(LocalizableText.Literal("fail")))
 		a.contentEquals(b) shouldBe true
 	}
 

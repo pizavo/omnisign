@@ -97,11 +97,7 @@ class RemoteSigningRepository(
                 hasRevocationWarnings = meta.hasRevocationWarnings,
             )
         }.mapLeft { exception ->
-            SigningError.SigningFailed(
-                message = "Remote signing failed",
-                details = exception.message,
-                cause = exception,
-            )
+            SigningError.remoteSigningFailed(details = exception.message, cause = exception)
         }
 
     override suspend fun listAvailableCertificates(
@@ -110,22 +106,16 @@ class RemoteSigningRepository(
         Either.catch {
             client.get("api/v1/certificates").body<CertificateDiscoveryResult>()
         }.mapLeft { exception ->
-            SigningError.TokenAccessError(
-                message = "Failed to list certificates from server",
-                details = exception.message,
-                cause = exception,
-            )
+            SigningError.listCertificatesFromServerFailed(details = exception.message, cause = exception)
         }
 
     override suspend fun unlockToken(tokenId: String): OperationResult<List<AvailableCertificateInfo>> =
-        SigningError.TokenAccessError(
-            message = "Token unlock is not supported on the web target",
+        SigningError.tokenUnlockNotSupportedOnWeb(
             details = "Server-side tokens are managed by the server administrator; the web client cannot supply PINs",
         ).left()
 
     override suspend fun loadCertificatesFromFile(filePath: String): OperationResult<List<AvailableCertificateInfo>> =
-        SigningError.TokenAccessError(
-            message = "Loading PKCS#12 files is not supported on the web target",
+        SigningError.loadFileNotSupportedOnWeb(
             details = "Signing on the web is delegated to the server's own keystore; client-side key material is not accepted",
         ).left()
 }

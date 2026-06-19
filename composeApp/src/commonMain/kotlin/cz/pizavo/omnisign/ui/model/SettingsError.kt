@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.ui.model
 
 import androidx.compose.runtime.Composable
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 
@@ -15,8 +16,8 @@ sealed interface SettingsError {
 	/** Installing the OS scheduler failed; [reason] is the underlying cause. */
 	data class SchedulerInstallFailed(val reason: String) : SettingsError
 
-	/** Verbatim domain error text (from a domain OperationError). */
-	data class Domain(val message: String) : SettingsError
+	/** A domain error carried as localizable [text] (resolved to the active locale by the UI). */
+	data class Domain(val text: LocalizableText) : SettingsError
 }
 
 /**
@@ -27,5 +28,5 @@ fun SettingsError.resolve(): String = when (this) {
 	SettingsError.SchedulerTimeInvalid -> stringResource(Res.string.settings_error_scheduler_time_invalid)
 	is SettingsError.RefreshFailed -> stringResource(Res.string.settings_error_refresh_failed, reason)
 	is SettingsError.SchedulerInstallFailed -> stringResource(Res.string.settings_error_scheduler_install_failed, reason)
-	is SettingsError.Domain -> message
+	is SettingsError.Domain -> text.localized()
 }

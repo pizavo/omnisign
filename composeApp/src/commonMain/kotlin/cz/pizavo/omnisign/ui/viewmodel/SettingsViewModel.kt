@@ -5,6 +5,8 @@ import androidx.lifecycle.viewModelScope
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.SchedulerConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
+import cz.pizavo.omnisign.domain.model.error.localizableText
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
@@ -139,7 +141,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             getConfigUseCase().fold(
                 ifLeft = { error ->
-                    _state.update { it.copy(error = SettingsError.Domain(error.message)) }
+                    _state.update { it.copy(error = SettingsError.Domain(error.localizableText())) }
                 },
                 ifRight = { appConfig ->
                     val hasStored = hasStoredTsaPassword(appConfig.global)
@@ -203,7 +205,7 @@ class SettingsViewModel(
         val store = trustStore ?: return
         viewModelScope.launch {
             withContext(ioDispatcher) { store.inspect(bytes) }.fold(
-                ifLeft = { error -> _state.update { it.copy(trustedCertAddError = TrustedCertAddError.Domain(error.message)) } },
+                ifLeft = { error -> _state.update { it.copy(trustedCertAddError = TrustedCertAddError.Domain(error.localizableText())) } },
                 ifRight = { parsed ->
                     _state.update { current ->
                         val trustedFingerprints = current.trustedCertificates
@@ -251,7 +253,7 @@ class SettingsViewModel(
         viewModelScope.launch {
             setGlobalConfigUseCase { current.toGlobalConfig() }.fold(
                 ifLeft = { error ->
-                    _state.update { it.copy(saving = false, error = SettingsError.Domain(error.message)) }
+                    _state.update { it.copy(saving = false, error = SettingsError.Domain(error.localizableText())) }
                 },
                 ifRight = {
                     saveAppLevelConfig(current)
@@ -278,7 +280,7 @@ class SettingsViewModel(
                     }
 
                     if (certError != null) {
-                        _state.update { it.copy(saving = false, error = SettingsError.Domain(certError), schedulerInstalled = installed) }
+                        _state.update { it.copy(saving = false, error = SettingsError.Domain(LocalizableText.Literal(certError)), schedulerInstalled = installed) }
                     } else {
                         val newBaseline = store
                             ?.let { withContext(ioDispatcher) { it.list(TrustScope.Global) } }
@@ -389,7 +391,7 @@ class SettingsViewModel(
     suspend fun buildConfigArchive(): ByteArray? {
         val archive = configArchive ?: return null
         return withContext(ioDispatcher) { archive.exportFullConfig() }.fold(
-            ifLeft = { error -> _state.update { it.copy(error = SettingsError.Domain(error.message)) }; null },
+            ifLeft = { error -> _state.update { it.copy(error = SettingsError.Domain(error.localizableText())) }; null },
             ifRight = { it },
         )
     }
@@ -406,7 +408,7 @@ class SettingsViewModel(
         _state.update { it.copy(error = null) }
         viewModelScope.launch {
             withContext(ioDispatcher) { archive.importFullConfig(bytes) }.fold(
-                ifLeft = { error -> _state.update { it.copy(error = SettingsError.Domain(error.message)) } },
+                ifLeft = { error -> _state.update { it.copy(error = SettingsError.Domain(error.localizableText())) } },
                 ifRight = { load() },
             )
         }

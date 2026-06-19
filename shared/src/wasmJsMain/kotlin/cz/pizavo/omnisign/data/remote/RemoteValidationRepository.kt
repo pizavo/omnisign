@@ -73,8 +73,7 @@ class RemoteValidationRepository(
                 },
             ).body<ValidationReport>()
         }.mapLeft { exception ->
-            ValidationError.ValidationFailed(
-                message = "Remote validation failed",
+            ValidationError.remoteValidationFailed(
                 details = exception.message,
                 cause = exception,
             )

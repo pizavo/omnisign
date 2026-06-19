@@ -4,6 +4,7 @@ import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.error.ValidationError
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
 import cz.pizavo.omnisign.domain.model.validation.SignatureValidationResult
 import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
@@ -60,13 +61,13 @@ class ValidateDocumentUseCaseTest : FunSpec({
 
 	test("propagates validation failure") {
 		coEvery { repo.validateDocument(params) } returns
-			ValidationError.ValidationFailed(message = "corrupted").left()
+			ValidationError.ValidationFailed(text = LocalizableText.Literal("corrupted")).left()
 		useCase(params).shouldBeLeft().shouldBeInstanceOf<ValidationError.ValidationFailed>()
 	}
 
 	test("propagates invalid document error") {
 		coEvery { repo.validateDocument(params) } returns
-			ValidationError.InvalidDocument(message = "Not PDF", details = "bad magic").left()
+			ValidationError.InvalidDocument(text = LocalizableText.Literal("Not PDF"), details = "bad magic").left()
 		val err = useCase(params).shouldBeLeft().shouldBeInstanceOf<ValidationError.InvalidDocument>()
 		err.details shouldBe "bad magic"
 	}

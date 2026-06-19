@@ -11,6 +11,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.domain.model.result.SigningResult
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.*
 import cz.pizavo.omnisign.domain.service.TokenService
 import cz.pizavo.omnisign.domain.usecase.ListCertificatesUseCase
@@ -194,7 +195,7 @@ class SigningViewModelTest : FunSpec({
 	test("open transitions to Ready with token warnings") {
 		runTest(testDispatcher) {
 			val warning = TokenDiscoveryWarning(
-				tokenId = "t1", tokenName = "Broken", message = "Access denied",
+				tokenId = "t1", tokenName = "Broken", message = LocalizableText.Literal("Access denied"),
 			)
 			coEvery { signingRepository.listAvailableCertificates(false) } returns
 					CertificateDiscoveryResult(
@@ -214,14 +215,14 @@ class SigningViewModelTest : FunSpec({
 	test("open transitions to Error when certificate listing fails") {
 		runTest(testDispatcher) {
 			coEvery { signingRepository.listAvailableCertificates(false) } returns
-					SigningError.TokenAccessError(message = "Failed").left()
+					SigningError.TokenAccessError(text = LocalizableText.Literal("Failed")).left()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
 			vm.open(sampleDoc())
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Error>()
-			state.content shouldBe ErrorMessage.Domain("Failed", null)
+			state.content shouldBe ErrorMessage.Domain(LocalizableText.Literal("Failed"), null)
 		}
 	}
 
@@ -272,7 +273,7 @@ class SigningViewModelTest : FunSpec({
 			coEvery { signingRepository.listAvailableCertificates(false) } returns
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 			coEvery { signingRepository.signDocument(any()) } returns
-					SigningError.SigningFailed(message = "Signing error", details = "bad key").left()
+					SigningError.SigningFailed(text = LocalizableText.Literal("Signing error"), details = "bad key").left()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
 			vm.open(sampleDoc())
@@ -283,7 +284,7 @@ class SigningViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Error>()
-			state.content shouldBe ErrorMessage.Domain("Signing error", "bad key")
+			state.content shouldBe ErrorMessage.Domain(LocalizableText.Literal("Signing error"), "bad key")
 		}
 	}
 
@@ -670,7 +671,7 @@ class SigningViewModelTest : FunSpec({
 						lockedTokens = listOf(lockedToken),
 					).right()
 			coEvery { signingRepository.unlockToken("pkcs11-1") } returns
-					SigningError.TokenAccessError(message = "PIN cancelled").left()
+					SigningError.TokenAccessError(text = LocalizableText.Literal("PIN cancelled")).left()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
 			vm.open(sampleDoc())
@@ -683,7 +684,7 @@ class SigningViewModelTest : FunSpec({
 			state.lockedTokens shouldHaveSize 1
 			state.lockedTokens.first().tokenId shouldBe "pkcs11-1"
 			state.tokenWarnings shouldHaveSize 1
-			state.tokenWarnings.first().message shouldBe "PIN cancelled"
+			state.tokenWarnings.first().message.english() shouldBe "PIN cancelled"
 		}
 	}
 
@@ -698,7 +699,7 @@ class SigningViewModelTest : FunSpec({
 						lockedTokens = listOf(lockedToken),
 					).right()
 			coEvery { signingRepository.unlockToken("pkcs11-1") } returns
-					SigningError.TokenAccessError(message = "Wrong PIN").left()
+					SigningError.TokenAccessError(text = LocalizableText.Literal("Wrong PIN")).left()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
 			vm.open(sampleDoc())
@@ -710,7 +711,7 @@ class SigningViewModelTest : FunSpec({
 			var state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
 			state.lockedTokens shouldHaveSize 1
 			state.tokenWarnings shouldHaveSize 1
-			state.tokenWarnings.first().message shouldBe "Wrong PIN"
+			state.tokenWarnings.first().message.english() shouldBe "Wrong PIN"
 
 			val unlockedCert = AvailableCertificateInfo(
 				alias = "smartcard-cert",
@@ -768,7 +769,7 @@ class SigningViewModelTest : FunSpec({
 			coEvery { signingRepository.listAvailableCertificates(false) } returns
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
 			coEvery { signingRepository.loadCertificatesFromFile("/tmp/bad.p12") } returns
-					SigningError.TokenAccessError(message = "Wrong password").left()
+					SigningError.TokenAccessError(text = LocalizableText.Literal("Wrong password")).left()
 
 			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
 			vm.open(sampleDoc())
@@ -779,7 +780,7 @@ class SigningViewModelTest : FunSpec({
 
 			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
 			state.tokenWarnings shouldHaveSize 1
-			state.tokenWarnings.first().message shouldBe "Wrong password"
+			state.tokenWarnings.first().message.english() shouldBe "Wrong password"
 			state.certificates shouldHaveSize 1
 		}
 	}

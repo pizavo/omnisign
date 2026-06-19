@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.error.ValidationError
 import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.validation.ReportExportFormat
 import cz.pizavo.omnisign.domain.model.validation.SignatureValidationResult
 import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
@@ -199,7 +200,7 @@ class SignatureViewModelTest : FunSpec({
     test("loadSignatures transitions to Error on failure") {
         runTest(testDispatcher) {
             coEvery { validationRepository.validateDocument(any()) } returns
-                    ValidationError.ValidationFailed(message = "Corrupted PDF").left()
+                    ValidationError.ValidationFailed(text = LocalizableText.Literal("Corrupted PDF")).left()
 
             val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
             vm.onDocumentChanged(samplePdfDoc("/path/to/bad.pdf"))
@@ -207,7 +208,7 @@ class SignatureViewModelTest : FunSpec({
             advanceUntilIdle()
 
             val state = vm.state.value.shouldBeInstanceOf<SignaturePanelState.Error>()
-            state.message shouldBe "Corrupted PDF"
+            state.text shouldBe LocalizableText.Literal("Corrupted PDF")
         }
     }
 

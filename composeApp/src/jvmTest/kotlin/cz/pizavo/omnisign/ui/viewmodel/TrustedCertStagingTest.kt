@@ -4,6 +4,7 @@ import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.error.TrustStoreError
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import cz.pizavo.omnisign.domain.repository.TrustStore
@@ -67,7 +68,7 @@ class TrustedCertStagingTest : FunSpec({
             val store: TrustStore = mockk()
             coEvery {
                 store.remove(TrustScope.Global, "sha256-gone")
-            } returns TrustStoreError.NotFound("sha256-gone").left()
+            } returns TrustStoreError.NotFound(LocalizableText.Literal("sha256-gone")).left()
 
             val error = applyStagedTrustedCertChanges(
                 store = store,
@@ -83,7 +84,7 @@ class TrustedCertStagingTest : FunSpec({
     test("surfaces a non-NotFound removal failure") {
         runTest {
             val store: TrustStore = mockk()
-            coEvery { store.remove(TrustScope.Global, any()) } returns TrustStoreError.StorageFailed("disk").left()
+            coEvery { store.remove(TrustScope.Global, any()) } returns TrustStoreError.StorageFailed(LocalizableText.Literal("disk")).left()
 
             val error = applyStagedTrustedCertChanges(
                 store = store,
@@ -99,7 +100,7 @@ class TrustedCertStagingTest : FunSpec({
     test("surfaces an addition failure") {
         runTest {
             val store: TrustStore = mockk()
-            coEvery { store.add(any(), any(), any(), any()) } returns TrustStoreError.ParseFailed("bad").left()
+            coEvery { store.add(any(), any(), any(), any()) } returns TrustStoreError.ParseFailed(LocalizableText.Literal("bad")).left()
 
             val error = applyStagedTrustedCertChanges(
                 store = store,

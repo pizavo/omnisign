@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.ui.model
 
 import androidx.compose.runtime.Composable
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 
@@ -9,8 +10,8 @@ sealed interface ProfileError {
 	/** The new profile name was left blank. */
 	data object NameRequired : ProfileError
 
-	/** Verbatim domain error text. */
-	data class Domain(val message: String) : ProfileError
+	/** A domain error carried as localizable [text] (resolved to the active locale by the UI). */
+	data class Domain(val text: LocalizableText) : ProfileError
 }
 
 /**
@@ -19,5 +20,5 @@ sealed interface ProfileError {
 @Composable
 fun ProfileError.resolve(): String = when (this) {
 	ProfileError.NameRequired -> stringResource(Res.string.profile_error_name_required)
-	is ProfileError.Domain -> message
+	is ProfileError.Domain -> text.localized()
 }

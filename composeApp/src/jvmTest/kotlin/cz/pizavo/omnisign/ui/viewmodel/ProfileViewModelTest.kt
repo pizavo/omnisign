@@ -12,6 +12,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import cz.pizavo.omnisign.domain.service.CredentialStore
@@ -93,7 +94,7 @@ class ProfileViewModelTest : FunSpec({
     test("refresh reports error when list fails") {
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns
-                    ConfigurationError.LoadFailed("disk error").left()
+                    ConfigurationError.LoadFailed(LocalizableText.Literal("disk error")).left()
             coEvery { configRepository.getCurrentConfig() } returns AppConfig()
 
             val vm = ProfileViewModel(manageProfile, getConfig)

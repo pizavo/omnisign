@@ -5,6 +5,7 @@ import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListDraft
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.result.OperationResult
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import java.io.File
 
@@ -26,7 +27,7 @@ class DssTrustedListCompilerAdapter(
 			compiler.compile(draft).right()
 		} catch (e: Exception) {
 			ConfigurationError.InvalidConfiguration(
-				message = "Failed to compile trusted list '${draft.name}': ${e.message}",
+				LocalizableText.Literal("Failed to compile trusted list '${draft.name}': ${e.message}"),
 				cause = e,
 			).left()
 		}
@@ -38,7 +39,7 @@ class DssTrustedListCompilerAdapter(
 			Unit.right()
 		} catch (e: Exception) {
 			ConfigurationError.SaveFailed(
-				message = "Failed to write trusted list '${draft.name}' to $outputPath: ${e.message}",
+				LocalizableText.Literal("Failed to write trusted list '${draft.name}' to $outputPath: ${e.message}"),
 				cause = e,
 			).left()
 		}

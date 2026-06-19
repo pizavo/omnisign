@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.error.ValidationError
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.ktor.client.request.*
@@ -36,7 +37,7 @@ class StatusPagesTest : FunSpec({
 		testApplication {
 			configureTestApp {
 				throw OperationException(
-					SigningError.InvalidParameters(message = "bad input", details = "detail")
+					SigningError.InvalidParameters(text = LocalizableText.Literal("bad input"), details = "detail")
 				)
 			}
 			val response = client.get("/test")
@@ -52,7 +53,7 @@ class StatusPagesTest : FunSpec({
 		testApplication {
 			configureTestApp {
 				throw OperationException(
-					ValidationError.ValidationFailed(message = "engine error")
+					ValidationError.ValidationFailed(text = LocalizableText.Literal("engine error"))
 				)
 			}
 			val response = client.get("/test")

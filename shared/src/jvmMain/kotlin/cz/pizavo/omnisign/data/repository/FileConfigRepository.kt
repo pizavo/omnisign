@@ -50,14 +50,10 @@ class FileConfigRepository(
                 config.right()
             }
         } catch (e: Exception) {
-            ConfigurationError.LoadFailed(
-                message = "Failed to load configuration",
-                details = e.message,
-                cause = e
-            ).left()
+            ConfigurationError.loadFailed(details = e.message, cause = e).left()
         }
     }
-    
+
     override suspend fun saveConfig(config: AppConfig): OperationResult<Unit> = mutex.withLock {
         saveConfigInternal(config)
     }
@@ -75,11 +71,7 @@ class FileConfigRepository(
             cachedConfig = config
             Unit.right()
         } catch (e: Exception) {
-            ConfigurationError.SaveFailed(
-                message = "Failed to save configuration",
-                details = e.message,
-                cause = e
-            ).left()
+            ConfigurationError.saveFailed(details = e.message, cause = e).left()
         }
     }
     
