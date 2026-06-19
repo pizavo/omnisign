@@ -40,6 +40,7 @@ import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.ProfileEditState
 import cz.pizavo.omnisign.ui.model.ProfileListState
 import cz.pizavo.omnisign.ui.model.ProfilePanelMode
+import cz.pizavo.omnisign.ui.model.resolve
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
@@ -154,10 +155,11 @@ private fun ProfileListContent(
         )
     }
 
-    if (state.error != null) {
+    val errorText = state.error?.resolve()
+    if (errorText != null) {
         SelectableContent {
             Text(
-                text = state.error,
+                text = errorText,
                 style = LumoTheme.typography.body2,
                 color = LumoTheme.colors.error,
             )

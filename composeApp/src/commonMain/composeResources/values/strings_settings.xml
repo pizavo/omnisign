@@ -39,5 +39,6 @@
 	<string name="settings_error_scheduler_install_failed">Failed to install OS scheduler: %1$s</string>
 	<string name="settings_certadd_already_trusted">This certificate is already trusted in the global scope.</string>
 	<string name="settings_validation_tl_last_refreshed">Last refreshed: %1$s</string>
+	<string name="settings_validation_tl_last_refreshed_never">Last refreshed: never</string>
 	<string name="settings_pkcs11_remove_library_description">Remove %1$s</string>
 </resources>

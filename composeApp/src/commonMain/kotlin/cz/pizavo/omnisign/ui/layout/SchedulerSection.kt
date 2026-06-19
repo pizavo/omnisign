@@ -204,11 +204,13 @@ fun SchedulerSection(
 	}
 
 	if (state.hasSchedulerTimeError) {
+		val hourRangeError = stringResource(Res.string.scheduler_hour_range_error)
+		val minuteRangeError = stringResource(Res.string.scheduler_minute_range_error)
 		Spacer(modifier = Modifier.height(4.dp))
 		Text(
 			text = buildString {
-				if (!state.isSchedulerHourValid) append("Hour must be 0\u201323. ")
-				if (!state.isSchedulerMinuteValid) append("Minute must be 0\u201359.")
+				if (!state.isSchedulerHourValid) append(hourRangeError).append(' ')
+				if (!state.isSchedulerMinuteValid) append(minuteRangeError)
 			}.trim(),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.error,

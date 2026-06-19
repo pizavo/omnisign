@@ -303,6 +303,9 @@ private fun TrustedCertificateAddForm(
     var selectedFile by remember { mutableStateOf<PlatformFile?>(null) }
     var selectedFileName by remember { mutableStateOf("") }
 
+    val unknownErrorText = stringResource(Res.string.error_unknown)
+    val readCertificateFailedPrefix = stringResource(Res.string.trustedcerts_read_failed)
+
     val filePicker = rememberFilePickerLauncher(
         type = FileKitType.File(extensions = listOf("pem", "der", "crt", "cer")),
     ) { file: PlatformFile? ->
@@ -386,8 +389,8 @@ private fun TrustedCertificateAddForm(
                             type = TrustedCertificateType.ANY
                         }
                     } catch (e: Exception) {
-                        val detail = e.message ?: e::class.simpleName ?: "Unknown error"
-                        onError("Failed to read certificate: $detail")
+                        val detail = e.message ?: e::class.simpleName ?: unknownErrorText
+                        onError("$readCertificateFailedPrefix $detail")
                     }
                 },
             ) {

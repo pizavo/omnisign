@@ -1013,7 +1013,7 @@ private fun ValidationPolicySection(
 			Text(
 				text = trustedListLastRefreshAt
 					?.let { stringResource(Res.string.settings_validation_tl_last_refreshed, it.formatDateTime()) }
-					?: "Last refreshed: never",
+					?: stringResource(Res.string.settings_validation_tl_last_refreshed_never),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)

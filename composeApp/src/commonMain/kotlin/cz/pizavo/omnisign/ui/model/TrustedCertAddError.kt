@@ -4,10 +4,13 @@ import androidx.compose.runtime.Composable
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.stringResource
 
-/** An error from adding a trusted certificate in the global scope; UI resolves via [resolve]. */
+/** An error from adding a trusted certificate in the global or profile scope; UI resolves via [resolve]. */
 sealed interface TrustedCertAddError {
 	/** The certificate is already trusted in the global scope. */
 	data object AlreadyTrusted : TrustedCertAddError
+
+	/** The certificate is already trusted in the active profile's scope. */
+	data object AlreadyTrustedInProfile : TrustedCertAddError
 
 	/** Verbatim domain error text. */
 	data class Domain(val message: String) : TrustedCertAddError
@@ -19,5 +22,6 @@ sealed interface TrustedCertAddError {
 @Composable
 fun TrustedCertAddError.resolve(): String = when (this) {
 	TrustedCertAddError.AlreadyTrusted -> stringResource(Res.string.settings_certadd_already_trusted)
+	TrustedCertAddError.AlreadyTrustedInProfile -> stringResource(Res.string.profile_certadd_already_trusted)
 	is TrustedCertAddError.Domain -> message
 }

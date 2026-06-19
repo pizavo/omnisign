@@ -9,6 +9,8 @@
 	<string name="scheduler_hour_label">Hour (0–23)</string>
 	<string name="scheduler_minute_label">Minute (0–59)</string>
 	<string name="scheduler_log_file_placeholder">/var/log/omnisign-renewal.log</string>
+	<string name="scheduler_hour_range_error">Hour must be 0–23.</string>
+	<string name="scheduler_minute_range_error">Minute must be 0–59.</string>
 	<string name="scheduler_no_jobs_hint">No renewal jobs configured — the scheduler will be uninstalled on save.</string>
 	<string name="scheduler_no_auto_detect_hint">Could not auto-detect the executable path. Please specify it manually to enable scheduler installation.</string>
 	<string name="scheduler_last_success">Last successful run: %1$s</string>

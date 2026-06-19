@@ -69,7 +69,7 @@ fun <T> DropdownSelector(
     options: List<T>,
     onSelect: (T?) -> Unit,
     label: @Composable (() -> Unit)? = null,
-    nullLabel: String = "Inherit from global",
+    nullLabel: String = stringResource(Res.string.selector_inherit_from_global),
     showNullOption: Boolean = true,
     disabledOptions: Set<T> = emptySet(),
     itemLabel: @Composable (T) -> String = { it.toString() },

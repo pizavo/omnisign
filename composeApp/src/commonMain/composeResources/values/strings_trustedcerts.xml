@@ -11,4 +11,5 @@
 	<string name="trustedcerts_cd_undo_removal">Undo removal of %1$s</string>
 	<string name="trustedcerts_cd_remove">Remove %1$s</string>
 	<string name="trustedcerts_cd_drop_staged">Drop staged certificate %1$s</string>
+	<string name="trustedcerts_read_failed">Failed to read certificate:</string>
 </resources>

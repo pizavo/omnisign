@@ -174,7 +174,7 @@ private fun RenewalJobRow(
 					color = LumoTheme.colors.textSecondary,
 				)
 				Text(
-					text = if (job.notify) "Notify: on" else "Notify: off",
+					text = if (job.notify) stringResource(Res.string.renewaljobs_notify_on) else stringResource(Res.string.renewaljobs_notify_off),
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.textSecondary,
 				)

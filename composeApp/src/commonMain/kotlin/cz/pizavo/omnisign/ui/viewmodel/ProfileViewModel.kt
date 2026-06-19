@@ -11,8 +11,10 @@ import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
 import cz.pizavo.omnisign.ui.model.PendingTrustedCert
 import cz.pizavo.omnisign.ui.model.ProfileEditState
+import cz.pizavo.omnisign.ui.model.ProfileError
 import cz.pizavo.omnisign.ui.model.ProfileListState
 import cz.pizavo.omnisign.ui.model.ProfilePanelMode
+import cz.pizavo.omnisign.ui.model.TrustedCertAddError
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -83,7 +85,7 @@ class ProfileViewModel(
 
             manageProfileUseCase.list().fold(
                 ifLeft = { error ->
-                    _state.update { it.copy(loading = false, error = error.message) }
+                    _state.update { it.copy(loading = false, error = ProfileError.Domain(error.message)) }
                 },
                 ifRight = { profiles ->
                     _state.update {
@@ -113,7 +115,7 @@ class ProfileViewModel(
             val target = if (_state.value.activeProfile == name) null else name
             manageProfileUseCase.setActive(target).fold(
                 ifLeft = { error ->
-                    _state.update { it.copy(error = error.message) }
+                    _state.update { it.copy(error = ProfileError.Domain(error.message)) }
                 },
                 ifRight = {
                     _state.update { it.copy(activeProfile = target) }
@@ -129,7 +131,7 @@ class ProfileViewModel(
         viewModelScope.launch {
             manageProfileUseCase.setActive(null).fold(
                 ifLeft = { error ->
-                    _state.update { it.copy(error = error.message) }
+                    _state.update { it.copy(error = ProfileError.Domain(error.message)) }
                 },
                 ifRight = {
                     _state.update { it.copy(activeProfile = null) }
@@ -147,7 +149,7 @@ class ProfileViewModel(
         viewModelScope.launch {
             manageProfileUseCase.remove(name).fold(
                 ifLeft = { error ->
-                    _state.update { it.copy(error = error.message) }
+                    _state.update { it.copy(error = ProfileError.Domain(error.message)) }
                 },
                 ifRight = { refresh() },
             )
@@ -178,14 +180,14 @@ class ProfileViewModel(
      */
     fun confirmCreate(name: String) {
         if (name.isBlank()) {
-            _state.update { it.copy(error = "Profile name must not be blank.") }
+            _state.update { it.copy(error = ProfileError.NameRequired) }
             return
         }
         viewModelScope.launch {
             val profile = ProfileConfig(name = name.trim())
             manageProfileUseCase.upsert(profile).fold(
                 ifLeft = { error ->
-                    _state.update { it.copy(error = error.message) }
+                    _state.update { it.copy(error = ProfileError.Domain(error.message)) }
                 },
                 ifRight = {
                     _state.update { it.copy(creatingNew = false) }
@@ -207,7 +209,7 @@ class ProfileViewModel(
         viewModelScope.launch {
             manageProfileUseCase.get(name).fold(
                 ifLeft = { error ->
-                    _state.update { it.copy(error = error.message) }
+                    _state.update { it.copy(error = ProfileError.Domain(error.message)) }
                 },
                 ifRight = { profile ->
                     val hasStored = hasStoredTsaPassword(profile)
@@ -271,7 +273,7 @@ class ProfileViewModel(
         val store = trustStore ?: return
         viewModelScope.launch {
             store.inspect(bytes).fold(
-                ifLeft = { error -> updateEditState { it.copy(trustedCertAddError = error.message) } },
+                ifLeft = { error -> updateEditState { it.copy(trustedCertAddError = TrustedCertAddError.Domain(error.message)) } },
                 ifRight = { parsed ->
                     _state.update { current ->
                         val editState = current.editState ?: return@update current
@@ -280,7 +282,7 @@ class ProfileViewModel(
                             .map { it.fingerprint } +
                             editState.pendingTrustedCertAdds.map { it.fingerprint }
                         val updated = if (parsed.fingerprint in trustedFingerprints) {
-                            editState.copy(trustedCertAddError = "This certificate is already trusted in this profile.")
+                            editState.copy(trustedCertAddError = TrustedCertAddError.AlreadyTrustedInProfile)
                         } else {
                             editState.copy(
                                 pendingTrustedCertAdds = editState.pendingTrustedCertAdds + PendingTrustedCert(

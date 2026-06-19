@@ -50,6 +50,8 @@ import cz.pizavo.omnisign.lumo.components.TriToggleState
 import cz.pizavo.omnisign.lumo.components.rememberTooltipState
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.ProfileEditState
+import cz.pizavo.omnisign.ui.model.TrustedCertAddError
+import cz.pizavo.omnisign.ui.model.resolve
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
@@ -271,9 +273,9 @@ fun ProfileEditPanel(
                             )
                         }
                     },
-                    addError = state.trustedCertAddError,
+                    addError = state.trustedCertAddError?.resolve(),
                     onClearError = { onFieldChange { it.copy(trustedCertAddError = null) } },
-                    onError = { message -> onFieldChange { it.copy(trustedCertAddError = message) } },
+                    onError = { message -> onFieldChange { it.copy(trustedCertAddError = TrustedCertAddError.Domain(message)) } },
                 )
             }
         }
