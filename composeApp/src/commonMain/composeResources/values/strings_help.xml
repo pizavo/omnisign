@@ -16,4 +16,8 @@
 	<string name="help_toggle_debug_logging_caption">Debugging logs for issue resolution. Turn off when done capturing.</string>
 	<string name="help_toggle_extended_logs_title">Extended logs</string>
 	<string name="help_toggle_extended_logs_caption">Captures extended logs from third-party libraries. Very verbose; should be enabled only when specifically asked to.</string>
+	<string name="help_label_version">v%1$s</string>
+	<string name="help_toast_logs_exported">Logs exported.</string>
+	<string name="help_toast_logs_cancelled">Log export cancelled.</string>
+	<string name="help_toast_open_folder_failed">Could not open the log folder.</string>
 </resources>

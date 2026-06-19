@@ -31,4 +31,20 @@
 	<string name="signing_show_diagnostic_info">Show diagnostic info</string>
 	<string name="signing_timestamping_unavailable">Timestamping unavailable</string>
 	<string name="signing_timestamping_select_profile">Select a profile that does not require a timestamp, or ask the server administrator to enable the timestamping operation.</string>
+	<string name="signing_cert_dropdown_item_label">%1$s — valid until %2$s%3$s</string>
+	<string name="signing_hash_algorithm_default">Default (%1$s)</string>
+	<plurals name="signing_locked_tokens_count">
+		<item quantity="one">%1$s locked token</item>
+		<item quantity="other">%1$s locked tokens</item>
+	</plurals>
+	<string name="signing_cert_valid_until">valid until %1$s</string>
+	<string name="signing_cert_valid_until_source">%1$s; %2$s</string>
+	<string name="signing_timestamping_intro_profile">The profile \"%1$s\" requires PAdES %2$s, which embeds a trusted timestamp.</string>
+	<string name="signing_timestamping_intro_no_profile">The configured signature level PAdES %1$s embeds a trusted timestamp.</string>
+	<string name="signing_timestamping_body">%1$s This server has timestamping disabled, so it can only produce basic (B-B) signatures. Signing here would drop the required timestamp.</string>
+	<string name="signing_rescan_none">Rescan complete — no PKCS#11 tokens detected</string>
+	<plurals name="signing_rescan_detected">
+		<item quantity="one">Rescan complete — %1$s PKCS#11 entry detected</item>
+		<item quantity="other">Rescan complete — %1$s PKCS#11 entries detected</item>
+	</plurals>
 </resources>

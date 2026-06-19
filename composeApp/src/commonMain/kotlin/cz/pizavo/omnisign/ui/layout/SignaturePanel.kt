@@ -321,7 +321,7 @@ private fun SignaturesGroup(signatures: List<SignatureValidationResult>, alertIf
     val aggregateIndication = aggregateSignatureIndication(signatures)
 
     SectionAccordion(
-        title = "Signatures (${signatures.size})",
+        title = stringResource(Res.string.signature_section_signatures, signatures.size),
         indication = aggregateIndication,
         initiallyExpanded = true,
     ) {
@@ -351,7 +351,7 @@ private fun SignatureAccordion(
     alertIfNotEuLotl: Boolean,
 ) {
     SectionAccordion(
-        title = "Signature ${index + 1} of $total — ${signature.signedBy}",
+        title = stringResource(Res.string.signature_accordion_title, index + 1, total, signature.signedBy),
         indication = signature.indication,
         initiallyExpanded = false,
         precedingIcon = trustTierIcon(signature.trustTier),
@@ -458,7 +458,7 @@ private fun CertificateAccordion(signature: SignatureValidationResult) {
  */
 @Composable
 private fun RevocationAccordion(revocations: List<RevocationInfo>, asOf: Instant) {
-    val title = if (revocations.size > 1) "Revocation checks (${revocations.size})" else stringResource(Res.string.signature_section_revocation_check)
+    val title = if (revocations.size > 1) stringResource(Res.string.signature_section_revocation_checks, revocations.size) else stringResource(Res.string.signature_section_revocation_check)
     NestedAccordion(title = title) {
         Column(
             modifier = Modifier.padding(start = 4.dp),
@@ -588,7 +588,7 @@ private fun DocumentTimestampsGroup(timestamps: List<TimestampValidationResult>)
     val aggregateIndication = aggregateTimestampIndication(timestamps)
 
     SectionAccordion(
-        title = "Document Timestamps (${timestamps.size})",
+        title = stringResource(Res.string.signature_section_document_timestamps, timestamps.size),
         indication = aggregateIndication,
         initiallyExpanded = true,
     ) {
@@ -615,7 +615,7 @@ private fun TimestampAccordion(
     timestamp: TimestampValidationResult,
 ) {
     SectionAccordion(
-        title = "Timestamp ${index + 1} of $total — ${timestamp.type}",
+        title = stringResource(Res.string.signature_timestamp_accordion_title, index + 1, total, timestamp.type),
         indication = timestamp.indication,
         initiallyExpanded = false,
         trailingIcon = if (timestamp.euLotlBacked) Res.drawable.icon_eu else null,

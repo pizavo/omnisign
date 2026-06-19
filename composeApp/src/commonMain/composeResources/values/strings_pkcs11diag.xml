@@ -10,4 +10,5 @@
 	<string name="pkcs11diag_drop_dir_description">Copy a PKCS#11 library file (.dll / .so / .dylib) into this directory to have discovery pick it up automatically:</string>
 	<string name="pkcs11diag_reader_card_present">card present</string>
 	<string name="pkcs11diag_reader_empty">empty</string>
+	<string name="pkcs11diag_reader_atr">ATR: %1$s</string>
 </resources>

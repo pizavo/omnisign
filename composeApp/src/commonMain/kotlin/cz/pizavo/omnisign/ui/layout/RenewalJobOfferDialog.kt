@@ -132,8 +132,7 @@ private fun RenewalOfferAssignedContent(jobName: String) {
 		}
 		Spacer(modifier = Modifier.height(4.dp))
 		Text(
-			text = "The output file has been added to the renewal job \"$jobName\". " +
-					"It will be automatically re-timestamped when its archival timestamp nears expiry.",
+			text = stringResource(Res.string.renewaloffer_assigned_message, jobName),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)
@@ -167,9 +166,7 @@ private fun RenewalOfferAlreadyCoveredContent(coveringJob: RenewalJob) {
 		}
 		Spacer(modifier = Modifier.height(4.dp))
 		Text(
-			text = "The output file is already covered by the renewal job \"${coveringJob.name}\". " +
-					"No additional configuration is needed — the file will be automatically " +
-					"re-timestamped when its archival timestamp nears expiry.",
+			text = stringResource(Res.string.renewaloffer_covered_message, coveringJob.name),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)
@@ -257,11 +254,12 @@ private fun RenewalOfferFormContent(
 			)
 		}
 
-		if (selectedExistingJob != null) {
+		val currentSelectedJob = selectedExistingJob
+		if (currentSelectedJob != null) {
 			Button(
-				text = "Add to \"$selectedExistingJob\"",
+				text = stringResource(Res.string.renewaloffer_add_to_existing, currentSelectedJob),
 				variant = ButtonVariant.Primary,
-				onClick = { selectedExistingJob?.let { onAssignExisting(it) } },
+				onClick = { onAssignExisting(currentSelectedJob) },
 				modifier = Modifier.fillMaxWidth(),
 			)
 		} else {

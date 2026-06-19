@@ -161,12 +161,15 @@ private fun RenewalJobRow(
 				horizontalArrangement = Arrangement.spacedBy(12.dp),
 			) {
 				Text(
-					text = "Buffer: ${job.renewalBufferDays} days",
+					text = stringResource(Res.string.renewaljobs_row_buffer, job.renewalBufferDays),
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.textSecondary,
 				)
 				Text(
-					text = "Backups: ${if (job.backupRetention > 0) job.backupRetention.toString() else "off"}",
+					text = stringResource(
+						Res.string.renewaljobs_row_backups,
+						if (job.backupRetention > 0) job.backupRetention.toString() else "off",
+					),
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.textSecondary,
 				)
@@ -178,7 +181,7 @@ private fun RenewalJobRow(
 			}
 			if (job.logFile != null) {
 				Text(
-					text = "Log: ${job.logFile}",
+					text = stringResource(Res.string.renewaljobs_row_log, job.logFile.orEmpty()),
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.textSecondary,
 				)
@@ -190,7 +193,7 @@ private fun RenewalJobRow(
 		) {
 			Icon(
 				painter = painterResource(Res.drawable.icon_x),
-				contentDescription = "Remove ${job.name}",
+				contentDescription = stringResource(Res.string.renewaljobs_remove_content_desc, job.name),
 				modifier = Modifier.size(16.dp),
 			)
 		}
@@ -635,7 +638,7 @@ private fun GlobChipField(
 	if (error == null && warnings.isNotEmpty()) {
 		Spacer(modifier = Modifier.height(4.dp))
 		Text(
-			text = "Amber globs (allowed — double-check): ${warnings.joinToString("; ")}.",
+			text = stringResource(Res.string.renewaljobs_globs_amber_warning, warnings.joinToString("; ")),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.warning,
 		)
@@ -664,7 +667,7 @@ private fun GlobChipItem(chip: GlobChip, onRemove: () -> Unit) {
 		trailingIcon = {
 			Icon(
 				painter = painterResource(Res.drawable.icon_x),
-				contentDescription = "Remove ${chip.glob}",
+				contentDescription = stringResource(Res.string.renewaljobs_chip_remove_content_desc, chip.glob),
 				tint = tint,
 				modifier = Modifier.size(14.dp),
 			)

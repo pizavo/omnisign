@@ -21,6 +21,7 @@ import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -66,14 +67,23 @@ fun SchedulerSection(
 		if (state.renewalJobs.isNotEmpty() || state.schedulerInstalled) {
 			Spacer(modifier = Modifier.height(12.dp))
 			Text(
-				text = "Last successful run: ${record.lastSuccessAt?.formatDateTime() ?: "never"}",
+				text = stringResource(
+					Res.string.scheduler_last_success,
+					record.lastSuccessAt?.formatDateTime() ?: "never",
+				),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)
 			Spacer(modifier = Modifier.height(4.dp))
 			Text(
-				text = "Last run: ${record.lastRunAt.formatDateTime()} — ${record.outcome.label} " +
-						"(checked ${record.checked}, renewed ${record.renewed}, errors ${record.errors})",
+				text = stringResource(
+					Res.string.scheduler_last_run,
+					record.lastRunAt.formatDateTime(),
+					record.outcome.label,
+					record.checked,
+					record.renewed,
+					record.errors,
+				),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)
@@ -90,7 +100,11 @@ fun SchedulerSection(
 						modifier = Modifier.size(14.dp),
 					)
 					Text(
-						text = "${record.failuresSinceSuccess} unsuccessful run(s) since the last success.",
+						text = pluralStringResource(
+							Res.plurals.scheduler_failures_since_success,
+							record.failuresSinceSuccess,
+							record.failuresSinceSuccess,
+						),
 						style = LumoTheme.typography.body2,
 						color = LumoTheme.colors.warning,
 					)

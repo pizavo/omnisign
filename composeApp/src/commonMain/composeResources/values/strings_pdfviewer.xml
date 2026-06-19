@@ -5,4 +5,7 @@
 	<string name="pdfviewer_zoom_in">+</string>
 	<string name="pdfviewer_previous_page">‹</string>
 	<string name="pdfviewer_next_page">›</string>
+	<string name="pdfviewer_page_of_description">Page %1$s of %2$s</string>
+	<string name="pdfviewer_zoom_percentage">%1$s%%</string>
+	<string name="pdfviewer_page_indicator">%1$s / %2$s</string>
 </resources>

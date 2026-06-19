@@ -1012,7 +1012,7 @@ private fun ValidationPolicySection(
 			Text(text = stringResource(Res.string.settings_validation_trusted_lists_label), style = LumoTheme.typography.label1)
 			Text(
 				text = trustedListLastRefreshAt
-					?.let { "Last refreshed: ${it.formatDateTime()}" }
+					?.let { stringResource(Res.string.settings_validation_tl_last_refreshed, it.formatDateTime()) }
 					?: "Last refreshed: never",
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
@@ -1317,7 +1317,7 @@ private fun Pkcs11LibraryRow(
 		) {
 			Icon(
 				painter = painterResource(Res.drawable.icon_x),
-				contentDescription = "Remove ${library.name}",
+				contentDescription = stringResource(Res.string.settings_pkcs11_remove_library_description, library.name),
 				modifier = Modifier.size(16.dp),
 			)
 		}

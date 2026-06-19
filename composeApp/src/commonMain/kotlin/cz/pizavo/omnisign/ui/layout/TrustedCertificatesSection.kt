@@ -193,7 +193,7 @@ private fun TrustedCertificateRow(
                 }
             }
             Text(
-                text = "Expires ${certificate.notAfter.formatDateTime()}",
+                text = stringResource(Res.string.trustedcerts_expires, certificate.notAfter.formatDateTime()),
                 style = LumoTheme.typography.body2,
                 color = LumoTheme.colors.textSecondary,
             )
@@ -213,9 +213,9 @@ private fun TrustedCertificateRow(
                         if (markedForRemoval) Res.drawable.icon_arrow_left else Res.drawable.icon_x,
                     ),
                     contentDescription = if (markedForRemoval) {
-                        "Undo removal of ${certificate.subjectDN}"
+                        stringResource(Res.string.trustedcerts_cd_undo_removal, certificate.subjectDN)
                     } else {
-                        "Remove ${certificate.subjectDN}"
+                        stringResource(Res.string.trustedcerts_cd_remove, certificate.subjectDN)
                     },
                     modifier = Modifier.size(16.dp),
                 )
@@ -255,7 +255,7 @@ private fun PendingTrustedCertRow(
                 StatusBadge(text = stringResource(Res.string.trustedcerts_badge_pending), color = LumoTheme.colors.success)
             }
             Text(
-                text = "Expires ${pending.notAfter.formatDateTime()}",
+                text = stringResource(Res.string.trustedcerts_expires, pending.notAfter.formatDateTime()),
                 style = LumoTheme.typography.body2,
                 color = LumoTheme.colors.textSecondary,
             )
@@ -271,7 +271,7 @@ private fun PendingTrustedCertRow(
         ) {
             Icon(
                 painter = painterResource(Res.drawable.icon_x),
-                contentDescription = "Drop staged certificate ${pending.subjectDN}",
+                contentDescription = stringResource(Res.string.trustedcerts_cd_drop_staged, pending.subjectDN),
                 modifier = Modifier.size(16.dp),
             )
         }

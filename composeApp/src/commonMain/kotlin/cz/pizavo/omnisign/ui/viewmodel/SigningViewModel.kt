@@ -29,6 +29,12 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
+import omnisign.composeapp.generated.resources.Res
+import omnisign.composeapp.generated.resources.signing_rescan_detected
+import omnisign.composeapp.generated.resources.signing_rescan_none
+import omnisign.composeapp.generated.resources.signing_show_diagnostic_info
+import org.jetbrains.compose.resources.getPluralString
+import org.jetbrains.compose.resources.getString
 
 /**
  * ViewModel driving the signing dialog.
@@ -626,24 +632,22 @@ class SigningViewModel(
 	 * Error, etc.) we publish zeros so the user still gets a "rescan ran" signal at the
 	 * root host instead of total silence.
 	 */
-	private fun emitRescanToast() {
+	private suspend fun emitRescanToast() {
 		val service = toastService ?: return
 		val ready = _state.value as? SigningDialogState.Ready
 		val pkcs11CertCount = ready?.certificates
 			?.count { it.tokenType == TokenType.PKCS11.name } ?: 0
 		val lockedTokenCount = ready?.lockedTokens?.size ?: 0
 		val total = pkcs11CertCount + lockedTokenCount
-		val text = when {
-			total == 0 -> "Rescan complete — no PKCS#11 tokens detected"
-			total == 1 -> "Rescan complete — 1 PKCS#11 entry detected"
-			else -> "Rescan complete — $total PKCS#11 entries detected"
-		}
 		val message = if (total == 0) ToastMessage(
-			text = text,
-			actionLabel = "Show diagnostic info",
+			text = getString(Res.string.signing_rescan_none),
+			actionLabel = getString(Res.string.signing_show_diagnostic_info),
 			onAction = ::showDiagnostic,
 			duration = ToastDuration.Long,
-		) else ToastMessage(text = text, duration = ToastDuration.Short)
+		) else ToastMessage(
+			text = getPluralString(Res.plurals.signing_rescan_detected, total, total),
+			duration = ToastDuration.Short,
+		)
 		service.show(message)
 	}
 

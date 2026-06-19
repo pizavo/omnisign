@@ -11,4 +11,5 @@
 	<string name="profiles_view_profile">View profile</string>
 	<string name="profiles_edit_profile">Edit profile</string>
 	<string name="profiles_delete_profile">Delete profile</string>
+	<string name="profiles_delete_profile_confirm">Are you sure you want to delete the profile \"%1$s\"? This action cannot be undone.</string>
 </resources>

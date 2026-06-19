@@ -296,7 +296,7 @@ private fun PcscReaderRow(reader: Pkcs11DiagnosticSnapshot.PcscReaderInfo) {
 		}
 		if (reader.atrHex != null) {
 			Text(
-				text = "ATR: ${reader.atrHex}",
+				text = stringResource(Res.string.pkcs11diag_reader_atr, reader.atrHex.orEmpty()),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)

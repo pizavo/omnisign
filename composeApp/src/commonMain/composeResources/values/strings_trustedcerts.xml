@@ -7,4 +7,8 @@
 	<string name="trustedcerts_placeholder_certificate_file">/path/to/certificate.pem</string>
 	<string name="trustedcerts_cd_browse">Browse for certificate file</string>
 	<string name="trustedcerts_cd_add">Add certificate</string>
+	<string name="trustedcerts_expires">Expires %1$s</string>
+	<string name="trustedcerts_cd_undo_removal">Undo removal of %1$s</string>
+	<string name="trustedcerts_cd_remove">Remove %1$s</string>
+	<string name="trustedcerts_cd_drop_staged">Drop staged certificate %1$s</string>
 </resources>

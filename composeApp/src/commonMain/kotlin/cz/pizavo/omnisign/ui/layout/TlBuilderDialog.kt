@@ -29,6 +29,7 @@ import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.name
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -310,12 +311,16 @@ private fun TspCard(
 						tint = LumoTheme.colors.textSecondary,
 					)
 					Text(
-						text = tsp.name.ifBlank { "TSP #${tspIndex + 1}" },
+						text = tsp.name.ifBlank { stringResource(Res.string.tlbuilder_tsp_fallback_name, tspIndex + 1) },
 						style = LumoTheme.typography.label1,
 					)
 					if (tsp.services.isNotEmpty()) {
 						Text(
-							text = "(${tsp.services.size} service${if (tsp.services.size != 1) "s" else ""})",
+							text = pluralStringResource(
+								Res.plurals.tlbuilder_service_count,
+								tsp.services.size,
+								tsp.services.size,
+							),
 							style = LumoTheme.typography.body2,
 							color = LumoTheme.colors.textSecondary,
 						)
@@ -453,7 +458,7 @@ private fun ServiceRow(
 				horizontalArrangement = Arrangement.SpaceBetween,
 			) {
 				Text(
-					text = service.name.ifBlank { "Service #${serviceIndex + 1}" },
+					text = service.name.ifBlank { stringResource(Res.string.tlbuilder_service_fallback_name, serviceIndex + 1) },
 					style = LumoTheme.typography.label1,
 				)
 				IconButton(variant = IconButtonVariant.Ghost, onClick = onRemove) {

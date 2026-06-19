@@ -2,9 +2,14 @@
 	<string name="certdetails_title">Certificate</string>
 	<string name="certdetails_export_tooltip">Export the selected certificate</string>
 	<string name="certdetails_export_success">Certificate exported.</string>
+	<string name="certdetails_export_failed">Export failed: %1$s</string>
 	<string name="certdetails_trust_anchor_label">Trust anchor</string>
 	<string name="certdetails_trusted_label">Trusted</string>
 	<string name="certdetails_trust_success">Added to trusted certificates.</string>
+	<string name="certdetails_trust_failed">Couldn\'t add: %1$s</string>
 	<string name="certdetails_trust_add_tooltip">Add to trusted certificates</string>
 	<string name="certdetails_scope_global">Global</string>
+	<string name="certdetails_trusted_via_anchor">Trust anchor, trusted via %1$s</string>
+	<string name="certdetails_trusted_via_other">Also trusted via %1$s</string>
+	<string name="certdetails_scope_profile">Profile: %1$s</string>
 </resources>

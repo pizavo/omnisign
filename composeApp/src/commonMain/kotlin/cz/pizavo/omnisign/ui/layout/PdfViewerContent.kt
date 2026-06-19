@@ -113,7 +113,11 @@ fun PdfViewerContent(
                 ) {
                     Image(
                         bitmap = bitmap,
-                        contentDescription = "Page ${state.currentPage + 1} of ${document.pageCount}",
+                        contentDescription = stringResource(
+                            Res.string.pdfviewer_page_of_description,
+                            state.currentPage + 1,
+                            document.pageCount,
+                        ),
                         modifier = Modifier.fillMaxWidth(),
                         contentScale = ContentScale.FillWidth,
                     )
@@ -220,7 +224,10 @@ private fun PdfNavigationBar(
                 variant = ButtonVariant.Ghost,
             ) {
                 Text(
-                    text = "${(zoomLevel * 100).roundToInt()}%",
+                    text = stringResource(
+                        Res.string.pdfviewer_zoom_percentage,
+                        (zoomLevel * 100).roundToInt(),
+                    ),
                     style = LumoTheme.typography.body2,
                 )
             }
@@ -247,7 +254,11 @@ private fun PdfNavigationBar(
             }
 
             Text(
-                text = "${currentPage + 1} / $pageCount",
+                text = stringResource(
+                    Res.string.pdfviewer_page_indicator,
+                    currentPage + 1,
+                    pageCount,
+                ),
                 style = LumoTheme.typography.body2,
             )
 

@@ -42,4 +42,9 @@
 	<string name="signature_result_valid">VALID</string>
 	<string name="signature_result_invalid">INVALID</string>
 	<string name="signature_result_indeterminate">INDETERMINATE</string>
+	<string name="signature_section_signatures">Signatures (%1$s)</string>
+	<string name="signature_accordion_title">Signature %1$s of %2$s — %3$s</string>
+	<string name="signature_section_revocation_checks">Revocation checks (%1$s)</string>
+	<string name="signature_section_document_timestamps">Document Timestamps (%1$s)</string>
+	<string name="signature_timestamp_accordion_title">Timestamp %1$s of %2$s — %3$s</string>
 </resources>

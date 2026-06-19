@@ -38,7 +38,7 @@ fun TrustedListLoadingBar(
             text = if (fraction == null) {
                 stringResource(Res.string.tlloadingbar_loading)
             } else {
-                "Loading trusted lists… ${progress.loaded} of ${progress.total}"
+                stringResource(Res.string.tlloadingbar_loading_progress, progress.loaded, progress.total)
             },
             style = LumoTheme.typography.body3,
             color = LumoTheme.colors.textSecondary,

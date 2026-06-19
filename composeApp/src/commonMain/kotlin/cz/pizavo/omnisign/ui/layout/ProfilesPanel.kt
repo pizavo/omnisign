@@ -147,7 +147,7 @@ private fun ProfileListContent(
                 pendingDeleteProfile = null
             },
             title = stringResource(Res.string.profiles_delete_profile_title),
-            text = "Are you sure you want to delete the profile \"$profileName\"? This action cannot be undone.",
+            text = stringResource(Res.string.profiles_delete_profile_confirm, profileName),
             confirmButtonText = stringResource(Res.string.action_delete),
             dismissButtonText = stringResource(Res.string.action_cancel),
             titleContentColor = LumoTheme.colors.error,

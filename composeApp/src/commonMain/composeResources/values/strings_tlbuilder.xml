@@ -44,4 +44,10 @@
 	<string name="tlbuilder_validation_service_type">TSP \'%1$s\', Service \'%2$s\': type identifier is required.</string>
 	<string name="tlbuilder_validation_service_status">TSP \'%1$s\', Service \'%2$s\': status is required.</string>
 	<string name="tlbuilder_validation_service_cert">TSP \'%1$s\', Service \'%2$s\': certificate path is required.</string>
+	<string name="tlbuilder_tsp_fallback_name">TSP #%1$s</string>
+	<plurals name="tlbuilder_service_count">
+		<item quantity="one">(%1$s service)</item>
+		<item quantity="other">(%1$s services)</item>
+	</plurals>
+	<string name="tlbuilder_service_fallback_name">Service #%1$s</string>
 </resources>

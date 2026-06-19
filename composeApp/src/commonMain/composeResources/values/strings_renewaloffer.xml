@@ -12,4 +12,7 @@
 	<string name="renewaloffer_create_assign">Create &amp; assign</string>
 	<string name="renewaloffer_job_not_found">Job \'%1$s\' not found.</string>
 	<string name="renewaloffer_job_already_exists">A renewal job named \'%1$s\' already exists.</string>
+	<string name="renewaloffer_assigned_message">The output file has been added to the renewal job \"%1$s\". It will be automatically re-timestamped when its archival timestamp nears expiry.</string>
+	<string name="renewaloffer_covered_message">The output file is already covered by the renewal job \"%1$s\". No additional configuration is needed — the file will be automatically re-timestamped when its archival timestamp nears expiry.</string>
+	<string name="renewaloffer_add_to_existing">Add to \"%1$s\"</string>
 </resources>

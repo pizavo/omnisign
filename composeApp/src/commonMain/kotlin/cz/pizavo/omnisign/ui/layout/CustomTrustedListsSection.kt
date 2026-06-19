@@ -147,7 +147,7 @@ private fun TrustedListRow(
 			)
 			if (trustedList.signingCertPath != null) {
 				Text(
-					text = "Cert: ${trustedList.signingCertPath}",
+					text = stringResource(Res.string.customtl_cert_path, trustedList.signingCertPath.orEmpty()),
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.textSecondary,
 				)
@@ -159,7 +159,7 @@ private fun TrustedListRow(
 		) {
 			Icon(
 				painter = painterResource(Res.drawable.icon_x),
-				contentDescription = "Remove ${trustedList.name}",
+				contentDescription = stringResource(Res.string.customtl_remove_description, trustedList.name),
 				modifier = Modifier.size(16.dp),
 			)
 		}

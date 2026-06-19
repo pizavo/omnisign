@@ -69,7 +69,7 @@ fun TrustedCertsPanel(state: TrustedCertsPanelState) {
     val profileName = state.profileName
 
     if (profileName != null) {
-        SectionHeader(label = "Profile — $profileName")
+        SectionHeader(label = stringResource(Res.string.trustedcertspanel_section_profile, profileName))
         Spacer(modifier = Modifier.height(6.dp))
 
         TrustedCertificateList(certificates = state.profileCertificates)

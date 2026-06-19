@@ -33,6 +33,7 @@ import io.github.vinceglb.filekit.name
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -337,7 +338,7 @@ private fun SigningFormContent(
 						val cert = state.certificates.find { it.alias == alias }
 						if (cert != null) {
 							val source = cert.tokenName.takeIf { it.isNotBlank() }?.let { "; $it" } ?: ""
-							"${cert.commonName()} — valid until ${cert.validTo.formatDate()}$source"
+							stringResource(Res.string.signing_cert_dropdown_item_label, cert.commonName(), cert.validTo.formatDate(), source)
 						} else {
 							alias
 						}
@@ -374,7 +375,7 @@ private fun SigningFormContent(
 				options = HashAlgorithm.entries.toList(),
 				onSelect = { alg -> onFieldChange { it.copy(hashAlgorithm = alg) } },
 				label = { Text(stringResource(Res.string.signing_hash_algorithm_label)) },
-				nullLabel = "Default (${state.configHashAlgorithm.name})",
+				nullLabel = stringResource(Res.string.signing_hash_algorithm_default, state.configHashAlgorithm.name),
 				showNullOption = true,
 				disabledOptions = state.disabledHashAlgorithms,
 				itemLabel = { it.name },
@@ -756,7 +757,7 @@ private fun LockedTokensAccordion(
 				)
 				val count = lockedTokens.size
 				Text(
-					text = if (count == 1) "1 locked token" else "$count locked tokens",
+					text = pluralStringResource(Res.plurals.signing_locked_tokens_count, count, count),
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.textSecondary,
 					modifier = Modifier.weight(1f),
@@ -867,9 +868,9 @@ private fun CertDropdownRow(alias: String, cert: AvailableCertificateInfo?) {
 				}
 			}
 		}
-		val expiry = "valid until ${cert.validTo.formatDate()}"
+		val expiry = stringResource(Res.string.signing_cert_valid_until, cert.validTo.formatDate())
 		Text(
-			text = if (cert.tokenName.isNotBlank()) "$expiry; ${cert.tokenName}" else expiry,
+			text = if (cert.tokenName.isNotBlank()) stringResource(Res.string.signing_cert_valid_until_source, expiry, cert.tokenName) else expiry,
 			style = LumoTheme.typography.body3,
 			color = LumoTheme.colors.textSecondary,
 			maxLines = 1,
@@ -1059,9 +1060,9 @@ private fun TimestampingUnavailableContent(state: SigningDialogState.Timestampin
 		SignatureLevel.PADES_BASELINE_B -> "B-B"
 	}
 	val intro = if (state.profileName != null) {
-		"The profile \"${state.profileName}\" requires PAdES $levelLabel, which embeds a trusted timestamp."
+		stringResource(Res.string.signing_timestamping_intro_profile, state.profileName, levelLabel)
 	} else {
-		"The configured signature level PAdES $levelLabel embeds a trusted timestamp."
+		stringResource(Res.string.signing_timestamping_intro_no_profile, levelLabel)
 	}
 	Column(
 		modifier = Modifier
@@ -1082,8 +1083,7 @@ private fun TimestampingUnavailableContent(state: SigningDialogState.Timestampin
 			Text(text = stringResource(Res.string.signing_timestamping_unavailable), style = LumoTheme.typography.h4)
 		}
 		Text(
-			text = "$intro This server has timestamping disabled, so it can only produce basic " +
-				"(B-B) signatures. Signing here would drop the required timestamp.",
+			text = stringResource(Res.string.signing_timestamping_body, intro),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)

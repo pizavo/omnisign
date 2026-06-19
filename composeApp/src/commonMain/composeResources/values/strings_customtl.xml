@@ -9,4 +9,6 @@
 	<string name="customtl_source_warning">Source should start with https:// or file:/// — other schemes may not be supported by DSS.</string>
 	<string name="customtl_cert_label">Signing certificate (optional)</string>
 	<string name="customtl_browse_cert_description">Browse for signing certificate</string>
+	<string name="customtl_cert_path">Cert: %1$s</string>
+	<string name="customtl_remove_description">Remove %1$s</string>
 </resources>

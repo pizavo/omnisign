@@ -64,6 +64,7 @@ import cz.pizavo.omnisign.ui.toast.ToastMessage
 import kotlinx.coroutines.launch
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.DrawableResource
+import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -159,7 +160,7 @@ fun CertificateDetailsDialog(
                                             val error = writeBytesToPath(destination, format.encode(link.der))
                                             toast?.show(
                                                 ToastMessage(
-                                                    if (error == null) "Certificate exported." else "Export failed: $error",
+                                                    if (error == null) getString(Res.string.certdetails_export_success) else getString(Res.string.certdetails_export_failed, error),
                                                 ),
                                             )
                                         }
@@ -383,11 +384,15 @@ private fun CertificateChainNavItem(
                     modifier = Modifier.weight(1f),
                 )
                 if (trustedVia.isNotEmpty()) {
-                    val prefix = if (isTrustAnchor) "Trust anchor, trusted via " else "Also trusted via "
                     TooltipBox(
                         tooltip = {
                             Tooltip {
-                                Text(text = prefix + trustedVia.joinToString(", ") { it.displayLabel() })
+                                Text(
+                                    text = stringResource(
+                                        if (isTrustAnchor) Res.string.certdetails_trusted_via_anchor else Res.string.certdetails_trusted_via_other,
+                                        trustedVia.joinToString(", ") { it.displayLabel() },
+                                    ),
+                                )
                             }
                         },
                         state = rememberTooltipState(),
@@ -474,7 +479,7 @@ private fun CertificateTrustButton(
         scope.launch {
             val error = adder.add(der, toActiveProfile, trustRole)
             toast?.show(
-                ToastMessage(if (error == null) "Added to trusted certificates." else "Couldn't add: $error"),
+                ToastMessage(if (error == null) getString(Res.string.certdetails_trust_success) else getString(Res.string.certdetails_trust_failed, error)),
             )
         }
     }
@@ -509,7 +514,7 @@ private fun CertificateTrustButton(
                         CertificateTrustMenuRow(label = stringResource(Res.string.certdetails_scope_global), onClick = { commit(toActiveProfile = false) })
                         adder.activeProfileName?.let { name ->
                             CertificateTrustMenuRow(
-                                label = "Profile: $name",
+                                label = stringResource(Res.string.certdetails_scope_profile, name),
                                 onClick = { commit(toActiveProfile = true) },
                             )
                         }
