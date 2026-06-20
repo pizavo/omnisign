@@ -3,7 +3,7 @@
 	<string name="err_archiving_tsa_required">Pro rozšíření na úroveň %1$s musí být nakonfigurován server časových razítek</string>
 	<string name="err_archiving_pdf_encrypted">PDF je zašifrované nebo chráněné heslem a nelze jej rozšířit</string>
 	<string name="err_archiving_malformed_pdf">Soubor není platné PDF nebo se jej nepodařilo zpracovat</string>
-	<string name="err_archiving_revocation_info_failed">Nepodařilo se získat informace o odvolání</string>
+	<string name="err_archiving_revocation_info_failed">Nepodařilo se získat informace o zneplatnění</string>
 	<string name="err_archiving_extension_failed">Rozšíření dokumentu selhalo</string>
 	<string name="err_archiving_file_not_found">Soubor nenalezen: %1$s</string>
 	<string name="err_archiving_renewal_status_undeterminable">Nelze určit, zda dokument vyžaduje obnovení: podpisový certifikát časového razítka se nepodařilo rozpoznat</string>
@@ -61,7 +61,7 @@
 	<string name="err_config_no_profile_named">Profil s názvem \'%1$s\' nebyl nalezen</string>
 	<string name="err_config_trusted_list_not_found">Důvěryhodný seznam s názvem \'%1$s\' nebyl nalezen</string>
 	<string name="err_config_trusted_list_not_found_in_profile">Důvěryhodný seznam s názvem \'%1$s\' nebyl v profilu \'%2$s\' nalezen</string>
-	<string name="err_config_tsp_not_found">Poskytovatel důvěryhodných služeb s názvem \'%1$s\' v konceptu \'%2$s\' neexistuje</string>
+	<string name="err_config_tsp_not_found">TSP s názvem \'%1$s\' v konceptu \'%2$s\' neexistuje</string>
 	<string name="err_config_service_not_found">Služba s názvem \'%1$s\' u poskytovatele \'%2$s\' neexistuje</string>
 	<string name="err_config_draft_not_found">Koncept důvěryhodného seznamu s názvem \'%1$s\' nebyl nalezen</string>
 	<string name="err_config_renewal_job_not_found">Úloha obnovení \'%1$s\' neexistuje</string>

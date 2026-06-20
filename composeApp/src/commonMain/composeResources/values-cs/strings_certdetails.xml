@@ -1,0 +1,15 @@
+<resources>
+	<string name="certdetails_title">Certifikát</string>
+	<string name="certdetails_export_tooltip">Exportovat vybraný certifikát</string>
+	<string name="certdetails_export_success">Certifikát byl exportován.</string>
+	<string name="certdetails_export_failed">Export selhal: %1$s</string>
+	<string name="certdetails_trust_anchor_label">Kotva důvěry</string>
+	<string name="certdetails_trusted_label">Důvěryhodný</string>
+	<string name="certdetails_trust_success">Přidáno mezi důvěryhodné certifikáty.</string>
+	<string name="certdetails_trust_failed">Nelze přidat: %1$s</string>
+	<string name="certdetails_trust_add_tooltip">Přidat mezi důvěryhodné certifikáty</string>
+	<string name="certdetails_scope_global">Globální</string>
+	<string name="certdetails_trusted_via_anchor">Kotva důvěry, důvěryhodný prostřednictvím %1$s</string>
+	<string name="certdetails_trusted_via_other">Rovněž důvěryhodný prostřednictvím %1$s</string>
+	<string name="certdetails_scope_profile">Profil: %1$s</string>
+</resources>

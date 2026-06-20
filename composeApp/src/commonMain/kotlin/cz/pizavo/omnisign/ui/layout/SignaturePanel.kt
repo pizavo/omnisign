@@ -279,12 +279,12 @@ private fun OverallResultBadge(report: ValidationReport, alertIfNotEuLotl: Boole
         if (rosette != null) {
             Spacer(modifier = Modifier.size(8.dp))
             TooltipBox(
-                tooltip = { Tooltip { Text(text = report.overallTrustTier.label) } },
+                tooltip = { Tooltip { Text(text = report.overallTrustTier.label().localized()) } },
                 state = rememberTooltipState(),
             ) {
                 Icon(
                     painter = painterResource(rosette),
-                    contentDescription = report.overallTrustTier.label,
+                    contentDescription = report.overallTrustTier.label().localized(),
                     modifier = Modifier.size(22.dp),
                     tint = trustTierColor(report.overallTrustTier),
                 )
@@ -358,7 +358,7 @@ private fun SignatureAccordion(
         initiallyExpanded = false,
         precedingIcon = trustTierIcon(signature.trustTier),
         precedingTint = trustTierColor(signature.trustTier),
-        precedingTooltip = signature.trustTier.takeIf { it != SignatureTrustTier.NOT_QUALIFIED }?.label,
+        precedingTooltip = signature.trustTier.takeIf { it != SignatureTrustTier.NOT_QUALIFIED }?.let { it.label().localized() },
         trailingIcon = when {
             signature.euLotlBacked -> Res.drawable.icon_eu
             alertIfNotEuLotl -> Res.drawable.icon_eu_crossed
@@ -382,7 +382,7 @@ private fun SignatureAccordion(
             LabelValue(label = stringResource(Res.string.signature_label_time), value = signature.signatureTime.formattedDateTime())
             signature.signatureQualification?.let { LabelValue(label = stringResource(Res.string.signature_label_qualification), value = it) }
             if (signature.trustTier != SignatureTrustTier.NOT_QUALIFIED) {
-                LabelValue(label = stringResource(Res.string.signature_label_trust), value = signature.trustTier.label)
+                LabelValue(label = stringResource(Res.string.signature_label_trust), value = signature.trustTier.label().localized())
             }
             signature.hashAlgorithm?.let { LabelValue(label = stringResource(Res.string.label_hash_algorithm), value = it) }
             signature.encryptionAlgorithm?.let { LabelValue(label = stringResource(Res.string.signature_label_encryption), value = it) }
@@ -402,7 +402,7 @@ private fun SignatureAccordion(
             MessageList(title = stringResource(Res.string.signature_label_information), messages = signature.infos, color = LumoTheme.colors.textSecondary)
             MessageList(
                 title = stringResource(Res.string.signature_label_qualification_information),
-                messages = signature.qualificationInfos,
+                messages = signature.qualificationInfos + (signature.trustTier.qscdResidenceInfo()?.let { listOf(it.localized()) } ?: emptyList()),
                 color = LumoTheme.colors.textSecondary,
             )
 
@@ -438,7 +438,7 @@ private fun CertificateAccordion(signature: SignatureValidationResult) {
             LabelValue(label = stringResource(Res.string.signature_label_valid_from), value = signature.certificate.validFrom.formattedDate())
             LabelValue(label = stringResource(Res.string.signature_label_valid_to), value = signature.certificate.validTo.formattedDate())
             if (signature.certificate.keyUsages.isNotEmpty()) {
-                LabelValue(label = stringResource(Res.string.signature_label_key_usages), value = signature.certificate.keyUsages.joinToString())
+                LabelValue(label = stringResource(Res.string.signature_label_key_usages), value = localizedKeyUsages(signature.certificate.keyUsages))
             }
             signature.certificate.publicKeyAlgorithm?.let { LabelValue(label = stringResource(Res.string.signature_label_public_key), value = it) }
             signature.certificate.sha256Fingerprint?.let { LabelValue(label = stringResource(Res.string.signature_label_sha256), value = it) }
@@ -469,7 +469,7 @@ private fun RevocationAccordion(revocations: List<RevocationInfo>, asOf: Instant
             val revokedAtSigning = revocations.signingTimeRepresentative()?.revoked == true
             revocations.revocationConclusion(asOf)?.let { conclusion ->
                 Text(
-                    text = conclusion,
+                    text = conclusion.localized(),
                     style = LumoTheme.typography.body2,
                     color = if (revokedAtSigning) LumoTheme.colors.error else LumoTheme.colors.textSecondary,
                 )
@@ -497,7 +497,7 @@ private fun RevocationAccordion(revocations: List<RevocationInfo>, asOf: Instant
 @Composable
 private fun RevocationEntry(revocation: RevocationInfo) {
     revocation.displayRows().forEach { (label, value) ->
-        LabelValue(label = label, value = value)
+        LabelValue(label = label.localized(), value = value.localized())
     }
 }
 
@@ -617,7 +617,7 @@ private fun TimestampAccordion(
     timestamp: TimestampValidationResult,
 ) {
     SectionAccordion(
-        title = stringResource(Res.string.signature_timestamp_accordion_title, index + 1, total, timestamp.type),
+        title = stringResource(Res.string.signature_timestamp_accordion_title, index + 1, total, localizedTimestampType(timestamp.type)),
         indication = timestamp.indication,
         initiallyExpanded = false,
         trailingIcon = if (timestamp.euLotlBacked) Res.drawable.icon_eu else null,
@@ -831,12 +831,53 @@ private fun MessageList(
 }
 
 /**
- * Map a [ValidationIndication] to a human-readable label.
+ * Map a [ValidationIndication] to a localized human-readable label.
  */
+@Composable
 private fun formatIndication(indication: ValidationIndication): String = when (indication) {
-    ValidationIndication.TOTAL_PASSED -> "PASSED"
-    ValidationIndication.TOTAL_FAILED -> "FAILED"
-    ValidationIndication.INDETERMINATE -> "INDETERMINATE"
+    ValidationIndication.TOTAL_PASSED -> stringResource(Res.string.validation_indication_passed)
+    ValidationIndication.TOTAL_FAILED -> stringResource(Res.string.validation_indication_failed)
+    ValidationIndication.INDETERMINATE -> stringResource(Res.string.validation_indication_indeterminate)
+}
+
+/**
+ * Localized label for a timestamp's [type]. The stored type is a human-readable English string
+ * derived from the DSS timestamp type (kept verbatim for the JSON / plain-text report); the known
+ * PAdES types are mapped to the active locale here, with any other value shown as-is.
+ */
+@Composable
+private fun localizedTimestampType(type: String): String = when (type) {
+    "Signature timestamp" -> stringResource(Res.string.validation_ts_signature)
+    "Archive timestamp" -> stringResource(Res.string.validation_ts_archive)
+    "Document timestamp" -> stringResource(Res.string.validation_ts_document)
+    "Content timestamp" -> stringResource(Res.string.validation_ts_content)
+    else -> type
+}
+
+/**
+ * Localized, comma-joined rendering of a certificate's [usages] — the raw X.509 key-usage names
+ * (e.g. `NON_REPUDIATION`) kept in the model are mapped to the active locale for display.
+ */
+@Composable
+private fun localizedKeyUsages(usages: List<String>): String {
+    val parts = mutableListOf<String>()
+    for (usage in usages) parts.add(localizedKeyUsage(usage))
+    return parts.joinToString()
+}
+
+/** Localized label for a single X.509 key-usage name, falling back to the raw name when unmapped. */
+@Composable
+private fun localizedKeyUsage(usage: String): String = when (usage.uppercase()) {
+    "DIGITAL_SIGNATURE" -> stringResource(Res.string.validation_keyusage_digital_signature)
+    "NON_REPUDIATION", "CONTENT_COMMITMENT" -> stringResource(Res.string.validation_keyusage_non_repudiation)
+    "KEY_ENCIPHERMENT" -> stringResource(Res.string.validation_keyusage_key_encipherment)
+    "DATA_ENCIPHERMENT" -> stringResource(Res.string.validation_keyusage_data_encipherment)
+    "KEY_AGREEMENT" -> stringResource(Res.string.validation_keyusage_key_agreement)
+    "KEY_CERT_SIGN" -> stringResource(Res.string.validation_keyusage_key_cert_sign)
+    "CRL_SIGN" -> stringResource(Res.string.validation_keyusage_crl_sign)
+    "ENCIPHER_ONLY" -> stringResource(Res.string.validation_keyusage_encipher_only)
+    "DECIPHER_ONLY" -> stringResource(Res.string.validation_keyusage_decipher_only)
+    else -> usage
 }
 
 /**

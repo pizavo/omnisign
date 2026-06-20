@@ -60,6 +60,7 @@ import io.github.vinceglb.filekit.dialogs.compose.rememberDirectoryPickerLaunche
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 /**
@@ -161,7 +162,7 @@ private fun RenewalJobRow(
 				horizontalArrangement = Arrangement.spacedBy(12.dp),
 			) {
 				Text(
-					text = stringResource(Res.string.renewaljobs_row_buffer, job.renewalBufferDays),
+					text = pluralStringResource(Res.plurals.renewaljobs_row_buffer, job.renewalBufferDays, job.renewalBufferDays),
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.textSecondary,
 				)

@@ -10,7 +10,10 @@
 	<string name="renewaljobs_error_glob_required">At least one glob pattern is required.</string>
 	<string name="renewaljobs_error_buffer_days_invalid">Buffer days must be a positive integer.</string>
 	<string name="renewaljobs_error_backups_invalid">Backups must be 0 or a positive integer.</string>
-	<string name="renewaljobs_row_buffer">Buffer: %1$s days</string>
+	<plurals name="renewaljobs_row_buffer">
+		<item quantity="one">Buffer: %1$s day</item>
+		<item quantity="other">Buffer: %1$s days</item>
+	</plurals>
 	<string name="renewaljobs_row_backups">Backups: %1$s</string>
 	<string name="renewaljobs_row_log">Log: %1$s</string>
 	<string name="renewaljobs_notify_on">Notify: on</string>

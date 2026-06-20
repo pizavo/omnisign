@@ -1,0 +1,4 @@
+<resources>
+	<string name="islandcard_content_description">Hlavní oblast dokumentu</string>
+	<string name="islandcard_placeholder_label">Prohlížeč dokumentů</string>
+</resources>

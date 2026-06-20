@@ -1,9 +1,6 @@
 package cz.pizavo.omnisign.ui.model
 
-import androidx.compose.runtime.Composable
 import cz.pizavo.omnisign.domain.model.value.DateFormat
-import omnisign.composeapp.generated.resources.*
-import org.jetbrains.compose.resources.stringResource
 
 /**
  * Bundled region presets that pair a UI language with a matching date format.
@@ -26,12 +23,17 @@ enum class RegionPreset(val languageTag: String, val dateFormat: DateFormat) {
 	/** Czech UI with day.month.year dots (`dd.mm.yyyy`). */
 	CZECHIA("cs", DateFormat.DMY_DOT);
 
-	/** Human-readable region name displayed in the preset dropdown, resolved in the current locale. */
-	@Composable
+	/**
+	 * The native-name (endonym) region label shown in the preset dropdown.
+	 *
+	 * Intentionally not translated — each region is presented in its own language so it reads
+	 * identically in any UI locale, mirroring the language dropdown's endonyms. The `System` and
+	 * `Custom` meta-options stay localized via [RegionChoice].
+	 */
 	fun label(): String = when (this) {
-		UNITED_KINGDOM -> stringResource(Res.string.settings_region_united_kingdom)
-		UNITED_STATES -> stringResource(Res.string.settings_region_united_states)
-		CZECHIA -> stringResource(Res.string.settings_region_czechia)
+		UNITED_KINGDOM -> "United Kingdom"
+		UNITED_STATES -> "United States"
+		CZECHIA -> "Česko"
 	}
 
 	companion object {

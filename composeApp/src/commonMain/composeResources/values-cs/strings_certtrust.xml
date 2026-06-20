@@ -1,0 +1,10 @@
+<resources>
+	<string name="cert_role_signing_certificate">Podpisový certifikát</string>
+	<string name="cert_role_timestamp_certificate">Certifikát časového razítka</string>
+	<string name="cert_role_root_ca">Kořenová CA</string>
+	<string name="cert_role_certificate_authority">Certifikační autorita</string>
+	<string name="cert_role_intermediate_ca">Mezilehlá CA</string>
+	<string name="trust_source_global_store">Globální úložiště důvěry</string>
+	<string name="trust_source_profile">Profil: %1$s</string>
+	<string name="trust_source_trusted_list">Důvěryhodný seznam</string>
+</resources>

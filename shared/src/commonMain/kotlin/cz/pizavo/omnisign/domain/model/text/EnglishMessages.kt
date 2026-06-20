@@ -164,5 +164,75 @@ internal object EnglishMessages {
 			"No PKCS#11 library named '%1\$s' is registered"
 		MessageKey.CONFIG_NO_SERIALIZER_FOR_FORMAT ->
 			"No serializer registered for format %1\$s"
+		MessageKey.CERT_ROLE_SIGNING_CERTIFICATE ->
+			"Signing certificate"
+		MessageKey.CERT_ROLE_TIMESTAMP_CERTIFICATE ->
+			"Timestamp certificate"
+		MessageKey.CERT_ROLE_ROOT_CA ->
+			"Root CA"
+		MessageKey.CERT_ROLE_CERTIFICATE_AUTHORITY ->
+			"Certificate Authority"
+		MessageKey.CERT_ROLE_INTERMEDIATE_CA ->
+			"Intermediate CA"
+		MessageKey.TRUST_SOURCE_GLOBAL_STORE ->
+			"Global trust store"
+		MessageKey.TRUST_SOURCE_PROFILE ->
+			"Profile: %1\$s"
+		MessageKey.TRUST_SOURCE_TRUSTED_LIST ->
+			"Trusted list"
+		MessageKey.REVOCATION_LABEL_STATUS ->
+			"Status"
+		MessageKey.REVOCATION_LABEL_METHOD ->
+			"Method"
+		MessageKey.REVOCATION_LABEL_SOURCE ->
+			"Source"
+		MessageKey.REVOCATION_LABEL_RESPONDER ->
+			"Responder"
+		MessageKey.REVOCATION_LABEL_RESPONSE_PRODUCED ->
+			"Response produced"
+		MessageKey.REVOCATION_LABEL_STATUS_AS_OF ->
+			"Status as of"
+		MessageKey.REVOCATION_LABEL_FRESH_UNTIL ->
+			"Fresh until"
+		MessageKey.REVOCATION_LABEL_CRL_ISSUED ->
+			"CRL issued"
+		MessageKey.REVOCATION_LABEL_NEXT_CRL_BY ->
+			"Next CRL by"
+		MessageKey.REVOCATION_LABEL_PRODUCED_AT ->
+			"Produced at"
+		MessageKey.REVOCATION_LABEL_THIS_UPDATE ->
+			"This update"
+		MessageKey.REVOCATION_LABEL_NEXT_UPDATE ->
+			"Next update"
+		MessageKey.REVOCATION_LABEL_REVOKED_ON ->
+			"Revoked on"
+		MessageKey.REVOCATION_LABEL_REASON ->
+			"Reason"
+		MessageKey.REVOCATION_SOURCE_EMBEDDED_SEALED ->
+			"Embedded in document, sealed by document timestamp"
+		MessageKey.REVOCATION_SOURCE_EMBEDDED ->
+			"Embedded in document (not timestamp-protected)"
+		MessageKey.REVOCATION_SOURCE_ONLINE ->
+			"Retrieved online during validation"
+		MessageKey.REVOCATION_STATUS_GOOD ->
+			"GOOD"
+		MessageKey.REVOCATION_STATUS_REVOKED ->
+			"REVOKED"
+		MessageKey.REVOCATION_STATUS_UNKNOWN ->
+			"UNKNOWN"
+		MessageKey.REVOCATION_CONCLUSION_REVOKED ->
+			"The signing certificate was revoked as of %1\$s."
+		MessageKey.REVOCATION_CONCLUSION_NOT_REVOKED ->
+			"The signing certificate was not revoked as of %1\$s."
+		MessageKey.REVOCATION_CONCLUSION_UNDETERMINED ->
+			"The signing certificate had an undetermined revocation status as of %1\$s."
+		MessageKey.TRUST_TIER_QUALIFIED ->
+			"Qualified"
+		MessageKey.TRUST_TIER_RECOGNIZED ->
+			"Recognized"
+		MessageKey.TRUST_TIER_NOT_QUALIFIED ->
+			"Not qualified"
+		MessageKey.SIGNATURE_QSCD_RESIDENCE ->
+			"The private key resides in a QSCD at both issuance and signing time."
 	}
 }

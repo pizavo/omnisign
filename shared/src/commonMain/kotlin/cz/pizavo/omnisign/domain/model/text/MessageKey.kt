@@ -215,4 +215,109 @@ enum class MessageKey {
 
 	/** No configuration serializer is registered for the requested format (arg: format). */
 	CONFIG_NO_SERIALIZER_FOR_FORMAT,
+
+	/** Chain role: the end-entity signing certificate. */
+	CERT_ROLE_SIGNING_CERTIFICATE,
+
+	/** Chain role: the end-entity timestamp certificate. */
+	CERT_ROLE_TIMESTAMP_CERTIFICATE,
+
+	/** Chain role: a self-signed root certificate authority. */
+	CERT_ROLE_ROOT_CA,
+
+	/** Chain role: a non-self-signed (issued) certificate authority. */
+	CERT_ROLE_CERTIFICATE_AUTHORITY,
+
+	/** Chain role: an intermediate certificate authority between the leaf and the root. */
+	CERT_ROLE_INTERMEDIATE_CA,
+
+	/** Trust origin: the app-managed global trust store. */
+	TRUST_SOURCE_GLOBAL_STORE,
+
+	/** Trust origin: a named profile's trust store (arg: profile name). */
+	TRUST_SOURCE_PROFILE,
+
+	/** Trust origin: a trusted list other than the EU LOTL, with no specific name. */
+	TRUST_SOURCE_TRUSTED_LIST,
+
+	/** Revocation row label: the status the responder asserted. */
+	REVOCATION_LABEL_STATUS,
+
+	/** Revocation row label: the revocation mechanism (OCSP/CRL). */
+	REVOCATION_LABEL_METHOD,
+
+	/** Revocation row label: where the token came from. */
+	REVOCATION_LABEL_SOURCE,
+
+	/** Revocation row label: the responder / distribution-point address. */
+	REVOCATION_LABEL_RESPONDER,
+
+	/** Revocation row label: OCSP response production time. */
+	REVOCATION_LABEL_RESPONSE_PRODUCED,
+
+	/** Revocation row label: OCSP status validity start. */
+	REVOCATION_LABEL_STATUS_AS_OF,
+
+	/** Revocation row label: OCSP status validity end. */
+	REVOCATION_LABEL_FRESH_UNTIL,
+
+	/** Revocation row label: CRL issuance time. */
+	REVOCATION_LABEL_CRL_ISSUED,
+
+	/** Revocation row label: next scheduled CRL time. */
+	REVOCATION_LABEL_NEXT_CRL_BY,
+
+	/** Revocation row label: generic production time. */
+	REVOCATION_LABEL_PRODUCED_AT,
+
+	/** Revocation row label: generic validity-window start. */
+	REVOCATION_LABEL_THIS_UPDATE,
+
+	/** Revocation row label: generic validity-window end. */
+	REVOCATION_LABEL_NEXT_UPDATE,
+
+	/** Revocation row label: date the certificate was revoked. */
+	REVOCATION_LABEL_REVOKED_ON,
+
+	/** Revocation row label: revocation reason code. */
+	REVOCATION_LABEL_REASON,
+
+	/** Revocation source: embedded in the document and sealed by a document timestamp. */
+	REVOCATION_SOURCE_EMBEDDED_SEALED,
+
+	/** Revocation source: embedded in the document, not timestamp-protected. */
+	REVOCATION_SOURCE_EMBEDDED,
+
+	/** Revocation source: retrieved online during validation. */
+	REVOCATION_SOURCE_ONLINE,
+
+	/** Revocation status value: GOOD (not revoked). */
+	REVOCATION_STATUS_GOOD,
+
+	/** Revocation status value: REVOKED. */
+	REVOCATION_STATUS_REVOKED,
+
+	/** Revocation status value: UNKNOWN. */
+	REVOCATION_STATUS_UNKNOWN,
+
+	/** Revocation conclusion: the certificate was revoked as of a time (arg: time). */
+	REVOCATION_CONCLUSION_REVOKED,
+
+	/** Revocation conclusion: the certificate was not revoked as of a time (arg: time). */
+	REVOCATION_CONCLUSION_NOT_REVOKED,
+
+	/** Revocation conclusion: undetermined status as of a time (arg: time). */
+	REVOCATION_CONCLUSION_UNDETERMINED,
+
+	/** Trust tier label: qualified certificate on a QSCD. */
+	TRUST_TIER_QUALIFIED,
+
+	/** Trust tier label: qualified certificate without confirmed QSCD. */
+	TRUST_TIER_RECOGNIZED,
+
+	/** Trust tier label: not qualified, or qualification undetermined. */
+	TRUST_TIER_NOT_QUALIFIED,
+
+	/** Qualification info: the private key resides in a QSCD at issuance and signing time. */
+	SIGNATURE_QSCD_RESIDENCE,
 }

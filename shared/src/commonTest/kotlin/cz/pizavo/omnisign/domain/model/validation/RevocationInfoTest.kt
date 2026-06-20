@@ -36,16 +36,16 @@ class RevocationInfoTest : FunSpec({
 	}
 
 	test("a good token states the certificate was not revoked as of the time") {
-		val text = listOf(revocation(status = "GOOD")).revocationConclusion(asOf)
+		val text = listOf(revocation(status = "GOOD")).revocationConclusion(asOf)?.english()
 		text shouldContain "was not revoked as of"
 	}
 
 	test("a revoked token states the certificate was revoked") {
-		listOf(revocation(status = "REVOKED", revoked = true)).revocationConclusion(asOf)!! shouldContain "was revoked as of"
+		listOf(revocation(status = "REVOKED", revoked = true)).revocationConclusion(asOf)!!.english() shouldContain "was revoked as of"
 	}
 
 	test("an unknown token states the status could not be determined") {
-		listOf(revocation(status = "UNKNOWN")).revocationConclusion(asOf)!! shouldContain "undetermined"
+		listOf(revocation(status = "UNKNOWN")).revocationConclusion(asOf)!!.english() shouldContain "undetermined"
 	}
 
 	test("the sealed embedded token speaks for the conclusion, not a later online one") {
@@ -61,7 +61,7 @@ class RevocationInfoTest : FunSpec({
 		val tokens = listOf(onlineRevoked, embeddedGood)
 
 		tokens.signingTimeRepresentative() shouldBe embeddedGood
-		tokens.revocationConclusion(asOf)!! shouldContain "was not revoked"
+		tokens.revocationConclusion(asOf)!!.english() shouldContain "was not revoked"
 	}
 
 	test("with no embedded token the online one represents the conclusion") {

@@ -257,6 +257,7 @@ private fun SigningDialogHeader(
  *   archival timestamp options are not rendered. Configurations that *require* a timestamp are
  *   blocked before this form opens, so hiding only ever drops genuinely optional timestamps.
  */
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun SigningFormContent(
 	state: SigningDialogState.Ready,
@@ -386,9 +387,9 @@ private fun SigningFormContent(
 		}
 		
 		if (canTimestamp) {
-		Row(
-			verticalAlignment = Alignment.CenterVertically,
+		FlowRow(
 			horizontalArrangement = Arrangement.spacedBy(16.dp),
+			verticalArrangement = Arrangement.spacedBy(8.dp),
 		) {
 			Row(
 				verticalAlignment = Alignment.CenterVertically,

@@ -46,7 +46,4 @@
 	<string name="settings_region_format_label">Format</string>
 	<string name="settings_region_system_default">System default</string>
 	<string name="settings_region_custom">Custom</string>
-	<string name="settings_region_united_kingdom">United Kingdom</string>
-	<string name="settings_region_united_states">United States</string>
-	<string name="settings_region_czechia">Czechia</string>
 </resources>

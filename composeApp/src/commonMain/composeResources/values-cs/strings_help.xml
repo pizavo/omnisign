@@ -1,0 +1,23 @@
+<resources>
+	<string name="help_action_github_repository">Repozitář na GitHubu</string>
+	<string name="help_cd_open_github_repository">Otevřít repozitář na GitHubu</string>
+	<string name="help_action_documentation">Dokumentace</string>
+	<string name="help_cd_open_documentation">Otevřít online dokumentaci</string>
+	<string name="help_label_license">Licence</string>
+	<string name="help_section_support">Podpora</string>
+	<string name="help_support_description">Pokud něco selže, povolte ladicí protokolování, problém zopakujte, poté protokoly exportujte a přiložte je ke svému hlášení.</string>
+	<string name="help_action_export_logs">Exportovat protokoly</string>
+	<string name="help_cd_export_logs">Exportovat protokoly jako archiv zip</string>
+	<string name="help_action_open_folder">Otevřít složku</string>
+	<string name="help_cd_open_log_folder">Otevřít složku s protokoly</string>
+	<string name="help_action_report_issue">Nahlásit problém na GitHubu</string>
+	<string name="help_support_attach_logs">Přiložte exportovaný archiv protokolů ke svému hlášení.</string>
+	<string name="help_toggle_debug_logging_title">Ladicí protokolování</string>
+	<string name="help_toggle_debug_logging_caption">Ladicí protokoly pro řešení problémů. Po dokončení záznamu vypněte.</string>
+	<string name="help_toggle_extended_logs_title">Rozšířené protokoly</string>
+	<string name="help_toggle_extended_logs_caption">Zaznamenává rozšířené protokoly z knihoven třetích stran. Velmi podrobné; povolujte pouze tehdy, když k tomu budete výslovně vyzváni.</string>
+	<string name="help_label_version">v%1$s</string>
+	<string name="help_toast_logs_exported">Protokoly exportovány.</string>
+	<string name="help_toast_logs_cancelled">Export protokolů zrušen.</string>
+	<string name="help_toast_open_folder_failed">Složku s protokoly se nepodařilo otevřít.</string>
+</resources>

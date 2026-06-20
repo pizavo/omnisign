@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.domain.model.validation
 
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.text.MessageKey
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import kotlinx.serialization.Serializable
 import kotlin.time.Instant
@@ -66,14 +68,14 @@ fun List<RevocationInfo>.signingTimeRepresentative(): RevocationInfo? =
  * no revocation data. The supporting details (method, source, responder, times) are presented as
  * structured fields per token, so this stays a bare statement of the outcome.
  */
-fun List<RevocationInfo>.revocationConclusion(asOf: Instant): String? {
+fun List<RevocationInfo>.revocationConclusion(asOf: Instant): LocalizableText? {
     val representative = signingTimeRepresentative() ?: return null
-    val verb = when {
-        representative.revoked -> "was revoked"
-        representative.status == "GOOD" -> "was not revoked"
-        else -> "had an undetermined revocation status"
+    val key = when {
+        representative.revoked -> MessageKey.REVOCATION_CONCLUSION_REVOKED
+        representative.status == "GOOD" -> MessageKey.REVOCATION_CONCLUSION_NOT_REVOKED
+        else -> MessageKey.REVOCATION_CONCLUSION_UNDETERMINED
     }
-    return "The signing certificate $verb as of ${asOf.formatDateTime()}."
+    return LocalizableText.of(key, asOf.formatDateTime())
 }
 
 /**
@@ -82,44 +84,55 @@ fun List<RevocationInfo>.revocationConclusion(asOf: Instant): String? {
  * separates "Response produced" from "Status as of"/"Fresh until"; CRL uses "CRL issued"/"Next CRL
  * by"), and redundant or absent values are omitted.
  */
-fun RevocationInfo.displayRows(): List<Pair<String, String>> = buildList {
-    add("Status" to status)
-    add("Method" to method)
-    add("Source" to sourceLabel())
-    sourceUrl?.let { add("Responder" to it) }
+fun RevocationInfo.displayRows(): List<Pair<LocalizableText, LocalizableText>> = buildList {
+    add(LocalizableText.of(MessageKey.REVOCATION_LABEL_STATUS) to statusText())
+    add(LocalizableText.of(MessageKey.REVOCATION_LABEL_METHOD) to LocalizableText.Literal(method))
+    add(LocalizableText.of(MessageKey.REVOCATION_LABEL_SOURCE) to sourceLabel())
+    sourceUrl?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_RESPONDER) to LocalizableText.Literal(it)) }
     addAll(timeRows())
     if (revoked) {
-        revocationDate?.let { add("Revoked on" to it.formatDateTime()) }
-        reason?.let { add("Reason" to it) }
+        revocationDate?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_REVOKED_ON) to LocalizableText.Literal(it.formatDateTime())) }
+        reason?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_REASON) to LocalizableText.Literal(it)) }
     }
+}
+
+/**
+ * The responder-asserted status as a localizable value: the known `GOOD`/`REVOKED`/`UNKNOWN` states
+ * are keyed; any other raw status passes through verbatim as a [LocalizableText.Literal].
+ */
+private fun RevocationInfo.statusText(): LocalizableText = when (status.uppercase()) {
+    "GOOD" -> LocalizableText.of(MessageKey.REVOCATION_STATUS_GOOD)
+    "REVOKED" -> LocalizableText.of(MessageKey.REVOCATION_STATUS_REVOKED)
+    "UNKNOWN" -> LocalizableText.of(MessageKey.REVOCATION_STATUS_UNKNOWN)
+    else -> LocalizableText.Literal(status)
 }
 
 /**
  * Human-readable description of where the token came from and whether a document timestamp seals it.
  */
-private fun RevocationInfo.sourceLabel(): String = when {
-    embedded && sealedByTimestamp -> "Embedded in document, sealed by document timestamp"
-    embedded -> "Embedded in document (not timestamp-protected)"
-    else -> "Retrieved online during validation"
+private fun RevocationInfo.sourceLabel(): LocalizableText = when {
+    embedded && sealedByTimestamp -> LocalizableText.of(MessageKey.REVOCATION_SOURCE_EMBEDDED_SEALED)
+    embedded -> LocalizableText.of(MessageKey.REVOCATION_SOURCE_EMBEDDED)
+    else -> LocalizableText.of(MessageKey.REVOCATION_SOURCE_ONLINE)
 }
 
 /**
  * Method-aware time rows. OCSP and CRL carry different time semantics, and a value equal to an
  * already-shown one (OCSP `thisUpdate` == `producedAt`) or absent is dropped.
  */
-private fun RevocationInfo.timeRows(): List<Pair<String, String>> = when {
+private fun RevocationInfo.timeRows(): List<Pair<LocalizableText, LocalizableText>> = when {
     method.equals("OCSP", ignoreCase = true) -> buildList {
-        producedAt?.let { add("Response produced" to it.formatDateTime()) }
-        thisUpdate?.takeIf { it != producedAt }?.let { add("Status as of" to it.formatDateTime()) }
-        nextUpdate?.let { add("Fresh until" to it.formatDateTime()) }
+        producedAt?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_RESPONSE_PRODUCED) to LocalizableText.Literal(it.formatDateTime())) }
+        thisUpdate?.takeIf { it != producedAt }?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_STATUS_AS_OF) to LocalizableText.Literal(it.formatDateTime())) }
+        nextUpdate?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_FRESH_UNTIL) to LocalizableText.Literal(it.formatDateTime())) }
     }
     method.equals("CRL", ignoreCase = true) -> buildList {
-        thisUpdate?.let { add("CRL issued" to it.formatDateTime()) }
-        nextUpdate?.let { add("Next CRL by" to it.formatDateTime()) }
+        thisUpdate?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_CRL_ISSUED) to LocalizableText.Literal(it.formatDateTime())) }
+        nextUpdate?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_NEXT_CRL_BY) to LocalizableText.Literal(it.formatDateTime())) }
     }
     else -> buildList {
-        producedAt?.let { add("Produced at" to it.formatDateTime()) }
-        thisUpdate?.takeIf { it != producedAt }?.let { add("This update" to it.formatDateTime()) }
-        nextUpdate?.let { add("Next update" to it.formatDateTime()) }
+        producedAt?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_PRODUCED_AT) to LocalizableText.Literal(it.formatDateTime())) }
+        thisUpdate?.takeIf { it != producedAt }?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_THIS_UPDATE) to LocalizableText.Literal(it.formatDateTime())) }
+        nextUpdate?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_NEXT_UPDATE) to LocalizableText.Literal(it.formatDateTime())) }
     }
 }

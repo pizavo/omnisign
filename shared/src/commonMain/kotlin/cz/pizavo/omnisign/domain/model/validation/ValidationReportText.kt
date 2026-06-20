@@ -59,7 +59,7 @@ fun ValidationReport.toPlainText(detailed: Boolean = false): String = buildStrin
 	appendLine("Validation time: ${validationTime.formatDateTime()}")
 	appendLine("Overall result:  $overallResult")
 	if (overallTrustTier != SignatureTrustTier.NOT_QUALIFIED) {
-		appendLine("Trust tier:      ${overallTrustTier.label}")
+		appendLine("Trust tier:      ${overallTrustTier.label().english()}")
 	}
 	appendLine()
 
@@ -75,7 +75,7 @@ fun ValidationReport.toPlainText(detailed: Boolean = false): String = buildStrin
 			appendLine("  Time:           ${sig.signatureTime.formatDateTime()}")
 			sig.signatureQualification?.let { appendLine("  Qualification:  $it") }
 			if (sig.trustTier != SignatureTrustTier.NOT_QUALIFIED) {
-				appendLine("  Trust tier:     ${sig.trustTier.label}")
+				appendLine("  Trust tier:     ${sig.trustTier.label().english()}")
 			}
 			if (sig.euLotlBacked) {
 				appendLine("  EU LOTL:        Yes")
@@ -87,7 +87,7 @@ fun ValidationReport.toPlainText(detailed: Boolean = false): String = buildStrin
 			appendMessages("Qualification Errors", sig.qualificationErrors)
 			appendMessages("Qualification Warnings", sig.qualificationWarnings)
 			appendMessages("Information", sig.infos)
-			appendMessages("Qualification Information", sig.qualificationInfos)
+			appendMessages("Qualification Information", sig.qualificationInfos + (sig.trustTier.qscdResidenceInfo()?.let { listOf(it.english()) } ?: emptyList()))
 			appendLine()
 			appendLine("  Certificate:")
 			appendLine("    Subject:      ${sig.certificate.subjectDN}")
@@ -104,12 +104,12 @@ fun ValidationReport.toPlainText(detailed: Boolean = false): String = buildStrin
 			if (sig.revocations.isNotEmpty()) {
 				appendLine()
 				appendLine("  Revocation:")
-				sig.revocations.revocationConclusion(sig.signatureTime)?.let { appendLine("    $it") }
-				val labelWidth = sig.revocations.flatMap { it.displayRows() }.maxOf { it.first.length } + 1
+				sig.revocations.revocationConclusion(sig.signatureTime)?.let { appendLine("    ${it.english()}") }
+				val labelWidth = sig.revocations.flatMap { it.displayRows() }.maxOf { it.first.english().length } + 1
 				sig.revocations.forEach { revocation ->
 					appendLine()
 					revocation.displayRows().forEach { (label, value) ->
-						appendLine("    ${"$label:".padEnd(labelWidth)} $value")
+						appendLine("    ${"${label.english()}:".padEnd(labelWidth)} ${value.english()}")
 					}
 				}
 			}
@@ -165,11 +165,11 @@ private fun StringBuilder.appendCertificateChain(
 	appendLine("${pad}Certificate chain:")
 	for (index in chain.indices.reversed()) {
 		val link = chain[index]
-		val role = link.roleLabel(isLeaf = index == 0, isTop = index == chain.lastIndex, leafRole = leafRole)
+		val role = link.roleLabel(isLeaf = index == 0, isTop = index == chain.lastIndex, leafRole = leafRole).english()
 		val trust = if (link.trustedVia.isEmpty()) {
 			""
 		} else {
-			" [trusted via ${link.trustedVia.joinToString(", ") { it.displayLabel() }}]"
+			" [trusted via ${link.trustedVia.joinToString(", ") { it.displayLabel().english() }}]"
 		}
 		appendLine("$entryPad${role}: ${link.commonName ?: link.subjectDN}$trust")
 		if (detailed) {
