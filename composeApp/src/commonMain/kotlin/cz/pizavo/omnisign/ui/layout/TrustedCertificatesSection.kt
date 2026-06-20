@@ -27,7 +27,6 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
-import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.IconButton
@@ -39,6 +38,7 @@ import cz.pizavo.omnisign.lumo.components.TooltipBox
 import cz.pizavo.omnisign.lumo.components.rememberTooltipState
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.PendingTrustedCert
+import cz.pizavo.omnisign.ui.platform.formattedDateTime
 import cz.pizavo.omnisign.ui.platform.platformFilePath
 import cz.pizavo.omnisign.ui.platform.readCertificateFileBytes
 import cz.pizavo.omnisign.ui.platform.readCertificateFileBytesFromPath
@@ -193,7 +193,7 @@ private fun TrustedCertificateRow(
                 }
             }
             Text(
-                text = stringResource(Res.string.trustedcerts_expires, certificate.notAfter.formatDateTime()),
+                text = stringResource(Res.string.trustedcerts_expires, certificate.notAfter.formattedDateTime()),
                 style = LumoTheme.typography.body2,
                 color = LumoTheme.colors.textSecondary,
             )
@@ -255,7 +255,7 @@ private fun PendingTrustedCertRow(
                 StatusBadge(text = stringResource(Res.string.trustedcerts_badge_pending), color = LumoTheme.colors.success)
             }
             Text(
-                text = stringResource(Res.string.trustedcerts_expires, pending.notAfter.formatDateTime()),
+                text = stringResource(Res.string.trustedcerts_expires, pending.notAfter.formattedDateTime()),
                 style = LumoTheme.typography.body2,
                 color = LumoTheme.colors.textSecondary,
             )

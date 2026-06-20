@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.commands.config.tl
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import cz.pizavo.omnisign.data.preferences.loadFormatPreferences
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import kotlinx.coroutines.runBlocking
@@ -26,6 +27,7 @@ class TrustedListRefresh : CliktCommand(name = "refresh"), KoinComponent {
 		echo("Refreshing trusted lists…")
 		refreshPort.refreshNow()
 		val at = refreshPort.lastRefreshAt.value
-		echo("✅ Trusted lists refreshed${at?.let { " at ${it.formatDateTime()}" } ?: ""}.")
+		val dateFormat = loadFormatPreferences().dateFormat
+		echo("✅ Trusted lists refreshed${at?.let { " at ${it.formatDateTime(dateFormat = dateFormat)}" } ?: ""}.")
 	}
 }

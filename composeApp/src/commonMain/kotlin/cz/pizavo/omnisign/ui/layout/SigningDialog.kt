@@ -15,7 +15,6 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
-import cz.pizavo.omnisign.domain.model.value.formatDate
 import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
 import cz.pizavo.omnisign.domain.repository.LockedTokenInfo
 import cz.pizavo.omnisign.domain.repository.TokenDiscoveryWarning
@@ -27,6 +26,7 @@ import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.SigningDialogState
 import cz.pizavo.omnisign.ui.model.localized
 import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
+import cz.pizavo.omnisign.ui.platform.formattedDate
 import cz.pizavo.omnisign.ui.platform.platformFilePath
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -340,7 +340,7 @@ private fun SigningFormContent(
 						val cert = state.certificates.find { it.alias == alias }
 						if (cert != null) {
 							val source = cert.tokenName.takeIf { it.isNotBlank() }?.let { "; $it" } ?: ""
-							stringResource(Res.string.signing_cert_dropdown_item_label, cert.commonName(), cert.validTo.formatDate(), source)
+							stringResource(Res.string.signing_cert_dropdown_item_label, cert.commonName(), cert.validTo.formattedDate(), source)
 						} else {
 							alias
 						}
@@ -870,7 +870,7 @@ private fun CertDropdownRow(alias: String, cert: AvailableCertificateInfo?) {
 				}
 			}
 		}
-		val expiry = stringResource(Res.string.signing_cert_valid_until, cert.validTo.formatDate())
+		val expiry = stringResource(Res.string.signing_cert_valid_until, cert.validTo.formattedDate())
 		Text(
 			text = if (cert.tokenName.isNotBlank()) stringResource(Res.string.signing_cert_valid_until_source, expiry, cert.tokenName) else expiry,
 			style = LumoTheme.typography.body3,

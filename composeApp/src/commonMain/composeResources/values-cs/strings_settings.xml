@@ -1,0 +1,10 @@
+<resources>
+	<string name="settings_region_preset_label">Předvolba</string>
+	<string name="settings_region_language_label">Jazyk</string>
+	<string name="settings_region_format_label">Formát</string>
+	<string name="settings_region_system_default">Výchozí podle systému</string>
+	<string name="settings_region_custom">Vlastní</string>
+	<string name="settings_region_united_kingdom">Spojené království</string>
+	<string name="settings_region_united_states">Spojené státy</string>
+	<string name="settings_region_czechia">Česko</string>
+</resources>

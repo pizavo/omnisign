@@ -75,7 +75,13 @@ enum class SettingsCategory(
     Appearance,
 
     /** Window title bar mode (native vs. merged custom toolbar). */
-    WindowTitleBar(parent = Appearance);
+    WindowTitleBar(parent = Appearance),
+
+    /** Top-level group for UI language and regional formatting settings. */
+    LanguageRegion,
+
+    /** UI language and date-format selection. */
+    LanguageRegionSettings(parent = LanguageRegion);
 
     /** Whether this category is a top-level group (has children). */
     val isGroup: Boolean get() = entries.any { it.parent == this }
@@ -106,6 +112,8 @@ enum class SettingsCategory(
         ConfigBackup -> stringResource(Res.string.settingscat_config_backup)
         Appearance -> stringResource(Res.string.settingscat_appearance)
         WindowTitleBar -> stringResource(Res.string.settingscat_window)
+        LanguageRegion -> stringResource(Res.string.settingscat_language_region)
+        LanguageRegionSettings -> stringResource(Res.string.settingscat_language_region_settings)
     }
 
     /** Brief explanation shown at the top of the content panel when this category is selected. */
@@ -131,6 +139,8 @@ enum class SettingsCategory(
         ConfigBackup -> stringResource(Res.string.settingscat_config_backup_desc)
         Appearance -> stringResource(Res.string.settingscat_appearance_desc)
         WindowTitleBar -> stringResource(Res.string.settingscat_window_desc)
+        LanguageRegion -> stringResource(Res.string.settingscat_language_region_desc)
+        LanguageRegionSettings -> stringResource(Res.string.settingscat_language_region_settings_desc)
     }
 
     companion object {

@@ -1,0 +1,6 @@
+<resources>
+	<string name="settingscat_language_region">Jazyk a region</string>
+	<string name="settingscat_language_region_desc">Vyberte jazyk aplikace a způsob zobrazení data.</string>
+	<string name="settingscat_language_region_settings">Jazyk a region</string>
+	<string name="settingscat_language_region_settings_desc">Vyberte předvolbu regionu pro nastavení jazyka a formátu data společně, nebo zvolte každou možnost zvlášť. Změny se projeví okamžitě a budou zapamatovány při příštím spuštění.</string>
+</resources>

@@ -43,6 +43,7 @@ fun String.toNativeDistributionVersion(): String {
 
 plugins {
 	alias(libs.plugins.kotlin.multiplatform)
+	alias(libs.plugins.kotlin.serialization)
 	alias(libs.plugins.compose.multiplatform)
 	alias(libs.plugins.compose.compiler)
 	alias(libs.plugins.ksp)
@@ -150,6 +151,8 @@ kotlin {
 			implementation(libs.compose.components.resources)
 			
 			implementation(projects.shared)
+
+			implementation(libs.kotlinx.serialization.json)
 			
 			implementation(project.dependencies.platform(libs.koin.bom))
 			implementation(libs.koin.compose)

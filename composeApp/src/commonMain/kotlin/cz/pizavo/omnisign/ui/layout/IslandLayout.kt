@@ -15,6 +15,7 @@ import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.repository.CapabilitiesRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.domain.model.value.DateFormat
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.service.TokenService
@@ -57,12 +58,21 @@ import org.koin.mp.KoinPlatform
  *
  * @param isDarkTheme Whether a dark theme is currently active.
  * @param onToggleTheme Callback invoked when the user toggles the theme.
+ * @param languageTag The active UI language tag (`null` = system default), threaded to the settings
+ *   dialog's Language & Region panel. Threaded separately from the persisted config, like the theme.
+ * @param dateFormat The active UI date format, threaded to the Language & Region panel.
+ * @param onLanguageChange Callback invoked with the chosen language tag (`null` = system default).
+ * @param onFormatChange Callback invoked with the chosen date format.
  * @param modifier Optional [Modifier] applied to the outermost container.
  */
 @Composable
 fun IslandLayout(
 	isDarkTheme: Boolean,
 	onToggleTheme: () -> Unit,
+	languageTag: String?,
+	dateFormat: DateFormat,
+	onLanguageChange: (String?) -> Unit,
+	onFormatChange: (DateFormat) -> Unit,
 	modifier: Modifier = Modifier,
 ) {
 	val pdfViewModel: PdfViewerViewModel = viewModel { PdfViewerViewModel() }
@@ -353,6 +363,10 @@ fun IslandLayout(
 						onStageTrustedCert = { bytes, type, source ->
 							settingsViewModel?.stageGlobalTrustedCert(bytes, type, source)
 						},
+						languageTag = languageTag,
+						dateFormat = dateFormat,
+						onLanguageChange = onLanguageChange,
+						onFormatChange = onFormatChange,
 					)
 				}
 

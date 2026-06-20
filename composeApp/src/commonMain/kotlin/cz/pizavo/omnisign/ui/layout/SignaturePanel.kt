@@ -20,13 +20,13 @@ import cz.pizavo.omnisign.domain.model.signature.CertificateChainLink
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.model.validation.*
-import cz.pizavo.omnisign.domain.model.value.formatDate
-import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import kotlin.time.Instant
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.ui.model.SignaturePanelState
 import cz.pizavo.omnisign.ui.model.localized
+import cz.pizavo.omnisign.ui.platform.formattedDate
+import cz.pizavo.omnisign.ui.platform.formattedDateTime
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
@@ -172,7 +172,7 @@ private fun ReportDetails(report: ValidationReport, alertIfNotEuLotl: Boolean) {
         Spacer(modifier = Modifier.height(4.dp))
 
         LabelValue(label = stringResource(Res.string.signature_label_document), value = report.documentName)
-        LabelValue(label = stringResource(Res.string.signature_label_validation_time), value = report.validationTime.formatDateTime())
+        LabelValue(label = stringResource(Res.string.signature_label_validation_time), value = report.validationTime.formattedDateTime())
 
         if (report.signatures.isEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))
@@ -379,7 +379,7 @@ private fun SignatureAccordion(
             signature.subIndication?.let { LabelValue(label = stringResource(Res.string.signature_label_sub_indication), value = it) }
             LabelValue(label = stringResource(Res.string.signature_label_signed_by), value = signature.signedBy)
             LabelValue(label = stringResource(Res.string.signature_label_level), value = signature.signatureLevel)
-            LabelValue(label = stringResource(Res.string.signature_label_time), value = signature.signatureTime.formatDateTime())
+            LabelValue(label = stringResource(Res.string.signature_label_time), value = signature.signatureTime.formattedDateTime())
             signature.signatureQualification?.let { LabelValue(label = stringResource(Res.string.signature_label_qualification), value = it) }
             if (signature.trustTier != SignatureTrustTier.NOT_QUALIFIED) {
                 LabelValue(label = stringResource(Res.string.signature_label_trust), value = signature.trustTier.label)
@@ -435,8 +435,8 @@ private fun CertificateAccordion(signature: SignatureValidationResult) {
             LabelValue(label = stringResource(Res.string.signature_label_subject), value = signature.certificate.subjectDN)
             LabelValue(label = stringResource(Res.string.signature_label_issuer), value = signature.certificate.issuerDN)
             LabelValue(label = stringResource(Res.string.signature_label_serial), value = signature.certificate.serialNumber)
-            LabelValue(label = stringResource(Res.string.signature_label_valid_from), value = signature.certificate.validFrom.formatDate())
-            LabelValue(label = stringResource(Res.string.signature_label_valid_to), value = signature.certificate.validTo.formatDate())
+            LabelValue(label = stringResource(Res.string.signature_label_valid_from), value = signature.certificate.validFrom.formattedDate())
+            LabelValue(label = stringResource(Res.string.signature_label_valid_to), value = signature.certificate.validTo.formattedDate())
             if (signature.certificate.keyUsages.isNotEmpty()) {
                 LabelValue(label = stringResource(Res.string.signature_label_key_usages), value = signature.certificate.keyUsages.joinToString())
             }
@@ -568,7 +568,7 @@ private fun SignatureTimestampAccordion(timestamp: TimestampValidationResult) {
         ) {
             LabelValue(label = stringResource(Res.string.signature_label_indication), value = formatIndication(timestamp.indication))
             timestamp.subIndication?.let { LabelValue(label = stringResource(Res.string.signature_label_sub_indication), value = it) }
-            LabelValue(label = stringResource(Res.string.signature_label_production_time), value = timestamp.productionTime.formatDateTime())
+            LabelValue(label = stringResource(Res.string.signature_label_production_time), value = timestamp.productionTime.formattedDateTime())
             timestamp.qualification?.let { LabelValue(label = stringResource(Res.string.signature_label_qualification), value = it) }
             timestamp.tsaSubjectDN?.let { LabelValue(label = stringResource(Res.string.signature_label_tsa), value = it) }
             ViewFullCertificateAction(chain = timestamp.chain, trustRole = TrustedCertificateType.TSA)
@@ -630,7 +630,7 @@ private fun TimestampAccordion(
         ) {
             LabelValue(label = stringResource(Res.string.signature_label_indication), value = formatIndication(timestamp.indication))
             timestamp.subIndication?.let { LabelValue(label = stringResource(Res.string.signature_label_sub_indication), value = it) }
-            LabelValue(label = stringResource(Res.string.signature_label_production_time), value = timestamp.productionTime.formatDateTime())
+            LabelValue(label = stringResource(Res.string.signature_label_production_time), value = timestamp.productionTime.formattedDateTime())
             timestamp.qualification?.let { LabelValue(label = stringResource(Res.string.signature_label_qualification), value = it) }
             timestamp.tsaSubjectDN?.let { LabelValue(label = stringResource(Res.string.signature_label_tsa), value = it) }
             ViewFullCertificateAction(chain = timestamp.chain, trustRole = TrustedCertificateType.TSA)

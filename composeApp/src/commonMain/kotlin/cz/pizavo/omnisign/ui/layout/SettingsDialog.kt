@@ -30,15 +30,18 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
-import cz.pizavo.omnisign.domain.model.value.formatDateTime
+import cz.pizavo.omnisign.domain.model.value.DateFormat
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
+import cz.pizavo.omnisign.ui.model.RegionChoice
+import cz.pizavo.omnisign.ui.model.RegionPreset
 import cz.pizavo.omnisign.ui.model.SettingsCategory
 import cz.pizavo.omnisign.ui.model.TrustedCertAddError
 import cz.pizavo.omnisign.ui.model.resolve
 import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
+import cz.pizavo.omnisign.ui.platform.formattedDateTime
 import cz.pizavo.omnisign.ui.platform.openInFileExplorer
 import cz.pizavo.omnisign.ui.platform.platformFilePath
 import cz.pizavo.omnisign.ui.platform.resolvePkcs11DropDirectory
@@ -91,6 +94,13 @@ private const val Pkcs11ListScrollThreshold = 5
  * @param onStageTrustedCert Called with the picked certificate bytes, type, and source path to stage
  *   a global-scope trusted-certificate addition. The certificate is parsed and deduplicated by the
  *   ViewModel before it is staged; the change is committed to the store on Save.
+ * @param languageTag The active UI language tag (`null` = system default) for the Language & Region
+ *   panel. This is a runtime UI preference threaded separately from [GlobalConfigEditState], so it
+ *   applies immediately and is not part of the staged config saved by the dialog.
+ * @param dateFormat The active UI date format for the Language & Region panel.
+ * @param onLanguageChange Called with the chosen language tag (`null` = system default); applied and
+ *   persisted immediately by the host.
+ * @param onFormatChange Called with the chosen date format; applied and persisted immediately.
  */
 @Composable
 fun SettingsDialog(
@@ -110,6 +120,10 @@ fun SettingsDialog(
 	backupEnabled: Boolean = false,
 	readOnly: Boolean = false,
 	onStageTrustedCert: (ByteArray, TrustedCertificateType, String) -> Unit = { _, _, _ -> },
+	languageTag: String? = null,
+	dateFormat: DateFormat = DateFormat.SYSTEM,
+	onLanguageChange: (String?) -> Unit = {},
+	onFormatChange: (DateFormat) -> Unit = {},
 ) {
 	var selectedCategory by remember(initialCategory) {
 		mutableStateOf(initialCategory ?: SettingsCategory.SigningDefaults)
@@ -159,6 +173,10 @@ fun SettingsDialog(
 						onImportConfig = onImportConfig,
 						backupEnabled = backupEnabled,
 						onStageTrustedCert = onStageTrustedCert,
+						languageTag = languageTag,
+						dateFormat = dateFormat,
+						onLanguageChange = onLanguageChange,
+						onFormatChange = onFormatChange,
 					)
 				}
 			}
@@ -373,6 +391,10 @@ private fun NavLeafItem(
  * @param state Current global config edit state.
  * @param onFieldChange Called with a transform to update a single field.
  * @param onBuildTl Called when the user clicks "Build Custom TL", or `null` when unavailable.
+ * @param languageTag The active UI language tag (`null` = system default) for the Language & Region panel.
+ * @param dateFormat The active UI date format for the Language & Region panel.
+ * @param onLanguageChange Called with the chosen language tag (`null` = system default).
+ * @param onFormatChange Called with the chosen date format.
  */
 @Composable
 private fun SettingsContentPanel(
@@ -388,6 +410,10 @@ private fun SettingsContentPanel(
 	onImportConfig: () -> Unit = {},
 	backupEnabled: Boolean = false,
 	onStageTrustedCert: (ByteArray, TrustedCertificateType, String) -> Unit = { _, _, _ -> },
+	languageTag: String? = null,
+	dateFormat: DateFormat = DateFormat.SYSTEM,
+	onLanguageChange: (String?) -> Unit = {},
+	onFormatChange: (DateFormat) -> Unit = {},
 ) {
 	VerticalScrollableColumn(
 		modifier = Modifier.fillMaxSize(),
@@ -490,6 +516,14 @@ private fun SettingsContentPanel(
 
 			SettingsCategory.Appearance,
 			SettingsCategory.WindowTitleBar -> AppearanceWindowSection(state = state, onFieldChange = onFieldChange)
+
+			SettingsCategory.LanguageRegion,
+			SettingsCategory.LanguageRegionSettings -> LanguageRegionSection(
+				languageTag = languageTag,
+				dateFormat = dateFormat,
+				onLanguageChange = onLanguageChange,
+				onFormatChange = onFormatChange,
+			)
 		}
 	}
 }
@@ -1013,7 +1047,7 @@ private fun ValidationPolicySection(
 			Text(text = stringResource(Res.string.settings_validation_trusted_lists_label), style = LumoTheme.typography.label1)
 			Text(
 				text = trustedListLastRefreshAt
-					?.let { stringResource(Res.string.settings_validation_tl_last_refreshed, it.formatDateTime()) }
+					?.let { stringResource(Res.string.settings_validation_tl_last_refreshed, it.formattedDateTime()) }
 					?: stringResource(Res.string.settings_validation_tl_last_refreshed_never),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
@@ -1488,10 +1522,112 @@ private fun AppearanceWindowSection(
 	}
 	
 	Spacer(modifier = Modifier.height(8.dp))
-	
+
 	Text(
 		text = stringResource(Res.string.settings_appearance_restart_required),
 		style = LumoTheme.typography.body2,
 		color = LumoTheme.colors.textSecondary,
 	)
+}
+
+/**
+ * Language & Region section: pick a region preset, the UI language, and the date format.
+ *
+ * The three selectors are layered from coarse to fine. The preset combines a language with its
+ * conventional date format in one step; the language and format selectors below override either
+ * dimension independently, in which case the preset selector reflects [RegionChoice.Custom]. All
+ * three are runtime UI preferences applied immediately by the host (not part of the saved config).
+ *
+ * @param languageTag The active UI language tag (`null` = system default).
+ * @param dateFormat The active UI date format.
+ * @param onLanguageChange Called with the chosen language tag (`null` = system default).
+ * @param onFormatChange Called with the chosen date format.
+ */
+@Composable
+private fun LanguageRegionSection(
+	languageTag: String?,
+	dateFormat: DateFormat,
+	onLanguageChange: (String?) -> Unit,
+	onFormatChange: (DateFormat) -> Unit,
+) {
+	val currentChoice = RegionChoice.of(languageTag, dateFormat)
+	val presetOptions = buildList {
+		add(RegionChoice.System)
+		RegionPreset.entries.forEach { add(RegionChoice.Preset(it)) }
+		if (currentChoice is RegionChoice.Custom) add(RegionChoice.Custom)
+	}
+
+	DropdownSelector(
+		selected = currentChoice,
+		options = presetOptions,
+		onSelect = { choice ->
+			when (choice) {
+				RegionChoice.System -> {
+					onLanguageChange(null)
+					onFormatChange(DateFormat.SYSTEM)
+				}
+				is RegionChoice.Preset -> {
+					onLanguageChange(choice.value.languageTag)
+					onFormatChange(choice.value.dateFormat)
+				}
+				RegionChoice.Custom, null -> {}
+			}
+		},
+		label = { Text(text = stringResource(Res.string.settings_region_preset_label)) },
+		showNullOption = false,
+		disabledOptions = setOf(RegionChoice.Custom),
+		itemLabel = { it.label() },
+		modifier = Modifier.fillMaxWidth(),
+	)
+
+	Spacer(modifier = Modifier.height(12.dp))
+
+	DropdownSelector(
+		selected = languageTag,
+		options = LanguageOptions,
+		onSelect = { tag -> onLanguageChange(tag) },
+		label = { Text(text = stringResource(Res.string.settings_region_language_label)) },
+		nullLabel = stringResource(Res.string.settings_region_system_default),
+		itemLabel = { languageEndonym(it) },
+		modifier = Modifier.fillMaxWidth(),
+	)
+
+	Spacer(modifier = Modifier.height(12.dp))
+
+	DropdownSelector(
+		selected = dateFormat,
+		options = DateFormat.entries.toList(),
+		onSelect = { value -> onFormatChange(value ?: DateFormat.SYSTEM) },
+		label = { Text(text = stringResource(Res.string.settings_region_format_label)) },
+		showNullOption = false,
+		itemLabel = { dateFormatLabel(it) },
+		modifier = Modifier.fillMaxWidth(),
+	)
+}
+
+/** Selectable UI language tags offered in the language dropdown, in display order. */
+private val LanguageOptions = listOf("en", "cs")
+
+/**
+ * The native-name (endonym) label for a UI language tag, shown in the language dropdown.
+ *
+ * Endonyms are intentionally not translated: each language is presented in its own script so a user
+ * can recognize their language regardless of the currently active UI locale.
+ */
+private fun languageEndonym(tag: String): String = when (tag) {
+	"en" -> "English"
+	"cs" -> "Čeština"
+	else -> tag
+}
+
+/**
+ * The display label for a [DateFormat] in the format dropdown.
+ *
+ * [DateFormat.SYSTEM] resolves to a localized "System default" label; every other entry is shown as
+ * its language-neutral [DateFormat.displayPattern] (e.g. `dd/mm/yyyy`), which is not translated.
+ */
+@Composable
+private fun dateFormatLabel(format: DateFormat): String = when (format) {
+	DateFormat.SYSTEM -> stringResource(Res.string.settings_region_system_default)
+	else -> format.displayPattern
 }

@@ -39,4 +39,8 @@
 	<string name="settingscat_appearance_desc">Desktop appearance and window decoration settings.</string>
 	<string name="settingscat_window">Window</string>
 	<string name="settingscat_window_desc">Choose whether the toolbar is merged into the title bar area (custom CSD) or displayed below the native OS title bar. Changing this setting requires an application restart.</string>
+	<string name="settingscat_language_region">Language &amp; Region</string>
+	<string name="settingscat_language_region_desc">Choose the application language and how dates are displayed.</string>
+	<string name="settingscat_language_region_settings">Language &amp; Region</string>
+	<string name="settingscat_language_region_settings_desc">Pick a region preset to set the language and date format together, or choose each independently. Changes apply immediately and are remembered on the next launch.</string>
 </resources>

@@ -10,11 +10,11 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.result.label
-import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
+import cz.pizavo.omnisign.ui.platform.formattedDateTime
 import cz.pizavo.omnisign.ui.platform.platformFilePath
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -69,7 +69,7 @@ fun SchedulerSection(
 			Text(
 				text = stringResource(
 					Res.string.scheduler_last_success,
-					record.lastSuccessAt?.formatDateTime() ?: "never",
+					record.lastSuccessAt?.formattedDateTime() ?: "never",
 				),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
@@ -78,7 +78,7 @@ fun SchedulerSection(
 			Text(
 				text = stringResource(
 					Res.string.scheduler_last_run,
-					record.lastRunAt.formatDateTime(),
+					record.lastRunAt.formattedDateTime(),
 					record.outcome.label,
 					record.checked,
 					record.renewed,

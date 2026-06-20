@@ -52,7 +52,7 @@ private fun logDir(): File? =
 
 /**
  * Path of the persisted Support preferences file, in the same platform-native
- * configuration directory used by [loadThemePreference]/[saveThemePreference].
+ * configuration directory used by the other OmniSign preference stores.
  */
 private val propsPath: Path by lazy {
     val userHome = System.getProperty("user.home")
