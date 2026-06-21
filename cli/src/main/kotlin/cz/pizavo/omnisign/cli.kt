@@ -21,6 +21,7 @@ import org.koin.core.context.startKoin
 import org.koin.core.context.stopKoin
 import org.koin.dsl.module
 import org.koin.mp.KoinPlatform.getKoin
+import java.util.Locale
 import kotlin.system.exitProcess
 
 private val logger = KotlinLogging.logger {}
@@ -40,6 +41,11 @@ private val WARMUP_SUBCOMMANDS = setOf("sign", "certificates")
  *
  * Starts Koin DI, runs the root [Omnisign] command, and converts
  * [ProgramResult] into the corresponding process exit code.
+ *
+ * The default locale is pinned to [Locale.ENGLISH] up front so the CLI is a stable,
+ * locale-independent tool: its own output and any locale-driven text it surfaces (the DSS
+ * validation report, renewal notifications) stay English regardless of the host's system locale.
+ * The desktop app honors the user's chosen UI language separately.
  *
  * When the invoked subcommand needs PKCS#11 token discovery (`sign` or `certificates`),
  * a background warmup cycle is launched immediately after Koin starts so that
@@ -62,6 +68,7 @@ private val WARMUP_SUBCOMMANDS = setOf("sign", "certificates")
  * pool) leave non-daemon threads alive after the operation completes.
  */
 fun main(args: Array<String>) {
+	Locale.setDefault(Locale.ENGLISH)
 	if (args.size >= 2 && args[0] == "probe") {
 		cz.pizavo.omnisign.data.service.Pkcs11ProbeWorker.main(args.drop(1).toTypedArray())
 		exitProcess(0)
