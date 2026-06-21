@@ -1,6 +1,9 @@
 package cz.pizavo.omnisign.data.service
 
 import cz.pizavo.omnisign.domain.model.result.RenewBatchResult
+import java.text.MessageFormat
+import java.util.Locale
+import java.util.ResourceBundle
 
 /**
  * Turns a completed [RenewBatchResult] into one OS notification per job that requested them, giving
@@ -10,9 +13,19 @@ import cz.pizavo.omnisign.domain.model.result.RenewBatchResult
  * Nothing is sent for a dry-run, for a job that opted out of notifications, or for a job where
  * nothing actionable happened (every file was skipped).
  *
+ * Titles and bodies are resolved from the `renewal-notifications` resource bundle in the locale
+ * supplied by [localeProvider], so a Czech-configured run shows Czech text while any other locale
+ * falls back to the English base bundle.
+ *
  * @property notificationService The platform OS-notification sink.
+ * @property localeProvider Supplies the locale used to resolve the message bundle. Evaluated on each
+ *   [notify] call so a late [Locale.setDefault] — e.g. from the persisted UI language in the headless
+ *   renewal entry point — is honored. Defaults to the JVM default locale.
  */
-class RenewalNotifier(private val notificationService: OsNotificationService) {
+class RenewalNotifier(
+	private val notificationService: OsNotificationService,
+	private val localeProvider: () -> Locale = { Locale.getDefault() },
+) {
 
 	/**
 	 * Fire a summary OS notification for each notifying job in [result].
@@ -27,36 +40,51 @@ class RenewalNotifier(private val notificationService: OsNotificationService) {
 	 */
 	fun notify(result: RenewBatchResult) {
 		if (result.dryRun) return
+		val messages = ResourceBundle.getBundle(BUNDLE, localeProvider(), NO_FALLBACK)
 		for (job in result.jobs) {
 			if (!job.notify) continue
 			when {
 				job.errors > 0 && job.renewed > 0 -> notificationService.notify(
-					title = "$PRODUCT — Renewal partial failure (${job.name})",
-					body = "${job.renewed} file(s) re-timestamped, ${job.errors} error(s). " +
-							"Check the log for details.",
+					title = messages.format("partialFailure.title", job.name),
+					body = messages.format("partialFailure.body", job.renewed, job.errors),
 					urgency = NotificationUrgency.CRITICAL,
 				)
 
 				job.errors > 0 -> notificationService.notify(
-					title = "$PRODUCT — Renewal failed (${job.name})",
-					body = "${job.errors} file(s) could not be re-timestamped. " +
-							"Digital continuity may be at risk. Check the log.",
+					title = messages.format("failure.title", job.name),
+					body = messages.format("failure.body", job.errors),
 					urgency = NotificationUrgency.CRITICAL,
 				)
 
 				job.renewed > 0 -> notificationService.notify(
-					title = "$PRODUCT — Renewal complete (${job.name})",
-					body = "${job.renewed} file(s) successfully re-timestamped.",
+					title = messages.format("complete.title", job.name),
+					body = messages.format("complete.body", job.renewed),
 					urgency = NotificationUrgency.NORMAL,
 				)
 			}
 		}
 	}
 
+	/**
+	 * Resolve the [key] entry of this bundle and interpolate [args] into its `{0}`, `{1}`, …
+	 * placeholders via [MessageFormat].
+	 *
+	 * @param key The message key to look up.
+	 * @param args Positional arguments substituted into the message's placeholders.
+	 */
+	private fun ResourceBundle.format(key: String, vararg args: Any): String =
+		MessageFormat.format(getString(key), *args)
+
 	companion object {
+		/** Base name of the renewal-notification message bundle on the classpath. */
+		private const val BUNDLE = "renewal-notifications"
+
 		/**
-		 * The product name shown in user-facing notification titles.
+		 * Bundle-lookup control that disables the default-locale fallback: a requested locale resolves
+		 * to its own bundle (and parent chain) or the English base, never the machine default. This
+		 * keeps a non-Czech default locale from leaking into an explicitly English- or other-locale run.
 		 */
-		private const val PRODUCT = "OmniSign"
+		private val NO_FALLBACK: ResourceBundle.Control =
+			ResourceBundle.Control.getNoFallbackControl(ResourceBundle.Control.FORMAT_PROPERTIES)
 	}
 }
