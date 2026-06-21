@@ -1608,7 +1608,7 @@ private fun LanguageRegionSection(
 }
 
 /** Selectable UI language tags offered in the language dropdown, in display order. */
-private val LanguageOptions = listOf("en", "cs")
+private val LanguageOptions = listOf("en", "cs", "sk")
 
 /**
  * The native-name (endonym) label for a UI language tag, shown in the language dropdown.
@@ -1619,6 +1619,7 @@ private val LanguageOptions = listOf("en", "cs")
 private fun languageEndonym(tag: String): String = when (tag) {
 	"en" -> "English"
 	"cs" -> "Čeština"
+	"sk" -> "Slovenčina"
 	else -> tag
 }
 

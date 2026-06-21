@@ -21,7 +21,10 @@ enum class RegionPreset(val languageTag: String, val dateFormat: DateFormat) {
 	UNITED_STATES("en", DateFormat.MDY_SLASH),
 
 	/** Czech UI with day.month.year dots (`dd.mm.yyyy`). */
-	CZECHIA("cs", DateFormat.DMY_DOT);
+	CZECHIA("cs", DateFormat.DMY_DOT),
+
+	/** Slovak UI with day.month.year dots (`dd.mm.yyyy`). */
+	SLOVAKIA("sk", DateFormat.DMY_DOT);
 
 	/**
 	 * The native-name (endonym) region label shown in the preset dropdown.
@@ -34,6 +37,7 @@ enum class RegionPreset(val languageTag: String, val dateFormat: DateFormat) {
 		UNITED_KINGDOM -> "United Kingdom"
 		UNITED_STATES -> "United States"
 		CZECHIA -> "Česko"
+		SLOVAKIA -> "Slovensko"
 	}
 
 	companion object {

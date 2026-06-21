@@ -1,0 +1,14 @@
+<resources>
+	<string name="pkcs11diag_title">Diagnostika PKCS#11</string>
+	<string name="pkcs11diag_section_pcsc_readers">Čítačky PC/SC</string>
+	<string name="pkcs11diag_section_candidate_libraries">Kandidátske knižnice PKCS#11</string>
+	<string name="pkcs11diag_section_drop_directory">Priečinok na vkladanie</string>
+	<string name="pkcs11diag_pcsc_empty">Nezistili sa žiadne čítačky PC/SC. Služba čipových kariet platformy môže byť zastavená alebo nie je pripojená žiadna kompatibilná čítačka.</string>
+	<string name="pkcs11diag_candidates_empty">Zisťovanie nenašlo žiadne kandidátske knižnice. Buď žiadny z natívnych zdrojov operačného systému neponúka modul PKCS#11, alebo ste nepridali cestu v {1}, prípadne nevložili knižnicu do {2}.</string>
+	<string name="pkcs11diag_link_settings">Globálne nastavenia → Knižnice PKCS#11</string>
+	<string name="pkcs11diag_link_drop_directory">priečinok na vkladanie</string>
+	<string name="pkcs11diag_drop_dir_description">Skopírujte súbor knižnice PKCS#11 (.dll / .so / .dylib) do tohto priečinka, aby ho zisťovanie automaticky našlo:</string>
+	<string name="pkcs11diag_reader_card_present">karta prítomná</string>
+	<string name="pkcs11diag_reader_empty">prázdna</string>
+	<string name="pkcs11diag_reader_atr">ATR: %1$s</string>
+</resources>

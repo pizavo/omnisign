@@ -1,0 +1,9 @@
+<resources>
+	<string name="error_config_resolution">Chyba konfigurácie: %1$s</string>
+	<string name="error_write_signed">Nepodarilo sa zapísať podpísaný dokument</string>
+	<string name="error_write_extended">Nepodarilo sa zapísať rozšírený dokument</string>
+	<string name="error_revocation_refresh_failed">Údaje o zrušení sa nepodarilo obnoviť</string>
+	<string name="error_revocation_lt_degrade">Dokument už obsahuje údaje úrovne LT. Návrat k B-T nie je možný, pretože by znížil existujúcu úroveň podpisu.</string>
+	<string name="error_compiler_unavailable">Zostavenie dôveryhodného zoznamu nie je na tejto platforme dostupné.</string>
+	<string name="error_unknown">Neznáma chyba</string>
+</resources>

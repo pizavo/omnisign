@@ -1,0 +1,10 @@
+<resources>
+	<string name="sidepanel_signature">Podpis</string>
+	<string name="sidepanel_signature_cd">Otvoriť panel s podrobnosťami podpisu</string>
+	<string name="sidepanel_profiles">Profily</string>
+	<string name="sidepanel_profiles_cd">Otvoriť panel profilov</string>
+	<string name="sidepanel_trustedcerts">Dôveryhodné certifikáty</string>
+	<string name="sidepanel_trustedcerts_cd">Otvoriť panel dôveryhodných certifikátov</string>
+	<string name="sidepanel_help">Pomocník</string>
+	<string name="sidepanel_help_cd">Otvoriť panel pomocníka</string>
+</resources>

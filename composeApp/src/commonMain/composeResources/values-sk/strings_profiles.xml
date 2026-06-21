@@ -1,0 +1,17 @@
+<resources>
+	<string name="profiles_delete_profile_title">Odstrániť profil</string>
+	<string name="profiles_no_profiles">Zatiaľ nie sú definované žiadne profily.</string>
+	<string name="profiles_add_profile">Pridať profil</string>
+	<string name="profiles_deselect_active_profile">Zrušiť výber aktívneho profilu</string>
+	<string name="profiles_profile_name_placeholder">Názov profilu</string>
+	<string name="profiles_confirm_new_profile">Potvrdiť nový profil</string>
+	<string name="profiles_cancel_new_profile">Zrušiť nový profil</string>
+	<string name="profiles_deselect_profile">Zrušiť výber profilu</string>
+	<string name="profiles_select_profile">Vybrať profil</string>
+	<string name="profiles_view_profile">Zobraziť profil</string>
+	<string name="profiles_edit_profile">Upraviť profil</string>
+	<string name="profiles_delete_profile">Odstrániť profil</string>
+	<string name="profiles_delete_profile_confirm">Naozaj chcete odstrániť profil \"%1$s\"? Túto akciu nie je možné vrátiť späť.</string>
+	<string name="profile_error_name_required">Názov profilu nesmie byť prázdny.</string>
+	<string name="profile_certadd_already_trusted">Tento certifikát je už v tomto profile dôveryhodný.</string>
+</resources>
