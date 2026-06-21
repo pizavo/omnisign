@@ -26,7 +26,7 @@
 	<string name="settingscat_renewal_jobs">Renewal Jobs</string>
 	<string name="settingscat_renewal_jobs_desc">Named jobs that automatically re-timestamp B-LTA PDFs when their archival timestamp nears expiry. Each job defines glob patterns for the files to watch and a renewal buffer in days.</string>
 	<string name="settingscat_scheduler">Scheduler</string>
-	<string name="settingscat_scheduler_desc">Configure the OS-level daily scheduler that runs renewal jobs automatically via cron (Linux/macOS) or Task Scheduler (Windows).</string>
+	<string name="settingscat_scheduler_desc">Configure the OS-level daily scheduler that runs renewal jobs automatically via systemd (Linux), launchd (macOS), or Task Scheduler (Windows).</string>
 	<string name="settingscat_tokens">Tokens</string>
 	<string name="settingscat_tokens_desc">Configure hardware token and smart card middleware discovery.</string>
 	<string name="settingscat_pkcs11_libraries">PKCS#11 Libraries</string>
@@ -42,5 +42,5 @@
 	<string name="settingscat_language_region">Language &amp; Region</string>
 	<string name="settingscat_language_region_desc">Choose the application language and how dates are displayed.</string>
 	<string name="settingscat_language_region_settings">Language &amp; Region</string>
-	<string name="settingscat_language_region_settings_desc">Pick a region preset to set the language and date format together, or choose each independently. Changes apply immediately and are remembered on the next launch.</string>
+	<string name="settingscat_language_region_settings_desc">Pick a region preset to set the language and date format together, or choose each independently. Changes preview live, take effect when you save, and revert if you close without saving.</string>
 </resources>

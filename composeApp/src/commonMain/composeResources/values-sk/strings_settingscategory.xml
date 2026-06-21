@@ -26,7 +26,7 @@
 	<string name="settingscat_renewal_jobs">Úlohy obnovy</string>
 	<string name="settingscat_renewal_jobs_desc">Pomenované úlohy, ktoré automaticky opatria súbory PDF úrovne B-LTA novou časovou pečiatkou, keď sa blíži skončenie platnosti ich archívnej časovej pečiatky. Každá úloha definuje vzory glob pre sledované súbory a rezervu obnovy v dňoch.</string>
 	<string name="settingscat_scheduler">Plánovač</string>
-	<string name="settingscat_scheduler_desc">Nakonfigurujte denný plánovač na úrovni operačného systému, ktorý automaticky spúšťa úlohy obnovy cez cron (Linux/macOS) alebo Plánovač úloh (Windows).</string>
+	<string name="settingscat_scheduler_desc">Nakonfigurujte denný plánovač na úrovni operačného systému, ktorý automaticky spúšťa úlohy obnovy cez systemd (Linux), launchd (macOS) alebo Plánovač úloh (Windows).</string>
 	<string name="settingscat_tokens">Tokeny</string>
 	<string name="settingscat_tokens_desc">Nakonfigurujte zisťovanie middlewaru hardvérových tokenov a čipových kariet.</string>
 	<string name="settingscat_pkcs11_libraries">Knižnice PKCS#11</string>
@@ -42,5 +42,5 @@
 	<string name="settingscat_language_region">Jazyk a región</string>
 	<string name="settingscat_language_region_desc">Vyberte jazyk aplikácie a spôsob zobrazenia dátumov.</string>
 	<string name="settingscat_language_region_settings">Jazyk a región</string>
-	<string name="settingscat_language_region_settings_desc">Vyberte predvoľbu regiónu na súčasné nastavenie jazyka a formátu dátumu, alebo si zvoľte každý zvlášť. Zmeny sa prejavia okamžite a zapamätajú sa pri nasledujúcom spustení.</string>
+	<string name="settingscat_language_region_settings_desc">Vyberte predvoľbu regiónu na súčasné nastavenie jazyka a formátu dátumu, alebo si zvoľte každý zvlášť. Zmeny sa zobrazujú v náhľade naživo, prejavia sa pri uložení a pri zatvorení bez uloženia sa vrátia späť.</string>
 </resources>

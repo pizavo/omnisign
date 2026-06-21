@@ -26,7 +26,7 @@
 	<string name="settingscat_renewal_jobs">Úlohy obnovení</string>
 	<string name="settingscat_renewal_jobs_desc">Pojmenované úlohy, které automaticky znovu opatří PDF B-LTA časovým razítkem, když se jejich archivní časové razítko blíží vypršení platnosti. Každá úloha definuje vzory glob pro sledované soubory a rezervu obnovení ve dnech.</string>
 	<string name="settingscat_scheduler">Plánovač</string>
-	<string name="settingscat_scheduler_desc">Nastavte denní plánovač na úrovni OS, který automaticky spouští úlohy obnovení pomocí cron (Linux/macOS) nebo Plánovače úloh (Windows).</string>
+	<string name="settingscat_scheduler_desc">Nastavte denní plánovač na úrovni OS, který automaticky spouští úlohy obnovení pomocí systemd (Linux), launchd (macOS) nebo Plánovače úloh (Windows).</string>
 	<string name="settingscat_tokens">Tokeny</string>
 	<string name="settingscat_tokens_desc">Nastavte zjišťování middlewaru hardwarových tokenů a čipových karet.</string>
 	<string name="settingscat_pkcs11_libraries">Knihovny PKCS#11</string>
@@ -42,5 +42,5 @@
 	<string name="settingscat_language_region">Jazyk a region</string>
 	<string name="settingscat_language_region_desc">Vyberte jazyk aplikace a způsob zobrazení data.</string>
 	<string name="settingscat_language_region_settings">Jazyk a region</string>
-	<string name="settingscat_language_region_settings_desc">Vyberte předvolbu regionu pro nastavení jazyka a formátu data společně, nebo zvolte každou možnost zvlášť. Změny se projeví okamžitě a budou zapamatovány při příštím spuštění.</string>
+	<string name="settingscat_language_region_settings_desc">Vyberte předvolbu regionu pro nastavení jazyka a formátu data společně, nebo zvolte každou možnost zvlášť. Změny se zobrazují v náhledu živě, projeví se při uložení a při zavření bez uložení se vrátí zpět.</string>
 </resources>
