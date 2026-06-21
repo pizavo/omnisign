@@ -61,8 +61,12 @@ import org.koin.mp.KoinPlatform
  * @param languageTag The active UI language tag (`null` = system default), threaded to the settings
  *   dialog's Language & Region panel. Threaded separately from the persisted config, like the theme.
  * @param dateFormat The active UI date format, threaded to the Language & Region panel.
- * @param onLanguageChange Callback invoked with the chosen language tag (`null` = system default).
- * @param onFormatChange Callback invoked with the chosen date format.
+ * @param onLanguageChange Applies the chosen language tag (`null` = system default) live as a preview
+ *   only — it does not persist. The dialog commits it via [onPersistLocale] on save, or reverts it
+ *   through this same callback on cancel.
+ * @param onFormatChange Applies the chosen date format live as a preview only, like [onLanguageChange].
+ * @param onPersistLocale Persists the given language tag and date format. Invoked only when the user
+ *   saves the settings dialog, so a previewed language/format reverts on cancel unless it was saved.
  * @param modifier Optional [Modifier] applied to the outermost container.
  */
 @Composable
@@ -73,6 +77,7 @@ fun IslandLayout(
 	dateFormat: DateFormat,
 	onLanguageChange: (String?) -> Unit,
 	onFormatChange: (DateFormat) -> Unit,
+	onPersistLocale: (String?, DateFormat) -> Unit,
 	modifier: Modifier = Modifier,
 ) {
 	val pdfViewModel: PdfViewerViewModel = viewModel { PdfViewerViewModel() }
@@ -158,6 +163,8 @@ fun IslandLayout(
 	}).collectAsState()
 	var showSettingsDialog by remember { mutableStateOf(false) }
 	var initialSettingsCategory by remember { mutableStateOf<SettingsCategory?>(null) }
+	var settingsLanguageBaseline by remember { mutableStateOf(languageTag) }
+	var settingsFormatBaseline by remember { mutableStateOf(dateFormat) }
 	
 	val renewalJobAssigner: RenewalJobAssigner? = remember {
 		runCatching {
@@ -298,6 +305,8 @@ fun IslandLayout(
 					onOpenSettings = {
 						settingsViewModel?.load()
 						trustedCertsViewModel?.refresh()
+						settingsLanguageBaseline = languageTag
+						settingsFormatBaseline = dateFormat
 						showSettingsDialog = true
 					},
 					onSign = {
@@ -320,18 +329,28 @@ fun IslandLayout(
 				)
 				
 				if (showSettingsDialog) {
+					val localeChanged = languageTag != settingsLanguageBaseline || dateFormat != settingsFormatBaseline
 					SettingsDialog(
 						state = settingsState,
-						hasChanges = settingsHasChanges,
+						hasChanges = settingsHasChanges || localeChanged,
 						onFieldChange = { transform -> settingsViewModel?.updateState(transform) },
 						onSave = {
-							settingsViewModel?.save(onSuccess = {
-								trustedCertsViewModel?.refresh()
+							if (settingsHasChanges) {
+								settingsViewModel?.save(onSuccess = {
+									onPersistLocale(languageTag, dateFormat)
+									trustedCertsViewModel?.refresh()
+									showSettingsDialog = false
+									initialSettingsCategory = null
+								})
+							} else {
+								onPersistLocale(languageTag, dateFormat)
 								showSettingsDialog = false
 								initialSettingsCategory = null
-							})
+							}
 						},
 						onDismiss = {
+							onLanguageChange(settingsLanguageBaseline)
+							onFormatChange(settingsFormatBaseline)
 							showSettingsDialog = false
 							initialSettingsCategory = null
 						},
@@ -411,6 +430,8 @@ fun IslandLayout(
 								signingViewModel?.dismissDiagnostic()
 								initialSettingsCategory = SettingsCategory.Pkcs11Libraries
 								settingsViewModel.load()
+								settingsLanguageBaseline = languageTag
+								settingsFormatBaseline = dateFormat
 								showSettingsDialog = true
 							}
 						} else null,

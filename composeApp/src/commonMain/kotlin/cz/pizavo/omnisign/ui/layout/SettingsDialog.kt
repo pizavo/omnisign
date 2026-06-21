@@ -95,12 +95,14 @@ private const val Pkcs11ListScrollThreshold = 5
  *   a global-scope trusted-certificate addition. The certificate is parsed and deduplicated by the
  *   ViewModel before it is staged; the change is committed to the store on Save.
  * @param languageTag The active UI language tag (`null` = system default) for the Language & Region
- *   panel. This is a runtime UI preference threaded separately from [GlobalConfigEditState], so it
- *   applies immediately and is not part of the staged config saved by the dialog.
+ *   panel. This is a runtime UI preference threaded separately from [GlobalConfigEditState]; it
+ *   applies live as a preview while the dialog is open, and the host persists it on Save and reverts
+ *   it on cancel, so it is not part of the staged config the dialog itself writes.
  * @param dateFormat The active UI date format for the Language & Region panel.
- * @param onLanguageChange Called with the chosen language tag (`null` = system default); applied and
- *   persisted immediately by the host.
- * @param onFormatChange Called with the chosen date format; applied and persisted immediately.
+ * @param onLanguageChange Called with the chosen language tag (`null` = system default); the host
+ *   applies it live as a preview only and persists it when the dialog is saved.
+ * @param onFormatChange Called with the chosen date format; applied live as a preview only and
+ *   persisted by the host when the dialog is saved.
  */
 @Composable
 fun SettingsDialog(

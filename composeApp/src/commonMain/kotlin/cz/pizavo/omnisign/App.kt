@@ -31,9 +31,12 @@ import cz.pizavo.omnisign.ui.platform.saveThemePreference
  * The UI language and date format are likewise owned here. They are provided through
  * [LocalAppLocale] and [LocalAppDateFormat] so the entire composition re-resolves its
  * strings and dates when the user changes them in settings — without losing UI or ViewModel
- * state. All three are loaded together via [loadUiPreferences] and persisted individually via
- * [saveThemePreference] / [saveLanguagePreference] / [saveFormatPreference]; a `null` language
- * tag follows the system/browser locale.
+ * state. All three are loaded together via [loadUiPreferences]. The theme is persisted the moment
+ * it is toggled via [saveThemePreference]; the language and date format instead apply live only as
+ * a preview while the Settings dialog is open and are persisted via [saveLanguagePreference] /
+ * [saveFormatPreference] only when the user saves it — reverting to the value held at open on
+ * cancel — which is why the dialog drives them through separate apply and persist callbacks. A
+ * `null` language tag follows the system/browser locale.
  */
 @Composable
 @Preview
@@ -60,13 +63,11 @@ fun App() {
                 },
                 languageTag = languageTag,
                 dateFormat = dateFormat,
-                onLanguageChange = { tag ->
+                onLanguageChange = { tag -> languageTag = tag },
+                onFormatChange = { fmt -> dateFormat = fmt },
+                onPersistLocale = { tag, fmt ->
                     saveLanguagePreference(tag)
-                    languageTag = tag
-                },
-                onFormatChange = { fmt ->
                     saveFormatPreference(fmt)
-                    dateFormat = fmt
                 },
                 modifier = Modifier
                     .fillMaxSize()
