@@ -27,7 +27,6 @@ import androidx.compose.ui.input.pointer.pointerHoverIcon
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
-import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.IconButton
@@ -39,6 +38,7 @@ import cz.pizavo.omnisign.lumo.components.TooltipBox
 import cz.pizavo.omnisign.lumo.components.rememberTooltipState
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.PendingTrustedCert
+import cz.pizavo.omnisign.ui.platform.formattedDateTime
 import cz.pizavo.omnisign.ui.platform.platformFilePath
 import cz.pizavo.omnisign.ui.platform.readCertificateFileBytes
 import cz.pizavo.omnisign.ui.platform.readCertificateFileBytesFromPath
@@ -46,12 +46,9 @@ import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import io.github.vinceglb.filekit.name
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_arrow_left
-import omnisign.composeapp.generated.resources.icon_folder
-import omnisign.composeapp.generated.resources.icon_plus
-import omnisign.composeapp.generated.resources.icon_x
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Read-only list of directly trusted certificates for the overview panel.
@@ -66,7 +63,7 @@ import org.jetbrains.compose.resources.painterResource
 fun TrustedCertificateList(certificates: List<TrustedCertificate>) {
     if (certificates.isEmpty()) {
         Text(
-            text = "No trusted certificates registered.",
+            text = stringResource(Res.string.trustedcerts_empty),
             style = LumoTheme.typography.body2,
             color = LumoTheme.colors.textSecondary,
         )
@@ -121,7 +118,7 @@ fun TrustedCertificatesSection(
 ) {
     if (certificates.isEmpty() && pendingAdditions.isEmpty()) {
         Text(
-            text = "No trusted certificates registered.",
+            text = stringResource(Res.string.trustedcerts_empty),
             style = LumoTheme.typography.body2,
             color = LumoTheme.colors.textSecondary,
         )
@@ -192,11 +189,11 @@ private fun TrustedCertificateRow(
             ) {
                 StatusBadge(text = certificate.type.name, color = LumoTheme.colors.tertiary)
                 if (markedForRemoval) {
-                    StatusBadge(text = "Removing", color = LumoTheme.colors.error)
+                    StatusBadge(text = stringResource(Res.string.trustedcerts_badge_removing), color = LumoTheme.colors.error)
                 }
             }
             Text(
-                text = "Expires ${certificate.notAfter.formatDateTime()}",
+                text = stringResource(Res.string.trustedcerts_expires, certificate.notAfter.formattedDateTime()),
                 style = LumoTheme.typography.body2,
                 color = LumoTheme.colors.textSecondary,
             )
@@ -216,9 +213,9 @@ private fun TrustedCertificateRow(
                         if (markedForRemoval) Res.drawable.icon_arrow_left else Res.drawable.icon_x,
                     ),
                     contentDescription = if (markedForRemoval) {
-                        "Undo removal of ${certificate.subjectDN}"
+                        stringResource(Res.string.trustedcerts_cd_undo_removal, certificate.subjectDN)
                     } else {
-                        "Remove ${certificate.subjectDN}"
+                        stringResource(Res.string.trustedcerts_cd_remove, certificate.subjectDN)
                     },
                     modifier = Modifier.size(16.dp),
                 )
@@ -255,10 +252,10 @@ private fun PendingTrustedCertRow(
                 horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
                 StatusBadge(text = pending.type.name, color = LumoTheme.colors.tertiary)
-                StatusBadge(text = "Pending", color = LumoTheme.colors.success)
+                StatusBadge(text = stringResource(Res.string.trustedcerts_badge_pending), color = LumoTheme.colors.success)
             }
             Text(
-                text = "Expires ${pending.notAfter.formatDateTime()}",
+                text = stringResource(Res.string.trustedcerts_expires, pending.notAfter.formattedDateTime()),
                 style = LumoTheme.typography.body2,
                 color = LumoTheme.colors.textSecondary,
             )
@@ -274,7 +271,7 @@ private fun PendingTrustedCertRow(
         ) {
             Icon(
                 painter = painterResource(Res.drawable.icon_x),
-                contentDescription = "Drop staged certificate ${pending.subjectDN}",
+                contentDescription = stringResource(Res.string.trustedcerts_cd_drop_staged, pending.subjectDN),
                 modifier = Modifier.size(16.dp),
             )
         }
@@ -306,6 +303,9 @@ private fun TrustedCertificateAddForm(
     var selectedFile by remember { mutableStateOf<PlatformFile?>(null) }
     var selectedFileName by remember { mutableStateOf("") }
 
+    val unknownErrorText = stringResource(Res.string.error_unknown)
+    val readCertificateFailedPrefix = stringResource(Res.string.trustedcerts_read_failed)
+
     val filePicker = rememberFilePickerLauncher(
         type = FileKitType.File(extensions = listOf("pem", "der", "crt", "cer")),
     ) { file: PlatformFile? ->
@@ -325,7 +325,7 @@ private fun TrustedCertificateAddForm(
             selected = type,
             options = TrustedCertificateType.entries.toList(),
             onSelect = { value -> type = value ?: TrustedCertificateType.ANY },
-            label = { Text(text = "Type") },
+            label = { Text(text = stringResource(Res.string.trustedcerts_label_type)) },
             showNullOption = false,
             itemLabel = { it.name },
             modifier = Modifier.width(120.dp),
@@ -346,13 +346,13 @@ private fun TrustedCertificateAddForm(
                 selectedFile = null
                 onClearError()
             },
-            label = { Text(text = "Certificate file") },
-            placeholder = { Text(text = "/path/to/certificate.pem") },
+            label = { Text(text = stringResource(Res.string.trustedcerts_label_certificate_file)) },
+            placeholder = { Text(text = stringResource(Res.string.trustedcerts_placeholder_certificate_file)) },
             singleLine = true,
             modifier = Modifier.weight(1f),
             trailingIcon = {
                 TooltipBox(
-                    tooltip = { Tooltip { Text(text = "Browse") } },
+                    tooltip = { Tooltip { Text(text = stringResource(Res.string.action_browse)) } },
                     state = rememberTooltipState(),
                 ) {
                     IconButton(
@@ -362,7 +362,7 @@ private fun TrustedCertificateAddForm(
                     ) {
                         Icon(
                             painter = painterResource(Res.drawable.icon_folder),
-                            contentDescription = "Browse for certificate file",
+                            contentDescription = stringResource(Res.string.trustedcerts_cd_browse),
                             modifier = Modifier.size(18.dp),
                         )
                     }
@@ -370,7 +370,7 @@ private fun TrustedCertificateAddForm(
             },
         )
         TooltipBox(
-            tooltip = { Tooltip { Text(text = "Add") } },
+            tooltip = { Tooltip { Text(text = stringResource(Res.string.action_add)) } },
             state = rememberTooltipState(),
         ) {
             IconButton(
@@ -389,14 +389,14 @@ private fun TrustedCertificateAddForm(
                             type = TrustedCertificateType.ANY
                         }
                     } catch (e: Exception) {
-                        val detail = e.message ?: e::class.simpleName ?: "Unknown error"
-                        onError("Failed to read certificate: $detail")
+                        val detail = e.message ?: e::class.simpleName ?: unknownErrorText
+                        onError("$readCertificateFailedPrefix $detail")
                     }
                 },
             ) {
                 Icon(
                     painter = painterResource(Res.drawable.icon_plus),
-                    contentDescription = "Add certificate",
+                    contentDescription = stringResource(Res.string.trustedcerts_cd_add),
                     modifier = Modifier.size(20.dp),
                 )
             }

@@ -17,6 +17,8 @@ import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.lumo.components.snackbar.Snackbar
 import cz.pizavo.omnisign.lumo.components.snackbar.SnackbarDefaults
+import org.jetbrains.compose.resources.pluralStringResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Renders the active toast from [service] as a lumo [Snackbar], or nothing when no toast is
@@ -77,20 +79,40 @@ fun ToastHost(
 	) {
 		val toast = lastShown.value ?: return@AnimatedVisibility
 		val message = toast.message
+		val actionLabel = message.actionLabel?.resolve()
 		Snackbar(
 			modifier = Modifier.padding(12.dp),
 			actionContentColor = LumoTheme.colors.onPrimary,
-			action = message.actionLabel?.let { label ->
+			action = actionLabel?.let { label ->
 				{
 					SnackbarDefaults.ActionButton(text = label) { service.performAction() }
 				}
 			},
 			content = {
 				Text(
-					text = message.text,
+					text = message.text.resolve(),
 					style = LumoTheme.typography.body2,
 				)
 			},
 		)
 	}
+}
+
+/**
+ * Resolve this [ToastText] to its display string in the active locale.
+ *
+ * Reads Compose string / plural resources, so it must run inside a composition — hence it lives
+ * in the render layer, private to [ToastHost].  Keeping resolution here (rather than in the
+ * emitting view model) is what lets producers stay synchronous and resource-runtime-free; see
+ * [ToastText] for the rationale.
+ */
+@Composable
+private fun ToastText.resolve(): String = when (this) {
+	is ToastText.Raw -> value
+	is ToastText.Resource ->
+		if (args.isEmpty()) stringResource(resource)
+		else stringResource(resource, *args.toTypedArray())
+	is ToastText.Plural ->
+		if (args.isEmpty()) pluralStringResource(resource, quantity)
+		else pluralStringResource(resource, quantity, *args.toTypedArray())
 }

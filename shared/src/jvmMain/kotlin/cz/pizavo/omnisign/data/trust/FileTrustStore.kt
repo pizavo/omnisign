@@ -65,8 +65,7 @@ class FileTrustStore(
 		source: String?,
 	): OperationResult<TrustedCertificate> = mutex.withLock {
 		val x509 = runCatching { parse(certBytes) }.getOrElse {
-			return@withLock TrustStoreError.ParseFailed(
-				message = "Could not parse the certificate",
+			return@withLock TrustStoreError.parseFailed(
 				details = it.message,
 				cause = it,
 			).left()
@@ -103,8 +102,7 @@ class FileTrustStore(
 			)
 			toReadModel(fingerprint, entry, type).right()
 		} catch (e: Exception) {
-			TrustStoreError.StorageFailed(
-				message = "Could not store the trusted certificate",
+			TrustStoreError.storageFailed(
 				details = e.message,
 				cause = e,
 			).left()
@@ -144,8 +142,7 @@ class FileTrustStore(
 
 	override suspend fun inspect(certBytes: ByteArray): OperationResult<TrustedCertificate> {
 		val x509 = runCatching { parse(certBytes) }.getOrElse {
-			return TrustStoreError.ParseFailed(
-				message = "Could not parse the certificate",
+			return TrustStoreError.parseFailed(
 				details = it.message,
 				cause = it,
 			).left()
@@ -224,9 +221,7 @@ class FileTrustStore(
 		try {
 			val index = ensureIndex()
 			if (fingerprint !in index.certs || !certFile(fingerprint).exists()) {
-				return@withLock TrustStoreError.NotFound(
-					message = "No stored certificate $fingerprint to reference from ${scope.label()}",
-				).left()
+				return@withLock TrustStoreError.noStoredCertificate(fingerprint, scope).left()
 			}
 			val key = scope.key()
 			val refs = index.scopes[key].orEmpty().filterNot { it.fingerprint == fingerprint } +
@@ -268,22 +263,11 @@ class FileTrustStore(
 		is TrustScope.Profile -> "profile:$name"
 	}
 
-	private fun TrustScope.label(): String = when (this) {
-		TrustScope.Global -> "the global scope"
-		is TrustScope.Profile -> "profile '$name'"
-	}
-
 	private fun notFound(fingerprint: String, scope: TrustScope): Either<TrustStoreError, Nothing> =
-		TrustStoreError.NotFound(
-			message = "No trusted certificate $fingerprint in ${scope.label()}",
-		).left()
+		TrustStoreError.notFoundInScope(fingerprint, scope).left()
 
 	private fun fail(e: Exception): Either<TrustStoreError, Nothing> =
-		TrustStoreError.StorageFailed(
-			message = "Trust store operation failed",
-			details = e.message,
-			cause = e,
-		).left()
+		TrustStoreError.operationFailed(details = e.message, cause = e).left()
 
 	private fun toReadModel(
 		fingerprint: String,

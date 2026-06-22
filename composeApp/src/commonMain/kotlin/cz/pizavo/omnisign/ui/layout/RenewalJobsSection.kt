@@ -58,11 +58,10 @@ import io.github.vinceglb.filekit.dialogs.FileKitMode
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberDirectoryPickerLauncher
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_file_text
-import omnisign.composeapp.generated.resources.icon_folder
-import omnisign.composeapp.generated.resources.icon_x
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.pluralStringResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Settings section for managing [RenewalJob] entries.
@@ -82,7 +81,7 @@ fun RenewalJobsSection(
 ) {
 	if (state.renewalJobs.isEmpty()) {
 		Text(
-			text = "No renewal jobs configured.",
+			text = stringResource(Res.string.renewaljobs_empty),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)
@@ -163,24 +162,27 @@ private fun RenewalJobRow(
 				horizontalArrangement = Arrangement.spacedBy(12.dp),
 			) {
 				Text(
-					text = "Buffer: ${job.renewalBufferDays} days",
+					text = pluralStringResource(Res.plurals.renewaljobs_row_buffer, job.renewalBufferDays, job.renewalBufferDays),
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.textSecondary,
 				)
 				Text(
-					text = "Backups: ${if (job.backupRetention > 0) job.backupRetention.toString() else "off"}",
+					text = stringResource(
+						Res.string.renewaljobs_row_backups,
+						if (job.backupRetention > 0) job.backupRetention.toString() else "off",
+					),
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.textSecondary,
 				)
 				Text(
-					text = if (job.notify) "Notify: on" else "Notify: off",
+					text = if (job.notify) stringResource(Res.string.renewaljobs_notify_on) else stringResource(Res.string.renewaljobs_notify_off),
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.textSecondary,
 				)
 			}
 			if (job.logFile != null) {
 				Text(
-					text = "Log: ${job.logFile}",
+					text = stringResource(Res.string.renewaljobs_row_log, job.logFile.orEmpty()),
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.textSecondary,
 				)
@@ -192,7 +194,7 @@ private fun RenewalJobRow(
 		) {
 			Icon(
 				painter = painterResource(Res.drawable.icon_x),
-				contentDescription = "Remove ${job.name}",
+				contentDescription = stringResource(Res.string.renewaljobs_remove_content_desc, job.name),
 				modifier = Modifier.size(16.dp),
 			)
 		}
@@ -259,6 +261,10 @@ private fun RenewalJobAddForm(
 	var logFile by remember { mutableStateOf("") }
 	var notify by remember { mutableStateOf(true) }
 
+	val errorGlobRequired = stringResource(Res.string.renewaljobs_error_glob_required)
+	val errorBufferDaysInvalid = stringResource(Res.string.renewaljobs_error_buffer_days_invalid)
+	val errorBackupsInvalid = stringResource(Res.string.renewaljobs_error_backups_invalid)
+
 	val commitGlobs: (String) -> Unit = { text ->
 		val (chips, invalid) = parseGlobChips(text, globChips)
 		globChips = chips
@@ -283,8 +289,8 @@ private fun RenewalJobAddForm(
 			name = it
 			onClearError()
 		},
-		label = { Text(text = "Name") },
-		placeholder = { Text(text = "Job name") },
+		label = { Text(text = stringResource(Res.string.renewaljobs_field_name_label)) },
+		placeholder = { Text(text = stringResource(Res.string.label_job_name)) },
 		singleLine = true,
 		modifier = Modifier.fillMaxWidth(),
 	)
@@ -337,7 +343,7 @@ private fun RenewalJobAddForm(
 				bufferDays = it
 				onClearError()
 			},
-			label = { Text(text = "Buffer days") },
+			label = { Text(text = stringResource(Res.string.label_buffer_days)) },
 			placeholder = { Text(text = "${ArchivingRepository.DEFAULT_RENEWAL_BUFFER_DAYS}") },
 			singleLine = true,
 			keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -349,7 +355,7 @@ private fun RenewalJobAddForm(
 				backupRetention = it
 				onClearError()
 			},
-			label = { Text(text = "Backups") },
+			label = { Text(text = stringResource(Res.string.renewaljobs_field_backups_label)) },
 			placeholder = { Text(text = "${RenewalJob.DEFAULT_BACKUP_RETENTION}") },
 			singleLine = true,
 			keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
@@ -362,8 +368,8 @@ private fun RenewalJobAddForm(
 				profile = it
 				onClearError()
 			},
-			label = { Text(text = "Profile") },
-			nullLabel = "None (global settings only)",
+			label = { Text(text = stringResource(Res.string.renewaljobs_field_profile_label)) },
+			nullLabel = stringResource(Res.string.label_profile_none),
 			showNullOption = true,
 			itemLabel = { it },
 			modifier = Modifier.weight(1f),
@@ -383,8 +389,8 @@ private fun RenewalJobAddForm(
 				logFile = it
 				onClearError()
 			},
-			label = { Text(text = "Log file (optional)") },
-			placeholder = { Text(text = "/var/log/omnisign-renewal.log") },
+			label = { Text(text = stringResource(Res.string.label_log_file_optional)) },
+			placeholder = { Text(text = stringResource(Res.string.renewaljobs_field_log_file_placeholder)) },
 			singleLine = true,
 			modifier = Modifier.weight(1f),
 		)
@@ -406,10 +412,10 @@ private fun RenewalJobAddForm(
 				checked = notify,
 				onCheckedChange = { notify = it },
 			)
-			Text(text = "Desktop notifications", style = LumoTheme.typography.body2)
+			Text(text = stringResource(Res.string.label_desktop_notifications), style = LumoTheme.typography.body2)
 		}
 		Button(
-			text = "Add",
+			text = stringResource(Res.string.action_add),
 			variant = ButtonVariant.PrimaryOutlined,
 			enabled = name.isNotBlank() && (globChips.isNotEmpty() || globInput.isNotBlank()),
 			onClick = {
@@ -425,15 +431,15 @@ private fun RenewalJobAddForm(
 					return@Button
 				}
 				if (chips.isEmpty()) {
-					onError("At least one glob pattern is required.")
+					onError(errorGlobRequired)
 					return@Button
 				}
 				if (parsedBuffer == null || parsedBuffer <= 0) {
-					onError("Buffer days must be a positive integer.")
+					onError(errorBufferDaysInvalid)
 					return@Button
 				}
 				if (parsedBackups == null || parsedBackups < 0) {
-					onError("Backups must be 0 or a positive integer.")
+					onError(errorBackupsInvalid)
 					return@Button
 				}
 
@@ -583,7 +589,7 @@ private fun GlobChipField(
 	UnderlinedTextField(
 		value = input,
 		onValueChange = onInputChange,
-		label = { Text(text = "Glob patterns") },
+		label = { Text(text = stringResource(Res.string.renewaljobs_field_globs_label)) },
 		placeholder = { Text(text = absoluteGlobExample()) },
 		singleLine = true,
 		isError = error != null,
@@ -593,7 +599,7 @@ private fun GlobChipField(
 		trailingIcon = {
 			Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
 				TooltipBox(
-					tooltip = { Tooltip { Text(text = "Select files") } },
+					tooltip = { Tooltip { Text(text = stringResource(Res.string.renewaljobs_action_select_files)) } },
 					state = rememberTooltipState(),
 				) {
 					IconButton(
@@ -603,13 +609,13 @@ private fun GlobChipField(
 					) {
 						Icon(
 							painter = painterResource(Res.drawable.icon_file_text),
-							contentDescription = "Select files",
+							contentDescription = stringResource(Res.string.renewaljobs_action_select_files),
 							modifier = Modifier.size(18.dp),
 						)
 					}
 				}
 				TooltipBox(
-					tooltip = { Tooltip { Text(text = "Pre-select folder") } },
+					tooltip = { Tooltip { Text(text = stringResource(Res.string.renewaljobs_action_select_folder)) } },
 					state = rememberTooltipState(),
 				) {
 					IconButton(
@@ -619,7 +625,7 @@ private fun GlobChipField(
 					) {
 						Icon(
 							painter = painterResource(Res.drawable.icon_folder),
-							contentDescription = "Pre-select folder",
+							contentDescription = stringResource(Res.string.renewaljobs_action_select_folder),
 							modifier = Modifier.size(18.dp),
 						)
 					}
@@ -633,7 +639,7 @@ private fun GlobChipField(
 	if (error == null && warnings.isNotEmpty()) {
 		Spacer(modifier = Modifier.height(4.dp))
 		Text(
-			text = "Amber globs (allowed — double-check): ${warnings.joinToString("; ")}.",
+			text = stringResource(Res.string.renewaljobs_globs_amber_warning, warnings.joinToString("; ")),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.warning,
 		)
@@ -662,7 +668,7 @@ private fun GlobChipItem(chip: GlobChip, onRemove: () -> Unit) {
 		trailingIcon = {
 			Icon(
 				painter = painterResource(Res.drawable.icon_x),
-				contentDescription = "Remove ${chip.glob}",
+				contentDescription = stringResource(Res.string.renewaljobs_chip_remove_content_desc, chip.glob),
 				tint = tint,
 				modifier = Modifier.size(14.dp),
 			)

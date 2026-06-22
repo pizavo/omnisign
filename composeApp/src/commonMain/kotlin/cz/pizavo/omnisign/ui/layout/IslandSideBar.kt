@@ -116,7 +116,7 @@ private fun SideBarIcon(
 	Box {
 		TooltipBox(
 			positionProvider = rememberTooltipPositionProvider(tooltipPlacement),
-			tooltip = { Tooltip { Text(text = panel.label) } },
+			tooltip = { Tooltip { Text(text = panel.label()) } },
 			state = rememberTooltipState(),
 		) {
 			IconButton(
@@ -130,7 +130,7 @@ private fun SideBarIcon(
 			) {
 				Icon(
 					painter = painterResource(panel.icon),
-					contentDescription = panel.contentDescription,
+					contentDescription = panel.contentDescription(),
 					modifier = Modifier.size(SideBarIconSize),
 				)
 			}

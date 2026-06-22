@@ -1,4 +1,4 @@
-package cz.pizavo.omnisign.ui.layout
+﻿package cz.pizavo.omnisign.ui.layout
 
 import androidx.compose.foundation.layout.*
 import androidx.compose.runtime.*
@@ -15,6 +15,7 @@ import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import cz.pizavo.omnisign.domain.repository.CapabilitiesRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.domain.model.value.DateFormat
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.service.TokenService
@@ -33,9 +34,9 @@ import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_refresh
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 import org.koin.core.error.NoDefinitionFoundException
 import org.koin.mp.KoinPlatform
 
@@ -57,12 +58,26 @@ import org.koin.mp.KoinPlatform
  *
  * @param isDarkTheme Whether a dark theme is currently active.
  * @param onToggleTheme Callback invoked when the user toggles the theme.
+ * @param languageTag The active UI language tag (`null` = system default), threaded to the settings
+ *   dialog's Language & Region panel. Threaded separately from the persisted config, like the theme.
+ * @param dateFormat The active UI date format, threaded to the Language & Region panel.
+ * @param onLanguageChange Applies the chosen language tag (`null` = system default) live as a preview
+ *   only — it does not persist. The dialog commits it via [onPersistLocale] on save, or reverts it
+ *   through this same callback on cancel.
+ * @param onFormatChange Applies the chosen date format live as a preview only, like [onLanguageChange].
+ * @param onPersistLocale Persists the given language tag and date format. Invoked only when the user
+ *   saves the settings dialog, so a previewed language/format reverts on cancel unless it was saved.
  * @param modifier Optional [Modifier] applied to the outermost container.
  */
 @Composable
 fun IslandLayout(
 	isDarkTheme: Boolean,
 	onToggleTheme: () -> Unit,
+	languageTag: String?,
+	dateFormat: DateFormat,
+	onLanguageChange: (String?) -> Unit,
+	onFormatChange: (DateFormat) -> Unit,
+	onPersistLocale: (String?, DateFormat) -> Unit,
 	modifier: Modifier = Modifier,
 ) {
 	val pdfViewModel: PdfViewerViewModel = viewModel { PdfViewerViewModel() }
@@ -148,6 +163,8 @@ fun IslandLayout(
 	}).collectAsState()
 	var showSettingsDialog by remember { mutableStateOf(false) }
 	var initialSettingsCategory by remember { mutableStateOf<SettingsCategory?>(null) }
+	var settingsLanguageBaseline by remember { mutableStateOf(languageTag) }
+	var settingsFormatBaseline by remember { mutableStateOf(dateFormat) }
 	
 	val renewalJobAssigner: RenewalJobAssigner? = remember {
 		runCatching {
@@ -288,6 +305,8 @@ fun IslandLayout(
 					onOpenSettings = {
 						settingsViewModel?.load()
 						trustedCertsViewModel?.refresh()
+						settingsLanguageBaseline = languageTag
+						settingsFormatBaseline = dateFormat
 						showSettingsDialog = true
 					},
 					onSign = {
@@ -310,18 +329,28 @@ fun IslandLayout(
 				)
 				
 				if (showSettingsDialog) {
+					val localeChanged = languageTag != settingsLanguageBaseline || dateFormat != settingsFormatBaseline
 					SettingsDialog(
 						state = settingsState,
-						hasChanges = settingsHasChanges,
+						hasChanges = settingsHasChanges || localeChanged,
 						onFieldChange = { transform -> settingsViewModel?.updateState(transform) },
 						onSave = {
-							settingsViewModel?.save(onSuccess = {
-								trustedCertsViewModel?.refresh()
+							if (settingsHasChanges) {
+								settingsViewModel?.save(onSuccess = {
+									onPersistLocale(languageTag, dateFormat)
+									trustedCertsViewModel?.refresh()
+									showSettingsDialog = false
+									initialSettingsCategory = null
+								})
+							} else {
+								onPersistLocale(languageTag, dateFormat)
 								showSettingsDialog = false
 								initialSettingsCategory = null
-							})
+							}
 						},
 						onDismiss = {
+							onLanguageChange(settingsLanguageBaseline)
+							onFormatChange(settingsFormatBaseline)
 							showSettingsDialog = false
 							initialSettingsCategory = null
 						},
@@ -353,6 +382,10 @@ fun IslandLayout(
 						onStageTrustedCert = { bytes, type, source ->
 							settingsViewModel?.stageGlobalTrustedCert(bytes, type, source)
 						},
+						languageTag = languageTag,
+						dateFormat = dateFormat,
+						onLanguageChange = onLanguageChange,
+						onFormatChange = onFormatChange,
 					)
 				}
 
@@ -397,6 +430,8 @@ fun IslandLayout(
 								signingViewModel?.dismissDiagnostic()
 								initialSettingsCategory = SettingsCategory.Pkcs11Libraries
 								settingsViewModel.load()
+								settingsLanguageBaseline = languageTag
+								settingsFormatBaseline = dateFormat
 								showSettingsDialog = true
 							}
 						} else null,
@@ -541,7 +576,7 @@ fun IslandLayout(
 						
 						IslandSidePanel(
 							visible = activeLeftPanel != null,
-							title = activeLeftPanel?.label ?: "",
+							title = activeLeftPanel?.label() ?: "",
 							onClose = { activeLeftPanel = null },
 							panelWidth = effectiveLeftWidth.coerceAtMost(maxLeftPanelWidth),
 							defaultWidth = defaultPanelWidth,
@@ -572,7 +607,7 @@ fun IslandLayout(
 									}
 									
 									TooltipBox(
-										tooltip = { Tooltip { Text(text = "Refresh signatures") } },
+										tooltip = { Tooltip { Text(text = stringResource(Res.string.islandlayout_refresh_signatures)) } },
 										state = rememberTooltipState(),
 									) {
 										IconButton(
@@ -582,7 +617,7 @@ fun IslandLayout(
 										) {
 											Icon(
 												painter = painterResource(Res.drawable.icon_refresh),
-												contentDescription = "Refresh signatures",
+												contentDescription = stringResource(Res.string.islandlayout_refresh_signatures),
 												modifier = Modifier.size(20.dp),
 											)
 										}
@@ -618,8 +653,8 @@ fun IslandLayout(
 						
 						val isEditingProfile = activeRightPanel == SidePanel.Profiles &&
 								profileState.mode is ProfilePanelMode.Editing
-						val rightPanelTitle = if (isEditingProfile) "Edit Profile"
-						else activeRightPanel?.label ?: ""
+						val rightPanelTitle = if (isEditingProfile) stringResource(Res.string.islandlayout_edit_profile)
+						else activeRightPanel?.label() ?: ""
 						
 						IslandSidePanel(
 							visible = activeRightPanel != null,
@@ -714,7 +749,7 @@ fun IslandLayout(
 private fun PanelPlaceholderContent(panel: SidePanel?) {
 	when (panel) {
 		SidePanel.Profiles -> Text(
-			text = "Configuration profiles will appear here.",
+			text = stringResource(Res.string.islandlayout_profiles_placeholder),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)

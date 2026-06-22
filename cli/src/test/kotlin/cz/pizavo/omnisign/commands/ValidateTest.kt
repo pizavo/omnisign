@@ -14,6 +14,7 @@ import cz.pizavo.omnisign.domain.model.signature.CertificateDetailSection
 import cz.pizavo.omnisign.domain.model.signature.CertificateField
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
 import cz.pizavo.omnisign.domain.model.signature.CertificateTrustSource
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.ValidationRepository
@@ -111,7 +112,7 @@ class ValidateTest : FunSpec({
 	test("validation error exits with code 1") {
 		val input = tmpFile("bad.pdf")
 		coEvery { validationRepository.validateDocument(any()) } returns ValidationError.ValidationFailed(
-			message = "Document is corrupted",
+			text = LocalizableText.Literal("Document is corrupted"),
 		).left()
 		
 		val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
@@ -135,7 +136,7 @@ class ValidateTest : FunSpec({
 	test("validate --json outputs JSON error with exit code 1") {
 		val input = tmpFile("bad2.pdf")
 		coEvery { validationRepository.validateDocument(any()) } returns ValidationError.ValidationFailed(
-			message = "File not a PDF",
+			text = LocalizableText.Literal("File not a PDF"),
 		).left()
 		
 		val result = Omnisign().test(listOf("--json", "validate", "-f", input.absolutePath))

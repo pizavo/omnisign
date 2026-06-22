@@ -14,6 +14,7 @@ import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
 import cz.pizavo.omnisign.domain.model.result.RenewalRunOutcome
 import cz.pizavo.omnisign.domain.model.result.RenewalRunRecord
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.port.RenewalLock
 import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
@@ -158,7 +159,7 @@ class RenewBatchUseCaseTest : FunSpec({
         coEvery { archivingRepository.needsArchivalRenewal(good.absolutePath, any()) } returns true.right()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName == bad.name })
-        } returns ArchivingError.ExtensionFailed("boom").left()
+        } returns ArchivingError.ExtensionFailed(LocalizableText.Literal("boom")).left()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName == good.name })
         } returns ArchivingResult(
@@ -185,7 +186,7 @@ class RenewBatchUseCaseTest : FunSpec({
 
         coEvery {
             archivingRepository.needsArchivalRenewal(bad.absolutePath, any())
-        } returns ArchivingError.ExtensionFailed("check failed").left()
+        } returns ArchivingError.ExtensionFailed(LocalizableText.Literal("check failed")).left()
         coEvery {
             archivingRepository.needsArchivalRenewal(good.absolutePath, any())
         } returns false.right()
@@ -507,7 +508,7 @@ class RenewBatchUseCaseTest : FunSpec({
         coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
         coEvery {
             archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
-        } returns ArchivingError.ExtensionFailed("not a valid PDF").left()
+        } returns ArchivingError.ExtensionFailed(LocalizableText.Literal("not a valid PDF")).left()
         coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
             ArchivingResult(outputBytes = "GARBAGE".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA").right()
 
@@ -550,7 +551,7 @@ class RenewBatchUseCaseTest : FunSpec({
         val file = File(dir, "bad.pdf").also { it.writeText("ORIGINAL") }
         coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
         coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
-            ArchivingError.ExtensionFailed("tsa down").left()
+            ArchivingError.ExtensionFailed(LocalizableText.Literal("tsa down")).left()
         val previousSuccess = Instant.fromEpochSeconds(1_000_000)
         every { runRecordStore.load() } returns RenewalRunRecord(
             lastRunAt = previousSuccess,

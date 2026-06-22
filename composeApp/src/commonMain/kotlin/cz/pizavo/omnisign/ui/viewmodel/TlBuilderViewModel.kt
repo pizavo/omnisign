@@ -6,9 +6,12 @@ import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListDraft
 import cz.pizavo.omnisign.domain.model.config.TrustServiceDraft
 import cz.pizavo.omnisign.domain.model.config.TrustServiceProviderDraft
+import cz.pizavo.omnisign.domain.model.error.localizableText
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
+import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.ServiceEditState
 import cz.pizavo.omnisign.ui.model.TlBuilderDialogState
+import cz.pizavo.omnisign.ui.model.TlValidationError
 import cz.pizavo.omnisign.ui.model.TspEditState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
@@ -128,7 +131,7 @@ class TlBuilderViewModel(
 
 		if (compilerPort == null) {
 			_state.value = TlBuilderDialogState.Error(
-				message = "Trusted list compilation is not available on this platform.",
+				content = ErrorMessage.CompilerUnavailable,
 			)
 			return
 		}
@@ -142,8 +145,7 @@ class TlBuilderViewModel(
 			}.fold(
 				ifLeft = { opError ->
 					_state.value = TlBuilderDialogState.Error(
-						message = opError.message,
-						details = opError.details,
+						content = ErrorMessage.Domain(opError.localizableText(), opError.details),
 					)
 				},
 				ifRight = {
@@ -174,21 +176,21 @@ class TlBuilderViewModel(
 	/**
 	 * Validate the editing state and return an error message, or `null` if valid.
 	 */
-	private fun validate(editing: TlBuilderDialogState.Editing): String? {
-		if (editing.name.isBlank()) return "Name is required."
-		if (editing.territory.isBlank()) return "Territory code is required."
-		if (editing.schemeOperatorName.isBlank()) return "Scheme operator name is required."
-		if (editing.tsps.isEmpty()) return "At least one Trust Service Provider is required."
+	private fun validate(editing: TlBuilderDialogState.Editing): TlValidationError? {
+		if (editing.name.isBlank()) return TlValidationError.NameRequired
+		if (editing.territory.isBlank()) return TlValidationError.TerritoryRequired
+		if (editing.schemeOperatorName.isBlank()) return TlValidationError.SchemeOperatorRequired
+		if (editing.tsps.isEmpty()) return TlValidationError.TspRequired
 
 		editing.tsps.forEachIndexed { tspIdx, tsp ->
-			if (tsp.name.isBlank()) return "TSP #${tspIdx + 1}: name is required."
-			if (tsp.services.isEmpty()) return "TSP '${tsp.name}': at least one service is required."
+			if (tsp.name.isBlank()) return TlValidationError.TspNameRequired(tspIdx + 1)
+			if (tsp.services.isEmpty()) return TlValidationError.TspServiceRequired(tsp.name)
 
 			tsp.services.forEachIndexed { svcIdx, svc ->
-				if (svc.name.isBlank()) return "TSP '${tsp.name}', Service #${svcIdx + 1}: name is required."
-				if (svc.typeIdentifier.isBlank()) return "TSP '${tsp.name}', Service '${svc.name}': type identifier is required."
-				if (svc.status.isBlank()) return "TSP '${tsp.name}', Service '${svc.name}': status is required."
-				if (svc.certificatePath.isBlank()) return "TSP '${tsp.name}', Service '${svc.name}': certificate path is required."
+				if (svc.name.isBlank()) return TlValidationError.ServiceNameRequired(tsp.name, svcIdx + 1)
+				if (svc.typeIdentifier.isBlank()) return TlValidationError.ServiceTypeRequired(tsp.name, svc.name)
+				if (svc.status.isBlank()) return TlValidationError.ServiceStatusRequired(tsp.name, svc.name)
+				if (svc.certificatePath.isBlank()) return TlValidationError.ServiceCertRequired(tsp.name, svc.name)
 			}
 		}
 

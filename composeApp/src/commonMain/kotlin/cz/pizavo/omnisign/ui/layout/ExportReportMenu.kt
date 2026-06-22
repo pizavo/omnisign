@@ -36,9 +36,9 @@ import cz.pizavo.omnisign.lumo.components.Tooltip
 import cz.pizavo.omnisign.lumo.components.TooltipBox
 import cz.pizavo.omnisign.lumo.components.rememberTooltipState
 import cz.pizavo.omnisign.lumo.foundation.ripple
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_download
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 private val MenuShape = RoundedCornerShape(8.dp)
 private val MenuMaxHeight = 360.dp
@@ -65,7 +65,7 @@ fun ExportReportMenu(
     var expanded by remember { mutableStateOf(false) }
 
     TooltipBox(
-        tooltip = { Tooltip { Text(text = "Export report") } },
+        tooltip = { Tooltip { Text(text = stringResource(Res.string.exportreport_tooltip)) } },
         state = rememberTooltipState(),
         modifier = modifier,
     ) {
@@ -75,7 +75,7 @@ fun ExportReportMenu(
         ) {
             Icon(
                 painter = painterResource(Res.drawable.icon_download),
-                contentDescription = "Export validation report",
+                contentDescription = stringResource(Res.string.exportreport_icon_content_description),
                 modifier = Modifier.size(20.dp),
             )
         }
@@ -122,7 +122,7 @@ private fun ExportMenuContent(
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
             ) {
                 Text(
-                    text = "Export format",
+                    text = stringResource(Res.string.exportreport_section_label),
                     style = LumoTheme.typography.label1,
                     color = LumoTheme.colors.textSecondary,
                 )

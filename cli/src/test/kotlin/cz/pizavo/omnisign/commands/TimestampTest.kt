@@ -10,6 +10,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ExtendDocumentUseCase
@@ -106,7 +107,7 @@ class TimestampTest : FunSpec({
 		val output = tmpFile("output2.pdf")
 
 		coEvery { archivingRepository.extendDocument(any()) } returns ArchivingError.TimestampFailed(
-			message = "TSA unreachable",
+			text = LocalizableText.Literal("TSA unreachable"),
 			details = "Connection refused",
 		).left()
 
@@ -137,7 +138,7 @@ class TimestampTest : FunSpec({
 		val output = tmpFile("output4.pdf")
 
 		coEvery { archivingRepository.extendDocument(any()) } returns ArchivingError.ExtensionFailed(
-			message = "Extension not possible",
+			text = LocalizableText.Literal("Extension not possible"),
 		).left()
 
 		val result = Omnisign().test(listOf("--json", "timestamp", "-f", input.absolutePath, "-o", output.absolutePath))

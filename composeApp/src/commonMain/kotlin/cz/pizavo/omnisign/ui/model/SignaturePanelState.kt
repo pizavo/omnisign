@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.ui.model
 
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.validation.ValidationReport
 
 /**
@@ -37,8 +38,8 @@ sealed interface SignaturePanelState {
     /**
      * Validation failed with an error.
      *
-     * @property message Human-readable error description.
+     * @property text Locale-agnostic error text the UI resolves to display text.
      */
-    data class Error(val message: String) : SignaturePanelState
+    data class Error(val text: LocalizableText) : SignaturePanelState
 }
 

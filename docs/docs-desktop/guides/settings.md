@@ -232,3 +232,20 @@ Choose how the window is framed. This category appears **only on Linux**.
 
 Changing this setting requires an application restart to take effect.
 
+### Language & Region
+
+Choose the application's UI language and how dates are displayed. This category is available on every
+platform.
+
+| Field             | Description                                                                                                                                                                                       |
+|-------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Region preset** | Sets the language and date format together in one step — *United Kingdom*, *United States*, *Česko*, or *Slovensko*. *System default* follows the OS/browser locale; *Custom* is shown (read-only) when the chosen language and format match no preset. |
+| **Language**      | The UI language: *English*, *Čeština*, *Slovenčina*, or *System default* (follows the operating system).                                                                                          |
+| **Date format**   | How dates are shown: *System default*, `dd/mm/yyyy`, `dd.mm.yyyy`, `mm/dd/yyyy`, or ISO 8601 (`yyyy-mm-dd`). This preference is shared with the CLI's `config date-format` command.                |
+
+Changes **preview live** as you pick them, **take effect when you save**, and **revert if you close the
+dialog without saving**; the saved choice is restored on the next launch. Switching the language also
+re-renders the signature validation report in that language.
+
+On the **web app** the language follows the browser locale and cannot be forced.
+

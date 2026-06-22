@@ -34,8 +34,7 @@ class ReadOnlyConfigRepository(private val config: AppConfig) : ConfigRepository
 	 * @return A [ConfigurationError.SaveFailed] describing the read-only contract.
 	 */
 	override suspend fun saveConfig(config: AppConfig): OperationResult<Unit> =
-		ConfigurationError.SaveFailed(
-			message = "Server signing configuration is read-only",
+		ConfigurationError.serverReadOnly(
 			details = "The server loads its signing/validation policy from signing.yml at " +
 				"startup; runtime changes are not supported.",
 		).left()
@@ -55,8 +54,7 @@ class ReadOnlyConfigRepository(private val config: AppConfig) : ConfigRepository
 	 * @return A [ConfigurationError.SaveFailed] describing the read-only contract.
 	 */
 	override suspend fun setActiveProfile(name: String?): OperationResult<Unit> =
-		ConfigurationError.SaveFailed(
-			message = "Server signing configuration is read-only",
+		ConfigurationError.serverReadOnly(
 			details = "The server has no per-session active profile; operations apply the " +
 				"profile carried in each request explicitly.",
 		).left()

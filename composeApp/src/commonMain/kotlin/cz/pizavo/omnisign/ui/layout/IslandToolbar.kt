@@ -13,6 +13,7 @@ import cz.pizavo.omnisign.ui.platform.*
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 private val CompactButtonSize = 32.dp
 private val CompactButtonPadding = PaddingValues(2.dp)
@@ -74,7 +75,7 @@ fun IslandToolbar(
 	fileLoaded: Boolean = false,
 	modifier: Modifier = Modifier,
 ) {
-	val themeLabel = if (isDarkTheme) "Switch to light theme" else "Switch to dark theme"
+	val themeLabel = if (isDarkTheme) stringResource(Res.string.toolbar_switch_to_light_theme) else stringResource(Res.string.toolbar_switch_to_dark_theme)
 	val titleBarHeight = LocalTitleBarHeight.current
 	val nativeLeftInsetPx = LocalTitleBarLeftInset.current
 	val nativeRightInsetPx = LocalTitleBarRightInset.current
@@ -117,7 +118,7 @@ fun IslandToolbar(
 					}
 
 					TooltipBox(
-						tooltip = { Tooltip { Text(text = "Open file") } },
+						tooltip = { Tooltip { Text(text = stringResource(Res.string.toolbar_open_file)) } },
 						state = rememberTooltipState(),
 					) {
 						IconButton(
@@ -131,7 +132,7 @@ fun IslandToolbar(
 						) {
 							Icon(
 								painter = painterResource(Res.drawable.icon_folder),
-								contentDescription = "Open file",
+								contentDescription = stringResource(Res.string.toolbar_open_file),
 								modifier = Modifier.size(22.dp),
 								tint = LumoTheme.colors.icons.folder,
 							)
@@ -157,9 +158,9 @@ fun IslandToolbar(
 				) {
 					if (canSign) {
 						ToolbarActionButton(
-							tooltip = "Sign",
+							tooltip = stringResource(Res.string.action_sign),
 							icon = Res.drawable.icon_sign,
-							contentDescription = "Sign document",
+							contentDescription = stringResource(Res.string.toolbar_sign_description),
 							enabled = fileLoaded,
 							onClick = onSign,
 						)
@@ -167,9 +168,9 @@ fun IslandToolbar(
 
 					if (canTimestamp) {
 						ToolbarActionButton(
-							tooltip = "Timestamp",
+							tooltip = stringResource(Res.string.toolbar_timestamp_tooltip),
 							icon = Res.drawable.icon_stamp,
-							contentDescription = "Timestamp document",
+							contentDescription = stringResource(Res.string.toolbar_timestamp_description),
 							enabled = fileLoaded,
 							onClick = onTimestamp,
 						)
@@ -193,7 +194,7 @@ fun IslandToolbar(
 					horizontalArrangement = Arrangement.spacedBy(4.dp),
 				) {
 					TooltipBox(
-						tooltip = { Tooltip { Text(text = "Settings") } },
+						tooltip = { Tooltip { Text(text = stringResource(Res.string.label_settings)) } },
 						state = rememberTooltipState(),
 					) {
 						IconButton(
@@ -207,7 +208,7 @@ fun IslandToolbar(
 						) {
 							Icon(
 								painter = painterResource(Res.drawable.icon_settings),
-								contentDescription = "Open settings",
+								contentDescription = stringResource(Res.string.toolbar_settings_description),
 								modifier = Modifier.size(22.dp),
 							)
 						}

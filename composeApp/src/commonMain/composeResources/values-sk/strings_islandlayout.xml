@@ -1,0 +1,5 @@
+<resources>
+	<string name="islandlayout_refresh_signatures">Obnoviť podpisy</string>
+	<string name="islandlayout_edit_profile">Upraviť profil</string>
+	<string name="islandlayout_profiles_placeholder">Konfiguračné profily sa zobrazia tu.</string>
+</resources>

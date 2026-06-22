@@ -6,13 +6,17 @@ import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
+import cz.pizavo.omnisign.domain.model.error.localizableText
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ExtendDocumentUseCase
 import cz.pizavo.omnisign.domain.usecase.GetDocumentTimestampInfoUseCase
+import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
+import cz.pizavo.omnisign.ui.model.RenewalOfferError
 import cz.pizavo.omnisign.ui.model.TimestampDialogState
 import cz.pizavo.omnisign.ui.model.TimestampType
 import cz.pizavo.omnisign.ui.platform.writeBytesToPath
@@ -157,7 +161,7 @@ class TimestampViewModel(
 				configResult.fold(
 					ifLeft = { error ->
 						_state.value = TimestampDialogState.Error(
-							message = "Configuration error: ${error.message}",
+							content = ErrorMessage.ConfigResolution(error.localizableText()),
 						)
 					},
 					ifRight = { config ->
@@ -246,25 +250,20 @@ class TimestampViewModel(
 						if (isRevocationError && isLtExtension) {
 							if (documentAlreadyContainsLtData) {
 								_state.value = TimestampDialogState.Error(
-									message = "Revocation data could not be refreshed",
-									details = "The document already contains LT-level data. " +
-											"Falling back to B-T is not possible because it " +
-											"would degrade the existing signature level.\n\n" +
-											(error.details ?: ""),
+									content = ErrorMessage.RevocationRefreshFailed(error.details),
 								)
 							} else {
 								_state.value = TimestampDialogState.RevocationWarning(
 									warnings = listOfNotNull(
-										error.message,
-										error.details,
+										error.localizableText(),
+										error.details?.let { LocalizableText.Literal(it) },
 									),
 									details = error.details,
 								)
 							}
 						} else {
 							_state.value = TimestampDialogState.Error(
-								message = error.message,
-								details = error.details,
+								content = ErrorMessage.Domain(error.localizableText(), error.details),
 							)
 						}
 					},
@@ -272,8 +271,7 @@ class TimestampViewModel(
 						val writeError = writeBytesToPath(outputPath, result.outputBytes)
 						if (writeError != null) {
 							_state.value = TimestampDialogState.Error(
-								message = "Failed to write extended document",
-								details = writeError,
+								content = ErrorMessage.WriteFailed(signed = false, reason = writeError),
 							)
 							return@fold
 						}
@@ -316,16 +314,14 @@ class TimestampViewModel(
 				extendDocumentUseCase(parameters).fold(
 					ifLeft = { error ->
 						_state.value = TimestampDialogState.Error(
-							message = error.message,
-							details = error.details,
+							content = ErrorMessage.Domain(error.localizableText(), error.details),
 						)
 					},
 					ifRight = { result ->
 						val writeError = writeBytesToPath(outputPath, result.outputBytes)
 						if (writeError != null) {
 							_state.value = TimestampDialogState.Error(
-								message = "Failed to write extended document",
-								details = writeError,
+								content = ErrorMessage.WriteFailed(signed = false, reason = writeError),
 							)
 							return@fold
 						}
@@ -381,7 +377,7 @@ class TimestampViewModel(
 				if (result != null) {
 					_pendingRenewalOffer.value = offer.copy(assignedJobName = result, error = null)
 				} else {
-					_pendingRenewalOffer.value = offer.copy(error = "Job '$jobName' not found.")
+					_pendingRenewalOffer.value = offer.copy(error = RenewalOfferError.JobNotFound(jobName))
 				}
 			}
 		}
@@ -402,8 +398,8 @@ class TimestampViewModel(
 						onSuccess = { name ->
 							_pendingRenewalOffer.value = offer.copy(assignedJobName = name, error = null)
 						},
-						onFailure = { e ->
-							_pendingRenewalOffer.value = offer.copy(error = e.message)
+						onFailure = { _ ->
+							_pendingRenewalOffer.value = offer.copy(error = RenewalOfferError.JobAlreadyExists(job.name))
 						},
 					)
 				}

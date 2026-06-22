@@ -1,0 +1,4 @@
+<resources>
+	<string name="tlloadingbar_loading">Loading trusted lists…</string>
+	<string name="tlloadingbar_loading_progress">Loading trusted lists… %1$s of %2$s</string>
+</resources>

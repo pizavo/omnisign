@@ -34,9 +34,7 @@ class ManageRenewalJobsUseCase(
 	suspend fun remove(name: String): OperationResult<Unit> {
 		val current = configRepository.getCurrentConfig()
 		if (!current.renewalJobs.containsKey(name)) {
-			return ConfigurationError.InvalidConfiguration(
-				message = "Renewal job '$name' does not exist"
-			).left()
+			return ConfigurationError.renewalJobNotFound(name).left()
 		}
 		val updated = current.copy(renewalJobs = current.renewalJobs - name)
 		return configRepository.saveConfig(updated)
@@ -51,9 +49,7 @@ class ManageRenewalJobsUseCase(
 	suspend fun get(name: String): OperationResult<RenewalJob> {
 		val current = configRepository.getCurrentConfig()
 		return current.renewalJobs[name]?.right()
-			?: ConfigurationError.InvalidConfiguration(
-				message = "Renewal job '$name' does not exist"
-			).left()
+			?: ConfigurationError.renewalJobNotFound(name).left()
 	}
 	
 	/**

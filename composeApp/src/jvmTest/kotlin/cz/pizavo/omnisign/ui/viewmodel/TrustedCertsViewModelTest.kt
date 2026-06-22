@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.error.TrustStoreError
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -123,7 +124,7 @@ class TrustedCertsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns AppConfig().right()
             coEvery { trustStore.list(TrustScope.Global) } returns
-                    TrustStoreError.StorageFailed("disk error").left()
+                    TrustStoreError.StorageFailed(LocalizableText.Literal("disk error")).left()
 
             val vm = TrustedCertsViewModel(getConfig, trustStore)
             vm.refresh()
@@ -137,7 +138,8 @@ class TrustedCertsViewModelTest : FunSpec({
 
     test("refresh still lists global scope when config loading fails") {
         runTest(testDispatcher) {
-            coEvery { configRepository.loadConfig() } returns ConfigurationError.LoadFailed("boom").left()
+            coEvery { configRepository.loadConfig() } returns
+                ConfigurationError.LoadFailed(LocalizableText.Literal("boom")).left()
             coEvery { trustStore.list(TrustScope.Global) } returns listOf(cert("g")).right()
 
             val vm = TrustedCertsViewModel(getConfig, trustStore)

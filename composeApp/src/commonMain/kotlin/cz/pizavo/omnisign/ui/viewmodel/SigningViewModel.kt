@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
+import cz.pizavo.omnisign.domain.model.error.localizableText
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.Pkcs11DiagnosticSnapshot
@@ -14,19 +15,26 @@ import cz.pizavo.omnisign.domain.usecase.ListCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.LoadFileCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
 import cz.pizavo.omnisign.domain.usecase.UnlockTokenUseCase
+import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
+import cz.pizavo.omnisign.ui.model.RenewalOfferError
 import cz.pizavo.omnisign.ui.model.SigningDialogState
 import cz.pizavo.omnisign.ui.platform.writeBytesToPath
 import cz.pizavo.omnisign.ui.toast.ToastDuration
 import cz.pizavo.omnisign.ui.toast.ToastMessage
 import cz.pizavo.omnisign.ui.toast.ToastService
+import cz.pizavo.omnisign.ui.toast.ToastText
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.drop
 import kotlinx.coroutines.flow.update
+import omnisign.composeapp.generated.resources.Res
+import omnisign.composeapp.generated.resources.signing_rescan_detected
+import omnisign.composeapp.generated.resources.signing_rescan_none
+import omnisign.composeapp.generated.resources.signing_show_diagnostic_info
 
 /**
  * ViewModel driving the signing dialog.
@@ -205,7 +213,7 @@ class SigningViewModel(
 					configResult.fold(
 						ifLeft = { error ->
 							_state.value = SigningDialogState.Error(
-								message = "Configuration error: ${error.message}",
+								content = ErrorMessage.ConfigResolution(error.localizableText()),
 							)
 						},
 						ifRight = { config ->
@@ -220,8 +228,7 @@ class SigningViewModel(
 							discoveryDeferred.await().fold(
 								ifLeft = { error ->
 									_state.value = SigningDialogState.Error(
-										message = error.message,
-										details = error.details,
+										content = ErrorMessage.Domain(error.localizableText(), error.details),
 									)
 								},
 								ifRight = { discovery ->
@@ -304,7 +311,7 @@ class SigningViewModel(
 											cz.pizavo.omnisign.domain.repository.TokenDiscoveryWarning(
 												tokenId = tokenId,
 												tokenName = current.lockedTokens.find { it.tokenId == tokenId }?.tokenName ?: tokenId,
-												message = error.message,
+												message = error.localizableText(),
 												details = error.details,
 											),
 								)
@@ -349,7 +356,7 @@ class SigningViewModel(
 									tokenWarnings = current.tokenWarnings + cz.pizavo.omnisign.domain.repository.TokenDiscoveryWarning(
 										tokenId = "file-$filePath",
 										tokenName = filePath.substringAfterLast('/').substringAfterLast('\\'),
-										message = error.message,
+										message = error.localizableText(),
 										details = error.details,
 									),
 								)
@@ -424,16 +431,14 @@ class SigningViewModel(
 				signDocumentUseCase(parameters).fold(
 					ifLeft = { error ->
 						_state.value = SigningDialogState.Error(
-							message = error.message,
-							details = error.details,
+							content = ErrorMessage.Domain(error.localizableText(), error.details),
 						)
 					},
 					ifRight = { result ->
 						val writeError = writeBytesToPath(outputPath, result.outputBytes)
 						if (writeError != null) {
 							_state.value = SigningDialogState.Error(
-								message = "Failed to write signed document",
-								details = writeError,
+								content = ErrorMessage.WriteFailed(signed = true, reason = writeError),
 							)
 							return@fold
 						}
@@ -517,7 +522,7 @@ class SigningViewModel(
 				if (result != null) {
 					_pendingRenewalOffer.value = offer.copy(assignedJobName = result, error = null)
 				} else {
-					_pendingRenewalOffer.value = offer.copy(error = "Job '$jobName' not found.")
+					_pendingRenewalOffer.value = offer.copy(error = RenewalOfferError.JobNotFound(jobName))
 				}
 			}
 		}
@@ -537,8 +542,8 @@ class SigningViewModel(
 					onSuccess = { name ->
 						_pendingRenewalOffer.value = offer.copy(assignedJobName = name, error = null)
 					},
-					onFailure = { e ->
-						_pendingRenewalOffer.value = offer.copy(error = e.message)
+					onFailure = { _ ->
+						_pendingRenewalOffer.value = offer.copy(error = RenewalOfferError.JobAlreadyExists(job.name))
 					},
 				)
 			}
@@ -634,17 +639,15 @@ class SigningViewModel(
 			?.count { it.tokenType == TokenType.PKCS11.name } ?: 0
 		val lockedTokenCount = ready?.lockedTokens?.size ?: 0
 		val total = pkcs11CertCount + lockedTokenCount
-		val text = when {
-			total == 0 -> "Rescan complete — no PKCS#11 tokens detected"
-			total == 1 -> "Rescan complete — 1 PKCS#11 entry detected"
-			else -> "Rescan complete — $total PKCS#11 entries detected"
-		}
 		val message = if (total == 0) ToastMessage(
-			text = text,
-			actionLabel = "Show diagnostic info",
+			text = ToastText.Resource(Res.string.signing_rescan_none),
+			actionLabel = ToastText.Resource(Res.string.signing_show_diagnostic_info),
 			onAction = ::showDiagnostic,
 			duration = ToastDuration.Long,
-		) else ToastMessage(text = text, duration = ToastDuration.Short)
+		) else ToastMessage(
+			text = ToastText.Plural(Res.plurals.signing_rescan_detected, total, listOf(total)),
+			duration = ToastDuration.Short,
+		)
 		service.show(message)
 	}
 

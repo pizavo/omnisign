@@ -1,0 +1,9 @@
+<resources>
+	<string name="error_config_resolution">Chyba konfigurace: %1$s</string>
+	<string name="error_write_signed">Nepodařilo se zapsat podepsaný dokument</string>
+	<string name="error_write_extended">Nepodařilo se zapsat rozšířený dokument</string>
+	<string name="error_revocation_refresh_failed">Data o zneplatnění se nepodařilo obnovit</string>
+	<string name="error_revocation_lt_degrade">Dokument již obsahuje data úrovně LT. Návrat na úroveň B-T není možný, protože by snížil úroveň stávajícího podpisu.</string>
+	<string name="error_compiler_unavailable">Kompilace důvěryhodného seznamu není na této platformě dostupná.</string>
+	<string name="error_unknown">Neznámá chyba</string>
+</resources>

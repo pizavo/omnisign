@@ -13,9 +13,9 @@ import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.Text
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_external_link
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Inline text link that opens [url] outside the application.
@@ -36,9 +36,10 @@ fun ExternalLink(
     text: String,
     url: String,
     modifier: Modifier = Modifier,
-    contentDescription: String = "Opens in your browser",
+    contentDescription: String? = null,
 ) {
     val uriHandler = LocalUriHandler.current
+    val resolvedContentDescription = contentDescription ?: stringResource(Res.string.externallink_content_description)
 
     Row(
         modifier = modifier.clickable { uriHandler.openUri(url) },
@@ -53,7 +54,7 @@ fun ExternalLink(
         )
         Icon(
             painter = painterResource(Res.drawable.icon_external_link),
-            contentDescription = contentDescription,
+            contentDescription = resolvedContentDescription,
             modifier = Modifier.size(14.dp),
             tint = LumoTheme.colors.textSecondary,
         )

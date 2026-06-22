@@ -5,6 +5,7 @@ import arrow.core.right
 import com.github.ajalt.clikt.testing.test
 import cz.pizavo.omnisign.Omnisign
 import cz.pizavo.omnisign.domain.model.error.SigningError
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
 import cz.pizavo.omnisign.domain.repository.CertificateDiscoveryResult
 import cz.pizavo.omnisign.domain.repository.SigningRepository
@@ -75,7 +76,7 @@ class CertificatesListTest : FunSpec({
 		coEvery { signingRepository.listAvailableCertificates() } returns CertificateDiscoveryResult(
 			certificates = listOf(cert("ok")),
 			tokenWarnings = listOf(
-				TokenDiscoveryWarning("t1", "Smart Card", "Access denied")
+				TokenDiscoveryWarning("t1", "Smart Card", LocalizableText.Literal("Access denied"))
 			),
 		).right()
 
@@ -87,7 +88,7 @@ class CertificatesListTest : FunSpec({
 
 	test("error exits with code 1") {
 		coEvery { signingRepository.listAvailableCertificates() } returns
-			SigningError.TokenAccessError(message = "Discovery failed").left()
+			SigningError.TokenAccessError(text = LocalizableText.Literal("Discovery failed")).left()
 
 		val result = Omnisign().test(listOf("certificates", "list"))
 
@@ -109,7 +110,7 @@ class CertificatesListTest : FunSpec({
 
 	test("--json outputs JSON error with exit code 1") {
 		coEvery { signingRepository.listAvailableCertificates() } returns
-			SigningError.TokenAccessError(message = "Token error").left()
+			SigningError.TokenAccessError(text = LocalizableText.Literal("Token error")).left()
 
 		val result = Omnisign().test(listOf("--json", "certificates", "list"))
 

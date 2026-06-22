@@ -1,0 +1,5 @@
+<resources>
+	<string name="exportreport_tooltip">Exportovat protokol</string>
+	<string name="exportreport_icon_content_description">Exportovat protokol o ověření platnosti</string>
+	<string name="exportreport_section_label">Formát exportu</string>
+</resources>

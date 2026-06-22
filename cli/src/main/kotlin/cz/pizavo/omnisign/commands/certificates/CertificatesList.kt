@@ -10,6 +10,7 @@ import cz.pizavo.omnisign.cli.OutputConfig
 import cz.pizavo.omnisign.cli.json.JsonCertificateList
 import cz.pizavo.omnisign.cli.json.toJsonCertificateList
 import cz.pizavo.omnisign.cli.json.toJsonError
+import cz.pizavo.omnisign.data.preferences.loadFormatPreferences
 import cz.pizavo.omnisign.domain.model.value.formatDate
 import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
 import cz.pizavo.omnisign.domain.repository.CertificateDiscoveryResult
@@ -127,13 +128,14 @@ class CertificatesList : CliktCommand(name = "list"), KoinComponent {
 		echo("  AVAILABLE CERTIFICATES (${certificates.size})")
 		echo("═".repeat(aliasWidth + subjectWidth + tokenWidth + 16))
 
+		val dateFormat = loadFormatPreferences().dateFormat
 		certificates.forEachIndexed { index, cert ->
 			echo("")
 			echo("  [${index + 1}] Alias      : ${cert.alias}")
 			echo("      Subject    : ${cert.subjectDN}")
 			echo("      Issuer     : ${cert.issuerDN}")
-			echo("      Valid from : ${cert.validFrom.formatDate()}")
-			echo("      Valid to   : ${cert.validTo.formatDate()}")
+			echo("      Valid from : ${cert.validFrom.formatDate(dateFormat = dateFormat)}")
+			echo("      Valid to   : ${cert.validTo.formatDate(dateFormat = dateFormat)}")
 			echo("      Token type : ${cert.tokenType}")
 			val usages = cert.keyUsages.takeIf { it.isNotEmpty() }?.joinToString(", ") ?: "not specified"
 			echo("      Key usages : $usages")

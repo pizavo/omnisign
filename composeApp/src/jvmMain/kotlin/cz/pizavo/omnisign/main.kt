@@ -47,6 +47,7 @@ import java.awt.Point
 import java.awt.Rectangle
 import java.awt.event.MouseAdapter
 import java.io.File
+import java.util.Locale
 import java.util.concurrent.ConcurrentHashMap
 import javax.swing.Timer
 import kotlin.system.exitProcess
@@ -335,8 +336,14 @@ fun main(args: Array<String> = emptyArray()) {
  * interactive authentication), runs all configured renewal jobs via
  * [RenewBatchUseCase], sends OS notifications for completed jobs, and
  * exits with code 0 on success or 1 if any errors occurred.
+ *
+ * The JVM default locale is first set from the persisted UI language preference, so the OS
+ * notifications this run emits match the language chosen in the desktop app rather than only the
+ * system locale. A `null` preference (system default) leaves the locale untouched.
  */
 private fun runHeadlessRenewal() {
+	loadUiPreferences().languageTag?.let { Locale.setDefault(Locale.forLanguageTag(it)) }
+
 	val koinApp = startKoin {
 		modules(
 			appModule,

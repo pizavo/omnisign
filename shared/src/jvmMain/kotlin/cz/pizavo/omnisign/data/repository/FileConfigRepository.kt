@@ -12,7 +12,6 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.serialization.json.Json
 import java.nio.file.Files
 import java.nio.file.Path
-import java.nio.file.Paths
 import java.nio.file.attribute.PosixFilePermission
 import kotlin.io.path.exists
 import kotlin.io.path.readText
@@ -50,14 +49,10 @@ class FileConfigRepository(
                 config.right()
             }
         } catch (e: Exception) {
-            ConfigurationError.LoadFailed(
-                message = "Failed to load configuration",
-                details = e.message,
-                cause = e
-            ).left()
+            ConfigurationError.loadFailed(details = e.message, cause = e).left()
         }
     }
-    
+
     override suspend fun saveConfig(config: AppConfig): OperationResult<Unit> = mutex.withLock {
         saveConfigInternal(config)
     }
@@ -75,11 +70,7 @@ class FileConfigRepository(
             cachedConfig = config
             Unit.right()
         } catch (e: Exception) {
-            ConfigurationError.SaveFailed(
-                message = "Failed to save configuration",
-                details = e.message,
-                cause = e
-            ).left()
+            ConfigurationError.saveFailed(details = e.message, cause = e).left()
         }
     }
     
@@ -117,30 +108,9 @@ class FileConfigRepository(
     companion object {
         /**
          * Get the default configuration file path.
-         * Uses platform-specific user config directory.
+         * Uses the platform-specific user config directory resolved by [appConfigDirectory].
          */
-        fun getDefaultConfigPath(): Path {
-            val userHome = System.getProperty("user.home")
-            val os = System.getProperty("os.name").lowercase()
-            
-            val configDir = when {
-                os.contains("win") -> {
-                    // Windows: %APPDATA%\omnisign
-                    System.getenv("APPDATA")?.let { Paths.get(it, "omnisign") }
-                        ?: Paths.get(userHome, "AppData", "Roaming", "omnisign")
-                }
-                os.contains("mac") -> {
-                    // macOS: ~/Library/Application Support/omnisign
-                    Paths.get(userHome, "Library", "Application Support", "omnisign")
-                }
-                else -> {
-                    // Linux/Unix: ~/.config/omnisign
-                    Paths.get(userHome, ".config", "omnisign")
-                }
-            }
-            
-            return configDir.resolve("config.json")
-        }
+        fun getDefaultConfigPath(): Path = appConfigDirectory().resolve("config.json")
     }
 }
 

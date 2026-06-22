@@ -17,17 +17,20 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.signature.CertificateChainLink
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.model.validation.*
-import cz.pizavo.omnisign.domain.model.value.formatDate
-import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import kotlin.time.Instant
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.ui.model.SignaturePanelState
+import cz.pizavo.omnisign.ui.model.localized
+import cz.pizavo.omnisign.ui.platform.formattedDate
+import cz.pizavo.omnisign.ui.platform.formattedDateTime
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Content of the Signature side panel.
@@ -60,7 +63,7 @@ fun SignaturePanel(
             is SignaturePanelState.Idle -> IdleContent(hasDocument = state.hasDocument)
             is SignaturePanelState.Loading -> LoadingContent()
             is SignaturePanelState.Loaded -> ReportContent(report = state.report, alertIfNotEuLotl = state.alertIfNotEuLotl)
-            is SignaturePanelState.Error -> ErrorContent(message = state.message, onRetry = onLoadSignatures)
+            is SignaturePanelState.Error -> ErrorContent(text = state.text, onRetry = onLoadSignatures)
         }
     }
 }
@@ -82,8 +85,8 @@ private fun IdleContent(hasDocument: Boolean) {
             tint = LumoTheme.colors.textSecondary,
         )
         Text(
-            text = if (hasDocument) "Press the refresh button to retrieve signature information."
-            else "Open a PDF document first.",
+            text = if (hasDocument) stringResource(Res.string.signature_idle_has_document)
+            else stringResource(Res.string.signature_idle_no_document),
             style = LumoTheme.typography.body2,
             color = LumoTheme.colors.textSecondary,
         )
@@ -101,7 +104,7 @@ private fun LoadingContent() {
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
-            text = "Analysing signatures…",
+            text = stringResource(Res.string.signature_loading),
             style = LumoTheme.typography.body2,
             color = LumoTheme.colors.textSecondary,
         )
@@ -116,7 +119,7 @@ private fun LoadingContent() {
  */
 @Composable
 private fun ErrorContent(
-    message: String,
+    text: LocalizableText,
     onRetry: () -> Unit,
 ) {
     Column(
@@ -126,13 +129,13 @@ private fun ErrorContent(
     ) {
         SelectableContent {
             Text(
-                text = message,
+                text = text.localized(),
                 style = LumoTheme.typography.body2,
                 color = LumoTheme.colors.error,
             )
         }
         Button(
-            text = "Retry",
+            text = stringResource(Res.string.signature_error_retry),
             variant = ButtonVariant.PrimaryOutlined,
             onClick = onRetry,
         )
@@ -168,13 +171,13 @@ private fun ReportDetails(report: ValidationReport, alertIfNotEuLotl: Boolean) {
 
         Spacer(modifier = Modifier.height(4.dp))
 
-        LabelValue(label = "Document", value = report.documentName)
-        LabelValue(label = "Validation time", value = report.validationTime.formatDateTime())
+        LabelValue(label = stringResource(Res.string.signature_label_document), value = report.documentName)
+        LabelValue(label = stringResource(Res.string.signature_label_validation_time), value = report.validationTime.formattedDateTime())
 
         if (report.signatures.isEmpty()) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(
-                text = "No signatures found in the document.",
+                text = stringResource(Res.string.signature_no_signatures),
                 style = LumoTheme.typography.body2,
                 color = LumoTheme.colors.textSecondary,
             )
@@ -196,7 +199,7 @@ private fun ReportDetails(report: ValidationReport, alertIfNotEuLotl: Boolean) {
             Spacer(modifier = Modifier.height(4.dp))
             HorizontalDivider()
             Spacer(modifier = Modifier.height(4.dp))
-            Text(text = "Trusted List Warnings", style = LumoTheme.typography.h4)
+            Text(text = stringResource(Res.string.signature_trusted_list_warnings), style = LumoTheme.typography.h4)
             report.tlWarnings.forEach { warning ->
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(4.dp),
@@ -245,7 +248,7 @@ private fun OverallResultBadge(report: ValidationReport, alertIfNotEuLotl: Boole
             )
             Spacer(modifier = Modifier.size(8.dp))
             Text(
-                text = "NO SIGNATURES",
+                text = stringResource(Res.string.signature_badge_no_signatures),
                 style = LumoTheme.typography.h3,
                 color = LumoTheme.colors.textSecondary,
             )
@@ -254,9 +257,9 @@ private fun OverallResultBadge(report: ValidationReport, alertIfNotEuLotl: Boole
     }
 
     val (label, color, icon) = when (report.overallResult) {
-        ValidationResult.VALID -> Triple("VALID", LumoTheme.colors.success, Res.drawable.icon_shield_check)
-        ValidationResult.INVALID -> Triple("INVALID", LumoTheme.colors.error, Res.drawable.icon_shield_exclamation)
-        ValidationResult.INDETERMINATE -> Triple("INDETERMINATE", LumoTheme.colors.warning, Res.drawable.icon_shield_question)
+        ValidationResult.VALID -> Triple(stringResource(Res.string.signature_result_valid), LumoTheme.colors.success, Res.drawable.icon_shield_check)
+        ValidationResult.INVALID -> Triple(stringResource(Res.string.signature_result_invalid), LumoTheme.colors.error, Res.drawable.icon_shield_exclamation)
+        ValidationResult.INDETERMINATE -> Triple(stringResource(Res.string.signature_result_indeterminate), LumoTheme.colors.warning, Res.drawable.icon_shield_question)
     }
     val rosette = trustTierIcon(report.overallTrustTier)
 
@@ -276,12 +279,12 @@ private fun OverallResultBadge(report: ValidationReport, alertIfNotEuLotl: Boole
         if (rosette != null) {
             Spacer(modifier = Modifier.size(8.dp))
             TooltipBox(
-                tooltip = { Tooltip { Text(text = report.overallTrustTier.label) } },
+                tooltip = { Tooltip { Text(text = report.overallTrustTier.label().localized()) } },
                 state = rememberTooltipState(),
             ) {
                 Icon(
                     painter = painterResource(rosette),
-                    contentDescription = report.overallTrustTier.label,
+                    contentDescription = report.overallTrustTier.label().localized(),
                     modifier = Modifier.size(22.dp),
                     tint = trustTierColor(report.overallTrustTier),
                 )
@@ -294,14 +297,15 @@ private fun OverallResultBadge(report: ValidationReport, alertIfNotEuLotl: Boole
             else -> null
         }
         if (euIcon != null) {
+            val euLotlLabel = if (euOnLotl) stringResource(Res.string.signature_eu_lotl_on) else stringResource(Res.string.signature_eu_lotl_not)
             Spacer(modifier = Modifier.size(4.dp))
             TooltipBox(
-                tooltip = { Tooltip { Text(text = if (euOnLotl) "On the EU LOTL" else "Not on the EU LOTL") } },
+                tooltip = { Tooltip { Text(text = euLotlLabel) } },
                 state = rememberTooltipState(),
             ) {
                 Icon(
                     painter = painterResource(euIcon),
-                    contentDescription = if (euOnLotl) "On the EU LOTL" else "Not on the EU LOTL",
+                    contentDescription = euLotlLabel,
                     modifier = Modifier.size(22.dp),
                     tint = if (euOnLotl) LumoTheme.colors.icons.euStars else LumoTheme.colors.error,
                 )
@@ -319,7 +323,7 @@ private fun SignaturesGroup(signatures: List<SignatureValidationResult>, alertIf
     val aggregateIndication = aggregateSignatureIndication(signatures)
 
     SectionAccordion(
-        title = "Signatures (${signatures.size})",
+        title = stringResource(Res.string.signature_section_signatures, signatures.size),
         indication = aggregateIndication,
         initiallyExpanded = true,
     ) {
@@ -349,12 +353,12 @@ private fun SignatureAccordion(
     alertIfNotEuLotl: Boolean,
 ) {
     SectionAccordion(
-        title = "Signature ${index + 1} of $total — ${signature.signedBy}",
+        title = stringResource(Res.string.signature_accordion_title, index + 1, total, signature.signedBy),
         indication = signature.indication,
         initiallyExpanded = false,
         precedingIcon = trustTierIcon(signature.trustTier),
         precedingTint = trustTierColor(signature.trustTier),
-        precedingTooltip = signature.trustTier.takeIf { it != SignatureTrustTier.NOT_QUALIFIED }?.label,
+        precedingTooltip = signature.trustTier.takeIf { it != SignatureTrustTier.NOT_QUALIFIED }?.let { it.label().localized() },
         trailingIcon = when {
             signature.euLotlBacked -> Res.drawable.icon_eu
             alertIfNotEuLotl -> Res.drawable.icon_eu_crossed
@@ -362,8 +366,8 @@ private fun SignatureAccordion(
         },
         trailingTint = if (signature.euLotlBacked) LumoTheme.colors.icons.euStars else LumoTheme.colors.error,
         trailingTooltip = when {
-            signature.euLotlBacked -> "On the EU LOTL"
-            alertIfNotEuLotl -> "Not on the EU LOTL"
+            signature.euLotlBacked -> stringResource(Res.string.signature_eu_lotl_on)
+            alertIfNotEuLotl -> stringResource(Res.string.signature_eu_lotl_not)
             else -> null
         },
     ) {
@@ -371,34 +375,34 @@ private fun SignatureAccordion(
             modifier = Modifier.padding(start = 4.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            LabelValue(label = "Indication", value = formatIndication(signature.indication))
-            signature.subIndication?.let { LabelValue(label = "Sub-indication", value = it) }
-            LabelValue(label = "Signed by", value = signature.signedBy)
-            LabelValue(label = "Level", value = signature.signatureLevel)
-            LabelValue(label = "Time", value = signature.signatureTime.formatDateTime())
-            signature.signatureQualification?.let { LabelValue(label = "Qualification", value = it) }
+            LabelValue(label = stringResource(Res.string.signature_label_indication), value = formatIndication(signature.indication))
+            signature.subIndication?.let { LabelValue(label = stringResource(Res.string.signature_label_sub_indication), value = it) }
+            LabelValue(label = stringResource(Res.string.signature_label_signed_by), value = signature.signedBy)
+            LabelValue(label = stringResource(Res.string.signature_label_level), value = signature.signatureLevel)
+            LabelValue(label = stringResource(Res.string.signature_label_time), value = signature.signatureTime.formattedDateTime())
+            signature.signatureQualification?.let { LabelValue(label = stringResource(Res.string.signature_label_qualification), value = it) }
             if (signature.trustTier != SignatureTrustTier.NOT_QUALIFIED) {
-                LabelValue(label = "Trust", value = signature.trustTier.label)
+                LabelValue(label = stringResource(Res.string.signature_label_trust), value = signature.trustTier.label().localized())
             }
-            signature.hashAlgorithm?.let { LabelValue(label = "Hash algorithm", value = it) }
-            signature.encryptionAlgorithm?.let { LabelValue(label = "Encryption", value = it) }
+            signature.hashAlgorithm?.let { LabelValue(label = stringResource(Res.string.label_hash_algorithm), value = it) }
+            signature.encryptionAlgorithm?.let { LabelValue(label = stringResource(Res.string.signature_label_encryption), value = it) }
 
-            MessageList(title = "Errors", messages = signature.errors, color = LumoTheme.colors.error)
-            MessageList(title = "Warnings", messages = signature.warnings, color = LumoTheme.colors.warning)
+            MessageList(title = stringResource(Res.string.signature_label_errors), messages = signature.errors, color = LumoTheme.colors.error)
+            MessageList(title = stringResource(Res.string.signature_label_warnings), messages = signature.warnings, color = LumoTheme.colors.warning)
             MessageList(
-                title = "Qualification Errors",
+                title = stringResource(Res.string.signature_label_qualification_errors),
                 messages = signature.qualificationErrors,
                 color = LumoTheme.colors.error,
             )
             MessageList(
-                title = "Qualification Warnings",
+                title = stringResource(Res.string.signature_label_qualification_warnings),
                 messages = signature.qualificationWarnings,
                 color = LumoTheme.colors.warning,
             )
-            MessageList(title = "Information", messages = signature.infos, color = LumoTheme.colors.textSecondary)
+            MessageList(title = stringResource(Res.string.signature_label_information), messages = signature.infos, color = LumoTheme.colors.textSecondary)
             MessageList(
-                title = "Qualification Information",
-                messages = signature.qualificationInfos,
+                title = stringResource(Res.string.signature_label_qualification_information),
+                messages = signature.qualificationInfos + (signature.trustTier.qscdResidenceInfo()?.let { listOf(it.localized()) } ?: emptyList()),
                 color = LumoTheme.colors.textSecondary,
             )
 
@@ -423,21 +427,21 @@ private fun SignatureAccordion(
  */
 @Composable
 private fun CertificateAccordion(signature: SignatureValidationResult) {
-    NestedAccordion(title = "Certificate") {
+    NestedAccordion(title = stringResource(Res.string.signature_section_certificate)) {
         Column(
             modifier = Modifier.padding(start = 4.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            LabelValue(label = "Subject", value = signature.certificate.subjectDN)
-            LabelValue(label = "Issuer", value = signature.certificate.issuerDN)
-            LabelValue(label = "Serial", value = signature.certificate.serialNumber)
-            LabelValue(label = "Valid from", value = signature.certificate.validFrom.formatDate())
-            LabelValue(label = "Valid to", value = signature.certificate.validTo.formatDate())
+            LabelValue(label = stringResource(Res.string.signature_label_subject), value = signature.certificate.subjectDN)
+            LabelValue(label = stringResource(Res.string.signature_label_issuer), value = signature.certificate.issuerDN)
+            LabelValue(label = stringResource(Res.string.signature_label_serial), value = signature.certificate.serialNumber)
+            LabelValue(label = stringResource(Res.string.signature_label_valid_from), value = signature.certificate.validFrom.formattedDate())
+            LabelValue(label = stringResource(Res.string.signature_label_valid_to), value = signature.certificate.validTo.formattedDate())
             if (signature.certificate.keyUsages.isNotEmpty()) {
-                LabelValue(label = "Key usages", value = signature.certificate.keyUsages.joinToString())
+                LabelValue(label = stringResource(Res.string.signature_label_key_usages), value = localizedKeyUsages(signature.certificate.keyUsages))
             }
-            signature.certificate.publicKeyAlgorithm?.let { LabelValue(label = "Public key", value = it) }
-            signature.certificate.sha256Fingerprint?.let { LabelValue(label = "SHA-256", value = it) }
+            signature.certificate.publicKeyAlgorithm?.let { LabelValue(label = stringResource(Res.string.signature_label_public_key), value = it) }
+            signature.certificate.sha256Fingerprint?.let { LabelValue(label = stringResource(Res.string.signature_label_sha256), value = it) }
             ViewFullCertificateAction(
                 chain = signature.certificate.chain,
                 trustRole = TrustedCertificateType.CA,
@@ -456,7 +460,7 @@ private fun CertificateAccordion(signature: SignatureValidationResult) {
  */
 @Composable
 private fun RevocationAccordion(revocations: List<RevocationInfo>, asOf: Instant) {
-    val title = if (revocations.size > 1) "Revocation checks (${revocations.size})" else "Revocation check"
+    val title = if (revocations.size > 1) stringResource(Res.string.signature_section_revocation_checks, revocations.size) else stringResource(Res.string.signature_section_revocation_check)
     NestedAccordion(title = title) {
         Column(
             modifier = Modifier.padding(start = 4.dp),
@@ -465,7 +469,7 @@ private fun RevocationAccordion(revocations: List<RevocationInfo>, asOf: Instant
             val revokedAtSigning = revocations.signingTimeRepresentative()?.revoked == true
             revocations.revocationConclusion(asOf)?.let { conclusion ->
                 Text(
-                    text = conclusion,
+                    text = conclusion.localized(),
                     style = LumoTheme.typography.body2,
                     color = if (revokedAtSigning) LumoTheme.colors.error else LumoTheme.colors.textSecondary,
                 )
@@ -493,7 +497,7 @@ private fun RevocationAccordion(revocations: List<RevocationInfo>, asOf: Instant
 @Composable
 private fun RevocationEntry(revocation: RevocationInfo) {
     revocation.displayRows().forEach { (label, value) ->
-        LabelValue(label = label, value = value)
+        LabelValue(label = label.localized(), value = value.localized())
     }
 }
 
@@ -521,13 +525,13 @@ private fun ViewFullCertificateAction(chain: List<CertificateChainLink>, trustRo
         ) {
             Icon(
                 painter = painterResource(Res.drawable.icon_certificate_2),
-                contentDescription = "View full certificate",
+                contentDescription = stringResource(Res.string.signature_view_full_certificate),
                 modifier = Modifier.size(18.dp),
                 tint = LumoTheme.colors.textSecondary,
             )
         }
         Text(
-            text = "View full certificate",
+            text = stringResource(Res.string.signature_view_full_certificate),
             style = LumoTheme.typography.body2,
             color = LumoTheme.colors.textSecondary,
         )
@@ -551,27 +555,27 @@ private fun ViewFullCertificateAction(chain: List<CertificateChainLink>, trustRo
 @Composable
 private fun SignatureTimestampAccordion(timestamp: TimestampValidationResult) {
     SectionAccordion(
-        title = "Signature timestamp",
+        title = stringResource(Res.string.label_signature_timestamp),
         indication = timestamp.indication,
         initiallyExpanded = true,
         trailingIcon = if (timestamp.euLotlBacked) Res.drawable.icon_eu else null,
         trailingTint = LumoTheme.colors.icons.euStars,
-        trailingTooltip = if (timestamp.euLotlBacked) "On the EU LOTL" else null,
+        trailingTooltip = if (timestamp.euLotlBacked) stringResource(Res.string.signature_eu_lotl_on) else null,
     ) {
         Column(
             modifier = Modifier.padding(start = 4.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            LabelValue(label = "Indication", value = formatIndication(timestamp.indication))
-            timestamp.subIndication?.let { LabelValue(label = "Sub-indication", value = it) }
-            LabelValue(label = "Production time", value = timestamp.productionTime.formatDateTime())
-            timestamp.qualification?.let { LabelValue(label = "Qualification", value = it) }
-            timestamp.tsaSubjectDN?.let { LabelValue(label = "TSA", value = it) }
+            LabelValue(label = stringResource(Res.string.signature_label_indication), value = formatIndication(timestamp.indication))
+            timestamp.subIndication?.let { LabelValue(label = stringResource(Res.string.signature_label_sub_indication), value = it) }
+            LabelValue(label = stringResource(Res.string.signature_label_production_time), value = timestamp.productionTime.formattedDateTime())
+            timestamp.qualification?.let { LabelValue(label = stringResource(Res.string.signature_label_qualification), value = it) }
+            timestamp.tsaSubjectDN?.let { LabelValue(label = stringResource(Res.string.signature_label_tsa), value = it) }
             ViewFullCertificateAction(chain = timestamp.chain, trustRole = TrustedCertificateType.TSA)
 
-            MessageList(title = "Errors", messages = timestamp.errors, color = LumoTheme.colors.error)
-            MessageList(title = "Warnings", messages = timestamp.warnings, color = LumoTheme.colors.warning)
-            MessageList(title = "Information", messages = timestamp.infos, color = LumoTheme.colors.textSecondary)
+            MessageList(title = stringResource(Res.string.signature_label_errors), messages = timestamp.errors, color = LumoTheme.colors.error)
+            MessageList(title = stringResource(Res.string.signature_label_warnings), messages = timestamp.warnings, color = LumoTheme.colors.warning)
+            MessageList(title = stringResource(Res.string.signature_label_information), messages = timestamp.infos, color = LumoTheme.colors.textSecondary)
         }
     }
 }
@@ -586,7 +590,7 @@ private fun DocumentTimestampsGroup(timestamps: List<TimestampValidationResult>)
     val aggregateIndication = aggregateTimestampIndication(timestamps)
 
     SectionAccordion(
-        title = "Document Timestamps (${timestamps.size})",
+        title = stringResource(Res.string.signature_section_document_timestamps, timestamps.size),
         indication = aggregateIndication,
         initiallyExpanded = true,
     ) {
@@ -613,27 +617,27 @@ private fun TimestampAccordion(
     timestamp: TimestampValidationResult,
 ) {
     SectionAccordion(
-        title = "Timestamp ${index + 1} of $total — ${timestamp.type}",
+        title = stringResource(Res.string.signature_timestamp_accordion_title, index + 1, total, localizedTimestampType(timestamp.type)),
         indication = timestamp.indication,
         initiallyExpanded = false,
         trailingIcon = if (timestamp.euLotlBacked) Res.drawable.icon_eu else null,
         trailingTint = LumoTheme.colors.icons.euStars,
-        trailingTooltip = if (timestamp.euLotlBacked) "On the EU LOTL" else null,
+        trailingTooltip = if (timestamp.euLotlBacked) stringResource(Res.string.signature_eu_lotl_on) else null,
     ) {
         Column(
             modifier = Modifier.padding(start = 4.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            LabelValue(label = "Indication", value = formatIndication(timestamp.indication))
-            timestamp.subIndication?.let { LabelValue(label = "Sub-indication", value = it) }
-            LabelValue(label = "Production time", value = timestamp.productionTime.formatDateTime())
-            timestamp.qualification?.let { LabelValue(label = "Qualification", value = it) }
-            timestamp.tsaSubjectDN?.let { LabelValue(label = "TSA", value = it) }
+            LabelValue(label = stringResource(Res.string.signature_label_indication), value = formatIndication(timestamp.indication))
+            timestamp.subIndication?.let { LabelValue(label = stringResource(Res.string.signature_label_sub_indication), value = it) }
+            LabelValue(label = stringResource(Res.string.signature_label_production_time), value = timestamp.productionTime.formattedDateTime())
+            timestamp.qualification?.let { LabelValue(label = stringResource(Res.string.signature_label_qualification), value = it) }
+            timestamp.tsaSubjectDN?.let { LabelValue(label = stringResource(Res.string.signature_label_tsa), value = it) }
             ViewFullCertificateAction(chain = timestamp.chain, trustRole = TrustedCertificateType.TSA)
 
-            MessageList(title = "Errors", messages = timestamp.errors, color = LumoTheme.colors.error)
-            MessageList(title = "Warnings", messages = timestamp.warnings, color = LumoTheme.colors.warning)
-            MessageList(title = "Information", messages = timestamp.infos, color = LumoTheme.colors.textSecondary)
+            MessageList(title = stringResource(Res.string.signature_label_errors), messages = timestamp.errors, color = LumoTheme.colors.error)
+            MessageList(title = stringResource(Res.string.signature_label_warnings), messages = timestamp.warnings, color = LumoTheme.colors.warning)
+            MessageList(title = stringResource(Res.string.signature_label_information), messages = timestamp.infos, color = LumoTheme.colors.textSecondary)
         }
     }
 }
@@ -688,13 +692,14 @@ private fun SectionAccordion(
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         if (precedingIcon != null) {
+                            val precedingDesc = precedingTooltip ?: stringResource(Res.string.signature_eu_qualified)
                             TooltipBox(
-                                tooltip = { Tooltip { Text(text = precedingTooltip ?: "EU qualified") } },
+                                tooltip = { Tooltip { Text(text = precedingDesc) } },
                                 state = rememberTooltipState(),
                             ) {
                                 Icon(
                                     painter = painterResource(precedingIcon),
-                                    contentDescription = precedingTooltip ?: "EU qualified",
+                                    contentDescription = precedingDesc,
                                     modifier = Modifier.size(18.dp),
                                     tint = precedingTint,
                                 )
@@ -704,7 +709,7 @@ private fun SectionAccordion(
                             val iconContent = @Composable {
                                 Icon(
                                     painter = painterResource(trailingIcon),
-                                    contentDescription = trailingTooltip ?: "Qualified",
+                                    contentDescription = trailingTooltip ?: stringResource(Res.string.signature_qualified),
                                     modifier = Modifier.size(18.dp),
                                     tint = trailingTint,
                                 )
@@ -724,7 +729,7 @@ private fun SectionAccordion(
                 }
                 Icon(
                     painter = painterResource(Res.drawable.icon_chevron_down),
-                    contentDescription = if (state.expanded) "Collapse" else "Expand",
+                    contentDescription = if (state.expanded) stringResource(Res.string.action_collapse) else stringResource(Res.string.action_expand),
                     modifier = Modifier.size(16.dp).rotate(chevronRotation),
                     tint = LumoTheme.colors.textSecondary,
                 )
@@ -768,7 +773,7 @@ private fun NestedAccordion(
                 )
                 Icon(
                     painter = painterResource(Res.drawable.icon_chevron_down),
-                    contentDescription = if (state.expanded) "Collapse" else "Expand",
+                    contentDescription = if (state.expanded) stringResource(Res.string.action_collapse) else stringResource(Res.string.action_expand),
                     modifier = Modifier.size(14.dp).rotate(chevronRotation),
                     tint = LumoTheme.colors.textSecondary,
                 )
@@ -826,12 +831,53 @@ private fun MessageList(
 }
 
 /**
- * Map a [ValidationIndication] to a human-readable label.
+ * Map a [ValidationIndication] to a localized human-readable label.
  */
+@Composable
 private fun formatIndication(indication: ValidationIndication): String = when (indication) {
-    ValidationIndication.TOTAL_PASSED -> "PASSED"
-    ValidationIndication.TOTAL_FAILED -> "FAILED"
-    ValidationIndication.INDETERMINATE -> "INDETERMINATE"
+    ValidationIndication.TOTAL_PASSED -> stringResource(Res.string.validation_indication_passed)
+    ValidationIndication.TOTAL_FAILED -> stringResource(Res.string.validation_indication_failed)
+    ValidationIndication.INDETERMINATE -> stringResource(Res.string.validation_indication_indeterminate)
+}
+
+/**
+ * Localized label for a timestamp's [type]. The stored type is a human-readable English string
+ * derived from the DSS timestamp type (kept verbatim for the JSON / plain-text report); the known
+ * PAdES types are mapped to the active locale here, with any other value shown as-is.
+ */
+@Composable
+private fun localizedTimestampType(type: String): String = when (type) {
+    "Signature timestamp" -> stringResource(Res.string.validation_ts_signature)
+    "Archive timestamp" -> stringResource(Res.string.validation_ts_archive)
+    "Document timestamp" -> stringResource(Res.string.validation_ts_document)
+    "Content timestamp" -> stringResource(Res.string.validation_ts_content)
+    else -> type
+}
+
+/**
+ * Localized, comma-joined rendering of a certificate's [usages] — the raw X.509 key-usage names
+ * (e.g. `NON_REPUDIATION`) kept in the model are mapped to the active locale for display.
+ */
+@Composable
+private fun localizedKeyUsages(usages: List<String>): String {
+    val parts = mutableListOf<String>()
+    for (usage in usages) parts.add(localizedKeyUsage(usage))
+    return parts.joinToString()
+}
+
+/** Localized label for a single X.509 key-usage name, falling back to the raw name when unmapped. */
+@Composable
+private fun localizedKeyUsage(usage: String): String = when (usage.uppercase()) {
+    "DIGITAL_SIGNATURE" -> stringResource(Res.string.validation_keyusage_digital_signature)
+    "NON_REPUDIATION", "CONTENT_COMMITMENT" -> stringResource(Res.string.validation_keyusage_non_repudiation)
+    "KEY_ENCIPHERMENT" -> stringResource(Res.string.validation_keyusage_key_encipherment)
+    "DATA_ENCIPHERMENT" -> stringResource(Res.string.validation_keyusage_data_encipherment)
+    "KEY_AGREEMENT" -> stringResource(Res.string.validation_keyusage_key_agreement)
+    "KEY_CERT_SIGN" -> stringResource(Res.string.validation_keyusage_key_cert_sign)
+    "CRL_SIGN" -> stringResource(Res.string.validation_keyusage_crl_sign)
+    "ENCIPHER_ONLY" -> stringResource(Res.string.validation_keyusage_encipher_only)
+    "DECIPHER_ONLY" -> stringResource(Res.string.validation_keyusage_decipher_only)
+    else -> usage
 }
 
 /**

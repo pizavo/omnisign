@@ -27,17 +27,11 @@ class SetGlobalConfigUseCase(
         val updated = current.copy(global = current.global.update())
         val newGlobal = updated.global
         if (newGlobal.defaultHashAlgorithm in newGlobal.disabledHashAlgorithms) {
-            return ConfigurationError.InvalidConfiguration(
-                message = "Cannot disable the default hash algorithm ${newGlobal.defaultHashAlgorithm.name}; " +
-                        "change the default first"
-            ).left()
+            return ConfigurationError.cannotDisableDefaultHash(newGlobal.defaultHashAlgorithm.name).left()
         }
         val disabledEnc = newGlobal.defaultEncryptionAlgorithm
         if (disabledEnc != null && disabledEnc in newGlobal.disabledEncryptionAlgorithms) {
-            return ConfigurationError.InvalidConfiguration(
-                message = "Cannot disable the default encryption algorithm ${disabledEnc.name}; " +
-                        "change the default first"
-            ).left()
+            return ConfigurationError.cannotDisableDefaultEncryption(disabledEnc.name).left()
         }
         return configRepository.saveConfig(updated)
     }

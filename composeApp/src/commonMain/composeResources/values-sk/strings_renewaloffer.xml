@@ -1,0 +1,18 @@
+<resources>
+	<string name="renewaloffer_title">Pridať do úlohy obnovy</string>
+	<string name="renewaloffer_assigned_heading">Súbor pridaný do úlohy obnovy</string>
+	<string name="renewaloffer_covered_heading">Už pokryté úlohou obnovy</string>
+	<string name="renewaloffer_intro">Nastavte automatickú archívnu obnovu pre podpísaný dokument B-LTA.</string>
+	<string name="renewaloffer_file_label">Súbor:</string>
+	<string name="renewaloffer_existing_job_label">Existujúca úloha</string>
+	<string name="renewaloffer_create_new_job">Vytvoriť novú úlohu</string>
+	<string name="renewaloffer_new_job_section">Nová úloha obnovy</string>
+	<string name="renewaloffer_name_label">Názov</string>
+	<string name="renewaloffer_profile_label">Profil</string>
+	<string name="renewaloffer_create_assign">Vytvoriť a priradiť</string>
+	<string name="renewaloffer_job_not_found">Úloha \'%1$s\' sa nenašla.</string>
+	<string name="renewaloffer_job_already_exists">Úloha obnovy s názvom \'%1$s\' už existuje.</string>
+	<string name="renewaloffer_assigned_message">Výstupný súbor bol pridaný do úlohy obnovy \"%1$s\". Pri blížiacom sa skončení platnosti jeho archívnej časovej pečiatky sa automaticky opatrí novou časovou pečiatkou.</string>
+	<string name="renewaloffer_covered_message">Výstupný súbor je už pokrytý úlohou obnovy \"%1$s\". Nie je potrebná žiadna ďalšia konfigurácia — súbor sa automaticky opatrí novou časovou pečiatkou pri blížiacom sa skončení platnosti jeho archívnej časovej pečiatky.</string>
+	<string name="renewaloffer_add_to_existing">Pridať do \"%1$s\"</string>
+</resources>

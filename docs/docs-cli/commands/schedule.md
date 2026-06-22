@@ -10,7 +10,7 @@ the renewal job entries stored in the configuration.
 ## `schedule install`
 
 Register (or replace) the daily `omnisign renew` job with the OS scheduler
-(cron on Linux/macOS, Task Scheduler on Windows).
+(systemd on Linux, launchd on macOS, Task Scheduler on Windows).
 
 ```
 omnisign schedule install [options]

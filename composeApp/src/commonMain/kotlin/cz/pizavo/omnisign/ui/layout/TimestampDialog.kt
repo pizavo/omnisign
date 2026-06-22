@@ -10,11 +10,10 @@ import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.TimestampDialogState
 import cz.pizavo.omnisign.ui.model.TimestampType
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_alert_warning
-import omnisign.composeapp.generated.resources.icon_check
-import omnisign.composeapp.generated.resources.icon_x
+import cz.pizavo.omnisign.ui.model.localized
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Modal dialog for extending a signed PDF to a higher PAdES level (timestamp / archival).
@@ -65,13 +64,10 @@ fun TimestampDialog(
 						state = state,
 						onFieldChange = onFieldChange,
 					)
-					is TimestampDialogState.Extending -> LoadingContent("Extending document...")
+					is TimestampDialogState.Extending -> LoadingContent(stringResource(Res.string.timestamp_extending))
 					is TimestampDialogState.RevocationWarning -> TimestampRevocationWarningContent(state)
 					is TimestampDialogState.Success -> TimestampSuccessContent(state)
-					is TimestampDialogState.Error -> ErrorContent(
-						message = state.message,
-						details = state.details,
-					)
+					is TimestampDialogState.Error -> ErrorContent(error = state.content)
 				}
 			}
 
@@ -103,7 +99,7 @@ private fun TimestampDialogHeader(onClose: () -> Unit, closeable: Boolean) {
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.SpaceBetween,
 	) {
-		Text(text = "Extend Document", style = LumoTheme.typography.h3)
+		Text(text = stringResource(Res.string.timestamp_dialog_title), style = LumoTheme.typography.h3)
 		IconButton(
 			variant = IconButtonVariant.Ghost,
 			enabled = closeable,
@@ -111,7 +107,7 @@ private fun TimestampDialogHeader(onClose: () -> Unit, closeable: Boolean) {
 		) {
 			Icon(
 				painter = painterResource(Res.drawable.icon_x),
-				contentDescription = "Close",
+				contentDescription = stringResource(Res.string.action_close),
 				modifier = Modifier.size(20.dp),
 			)
 		}
@@ -145,10 +141,10 @@ private fun TimestampFormContent(
 			onSelect = { type ->
 				if (type != null) onFieldChange { it.copy(timestampType = type) }
 			},
-			label = { Text("Timestamp Type") },
+			label = { Text(stringResource(Res.string.timestamp_type_label)) },
 			showNullOption = false,
 			disabledOptions = state.disabledTypes,
-			itemLabel = { it.label },
+			itemLabel = { it.label() },
 			modifier = Modifier.fillMaxWidth(),
 		)
 
@@ -163,9 +159,9 @@ private fun TimestampFormContent(
 						onFieldChange { it.copy(addToRenewalJob = checked) }
 					},
 				)
-				Text(text = "Add to renewal job", style = LumoTheme.typography.body2)
+				Text(text = stringResource(Res.string.label_add_to_renewal_job), style = LumoTheme.typography.body2)
 				InfoTooltip(
-					text = "Offer to set up automatic archival renewal after extending",
+					text = stringResource(Res.string.timestamp_add_to_renewal_tooltip),
 				)
 			}
 		}
@@ -196,15 +192,13 @@ private fun TimestampRevocationWarningContent(state: TimestampDialogState.Revoca
 				modifier = Modifier.size(20.dp),
 				tint = LumoTheme.colors.warning,
 			)
-			Text(text = "Revocation data unavailable", style = LumoTheme.typography.h4)
+			Text(text = stringResource(Res.string.label_revocation_unavailable), style = LumoTheme.typography.h4)
 		}
 
 		Spacer(modifier = Modifier.height(4.dp))
 
 		Text(
-			text = "The extension to B-LT failed because revocation information (CRL/OCSP) " +
-					"could not be obtained. You can continue with a B-T extension (signature " +
-					"timestamp only, without revocation data), or abort and try again later.",
+			text = stringResource(Res.string.timestamp_revocation_message),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)
@@ -224,7 +218,7 @@ private fun TimestampRevocationWarningContent(state: TimestampDialogState.Revoca
 				)
 				SelectableContent {
 					Text(
-						text = warning,
+						text = warning.localized(),
 						style = LumoTheme.typography.body2,
 						color = LumoTheme.colors.warning,
 					)
@@ -257,14 +251,14 @@ private fun TimestampSuccessContent(state: TimestampDialogState.Success) {
 				modifier = Modifier.size(20.dp),
 				tint = LumoTheme.colors.success,
 			)
-			Text(text = "Document extended successfully", style = LumoTheme.typography.h4)
+			Text(text = stringResource(Res.string.timestamp_success_title), style = LumoTheme.typography.h4)
 		}
 
 		Spacer(modifier = Modifier.height(8.dp))
 
 		Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 			Text(
-				text = "Output file:",
+				text = stringResource(Res.string.label_output_file),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)
@@ -273,7 +267,7 @@ private fun TimestampSuccessContent(state: TimestampDialogState.Success) {
 
 		Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 			Text(
-				text = "New level:",
+				text = stringResource(Res.string.timestamp_new_level_label),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)
@@ -315,12 +309,12 @@ private fun TimestampDialogFooter(
 		when (state) {
 			is TimestampDialogState.Ready -> {
 				Button(
-					text = "Cancel",
+					text = stringResource(Res.string.action_cancel),
 					variant = ButtonVariant.SecondaryOutlined,
 					onClick = onDismiss,
 				)
 				Button(
-					text = "Extend",
+					text = stringResource(Res.string.timestamp_extend_button),
 					variant = ButtonVariant.Primary,
 					enabled = state.timestampType !in state.disabledTypes,
 					onClick = onExtend,
@@ -329,12 +323,12 @@ private fun TimestampDialogFooter(
 
 			is TimestampDialogState.RevocationWarning -> {
 				Button(
-					text = "Continue anyway",
+					text = stringResource(Res.string.action_continue_anyway),
 					variant = ButtonVariant.SecondaryOutlined,
 					onClick = onAcceptRevocation,
 				)
 				Button(
-					text = "Abort",
+					text = stringResource(Res.string.action_abort),
 					variant = ButtonVariant.Primary,
 					onClick = onAbortRevocation,
 				)
@@ -342,7 +336,7 @@ private fun TimestampDialogFooter(
 
 			is TimestampDialogState.Success -> {
 				Button(
-					text = "Close",
+					text = stringResource(Res.string.action_close),
 					variant = ButtonVariant.Primary,
 					onClick = onDismiss,
 				)
@@ -350,7 +344,7 @@ private fun TimestampDialogFooter(
 
 			is TimestampDialogState.Error -> {
 				Button(
-					text = "Close",
+					text = stringResource(Res.string.action_close),
 					variant = ButtonVariant.SecondaryOutlined,
 					onClick = onDismiss,
 				)

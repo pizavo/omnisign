@@ -1,0 +1,10 @@
+<resources>
+	<string name="cert_role_signing_certificate">Signing certificate</string>
+	<string name="cert_role_timestamp_certificate">Timestamp certificate</string>
+	<string name="cert_role_root_ca">Root CA</string>
+	<string name="cert_role_certificate_authority">Certificate Authority</string>
+	<string name="cert_role_intermediate_ca">Intermediate CA</string>
+	<string name="trust_source_global_store">Global trust store</string>
+	<string name="trust_source_profile">Profile: %1$s</string>
+	<string name="trust_source_trusted_list">Trusted list</string>
+</resources>

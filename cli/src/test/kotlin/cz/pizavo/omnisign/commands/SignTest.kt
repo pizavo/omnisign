@@ -10,6 +10,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.result.SigningResult
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.SigningRepository
 import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
@@ -129,7 +130,7 @@ class SignTest : FunSpec({
 		val output = tmpFile("output2.pdf")
 		
 		coEvery { signingRepository.signDocument(any()) } returns SigningError.SigningFailed(
-			message = "Token not found",
+			text = LocalizableText.Literal("Token not found"),
 			details = "No PKCS#11 token available",
 		).left()
 		
@@ -162,7 +163,7 @@ class SignTest : FunSpec({
 		val output = tmpFile("output4.pdf")
 		
 		coEvery { signingRepository.signDocument(any()) } returns SigningError.SigningFailed(
-			message = "Certificate expired",
+			text = LocalizableText.Literal("Certificate expired"),
 		).left()
 		
 		val result = Omnisign().test(listOf("--json", "sign", "-f", input.absolutePath, "-o", output.absolutePath))

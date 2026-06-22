@@ -15,7 +15,7 @@ import cz.pizavo.omnisign.domain.model.error.OperationError
  *     return Either.catch {
  *         // perform validation
  *     }.mapLeft { error ->
- *         ValidationError.ValidationFailed("Failed", error.message, error)
+ *         ValidationError.validationFailed(error.message, error)
  *     }
  * }
  * ```

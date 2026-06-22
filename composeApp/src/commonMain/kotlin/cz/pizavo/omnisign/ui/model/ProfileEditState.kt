@@ -38,7 +38,7 @@ import cz.pizavo.omnisign.lumo.components.TriToggleState
  * @property pendingTrustedCertAdds Certificates staged to be added to this profile's scope on save.
  * @property pendingTrustedCertRemovals Fingerprints of baseline certificates staged for removal on save.
  * @property trustedCertsAvailable Whether the trust store backend is wired in (false on web).
- * @property trustedCertAddError Human-readable error from the last failed certificate add attempt, or `null`.
+ * @property trustedCertAddError Error from the last failed certificate add attempt, or `null`; the UI resolves it via `resolve()`.
  * @property saving Whether a save operation is currently in progress.
  * @property error Human-readable error message from the last failed operation, or `null`.
  * @property tlAddError Human-readable error from the last failed trusted list add attempt, or `null`.
@@ -64,7 +64,7 @@ data class ProfileEditState(
 	val pendingTrustedCertAdds: List<PendingTrustedCert> = emptyList(),
 	val pendingTrustedCertRemovals: Set<String> = emptySet(),
 	val trustedCertsAvailable: Boolean = true,
-	val trustedCertAddError: String? = null,
+	val trustedCertAddError: TrustedCertAddError? = null,
 	val saving: Boolean = false,
 	val error: String? = null,
 	val tlAddError: String? = null,

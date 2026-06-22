@@ -1,0 +1,4 @@
+<resources>
+	<string name="warningrow_affected_timestamps">Dotčená časová razítka</string>
+	<string name="warningrow_affected_certificates">Dotčené certifikáty</string>
+</resources>

@@ -12,10 +12,9 @@ import cz.pizavo.omnisign.domain.service.Pkcs11DiagnosticSnapshot
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_alert_info
-import omnisign.composeapp.generated.resources.icon_x
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Modal dialog that surfaces a [Pkcs11DiagnosticSnapshot] for end-user troubleshooting.
@@ -70,12 +69,9 @@ fun Pkcs11DiagnosticDialog(
 				contentPadding = PaddingValues(horizontal = 24.dp, vertical = 16.dp),
 				verticalArrangement = Arrangement.spacedBy(20.dp),
 			) {
-				DiagnosticSection(title = "PC/SC readers") {
+				DiagnosticSection(title = stringResource(Res.string.pkcs11diag_section_pcsc_readers)) {
 					if (snapshot.pcscReaders.isEmpty()) {
-						EmptySectionText(
-							"No PC/SC readers detected. The platform smart-card service " +
-									"may be stopped, or no compatible reader is connected."
-						)
+						EmptySectionText(stringResource(Res.string.pkcs11diag_pcsc_empty))
 					} else {
 						snapshot.pcscReaders.forEach { reader ->
 							PcscReaderRow(reader)
@@ -83,7 +79,7 @@ fun Pkcs11DiagnosticDialog(
 					}
 				}
 				
-				DiagnosticSection(title = "Candidate PKCS#11 libraries") {
+				DiagnosticSection(title = stringResource(Res.string.pkcs11diag_section_candidate_libraries)) {
 					if (snapshot.candidateLibraries.isEmpty()) {
 						CandidateLibrariesEmptyHint(
 							onOpenPkcs11Settings = onOpenPkcs11Settings,
@@ -98,10 +94,9 @@ fun Pkcs11DiagnosticDialog(
 
 				val dropDir = snapshot.dropDirectoryPath
 				if (dropDir != null) {
-					DiagnosticSection(title = "Drop directory") {
+					DiagnosticSection(title = stringResource(Res.string.pkcs11diag_section_drop_directory)) {
 						Text(
-							text = "Copy a PKCS#11 library file (.dll / .so / .dylib) into this " +
-									"directory to have discovery pick it up automatically:",
+							text = stringResource(Res.string.pkcs11diag_drop_dir_description),
 							style = LumoTheme.typography.body2,
 							color = LumoTheme.colors.textSecondary,
 						)
@@ -120,7 +115,7 @@ fun Pkcs11DiagnosticDialog(
 			) {
 				Button(
 					variant = ButtonVariant.Primary,
-					text = "Close",
+					text = stringResource(Res.string.action_close),
 					onClick = onDismiss,
 				)
 			}
@@ -151,7 +146,7 @@ private fun DiagnosticHeader(onClose: () -> Unit) {
 				modifier = Modifier.size(18.dp),
 				tint = LumoTheme.colors.textSecondary,
 			)
-			Text(text = "PKCS#11 diagnostic", style = LumoTheme.typography.h3)
+			Text(text = stringResource(Res.string.pkcs11diag_title), style = LumoTheme.typography.h3)
 		}
 		IconButton(
 			variant = IconButtonVariant.Ghost,
@@ -159,7 +154,7 @@ private fun DiagnosticHeader(onClose: () -> Unit) {
 		) {
 			Icon(
 				painter = painterResource(Res.drawable.icon_x),
-				contentDescription = "Close",
+				contentDescription = stringResource(Res.string.action_close),
 				modifier = Modifier.size(20.dp),
 			)
 		}
@@ -218,62 +213,20 @@ private fun CandidateLibrariesEmptyHint(
 	onOpenPkcs11Settings: (() -> Unit)?,
 	onOpenDropDirectory: (() -> Unit)?,
 ) {
+	val annotated = annotatedWithLinks(
+		template = stringResource(Res.string.pkcs11diag_candidates_empty),
+		stringResource(Res.string.pkcs11diag_link_settings) to onOpenPkcs11Settings,
+		stringResource(Res.string.pkcs11diag_link_drop_directory) to onOpenDropDirectory,
+	)
 	if (onOpenPkcs11Settings == null && onOpenDropDirectory == null) {
-		EmptySectionText(
-			"Discovery found no candidate libraries. Either none of the " +
-					"OS-native sources advertise a PKCS#11 module, or you " +
-					"haven't added a path under Global Settings → PKCS#11 " +
-					"Libraries, or dropped a library into the drop directory."
+		EmptySectionText(annotated.text)
+	} else {
+		Text(
+			text = annotated,
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.textSecondary,
 		)
-		return
 	}
-
-	val linkStyles = TextLinkStyles(
-		style = SpanStyle(
-			color = LumoTheme.colors.primary,
-			textDecoration = TextDecoration.Underline,
-		),
-	)
-	val annotated = buildAnnotatedString {
-		append(
-			"Discovery found no candidate libraries. Either none of the " +
-					"OS-native sources advertise a PKCS#11 module, or you " +
-					"haven't added a path under "
-		)
-		if (onOpenPkcs11Settings != null) {
-			withLink(
-				LinkAnnotation.Clickable(
-					tag = "pkcs11-settings",
-					styles = linkStyles,
-					linkInteractionListener = { onOpenPkcs11Settings() },
-				),
-			) {
-				append("Global Settings → PKCS#11 Libraries")
-			}
-		} else {
-			append("Global Settings → PKCS#11 Libraries")
-		}
-		append(", or dropped a library into ")
-		if (onOpenDropDirectory != null) {
-			withLink(
-				LinkAnnotation.Clickable(
-					tag = "drop-directory",
-					styles = linkStyles,
-					linkInteractionListener = { onOpenDropDirectory() },
-				),
-			) {
-				append("the drop directory")
-			}
-		} else {
-			append("the drop directory")
-		}
-		append(".")
-	}
-	Text(
-		text = annotated,
-		style = LumoTheme.typography.body2,
-		color = LumoTheme.colors.textSecondary,
-	)
 }
 
 /**
@@ -336,14 +289,14 @@ private fun PcscReaderRow(reader: Pkcs11DiagnosticSnapshot.PcscReaderInfo) {
 				fontWeight = FontWeight.Medium,
 			)
 			Text(
-				text = if (reader.cardPresent) "card present" else "empty",
+				text = if (reader.cardPresent) stringResource(Res.string.pkcs11diag_reader_card_present) else stringResource(Res.string.pkcs11diag_reader_empty),
 				style = LumoTheme.typography.body2,
 				color = if (reader.cardPresent) LumoTheme.colors.success else LumoTheme.colors.textSecondary,
 			)
 		}
 		if (reader.atrHex != null) {
 			Text(
-				text = "ATR: ${reader.atrHex}",
+				text = stringResource(Res.string.pkcs11diag_reader_atr, reader.atrHex.orEmpty()),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)

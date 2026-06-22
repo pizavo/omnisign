@@ -1,0 +1,14 @@
+<resources>
+	<string name="customtl_no_lists">Nie sú zaregistrované žiadne vlastné dôveryhodné zoznamy.</string>
+	<string name="customtl_build_button">Vytvoriť vlastný TL</string>
+	<string name="customtl_signed_badge">Podpísané</string>
+	<string name="customtl_name_label">Názov</string>
+	<string name="customtl_name_placeholder">Označenie</string>
+	<string name="customtl_source_label">Zdroj (URL alebo cesta k súboru)</string>
+	<string name="customtl_source_placeholder">https://… alebo file:///…</string>
+	<string name="customtl_source_warning">Zdroj by mal začínať na https:// alebo file:/// — iné schémy nemusí DSS podporovať.</string>
+	<string name="customtl_cert_label">Podpisový certifikát (voliteľné)</string>
+	<string name="customtl_browse_cert_description">Vyhľadať podpisový certifikát</string>
+	<string name="customtl_cert_path">Certifikát: %1$s</string>
+	<string name="customtl_remove_description">Odstrániť %1$s</string>
+</resources>

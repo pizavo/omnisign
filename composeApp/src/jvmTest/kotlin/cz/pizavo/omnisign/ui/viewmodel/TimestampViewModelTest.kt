@@ -8,10 +8,12 @@ import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ExtendDocumentUseCase
 import cz.pizavo.omnisign.domain.usecase.GetDocumentTimestampInfoUseCase
+import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.TimestampDialogState
 import cz.pizavo.omnisign.ui.model.TimestampType
@@ -119,7 +121,7 @@ class TimestampViewModelTest : FunSpec({
 	test("open falls back to fresh fetch when no prior onDocumentChanged was called") {
 		runTest(testDispatcher) {
 			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns
-					ArchivingError.ExtensionFailed(message = "corrupt file").left()
+					ArchivingError.ExtensionFailed(text = LocalizableText.Literal("corrupt file")).left()
 
 			val vm = buildVm()
 			vm.open(sampleDoc())
@@ -174,7 +176,7 @@ class TimestampViewModelTest : FunSpec({
 		runTest(testDispatcher) {
 			coEvery { archivingRepository.extendDocument(any()) } returns
 					ArchivingError.ExtensionFailed(
-						message = "Extension failed",
+						text = LocalizableText.Literal("Extension failed"),
 						details = "TSA unavailable",
 					).left()
 
@@ -189,8 +191,7 @@ class TimestampViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Error>()
-			state.message shouldBe "Extension failed"
-			state.details shouldBe "TSA unavailable"
+			state.content shouldBe ErrorMessage.Domain(LocalizableText.Literal("Extension failed"), "TSA unavailable")
 		}
 	}
 
@@ -198,7 +199,7 @@ class TimestampViewModelTest : FunSpec({
 		runTest(testDispatcher) {
 			coEvery { archivingRepository.extendDocument(any()) } returns
 					ArchivingError.RevocationInfoError(
-						message = "Failed to obtain revocation information",
+						text = LocalizableText.Literal("Failed to obtain revocation information"),
 						details = "OCSP responder unreachable",
 					).left()
 
@@ -214,7 +215,7 @@ class TimestampViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.RevocationWarning>()
-			state.warnings.any { it.contains("revocation", ignoreCase = true) } shouldBe true
+			state.warnings.any { it.english().contains("revocation", ignoreCase = true) } shouldBe true
 		}
 	}
 
@@ -223,7 +224,7 @@ class TimestampViewModelTest : FunSpec({
 			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns hasLtOnly.right()
 			coEvery { archivingRepository.extendDocument(any()) } returns
 					ArchivingError.RevocationInfoError(
-						message = "Failed to obtain revocation information",
+						text = LocalizableText.Literal("Failed to obtain revocation information"),
 						details = "OCSP responder unreachable",
 					).left()
 
@@ -239,8 +240,7 @@ class TimestampViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Error>()
-			state.message shouldContain "Revocation data could not be refreshed"
-			state.details shouldContain "degrade"
+			state.content.shouldBeInstanceOf<ErrorMessage.RevocationRefreshFailed>()
 		}
 	}
 
@@ -248,7 +248,7 @@ class TimestampViewModelTest : FunSpec({
 		runTest(testDispatcher) {
 			coEvery { archivingRepository.extendDocument(any()) } returns
 					ArchivingError.RevocationInfoError(
-						message = "Failed to obtain revocation information",
+						text = LocalizableText.Literal("Failed to obtain revocation information"),
 						details = "OCSP unreachable",
 					).left()
 
@@ -273,7 +273,7 @@ class TimestampViewModelTest : FunSpec({
 				callCount++
 				if (callCount == 1) {
 					ArchivingError.RevocationInfoError(
-						message = "Failed to obtain revocation information",
+						text = LocalizableText.Literal("Failed to obtain revocation information"),
 					).left()
 				} else {
 					ArchivingResult(
@@ -311,7 +311,7 @@ class TimestampViewModelTest : FunSpec({
 		runTest(testDispatcher) {
 			coEvery { archivingRepository.extendDocument(any()) } returns
 					ArchivingError.RevocationInfoError(
-						message = "Failed to obtain revocation information",
+						text = LocalizableText.Literal("Failed to obtain revocation information"),
 					).left()
 
 			val vm = buildVm()

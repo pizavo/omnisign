@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.domain.usecase
 import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.error.SigningError
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
 import cz.pizavo.omnisign.domain.repository.CertificateDiscoveryResult
 import cz.pizavo.omnisign.domain.repository.SigningRepository
@@ -93,7 +94,7 @@ class ListCertificatesUseCaseTest : FunSpec({
 	}
 
 	test("token warnings are preserved after filtering") {
-		val warning = TokenDiscoveryWarning(tokenId = "t1", tokenName = "Broken Token", message = "Access denied")
+		val warning = TokenDiscoveryWarning(tokenId = "t1", tokenName = "Broken Token", message = LocalizableText.Literal("Access denied"))
 		coEvery { signingRepository.listAvailableCertificates() } returns
 			discovery(cert("a", keyUsages = listOf("digitalSignature")), warnings = listOf(warning)).right()
 
@@ -105,7 +106,7 @@ class ListCertificatesUseCaseTest : FunSpec({
 
 	test("propagates repository error") {
 		coEvery { signingRepository.listAvailableCertificates() } returns
-			SigningError.TokenAccessError(message = "Discovery failed").left()
+			SigningError.TokenAccessError(text = LocalizableText.Literal("Discovery failed")).left()
 
 		useCase().shouldBeLeft()
 			.shouldBeInstanceOf<SigningError.TokenAccessError>()

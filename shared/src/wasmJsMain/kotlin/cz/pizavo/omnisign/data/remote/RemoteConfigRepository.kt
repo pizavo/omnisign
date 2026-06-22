@@ -75,8 +75,7 @@ class RemoteConfigRepository(
     }
 
     override suspend fun saveConfig(config: AppConfig): OperationResult<Unit> =
-        ConfigurationError.SaveFailed(
-            message = "Saving configuration is not supported on the web target",
+        ConfigurationError.saveNotSupportedOnWeb(
             details = "The OmniSign server's configuration is provider-authored and read-only over the API",
         ).left()
 
@@ -124,8 +123,7 @@ class RemoteConfigRepository(
             )
         }.fold(
             ifLeft = { exception ->
-                ConfigurationError.LoadFailed(
-                    message = "Failed to load configuration from server",
+                ConfigurationError.loadFromServerFailed(
                     details = exception.message,
                     cause = exception,
                 ).left()

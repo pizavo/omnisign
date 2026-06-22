@@ -13,6 +13,8 @@ import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.lumo.components.card.Card
 import cz.pizavo.omnisign.lumo.components.card.CardDefaults
+import omnisign.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Central content area of the island layout.
@@ -31,8 +33,9 @@ fun IslandContentCard(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit = { DefaultContentPlaceholder() },
 ) {
+    val contentDescriptionText = stringResource(Res.string.islandcard_content_description)
     Card(
-        modifier = modifier.semantics { contentDescription = "Main document area" },
+        modifier = modifier.semantics { contentDescription = contentDescriptionText },
         elevation = CardDefaults.cardElevation(
             defaultElevation = 0.dp,
             pressedElevation = 0.dp,
@@ -55,7 +58,7 @@ private fun DefaultContentPlaceholder() {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "Document Viewer",
+            text = stringResource(Res.string.islandcard_placeholder_label),
             style = LumoTheme.typography.h2,
             color = LumoTheme.colors.textSecondary,
         )

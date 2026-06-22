@@ -24,7 +24,7 @@ sealed interface TlBuilderDialogState {
 	 * @property tsps Mutable list of Trust Service Provider drafts.
 	 * @property outputDirectory Initial directory for the save dialog; the file name defaults to [name].
 	 * @property registerAfterCompile Whether to register the compiled file as a custom TL source.
-	 * @property error Human-readable validation or compilation error, or `null`.
+	 * @property error The current form validation error, or `null` when the form is valid.
 	 */
 	data class Editing(
 		val name: String = "",
@@ -33,7 +33,7 @@ sealed interface TlBuilderDialogState {
 		val tsps: List<TspEditState> = emptyList(),
 		val outputDirectory: String = "",
 		val registerAfterCompile: Boolean = true,
-		val error: String? = null,
+		val error: TlValidationError? = null,
 	) : TlBuilderDialogState
 
 	/**
@@ -55,13 +55,9 @@ sealed interface TlBuilderDialogState {
 	/**
 	 * Compilation failed.
 	 *
-	 * @property message Human-readable error summary.
-	 * @property details Optional technical details (e.g., stack trace excerpt).
+	 * @property content Locale-agnostic error data the UI resolves to display text.
 	 */
-	data class Error(
-		val message: String,
-		val details: String? = null,
-	) : TlBuilderDialogState
+	data class Error(val content: ErrorMessage) : TlBuilderDialogState
 }
 
 /**

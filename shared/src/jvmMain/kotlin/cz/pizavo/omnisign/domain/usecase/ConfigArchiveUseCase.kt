@@ -150,9 +150,8 @@ class ConfigArchiveUseCase(
 			TrustArchiveManifest(entries = sortedEntries),
 		).encodeToByteArray()
 		for (fingerprint in sortedEntries.map { it.fingerprint }.toSortedSet()) {
-			val der = derByFingerprint[fingerprint] ?: return ConfigurationError.InvalidConfiguration(
-				message = "Trust store is missing the bytes for referenced certificate $fingerprint",
-			).left()
+			val der = derByFingerprint[fingerprint]
+				?: return ConfigurationError.missingCertificateBytes(fingerprint).left()
 			files["$TRUSTED_CERTS_DIR/$fingerprint.der"] = der
 		}
 		return writeZip(files).right()
@@ -168,9 +167,7 @@ class ConfigArchiveUseCase(
 		val manifest = readManifest(entries).getOrElse { return it.left() }
 		for (entry in manifest.entries) {
 			val der = entries["$TRUSTED_CERTS_DIR/${entry.fingerprint}.der"]
-				?: return ConfigurationError.InvalidConfiguration(
-					message = "Archive references certificate ${entry.fingerprint} but its DER entry is missing",
-				).left()
+				?: return ConfigurationError.missingDerEntry(entry.fingerprint).left()
 			trustStore.add(scopeOf(entry.scope), der, entry.type, source = ARCHIVE_SOURCE)
 				.getOrElse { return it.left() }
 		}
@@ -182,13 +179,9 @@ class ConfigArchiveUseCase(
 	 */
 	private fun readConfigEntry(entries: Map<String, ByteArray>): OperationResult<Pair<String, ConfigFormat>> {
 		val configEntry = entries.entries.firstOrNull { it.key.substringAfterLast('/').startsWith("config.") }
-			?: return ConfigurationError.InvalidConfiguration(
-				message = "Configuration archive is missing a config.* entry",
-			).left()
+			?: return ConfigurationError.archiveMissingConfigEntry().left()
 		val format = ConfigFormat.fromExtension(configEntry.key.substringAfterLast('.'))
-			?: return ConfigurationError.InvalidConfiguration(
-				message = "Configuration archive has an unrecognized config format: ${configEntry.key}",
-			).left()
+			?: return ConfigurationError.archiveUnrecognizedFormat(configEntry.key).left()
 		return (configEntry.value.decodeToString() to format).right()
 	}
 
@@ -200,10 +193,7 @@ class ConfigArchiveUseCase(
 		return try {
 			json.decodeFromString(TrustArchiveManifest.serializer(), bytes.decodeToString()).right()
 		} catch (e: SerializationException) {
-			ConfigurationError.InvalidConfiguration(
-				message = "Configuration archive has a corrupt trust manifest",
-				details = e.message,
-			).left()
+			ConfigurationError.archiveCorruptManifest(details = e.message).left()
 		}
 	}
 
@@ -221,10 +211,7 @@ class ConfigArchiveUseCase(
 		}
 		result.right()
 	} catch (e: IOException) {
-		ConfigurationError.InvalidConfiguration(
-			message = "Could not read the configuration archive",
-			details = e.message,
-		).left()
+		ConfigurationError.archiveUnreadable(details = e.message).left()
 	}
 
 	/**

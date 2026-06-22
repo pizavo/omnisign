@@ -1,0 +1,18 @@
+<resources>
+	<string name="renewaloffer_title">Přidat do úlohy obnovení</string>
+	<string name="renewaloffer_assigned_heading">Soubor přidán do úlohy obnovení</string>
+	<string name="renewaloffer_covered_heading">Již pokryto úlohou obnovení</string>
+	<string name="renewaloffer_intro">Nastavte automatické obnovení časového razítka pro podepsaný dokument B-LTA.</string>
+	<string name="renewaloffer_file_label">Soubor:</string>
+	<string name="renewaloffer_existing_job_label">Existující úloha</string>
+	<string name="renewaloffer_create_new_job">Vytvořit novou úlohu</string>
+	<string name="renewaloffer_new_job_section">Nová úloha obnovení</string>
+	<string name="renewaloffer_name_label">Název</string>
+	<string name="renewaloffer_profile_label">Profil</string>
+	<string name="renewaloffer_create_assign">Vytvořit a přiřadit</string>
+	<string name="renewaloffer_job_not_found">Úloha \'%1$s\' nebyla nalezena.</string>
+	<string name="renewaloffer_job_already_exists">Úloha obnovení s názvem \'%1$s\' již existuje.</string>
+	<string name="renewaloffer_assigned_message">Výstupní soubor byl přidán do úlohy obnovení \"%1$s\". Časové razítko bude automaticky obnoveno, jakmile se bude blížit vypršení platnosti jeho archivního časového razítka.</string>
+	<string name="renewaloffer_covered_message">Výstupní soubor je již pokryt úlohou obnovení \"%1$s\". Není potřeba žádné další nastavení — časové razítko souboru bude automaticky obnoveno, jakmile se bude blížit vypršení platnosti jeho archivního časového razítka.</string>
+	<string name="renewaloffer_add_to_existing">Přidat do \"%1$s\"</string>
+</resources>

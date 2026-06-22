@@ -10,6 +10,8 @@ import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.lumo.components.progressindicators.LinearProgressIndicator
+import omnisign.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * A "Loading trusted lists…" caption above a [LinearProgressIndicator] for an in-flight trusted-list
@@ -34,9 +36,9 @@ fun TrustedListLoadingBar(
     ) {
         Text(
             text = if (fraction == null) {
-                "Loading trusted lists…"
+                stringResource(Res.string.tlloadingbar_loading)
             } else {
-                "Loading trusted lists… ${progress.loaded} of ${progress.total}"
+                stringResource(Res.string.tlloadingbar_loading_progress, progress.loaded, progress.total)
             },
             style = LumoTheme.typography.body3,
             color = LumoTheme.colors.textSecondary,

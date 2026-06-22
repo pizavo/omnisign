@@ -121,11 +121,7 @@ class DssTokenService(
 
 			tokens.right()
 		} catch (e: Exception) {
-			SigningError.TokenAccessError(
-				message = "Failed to discover tokens",
-				details = e.message,
-				cause = e,
-			).left()
+			SigningError.discoverTokensFailed(details = e.message, cause = e).left()
 		}
 	}
 
@@ -173,9 +169,7 @@ class DssTokenService(
 		password: String?,
 	): OperationResult<List<CertificateEntry>> {
 		val resolvedPassword = if (tokenInfo.requiresPin && password == null) {
-			requestPin(tokenInfo) ?: return SigningError.TokenAccessError(
-				message = "PIN entry cancelled for '${tokenInfo.name}'"
-			).left()
+			requestPin(tokenInfo) ?: return SigningError.pinEntryCancelled(tokenInfo.name).left()
 		} else {
 			password
 		}
@@ -230,11 +224,7 @@ class DssTokenService(
 		return try {
 			DssSigningToken(createDssToken(certificateEntry.tokenInfo, password)).right()
 		} catch (e: Exception) {
-			SigningError.TokenAccessError(
-				message = "Failed to create signing token",
-				details = e.message,
-				cause = e,
-			).left()
+			SigningError.createSigningTokenFailed(details = e.message, cause = e).left()
 		}
 	}
 
@@ -244,9 +234,7 @@ class DssTokenService(
 	): OperationResult<List<CertificateEntry>> {
 		val file = File(filePath)
 		if (!file.exists()) {
-			return SigningError.TokenAccessError(
-				message = "File not found: $filePath",
-			).left()
+			return SigningError.fileNotFound(filePath).left()
 		}
 		val tokenInfo = TokenInfo(
 			id = "file-${file.nameWithoutExtension}-${file.absolutePath.hashCode().toUInt()}",
@@ -287,11 +275,7 @@ class DssTokenService(
 			token.close()
 			certificates.right()
 		} catch (e: Exception) {
-			SigningError.TokenAccessError(
-				message = "Failed to load certificates from token '${tokenInfo.name}'",
-				details = e.message,
-				cause = e,
-			).left()
+			SigningError.loadCertificatesFromTokenFailed(tokenInfo.name, details = e.message, cause = e).left()
 		}
 	}
 

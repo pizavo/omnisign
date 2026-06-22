@@ -84,19 +84,14 @@ class RemoteArchivingRepository(
                 rawWarnings = meta.annotatedWarnings.map { it.summary },
             )
         }.mapLeft { exception ->
-            ArchivingError.ExtensionFailed(
-                message = "Remote extension failed",
-                details = exception.message,
-                cause = exception,
-            )
+            ArchivingError.remoteExtensionFailed(details = exception.message, cause = exception)
         }
 
     override suspend fun needsArchivalRenewal(
         filePath: String,
         renewalBufferDays: Int,
     ): OperationResult<Boolean> =
-        ArchivingError.ExtensionFailed(
-            message = "Archival renewal checks are not supported on the web target",
+        ArchivingError.webRenewalUnsupported(
             details = "Renewal jobs scan the local filesystem; the web client has no filesystem access",
         ).left()
 
@@ -116,10 +111,6 @@ class RemoteArchivingRepository(
                 },
             ).body<DocumentTimestampInfo>()
         }.mapLeft { exception ->
-            ArchivingError.ExtensionFailed(
-                message = "Remote document inspection failed",
-                details = exception.message,
-                cause = exception,
-            )
+            ArchivingError.remoteInspectFailed(details = exception.message, cause = exception)
         }
 }

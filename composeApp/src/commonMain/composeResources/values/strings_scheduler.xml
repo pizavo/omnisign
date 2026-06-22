@@ -1,0 +1,22 @@
+<resources>
+	<string name="scheduler_installed">Scheduler is installed</string>
+	<string name="scheduler_not_installed">Scheduler is not installed</string>
+	<string name="scheduler_auto_install_tooltip">The scheduler is automatically installed when renewal jobs are configured, and removed when all renewal jobs are deleted.</string>
+	<string name="scheduler_executable_label">Executable:</string>
+	<string name="scheduler_cli_path_label">OmniSign executable path</string>
+	<string name="scheduler_cli_path_placeholder">/usr/bin/omnisign</string>
+	<string name="scheduler_browse_content_desc">Browse for OmniSign executable</string>
+	<string name="scheduler_hour_label">Hour (0–23)</string>
+	<string name="scheduler_minute_label">Minute (0–59)</string>
+	<string name="scheduler_log_file_placeholder">/var/log/omnisign-renewal.log</string>
+	<string name="scheduler_hour_range_error">Hour must be 0–23.</string>
+	<string name="scheduler_minute_range_error">Minute must be 0–59.</string>
+	<string name="scheduler_no_jobs_hint">No renewal jobs configured — the scheduler will be uninstalled on save.</string>
+	<string name="scheduler_no_auto_detect_hint">Could not auto-detect the executable path. Please specify it manually to enable scheduler installation.</string>
+	<string name="scheduler_last_success">Last successful run: %1$s</string>
+	<string name="scheduler_last_run">Last run: %1$s — %2$s (checked %3$s, renewed %4$s, errors %5$s)</string>
+	<plurals name="scheduler_failures_since_success">
+		<item quantity="one">%1$s unsuccessful run since the last success.</item>
+		<item quantity="other">%1$s unsuccessful runs since the last success.</item>
+	</plurals>
+</resources>

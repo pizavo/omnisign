@@ -87,7 +87,7 @@ fun CertificateDiscoveryResult.toJsonCertificateList(): JsonCertificateList =
 			JsonTokenWarning(
 				tokenId = w.tokenId,
 				tokenName = w.tokenName,
-				message = w.message,
+				message = w.message.english(),
 				details = w.details,
 			)
 		},

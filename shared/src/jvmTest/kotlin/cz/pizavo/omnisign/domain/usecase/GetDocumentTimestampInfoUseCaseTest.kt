@@ -4,6 +4,7 @@ import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
@@ -46,7 +47,7 @@ class GetDocumentTimestampInfoUseCaseTest : FunSpec({
 
 	test("propagates error from repository") {
 		coEvery { repo.getDocumentTimestampInfo(inputBytes) } returns
-			ArchivingError.ExtensionFailed(message = "Cannot read file").left()
+			ArchivingError.ExtensionFailed(text = LocalizableText.Literal("Cannot read file")).left()
 
 		useCase(inputBytes).shouldBeLeft()
 			.shouldBeInstanceOf<ArchivingError.ExtensionFailed>()

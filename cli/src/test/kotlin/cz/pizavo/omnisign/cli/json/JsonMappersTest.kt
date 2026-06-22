@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.SigningResult
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.validation.*
 import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
 import cz.pizavo.omnisign.domain.repository.CertificateDiscoveryResult
@@ -37,7 +38,7 @@ class JsonMappersTest : FunSpec({
 
 	test("OperationError.toJsonError maps all fields") {
 		val error = SigningError.SigningFailed(
-			message = "Failed",
+			text = LocalizableText.Literal("Failed"),
 			details = "Some detail",
 			cause = RuntimeException("root cause"),
 		)
@@ -49,7 +50,7 @@ class JsonMappersTest : FunSpec({
 	}
 
 	test("OperationError.toJsonError handles null details and cause") {
-		val error = ValidationError.InvalidDocument(message = "Bad file")
+		val error = ValidationError.InvalidDocument(text = LocalizableText.Literal("Bad file"))
 
 		val json = error.toJsonError()
 		json.message shouldBe "Bad file"
@@ -196,7 +197,7 @@ class JsonMappersTest : FunSpec({
 				)
 			),
 			tokenWarnings = listOf(
-				TokenDiscoveryWarning("t1", "Token", "Access denied", "detail info"),
+				TokenDiscoveryWarning("t1", "Token", LocalizableText.Literal("Access denied"), "detail info"),
 			),
 		)
 

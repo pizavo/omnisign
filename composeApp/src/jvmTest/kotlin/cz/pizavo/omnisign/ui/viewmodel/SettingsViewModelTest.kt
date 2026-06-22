@@ -9,6 +9,7 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.result.RenewalRunOutcome
 import cz.pizavo.omnisign.domain.model.result.RenewalRunRecord
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
@@ -21,6 +22,7 @@ import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
 import cz.pizavo.omnisign.ui.model.PendingTrustedCert
+import cz.pizavo.omnisign.ui.model.SettingsError
 import kotlin.time.Instant
 import cz.pizavo.omnisign.ui.platform.loadUseNativeTitleBar
 import cz.pizavo.omnisign.ui.platform.saveUseNativeTitleBar
@@ -108,7 +110,7 @@ class SettingsViewModelTest : FunSpec({
     test("load surfaces error when config loading fails") {
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns ConfigurationError.InvalidConfiguration(
-                message = "corrupt file"
+                LocalizableText.Literal("corrupt file")
             ).left()
 
             val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
@@ -811,7 +813,7 @@ class SettingsViewModelTest : FunSpec({
 
             successCalled shouldBe false
             vm.state.value.error.shouldNotBeNull()
-            vm.state.value.error shouldBe "Failed to install OS scheduler: schtasks failed (exit 1): Access is denied."
+            vm.state.value.error shouldBe SettingsError.SchedulerInstallFailed("schtasks failed (exit 1): Access is denied.")
             vm.state.value.schedulerInstalled shouldBe false
             vm.state.value.saving shouldBe false
         }
@@ -985,7 +987,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             val archive = mockk<ConfigArchivePort>()
             coEvery { archive.exportFullConfig() } returns
-                ConfigurationError.InvalidConfiguration("export failed").left()
+                ConfigurationError.InvalidConfiguration(LocalizableText.Literal("export failed")).left()
             val vm = SettingsViewModel(
                 getConfig, setGlobalConfig, configArchive = archive,
                 ioDispatcher = UnconfinedTestDispatcher(testDispatcher.scheduler),
@@ -1019,7 +1021,7 @@ class SettingsViewModelTest : FunSpec({
         runTest(testDispatcher) {
             val archive = mockk<ConfigArchivePort>()
             coEvery { archive.importFullConfig(any()) } returns
-                ConfigurationError.InvalidConfiguration("bad archive").left()
+                ConfigurationError.InvalidConfiguration(LocalizableText.Literal("bad archive")).left()
             val vm = SettingsViewModel(
                 getConfig, setGlobalConfig, configArchive = archive,
                 ioDispatcher = UnconfinedTestDispatcher(testDispatcher.scheduler),

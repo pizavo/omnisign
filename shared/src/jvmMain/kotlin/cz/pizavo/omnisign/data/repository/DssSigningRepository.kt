@@ -8,10 +8,12 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.config.enums.toDss
 import cz.pizavo.omnisign.domain.model.error.SigningError
+import cz.pizavo.omnisign.domain.model.error.localizableText
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.parameters.VisibleSignatureParameters
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.result.SigningResult
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.*
 import cz.pizavo.omnisign.domain.service.*
@@ -72,10 +74,10 @@ class DssSigningRepository(
 			val dssSignatureLevel = effectiveLevel.toDss()
 			
 			if (effectiveEncryption != null && !effectiveEncryption.isCompatibleWith(effectiveHash)) {
-				return SigningError.InvalidParameters(
-					message = "Hash algorithm ${effectiveHash.name} is not compatible with " +
-							"encryption algorithm ${effectiveEncryption.name}. " +
-							"Compatible hash algorithms: ${effectiveEncryption.compatibleHashAlgorithms.joinToString { it.name }}"
+				return SigningError.hashEncryptionIncompatible(
+					hash = effectiveHash.name,
+					encryption = effectiveEncryption.name,
+					compatibleHashes = effectiveEncryption.compatibleHashAlgorithms.joinToString { it.name },
 				).left()
 			}
 			
@@ -84,7 +86,7 @@ class DssSigningRepository(
 			val signingWarnings = mutableListOf<String>()
 			when (algorithmExpirationChecker.check(effectiveHash, constraints, today)) {
 				AlgorithmStatus.EXPIRED_FAIL -> return SigningError.ExpiredAlgorithm(
-					message = algorithmExpirationChecker.warningMessage(effectiveHash, constraints),
+					text = LocalizableText.Literal(algorithmExpirationChecker.warningMessage(effectiveHash, constraints)),
 					details = "Change the hash algorithm or set --algo-expiration-level WARN to override."
 				).left()
 				
@@ -97,22 +99,24 @@ class DssSigningRepository(
 			val requiresTimestamp = parameters.addTimestamp || effectiveLevel != SignatureLevel.PADES_BASELINE_B
 			if (requiresTimestamp && resolvedConfig.timestampServer == null) {
 				return SigningError.TimestampError(
-					message = "A timestamp server (TSA) must be configured to sign at level ${effectiveLevel.name}. " +
-							"Use 'omnisign config set --timestamp-url <url>' or supply '--timestamp-url' for this operation."
+					text = LocalizableText.Literal(
+						"A timestamp server (TSA) must be configured to sign at level ${effectiveLevel.name}. " +
+								"Use 'omnisign config set --timestamp-url <url>' or supply '--timestamp-url' for this operation."
+					)
 				).left()
 			}
 			
 			val resolvedKey = resolvePrivateKey(parameters)
-				?: return SigningError.TokenAccessError(
-					message = "No suitable certificate found${parameters.certificateAlias?.let { " for alias '$it'" } ?: ""}"
-				).left()
+				?: return (parameters.certificateAlias
+					?.let { SigningError.noCertificateFoundForAlias(it) }
+					?: SigningError.noCertificateFound()).left()
 			
 			if (resolvedKey.tokenType == TokenType.WINDOWS_MY && !effectiveHash.isMscapiCompatible) {
-				return SigningError.InvalidParameters(
-					message = "Hash algorithm ${effectiveHash.name} is not supported by the Windows Certificate Store",
+				return SigningError.hashNotSupportedByWindowsStore(
+					hash = effectiveHash.name,
 					details = "Windows CNG only supports SHA-256, SHA-384 and SHA-512 for ECDSA and RSA " +
 							"signing with certificate store keys. " +
-							"Change the hash algorithm to SHA256, SHA384, or SHA512 in your profile or with --hash."
+							"Change the hash algorithm to SHA256, SHA384, or SHA512 in your profile or with --hash.",
 				).left()
 			}
 			
@@ -157,12 +161,12 @@ class DssSigningRepository(
 			if (tspErrorDetector.isTspException(e)) {
 				val tsaUrl = resolveConfig(parameters).getOrNull()?.timestampServer?.url
 				SigningError.TimestampError(
-					message = tspErrorDetector.buildUserMessage(e, tsaUrl),
+					text = LocalizableText.Literal(tspErrorDetector.buildUserMessage(e, tsaUrl)),
 					details = e.message,
 					cause = e,
 				).left()
 			} else {
-				SigningError.SigningFailed(message = "Signing failed", details = e.message, cause = e).left()
+				SigningError.signingFailed(details = e.message, cause = e).left()
 			}
 		}
 	}
@@ -216,11 +220,7 @@ class DssSigningRepository(
 				}
 			)
 		} catch (e: Exception) {
-			SigningError.TokenAccessError(
-				message = "Failed to list certificates",
-				details = e.message,
-				cause = e,
-			).left()
+			SigningError.listCertificatesFailed(details = e.message, cause = e).left()
 		}
 	}
 
@@ -281,7 +281,7 @@ class DssSigningRepository(
 						TokenDiscoveryWarning(
 							tokenId = token.id,
 							tokenName = token.name,
-							message = error.details ?: error.message,
+							message = error.details?.let { LocalizableText.Literal(it) } ?: error.localizableText(),
 							details = error.cause?.cause?.let { deepCause ->
 								generateSequence(deepCause) { it.cause }
 									.mapNotNull { it.message?.trim() }.firstOrNull { it.isNotBlank() }
@@ -301,17 +301,11 @@ class DssSigningRepository(
 	override suspend fun unlockToken(tokenId: String): OperationResult<List<AvailableCertificateInfo>> {
 		return try {
 			val token = discoveredTokens.find { it.id == tokenId }
-				?: return SigningError.TokenAccessError(
-					message = "Token '$tokenId' not found among discovered tokens"
-				).left()
+				?: return SigningError.tokenNotFound(tokenId).left()
 			val certsResult = tokenService.loadCertificates(token, null)
 			certsResult.map { certs -> certs.toAvailableCertificateInfoList(token) }
 		} catch (e: Exception) {
-			SigningError.TokenAccessError(
-				message = "Failed to unlock token",
-				details = e.message,
-				cause = e,
-			).left()
+			SigningError.unlockTokenFailed(details = e.message, cause = e).left()
 		}
 	}
 
@@ -321,9 +315,7 @@ class DssSigningRepository(
 			val password = tokenService.requestPassword(
 				"Enter password for ${File(filePath).name}",
 				"PKCS#12 Password Required",
-			) ?: return SigningError.TokenAccessError(
-				message = "Password entry cancelled"
-			).left()
+			) ?: return SigningError.passwordEntryCancelled().left()
 
 			tokenService.loadCertificatesFromFile(filePath, password).map { certs ->
 				certs.map { cert ->
@@ -340,11 +332,7 @@ class DssSigningRepository(
 				}
 			}
 		} catch (e: Exception) {
-			SigningError.TokenAccessError(
-				message = "Failed to load certificates from file",
-				details = e.message,
-				cause = e,
-			).left()
+			SigningError.loadCertificatesFromFileFailed(details = e.message, cause = e).left()
 		}
 	}
 	

@@ -42,6 +42,7 @@ import eu.europa.esig.dss.simplereport.SimpleReport
 import eu.europa.esig.dss.validation.SignedDocumentValidator
 import eu.europa.esig.dss.validation.reports.Reports
 import java.io.File
+import java.util.Locale
 
 /**
  * JVM implementation of [ValidationRepository] using the EU DSS library.
@@ -62,6 +63,14 @@ class DssValidationRepository(
 	
 	private val adeSPolicy = AdESPolicy()
 	
+	/**
+	 * Validate [parameters]'s document and map DSS's reports into the domain [ValidationReport].
+	 *
+	 * Report messages are localized to the JVM default locale — which the desktop sets from the user's
+	 * language preference via `LocalAppLocale` — through the validator's [SignedDocumentValidator.setLocale].
+	 * DSS ships only an English message bundle, so the bundled `dss-messages_cs.properties` (shared JVM
+	 * resources) supplies Czech; any locale without a bundle falls back to English per key.
+	 */
 	override suspend fun validateDocument(parameters: ValidationParameters): OperationResult<ValidationReport> {
 		return Either.catch {
 			val document = InMemoryDocument(parameters.inputBytes, parameters.inputName)
@@ -76,6 +85,7 @@ class DssValidationRepository(
 				.apply {
 					setCertificateVerifier(cv)
 					setTokenExtractionStrategy(TokenExtractionStrategy.EXTRACT_CERTIFICATES_ONLY)
+					setLocale(Locale.getDefault())
 					if (this is PDFDocumentValidator) {
 						setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 					}
@@ -114,10 +124,9 @@ class DssValidationRepository(
 				rawReports = extractRawReports(reports, parameters.rawReportFormats),
 			)
 		}.mapLeft { exception ->
-			ValidationError.ValidationFailed(
-				message = "Validation failed",
+			ValidationError.validationFailed(
 				details = exception.message,
-				cause = exception
+				cause = exception,
 			)
 		}
 	}
@@ -349,8 +358,7 @@ class DssValidationRepository(
 		val qualificationWarnings = simpleReport.getQualificationWarnings(signatureId).map { it.value }
 		val dssQualification = simpleReport.getSignatureQualification(signatureId)
 		val trustTier = dssQualification?.toTrustTier() ?: SignatureTrustTier.NOT_QUALIFIED
-		val qualificationInfos = simpleReport.getQualificationInfo(signatureId).map { it.value } +
-			listOfNotNull(trustTier.qscdResidenceInfo())
+		val qualificationInfos = simpleReport.getQualificationInfo(signatureId).map { it.value }
 		
 		val signedBy = simpleReport.getSignedBy(signatureId) ?: "Unknown"
 		val signatureLevel = simpleReport.getSignatureFormat(signatureId)?.toString() ?: "Unknown"
@@ -482,7 +490,7 @@ class DssValidationRepository(
 			}
 		}
 		return storeSources.ifEmpty {
-			listOf(CertificateTrustSource.TrustedList(if (isEuLotlBackedCert(cert)) "EU LOTL" else "Trusted list"))
+			listOf(CertificateTrustSource.TrustedList(if (isEuLotlBackedCert(cert)) "EU LOTL" else null))
 		}
 	}
 

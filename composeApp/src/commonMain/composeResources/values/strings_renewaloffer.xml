@@ -1,0 +1,18 @@
+<resources>
+	<string name="renewaloffer_title">Add to Renewal Job</string>
+	<string name="renewaloffer_assigned_heading">File added to renewal job</string>
+	<string name="renewaloffer_covered_heading">Already covered by a renewal job</string>
+	<string name="renewaloffer_intro">Set up automatic archival renewal for the signed B-LTA document.</string>
+	<string name="renewaloffer_file_label">File:</string>
+	<string name="renewaloffer_existing_job_label">Existing job</string>
+	<string name="renewaloffer_create_new_job">Create new job</string>
+	<string name="renewaloffer_new_job_section">New renewal job</string>
+	<string name="renewaloffer_name_label">Name</string>
+	<string name="renewaloffer_profile_label">Profile</string>
+	<string name="renewaloffer_create_assign">Create &amp; assign</string>
+	<string name="renewaloffer_job_not_found">Job \'%1$s\' not found.</string>
+	<string name="renewaloffer_job_already_exists">A renewal job named \'%1$s\' already exists.</string>
+	<string name="renewaloffer_assigned_message">The output file has been added to the renewal job \"%1$s\". It will be automatically re-timestamped when its archival timestamp nears expiry.</string>
+	<string name="renewaloffer_covered_message">The output file is already covered by the renewal job \"%1$s\". No additional configuration is needed — the file will be automatically re-timestamped when its archival timestamp nears expiry.</string>
+	<string name="renewaloffer_add_to_existing">Add to \"%1$s\"</string>
+</resources>

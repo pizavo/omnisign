@@ -1,0 +1,15 @@
+<resources>
+	<string name="trustedcerts_empty">No trusted certificates registered.</string>
+	<string name="trustedcerts_badge_removing">Removing</string>
+	<string name="trustedcerts_badge_pending">Pending</string>
+	<string name="trustedcerts_label_type">Type</string>
+	<string name="trustedcerts_label_certificate_file">Certificate file</string>
+	<string name="trustedcerts_placeholder_certificate_file">/path/to/certificate.pem</string>
+	<string name="trustedcerts_cd_browse">Browse for certificate file</string>
+	<string name="trustedcerts_cd_add">Add certificate</string>
+	<string name="trustedcerts_expires">Expires %1$s</string>
+	<string name="trustedcerts_cd_undo_removal">Undo removal of %1$s</string>
+	<string name="trustedcerts_cd_remove">Remove %1$s</string>
+	<string name="trustedcerts_cd_drop_staged">Drop staged certificate %1$s</string>
+	<string name="trustedcerts_read_failed">Failed to read certificate:</string>
+</resources>

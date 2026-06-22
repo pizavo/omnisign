@@ -1,0 +1,17 @@
+<resources>
+	<string name="profiles_delete_profile_title">Delete profile</string>
+	<string name="profiles_no_profiles">No profiles defined yet.</string>
+	<string name="profiles_add_profile">Add profile</string>
+	<string name="profiles_deselect_active_profile">Deselect active profile</string>
+	<string name="profiles_profile_name_placeholder">Profile name</string>
+	<string name="profiles_confirm_new_profile">Confirm new profile</string>
+	<string name="profiles_cancel_new_profile">Cancel new profile</string>
+	<string name="profiles_deselect_profile">Deselect profile</string>
+	<string name="profiles_select_profile">Select profile</string>
+	<string name="profiles_view_profile">View profile</string>
+	<string name="profiles_edit_profile">Edit profile</string>
+	<string name="profiles_delete_profile">Delete profile</string>
+	<string name="profiles_delete_profile_confirm">Are you sure you want to delete the profile \"%1$s\"? This action cannot be undone.</string>
+	<string name="profile_error_name_required">Profile name must not be blank.</string>
+	<string name="profile_certadd_already_trusted">This certificate is already trusted in this profile.</string>
+</resources>

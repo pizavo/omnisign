@@ -1,0 +1,15 @@
+<resources>
+	<string name="trustedcerts_empty">Nejsou registrovány žádné důvěryhodné certifikáty.</string>
+	<string name="trustedcerts_badge_removing">Odebírá se</string>
+	<string name="trustedcerts_badge_pending">Čeká na uložení</string>
+	<string name="trustedcerts_label_type">Typ</string>
+	<string name="trustedcerts_label_certificate_file">Soubor certifikátu</string>
+	<string name="trustedcerts_placeholder_certificate_file">/cesta/k/certifikatu.pem</string>
+	<string name="trustedcerts_cd_browse">Procházet soubory certifikátů</string>
+	<string name="trustedcerts_cd_add">Přidat certifikát</string>
+	<string name="trustedcerts_expires">Platnost končí %1$s</string>
+	<string name="trustedcerts_cd_undo_removal">Vrátit zpět odebrání %1$s</string>
+	<string name="trustedcerts_cd_remove">Odebrat %1$s</string>
+	<string name="trustedcerts_cd_drop_staged">Zahodit připravený certifikát %1$s</string>
+	<string name="trustedcerts_read_failed">Nepodařilo se načíst certifikát:</string>
+</resources>

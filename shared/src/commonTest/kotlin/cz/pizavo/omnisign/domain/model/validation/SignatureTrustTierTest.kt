@@ -13,7 +13,7 @@ import io.kotest.matchers.string.shouldContain
 class SignatureTrustTierTest : FunSpec({
 
 	test("qscdResidenceInfo confirms QSCD residence at both times only for QUALIFIED_QSCD") {
-		val info = SignatureTrustTier.QUALIFIED_QSCD.qscdResidenceInfo().shouldNotBeNull()
+		val info = SignatureTrustTier.QUALIFIED_QSCD.qscdResidenceInfo().shouldNotBeNull().english()
 		info shouldContain "QSCD"
 		info shouldContain "issuance"
 		info shouldContain "signing"

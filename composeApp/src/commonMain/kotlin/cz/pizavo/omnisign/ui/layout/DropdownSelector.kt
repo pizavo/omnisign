@@ -25,9 +25,9 @@ import cz.pizavo.omnisign.lumo.components.Surface
 import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.lumo.foundation.ripple
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_chevron_down
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 private val DropdownMenuShape = RoundedCornerShape(8.dp)
 private val DropdownItemVerticalPadding = 10.dp
@@ -69,10 +69,10 @@ fun <T> DropdownSelector(
     options: List<T>,
     onSelect: (T?) -> Unit,
     label: @Composable (() -> Unit)? = null,
-    nullLabel: String = "Inherit from global",
+    nullLabel: String = stringResource(Res.string.selector_inherit_from_global),
     showNullOption: Boolean = true,
     disabledOptions: Set<T> = emptySet(),
-    itemLabel: (T) -> String = { it.toString() },
+    itemLabel: @Composable (T) -> String = { it.toString() },
     itemContent: (@Composable (T) -> Unit)? = null,
     enabled: Boolean = true,
     modifier: Modifier = Modifier,
@@ -105,7 +105,7 @@ fun <T> DropdownSelector(
             trailingIcon = {
                 Icon(
                     painter = painterResource(Res.drawable.icon_chevron_down),
-                    contentDescription = "Expand",
+                    contentDescription = stringResource(Res.string.action_expand),
                     modifier = Modifier.size(16.dp),
                 )
             },
@@ -156,7 +156,7 @@ private fun <T> DropdownMenuContent(
     nullLabel: String,
     showNullOption: Boolean,
     disabledOptions: Set<T>,
-    itemLabel: (T) -> String,
+    itemLabel: @Composable (T) -> String,
     itemContent: (@Composable (T) -> Unit)?,
     menuWidth: androidx.compose.ui.unit.Dp,
     onSelect: (T?) -> Unit,

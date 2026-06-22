@@ -1,0 +1,14 @@
+<resources>
+	<string name="profileedit_alert_eu_lotl_tooltip">Označit podpisy, jejichž kotva důvěry není v EU LOTL</string>
+	<string name="profileedit_trusted_lists_title">Důvěryhodné seznamy</string>
+	<string name="profileedit_trusted_lists_description">Vlastní zdroje důvěryhodných seznamů ETSI přidané zde platí pouze pro tento profil, a to navíc k těm globálním.</string>
+	<string name="profileedit_trusted_certs_title">Důvěryhodné certifikáty</string>
+	<string name="profileedit_trusted_certs_description">Certifikáty přidané zde jsou důvěryhodné pouze pro tento profil, a to navíc k těm globálním. Změny se připraví a uplatní při uložení; zrušení je zahodí.</string>
+	<string name="profileedit_description_label">Popis</string>
+	<string name="profileedit_description_placeholder">Volitelný popis profilu</string>
+	<string name="profileedit_algorithms_timestamps_section">Algoritmy &amp; časová razítka</string>
+	<string name="profileedit_timestamp_overrides_section">Přepsání úrovně časového razítka</string>
+	<string name="profileedit_archival_required_by_profile">Vyžadováno archivním časovým razítkem tohoto profilu (B-LTA)</string>
+	<string name="profileedit_archival_required_by_global">Vyžadováno globálním nastavením archivního časového razítka (B-LTA)</string>
+	<string name="profileedit_timestamp_server_label">Server časového razítka</string>
+</resources>

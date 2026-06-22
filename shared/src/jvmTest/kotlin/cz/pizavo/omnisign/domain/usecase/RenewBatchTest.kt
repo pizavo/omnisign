@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
@@ -84,7 +85,7 @@ class RenewBatchTest : FunSpec({
 		
 		coEvery { archivingRepository.needsArchivalRenewal(any(), any()) } returns true.right()
 		coEvery { archivingRepository.extendDocument(match { it.inputName == File(bad).name }) } returns
-			ArchivingError.ExtensionFailed("boom").left()
+			ArchivingError.ExtensionFailed(LocalizableText.Literal("boom")).left()
 		coEvery { archivingRepository.extendDocument(match { it.inputName == File(good).name }) } returns
 			ArchivingResult(outputBytes = ByteArray(0), outputName = File(good).name, newSignatureLevel = "PADES_BASELINE_LTA").right()
 		
@@ -101,7 +102,7 @@ class RenewBatchTest : FunSpec({
 		val good = tmpFile("good2.pdf").absolutePath
 		
 		coEvery { archivingRepository.needsArchivalRenewal(bad, any()) } returns
-			ArchivingError.ExtensionFailed("check failed").left()
+			ArchivingError.ExtensionFailed(LocalizableText.Literal("check failed")).left()
 		coEvery { archivingRepository.needsArchivalRenewal(good, any()) } returns false.right()
 		
 		val job = RenewalJob(name = "j", globs = emptyList())

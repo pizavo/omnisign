@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.domain.model.config.service.CrlConfig
 import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import arrow.core.Either
 import arrow.core.left
 import arrow.core.right
@@ -92,8 +93,9 @@ data class ResolvedConfig(
 				val selectedIn = hashSource(operationOverrides, profile)
 				val disabledIn = hashDisabledLayers(resolvedHash, global, profile, operationOverrides)
 				return ConfigurationError.InvalidConfiguration(
-					message = "Hash algorithm ${resolvedHash.name} is selected in $selectedIn" +
-							" but disabled in $disabledIn"
+					LocalizableText.Literal(
+						"Hash algorithm ${resolvedHash.name} is selected in $selectedIn but disabled in $disabledIn"
+					)
 				).left()
 			}
 
@@ -101,8 +103,9 @@ data class ResolvedConfig(
 				val selectedIn = encryptionSource(operationOverrides, profile)
 				val disabledIn = encryptionDisabledLayers(resolvedEncryption, global, profile, operationOverrides)
 				return ConfigurationError.InvalidConfiguration(
-					message = "Encryption algorithm ${resolvedEncryption.name} is selected in $selectedIn" +
-							" but disabled in $disabledIn"
+					LocalizableText.Literal(
+						"Encryption algorithm ${resolvedEncryption.name} is selected in $selectedIn but disabled in $disabledIn"
+					)
 				).left()
 			}
 

@@ -5,6 +5,7 @@ import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
@@ -35,7 +36,7 @@ class GetConfigUseCaseTest : FunSpec({
 
 	test("propagates load failure") {
 		coEvery { repo.loadConfig() } returns
-			ConfigurationError.LoadFailed(message = "Corrupt JSON").left()
+			ConfigurationError.LoadFailed(LocalizableText.Literal("Corrupt JSON")).left()
 
 		useCase().shouldBeLeft()
 			.shouldBeInstanceOf<ConfigurationError.LoadFailed>()

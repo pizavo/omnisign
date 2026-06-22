@@ -28,14 +28,20 @@ import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
-import cz.pizavo.omnisign.domain.model.value.formatDateTime
+import cz.pizavo.omnisign.domain.model.value.DateFormat
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
+import cz.pizavo.omnisign.ui.model.RegionChoice
+import cz.pizavo.omnisign.ui.model.RegionPreset
 import cz.pizavo.omnisign.ui.model.SettingsCategory
+import cz.pizavo.omnisign.ui.model.TrustedCertAddError
+import cz.pizavo.omnisign.ui.model.resolve
 import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
+import cz.pizavo.omnisign.ui.platform.formattedDateTime
 import cz.pizavo.omnisign.ui.platform.openInFileExplorer
 import cz.pizavo.omnisign.ui.platform.platformFilePath
 import cz.pizavo.omnisign.ui.platform.resolvePkcs11DropDirectory
@@ -45,6 +51,7 @@ import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 private val NavPanelWidth = 220.dp
 private val NavItemShape = RoundedCornerShape(6.dp)
@@ -87,6 +94,15 @@ private const val Pkcs11ListScrollThreshold = 5
  * @param onStageTrustedCert Called with the picked certificate bytes, type, and source path to stage
  *   a global-scope trusted-certificate addition. The certificate is parsed and deduplicated by the
  *   ViewModel before it is staged; the change is committed to the store on Save.
+ * @param languageTag The active UI language tag (`null` = system default) for the Language & Region
+ *   panel. This is a runtime UI preference threaded separately from [GlobalConfigEditState]; it
+ *   applies live as a preview while the dialog is open, and the host persists it on Save and reverts
+ *   it on cancel, so it is not part of the staged config the dialog itself writes.
+ * @param dateFormat The active UI date format for the Language & Region panel.
+ * @param onLanguageChange Called with the chosen language tag (`null` = system default); the host
+ *   applies it live as a preview only and persists it when the dialog is saved.
+ * @param onFormatChange Called with the chosen date format; applied live as a preview only and
+ *   persisted by the host when the dialog is saved.
  */
 @Composable
 fun SettingsDialog(
@@ -106,6 +122,10 @@ fun SettingsDialog(
 	backupEnabled: Boolean = false,
 	readOnly: Boolean = false,
 	onStageTrustedCert: (ByteArray, TrustedCertificateType, String) -> Unit = { _, _, _ -> },
+	languageTag: String? = null,
+	dateFormat: DateFormat = DateFormat.SYSTEM,
+	onLanguageChange: (String?) -> Unit = {},
+	onFormatChange: (DateFormat) -> Unit = {},
 ) {
 	var selectedCategory by remember(initialCategory) {
 		mutableStateOf(initialCategory ?: SettingsCategory.SigningDefaults)
@@ -155,6 +175,10 @@ fun SettingsDialog(
 						onImportConfig = onImportConfig,
 						backupEnabled = backupEnabled,
 						onStageTrustedCert = onStageTrustedCert,
+						languageTag = languageTag,
+						dateFormat = dateFormat,
+						onLanguageChange = onLanguageChange,
+						onFormatChange = onFormatChange,
 					)
 				}
 			}
@@ -180,14 +204,14 @@ private fun SettingsHeader(onClose: () -> Unit) {
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.SpaceBetween,
 	) {
-		Text(text = "Settings", style = LumoTheme.typography.h3)
+		Text(text = stringResource(Res.string.label_settings), style = LumoTheme.typography.h3)
 		IconButton(
 			variant = IconButtonVariant.Ghost,
 			onClick = onClose,
 		) {
 			Icon(
 				painter = painterResource(Res.drawable.icon_x),
-				contentDescription = "Close settings",
+				contentDescription = stringResource(Res.string.settings_close_description),
 				modifier = Modifier.size(20.dp),
 			)
 		}
@@ -303,14 +327,14 @@ private fun NavGroupItem(
 	) {
 		Icon(
 			painter = painterResource(Res.drawable.icon_chevron_down),
-			contentDescription = if (isExpanded) "Collapse" else "Expand",
+			contentDescription = if (isExpanded) stringResource(Res.string.action_collapse) else stringResource(Res.string.action_expand),
 			modifier = Modifier
 				.size(14.dp)
 				.graphicsLayer(rotationZ = chevronRotation),
 			tint = textColor,
 		)
 		Text(
-			text = category.label,
+			text = category.label(),
 			style = LumoTheme.typography.label1,
 			color = textColor,
 		)
@@ -351,7 +375,7 @@ private fun NavLeafItem(
 		verticalAlignment = Alignment.CenterVertically,
 	) {
 		Text(
-			text = category.label,
+			text = category.label(),
 			style = LumoTheme.typography.body2,
 			color = textColor,
 		)
@@ -369,6 +393,10 @@ private fun NavLeafItem(
  * @param state Current global config edit state.
  * @param onFieldChange Called with a transform to update a single field.
  * @param onBuildTl Called when the user clicks "Build Custom TL", or `null` when unavailable.
+ * @param languageTag The active UI language tag (`null` = system default) for the Language & Region panel.
+ * @param dateFormat The active UI date format for the Language & Region panel.
+ * @param onLanguageChange Called with the chosen language tag (`null` = system default).
+ * @param onFormatChange Called with the chosen date format.
  */
 @Composable
 private fun SettingsContentPanel(
@@ -384,15 +412,20 @@ private fun SettingsContentPanel(
 	onImportConfig: () -> Unit = {},
 	backupEnabled: Boolean = false,
 	onStageTrustedCert: (ByteArray, TrustedCertificateType, String) -> Unit = { _, _, _ -> },
+	languageTag: String? = null,
+	dateFormat: DateFormat = DateFormat.SYSTEM,
+	onLanguageChange: (String?) -> Unit = {},
+	onFormatChange: (DateFormat) -> Unit = {},
 ) {
 	VerticalScrollableColumn(
 		modifier = Modifier.fillMaxSize(),
 		contentPadding = PaddingValues(24.dp),
 	) {
-		if (state.error != null) {
+		val errorText = state.error?.resolve()
+		if (errorText != null) {
 			SelectableContent {
 				Text(
-					text = state.error,
+					text = errorText,
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.error,
 				)
@@ -400,10 +433,10 @@ private fun SettingsContentPanel(
 			Spacer(modifier = Modifier.height(8.dp))
 		}
 		
-		Text(text = category.label, style = LumoTheme.typography.h3)
+		Text(text = category.label(), style = LumoTheme.typography.h3)
 		Spacer(modifier = Modifier.height(4.dp))
 		Text(
-			text = category.description,
+			text = category.description(),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)
@@ -485,6 +518,14 @@ private fun SettingsContentPanel(
 
 			SettingsCategory.Appearance,
 			SettingsCategory.WindowTitleBar -> AppearanceWindowSection(state = state, onFieldChange = onFieldChange)
+
+			SettingsCategory.LanguageRegion,
+			SettingsCategory.LanguageRegionSettings -> LanguageRegionSection(
+				languageTag = languageTag,
+				dateFormat = dateFormat,
+				onLanguageChange = onLanguageChange,
+				onFormatChange = onFormatChange,
+			)
 		}
 	}
 }
@@ -513,13 +554,13 @@ private fun SettingsFooter(
 		horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
 	) {
 		Button(
-			text = "Cancel",
+			text = stringResource(Res.string.action_cancel),
 			variant = ButtonVariant.Ghost,
 			onClick = onCancel,
 		)
 		if (!readOnly) {
 			Button(
-				text = "Save",
+				text = stringResource(Res.string.action_save),
 				variant = ButtonVariant.Primary,
 				enabled = hasChanges && !saving,
 				loading = saving,
@@ -548,7 +589,7 @@ private fun ConfigBackupSection(
 
 	Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 		TooltipBox(
-			tooltip = { Tooltip { Text(text = "Export configuration to a ZIP archive") } },
+			tooltip = { Tooltip { Text(text = stringResource(Res.string.settings_backup_export_tooltip)) } },
 			state = rememberTooltipState(),
 		) {
 			IconButton(
@@ -558,13 +599,13 @@ private fun ConfigBackupSection(
 			) {
 				Icon(
 					painter = painterResource(Res.drawable.icon_download),
-					contentDescription = "Export configuration",
+					contentDescription = stringResource(Res.string.settings_backup_export_description),
 					modifier = Modifier.size(20.dp),
 				)
 			}
 		}
 		TooltipBox(
-			tooltip = { Tooltip { Text(text = "Import a ZIP archive (replaces the current configuration)") } },
+			tooltip = { Tooltip { Text(text = stringResource(Res.string.settings_backup_import_tooltip)) } },
 			state = rememberTooltipState(),
 		) {
 			IconButton(
@@ -574,7 +615,7 @@ private fun ConfigBackupSection(
 			) {
 				Icon(
 					painter = painterResource(Res.drawable.icon_upload),
-					contentDescription = "Import configuration",
+					contentDescription = stringResource(Res.string.settings_backup_import_description),
 					modifier = Modifier.size(20.dp),
 				)
 			}
@@ -584,14 +625,14 @@ private fun ConfigBackupSection(
 	if (confirmingImport) {
 		Spacer(modifier = Modifier.height(16.dp))
 		Text(
-			text = "Import replaces all current settings, profiles, and trusted certificates and cannot be undone.",
+			text = stringResource(Res.string.settings_backup_import_warning),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.error,
 		)
 		Spacer(modifier = Modifier.height(8.dp))
 		Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
 			TooltipBox(
-				tooltip = { Tooltip { Text(text = "Cancel") } },
+				tooltip = { Tooltip { Text(text = stringResource(Res.string.action_cancel)) } },
 				state = rememberTooltipState(),
 			) {
 				IconButton(
@@ -600,13 +641,13 @@ private fun ConfigBackupSection(
 				) {
 					Icon(
 						painter = painterResource(Res.drawable.icon_x),
-						contentDescription = "Cancel import",
+						contentDescription = stringResource(Res.string.settings_backup_cancel_import_description),
 						modifier = Modifier.size(20.dp),
 					)
 				}
 			}
 			TooltipBox(
-				tooltip = { Tooltip { Text(text = "Choose an archive and replace the configuration") } },
+				tooltip = { Tooltip { Text(text = stringResource(Res.string.settings_backup_confirm_import_tooltip)) } },
 				state = rememberTooltipState(),
 			) {
 				IconButton(
@@ -618,7 +659,7 @@ private fun ConfigBackupSection(
 				) {
 					Icon(
 						painter = painterResource(Res.drawable.icon_check),
-						contentDescription = "Confirm import and replace",
+						contentDescription = stringResource(Res.string.settings_backup_confirm_import_description),
 						modifier = Modifier.size(20.dp),
 					)
 				}
@@ -641,7 +682,7 @@ private fun SigningDefaultsSection(
 		onSelect = { value ->
 			onFieldChange { it.copy(defaultHashAlgorithm = value ?: HashAlgorithm.SHA256) }
 		},
-		label = { Text(text = "Hash algorithm") },
+		label = { Text(text = stringResource(Res.string.label_hash_algorithm)) },
 		showNullOption = false,
 		disabledOptions = state.disabledHashAlgorithms,
 		itemLabel = { it.name },
@@ -654,8 +695,8 @@ private fun SigningDefaultsSection(
 		selected = state.defaultEncryptionAlgorithm,
 		options = EncryptionAlgorithm.entries.toList(),
 		onSelect = { value -> onFieldChange { it.copy(defaultEncryptionAlgorithm = value) } },
-		label = { Text(text = "Encryption algorithm") },
-		nullLabel = "Auto-detect from certificate",
+		label = { Text(text = stringResource(Res.string.label_encryption_algorithm)) },
+		nullLabel = stringResource(Res.string.settings_signing_encryption_auto_detect),
 		disabledOptions = state.disabledEncryptionAlgorithms,
 		itemLabel = { it.name },
 		modifier = Modifier.fillMaxWidth(),
@@ -663,7 +704,7 @@ private fun SigningDefaultsSection(
 	
 	Spacer(modifier = Modifier.height(12.dp))
 	
-	Text(text = "Timestamp level", style = LumoTheme.typography.label1)
+	Text(text = stringResource(Res.string.settings_signing_timestamp_level_label), style = LumoTheme.typography.label1)
 	Spacer(modifier = Modifier.height(4.dp))
 	
 	Row(
@@ -677,8 +718,8 @@ private fun SigningDefaultsSection(
 			},
 			enabled = !state.addArchivalTimestamp,
 		)
-		Text(text = "Signature timestamp", style = LumoTheme.typography.body2)
-		InfoTooltip(text = "Produces PAdES BASELINE B-LT")
+		Text(text = stringResource(Res.string.label_signature_timestamp), style = LumoTheme.typography.body2)
+		InfoTooltip(text = stringResource(Res.string.label_produces_b_lt))
 	}
 	
 	Spacer(modifier = Modifier.height(4.dp))
@@ -696,8 +737,8 @@ private fun SigningDefaultsSection(
 				}
 			},
 		)
-		Text(text = "Archival timestamp", style = LumoTheme.typography.body2)
-		InfoTooltip(text = "Produces PAdES BASELINE B-LTA")
+		Text(text = stringResource(Res.string.label_archival_timestamp), style = LumoTheme.typography.body2)
+		InfoTooltip(text = stringResource(Res.string.label_produces_b_lta))
 	}
 }
 
@@ -710,7 +751,7 @@ private fun DisabledAlgorithmsSection(
 	state: GlobalConfigEditState,
 	onFieldChange: ((GlobalConfigEditState) -> GlobalConfigEditState) -> Unit,
 ) {
-	Text(text = "Disabled hash algorithms", style = LumoTheme.typography.label1)
+	Text(text = stringResource(Res.string.label_disabled_hash_algorithms), style = LumoTheme.typography.label1)
 	Spacer(modifier = Modifier.height(4.dp))
 	
 	FlowRow(
@@ -738,7 +779,7 @@ private fun DisabledAlgorithmsSection(
 	
 	Spacer(modifier = Modifier.height(16.dp))
 	
-	Text(text = "Disabled encryption algorithms", style = LumoTheme.typography.label1)
+	Text(text = stringResource(Res.string.label_disabled_encryption_algorithms), style = LumoTheme.typography.label1)
 	Spacer(modifier = Modifier.height(4.dp))
 	
 	FlowRow(
@@ -778,7 +819,7 @@ private fun TimestampSection(
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.SpaceBetween,
 	) {
-		Text(text = "Enable timestamp server", style = LumoTheme.typography.label1)
+		Text(text = stringResource(Res.string.settings_tsp_enable_label), style = LumoTheme.typography.label1)
 		Switch(
 			checked = state.timestampEnabled,
 			onCheckedChange = { value -> onFieldChange { it.copy(timestampEnabled = value) } },
@@ -791,7 +832,7 @@ private fun TimestampSection(
 		UnderlinedTextField(
 			value = state.timestampUrl,
 			onValueChange = { value -> onFieldChange { it.copy(timestampUrl = value) } },
-			label = { Text(text = "URL") },
+			label = { Text(text = stringResource(Res.string.label_url)) },
 			placeholder = { Text(text = "https://tsa.example.com/tsr") },
 			singleLine = true,
 			modifier = Modifier.fillMaxWidth(),
@@ -802,14 +843,14 @@ private fun TimestampSection(
 		UnderlinedTextField(
 			value = state.timestampUsername,
 			onValueChange = { value -> onFieldChange { it.copy(timestampUsername = value) } },
-			label = { Text(text = "Username") },
-			placeholder = { Text(text = "Optional") },
+			label = { Text(text = stringResource(Res.string.label_username)) },
+			placeholder = { Text(text = stringResource(Res.string.label_optional)) },
 			singleLine = true,
 			modifier = Modifier.fillMaxWidth(),
 		)
-		
+
 		Spacer(modifier = Modifier.height(8.dp))
-		
+
 		SettingsPasswordField(
 			value = state.timestampPassword,
 			onValueChange = { value -> onFieldChange { it.copy(timestampPassword = value) } },
@@ -825,7 +866,7 @@ private fun TimestampSection(
 					onFieldChange { it.copy(timestampTimeout = value) }
 				}
 			},
-			label = { Text(text = "Timeout (ms)") },
+			label = { Text(text = stringResource(Res.string.label_timeout_ms)) },
 			singleLine = true,
 			keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
 			modifier = Modifier.fillMaxWidth(),
@@ -848,7 +889,7 @@ private fun OcspCrlSection(
 				onFieldChange { it.copy(ocspTimeout = value) }
 			}
 		},
-		label = { Text(text = "OCSP timeout (ms)") },
+		label = { Text(text = stringResource(Res.string.settings_ocsp_timeout_label)) },
 		singleLine = true,
 		keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
 		modifier = Modifier.fillMaxWidth(),
@@ -863,7 +904,7 @@ private fun OcspCrlSection(
 				onFieldChange { it.copy(crlTimeout = value) }
 			}
 		},
-		label = { Text(text = "CRL timeout (ms)") },
+		label = { Text(text = stringResource(Res.string.settings_crl_timeout_label)) },
 		singleLine = true,
 		keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
 		modifier = Modifier.fillMaxWidth(),
@@ -888,7 +929,7 @@ private fun ValidationPolicySection(
 		onSelect = { value ->
 			onFieldChange { it.copy(validationPolicyType = value ?: ValidationPolicyType.DEFAULT_ETSI) }
 		},
-		label = { Text(text = "Validation policy") },
+		label = { Text(text = stringResource(Res.string.settings_validation_policy_label)) },
 		showNullOption = false,
 		itemLabel = { it.name.replace("_", " ") },
 		modifier = Modifier.fillMaxWidth(),
@@ -909,13 +950,13 @@ private fun ValidationPolicySection(
 		UnderlinedTextField(
 			value = state.customPolicyPath,
 			onValueChange = { value -> onFieldChange { it.copy(customPolicyPath = value) } },
-			label = { Text(text = "Custom policy file path") },
+			label = { Text(text = stringResource(Res.string.settings_validation_custom_policy_path_label)) },
 			placeholder = { Text(text = "/path/to/policy.xml") },
 			singleLine = true,
 			modifier = Modifier.fillMaxWidth(),
 			trailingIcon = {
 				TooltipBox(
-					tooltip = { Tooltip { Text(text = "Browse") } },
+					tooltip = { Tooltip { Text(text = stringResource(Res.string.action_browse)) } },
 					state = rememberTooltipState()
 				) {
 					IconButton(
@@ -925,7 +966,7 @@ private fun ValidationPolicySection(
 					) {
 						Icon(
 							painter = painterResource(Res.drawable.icon_folder),
-							contentDescription = "Browse for policy file",
+							contentDescription = stringResource(Res.string.settings_browse_policy_file_description),
 							modifier = Modifier.size(18.dp),
 						)
 					}
@@ -941,7 +982,7 @@ private fun ValidationPolicySection(
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.SpaceBetween,
 	) {
-		Text(text = "Check certificate revocation", style = LumoTheme.typography.label1)
+		Text(text = stringResource(Res.string.settings_validation_check_revocation), style = LumoTheme.typography.label1)
 		Switch(
 			checked = state.checkRevocation,
 			onCheckedChange = { value -> onFieldChange { it.copy(checkRevocation = value) } },
@@ -955,7 +996,7 @@ private fun ValidationPolicySection(
 		verticalAlignment = Alignment.CenterVertically,
 		horizontalArrangement = Arrangement.SpaceBetween,
 	) {
-		Text(text = "Use EU List of Trusted Lists", style = LumoTheme.typography.label1)
+		Text(text = stringResource(Res.string.settings_validation_use_eu_lotl), style = LumoTheme.typography.label1)
 		Switch(
 			checked = state.useEuLotl,
 			onCheckedChange = { value -> onFieldChange { it.copy(useEuLotl = value) } },
@@ -972,10 +1013,9 @@ private fun ValidationPolicySection(
 			verticalAlignment = Alignment.CenterVertically,
 			horizontalArrangement = Arrangement.spacedBy(4.dp),
 		) {
-			Text(text = "Alert if not on EU LOTL", style = LumoTheme.typography.label1)
+			Text(text = stringResource(Res.string.label_alert_not_eu_lotl), style = LumoTheme.typography.label1)
 			InfoTooltip(
-				text = "Flag signatures whose trust anchor is not on the EU LOTL. " +
-					"Requires the EU List of Trusted Lists to be enabled.",
+				text = stringResource(Res.string.settings_validation_alert_not_eu_lotl_tooltip),
 			)
 		}
 		Switch(
@@ -993,7 +1033,7 @@ private fun ValidationPolicySection(
 				onFieldChange { it.copy(trustedListRefreshInterval = value) }
 			}
 		},
-		label = { Text(text = "Trusted list refresh interval (hours)") },
+		label = { Text(text = stringResource(Res.string.settings_validation_tl_refresh_interval_label)) },
 		singleLine = true,
 		keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
 		modifier = Modifier.fillMaxWidth(),
@@ -1006,17 +1046,17 @@ private fun ValidationPolicySection(
 		horizontalArrangement = Arrangement.SpaceBetween,
 	) {
 		Column(modifier = Modifier.weight(1f)) {
-			Text(text = "Trusted lists", style = LumoTheme.typography.label1)
+			Text(text = stringResource(Res.string.settings_validation_trusted_lists_label), style = LumoTheme.typography.label1)
 			Text(
 				text = trustedListLastRefreshAt
-					?.let { "Last refreshed: ${it.formatDateTime()}" }
-					?: "Last refreshed: never",
+					?.let { stringResource(Res.string.settings_validation_tl_last_refreshed, it.formattedDateTime()) }
+					?: stringResource(Res.string.settings_validation_tl_last_refreshed_never),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)
 		}
 		TooltipBox(
-			tooltip = { Tooltip { Text(text = "Refresh trusted lists now") } },
+			tooltip = { Tooltip { Text(text = stringResource(Res.string.settings_validation_refresh_tl_tooltip)) } },
 			state = rememberTooltipState(),
 		) {
 			IconButton(
@@ -1027,7 +1067,7 @@ private fun ValidationPolicySection(
 			) {
 				Icon(
 					painter = painterResource(Res.drawable.icon_refresh),
-					contentDescription = "Refresh trusted lists now",
+					contentDescription = stringResource(Res.string.settings_validation_refresh_tl_tooltip),
 					modifier = Modifier.size(20.dp),
 				)
 			}
@@ -1058,7 +1098,7 @@ private fun AlgorithmConstraintsSection(
 		onSelect = { value ->
 			onFieldChange { it.copy(algoExpirationLevel = value ?: AlgorithmConstraintLevel.FAIL) }
 		},
-		label = { Text(text = "Expiration level (before policy update)") },
+		label = { Text(text = stringResource(Res.string.settings_algo_expiration_level_label)) },
 		showNullOption = false,
 		itemLabel = { it.name },
 		modifier = Modifier.fillMaxWidth(),
@@ -1074,7 +1114,7 @@ private fun AlgorithmConstraintsSection(
 				it.copy(algoExpirationLevelAfterUpdate = value ?: AlgorithmConstraintLevel.WARN)
 			}
 		},
-		label = { Text(text = "Expiration level (after policy update)") },
+		label = { Text(text = stringResource(Res.string.settings_algo_expiration_level_after_label)) },
 		showNullOption = false,
 		itemLabel = { it.name },
 		modifier = Modifier.fillMaxWidth(),
@@ -1102,7 +1142,7 @@ private fun TrustedCertificatesSettingsSection(
 ) {
 	if (!state.trustedCertsAvailable) {
 		Text(
-			text = "Managing trusted certificates is not available on this platform.",
+			text = stringResource(Res.string.msg_trusted_certs_unavailable),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)
@@ -1125,9 +1165,9 @@ private fun TrustedCertificatesSettingsSection(
 				it.copy(pendingTrustedCertAdds = it.pendingTrustedCertAdds.filterIndexed { i, _ -> i != index })
 			}
 		},
-		addError = state.trustedCertAddError,
+		addError = state.trustedCertAddError?.resolve(),
 		onClearError = { onFieldChange { it.copy(trustedCertAddError = null) } },
-		onError = { message -> onFieldChange { it.copy(trustedCertAddError = message) } },
+		onError = { message -> onFieldChange { it.copy(trustedCertAddError = TrustedCertAddError.Domain(LocalizableText.Literal(message))) } },
 	)
 }
 
@@ -1153,7 +1193,7 @@ private fun Pkcs11Section(
 				onFieldChange { it.copy(pkcs11ProbeTimeout = value) }
 			}
 		},
-		label = { Text(text = "Probe timeout (seconds, 1-120)") },
+		label = { Text(text = stringResource(Res.string.settings_pkcs11_probe_timeout_label)) },
 		singleLine = true,
 		keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
 	)
@@ -1181,7 +1221,7 @@ private fun Pkcs11Section(
 
 	if (state.customPkcs11Libraries.isEmpty()) {
 		Text(
-			text = "No custom PKCS#11 libraries registered.",
+			text = stringResource(Res.string.settings_pkcs11_no_libraries),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)
@@ -1255,8 +1295,7 @@ private fun Pkcs11LibraryRows(
 private fun Pkcs11DropDirectoryHint(path: String, onOpen: () -> Unit) {
 	Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
 		Text(
-			text = "Tip: drop a PKCS#11 library file (.dll / .so / .dylib) into the directory " +
-					"below and it will be discovered automatically — no entry needed here.",
+			text = stringResource(Res.string.settings_pkcs11_drop_dir_hint),
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)
@@ -1315,7 +1354,7 @@ private fun Pkcs11LibraryRow(
 		) {
 			Icon(
 				painter = painterResource(Res.drawable.icon_x),
-				contentDescription = "Remove ${library.name}",
+				contentDescription = stringResource(Res.string.settings_pkcs11_remove_library_description, library.name),
 				modifier = Modifier.size(16.dp),
 			)
 		}
@@ -1349,21 +1388,21 @@ private fun Pkcs11AddRow(onAdd: (name: String, path: String) -> Unit) {
 		UnderlinedTextField(
 			value = name,
 			onValueChange = { name = it },
-			label = { Text(text = "Name") },
-			placeholder = { Text(text = "Label") },
+			label = { Text(text = stringResource(Res.string.settings_pkcs11_add_name_label)) },
+			placeholder = { Text(text = stringResource(Res.string.settings_pkcs11_add_name_placeholder)) },
 			singleLine = true,
 			modifier = Modifier.weight(1f),
 		)
 		UnderlinedTextField(
 			value = path,
 			onValueChange = { path = it },
-			label = { Text(text = "Path") },
+			label = { Text(text = stringResource(Res.string.settings_pkcs11_add_path_label)) },
 			placeholder = { Text(text = "/path/to/library.so") },
 			singleLine = true,
 			modifier = Modifier.weight(2f),
 			trailingIcon = {
 				TooltipBox(
-					tooltip = { Tooltip { Text(text = "Browse") } },
+					tooltip = { Tooltip { Text(text = stringResource(Res.string.action_browse)) } },
 					state = rememberTooltipState(),
 				) {
 					IconButton(
@@ -1373,7 +1412,7 @@ private fun Pkcs11AddRow(onAdd: (name: String, path: String) -> Unit) {
 					) {
 						Icon(
 							painter = painterResource(Res.drawable.icon_folder),
-							contentDescription = "Browse for PKCS#11 library",
+							contentDescription = stringResource(Res.string.settings_pkcs11_browse_library_description),
 							modifier = Modifier.size(18.dp),
 						)
 					}
@@ -1381,7 +1420,7 @@ private fun Pkcs11AddRow(onAdd: (name: String, path: String) -> Unit) {
 			},
 		)
 		Button(
-			text = "Add",
+			text = stringResource(Res.string.action_add),
 			variant = ButtonVariant.PrimaryOutlined,
 			enabled = name.isNotBlank() && path.isNotBlank(),
 			onClick = {
@@ -1415,15 +1454,15 @@ private fun SettingsPasswordField(
 	UnderlinedTextField(
 		value = value,
 		onValueChange = onValueChange,
-		label = { Text(text = "Password") },
+		label = { Text(text = stringResource(Res.string.label_password)) },
 		placeholder = {
 			Text(
 				text = if (hasStoredPassword) "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
-				else "Optional",
+				else stringResource(Res.string.label_optional),
 			)
 		},
 		supportingText = if (hasStoredPassword && value.isEmpty()) {
-			{ Text(text = "Password stored — enter a new value to replace") }
+			{ Text(text = stringResource(Res.string.hint_password_stored)) }
 		} else {
 			null
 		},
@@ -1440,7 +1479,7 @@ private fun SettingsPasswordField(
 					painter = painterResource(
 						if (visible) Res.drawable.icon_eye_off else Res.drawable.icon_eye
 					),
-					contentDescription = if (visible) "Hide password" else "Show password",
+					contentDescription = if (visible) stringResource(Res.string.action_hide_password) else stringResource(Res.string.action_show_password),
 					modifier = Modifier.size(18.dp),
 				)
 			}
@@ -1468,9 +1507,9 @@ private fun AppearanceWindowSection(
 		horizontalArrangement = Arrangement.SpaceBetween,
 	) {
 		Column(modifier = Modifier.weight(1f)) {
-			Text(text = "Use native title bar", style = LumoTheme.typography.body1)
+			Text(text = stringResource(Res.string.settings_appearance_native_title_bar_label), style = LumoTheme.typography.body1)
 			Text(
-				text = "Display the toolbar below the native OS title bar instead of merging it into a custom header.",
+				text = stringResource(Res.string.settings_appearance_native_title_bar_description),
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)
@@ -1485,10 +1524,113 @@ private fun AppearanceWindowSection(
 	}
 	
 	Spacer(modifier = Modifier.height(8.dp))
-	
+
 	Text(
-		text = "Requires an application restart to take effect.",
+		text = stringResource(Res.string.settings_appearance_restart_required),
 		style = LumoTheme.typography.body2,
 		color = LumoTheme.colors.textSecondary,
 	)
+}
+
+/**
+ * Language & Region section: pick a region preset, the UI language, and the date format.
+ *
+ * The three selectors are layered from coarse to fine. The preset combines a language with its
+ * conventional date format in one step; the language and format selectors below override either
+ * dimension independently, in which case the preset selector reflects [RegionChoice.Custom]. All
+ * three are runtime UI preferences applied immediately by the host (not part of the saved config).
+ *
+ * @param languageTag The active UI language tag (`null` = system default).
+ * @param dateFormat The active UI date format.
+ * @param onLanguageChange Called with the chosen language tag (`null` = system default).
+ * @param onFormatChange Called with the chosen date format.
+ */
+@Composable
+private fun LanguageRegionSection(
+	languageTag: String?,
+	dateFormat: DateFormat,
+	onLanguageChange: (String?) -> Unit,
+	onFormatChange: (DateFormat) -> Unit,
+) {
+	val currentChoice = RegionChoice.of(languageTag, dateFormat)
+	val presetOptions = buildList {
+		add(RegionChoice.System)
+		RegionPreset.entries.forEach { add(RegionChoice.Preset(it)) }
+		if (currentChoice is RegionChoice.Custom) add(RegionChoice.Custom)
+	}
+
+	DropdownSelector(
+		selected = currentChoice,
+		options = presetOptions,
+		onSelect = { choice ->
+			when (choice) {
+				RegionChoice.System -> {
+					onLanguageChange(null)
+					onFormatChange(DateFormat.SYSTEM)
+				}
+				is RegionChoice.Preset -> {
+					onLanguageChange(choice.value.languageTag)
+					onFormatChange(choice.value.dateFormat)
+				}
+				RegionChoice.Custom, null -> {}
+			}
+		},
+		label = { Text(text = stringResource(Res.string.settings_region_preset_label)) },
+		showNullOption = false,
+		disabledOptions = setOf(RegionChoice.Custom),
+		itemLabel = { it.label() },
+		modifier = Modifier.fillMaxWidth(),
+	)
+
+	Spacer(modifier = Modifier.height(12.dp))
+
+	DropdownSelector(
+		selected = languageTag,
+		options = LanguageOptions,
+		onSelect = { tag -> onLanguageChange(tag) },
+		label = { Text(text = stringResource(Res.string.settings_region_language_label)) },
+		nullLabel = stringResource(Res.string.settings_region_system_default),
+		itemLabel = { languageEndonym(it) },
+		modifier = Modifier.fillMaxWidth(),
+	)
+
+	Spacer(modifier = Modifier.height(12.dp))
+
+	DropdownSelector(
+		selected = dateFormat,
+		options = DateFormat.entries.toList(),
+		onSelect = { value -> onFormatChange(value ?: DateFormat.SYSTEM) },
+		label = { Text(text = stringResource(Res.string.settings_region_format_label)) },
+		showNullOption = false,
+		itemLabel = { dateFormatLabel(it) },
+		modifier = Modifier.fillMaxWidth(),
+	)
+}
+
+/** Selectable UI language tags offered in the language dropdown, in display order. */
+private val LanguageOptions = listOf("en", "cs", "sk")
+
+/**
+ * The native-name (endonym) label for a UI language tag, shown in the language dropdown.
+ *
+ * Endonyms are intentionally not translated: each language is presented in its own script so a user
+ * can recognize their language regardless of the currently active UI locale.
+ */
+private fun languageEndonym(tag: String): String = when (tag) {
+	"en" -> "English"
+	"cs" -> "Čeština"
+	"sk" -> "Slovenčina"
+	else -> tag
+}
+
+/**
+ * The display label for a [DateFormat] in the format dropdown.
+ *
+ * [DateFormat.SYSTEM] resolves to a localized "System default" label; every other entry is shown as
+ * its language-neutral [DateFormat.displayPattern] (e.g. `dd/mm/yyyy`), which is not translated.
+ */
+@Composable
+private fun dateFormatLabel(format: DateFormat): String = when (format) {
+	DateFormat.SYSTEM -> stringResource(Res.string.settings_region_system_default)
+	else -> format.displayPattern
 }

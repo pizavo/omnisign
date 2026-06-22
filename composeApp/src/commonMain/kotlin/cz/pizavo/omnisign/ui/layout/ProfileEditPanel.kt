@@ -32,6 +32,7 @@ import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Button
 import cz.pizavo.omnisign.lumo.components.ButtonVariant
@@ -50,11 +51,11 @@ import cz.pizavo.omnisign.lumo.components.TriToggleState
 import cz.pizavo.omnisign.lumo.components.rememberTooltipState
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.ProfileEditState
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_chevron_down
-import omnisign.composeapp.generated.resources.icon_eye
-import omnisign.composeapp.generated.resources.icon_eye_off
+import cz.pizavo.omnisign.ui.model.TrustedCertAddError
+import cz.pizavo.omnisign.ui.model.resolve
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Edit form rendered inside the Profiles side panel when the user is editing a profile.
@@ -155,8 +156,8 @@ fun ProfileEditPanel(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(text = "Alert if not on EU LOTL", style = LumoTheme.typography.body2)
-            InfoTooltip(text = "Flag signatures whose trust anchor is not on the EU LOTL")
+            Text(text = stringResource(Res.string.label_alert_not_eu_lotl), style = LumoTheme.typography.body2)
+            InfoTooltip(text = stringResource(Res.string.profileedit_alert_eu_lotl_tooltip))
         }
         TriStateToggle(
             state = state.alertIfNotEuLotlOverride,
@@ -171,7 +172,7 @@ fun ProfileEditPanel(
     var tlsExpanded by remember { mutableStateOf(false) }
 
     CollapsibleSectionHeader(
-        title = "Trusted Lists",
+        title = stringResource(Res.string.profileedit_trusted_lists_title),
         count = state.customTrustedLists.size,
         expanded = tlsExpanded,
         onToggle = { tlsExpanded = !tlsExpanded },
@@ -185,7 +186,7 @@ fun ProfileEditPanel(
         Column {
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Custom ETSI Trusted List sources added here apply only to this profile, in addition to global ones.",
+                text = stringResource(Res.string.profileedit_trusted_lists_description),
                 style = LumoTheme.typography.body2,
                 color = LumoTheme.colors.textSecondary,
             )
@@ -223,7 +224,7 @@ fun ProfileEditPanel(
     } + state.pendingTrustedCertAdds.size
 
     CollapsibleSectionHeader(
-        title = "Trusted Certificates",
+        title = stringResource(Res.string.profileedit_trusted_certs_title),
         count = trustedCertCount,
         expanded = certsExpanded,
         onToggle = { certsExpanded = !certsExpanded },
@@ -237,8 +238,7 @@ fun ProfileEditPanel(
         Column {
             Spacer(modifier = Modifier.height(4.dp))
             Text(
-                text = "Certificates added here are trusted only for this profile, in addition to global ones. " +
-                        "Changes are staged and applied when you Save; Cancel discards them.",
+                text = stringResource(Res.string.profileedit_trusted_certs_description),
                 style = LumoTheme.typography.body2,
                 color = LumoTheme.colors.textSecondary,
             )
@@ -246,7 +246,7 @@ fun ProfileEditPanel(
 
             if (!state.trustedCertsAvailable) {
                 Text(
-                    text = "Managing trusted certificates is not available on this platform.",
+                    text = stringResource(Res.string.msg_trusted_certs_unavailable),
                     style = LumoTheme.typography.body2,
                     color = LumoTheme.colors.textSecondary,
                 )
@@ -274,9 +274,9 @@ fun ProfileEditPanel(
                             )
                         }
                     },
-                    addError = state.trustedCertAddError,
+                    addError = state.trustedCertAddError?.resolve(),
                     onClearError = { onFieldChange { it.copy(trustedCertAddError = null) } },
-                    onError = { message -> onFieldChange { it.copy(trustedCertAddError = message) } },
+                    onError = { message -> onFieldChange { it.copy(trustedCertAddError = TrustedCertAddError.Domain(LocalizableText.Literal(message))) } },
                 )
             }
         }
@@ -286,7 +286,7 @@ fun ProfileEditPanel(
         Spacer(modifier = Modifier.height(16.dp))
 
         Button(
-            text = "Save",
+            text = stringResource(Res.string.action_save),
             variant = ButtonVariant.Primary,
             enabled = hasChanges && !state.saving,
             loading = state.saving,
@@ -310,8 +310,8 @@ private fun DescriptionSection(
     UnderlinedTextField(
         value = state.description,
         onValueChange = { value -> onFieldChange { it.copy(description = value) } },
-        label = { Text(text = "Description") },
-        placeholder = { Text(text = "Optional profile description") },
+        label = { Text(text = stringResource(Res.string.profileedit_description_label)) },
+        placeholder = { Text(text = stringResource(Res.string.profileedit_description_placeholder)) },
         singleLine = false,
         minLines = 3,
         enabled = !readOnly,
@@ -343,14 +343,14 @@ private fun AlgorithmSection(
         state.archivalTimestampOverride == TriToggleState.ENABLED ||
                 (state.archivalTimestampOverride == TriToggleState.INHERIT && globalAddArchivalTimestamp)
 
-    Text(text = "Algorithms & Timestamps", style = LumoTheme.typography.label1)
+    Text(text = stringResource(Res.string.profileedit_algorithms_timestamps_section), style = LumoTheme.typography.label1)
     Spacer(modifier = Modifier.height(8.dp))
 
     DropdownSelector(
         selected = state.hashAlgorithm,
         options = HashAlgorithm.entries.toList(),
         onSelect = { value -> onFieldChange { it.copy(hashAlgorithm = value) } },
-        label = { Text(text = "Hash algorithm") },
+        label = { Text(text = stringResource(Res.string.label_hash_algorithm)) },
         disabledOptions = globalDisabledHashAlgorithms,
         itemLabel = { it.name },
         enabled = !readOnly,
@@ -363,7 +363,7 @@ private fun AlgorithmSection(
         selected = state.encryptionAlgorithm,
         options = EncryptionAlgorithm.entries.toList(),
         onSelect = { value -> onFieldChange { it.copy(encryptionAlgorithm = value) } },
-        label = { Text(text = "Encryption algorithm") },
+        label = { Text(text = stringResource(Res.string.label_encryption_algorithm)) },
         disabledOptions = globalDisabledEncryptionAlgorithms,
         itemLabel = { it.name },
         enabled = !readOnly,
@@ -372,7 +372,7 @@ private fun AlgorithmSection(
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    Text(text = "Timestamp level overrides", style = LumoTheme.typography.label1)
+    Text(text = stringResource(Res.string.profileedit_timestamp_overrides_section), style = LumoTheme.typography.label1)
     Spacer(modifier = Modifier.height(8.dp))
 
     Row(
@@ -384,14 +384,14 @@ private fun AlgorithmSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(text = "Signature timestamp", style = LumoTheme.typography.body2)
-            InfoTooltip(text = "Produces PAdES BASELINE B-LT")
+            Text(text = stringResource(Res.string.label_signature_timestamp), style = LumoTheme.typography.body2)
+            InfoTooltip(text = stringResource(Res.string.label_produces_b_lt))
         }
         if (archivalEffectivelyEnabled) {
             val reason = if (state.archivalTimestampOverride == TriToggleState.ENABLED) {
-                "Required by this profile's archival timestamp (B-LTA)"
+                stringResource(Res.string.profileedit_archival_required_by_profile)
             } else {
-                "Required by global archival timestamp setting (B-LTA)"
+                stringResource(Res.string.profileedit_archival_required_by_global)
             }
             TooltipBox(
                 tooltip = { Tooltip { Text(text = reason) } },
@@ -422,8 +422,8 @@ private fun AlgorithmSection(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            Text(text = "Archival timestamp", style = LumoTheme.typography.body2)
-            InfoTooltip(text = "Produces PAdES BASELINE B-LTA")
+            Text(text = stringResource(Res.string.label_archival_timestamp), style = LumoTheme.typography.body2)
+            InfoTooltip(text = stringResource(Res.string.label_produces_b_lta))
         }
         TriStateToggle(
             state = state.archivalTimestampOverride,
@@ -457,7 +457,7 @@ private fun TimestampSection(
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
-        Text(text = "Timestamp server", style = LumoTheme.typography.label1)
+        Text(text = stringResource(Res.string.profileedit_timestamp_server_label), style = LumoTheme.typography.label1)
         Switch(
             checked = state.timestampEnabled,
             onCheckedChange = { value -> onFieldChange { it.copy(timestampEnabled = value) } },
@@ -471,7 +471,7 @@ private fun TimestampSection(
         UnderlinedTextField(
             value = state.timestampUrl,
             onValueChange = { value -> onFieldChange { it.copy(timestampUrl = value) } },
-            label = { Text(text = "URL") },
+            label = { Text(text = stringResource(Res.string.label_url)) },
             placeholder = { Text(text = "https://tsa.example.com/tsr") },
             singleLine = true,
             enabled = !readOnly,
@@ -483,8 +483,8 @@ private fun TimestampSection(
         UnderlinedTextField(
             value = state.timestampUsername,
             onValueChange = { value -> onFieldChange { it.copy(timestampUsername = value) } },
-            label = { Text(text = "Username") },
-            placeholder = { Text(text = "Optional") },
+            label = { Text(text = stringResource(Res.string.label_username)) },
+            placeholder = { Text(text = stringResource(Res.string.label_optional)) },
             singleLine = true,
             enabled = !readOnly,
             modifier = Modifier.fillMaxWidth(),
@@ -508,7 +508,7 @@ private fun TimestampSection(
                     onFieldChange { it.copy(timestampTimeout = value) }
                 }
             },
-            label = { Text(text = "Timeout (ms)") },
+            label = { Text(text = stringResource(Res.string.label_timeout_ms)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
             enabled = !readOnly,
@@ -536,7 +536,7 @@ private fun DisabledAlgorithmsSection(
     globalDisabledHashAlgorithms: Set<HashAlgorithm>,
     globalDisabledEncryptionAlgorithms: Set<EncryptionAlgorithm>,
 ) {
-    Text(text = "Disabled hash algorithms", style = LumoTheme.typography.label1)
+    Text(text = stringResource(Res.string.label_disabled_hash_algorithms), style = LumoTheme.typography.label1)
     Spacer(modifier = Modifier.height(4.dp))
 
     FlowRow(
@@ -566,7 +566,7 @@ private fun DisabledAlgorithmsSection(
 
     Spacer(modifier = Modifier.height(12.dp))
 
-    Text(text = "Disabled encryption algorithms", style = LumoTheme.typography.label1)
+    Text(text = stringResource(Res.string.label_disabled_encryption_algorithms), style = LumoTheme.typography.label1)
     Spacer(modifier = Modifier.height(4.dp))
 
     FlowRow(
@@ -618,15 +618,15 @@ private fun PasswordField(
     UnderlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        label = { Text(text = "Password") },
+        label = { Text(text = stringResource(Res.string.label_password)) },
         placeholder = {
             Text(
                 text = if (hasStoredPassword) "\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
-                else "Optional",
+                else stringResource(Res.string.label_optional),
             )
         },
         supportingText = if (hasStoredPassword && value.isEmpty()) {
-            { Text(text = "Password stored — enter a new value to replace") }
+            { Text(text = stringResource(Res.string.hint_password_stored)) }
         } else {
             null
         },
@@ -644,7 +644,7 @@ private fun PasswordField(
                     painter = painterResource(
                         if (visible) Res.drawable.icon_eye_off else Res.drawable.icon_eye
                     ),
-                    contentDescription = if (visible) "Hide password" else "Show password",
+                    contentDescription = if (visible) stringResource(Res.string.action_hide_password) else stringResource(Res.string.action_show_password),
                     modifier = Modifier.size(18.dp),
                 )
             }
@@ -683,7 +683,7 @@ private fun CollapsibleSectionHeader(
     ) {
         Icon(
             painter = painterResource(Res.drawable.icon_chevron_down),
-            contentDescription = if (expanded) "Collapse" else "Expand",
+            contentDescription = if (expanded) stringResource(Res.string.action_collapse) else stringResource(Res.string.action_expand),
             modifier = Modifier
                 .size(14.dp)
                 .graphicsLayer(rotationZ = chevronRotation),

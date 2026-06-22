@@ -1,0 +1,25 @@
+<resources>
+	<string name="renewaljobs_empty">Nie sú nakonfigurované žiadne úlohy obnovy.</string>
+	<string name="renewaljobs_field_name_label">Názov</string>
+	<string name="renewaljobs_field_backups_label">Zálohy</string>
+	<string name="renewaljobs_field_profile_label">Profil</string>
+	<string name="renewaljobs_field_log_file_placeholder">/var/log/omnisign-renewal.log</string>
+	<string name="renewaljobs_field_globs_label">Vzory glob</string>
+	<string name="renewaljobs_action_select_files">Vybrať súbory</string>
+	<string name="renewaljobs_action_select_folder">Predvybrať priečinok</string>
+	<string name="renewaljobs_error_glob_required">Vyžaduje sa aspoň jeden vzor glob.</string>
+	<string name="renewaljobs_error_buffer_days_invalid">Dni rezervy musia byť kladné celé číslo.</string>
+	<string name="renewaljobs_error_backups_invalid">Zálohy musia byť 0 alebo kladné celé číslo.</string>
+	<plurals name="renewaljobs_row_buffer">
+		<item quantity="one">Rezerva: %1$s deň</item>
+		<item quantity="few">Rezerva: %1$s dni</item>
+		<item quantity="other">Rezerva: %1$s dní</item>
+	</plurals>
+	<string name="renewaljobs_row_backups">Zálohy: %1$s</string>
+	<string name="renewaljobs_row_log">Protokol: %1$s</string>
+	<string name="renewaljobs_notify_on">Upozornenia: zapnuté</string>
+	<string name="renewaljobs_notify_off">Upozornenia: vypnuté</string>
+	<string name="renewaljobs_remove_content_desc">Odstrániť %1$s</string>
+	<string name="renewaljobs_globs_amber_warning">Žlté vzory (povolené — overte): %1$s.</string>
+	<string name="renewaljobs_chip_remove_content_desc">Odstrániť %1$s</string>
+</resources>

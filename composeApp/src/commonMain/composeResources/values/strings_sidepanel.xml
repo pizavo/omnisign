@@ -1,0 +1,10 @@
+<resources>
+	<string name="sidepanel_signature">Signature</string>
+	<string name="sidepanel_signature_cd">Open signature details panel</string>
+	<string name="sidepanel_profiles">Profiles</string>
+	<string name="sidepanel_profiles_cd">Open profiles panel</string>
+	<string name="sidepanel_trustedcerts">Trusted Certificates</string>
+	<string name="sidepanel_trustedcerts_cd">Open trusted certificates panel</string>
+	<string name="sidepanel_help">Help</string>
+	<string name="sidepanel_help_cd">Open help panel</string>
+</resources>

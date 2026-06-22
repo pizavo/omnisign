@@ -40,15 +40,12 @@ import cz.pizavo.omnisign.ui.platform.setDebugLoggingEnabled
 import cz.pizavo.omnisign.ui.platform.setExtendedLoggingEnabled
 import cz.pizavo.omnisign.ui.toast.LocalToastService
 import cz.pizavo.omnisign.ui.toast.ToastMessage
+import cz.pizavo.omnisign.ui.toast.ToastText
 import kotlinx.coroutines.launch
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_download
-import omnisign.composeapp.generated.resources.icon_file_text
-import omnisign.composeapp.generated.resources.icon_folder
-import omnisign.composeapp.generated.resources.icon_github
-import omnisign.composeapp.generated.resources.icon_scale
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.DrawableResource
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /** Public source repository the GitHub action button opens. */
 private const val HelpRepositoryUrl = "https://github.com/pizavo/omnisign"
@@ -107,15 +104,15 @@ fun ColumnScope.HelpPanel(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         HelpActionButton(
-            label = "GitHub Repository",
+            label = stringResource(Res.string.help_action_github_repository),
             icon = Res.drawable.icon_github,
-            contentDescription = "Open the GitHub repository",
+            contentDescription = stringResource(Res.string.help_cd_open_github_repository),
             onClick = { uriHandler.openUri(HelpRepositoryUrl) },
         )
         HelpActionButton(
-            label = "Documentation",
+            label = stringResource(Res.string.help_action_documentation),
             icon = Res.drawable.icon_file_text,
-            contentDescription = "Open the online documentation",
+            contentDescription = stringResource(Res.string.help_cd_open_documentation),
             onClick = { uriHandler.openUri(HelpDocumentationUrl) },
         )
     }
@@ -141,7 +138,7 @@ fun ColumnScope.HelpPanel(
             tint = LumoTheme.colors.textSecondary,
         )
         Text(
-            text = "License",
+            text = stringResource(Res.string.help_label_license),
             style = LumoTheme.typography.label1,
             modifier = Modifier.weight(1f),
         )
@@ -161,7 +158,7 @@ fun ColumnScope.HelpPanel(
         horizontalArrangement = Arrangement.SpaceBetween,
     ) {
         Text(
-            text = "v${BuildConfig.VERSION}",
+            text = stringResource(Res.string.help_label_version, BuildConfig.VERSION),
             style = LumoTheme.typography.body3,
             color = LumoTheme.colors.textSecondary,
         )
@@ -228,11 +225,10 @@ private fun HelpSupportSection(
     var extended by remember { mutableStateOf(isExtendedLoggingEnabled()) }
 
     Spacer(modifier = Modifier.height(16.dp))
-    Text(text = "Support", style = LumoTheme.typography.label1)
+    Text(text = stringResource(Res.string.help_section_support), style = LumoTheme.typography.label1)
     Spacer(modifier = Modifier.height(4.dp))
     Text(
-        text = "If something goes wrong, enable debug logging, reproduce the issue, " +
-            "then export the logs and attach them to your report.",
+        text = stringResource(Res.string.help_support_description),
         style = LumoTheme.typography.body3,
         color = LumoTheme.colors.textSecondary,
     )
@@ -244,25 +240,25 @@ private fun HelpSupportSection(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         HelpActionButton(
-            label = "Export logs",
+            label = stringResource(Res.string.help_action_export_logs),
             icon = Res.drawable.icon_download,
-            contentDescription = "Export logs as a zip archive",
+            contentDescription = stringResource(Res.string.help_cd_export_logs),
             onClick = {
                 scope.launch {
                     val exported = exportSupportLogArchive()
                     toast?.show(
-                        ToastMessage(if (exported) "Logs exported." else "Log export cancelled."),
+                        ToastMessage(ToastText.Resource(if (exported) Res.string.help_toast_logs_exported else Res.string.help_toast_logs_cancelled)),
                     )
                 }
             },
         )
         HelpActionButton(
-            label = "Open folder",
+            label = stringResource(Res.string.help_action_open_folder),
             icon = Res.drawable.icon_folder,
-            contentDescription = "Open the log folder",
+            contentDescription = stringResource(Res.string.help_cd_open_log_folder),
             onClick = {
                 if (!openSupportLogDirectory()) {
-                    toast?.show(ToastMessage("Could not open the log folder."))
+                    toast?.show(ToastMessage(ToastText.Resource(Res.string.help_toast_open_folder_failed)))
                 }
             },
         )
@@ -273,11 +269,11 @@ private fun HelpSupportSection(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
     ) {
-        ExternalLink(text = "Report an issue on GitHub", url = HelpIssueUrl)
+        ExternalLink(text = stringResource(Res.string.help_action_report_issue), url = HelpIssueUrl)
     }
     Spacer(modifier = Modifier.height(4.dp))
     Text(
-        text = "Attach the exported log archive to your report.",
+        text = stringResource(Res.string.help_support_attach_logs),
         style = LumoTheme.typography.body3,
         color = LumoTheme.colors.textSecondary,
         textAlign = TextAlign.Center,
@@ -286,8 +282,8 @@ private fun HelpSupportSection(
 
     Spacer(modifier = Modifier.height(12.dp))
     SupportToggleRow(
-        title = "Debug logging",
-        caption = "Debugging logs for issue resolution. Turn off when done capturing.",
+        title = stringResource(Res.string.help_toggle_debug_logging_title),
+        caption = stringResource(Res.string.help_toggle_debug_logging_caption),
         checked = debugEnabled,
         onCheckedChange = {
             setDebugLoggingEnabled(it)
@@ -298,8 +294,8 @@ private fun HelpSupportSection(
     if (debugEnabled) {
         Spacer(modifier = Modifier.height(8.dp))
         SupportToggleRow(
-            title = "Extended logs",
-            caption = "Captures extended logs from third-party libraries. Very verbose; should be enabled only when specifically asked to.",
+            title = stringResource(Res.string.help_toggle_extended_logs_title),
+            caption = stringResource(Res.string.help_toggle_extended_logs_caption),
             checked = extended,
             onCheckedChange = {
                 extended = it

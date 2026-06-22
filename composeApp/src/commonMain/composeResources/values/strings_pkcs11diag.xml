@@ -1,0 +1,14 @@
+<resources>
+	<string name="pkcs11diag_title">PKCS#11 diagnostic</string>
+	<string name="pkcs11diag_section_pcsc_readers">PC/SC readers</string>
+	<string name="pkcs11diag_section_candidate_libraries">Candidate PKCS#11 libraries</string>
+	<string name="pkcs11diag_section_drop_directory">Drop directory</string>
+	<string name="pkcs11diag_pcsc_empty">No PC/SC readers detected. The platform smart-card service may be stopped, or no compatible reader is connected.</string>
+	<string name="pkcs11diag_candidates_empty">Discovery found no candidate libraries. Either none of the OS-native sources advertise a PKCS#11 module, or you haven\'t added a path under {1}, or dropped a library into {2}.</string>
+	<string name="pkcs11diag_link_settings">Global Settings → PKCS#11 Libraries</string>
+	<string name="pkcs11diag_link_drop_directory">the drop directory</string>
+	<string name="pkcs11diag_drop_dir_description">Copy a PKCS#11 library file (.dll / .so / .dylib) into this directory to have discovery pick it up automatically:</string>
+	<string name="pkcs11diag_reader_card_present">card present</string>
+	<string name="pkcs11diag_reader_empty">empty</string>
+	<string name="pkcs11diag_reader_atr">ATR: %1$s</string>
+</resources>

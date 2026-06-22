@@ -1,0 +1,15 @@
+<resources>
+	<string name="trustedcerts_empty">Nie sú zaregistrované žiadne dôveryhodné certifikáty.</string>
+	<string name="trustedcerts_badge_removing">Odstraňuje sa</string>
+	<string name="trustedcerts_badge_pending">Čaká sa</string>
+	<string name="trustedcerts_label_type">Typ</string>
+	<string name="trustedcerts_label_certificate_file">Súbor certifikátu</string>
+	<string name="trustedcerts_placeholder_certificate_file">/path/to/certificate.pem</string>
+	<string name="trustedcerts_cd_browse">Vyhľadať súbor certifikátu</string>
+	<string name="trustedcerts_cd_add">Pridať certifikát</string>
+	<string name="trustedcerts_expires">Platnosť do %1$s</string>
+	<string name="trustedcerts_cd_undo_removal">Vrátiť odstránenie %1$s</string>
+	<string name="trustedcerts_cd_remove">Odstrániť %1$s</string>
+	<string name="trustedcerts_cd_drop_staged">Zahodiť pripravený certifikát %1$s</string>
+	<string name="trustedcerts_read_failed">Certifikát sa nepodarilo prečítať:</string>
+</resources>

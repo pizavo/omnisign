@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.domain.model.validation
 
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.text.MessageKey
 import kotlinx.serialization.Serializable
 
 /**
@@ -17,18 +19,28 @@ import kotlinx.serialization.Serializable
  * This classification is independent of the trusted list source — it applies equally to
  * certificates found on the EU LOTL and on custom ETSI trusted lists.
  *
- * @property label Human-readable label for display in UIs and reports.
  */
 @Serializable
-enum class SignatureTrustTier(val label: String) {
+enum class SignatureTrustTier {
 	/** Qualified certificate on a QSCD (eIDAS Annex I and Annex III). */
-	QUALIFIED_QSCD("Qualified"),
+	QUALIFIED_QSCD,
 
 	/** Qualified certificate without confirmed QSCD (eIDAS Annex I). */
-	QUALIFIED("Recognized"),
+	QUALIFIED,
 
 	/** Not qualified or qualification could not be determined. */
-	NOT_QUALIFIED("Not qualified"),
+	NOT_QUALIFIED,
+}
+
+/**
+ * Localizable display label for this tier — `Qualified` / `Recognized` / `Not qualified`. The
+ * certificate-details panel resolves it to the active locale; the plain-text report renders its
+ * [LocalizableText.english].
+ */
+fun SignatureTrustTier.label(): LocalizableText = when (this) {
+	SignatureTrustTier.QUALIFIED_QSCD -> LocalizableText.of(MessageKey.TRUST_TIER_QUALIFIED)
+	SignatureTrustTier.QUALIFIED -> LocalizableText.of(MessageKey.TRUST_TIER_RECOGNIZED)
+	SignatureTrustTier.NOT_QUALIFIED -> LocalizableText.of(MessageKey.TRUST_TIER_NOT_QUALIFIED)
 }
 
 /**
@@ -39,9 +51,8 @@ enum class SignatureTrustTier(val label: String) {
  * and (since either failing check drops the `_QSCD` qualification) cannot coexist with them. `null`
  * for the other tiers, where no such confirmation applies.
  */
-fun SignatureTrustTier.qscdResidenceInfo(): String? = when (this) {
-	SignatureTrustTier.QUALIFIED_QSCD ->
-		"The private key resides in a QSCD at both issuance and signing time."
+fun SignatureTrustTier.qscdResidenceInfo(): LocalizableText? = when (this) {
+	SignatureTrustTier.QUALIFIED_QSCD -> LocalizableText.of(MessageKey.SIGNATURE_QSCD_RESIDENCE)
 	SignatureTrustTier.QUALIFIED, SignatureTrustTier.NOT_QUALIFIED -> null
 }
 

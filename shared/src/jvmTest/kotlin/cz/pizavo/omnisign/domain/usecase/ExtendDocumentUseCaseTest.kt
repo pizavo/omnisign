@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
@@ -45,7 +46,7 @@ class ExtendDocumentUseCaseTest : FunSpec({
 
 	test("propagates extension failure") {
 		coEvery { repo.extendDocument(params) } returns
-			ArchivingError.ExtensionFailed(message = "Cannot extend").left()
+			ArchivingError.ExtensionFailed(text = LocalizableText.Literal("Cannot extend")).left()
 
 		useCase(params).shouldBeLeft()
 			.shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
@@ -54,7 +55,7 @@ class ExtendDocumentUseCaseTest : FunSpec({
 
 	test("propagates timestamp failure") {
 		coEvery { repo.extendDocument(params) } returns
-			ArchivingError.TimestampFailed(message = "TSA unreachable", details = "Connection refused").left()
+			ArchivingError.TimestampFailed(text = LocalizableText.Literal("TSA unreachable"), details = "Connection refused").left()
 
 		val error = useCase(params).shouldBeLeft()
 			.shouldBeInstanceOf<ArchivingError.TimestampFailed>()

@@ -15,9 +15,9 @@ import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.SelectableContent
 import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.ui.model.TrustedCertsPanelState
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_certificate
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Read-only overview panel for directly trusted certificates in the current context.
@@ -35,7 +35,7 @@ import org.jetbrains.compose.resources.painterResource
 @Composable
 fun TrustedCertsPanel(state: TrustedCertsPanelState) {
     if (!state.available) {
-        EmptyState(message = "Managing trusted certificates is not available on this platform.")
+        EmptyState(message = stringResource(Res.string.msg_trusted_certs_unavailable))
         return
     }
 
@@ -52,7 +52,7 @@ fun TrustedCertsPanel(state: TrustedCertsPanelState) {
 
     if (state.loading) {
         Text(
-            text = "Loading…",
+            text = stringResource(Res.string.trustedcertspanel_loading),
             style = LumoTheme.typography.body2,
             color = LumoTheme.colors.textSecondary,
         )
@@ -60,8 +60,7 @@ fun TrustedCertsPanel(state: TrustedCertsPanelState) {
     }
 
     Text(
-        text = "View only. Add or remove global certificates in Settings → Trusted Certificates, " +
-                "and profile certificates in the profile editor.",
+        text = stringResource(Res.string.trustedcertspanel_view_only_hint),
         style = LumoTheme.typography.body2,
         color = LumoTheme.colors.textSecondary,
     )
@@ -70,7 +69,7 @@ fun TrustedCertsPanel(state: TrustedCertsPanelState) {
     val profileName = state.profileName
 
     if (profileName != null) {
-        SectionHeader(label = "Profile — $profileName")
+        SectionHeader(label = stringResource(Res.string.trustedcertspanel_section_profile, profileName))
         Spacer(modifier = Modifier.height(6.dp))
 
         TrustedCertificateList(certificates = state.profileCertificates)
@@ -80,7 +79,7 @@ fun TrustedCertsPanel(state: TrustedCertsPanelState) {
         Spacer(modifier = Modifier.height(8.dp))
     }
 
-    SectionHeader(label = "Global")
+    SectionHeader(label = stringResource(Res.string.trustedcertspanel_section_global))
     Spacer(modifier = Modifier.height(6.dp))
 
     TrustedCertificateList(certificates = state.globalCertificates)

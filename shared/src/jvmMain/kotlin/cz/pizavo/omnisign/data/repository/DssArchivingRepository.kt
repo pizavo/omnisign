@@ -15,6 +15,7 @@ import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.result.RenewalCheckCacheEntry
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
@@ -82,21 +83,15 @@ class DssArchivingRepository(
 				profile = config.activeProfile?.let { config.profiles[it] },
 				operationOverrides = null
 			).getOrElse { error ->
-				return ArchivingError.ExtensionFailed(
-					message = error.message
-				).left()
+				return ArchivingError.ExtensionFailed(LocalizableText.Literal(error.message)).left()
 			}
 			
 			if (parameters.targetLevel == SignatureLevel.PADES_BASELINE_B) {
-				return ArchivingError.ExtensionFailed(
-					message = "Cannot extend to B-B: target level must be higher than the current level"
-				).left()
+				return ArchivingError.targetLevelNotHigher().left()
 			}
 			
 			val tsConfig = resolvedConfig.timestampServer
-				?: return ArchivingError.ExtensionFailed(
-					message = "A timestamp server must be configured for extension to ${parameters.targetLevel}"
-				).left()
+				?: return ArchivingError.timestampServerRequired(parameters.targetLevel.name).left()
 			
 			val dssLevel = parameters.targetLevel.toDss()
 			val statusAlert = CollectingStatusAlert()
@@ -134,40 +129,24 @@ class DssArchivingRepository(
 					operationOverrides = null
 				).getOrNull())?.timestampServer?.url
 				return ArchivingError.TimestampFailed(
-					message = tspErrorDetector.buildUserMessage(e, tsaUrl),
+					LocalizableText.Literal(tspErrorDetector.buildUserMessage(e, tsaUrl)),
 					details = e.message,
 					cause = e,
 				).left()
 			}
 			
 			if (documentInputErrorDetector.isEncrypted(e)) {
-				return ArchivingError.EncryptedDocument(
-					message = "The PDF is encrypted or password-protected and cannot be extended",
-					details = e.message,
-					cause = e,
-				).left()
+				return ArchivingError.pdfEncrypted(details = e.message, cause = e).left()
 			}
 
 			if (documentInputErrorDetector.isMalformed(e)) {
-				return ArchivingError.MalformedDocument(
-					message = "The file is not a valid PDF or could not be parsed",
-					details = e.message,
-					cause = e,
-				).left()
+				return ArchivingError.malformedPdf(details = e.message, cause = e).left()
 			}
 
 			if (revocationErrorDetector.isRevocationException(e)) {
-				ArchivingError.RevocationInfoError(
-					message = "Failed to obtain revocation information",
-					details = e.message,
-					cause = e
-				).left()
+				ArchivingError.revocationInfoFailed(details = e.message, cause = e).left()
 			} else {
-				ArchivingError.ExtensionFailed(
-					message = "Document extension failed",
-					details = e.message,
-					cause = e
-				).left()
+				ArchivingError.extensionFailed(details = e.message, cause = e).left()
 			}
 		}
 	}
@@ -180,9 +159,7 @@ class DssArchivingRepository(
 		return try {
 			val file = File(filePath)
 			if (!file.exists()) {
-				return ArchivingError.ExtensionFailed(
-					message = "File not found: $filePath"
-				).left()
+				return ArchivingError.fileNotFound(filePath).left()
 			}
 			
 			val now = Clock.System.now()
@@ -222,18 +199,11 @@ class DssArchivingRepository(
 				}
 				RenewalDecision.UNDETERMINABLE -> {
 					renewalCheckCache.remove(filePath)
-					ArchivingError.RenewalStatusUndeterminable(
-						message = "Cannot determine whether the document needs renewal: a timestamp's signing certificate could not be resolved",
-						details = "$filePath has a renewal-relevant timestamp whose signing (TSA) certificate — and thus its expiry — DSS could not resolve; the document may be missing the LT/LTA validation material required to assess it",
-					).left()
+					ArchivingError.renewalStatusUndeterminable(details = "$filePath has a renewal-relevant timestamp whose signing (TSA) certificate — and thus its expiry — DSS could not resolve; the document may be missing the LT/LTA validation material required to assess it").left()
 				}
 			}
 		} catch (e: Exception) {
-			ArchivingError.ExtensionFailed(
-				message = "Failed to check archival renewal status",
-				details = e.message,
-				cause = e
-			).left()
+			ArchivingError.renewalCheckFailed(details = e.message, cause = e).left()
 		}
 	}
 
@@ -426,11 +396,7 @@ class DssArchivingRepository(
 				).right()
 			}
 		} catch (e: Exception) {
-			ArchivingError.ExtensionFailed(
-				message = "Failed to inspect document timestamp state",
-				details = e.message,
-				cause = e
-			).left()
+			ArchivingError.timestampInspectFailed(details = e.message, cause = e).left()
 		}
 	}
 	

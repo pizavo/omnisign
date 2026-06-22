@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.domain.model.signature
 
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.text.MessageKey
 import kotlinx.serialization.Serializable
 
 /**
@@ -10,9 +12,15 @@ import kotlinx.serialization.Serializable
 @Serializable
 sealed interface CertificateTrustSource {
 
-    /** Trusted as an anchor published on a trusted list (e.g. the EU LOTL). */
+    /**
+     * Trusted as an anchor published on a trusted list (e.g. the EU LOTL).
+     *
+     * @property name The list's display name (e.g. `"EU LOTL"`), or `null` for a generic
+     *   trusted-list anchor whose specific list is not identified — rendered with a localized
+     *   "Trusted list" label.
+     */
     @Serializable
-    data class TrustedList(val name: String) : CertificateTrustSource
+    data class TrustedList(val name: String?) : CertificateTrustSource
 
     /** Trusted because it is in the app's global trust store. */
     @Serializable
@@ -24,12 +32,14 @@ sealed interface CertificateTrustSource {
 }
 
 /**
- * Human-readable label for this trust source — the trusted list's name, `"Global trust store"`, or
- * `"Profile: <name>"`. Shared by every surface that names a certificate's trust origin (the
- * certificate-details dialog, the plain-text report, the CLI) so the wording never drifts.
+ * Localizable label for this trust source — the trusted list's name (a [LocalizableText.Literal], or a
+ * keyed generic "Trusted list" when the list is unnamed), or a keyed global-trust-store /
+ * profile-store label. Shared by every surface that names a certificate's
+ * trust origin so the wording never drifts: the certificate-details dialog resolves it to the active
+ * locale, while the plain-text report and the CLI render its [LocalizableText.english].
  */
-fun CertificateTrustSource.displayLabel(): String = when (this) {
-    is CertificateTrustSource.TrustedList -> name
-    CertificateTrustSource.GlobalStore -> "Global trust store"
-    is CertificateTrustSource.ProfileStore -> "Profile: $profileName"
+fun CertificateTrustSource.displayLabel(): LocalizableText = when (this) {
+    is CertificateTrustSource.TrustedList -> name?.let { LocalizableText.Literal(it) } ?: LocalizableText.of(MessageKey.TRUST_SOURCE_TRUSTED_LIST)
+    CertificateTrustSource.GlobalStore -> LocalizableText.of(MessageKey.TRUST_SOURCE_GLOBAL_STORE)
+    is CertificateTrustSource.ProfileStore -> LocalizableText.of(MessageKey.TRUST_SOURCE_PROFILE, profileName)
 }

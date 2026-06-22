@@ -25,6 +25,8 @@ import cz.pizavo.omnisign.lumo.components.Text
 import cz.pizavo.omnisign.ui.model.PdfViewerState
 import cz.pizavo.omnisign.ui.platform.rememberPdfPageBitmap
 import kotlin.math.roundToInt
+import omnisign.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.stringResource
 
 /**
  * Base the maximum width of the rendered PDF page before any zoom is applied.
@@ -111,7 +113,11 @@ fun PdfViewerContent(
                 ) {
                     Image(
                         bitmap = bitmap,
-                        contentDescription = "Page ${state.currentPage + 1} of ${document.pageCount}",
+                        contentDescription = stringResource(
+                            Res.string.pdfviewer_page_of_description,
+                            state.currentPage + 1,
+                            document.pageCount,
+                        ),
                         modifier = Modifier.fillMaxWidth(),
                         contentScale = ContentScale.FillWidth,
                     )
@@ -123,7 +129,7 @@ fun PdfViewerContent(
                 contentAlignment = Alignment.Center,
             ) {
                 Text(
-                    text = "Rendering page…",
+                    text = stringResource(Res.string.pdfviewer_rendering_page),
                     style = LumoTheme.typography.body1,
                     color = LumoTheme.colors.textSecondary,
                 )
@@ -154,7 +160,7 @@ private fun NoDocumentPlaceholder() {
         contentAlignment = Alignment.Center,
     ) {
         Text(
-            text = "Open a PDF to get started",
+            text = stringResource(Res.string.pdfviewer_no_document_prompt),
             style = LumoTheme.typography.h2,
             color = LumoTheme.colors.textSecondary,
         )
@@ -210,7 +216,7 @@ private fun PdfNavigationBar(
                 enabled = zoomLevel > PdfViewerState.MIN_ZOOM,
                 variant = ButtonVariant.Ghost,
             ) {
-                Text(text = "−")
+                Text(text = stringResource(Res.string.pdfviewer_zoom_out))
             }
 
             Button(
@@ -218,7 +224,10 @@ private fun PdfNavigationBar(
                 variant = ButtonVariant.Ghost,
             ) {
                 Text(
-                    text = "${(zoomLevel * 100).roundToInt()}%",
+                    text = stringResource(
+                        Res.string.pdfviewer_zoom_percentage,
+                        (zoomLevel * 100).roundToInt(),
+                    ),
                     style = LumoTheme.typography.body2,
                 )
             }
@@ -228,7 +237,7 @@ private fun PdfNavigationBar(
                 enabled = zoomLevel < PdfViewerState.MAX_ZOOM,
                 variant = ButtonVariant.Ghost,
             ) {
-                Text(text = "+")
+                Text(text = stringResource(Res.string.pdfviewer_zoom_in))
             }
         }
 
@@ -241,11 +250,15 @@ private fun PdfNavigationBar(
                 enabled = currentPage > 0,
                 variant = ButtonVariant.Ghost,
             ) {
-                Text(text = "‹")
+                Text(text = stringResource(Res.string.pdfviewer_previous_page))
             }
 
             Text(
-                text = "${currentPage + 1} / $pageCount",
+                text = stringResource(
+                    Res.string.pdfviewer_page_indicator,
+                    currentPage + 1,
+                    pageCount,
+                ),
                 style = LumoTheme.typography.body2,
             )
 
@@ -254,7 +267,7 @@ private fun PdfNavigationBar(
                 enabled = currentPage < pageCount - 1,
                 variant = ButtonVariant.Ghost,
             ) {
-                Text(text = "›")
+                Text(text = stringResource(Res.string.pdfviewer_next_page))
             }
         }
     }

@@ -1,0 +1,14 @@
+<resources>
+	<string name="pkcs11diag_title">Diagnostika PKCS#11</string>
+	<string name="pkcs11diag_section_pcsc_readers">Čtečky PC/SC</string>
+	<string name="pkcs11diag_section_candidate_libraries">Možné knihovny PKCS#11</string>
+	<string name="pkcs11diag_section_drop_directory">Složka pro vkládání</string>
+	<string name="pkcs11diag_pcsc_empty">Nebyly nalezeny žádné čtečky PC/SC. Služba čipových karet operačního systému může být zastavena nebo není připojena žádná kompatibilní čtečka.</string>
+	<string name="pkcs11diag_candidates_empty">Při vyhledávání nebyly nalezeny žádné možné knihovny. Buď žádný ze zdrojů operačního systému neoznamuje modul PKCS#11, nebo jste nepřidali cestu v sekci {1}, případně nevložili knihovnu do {2}.</string>
+	<string name="pkcs11diag_link_settings">Globální nastavení → Knihovny PKCS#11</string>
+	<string name="pkcs11diag_link_drop_directory">složky pro vkládání</string>
+	<string name="pkcs11diag_drop_dir_description">Zkopírujte soubor knihovny PKCS#11 (.dll / .so / .dylib) do této složky, aby ji vyhledávání automaticky našlo:</string>
+	<string name="pkcs11diag_reader_card_present">karta vložena</string>
+	<string name="pkcs11diag_reader_empty">prázdná</string>
+	<string name="pkcs11diag_reader_atr">ATR: %1$s</string>
+</resources>

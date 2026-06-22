@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.commands.schedule
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import cz.pizavo.omnisign.data.preferences.loadFormatPreferences
 import cz.pizavo.omnisign.data.service.OsSchedulerService
 import cz.pizavo.omnisign.domain.model.result.label
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
@@ -38,11 +39,12 @@ class ScheduleStatus : CliktCommand(name = "status"), KoinComponent {
 			echo("No renewal run has been recorded yet.")
 			return
 		}
+		val dateFormat = loadFormatPreferences().dateFormat
 		val indent = " ".repeat(3)
 		echo("")
-		echo("Last successful run: ${record.lastSuccessAt?.formatDateTime() ?: "never"}")
+		echo("Last successful run: ${record.lastSuccessAt?.formatDateTime(dateFormat = dateFormat) ?: "never"}")
 		echo(
-			"Last run: ${record.lastRunAt.formatDateTime()} — ${record.outcome.label} " +
+			"Last run: ${record.lastRunAt.formatDateTime(dateFormat = dateFormat)} — ${record.outcome.label} " +
 					"(checked ${record.checked}, renewed ${record.renewed}, " +
 					"skipped ${record.skipped}, errors ${record.errors})"
 		)

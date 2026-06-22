@@ -40,17 +40,10 @@ import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
 import cz.pizavo.omnisign.ui.model.ProfileEditState
 import cz.pizavo.omnisign.ui.model.ProfileListState
 import cz.pizavo.omnisign.ui.model.ProfilePanelMode
-import omnisign.composeapp.generated.resources.Res
-import omnisign.composeapp.generated.resources.icon_cancel
-import omnisign.composeapp.generated.resources.icon_check
-import omnisign.composeapp.generated.resources.icon_delete
-import omnisign.composeapp.generated.resources.icon_eye
-import omnisign.composeapp.generated.resources.icon_pencil
-import omnisign.composeapp.generated.resources.icon_profile_add
-import omnisign.composeapp.generated.resources.icon_profile_deselect
-import omnisign.composeapp.generated.resources.icon_profile_off
-import omnisign.composeapp.generated.resources.icon_profile_select
+import cz.pizavo.omnisign.ui.model.resolve
+import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
+import org.jetbrains.compose.resources.stringResource
 
 private val RowIconSize = 18.dp
 private val RowButtonSize = 28.dp
@@ -154,18 +147,19 @@ private fun ProfileListContent(
                 onDelete(profileName)
                 pendingDeleteProfile = null
             },
-            title = "Delete profile",
-            text = "Are you sure you want to delete the profile \"$profileName\"? This action cannot be undone.",
-            confirmButtonText = "Delete",
-            dismissButtonText = "Cancel",
+            title = stringResource(Res.string.profiles_delete_profile_title),
+            text = stringResource(Res.string.profiles_delete_profile_confirm, profileName),
+            confirmButtonText = stringResource(Res.string.action_delete),
+            dismissButtonText = stringResource(Res.string.action_cancel),
             titleContentColor = LumoTheme.colors.error,
         )
     }
 
-    if (state.error != null) {
+    val errorText = state.error?.resolve()
+    if (errorText != null) {
         SelectableContent {
             Text(
-                text = state.error,
+                text = errorText,
                 style = LumoTheme.typography.body2,
                 color = LumoTheme.colors.error,
             )
@@ -196,7 +190,7 @@ private fun ProfileListContent(
 
         if (state.profiles.isEmpty() && !state.creatingNew && !state.loading) {
             Text(
-                text = "No profiles defined yet.",
+                text = stringResource(Res.string.profiles_no_profiles),
                 style = LumoTheme.typography.body2,
                 color = LumoTheme.colors.textSecondary,
             )
@@ -242,7 +236,7 @@ private fun ProfileToolbar(
     ) {
         if (!readOnly) {
             TooltipBox(
-                tooltip = { Tooltip { Text(text = "Add profile") } },
+                tooltip = { Tooltip { Text(text = stringResource(Res.string.profiles_add_profile)) } },
                 state = rememberTooltipState(),
             ) {
                 IconButton(
@@ -257,7 +251,7 @@ private fun ProfileToolbar(
                 ) {
                     Icon(
                         painter = painterResource(Res.drawable.icon_profile_add),
-                        contentDescription = "Add profile",
+                        contentDescription = stringResource(Res.string.profiles_add_profile),
                         modifier = Modifier.size(RowIconSize),
                     )
                 }
@@ -265,7 +259,7 @@ private fun ProfileToolbar(
         }
 
         TooltipBox(
-            tooltip = { Tooltip { Text(text = "Deselect active profile") } },
+            tooltip = { Tooltip { Text(text = stringResource(Res.string.profiles_deselect_active_profile)) } },
             state = rememberTooltipState(),
         ) {
             IconButton(
@@ -280,7 +274,7 @@ private fun ProfileToolbar(
             ) {
                 Icon(
                     painter = painterResource(Res.drawable.icon_profile_off),
-                    contentDescription = "Deselect active profile",
+                    contentDescription = stringResource(Res.string.profiles_deselect_active_profile),
                     modifier = Modifier.size(RowIconSize),
                 )
             }
@@ -319,14 +313,14 @@ private fun NewProfileRow(
             onValueChange = { name = it },
             modifier = Modifier.weight(1f).focusRequester(focusRequester),
             singleLine = true,
-            placeholder = { Text(text = "Profile name") },
+            placeholder = { Text(text = stringResource(Res.string.profiles_profile_name_placeholder)) },
             isError = name.isNotEmpty() && !isValid,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
             keyboardActions = KeyboardActions(onDone = { if (isValid) onConfirm(name) }),
         )
 
         TooltipBox(
-            tooltip = { Tooltip { Text(text = "Confirm") } },
+            tooltip = { Tooltip { Text(text = stringResource(Res.string.action_confirm)) } },
             state = rememberTooltipState(),
         ) {
             IconButton(
@@ -341,14 +335,14 @@ private fun NewProfileRow(
             ) {
                 Icon(
                     painter = painterResource(Res.drawable.icon_check),
-                    contentDescription = "Confirm new profile",
+                    contentDescription = stringResource(Res.string.profiles_confirm_new_profile),
                     modifier = Modifier.size(RowIconSize),
                 )
             }
         }
 
         TooltipBox(
-            tooltip = { Tooltip { Text(text = "Cancel") } },
+            tooltip = { Tooltip { Text(text = stringResource(Res.string.action_cancel)) } },
             state = rememberTooltipState(),
         ) {
             IconButton(
@@ -362,7 +356,7 @@ private fun NewProfileRow(
             ) {
                 Icon(
                     painter = painterResource(Res.drawable.icon_cancel),
-                    contentDescription = "Cancel new profile",
+                    contentDescription = stringResource(Res.string.profiles_cancel_new_profile),
                     modifier = Modifier.size(RowIconSize),
                 )
             }
@@ -409,7 +403,7 @@ private fun ProfileRow(
             }
         }
 
-        val selectLabel = if (isActive) "Deselect profile" else "Select profile"
+        val selectLabel = if (isActive) stringResource(Res.string.profiles_deselect_profile) else stringResource(Res.string.profiles_select_profile)
         val selectIcon = if (isActive)
             painterResource(Res.drawable.icon_profile_deselect)
         else
@@ -436,7 +430,7 @@ private fun ProfileRow(
             }
         }
 
-        val editLabel = if (readOnly) "View profile" else "Edit profile"
+        val editLabel = if (readOnly) stringResource(Res.string.profiles_view_profile) else stringResource(Res.string.profiles_edit_profile)
         val editIcon = if (readOnly)
             painterResource(Res.drawable.icon_eye)
         else
@@ -465,7 +459,7 @@ private fun ProfileRow(
 
         if (!readOnly) {
             TooltipBox(
-                tooltip = { Tooltip { Text(text = "Delete profile") } },
+                tooltip = { Tooltip { Text(text = stringResource(Res.string.profiles_delete_profile)) } },
                 state = rememberTooltipState(),
             ) {
                 IconButton(
@@ -479,7 +473,7 @@ private fun ProfileRow(
                 ) {
                     Icon(
                         painter = painterResource(Res.drawable.icon_delete),
-                        contentDescription = "Delete profile",
+                        contentDescription = stringResource(Res.string.profiles_delete_profile),
                         modifier = Modifier.size(RowIconSize),
                     )
                 }

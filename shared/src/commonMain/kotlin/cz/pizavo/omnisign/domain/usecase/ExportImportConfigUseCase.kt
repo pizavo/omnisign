@@ -26,9 +26,7 @@ class ExportImportConfigUseCase(
 	 */
 	suspend fun exportApp(format: ConfigFormat): OperationResult<String> {
 		val serializer = serializerRegistry.get(format)
-			?: return ConfigurationError.InvalidConfiguration(
-				message = "No serializer registered for format $format"
-			).left()
+			?: return ConfigurationError.noSerializerForFormat(format.name).left()
 		val config = configRepository.getCurrentConfig()
 		return serializer.serializeApp(config)
 	}
@@ -42,9 +40,7 @@ class ExportImportConfigUseCase(
 	 */
 	suspend fun importApp(text: String, format: ConfigFormat): OperationResult<Unit> {
 		val serializer = serializerRegistry.get(format)
-			?: return ConfigurationError.InvalidConfiguration(
-				message = "No serializer registered for format $format"
-			).left()
+			?: return ConfigurationError.noSerializerForFormat(format.name).left()
 		return serializer.deserializeApp(text).fold(
 			ifLeft = { it.left() },
 			ifRight = { configRepository.saveConfig(it) }
@@ -59,9 +55,7 @@ class ExportImportConfigUseCase(
 	 */
 	suspend fun exportGlobal(format: ConfigFormat): OperationResult<String> {
 		val serializer = serializerRegistry.get(format)
-			?: return ConfigurationError.InvalidConfiguration(
-				message = "No serializer registered for format $format"
-			).left()
+			?: return ConfigurationError.noSerializerForFormat(format.name).left()
 		val config = configRepository.getCurrentConfig()
 		return serializer.serializeGlobal(config.global)
 	}
@@ -76,9 +70,7 @@ class ExportImportConfigUseCase(
 	 */
 	suspend fun importGlobal(text: String, format: ConfigFormat): OperationResult<Unit> {
 		val serializer = serializerRegistry.get(format)
-			?: return ConfigurationError.InvalidConfiguration(
-				message = "No serializer registered for format $format"
-			).left()
+			?: return ConfigurationError.noSerializerForFormat(format.name).left()
 		return serializer.deserializeGlobal(text).fold(
 			ifLeft = { it.left() },
 			ifRight = { global ->
@@ -97,14 +89,10 @@ class ExportImportConfigUseCase(
 	 */
 	suspend fun exportProfile(profileName: String, format: ConfigFormat): OperationResult<String> {
 		val serializer = serializerRegistry.get(format)
-			?: return ConfigurationError.InvalidConfiguration(
-				message = "No serializer registered for format $format"
-			).left()
+			?: return ConfigurationError.noSerializerForFormat(format.name).left()
 		val config = configRepository.getCurrentConfig()
 		val profile = config.profiles[profileName]
-			?: return ConfigurationError.InvalidConfiguration(
-				message = "Profile '$profileName' does not exist"
-			).left()
+			?: return ConfigurationError.profileNotFound(profileName).left()
 		return serializer.serializeProfile(profile)
 	}
 	
@@ -123,9 +111,7 @@ class ExportImportConfigUseCase(
 		overrideName: String? = null
 	): OperationResult<String> {
 		val serializer = serializerRegistry.get(format)
-			?: return ConfigurationError.InvalidConfiguration(
-				message = "No serializer registered for format $format"
-			).left()
+			?: return ConfigurationError.noSerializerForFormat(format.name).left()
 		return serializer.deserializeProfile(text).fold(
 			ifLeft = { it.left() },
 			ifRight = { profile ->

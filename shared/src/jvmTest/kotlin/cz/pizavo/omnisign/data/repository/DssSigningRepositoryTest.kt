@@ -11,6 +11,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.*
 import io.kotest.assertions.arrow.core.shouldBeLeft
@@ -81,7 +82,7 @@ class DssSigningRepositoryTest : FunSpec({
 	test("signDocument returns TokenAccessError when token discovery fails") {
 		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
 		coEvery { tokenService.discoverTokens() } returns SigningError.TokenAccessError(
-			message = "No tokens found"
+			text = LocalizableText.Literal("No tokens found")
 		).left()
 		
 		val params = SigningParameters(
@@ -148,7 +149,7 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { tokenService.probeTokenPresent(tokenInfo) } returns true
 		coEvery { tokenService.loadCertificatesSilent(tokenInfo, "") } returns listOf(certEntry).right()
 		coEvery { tokenService.getSigningToken(certEntry, "") } returns SigningError.TokenAccessError(
-			message = "PIN incorrect"
+			text = LocalizableText.Literal("PIN incorrect")
 		).left()
 
 		val params = SigningParameters(
@@ -222,7 +223,7 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { tokenService.probeTokenPresent(tokenInfo2) } returns true
 		coEvery { tokenService.loadCertificatesSilent(tokenInfo1, null) } returns listOf(cert1).right()
 		coEvery { tokenService.loadCertificatesSilent(tokenInfo2, null) } returns SigningError.TokenAccessError(
-			message = "Access denied"
+			text = LocalizableText.Literal("Access denied")
 		).left()
 
 		val result = repository.listAvailableCertificates().shouldBeRight()
@@ -230,12 +231,12 @@ class DssSigningRepositoryTest : FunSpec({
 		result.certificates.first().alias shouldBe "cert-a"
 		result.tokenWarnings.shouldHaveSize(1)
 		result.tokenWarnings.first().tokenId shouldBe "t2"
-		result.tokenWarnings.first().message shouldBe "Access denied"
+		result.tokenWarnings.first().message.english() shouldBe "Access denied"
 	}
 	
 	test("listAvailableCertificates returns TokenAccessError when discovery fails") {
 		coEvery { tokenService.discoverTokens() } returns SigningError.TokenAccessError(
-			message = "No tokens"
+			text = LocalizableText.Literal("No tokens")
 		).left()
 		
 		repository.listAvailableCertificates()
@@ -371,7 +372,7 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { credentialStore.getPassword(any(), "t1") } returns null
 		coEvery { tokenService.listCertificatesNoLogin(pinToken) } returns emptyList<CertificateEntry>().right()
 		coEvery { tokenService.loadCertificates(pinToken, null) } returns SigningError.TokenAccessError(
-			message = "PIN entry cancelled for 'PIN Token'"
+			text = LocalizableText.Literal("PIN entry cancelled for 'PIN Token'")
 		).left()
 
 		val result = repository.listAvailableCertificates(promptForLocked = true).shouldBeRight()
