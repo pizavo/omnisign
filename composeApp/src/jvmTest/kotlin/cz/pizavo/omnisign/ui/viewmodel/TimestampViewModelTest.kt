@@ -5,6 +5,7 @@ import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
@@ -45,6 +46,11 @@ class TimestampViewModelTest : FunSpec({
 	val noTimestamps = DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = false)
 	val hasDocTs = DocumentTimestampInfo(hasDocumentTimestamp = true, containsLtData = true)
 	val hasLtOnly = DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = true)
+	val hasSigTsOnly = DocumentTimestampInfo(
+		hasDocumentTimestamp = false,
+		containsLtData = false,
+		hasSignatureTimestamp = true,
+	)
 
 	val appConfig = AppConfig(
 		global = GlobalConfig(),
@@ -85,12 +91,13 @@ class TimestampViewModelTest : FunSpec({
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
 			state.timestampType shouldBe TimestampType.ARCHIVAL_TIMESTAMP
-			state.disabledTypes shouldBe emptySet()
+			state.currentLevel shouldBe SignatureLevel.PADES_BASELINE_B
+			state.unavailableTypes shouldBe emptySet()
 			state.suggestedName shouldContain "-extended"
 		}
 	}
 
-	test("open disables Signature Timestamp when document has document timestamp") {
+	test("open marks Signature Timestamp unavailable when document has a document timestamp") {
 		runTest(testDispatcher) {
 			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns hasDocTs.right()
 
@@ -102,8 +109,27 @@ class TimestampViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
-			state.disabledTypes shouldBe setOf(TimestampType.SIGNATURE_TIMESTAMP)
+			state.unavailableTypes shouldBe setOf(TimestampType.SIGNATURE_TIMESTAMP)
 			state.timestampType shouldBe TimestampType.ARCHIVAL_TIMESTAMP
+			state.currentLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+		}
+	}
+
+	test("open defaults to the revocation option at B-T level for a timestamped document") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns hasSigTsOnly.right()
+
+			val vm = buildVm()
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
+			state.currentLevel shouldBe SignatureLevel.PADES_BASELINE_T
+			state.timestampType shouldBe TimestampType.SIGNATURE_TIMESTAMP
+			state.unavailableTypes shouldBe emptySet()
 		}
 	}
 
@@ -128,7 +154,7 @@ class TimestampViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
-			state.disabledTypes shouldBe emptySet()
+			state.unavailableTypes shouldBe emptySet()
 		}
 	}
 

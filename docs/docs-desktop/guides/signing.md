@@ -127,8 +127,8 @@ Checking the archival timestamp automatically enables the signature timestamp.
 The signing dialog does not offer **B-T** as a standalone option. Enabling the signature
 timestamp always targets **B-LT** (timestamp plus embedded revocation data). B-T can only
 be reached as a fallback when B-LT is requested, but revocation data cannot be obtained —
-in that case the [timestamping dialog](timestamping.md) offers a Signature Timestamp
-extension as a separate operation.
+in that case the [timestamping dialog](timestamping.md) can later add the revocation data to
+the resulting B-T document as a separate operation.
 :::
 
 ### Hash algorithm

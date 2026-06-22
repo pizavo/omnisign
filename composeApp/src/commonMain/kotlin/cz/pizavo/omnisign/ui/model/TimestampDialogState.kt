@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.ui.model
 
+import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 
@@ -20,16 +21,20 @@ sealed interface TimestampDialogState {
 	 * The extension form is ready for user input.
 	 *
 	 * @property timestampType The selected timestamp operation type.
-	 * @property disabledTypes Timestamp types that are not selectable (e.g. when the
-	 *   document already has a document timestamp, [TimestampType.SIGNATURE_TIMESTAMP]
-	 *   is disabled because DSS would reject the level degradation).
+	 * @property currentLevel The document's current PAdES level, used to label each option by the
+	 *   change it performs rather than by its target level name.
+	 * @property unavailableTypes Timestamp types omitted from the dropdown because they do not
+	 *   apply at [currentLevel] (e.g. once the document has a document timestamp, extending back to
+	 *   B-LT would be a level degradation DSS rejects, so [TimestampType.SIGNATURE_TIMESTAMP] is not
+	 *   offered).
 	 * @property suggestedName Default file-name stem (no extension) for the save dialog, e.g. `contract-extended`.
 	 * @property inputDirectory Source-document directory used as the save dialog's initial location; `null` on the web target.
 	 * @property addToRenewalJob Whether to offer adding the output file to a renewal job after a successful LTA extension.
 	 */
 	data class Ready(
 		val timestampType: TimestampType = TimestampType.ARCHIVAL_TIMESTAMP,
-		val disabledTypes: Set<TimestampType> = emptySet(),
+		val currentLevel: SignatureLevel = SignatureLevel.PADES_BASELINE_B,
+		val unavailableTypes: Set<TimestampType> = emptySet(),
 		val suggestedName: String = "",
 		val inputDirectory: String? = null,
 		val addToRenewalJob: Boolean = false,

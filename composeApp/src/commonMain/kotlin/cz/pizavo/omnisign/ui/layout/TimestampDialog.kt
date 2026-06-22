@@ -19,7 +19,7 @@ import org.jetbrains.compose.resources.stringResource
  * Modal dialog for extending a signed PDF to a higher PAdES level (timestamp / archival).
  *
  * The dialog adapts its content to the current [TimestampDialogState]:
- * - [TimestampDialogState.Ready]: form with timestamp type selector and output path.
+ * - [TimestampDialogState.Ready]: form with the timestamp type selector.
  * - [TimestampDialogState.Extending]: progress indicator.
  * - [TimestampDialogState.RevocationWarning]: revocation data warning with abort/continue options.
  * - [TimestampDialogState.Success]: summary of the extension result.
@@ -117,9 +117,9 @@ private fun TimestampDialogHeader(onClose: () -> Unit, closeable: Boolean) {
 /**
  * Form section for configuring the extension operation.
  *
- * Displays a dropdown with [TimestampType] options and an output path field.
- * Types present in [TimestampDialogState.Ready.disabledTypes] are shown but
- * not selectable.
+ * Displays a dropdown of [TimestampType] options, each labelled by the change it performs
+ * relative to the document's current level. Types in [TimestampDialogState.Ready.unavailableTypes]
+ * are omitted because they do not apply at the current level.
  *
  * @param state Current [TimestampDialogState.Ready] state.
  * @param onFieldChange Called with a transform to update a field.
@@ -137,14 +137,13 @@ private fun TimestampFormContent(
 	) {
 		DropdownSelector(
 			selected = state.timestampType,
-			options = TimestampType.entries.toList(),
+			options = TimestampType.entries.filterNot { it in state.unavailableTypes },
 			onSelect = { type ->
 				if (type != null) onFieldChange { it.copy(timestampType = type) }
 			},
 			label = { Text(stringResource(Res.string.timestamp_type_label)) },
 			showNullOption = false,
-			disabledOptions = state.disabledTypes,
-			itemLabel = { it.label() },
+			itemLabel = { it.label(state.currentLevel) },
 			modifier = Modifier.fillMaxWidth(),
 		)
 
@@ -316,7 +315,6 @@ private fun TimestampDialogFooter(
 				Button(
 					text = stringResource(Res.string.timestamp_extend_button),
 					variant = ButtonVariant.Primary,
-					enabled = state.timestampType !in state.disabledTypes,
 					onClick = onExtend,
 				)
 			}

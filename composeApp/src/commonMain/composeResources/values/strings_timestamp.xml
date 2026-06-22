@@ -2,8 +2,11 @@
 	<string name="timestamp_dialog_title">Extend Document</string>
 	<string name="timestamp_extending">Extending document...</string>
 	<string name="timestamp_type_label">Timestamp Type</string>
-	<string name="timestamp_type_signature">Signature Timestamp</string>
-	<string name="timestamp_type_archival">Archival Timestamp</string>
+	<string name="timestamp_option_add_timestamp_revocation">Add timestamp &amp; revocation data</string>
+	<string name="timestamp_option_add_revocation">Add revocation data</string>
+	<string name="timestamp_option_refresh_revocation">Refresh revocation data</string>
+	<string name="timestamp_option_add_archival">Add archival timestamp</string>
+	<string name="timestamp_option_renew_archival">Renew archival timestamp</string>
 	<string name="timestamp_add_to_renewal_tooltip">Offer to set up automatic archival renewal after extending</string>
 	<string name="timestamp_revocation_message">The extension to B-LT failed because revocation information (CRL/OCSP) could not be obtained. You can continue with a B-T extension (signature timestamp only, without revocation data), or abort and try again later.</string>
 	<string name="timestamp_success_title">Document extended successfully</string>
