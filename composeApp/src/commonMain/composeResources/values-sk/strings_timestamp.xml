@@ -2,8 +2,11 @@
 	<string name="timestamp_dialog_title">Rozšíriť dokument</string>
 	<string name="timestamp_extending">Rozširuje sa dokument...</string>
 	<string name="timestamp_type_label">Typ časovej pečiatky</string>
-	<string name="timestamp_type_signature">Časová pečiatka podpisu</string>
-	<string name="timestamp_type_archival">Archívna časová pečiatka</string>
+	<string name="timestamp_option_add_timestamp_revocation">Pridať časovú pečiatku a informácie o zrušení</string>
+	<string name="timestamp_option_add_revocation">Pridať informácie o zrušení</string>
+	<string name="timestamp_option_refresh_revocation">Aktualizovať informácie o zrušení</string>
+	<string name="timestamp_option_add_archival">Pridať archívnu časovú pečiatku</string>
+	<string name="timestamp_option_renew_archival">Obnoviť archívnu časovú pečiatku</string>
 	<string name="timestamp_add_to_renewal_tooltip">Po rozšírení ponúknuť nastavenie automatickej archívnej obnovy</string>
 	<string name="timestamp_revocation_message">Rozšírenie na B-LT zlyhalo, pretože sa nepodarilo získať informácie o zrušení (CRL/OCSP). Môžete pokračovať rozšírením na B-T (iba časová pečiatka podpisu, bez údajov o zrušení), alebo akciu prerušiť a skúsiť to neskôr.</string>
 	<string name="timestamp_success_title">Dokument bol úspešne rozšírený</string>

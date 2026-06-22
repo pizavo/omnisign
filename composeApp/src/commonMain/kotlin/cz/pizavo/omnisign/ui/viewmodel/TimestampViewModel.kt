@@ -167,14 +167,16 @@ class TimestampViewModel(
 					ifRight = { config ->
 						resolvedConfig = config
 						val sourceName = document.filePath ?: document.name
-						val disabledTypes = if (tsInfo.hasDocumentTimestamp) {
+						val currentLevel = currentLevelOf(tsInfo)
+						val unavailableTypes = if (tsInfo.hasDocumentTimestamp) {
 							setOf(TimestampType.SIGNATURE_TIMESTAMP)
 						} else {
 							emptySet()
 						}
 						val ready = TimestampDialogState.Ready(
-							timestampType = TimestampType.ARCHIVAL_TIMESTAMP,
-							disabledTypes = disabledTypes,
+							timestampType = defaultTypeFor(currentLevel),
+							currentLevel = currentLevel,
+							unavailableTypes = unavailableTypes,
 							suggestedName = SigningViewModel.suggestedSaveName(sourceName, "-extended"),
 							inputDirectory = document.filePath?.let { SigningViewModel.parentDirectory(it) },
 						)
@@ -185,6 +187,39 @@ class TimestampViewModel(
 			}
 		}
 	}
+
+	/**
+	 * Derive the document's current PAdES level from its inspected timestamp state.
+	 *
+	 * Checks the strongest signal first: a document timestamp means B-LTA, LT data means B-LT, a
+	 * signature timestamp alone means B-T, and otherwise the document is still B-B.
+	 *
+	 * @param info The inspected timestamp state of the document.
+	 * @return The PAdES level the document is currently at.
+	 */
+	private fun currentLevelOf(info: DocumentTimestampInfo): SignatureLevel = when {
+		info.hasDocumentTimestamp -> SignatureLevel.PADES_BASELINE_LTA
+		info.containsLtData -> SignatureLevel.PADES_BASELINE_LT
+		info.hasSignatureTimestamp -> SignatureLevel.PADES_BASELINE_T
+		else -> SignatureLevel.PADES_BASELINE_B
+	}
+
+	/**
+	 * The extension option pre-selected when the dialog opens for a document at [currentLevel].
+	 *
+	 * A B-T document most likely needs only revocation data added, so the B-LT option
+	 * ([TimestampType.SIGNATURE_TIMESTAMP]) is the default there; every other level defaults to the
+	 * archival option — the natural next step, and the only enabled one at B-LTA.
+	 *
+	 * @param currentLevel The document's current PAdES level.
+	 * @return The timestamp type to pre-select.
+	 */
+	private fun defaultTypeFor(currentLevel: SignatureLevel): TimestampType =
+		if (currentLevel == SignatureLevel.PADES_BASELINE_T) {
+			TimestampType.SIGNATURE_TIMESTAMP
+		} else {
+			TimestampType.ARCHIVAL_TIMESTAMP
+		}
 
 	/**
 	 * Apply a field-level transformation to the current [TimestampDialogState.Ready] state.

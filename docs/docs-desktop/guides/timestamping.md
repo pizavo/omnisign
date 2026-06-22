@@ -11,15 +11,23 @@ OmniSign Desktop timestamp dialog.
 
 ## When to use
 
-| Current level    | Target          | Operation type      |
-|------------------|-----------------|---------------------|
-| B-B              | B-LT            | Signature Timestamp |
-| B-B / B-T / B-LT | B-LTA           | Archival Timestamp  |
-| B-LTA            | B-LTA (renewed) | Archival Timestamp  |
+The dialog offers the operations applicable to your document, each labelled by the change it
+makes rather than by the PAdES level code — so the wording adapts to the document's current
+level:
+
+| Document is… | Long-term validation option         | Archival option          |
+|--------------|-------------------------------------|--------------------------|
+| B-B          | Add timestamp & revocation data     | Add archival timestamp   |
+| B-T          | Add revocation data                 | Add archival timestamp   |
+| B-LT         | Refresh revocation data             | Add archival timestamp   |
+| B-LTA        | *(unavailable)*                     | Renew archival timestamp |
+
+The long-term validation option extends to **PAdES BASELINE-LT**; the archival option extends to
+**PAdES BASELINE-LTA**.
 
 :::note
-**B-T** is not a directly selectable target. It can only be reached as a fallback when
-Signature Timestamp (B-LT) is requested, but revocation data cannot be obtained.
+**B-T** is not a directly selectable target. It is only reached as a fallback when the long-term
+validation option is chosen but revocation data cannot be obtained.
 :::
 
 ## 1. Open a signed PDF
@@ -34,20 +42,26 @@ document is loaded.
 
 ## 3. Choose the timestamp type
 
-Select the operation type from the dropdown:
+Select the operation from the dropdown. Each option is named after the change it makes to the
+current document:
 
-- **Signature Timestamp** — adds a signature timestamp and embeds revocation data (CRL/OCSP),
-  extending the document to **PAdES BASELINE-LT**. If revocation data cannot be obtained, you
-  may be offered a fallback to BASELINE-T.
-- **Archival Timestamp** — adds an archival document timestamp, extending the document to
-  **PAdES BASELINE-LTA**. Also used to renew an existing LTA document.
+- **Long-term validation** — embeds revocation data (CRL/OCSP) so the signature can be validated
+  long after signing, extending the document to **PAdES BASELINE-LT**. The label reflects what is
+  added to *your* document: *Add timestamp & revocation data* for an un-timestamped (B-B)
+  document, *Add revocation data* for an already-timestamped (B-T) one, or *Refresh revocation
+  data* for a B-LT document. If revocation data cannot be obtained, you may be offered a fallback
+  to BASELINE-T.
+- **Archival timestamp** — adds an archival document timestamp, extending the document to **PAdES
+  BASELINE-LTA** (*Add archival timestamp*), or renewing an existing LTA document (*Renew archival
+  timestamp*).
 
 ![Extend Document dialog with the Timestamp Type dropdown](/img/desktop/timestamp-type-dropdown.avif)
 
 :::note
-Some timestamp types may be disabled depending on the document's current signature level.
-For example, if the document already has a document timestamp, the Signature Timestamp
-option is grayed out because DSS would reject the level degradation.
+The available options depend on the document's current level. For example, once a document
+already has a document timestamp (B-LTA), the long-term validation option is no longer offered —
+extending back to B-LT would be a level degradation DSS rejects — so only archival renewal
+remains.
 :::
 
 ## 4. Add to renewal job

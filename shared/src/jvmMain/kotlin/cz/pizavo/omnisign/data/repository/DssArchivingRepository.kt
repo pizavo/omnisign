@@ -393,13 +393,38 @@ class DssArchivingRepository(
 				DocumentTimestampInfo(
 					hasDocumentTimestamp = hasDocumentTimestamp,
 					containsLtData = containsLtData,
+					hasSignatureTimestamp = detectSignatureTimestamp(inputBytes),
 				).right()
 			}
 		} catch (e: Exception) {
 			ArchivingError.timestampInspectFailed(details = e.message, cause = e).left()
 		}
 	}
-	
+
+	/**
+	 * Whether any signature in [inputBytes] embeds a signature timestamp — the unsigned attribute
+	 * that marks PAdES BASELINE-T.
+	 *
+	 * Parses the signatures with DSS but runs no validation: the certificate verifier carries no
+	 * trust or online revocation sources, so no network lookups occur. This is what lets the dialog
+	 * tell a B-B document (no timestamp) apart from a B-T one, which the PDF-structure flags in
+	 * [getDocumentTimestampInfo] cannot. A parse failure degrades to `false`, so it never fails the
+	 * surrounding inspection.
+	 *
+	 * @param inputBytes The raw PDF bytes to inspect.
+	 * @return `true` when at least one signature carries a signature timestamp.
+	 */
+	@Suppress("TooGenericExceptionCaught", "SwallowedException")
+	private fun detectSignatureTimestamp(inputBytes: ByteArray): Boolean =
+		try {
+			val validator = PDFDocumentValidator(InMemoryDocument(inputBytes)).apply {
+				setCertificateVerifier(CommonCertificateVerifier())
+			}
+			validator.signatures.any { it.signatureTimestamps.isNotEmpty() }
+		} catch (e: Exception) {
+			false
+		}
+
 	/**
 	 * Build a [PAdESService] wired for document extension with revocation and TSA sources.
 	 *

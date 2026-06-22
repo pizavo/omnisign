@@ -2,8 +2,11 @@
 	<string name="timestamp_dialog_title">Rozšířit dokument</string>
 	<string name="timestamp_extending">Rozšiřování dokumentu...</string>
 	<string name="timestamp_type_label">Typ časového razítka</string>
-	<string name="timestamp_type_signature">Časové razítko podpisu</string>
-	<string name="timestamp_type_archival">Archivní časové razítko</string>
+	<string name="timestamp_option_add_timestamp_revocation">Přidat časové razítko a informace o zneplatnění</string>
+	<string name="timestamp_option_add_revocation">Přidat informace o zneplatnění</string>
+	<string name="timestamp_option_refresh_revocation">Aktualizovat informace o zneplatnění</string>
+	<string name="timestamp_option_add_archival">Přidat archivní časové razítko</string>
+	<string name="timestamp_option_renew_archival">Obnovit archivní časové razítko</string>
 	<string name="timestamp_add_to_renewal_tooltip">Po rozšíření nabídnout nastavení automatického obnovení archivního razítka</string>
 	<string name="timestamp_revocation_message">Rozšíření na úroveň B-LT selhalo, protože nebylo možné získat informace o zneplatnění (CRL/OCSP). Můžete pokračovat rozšířením na B-T (pouze časové razítko podpisu, bez údajů o zneplatnění), nebo akci přerušit a zkusit to později.</string>
 	<string name="timestamp_success_title">Dokument byl úspěšně rozšířen</string>
