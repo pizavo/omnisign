@@ -40,10 +40,10 @@ import cz.pizavo.omnisign.ui.platform.setDebugLoggingEnabled
 import cz.pizavo.omnisign.ui.platform.setExtendedLoggingEnabled
 import cz.pizavo.omnisign.ui.toast.LocalToastService
 import cz.pizavo.omnisign.ui.toast.ToastMessage
+import cz.pizavo.omnisign.ui.toast.ToastText
 import kotlinx.coroutines.launch
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.DrawableResource
-import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -222,7 +222,6 @@ private fun HelpSupportSection(
 ) {
     val scope = rememberCoroutineScope()
     val toast = LocalToastService.current
-    val openFolderFailedMessage = stringResource(Res.string.help_toast_open_folder_failed)
     var extended by remember { mutableStateOf(isExtendedLoggingEnabled()) }
 
     Spacer(modifier = Modifier.height(16.dp))
@@ -248,7 +247,7 @@ private fun HelpSupportSection(
                 scope.launch {
                     val exported = exportSupportLogArchive()
                     toast?.show(
-                        ToastMessage(getString(if (exported) Res.string.help_toast_logs_exported else Res.string.help_toast_logs_cancelled)),
+                        ToastMessage(ToastText.Resource(if (exported) Res.string.help_toast_logs_exported else Res.string.help_toast_logs_cancelled)),
                     )
                 }
             },
@@ -259,7 +258,7 @@ private fun HelpSupportSection(
             contentDescription = stringResource(Res.string.help_cd_open_log_folder),
             onClick = {
                 if (!openSupportLogDirectory()) {
-                    toast?.show(ToastMessage(openFolderFailedMessage))
+                    toast?.show(ToastMessage(ToastText.Resource(Res.string.help_toast_open_folder_failed)))
                 }
             },
         )

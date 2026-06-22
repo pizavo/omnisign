@@ -22,6 +22,7 @@ import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.SigningDialogState
 import cz.pizavo.omnisign.ui.toast.ToastService
+import cz.pizavo.omnisign.ui.toast.ToastText
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
@@ -39,6 +40,10 @@ import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.*
 import kotlin.time.Instant
+import omnisign.composeapp.generated.resources.Res
+import omnisign.composeapp.generated.resources.signing_rescan_detected
+import omnisign.composeapp.generated.resources.signing_rescan_none
+import omnisign.composeapp.generated.resources.signing_show_diagnostic_info
 
 /**
  * Unit tests for [SigningViewModel].
@@ -962,7 +967,7 @@ class SigningViewModelTest : FunSpec({
 
 			val toast = toastService.active.value
 			toast.shouldNotBeNull()
-			toast.message.text shouldContain "1 PKCS#11 entry detected"
+			toast.message.text shouldBe ToastText.Plural(Res.plurals.signing_rescan_detected, 1, listOf(1))
 		}
 	}
 
@@ -999,8 +1004,8 @@ class SigningViewModelTest : FunSpec({
 
 			val toast = toastService.active.value
 			toast.shouldNotBeNull()
-			toast.message.text shouldContain "no PKCS#11 tokens detected"
-			toast.message.actionLabel shouldBe "Show diagnostic info"
+			toast.message.text shouldBe ToastText.Resource(Res.string.signing_rescan_none)
+			toast.message.actionLabel shouldBe ToastText.Resource(Res.string.signing_show_diagnostic_info)
 		}
 	}
 

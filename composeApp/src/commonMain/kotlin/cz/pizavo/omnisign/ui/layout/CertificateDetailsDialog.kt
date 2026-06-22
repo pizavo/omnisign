@@ -64,11 +64,11 @@ import cz.pizavo.omnisign.ui.platform.chooseSaveDestination
 import cz.pizavo.omnisign.ui.platform.writeBytesToPath
 import cz.pizavo.omnisign.ui.toast.LocalToastService
 import cz.pizavo.omnisign.ui.toast.ToastMessage
+import cz.pizavo.omnisign.ui.toast.ToastText
 import kotlin.math.floor
 import kotlinx.coroutines.launch
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.DrawableResource
-import org.jetbrains.compose.resources.getString
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
 
@@ -164,7 +164,7 @@ fun CertificateDetailsDialog(
                                             val error = writeBytesToPath(destination, format.encode(link.der))
                                             toast?.show(
                                                 ToastMessage(
-                                                    if (error == null) getString(Res.string.certdetails_export_success) else getString(Res.string.certdetails_export_failed, error),
+                                                    if (error == null) ToastText.Resource(Res.string.certdetails_export_success) else ToastText.Resource(Res.string.certdetails_export_failed, listOf(error)),
                                                 ),
                                             )
                                         }
@@ -596,7 +596,7 @@ private fun CertificateTrustButton(
         scope.launch {
             val error = adder.add(der, toActiveProfile, trustRole)
             toast?.show(
-                ToastMessage(if (error == null) getString(Res.string.certdetails_trust_success) else getString(Res.string.certdetails_trust_failed, error)),
+                ToastMessage(if (error == null) ToastText.Resource(Res.string.certdetails_trust_success) else ToastText.Resource(Res.string.certdetails_trust_failed, listOf(error))),
             )
         }
     }
