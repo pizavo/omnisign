@@ -6,7 +6,8 @@ package cz.pizavo.omnisign.domain.model.result
  * @property name The renewal job name.
  * @property files Per-file status entries. Empty when no files matched the job's globs.
  * @property renewed Number of files successfully re-timestamped in this job.
- * @property errors Number of files that encountered errors in this job.
+ * @property errors Number of errors in this job — one per file that failed to renew, or one for a
+ *   configuration error that stopped the job before any file was processed.
  * @property notify Whether the job requested OS notifications on completion.
  */
 data class RenewJobResult(

@@ -194,6 +194,8 @@ class RenewBatchUseCase(
                                 message = error.message,
                             )
                         ),
+                        errors = 1,
+                        notify = job.notify,
                     )
                 )
                 continue

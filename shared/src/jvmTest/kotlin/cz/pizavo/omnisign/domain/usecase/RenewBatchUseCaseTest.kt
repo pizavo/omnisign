@@ -238,7 +238,7 @@ class RenewBatchUseCaseTest : FunSpec({
         coVerify(exactly = 0) { archivingRepository.needsArchivalRenewal(file2.absolutePath, any()) }
     }
 
-    test("job with invalid config produces CONFIG_ERROR status") {
+    test("job with invalid config produces a CONFIG_ERROR status, a job-level error, and preserves notify") {
         val sub = File(tmpDir, "bad-cfg").also { it.mkdirs() }
         File(sub, "doc.pdf").createNewFile()
 
@@ -247,7 +247,7 @@ class RenewBatchUseCaseTest : FunSpec({
         )
         val profile = ProfileConfig(name = "broken")
         val glob = sub.absolutePath.replace('\\', '/') + "/*.pdf"
-        val job = RenewalJob(name = "j", globs = listOf(glob), profile = "broken")
+        val job = RenewalJob(name = "j", globs = listOf(glob), profile = "broken", notify = true)
         val config = AppConfig(
             global = global,
             profiles = mapOf("broken" to profile),
@@ -258,7 +258,10 @@ class RenewBatchUseCaseTest : FunSpec({
 
         result.shouldNotBeNull()
         result.errors shouldBe 1
-        result.jobs.first().files.first().status shouldBe RenewFileStatus.Status.CONFIG_ERROR
+        val jobResult = result.jobs.first()
+        jobResult.files.first().status shouldBe RenewFileStatus.Status.CONFIG_ERROR
+        jobResult.errors shouldBe 1
+        jobResult.notify shouldBe true
     }
 
     test("preserves notify flag from job in result") {
