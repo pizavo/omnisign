@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.RenewalJob
+import cz.pizavo.omnisign.domain.model.config.SchedulerConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
@@ -36,6 +37,7 @@ import io.mockk.mockk
 import io.mockk.verify
 import java.io.File
 import java.io.IOException
+import kotlin.time.Clock
 import kotlin.time.Instant
 
 /**
@@ -611,7 +613,8 @@ class RenewBatchUseCaseTest : FunSpec({
         verify(exactly = 0) { runRecordStore.save(any()) }
     }
 
-    test("does not record a run skipped because another run holds the lock") {
+    test("a lock-skip with no prior run record writes nothing") {
+        every { runRecordStore.load() } returns null
         val busyLock: RenewalLock = mockk { every { tryAcquire() } returns null }
         val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, busyLock, runRecordStore)
 
@@ -620,6 +623,169 @@ class RenewBatchUseCaseTest : FunSpec({
         result.shouldNotBeNull()
         result.alreadyRunning shouldBe true
         verify(exactly = 0) { runRecordStore.save(any()) }
+    }
+
+    test("raises a staleness alert when failures persist past the threshold") {
+        val dir = subDir("stale-fire")
+        val file = File(dir, "bad.pdf").also { it.writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingError.ExtensionFailed(LocalizableText.Literal("tsa down")).left()
+        val longAgo = Instant.fromEpochSeconds(1_000_000)
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = longAgo,
+            outcome = RenewalRunOutcome.COMPLETED_WITH_ERRORS,
+            failuresSinceSuccess = 30,
+            lastSuccessAt = longAgo,
+        )
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        val alert = result.shouldNotBeNull().stalenessAlert.shouldNotBeNull()
+        (alert.daysWithoutSuccess > 14) shouldBe true
+        verify { runRecordStore.save(match { it.lastStaleNotifiedAt != null }) }
+    }
+
+    test("warns on the first failed run after a long idle period, counting the idle time") {
+        val dir = subDir("stale-idle")
+        val file = File(dir, "bad.pdf").also { it.writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingError.ExtensionFailed(LocalizableText.Literal("tsa down")).left()
+        val longAgo = Instant.fromEpochSeconds(1_000_000)
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = longAgo,
+            outcome = RenewalRunOutcome.SUCCESS,
+            lastSuccessAt = longAgo,
+            failuresSinceSuccess = 0,
+        )
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        val alert = result.shouldNotBeNull().stalenessAlert.shouldNotBeNull()
+        (alert.daysWithoutSuccess > 14) shouldBe true
+    }
+
+    test("suppresses a repeat staleness alert within the threshold window") {
+        val dir = subDir("stale-dedup")
+        val file = File(dir, "bad.pdf").also { it.writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingError.ExtensionFailed(LocalizableText.Literal("tsa down")).left()
+        val longAgo = Instant.fromEpochSeconds(1_000_000)
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = longAgo,
+            outcome = RenewalRunOutcome.COMPLETED_WITH_ERRORS,
+            failuresSinceSuccess = 30,
+            lastSuccessAt = longAgo,
+            lastStaleNotifiedAt = Clock.System.now(),
+        )
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull().stalenessAlert.shouldBeNull()
+    }
+
+    test("does not raise a staleness alert when the option is disabled") {
+        val dir = subDir("stale-off")
+        val file = File(dir, "bad.pdf").also { it.writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingError.ExtensionFailed(LocalizableText.Literal("tsa down")).left()
+        val longAgo = Instant.fromEpochSeconds(1_000_000)
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = longAgo,
+            outcome = RenewalRunOutcome.COMPLETED_WITH_ERRORS,
+            failuresSinceSuccess = 30,
+            lastSuccessAt = longAgo,
+        )
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val config = baseConfig.copy(
+            renewalJobs = mapOf("j" to job),
+            schedulerConfig = SchedulerConfig(stalenessNotificationEnabled = false),
+        )
+        val uc = useCaseWith(config)
+        val result = uc()
+
+        result.shouldNotBeNull().stalenessAlert.shouldBeNull()
+    }
+
+    test("a successful run clears the staleness notification marker") {
+        val dir = subDir("stale-reset")
+        val file = File(dir, "ok.pdf").also { it.writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns true.right()
+        coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
+            ArchivingResult(outputBytes = "RENEWED".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA").right()
+        val longAgo = Instant.fromEpochSeconds(1_000_000)
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = longAgo,
+            outcome = RenewalRunOutcome.COMPLETED_WITH_ERRORS,
+            failuresSinceSuccess = 30,
+            lastSuccessAt = longAgo,
+            lastStaleNotifiedAt = longAgo,
+        )
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull().stalenessAlert.shouldBeNull()
+        verify {
+            runRecordStore.save(
+                match { it.lastStaleNotifiedAt == null && it.lastSuccessAt != null }
+            )
+        }
+    }
+
+    test("raises a staleness alert when a held lock has blocked renewal past the threshold") {
+        val longAgo = Instant.fromEpochSeconds(1_000_000)
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = longAgo,
+            outcome = RenewalRunOutcome.SUCCESS,
+            lastSuccessAt = longAgo,
+        )
+        coEvery { configRepository.getCurrentConfig() } returns baseConfig
+        val busyLock: RenewalLock = mockk { every { tryAcquire() } returns null }
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, busyLock, runRecordStore)
+
+        val result = uc()
+
+        result.shouldNotBeNull().alreadyRunning shouldBe true
+        val alert = result.stalenessAlert.shouldNotBeNull()
+        (alert.daysWithoutSuccess > 14) shouldBe true
+        verify { runRecordStore.save(match { it.lastStaleNotifiedAt != null }) }
+    }
+
+    test("a lock-skip warns without disturbing the recorded last-run status") {
+        val longAgo = Instant.fromEpochSeconds(1_000_000)
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = longAgo,
+            outcome = RenewalRunOutcome.SUCCESS,
+            lastSuccessAt = longAgo,
+        )
+        coEvery { configRepository.getCurrentConfig() } returns baseConfig
+        val busyLock: RenewalLock = mockk { every { tryAcquire() } returns null }
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, busyLock, runRecordStore)
+
+        val result = uc()
+
+        result.shouldNotBeNull().stalenessAlert.shouldNotBeNull()
+        verify {
+            runRecordStore.save(
+                match {
+                    it.lastStaleNotifiedAt != null &&
+                        it.outcome == RenewalRunOutcome.SUCCESS &&
+                        it.lastRunAt == longAgo
+                }
+            )
+        }
     }
 })
 

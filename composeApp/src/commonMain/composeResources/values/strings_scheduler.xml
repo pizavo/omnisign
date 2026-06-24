@@ -19,4 +19,8 @@
 		<item quantity="one">%1$s unsuccessful run since the last success.</item>
 		<item quantity="other">%1$s unsuccessful runs since the last success.</item>
 	</plurals>
+	<string name="scheduler_staleness_label">Warn when renewal stalls</string>
+	<string name="scheduler_staleness_tooltip">Notify when renewal hasn\'t succeeded for the number of days below. Only checked when a scheduled run executes — so a computer that was simply powered off doesn\'t trigger it on its own, and a successful run clears it.</string>
+	<string name="scheduler_staleness_threshold_label">Warn after (days)</string>
+	<string name="scheduler_staleness_threshold_range_error">Enter a whole number of days (1 or more).</string>
 </resources>

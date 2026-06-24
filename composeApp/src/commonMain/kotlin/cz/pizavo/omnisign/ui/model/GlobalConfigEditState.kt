@@ -59,6 +59,10 @@ import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
  * @property schedulerHour Hour of the day (0–23) for the daily scheduler run.
  * @property schedulerMinute Minute (0–59) for the daily scheduler run.
  * @property schedulerLogFile Optional append-only log file path for scheduler output.
+ * @property stalenessNotificationEnabled Whether to warn (via OS notification) when renewal has gone
+ *   too long without a successful run.
+ * @property stalenessThresholdDays Days without a successful run before the staleness warning fires,
+ *   stored as a string for the text field. Coerced to at least 1 on save.
  * @property schedulerInstalled Whether the OS scheduler job is currently registered (read-only, queried on the load).
  * @property renewalRunRecord Status of the most recent renewal batch run (read-only, queried on load), or `null` when none has run or no backend is available.
  * @property saving Whether a save operation is currently in progress.
@@ -110,6 +114,8 @@ data class GlobalConfigEditState(
 	val schedulerHour: String = "2",
 	val schedulerMinute: String = "0",
 	val schedulerLogFile: String = "",
+	val stalenessNotificationEnabled: Boolean = true,
+	val stalenessThresholdDays: String = "14",
 	val schedulerInstalled: Boolean = false,
 	val renewalRunRecord: RenewalRunRecord? = null,
 	val saving: Boolean = false,
@@ -174,6 +180,13 @@ data class GlobalConfigEditState(
 		get() = schedulerMinute.isEmpty() || schedulerMinute.toIntOrNull()?.let { it in 0..59 } == true
 
 	/**
+	 * Whether the [stalenessThresholdDays] string represents a valid threshold (a positive whole
+	 * number of days). Empty strings are treated as valid (the default is applied on save).
+	 */
+	val isStalenessThresholdDaysValid: Boolean
+		get() = stalenessThresholdDays.isEmpty() || stalenessThresholdDays.toIntOrNull()?.let { it >= 1 } == true
+
+	/**
 	 * Whether any scheduler time field contains an out-of-range value.
 	 */
 	val hasSchedulerTimeError: Boolean
@@ -216,6 +229,8 @@ data class GlobalConfigEditState(
 				schedulerHour == other.schedulerHour &&
 				schedulerMinute == other.schedulerMinute &&
 				schedulerLogFile == other.schedulerLogFile &&
+				stalenessNotificationEnabled == other.stalenessNotificationEnabled &&
+				stalenessThresholdDays == other.stalenessThresholdDays &&
 				useNativeTitleBar == other.useNativeTitleBar
 
 	/**
@@ -326,6 +341,8 @@ data class GlobalConfigEditState(
 				schedulerHour = schedulerConfig.runAtHour.toString(),
 				schedulerMinute = schedulerConfig.runAtMinute.toString(),
 				schedulerLogFile = schedulerConfig.logFilePath.orEmpty(),
+				stalenessNotificationEnabled = schedulerConfig.stalenessNotificationEnabled,
+				stalenessThresholdDays = schedulerConfig.stalenessThresholdDays.toString(),
 				schedulerInstalled = schedulerInstalled,
 			)
 		}

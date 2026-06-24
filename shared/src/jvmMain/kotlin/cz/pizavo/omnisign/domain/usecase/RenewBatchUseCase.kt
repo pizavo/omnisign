@@ -4,6 +4,7 @@ import arrow.core.Either
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.config.SchedulerConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
@@ -14,6 +15,7 @@ import cz.pizavo.omnisign.domain.model.result.RenewalRunError
 import cz.pizavo.omnisign.domain.model.result.RenewalRunJobSummary
 import cz.pizavo.omnisign.domain.model.result.RenewalRunOutcome
 import cz.pizavo.omnisign.domain.model.result.RenewalRunRecord
+import cz.pizavo.omnisign.domain.model.result.StalenessAlert
 import cz.pizavo.omnisign.domain.port.RenewalLock
 import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -39,6 +41,8 @@ import kotlin.io.path.deleteIfExists
 import kotlin.io.path.moveTo
 import kotlin.io.path.writeBytes
 import kotlin.time.Clock
+import kotlin.time.Duration.Companion.days
+import kotlin.time.Instant
 import kotlin.time.toJavaInstant
 
 private val logger = KotlinLogging.logger {}
@@ -73,19 +77,22 @@ class RenewBatchUseCase(
      * Run renewal jobs and return an aggregated [RenewBatchResult].
      *
      * The run is guarded by a host-wide [RenewalLock]: when another renewal process already holds
-     * the lock, this call does nothing and returns a result with [RenewBatchResult.alreadyRunning]
-     * set, so two schedulers — or a manual run overlapping the scheduled one — can never
-     * re-timestamp the same documents concurrently. If the lock cannot be established at all, the
-     * run is **not** attempted and a result with [RenewBatchResult.lockError] is returned.
+     * the lock, this call re-timestamps nothing and returns a result with
+     * [RenewBatchResult.alreadyRunning] set, so two schedulers — or a manual run overlapping the
+     * scheduled one — can never re-timestamp the same documents concurrently; it still evaluates
+     * staleness, so a lock that stays held for too long is surfaced rather than silently skipped. If
+     * the lock cannot be established at all, the run is **not** attempted and a result with
+     * [RenewBatchResult.lockError] is returned.
      *
      * @param jobName Optional name of a single job to execute. When `null`, all
      *   configured jobs are processed.
      * @param dryRun When `true`, files that need renewal are reported but not
      *   modified.
-     * @return A [RenewBatchResult] summarising every job and file outcome; a result with
-     *   [RenewBatchResult.alreadyRunning] when another run holds the lock; a result with
-     *   [RenewBatchResult.lockError] when the lock could not be acquired; or `null` when the
-     *   requested [jobName] does not exist.
+     * @return A [RenewBatchResult] summarising every job and file outcome, or a result with
+     *   [RenewBatchResult.alreadyRunning] when another run holds the lock, or a result with
+     *   [RenewBatchResult.lockError] when the lock could not be acquired, or `null` when the requested
+     *   [jobName] does not exist. A completed run or a lock-skipped run additionally carries a
+     *   [RenewBatchResult.stalenessAlert] when renewal has now gone too long without a success.
      */
     suspend operator fun invoke(
         jobName: String? = null,
@@ -95,27 +102,40 @@ class RenewBatchUseCase(
             renewalLock.tryAcquire()
         } catch (e: Exception) {
             val result = RenewBatchResult(lockError = e.message ?: "the renewal lock could not be acquired")
-            recordRun(result)
+            recordRun(result, emitStaleness = false)
             return result
         }
-        if (lock == null) return RenewBatchResult(alreadyRunning = true)
+        if (lock == null) return RenewBatchResult(alreadyRunning = true, stalenessAlert = recordSkippedRun())
         return try {
-            runBatch(jobName, dryRun).also { result ->
-                if (result != null && !dryRun) recordRun(result)
-            }
+            val result = runBatch(jobName, dryRun) ?: return null
+            if (dryRun) result else result.copy(stalenessAlert = recordRun(result, emitStaleness = true))
         } finally {
             lock.close()
         }
     }
 
     /**
-     * Persist a [RenewalRunRecord] summarising [result], carrying the last-success timestamp
-     * forward and counting consecutive failures since it. Never called for dry-runs or for runs
-     * skipped because another run held the lock. A persistence failure is logged and otherwise
-     * ignored, so status bookkeeping can never break a run.
+     * Persist a [RenewalRunRecord] summarising [result], carrying the last-success timestamp forward
+     * and counting consecutive failures since it. Never called for dry-runs or for runs skipped
+     * because another run held the lock. A persistence failure is logged and otherwise ignored, so
+     * status bookkeeping can never break a run.
+     *
+     * When [emitStaleness] is `true` — a run that actually executed, as opposed to a lock failure
+     * reported separately — and renewal has now gone [SchedulerConfig.stalenessThresholdDays] without
+     * a success, a [StalenessAlert] is returned (via [decideStaleness]) and
+     * [RenewalRunRecord.lastStaleNotifiedAt] is stamped so the alert re-fires at most once per
+     * threshold window. Staleness is wall-clock time since [RenewalRunRecord.lastSuccessAt] —
+     * including time the machine was off, since the renewal buffer expires in real time — yet a
+     * powered-off machine never trips it, because staleness is only evaluated when a run actually
+     * executes and a successful run resets the clock. Lock-skipped runs evaluate it too, via
+     * [recordSkippedRun].
+     *
+     * @param result The run to record.
+     * @param emitStaleness Whether to evaluate and return the staleness alert for this run.
+     * @return A [StalenessAlert] when one should be shown for this run, otherwise `null`.
      */
-    private fun recordRun(result: RenewBatchResult) {
-        try {
+    private suspend fun recordRun(result: RenewBatchResult, emitStaleness: Boolean): StalenessAlert? {
+        return try {
             val now = Clock.System.now()
             val previous = runRecordStore.load()
             val outcome = when {
@@ -124,6 +144,19 @@ class RenewBatchUseCase(
                 else -> RenewalRunOutcome.SUCCESS
             }
             val succeeded = outcome == RenewalRunOutcome.SUCCESS
+            val lastSuccessAt = if (succeeded) now else previous?.lastSuccessAt
+            val previousNotifiedAt = previous?.lastStaleNotifiedAt
+            val staleAlert = if (!succeeded && emitStaleness) {
+                decideStaleness(now, lastSuccessAt, previousNotifiedAt)
+            } else {
+                null
+            }
+            val nextNotifiedAt = when {
+                succeeded -> null
+                staleAlert != null -> now
+                else -> previousNotifiedAt
+            }
+
             val errorDetails = result.jobs.flatMap { job ->
                 job.files
                     .filter { it.status == RenewFileStatus.Status.ERROR || it.status == RenewFileStatus.Status.CONFIG_ERROR }
@@ -143,12 +176,73 @@ class RenewBatchUseCase(
                     errorDetails = errorDetails,
                     warnings = warnings,
                     jobs = jobs,
-                    lastSuccessAt = if (succeeded) now else previous?.lastSuccessAt,
+                    lastSuccessAt = lastSuccessAt,
                     failuresSinceSuccess = if (succeeded) 0 else (previous?.failuresSinceSuccess ?: 0) + 1,
+                    lastStaleNotifiedAt = nextNotifiedAt,
                 )
             )
+            staleAlert
         } catch (e: Exception) {
             logger.warn(e) { "Could not persist the renewal run record" }
+            null
+        }
+    }
+
+    /**
+     * Decide whether renewal is now stale enough to warn, given when it [lastSuccessAt] last succeeded
+     * (or `null` if it never has) and when the staleness alert was last raised ([previousNotifiedAt]).
+     * Staleness is wall-clock time since the last success, so a long absence counts toward it. Reads
+     * the live [SchedulerConfig.stalenessNotificationEnabled] / [SchedulerConfig.stalenessThresholdDays];
+     * a config-read failure falls back to defaults so bookkeeping never breaks a run.
+     *
+     * @return The [StalenessAlert] to raise, or `null` when renewal is not (yet) stale or was already
+     *   warned about within the current threshold window.
+     */
+    private suspend fun decideStaleness(
+        now: Instant,
+        lastSuccessAt: Instant?,
+        previousNotifiedAt: Instant?,
+    ): StalenessAlert? {
+        if (lastSuccessAt == null) return null
+        val scheduler = runCatching { configRepository.getCurrentConfig().schedulerConfig }
+            .getOrDefault(SchedulerConfig())
+        val thresholdDays = scheduler.stalenessThresholdDays
+        val sinceSuccess = now - lastSuccessAt
+        val staleEnough = scheduler.stalenessNotificationEnabled &&
+            thresholdDays >= 1 &&
+            sinceSuccess >= thresholdDays.days
+        val notifiedRecently = previousNotifiedAt != null &&
+            now - previousNotifiedAt < thresholdDays.days
+        return if (staleEnough && !notifiedRecently) {
+            StalenessAlert(daysWithoutSuccess = sinceSuccess.inWholeDays.toInt())
+        } else {
+            null
+        }
+    }
+
+    /**
+     * Evaluate staleness for a scheduled run that was skipped because another run already held the
+     * lock, so a lock that stays held is surfaced rather than silently swallowed. Measures wall-clock
+     * time since [RenewalRunRecord.lastSuccessAt] just like a completed run; when that now exceeds
+     * [SchedulerConfig.stalenessThresholdDays] it returns a [StalenessAlert] and stamps
+     * [RenewalRunRecord.lastStaleNotifiedAt] (the only field a skip ever writes, leaving the recorded
+     * last-run status untouched). With no prior record there is nothing to measure against, so it does
+     * nothing. A persistence failure is logged and otherwise ignored, so a skipped run can never break.
+     *
+     * @return A [StalenessAlert] when renewal has now gone too long without a success, otherwise `null`.
+     */
+    private suspend fun recordSkippedRun(): StalenessAlert? {
+        return try {
+            val previous = runRecordStore.load() ?: return null
+            val now = Clock.System.now()
+            val staleAlert = decideStaleness(now, previous.lastSuccessAt, previous.lastStaleNotifiedAt)
+            if (staleAlert != null) {
+                runRecordStore.save(previous.copy(lastStaleNotifiedAt = now))
+            }
+            staleAlert
+        } catch (e: Exception) {
+            logger.warn(e) { "Could not evaluate renewal staleness for a skipped run" }
+            null
         }
     }
 

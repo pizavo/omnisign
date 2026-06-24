@@ -335,6 +335,8 @@ class SettingsViewModel(
             runAtHour = editState.schedulerHour.toIntOrNull()?.coerceIn(0, 23) ?: 2,
             runAtMinute = editState.schedulerMinute.toIntOrNull()?.coerceIn(0, 59) ?: 0,
             logFilePath = editState.schedulerLogFile.trim().ifBlank { null },
+            stalenessNotificationEnabled = editState.stalenessNotificationEnabled,
+            stalenessThresholdDays = editState.stalenessThresholdDays.toIntOrNull()?.coerceAtLeast(1) ?: 14,
         )
         repo.saveConfig(
             appConfig.copy(

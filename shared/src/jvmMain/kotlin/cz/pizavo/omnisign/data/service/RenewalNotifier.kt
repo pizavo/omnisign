@@ -14,7 +14,10 @@ import java.util.ResourceBundle
  * Nothing is sent for a dry-run, for a job that opted out of notifications, or for a job where
  * nothing actionable happened (every file was skipped). The lock-failure notification is the one
  * exception to the per-job opt-in: since no job ran, it always fires — a renewal subsystem that
- * cannot even start is a run-wide failure rather than a per-job outcome.
+ * cannot even start is a run-wide failure rather than a per-job outcome. The staleness notification
+ * (carried in [RenewBatchResult.stalenessAlert]) is likewise run-wide: it fires on top of any
+ * per-job outcome when renewal has gone too long without a success, gated by its own setting rather
+ * than the per-job opt-in.
  *
  * Titles and bodies are resolved from the `renewal-notifications` resource bundle in the locale
  * supplied by [localeProvider], so a Czech-configured run shows Czech text while any other locale
@@ -40,7 +43,10 @@ class RenewalNotifier(
 	 * that requested notifications, a single notification is sent: a [NotificationUrgency.CRITICAL]
 	 * partial-failure note when some files renewed but others errored, a [NotificationUrgency.CRITICAL]
 	 * failure note when only errors occurred, or a [NotificationUrgency.NORMAL] completion note when
-	 * files renewed cleanly. A job in which every file was skipped produces no notification.
+	 * files renewed cleanly. A job in which every file was skipped produces no notification. Finally,
+	 * when [result] carries a [RenewBatchResult.stalenessAlert], an additional
+	 * [NotificationUrgency.CRITICAL] staleness notification is sent — independently of the per-job
+	 * notifications above — warning that renewal has stalled for too long.
 	 *
 	 * @param result The aggregated outcome of a renewal batch run.
 	 */
@@ -76,6 +82,13 @@ class RenewalNotifier(
 					urgency = NotificationUrgency.NORMAL,
 				)
 			}
+		}
+		result.stalenessAlert?.let { alert ->
+			notificationService.notify(
+				title = messages.format("stale.title"),
+				body = messages.format("stale.body", alert.daysWithoutSuccess),
+				urgency = NotificationUrgency.CRITICAL,
+			)
 		}
 	}
 

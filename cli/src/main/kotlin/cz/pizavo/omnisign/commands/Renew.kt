@@ -75,6 +75,7 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 			} else {
 				echo("⏳ Another renewal run is already in progress — skipping.")
 			}
+			renewalNotifier.notify(result)
 			return@runBlocking
 		}
 

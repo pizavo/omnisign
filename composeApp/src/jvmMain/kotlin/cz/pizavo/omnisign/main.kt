@@ -375,6 +375,7 @@ private fun runHeadlessRenewal() {
 
 	if (result?.alreadyRunning == true) {
 		logger.info { "Another renewal run is already in progress — skipping." }
+		renewalNotifier.notify(result)
 		exitProcess(0)
 	}
 

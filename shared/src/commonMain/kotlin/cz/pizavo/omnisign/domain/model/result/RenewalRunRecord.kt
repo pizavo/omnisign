@@ -8,8 +8,10 @@ import kotlin.time.Instant
  * command and the desktop scheduler section so a silently failing or stalled scheduler becomes
  * visible.
  *
- * Only real runs are recorded: dry-runs and runs skipped because another run already held the
- * host-wide lock never update it.
+ * Only real runs update the run-status fields: dry-runs and runs skipped because another run already
+ * held the host-wide lock never change [outcome], the counts, or [lastRunAt]. A lock-skipped run may
+ * still stamp [lastStaleNotifiedAt] when renewal has gone too long without a success, so a
+ * persistently held lock is surfaced rather than silently ignored.
  *
  * @property lastRunAt When the most recent run finished.
  * @property outcome Outcome of the most recent run.
@@ -26,6 +28,10 @@ import kotlin.time.Instant
  *   later failures; `null` if no run has ever succeeded.
  * @property failuresSinceSuccess Consecutive non-successful runs since [lastSuccessAt] (0 when the
  *   most recent run succeeded).
+ * @property lastStaleNotifiedAt When the staleness notification was last raised — measured as
+ *   wall-clock time since [lastSuccessAt] — so it re-fires at most once per
+ *   [cz.pizavo.omnisign.domain.model.config.SchedulerConfig.stalenessThresholdDays] while renewal
+ *   stays stale; `null` when none is outstanding (including after a success resets it).
  */
 @Serializable
 data class RenewalRunRecord(
@@ -41,4 +47,5 @@ data class RenewalRunRecord(
     val jobs: List<RenewalRunJobSummary> = emptyList(),
     val lastSuccessAt: Instant? = null,
     val failuresSinceSuccess: Int = 0,
+    val lastStaleNotifiedAt: Instant? = null,
 )
