@@ -173,7 +173,7 @@ class RenewTest : FunSpec({
 		result.statusCode shouldBe 0
 	}
 
-	test("lock acquisition failure is reported as an error and exits non-zero") {
+	test("lock acquisition failure is reported as an error, notifies, and exits non-zero") {
 		coEvery { renewBatchUseCase(jobName = null, dryRun = false) } returns
 			RenewBatchResult(lockError = "lock file unwritable")
 
@@ -181,5 +181,6 @@ class RenewTest : FunSpec({
 
 		result.statusCode shouldBe 1
 		result.stderr shouldContain "lock"
+		verify(exactly = 1) { notificationService.notify(any(), any(), any()) }
 	}
 })

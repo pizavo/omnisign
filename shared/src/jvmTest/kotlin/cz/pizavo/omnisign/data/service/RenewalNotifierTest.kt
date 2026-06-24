@@ -49,6 +49,18 @@ class RenewalNotifierTest : FunSpec({
 		}
 	}
 
+	test("sends a single critical lock-error notification when the renewal lock could not be acquired") {
+		notifier.notify(RenewBatchResult(lockError = "lock file unwritable"))
+		verify(exactly = 1) {
+			notificationService.notify(
+				match { it.contains("OmniSign") && it.contains("could not start") },
+				match { it.contains("lock file unwritable") },
+				eq(NotificationUrgency.CRITICAL),
+			)
+		}
+		verify(exactly = 1) { notificationService.notify(any(), any(), any()) }
+	}
+
 	test("sends a normal completion notification when files renewed cleanly") {
 		notifier.notify(
 			RenewBatchResult(jobs = listOf(RenewJobResult(name = "job", renewed = 4, errors = 0, notify = true))),
@@ -125,6 +137,17 @@ class RenewalNotifierTest : FunSpec({
 			notificationService.notify(
 				match { it.contains("Obnova selhala") },
 				match { it.contains("dlouhodobá platnost") },
+				eq(NotificationUrgency.CRITICAL),
+			)
+		}
+	}
+
+	test("renders the Czech lock-error title and body when the locale is Czech") {
+		czechNotifier.notify(RenewBatchResult(lockError = "soubor zámku nelze zapsat"))
+		verify(exactly = 1) {
+			notificationService.notify(
+				match { it.contains("Obnovu nelze spustit") },
+				match { it.contains("zámek obnovy") },
 				eq(NotificationUrgency.CRITICAL),
 			)
 		}

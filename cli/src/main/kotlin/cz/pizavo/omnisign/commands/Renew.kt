@@ -91,6 +91,7 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 			} else {
 				echo("❌ Could not acquire the renewal lock: ${result.lockError}", err = true)
 			}
+			renewalNotifier.notify(result)
 			throw ProgramResult(1)
 		}
 

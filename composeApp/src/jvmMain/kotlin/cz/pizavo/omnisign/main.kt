@@ -380,6 +380,7 @@ private fun runHeadlessRenewal() {
 
 	if (result?.lockError != null) {
 		logger.error { "Renewal aborted — could not acquire the renewal lock: ${result.lockError}" }
+		renewalNotifier.notify(result)
 		exitProcess(1)
 	}
 
