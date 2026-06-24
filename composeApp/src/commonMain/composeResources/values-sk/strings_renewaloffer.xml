@@ -13,6 +13,6 @@
 	<string name="renewaloffer_job_not_found">Úloha \'%1$s\' sa nenašla.</string>
 	<string name="renewaloffer_job_already_exists">Úloha obnovy s názvom \'%1$s\' už existuje.</string>
 	<string name="renewaloffer_assigned_message">Výstupný súbor bol pridaný do úlohy obnovy \"%1$s\". Pri blížiacom sa skončení platnosti jeho archívnej časovej pečiatky sa automaticky opatrí novou časovou pečiatkou.</string>
-	<string name="renewaloffer_covered_message">Výstupný súbor je už pokrytý úlohou obnovy \"%1$s\". Nie je potrebná žiadna ďalšia konfigurácia — súbor sa automaticky opatrí novou časovou pečiatkou pri blížiacom sa skončení platnosti jeho archívnej časovej pečiatky.</string>
+	<string name="renewaloffer_covered_message">Výstupný súbor je už pokrytý úlohou obnovy \"%1$s\". Nie je potrebná žiadna ďalšia konfigurácia – súbor sa automaticky opatrí novou časovou pečiatkou pri blížiacom sa skončení platnosti jeho archívnej časovej pečiatky.</string>
 	<string name="renewaloffer_add_to_existing">Pridať do \"%1$s\"</string>
 </resources>

@@ -22,7 +22,7 @@
 	<string name="signing_cert_qualified">Kvalifikovaný</string>
 	<string name="signing_cert_on_pkcs11_token">Na hardwarovém tokenu PKCS#11</string>
 	<string name="signing_cert_not_qualified">Nekvalifikovaný</string>
-	<string name="signing_cert_qscd_tooltip">Certifikát nese prohlášení QcSSCD — soukromý klíč je uložen na kvalifikovaném prostředku pro vytváření elektronických podpisů/pečetí (QSCD).</string>
+	<string name="signing_cert_qscd_tooltip">Certifikát nese prohlášení QcSSCD – soukromý klíč je uložen na kvalifikovaném prostředku pro vytváření elektronických podpisů/pečetí (QSCD).</string>
 	<string name="signing_cert_qualified_tooltip">Certifikát nese prohlášení QcCompliance, ale stav QSCD nebyl potvrzen.</string>
 	<string name="signing_cert_not_qualified_tooltip">Certifikát nenese prohlášení QCStatements označující kvalifikaci podle eIDAS.</string>
 	<string name="signing_no_tokens_detected">Nebyly nalezeny žádné tokeny.</string>
@@ -31,7 +31,7 @@
 	<string name="signing_show_diagnostic_info">Zobrazit diagnostické informace</string>
 	<string name="signing_timestamping_unavailable">Časové razítko není dostupné</string>
 	<string name="signing_timestamping_select_profile">Vyberte profil, který nevyžaduje časové razítko, nebo požádejte správce serveru o povolení operace časového razítkování.</string>
-	<string name="signing_cert_dropdown_item_label">%1$s — platný do %2$s%3$s</string>
+	<string name="signing_cert_dropdown_item_label">%1$s – platný do %2$s%3$s</string>
 	<string name="signing_hash_algorithm_default">Výchozí (%1$s)</string>
 	<plurals name="signing_locked_tokens_count">
 		<item quantity="one">%1$s uzamčený token</item>
@@ -44,11 +44,11 @@
 	<string name="signing_timestamping_intro_profile">Profil \"%1$s\" vyžaduje PAdES %2$s, který vkládá důvěryhodné časové razítko.</string>
 	<string name="signing_timestamping_intro_no_profile">Nakonfigurovaná úroveň podpisu PAdES %1$s vkládá důvěryhodné časové razítko.</string>
 	<string name="signing_timestamping_body">%1$s Tento server má časové razítkování zakázané, takže může vytvářet pouze základní (B-B) podpisy. Podepsání zde by vynechalo požadované časové razítko.</string>
-	<string name="signing_rescan_none">Vyhledávání dokončeno — nebyly nalezeny žádné tokeny PKCS#11</string>
+	<string name="signing_rescan_none">Vyhledávání dokončeno – nebyly nalezeny žádné tokeny PKCS#11</string>
 	<plurals name="signing_rescan_detected">
-		<item quantity="one">Vyhledávání dokončeno — nalezena %1$s položka PKCS#11</item>
-		<item quantity="few">Vyhledávání dokončeno — nalezeny %1$s položky PKCS#11</item>
-		<item quantity="many">Vyhledávání dokončeno — nalezeno %1$s položky PKCS#11</item>
-		<item quantity="other">Vyhledávání dokončeno — nalezeno %1$s položek PKCS#11</item>
+		<item quantity="one">Vyhledávání dokončeno – nalezena %1$s položka PKCS#11</item>
+		<item quantity="few">Vyhledávání dokončeno – nalezeny %1$s položky PKCS#11</item>
+		<item quantity="many">Vyhledávání dokončeno – nalezeno %1$s položky PKCS#11</item>
+		<item quantity="other">Vyhledávání dokončeno – nalezeno %1$s položek PKCS#11</item>
 	</plurals>
 </resources>

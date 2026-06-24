@@ -25,7 +25,7 @@
 	<string name="settings_algo_expiration_level_label">Úroveň exspirácie (pred aktualizáciou politiky)</string>
 	<string name="settings_algo_expiration_level_after_label">Úroveň exspirácie (po aktualizácii politiky)</string>
 	<string name="settings_pkcs11_probe_timeout_label">Časový limit sondovania (sekundy, 1-120)</string>
-	<string name="settings_pkcs11_drop_dir_hint">Tip: vložte súbor knižnice PKCS#11 (.dll / .so / .dylib) do priečinka nižšie a bude automaticky zistený — tu nie je potrebná žiadna položka.</string>
+	<string name="settings_pkcs11_drop_dir_hint">Tip: vložte súbor knižnice PKCS#11 (.dll / .so / .dylib) do priečinka nižšie a bude automaticky zistený – tu nie je potrebná žiadna položka.</string>
 	<string name="settings_pkcs11_no_libraries">Nie sú zaregistrované žiadne vlastné knižnice PKCS#11.</string>
 	<string name="settings_pkcs11_add_name_label">Názov</string>
 	<string name="settings_pkcs11_add_name_placeholder">Označenie</string>
@@ -34,7 +34,7 @@
 	<string name="settings_appearance_native_title_bar_label">Použiť natívne záhlavie okna</string>
 	<string name="settings_appearance_native_title_bar_description">Zobraziť panel nástrojov pod natívnym záhlavím okna operačného systému namiesto jeho zlúčenia do vlastného záhlavia.</string>
 	<string name="settings_appearance_restart_required">Prejaví sa až po reštarte aplikácie.</string>
-	<string name="settings_error_scheduler_time_invalid">Čas plánovača je neplatný — hodina musí byť 0–23, minúta musí byť 0–59.</string>
+	<string name="settings_error_scheduler_time_invalid">Čas plánovača je neplatný – hodina musí byť 0–23, minúta musí byť 0–59.</string>
 	<string name="settings_error_refresh_failed">Obnovenie dôveryhodného zoznamu zlyhalo: %1$s</string>
 	<string name="settings_error_scheduler_install_failed">Nepodarilo sa nainštalovať plánovač operačného systému: %1$s</string>
 	<string name="settings_certadd_already_trusted">Tento certifikát je už dôveryhodný v globálnom rozsahu.</string>

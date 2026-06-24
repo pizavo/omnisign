@@ -25,7 +25,7 @@
 	<string name="settings_algo_expiration_level_label">Úroveň vypršení platnosti (před aktualizací zásad)</string>
 	<string name="settings_algo_expiration_level_after_label">Úroveň vypršení platnosti (po aktualizaci zásad)</string>
 	<string name="settings_pkcs11_probe_timeout_label">Časový limit sondy (sekundy, 1–120)</string>
-	<string name="settings_pkcs11_drop_dir_hint">Tip: vložte soubor knihovny PKCS#11 (.dll / .so / .dylib) do níže uvedené složky a bude automaticky rozpoznán — žádný záznam zde není potřeba.</string>
+	<string name="settings_pkcs11_drop_dir_hint">Tip: vložte soubor knihovny PKCS#11 (.dll / .so / .dylib) do níže uvedené složky a bude automaticky rozpoznán – žádný záznam zde není potřeba.</string>
 	<string name="settings_pkcs11_no_libraries">Nejsou registrovány žádné vlastní knihovny PKCS#11.</string>
 	<string name="settings_pkcs11_add_name_label">Název</string>
 	<string name="settings_pkcs11_add_name_placeholder">Označení</string>
@@ -34,7 +34,7 @@
 	<string name="settings_appearance_native_title_bar_label">Použít nativní titulkový pruh</string>
 	<string name="settings_appearance_native_title_bar_description">Zobrazit panel nástrojů pod nativním titulkovým pruhem operačního systému namísto jeho sloučení do vlastní hlavičky.</string>
 	<string name="settings_appearance_restart_required">Změna se projeví až po restartu aplikace.</string>
-	<string name="settings_error_scheduler_time_invalid">Čas plánovače je neplatný — hodina musí být 0–23, minuta musí být 0–59.</string>
+	<string name="settings_error_scheduler_time_invalid">Čas plánovače je neplatný – hodina musí být 0–23, minuta musí být 0–59.</string>
 	<string name="settings_error_refresh_failed">Obnovení důvěryhodných seznamů selhalo: %1$s</string>
 	<string name="settings_error_scheduler_install_failed">Nepodařilo se nainstalovat plánovač operačního systému: %1$s</string>
 	<string name="settings_certadd_already_trusted">Tento certifikát je již důvěryhodný v globálním rozsahu.</string>

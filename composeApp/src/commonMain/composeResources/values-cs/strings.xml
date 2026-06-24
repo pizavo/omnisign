@@ -37,7 +37,7 @@
 	<string name="label_timeout_ms">Časový limit (ms)</string>
 	<string name="label_url">URL</string>
 	<string name="label_username">Uživatelské jméno</string>
-	<string name="hint_password_stored">Heslo uloženo — zadejte novou hodnotu pro nahrazení</string>
+	<string name="hint_password_stored">Heslo uloženo – zadejte novou hodnotu pro nahrazení</string>
 	<string name="msg_trusted_certs_unavailable">Správa důvěryhodných certifikátů není na této platformě dostupná.</string>
 	<string name="selector_inherit_from_global">Převzít z globálního nastavení</string>
 </resources>

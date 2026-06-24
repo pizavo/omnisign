@@ -20,6 +20,6 @@
 	<string name="renewaljobs_notify_on">Upozornenia: zapnuté</string>
 	<string name="renewaljobs_notify_off">Upozornenia: vypnuté</string>
 	<string name="renewaljobs_remove_content_desc">Odstrániť %1$s</string>
-	<string name="renewaljobs_globs_amber_warning">Žlté vzory (povolené — overte): %1$s.</string>
+	<string name="renewaljobs_globs_amber_warning">Žlté vzory (povolené – overte): %1$s.</string>
 	<string name="renewaljobs_chip_remove_content_desc">Odstrániť %1$s</string>
 </resources>

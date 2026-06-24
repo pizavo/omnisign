@@ -22,7 +22,7 @@
 	<string name="signing_cert_qualified">Kvalifikovaný</string>
 	<string name="signing_cert_on_pkcs11_token">Na hardvérovom tokene PKCS#11</string>
 	<string name="signing_cert_not_qualified">Nekvalifikovaný</string>
-	<string name="signing_cert_qscd_tooltip">Certifikát nesie vyhlásenie QcSSCD — súkromný kľúč je uložený na kvalifikovanom zariadení na vyhotovenie podpisu/pečate.</string>
+	<string name="signing_cert_qscd_tooltip">Certifikát nesie vyhlásenie QcSSCD – súkromný kľúč je uložený na kvalifikovanom zariadení na vyhotovenie podpisu/pečate.</string>
 	<string name="signing_cert_qualified_tooltip">Certifikát nesie vyhlásenie QcCompliance, ale stav QSCD nebol potvrdený.</string>
 	<string name="signing_cert_not_qualified_tooltip">Certifikát nenesie vyhlásenia QCStatements označujúce kvalifikáciu podľa eIDAS.</string>
 	<string name="signing_no_tokens_detected">Nezistili sa žiadne tokeny.</string>
@@ -31,7 +31,7 @@
 	<string name="signing_show_diagnostic_info">Zobraziť diagnostické informácie</string>
 	<string name="signing_timestamping_unavailable">Časové pečiatkovanie nie je dostupné</string>
 	<string name="signing_timestamping_select_profile">Vyberte profil, ktorý nevyžaduje časovú pečiatku, alebo požiadajte správcu servera o povolenie operácie časového pečiatkovania.</string>
-	<string name="signing_cert_dropdown_item_label">%1$s — platný do %2$s%3$s</string>
+	<string name="signing_cert_dropdown_item_label">%1$s – platný do %2$s%3$s</string>
 	<string name="signing_hash_algorithm_default">Predvolený (%1$s)</string>
 	<plurals name="signing_locked_tokens_count">
 		<item quantity="one">%1$s uzamknutý token</item>
@@ -43,10 +43,10 @@
 	<string name="signing_timestamping_intro_profile">Profil \"%1$s\" vyžaduje PAdES %2$s, ktorý vkladá dôveryhodnú časovú pečiatku.</string>
 	<string name="signing_timestamping_intro_no_profile">Nakonfigurovaná úroveň podpisu PAdES %1$s vkladá dôveryhodnú časovú pečiatku.</string>
 	<string name="signing_timestamping_body">%1$s Tento server má časové pečiatkovanie zakázané, takže dokáže vytvárať iba základné podpisy (B-B). Podpísanie tu by vynechalo požadovanú časovú pečiatku.</string>
-	<string name="signing_rescan_none">Opätovné prehľadanie dokončené — nezistili sa žiadne tokeny PKCS#11</string>
+	<string name="signing_rescan_none">Opätovné prehľadanie dokončené – nezistili sa žiadne tokeny PKCS#11</string>
 	<plurals name="signing_rescan_detected">
-		<item quantity="one">Opätovné prehľadanie dokončené — zistená %1$s položka PKCS#11</item>
-		<item quantity="few">Opätovné prehľadanie dokončené — zistené %1$s položky PKCS#11</item>
-		<item quantity="other">Opätovné prehľadanie dokončené — zistených %1$s položiek PKCS#11</item>
+		<item quantity="one">Opätovné prehľadanie dokončené – zistená %1$s položka PKCS#11</item>
+		<item quantity="few">Opätovné prehľadanie dokončené – zistené %1$s položky PKCS#11</item>
+		<item quantity="other">Opätovné prehľadanie dokončené – zistených %1$s položiek PKCS#11</item>
 	</plurals>
 </resources>
