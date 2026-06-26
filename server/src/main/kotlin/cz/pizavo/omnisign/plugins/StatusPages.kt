@@ -98,6 +98,8 @@ private suspend fun ApplicationCall.respondOperationError(error: OperationError)
 		is SigningError.TimestampError -> HttpStatusCode.BadGateway to "TIMESTAMP_ERROR"
 		is SigningError.ExpiredAlgorithm -> HttpStatusCode.UnprocessableEntity to "EXPIRED_ALGORITHM"
 		is SigningError.SigningFailed -> HttpStatusCode.InternalServerError to "SIGNING_FAILED"
+		is SigningError.EncryptedDocument -> HttpStatusCode.UnprocessableEntity to "ENCRYPTED_DOCUMENT"
+		is SigningError.MalformedDocument -> HttpStatusCode.BadRequest to "MALFORMED_DOCUMENT"
 
 		is ValidationError.InvalidDocument -> HttpStatusCode.BadRequest to "INVALID_DOCUMENT"
 		is ValidationError.InvalidPolicy -> HttpStatusCode.BadRequest to "INVALID_POLICY"

@@ -34,17 +34,17 @@ class DocumentInputErrorDetectorTest : FunSpec({
 		detector.isEncrypted(IOException("disk full")).shouldBeFalse()
 	}
 
-	test("flags an IllegalInputException as malformed") {
-		detector.isMalformed(IllegalInputException("not a valid PDF")).shouldBeTrue()
+	test("looksLikePdf accepts a document whose %PDF- header is at the start") {
+		detector.looksLikePdf("%PDF-1.7\nbody".encodeToByteArray()).shouldBeTrue()
 	}
 
-	test("flags a malformed-input exception wrapped in a cause chain") {
-		val wrapped = RuntimeException("extend failed", IllegalStateException(IllegalInputException("corrupt")))
-		detector.isMalformed(wrapped).shouldBeTrue()
+	test("looksLikePdf accepts a header within the first kilobyte") {
+		val padded = ByteArray(500) { ' '.code.toByte() } + "%PDF-1.4".encodeToByteArray()
+		detector.looksLikePdf(padded).shouldBeTrue()
 	}
 
-	test("does not flag a non-input failure as malformed") {
-		detector.isMalformed(ProtectedDocumentException("encrypted")).shouldBeFalse()
-		detector.isMalformed(IOException("disk full")).shouldBeFalse()
+	test("looksLikePdf rejects input with no PDF header") {
+		detector.looksLikePdf("just some text, not a pdf".encodeToByteArray()).shouldBeFalse()
+		detector.looksLikePdf(ByteArray(0)).shouldBeFalse()
 	}
 })

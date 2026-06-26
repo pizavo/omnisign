@@ -108,6 +108,12 @@ enum class MessageKey {
 	/** The chosen hash algorithm is not supported by the Windows Certificate Store (arg: hash). */
 	SIGNING_HASH_NOT_SUPPORTED_WINDOWS,
 
+	/** The input PDF is encrypted or password-protected, so it cannot be signed without its password. */
+	SIGNING_PDF_ENCRYPTED,
+
+	/** The input is not a valid PDF or could not be parsed for signing. */
+	SIGNING_MALFORMED_PDF,
+
 	/** Local (DSS-backed) document validation failed for an unclassified reason. */
 	VALIDATION_VALIDATION_FAILED,
 

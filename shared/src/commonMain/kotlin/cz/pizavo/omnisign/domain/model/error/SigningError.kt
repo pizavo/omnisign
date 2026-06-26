@@ -64,6 +64,29 @@ sealed interface SigningError : OperationError, LocalizableError {
 		override val cause: Throwable? = null,
 	) : SigningError
 
+	/**
+	 * The input is not a PDF: it carries no `%PDF-` header, so it is rejected before DSS is invoked.
+	 *
+	 * A structural pre-check ([cz.pizavo.omnisign.data.repository.DocumentInputErrorDetector.looksLikePdf])
+	 * rejects headerless input; a header-bearing but otherwise unsignable document surfaces as the
+	 * generic [SigningFailed] instead.
+	 */
+	data class MalformedDocument(
+		override val text: LocalizableText,
+		override val details: String? = null,
+		override val cause: Throwable? = null,
+	) : SigningError
+
+	/**
+	 * The input PDF is encrypted or password-protected, so it cannot be signed without supplying its
+	 * password — which is out of scope for the signing flow.
+	 */
+	data class EncryptedDocument(
+		override val text: LocalizableText,
+		override val details: String? = null,
+		override val cause: Throwable? = null,
+	) : SigningError
+
 	companion object {
 
 		/** Token discovery failed unexpectedly. */
@@ -125,6 +148,14 @@ sealed interface SigningError : OperationError, LocalizableError {
 		/** The signing operation failed for an unclassified reason. */
 		fun signingFailed(details: String? = null, cause: Throwable? = null): SigningFailed =
 			SigningFailed(LocalizableText.of(MessageKey.SIGNING_SIGNING_FAILED), details, cause)
+
+		/** The input is not a valid PDF or could not be parsed. */
+		fun malformedDocument(details: String? = null, cause: Throwable? = null): MalformedDocument =
+			MalformedDocument(LocalizableText.of(MessageKey.SIGNING_MALFORMED_PDF), details, cause)
+
+		/** The input PDF is encrypted or password-protected. */
+		fun pdfEncrypted(details: String? = null, cause: Throwable? = null): EncryptedDocument =
+			EncryptedDocument(LocalizableText.of(MessageKey.SIGNING_PDF_ENCRYPTED), details, cause)
 
 		/** Listing certificates from the server failed. */
 		fun listCertificatesFromServerFailed(details: String? = null, cause: Throwable? = null): TokenAccessError =

@@ -94,6 +94,10 @@ class DssArchivingRepository(
 			val tsConfig = resolvedConfig.timestampServer
 				?: return ArchivingError.timestampServerRequired(parameters.targetLevel.name).left()
 			
+			if (!documentInputErrorDetector.looksLikePdf(parameters.inputBytes)) {
+				return ArchivingError.malformedPdf(details = "input has no %PDF- header").left()
+			}
+
 			val dssLevel = parameters.targetLevel.toDss()
 			val statusAlert = CollectingStatusAlert()
 			val logCapture = DssLogCapture()
@@ -138,10 +142,6 @@ class DssArchivingRepository(
 			
 			if (documentInputErrorDetector.isEncrypted(e)) {
 				return ArchivingError.pdfEncrypted(details = e.message, cause = e).left()
-			}
-
-			if (documentInputErrorDetector.isMalformed(e)) {
-				return ArchivingError.malformedPdf(details = e.message, cause = e).left()
 			}
 
 			if (revocationErrorDetector.isRevocationException(e)) {

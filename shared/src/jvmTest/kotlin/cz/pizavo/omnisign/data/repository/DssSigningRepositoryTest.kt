@@ -44,7 +44,7 @@ class DssSigningRepositoryTest : FunSpec({
 	val repository = DssSigningRepository(
 		tokenService, configRepository, credentialStore, dssServiceFactory,
 		AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
-		FileTrustStore(tempdir().toPath()),
+		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(),
 	)
 	
 	fun defaultConfig() = AppConfig(
