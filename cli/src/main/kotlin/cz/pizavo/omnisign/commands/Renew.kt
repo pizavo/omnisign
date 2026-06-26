@@ -158,7 +158,7 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 					}
 					val label = when (f.status) {
 						RenewFileStatus.Status.RENEWED -> "[RENEWED] ${f.path}"
-						RenewFileStatus.Status.SKIPPED -> "[SKIP]  ${f.path} — timestamp still valid"
+						RenewFileStatus.Status.SKIPPED -> "[SKIP]  ${f.path} — ${f.message ?: "timestamp still valid"}"
 						RenewFileStatus.Status.DRY_RUN -> "[DRY-RUN] ${f.path} — would be re-timestamped"
 						RenewFileStatus.Status.ERROR -> "[ERROR] ${f.path} — ${f.message}"
 						RenewFileStatus.Status.CONFIG_ERROR -> "[ERROR] Configuration Error: ${f.message}"

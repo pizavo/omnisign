@@ -15,6 +15,7 @@ import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.result.RenewalCheckCacheEntry
+import cz.pizavo.omnisign.domain.model.result.RenewalNeed
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.port.RenewalCheckCache
@@ -155,7 +156,7 @@ class DssArchivingRepository(
 	override suspend fun needsArchivalRenewal(
 		filePath: String,
 		renewalBufferDays: Int,
-	): OperationResult<Boolean> {
+	): OperationResult<RenewalNeed> {
 		return try {
 			val file = File(filePath)
 			if (!file.exists()) {
@@ -171,19 +172,24 @@ class DssArchivingRepository(
 				cached.lastModifiedMillis == file.lastModified() &&
 				now < cached.earliestRenewalAt - renewalBufferDays.days
 			) {
-				return false.right()
+				return RenewalNeed.NOT_NEEDED.right()
 			}
 
 			val document = FileDocument(file)
 			val validator = PDFDocumentValidator(document).apply {
 				setCertificateVerifier(CommonCertificateVerifier())
 			}
-			val timestamps = validator.validateDocument().diagnosticData.getTimestampList()
+			val diagnosticData = validator.validateDocument().diagnosticData
+			val timestamps = diagnosticData.getTimestampList()
 
 			when (needsRenewal(timestamps, renewalThreshold, renewalCryptographicSuite)) {
 				RenewalDecision.NEEDED -> {
 					renewalCheckCache.remove(filePath)
-					true.right()
+					if (diagnosticData.signatures.isEmpty()) {
+						RenewalNeed.NO_SIGNATURE.right()
+					} else {
+						RenewalNeed.NEEDED.right()
+					}
 				}
 				RenewalDecision.NOT_NEEDED -> {
 					val due = earliestRenewalAt(timestamps, renewalCryptographicSuite)
@@ -195,7 +201,7 @@ class DssArchivingRepository(
 					} else {
 						renewalCheckCache.remove(filePath)
 					}
-					false.right()
+					RenewalNeed.NOT_NEEDED.right()
 				}
 				RenewalDecision.UNDETERMINABLE -> {
 					renewalCheckCache.remove(filePath)

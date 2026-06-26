@@ -8,6 +8,7 @@ import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.model.result.OperationResult
+import cz.pizavo.omnisign.domain.model.result.RenewalNeed
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -90,7 +91,7 @@ class RemoteArchivingRepository(
     override suspend fun needsArchivalRenewal(
         filePath: String,
         renewalBufferDays: Int,
-    ): OperationResult<Boolean> =
+    ): OperationResult<RenewalNeed> =
         ArchivingError.webRenewalUnsupported(
             details = "Renewal jobs scan the local filesystem; the web client has no filesystem access",
         ).left()

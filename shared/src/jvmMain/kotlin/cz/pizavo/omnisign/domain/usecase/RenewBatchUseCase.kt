@@ -11,6 +11,7 @@ import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.RenewBatchResult
 import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
 import cz.pizavo.omnisign.domain.model.result.RenewJobResult
+import cz.pizavo.omnisign.domain.model.result.RenewalNeed
 import cz.pizavo.omnisign.domain.model.result.RenewalRunError
 import cz.pizavo.omnisign.domain.model.result.RenewalRunJobSummary
 import cz.pizavo.omnisign.domain.model.result.RenewalRunOutcome
@@ -313,12 +314,22 @@ class RenewBatchUseCase(
                             RenewFileStatus(path = path, status = RenewFileStatus.Status.ERROR, message = error.message)
                         )
                     },
-                    ifRight = { needsRenewal ->
-                        if (!needsRenewal) {
-                            totalSkipped++
-                            appendLog(job.logFile, "[SKIP]  $path — timestamp still valid")
-                            fileStatuses.add(RenewFileStatus(path = path, status = RenewFileStatus.Status.SKIPPED))
-                            return@fold
+                    ifRight = { need ->
+                        when (need) {
+                            RenewalNeed.NOT_NEEDED -> {
+                                totalSkipped++
+                                appendLog(job.logFile, "[SKIP]  $path — timestamp still valid")
+                                fileStatuses.add(RenewFileStatus(path = path, status = RenewFileStatus.Status.SKIPPED))
+                                return@fold
+                            }
+                            RenewalNeed.NO_SIGNATURE -> {
+                                totalSkipped++
+                                logger.info { "[SKIP] $path — no signature to renew; renewal applies to signed documents" }
+                                appendLog(job.logFile, "[SKIP]  $path — no signature to renew")
+                                fileStatuses.add(RenewFileStatus(path = path, status = RenewFileStatus.Status.SKIPPED, message = "No signature to renew"))
+                                return@fold
+                            }
+                            RenewalNeed.NEEDED -> { }
                         }
 
                         if (dryRun) {
@@ -678,8 +689,8 @@ class RenewBatchUseCase(
             verifyFile.writeBytes(outputBytes)
             checkRenewalUseCase(verifyFile.absolutePathString(), bufferDays).fold(
                 ifLeft = { "the renewed document failed validation: ${it.message}" },
-                ifRight = { stillNeedsRenewal ->
-                    if (stillNeedsRenewal) "the renewed document still reports that it needs renewal" else null
+                ifRight = { need ->
+                    if (need == RenewalNeed.NEEDED) "the renewed document still reports that it needs renewal" else null
                 },
             )
         } catch (e: Exception) {

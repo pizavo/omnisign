@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.model.result.OperationResult
+import cz.pizavo.omnisign.domain.model.result.RenewalNeed
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository.Companion.DEFAULT_RENEWAL_BUFFER_DAYS
 
 /**
@@ -50,15 +51,17 @@ interface ArchivingRepository {
 	 * @param filePath Absolute path to the PAdES document to inspect.
 	 * @param renewalBufferDays Number of days before a timestamp certificate's expiry at which
 	 *   renewal is considered necessary. Defaults to [DEFAULT_RENEWAL_BUFFER_DAYS].
-	 * @return `true` when an uncovered timestamp's signing certificate expires within the renewal
-	 *   window, `false` when none does, or an [cz.pizavo.omnisign.domain.model.error.ArchivingError]
+	 * @return [RenewalNeed.NEEDED] when an uncovered timestamp's signing certificate expires within the
+	 *   renewal window, [RenewalNeed.NOT_NEEDED] when none does, [RenewalNeed.NO_SIGNATURE] when the
+	 *   document carries timestamps but no signature for OmniSign's signature-scoped renewal to extend,
+	 *   or an [cz.pizavo.omnisign.domain.model.error.ArchivingError]
 	 *   (e.g. [cz.pizavo.omnisign.domain.model.error.ArchivingError.RenewalStatusUndeterminable] when
 	 *   a relevant timestamp's certificate cannot be resolved).
 	 */
 	suspend fun needsArchivalRenewal(
 		filePath: String,
 		renewalBufferDays: Int = DEFAULT_RENEWAL_BUFFER_DAYS,
-	): OperationResult<Boolean>
+	): OperationResult<RenewalNeed>
 	
 	/**
 	 * Perform a lightweight check of the document to determine its current timestamp
