@@ -22,8 +22,10 @@ import org.koin.core.component.inject
 
 /**
  * CLI command that executes all configured renewal jobs
- * (or a single named job), checks each matching B-LTA PDF against its renewal buffer, and
- * re-timestamps in-place any file whose archival timestamp is nearing expiry.
+ * (or a single named job), checks each matched PDF against its renewal buffer, and
+ * re-timestamps it in-place — to PAdES B-LTA — when its archival timestamp (or a signature
+ * timestamp not yet sealed by one) is nearing expiry. Because the target is always B-LTA,
+ * a matched B-T or B-LT document is promoted to B-LTA as part of renewal.
  *
  * This command is designed to be invoked by the OS-level daily scheduled job registered via
  * `omnisign schedule install`, but can also be run manually at any time.
@@ -48,7 +50,7 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 	).flag(default = false)
 
 	override fun help(context: Context): String =
-		"Run configured renewal jobs: check B-LTA PDFs for expiring timestamps and re-timestamp them in place"
+		"Run configured renewal jobs: re-timestamp matched PDFs with expiring timestamps to B-LTA in place (also promotes matched B-T/B-LT documents to B-LTA)"
 
 	override fun run(): Unit = runBlocking {
 		val result = renewBatchUseCase(jobName = jobName, dryRun = dryRun)

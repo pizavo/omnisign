@@ -50,9 +50,11 @@ private val logger = KotlinLogging.logger {}
 
 /**
  * Executes all configured renewal jobs (or a single named job), checking each
- * matching B-LTA PDF against its renewal buffer and re-timestamping in place
- * any file whose outermost document timestamp — or a signature timestamp not yet
- * sealed by one — is nearing the expiry of its signing certificate.
+ * matched PDF against its renewal buffer and re-timestamping it in place — always to
+ * PAdES B-LTA — when its outermost document timestamp, or a signature timestamp not yet
+ * sealed by one, is nearing the expiry of its signing certificate or of one of its
+ * algorithms. Because the target is always B-LTA, a matched B-T or B-LT document is
+ * promoted to B-LTA as part of renewal.
  *
  * This use case encapsulates the core batch logic shared by the CLI `renew`
  * command and the desktop app's headless renewal mode. Presentation concerns

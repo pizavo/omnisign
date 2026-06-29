@@ -4,8 +4,10 @@ sidebar_position: 4
 
 # renew
 
-Execute configured renewal jobs — checks each B-LTA PDF tracked by renewal jobs and
-re-timestamps in-place any file whose archival timestamp is nearing expiry.
+Execute configured renewal jobs — checks each matched PDF tracked by renewal jobs and
+re-timestamps it in-place, always to PAdES **B-LTA**, when its archival timestamp (or a
+signature timestamp not yet sealed by one) is nearing expiry. Because the target is always
+B-LTA, a matched B-T or B-LT document is promoted to B-LTA as part of renewal.
 
 Intended to be invoked daily by the OS scheduler registered via
 [`schedule install`](schedule#schedule-install), but can also be run manually at any time.
