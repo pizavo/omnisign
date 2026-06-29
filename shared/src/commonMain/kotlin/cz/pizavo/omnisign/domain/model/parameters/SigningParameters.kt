@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.value.Sensitive
 
 /**
  * Parameters for a signing operation.
@@ -26,6 +27,12 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
  *   so signing pins to the slot holding its private key on cards that present several
  *   token-present slots; null lets sign-time resolution locate the slot by [certificateAlias].
  *   JVM-only; the web target ignores this field.
+ * @property keystoreFile Absolute path to a PKCS#12 (`.p12`/`.pfx`) keystore to sign with, instead
+ *   of a discovered token. When set, [certificateAlias] selects *within* the keystore (omit to use
+ *   its sole key). JVM/CLI only; the web target rejects it.
+ * @property keystorePassword In-memory password for [keystoreFile] when supplied non-interactively;
+ *   null lets the JVM signer prompt interactively when the keystore is password-protected. A
+ *   [Sensitive], so it is never persisted or serialized.
  * @property hashAlgorithm Hash algorithm for the signature digest; falls back to the resolved
  *   config default.
  * @property encryptionAlgorithm Encryption (signing key) algorithm override; null lets DSS
@@ -56,6 +63,8 @@ data class SigningParameters(
 	val inputName: String,
 	val certificateAlias: String? = null,
 	val certificateSlotId: Long? = null,
+	val keystoreFile: String? = null,
+	val keystorePassword: Sensitive<String>? = null,
 	val hashAlgorithm: HashAlgorithm? = null,
 	val encryptionAlgorithm: EncryptionAlgorithm? = null,
 	val signatureLevel: SignatureLevel? = null,
@@ -76,6 +85,8 @@ data class SigningParameters(
 			inputBytes.contentEquals(other.inputBytes) &&
 			certificateAlias == other.certificateAlias &&
 			certificateSlotId == other.certificateSlotId &&
+			keystoreFile == other.keystoreFile &&
+			keystorePassword == other.keystorePassword &&
 			hashAlgorithm == other.hashAlgorithm &&
 			encryptionAlgorithm == other.encryptionAlgorithm &&
 			signatureLevel == other.signatureLevel &&
@@ -95,6 +106,8 @@ data class SigningParameters(
 		result = 31 * result + inputName.hashCode()
 		result = 31 * result + (certificateAlias?.hashCode() ?: 0)
 		result = 31 * result + (certificateSlotId?.hashCode() ?: 0)
+		result = 31 * result + (keystoreFile?.hashCode() ?: 0)
+		result = 31 * result + (keystorePassword?.hashCode() ?: 0)
 		result = 31 * result + (hashAlgorithm?.hashCode() ?: 0)
 		result = 31 * result + (encryptionAlgorithm?.hashCode() ?: 0)
 		result = 31 * result + (signatureLevel?.hashCode() ?: 0)

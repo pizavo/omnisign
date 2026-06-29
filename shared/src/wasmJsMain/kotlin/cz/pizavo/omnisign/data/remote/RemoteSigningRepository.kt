@@ -50,7 +50,11 @@ class RemoteSigningRepository(
     private val json = Json { ignoreUnknownKeys = true }
 
     override suspend fun signDocument(parameters: SigningParameters): OperationResult<SigningResult> =
-        Either.catch {
+        if (parameters.keystoreFile != null) {
+            SigningError.loadFileNotSupportedOnWeb(
+                "Signing with a local keystore file is not available on the web target.",
+            ).left()
+        } else Either.catch {
             val response = client.submitFormWithBinaryData(
                 url = "api/v1/sign",
                 formData = formData {
