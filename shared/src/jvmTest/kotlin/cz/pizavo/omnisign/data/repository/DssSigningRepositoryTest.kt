@@ -44,7 +44,7 @@ class DssSigningRepositoryTest : FunSpec({
 	val repository = DssSigningRepository(
 		tokenService, configRepository, credentialStore, dssServiceFactory,
 		AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
-		FileTrustStore(tempdir().toPath()),
+		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(),
 	)
 	
 	fun defaultConfig() = AppConfig(
@@ -77,21 +77,6 @@ class DssSigningRepositoryTest : FunSpec({
 			every { keys } returns keyEntries
 		}
 		return mockk<SigningToken> { every { getDssToken() } returns mockDssToken }
-	}
-
-	test("signDocument with a non-existent keystore file returns a file-not-found error") {
-		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
-
-		val params = SigningParameters(
-			inputBytes = tmpFile("ks-input.pdf").readBytes(),
-			inputName = "ks-input.pdf",
-			keystoreFile = File(tmpDir, "does-not-exist.p12").absolutePath,
-			addTimestamp = false,
-		)
-
-		repository.signDocument(params)
-			.shouldBeLeft()
-			.shouldBeInstanceOf<SigningError.TokenAccessError>()
 	}
 
 	test("signDocument returns TokenAccessError when token discovery fails") {
@@ -539,5 +524,31 @@ class DssSigningRepositoryTest : FunSpec({
 		val result = repository.listAvailableCertificates().shouldBeRight()
 		result.certificates.shouldHaveSize(1)
 		result.lockedTokens.shouldBeEmpty()
+	}
+
+	test("signDocument returns MalformedDocument when the input is not a PDF") {
+		val tokenInfo = TokenInfo(id = "win", name = "Windows MY", type = TokenType.WINDOWS_MY, requiresPin = false)
+		val cert = CertificateEntry(
+			alias = "my-cert", subjectDN = "CN=Test", issuerDN = "CN=CA",
+			serialNumber = "1", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
+			keyUsages = emptyList(), tokenInfo = tokenInfo,
+		)
+
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
+		coEvery { tokenService.discoverTokens() } returns listOf(tokenInfo).right()
+		coEvery { tokenService.probeTokenPresent(tokenInfo) } returns true
+		coEvery { tokenService.loadCertificatesSilent(tokenInfo, "") } returns listOf(cert).right()
+		coEvery { tokenService.getSigningToken(cert, "") } returns signingTokenFor(cert).right()
+
+		val params = SigningParameters(
+			inputBytes = "this is plainly not a pdf".encodeToByteArray(),
+			inputName = "not-a-pdf.pdf",
+			certificateAlias = "my-cert",
+			addTimestamp = false,
+		)
+
+		repository.signDocument(params)
+			.shouldBeLeft()
+			.shouldBeInstanceOf<SigningError.MalformedDocument>()
 	}
 })

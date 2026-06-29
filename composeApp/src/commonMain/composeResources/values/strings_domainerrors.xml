@@ -31,6 +31,8 @@
 	<string name="err_signing_load_file_not_supported_web">Loading PKCS#12 files is not supported on the web target</string>
 	<string name="err_signing_hash_encryption_incompatible">Hash algorithm %1$s is not compatible with encryption algorithm %2$s. Compatible hash algorithms: %3$s</string>
 	<string name="err_signing_hash_not_supported_windows">Hash algorithm %1$s is not supported by the Windows Certificate Store</string>
+	<string name="err_signing_pdf_encrypted">The PDF is encrypted or password-protected and cannot be signed</string>
+	<string name="err_signing_malformed_pdf">The file is not a valid PDF or could not be parsed</string>
 	<string name="err_validation_validation_failed">Validation failed</string>
 	<string name="err_validation_remote_validation_failed">Remote validation failed</string>
 	<string name="err_truststore_parse_failed">Could not parse the certificate</string>

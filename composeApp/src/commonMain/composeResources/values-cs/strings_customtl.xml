@@ -6,7 +6,7 @@
 	<string name="customtl_name_placeholder">Popisek</string>
 	<string name="customtl_source_label">Zdroj (URL nebo cesta k souboru)</string>
 	<string name="customtl_source_placeholder">https://… nebo file:///…</string>
-	<string name="customtl_source_warning">Zdroj by měl začínat https:// nebo file:/// — ostatní schémata nemusí být knihovnou DSS podporována.</string>
+	<string name="customtl_source_warning">Zdroj by měl začínat https:// nebo file:/// – ostatní schémata nemusí být knihovnou DSS podporována.</string>
 	<string name="customtl_cert_label">Podpisový certifikát (volitelné)</string>
 	<string name="customtl_browse_cert_description">Procházet a vybrat podpisový certifikát</string>
 	<string name="customtl_cert_path">Certifikát: %1$s</string>

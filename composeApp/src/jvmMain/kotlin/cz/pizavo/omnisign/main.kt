@@ -375,11 +375,13 @@ private fun runHeadlessRenewal() {
 
 	if (result?.alreadyRunning == true) {
 		logger.info { "Another renewal run is already in progress — skipping." }
+		renewalNotifier.notify(result)
 		exitProcess(0)
 	}
 
 	if (result?.lockError != null) {
 		logger.error { "Renewal aborted — could not acquire the renewal lock: ${result.lockError}" }
+		renewalNotifier.notify(result)
 		exitProcess(1)
 	}
 

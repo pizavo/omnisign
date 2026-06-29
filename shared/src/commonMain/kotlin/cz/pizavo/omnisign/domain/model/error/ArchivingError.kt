@@ -71,7 +71,11 @@ sealed interface ArchivingError : OperationError, LocalizableError {
 	) : ArchivingError
 
 	/**
-	 * The input is not a valid PDF, or is corrupted, and could not be parsed for extension.
+	 * The input is not a PDF: it carries no `%PDF-` header, so it is rejected before DSS is invoked.
+	 *
+	 * This is a structural pre-check ([cz.pizavo.omnisign.data.repository.DocumentInputErrorDetector.looksLikePdf]),
+	 * not a guarantee the body is well-formed; a header-bearing but otherwise unextendable document
+	 * surfaces as the generic [ExtensionFailed] instead.
 	 */
 	data class MalformedDocument(
 		override val text: LocalizableText,

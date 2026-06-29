@@ -55,6 +55,7 @@ class DssSigningRepository(
 	private val warningSanitizer: DssWarningSanitizer,
 	private val tspErrorDetector: TspErrorDetector,
 	private val trustStore: TrustStore,
+	private val documentInputErrorDetector: DocumentInputErrorDetector,
 ) : SigningRepository {
 
 	private var discoveredTokens: List<TokenInfo> = emptyList()
@@ -126,6 +127,9 @@ class DssSigningRepository(
 			
 			val privateKey = resolvedKey.privateKey
 			val tokenConnection = resolvedKey.token
+			if (!documentInputErrorDetector.looksLikePdf(parameters.inputBytes)) {
+				return SigningError.malformedDocument(details = "input has no %PDF- header").left()
+			}
 			val statusAlert = CollectingStatusAlert()
 			val logCapture = DssLogCapture()
 			val (service, tlWarnings) = buildSigningService(resolvedConfig, dssSignatureLevel, parameters.addTimestamp, statusAlert)
@@ -169,6 +173,8 @@ class DssSigningRepository(
 					details = e.message,
 					cause = e,
 				).left()
+			} else if (documentInputErrorDetector.isEncrypted(e)) {
+				SigningError.pdfEncrypted(details = e.message, cause = e).left()
 			} else {
 				SigningError.signingFailed(details = e.message, cause = e).left()
 			}

@@ -31,6 +31,7 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
+import io.mockk.every
 import io.mockk.mockk
 import org.apache.pdfbox.cos.COSDictionary
 import org.apache.pdfbox.cos.COSName
@@ -60,6 +61,27 @@ class DssArchivingRepositoryTest : FunSpec({
 			defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA
 		)
 	)
+
+	fun configWithTsa() = AppConfig(
+		global = GlobalConfig(
+			defaultHashAlgorithm = HashAlgorithm.SHA256,
+			defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA,
+			timestampServer = cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig(url = "http://tsa.example/"),
+		)
+	)
+
+	fun encryptedPdfBytes(): ByteArray {
+		val out = java.io.ByteArrayOutputStream()
+		PDDocument().use { doc ->
+			doc.addPage(org.apache.pdfbox.pdmodel.PDPage())
+			val policy = org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy(
+				"owner-secret", "user-secret", org.apache.pdfbox.pdmodel.encryption.AccessPermission(),
+			).apply { encryptionKeyLength = 128 }
+			doc.protect(policy)
+			doc.save(out)
+		}
+		return out.toByteArray()
+	}
 	
 	/**
 	 * Create a minimal valid PDF file with no signatures.
@@ -112,6 +134,31 @@ class DssArchivingRepositoryTest : FunSpec({
 				targetLevel = SignatureLevel.PADES_BASELINE_B
 			)
 		).shouldBeLeft().shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
+	}
+
+	test("extendDocument returns MalformedDocument when the input is not a PDF") {
+		coEvery { configRepository.getCurrentConfig() } returns configWithTsa()
+
+		repository.extendDocument(
+			ArchivingParameters(
+				inputBytes = "this is plainly not a pdf".encodeToByteArray(),
+				inputName = "not-a-pdf.pdf",
+				targetLevel = SignatureLevel.PADES_BASELINE_T,
+			)
+		).shouldBeLeft().shouldBeInstanceOf<ArchivingError.MalformedDocument>()
+	}
+
+	test("extendDocument returns EncryptedDocument when the PDF is password-protected") {
+		every { dssServiceFactory.buildPdfObjectFactory() } returns eu.europa.esig.dss.pdf.pdfbox.PdfBoxNativeObjectFactory()
+		coEvery { configRepository.getCurrentConfig() } returns configWithTsa()
+
+		repository.extendDocument(
+			ArchivingParameters(
+				inputBytes = encryptedPdfBytes(),
+				inputName = "encrypted.pdf",
+				targetLevel = SignatureLevel.PADES_BASELINE_T,
+			)
+		).shouldBeLeft().shouldBeInstanceOf<ArchivingError.EncryptedDocument>()
 	}
 	
 	test("needsArchivalRenewal returns ExtensionFailed for a non-existent file") {

@@ -31,6 +31,8 @@
 	<string name="err_signing_load_file_not_supported_web">Načítání souborů PKCS#12 není ve webové verzi podporováno</string>
 	<string name="err_signing_hash_encryption_incompatible">Hašovací algoritmus %1$s není kompatibilní s šifrovacím algoritmem %2$s. Kompatibilní hašovací algoritmy: %3$s</string>
 	<string name="err_signing_hash_not_supported_windows">Hašovací algoritmus %1$s není podporován úložištěm certifikátů systému Windows</string>
+	<string name="err_signing_pdf_encrypted">PDF je zašifrované nebo chráněné heslem a nelze jej podepsat</string>
+	<string name="err_signing_malformed_pdf">Soubor není platné PDF nebo se jej nepodařilo zpracovat</string>
 	<string name="err_validation_validation_failed">Ověření selhalo</string>
 	<string name="err_validation_remote_validation_failed">Vzdálené ověření selhalo</string>
 	<string name="err_truststore_parse_failed">Certifikát se nepodařilo zpracovat</string>

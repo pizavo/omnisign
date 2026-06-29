@@ -21,6 +21,6 @@
 	<string name="renewaljobs_notify_on">Upozornění: zapnuto</string>
 	<string name="renewaljobs_notify_off">Upozornění: vypnuto</string>
 	<string name="renewaljobs_remove_content_desc">Odebrat %1$s</string>
-	<string name="renewaljobs_globs_amber_warning">Sporné vzory glob (povoleny — zkontrolujte): %1$s.</string>
+	<string name="renewaljobs_globs_amber_warning">Sporné vzory glob (povoleny – zkontrolujte): %1$s.</string>
 	<string name="renewaljobs_chip_remove_content_desc">Odebrat %1$s</string>
 </resources>

@@ -32,7 +32,7 @@
 	<string name="tlbuilder_browse_for_certificate">Procházet certifikát</string>
 	<string name="tlbuilder_compiled_successfully">Sestavení důvěryhodného seznamu proběhlo úspěšně</string>
 	<string name="tlbuilder_registered_as_label">Zaregistrováno jako:</string>
-	<string name="tlbuilder_not_registered">Nezaregistrováno — můžete jej zaregistrovat ručně později.</string>
+	<string name="tlbuilder_not_registered">Nezaregistrováno – můžete jej zaregistrovat ručně později.</string>
 	<string name="tlbuilder_compile_and_save">Sestavit a uložit</string>
 	<string name="tlbuilder_validation_name">Název je povinný.</string>
 	<string name="tlbuilder_validation_territory">Kód území je povinný.</string>

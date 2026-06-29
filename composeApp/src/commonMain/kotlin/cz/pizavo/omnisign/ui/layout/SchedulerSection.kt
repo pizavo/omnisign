@@ -228,6 +228,48 @@ fun SchedulerSection(
 		modifier = Modifier.fillMaxWidth(),
 	)
 
+	Spacer(modifier = Modifier.height(16.dp))
+
+	Row(
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.spacedBy(4.dp),
+	) {
+		Checkbox(
+			checked = state.stalenessNotificationEnabled,
+			onCheckedChange = { value -> onFieldChange { it.copy(stalenessNotificationEnabled = value) } },
+		)
+		Text(
+			text = stringResource(Res.string.scheduler_staleness_label),
+			style = LumoTheme.typography.body2,
+		)
+		InfoTooltip(text = stringResource(Res.string.scheduler_staleness_tooltip))
+	}
+
+	if (state.stalenessNotificationEnabled) {
+		Spacer(modifier = Modifier.height(8.dp))
+		UnderlinedTextField(
+			value = state.stalenessThresholdDays,
+			onValueChange = { value ->
+				if (value.all { c -> c.isDigit() } && value.length <= 4) {
+					onFieldChange { it.copy(stalenessThresholdDays = value) }
+				}
+			},
+			label = { Text(text = stringResource(Res.string.scheduler_staleness_threshold_label)) },
+			isError = !state.isStalenessThresholdDaysValid,
+			singleLine = true,
+			keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+			modifier = Modifier.width(160.dp),
+		)
+		if (!state.isStalenessThresholdDaysValid) {
+			Spacer(modifier = Modifier.height(4.dp))
+			Text(
+				text = stringResource(Res.string.scheduler_staleness_threshold_range_error),
+				style = LumoTheme.typography.body2,
+				color = LumoTheme.colors.error,
+			)
+		}
+	}
+
 	if (state.renewalJobs.isEmpty()) {
 		Spacer(modifier = Modifier.height(12.dp))
 		Text(

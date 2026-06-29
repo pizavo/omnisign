@@ -6,12 +6,18 @@ import java.util.Locale
 import java.util.ResourceBundle
 
 /**
- * Turns a completed [RenewBatchResult] into one OS notification per job that requested them, giving
- * the CLI `renew` command and the desktop headless renewal a single, consistently-branded source
- * for the partial-failure / failure / completion notification ladder.
+ * Turns a [RenewBatchResult] into OS notifications: a single run-wide notification when the renewal
+ * lock could not be acquired (so the run never started), otherwise one notification per job that
+ * requested them — giving the CLI `renew` command and the desktop headless renewal a single,
+ * consistently-branded source for the lock-failure / partial-failure / failure / completion ladder.
  *
  * Nothing is sent for a dry-run, for a job that opted out of notifications, or for a job where
- * nothing actionable happened (every file was skipped).
+ * nothing actionable happened (every file was skipped). The lock-failure notification is the one
+ * exception to the per-job opt-in: since no job ran, it always fires — a renewal subsystem that
+ * cannot even start is a run-wide failure rather than a per-job outcome. The staleness notification
+ * (carried in [RenewBatchResult.stalenessAlert]) is likewise run-wide: it fires on top of any
+ * per-job outcome when renewal has gone too long without a success, gated by its own setting rather
+ * than the per-job opt-in.
  *
  * Titles and bodies are resolved from the `renewal-notifications` resource bundle in the locale
  * supplied by [localeProvider], so a Czech-configured run shows Czech text while any other locale
@@ -28,19 +34,33 @@ class RenewalNotifier(
 ) {
 
 	/**
-	 * Fire a summary OS notification for each notifying job in [result].
+	 * Fire OS notifications summarising [result].
 	 *
-	 * A dry-run notifies nothing, since no files were changed. For each job that requested
-	 * notifications, a single notification is sent: a [NotificationUrgency.CRITICAL] partial-failure
-	 * note when some files renewed but others errored, a [NotificationUrgency.CRITICAL] failure note
-	 * when only errors occurred, or a [NotificationUrgency.NORMAL] completion note when files renewed
-	 * cleanly. A job in which every file was skipped produces no notification.
+	 * A dry-run notifies nothing, since no files were changed. When the run never started because the
+	 * renewal lock could not be acquired ([RenewBatchResult.lockError]), a single
+	 * [NotificationUrgency.CRITICAL] lock-failure notification is sent and no per-job notifications
+	 * follow — this fires regardless of any job's opt-in, since nothing ran. Otherwise, for each job
+	 * that requested notifications, a single notification is sent: a [NotificationUrgency.CRITICAL]
+	 * partial-failure note when some files renewed but others errored, a [NotificationUrgency.CRITICAL]
+	 * failure note when only errors occurred, or a [NotificationUrgency.NORMAL] completion note when
+	 * files renewed cleanly. A job in which every file was skipped produces no notification. Finally,
+	 * when [result] carries a [RenewBatchResult.stalenessAlert], an additional
+	 * [NotificationUrgency.CRITICAL] staleness notification is sent — independently of the per-job
+	 * notifications above — warning that renewal has stalled for too long.
 	 *
 	 * @param result The aggregated outcome of a renewal batch run.
 	 */
 	fun notify(result: RenewBatchResult) {
 		if (result.dryRun) return
 		val messages = ResourceBundle.getBundle(BUNDLE, localeProvider(), NO_FALLBACK)
+		if (result.lockError != null) {
+			notificationService.notify(
+				title = messages.format("lockError.title"),
+				body = messages.format("lockError.body", result.lockError),
+				urgency = NotificationUrgency.CRITICAL,
+			)
+			return
+		}
 		for (job in result.jobs) {
 			if (!job.notify) continue
 			when {
@@ -62,6 +82,13 @@ class RenewalNotifier(
 					urgency = NotificationUrgency.NORMAL,
 				)
 			}
+		}
+		result.stalenessAlert?.let { alert ->
+			notificationService.notify(
+				title = messages.format("stale.title"),
+				body = messages.format("stale.body", alert.daysWithoutSuccess),
+				urgency = NotificationUrgency.CRITICAL,
+			)
 		}
 	}
 

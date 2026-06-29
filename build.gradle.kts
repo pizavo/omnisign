@@ -55,6 +55,9 @@ dependencies {
  *  - `composeApp/src/webMain/resources/` (Wasm favicon)
  *  - `docs/static/img/favicon.ico` (Docusaurus favicon, from generated .ico)
  *  - `docs/static/img/logo.png` (Docusaurus navbar logo)
+ *
+ * The `-512.png` raster is also copied to
+ * `shared/src/jvmMain/resources/omnisign-toast-icon.png` (the Windows toast notification icon).
  */
 tasks.register("generateIcons") {
     group = "distribution"
@@ -66,6 +69,7 @@ tasks.register("generateIcons") {
     val webResourcesIcon = rootProject.file("composeApp/src/webMain/resources/omnisign-logo.png")
     val docsFavicon = rootProject.file("docs/static/img/favicon.ico")
     val docsLogo = rootProject.file("docs/static/img/logo.png")
+    val sharedToastIcon = rootProject.file("shared/src/jvmMain/resources/omnisign-toast-icon.png")
 
     doLast {
         fun magick(vararg args: String) {
@@ -115,6 +119,8 @@ tasks.register("generateIcons") {
         desktopIco.copyTo(docsFavicon, overwrite = true)
 
         desktopIcon.copyTo(docsLogo, overwrite = true)
+
+        File(iconsDir, "omnisign-logo-512.png").copyTo(sharedToastIcon, overwrite = true)
     }
 }
 

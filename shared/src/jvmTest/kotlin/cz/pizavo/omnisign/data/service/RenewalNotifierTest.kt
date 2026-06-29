@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.data.service
 
 import cz.pizavo.omnisign.domain.model.result.RenewBatchResult
 import cz.pizavo.omnisign.domain.model.result.RenewJobResult
+import cz.pizavo.omnisign.domain.model.result.StalenessAlert
 import io.kotest.core.spec.style.FunSpec
 import io.mockk.clearMocks
 import io.mockk.mockk
@@ -10,9 +11,10 @@ import java.util.Locale
 
 /**
  * Verifies [RenewalNotifier] fires exactly one correctly-branded notification per notifying job
- * along the partial-failure / failure / completion ladder, and stays silent for dry-runs, opted-out
- * jobs, and jobs where nothing was renewed. A fixed locale is injected so the asserted text is
- * independent of the machine's default locale, and a Czech-locale notifier confirms the bundle is
+ * along the partial-failure / failure / completion ladder, raises the run-wide lock-error and
+ * staleness notifications independently of the per-job opt-in, and stays silent for dry-runs,
+ * opted-out jobs, and jobs where nothing was renewed. A fixed locale is injected so the asserted text
+ * is independent of the machine's default locale, and a Czech-locale notifier confirms the bundle is
  * actually resolved per locale.
  */
 class RenewalNotifierTest : FunSpec({
@@ -47,6 +49,18 @@ class RenewalNotifierTest : FunSpec({
 				eq(NotificationUrgency.CRITICAL),
 			)
 		}
+	}
+
+	test("sends a single critical lock-error notification when the renewal lock could not be acquired") {
+		notifier.notify(RenewBatchResult(lockError = "lock file unwritable"))
+		verify(exactly = 1) {
+			notificationService.notify(
+				match { it.contains("OmniSign") && it.contains("could not start") },
+				match { it.contains("lock file unwritable") },
+				eq(NotificationUrgency.CRITICAL),
+			)
+		}
+		verify(exactly = 1) { notificationService.notify(any(), any(), any()) }
 	}
 
 	test("sends a normal completion notification when files renewed cleanly") {
@@ -125,6 +139,52 @@ class RenewalNotifierTest : FunSpec({
 			notificationService.notify(
 				match { it.contains("Obnova selhala") },
 				match { it.contains("dlouhodobá platnost") },
+				eq(NotificationUrgency.CRITICAL),
+			)
+		}
+	}
+
+	test("renders the Czech lock-error title and body when the locale is Czech") {
+		czechNotifier.notify(RenewBatchResult(lockError = "soubor zámku nelze zapsat"))
+		verify(exactly = 1) {
+			notificationService.notify(
+				match { it.contains("Obnovu nelze spustit") },
+				match { it.contains("zámek obnovy") },
+				eq(NotificationUrgency.CRITICAL),
+			)
+		}
+	}
+
+	test("sends a single critical staleness notification when renewal has gone too long without success") {
+		notifier.notify(RenewBatchResult(stalenessAlert = StalenessAlert(daysWithoutSuccess = 21)))
+		verify(exactly = 1) {
+			notificationService.notify(
+				match { it.contains("OmniSign") && it.contains("needs attention") },
+				match { it.contains("21") },
+				eq(NotificationUrgency.CRITICAL),
+			)
+		}
+		verify(exactly = 1) { notificationService.notify(any(), any(), any()) }
+	}
+
+	test("fires the staleness notification on top of a per-job failure") {
+		notifier.notify(
+			RenewBatchResult(
+				jobs = listOf(RenewJobResult(name = "job", renewed = 0, errors = 2, notify = true)),
+				stalenessAlert = StalenessAlert(daysWithoutSuccess = 30),
+			),
+		)
+		verify(exactly = 1) { notificationService.notify(match { it.contains("Renewal failed") }, any(), eq(NotificationUrgency.CRITICAL)) }
+		verify(exactly = 1) { notificationService.notify(match { it.contains("needs attention") }, any(), eq(NotificationUrgency.CRITICAL)) }
+		verify(exactly = 2) { notificationService.notify(any(), any(), any()) }
+	}
+
+	test("renders the Czech staleness title and body when the locale is Czech") {
+		czechNotifier.notify(RenewBatchResult(stalenessAlert = StalenessAlert(daysWithoutSuccess = 21)))
+		verify(exactly = 1) {
+			notificationService.notify(
+				match { it.contains("Obnova vyžaduje pozornost") },
+				match { it.contains("bez úspěšné obnovy") && it.contains("21") },
 				eq(NotificationUrgency.CRITICAL),
 			)
 		}

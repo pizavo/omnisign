@@ -90,6 +90,10 @@ internal object EnglishMessages {
 			"Hash algorithm %1\$s is not compatible with encryption algorithm %2\$s. Compatible hash algorithms: %3\$s"
 		MessageKey.SIGNING_HASH_NOT_SUPPORTED_WINDOWS ->
 			"Hash algorithm %1\$s is not supported by the Windows Certificate Store"
+		MessageKey.SIGNING_PDF_ENCRYPTED ->
+			"The PDF is encrypted or password-protected and cannot be signed"
+		MessageKey.SIGNING_MALFORMED_PDF ->
+			"The file is not a valid PDF or could not be parsed"
 		MessageKey.VALIDATION_VALIDATION_FAILED ->
 			"Validation failed"
 		MessageKey.VALIDATION_REMOTE_VALIDATION_FAILED ->

@@ -4,7 +4,7 @@
 	<string name="settingscat_defaults">Výchozí hodnoty</string>
 	<string name="settingscat_defaults_desc">Výchozí hašovací algoritmus, šifrovací algoritmus a úroveň podpisu PAdES použité, když není aktivní žádné přepsání z profilu.</string>
 	<string name="settingscat_disabled_algorithms">Zakázané algoritmy</string>
-	<string name="settingscat_disabled_algorithms_desc">Algoritmy zakázané zde nelze vybrat na žádné úrovni — profily a operace odkazující na zakázaný algoritmus jsou při řešení konfigurace odmítnuty.</string>
+	<string name="settingscat_disabled_algorithms_desc">Algoritmy zakázané zde nelze vybrat na žádné úrovni – profily a operace odkazující na zakázaný algoritmus jsou při řešení konfigurace odmítnuty.</string>
 	<string name="settingscat_services">Služby</string>
 	<string name="settingscat_services_desc">Nastavte připojení k externím službám používaným při podpisu a ověřování platnosti.</string>
 	<string name="settingscat_timestamp_server">Server časových razítek</string>
@@ -20,7 +20,7 @@
 	<string name="settingscat_trusted_certificates">Důvěryhodné certifikáty</string>
 	<string name="settingscat_trusted_certificates_desc">Přímo důvěryhodné certifikáty CA a TSA pro globální rozsah, uložené v úložišti důvěry spravovaném aplikací a propojené s DSS spolu s případnými důvěryhodnými seznamy ETSI bez nutnosti XML dokumentu. Přidání a odebrání se připraví a uloží při uložení změn. Certifikáty specifické pro profil se spravují v editoru profilu; boční panel Důvěryhodné certifikáty zobrazuje přehled pouze pro čtení.</string>
 	<string name="settingscat_custom_trusted_lists">Důvěryhodné seznamy</string>
-	<string name="settingscat_custom_trusted_lists_desc">Zaregistrujte externí zdroje XML důvěryhodných seznamů dle ETSI TS 119612. Každá položka může být HTTPS URL nebo cesta k místnímu souboru. Volitelný podpisový certifikát ověří XML podpis důvěryhodného seznamu — důrazně doporučeno pro seznamy mimo EU.</string>
+	<string name="settingscat_custom_trusted_lists_desc">Zaregistrujte externí zdroje XML důvěryhodných seznamů dle ETSI TS 119612. Každá položka může být HTTPS URL nebo cesta k místnímu souboru. Volitelný podpisový certifikát ověří XML podpis důvěryhodného seznamu – důrazně doporučeno pro seznamy mimo EU.</string>
 	<string name="settingscat_archiving">Archivace</string>
 	<string name="settingscat_archiving_desc">Nastavte automatické archivní obnovení dokumentů B-LTA.</string>
 	<string name="settingscat_renewal_jobs">Úlohy obnovení</string>
@@ -34,7 +34,7 @@
 	<string name="settingscat_backup">Záloha</string>
 	<string name="settingscat_backup_desc">Exportujte celou konfiguraci do archivu ZIP nebo ji importujte a nahraďte.</string>
 	<string name="settingscat_config_backup">Import a export</string>
-	<string name="settingscat_config_backup_desc">Exportujte celou konfiguraci — globální nastavení, všechny profily a všechny důvěryhodné certifikáty — do jediného archivu ZIP, nebo importujte archiv a nahraďte stávající konfiguraci.</string>
+	<string name="settingscat_config_backup_desc">Exportujte celou konfiguraci – globální nastavení, všechny profily a všechny důvěryhodné certifikáty – do jediného archivu ZIP, nebo importujte archiv a nahraďte stávající konfiguraci.</string>
 	<string name="settingscat_appearance">Vzhled</string>
 	<string name="settingscat_appearance_desc">Nastavení vzhledu a dekorace oken pro počítač.</string>
 	<string name="settingscat_window">Okno</string>

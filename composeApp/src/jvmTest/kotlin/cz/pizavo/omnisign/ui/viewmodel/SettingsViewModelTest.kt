@@ -479,6 +479,8 @@ class SettingsViewModelTest : FunSpec({
                     runAtHour = 3,
                     runAtMinute = 30,
                     logFilePath = "/var/log/omnisign.log",
+                    stalenessNotificationEnabled = false,
+                    stalenessThresholdDays = 21,
                 ),
             )
             coEvery { configRepository.loadConfig() } returns config.right()
@@ -492,6 +494,8 @@ class SettingsViewModelTest : FunSpec({
             vm.state.value.schedulerHour shouldBe "3"
             vm.state.value.schedulerMinute shouldBe "30"
             vm.state.value.schedulerLogFile shouldBe "/var/log/omnisign.log"
+            vm.state.value.stalenessNotificationEnabled shouldBe false
+            vm.state.value.stalenessThresholdDays shouldBe "21"
             vm.state.value.schedulerInstalled shouldBe true
         }
     }
@@ -634,6 +638,8 @@ class SettingsViewModelTest : FunSpec({
                     schedulerHour = "5",
                     schedulerMinute = "45",
                     schedulerLogFile = "/tmp/renewal.log",
+                    stalenessNotificationEnabled = false,
+                    stalenessThresholdDays = "21",
                 )
             }
 
@@ -645,6 +651,8 @@ class SettingsViewModelTest : FunSpec({
             lastSave.schedulerConfig.runAtHour shouldBe 5
             lastSave.schedulerConfig.runAtMinute shouldBe 45
             lastSave.schedulerConfig.logFilePath shouldBe "/tmp/renewal.log"
+            lastSave.schedulerConfig.stalenessNotificationEnabled shouldBe false
+            lastSave.schedulerConfig.stalenessThresholdDays shouldBe 21
         }
     }
 

@@ -22,8 +22,10 @@ import org.koin.core.component.inject
 
 /**
  * CLI command that executes all configured renewal jobs
- * (or a single named job), checks each matching B-LTA PDF against its renewal buffer, and
- * re-timestamps in-place any file whose archival timestamp is nearing expiry.
+ * (or a single named job), checks each matched PDF against its renewal buffer, and
+ * re-timestamps it in-place — to PAdES B-LTA — when its archival timestamp (or a signature
+ * timestamp not yet sealed by one) is nearing expiry. Because the target is always B-LTA,
+ * a matched B-T or B-LT document is promoted to B-LTA as part of renewal.
  *
  * This command is designed to be invoked by the OS-level daily scheduled job registered via
  * `omnisign schedule install`, but can also be run manually at any time.
@@ -48,7 +50,7 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 	).flag(default = false)
 
 	override fun help(context: Context): String =
-		"Run configured renewal jobs: check B-LTA PDFs for expiring timestamps and re-timestamp them in place"
+		"Run configured renewal jobs: re-timestamp matched PDFs with expiring timestamps to B-LTA in place (also promotes matched B-T/B-LT documents to B-LTA)"
 
 	override fun run(): Unit = runBlocking {
 		val result = renewBatchUseCase(jobName = jobName, dryRun = dryRun)
@@ -75,6 +77,7 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 			} else {
 				echo("⏳ Another renewal run is already in progress — skipping.")
 			}
+			renewalNotifier.notify(result)
 			return@runBlocking
 		}
 
@@ -91,6 +94,7 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 			} else {
 				echo("❌ Could not acquire the renewal lock: ${result.lockError}", err = true)
 			}
+			renewalNotifier.notify(result)
 			throw ProgramResult(1)
 		}
 
@@ -156,7 +160,7 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 					}
 					val label = when (f.status) {
 						RenewFileStatus.Status.RENEWED -> "[RENEWED] ${f.path}"
-						RenewFileStatus.Status.SKIPPED -> "[SKIP]  ${f.path} — timestamp still valid"
+						RenewFileStatus.Status.SKIPPED -> "[SKIP]  ${f.path} — ${f.message ?: "timestamp still valid"}"
 						RenewFileStatus.Status.DRY_RUN -> "[DRY-RUN] ${f.path} — would be re-timestamped"
 						RenewFileStatus.Status.ERROR -> "[ERROR] ${f.path} — ${f.message}"
 						RenewFileStatus.Status.CONFIG_ERROR -> "[ERROR] Configuration Error: ${f.message}"
