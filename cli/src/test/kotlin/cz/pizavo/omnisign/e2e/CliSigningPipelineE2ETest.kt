@@ -34,6 +34,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.koin.KoinExtension
 import io.kotest.koin.KoinLifecycleMode
+import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.shouldBe
@@ -155,7 +156,9 @@ class CliSigningPipelineE2ETest : FunSpec({
 
 		signWithKeystore(output)
 
-		diagnosticOf(output).signatures.shouldHaveSize(1)
+		val signatures = diagnosticOf(output).signatures
+		signatures.shouldHaveSize(1)
+		signatures.first().isSignatureIntact.shouldBeTrue()
 	}
 
 	test("omnisign timestamp extends a keystore-signed PDF to PAdES-B-T against the local TSA") {
