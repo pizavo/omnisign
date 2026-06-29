@@ -78,7 +78,7 @@ class DssSigningRepositoryTest : FunSpec({
 		}
 		return mockk<SigningToken> { every { getDssToken() } returns mockDssToken }
 	}
-	
+
 	test("signDocument returns TokenAccessError when token discovery fails") {
 		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
 		coEvery { tokenService.discoverTokens() } returns SigningError.TokenAccessError(
@@ -524,5 +524,31 @@ class DssSigningRepositoryTest : FunSpec({
 		val result = repository.listAvailableCertificates().shouldBeRight()
 		result.certificates.shouldHaveSize(1)
 		result.lockedTokens.shouldBeEmpty()
+	}
+
+	test("signDocument returns MalformedDocument when the input is not a PDF") {
+		val tokenInfo = TokenInfo(id = "win", name = "Windows MY", type = TokenType.WINDOWS_MY, requiresPin = false)
+		val cert = CertificateEntry(
+			alias = "my-cert", subjectDN = "CN=Test", issuerDN = "CN=CA",
+			serialNumber = "1", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
+			keyUsages = emptyList(), tokenInfo = tokenInfo,
+		)
+
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
+		coEvery { tokenService.discoverTokens() } returns listOf(tokenInfo).right()
+		coEvery { tokenService.probeTokenPresent(tokenInfo) } returns true
+		coEvery { tokenService.loadCertificatesSilent(tokenInfo, "") } returns listOf(cert).right()
+		coEvery { tokenService.getSigningToken(cert, "") } returns signingTokenFor(cert).right()
+
+		val params = SigningParameters(
+			inputBytes = "this is plainly not a pdf".encodeToByteArray(),
+			inputName = "not-a-pdf.pdf",
+			certificateAlias = "my-cert",
+			addTimestamp = false,
+		)
+
+		repository.signDocument(params)
+			.shouldBeLeft()
+			.shouldBeInstanceOf<SigningError.MalformedDocument>()
 	}
 })
