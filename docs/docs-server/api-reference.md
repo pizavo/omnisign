@@ -37,6 +37,9 @@ Sign a PDF. Requires the **`SIGN`** operation to be enabled.
 **Response** `200`: the signed PDF (`application/pdf`). The `X-OmniSign-Result` header carries a JSON
 `SigningResultMeta` (`signatureId`, `signatureLevel`, `annotatedWarnings`, `hasRevocationWarnings`).
 
+**Errors**: `400 MALFORMED_DOCUMENT` when the upload is not a PDF; `422 ENCRYPTED_DOCUMENT` when the
+PDF is encrypted or password-protected and cannot be signed.
+
 ### `POST /api/v1/validate`
 
 Validate a PDF's signatures. Requires **`VALIDATE`** (enabled by default).
@@ -67,6 +70,9 @@ The TSA is always the server's configured one — clients cannot supply TSA cred
 
 **Response** `200`: the extended PDF (`application/pdf`). The `X-OmniSign-Result` header carries a JSON
 `TimestampResultMeta` (`newLevel`, `annotatedWarnings`).
+
+**Errors**: `400 MALFORMED_DOCUMENT` when the upload is not a PDF; `422 ENCRYPTED_DOCUMENT` when the
+PDF is encrypted or password-protected and cannot be extended.
 
 ### `POST /api/v1/timestamp/inspect`
 
