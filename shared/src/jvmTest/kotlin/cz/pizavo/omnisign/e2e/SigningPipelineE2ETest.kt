@@ -28,7 +28,6 @@ import cz.pizavo.omnisign.domain.service.SigningToken
 import cz.pizavo.omnisign.domain.service.TokenInfo
 import cz.pizavo.omnisign.domain.service.TokenService
 import eu.europa.esig.dss.model.InMemoryDocument
-import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.pdf.pdfbox.PdfBoxNativeObjectFactory
 import eu.europa.esig.dss.service.http.commons.TimestampDataLoader
 import eu.europa.esig.dss.service.tsp.OnlineTSPSource
@@ -38,8 +37,6 @@ import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.booleans.shouldBeTrue
-import io.kotest.matchers.collections.shouldHaveSize
-import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -59,16 +56,14 @@ import java.security.cert.X509Certificate
 import java.util.Date
 
 /**
- * End-to-end test of the real signing and archiving pipeline against a committed throwaway PKI and
- * an in-process RFC 3161 TSA — a portable, offline reproduction of the local manual E2E.
+ * Repository-level end-to-end test of the real archiving pipeline at the **long-term** PAdES levels
+ * (B-LT and B-LTA) against a committed throwaway PKI and an in-process RFC 3161 TSA.
  *
- * It drives the production [DssSigningRepository] and [DssArchivingRepository] with a real
- * [Pkcs12SignatureToken] and real DSS components (only the trusted-list-loading and PDF-object
- * factory hooks on [DssServiceFactory] are pinned to bare, offline instances), so the actual
- * cryptography runs: signing produces a verifiable PAdES-B signature, and extension obtains a real
- * timestamp over HTTP from [LocalTestTsa]. Token *discovery* is stubbed because the CLI only
- * discovers PKCS#11 and OS-store tokens — a PKCS#12 file is not a discoverable token type — but the
- * signing itself uses the real key and real DSS.
+ * It drives the production [DssArchivingRepository] (using [DssSigningRepository] to produce the B-T
+ * input) with real DSS components and an injected offline CRL + trusted CA, so extension embeds
+ * revocation data and adds an archival timestamp with no network. The bare PAdES-B and B-T tiers are
+ * covered end-to-end through the CLI in `:cli`'s `CliSigningPipelineE2ETest`; here, signing B-T is
+ * only the setup that produces the document the long-term tests extend.
  */
 class SigningPipelineE2ETest : FunSpec({
 
@@ -185,18 +180,6 @@ class SigningPipelineE2ETest : FunSpec({
 	fun resolvedConfig(global: GlobalConfig): ResolvedConfig =
 		ResolvedConfig.resolve(global = global, profile = null, operationOverrides = null).getOrNull()!!
 
-	suspend fun signBaselineB(): ByteArray =
-		signingRepository.signDocument(
-			SigningParameters(
-				inputBytes = plainPdf(),
-				inputName = "input.pdf",
-				certificateAlias = certEntry.alias,
-				signatureLevel = SignatureLevel.PADES_BASELINE_B,
-				addTimestamp = false,
-				resolvedConfig = resolvedConfig(GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_B)),
-			)
-		).shouldBeRight().outputBytes
-
 	suspend fun signBaselineT(): ByteArray =
 		signingRepository.signDocument(
 			SigningParameters(
@@ -213,34 +196,6 @@ class SigningPipelineE2ETest : FunSpec({
 				),
 			)
 		).shouldBeRight().outputBytes
-
-	fun diagnosticOf(bytes: ByteArray) =
-		PDFDocumentValidator(InMemoryDocument(bytes))
-			.apply { setCertificateVerifier(CommonCertificateVerifier()) }
-			.validateDocument().diagnosticData
-
-	test("signs a PDF to PAdES-B with the test PKCS#12 and the signature is cryptographically intact") {
-		val signed = signBaselineB()
-
-		val diagnostic = diagnosticOf(signed)
-		diagnostic.signatures.shouldHaveSize(1)
-		diagnostic.signatures.first().isSignatureIntact.shouldBeTrue()
-	}
-
-	test("extends a signed PDF to PAdES-B-T against the local TSA, embedding a timestamp") {
-		val signed = signBaselineB()
-
-		val extended = archivingRepository.extendDocument(
-			ArchivingParameters(
-				inputBytes = signed,
-				inputName = "input.pdf",
-				targetLevel = SignatureLevel.PADES_BASELINE_T,
-				resolvedConfig = resolvedConfig(GlobalConfig(timestampServer = TimestampServerConfig(url = tsa.url))),
-			)
-		).shouldBeRight()
-
-		diagnosticOf(extended.outputBytes).timestampList.shouldNotBeEmpty()
-	}
 
 	test("extends a signed PDF to PAdES-B-LT, embedding offline revocation data") {
 		val signed = signBaselineT()

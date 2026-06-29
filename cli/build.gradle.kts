@@ -79,7 +79,19 @@ dependencies {
 	testImplementation(libs.kotest.arrow)
 	testImplementation(libs.kotest.koin)
 	testImplementation(libs.kotest.decoroutinator)
-	
+
+	// CliSigningPipelineE2ETest drives the real signing/archiving pipeline through the CLI commands,
+	// so its test classpath needs DSS + PDFBox (and DSS's transitive BouncyCastle). The production CLI
+	// code stays DSS-agnostic; these are test-only.
+	testImplementation(project.dependencies.platform(libs.dss.bom))
+	testImplementation(libs.dss.model)
+	testImplementation(libs.dss.pades)
+	testImplementation(libs.dss.pades.pdfbox)
+	testImplementation(libs.dss.service)
+	testImplementation(libs.dss.validation)
+	testImplementation(libs.dss.token)
+	testImplementation(libs.pdfbox)
+
 	implementation(libs.clikt)
 	implementation(libs.clikt.core)
 	implementation(libs.clikt.markdown)
