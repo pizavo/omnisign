@@ -9,6 +9,7 @@ import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.SigningError
+import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.result.SigningResult
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -25,6 +26,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.coEvery
 import io.mockk.mockk
+import io.mockk.slot
 import org.koin.dsl.module
 import java.io.File
 
@@ -117,7 +119,7 @@ class SignTest : FunSpec({
 			signatureLevel = "PAdES-BASELINE-B",
 		).right()
 		
-		val result = Omnisign().test(listOf("sign", "-f", input.absolutePath, "-o", output.absolutePath))
+		val result = Omnisign().test(listOf("sign", "-c", "my-cert", "-f", input.absolutePath, "-o", output.absolutePath))
 		
 		result.output shouldContain "SIGNING RESULT"
 		result.output shouldContain "sig-123"
@@ -134,7 +136,7 @@ class SignTest : FunSpec({
 			details = "No PKCS#11 token available",
 		).left()
 		
-		val result = Omnisign().test(listOf("sign", "-f", input.absolutePath, "-o", output.absolutePath))
+		val result = Omnisign().test(listOf("sign", "-c", "my-cert", "-f", input.absolutePath, "-o", output.absolutePath))
 		
 		result.statusCode shouldBe 1
 		result.stderr shouldContain "Token not found"
@@ -151,7 +153,7 @@ class SignTest : FunSpec({
 			signatureLevel = "PAdES-BASELINE-T",
 		).right()
 		
-		val result = Omnisign().test(listOf("--json", "sign", "-f", input.absolutePath, "-o", output.absolutePath))
+		val result = Omnisign().test(listOf("--json", "sign", "-c", "my-cert", "-f", input.absolutePath, "-o", output.absolutePath))
 		
 		result.output shouldContain "\"success\""
 		result.output shouldContain "sig-json"
@@ -166,11 +168,40 @@ class SignTest : FunSpec({
 			text = LocalizableText.Literal("Certificate expired"),
 		).left()
 		
-		val result = Omnisign().test(listOf("--json", "sign", "-f", input.absolutePath, "-o", output.absolutePath))
+		val result = Omnisign().test(listOf("--json", "sign", "-c", "my-cert", "-f", input.absolutePath, "-o", output.absolutePath))
 		
 		result.output shouldContain "\"success\""
 		result.output shouldContain "Certificate expired"
 		result.statusCode shouldBe 1
+	}
+
+	test("sign without --certificate or --keystore fails with a usage error") {
+		val input = tmpFile("bare-input.pdf")
+		val output = tmpFile("bare-output.pdf")
+
+		val result = Omnisign().test(listOf("sign", "-f", input.absolutePath, "-o", output.absolutePath))
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "Specify the signing key"
+	}
+
+	test("sign with --keystore passes the keystore file to the signer and needs no --certificate") {
+		val input = tmpFile("ks-input.pdf")
+		val output = tmpFile("ks-output.pdf")
+		val keystore = tmpFile("ks-signer.p12")
+		val captured = slot<SigningParameters>()
+		coEvery { signingRepository.signDocument(capture(captured)) } returns SigningResult(
+			outputBytes = ByteArray(0),
+			outputName = output.name,
+			signatureId = "sig-ks",
+			signatureLevel = "PAdES-BASELINE-B",
+		).right()
+
+		val result = Omnisign().test(listOf("sign", "-k", keystore.absolutePath, "-f", input.absolutePath, "-o", output.absolutePath))
+
+		result.statusCode shouldBe 0
+		captured.captured.keystoreFile.shouldNotBeNull()
+		captured.captured.certificateAlias shouldBe null
 	}
 })
 

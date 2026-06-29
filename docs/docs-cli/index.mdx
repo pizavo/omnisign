@@ -55,8 +55,11 @@ java -jar omnisign-cli.jar --help
 ### Signing a document
 
 ```bash
-omnisign sign -f document.pdf -o document-signed.pdf
+omnisign sign -f document.pdf -o document-signed.pdf -c "<certificate-alias>"
 ```
+
+Choose the signing key with `-c <alias>` (a configured token) or `--keystore <file>` (a PKCS#12
+file) — see [`sign`](commands/sign#choosing-the-signing-key).
 
 ### Validating a document
 

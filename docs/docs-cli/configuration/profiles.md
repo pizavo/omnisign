@@ -99,7 +99,7 @@ omnisign config profile create university \
 omnisign config profile use university
 
 # Sign using the profile explicitly
-omnisign sign -f thesis.pdf -o thesis-signed.pdf --profile university
+omnisign sign -f thesis.pdf -o thesis-signed.pdf -c "My Qualified Certificate" --profile university
 
 # Update the TSA URL in an existing profile
 omnisign config profile edit university --timestamp-url https://new-tsa.example.com/tsr

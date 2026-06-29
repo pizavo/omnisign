@@ -107,10 +107,14 @@ class DssSigningRepository(
 				).left()
 			}
 			
-			val resolvedKey = resolvePrivateKey(parameters)
-				?: return (parameters.certificateAlias
-					?.let { SigningError.noCertificateFoundForAlias(it) }
-					?: SigningError.noCertificateFound()).left()
+			val resolvedKey = if (parameters.keystoreFile != null) {
+				resolveKeyFromKeystore(parameters).getOrElse { return it.left() }
+			} else {
+				resolvePrivateKey(parameters)
+					?: return (parameters.certificateAlias
+						?.let { SigningError.noCertificateFoundForAlias(it) }
+						?: SigningError.noCertificateFound()).left()
+			}
 			
 			if (resolvedKey.tokenType == TokenType.WINDOWS_MY && !effectiveHash.isMscapiCompatible) {
 				return SigningError.hashNotSupportedByWindowsStore(
@@ -518,7 +522,57 @@ class DssSigningRepository(
 
 		return ResolvedKey(key, dssToken, tokenInfo.type)
 	}
-	
+
+	/**
+	 * Resolve a signing key directly from the PKCS#12 keystore at [SigningParameters.keystoreFile],
+	 * bypassing token discovery (which only surfaces PKCS#11 and OS-store tokens).
+	 *
+	 * The keystore password is taken from [SigningParameters.keystorePassword] when supplied;
+	 * otherwise an attempt is made with an empty password and, only if that fails because the keystore
+	 * is protected, the user is prompted with hidden input via [TokenService.requestPassword].
+	 * [SigningParameters.certificateAlias] selects the certificate within the keystore, or its sole /
+	 * first key when omitted.
+	 */
+	private suspend fun resolveKeyFromKeystore(
+		parameters: SigningParameters,
+	): OperationResult<ResolvedKey> {
+		val file = File(parameters.keystoreFile!!)
+		if (!file.exists()) return SigningError.fileNotFound(file.path).left()
+		val fileToken = TokenInfo(
+			id = "keystore-${file.name}",
+			name = file.name,
+			type = TokenType.FILE,
+			path = file.absolutePath,
+			requiresPin = true,
+		)
+
+		val provided = parameters.keystorePassword?.value
+		var password = provided ?: ""
+		var loaded = tokenService.loadCertificatesSilent(fileToken, password)
+		if (loaded.isLeft() && provided == null) {
+			password = tokenService.requestPassword(
+				"Enter password for keystore ${file.name}",
+				"Keystore Password",
+			) ?: return SigningError.passwordEntryCancelled().left()
+			loaded = tokenService.loadCertificatesSilent(fileToken, password)
+		}
+		val certs = loaded.getOrElse { return it.left() }
+
+		val selected = if (parameters.certificateAlias != null) {
+			certs.find { it.alias == parameters.certificateAlias }
+				?: return SigningError.noCertificateFoundForAlias(parameters.certificateAlias).left()
+		} else {
+			certs.firstOrNull() ?: return SigningError.noCertificateFound().left()
+		}
+
+		val dssToken = tokenService.getSigningToken(selected, password).getOrElse { return it.left() }
+			.getDssToken() as? AbstractSignatureTokenConnection
+			?: return SigningError.createSigningTokenFailed().left()
+		val key = selectSigningKey(dssToken.keys, selected)
+			?: return SigningError.noCertificateFound().left()
+		return ResolvedKey(key, dssToken, TokenType.FILE).right()
+	}
+
 	/**
 	 * Holds the resolved private key entry, its DSS token connection, and the source [TokenType].
 	 */
