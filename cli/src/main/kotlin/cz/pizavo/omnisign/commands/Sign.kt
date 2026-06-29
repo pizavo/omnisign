@@ -14,6 +14,7 @@ import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.path
 import cz.pizavo.omnisign.cli.OperationConfigOptions
 import cz.pizavo.omnisign.cli.OutputConfig
+import cz.pizavo.omnisign.cli.resolvePasswordOption
 import cz.pizavo.omnisign.cli.json.JsonError
 import cz.pizavo.omnisign.cli.json.JsonSigningResult
 import cz.pizavo.omnisign.cli.json.toJsonError
@@ -21,6 +22,7 @@ import cz.pizavo.omnisign.cli.json.toJsonResult
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.parameters.VisibleSignatureParameters
+import cz.pizavo.omnisign.domain.model.value.sensitive
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
 import cz.pizavo.omnisign.platform.PasswordCallback
@@ -52,9 +54,23 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 	
 	private val certificate by option(
 		"-c", "--certificate",
-		help = "Certificate alias to use for signing. Run 'omnisign certificates list' to see available aliases."
+		help = "Certificate alias to use for signing. Run 'omnisign certificates list' to see available aliases. " +
+				"Required unless --keystore is given; with --keystore, selects a certificate within the keystore."
 	)
-	
+
+	private val keystore by option(
+		"-k", "--keystore",
+		help = "Sign with a PKCS#12 (.p12/.pfx) keystore file instead of a discovered token. With --keystore, " +
+				"--certificate selects a certificate within the keystore (optional for a single-key keystore)."
+	).path(mustExist = true, canBeDir = false, mustBeReadable = true)
+
+	private val keystorePassword by option(
+		"--keystore-password",
+		help = "Password for --keystore (in-memory only, never persisted). Use '-' to prompt with hidden input; " +
+				"omit to be prompted only when the keystore is password-protected. Also read from " +
+				"OMNISIGN_KEYSTORE_PASSWORD."
+	)
+
 	private val reason by option("-r", "--reason", help = "Reason for signing (embedded in the signature)")
 	
 	private val location by option("--location", help = "Location of signing (embedded in the signature)")
@@ -103,6 +119,17 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 		"Sign a PDF document with a PAdES digital signature"
 	
 	override fun run(): Unit = runBlocking {
+		if (keystore == null && certificate == null) {
+			val message = "Specify the signing key: --certificate <alias> for a discovered token, " +
+					"or --keystore <file> for a PKCS#12 keystore."
+			if (output.json) {
+				echo(Json.encodeToString(JsonSigningResult(success = false, error = JsonError(message = message))))
+			} else {
+				echo("❌ $message", err = true)
+			}
+			throw ProgramResult(1)
+		}
+
 		val appConfig = configRepository.getCurrentConfig()
 		val activeProfile = profile ?: appConfig.activeProfile
 		val profileConfig = activeProfile?.let { appConfig.profiles[it] }
@@ -131,10 +158,15 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 		val resolvedConfig = resolvedConfigResult.getOrNull()!!
 		
 		val outputPath = outputFile.toAbsolutePath().toString()
+		val resolvedKeystorePassword = keystore?.let {
+			resolvePasswordOption(keystorePassword, passwordCallback, prompt = "Keystore password")?.sensitive()
+		}
 		val parameters = SigningParameters(
 			inputBytes = inputFile.toFile().readBytes(),
 			inputName = inputFile.fileName.toString(),
 			certificateAlias = certificate,
+			keystoreFile = keystore?.toAbsolutePath()?.toString(),
+			keystorePassword = resolvedKeystorePassword,
 			hashAlgorithm = resolvedConfig.hashAlgorithm,
 			signatureLevel = resolvedConfig.signatureLevel,
 			reason = reason,

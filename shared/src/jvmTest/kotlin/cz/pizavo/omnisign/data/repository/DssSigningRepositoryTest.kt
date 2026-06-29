@@ -78,7 +78,22 @@ class DssSigningRepositoryTest : FunSpec({
 		}
 		return mockk<SigningToken> { every { getDssToken() } returns mockDssToken }
 	}
-	
+
+	test("signDocument with a non-existent keystore file returns a file-not-found error") {
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
+
+		val params = SigningParameters(
+			inputBytes = tmpFile("ks-input.pdf").readBytes(),
+			inputName = "ks-input.pdf",
+			keystoreFile = File(tmpDir, "does-not-exist.p12").absolutePath,
+			addTimestamp = false,
+		)
+
+		repository.signDocument(params)
+			.shouldBeLeft()
+			.shouldBeInstanceOf<SigningError.TokenAccessError>()
+	}
+
 	test("signDocument returns TokenAccessError when token discovery fails") {
 		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
 		coEvery { tokenService.discoverTokens() } returns SigningError.TokenAccessError(
