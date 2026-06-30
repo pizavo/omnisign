@@ -112,6 +112,10 @@ class DssServiceFactory(
 	 * - [CommonCertificateVerifier.setAlertOnInvalidTimestamp] — timestamp validation failures.
 	 * - [CommonCertificateVerifier.setAlertOnRevokedCertificate] — revoked signing certificate.
 	 *
+	 * The expired-signing-certificate alert keeps its default (which aborts signing) unless
+	 * [cz.pizavo.omnisign.domain.model.config.ValidationConfig.allowExpiredCertificate] is set, in
+	 * which case it is disabled so a signature can be produced with an expired certificate.
+	 *
 	 * Trusted-list sources are supplied by the shared [TrustedSourceRegistry], which
 	 * retains the parsed EU LOTL and custom-list sources across calls so the LOTL
 	 * parse + signature-verification overhead is incurred at most once and refreshed
@@ -133,7 +137,10 @@ class DssServiceFactory(
 		alertFactory: () -> StatusAlert = { LogOnStatusAlert(Level.WARN) },
 	): CertificateVerifierResult {
 		val cv = CommonCertificateVerifier()
-		
+		if (config?.validation?.allowExpiredCertificate == true) {
+			cv.alertOnExpiredCertificate = null
+		}
+
 		if (config == null || !config.validation.checkRevocation) {
 			return CertificateVerifierResult(
 				verifier = cv.apply {
@@ -168,7 +175,7 @@ class DssServiceFactory(
 			alertOnNoRevocationAfterBestSignatureTime = null
 			alertOnRevokedCertificate = alert
 		}
-		
+
 		val tlWarnings = trustedSources.composeInto(cv, config, directAnchors)
 		return CertificateVerifierResult(cv, tlWarnings)
 	}

@@ -17,6 +17,8 @@
 	<string name="settings_validation_custom_policy_path_label">Cesta k vlastnímu souboru zásad</string>
 	<string name="settings_browse_policy_file_description">Procházet soubor zásad</string>
 	<string name="settings_validation_check_revocation">Ověřovat zneplatnění certifikátu</string>
+	<string name="settings_signing_allow_expired_cert">Povolit podpis certifikátem s prošlou platností</string>
+	<string name="settings_signing_allow_expired_cert_tooltip">Když je zapnuto, lze podepsat i certifikátem, kterému vypršela platnost. Takový podpis neprojde ověřením (certifikát byl v čase podpisu neplatný), proto ponechte vypnuté, pokud to nepotřebujete.</string>
 	<string name="settings_validation_use_eu_lotl">Použít EU LOTL</string>
 	<string name="settings_validation_alert_not_eu_lotl_tooltip">Označit podpisy, jejichž kotva důvěry není v EU LOTL. Vyžaduje povolení EU LOTL.</string>
 	<string name="settings_validation_tl_refresh_interval_label">Interval obnovování důvěryhodných seznamů (hodiny)</string>

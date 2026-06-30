@@ -740,6 +740,26 @@ private fun SigningDefaultsSection(
 		Text(text = stringResource(Res.string.label_archival_timestamp), style = LumoTheme.typography.body2)
 		InfoTooltip(text = stringResource(Res.string.label_produces_b_lta))
 	}
+
+	Spacer(modifier = Modifier.height(12.dp))
+
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.SpaceBetween,
+	) {
+		Row(
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(4.dp),
+		) {
+			Text(text = stringResource(Res.string.settings_signing_allow_expired_cert), style = LumoTheme.typography.label1)
+			InfoTooltip(text = stringResource(Res.string.settings_signing_allow_expired_cert_tooltip))
+		}
+		Switch(
+			checked = state.allowExpiredCertificate,
+			onCheckedChange = { value -> onFieldChange { it.copy(allowExpiredCertificate = value) } },
+		)
+	}
 }
 
 /**
@@ -988,7 +1008,7 @@ private fun ValidationPolicySection(
 			onCheckedChange = { value -> onFieldChange { it.copy(checkRevocation = value) } },
 		)
 	}
-	
+
 	Spacer(modifier = Modifier.height(8.dp))
 	
 	Row(

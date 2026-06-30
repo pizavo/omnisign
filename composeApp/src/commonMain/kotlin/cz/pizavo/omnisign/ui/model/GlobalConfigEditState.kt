@@ -33,6 +33,7 @@ import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
  * @property validationPolicyType Validation policy source.
  * @property customPolicyPath Path to a custom validation policy file.
  * @property checkRevocation Whether to check certificate revocation status.
+ * @property allowExpiredCertificate Whether to allow signing with an expired signing certificate.
  * @property useEuLotl Whether to use the EU List of Trusted Lists.
  * @property alertIfNotEuLotl Whether the validation UI flags signatures not anchored on the EU LOTL.
  * @property algoExpirationLevel Severity when an algorithm expired before the policy update date.
@@ -93,6 +94,7 @@ data class GlobalConfigEditState(
 	val validationPolicyType: ValidationPolicyType = ValidationPolicyType.DEFAULT_ETSI,
 	val customPolicyPath: String = "",
 	val checkRevocation: Boolean = true,
+	val allowExpiredCertificate: Boolean = false,
 	val useEuLotl: Boolean = true,
 	val alertIfNotEuLotl: Boolean = false,
 	val algoExpirationLevel: AlgorithmConstraintLevel = AlgorithmConstraintLevel.FAIL,
@@ -214,6 +216,7 @@ data class GlobalConfigEditState(
 				validationPolicyType == other.validationPolicyType &&
 				customPolicyPath == other.customPolicyPath &&
 				checkRevocation == other.checkRevocation &&
+				allowExpiredCertificate == other.allowExpiredCertificate &&
 				useEuLotl == other.useEuLotl &&
 				alertIfNotEuLotl == other.alertIfNotEuLotl &&
 				algoExpirationLevel == other.algoExpirationLevel &&
@@ -263,6 +266,7 @@ data class GlobalConfigEditState(
 			policyType = validationPolicyType,
 			customPolicyPath = customPolicyPath.ifBlank { null },
 			checkRevocation = checkRevocation,
+			allowExpiredCertificate = allowExpiredCertificate,
 			useEuLotl = useEuLotl,
 			alertIfNotEuLotl = alertIfNotEuLotl,
 			customTrustedLists = customTrustedLists,
@@ -322,6 +326,7 @@ data class GlobalConfigEditState(
 				validationPolicyType = config.validation.policyType,
 				customPolicyPath = config.validation.customPolicyPath.orEmpty(),
 				checkRevocation = config.validation.checkRevocation,
+				allowExpiredCertificate = config.validation.allowExpiredCertificate ?: false,
 				useEuLotl = config.validation.useEuLotl,
 				alertIfNotEuLotl = config.validation.alertIfNotEuLotl ?: false,
 				algoExpirationLevel = config.validation.algorithmConstraints.expirationLevel

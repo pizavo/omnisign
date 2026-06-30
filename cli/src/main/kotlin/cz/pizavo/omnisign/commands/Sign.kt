@@ -86,6 +86,12 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 		"--profile",
 		help = "Use a named configuration profile for this operation"
 	)
+
+	private val allowExpiredCertificate by option(
+		"--allow-expired-certificate",
+		help = "Allow signing even if the signing certificate has expired " +
+				"(such signatures will fail validation)"
+	).flag(default = false)
 	
 	private val configOverrides by OperationConfigOptions()
 	
@@ -155,8 +161,14 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 			}
 			throw ProgramResult(1)
 		}
-		val resolvedConfig = resolvedConfigResult.getOrNull()!!
-		
+		val resolvedConfig = resolvedConfigResult.getOrNull()!!.let {
+			if (allowExpiredCertificate) {
+				it.copy(validation = it.validation.copy(allowExpiredCertificate = true))
+			} else {
+				it
+			}
+		}
+
 		val outputPath = outputFile.toAbsolutePath().toString()
 		val resolvedKeystorePassword = keystore?.let {
 			resolvePasswordOption(keystorePassword, passwordCallback, prompt = "Keystore password")?.sensitive()

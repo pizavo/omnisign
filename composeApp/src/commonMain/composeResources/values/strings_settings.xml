@@ -17,6 +17,8 @@
 	<string name="settings_validation_custom_policy_path_label">Custom policy file path</string>
 	<string name="settings_browse_policy_file_description">Browse for policy file</string>
 	<string name="settings_validation_check_revocation">Check certificate revocation</string>
+	<string name="settings_signing_allow_expired_cert">Allow signing with an expired certificate</string>
+	<string name="settings_signing_allow_expired_cert_tooltip">When on, a signature can be produced even if the signing certificate has expired. Such a signature will fail validation (the certificate was invalid at signing time), so leave this off unless you specifically need it.</string>
 	<string name="settings_validation_use_eu_lotl">Use EU List of Trusted Lists</string>
 	<string name="settings_validation_alert_not_eu_lotl_tooltip">Flag signatures whose trust anchor is not on the EU LOTL. Requires the EU List of Trusted Lists to be enabled.</string>
 	<string name="settings_validation_tl_refresh_interval_label">Trusted list refresh interval (hours)</string>
