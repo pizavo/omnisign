@@ -44,6 +44,7 @@ val jvmRepositoryModule = module {
 	single { PcscContextRecovery() }
 	single { Pkcs11DiscoverySignal() }
 	single { Pkcs11ProbeTimeout() }
+	single { Pkcs11SessionCache() }
 	single<Pkcs11Prober> { Pkcs11SubprocessProber(probeTimeout = get()) }
 	single { Pkcs11ProbeCache(crashBlacklist = get(), prober = get()) }
 	single { Pkcs11PcscCalaisResolver(pcscRecovery = get()) }
@@ -89,6 +90,7 @@ val jvmRepositoryModule = module {
 			candidateCollector = get(),
 			configRepository = get(),
 			appDataPkcs11Dir = pkcs11DropDir(),
+			sessionCache = get(),
 			probeTimeout = get(),
 		)
 	}
@@ -102,6 +104,7 @@ val jvmRepositoryModule = module {
 			pkcs11CacheInvalidator = get(),
 			pcscMonitorService = get(),
 			configRepository = get(),
+			sessionCache = get(),
 		)
 	} bind TokenService::class
 	singleOf(::KeyringCredentialStore) bind CredentialStore::class

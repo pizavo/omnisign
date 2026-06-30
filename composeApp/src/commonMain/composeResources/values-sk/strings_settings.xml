@@ -41,6 +41,8 @@
 	<string name="settings_validation_tl_last_refreshed">Naposledy obnovené: %1$s</string>
 	<string name="settings_validation_tl_last_refreshed_never">Naposledy obnovené: nikdy</string>
 	<string name="settings_pkcs11_remove_library_description">Odstrániť %1$s</string>
+	<string name="settings_pkcs11_protected_pin_pad_label">Má vlastný PIN pad</string>
+	<string name="settings_pkcs11_protected_pin_pad_tooltip">Zapnite pre middleware, ktorý žiada PIN na vlastnej zabezpečenej klávesnici alebo na obrazovke (napr. niektorí národní klienti eID). OmniSign pre túto knižnicu nezobrazí vlastný dialóg na zadanie PINu.</string>
 	<string name="settings_region_preset_label">Predvoľba</string>
 	<string name="settings_region_language_label">Jazyk</string>
 	<string name="settings_region_format_label">Formát</string>

@@ -41,6 +41,8 @@
 	<string name="settings_validation_tl_last_refreshed">Last refreshed: %1$s</string>
 	<string name="settings_validation_tl_last_refreshed_never">Last refreshed: never</string>
 	<string name="settings_pkcs11_remove_library_description">Remove %1$s</string>
+	<string name="settings_pkcs11_protected_pin_pad_label">Has its own PIN pad</string>
+	<string name="settings_pkcs11_protected_pin_pad_tooltip">Enable for middleware that asks for the PIN on its own secure pad or on-screen keyboard (e.g. some national eID clients). OmniSign will not show its own PIN dialog for this library.</string>
 	<string name="settings_region_preset_label">Preset</string>
 	<string name="settings_region_language_label">Language</string>
 	<string name="settings_region_format_label">Format</string>

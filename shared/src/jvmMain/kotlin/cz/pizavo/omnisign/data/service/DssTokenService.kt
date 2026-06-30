@@ -6,7 +6,6 @@ import cz.pizavo.omnisign.data.util.toKotlinInstant
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.result.OperationResult
-import cz.pizavo.omnisign.domain.model.value.commonNameOf
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.CertificateEntry
 import cz.pizavo.omnisign.domain.service.Pkcs11DiagnosticSnapshot
@@ -55,6 +54,7 @@ class DssTokenService(
 	private val pkcs11CacheInvalidator: Pkcs11CacheInvalidator? = null,
 	private val pcscMonitorService: PcscMonitorService? = null,
 	private val configRepository: ConfigRepository? = null,
+	private val sessionCache: Pkcs11SessionCache = Pkcs11SessionCache(),
 ) : TokenService {
 
 	override val discoveryRunning: StateFlow<Boolean> = pkcs11Discoverer.discoveryRunning
@@ -168,12 +168,66 @@ class DssTokenService(
 		tokenInfo: TokenInfo,
 		password: String?,
 	): OperationResult<List<CertificateEntry>> {
-		val resolvedPassword = if (tokenInfo.requiresPin && password == null) {
-			requestPin(tokenInfo) ?: return SigningError.pinEntryCancelled(tokenInfo.name).left()
-		} else {
-			password
+		val resolvedPassword = when {
+			password != null -> password
+			isProtectedAuthPathLibrary(tokenInfo) -> ""
+			tokenInfo.requiresPin ->
+				requestPin(tokenInfo) ?: return SigningError.pinEntryCancelled(tokenInfo.name).left()
+			else -> null
 		}
-		return loadCertificatesInternal(tokenInfo, resolvedPassword)
+		return if (tokenInfo.type == TokenType.PKCS11) {
+			loadCertificatesUnlocking(tokenInfo, resolvedPassword)
+		} else {
+			loadCertificatesInternal(tokenInfo, resolvedPassword)
+		}
+	}
+
+	/**
+	 * Whether [tokenInfo] is served by a PKCS#11 library the user registered as having its own
+	 * protected PIN entry ([cz.pizavo.omnisign.domain.model.config.CustomPkcs11Library.protectedAuthenticationPath]).
+	 *
+	 * For such a library OmniSign suppresses its own PIN dialog and supplies an empty PIN, letting
+	 * SunPKCS11 drive the module's secure pad (it detects `CKF_PROTECTED_AUTHENTICATION_PATH` and
+	 * logs in with no application-supplied PIN) — so the user enters the PIN once, on the module's
+	 * own pad, instead of twice.
+	 */
+	private suspend fun isProtectedAuthPathLibrary(tokenInfo: TokenInfo): Boolean {
+		if (tokenInfo.type != TokenType.PKCS11) return false
+		val path = tokenInfo.path ?: return false
+		return configRepository?.getCurrentConfig()?.global?.customPkcs11Libraries
+			?.any { it.path == path && it.protectedAuthenticationPath } == true
+	}
+
+	/**
+	 * Load a PKCS#11 token's certificates while **keeping its authenticated session open** in
+	 * the [sessionCache] for reuse by the immediately-following signature.
+	 *
+	 * This is the explicit-unlock path (interactive PIN entry or a stored credential supplied by
+	 * the caller).  On a cache miss the token is opened, its keys enumerated once (one `C_Login`),
+	 * and the open session stored under [TokenInfo.id]; on a hit the already-unlocked session is
+	 * reused so re-listing never re-authenticates.  Either way the certificates are derived from
+	 * the same key enumeration the signature will later reuse, so listing and signing agree.
+	 *
+	 * The session is **not** closed here — the cache owns its lifetime and drops it on card
+	 * removal ([Pkcs11CacheInvalidator]) or process shutdown. Passive discovery
+	 * ([loadCertificatesSilent], [listCertificatesNoLogin]) is deliberately *not* routed through
+	 * this path, so background listing never holds a card open.
+	 */
+	private suspend fun loadCertificatesUnlocking(
+		tokenInfo: TokenInfo,
+		password: String?,
+	): OperationResult<List<CertificateEntry>> {
+		return try {
+			val session = sessionCache.get(tokenInfo.id) ?: run {
+				val token = createDssToken(tokenInfo, password)
+				Pkcs11SessionCache.CachedSession(token, token.keys)
+					.also { sessionCache.put(tokenInfo.id, it) }
+			}
+			session.keys.map { buildCertificateEntry(it.certificate.certificate, tokenInfo) }.right()
+		} catch (e: Exception) {
+			sessionCache.invalidate(tokenInfo.id)
+			SigningError.loadCertificatesFromTokenFailed(tokenInfo.name, details = e.message, cause = e).left()
+		}
 	}
 
 	/**
@@ -220,9 +274,14 @@ class DssTokenService(
 	override suspend fun getSigningToken(
 		certificateEntry: CertificateEntry,
 		password: String,
+	): OperationResult<SigningToken> = openSigningToken(certificateEntry.tokenInfo, password)
+
+	override suspend fun openSigningToken(
+		tokenInfo: TokenInfo,
+		password: String,
 	): OperationResult<SigningToken> {
 		return try {
-			DssSigningToken(createDssToken(certificateEntry.tokenInfo, password)).right()
+			DssSigningToken(createDssToken(tokenInfo, password)).right()
 		} catch (e: Exception) {
 			SigningError.createSigningTokenFailed(details = e.message, cause = e).left()
 		}
@@ -255,23 +314,7 @@ class DssTokenService(
 	): OperationResult<List<CertificateEntry>> {
 		return try {
 			val token = createDssToken(tokenInfo, password)
-			val certificates = token.keys.map { key ->
-				val certToken = key.certificate.certificate
-				val (isQualified, isQscd) = extractQcStatements(certToken)
-				CertificateEntry(
-					alias = pkcs11CertAlias(certToken, tokenInfo),
-					subjectDN = certToken.subjectX500Principal.toString(),
-					issuerDN = certToken.issuerX500Principal.toString(),
-					serialNumber = certToken.serialNumber.toString(),
-					validFrom = certToken.notBefore.toKotlinInstant(),
-					validTo = certToken.notAfter.toKotlinInstant(),
-					keyUsages = extractKeyUsages(certToken.keyUsage),
-					tokenInfo = tokenInfo,
-					isQualified = isQualified,
-					isQscd = isQscd,
-					pkcs11SlotId = tokenInfo.pkcs11SlotId,
-				)
-			}
+			val certificates = token.keys.map { buildCertificateEntry(it.certificate.certificate, tokenInfo) }
 			token.close()
 			certificates.right()
 		} catch (e: Exception) {
@@ -280,27 +323,26 @@ class DssTokenService(
 	}
 
 	/**
-	 * Deterministic certificate alias: `<CN>-<serialHex>@<tokenInfo.id>`.
-	 *
-	 * The leading `<CN>-<serialHex>` is derived purely from the certificate; the trailing
-	 * `@<tokenInfo.id>` records *which source* the certificate was read from.  [TokenInfo.id]
-	 * is stable for a given source — `pkcs11-<tokenSerial>` for a hardware token (the physical
-	 * token serial, never the transient slot), `windows-my` / `macos-keychain` for the OS
-	 * stores, `file-…` for an imported keystore — and is reproduced identically by both the
-	 * no-login probe and the logged-in keystore for the same token, because both build their
-	 * [CertificateEntry] from the same discovered [TokenInfo].
-	 *
-	 * This keeps two invariants at once:
-	 * - the alias the user selects from a no-PIN listing is the exact alias the logged-in
-	 *   keystore yields for the same physical certificate at signing time, so
-	 *   [DssSigningRepository]'s key resolution stays unchanged; and
-	 * - the same certificate present on two different sources (e.g. a hardware token and the
-	 *   Windows store that mirrors it) yields two distinct aliases, so selection and
-	 *   sign-time resolution can no longer collapse them onto the wrong key.
+	 * Build a [CertificateEntry] for [certToken] read from [tokenInfo], deriving the deterministic
+	 * alias, DN strings, validity window, key usages, and QC-statement flags.  Shared by the
+	 * logged-in enumeration paths ([loadCertificatesInternal] and [loadCertificatesUnlocking]) so
+	 * a certificate listed at unlock time resolves to the same alias the signature matches.
 	 */
-	private fun pkcs11CertAlias(cert: X509Certificate, tokenInfo: TokenInfo): String {
-		val cn = commonNameOf(cert.subjectX500Principal.name) ?: "certificate"
-		return "$cn-${cert.serialNumber.toString(RADIX_HEX)}@${tokenInfo.id}"
+	private fun buildCertificateEntry(certToken: X509Certificate, tokenInfo: TokenInfo): CertificateEntry {
+		val (isQualified, isQscd) = extractQcStatements(certToken)
+		return CertificateEntry(
+			alias = pkcs11CertAlias(certToken, tokenInfo),
+			subjectDN = certToken.subjectX500Principal.toString(),
+			issuerDN = certToken.issuerX500Principal.toString(),
+			serialNumber = certToken.serialNumber.toString(),
+			validFrom = certToken.notBefore.toKotlinInstant(),
+			validTo = certToken.notAfter.toKotlinInstant(),
+			keyUsages = extractKeyUsages(certToken.keyUsage),
+			tokenInfo = tokenInfo,
+			isQualified = isQualified,
+			isQscd = isQscd,
+			pkcs11SlotId = tokenInfo.pkcs11SlotId,
+		)
 	}
 
 	/**
@@ -397,11 +439,6 @@ class DssTokenService(
 
 	private companion object {
 		val logger = KotlinLogging.logger {}
-
-		/**
-		 * Radix for rendering a certificate serial number in the deterministic alias.
-		 */
-		const val RADIX_HEX = 16
 
 		/**
 		 * OID of the QCStatements X.509 extension (RFC 3739 / ETSI EN 319 412).
