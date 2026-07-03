@@ -618,14 +618,25 @@ class DssSigningRepository(
 		const val TOKEN_CREDENTIAL_SERVICE = "omnisign-token"
 		
 		/**
-		 * Warning categories suppressed during signing because the PAdES extension process
-		 * embeds revocation data independently of the certificate verifier's pre-extension
-		 * check. If the extension fails, DSS throws an exception; if it succeeds, the data
-		 * is embedded and these warnings are false positives.
+		 * Warning categories suppressed during signing.
+		 *
+		 * [DssWarningSanitizer.WarningCategory.REVOCATION_NOT_FOUND] and
+		 * [DssWarningSanitizer.WarningCategory.FRESH_REVOCATION_MISSING] are suppressed because the
+		 * PAdES extension process embeds revocation data independently of the certificate
+		 * verifier's pre-extension check: if the extension fails DSS throws, and if it succeeds the
+		 * data is embedded, so these warnings are false positives.
+		 *
+		 * [DssWarningSanitizer.WarningCategory.CERTIFICATE_PARSE_ERROR] is suppressed because DSS
+		 * raises it while parsing non-standard extensions (typically a Subject Alternative Name
+		 * `otherName`) on the EU LOTL / trusted-list certificates it consults to establish trust —
+		 * third-party material the signer neither owns nor can act on. DSS skips the offending
+		 * entry and continues, so the signature is unaffected and the warning carries no actionable
+		 * information for the signer.
 		 */
 		val SIGNING_SUPPRESSED_CATEGORIES = setOf(
 			DssWarningSanitizer.WarningCategory.REVOCATION_NOT_FOUND,
 			DssWarningSanitizer.WarningCategory.FRESH_REVOCATION_MISSING,
+			DssWarningSanitizer.WarningCategory.CERTIFICATE_PARSE_ERROR,
 		)
 	}
 	
