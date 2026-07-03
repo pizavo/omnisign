@@ -441,6 +441,25 @@ private fun AlgorithmSection(
             },
         )
     }
+
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween,
+    ) {
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            Text(text = stringResource(Res.string.profileedit_allow_expired_cert), style = LumoTheme.typography.body2)
+            InfoTooltip(text = stringResource(Res.string.profileedit_allow_expired_cert_tooltip))
+        }
+        TriStateToggle(
+            state = state.allowExpiredCertificateOverride,
+            onStateChange = { value -> if (!readOnly) onFieldChange { it.copy(allowExpiredCertificateOverride = value) } },
+            enabled = !readOnly,
+        )
+    }
 }
 
 /**

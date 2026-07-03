@@ -1,5 +1,7 @@
 <resources>
 	<string name="profileedit_alert_eu_lotl_tooltip">Flag signatures whose trust anchor is not on the EU LOTL</string>
+	<string name="profileedit_allow_expired_cert">Allow signing with an expired certificate</string>
+	<string name="profileedit_allow_expired_cert_tooltip">Produce a signature even if the signing certificate has expired; such signatures fail validation</string>
 	<string name="profileedit_trusted_lists_title">Trusted Lists</string>
 	<string name="profileedit_trusted_lists_description">Custom ETSI Trusted List sources added here apply only to this profile, in addition to global ones.</string>
 	<string name="profileedit_trusted_certs_title">Trusted Certificates</string>

@@ -9,6 +9,8 @@ import cz.pizavo.omnisign.data.repository.DssSigningRepository
 import cz.pizavo.omnisign.data.repository.DssWarningSanitizer
 import cz.pizavo.omnisign.data.repository.RevocationErrorDetector
 import cz.pizavo.omnisign.data.repository.TspErrorDetector
+import cz.pizavo.omnisign.data.service.Pkcs11SessionCache
+import cz.pizavo.omnisign.data.service.pkcs11CertAlias
 import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.data.util.toKotlinInstant
 import cz.pizavo.omnisign.domain.model.config.AppConfig
@@ -90,7 +92,7 @@ class SigningPipelineE2ETest : FunSpec({
 		path = signerP12.absolutePath, requiresPin = false,
 	)
 	val certEntry = CertificateEntry(
-		alias = "e2e-signer",
+		alias = pkcs11CertAlias(signerCert, fileToken),
 		subjectDN = signerCert.subjectX500Principal.toString(),
 		issuerDN = signerCert.issuerX500Principal.toString(),
 		serialNumber = signerCert.serialNumber.toString(),
@@ -145,6 +147,7 @@ class SigningPipelineE2ETest : FunSpec({
 	coEvery { tokenService.probeTokenPresent(any()) } returns true
 	coEvery { tokenService.loadCertificatesSilent(any(), any()) } returns listOf(certEntry).right()
 	coEvery { tokenService.getSigningToken(any(), any()) } answers { realSigningToken().right() }
+	coEvery { tokenService.openSigningToken(any(), any()) } answers { realSigningToken().right() }
 
 	val configRepository = mockk<ConfigRepository>()
 	coEvery { configRepository.getCurrentConfig() } returns AppConfig(global = GlobalConfig())
@@ -160,7 +163,7 @@ class SigningPipelineE2ETest : FunSpec({
 	val signingRepository = DssSigningRepository(
 		tokenService, configRepository, mockk<CredentialStore>(relaxed = true), dssServiceFactory,
 		AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
-		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(),
+		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(), Pkcs11SessionCache(),
 	)
 	val archivingRepository = DssArchivingRepository(
 		configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(),

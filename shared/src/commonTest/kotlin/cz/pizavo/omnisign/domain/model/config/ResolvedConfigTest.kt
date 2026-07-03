@@ -174,5 +174,27 @@ class ResolvedConfigTest : FunSpec({
 		resolved(global = false, profile = false, operation = true) shouldBe true
 		resolved(global = null, profile = null, operation = null).shouldBeNull()
 	}
+
+	test("allowExpiredCertificate resolves operation over profile over global, null inherits") {
+		fun resolved(global: Boolean?, profile: Boolean?, operation: Boolean?): Boolean? =
+			ResolvedConfig.resolve(
+				global = GlobalConfig(
+					defaultHashAlgorithm = HashAlgorithm.SHA256,
+					defaultSignatureLevel = SignatureLevel.PADES_BASELINE_B,
+					validation = ValidationConfig(allowExpiredCertificate = global),
+				),
+				profile = ProfileConfig(
+					name = "p",
+					validation = profile?.let { ValidationConfig(allowExpiredCertificate = it) },
+				),
+				operationOverrides = operation?.let { OperationConfig(validation = ValidationConfig(allowExpiredCertificate = it)) },
+			).getOrElse { error -> throw AssertionError(error.message) }.validation.allowExpiredCertificate
+
+		resolved(global = true, profile = null, operation = null) shouldBe true
+		resolved(global = true, profile = false, operation = null) shouldBe false
+		resolved(global = false, profile = true, operation = null) shouldBe true
+		resolved(global = false, profile = false, operation = true) shouldBe true
+		resolved(global = null, profile = null, operation = null).shouldBeNull()
+	}
 })
 

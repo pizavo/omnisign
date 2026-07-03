@@ -17,6 +17,8 @@
 	<string name="settings_validation_custom_policy_path_label">Cesta k vlastnému súboru politiky</string>
 	<string name="settings_browse_policy_file_description">Vyhľadať súbor politiky</string>
 	<string name="settings_validation_check_revocation">Kontrolovať zrušenie certifikátu</string>
+	<string name="settings_signing_allow_expired_cert">Povoliť podpis certifikátom s expirovanou platnosťou</string>
+	<string name="settings_signing_allow_expired_cert_tooltip">Keď je zapnuté, podpis možno vytvoriť aj certifikátom s expirovanou platnosťou. Takýto podpis neprejde overením (certifikát bol v čase podpisu neplatný), preto nechajte vypnuté, pokiaľ to nepotrebujete.</string>
 	<string name="settings_validation_use_eu_lotl">Použiť zoznam dôveryhodných zoznamov EÚ</string>
 	<string name="settings_validation_alert_not_eu_lotl_tooltip">Označiť podpisy, ktorých kotva dôvery nie je v zozname EU LOTL. Vyžaduje povolený zoznam dôveryhodných zoznamov EÚ.</string>
 	<string name="settings_validation_tl_refresh_interval_label">Interval obnovenia dôveryhodného zoznamu (hodiny)</string>
@@ -41,6 +43,8 @@
 	<string name="settings_validation_tl_last_refreshed">Naposledy obnovené: %1$s</string>
 	<string name="settings_validation_tl_last_refreshed_never">Naposledy obnovené: nikdy</string>
 	<string name="settings_pkcs11_remove_library_description">Odstrániť %1$s</string>
+	<string name="settings_pkcs11_protected_pin_pad_label">Má vlastný PIN pad</string>
+	<string name="settings_pkcs11_protected_pin_pad_tooltip">Zapnite pre middleware, ktorý žiada PIN na vlastnej zabezpečenej klávesnici alebo na obrazovke (napr. niektorí národní klienti eID). OmniSign pre túto knižnicu nezobrazí vlastný dialóg na zadanie PINu.</string>
 	<string name="settings_region_preset_label">Predvoľba</string>
 	<string name="settings_region_language_label">Jazyk</string>
 	<string name="settings_region_format_label">Formát</string>

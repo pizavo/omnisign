@@ -61,6 +61,9 @@ import java.io.File
  * @property appDataPkcs11Dir Drop directory passed to [Pkcs11Discoverer.discoverTokens] —
  *   must match the directory used by [DssTokenService.discoverTokens] so the populated
  *   cache entry has the same key the dialog will look up.
+ * @property sessionCache Holds unlocked PKCS#11 signing sessions; dropped via
+ *   [Pkcs11SessionCache.invalidateAll] on card removal / reader disconnect so a removed or
+ *   swapped card never leaves a stale, unusable session behind.
  * @property probeTimeout Process-global probe-timeout holder, refreshed from
  *   `GlobalConfig.pkcs11ProbeTimeoutSeconds` on every rediscovery so an operator-edited
  *   timeout takes effect on the next cycle without a restart ([Pkcs11ProbeTimeout]).
@@ -85,6 +88,7 @@ class Pkcs11CacheInvalidator(
 	private val candidateCollector: Pkcs11CandidateCollector,
 	private val configRepository: ConfigRepository,
 	private val appDataPkcs11Dir: File,
+	private val sessionCache: Pkcs11SessionCache = Pkcs11SessionCache(),
 	private val probeTimeout: Pkcs11ProbeTimeout = Pkcs11ProbeTimeout(),
 	private val scope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
 	private val candidateCacheIsCardDependent: Boolean = System.getProperty("os.name").lowercase().contains("win"),
@@ -146,6 +150,10 @@ class Pkcs11CacheInvalidator(
 				probeCache.invalidateProbes()
 				candidateCollector.invalidateCandidates()
 			}
+		}
+		if (event is PcscEvent.CardRemoved || event is PcscEvent.ReaderDisconnected) {
+			logger.info { "$event → dropping unlocked PKCS#11 signing sessions" }
+			scope.launch { sessionCache.invalidateAll() }
 		}
 		scope.launch { runRediscovery() }
 	}

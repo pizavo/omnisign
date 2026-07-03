@@ -11,8 +11,9 @@ import java.io.File
 /**
  * CLI subcommand for listing all registered custom PKCS#11 middleware library entries.
  *
- * Each entry shows whether the library file currently exists on disk, so the user
- * can spot stale registrations at a glance.
+ * Each entry shows whether the library file currently exists on disk (so the user can spot
+ * stale registrations at a glance) and, when enabled, that PIN entry is delegated to the
+ * module's own secure pad ([cz.pizavo.omnisign.domain.model.config.CustomPkcs11Library.protectedAuthenticationPath]).
  */
 class Pkcs11LibraryLister : CliktCommand(name = "list"), KoinComponent {
     private val managePkcs11: ManagePkcs11LibrariesUseCase by inject()
@@ -34,6 +35,9 @@ class Pkcs11LibraryLister : CliktCommand(name = "list"), KoinComponent {
                         val status = if (exists) "✅" else "⚠️  (file not found)"
                         echo("  ● ${lib.name}  $status")
                         echo("    Path: ${lib.path}")
+                        if (lib.protectedAuthenticationPath) {
+                            echo("    PIN entry: delegated to the module's own secure pad")
+                        }
                     }
                 }
             }

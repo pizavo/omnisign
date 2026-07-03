@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.data.repository.DocumentInputErrorDetector
 import cz.pizavo.omnisign.data.repository.DssArchivingRepository
 import cz.pizavo.omnisign.data.repository.DssServiceFactory
 import cz.pizavo.omnisign.data.repository.DssSigningRepository
+import cz.pizavo.omnisign.data.service.Pkcs11SessionCache
 import cz.pizavo.omnisign.data.repository.DssWarningSanitizer
 import cz.pizavo.omnisign.data.repository.RevocationErrorDetector
 import cz.pizavo.omnisign.data.repository.TspErrorDetector
@@ -103,7 +104,7 @@ class CliSigningPipelineE2ETest : FunSpec({
 	val signingRepository = DssSigningRepository(
 		tokenService, configRepository, mockk<CredentialStore>(relaxed = true), dssServiceFactory,
 		AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
-		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(),
+		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(), Pkcs11SessionCache(),
 	)
 	val archivingRepository = DssArchivingRepository(
 		configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(),

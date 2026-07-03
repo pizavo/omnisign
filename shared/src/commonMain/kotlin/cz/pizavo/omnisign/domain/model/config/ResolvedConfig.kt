@@ -186,6 +186,9 @@ data class ResolvedConfig(
 				policyType = operation?.policyType ?: profile?.policyType ?: global.policyType,
 				customPolicyPath = operation?.customPolicyPath ?: profile?.customPolicyPath ?: global.customPolicyPath,
 				checkRevocation = operation?.checkRevocation ?: profile?.checkRevocation ?: global.checkRevocation,
+				allowExpiredCertificate = operation?.allowExpiredCertificate
+					?: profile?.allowExpiredCertificate
+					?: global.allowExpiredCertificate,
 				useEuLotl = operation?.useEuLotl ?: profile?.useEuLotl ?: global.useEuLotl,
 				alertIfNotEuLotl = operation?.alertIfNotEuLotl ?: profile?.alertIfNotEuLotl ?: global.alertIfNotEuLotl,
 				customTrustedLists = mergedTls,

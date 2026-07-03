@@ -23,6 +23,7 @@ import cz.pizavo.omnisign.lumo.components.TriToggleState
  * @property signatureTimestampOverride Tri-state toggle for the signature timestamp (B-LT) override.
  * @property archivalTimestampOverride Tri-state toggle for the archival timestamp (B-LTA) override.
  * @property alertIfNotEuLotlOverride Tri-state override for the "alert if not on EU LOTL" validation setting.
+ * @property allowExpiredCertificateOverride Tri-state override for allowing signing with an expired certificate.
  * @property timestampEnabled Whether the timestamp server section is enabled.
  * @property timestampUrl TSA endpoint URL.
  * @property timestampUsername HTTP Basic auth username for the TSA.
@@ -51,6 +52,7 @@ data class ProfileEditState(
 	val signatureTimestampOverride: TriToggleState = TriToggleState.INHERIT,
 	val archivalTimestampOverride: TriToggleState = TriToggleState.INHERIT,
 	val alertIfNotEuLotlOverride: TriToggleState = TriToggleState.INHERIT,
+	val allowExpiredCertificateOverride: TriToggleState = TriToggleState.INHERIT,
 	val timestampEnabled: Boolean = false,
 	val timestampUrl: String = "",
 	val timestampUsername: String = "",
@@ -104,6 +106,7 @@ data class ProfileEditState(
 				signatureTimestampOverride == other.signatureTimestampOverride &&
 				archivalTimestampOverride == other.archivalTimestampOverride &&
 				alertIfNotEuLotlOverride == other.alertIfNotEuLotlOverride &&
+				allowExpiredCertificateOverride == other.allowExpiredCertificateOverride &&
 				timestampEnabled == other.timestampEnabled &&
 				timestampUrl == other.timestampUrl &&
 				timestampUsername == other.timestampUsername &&
@@ -150,10 +153,16 @@ data class ProfileEditState(
 				TriToggleState.DISABLED -> false
 				TriToggleState.INHERIT -> null
 			}
-			if (customTrustedLists.isNotEmpty() || alertOverride != null) {
+			val allowExpiredOverride = when (allowExpiredCertificateOverride) {
+				TriToggleState.ENABLED -> true
+				TriToggleState.DISABLED -> false
+				TriToggleState.INHERIT -> null
+			}
+			if (customTrustedLists.isNotEmpty() || alertOverride != null || allowExpiredOverride != null) {
 				ValidationConfig(
 					customTrustedLists = customTrustedLists,
 					alertIfNotEuLotl = alertOverride,
+					allowExpiredCertificate = allowExpiredOverride,
 				)
 			} else {
 				null
@@ -185,6 +194,11 @@ data class ProfileEditState(
 				signatureTimestampOverride = sigTs,
 				archivalTimestampOverride = archTs,
 				alertIfNotEuLotlOverride = when (profile.validation?.alertIfNotEuLotl) {
+					true -> TriToggleState.ENABLED
+					false -> TriToggleState.DISABLED
+					null -> TriToggleState.INHERIT
+				},
+				allowExpiredCertificateOverride = when (profile.validation?.allowExpiredCertificate) {
 					true -> TriToggleState.ENABLED
 					false -> TriToggleState.DISABLED
 					null -> TriToggleState.INHERIT

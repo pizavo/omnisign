@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.commands.config.pkcs11
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.path
@@ -31,11 +32,21 @@ class Pkcs11LibraryAdder : CliktCommand(name = "add"), KoinComponent {
         help = "Absolute path to the PKCS#11 shared library (.dll / .so / .dylib)"
     ).path(mustExist = true, canBeDir = false, mustBeReadable = true).required()
 
+    private val protectedPinPad by option(
+        "--protected-pin-pad",
+        help = "The middleware collects the PIN on its own secure pad / virtual keyboard; " +
+            "OmniSign will not show its own PIN dialog for this library"
+    ).flag()
+
     override fun help(context: Context): String =
         "Register a custom PKCS#11 middleware library path"
 
     override fun run(): Unit = runBlocking {
-        val library = CustomPkcs11Library(name = name, path = path.toString())
+        val library = CustomPkcs11Library(
+            name = name,
+            path = path.toString(),
+            protectedAuthenticationPath = protectedPinPad,
+        )
         managePkcs11.addLibrary(library).fold(
             ifLeft = { error ->
                 echo("❌ ${error.message}", err = true)
@@ -44,6 +55,7 @@ class Pkcs11LibraryAdder : CliktCommand(name = "add"), KoinComponent {
             ifRight = {
                 echo("✅ PKCS#11 library '$name' registered.")
                 echo("   Path: $path")
+                if (protectedPinPad) echo("   PIN entry: delegated to the module's own secure pad")
             }
         )
     }

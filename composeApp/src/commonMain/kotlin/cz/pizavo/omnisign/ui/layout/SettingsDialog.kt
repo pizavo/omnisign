@@ -740,6 +740,26 @@ private fun SigningDefaultsSection(
 		Text(text = stringResource(Res.string.label_archival_timestamp), style = LumoTheme.typography.body2)
 		InfoTooltip(text = stringResource(Res.string.label_produces_b_lta))
 	}
+
+	Spacer(modifier = Modifier.height(12.dp))
+
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		verticalAlignment = Alignment.CenterVertically,
+		horizontalArrangement = Arrangement.SpaceBetween,
+	) {
+		Row(
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.spacedBy(4.dp),
+		) {
+			Text(text = stringResource(Res.string.settings_signing_allow_expired_cert), style = LumoTheme.typography.label1)
+			InfoTooltip(text = stringResource(Res.string.settings_signing_allow_expired_cert_tooltip))
+		}
+		Switch(
+			checked = state.allowExpiredCertificate,
+			onCheckedChange = { value -> onFieldChange { it.copy(allowExpiredCertificate = value) } },
+		)
+	}
 }
 
 /**
@@ -988,7 +1008,7 @@ private fun ValidationPolicySection(
 			onCheckedChange = { value -> onFieldChange { it.copy(checkRevocation = value) } },
 		)
 	}
-	
+
 	Spacer(modifier = Modifier.height(8.dp))
 	
 	Row(
@@ -1206,12 +1226,13 @@ private fun Pkcs11Section(
 	}
 
 	Pkcs11AddRow(
-		onAdd = { name, path ->
+		onAdd = { name, path, protectedPinPad ->
 			onFieldChange {
 				it.copy(
 					customPkcs11Libraries = it.customPkcs11Libraries + CustomPkcs11Library(
 						name = name,
 						path = path,
+						protectedAuthenticationPath = protectedPinPad,
 					)
 				)
 			}
@@ -1260,6 +1281,13 @@ private fun Pkcs11LibraryRows(
 	entries.forEachIndexed { displayPos, entry ->
 		Pkcs11LibraryRow(
 			library = entry.value,
+			onProtectedPinPadChange = { enabled ->
+				onFieldChange {
+					it.copy(customPkcs11Libraries = it.customPkcs11Libraries.toMutableList().apply {
+						this[entry.index] = this[entry.index].copy(protectedAuthenticationPath = enabled)
+					})
+				}
+			},
 			onRemove = {
 				onFieldChange {
 					it.copy(customPkcs11Libraries = it.customPkcs11Libraries.toMutableList().apply {
@@ -1325,14 +1353,18 @@ private fun Pkcs11DropDirectoryHint(path: String, onOpen: () -> Unit) {
 }
 
 /**
- * Single row displaying a registered PKCS#11 library with a remove button.
+ * Single row displaying a registered PKCS#11 library with a protected-pin-pad toggle and a
+ * remove button.
  *
  * @param library The library entry to display.
+ * @param onProtectedPinPadChange Callback invoked when the user flips the protected-pin-pad
+ *   switch; the new value is staged into the edit state and persisted on Save.
  * @param onRemove Callback invoked when the user clicks the remove button.
  */
 @Composable
 private fun Pkcs11LibraryRow(
 	library: CustomPkcs11Library,
+	onProtectedPinPadChange: (Boolean) -> Unit,
 	onRemove: () -> Unit,
 ) {
 	Row(
@@ -1347,6 +1379,20 @@ private fun Pkcs11LibraryRow(
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)
+			Row(
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(8.dp),
+			) {
+				Switch(
+					checked = library.protectedAuthenticationPath,
+					onCheckedChange = onProtectedPinPadChange,
+				)
+				Text(
+					text = stringResource(Res.string.settings_pkcs11_protected_pin_pad_label),
+					style = LumoTheme.typography.body2,
+					color = LumoTheme.colors.textSecondary,
+				)
+			}
 		}
 		IconButton(
 			variant = IconButtonVariant.Ghost,
@@ -1367,9 +1413,10 @@ private fun Pkcs11LibraryRow(
  * @param onAdd Callback invoked with (name, path) when the user confirms the new entry.
  */
 @Composable
-private fun Pkcs11AddRow(onAdd: (name: String, path: String) -> Unit) {
+private fun Pkcs11AddRow(onAdd: (name: String, path: String, protectedPinPad: Boolean) -> Unit) {
 	var name by remember { mutableStateOf("") }
 	var path by remember { mutableStateOf("") }
+	var protectedPinPad by remember { mutableStateOf(false) }
 	
 	val libraryFilePicker = rememberFilePickerLauncher(
 		type = FileKitType.File(extensions = listOf("dll", "so", "dylib")),
@@ -1380,55 +1427,78 @@ private fun Pkcs11AddRow(onAdd: (name: String, path: String) -> Unit) {
 		}
 	}
 	
-	Row(
-		modifier = Modifier.fillMaxWidth(),
-		horizontalArrangement = Arrangement.spacedBy(8.dp),
-		verticalAlignment = Alignment.Bottom,
-	) {
-		UnderlinedTextField(
-			value = name,
-			onValueChange = { name = it },
-			label = { Text(text = stringResource(Res.string.settings_pkcs11_add_name_label)) },
-			placeholder = { Text(text = stringResource(Res.string.settings_pkcs11_add_name_placeholder)) },
-			singleLine = true,
-			modifier = Modifier.weight(1f),
-		)
-		UnderlinedTextField(
-			value = path,
-			onValueChange = { path = it },
-			label = { Text(text = stringResource(Res.string.settings_pkcs11_add_path_label)) },
-			placeholder = { Text(text = "/path/to/library.so") },
-			singleLine = true,
-			modifier = Modifier.weight(2f),
-			trailingIcon = {
-				TooltipBox(
-					tooltip = { Tooltip { Text(text = stringResource(Res.string.action_browse)) } },
-					state = rememberTooltipState(),
-				) {
-					IconButton(
-						modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
-						variant = IconButtonVariant.Ghost,
-						onClick = { libraryFilePicker.launch() },
+	Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+		Row(
+			modifier = Modifier.fillMaxWidth(),
+			horizontalArrangement = Arrangement.spacedBy(8.dp),
+			verticalAlignment = Alignment.Bottom,
+		) {
+			UnderlinedTextField(
+				value = name,
+				onValueChange = { name = it },
+				label = { Text(text = stringResource(Res.string.settings_pkcs11_add_name_label)) },
+				placeholder = { Text(text = stringResource(Res.string.settings_pkcs11_add_name_placeholder)) },
+				singleLine = true,
+				modifier = Modifier.weight(1f),
+			)
+			UnderlinedTextField(
+				value = path,
+				onValueChange = { path = it },
+				label = { Text(text = stringResource(Res.string.settings_pkcs11_add_path_label)) },
+				placeholder = { Text(text = "/path/to/library.so") },
+				singleLine = true,
+				modifier = Modifier.weight(2f),
+				trailingIcon = {
+					TooltipBox(
+						tooltip = { Tooltip { Text(text = stringResource(Res.string.action_browse)) } },
+						state = rememberTooltipState(),
 					) {
-						Icon(
-							painter = painterResource(Res.drawable.icon_folder),
-							contentDescription = stringResource(Res.string.settings_pkcs11_browse_library_description),
-							modifier = Modifier.size(18.dp),
-						)
+						IconButton(
+							modifier = Modifier.pointerHoverIcon(PointerIcon.Hand),
+							variant = IconButtonVariant.Ghost,
+							onClick = { libraryFilePicker.launch() },
+						) {
+							Icon(
+								painter = painterResource(Res.drawable.icon_folder),
+								contentDescription = stringResource(Res.string.settings_pkcs11_browse_library_description),
+								modifier = Modifier.size(18.dp),
+							)
+						}
 					}
-				}
-			},
-		)
-		Button(
-			text = stringResource(Res.string.action_add),
-			variant = ButtonVariant.PrimaryOutlined,
-			enabled = name.isNotBlank() && path.isNotBlank(),
-			onClick = {
-				onAdd(name.trim(), path.trim())
-				name = ""
-				path = ""
-			},
-		)
+				},
+			)
+			Button(
+				text = stringResource(Res.string.action_add),
+				variant = ButtonVariant.PrimaryOutlined,
+				enabled = name.isNotBlank() && path.isNotBlank(),
+				onClick = {
+					onAdd(name.trim(), path.trim(), protectedPinPad)
+					name = ""
+					path = ""
+					protectedPinPad = false
+				},
+			)
+		}
+		Row(
+			modifier = Modifier.fillMaxWidth(),
+			verticalAlignment = Alignment.CenterVertically,
+			horizontalArrangement = Arrangement.SpaceBetween,
+		) {
+			Row(
+				verticalAlignment = Alignment.CenterVertically,
+				horizontalArrangement = Arrangement.spacedBy(4.dp),
+			) {
+				Text(
+					text = stringResource(Res.string.settings_pkcs11_protected_pin_pad_label),
+					style = LumoTheme.typography.label1,
+				)
+				InfoTooltip(text = stringResource(Res.string.settings_pkcs11_protected_pin_pad_tooltip))
+			}
+			Switch(
+				checked = protectedPinPad,
+				onCheckedChange = { protectedPinPad = it },
+			)
+		}
 	}
 }
 

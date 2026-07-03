@@ -17,6 +17,8 @@
 	<string name="settings_validation_custom_policy_path_label">Custom policy file path</string>
 	<string name="settings_browse_policy_file_description">Browse for policy file</string>
 	<string name="settings_validation_check_revocation">Check certificate revocation</string>
+	<string name="settings_signing_allow_expired_cert">Allow signing with an expired certificate</string>
+	<string name="settings_signing_allow_expired_cert_tooltip">When on, a signature can be produced even if the signing certificate has expired. Such a signature will fail validation (the certificate was invalid at signing time), so leave this off unless you specifically need it.</string>
 	<string name="settings_validation_use_eu_lotl">Use EU List of Trusted Lists</string>
 	<string name="settings_validation_alert_not_eu_lotl_tooltip">Flag signatures whose trust anchor is not on the EU LOTL. Requires the EU List of Trusted Lists to be enabled.</string>
 	<string name="settings_validation_tl_refresh_interval_label">Trusted list refresh interval (hours)</string>
@@ -41,6 +43,8 @@
 	<string name="settings_validation_tl_last_refreshed">Last refreshed: %1$s</string>
 	<string name="settings_validation_tl_last_refreshed_never">Last refreshed: never</string>
 	<string name="settings_pkcs11_remove_library_description">Remove %1$s</string>
+	<string name="settings_pkcs11_protected_pin_pad_label">Has its own PIN pad</string>
+	<string name="settings_pkcs11_protected_pin_pad_tooltip">Enable for middleware that asks for the PIN on its own secure pad or on-screen keyboard (e.g. some national eID clients). OmniSign will not show its own PIN dialog for this library.</string>
 	<string name="settings_region_preset_label">Preset</string>
 	<string name="settings_region_language_label">Language</string>
 	<string name="settings_region_format_label">Format</string>

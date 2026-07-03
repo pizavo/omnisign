@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.data.repository
 
 import arrow.core.left
 import arrow.core.right
+import cz.pizavo.omnisign.data.service.Pkcs11SessionCache
 import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
@@ -40,12 +41,15 @@ class DssSigningRepositoryTest : FunSpec({
 	val configRepository: ConfigRepository = mockk()
 	val credentialStore: CredentialStore = mockk()
 	val dssServiceFactory: DssServiceFactory = mockk(relaxed = true)
-	
+	val sessionCache = Pkcs11SessionCache()
+
 	val repository = DssSigningRepository(
 		tokenService, configRepository, credentialStore, dssServiceFactory,
 		AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
-		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(),
+		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(), sessionCache,
 	)
+
+	beforeTest { sessionCache.invalidateAll() }
 	
 	fun defaultConfig() = AppConfig(
 		global = GlobalConfig(
@@ -54,7 +58,7 @@ class DssSigningRepositoryTest : FunSpec({
 		)
 	)
 	
-	fun tmpFile(name: String) = File(tmpDir, name).also { it.createNewFile() }
+	fun tmpFile(name: String) = File(tmpDir, name).also { it.writeBytes("%PDF-1.7".encodeToByteArray()) }
 
 	fun dssKey(subjectDN: String, issuerDN: String, serial: String): eu.europa.esig.dss.token.DSSPrivateKeyEntry {
 		val mockX509 = mockk<java.security.cert.X509Certificate> {
@@ -122,7 +126,7 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
 		coEvery { tokenService.discoverTokens() } returns listOf(tokenInfo).right()
 		coEvery { tokenService.probeTokenPresent(tokenInfo) } returns true
-		coEvery { tokenService.loadCertificatesSilent(tokenInfo, "") } returns listOf(certEntry).right()
+		coEvery { tokenService.openSigningToken(tokenInfo, "") } returns signingTokenFor(certEntry).right()
 
 		val params = SigningParameters(
 			inputBytes = tmpFile("input3.pdf").readBytes(),
@@ -147,8 +151,7 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
 		coEvery { tokenService.discoverTokens() } returns listOf(tokenInfo).right()
 		coEvery { tokenService.probeTokenPresent(tokenInfo) } returns true
-		coEvery { tokenService.loadCertificatesSilent(tokenInfo, "") } returns listOf(certEntry).right()
-		coEvery { tokenService.getSigningToken(certEntry, "") } returns SigningError.TokenAccessError(
+		coEvery { tokenService.openSigningToken(tokenInfo, "") } returns SigningError.TokenAccessError(
 			text = LocalizableText.Literal("PIN incorrect")
 		).left()
 
@@ -385,7 +388,7 @@ class DssSigningRepositoryTest : FunSpec({
 		val qscd = TokenInfo(id = "qscd-1", name = "QSCD Token", type = TokenType.PKCS11, path = "/lib/qscd.so", requiresPin = true)
 		val winStore = TokenInfo(id = "windows-my", name = "Windows MY", type = TokenType.WINDOWS_MY, requiresPin = false)
 		val winCert = CertificateEntry(
-			alias = "win-cert", subjectDN = "CN=WinUser", issuerDN = "CN=CA",
+			alias = "WinUser-2a@windows-my", subjectDN = "CN=WinUser", issuerDN = "CN=CA",
 			serialNumber = "42", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
 			keyUsages = emptyList(), tokenInfo = winStore,
 		)
@@ -395,13 +398,12 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { tokenService.probeTokenPresent(qscd) } returns true
 		coEvery { tokenService.probeTokenPresent(winStore) } returns true
 		coEvery { credentialStore.getPassword(any(), "qscd-1") } returns null
-		coEvery { tokenService.loadCertificatesSilent(winStore, "") } returns listOf(winCert).right()
-		coEvery { tokenService.getSigningToken(winCert, "") } returns signingTokenFor(winCert).right()
+		coEvery { tokenService.openSigningToken(winStore, "") } returns signingTokenFor(winCert).right()
 
 		val params = SigningParameters(
 			inputBytes = tmpFile("pin-skip-input.pdf").readBytes(),
 			inputName = "pin-skip-input.pdf",
-			certificateAlias = "win-cert",
+			certificateAlias = "WinUser-2a@windows-my",
 			addTimestamp = false,
 		)
 
@@ -426,8 +428,7 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { tokenService.discoverTokens() } returns listOf(card).right()
 		coEvery { tokenService.probeTokenPresent(card) } returns true
 		coEvery { credentialStore.getPassword(any(), "pkcs11-XYZ") } returns "1234"
-		coEvery { tokenService.loadCertificatesSilent(slotBToken, "1234") } returns listOf(cert).right()
-		coEvery { tokenService.getSigningToken(cert, "1234") } returns signingTokenFor(cert).right()
+		coEvery { tokenService.openSigningToken(slotBToken, "1234") } returns signingTokenFor(cert).right()
 
 		val params = SigningParameters(
 			inputBytes = tmpFile("slot-input.pdf").readBytes(),
@@ -439,8 +440,8 @@ class DssSigningRepositoryTest : FunSpec({
 
 		repository.signDocument(params)
 
-		io.mockk.coVerify { tokenService.loadCertificatesSilent(slotBToken, "1234") }
-		io.mockk.coVerify(exactly = 0) { tokenService.loadCertificatesSilent(card, "1234") }
+		io.mockk.coVerify { tokenService.openSigningToken(slotBToken, "1234") }
+		io.mockk.coVerify(exactly = 0) { tokenService.openSigningToken(card, "1234") }
 	}
 
 	test("signDocument falls back to the all-slots probe to find an alias in a non-pinned slot") {
@@ -464,10 +465,9 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { tokenService.discoverTokens() } returns listOf(card).right()
 		coEvery { tokenService.probeTokenPresent(card) } returns true
 		coEvery { credentialStore.getPassword(any(), "pkcs11-XYZ") } returns "1234"
-		coEvery { tokenService.loadCertificatesSilent(card, "1234") } returns listOf(slotACert).right()
+		coEvery { tokenService.openSigningToken(card, "1234") } returns signingTokenFor(slotACert).right()
 		coEvery { tokenService.listCertificatesNoLogin(card) } returns listOf(slotACert, slotBCert).right()
-		coEvery { tokenService.loadCertificatesSilent(slotBToken, "1234") } returns listOf(slotBCert).right()
-		coEvery { tokenService.getSigningToken(slotBCert, "1234") } returns signingTokenFor(slotBCert).right()
+		coEvery { tokenService.openSigningToken(slotBToken, "1234") } returns signingTokenFor(slotBCert).right()
 
 		val params = SigningParameters(
 			inputBytes = tmpFile("fallback-input.pdf").readBytes(),
@@ -478,9 +478,9 @@ class DssSigningRepositoryTest : FunSpec({
 
 		repository.signDocument(params)
 
+		io.mockk.coVerify { tokenService.openSigningToken(card, "1234") }
 		io.mockk.coVerify { tokenService.listCertificatesNoLogin(card) }
-		io.mockk.coVerify { tokenService.loadCertificatesSilent(slotBToken, "1234") }
-		io.mockk.coVerify { tokenService.getSigningToken(slotBCert, "1234") }
+		io.mockk.coVerify { tokenService.openSigningToken(slotBToken, "1234") }
 	}
 
 	test("selectSigningKey resolves the certificate by serial when several share a subject DN") {
@@ -537,18 +537,45 @@ class DssSigningRepositoryTest : FunSpec({
 		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
 		coEvery { tokenService.discoverTokens() } returns listOf(tokenInfo).right()
 		coEvery { tokenService.probeTokenPresent(tokenInfo) } returns true
-		coEvery { tokenService.loadCertificatesSilent(tokenInfo, "") } returns listOf(cert).right()
-		coEvery { tokenService.getSigningToken(cert, "") } returns signingTokenFor(cert).right()
+		coEvery { tokenService.openSigningToken(tokenInfo, "") } returns signingTokenFor(cert).right()
 
 		val params = SigningParameters(
 			inputBytes = "this is plainly not a pdf".encodeToByteArray(),
 			inputName = "not-a-pdf.pdf",
-			certificateAlias = "my-cert",
+			certificateAlias = "Test-1@win",
 			addTimestamp = false,
 		)
 
 		repository.signDocument(params)
 			.shouldBeLeft()
 			.shouldBeInstanceOf<SigningError.MalformedDocument>()
+	}
+
+	test("signDocument reuses an unlocked cached session without re-opening or closing the token") {
+		val card = TokenInfo(
+			id = "pkcs11-CACHED", name = "Card", type = TokenType.PKCS11,
+			path = "/lib/opensc.so", requiresPin = true, pkcs11SlotId = 3L,
+		)
+		val key = dssKey(subjectDN = "CN=Cached User", issuerDN = "CN=CA", serial = "171")
+		val cachedToken = mockk<eu.europa.esig.dss.token.AbstractSignatureTokenConnection>(relaxed = true)
+		sessionCache.put(card.id, Pkcs11SessionCache.CachedSession(cachedToken, listOf(key)))
+
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
+		coEvery { tokenService.discoverTokens() } returns listOf(card).right()
+		coEvery { tokenService.probeTokenPresent(card) } returns true
+
+		val params = SigningParameters(
+			inputBytes = tmpFile("cached-input.pdf").readBytes(),
+			inputName = "cached-input.pdf",
+			certificateAlias = "Cached User-ab@pkcs11-CACHED",
+			certificateSlotId = 3L,
+			addTimestamp = false,
+		)
+
+		repository.signDocument(params)
+
+		io.mockk.coVerify(exactly = 0) { tokenService.openSigningToken(card, any()) }
+		io.mockk.coVerify(exactly = 0) { tokenService.requestPin(card) }
+		io.mockk.verify(exactly = 0) { cachedToken.close() }
 	}
 })

@@ -54,7 +54,22 @@ data class ValidationConfig(
 	 * Controls how the validator reacts to expired algorithms and allows overriding
 	 * the policy's reference update date.
 	 */
-	val algorithmConstraints: AlgorithmConstraintsConfig = AlgorithmConstraintsConfig()
+	val algorithmConstraints: AlgorithmConstraintsConfig = AlgorithmConstraintsConfig(),
+
+	/**
+	 * Whether to allow **signing** with an expired signing certificate.
+	 *
+	 * When `true`, the signing certificate verifier's expired-certificate alert is disabled, so
+	 * DSS's `SignatureRequirementsChecker` skips the check and a signature can be produced even
+	 * though the certificate is past its `notAfter` date. This affects **signing only** —
+	 * validation still reports expired certificates, and a signature created this way will fail
+	 * validation (a B-level signature has no timestamp to anchor it before expiry). Intended for
+	 * narrow cases (e.g. testing or a tolerated grace window).
+	 *
+	 * `null` inherits the higher layer (profile inherits global); resolved consumers treat null
+	 * as `false` (do not allow).
+	 */
+	val allowExpiredCertificate: Boolean? = null,
 )
 
 

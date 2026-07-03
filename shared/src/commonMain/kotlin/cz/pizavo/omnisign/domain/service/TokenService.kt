@@ -149,6 +149,24 @@ interface TokenService {
     ): OperationResult<SigningToken>
 
     /**
+     * Open a signing token for [tokenInfo], opening exactly the slot it is pinned to.
+     *
+     * Unlike [getSigningToken], this needs no [CertificateEntry] — the caller selects the
+     * signing key from the returned token's own key enumeration.  This lets the sign path
+     * open the token and authenticate **once**, then both pick the certificate and sign from
+     * that single enumeration, instead of opening (and, on a token with its own secure PIN
+     * pad, re-prompting) the token a second time just to read the certificate list first.
+     *
+     * @param tokenInfo Token (and slot) to open.
+     * @param password Password/PIN for the token.
+     * @return Token connection that can be used for signing, or an error.
+     */
+    suspend fun openSigningToken(
+        tokenInfo: TokenInfo,
+        password: String
+    ): OperationResult<SigningToken>
+
+    /**
      * Load certificates from a PKCS#12 file on demand.
      *
      * Creates a transient [TokenInfo] with [cz.pizavo.omnisign.domain.model.config.enums.TokenType.FILE]

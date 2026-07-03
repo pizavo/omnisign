@@ -1,5 +1,7 @@
 <resources>
 	<string name="profileedit_alert_eu_lotl_tooltip">Označit podpisy, jejichž kotva důvěry není v EU LOTL</string>
+	<string name="profileedit_allow_expired_cert">Povolit podpis certifikátem s prošlou platností</string>
+	<string name="profileedit_allow_expired_cert_tooltip">Vytvořit podpis i certifikátem s prošlou platností; takové podpisy neprojdou ověřením</string>
 	<string name="profileedit_trusted_lists_title">Důvěryhodné seznamy</string>
 	<string name="profileedit_trusted_lists_description">Vlastní zdroje důvěryhodných seznamů ETSI přidané zde platí pouze pro tento profil, a to navíc k těm globálním.</string>
 	<string name="profileedit_trusted_certs_title">Důvěryhodné certifikáty</string>

@@ -114,6 +114,35 @@ class DssServiceFactoryTest : FunSpec({
 		result.verifier.alertOnRevokedCertificate shouldBe statusAlert
 	}
 	
+	test("signing verifier keeps the expired-certificate alert by default") {
+		val result = factory.buildSigningCertificateVerifier(minimalConfig())
+		result.verifier.alertOnExpiredCertificate shouldNotBe null
+	}
+
+	test("signing verifier disables the expired-certificate alert when allowed") {
+		val config = minimalConfig().copy(
+			validation = minimalConfig().validation.copy(allowExpiredCertificate = true),
+		)
+		val result = factory.buildSigningCertificateVerifier(config)
+		result.verifier.alertOnExpiredCertificate shouldBe null
+	}
+
+	test("signing verifier disables the expired-certificate alert even with revocation off") {
+		val config = minimalConfig(checkRevocation = false).copy(
+			validation = ValidationConfig(checkRevocation = false, useEuLotl = false, allowExpiredCertificate = true),
+		)
+		val result = factory.buildSigningCertificateVerifier(config)
+		result.verifier.alertOnExpiredCertificate shouldBe null
+	}
+
+	test("validation verifier keeps the expired-certificate alert even when allowed for signing") {
+		val config = minimalConfig().copy(
+			validation = minimalConfig().validation.copy(allowExpiredCertificate = true),
+		)
+		val result = factory.buildValidationCertificateVerifier(config)
+		result.verifier.alertOnExpiredCertificate shouldNotBe null
+	}
+
 	// ── buildValidationCertificateVerifier ────────────────────────────────────
 	
 	test("validation verifier with null config returns suppressed alerts and empty warnings") {
