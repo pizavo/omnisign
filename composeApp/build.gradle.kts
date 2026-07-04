@@ -55,6 +55,18 @@ plugins {
 
 version = project.findProperty("releaseVersion")?.toString() ?: "1.0.0"
 
+/**
+ * Fixed version stamped into the generated Wasm/JS npm package manifests.
+ *
+ * Deliberately decoupled from [Project.getVersion] (which tracks the `releaseVersion` property for
+ * `BuildConfig` and the native distribution). The Kotlin toolchain records this value in the
+ * committed `kotlin-js-store/wasm/package-lock.json`; if it followed the release version, every
+ * release build would resolve a lock with a different `version` field and fail the
+ * `kotlinWasmStorePackageLock` check. These workspace packages are internal to the build and never
+ * published, so their manifest version is cosmetic and safe to keep constant.
+ */
+val wasmNpmPackageVersion = "1.0.0"
+
 afterEvaluate {
 	configurations.findByName("commonTestApi")?.dependencies?.removeIf {
 		it.group == "io.kotest" && it.name == "kotest-assertions-core"
@@ -134,6 +146,12 @@ kotlin {
 	wasmJs {
 		browser()
 		binaries.executable()
+		val npmPackageVersion = wasmNpmPackageVersion
+		compilations.all {
+			packageJson {
+				version = npmPackageVersion
+			}
+		}
 	}
 	
 	sourceSets {
