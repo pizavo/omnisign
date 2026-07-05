@@ -29,6 +29,10 @@ private val logger = KotlinLogging.logger {}
  *   [tlsKeystorePassword] when its dedicated env var is not set, matching the previous
  *   `TlsConfig.privateKeyPassword = keystorePassword` default. Sourced from
  *   `OMNISIGN_TLS_PRIVATE_KEY_PASSWORD`.
+ * @property signingKeystorePassword Password protecting the file signing keystore
+ *   ([OperationsConfig.signingKeystorePath]) — required when that path is set and
+ *   [AllowedOperation.SIGN] is enabled, otherwise `null`. Sourced from
+ *   `OMNISIGN_SIGNING_KEYSTORE_PASSWORD`.
  * @property oidcClientSecrets OIDC `client_secret` per provider, keyed by
  *   [OidcProviderConfig.name]. One entry per configured OIDC provider; sourced from
  *   `OMNISIGN_OIDC_<NAME>_CLIENT_SECRET` (see [oidcClientSecretEnvVar] for the
@@ -38,6 +42,7 @@ data class ServerSecrets(
 	val jwtSecret: Sensitive<String>?,
 	val tlsKeystorePassword: Sensitive<String>?,
 	val tlsPrivateKeyPassword: Sensitive<String>?,
+	val signingKeystorePassword: Sensitive<String>?,
 	val oidcClientSecrets: Map<String, Sensitive<String>>,
 ) {
 
@@ -51,6 +56,8 @@ data class ServerSecrets(
 		 * - `OMNISIGN_TLS_KEYSTORE_PASSWORD` — required when `tls:` is configured.
 		 * - `OMNISIGN_TLS_PRIVATE_KEY_PASSWORD` — optional; falls back to the keystore
 		 *   password when absent (matching the previous YAML-side default).
+		 * - `OMNISIGN_SIGNING_KEYSTORE_PASSWORD` — required when
+		 *   `operations.signingKeystorePath` is set and SIGN is enabled.
 		 * - `OMNISIGN_OIDC_<NAME>_CLIENT_SECRET` — required for every configured OIDC
 		 *   provider, one per provider.
 		 *
@@ -91,6 +98,17 @@ data class ServerSecrets(
 				}
 			} else null
 
+			val signingKeystorePassword = if (
+				serverConfig.operations.signingKeystorePath != null &&
+				AllowedOperation.SIGN in serverConfig.operations.allowed
+			) {
+				consulted += SIGNING_KEYSTORE_PASSWORD_ENV
+				resolveRequired(
+					SIGNING_KEYSTORE_PASSWORD_ENV,
+					"operations.signingKeystorePath is set with SIGN enabled",
+				)
+			} else null
+
 			val oidcClientSecrets = oidcProviders.associate { provider ->
 				val envVar = oidcClientSecretEnvVar(provider.name)
 				consulted += envVar
@@ -105,6 +123,7 @@ data class ServerSecrets(
 				jwtSecret = jwtSecret,
 				tlsKeystorePassword = tlsKeystorePassword,
 				tlsPrivateKeyPassword = tlsPrivateKeyPassword,
+				signingKeystorePassword = signingKeystorePassword,
 				oidcClientSecrets = oidcClientSecrets,
 			)
 		}
@@ -117,6 +136,9 @@ data class ServerSecrets(
 
 		/** Env var that supplies [tlsPrivateKeyPassword]. Optional; falls back to [TLS_KEYSTORE_PASSWORD_ENV]. */
 		const val TLS_PRIVATE_KEY_PASSWORD_ENV = "OMNISIGN_TLS_PRIVATE_KEY_PASSWORD"
+
+		/** Env var that supplies [signingKeystorePassword]. */
+		const val SIGNING_KEYSTORE_PASSWORD_ENV = "OMNISIGN_SIGNING_KEYSTORE_PASSWORD"
 	}
 }
 

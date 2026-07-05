@@ -194,6 +194,7 @@ class ServerConfigLoaderTest : FunSpec({
 			    - TIMESTAMP
 			  certificateAliases:
 			    - "university-seal"
+			  signingKeystorePath: "/etc/omnisign/signing.p12"
 		""".trimIndent()
 
 		val tmpFile = File.createTempFile("server-ops-", ".yml")
@@ -205,6 +206,7 @@ class ServerConfigLoaderTest : FunSpec({
 				setOf(AllowedOperation.SIGN, AllowedOperation.VALIDATE, AllowedOperation.TIMESTAMP)
 		config.operations.certificateAliases.shouldNotBeNull()
 		config.operations.certificateAliases shouldBe listOf("university-seal")
+		config.operations.signingKeystorePath shouldBe "/etc/omnisign/signing.p12"
 	}
 
 	test("load parses an explicit empty operations.allowed as an empty set") {

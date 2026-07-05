@@ -14,8 +14,12 @@ package cz.pizavo.omnisign.config
  *    parses to an empty (non-null) allowlist that permits no certificate at all — every signing
  *    request is rejected with `CERTIFICATE_NOT_ALLOWED` and the certificate list comes back empty,
  *    so the enabled SIGN operation could never succeed.
+ * 3. An `operations.signingKeystorePath` set while [AllowedOperation.SIGN] is *not* enabled: the
+ *    keystore would never be loaded (no signing happens), so the path is a dead setting that most
+ *    likely signals the operator forgot to enable SIGN.
  *
- * Both checks reject only an *explicitly empty* collection. Disabling a subset stays supported:
+ * The empty-collection checks reject only an *explicitly empty* collection. Disabling a subset stays
+ * supported:
  * `allowed: [SIGN, TIMESTAMP]` turns `VALIDATE` off and `allowed: [VALIDATE]` is validate-only.
  * Omitting `operations` resolves to the `setOf(`[AllowedOperation.VALIDATE]`)` default
  * ([OperationsConfig.allowed]); omitting `certificateAliases` (`null`) allows every discovered
@@ -28,7 +32,8 @@ package cz.pizavo.omnisign.config
  *   ([ServerConfig.operations] is non-null with a default), so this takes a non-null value
  *   unlike [validateCorsConfig].
  * @throws IllegalArgumentException with operator-actionable guidance when [OperationsConfig.allowed]
- *   is empty, or when [OperationsConfig.certificateAliases] is empty while SIGN is enabled.
+ *   is empty, when [OperationsConfig.certificateAliases] is empty while SIGN is enabled, or when
+ *   [OperationsConfig.signingKeystorePath] is set while SIGN is not enabled.
  */
 fun validateOperationsConfig(operations: OperationsConfig) {
 	require(operations.allowed.isNotEmpty()) {
@@ -43,5 +48,12 @@ fun validateOperationsConfig(operations: OperationsConfig) {
 		"operations.certificateAliases is empty while SIGN is enabled: no certificate could ever " +
 			"be used to sign, so the SIGN operation would be useless. Omit certificateAliases to " +
 			"allow every discovered signing certificate, or list at least one alias."
+	}
+	require(
+		operations.signingKeystorePath == null || AllowedOperation.SIGN in operations.allowed,
+	) {
+		"operations.signingKeystorePath is set but SIGN is not in operations.allowed: the signing " +
+			"keystore would never be used. Add SIGN to operations.allowed, or remove " +
+			"signingKeystorePath."
 	}
 }

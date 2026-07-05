@@ -13,6 +13,7 @@ import io.kotest.matchers.string.shouldContain
  * operation or a combination — is accepted. Disabling a subset is valid; disabling everything
  * is not. An empty `operations.certificateAliases` is likewise rejected while SIGN is enabled
  * (no certificate would be usable) but left alone when SIGN is off, where the field is inert.
+ * A `signingKeystorePath` set while SIGN is off is rejected too — the keystore would never load.
  */
 class OperationsConfigValidatorTest : FunSpec({
 
@@ -83,6 +84,29 @@ class OperationsConfigValidatorTest : FunSpec({
                 OperationsConfig(
                     allowed = setOf(AllowedOperation.SIGN),
                     certificateAliases = listOf("university-seal"),
+                ),
+            )
+        }
+    }
+
+    test("rejects a signingKeystorePath set while SIGN is not enabled") {
+        val ex = shouldThrow<IllegalArgumentException> {
+            validateOperationsConfig(
+                OperationsConfig(
+                    allowed = setOf(AllowedOperation.VALIDATE),
+                    signingKeystorePath = "/etc/omnisign/signing.p12",
+                ),
+            )
+        }
+        ex.message!! shouldContain "signingKeystorePath"
+    }
+
+    test("accepts a signingKeystorePath when SIGN is enabled") {
+        shouldNotThrowAny {
+            validateOperationsConfig(
+                OperationsConfig(
+                    allowed = setOf(AllowedOperation.SIGN),
+                    signingKeystorePath = "/etc/omnisign/signing.p12",
                 ),
             )
         }

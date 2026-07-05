@@ -107,6 +107,7 @@ class AuthRoutesTest : FunSpec({
 			jwtSecret = jwtSecret,
 			tlsKeystorePassword = null,
 			tlsPrivateKeyPassword = null,
+			signingKeystorePassword = null,
 			oidcClientSecrets = oidcClientSecrets,
 		)
 	val githubClientSecret = "test-client-secret".sensitive()

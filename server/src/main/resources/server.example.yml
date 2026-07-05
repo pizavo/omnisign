@@ -253,6 +253,14 @@ operations:
   # certificateAliases:
   #   - "university-seal"
   #   - "department-stamp"
+  #
+  # File signing keystore. Set this when the server signs with a PKCS#12 (.p12/.pfx) file rather
+  # than a PKCS#11 token/HSM. When set (and SIGN enabled), every sign request signs from this
+  # keystore, and certificateAliases selects the entry within it (a request omitting the alias uses
+  # the keystore's sole key). The password is env-var ONLY — OMNISIGN_SIGNING_KEYSTORE_PASSWORD,
+  # required when this is set — never in YAML, mirroring the TLS keystore. Setting a path while SIGN
+  # is not enabled is rejected at startup. Leave unset for a PKCS#11/HSM-backed deployment.
+  # signingKeystorePath: "/etc/omnisign/signing.p12"
 
 # Signing / validation policy file - the server's equivalent of the desktop "global
 # settings + profiles". Loaded READ-ONLY at startup. Holds everything about HOW the server
