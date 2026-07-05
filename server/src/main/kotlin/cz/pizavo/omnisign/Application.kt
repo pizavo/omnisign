@@ -136,6 +136,13 @@ fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets) {
 	val corsConfig = validateCorsConfig(serverConfig.cors)
 	validateTransportSecurity(serverConfig)
 	validateOperationsConfig(serverConfig.operations)
+	serverConfig.operations.signingKeystorePath?.let { path ->
+		require(File(path).isFile) {
+			"operations.signingKeystorePath '$path' does not exist or is not a regular file. " +
+				"Point it at the server's PKCS#12 signing keystore."
+		}
+		logger.info { "Signing key source: file keystore at $path" }
+	}
 	val signingConfig = SigningConfigLoader().load(serverConfig.signingConfigFile)
 	configureKoin(serverConfig, secrets, signingConfig)
 	reconcileTrustIfConfigured(serverConfig, signingConfig)

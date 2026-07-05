@@ -46,6 +46,7 @@ class SystemRoutesTest : FunSpec({
         jwtSecret = jwtSecret,
         tlsKeystorePassword = null,
         tlsPrivateKeyPassword = null,
+        signingKeystorePassword = null,
         oidcClientSecrets = emptyMap(),
     )
 
