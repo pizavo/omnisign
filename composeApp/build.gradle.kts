@@ -118,11 +118,10 @@ val generateBuildConfig by tasks.registering {
 				     * origin, which is correct when the OmniSign server hosts both the web bundle
 				     * and the /api/v1 routes.
 				     *
-				     * If a future deployment ever needs to serve the FE bundle on a different host
-				     * than the API (CDN-hosted bundle, API elsewhere), replace this build-time
-				     * constant with a runtime /web-config.json fetch in webMain/main.kt before
-				     * startKoin: read { serverUrl } and pass the resolved value into
-				     * [cz.pizavo.omnisign.di.webDataModule] instead of [SERVER_URL].
+				     * This is the build-time fallback. At runtime the web target first consults an
+				     * optional web-config.json served next to the bundle and uses this constant only
+				     * when that file is absent or leaves the URL unset, so an operator can retarget a
+				     * pre-built bundle without recompiling. See cz.pizavo.omnisign.web.resolveServerBaseUrl.
 				     */
 				    const val SERVER_URL: String = "$serverUrlValue"
 				}
