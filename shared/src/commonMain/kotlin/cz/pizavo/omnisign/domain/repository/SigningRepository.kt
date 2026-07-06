@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.domain.repository
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.result.SigningResult
+import cz.pizavo.omnisign.domain.model.value.Sensitive
 
 /**
  * Repository for document signing operations.
@@ -61,6 +62,31 @@ interface SigningRepository {
      * @return List of [AvailableCertificateInfo] from the file, or an error.
      */
     suspend fun loadCertificatesFromFile(filePath: String): OperationResult<List<AvailableCertificateInfo>>
+
+    /**
+     * Enumerate the certificates held in a **pre-configured** PKCS#12 keystore, non-interactively.
+     *
+     * Unlike [loadCertificatesFromFile], the password is supplied by the caller ([keystorePassword])
+     * rather than prompted for, so this is safe in headless contexts (the server signing from a file
+     * keystore configured via `operations.signingKeystorePath`). The returned
+     * [AvailableCertificateInfo.alias] values are derived identically to the ones
+     * [signDocument] resolves when signing from the same keystore, so a certificate listed here can
+     * be selected and handed straight back to [signDocument] as
+     * [SigningParameters.certificateAlias] with a guaranteed match.
+     *
+     * Token discovery ([listAvailableCertificates]) deliberately does **not** surface this keystore —
+     * it only enumerates PKCS#11 and OS-store tokens — so callers that expose a server's file-keystore
+     * identity (e.g. the certificate-discovery route) merge this result in explicitly.
+     *
+     * @param keystoreFile Absolute path to the PKCS#12 (.p12 / .pfx) keystore.
+     * @param keystorePassword Keystore password, or `null` to attempt an empty password.
+     * @return Certificates found in the keystore, or an error when the file is missing or cannot be
+     *   opened. Web / remote implementations that hold no local keystore return an error.
+     */
+    suspend fun listCertificatesFromKeystore(
+        keystoreFile: String,
+        keystorePassword: Sensitive<String>?,
+    ): OperationResult<List<AvailableCertificateInfo>>
 }
 
 

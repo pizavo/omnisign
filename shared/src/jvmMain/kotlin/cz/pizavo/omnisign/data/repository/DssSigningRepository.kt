@@ -16,6 +16,7 @@ import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.result.SigningResult
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
+import cz.pizavo.omnisign.domain.model.value.Sensitive
 import cz.pizavo.omnisign.domain.repository.*
 import cz.pizavo.omnisign.domain.service.*
 import eu.europa.esig.dss.enumerations.DigestAlgorithm
@@ -358,7 +359,37 @@ class DssSigningRepository(
 			SigningError.loadCertificatesFromFileFailed(details = e.message, cause = e).left()
 		}
 	}
-	
+
+	@Suppress("TooGenericExceptionCaught")
+	override suspend fun listCertificatesFromKeystore(
+		keystoreFile: String,
+		keystorePassword: Sensitive<String>?,
+	): OperationResult<List<AvailableCertificateInfo>> {
+		return try {
+			val file = File(keystoreFile)
+			if (!file.exists()) return SigningError.fileNotFound(file.path).left()
+			val fileToken = keystoreTokenInfo(file)
+			tokenService.loadCertificatesSilent(fileToken, keystorePassword?.value ?: "").map { certs ->
+				certs.map { cert ->
+					AvailableCertificateInfo(
+						alias = cert.alias,
+						subjectDN = cert.subjectDN,
+						issuerDN = cert.issuerDN,
+						validFrom = cert.validFrom,
+						validTo = cert.validTo,
+						tokenType = TokenType.FILE.name,
+						tokenName = file.name,
+						keyUsages = cert.keyUsages,
+						isQualified = cert.isQualified,
+						isQscd = cert.isQscd,
+					)
+				}
+			}
+		} catch (e: Exception) {
+			SigningError.listCertificatesFailed(details = e.message, cause = e).left()
+		}
+	}
+
 	/**
 	 * Resolve the effective [ResolvedConfig] for [parameters], falling back to the stored config.
 	 * Returns [OperationResult] so that disabled-algorithm violations propagate as errors.
@@ -551,6 +582,23 @@ class DssSigningRepository(
 	}
 	
 	/**
+	 * Build the transient [TokenInfo] for the PKCS#12 keystore at [file].
+	 *
+	 * Shared by [resolveKeyFromKeystore] (signing) and [listCertificatesFromKeystore] (listing) so
+	 * both derive the *same* [TokenInfo.id] — and therefore the same deterministic
+	 * `<CN>-<serial>@<id>` alias (see `pkcs11CertAlias`). This agreement is load-bearing: it is what
+	 * lets a certificate listed for the signing dialog be handed straight back as
+	 * [SigningParameters.certificateAlias] and resolve to the same key when signing.
+	 */
+	private fun keystoreTokenInfo(file: File): TokenInfo = TokenInfo(
+		id = "keystore-${file.name}",
+		name = file.name,
+		type = TokenType.FILE,
+		path = file.absolutePath,
+		requiresPin = true,
+	)
+
+	/**
 	 * Resolve a signing key directly from the PKCS#12 keystore at [SigningParameters.keystoreFile],
 	 * bypassing token discovery (which only surfaces PKCS#11 and OS-store tokens).
 	 *
@@ -558,21 +606,16 @@ class DssSigningRepository(
 	 * otherwise an attempt is made with an empty password and, only if that fails because the keystore
 	 * is protected, the user is prompted with hidden input via [TokenService.requestPassword].
 	 * [SigningParameters.certificateAlias] selects the certificate within the keystore, or its sole /
-	 * first key when omitted.
+	 * first key when omitted. The keystore [TokenInfo] is built by [keystoreTokenInfo], shared with
+	 * [listCertificatesFromKeystore] so the alias a client selects from the listing matches here.
 	 */
 	private suspend fun resolveKeyFromKeystore(
 		parameters: SigningParameters,
 	): OperationResult<ResolvedKey> {
 		val file = File(parameters.keystoreFile!!)
 		if (!file.exists()) return SigningError.fileNotFound(file.path).left()
-		val fileToken = TokenInfo(
-			id = "keystore-${file.name}",
-			name = file.name,
-			type = TokenType.FILE,
-			path = file.absolutePath,
-			requiresPin = true,
-		)
-		
+		val fileToken = keystoreTokenInfo(file)
+
 		val provided = parameters.keystorePassword?.value
 		var password = provided ?: ""
 		var loaded = tokenService.loadCertificatesSilent(fileToken, password)
