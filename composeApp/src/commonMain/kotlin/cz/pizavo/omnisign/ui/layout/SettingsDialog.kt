@@ -88,9 +88,12 @@ private const val Pkcs11ListScrollThreshold = 5
  * @param onImportConfig Called when the user imports a full configuration archive (Backup section).
  * @param backupEnabled Whether the Backup export/import controls are enabled (false on platforms
  *   without a file-system backend, e.g. web).
- * @param readOnly When `true`, the entire settings form renders view-only: every input is disabled,
- *   the Save button is hidden, and host-only categories (PKCS#11 libraries, scheduler, renewal jobs)
- *   are removed from the navigation. Used by the web target, whose configuration is server-owned.
+ * @param readOnly When `true`, the server-owned settings render view-only: their inputs are disabled
+ *   and host-only categories (PKCS#11 libraries, scheduler, renewal jobs) are removed from the
+ *   navigation. The **Language & Region** panel stays editable regardless — language, region preset,
+ *   and date format are client-owned runtime UI preferences, not server config — and the Save button
+ *   is hidden only while there are no pending changes, so those preferences remain savable. Used by
+ *   the web target, whose configuration is server-owned.
  * @param onStageTrustedCert Called with the picked certificate bytes, type, and source path to stage
  *   a global-scope trusted-certificate addition. The certificate is parsed and deduplicated by the
  *   ViewModel before it is staged; the change is committed to the store on Save.
@@ -520,12 +523,14 @@ private fun SettingsContentPanel(
 			SettingsCategory.WindowTitleBar -> AppearanceWindowSection(state = state, onFieldChange = onFieldChange)
 
 			SettingsCategory.LanguageRegion,
-			SettingsCategory.LanguageRegionSettings -> LanguageRegionSection(
-				languageTag = languageTag,
-				dateFormat = dateFormat,
-				onLanguageChange = onLanguageChange,
-				onFormatChange = onFormatChange,
-			)
+			SettingsCategory.LanguageRegionSettings -> CompositionLocalProvider(LocalReadOnly provides false) {
+				LanguageRegionSection(
+					languageTag = languageTag,
+					dateFormat = dateFormat,
+					onLanguageChange = onLanguageChange,
+					onFormatChange = onFormatChange,
+				)
+			}
 		}
 	}
 }
@@ -537,7 +542,9 @@ private fun SettingsContentPanel(
  * @param hasChanges Whether any persistable field differs from the originally loaded state.
  * @param onCancel Callback invoked when Cancel is clicked.
  * @param onSave Callback invoked when Save is clicked.
- * @param readOnly When `true`, the Save button is hidden so the footer offers only Cancel.
+ * @param readOnly When `true`, the Save button is hidden unless there are pending [hasChanges] — so
+ *   a client-only language / date-format change on the web target stays savable even though the
+ *   server-derived settings are read-only there.
  */
 @Composable
 private fun SettingsFooter(
@@ -558,7 +565,7 @@ private fun SettingsFooter(
 			variant = ButtonVariant.Ghost,
 			onClick = onCancel,
 		)
-		if (!readOnly) {
+		if (!readOnly || hasChanges) {
 			Button(
 				text = stringResource(Res.string.action_save),
 				variant = ButtonVariant.Primary,
