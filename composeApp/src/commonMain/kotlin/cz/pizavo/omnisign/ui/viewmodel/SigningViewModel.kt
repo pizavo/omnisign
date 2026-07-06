@@ -8,6 +8,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.error.localizableText
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
+import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.Pkcs11DiagnosticSnapshot
 import cz.pizavo.omnisign.domain.service.TokenService
@@ -120,6 +121,23 @@ class SigningViewModel(
 	private var cachedRenewalJobs: List<RenewalJob> = emptyList()
 
 	/**
+	 * The signed bytes and metadata produced by [sign], held in memory until the user picks a save
+	 * location in [saveSignedDocument]. The save dialog is deliberately the *last* step — so a
+	 * [SigningDialogState.RevocationWarning] is answered before any file is written, and aborting or
+	 * cancelling ([abortAfterRevocationWarning] / [cancelSave]) discards this with nothing on disk.
+	 */
+	private var pendingSignature: PendingSignature? = null
+
+	/**
+	 * The signed document rebuilt from the produced bytes after a successful save, exposed for the
+	 * web viewer-reload path where `loadPdfFromPath` returns `null` (no browser filesystem). Reuses
+	 * the source [PdfDocumentInfo.pageCount] — PAdES signing never changes the page count. `null`
+	 * until a save completes; cleared on [open] and [dismiss].
+	 */
+	var signedDocument: PdfDocumentInfo? = null
+		private set
+
+	/**
 	 * Last user-selected certificate alias from a previous dialog session.
 	 *
 	 * When [open] runs, this is restored as the initial [SigningDialogState.Ready.selectedAlias]
@@ -190,6 +208,8 @@ class SigningViewModel(
 	 */
 	fun open(document: PdfDocumentInfo, allowTimestamping: Boolean = true) {
 		currentDocument = document
+		signedDocument = null
+		pendingSignature = null
 		_state.value = SigningDialogState.Loading
 
 		viewModelScope.launch {
@@ -380,33 +400,21 @@ class SigningViewModel(
 	}
 
 	/**
-	 * Execute the signing operation, writing the signed document to [outputPath] — the
-	 * destination the user chose in the native save dialog.
+	 * Run the signing operation, producing the signed bytes **in memory**.
 	 *
-	 * Transitions from [SigningDialogState.Ready] through [SigningDialogState.Signing]
-	 * to either [SigningDialogState.Success], [SigningDialogState.RevocationWarning],
-	 * or [SigningDialogState.Error].
-	 *
-	 * When the effective level is ≥ B-LT and the signing result contains revocation
-	 * warnings, the dialog transitions to [SigningDialogState.RevocationWarning]
-	 * instead of [SigningDialogState.Success] so the user can decide to abort or continue.
-	 *
-	 * Renewal-job coverage is resolved here against [outputPath]: when the path is already
-	 * covered no follow-up offer is shown; otherwise, after a successful B-LTA signing and
-	 * when the user opted in, a [RenewalJobOfferState] is populated.
-	 *
-	 * @param outputPath Absolute destination path for the signed document.
+	 * Transitions from [SigningDialogState.Ready] through [SigningDialogState.Signing] to either
+	 * [SigningDialogState.RevocationWarning] (effective level ≥ B-LT with revocation warnings) or
+	 * [SigningDialogState.AwaitingSave], or to [SigningDialogState.Error] on failure. **No file is
+	 * written here** — the produced bytes are held in [pendingSignature] and persisted only once the
+	 * user picks a destination in [saveSignedDocument]. This ordering makes the save dialog the last
+	 * step, so a revocation warning is answered *before* it opens and aborting leaves nothing on disk.
 	 */
-	fun sign(outputPath: String) {
+	fun sign() {
 		val ready = _state.value as? SigningDialogState.Ready ?: return
 		val document = currentDocument ?: return
 		val config = resolvedConfig ?: return
 
 		lastReadyState = ready
-		val coveringJob = RenewalJobAssigner.findCoveringJob(outputPath, cachedRenewalJobs)
-		addToRenewalJobFlag = ready.addToRenewalJob &&
-				ready.addArchivalTimestamp &&
-				coveringJob == null
 		_state.value = SigningDialogState.Signing
 
 		viewModelScope.launch {
@@ -435,32 +443,30 @@ class SigningViewModel(
 						)
 					},
 					ifRight = { result ->
-						val writeError = writeBytesToPath(outputPath, result.outputBytes)
-						if (writeError != null) {
-							_state.value = SigningDialogState.Error(
-								content = ErrorMessage.WriteFailed(signed = true, reason = writeError),
-							)
-							return@fold
-						}
+						pendingSignature = PendingSignature(
+							outputBytes = result.outputBytes,
+							signatureId = result.signatureId,
+							signatureLevel = result.signatureLevel,
+							annotatedWarnings = result.annotatedWarnings,
+							addToRenewalJob = ready.addToRenewalJob,
+							addArchivalTimestamp = ready.addArchivalTimestamp,
+							pageCount = document.pageCount,
+						)
 
 						val levelRequiresRevocation =
 							ready.effectiveSignatureLevel >= SignatureLevel.PADES_BASELINE_LT
 
-						if (result.hasRevocationWarnings && levelRequiresRevocation) {
-							_state.value = SigningDialogState.RevocationWarning(
+						_state.value = if (result.hasRevocationWarnings && levelRequiresRevocation) {
+							SigningDialogState.RevocationWarning(
 								warnings = result.annotatedWarnings,
-								outputFile = outputPath,
 								signatureId = result.signatureId,
 								signatureLevel = result.signatureLevel,
 							)
 						} else {
-							_state.value = SigningDialogState.Success(
-								outputFile = outputPath,
-								signatureId = result.signatureId,
-								signatureLevel = result.signatureLevel,
-								warnings = result.annotatedWarnings,
+							SigningDialogState.AwaitingSave(
+								suggestedName = ready.suggestedName,
+								inputDirectory = ready.inputDirectory,
 							)
-							populateRenewalOfferIfNeeded(outputPath)
 						}
 					},
 				)
@@ -469,30 +475,86 @@ class SigningViewModel(
 	}
 
 	/**
-	 * Accept the revocation warning and transition to the success state.
+	 * Write the held signed bytes to [outputPath] — the destination the user chose in the native
+	 * save dialog — and transition to [SigningDialogState.Success], or [SigningDialogState.Error] on
+	 * a write failure. No-op when there is no [pendingSignature].
 	 *
-	 * Called when the user clicks "Continue anyway" on the revocation warning screen.
+	 * Renewal-job coverage is resolved here against [outputPath] (now that the path is known): a
+	 * covered path shows no follow-up offer; otherwise, after a B-LTA signing the user opted into, a
+	 * [RenewalJobOfferState] is populated. Also rebuilds [signedDocument] so the web viewer can
+	 * reload the signed bytes where no filesystem path exists.
+	 *
+	 * @param outputPath Absolute destination path for the signed document.
 	 */
-	fun acceptRevocationWarning() {
-		val rw = _state.value as? SigningDialogState.RevocationWarning ?: return
-		_state.value = SigningDialogState.Success(
-			outputFile = rw.outputFile,
-			signatureId = rw.signatureId,
-			signatureLevel = rw.signatureLevel,
-			warnings = rw.warnings,
-		)
+	fun saveSignedDocument(outputPath: String) {
+		val pending = pendingSignature ?: return
+		val coveringJob = RenewalJobAssigner.findCoveringJob(outputPath, cachedRenewalJobs)
+		addToRenewalJobFlag = pending.addToRenewalJob &&
+				pending.addArchivalTimestamp &&
+				coveringJob == null
+		_state.value = SigningDialogState.Signing
+
 		viewModelScope.launch {
-			populateRenewalOfferIfNeeded(rw.outputFile)
+			withContext(ioDispatcher) {
+				val writeError = writeBytesToPath(outputPath, pending.outputBytes)
+				if (writeError != null) {
+					_state.value = SigningDialogState.Error(
+						content = ErrorMessage.WriteFailed(signed = true, reason = writeError),
+					)
+					return@withContext
+				}
+				signedDocument = PdfDocumentInfo(
+					name = outputPath.substringAfterLast('/').substringAfterLast('\\'),
+					data = pending.outputBytes,
+					pageCount = pending.pageCount,
+					filePath = null,
+				)
+				pendingSignature = null
+				_state.value = SigningDialogState.Success(
+					outputFile = outputPath,
+					signatureId = pending.signatureId,
+					signatureLevel = pending.signatureLevel,
+					warnings = pending.annotatedWarnings,
+				)
+				populateRenewalOfferIfNeeded(outputPath)
+			}
 		}
 	}
 
 	/**
-	 * Abort after a revocation warning and return to the signing form.
+	 * Cancel a pending save (the user dismissed the native save dialog after signing): discard the
+	 * held signed bytes and return to the signing form. Nothing is written to disk.
+	 */
+	fun cancelSave() {
+		pendingSignature = null
+		_state.value = lastReadyState ?: SigningDialogState.Idle
+	}
+
+	/**
+	 * Accept the revocation warning and advance to [SigningDialogState.AwaitingSave] so the user can
+	 * pick a save location. The signed bytes remain held in [pendingSignature]; nothing has been
+	 * written yet.
 	 *
-	 * The signed output file is left in place for potential manual inspection.
+	 * Called when the user clicks "Continue anyway" on the revocation warning screen.
+	 */
+	fun acceptRevocationWarning() {
+		if (_state.value !is SigningDialogState.RevocationWarning) return
+		val ready = lastReadyState ?: return
+		_state.value = SigningDialogState.AwaitingSave(
+			suggestedName = ready.suggestedName,
+			inputDirectory = ready.inputDirectory,
+		)
+	}
+
+	/**
+	 * Abort after a revocation warning and return to the signing form, discarding the held signed
+	 * bytes. Nothing is written to disk — unlike the previous flow, the save dialog never opened, so
+	 * there is no output file to leave behind.
+	 *
 	 * Called when the user clicks "Abort" on the revocation warning screen.
 	 */
 	fun abortAfterRevocationWarning() {
+		pendingSignature = null
 		_state.value = lastReadyState ?: SigningDialogState.Idle
 	}
 
@@ -507,6 +569,8 @@ class SigningViewModel(
 		resolvedConfig = null
 		activeProfileName = null
 		lastReadyState = null
+		pendingSignature = null
+		signedDocument = null
 	}
 
 	/**
@@ -703,6 +767,24 @@ class SigningViewModel(
 		val offer = renewalJobAssigner.buildOfferState(outputFile)
 		_pendingRenewalOffer.value = offer
 	}
+
+	/**
+	 * Signed bytes produced by [sign] plus the metadata needed to finish the operation once the user
+	 * picks a save destination in [saveSignedDocument]. Held in memory between the two steps and
+	 * discarded on [abortAfterRevocationWarning] / [cancelSave] so a cancelled flow writes nothing.
+	 *
+	 * @property pageCount Source-document page count, reused for the web [signedDocument] reload
+	 *   because PAdES signing never changes the number of pages.
+	 */
+	private class PendingSignature(
+		val outputBytes: ByteArray,
+		val signatureId: String,
+		val signatureLevel: String,
+		val annotatedWarnings: List<AnnotatedWarning>,
+		val addToRenewalJob: Boolean,
+		val addArchivalTimestamp: Boolean,
+		val pageCount: Int,
+	)
 
 	companion object {
 		/**

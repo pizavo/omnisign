@@ -46,6 +46,22 @@ sealed interface TimestampDialogState {
 	data object Extending : TimestampDialogState
 
 	/**
+	 * Extension produced the extended bytes (held in the ViewModel) and the UI must now prompt for a
+	 * save location. Reached after a successful extension, or after the user continues past a
+	 * [RevocationWarning] (which re-runs the extension at B-T).
+	 *
+	 * No file has been written yet: the save dialog is the last step, so cancelling it discards the
+	 * extended bytes and returns to [Ready] with nothing on disk.
+	 *
+	 * @property suggestedName Default file-name stem for the save dialog (no extension).
+	 * @property inputDirectory Source-document directory used to seed the save dialog; `null` on web.
+	 */
+	data class AwaitingSave(
+		val suggestedName: String,
+		val inputDirectory: String?,
+	) : TimestampDialogState
+
+	/**
 	 * Extension to B-LT failed because revocation data could not be obtained.
 	 *
 	 * The user can either accept a fallback to B-T (signature timestamp without

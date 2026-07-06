@@ -8,6 +8,8 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.error.localizableText
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
+import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
+import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -81,10 +83,25 @@ class TimestampViewModel(
 	private var resolvedConfig: ResolvedConfig? = null
 	private var activeProfileName: String? = null
 	private var lastReadyState: TimestampDialogState.Ready? = null
-	private var pendingOutputPath: String? = null
 	private var documentAlreadyContainsLtData: Boolean = false
 	private var addToRenewalJobFlag: Boolean = false
 	private var cachedRenewalJobs: List<RenewalJob> = emptyList()
+
+	/**
+	 * The extended bytes and metadata produced by [extend] / [acceptRevocationWarning], held until
+	 * the user picks a save location in [saveExtendedDocument]. The save dialog is the last step, so
+	 * aborting or cancelling ([abortAfterRevocationWarning] / [cancelSave]) writes nothing.
+	 */
+	private var pendingExtension: PendingExtension? = null
+
+	/**
+	 * The extended document rebuilt from the produced bytes after a successful save, exposed for the
+	 * web viewer-reload path where `loadPdfFromPath` returns `null` (no browser filesystem). Reuses
+	 * the source [PdfDocumentInfo.pageCount]. `null` until a save completes; cleared on [open] /
+	 * [dismiss].
+	 */
+	var extendedDocument: PdfDocumentInfo? = null
+		private set
 
 	/** Pre-fetched timestamp info, populated by [onDocumentChanged]. */
 	private var cachedTimestampInfo: DocumentTimestampInfo? = null
@@ -134,6 +151,8 @@ class TimestampViewModel(
 	 */
 	fun open(document: PdfDocumentInfo) {
 		currentDocument = document
+		extendedDocument = null
+		pendingExtension = null
 
 		viewModelScope.launch {
 			prefetchJob?.join()
@@ -241,29 +260,20 @@ class TimestampViewModel(
 	}
 
 	/**
-	 * Execute the extension operation, writing the extended document to [outputPath] — the
-	 * destination the user chose in the native save dialog.
+	 * Run the extension operation, producing the extended bytes **in memory**.
 	 *
-	 * Transitions from [TimestampDialogState.Ready] through [TimestampDialogState.Extending]
-	 * to either [TimestampDialogState.Success], [TimestampDialogState.RevocationWarning],
-	 * or [TimestampDialogState.Error].
-	 *
-	 * When extending to B-LT and the operation fails with a revocation error,
-	 * the ViewModel checks whether a B-T fallback is possible (the document must not
-	 * already contain LT-level data); the fallback reuses [outputPath].
-	 *
-	 * @param outputPath Absolute destination path for the extended document.
+	 * Transitions from [TimestampDialogState.Ready] through [TimestampDialogState.Extending] to
+	 * either [TimestampDialogState.AwaitingSave] (success), [TimestampDialogState.RevocationWarning]
+	 * (a B-LT extension that failed to obtain revocation data, when the document has no LT data yet),
+	 * or [TimestampDialogState.Error]. **No file is written here** — the produced bytes are held in
+	 * [pendingExtension] and persisted only once the user picks a destination in
+	 * [saveExtendedDocument], so the save dialog is the last step and aborting writes nothing.
 	 */
-	fun extend(outputPath: String) {
+	fun extend() {
 		val ready = _state.value as? TimestampDialogState.Ready ?: return
 		val document = currentDocument ?: return
 		val config = resolvedConfig ?: return
 
-		pendingOutputPath = outputPath
-		val coveringJob = RenewalJobAssigner.findCoveringJob(outputPath, cachedRenewalJobs)
-		addToRenewalJobFlag = ready.addToRenewalJob &&
-				ready.timestampType == TimestampType.ARCHIVAL_TIMESTAMP &&
-				coveringJob == null
 		_state.value = TimestampDialogState.Extending
 
 		viewModelScope.launch {
@@ -303,19 +313,11 @@ class TimestampViewModel(
 						}
 					},
 					ifRight = { result ->
-						val writeError = writeBytesToPath(outputPath, result.outputBytes)
-						if (writeError != null) {
-							_state.value = TimestampDialogState.Error(
-								content = ErrorMessage.WriteFailed(signed = false, reason = writeError),
-							)
-							return@fold
-						}
-						_state.value = TimestampDialogState.Success(
-							outputFile = outputPath,
-							newLevel = result.newSignatureLevel,
-							warnings = result.annotatedWarnings,
+						holdAndAwaitSave(
+							result = result,
+							addToRenewalJob = ready.addToRenewalJob,
+							isArchival = ready.timestampType == TimestampType.ARCHIVAL_TIMESTAMP,
 						)
-						populateRenewalOfferIfNeeded(outputPath)
 					},
 				)
 			}
@@ -323,16 +325,17 @@ class TimestampViewModel(
 	}
 
 	/**
-	 * Accept the revocation warning and retry the extension at B-T level.
+	 * Accept the revocation warning and retry the extension at B-T level, holding the produced bytes.
 	 *
-	 * Called when the user clicks "Continue anyway" on the revocation warning screen.
-	 * The operation is re-executed with [SignatureLevel.PADES_BASELINE_T] instead of B-LT.
+	 * The B-LT attempt produced no output (it failed to obtain revocation data), so continuing
+	 * re-runs the extension at [SignatureLevel.PADES_BASELINE_T]. On success the bytes are held and
+	 * the dialog advances to [TimestampDialogState.AwaitingSave] to pick a save location; nothing is
+	 * written until then. Called when the user clicks "Continue anyway" on the revocation warning.
 	 */
 	fun acceptRevocationWarning() {
 		if (_state.value !is TimestampDialogState.RevocationWarning) return
 		val document = currentDocument ?: return
 		val config = resolvedConfig ?: return
-		val outputPath = pendingOutputPath ?: return
 
 		_state.value = TimestampDialogState.Extending
 
@@ -353,22 +356,88 @@ class TimestampViewModel(
 						)
 					},
 					ifRight = { result ->
-						val writeError = writeBytesToPath(outputPath, result.outputBytes)
-						if (writeError != null) {
-							_state.value = TimestampDialogState.Error(
-								content = ErrorMessage.WriteFailed(signed = false, reason = writeError),
-							)
-							return@fold
-						}
-						_state.value = TimestampDialogState.Success(
-							outputFile = outputPath,
-							newLevel = result.newSignatureLevel,
-							warnings = result.annotatedWarnings,
-						)
+						holdAndAwaitSave(result = result, addToRenewalJob = false, isArchival = false)
 					},
 				)
 			}
 		}
+	}
+
+	/**
+	 * Hold [result]'s extended bytes in [pendingExtension] and advance to
+	 * [TimestampDialogState.AwaitingSave] so the UI can prompt for a save location. Shared by
+	 * [extend] and [acceptRevocationWarning] — the two paths that produce extended output.
+	 *
+	 * @param addToRenewalJob Whether the user opted the output into a renewal job.
+	 * @param isArchival Whether this is an archival (B-LTA) extension — a renewal offer only applies
+	 *   there, so the B-T fallback passes `false`.
+	 */
+	private fun holdAndAwaitSave(result: ArchivingResult, addToRenewalJob: Boolean, isArchival: Boolean) {
+		pendingExtension = PendingExtension(
+			outputBytes = result.outputBytes,
+			newLevel = result.newSignatureLevel,
+			annotatedWarnings = result.annotatedWarnings,
+			addToRenewalJob = addToRenewalJob,
+			isArchival = isArchival,
+			pageCount = currentDocument?.pageCount ?: 1,
+		)
+		val ready = lastReadyState
+		_state.value = TimestampDialogState.AwaitingSave(
+			suggestedName = ready?.suggestedName ?: "",
+			inputDirectory = ready?.inputDirectory,
+		)
+	}
+
+	/**
+	 * Write the held extended bytes to [outputPath] — the destination the user chose in the native
+	 * save dialog — and transition to [TimestampDialogState.Success], or [TimestampDialogState.Error]
+	 * on a write failure. No-op when there is no [pendingExtension].
+	 *
+	 * Renewal-job coverage is resolved here against [outputPath]: a covered path shows no follow-up
+	 * offer; otherwise, after an archival (B-LTA) extension the user opted into, a
+	 * [RenewalJobOfferState] is populated. Also rebuilds [extendedDocument] for the web viewer reload.
+	 *
+	 * @param outputPath Absolute destination path for the extended document.
+	 */
+	fun saveExtendedDocument(outputPath: String) {
+		val pending = pendingExtension ?: return
+		val coveringJob = RenewalJobAssigner.findCoveringJob(outputPath, cachedRenewalJobs)
+		addToRenewalJobFlag = pending.addToRenewalJob && pending.isArchival && coveringJob == null
+		_state.value = TimestampDialogState.Extending
+
+		viewModelScope.launch {
+			withContext(ioDispatcher) {
+				val writeError = writeBytesToPath(outputPath, pending.outputBytes)
+				if (writeError != null) {
+					_state.value = TimestampDialogState.Error(
+						content = ErrorMessage.WriteFailed(signed = false, reason = writeError),
+					)
+					return@withContext
+				}
+				extendedDocument = PdfDocumentInfo(
+					name = outputPath.substringAfterLast('/').substringAfterLast('\\'),
+					data = pending.outputBytes,
+					pageCount = pending.pageCount,
+					filePath = null,
+				)
+				pendingExtension = null
+				_state.value = TimestampDialogState.Success(
+					outputFile = outputPath,
+					newLevel = pending.newLevel,
+					warnings = pending.annotatedWarnings,
+				)
+				populateRenewalOfferIfNeeded(outputPath)
+			}
+		}
+	}
+
+	/**
+	 * Cancel a pending save (the user dismissed the native save dialog after extending): discard the
+	 * held extended bytes and return to the extension form. Nothing is written to disk.
+	 */
+	fun cancelSave() {
+		pendingExtension = null
+		_state.value = lastReadyState ?: TimestampDialogState.Idle
 	}
 
 
@@ -379,6 +448,7 @@ class TimestampViewModel(
 	 * Called when the user clicks "Abort" on the revocation warning screen.
 	 */
 	fun abortAfterRevocationWarning() {
+		pendingExtension = null
 		_state.value = lastReadyState ?: TimestampDialogState.Idle
 	}
 
@@ -395,7 +465,8 @@ class TimestampViewModel(
 		resolvedConfig = null
 		activeProfileName = null
 		lastReadyState = null
-		pendingOutputPath = null
+		pendingExtension = null
+		extendedDocument = null
 		documentAlreadyContainsLtData = false
 	}
 
@@ -459,4 +530,22 @@ class TimestampViewModel(
 		val offer = renewalJobAssigner.buildOfferState(outputFile)
 		_pendingRenewalOffer.value = offer
 	}
+
+	/**
+	 * Extended bytes produced by [extend] / [acceptRevocationWarning] plus the metadata needed to
+	 * finish once the user picks a save destination in [saveExtendedDocument]. Held in memory between
+	 * the steps and discarded on [abortAfterRevocationWarning] / [cancelSave] so a cancelled flow
+	 * writes nothing.
+	 *
+	 * @property isArchival Whether the extension is archival (B-LTA) — gates the renewal-job offer.
+	 * @property pageCount Source-document page count, reused for the web [extendedDocument] reload.
+	 */
+	private class PendingExtension(
+		val outputBytes: ByteArray,
+		val newLevel: String,
+		val annotatedWarnings: List<AnnotatedWarning>,
+		val addToRenewalJob: Boolean,
+		val isArchival: Boolean,
+		val pageCount: Int,
+	)
 }

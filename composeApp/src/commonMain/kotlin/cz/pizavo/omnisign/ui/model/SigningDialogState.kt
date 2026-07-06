@@ -127,20 +127,35 @@ sealed interface SigningDialogState {
 	data object Signing : SigningDialogState
 
 	/**
-	 * Signing completed but revocation data could not be obtained.
+	 * Signing produced the signed bytes (held in the ViewModel) and the UI must now prompt for a
+	 * save location. Reached after [Signing] when there is no revocation warning, or after the user
+	 * accepts a [RevocationWarning].
 	 *
-	 * Shown when the effective level is ≥ B-LT and the signing result
-	 * contains revocation-related warnings. The user can abort (discard the
-	 * output) or continue to the success screen.
+	 * No file has been written yet: the save dialog is the final step, so cancelling it discards the
+	 * signed bytes and returns to [Ready] without anything landing on disk. This is what lets the
+	 * revocation warning be answered *before* the save dialog opens.
+	 *
+	 * @property suggestedName Default file-name stem for the save dialog (no extension).
+	 * @property inputDirectory Source-document directory used to seed the save dialog; `null` on web.
+	 */
+	data class AwaitingSave(
+		val suggestedName: String,
+		val inputDirectory: String?,
+	) : SigningDialogState
+
+	/**
+	 * Signing produced a document but revocation data could not be obtained.
+	 *
+	 * Shown when the effective level is ≥ B-LT and the signing result contains revocation-related
+	 * warnings. Nothing has been written yet: the user can abort (discard the signed bytes, back to
+	 * the form) or continue, which advances to [AwaitingSave] to pick a save location.
 	 *
 	 * @property warnings Annotated warning summaries with affected certificate IDs.
-	 * @property outputFile Path to the signed output file.
 	 * @property signatureId Identifier of the created signature.
 	 * @property signatureLevel PAdES level of the created signature.
 	 */
 	data class RevocationWarning(
 		val warnings: List<AnnotatedWarning>,
-		val outputFile: String,
 		val signatureId: String,
 		val signatureLevel: String,
 	) : SigningDialogState

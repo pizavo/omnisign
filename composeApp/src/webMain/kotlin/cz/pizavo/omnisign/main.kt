@@ -7,7 +7,9 @@ import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.webDataModule
 import cz.pizavo.omnisign.ui.platform.LocalStorageProfileSelectionStore
 import cz.pizavo.omnisign.ui.platform.MuPdfShim
+import cz.pizavo.omnisign.ui.platform.loadUiPreferences
 import cz.pizavo.omnisign.web.resolveServerBaseUrl
+import kotlinx.browser.window
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -28,7 +30,10 @@ import org.koin.dsl.module
  *     a coroutine once the URL resolves.
  *  3. Start Koin with the platform-agnostic [appModule] (use cases) plus the
  *     web-specific [webDataModule] (Ktor [io.ktor.client.HttpClient] and the
- *     `Remote*Repository` impls), anchored at the resolved server URL.
+ *     `Remote*Repository` impls), anchored at the resolved server URL and given a
+ *     language provider so every request advertises the UI language (persisted preference,
+ *     else the browser locale) via `Accept-Language` — letting the server localize the DSS
+ *     validation report to the user's language.
  *  4. Mount the Compose viewport. The server's capabilities (which operations the
  *     server exposes) are fetched by
  *     [cz.pizavo.omnisign.ui.viewmodel.CapabilitiesViewModel] once the UI composes,
@@ -44,7 +49,13 @@ fun main() {
     CoroutineScope(Dispatchers.Default).launch {
         val serverBaseUrl = resolveServerBaseUrl(BuildConfig.SERVER_URL)
         startKoin {
-            modules(appModule, webDataModule(serverBaseUrl), webPlatformModule)
+            modules(
+                appModule,
+                webDataModule(serverBaseUrl) {
+                    loadUiPreferences().languageTag ?: window.navigator.language.takeIf { it.isNotBlank() }
+                },
+                webPlatformModule,
+            )
         }
         ComposeViewport {
             App()
