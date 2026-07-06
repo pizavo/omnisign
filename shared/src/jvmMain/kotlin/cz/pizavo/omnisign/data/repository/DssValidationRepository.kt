@@ -66,10 +66,12 @@ class DssValidationRepository(
 	/**
 	 * Validate [parameters]'s document and map DSS's reports into the domain [ValidationReport].
 	 *
-	 * Report messages are localized to the JVM default locale — which the desktop sets from the user's
-	 * language preference via `LocalAppLocale` — through the validator's [SignedDocumentValidator.setLocale].
-	 * DSS ships only an English message bundle, so the bundled `dss-messages_cs.properties` (shared JVM
-	 * resources) supplies Czech; any locale without a bundle falls back to English per key.
+	 * Report messages are localized through the validator's [SignedDocumentValidator.setLocale] to
+	 * [ValidationParameters.language] when set — the server resolves it per request from the client's
+	 * `Accept-Language` header — otherwise to the JVM default locale, which the desktop sets from the
+	 * user's language preference via `LocalAppLocale`. DSS ships only an English message bundle, so the
+	 * bundled `dss-messages_cs.properties` / `dss-messages_sk.properties` (shared JVM resources) supply
+	 * Czech / Slovak; any locale without a bundle falls back to English per key.
 	 */
 	override suspend fun validateDocument(parameters: ValidationParameters): OperationResult<ValidationReport> {
 		return Either.catch {
@@ -85,7 +87,7 @@ class DssValidationRepository(
 				.apply {
 					setCertificateVerifier(cv)
 					setTokenExtractionStrategy(TokenExtractionStrategy.EXTRACT_CERTIFICATES_ONLY)
-					setLocale(Locale.getDefault())
+					setLocale(parameters.language?.let { Locale.forLanguageTag(it) } ?: Locale.getDefault())
 					if (this is PDFDocumentValidator) {
 						setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 					}

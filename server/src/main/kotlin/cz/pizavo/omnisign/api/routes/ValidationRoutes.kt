@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.api.extractTextField
 import cz.pizavo.omnisign.api.model.FilePartData
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.api.parseEnumSetField
+import cz.pizavo.omnisign.api.preferredLanguageTag
 import cz.pizavo.omnisign.api.requireOperation
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
@@ -112,6 +113,7 @@ fun Route.validationRoutes() {
 				inputName = filePart.originalFileName ?: filePart.file.name,
 				resolvedConfig = resolvedConfig,
 				rawReportFormats = rawReportFormats,
+				language = call.preferredLanguageTag(),
 			)
 
 			validateUseCase(parameters).fold(

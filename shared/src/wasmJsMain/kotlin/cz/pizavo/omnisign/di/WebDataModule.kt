@@ -13,6 +13,7 @@ import cz.pizavo.omnisign.domain.repository.ValidationRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.client.plugins.defaultRequest
+import io.ktor.http.HttpHeaders
 import io.ktor.serialization.kotlinx.json.json
 import kotlinx.serialization.json.Json
 import org.koin.core.module.Module
@@ -39,8 +40,12 @@ import org.koin.dsl.module
  *   to this URL. When empty, the Ktor client treats requests as relative to
  *   the browser's current origin — the same-origin deployment topology where
  *   the server hosts both the web bundle and the API.
+ * @param languageProvider Supplies the UI language tag advertised on every request via the standard
+ *   `Accept-Language` header, evaluated per request so it tracks the current preference. Returns
+ *   `null` (the default) to send no header, in which case the server localizes to its own default
+ *   locale — this is what lets the server return the DSS validation report in the user's language.
  */
-fun webDataModule(serverBaseUrl: String): Module = module {
+fun webDataModule(serverBaseUrl: String, languageProvider: () -> String? = { null }): Module = module {
     single {
         HttpClient {
             expectSuccess = true
@@ -52,10 +57,10 @@ fun webDataModule(serverBaseUrl: String): Module = module {
                     },
                 )
             }
-            if (serverBaseUrl.isNotBlank()) {
-                defaultRequest {
-                    url(serverBaseUrl)
-                }
+            defaultRequest {
+                if (serverBaseUrl.isNotBlank()) url(serverBaseUrl)
+                languageProvider()?.takeIf { it.isNotBlank() }
+                    ?.let { headers.append(HttpHeaders.AcceptLanguage, it) }
             }
         }
     }

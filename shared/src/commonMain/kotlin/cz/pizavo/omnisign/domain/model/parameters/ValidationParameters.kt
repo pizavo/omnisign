@@ -65,6 +65,10 @@ enum class RawReportFormat {
  *   directly via [rawReportOutputPath]). The web target forwards the set to the server as the
  *   `formats` multipart field. Independent of [rawReportOutputPath], which writes a single
  *   format straight to disk.
+ * @property language BCP-47 language tag the DSS report messages should be localized to (e.g. `cs`,
+ *   `sk`, `en`), or `null` to use the JVM default locale. Set server-side from the request's
+ *   `Accept-Language` header; the in-process JVM flows (desktop / CLI) leave it null and rely on the
+ *   process locale, which the desktop derives from the user's language preference.
  */
 data class ValidationParameters(
 	val inputBytes: ByteArray,
@@ -77,6 +81,7 @@ data class ValidationParameters(
 	val rawReportOutputPath: String? = null,
 	val rawReportFormat: RawReportFormat = RawReportFormat.XML_DETAILED,
 	val rawReportFormats: Set<RawReportFormat> = emptySet(),
+	val language: String? = null,
 ) {
 	override fun equals(other: Any?): Boolean {
 		if (this === other) return true
@@ -90,7 +95,8 @@ data class ValidationParameters(
 			disabledEncryptionAlgorithms == other.disabledEncryptionAlgorithms &&
 			rawReportOutputPath == other.rawReportOutputPath &&
 			rawReportFormat == other.rawReportFormat &&
-			rawReportFormats == other.rawReportFormats
+			rawReportFormats == other.rawReportFormats &&
+			language == other.language
 	}
 
 	override fun hashCode(): Int {
@@ -104,6 +110,7 @@ data class ValidationParameters(
 		result = 31 * result + (rawReportOutputPath?.hashCode() ?: 0)
 		result = 31 * result + rawReportFormat.hashCode()
 		result = 31 * result + rawReportFormats.hashCode()
+		result = 31 * result + (language?.hashCode() ?: 0)
 		return result
 	}
 }
