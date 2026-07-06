@@ -30,8 +30,10 @@ package cz.pizavo.omnisign.config
  *   alias uses the keystore's sole key). The keystore password is supplied from the environment
  *   via `OMNISIGN_SIGNING_KEYSTORE_PASSWORD` (never in YAML), mirroring the TLS keystore. When
  *   `null`, signing falls back to PKCS#11 token discovery, so an HSM-backed deployment leaves this
- *   unset. Meaningless when [AllowedOperation.SIGN] is not in [allowed]; a path set without SIGN is
- *   rejected at startup by [validateOperationsConfig].
+ *   unset. When set, the keystore's certificate(s) are also surfaced through
+ *   `GET /api/v1/certificates` alongside any discovered tokens, so a remote client (e.g. the web
+ *   app) can select this signing identity. Meaningless when [AllowedOperation.SIGN] is not in
+ *   [allowed]; a path set without SIGN is rejected at startup by [validateOperationsConfig].
  */
 data class OperationsConfig(
 	val allowed: Set<AllowedOperation> = setOf(AllowedOperation.VALIDATE),

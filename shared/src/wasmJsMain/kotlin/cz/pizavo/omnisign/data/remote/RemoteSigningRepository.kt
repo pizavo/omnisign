@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.result.SigningResult
+import cz.pizavo.omnisign.domain.model.value.Sensitive
 import cz.pizavo.omnisign.domain.repository.AvailableCertificateInfo
 import cz.pizavo.omnisign.domain.repository.CertificateDiscoveryResult
 import cz.pizavo.omnisign.domain.repository.SigningRepository
@@ -121,5 +122,14 @@ class RemoteSigningRepository(
     override suspend fun loadCertificatesFromFile(filePath: String): OperationResult<List<AvailableCertificateInfo>> =
         SigningError.loadFileNotSupportedOnWeb(
             details = "Signing on the web is delegated to the server's own keystore; client-side key material is not accepted",
+        ).left()
+
+    override suspend fun listCertificatesFromKeystore(
+        keystoreFile: String,
+        keystorePassword: Sensitive<String>?,
+    ): OperationResult<List<AvailableCertificateInfo>> =
+        SigningError.loadFileNotSupportedOnWeb(
+            details = "Enumerating a server keystore is a server-side operation; the web client lists the " +
+                "server's signing certificates through GET /api/v1/certificates",
         ).left()
 }
