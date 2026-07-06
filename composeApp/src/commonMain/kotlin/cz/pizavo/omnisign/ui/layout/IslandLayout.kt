@@ -390,18 +390,18 @@ fun IslandLayout(
 				}
 
 				if (showSigningDialog) {
+					LaunchedEffect(signingState) {
+						(signingState as? SigningDialogState.AwaitingSave)?.let { awaiting ->
+							val path = chooseSaveDestination(awaiting.suggestedName, "pdf", awaiting.inputDirectory)
+							if (path != null) signingViewModel?.saveSignedDocument(path)
+							else signingViewModel?.cancelSave()
+						}
+					}
 					SigningDialog(
 						state = signingState,
 						canTimestamp = capabilities.canTimestamp,
 						onFieldChange = { transform -> signingViewModel?.updateState(transform) },
-						onSign = {
-							(signingState as? SigningDialogState.Ready)?.let { ready ->
-								scope.launch {
-									val path = chooseSaveDestination(ready.suggestedName, "pdf", ready.inputDirectory)
-									if (path != null) signingViewModel?.sign(path)
-								}
-							}
-						},
+						onSign = { signingViewModel?.sign() },
 						onAbortRevocation = { signingViewModel?.abortAfterRevocationWarning() },
 						onAcceptRevocation = { signingViewModel?.acceptRevocationWarning() },
 						onUnlockToken = { tokenId -> signingViewModel?.unlockToken(tokenId) },
@@ -411,8 +411,9 @@ fun IslandLayout(
 						onDismiss = {
 							if (signingState is SigningDialogState.Success) {
 								val outputFile = (signingState as SigningDialogState.Success).outputFile
+								val reloadDoc = signingViewModel?.signedDocument
 								scope.launch {
-									reloadDocument(outputFile, pdfViewModel, signatureViewModel, timestampViewModel)
+									reloadDocument(outputFile, reloadDoc, pdfViewModel, signatureViewModel, timestampViewModel)
 								}
 							}
 							signingViewModel?.dismiss()
@@ -442,24 +443,25 @@ fun IslandLayout(
 				}
 				
 				if (showTimestampDialog) {
+					LaunchedEffect(timestampState) {
+						(timestampState as? TimestampDialogState.AwaitingSave)?.let { awaiting ->
+							val path = chooseSaveDestination(awaiting.suggestedName, "pdf", awaiting.inputDirectory)
+							if (path != null) timestampViewModel?.saveExtendedDocument(path)
+							else timestampViewModel?.cancelSave()
+						}
+					}
 					TimestampDialog(
 						state = timestampState,
 						onFieldChange = { transform -> timestampViewModel?.updateState(transform) },
-						onExtend = {
-							(timestampState as? TimestampDialogState.Ready)?.let { ready ->
-								scope.launch {
-									val path = chooseSaveDestination(ready.suggestedName, "pdf", ready.inputDirectory)
-									if (path != null) timestampViewModel?.extend(path)
-								}
-							}
-						},
+						onExtend = { timestampViewModel?.extend() },
 						onAbortRevocation = { timestampViewModel?.abortAfterRevocationWarning() },
 						onAcceptRevocation = { timestampViewModel?.acceptRevocationWarning() },
 						onDismiss = {
 							if (timestampState is TimestampDialogState.Success) {
 								val outputFile = (timestampState as TimestampDialogState.Success).outputFile
+								val reloadDoc = timestampViewModel?.extendedDocument
 								scope.launch {
-									reloadDocument(outputFile, pdfViewModel, signatureViewModel, timestampViewModel)
+									reloadDocument(outputFile, reloadDoc, pdfViewModel, signatureViewModel, timestampViewModel)
 								}
 							}
 							timestampViewModel?.dismiss()
@@ -769,13 +771,24 @@ private fun PanelPlaceholderContent(panel: SidePanel?) {
  * @param signatureViewModel Signature panel ViewModel to re-validate the new document.
  * @param timestampViewModel Timestamp ViewModel to refresh cached timestamp info.
  */
+/**
+ * Reload a just-produced document into the viewer and the signature / timestamp panels.
+ *
+ * Prefers reading the written file at [filePath] (desktop); when that yields `null` — the web target,
+ * which has no filesystem path — it falls back to [fallbackDoc], the in-memory bytes the ViewModel
+ * rebuilt after the save. Does nothing if neither source is available.
+ *
+ * @param filePath Destination the document was written to (a bare file name on web).
+ * @param fallbackDoc In-memory document to use when [filePath] cannot be read; `null` to skip.
+ */
 private suspend fun reloadDocument(
 	filePath: String,
+	fallbackDoc: PdfDocumentInfo?,
 	pdfViewModel: PdfViewerViewModel,
 	signatureViewModel: SignatureViewModel?,
 	timestampViewModel: TimestampViewModel?,
 ) {
-	val doc = loadPdfFromPath(filePath) ?: return
+	val doc = loadPdfFromPath(filePath) ?: fallbackDoc ?: return
 	pdfViewModel.onDocumentLoaded(doc)
 	signatureViewModel?.onDocumentChanged(doc)
 	timestampViewModel?.onDocumentChanged(doc)

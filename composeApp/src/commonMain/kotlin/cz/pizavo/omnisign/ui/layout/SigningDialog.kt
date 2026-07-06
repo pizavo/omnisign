@@ -88,9 +88,10 @@ fun SigningDialog(
 	onShowDiagnostic: () -> Unit,
 	onDismiss: () -> Unit,
 ) {
+	val inProgress = state is SigningDialogState.Signing || state is SigningDialogState.AwaitingSave
 	Dialog(
 		onDismissRequest = {
-			if (state !is SigningDialogState.Signing) onDismiss()
+			if (!inProgress) onDismiss()
 		},
 		modifier = Modifier
 			.widthIn(min = 560.dp, max = 720.dp)
@@ -100,7 +101,7 @@ fun SigningDialog(
 			val readyState = state as? SigningDialogState.Ready
 			SigningDialogHeader(
 				onClose = onDismiss,
-				closeable = state !is SigningDialogState.Signing,
+				closeable = !inProgress,
 				refreshing = readyState?.refreshing == true,
 				onRescan = if (readyState != null && !readyState.refreshing) onRescan else null,
 				onShowDiagnostic = if (readyState != null) onShowDiagnostic else null,
@@ -123,6 +124,7 @@ fun SigningDialog(
 					)
 
 					is SigningDialogState.Signing -> LoadingContent(stringResource(Res.string.signing_signing_document))
+					is SigningDialogState.AwaitingSave -> LoadingContent(stringResource(Res.string.signing_signing_document))
 					is SigningDialogState.RevocationWarning -> RevocationWarningContent(state)
 					is SigningDialogState.Success -> SigningSuccessContent(state)
 					is SigningDialogState.Error -> ErrorContent(error = state.content)

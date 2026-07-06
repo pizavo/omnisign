@@ -41,9 +41,10 @@ fun TimestampDialog(
 	onAcceptRevocation: () -> Unit,
 	onDismiss: () -> Unit,
 ) {
+	val inProgress = state is TimestampDialogState.Extending || state is TimestampDialogState.AwaitingSave
 	Dialog(
 		onDismissRequest = {
-			if (state !is TimestampDialogState.Extending) onDismiss()
+			if (!inProgress) onDismiss()
 		},
 		modifier = Modifier
 			.widthIn(min = 480.dp, max = 620.dp)
@@ -52,7 +53,7 @@ fun TimestampDialog(
 		Column(modifier = Modifier.fillMaxSize()) {
 			TimestampDialogHeader(
 				onClose = onDismiss,
-				closeable = state !is TimestampDialogState.Extending,
+				closeable = !inProgress,
 			)
 
 			HorizontalDivider()
@@ -65,6 +66,7 @@ fun TimestampDialog(
 						onFieldChange = onFieldChange,
 					)
 					is TimestampDialogState.Extending -> LoadingContent(stringResource(Res.string.timestamp_extending))
+					is TimestampDialogState.AwaitingSave -> LoadingContent(stringResource(Res.string.timestamp_extending))
 					is TimestampDialogState.RevocationWarning -> TimestampRevocationWarningContent(state)
 					is TimestampDialogState.Success -> TimestampSuccessContent(state)
 					is TimestampDialogState.Error -> ErrorContent(error = state.content)

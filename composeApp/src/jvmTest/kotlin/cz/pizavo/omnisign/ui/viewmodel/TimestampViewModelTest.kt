@@ -189,7 +189,11 @@ class TimestampViewModelTest : FunSpec({
 			vm.open(sampleDoc())
 			advanceUntilIdle()
 
-			vm.extend(extendedPath)
+			vm.extend()
+			advanceUntilIdle()
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.AwaitingSave>()
+
+			vm.saveExtendedDocument(extendedPath)
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Success>()
@@ -213,7 +217,7 @@ class TimestampViewModelTest : FunSpec({
 			vm.open(sampleDoc())
 			advanceUntilIdle()
 
-			vm.extend(extendedPath)
+			vm.extend()
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Error>()
@@ -237,7 +241,7 @@ class TimestampViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP) }
-			vm.extend(extendedPath)
+			vm.extend()
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.RevocationWarning>()
@@ -262,7 +266,7 @@ class TimestampViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP) }
-			vm.extend(extendedPath)
+			vm.extend()
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Error>()
@@ -285,7 +289,7 @@ class TimestampViewModelTest : FunSpec({
 			vm.open(sampleDoc())
 			advanceUntilIdle()
 
-			vm.extend(extendedPath)
+			vm.extend()
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Error>()
@@ -317,12 +321,16 @@ class TimestampViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP) }
-			vm.extend(extendedPath)
+			vm.extend()
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<TimestampDialogState.RevocationWarning>()
 
 			vm.acceptRevocationWarning()
+			advanceUntilIdle()
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.AwaitingSave>()
+
+			vm.saveExtendedDocument(extendedPath)
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Success>()
@@ -330,6 +338,31 @@ class TimestampViewModelTest : FunSpec({
 			callCount shouldBe 2
 
 			coVerify(exactly = 2) { archivingRepository.extendDocument(any()) }
+		}
+	}
+
+	test("cancelSave discards the extended bytes and restores Ready without writing") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingResult(
+						outputBytes = ByteArray(0), outputName = "signed-extended.pdf",
+						newSignatureLevel = "PAdES-BASELINE-LTA",
+					).right()
+
+			val vm = buildVm()
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			vm.extend()
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.AwaitingSave>()
+			vm.cancelSave()
+
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
 		}
 	}
 
@@ -348,7 +381,7 @@ class TimestampViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP) }
-			vm.extend(extendedPath)
+			vm.extend()
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<TimestampDialogState.RevocationWarning>()
@@ -398,7 +431,9 @@ class TimestampViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(addToRenewalJob = true) }
-			vm.extend(extendedPath)
+			vm.extend()
+			advanceUntilIdle()
+			vm.saveExtendedDocument(extendedPath)
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Success>()
@@ -425,7 +460,9 @@ class TimestampViewModelTest : FunSpec({
 			vm.open(sampleDoc())
 			advanceUntilIdle()
 
-			vm.extend(extendedPath)
+			vm.extend()
+			advanceUntilIdle()
+			vm.saveExtendedDocument(extendedPath)
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Success>()
@@ -450,7 +487,9 @@ class TimestampViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP, addToRenewalJob = true) }
-			vm.extend(extendedPath)
+			vm.extend()
+			advanceUntilIdle()
+			vm.saveExtendedDocument(extendedPath)
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Success>()
@@ -477,7 +516,9 @@ class TimestampViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			vm.updateState { it.copy(addToRenewalJob = true) }
-			vm.extend(extendedPath)
+			vm.extend()
+			advanceUntilIdle()
+			vm.saveExtendedDocument(extendedPath)
 			advanceUntilIdle()
 
 			vm.pendingRenewalOffer.value.shouldNotBeNull()
