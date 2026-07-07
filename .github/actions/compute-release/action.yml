@@ -15,17 +15,28 @@ inputs:
     description: 'Optional explicit version (e.g. 1.0.0) to force instead of the computed bump.'
     required: false
     default: ''
+  prerelease:
+    description: 'When true, cut a pre-release: the version gets a -<suffix>.N identifier and the GitHub release is flagged as a pre-release.'
+    required: false
+    default: 'false'
+  prerelease-suffix:
+    description: 'Pre-release identifier used when prerelease is true (e.g. pre, rc, beta). Sanitized to [A-Za-z0-9-]; empty falls back to pre.'
+    required: false
+    default: 'pre'
 
 outputs:
   version:
-    description: 'Bare semantic version, e.g. 1.13.2.'
+    description: 'Bare semantic version, e.g. 1.13.2 or 1.1.2-pre.1.'
     value: ${{ steps.cliff.outputs.version }}
   tag:
-    description: 'Full tag, e.g. cli/v1.13.2.'
+    description: 'Full tag, e.g. cli/v1.13.2 or web/v1.1.2-pre.1.'
     value: ${{ steps.cliff.outputs.tag }}
   should_release:
     description: 'true when there are releasable changes (or release-as was given).'
     value: ${{ steps.cliff.outputs.should_release }}
+  prerelease:
+    description: 'true when the computed release is a pre-release (flag set or version carries a pre-release identifier).'
+    value: ${{ steps.cliff.outputs.prerelease }}
 
 runs:
   using: composite
@@ -42,43 +53,109 @@ runs:
         TAG_PREFIX: ${{ inputs.tag-prefix }}
         MODULE_PATH: ${{ inputs.module-path }}
         RELEASE_AS: ${{ inputs.release-as }}
+        PRERELEASE: ${{ inputs.prerelease }}
+        PRERELEASE_SUFFIX: ${{ inputs.prerelease-suffix }}
       run: |
         inc=(--include-path "${MODULE_PATH}/**" --include-path 'shared/**' --include-path 'gradle/**' --include-path '*.gradle.kts' --include-path 'gradle.properties')
         pattern="${TAG_PREFIX}/v.*"
-        latest=$(git tag --list "${TAG_PREFIX}/v*" --sort=-v:refname | head -n1)
+        # Stable-only pattern (anchored): matches x.y.z but not x.y.z-<pre>, so a
+        # pre-release series can bump its target from the last stable tag.
+        stable_pattern="${TAG_PREFIX}/v[0-9]+\.[0-9]+\.[0-9]+$"
+
+        # Latest tag in the series. versionsort.suffix='-' sorts any pre-release
+        # (x.y.z-<id>) below its stable x.y.z, matching SemVer precedence; the
+        # plain -v:refname sort gets that backwards.
+        latest=$(git -c versionsort.suffix='-' tag --list "${TAG_PREFIX}/v*" --sort=-v:refname | head -n1)
+
+        # Highest of two bare x.y.z cores (blank-safe).
+        core_max() { printf '%s\n%s\n' "$1" "$2" | grep -E '^[0-9]+\.[0-9]+\.[0-9]+$' | sort -V | tail -n1; }
 
         if [ -n "$RELEASE_AS" ]; then
-          tag="${TAG_PREFIX}/v${RELEASE_AS#v}"
+          version="${RELEASE_AS#v}"
+          tag="${TAG_PREFIX}/v${version}"
           should_release=true
         else
-          # `|| true` so a non-zero git-cliff/grep (e.g. "nothing to bump" or no
-          # tags yet) yields an empty tag instead of aborting under set -eo pipefail.
+          # git-cliff echoes the latest tag unchanged when nothing is releasable,
+          # so a proposal that is not yet a tag means there are real changes.
           bumped=$(git cliff --tag-pattern "$pattern" "${inc[@]}" --bumped-version 2>/dev/null || true)
-          tag=$(printf '%s\n' "$bumped" | grep -Eo "${TAG_PREFIX}/v[0-9]+\.[0-9]+\.[0-9]+" | tail -n1 || true)
-          if [ -z "$tag" ] || [ "$tag" = "$latest" ]; then should_release=false; else should_release=true; fi
-        fi
-
-        # Only render notes when we are actually releasing (avoids a no-commit /
-        # no-tag render aborting the step); empty placeholder otherwise.
-        : > release-notes.md
-        if [ "$should_release" = "true" ]; then
-          if [ -n "$RELEASE_AS" ]; then
-            git cliff --tag-pattern "$pattern" "${inc[@]}" --unreleased --tag "$tag" -o release-notes.md
+          if [ -n "$bumped" ] && ! git rev-parse -q --verify "refs/tags/${bumped}" >/dev/null 2>&1; then
+            has_changes=true
           else
-            git cliff --tag-pattern "$pattern" "${inc[@]}" --unreleased --bump -o release-notes.md
+            has_changes=false
+          fi
+
+          # Target stable core = the release the next tag lands on: the higher of
+          # git-cliff's core from the latest tag (which keeps a running pre-series
+          # on its core) and the bump from the last stable over every commit since
+          # (so a feature landing mid-series grows the target). Shared by both
+          # paths so a stable finalize lands on the right number no matter how the
+          # series got there, and a pre never compounds a previous suffix.
+          core_cliff=$(printf '%s\n' "$bumped" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+          stable_bumped=$(git cliff --tag-pattern "$stable_pattern" "${inc[@]}" --bumped-version 2>/dev/null || true)
+          core_stable=$(printf '%s\n' "$stable_bumped" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
+          target=$(core_max "$core_cliff" "$core_stable")
+
+          if [ "$PRERELEASE" = "true" ]; then
+            suffix=$(printf '%s' "$PRERELEASE_SUFFIX" | tr -cd 'A-Za-z0-9-')
+            [ -z "$suffix" ] && suffix=pre
+            if [ -z "$target" ]; then
+              echo "::error::Could not determine a target version for the ${TAG_PREFIX} pre-release."
+              exit 1
+            fi
+            # Counter = one past the highest existing <target>-<suffix>[.N] (a
+            # bare suffix counts as 0), always numbered from .1, so the series
+            # runs <suffix>.1, <suffix>.2 and so on for a fresh target too.
+            maxk=0
+            for t in $(git tag --list "${TAG_PREFIX}/v${target}-${suffix}" "${TAG_PREFIX}/v${target}-${suffix}.*"); do
+              rest="${t#"${TAG_PREFIX}/v${target}-${suffix}"}"
+              if [ -z "$rest" ]; then k=0; else k="${rest#.}"; fi
+              case "$k" in ''|*[!0-9]*) k=0 ;; esac
+              [ "$k" -gt "$maxk" ] && maxk="$k"
+            done
+            version="${target}-${suffix}.$((maxk + 1))"
+            tag="${TAG_PREFIX}/v${version}"
+            should_release=$has_changes
+          else
+            # Stable path: release the target core, dropping any pre identifier.
+            version="$target"
+            tag="${target:+${TAG_PREFIX}/v${target}}"
+            # Finalizing a pre-release to stable is a release even without new commits.
+            latest_is_pre=false; case "$latest" in *-*) latest_is_pre=true ;; esac
+            if [ -z "$tag" ]; then
+              should_release=false
+            elif [ "$has_changes" = "true" ] || [ "$latest_is_pre" = "true" ]; then
+              should_release=true
+            else
+              should_release=false
+            fi
           fi
         fi
 
+        # A pre-release when explicitly requested or when the version carries any
+        # pre-release identifier.
+        is_prerelease=false
+        if [ "$PRERELEASE" = "true" ] || printf '%s' "$version" | grep -q '-'; then
+          is_prerelease=true
+        fi
+
+        # Only render notes when actually releasing; label them with the resolved tag.
+        : > release-notes.md
+        if [ "$should_release" = "true" ]; then
+          git cliff --tag-pattern "$pattern" "${inc[@]}" --unreleased --tag "$tag" -o release-notes.md
+        fi
+
         echo "tag=$tag" >> "$GITHUB_OUTPUT"
-        echo "version=${tag#${TAG_PREFIX}/v}" >> "$GITHUB_OUTPUT"
+        echo "version=$version" >> "$GITHUB_OUTPUT"
         echo "should_release=$should_release" >> "$GITHUB_OUTPUT"
+        echo "prerelease=$is_prerelease" >> "$GITHUB_OUTPUT"
         if [ "$should_release" != "true" ]; then
           echo "::notice::No unreleased ${TAG_PREFIX} changes since ${latest:-<none>} — nothing to release."
         fi
+        pre_label=""; [ "$is_prerelease" = "true" ] && pre_label=" (pre-release)"
         {
           echo "## ${TAG_PREFIX} release preview"
           echo "- previous: \`${latest:-<none>}\`"
-          echo "- next: \`${tag:-<none>}\`"
+          echo "- next: \`${tag:-<none>}\`${pre_label}"
           echo ""
           cat release-notes.md
         } >> "$GITHUB_STEP_SUMMARY"
