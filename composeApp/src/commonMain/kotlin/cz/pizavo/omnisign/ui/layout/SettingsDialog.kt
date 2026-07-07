@@ -1176,6 +1176,11 @@ private fun TrustedCertificatesSettingsSection(
 		return
 	}
 
+	if (LocalReadOnly.current) {
+		TrustedCertificateList(certificates = state.trustedCertificates)
+		return
+	}
+
 	TrustedCertificatesSection(
 		certificates = state.trustedCertificates,
 		pendingAdditions = state.pendingTrustedCertAdds,

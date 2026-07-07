@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.api.model.responses.GlobalConfigResponse
 import cz.pizavo.omnisign.api.model.responses.ProfileConfigResponse
 import cz.pizavo.omnisign.api.model.responses.ResolvedConfigResponse
+import cz.pizavo.omnisign.api.model.responses.TrustedCertificateResponse
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.CorsConfig
 import cz.pizavo.omnisign.config.ListenConfig
@@ -98,6 +99,24 @@ class ConfigRoutesTest : FunSpec({
 			val body = json.decodeFromString<List<ProfileConfigResponse>>(response.bodyAsText())
 			val names = body.map { it.name }
 			names shouldBe names.sorted()
+		}
+	}
+
+	test("GET /api/v1/config/trusted-certificates returns 200 with the global-scope certificate list") {
+		testApplication {
+			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+			val response = client.get("/api/v1/config/trusted-certificates")
+			response.status shouldBe HttpStatusCode.OK
+			json.decodeFromString<List<TrustedCertificateResponse>>(response.bodyAsText())
+		}
+	}
+
+	test("GET /api/v1/config/trusted-certificates with a profile returns 200 with that scope's certificate list") {
+		testApplication {
+			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+			val response = client.get("/api/v1/config/trusted-certificates?profile=OmniSign%20Free")
+			response.status shouldBe HttpStatusCode.OK
+			json.decodeFromString<List<TrustedCertificateResponse>>(response.bodyAsText())
 		}
 	}
 })
