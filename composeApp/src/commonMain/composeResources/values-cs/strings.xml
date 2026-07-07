@@ -40,4 +40,5 @@
 	<string name="hint_password_stored">Heslo uloženo – zadejte novou hodnotu pro nahrazení</string>
 	<string name="msg_trusted_certs_unavailable">Správa důvěryhodných certifikátů není na této platformě dostupná.</string>
 	<string name="selector_inherit_from_global">Převzít z globálního nastavení</string>
+	<string name="save_not_reopened">Uloženo do stažených souborů; soubor zde nebyl znovu otevřen.</string>
 </resources>

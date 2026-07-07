@@ -21,7 +21,7 @@ import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
 import cz.pizavo.omnisign.ui.model.RenewalOfferError
 import cz.pizavo.omnisign.ui.model.SigningDialogState
-import cz.pizavo.omnisign.ui.platform.writeBytesToPath
+import cz.pizavo.omnisign.ui.platform.SaveOutcome
 import cz.pizavo.omnisign.ui.toast.ToastDuration
 import cz.pizavo.omnisign.ui.toast.ToastMessage
 import cz.pizavo.omnisign.ui.toast.ToastService
@@ -136,6 +136,13 @@ class SigningViewModel(
 	 */
 	var signedDocument: PdfDocumentInfo? = null
 		private set
+
+	/**
+	 * The produced signed bytes awaiting a save destination, or `null` when no save is pending. Read
+	 * by the UI to drive the platform save ([cz.pizavo.omnisign.ui.platform.saveDocument]) once the
+	 * dialog reaches [SigningDialogState.AwaitingSave].
+	 */
+	val pendingOutputBytes: ByteArray? get() = pendingSignature?.outputBytes
 
 	/**
 	 * Last user-selected certificate alias from a previous dialog session.
@@ -475,59 +482,62 @@ class SigningViewModel(
 	}
 
 	/**
-	 * Write the held signed bytes to [outputPath] — the destination the user chose in the native
-	 * save dialog — and transition to [SigningDialogState.Success], or [SigningDialogState.Error] on
-	 * a write failure. No-op when there is no [pendingSignature].
+	 * Finish the signing flow from the [outcome] of the platform save
+	 * ([cz.pizavo.omnisign.ui.platform.saveDocument]) the UI ran with the held bytes. No-op when there
+	 * is no [pendingSignature].
 	 *
-	 * Renewal-job coverage is resolved here against [outputPath] (now that the path is known): a
-	 * covered path shows no follow-up offer; otherwise, after a B-LTA signing the user opted into, a
-	 * [RenewalJobOfferState] is populated. Also rebuilds [signedDocument] so the web viewer can
-	 * reload the signed bytes where no filesystem path exists.
-	 *
-	 * @param outputPath Absolute destination path for the signed document.
+	 * - [SaveOutcome.Saved] — advance to [SigningDialogState.Success] and rebuild [signedDocument] from
+	 *   the produced bytes so the viewer can reopen the saved document; renewal-job coverage is
+	 *   resolved against the reported path.
+	 * - [SaveOutcome.SavedNameUnknown] — the web download fallback: the file is saved but its final
+	 *   name is unknown, so [signedDocument] stays `null` (the viewer keeps the current document) and
+	 *   the UI surfaces a "not reopened" notice — still a success.
+	 * - [SaveOutcome.Cancelled] — discard the held bytes and return to the form; nothing was written.
+	 * - [SaveOutcome.Failed] — surface a write error.
 	 */
-	fun saveSignedDocument(outputPath: String) {
+	fun completeSave(outcome: SaveOutcome) {
 		val pending = pendingSignature ?: return
-		val coveringJob = RenewalJobAssigner.findCoveringJob(outputPath, cachedRenewalJobs)
-		addToRenewalJobFlag = pending.addToRenewalJob &&
-				pending.addArchivalTimestamp &&
-				coveringJob == null
-		_state.value = SigningDialogState.Signing
+		when (outcome) {
+			is SaveOutcome.Cancelled -> {
+				pendingSignature = null
+				_state.value = lastReadyState ?: SigningDialogState.Idle
+			}
 
-		viewModelScope.launch {
-			withContext(ioDispatcher) {
-				val writeError = writeBytesToPath(outputPath, pending.outputBytes)
-				if (writeError != null) {
-					_state.value = SigningDialogState.Error(
-						content = ErrorMessage.WriteFailed(signed = true, reason = writeError),
-					)
-					return@withContext
-				}
+			is SaveOutcome.Failed -> _state.value = SigningDialogState.Error(
+				content = ErrorMessage.WriteFailed(signed = true, reason = outcome.reason),
+			)
+
+			is SaveOutcome.Saved -> {
+				val coveringJob = RenewalJobAssigner.findCoveringJob(outcome.path, cachedRenewalJobs)
+				addToRenewalJobFlag = pending.addToRenewalJob && pending.addArchivalTimestamp && coveringJob == null
 				signedDocument = PdfDocumentInfo(
-					name = outputPath.substringAfterLast('/').substringAfterLast('\\'),
+					name = outcome.path.substringAfterLast('/').substringAfterLast('\\'),
 					data = pending.outputBytes,
 					pageCount = pending.pageCount,
 					filePath = null,
 				)
 				pendingSignature = null
 				_state.value = SigningDialogState.Success(
-					outputFile = outputPath,
+					outputFile = outcome.path,
 					signatureId = pending.signatureId,
 					signatureLevel = pending.signatureLevel,
 					warnings = pending.annotatedWarnings,
 				)
-				populateRenewalOfferIfNeeded(outputPath)
+				viewModelScope.launch { populateRenewalOfferIfNeeded(outcome.path) }
+			}
+
+			is SaveOutcome.SavedNameUnknown -> {
+				addToRenewalJobFlag = false
+				signedDocument = null
+				pendingSignature = null
+				_state.value = SigningDialogState.Success(
+					outputFile = outcome.downloadedAs,
+					signatureId = pending.signatureId,
+					signatureLevel = pending.signatureLevel,
+					warnings = pending.annotatedWarnings,
+				)
 			}
 		}
-	}
-
-	/**
-	 * Cancel a pending save (the user dismissed the native save dialog after signing): discard the
-	 * held signed bytes and return to the signing form. Nothing is written to disk.
-	 */
-	fun cancelSave() {
-		pendingSignature = null
-		_state.value = lastReadyState ?: SigningDialogState.Idle
 	}
 
 	/**

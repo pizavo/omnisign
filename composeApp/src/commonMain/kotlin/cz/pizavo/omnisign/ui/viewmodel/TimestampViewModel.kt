@@ -21,7 +21,7 @@ import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
 import cz.pizavo.omnisign.ui.model.RenewalOfferError
 import cz.pizavo.omnisign.ui.model.TimestampDialogState
 import cz.pizavo.omnisign.ui.model.TimestampType
-import cz.pizavo.omnisign.ui.platform.writeBytesToPath
+import cz.pizavo.omnisign.ui.platform.SaveOutcome
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -102,6 +102,13 @@ class TimestampViewModel(
 	 */
 	var extendedDocument: PdfDocumentInfo? = null
 		private set
+
+	/**
+	 * The produced extended bytes awaiting a save destination, or `null` when no save is pending. Read
+	 * by the UI to drive the platform save ([cz.pizavo.omnisign.ui.platform.saveDocument]) once the
+	 * dialog reaches [TimestampDialogState.AwaitingSave].
+	 */
+	val pendingOutputBytes: ByteArray? get() = pendingExtension?.outputBytes
 
 	/** Pre-fetched timestamp info, populated by [onDocumentChanged]. */
 	private var cachedTimestampInfo: DocumentTimestampInfo? = null
@@ -389,55 +396,59 @@ class TimestampViewModel(
 	}
 
 	/**
-	 * Write the held extended bytes to [outputPath] — the destination the user chose in the native
-	 * save dialog — and transition to [TimestampDialogState.Success], or [TimestampDialogState.Error]
-	 * on a write failure. No-op when there is no [pendingExtension].
+	 * Finish the extension flow from the [outcome] of the platform save
+	 * ([cz.pizavo.omnisign.ui.platform.saveDocument]) the UI ran with the held bytes. No-op when there
+	 * is no [pendingExtension].
 	 *
-	 * Renewal-job coverage is resolved here against [outputPath]: a covered path shows no follow-up
-	 * offer; otherwise, after an archival (B-LTA) extension the user opted into, a
-	 * [RenewalJobOfferState] is populated. Also rebuilds [extendedDocument] for the web viewer reload.
-	 *
-	 * @param outputPath Absolute destination path for the extended document.
+	 * - [SaveOutcome.Saved] — advance to [TimestampDialogState.Success] and rebuild [extendedDocument]
+	 *   so the viewer can reopen the saved document; renewal-job coverage is resolved against the path.
+	 * - [SaveOutcome.SavedNameUnknown] — the web download fallback: the file is saved but its final
+	 *   name is unknown, so [extendedDocument] stays `null` (the viewer keeps the current document) and
+	 *   the UI surfaces a "not reopened" notice — still a success.
+	 * - [SaveOutcome.Cancelled] — discard the held bytes and return to the form; nothing was written.
+	 * - [SaveOutcome.Failed] — surface a write error.
 	 */
-	fun saveExtendedDocument(outputPath: String) {
+	fun completeSave(outcome: SaveOutcome) {
 		val pending = pendingExtension ?: return
-		val coveringJob = RenewalJobAssigner.findCoveringJob(outputPath, cachedRenewalJobs)
-		addToRenewalJobFlag = pending.addToRenewalJob && pending.isArchival && coveringJob == null
-		_state.value = TimestampDialogState.Extending
+		when (outcome) {
+			is SaveOutcome.Cancelled -> {
+				pendingExtension = null
+				_state.value = lastReadyState ?: TimestampDialogState.Idle
+			}
 
-		viewModelScope.launch {
-			withContext(ioDispatcher) {
-				val writeError = writeBytesToPath(outputPath, pending.outputBytes)
-				if (writeError != null) {
-					_state.value = TimestampDialogState.Error(
-						content = ErrorMessage.WriteFailed(signed = false, reason = writeError),
-					)
-					return@withContext
-				}
+			is SaveOutcome.Failed -> _state.value = TimestampDialogState.Error(
+				content = ErrorMessage.WriteFailed(signed = false, reason = outcome.reason),
+			)
+
+			is SaveOutcome.Saved -> {
+				val coveringJob = RenewalJobAssigner.findCoveringJob(outcome.path, cachedRenewalJobs)
+				addToRenewalJobFlag = pending.addToRenewalJob && pending.isArchival && coveringJob == null
 				extendedDocument = PdfDocumentInfo(
-					name = outputPath.substringAfterLast('/').substringAfterLast('\\'),
+					name = outcome.path.substringAfterLast('/').substringAfterLast('\\'),
 					data = pending.outputBytes,
 					pageCount = pending.pageCount,
 					filePath = null,
 				)
 				pendingExtension = null
 				_state.value = TimestampDialogState.Success(
-					outputFile = outputPath,
+					outputFile = outcome.path,
 					newLevel = pending.newLevel,
 					warnings = pending.annotatedWarnings,
 				)
-				populateRenewalOfferIfNeeded(outputPath)
+				viewModelScope.launch { populateRenewalOfferIfNeeded(outcome.path) }
+			}
+
+			is SaveOutcome.SavedNameUnknown -> {
+				addToRenewalJobFlag = false
+				extendedDocument = null
+				pendingExtension = null
+				_state.value = TimestampDialogState.Success(
+					outputFile = outcome.downloadedAs,
+					newLevel = pending.newLevel,
+					warnings = pending.annotatedWarnings,
+				)
 			}
 		}
-	}
-
-	/**
-	 * Cancel a pending save (the user dismissed the native save dialog after extending): discard the
-	 * held extended bytes and return to the extension form. Nothing is written to disk.
-	 */
-	fun cancelSave() {
-		pendingExtension = null
-		_state.value = lastReadyState ?: TimestampDialogState.Idle
 	}
 
 
