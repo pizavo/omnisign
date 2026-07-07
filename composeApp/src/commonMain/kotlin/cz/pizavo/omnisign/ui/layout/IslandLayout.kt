@@ -25,8 +25,11 @@ import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.ui.model.*
 import cz.pizavo.omnisign.ui.platform.*
 import cz.pizavo.omnisign.ui.toast.LocalToastService
+import cz.pizavo.omnisign.ui.toast.ToastDuration
 import cz.pizavo.omnisign.ui.toast.ToastHost
+import cz.pizavo.omnisign.ui.toast.ToastMessage
 import cz.pizavo.omnisign.ui.toast.ToastService
+import cz.pizavo.omnisign.ui.toast.ToastText
 import cz.pizavo.omnisign.ui.viewmodel.*
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -392,9 +395,17 @@ fun IslandLayout(
 				if (showSigningDialog) {
 					LaunchedEffect(signingState) {
 						(signingState as? SigningDialogState.AwaitingSave)?.let { awaiting ->
-							val path = chooseSaveDestination(awaiting.suggestedName, "pdf", awaiting.inputDirectory)
-							if (path != null) signingViewModel?.saveSignedDocument(path)
-							else signingViewModel?.cancelSave()
+							val bytes = signingViewModel?.pendingOutputBytes ?: return@let
+							val outcome = saveDocument(bytes, awaiting.suggestedName, "pdf", awaiting.inputDirectory)
+							signingViewModel.completeSave(outcome)
+							if (outcome is SaveOutcome.SavedNameUnknown) {
+								toastService.show(
+									ToastMessage(
+										text = ToastText.Resource(Res.string.save_not_reopened),
+										duration = ToastDuration.Long,
+									),
+								)
+							}
 						}
 					}
 					SigningDialog(
@@ -445,9 +456,17 @@ fun IslandLayout(
 				if (showTimestampDialog) {
 					LaunchedEffect(timestampState) {
 						(timestampState as? TimestampDialogState.AwaitingSave)?.let { awaiting ->
-							val path = chooseSaveDestination(awaiting.suggestedName, "pdf", awaiting.inputDirectory)
-							if (path != null) timestampViewModel?.saveExtendedDocument(path)
-							else timestampViewModel?.cancelSave()
+							val bytes = timestampViewModel?.pendingOutputBytes ?: return@let
+							val outcome = saveDocument(bytes, awaiting.suggestedName, "pdf", awaiting.inputDirectory)
+							timestampViewModel.completeSave(outcome)
+							if (outcome is SaveOutcome.SavedNameUnknown) {
+								toastService.show(
+									ToastMessage(
+										text = ToastText.Resource(Res.string.save_not_reopened),
+										duration = ToastDuration.Long,
+									),
+								)
+							}
 						}
 					}
 					TimestampDialog(

@@ -6,6 +6,22 @@
     <title>omnisign</title>
     <link rel="icon" type="image/png" href="omnisign-logo.png">
     <link type="text/css" rel="stylesheet" href="styles.css">
+    <script>
+      // Runtime UI-language override for Compose Resources. Compose resolves strings against the
+      // read-only navigator.language(s); OmniSign's settings write the chosen tag to
+      // globalThis.__customLocale (see LocalAppLocale.web.kt). Shim navigator here, before the app
+      // loads, so the override wins when set and the real browser languages apply otherwise.
+      // Works around https://youtrack.jetbrains.com/projects/CMP/issues/CMP-8376
+      (function () {
+        var nav = window.navigator;
+        var real = (nav.languages && nav.languages.length) ? Array.prototype.slice.call(nav.languages) : [nav.language];
+        function resolved() { var c = window.__customLocale; return c ? [c] : real; }
+        try {
+          Object.defineProperty(nav, 'languages', { configurable: true, get: function () { return resolved(); } });
+          Object.defineProperty(nav, 'language', { configurable: true, get: function () { return resolved()[0]; } });
+        } catch (e) { /* engine disallows redefining navigator; keep the browser locale */ }
+      })();
+    </script>
     <script type="application/javascript" src="composeApp.js"></script>
 </head>
 <body>

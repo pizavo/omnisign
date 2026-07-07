@@ -40,4 +40,5 @@
 	<string name="hint_password_stored">Password stored — enter a new value to replace</string>
 	<string name="msg_trusted_certs_unavailable">Managing trusted certificates is not available on this platform.</string>
 	<string name="selector_inherit_from_global">Inherit from global</string>
+	<string name="save_not_reopened">Saved to your downloads; the file was not reopened here.</string>
 </resources>

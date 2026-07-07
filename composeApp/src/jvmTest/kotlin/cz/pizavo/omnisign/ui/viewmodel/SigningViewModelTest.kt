@@ -21,6 +21,7 @@ import cz.pizavo.omnisign.domain.usecase.UnlockTokenUseCase
 import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.SigningDialogState
+import cz.pizavo.omnisign.ui.platform.SaveOutcome
 import cz.pizavo.omnisign.ui.toast.ToastService
 import cz.pizavo.omnisign.ui.toast.ToastText
 import io.kotest.core.spec.style.FunSpec
@@ -268,7 +269,7 @@ class SigningViewModelTest : FunSpec({
 			advanceUntilIdle()
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.AwaitingSave>()
 
-			vm.saveSignedDocument(signedPath)
+			vm.completeSave(SaveOutcome.Saved(signedPath))
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
@@ -401,7 +402,7 @@ class SigningViewModelTest : FunSpec({
 			advanceUntilIdle()
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.AwaitingSave>()
 
-			vm.saveSignedDocument(signedPath)
+			vm.completeSave(SaveOutcome.Saved(signedPath))
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
@@ -439,7 +440,7 @@ class SigningViewModelTest : FunSpec({
 			vm.acceptRevocationWarning()
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.AwaitingSave>()
 
-			vm.saveSignedDocument(signedPath)
+			vm.completeSave(SaveOutcome.Saved(signedPath))
 			advanceUntilIdle()
 
 			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
@@ -447,7 +448,7 @@ class SigningViewModelTest : FunSpec({
 		}
 	}
 
-	test("cancelSave discards the signed bytes and restores Ready without writing") {
+	test("completeSave(Cancelled) discards the signed bytes and restores Ready") {
 		runTest(testDispatcher) {
 			coEvery { signingRepository.listAvailableCertificates(false) } returns
 					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
@@ -467,9 +468,38 @@ class SigningViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.AwaitingSave>()
-			vm.cancelSave()
+			vm.completeSave(SaveOutcome.Cancelled)
 
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
+		}
+	}
+
+	test("completeSave(SavedNameUnknown) succeeds but leaves nothing to reopen") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { signingRepository.signDocument(any()) } returns
+					SigningResult(
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-B",
+					).right()
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+			vm.updateState { it.copy(selectedAlias = "test-cert") }
+			vm.sign()
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<SigningDialogState.AwaitingSave>()
+			vm.completeSave(SaveOutcome.SavedNameUnknown("test-signed.pdf"))
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
+			state.outputFile shouldBe "test-signed.pdf"
+			vm.signedDocument.shouldBeNull()
 		}
 	}
 
@@ -535,7 +565,7 @@ class SigningViewModelTest : FunSpec({
 			vm.updateState { it.copy(selectedAlias = "test-cert", addToRenewalJob = true) }
 			vm.sign()
 			advanceUntilIdle()
-			vm.saveSignedDocument(signedPath)
+			vm.completeSave(SaveOutcome.Saved(signedPath))
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
@@ -566,7 +596,7 @@ class SigningViewModelTest : FunSpec({
 			vm.updateState { it.copy(selectedAlias = "test-cert") }
 			vm.sign()
 			advanceUntilIdle()
-			vm.saveSignedDocument(signedPath)
+			vm.completeSave(SaveOutcome.Saved(signedPath))
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
@@ -610,7 +640,7 @@ class SigningViewModelTest : FunSpec({
 			vm.updateState { it.copy(selectedAlias = "test-cert", addToRenewalJob = true) }
 			vm.sign()
 			advanceUntilIdle()
-			vm.saveSignedDocument(signedPath)
+			vm.completeSave(SaveOutcome.Saved(signedPath))
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
@@ -644,7 +674,7 @@ class SigningViewModelTest : FunSpec({
 			vm.updateState { it.copy(selectedAlias = "test-cert", addToRenewalJob = true) }
 			vm.sign()
 			advanceUntilIdle()
-			vm.saveSignedDocument(signedPath)
+			vm.completeSave(SaveOutcome.Saved(signedPath))
 			advanceUntilIdle()
 
 			vm.pendingRenewalOffer.value.shouldNotBeNull()

@@ -11,6 +11,14 @@ on:
         description: "Force an explicit version (e.g. 1.0.0) instead of the computed bump; leave empty to auto-compute"
         type: string
         default: ""
+      prerelease:
+        description: "Cut a pre-release: append a -<suffix>.N identifier and flag the GitHub release as a pre-release"
+        type: boolean
+        default: false
+      prerelease_suffix:
+        description: "Pre-release identifier used when 'prerelease' is checked (e.g. pre, rc, beta)"
+        type: string
+        default: "pre"
 
 permissions:
   contents: read
@@ -23,6 +31,7 @@ jobs:
       version: ${{ steps.r.outputs.version }}
       tag: ${{ steps.r.outputs.tag }}
       should_release: ${{ steps.r.outputs.should_release }}
+      prerelease: ${{ steps.r.outputs.prerelease }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -35,6 +44,8 @@ jobs:
           module-path: composeApp
           github-token: ${{ github.token }}
           release-as: ${{ github.event.inputs.release_as }}
+          prerelease: ${{ github.event.inputs.prerelease }}
+          prerelease-suffix: ${{ github.event.inputs.prerelease_suffix }}
 
       - name: Upload release notes
         if: steps.r.outputs.should_release == 'true'
@@ -96,4 +107,5 @@ jobs:
           tag_name: ${{ needs.prepare.outputs.tag }}
           name: "Web v${{ needs.prepare.outputs.version }}"
           body_path: notes/release-notes.md
+          prerelease: ${{ needs.prepare.outputs.prerelease }}
           files: artifacts/*
