@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.webDataModule
 import cz.pizavo.omnisign.ui.platform.LocalStorageProfileSelectionStore
 import cz.pizavo.omnisign.ui.platform.MuPdfShim
+import cz.pizavo.omnisign.ui.platform.applyWebLocale
 import cz.pizavo.omnisign.ui.platform.loadUiPreferences
 import cz.pizavo.omnisign.web.resolveServerBaseUrl
 import kotlinx.browser.window
@@ -34,7 +35,9 @@ import org.koin.dsl.module
  *     language provider so every request advertises the UI language (persisted preference,
  *     else the browser locale) via `Accept-Language` — letting the server localize the DSS
  *     validation report to the user's language.
- *  4. Mount the Compose viewport. The server's capabilities (which operations the
+ *  4. Seed the runtime UI-language override from the persisted preference (via [applyWebLocale] and
+ *     the `index.html` navigator shim) so the first render already uses the chosen language rather
+ *     than the browser locale, then mount the Compose viewport. The server's capabilities (which operations the
  *     server exposes) are fetched by
  *     [cz.pizavo.omnisign.ui.viewmodel.CapabilitiesViewModel] once the UI composes,
  *     narrowing the visible affordances (e.g. hiding the Sign / Timestamp buttons or
@@ -57,6 +60,7 @@ fun main() {
                 webPlatformModule,
             )
         }
+        applyWebLocale(loadUiPreferences().languageTag)
         ComposeViewport {
             App()
         }
