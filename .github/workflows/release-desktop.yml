@@ -262,11 +262,32 @@ jobs:
           name: release-notes
           path: notes/
 
+      # Full release: softprops uploads then publishes, which immutable releases allow.
       - name: Create release
+        if: ${{ needs.prepare.outputs.prerelease != 'true' }}
         uses: softprops/action-gh-release@v3
         with:
           tag_name: ${{ needs.prepare.outputs.tag }}
           name: "Desktop v${{ needs.prepare.outputs.version }}"
           body_path: notes/release-notes.md
-          prerelease: ${{ needs.prepare.outputs.prerelease }}
           files: artifacts/*
+
+      # Pre-release: softprops publishes before uploading, which an immutable release
+      # rejects — so upload assets to a mutable draft, then publish it.
+      - name: Create draft pre-release
+        id: prerelease
+        if: ${{ needs.prepare.outputs.prerelease == 'true' }}
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: "Desktop v${{ needs.prepare.outputs.version }}"
+          body_path: notes/release-notes.md
+          prerelease: true
+          draft: true
+          files: artifacts/*
+
+      - name: Publish pre-release
+        if: ${{ needs.prepare.outputs.prerelease == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api --method PATCH "repos/${{ github.repository }}/releases/${{ steps.prerelease.outputs.id }}" -F draft=false
