@@ -67,6 +67,10 @@ to a path on the volume (e.g. `/app/config/trust-store`) so the reconciled store
 container restarts. Add `-p 18443:18443` when terminating TLS in-process. The image declares a
 `HEALTHCHECK` against `/api/v1/health`.
 
+If the server signs from a [file keystore](configuration#operations) rather than a PKCS#11 token,
+place the `.p12` on the mounted volume, point `operations.signingKeystorePath` at it, and pass its
+password with `-e OMNISIGN_SIGNING_KEYSTORE_PASSWORD="…"`.
+
 ## Bare-metal service
 
 `installDist` produces a self-contained directory with a launch script and all dependencies:

@@ -31,6 +31,7 @@ See [Algorithms](../algorithms.md) for the full list of supported algorithms.
 | Encryption algorithm | Signing key algorithm (see [full list](../algorithms.md#encryption-algorithms); auto-detected from certificate) | Auto    |
 | Signature timestamp  | Include a signature timestamp and revocation data (B-LT)                                                        | Off     |
 | Archival timestamp   | Include an archival document timestamp (B-LTA)                                                                  | Off     |
+| Allow signing with an expired certificate | Produce a signature even if the signing certificate has expired. **Such signatures fail validation**, so leave off unless you specifically need it | Off |
 
 The effective PAdES level is derived from the two timestamp checkboxes: neither → B-B,
 signature only → B-LT, both → B-LTA.
@@ -154,6 +155,12 @@ that are not discovered automatically.
 Each entry is the absolute file path to the middleware shared library (`.dll`, `.so`, or
 `.dylib`).
 
+Each registered library — and the add-library form — has a **Has its own PIN pad** toggle. Enable it
+for middleware that collects the PIN on its own secure pad or on-screen keyboard (some national eID
+clients work this way): OmniSign then shows no PIN dialog of its own for that library and lets the
+module drive PIN entry, avoiding a double prompt. Leave it off for middleware that accepts the PIN
+programmatically.
+
 :::tip Drop directory
 This section also shows an auto-discovery **drop directory**. Copy a PKCS#11 library file
 (`.dll` / `.so` / `.dylib`) into it and OmniSign discovers it automatically — no manual entry
@@ -218,8 +225,6 @@ configuration.
   settings, profiles, and trusted certificates and cannot be undone**, then lets you pick the
   archive to restore.
 
-This section is available on the desktop app only.
-
 ### Appearance (Linux)
 
 #### Window
@@ -239,13 +244,11 @@ platform.
 
 | Field             | Description                                                                                                                                                                                       |
 |-------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Region preset** | Sets the language and date format together in one step — *United Kingdom*, *United States*, *Česko*, or *Slovensko*. *System default* follows the OS/browser locale; *Custom* is shown (read-only) when the chosen language and format match no preset. |
+| **Region preset** | Sets the language and date format together in one step — *United Kingdom*, *United States*, *Česko*, or *Slovensko*. *System default* follows the OS locale; *Custom* is shown (read-only) when the chosen language and format match no preset. |
 | **Language**      | The UI language: *English*, *Čeština*, *Slovenčina*, or *System default* (follows the operating system).                                                                                          |
 | **Date format**   | How dates are shown: *System default*, `dd/mm/yyyy`, `dd.mm.yyyy`, `mm/dd/yyyy`, or ISO 8601 (`yyyy-mm-dd`). This preference is shared with the CLI's `config date-format` command.                |
 
 Changes **preview live** as you pick them, **take effect when you save**, and **revert if you close the
 dialog without saving**; the saved choice is restored on the next launch. Switching the language also
 re-renders the signature validation report in that language.
-
-On the **web app** the language follows the browser locale and cannot be forced.
 

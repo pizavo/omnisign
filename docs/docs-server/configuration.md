@@ -44,6 +44,7 @@ screen-shares; env vars stay in process memory).
 | `OMNISIGN_OIDC_<NAME>_CLIENT_SECRET`| Per-OIDC-provider `client_secret` (`<NAME>` = provider `name`, uppercased, non-alphanumerics → `_`) |
 | `OMNISIGN_TLS_KEYSTORE_PASSWORD`    | TLS keystore password (required when `tls:` is set)                |
 | `OMNISIGN_TLS_PRIVATE_KEY_PASSWORD` | TLS private-key password (optional; falls back to the keystore password) |
+| `OMNISIGN_SIGNING_KEYSTORE_PASSWORD`| File signing-keystore password (required when `operations.signingKeystorePath` is set with `SIGN` enabled) |
 | `OMNISIGN_EXTERNAL_URL`             | Public base URL used to build OAuth2 redirect URIs (recommended in production) |
 
 The TSA password used by [`signing.yml`](signing-policy) is also supplied from the environment, via a
@@ -78,7 +79,17 @@ to `VALIDATE` only; `SIGN` and `TIMESTAMP` are opt-in. See [Security → Operati
 operations:
   allowed: [VALIDATE]          # add SIGN and/or TIMESTAMP to enable them
   # certificateAliases: ["university-seal"]   # restrict signing to these aliases
+  # signingKeystorePath: "/etc/omnisign/signing.p12"   # sign from a PKCS#12 file (see below)
 ```
+
+`signingKeystorePath` lets the server sign from a PKCS#12 (`.p12`/`.pfx`) **file** instead of a
+PKCS#11 token/HSM. When set (with `SIGN` enabled), every sign request signs from this keystore, and
+`certificateAliases` selects the entry within it — a request omitting the alias uses the keystore's
+sole key. Its password comes from `OMNISIGN_SIGNING_KEYSTORE_PASSWORD` (see [Secrets](#secrets)).
+Setting the path without `SIGN` in `allowed`, or pointing it at a missing file, is rejected at
+startup. Leave it unset for a PKCS#11/HSM-backed deployment. The keystore's certificate(s) are also
+surfaced through [`GET /api/v1/certificates`](api-reference#operations) so remote clients can pick the
+server's signing identity.
 
 ### `proxy`
 
@@ -154,6 +165,19 @@ Use a volume separate from the read-only policy and certificate files.
 ### `maxFileSize`
 
 Maximum upload size in bytes. Defaults to `104857600` (100 MB).
+
+### `organizationName`
+
+Optional deploy-time branding label for the operator running this server (e.g.
+`"University of Ostrava"`). It is surfaced in the [`GET /api/v1/health`](api-reference#system) and
+[`GET /api/v1/capabilities`](api-reference#system) responses as `organizationName`, alongside a fixed
+`poweredBy: "OmniSign"`. Web and desktop clients compose it into the window title and toolbar (e.g.
+`University of Ostrava · OmniSign`). When omitted or blank, no operator label is published and clients
+show plain **OmniSign** — the product name is never replaceable, only prefixed.
+
+```yaml
+organizationName: "University of Ostrava"
+```
 
 ## Minimal example
 

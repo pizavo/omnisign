@@ -28,7 +28,7 @@ narrows them.
 global:
   defaultHashAlgorithm: SHA256          # SHA256|SHA384|SHA512|SHA3_256|SHA3_384|SHA3_512|WHIRLPOOL|RIPEMD160
   # defaultEncryptionAlgorithm: RSA_SSA_PSS   # omit to infer from the certificate key
-  defaultSignatureLevel: PADES_BASELINE_B     # B | T | LT | LTA
+  defaultSignatureLevel: PADES_BASELINE_B     # B | LT | LTA (T is a runtime-only fallback, rejected here)
   disabledHashAlgorithms: [RIPEMD160, WHIRLPOOL]
   # disabledEncryptionAlgorithms: [DSA]
   ocsp: { timeout: 30000 }
@@ -64,6 +64,11 @@ global:
   pkcs11ProbeTimeoutSeconds: 30
   trustedListRefreshIntervalHours: 24
 ```
+
+**`PADES_BASELINE_T` cannot be configured** — neither as `global.defaultSignatureLevel` nor as a
+profile's `signatureLevel`. The server rejects it at startup and points you to `PADES_BASELINE_LT`.
+B-T is only ever a *runtime fallback*, applied automatically when a B-LT sign cannot obtain revocation
+data; configuring it as a target would silently produce B-B.
 
 ### Trusted certificates
 

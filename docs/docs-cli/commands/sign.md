@@ -23,6 +23,7 @@ omnisign sign -f <input> -o <output> (-c <alias> | --keystore <file>) [options]
 | `--location <text>`         | Location of signing (embedded in the signature)                     |
 | `--contact <text>`          | Contact information of the signer (embedded in the signature)       |
 | `--no-timestamp`            | Omit the RFC 3161 timestamp — produces B-B instead of B-T or higher |
+| `--allow-expired-certificate` | Sign even if the signing certificate has expired. **Such signatures fail validation.** Env: `OMNISIGN_ALLOW_EXPIRED_CERTIFICATE` |
 | `--profile <name>`          | Use a named configuration profile for this operation                |
 | `--visible`                 | Add a visible signature appearance                                  |
 | `--vis-page <n>`            | Page for the visible signature (default: `1`)                       |
@@ -60,6 +61,24 @@ When you use `--keystore`, the password is resolved in this order:
 The password is kept in memory only for the run — never written to disk or the OS keychain. Prefer the
 prompt or the environment variable over passing it on the command line, where it can be visible in
 process listings.
+
+## Expired certificates
+
+By default, `sign` refuses to use a signing certificate that is past its `notAfter` date. Pass
+`--allow-expired-certificate` to sign anyway:
+
+```bash
+omnisign sign -f doc.pdf -o doc-signed.pdf -c "My Certificate" --allow-expired-certificate
+```
+
+:::warning
+A signature produced this way **will fail validation.** A B-level signature carries no timestamp to
+prove the certificate was still valid at signing time, so validators report the expired certificate.
+Use this only for narrow cases such as testing or a tolerated grace window.
+:::
+
+The same behavior can also be enabled per-profile or globally in the configuration (it lives under
+`validation.allowExpiredCertificate`); the flag turns it on for a single run.
 
 ## Examples
 
