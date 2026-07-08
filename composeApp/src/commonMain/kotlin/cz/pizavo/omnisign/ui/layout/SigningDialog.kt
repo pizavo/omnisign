@@ -27,6 +27,7 @@ import cz.pizavo.omnisign.ui.model.SigningDialogState
 import cz.pizavo.omnisign.ui.model.localized
 import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
 import cz.pizavo.omnisign.ui.platform.formattedDate
+import cz.pizavo.omnisign.ui.platform.isWebPlatform
 import cz.pizavo.omnisign.ui.platform.platformFilePath
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -63,15 +64,18 @@ import org.jetbrains.compose.resources.stringResource
  * @param onAbortRevocation Called when the user aborts after a revocation warning.
  * @param onAcceptRevocation Called when the user continues despite revocation warnings.
  * @param onUnlockToken Called with a token ID when the user clicks Unlock on a locked token.
- * @param onImportPkcs12 Called with the absolute file path when the user picks a PKCS#12 file to import.
+ * @param onImportPkcs12 Called with the absolute file path when the user picks a PKCS#12 file to
+ *   import. The upload control is desktop-only — hidden on the web target, which has no local
+ *   token access and signs server-side.
  * @param onRescan Called when the user clicks the rescan button in the header to force a fresh
- *   token discovery cycle.  Only shown in [SigningDialogState.Ready] when no discovery is
- *   currently in flight; the rescan button is mutually exclusive with the refreshing indicator.
+ *   token discovery cycle.  Shown in [SigningDialogState.Ready] when no discovery is currently in
+ *   flight (mutually exclusive with the refreshing indicator), and only where local token
+ *   discovery applies — hidden on the web target.
  * @param onShowDiagnostic Called when the user clicks any "Show diagnostic info" affordance —
- *   the always-visible info icon in the header, the link in the empty-state banner, or the
- *   action button on a "no PKCS#11 tokens detected" rescan toast.  Opens the diagnostic
- *   snapshot dialog so the user can see what PC/SC reports and where to add missing
- *   PKCS#11 library paths.
+ *   the info icon in the header, the link in the empty-state banner, or the action button on a
+ *   "no PKCS#11 tokens detected" rescan toast.  These PKCS#11 diagnostic affordances apply only
+ *   where local tokens do and are hidden on the web target.  Opens the diagnostic snapshot dialog
+ *   so the user can see what PC/SC reports and where to add missing PKCS#11 library paths.
  * @param onDismiss Called when the user cancels or closes the dialog.
  */
 @Composable
@@ -103,8 +107,8 @@ fun SigningDialog(
 				onClose = onDismiss,
 				closeable = !inProgress,
 				refreshing = readyState?.refreshing == true,
-				onRescan = if (readyState != null && !readyState.refreshing) onRescan else null,
-				onShowDiagnostic = if (readyState != null) onShowDiagnostic else null,
+				onRescan = if (readyState != null && !readyState.refreshing && !isWebPlatform()) onRescan else null,
+				onShowDiagnostic = if (readyState != null && !isWebPlatform()) onShowDiagnostic else null,
 			)
 
 			HorizontalDivider()
@@ -322,7 +326,7 @@ private fun SigningFormContent(
 		}
 		
 		if (state.certificates.isEmpty() && state.lockedTokens.isEmpty() && !state.refreshing) {
-			EmptyTokenBanner(onShowDiagnostic = onShowDiagnostic)
+			EmptyTokenBanner(onShowDiagnostic = if (!isWebPlatform()) onShowDiagnostic else null)
 		}
 
 		val certOptions = state.certificates.map { it.alias }
@@ -354,15 +358,17 @@ private fun SigningFormContent(
 					},
 					modifier = Modifier.weight(1f),
 				)
-				IconButton(
-					variant = IconButtonVariant.Ghost,
-					onClick = { pkcs12Picker.launch() },
-				) {
-					Icon(
-						painter = painterResource(Res.drawable.icon_upload),
-						contentDescription = stringResource(Res.string.signing_import_pkcs12_file),
-						modifier = Modifier.size(20.dp),
-					)
+				if (!isWebPlatform()) {
+					IconButton(
+						variant = IconButtonVariant.Ghost,
+						onClick = { pkcs12Picker.launch() },
+					) {
+						Icon(
+							painter = painterResource(Res.drawable.icon_upload),
+							contentDescription = stringResource(Res.string.signing_import_pkcs12_file),
+							modifier = Modifier.size(20.dp),
+						)
+					}
 				}
 			}
 			val selectedCert = state.certificates.find { it.alias == state.selectedAlias }
@@ -423,7 +429,7 @@ private fun SigningFormContent(
 				InfoTooltip(text = stringResource(Res.string.label_produces_b_lta))
 			}
 			
-			if (state.addArchivalTimestamp) {
+			if (state.addArchivalTimestamp && !isWebPlatform()) {
 				Row(
 					verticalAlignment = Alignment.CenterVertically,
 					horizontalArrangement = Arrangement.spacedBy(8.dp),

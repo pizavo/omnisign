@@ -5,6 +5,7 @@ import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.api.model.responses.toResponse
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
+import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import io.ktor.http.*
@@ -34,10 +35,16 @@ import org.koin.ktor.ext.inject
  *   global scope when `profile` is omitted), as a list of
  *   [TrustedCertificateResponse][cz.pizavo.omnisign.api.model.responses.TrustedCertificateResponse].
  *   Lets the web client display trust from the server's store, which it has no local copy of.
+ * - `GET /api/v1/config/export` — streams the full configuration archive (global settings, every
+ *   profile, and their trusted certificates) as a ZIP, identical to the desktop Backup export, so a
+ *   web client can download the server's configuration and import it into a desktop app. Contains no
+ *   secrets: the TSA password is `@Transient` (never serialized) and server-level secrets live
+ *   outside this `AppConfig`.
  */
 fun Route.configRoutes() {
 	val configRepository by inject<ConfigRepository>()
 	val trustStore by inject<TrustStore>()
+	val configArchivePort by inject<ConfigArchivePort>()
 
 	get("/api/v1/config/global") {
 		val appConfig = configRepository.getCurrentConfig()
@@ -103,6 +110,21 @@ fun Route.configRoutes() {
 		trustStore.list(TrustScope.of(profileName)).fold(
 			ifLeft = { error -> throw OperationException(error) },
 			ifRight = { certificates -> call.respond(certificates.map { it.toResponse() }) },
+		)
+	}
+
+	get("/api/v1/config/export") {
+		configArchivePort.exportFullConfig().fold(
+			ifLeft = { error -> throw OperationException(error) },
+			ifRight = { bytes ->
+				call.response.header(
+					HttpHeaders.ContentDisposition,
+					ContentDisposition.Attachment
+						.withParameter(ContentDisposition.Parameters.FileName, "omnisign-config.zip")
+						.toString(),
+				)
+				call.respondBytes(bytes, ContentType.Application.Zip)
+			},
 		)
 	}
 }
