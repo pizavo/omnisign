@@ -75,7 +75,7 @@ Combine the allowlist with [authentication](authentication) for any internet-fac
 
 - **Strict config parsing** — unknown `server.yml` keys fail startup so a typo can't silently disable
   a defense (see [Configuration](configuration)).
-- **Secrets via environment only** — JWT secret, OIDC client secrets, TLS and TSA passwords are never
-  read from YAML.
+- **Secrets via environment only** — JWT secret, OIDC client secrets, TLS, TSA, and file
+  signing-keystore passwords are never read from YAML.
 - Uploads are streamed to disk and bounded by `maxFileSize`; multiple file parts are rejected.
 - The `X-Powered-By` header is suppressed and a client-supplied `X-Request-Id` is length-bounded.

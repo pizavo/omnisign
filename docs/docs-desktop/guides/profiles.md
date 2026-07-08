@@ -63,6 +63,15 @@ The effective signature level is derived from the combination:
 
 ![Profile signature-level tri-state toggles](/img/desktop/profile-tristate-toggles.avif)
 
+### Expired certificates
+
+**Allow signing with an expired certificate** is a tri-state toggle (inherit / on / off) that
+overrides the global [signing default](settings.md#defaults) for operations using this profile.
+**Inherit** uses the global value; **on** lets a signature be produced even when the signing
+certificate has expired; **off** forbids it even when allowed globally. Such signatures **fail
+validation**, so reserve this for narrow cases. The flag follows the same operation → profile → global
+merge as every other setting.
+
 ### Timestamp server
 
 Override the global TSA for operations using this profile:

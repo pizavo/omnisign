@@ -55,6 +55,10 @@ Validate a PDF's signatures. Requires **`VALIDATE`** (enabled by default).
 full certificate chain — every certificate's parsed fields and extensions, plus which certificates
 are trusted and via which source (a trusted list, the global trust, or a profile's).
 
+The report is localized per request from the `Accept-Language` header (e.g. `cs`, `sk`), falling back
+to the server's default locale when the header is absent or names an unshipped language — so each
+caller can receive the report in its own language on a shared, multi-user server.
+
 ### `POST /api/v1/timestamp`
 
 Extend a signed PDF to a higher PAdES level (adds a document timestamp). Requires **`TIMESTAMP`**.
@@ -83,8 +87,10 @@ Requires **`TIMESTAMP`**. Field: `file` (required). **Response** `200`: a JSON
 ### `GET /api/v1/certificates`
 
 List the server's signing-capable certificates (filtered by `certificateAliases` when set), plus
-per-token warnings and locked-token entries. Requires **`SIGN`** because it reveals installed signing
-material. **Response** `200`: JSON.
+per-token warnings and locked-token entries. When the server is configured with a
+[file signing keystore](configuration#operations) (`operations.signingKeystorePath`), that keystore's
+certificate(s) are enumerated here too, so a remote client can select the server's signing identity.
+Requires **`SIGN`** because it reveals installed signing material. **Response** `200`: JSON.
 
 ## Configuration introspection
 
@@ -97,6 +103,8 @@ required when auth is enabled.
 | `GET /api/v1/config/profiles`         | All profiles (sorted by name).                       |
 | `GET /api/v1/config/profiles/{name}`  | One profile, or `404 PROFILE_NOT_FOUND`.             |
 | `GET /api/v1/config/resolved?profile={name}` | Effective config after merge (omit `profile` for global), or `404`/`422`. |
+| `GET /api/v1/config/trusted-certificates?profile={name}` | Trusted certificates for the global scope, or a profile's when `profile` is given. JSON array of `{ fingerprint, subjectDN, notBefore, notAfter, type }` (`type` ∈ `ANY`/`CA`/`TSA`). |
+| `GET /api/v1/config/export`           | The full configuration as a ZIP (`application/zip` attachment, `omnisign-config.zip`) — global settings, every profile, and their trusted certificates, identical to the desktop Backup export. Contains no secrets. |
 
 ## System
 
@@ -104,8 +112,8 @@ Always public.
 
 | Endpoint                     | Response                                                          |
 |------------------------------|------------------------------------------------------------------|
-| `GET /api/v1/health`         | `HealthResponse` (`version`) — for monitoring probes.            |
-| `GET /api/v1/capabilities`   | `CapabilitiesResponse` (`allowedOperations`, `profiles`, `maxFileSize`, `authEnabled`). With auth on, `profiles` is empty for unauthenticated callers. |
+| `GET /api/v1/health`         | `HealthResponse` (`status`, `version`, `poweredBy`, plus `organizationName` when [branding](configuration#organizationname) is set) — for monitoring probes. |
+| `GET /api/v1/capabilities`   | `CapabilitiesResponse` (`allowedOperations`, `profiles`, `maxFileSize`, `authEnabled`, `poweredBy`, plus `organizationName` when [branding](configuration#organizationname) is set). With auth on, `profiles` is empty for unauthenticated callers. |
 
 ## Authentication {#auth}
 

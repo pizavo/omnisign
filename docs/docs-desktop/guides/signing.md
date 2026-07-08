@@ -58,7 +58,10 @@ such a certificate straight away — the PIN is requested later, when you [sign]
 
 A token appears in a separate **Locked tokens** section only when it will **not** reveal its
 certificates without a login. Each locked token has an **Unlock** button that opens a secure PIN
-dialog; after unlocking, that token's certificates are added to the dropdown.
+dialog; after unlocking, that token's certificates are added to the dropdown. The unlocked session is
+reused for signing, so you are **not** prompted for the PIN a second time when you sign with a
+certificate from a token you already unlocked. (The PIN itself is never cached, and the session is
+dropped if the card or reader is removed.)
 
 ### Discovery warnings
 
@@ -148,8 +151,10 @@ Optional fields embedded in the PDF signature dictionary:
 
 ### Output file
 
-You choose where to save the signed document when you click **Sign** — a native **Save As**
-dialog opens, pre-filled with a suggested name based on the source document.
+You choose where to save the signed document at the **end** of the flow: once signing has completed
+and you have cleared any revocation warning, a native **Save As** dialog opens, pre-filled with a
+suggested name based on the source document. Because the file is written only at that final step,
+cancelling it writes nothing.
 
 ### Add to renewal job
 
@@ -164,12 +169,15 @@ remains verifiable indefinitely when combined with periodic re-timestamping.
 
 ## 5. Sign
 
-Click **Sign** and choose where to save the signed document in the **Save As** dialog. A
-progress indicator is shown while signing is in progress; the dialog cannot be dismissed during
-this phase.
+Click **Sign**. A progress indicator is shown while signing is in progress; the dialog cannot be
+dismissed during this phase.
 
 If you chose a certificate from a PIN-protected token that was listed without a PIN, OmniSign
 prompts you for the token PIN at this point.
+
+Once the signature is built — and after you have cleared any [revocation warning](#revocation-warning)
+— a native **Save As** dialog opens for you to choose where to write the signed PDF. The document is
+written only at this final step, so aborting or cancelling anywhere earlier leaves nothing on disk.
 
 ### Revocation warning
 
@@ -177,9 +185,9 @@ If the effective level is B-LT or B-LTA and revocation data (CRL/OCSP) cannot be
 obtained, OmniSign shows an intermediate **revocation warning** screen listing the affected
 certificates and warning details. You can:
 
-- **Abort** — discard the signed output.
-- **Continue** — accept the output despite missing revocation data. The signature may be at
-  a lower effective level than requested.
+- **Abort** — discard the signed output; nothing is written.
+- **Continue** — proceed to the **Save As** dialog and keep the output despite missing revocation
+  data. The signature may be at a lower effective level than requested.
 
 ![Signing revocation-warning screen](/img/desktop/signing-revocation-warning.avif)
 
