@@ -12,9 +12,13 @@ package cz.pizavo.omnisign.ui.model
  * @property canValidate Whether signature validation is offered (server `VALIDATE`).
  * @property canSign Whether the Sign affordance is offered (server `SIGN`).
  * @property canTimestamp Whether the Timestamp / extend affordance is offered (server `TIMESTAMP`).
+ * @property organizationName Deploy-time branding label of the operator running the server, from the
+ *   `GET /api/v1/capabilities` `organizationName`; `null` when the operator set none or there is no
+ *   server (desktop). Composed with the frontend deployer's label into the displayed title.
  */
 data class ServerCapabilities(
     val canValidate: Boolean = true,
     val canSign: Boolean = true,
     val canTimestamp: Boolean = true,
+    val organizationName: String? = null,
 )

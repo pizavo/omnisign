@@ -45,4 +45,14 @@ class ServerUrlResolverTest : FunSpec({
     test("malformed JSON falls back and is flagged as malformed") {
         resolveServerUrl("{ not json", default) shouldBe ResolvedServerUrl(default, malformedConfig = true)
     }
+
+    test("organizationName is surfaced when set") {
+        resolveServerUrl("""{"serverUrl":"https://x:1","organizationName":"University of Ostrava"}""", default) shouldBe
+            ResolvedServerUrl("https://x:1", malformedConfig = false, organizationName = "University of Ostrava")
+    }
+
+    test("a blank organizationName resolves to null") {
+        resolveServerUrl("""{"organizationName":"  "}""", default) shouldBe
+            ResolvedServerUrl(default, malformedConfig = false, organizationName = null)
+    }
 })

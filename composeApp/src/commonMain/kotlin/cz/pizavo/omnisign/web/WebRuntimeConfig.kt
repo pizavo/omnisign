@@ -16,8 +16,13 @@ import kotlinx.serialization.Serializable
  * @property serverUrl Origin the bundle should issue API requests against (e.g.
  *   `"https://omnisign.example.com:18443"`). Null or blank selects the build-time
  *   fallback.
+ * @property organizationName Optional provider/organization label shown as deploy-time branding
+ *   (e.g. `"University of Ostrava"`). When set, the UI reads `"<organizationName> · OmniSign"` and a
+ *   `powered by OmniSign` mark; null or blank leaves the plain OmniSign branding. The `OmniSign` part
+ *   is never configurable — only this label is — so attribution is preserved.
  */
 @Serializable
 data class WebRuntimeConfig(
     val serverUrl: String? = null,
+    val organizationName: String? = null,
 )

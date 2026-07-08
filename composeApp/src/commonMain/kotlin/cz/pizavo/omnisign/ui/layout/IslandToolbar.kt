@@ -9,6 +9,9 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
+import cz.pizavo.omnisign.ui.branding.LocalOrganizationName
+import cz.pizavo.omnisign.ui.branding.LocalServerOrganizationName
+import cz.pizavo.omnisign.ui.branding.brandedTitle
 import cz.pizavo.omnisign.ui.platform.*
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.DrawableResource
@@ -293,17 +296,20 @@ private fun ToolbarActionButton(
  * Standalone OmniSign logo icon used in the toolbar.
  *
  * Extracted to avoid duplication between the leading (Windows/Linux) and
- * trailing (macOS) placements.
+ * trailing (macOS) placements. Its tooltip and accessibility label mirror the browser tab title via
+ * [brandedTitle], so under a provider's deploy-time branding they read the same de-duplicated
+ * `"<deployer> · <operator> · OmniSign"` chain, and plain `"OmniSign"` otherwise.
  */
 @Composable
 private fun OmniSignLogoIcon() {
+	val title = brandedTitle(LocalOrganizationName.current, LocalServerOrganizationName.current)
 	TooltipBox(
-		tooltip = { Tooltip { Text(text = "OmniSign") } },
+		tooltip = { Tooltip { Text(text = title) } },
 		state = rememberTooltipState(),
 	) {
 		Icon(
 			painter = painterResource(Res.drawable.icon_omnisign),
-			contentDescription = "OmniSign",
+			contentDescription = title,
 			modifier = Modifier.size(22.dp),
 			tint = Color.Unspecified,
 		)

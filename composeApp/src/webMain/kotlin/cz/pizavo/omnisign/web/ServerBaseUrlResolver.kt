@@ -30,9 +30,9 @@ private fun consoleWarn(message: String): Unit =
     js("console.warn(message)")
 
 /**
- * Resolves the OmniSign server base URL for the web target at runtime by fetching
- * an optional `web-config.json` served next to the bundle and delegating the
- * decision to [resolveServerUrl].
+ * Resolves the OmniSign web target's runtime configuration — the server base URL plus any
+ * deploy-time branding — by fetching an optional `web-config.json` served next to the bundle and
+ * delegating the parse to [resolveServerUrl].
  *
  * Lets an operator retarget a pre-built bundle without recompiling. Falls back to
  * [buildTimeDefault] when the file is missing, blank, malformed, or unreachable
@@ -42,9 +42,10 @@ private fun consoleWarn(message: String): Unit =
  *
  * @param buildTimeDefault Server URL baked at build time (from
  *   [cz.pizavo.omnisign.BuildConfig.SERVER_URL]).
- * @return The server base URL to hand to [cz.pizavo.omnisign.di.webDataModule].
+ * @return The resolved [ResolvedServerUrl]: the base URL for
+ *   [cz.pizavo.omnisign.di.webDataModule] plus the optional `organizationName` branding.
  */
-suspend fun resolveServerBaseUrl(buildTimeDefault: String): String {
+suspend fun resolveWebRuntimeConfig(buildTimeDefault: String): ResolvedServerUrl {
     val configText: String? = try {
         withTimeoutOrNull(CONFIG_FETCH_TIMEOUT_MS.milliseconds) {
             val response: JsString = fetchWebConfigText(WEB_CONFIG_PATH).await()
@@ -59,5 +60,5 @@ suspend fun resolveServerBaseUrl(buildTimeDefault: String): String {
     if (resolution.malformedConfig) {
         consoleWarn("OmniSign: $WEB_CONFIG_PATH is present but could not be parsed; using the built-in server URL.")
     }
-    return resolution.url
+    return resolution
 }

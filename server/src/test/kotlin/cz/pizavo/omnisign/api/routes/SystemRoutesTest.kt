@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.api.routes
 
 import cz.pizavo.omnisign.api.model.responses.CapabilitiesResponse
+import cz.pizavo.omnisign.api.model.responses.HealthResponse
 import cz.pizavo.omnisign.auth.AuthenticatedPrincipal
 import cz.pizavo.omnisign.auth.JwtSessionService
 import cz.pizavo.omnisign.config.AuthConfig
@@ -176,6 +177,45 @@ class SystemRoutesTest : FunSpec({
             response.status shouldBe HttpStatusCode.OK
             val body = json.decodeFromString<CapabilitiesResponse>(response.bodyAsText())
             body.authEnabled shouldBe true
+        }
+    }
+
+    test("GET /api/v1/health returns poweredBy OmniSign and no organization name by default") {
+        testApplication {
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+            val response = client.get("/api/v1/health")
+            val body = json.decodeFromString<HealthResponse>(response.bodyAsText())
+            body.poweredBy shouldBe "OmniSign"
+            body.organizationName shouldBe null
+        }
+    }
+
+    test("GET /api/v1/health surfaces the configured operator organization name") {
+        testApplication {
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), organizationName = "Microsoft", operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+            val response = client.get("/api/v1/health")
+            val body = json.decodeFromString<HealthResponse>(response.bodyAsText())
+            body.organizationName shouldBe "Microsoft"
+            body.poweredBy shouldBe "OmniSign"
+        }
+    }
+
+    test("GET /api/v1/capabilities surfaces poweredBy and the configured operator organization name") {
+        testApplication {
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), organizationName = "Microsoft", auth = null, operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+            val response = client.get("/api/v1/capabilities")
+            val body = json.decodeFromString<CapabilitiesResponse>(response.bodyAsText())
+            body.organizationName shouldBe "Microsoft"
+            body.poweredBy shouldBe "OmniSign"
+        }
+    }
+
+    test("GET /api/v1/capabilities publishes a blank operator organization name as null") {
+        testApplication {
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), organizationName = "   ", operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+            val response = client.get("/api/v1/capabilities")
+            val body = json.decodeFromString<CapabilitiesResponse>(response.bodyAsText())
+            body.organizationName shouldBe null
         }
     }
 })

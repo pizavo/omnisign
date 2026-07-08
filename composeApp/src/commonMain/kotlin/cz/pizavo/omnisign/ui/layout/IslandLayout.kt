@@ -22,6 +22,9 @@ import cz.pizavo.omnisign.domain.service.TokenService
 import cz.pizavo.omnisign.domain.usecase.*
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
+import cz.pizavo.omnisign.ui.branding.LocalOrganizationName
+import cz.pizavo.omnisign.ui.branding.LocalServerOrganizationName
+import cz.pizavo.omnisign.ui.branding.brandedTitle
 import cz.pizavo.omnisign.ui.model.*
 import cz.pizavo.omnisign.ui.platform.*
 import cz.pizavo.omnisign.ui.toast.LocalToastService
@@ -91,6 +94,9 @@ fun IslandLayout(
 		CapabilitiesViewModel(KoinPlatform.getKoinOrNull()?.getOrNull<CapabilitiesRepository>())
 	}
 	val capabilities by capabilitiesViewModel.capabilities.collectAsState()
+	val serverOrganizationName = capabilities.organizationName
+	val documentTitle = brandedTitle(LocalOrganizationName.current, serverOrganizationName)
+	LaunchedEffect(documentTitle) { updateDocumentTitle(documentTitle) }
 	
 	val signatureViewModel: SignatureViewModel? = remember {
 		runCatching {
@@ -298,6 +304,7 @@ fun IslandLayout(
 	CompositionLocalProvider(
 		LocalToastService provides toastService,
 		LocalTrustedCertificateAdder provides trustedCertAdder,
+		LocalServerOrganizationName provides serverOrganizationName,
 	) {
 		Box(modifier = modifier.fillMaxSize()) {
 			Column(modifier = Modifier.fillMaxSize()) {

@@ -32,12 +32,13 @@ class CapabilitiesViewModelTest : FunSpec({
         authEnabled = false,
     )
 
-    test("null repository leaves every operation permitted (desktop)") {
+    test("null repository leaves every operation permitted and unbranded (desktop)") {
         val vm = CapabilitiesViewModel(capabilitiesRepository = null, ioDispatcher = testDispatcher)
         val caps = vm.capabilities.value
         caps.canValidate shouldBe true
         caps.canSign shouldBe true
         caps.canTimestamp shouldBe true
+        caps.organizationName shouldBe null
     }
 
     test("maps allowedOperations to the matching flags") {
@@ -96,6 +97,42 @@ class CapabilitiesViewModelTest : FunSpec({
             caps.canValidate shouldBe true
             caps.canSign shouldBe true
             caps.canTimestamp shouldBe true
+        }
+    }
+
+    test("exposes the server operator organization name from the response") {
+        runTest(testDispatcher) {
+            val repo = mockk<CapabilitiesRepository>()
+            coEvery { repo.get() } returns CapabilitiesResponse(
+                allowedOperations = listOf("VALIDATE"),
+                profiles = emptyList(),
+                maxFileSize = 1024,
+                authEnabled = false,
+                organizationName = "Microsoft",
+            )
+
+            val vm = CapabilitiesViewModel(repo, testDispatcher)
+            advanceUntilIdle()
+
+            vm.capabilities.value.organizationName shouldBe "Microsoft"
+        }
+    }
+
+    test("a blank server operator organization name is normalized to null") {
+        runTest(testDispatcher) {
+            val repo = mockk<CapabilitiesRepository>()
+            coEvery { repo.get() } returns CapabilitiesResponse(
+                allowedOperations = listOf("VALIDATE"),
+                profiles = emptyList(),
+                maxFileSize = 1024,
+                authEnabled = false,
+                organizationName = "   ",
+            )
+
+            val vm = CapabilitiesViewModel(repo, testDispatcher)
+            advanceUntilIdle()
+
+            vm.capabilities.value.organizationName shouldBe null
         }
     }
 })

@@ -28,7 +28,11 @@ fun resolveServerUrl(configText: String?, buildTimeDefault: String): ResolvedSer
     return try {
         val config = webConfigJson.decodeFromString<WebRuntimeConfig>(configText)
         val url = config.serverUrl?.takeIf { it.isNotBlank() } ?: buildTimeDefault
-        ResolvedServerUrl(url, malformedConfig = false)
+        ResolvedServerUrl(
+            url = url,
+            malformedConfig = false,
+            organizationName = config.organizationName?.takeIf { it.isNotBlank() },
+        )
     } catch (_: SerializationException) {
         ResolvedServerUrl(buildTimeDefault, malformedConfig = true)
     }
