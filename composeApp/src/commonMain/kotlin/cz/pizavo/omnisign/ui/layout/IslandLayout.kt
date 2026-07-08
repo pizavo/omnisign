@@ -240,7 +240,8 @@ fun IslandLayout(
 	}).collectAsState()
 	
 	val tlBuilderViewModel: TlBuilderViewModel? = remember {
-		runCatching {
+		if (isWebPlatform()) null
+		else runCatching {
 			val koin = KoinPlatform.getKoinOrNull() ?: return@runCatching null
 			TlBuilderViewModel(koin.getOrNull<TrustedListCompilerPort>())
 		}.recover { if (it is NoDefinitionFoundException || it.cause is NoDefinitionFoundException) null else throw it }.getOrNull()

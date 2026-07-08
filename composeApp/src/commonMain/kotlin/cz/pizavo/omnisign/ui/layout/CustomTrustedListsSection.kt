@@ -31,6 +31,7 @@ import cz.pizavo.omnisign.lumo.components.Tooltip
 import cz.pizavo.omnisign.lumo.components.TooltipBox
 import cz.pizavo.omnisign.lumo.components.rememberTooltipState
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
+import cz.pizavo.omnisign.ui.platform.isWebPlatform
 import cz.pizavo.omnisign.ui.platform.platformFilePath
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
@@ -85,14 +86,16 @@ fun CustomTrustedListsSection(
 		}
 	}
 
-	Spacer(modifier = Modifier.height(12.dp))
+	if (!isWebPlatform()) {
+		Spacer(modifier = Modifier.height(12.dp))
 
-	TrustedListAddForm(
-		onAdd = onAdd,
-		error = addError,
-		onClearError = onClearError,
-		onError = onError,
-	)
+		TrustedListAddForm(
+			onAdd = onAdd,
+			error = addError,
+			onClearError = onClearError,
+			onError = onError,
+		)
+	}
 
 	if (onBuild != null) {
 		Spacer(modifier = Modifier.height(12.dp))

@@ -42,6 +42,7 @@ import cz.pizavo.omnisign.ui.model.TrustedCertAddError
 import cz.pizavo.omnisign.ui.model.resolve
 import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
 import cz.pizavo.omnisign.ui.platform.formattedDateTime
+import cz.pizavo.omnisign.ui.platform.isWebPlatform
 import cz.pizavo.omnisign.ui.platform.openInFileExplorer
 import cz.pizavo.omnisign.ui.platform.platformFilePath
 import cz.pizavo.omnisign.ui.platform.resolvePkcs11DropDirectory
@@ -513,11 +514,13 @@ private fun SettingsContentPanel(
 			SettingsCategory.Scheduler -> SchedulerSection(state = state, onFieldChange = onFieldChange)
 			
 			SettingsCategory.Backup,
-			SettingsCategory.ConfigBackup -> ConfigBackupSection(
-				enabled = backupEnabled,
-				onExport = onExportConfig,
-				onImport = onImportConfig,
-			)
+			SettingsCategory.ConfigBackup -> CompositionLocalProvider(LocalReadOnly provides false) {
+				ConfigBackupSection(
+					enabled = backupEnabled,
+					onExport = onExportConfig,
+					onImport = onImportConfig,
+				)
+			}
 
 			SettingsCategory.Appearance,
 			SettingsCategory.WindowTitleBar -> AppearanceWindowSection(state = state, onFieldChange = onFieldChange)
@@ -611,20 +614,22 @@ private fun ConfigBackupSection(
 				)
 			}
 		}
-		TooltipBox(
-			tooltip = { Tooltip { Text(text = stringResource(Res.string.settings_backup_import_tooltip)) } },
-			state = rememberTooltipState(),
-		) {
-			IconButton(
-				variant = IconButtonVariant.PrimaryOutlined,
-				enabled = enabled,
-				onClick = { confirmingImport = true },
+		if (!isWebPlatform()) {
+			TooltipBox(
+				tooltip = { Tooltip { Text(text = stringResource(Res.string.settings_backup_import_tooltip)) } },
+				state = rememberTooltipState(),
 			) {
-				Icon(
-					painter = painterResource(Res.drawable.icon_upload),
-					contentDescription = stringResource(Res.string.settings_backup_import_description),
-					modifier = Modifier.size(20.dp),
-				)
+				IconButton(
+					variant = IconButtonVariant.PrimaryOutlined,
+					enabled = enabled,
+					onClick = { confirmingImport = true },
+				) {
+					Icon(
+						painter = painterResource(Res.drawable.icon_upload),
+						contentDescription = stringResource(Res.string.settings_backup_import_description),
+						modifier = Modifier.size(20.dp),
+					)
+				}
 			}
 		}
 	}
@@ -1082,21 +1087,23 @@ private fun ValidationPolicySection(
 				color = LumoTheme.colors.textSecondary,
 			)
 		}
-		TooltipBox(
-			tooltip = { Tooltip { Text(text = stringResource(Res.string.settings_validation_refresh_tl_tooltip)) } },
-			state = rememberTooltipState(),
-		) {
-			IconButton(
-				variant = IconButtonVariant.Ghost,
-				enabled = !trustedListRefreshing,
-				loading = trustedListRefreshing,
-				onClick = onRefreshTrustedLists,
+		if (!isWebPlatform()) {
+			TooltipBox(
+				tooltip = { Tooltip { Text(text = stringResource(Res.string.settings_validation_refresh_tl_tooltip)) } },
+				state = rememberTooltipState(),
 			) {
-				Icon(
-					painter = painterResource(Res.drawable.icon_refresh),
-					contentDescription = stringResource(Res.string.settings_validation_refresh_tl_tooltip),
-					modifier = Modifier.size(20.dp),
-				)
+				IconButton(
+					variant = IconButtonVariant.Ghost,
+					enabled = !trustedListRefreshing,
+					loading = trustedListRefreshing,
+					onClick = onRefreshTrustedLists,
+				) {
+					Icon(
+						painter = painterResource(Res.drawable.icon_refresh),
+						contentDescription = stringResource(Res.string.settings_validation_refresh_tl_tooltip),
+						modifier = Modifier.size(20.dp),
+					)
+				}
 			}
 		}
 	}

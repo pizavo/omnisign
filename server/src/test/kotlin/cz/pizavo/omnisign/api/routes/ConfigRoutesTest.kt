@@ -119,6 +119,19 @@ class ConfigRoutesTest : FunSpec({
 			json.decodeFromString<List<TrustedCertificateResponse>>(response.bodyAsText())
 		}
 	}
+
+	test("GET /api/v1/config/export returns a ZIP configuration archive as an attachment") {
+		testApplication {
+			application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+			val response = client.get("/api/v1/config/export")
+			response.status shouldBe HttpStatusCode.OK
+			response.contentType()?.withoutParameters() shouldBe ContentType.Application.Zip
+			(response.headers[HttpHeaders.ContentDisposition]?.contains("omnisign-config.zip") == true) shouldBe true
+			val bytes = response.readRawBytes()
+			// ZIP local-file-header magic "PK"
+			(bytes.size >= 4 && bytes[0] == 'P'.code.toByte() && bytes[1] == 'K'.code.toByte()) shouldBe true
+		}
+	}
 })
 
 

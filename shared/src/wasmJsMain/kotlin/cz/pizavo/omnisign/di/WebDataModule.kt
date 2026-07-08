@@ -2,10 +2,12 @@ package cz.pizavo.omnisign.di
 
 import cz.pizavo.omnisign.data.remote.RemoteArchivingRepository
 import cz.pizavo.omnisign.data.remote.RemoteCapabilitiesRepository
+import cz.pizavo.omnisign.data.remote.RemoteConfigArchive
 import cz.pizavo.omnisign.data.remote.RemoteConfigRepository
 import cz.pizavo.omnisign.data.remote.RemoteSigningRepository
 import cz.pizavo.omnisign.data.remote.RemoteTrustStore
 import cz.pizavo.omnisign.data.remote.RemoteValidationRepository
+import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.CapabilitiesRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -74,4 +76,5 @@ fun webDataModule(serverBaseUrl: String, languageProvider: () -> String? = { nul
     single<SigningRepository> { RemoteSigningRepository(get()) }
     single<ArchivingRepository> { RemoteArchivingRepository(get()) }
     single<TrustStore> { RemoteTrustStore(get()) }
+    single<ConfigArchivePort> { RemoteConfigArchive(get()) }
 }
