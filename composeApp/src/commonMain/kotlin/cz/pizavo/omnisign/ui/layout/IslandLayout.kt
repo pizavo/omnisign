@@ -281,7 +281,7 @@ fun IslandLayout(
 	val trustStore = remember { KoinPlatform.getKoinOrNull()?.getOrNull<TrustStore>() }
 	val activeProfileName = profileState.activeProfile
 	val trustedCertAdder = remember(trustStore, activeProfileName) {
-		trustStore?.let { store ->
+		trustStore?.takeIf { !it.readOnly }?.let { store ->
 			TrustedCertificateAdder(activeProfileName = activeProfileName) { der, toActiveProfile, type ->
 				withContext(Dispatchers.Default) {
 					store.add(

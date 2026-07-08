@@ -1,9 +1,12 @@
 package cz.pizavo.omnisign.api.routes
 
+import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.api.model.responses.toResponse
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.domain.repository.TrustStore
 import io.ktor.http.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -26,9 +29,15 @@ import org.koin.ktor.ext.inject
  * - `GET /api/v1/config/profiles/{name}` — returns a single [ProfileConfigResponse][cz.pizavo.omnisign.api.model.responses.ProfileConfigResponse] or `404`.
  * - `GET /api/v1/config/resolved?profile={name}` — returns [ResolvedConfigResponse][cz.pizavo.omnisign.api.model.responses.ResolvedConfigResponse]
  *   for the given profile (or global defaults when `profile` is omitted), or `404` / `422` on error.
+ * - `GET /api/v1/config/trusted-certificates?profile={name}` — returns the directly-trusted
+ *   certificates the server validates with in the requested scope (the named profile scope, or the
+ *   global scope when `profile` is omitted), as a list of
+ *   [TrustedCertificateResponse][cz.pizavo.omnisign.api.model.responses.TrustedCertificateResponse].
+ *   Lets the web client display trust from the server's store, which it has no local copy of.
  */
 fun Route.configRoutes() {
 	val configRepository by inject<ConfigRepository>()
+	val trustStore by inject<TrustStore>()
 
 	get("/api/v1/config/global") {
 		val appConfig = configRepository.getCurrentConfig()
@@ -86,6 +95,14 @@ fun Route.configRoutes() {
 			ifRight = { resolved ->
 				call.respond(resolved.toResponse(profileName))
 			},
+		)
+	}
+
+	get("/api/v1/config/trusted-certificates") {
+		val profileName = call.request.queryParameters["profile"]
+		trustStore.list(TrustScope.of(profileName)).fold(
+			ifLeft = { error -> throw OperationException(error) },
+			ifRight = { certificates -> call.respond(certificates.map { it.toResponse() }) },
 		)
 	}
 }

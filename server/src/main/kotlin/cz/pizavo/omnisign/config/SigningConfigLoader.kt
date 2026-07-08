@@ -10,6 +10,7 @@ import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.value.Sensitive
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -62,8 +63,9 @@ private abstract class TimestampServerConfigMixin {
  *
  * **Fail-fast.** A configured-but-missing file, a malformed/unknown-key document, a missing
  * referenced profile file or directory, a duplicate profile name, an unset environment
- * variable referenced by a value, or a `credentialKey` all throw, so a misconfiguration stops
- * the server at startup instead of surfacing on the first request.
+ * variable referenced by a value, a `credentialKey`, or an explicitly-configured
+ * `PADES_BASELINE_T` signature level all throw, so a misconfiguration stops the server at
+ * startup instead of surfacing on the first request.
  *
  * @param env Environment-variable resolver, injectable for testing. Defaults to the process
  *   environment.
@@ -116,7 +118,8 @@ class SigningConfigLoader(private val env: (String) -> String? = System::getenv)
 
 	/**
 	 * Fold [signingConfig] into an [AppConfig], resolving and merging every profile source
-	 * relative to [baseDir], then reject any unsupported keyring credential.
+	 * relative to [baseDir], then reject any unsupported keyring credential or explicitly-configured
+	 * B-T signature level.
 	 *
 	 * @param signingConfig Parsed provider schema.
 	 * @param baseDir Directory the relative `files` / `directories` paths resolve against.
@@ -158,6 +161,7 @@ class SigningConfigLoader(private val env: (String) -> String? = System::getenv)
 
 		val appConfig = AppConfig(global = signingConfig.global, profiles = profiles)
 		rejectKeyringCredentials(appConfig)
+		rejectExplicitBaselineT(appConfig)
 		return appConfig
 	}
 
@@ -183,6 +187,35 @@ class SigningConfigLoader(private val env: (String) -> String? = System::getenv)
 			"timestampServer.credentialKey (OS keyring lookup) is not supported on the server " +
 				"($source). Supply the TSA password from the environment via " +
 				"password: \"\${ENV_VAR}\" instead."
+		}
+	}
+
+	/**
+	 * Reject an explicitly-configured [SignatureLevel.PADES_BASELINE_T] on the global default or any
+	 * profile. B-T is never a configuration target — it is only reached at runtime as a degradation,
+	 * applied automatically when a B-LT signature cannot obtain revocation data. A provider that wants
+	 * a timestamp configures [SignatureLevel.PADES_BASELINE_LT]; if revocation is unavailable the
+	 * signature degrades to B-T on its own (surfaced via the signing result's revocation warning).
+	 * This also keeps the server consistent with the desktop UI, whose timestamp toggles can only ever
+	 * produce B, B-LT, or B-LTA.
+	 *
+	 * @param config The assembled configuration to check.
+	 */
+	private fun rejectExplicitBaselineT(config: AppConfig) {
+		requireNotBaselineT(config.global.defaultSignatureLevel, "global defaultSignatureLevel")
+		config.profiles.values.forEach { requireNotBaselineT(it.signatureLevel, "profile '${it.name}'") }
+	}
+
+	/**
+	 * Throw when [level] is [SignatureLevel.PADES_BASELINE_T].
+	 *
+	 * @param level The configured signature level to check, or `null` (a profile inheriting the global).
+	 * @param source Human-readable origin used in the error message.
+	 */
+	private fun requireNotBaselineT(level: SignatureLevel?, source: String) {
+		require(level != SignatureLevel.PADES_BASELINE_T) {
+			"signatureLevel PADES_BASELINE_T cannot be configured ($source). Use PADES_BASELINE_LT — " +
+				"B-T is only a runtime fallback, applied automatically when revocation data cannot be obtained."
 		}
 	}
 

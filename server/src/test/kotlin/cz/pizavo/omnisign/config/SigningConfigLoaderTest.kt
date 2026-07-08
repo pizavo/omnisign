@@ -54,6 +54,31 @@ profiles:
 		config.profiles.getValue("archival").signatureLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
 	}
 
+	test("load rejects a profile explicitly configured with PADES_BASELINE_T") {
+		val dir = newDir()
+		val file = dir.put("signing.yml", """
+profiles:
+  inline:
+    - name: timestamped
+      signatureLevel: PADES_BASELINE_T
+""")
+		val message = shouldThrow<IllegalArgumentException> { loader.load(file.absolutePath) }.message
+		message.shouldNotBeNull()
+		message shouldContain "PADES_BASELINE_T"
+		message shouldContain "timestamped"
+	}
+
+	test("load rejects a global default of PADES_BASELINE_T") {
+		val dir = newDir()
+		val file = dir.put("signing.yml", """
+global:
+  defaultSignatureLevel: PADES_BASELINE_T
+""")
+		val message = shouldThrow<IllegalArgumentException> { loader.load(file.absolutePath) }.message
+		message.shouldNotBeNull()
+		message shouldContain "PADES_BASELINE_T"
+	}
+
 	test("load resolves a profile file referenced by a relative path") {
 		val dir = newDir()
 		dir.put("profiles/archival.yml", "name: archival\nsignatureLevel: PADES_BASELINE_LTA\n")

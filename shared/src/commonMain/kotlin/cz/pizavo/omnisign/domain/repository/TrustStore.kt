@@ -19,6 +19,14 @@ import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
  */
 interface TrustStore {
 	/**
+	 * Whether this store rejects mutation. `false` for the app-managed local store (desktop, CLI,
+	 * server); `true` for a read-only remote view — the web client, which reads the trust the server
+	 * validates with and cannot modify it. UI edit affordances gate on this so a read-only store never
+	 * presents controls whose writes would fail.
+	 */
+	val readOnly: Boolean get() = false
+
+	/**
 	 * Import [certBytes] (PEM or DER) into [scope] with the given [type].
 	 *
 	 * The bytes are parsed, re-encoded to canonical DER, and stored once under their SHA-256

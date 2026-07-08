@@ -250,6 +250,8 @@ fun ProfileEditPanel(
                     style = LumoTheme.typography.body2,
                     color = LumoTheme.colors.textSecondary,
                 )
+            } else if (readOnly) {
+                TrustedCertificateList(certificates = state.trustedCertificates)
             } else {
                 TrustedCertificatesSection(
                     certificates = state.trustedCertificates,

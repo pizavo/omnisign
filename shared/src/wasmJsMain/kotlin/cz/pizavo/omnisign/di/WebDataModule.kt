@@ -4,11 +4,13 @@ import cz.pizavo.omnisign.data.remote.RemoteArchivingRepository
 import cz.pizavo.omnisign.data.remote.RemoteCapabilitiesRepository
 import cz.pizavo.omnisign.data.remote.RemoteConfigRepository
 import cz.pizavo.omnisign.data.remote.RemoteSigningRepository
+import cz.pizavo.omnisign.data.remote.RemoteTrustStore
 import cz.pizavo.omnisign.data.remote.RemoteValidationRepository
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.CapabilitiesRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.SigningRepository
+import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.repository.ValidationRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -33,7 +35,9 @@ import org.koin.dsl.module
  *
  * Wires [CapabilitiesRepository], [ValidationRepository], [ConfigRepository],
  * [SigningRepository], and [ArchivingRepository] against their remote-backed
- * implementations.
+ * implementations, plus a read-only [cz.pizavo.omnisign.domain.repository.TrustStore]
+ * ([RemoteTrustStore]) so the trusted-certificate panels show exactly the trust the
+ * server validates with.
  *
  * @param serverBaseUrl Origin of the OmniSign server (e.g.
  *   `"https://omnisign.example.com"`). All HTTP requests are issued relative
@@ -69,4 +73,5 @@ fun webDataModule(serverBaseUrl: String, languageProvider: () -> String? = { nul
     single<ConfigRepository> { RemoteConfigRepository(get(), get()) }
     single<SigningRepository> { RemoteSigningRepository(get()) }
     single<ArchivingRepository> { RemoteArchivingRepository(get()) }
+    single<TrustStore> { RemoteTrustStore(get()) }
 }
