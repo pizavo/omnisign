@@ -17,11 +17,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.unit.dp
+import cz.pizavo.omnisign.branding.PRODUCT_NAME
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Button
 import cz.pizavo.omnisign.lumo.components.ButtonVariant
 import cz.pizavo.omnisign.lumo.components.Surface
 import cz.pizavo.omnisign.lumo.components.Text
+import cz.pizavo.omnisign.ui.branding.LocalOrganizationName
+import cz.pizavo.omnisign.ui.branding.LocalServerOrganizationName
+import cz.pizavo.omnisign.ui.branding.organizationChainLabel
 import cz.pizavo.omnisign.ui.model.PdfViewerState
 import cz.pizavo.omnisign.ui.platform.rememberPdfPageBitmap
 import kotlin.math.roundToInt
@@ -152,18 +156,46 @@ fun PdfViewerContent(
 
 /**
  * Placeholder shown when no PDF document has been opened yet.
+ *
+ * Under a provider's deploy-time branding it shows the de-duplicated provider chain (frontend deployer
+ * from [LocalOrganizationName], server operator from [LocalServerOrganizationName]) with a fixed
+ * `powered by OmniSign` mark above the open-a-file prompt; unbranded (desktop, or web with no provider
+ * label) it is just the prompt.
  */
 @Composable
 private fun NoDocumentPlaceholder() {
+    val organizationLabel = organizationChainLabel(LocalOrganizationName.current, LocalServerOrganizationName.current)
     Box(
         modifier = Modifier.fillMaxSize(),
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = stringResource(Res.string.pdfviewer_no_document_prompt),
-            style = LumoTheme.typography.h2,
-            color = LumoTheme.colors.textSecondary,
-        )
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(24.dp),
+        ) {
+            if (organizationLabel != null) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(2.dp),
+                ) {
+                    Text(
+                        text = organizationLabel,
+                        style = LumoTheme.typography.h1,
+                        color = LumoTheme.colors.onBackground,
+                    )
+                    Text(
+                        text = stringResource(Res.string.branding_powered_by, PRODUCT_NAME),
+                        style = LumoTheme.typography.body2,
+                        color = LumoTheme.colors.textSecondary,
+                    )
+                }
+            }
+            Text(
+                text = stringResource(Res.string.pdfviewer_no_document_prompt),
+                style = LumoTheme.typography.h2,
+                color = LumoTheme.colors.textSecondary,
+            )
+        }
     }
 }
 

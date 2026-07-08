@@ -8,6 +8,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
 import cz.pizavo.omnisign.lumo.LumoTheme
+import cz.pizavo.omnisign.ui.branding.LocalOrganizationName
 import cz.pizavo.omnisign.ui.layout.IslandLayout
 import cz.pizavo.omnisign.ui.platform.LocalAppDateFormat
 import cz.pizavo.omnisign.ui.platform.LocalAppLocale
@@ -37,10 +38,15 @@ import cz.pizavo.omnisign.ui.platform.saveThemePreference
  * [saveFormatPreference] only when the user saves it — reverting to the value held at open on
  * cancel — which is why the dialog drives them through separate apply and persist callbacks. A
  * `null` language tag follows the system/browser locale.
+ *
+ * @param organizationName Deploy-time branding label of the party that deployed this frontend (web
+ *   only; `null` on desktop), provided through [LocalOrganizationName]. It is combined with the server
+ *   operator's label (from the capabilities) and the fixed OmniSign name to compose the title, so the
+ *   toolbar logo tooltip and the no-document branding block read the same de-duplicated chain.
  */
 @Composable
 @Preview
-fun App() {
+fun App(organizationName: String? = null) {
     val systemDark = isSystemInDarkTheme()
     val initialPreferences = remember { loadUiPreferences() }
     var isDarkTheme by remember { mutableStateOf(initialPreferences.isDark ?: systemDark) }
@@ -53,6 +59,7 @@ fun App() {
     CompositionLocalProvider(
         LocalAppLocale provides languageTag,
         LocalAppDateFormat provides dateFormat,
+        LocalOrganizationName provides organizationName,
     ) {
         LumoTheme(isDarkTheme = isDarkTheme) {
             IslandLayout(

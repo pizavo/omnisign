@@ -13,14 +13,14 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /**
- * ViewModel exposing which operations the connected server permits, so the UI can hide
- * affordances for operations that are disabled server-side.
+ * ViewModel exposing which operations the connected server permits (so the UI can hide affordances
+ * for operations that are disabled server-side) and the server operator's deploy-time branding label.
  *
  * [capabilitiesRepository] is `null` on the desktop target (a local app with no server), in
- * which case [capabilities] stays at its all-permitted default. On the web target the bound
- * [CapabilitiesRepository] is queried once on construction and the server's `allowedOperations`
- * narrow the flags. A fetch failure leaves the optimistic default in place — the operation
- * would surface its own error if later attempted.
+ * which case [capabilities] stays at its all-permitted, unbranded default. On the web target the bound
+ * [CapabilitiesRepository] is queried once on construction: the server's `allowedOperations` narrow the
+ * flags and its `organizationName` fills in the operator label. A fetch failure leaves the optimistic
+ * default in place — the operation would surface its own error if later attempted.
  *
  * @param capabilitiesRepository Source of the server's published capabilities, or `null` when
  *   no server is involved (desktop).
@@ -47,6 +47,7 @@ class CapabilitiesViewModel(
                             canValidate = OPERATION_VALIDATE in allowed,
                             canSign = OPERATION_SIGN in allowed,
                             canTimestamp = OPERATION_TIMESTAMP in allowed,
+                            organizationName = response.organizationName?.takeIf { it.isNotBlank() },
                         )
                     }
                 }

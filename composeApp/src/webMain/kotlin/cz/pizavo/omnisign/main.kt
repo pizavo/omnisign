@@ -5,11 +5,13 @@ import androidx.compose.ui.window.ComposeViewport
 import cz.pizavo.omnisign.data.remote.BrowserProfileSelectionStore
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.webDataModule
+import cz.pizavo.omnisign.ui.branding.brandedTitle
 import cz.pizavo.omnisign.ui.platform.LocalStorageProfileSelectionStore
 import cz.pizavo.omnisign.ui.platform.MuPdfShim
 import cz.pizavo.omnisign.ui.platform.applyWebLocale
 import cz.pizavo.omnisign.ui.platform.loadUiPreferences
-import cz.pizavo.omnisign.web.resolveServerBaseUrl
+import cz.pizavo.omnisign.web.resolveWebRuntimeConfig
+import kotlinx.browser.document
 import kotlinx.browser.window
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -50,11 +52,12 @@ fun main() {
         single<BrowserProfileSelectionStore> { LocalStorageProfileSelectionStore() }
     }
     CoroutineScope(Dispatchers.Default).launch {
-        val serverBaseUrl = resolveServerBaseUrl(BuildConfig.SERVER_URL)
+        val runtimeConfig = resolveWebRuntimeConfig(BuildConfig.SERVER_URL)
+        document.title = brandedTitle(runtimeConfig.organizationName, serverOrganizationName = null)
         startKoin {
             modules(
                 appModule,
-                webDataModule(serverBaseUrl) {
+                webDataModule(runtimeConfig.url) {
                     loadUiPreferences().languageTag ?: window.navigator.language.takeIf { it.isNotBlank() }
                 },
                 webPlatformModule,
@@ -62,7 +65,7 @@ fun main() {
         }
         applyWebLocale(loadUiPreferences().languageTag)
         ComposeViewport {
-            App()
+            App(organizationName = runtimeConfig.organizationName)
         }
     }
 }

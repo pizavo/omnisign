@@ -24,15 +24,22 @@ import org.koin.ktor.ext.inject
  *   The `authEnabled` field signals the frontend to redirect to login. This route is
  *   wrapped in an optional `authenticate` scope so the principal is available when a valid
  *   token is supplied, but requests without a token are not rejected.
+ *
+ * Both responses also carry the deploy-time branding: the operator's optional `organizationName`
+ * (from [ServerConfig.organizationName]) and the fixed `poweredBy` OmniSign attribution. The label is
+ * normalized (blank → absent) once here and shared by both routes so the two can never drift, letting
+ * an API-only deployment surface its identity without a web frontend.
  */
 fun Route.systemRoutes() {
 	val serverConfig by inject<ServerConfig>()
 	val configRepository by inject<ConfigRepository>()
+	val organizationName = serverConfig.organizationName?.takeIf { it.isNotBlank() }
 
 	get("/api/v1/health") {
 		call.respond(
 			HealthResponse(
 				version = javaClass.`package`?.implementationVersion ?: "dev",
+				organizationName = organizationName,
 			),
 		)
 	}
@@ -47,6 +54,7 @@ fun Route.systemRoutes() {
 				profiles = if (authEnabled && !isAuthenticated) emptyList() else appConfig.profiles.keys.toList(),
 				maxFileSize = serverConfig.maxFileSize,
 				authEnabled = authEnabled,
+				organizationName = organizationName,
 			),
 		)
 	}

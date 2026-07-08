@@ -24,6 +24,12 @@ package cz.pizavo.omnisign.config
  * @property rateLimiting Per-IP request rate limiting for auth and API endpoints.
  *   When `null`, rate limiting is disabled.
  * @property maxFileSize Maximum upload file size in bytes. Defaults to 100 MB.
+ * @property organizationName Optional deploy-time branding label of the operator running this server
+ *   (e.g. `"Microsoft"`), surfaced in the `GET /api/v1/health` and `GET /api/v1/capabilities`
+ *   responses as `organizationName` alongside the fixed `poweredBy` OmniSign attribution. When `null`
+ *   or blank, no operator label is published. A web client composes it with its own frontend-deployer
+ *   label and the OmniSign name into the displayed title, so an API-only deployment still surfaces its
+ *   identity.
  * @property auth SSO authentication configuration. When `null`, no authentication plugin
  *   is installed. Set [AuthConfig.enabled] to `true` within this block to enforce JWT
  *   authentication on all operational routes.
@@ -47,6 +53,7 @@ data class ServerConfig(
 	val cors: CorsConfig? = null,
 	val rateLimiting: RateLimitConfig? = null,
 	val maxFileSize: Long = 100L * 1024 * 1024,
+	val organizationName: String? = null,
 	val auth: AuthConfig? = null,
 	val signingConfigFile: String? = null,
 	val trustStoreDir: String? = null,
