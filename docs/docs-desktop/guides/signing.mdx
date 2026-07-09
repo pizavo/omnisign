@@ -75,7 +75,7 @@ If discovery turns up nothing, a banner above the dropdown spells out the next s
 smart card, import a PKCS#12 file, or add a PKCS#11 library path under Settings → Tokens → PKCS#11
 Libraries. It also offers a **Show diagnostic info** button. The same PKCS#11 diagnostic dialog is
 always available from the **info icon** <AppIcon name="alert_info" label="Diagnostic info" /> in the dialog header. See
-[Troubleshooting → PKCS#11 tokens not detected](../troubleshooting.md#pkcs11-tokens-not-detected)
+[Troubleshooting → PKCS#11 tokens not detected](../troubleshooting.mdx#pkcs11-tokens-not-detected)
 for what the dialog shows and how to fix the common cases.
 
 ### Rescanning for tokens
@@ -130,7 +130,7 @@ Checking the archival timestamp automatically enables the signature timestamp.
 The signing dialog does not offer **B-T** as a standalone option. Enabling the signature
 timestamp always targets **B-LT** (timestamp plus embedded revocation data). B-T can only
 be reached as a fallback when B-LT is requested, but revocation data cannot be obtained —
-in that case the [timestamping dialog](timestamping.md) can later add the revocation data to
+in that case the [timestamping dialog](timestamping.mdx) can later add the revocation data to
 the resulting B-T document as a separate operation.
 :::
 
@@ -138,7 +138,7 @@ the resulting B-T document as a separate operation.
 
 Select the digest algorithm from the dropdown. The default is inherited from the active
 profile or global settings. Algorithms that are disabled in the configuration appear
-grayed out and cannot be selected. See [Algorithms](../algorithms.md) for the full list
+grayed out and cannot be selected. See [Algorithms](../algorithms.mdx) for the full list
 of supported hash algorithms and their compatibility with encryption algorithms.
 
 ### Metadata

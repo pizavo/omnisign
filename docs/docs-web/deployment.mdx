@@ -1,0 +1,143 @@
+---
+sidebar_position: 5
+---
+
+# Deployment
+
+This page is for whoever puts the web frontend on a server. Users need none of it — start at
+[OmniSign Web](index.mdx).
+
+The frontend is a **static bundle**: HTML, JavaScript, and a WebAssembly module. It has no backend of
+its own. Every operation it performs is an HTTP call to an [OmniSign Server](/server/), so a
+deployment is always two pieces — the static files, and the API they point at.
+
+## Build the bundle
+
+import OsTabs from '@site/src/components/OsTabs';
+import TabItem from '@theme/TabItem';
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+```powershell
+.\gradlew.bat :composeApp:wasmJsBrowserDistribution
+```
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+```bash
+./gradlew :composeApp:wasmJsBrowserDistribution
+```
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+```bash
+./gradlew :composeApp:wasmJsBrowserDistribution
+```
+
+</TabItem>
+</OsTabs>
+
+The output lands in `composeApp/build/dist/wasmJs/productionExecutable/` — static files you can serve
+from any web server, or from the OmniSign Server itself.
+
+For local development, `:composeApp:wasmJsBrowserDevelopmentRun` starts a dev server and opens the app
+in your default browser.
+
+## Connecting to a server
+
+The bundle is static, so the API it talks to is chosen at **deploy time**, not compiled in. On startup
+the app fetches an optional **`web-config.json`** served next to `index.html`:
+
+```json
+{
+  "serverUrl": "https://omnisign.example.com:18443",
+  "organizationName": "University of Ostrava"
+}
+```
+
+Both keys are optional:
+
+- **`serverUrl`** — the origin API requests go to. When omitted or blank, requests go to the **same
+  origin** that served the bundle, which is the topology where one OmniSign Server hosts both the web
+  files and the API. Point it at a separate host and [CORS](#cors) must then allow the web origin.
+- **`organizationName`** — a branding label, see [Branding](#branding).
+
+The file is fetched with a **3-second timeout**. If it is missing, blank, or unreachable, the app falls
+back to the server URL baked in at build time (`OMNISIGN_SERVER_URL`; empty means same origin). A
+**present but malformed** `web-config.json` is not silently ignored: the app logs a console warning and
+uses the build-time fallback, so a deploy typo stays visible.
+
+Retargeting a deployed bundle is therefore just editing `web-config.json` — no rebuild.
+
+## CORS
+
+If the web bundle and the API are on different origins, the browser will refuse the requests unless the
+server opts in. Add the web origin to the server's `cors.allowedOrigins`:
+
+```yaml
+# server.yml
+cors:
+  allowedOrigins: ["https://sign.example.org"]
+```
+
+A blocked preflight surfaces in the app as an ordinary "remote operation failed" error, so check the
+browser console when diagnosing. See [Server → CORS](/server/security#cors).
+
+## Authentication
+
+:::warning[The web client has no sign-in]
+The browser client sends no credentials and has no login flow, so it can only talk to an OmniSign
+Server whose **authentication is disabled** (no `auth:` block). Against an auth-enabled server the app
+still loads — `/api/v1/capabilities` is public — but every operation, including reading the
+configuration, comes back `401` and surfaces as a generic error, with no way to sign in.
+:::
+
+To restrict who can reach a web deployment, run the server on a trusted network, or put an
+**authenticating reverse proxy** in front of it that gates requests and forwards to an auth-disabled
+OmniSign backend.
+
+The server's built-in [SSO / OIDC](/server/authentication) is for API clients that can complete the
+OAuth flow and present a bearer token; the browser client does not do this.
+
+## Choosing what users can do
+
+The frontend adapts to the server. At startup it reads `GET /api/v1/capabilities` and hides the
+affordances for operations the server does not expose:
+
+| `operations.allowed` | What disappears from the UI                                     |
+|----------------------|------------------------------------------------------------------|
+| without `VALIDATE`   | The Signatures panel and its left-edge icon                      |
+| without `SIGN`       | The Sign toolbar button                                          |
+| without `TIMESTAMP`  | The Timestamp toolbar button, and the signing dialog's timestamp checkboxes |
+
+`VALIDATE` is enabled by default; `SIGN` and `TIMESTAMP` are opt-in. See
+[Server → Operation gating](/server/security#operation-gating).
+
+If the capabilities request fails, the app assumes everything is permitted and shows all the buttons —
+so a misconfigured deployment fails at the first operation rather than at load. Do not rely on button
+visibility as an access control; the server enforces the gating on every request.
+
+## Branding
+
+Two independent labels can prefix the product name, and both are optional:
+
+- **`organizationName` in `web-config.json`** — set by whoever deploys the *web bundle*.
+- **[`organizationName` in `server.yml`](/server/configuration#organizationname)** — set by whoever
+  operates the *server*, and returned from `/api/v1/capabilities`.
+
+They appear in the browser-tab title, the toolbar, and the empty-state mark. When both are set they are
+combined, most-local first, always ending in `OmniSign` — for example
+`University of Ostrava · Microsoft · OmniSign`. With neither set, the app is simply *OmniSign*.
+
+## Checklist
+
+1. Build the bundle and copy `productionExecutable/` to the web root.
+2. Write `web-config.json` next to `index.html` if the API is on another origin, or if you want a
+   branding label.
+3. Allow the web origin in the server's `cors.allowedOrigins`.
+4. Confirm the server's `operations.allowed` matches what you want users to see.
+5. Make sure the server is either on a trusted network or behind an authenticating proxy — the browser
+   client cannot sign in.

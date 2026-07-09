@@ -1,0 +1,86 @@
+---
+sidebar_position: 3
+---
+
+import AppIcon from '@site/src/components/AppIcon';
+
+# Validating signatures
+
+Validation is the one operation most web deployments enable, and often the only one. The document is
+sent to the [OmniSign Server](/server/), which validates it against its own configured trust — the EU
+List of Trusted Lists, any custom trusted lists, and the certificates its administrator marked as
+trusted — and returns a report the browser renders.
+
+:::note[Requires a validation-enabled server]
+The **Signatures** panel and its left-edge icon appear only when the server permits the `VALIDATE`
+operation. It is enabled by default. See
+[Server → Operation gating](/server/security#operation-gating).
+:::
+
+## 1. Open a signed PDF
+
+Open the document with the folder icon <AppIcon name="folder" color="folder" label="Open file" />.
+Until you do, the Signatures panel simply says so.
+
+## 2. Validate
+
+Open the **Signatures** panel <AppIcon name="signature" label="Signatures panel" /> on the left edge
+and press the refresh button <AppIcon name="refresh" label="Refresh" />. The document is uploaded, the
+server validates it, and the report appears in the panel.
+
+If the request fails — the server is down, unreachable, or refuses it — the panel shows the error with
+a **Retry** button. It is the only place in the app that offers one.
+
+## 3. Read the results
+
+The report is rendered exactly as in the desktop app: an overall badge (**VALID**, **INDETERMINATE**,
+**INVALID**, or **NO SIGNATURES**), the qualification rosette and the EU LOTL emblem, the document and
+validation times, then an accordion per signature and per document timestamp, followed by any trusted
+list warnings.
+
+Everything you need to interpret it is in the desktop guide, and applies verbatim here:
+
+- [Signatures](/desktop/guides/validation#signatures) — indication, sub-indication, level, trust
+- [Revocation evidence](/desktop/guides/validation#revocation-evidence) — CRL and OCSP
+- [The full certificate view](/desktop/guides/validation#the-full-certificate-view)
+- [Document timestamps](/desktop/guides/validation#document-timestamps)
+- [VALID vs. PASSED](/desktop/guides/validation#valid-vs-passed) and
+  [Trust levels](/desktop/guides/validation#trust-levels)
+- [EU LOTL membership](/desktop/guides/validation#eu-lotl-membership)
+- [Common warnings](/desktop/guides/validation#common-warnings)
+
+:::tip[The report speaks your language]
+The report text is produced by the server, not the browser, so the app tells the server which language
+you have chosen (via the standard `Accept-Language` header on every request). Change the language in
+[Settings → Language & Region](settings.mdx#language--region) and re-validate to see the report in that
+language.
+:::
+
+## 4. Inspect and export certificates
+
+Every signature's certificate chain can be opened from the report. The **full certificate view** shows
+the subject, issuer, validity, key usage, extensions, and fingerprints, and a download button writes
+the certificate to a `.cer` file through the browser.
+
+What is missing here is **Add to trusted certificates**. On the desktop that action writes into your
+own trust store; in the browser, trust belongs to the server and is
+[read-only over the API](/server/api-reference#configuration-introspection). To trust a new anchor, an
+administrator adds it to the server's configuration. You can see what the server currently trusts in
+the **Trusted Certificates** panel <AppIcon name="certificate" label="Trusted Certificates panel" />
+on the right edge.
+
+## 5. Export the report
+
+The export menu above the panel offers six formats, all of which download through the browser:
+
+| Format                        | Contents                                            |
+|-------------------------------|-----------------------------------------------------|
+| Plain Text                    | The human-readable report                           |
+| JSON                          | The structured report                               |
+| XML — Detailed Report         | The full ETSI detailed report                       |
+| XML — Simple Report           | The ETSI simple report                              |
+| XML — Diagnostic Data         | The raw DSS diagnostic data                         |
+| XML — ETSI Validation Report  | The ETSI TS 119 102-2 validation report             |
+
+The four XML variants come straight from the validation engine, and the web client asks the server for
+all of them up front — so they are available as soon as validation succeeds, without a second request.

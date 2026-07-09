@@ -26,7 +26,7 @@ const cards: DocCard[] = [
     title: 'Web',
     to: '/web/',
     description:
-      'View documents in the browser — the desktop UI compiled to WebAssembly, backed by the server.',
+      'Sign, validate, and view documents in the browser — the desktop UI, backed by an OmniSign Server.',
     emoji: '🌐',
   },
   {

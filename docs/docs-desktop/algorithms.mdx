@@ -38,7 +38,7 @@ The hash algorithm controls the digest computed over the signed portion of the d
 
 Some algorithms are considered expired under the DSS default ETSI validation policy
 (ETSI TS 119 312). Signing with an expired algorithm may trigger validation warnings or
-failures depending on the [algorithm constraint settings](guides/settings.md#algorithm-constraints).
+failures depending on the [algorithm constraint settings](guides/settings.mdx#algorithm-constraints).
 
 | Algorithm   | Expiration date |
 |-------------|-----------------|
@@ -87,7 +87,7 @@ which combinations are valid for PAdES signing.
 
 *(fixed)* — EdDSA uses an intrinsic hash; external selection is ignored.
 
-:::caution Whirlpool
+:::caution[Whirlpool]
 Whirlpool cannot be combined with any encryption algorithm for PAdES signing. This is a
 limitation of the EU DSS library (version 6.3): while `DigestAlgorithm.WHIRLPOOL` exists
 for standalone hashing, there is no corresponding `SignatureAlgorithm` entry pairing

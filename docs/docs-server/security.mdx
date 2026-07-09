@@ -51,7 +51,7 @@ an entry in `proxy.trusted` (literal IPs or CIDRs — hostnames and `*` are reje
 reaching the Ktor port directly cannot spoof its IP. `proxy.enabled: true` requires a non-empty
 `trusted` list. See [Deployment → Reverse proxy](deployment#reverse-proxy).
 
-## Operation gating {#operation-gating}
+## Operation gating {/* #operation-gating */}
 
 `operations.allowed` controls which operations the API exposes. It defaults to **`VALIDATE`** only —
 the one operation that exposes no signing material or timestamping endpoint. **`SIGN`** and

@@ -115,7 +115,7 @@ Always public.
 | `GET /api/v1/health`         | `HealthResponse` (`status`, `version`, `poweredBy`, plus `organizationName` when [branding](configuration#organizationname) is set) — for monitoring probes. |
 | `GET /api/v1/capabilities`   | `CapabilitiesResponse` (`allowedOperations`, `profiles`, `maxFileSize`, `authEnabled`, `poweredBy`, plus `organizationName` when [branding](configuration#organizationname) is set). With auth on, `profiles` is empty for unauthenticated callers. |
 
-## Authentication {#auth}
+## Authentication {/* #auth */}
 
 See [Authentication & SSO](authentication) for the full flow.
 

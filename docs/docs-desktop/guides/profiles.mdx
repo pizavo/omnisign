@@ -32,8 +32,8 @@ in a profile inherit from the global configuration.
 | Setting              | Description                                                                                             |
 |----------------------|---------------------------------------------------------------------------------------------------------|
 | Description          | Human-readable purpose of the profile.                                                                  |
-| Hash algorithm       | Override the global default [hash algorithm](../algorithms.md#hash-algorithms), or inherit.             |
-| Encryption algorithm | Override the global default [encryption algorithm](../algorithms.md#encryption-algorithms), or inherit. |
+| Hash algorithm       | Override the global default [hash algorithm](../algorithms.mdx#hash-algorithms), or inherit.             |
+| Encryption algorithm | Override the global default [encryption algorithm](../algorithms.mdx#encryption-algorithms), or inherit. |
 
 ### Signature level (tri-state toggles)
 
@@ -66,7 +66,7 @@ The effective signature level is derived from the combination:
 ### Expired certificates
 
 **Allow signing with an expired certificate** is a tri-state toggle (inherit / on / off) that
-overrides the global [signing default](settings.md#defaults) for operations using this profile.
+overrides the global [signing default](settings.mdx#defaults) for operations using this profile.
 **Inherit** uses the global value; **on** lets a signature be produced even when the signing
 certificate has expired; **off** forbids it even when allowed globally. Such signatures **fail
 validation**, so reserve this for narrow cases. The flag follows the same operation → profile → global
@@ -96,11 +96,11 @@ cannot be selected when this profile is active, even if they are allowed globall
 ### Validation overrides
 
 **Alert if not on EU LOTL** is a tri-state toggle (inherit / on / off) that overrides the global
-[Alert if not on EU LOTL](settings.md#policy--trust) validation setting for operations using this
+[Alert if not on EU LOTL](settings.mdx#policy--trust) validation setting for operations using this
 profile. **Inherit** uses the global value; **on** flags off-LOTL signatures with the red crossed
 EU emblem; **off** suppresses the alert even when it is on globally. The flag follows the same
 operation → profile → global merge as every other setting. See
-[Validating Signatures → EU LOTL membership](validation.md#eu-lotl-membership) for what the emblem
+[Validating Signatures → EU LOTL membership](validation.mdx#eu-lotl-membership) for what the emblem
 means.
 
 ### Trusted certificates
@@ -115,7 +115,7 @@ the global trusted certificates during config resolution.
 ### Custom trusted lists
 
 Register profile-scoped ETSI Trusted List XML sources. A **Build** button opens the
-[Trusted List builder](tl-builder.md) dialog. When the builder compiles a list with
+[Trusted List builder](tl-builder.mdx) dialog. When the builder compiles a list with
 "Register after compile" enabled, the resulting entry is automatically added to this
 profile's trusted lists section.
 

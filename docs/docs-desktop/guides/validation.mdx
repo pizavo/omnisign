@@ -39,7 +39,7 @@ rosette when the signatures are qualified and an [EU-LOTL emblem](#eu-lotl-membe
 whether their trust anchors are on the EU List of Trusted Lists. Below the badge are the
 **document name** and **validation time**, followed by collapsible sections.
 
-:::tip Selecting and copying
+:::tip[Selecting and copying]
 The whole report is selectable — drag to highlight any part and press `Ctrl/Cmd+C`, or
 right-click and choose **Copy**. Label–value rows copy as a single `label: value` line so a
 pasted selection stays readable, and only currently expanded sections contribute text. Warning
@@ -134,11 +134,11 @@ context — a certificate from a **signature's** chain is trusted as a **CA**, o
 **timestamp's** chain as a **TSA**. The change commits immediately (no staging); re-validate with the
 refresh button to see it reflected.
 
-:::note Trust is per role
+:::note[Trust is per role]
 Trusting a certificate from a signature's chain (CA) does not by itself trust it for timestamps, or
 vice versa — trust it from both views if you need both roles. Certificates already on a trusted list
 are unaffected. You can review and re-type trusted certificates anytime under
-[Trusted Certificates](trusted-certificates.md).
+[Trusted Certificates](trusted-certificates.mdx).
 :::
 
 ### Document timestamps
@@ -241,7 +241,7 @@ By default, off-LOTL signatures are shown without any emblem. Turn on
 **Settings → Validation → Policy & Trust → Alert if not on EU LOTL** to flag every off-LOTL
 signature with the red crossed emblem. This is useful when you only accept EU-recognized trust
 anchors. The alert can also be set per profile (inherit / on / off); see
-[Profiles → Validation overrides](profiles.md#validation-overrides).
+[Profiles → Validation overrides](profiles.mdx#validation-overrides).
 
 The alert depends on EU LOTL usage: when **EU LOTL** is disabled, the switch is grayed out (its value
 is preserved), since there is no LOTL to check membership against. This alert never flags timestamps.

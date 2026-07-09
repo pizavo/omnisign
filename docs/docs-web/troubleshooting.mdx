@@ -1,0 +1,81 @@
+---
+sidebar_position: 4
+---
+
+# Troubleshooting
+
+Almost everything the web app does beyond opening a PDF needs the server, and its network layer is
+deliberately thin: it does not retry, it has no offline indicator, and every kind of network failure
+looks the same. This page explains how to tell them apart.
+
+## The page is blank or never finishes loading
+
+The frontend needs **WebAssembly GC**, which arrived in Chrome/Edge 119, Firefox 120, and Safari 18.2.
+An older browser loads the page and then fails to start the app. Check your browser version first; the
+browser console will usually show a WebAssembly error.
+
+## The Sign or Timestamp button is missing
+
+The server does not permit that operation. Signing and timestamping are opt-in server-side and
+validation is on by default, so a deployment may legitimately offer validation only. There is nothing
+to configure in the browser — ask the administrator to enable the operation. See
+[Server → Operation gating](/server/security#operation-gating).
+
+The same applies to the **Signatures** panel: it disappears when the server does not permit
+`VALIDATE`.
+
+## The buttons are there, but every operation fails
+
+The capability check the app runs at startup is **optimistic**: if it cannot reach the server, it
+assumes every operation is permitted and shows all the buttons anyway. Seeing a Sign button therefore
+tells you nothing about whether the server is reachable — the failure only appears when you press it.
+
+## "Remote signing failed" / "Remote validation failed"
+
+These generic messages cover every network-level failure, with the underlying browser or HTTP message
+shown beneath as detail. In order of likelihood:
+
+1. **The server is unreachable** — it is down, or the address is wrong. See
+   [Deployment → Connecting to a server](deployment.mdx#connecting-to-a-server).
+2. **CORS is blocking the request.** The browser refuses to let the page talk to a different origin
+   unless the server allows it. The server's `cors.allowedOrigins` must include the origin serving the
+   web bundle. See [Server → CORS](/server/security#cors).
+3. **The server requires authentication.** The web client sends no credentials, so an auth-enabled
+   server rejects every operation with `401`. See
+   [Deployment → Authentication](deployment.mdx#authentication).
+4. **The operation genuinely failed** — an unreachable timestamp authority, an expired server
+   certificate, a malformed PDF. The detail line is the server's own message.
+
+Open the browser's developer console: it shows the actual HTTP status, which separates a failed
+preflight (CORS) from a `401` (authentication) from a connection refused (server down).
+
+Only the **Signatures** panel offers a **Retry** button. Everywhere else, close the dialog and try
+again.
+
+## Signing reports "No tokens detected"
+
+This is a server-side problem, not a browser one: the server has no usable signing certificate. Its
+keystore is missing, unreadable, or empty. The banner's advice about inserting a smart card is written
+for the desktop app and does not apply here. See
+[Server → Configuration](/server/configuration#operations).
+
+## The signed document did not reopen after I saved it
+
+On Firefox and Safari the signed file is delivered as an ordinary **download**, and the page is not
+allowed to learn where it went — so the viewer cannot reload it. Open the downloaded file yourself.
+Chromium browsers show a real *Save As* dialog and reopen the result automatically. See
+[Signing → Save the signed document](guides/signing.mdx#6-save-the-signed-document).
+
+## I cannot add a certificate to the trusted list
+
+Trust belongs to the server and is read-only over the API, so the *add to trusted* action from the
+validation report, the trusted-certificate add form, and the Trusted List builder are all absent. An
+administrator adds anchors to the server's configuration. See
+[Validating signatures](guides/validation.mdx#4-inspect-and-export-certificates).
+
+## Where the logs are
+
+There are none. The Help panel's **Support** section — log export and debug-logging toggles — is
+desktop-only, because a browser has no local log files. Use the browser's developer console for
+client-side errors, and ask the administrator for the server's log for anything else. Server-side
+troubleshooting lives in [Server → Deployment](/server/deployment).

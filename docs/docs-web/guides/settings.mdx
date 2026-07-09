@@ -1,0 +1,84 @@
+---
+sidebar_position: 5
+---
+
+import AppIcon from '@site/src/components/AppIcon';
+
+# Settings
+
+Open the settings dialog with the gear icon <AppIcon name="settings" label="Settings" /> in the
+toolbar. It looks like the desktop one — a category tree on the left, a form on the right — but almost
+everything in it is **read-only**.
+
+The reason is that the configuration is not yours. It belongs to the server, whose administrator
+authors it in [`signing.yml`](/server/signing-policy); the API deliberately exposes it for reading
+only. The dialog is there so you can see the policy your signatures and validations are actually run
+under. The one exception is **Language & Region**, which is a preference of *your browser* and stays
+fully editable.
+
+## What you see
+
+| Category                                    | In the browser                                             |
+|---------------------------------------------|-------------------------------------------------------------|
+| **Signing** → Defaults                      | Read-only                                                   |
+| **Signing** → Disabled Algorithms           | Read-only                                                   |
+| **Services** → Timestamp Server             | Read-only — the server's TSA                                |
+| **Services** → OCSP & CRL                   | Read-only                                                   |
+| **Validation** → Policy & Trust             | Read-only; no **Refresh now** button                        |
+| **Validation** → Algorithm Constraints      | Read-only                                                   |
+| **Validation** → Trusted Certificates       | A read-only list of what the server trusts                  |
+| **Validation** → Trusted Lists              | A read-only list; no add form, no **Build Custom TL**       |
+| **Backup** → Import & Export                | **Export** works; **Import** is hidden                      |
+| **Language & Region**                       | Fully editable                                              |
+| Tokens / PKCS#11 Libraries                  | Hidden                                                      |
+| Archiving (Renewal Jobs, Scheduler)         | Hidden                                                      |
+| Appearance                                  | Hidden (a Linux-desktop window setting)                     |
+
+Tokens and Archiving are gone because they describe the machine the app runs on: PKCS#11 middleware
+paths, an OS scheduler, filesystem glob patterns. A browser tab has none of those. Trusted lists are
+refreshed by the server on its own schedule, which is why the manual **Refresh now** control is absent
+too.
+
+Because nothing else can change, the **Save** button appears only once you have actually changed
+something — in practice, only after you edit Language & Region. **Cancel** is always there.
+
+## Language & Region
+
+| Field             | Description                                                                                                     |
+|-------------------|------------------------------------------------------------------------------------------------------------------|
+| **Region preset** | Sets the language and date format together — *United Kingdom*, *United States*, *Česko*, or *Slovensko*. *System default* follows the browser locale. |
+| **Language**      | *English*, *Čeština*, *Slovenčina*, or *System default* (the browser's language).                                |
+| **Date format**   | *System default*, `dd/mm/yyyy`, `dd.mm.yyyy`, `mm/dd/yyyy`, or ISO 8601 (`yyyy-mm-dd`).                          |
+
+Changes preview live, take effect when you press **Save**, and are discarded if you close the dialog
+without saving. The choice is remembered in this browser and restored on your next visit.
+
+The language does more than relabel the interface. Every request the app makes carries it in the
+standard `Accept-Language` header, so the server renders the
+[validation report](validation.mdx#3-read-the-results) in that language too.
+
+## Exporting the configuration
+
+**Backup → Import & Export** has a single working action: **Export**
+<AppIcon name="download" label="Export" />. It downloads the server's entire configuration — the
+global settings, every profile, and all the trusted certificates they reference — as one ZIP archive.
+It is a useful way to hand the exact policy to an auditor, or to seed a desktop installation with the
+same settings.
+
+**Import** is hidden. It would replace the configuration, and the server's configuration is read-only
+over the API.
+
+## What's stored in your browser
+
+OmniSign Web stores your interface preferences in the browser's `localStorage`, and nothing else — no
+document contents, no credentials, no server configuration. Three keys, scoped to the site's origin, so
+a different browser, device, or private window starts fresh:
+
+| Key                           | Contents                                        |
+|-------------------------------|-------------------------------------------------|
+| `omnisign.preferences.ui`     | Theme (light / dark) and the chosen UI language |
+| `omnisign.preferences.format` | The date format                                 |
+| `omnisign.activeProfile`      | The name of the selected [server profile](profiles.mdx) |
+
+No cookies, `sessionStorage`, or IndexedDB are used. The open document, the current page, and the zoom
+level live in memory only and are gone when you reload the tab.

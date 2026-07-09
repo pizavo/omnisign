@@ -1,0 +1,63 @@
+---
+sidebar_position: 2
+---
+
+import AppIcon from '@site/src/components/AppIcon';
+
+# Extending signatures (timestamping)
+
+The **Extend Document** dialog raises an already-signed PDF to a higher PAdES level, or refreshes an
+archival timestamp that is about to lapse. As with signing, the work happens on the
+[OmniSign Server](/server/) — the timestamp comes from the timestamp authority (TSA) the server is
+configured to use, not from anything in the browser.
+
+:::note[Requires a timestamp-enabled server]
+The **Timestamp** button appears only when the server permits the `TIMESTAMP` operation. See
+[Server → Operation gating](/server/security#operation-gating).
+:::
+
+For the background on *why* you would extend a signature — B-T, B-LT, and B-LTA, and how long-term
+archival works — read [Desktop → Extending signatures](/desktop/guides/timestamping#when-to-use). The
+concepts are identical; only the mechanics below differ.
+
+## 1. Open a signed PDF
+
+Open the document with the folder icon <AppIcon name="folder" color="folder" label="Open file" />.
+
+## 2. Open the timestamp dialog
+
+Click the stamp icon <AppIcon name="stamp" label="Timestamp" /> in the toolbar. The browser asks the
+server to inspect the document, so the dialog can offer only the extensions that make sense for its
+current level.
+
+## 3. Choose what to add
+
+The dropdown offers up to two operations, labelled for what they will actually do to *this* document:
+
+| Option                             | Meaning                                                        | Result   |
+|------------------------------------|-----------------------------------------------------------------|----------|
+| **Add timestamp & revocation data** | The document is at B-B                                         | B-LT     |
+| **Add revocation data**             | The document is at B-T (it already has a signature timestamp)  | B-LT     |
+| **Refresh revocation data**         | The document is already at B-LT or above                       | B-LT     |
+| **Add archival timestamp**          | Add the first archival (document) timestamp                    | B-LTA    |
+| **Renew archival timestamp**        | The document is already at B-LTA; add a fresh archival timestamp | B-LTA  |
+
+Options that cannot apply to the loaded document are not offered.
+
+There is no **Add to renewal job** checkbox — renewal jobs scan a local filesystem, which a browser
+does not have. Schedule automatic renewal from the
+[desktop app](/desktop/guides/settings#renewal-jobs) or the [CLI](/cli/) instead.
+
+## 4. Extend
+
+Click **Extend**. The document is uploaded, extended server-side, and held in memory in the tab.
+
+If the extension to B-LT fails because revocation information could not be obtained, the dialog shows
+the same revocation warning as [signing](signing.mdx#revocation-warning), letting you abort or continue
+anyway.
+
+## 5. Save the result
+
+The extended document is saved exactly as a signed one is: a **Save As** dialog on Chromium browsers,
+a plain **download** on Firefox and Safari. Nothing is written until this step, so cancelling earlier
+leaves the original untouched. The success screen reports the new level and the file name.
