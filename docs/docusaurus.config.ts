@@ -85,12 +85,22 @@ const config: Config = {
       },
     ],
     [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'development',
+        path: 'docs-development',
+        routeBasePath: 'development',
+        sidebarPath: './sidebars-development.ts',
+        editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
+      },
+    ],
+    [
       require.resolve('@easyops-cn/docusaurus-search-local'),
       {
         hashed: true,
         docsPluginIdForPreferredVersion: 'desktop',
-        docsDir: ['docs-cli', 'docs-desktop', 'docs-web', 'docs-server'],
-        docsRouteBasePath: ['cli', 'desktop', 'web', 'server'],
+        docsDir: ['docs-cli', 'docs-desktop', 'docs-web', 'docs-server', 'docs-development'],
+        docsRouteBasePath: ['cli', 'desktop', 'web', 'server', 'development'],
       },
     ],
   ],
@@ -132,9 +142,28 @@ const config: Config = {
           activeBaseRegex: '/cli/',
         },
         {
-          href: 'https://pizavo.github.io/omnisign/api/',
-          label: 'API Reference',
-          position: 'left',
+          type: 'dropdown',
+          label: 'Development',
+          position: 'right',
+          items: [
+            {
+              to: '/development/',
+              label: 'Overview',
+              activeBaseRegex: '/development/',
+            },
+            {
+              to: '/development/architecture',
+              label: 'Architecture',
+            },
+            {
+              to: '/development/contributing',
+              label: 'Contributing',
+            },
+            {
+              href: 'https://pizavo.github.io/omnisign/api/',
+              label: 'API Reference',
+            },
+          ],
         },
         {
           href: 'https://github.com/pizavo/omnisign',
@@ -153,6 +182,14 @@ const config: Config = {
             {label: 'Web', to: '/web/'},
             {label: 'Server', to: '/server/'},
             {label: 'CLI', to: '/cli/'},
+          ],
+        },
+        {
+          title: 'Development',
+          items: [
+            {label: 'Overview', to: '/development/'},
+            {label: 'Architecture', to: '/development/architecture'},
+            {label: 'Contributing', to: '/development/contributing'},
             {label: 'API Reference', href: 'https://pizavo.github.io/omnisign/api/'},
           ],
         },

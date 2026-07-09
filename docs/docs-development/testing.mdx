@@ -1,0 +1,115 @@
+---
+sidebar_position: 5
+---
+
+# Testing
+
+Tests run on **Kotest 6** in the `FunSpec` style, with **MockK** for test doubles and the **Arrow
+Kotest matchers** for asserting on `OperationResult`.
+
+## Running the tests
+
+```bash
+./gradlew :shared:jvmTest
+./gradlew :cli:test
+./gradlew :server:test
+./gradlew :composeApp:jvmTest
+```
+
+Or `./gradlew build` for everything. Note the task names differ: the multiplatform modules (`shared`,
+`composeApp`) use `jvmTest`, while the JVM-only modules (`cli`, `server`) use `test`. Test sources sit
+in `src/jvmTest` and `src/test` respectively.
+
+Each JVM test task adds `-XX:+EnableDynamicAgentLoading -Xshare:off --enable-native-access=ALL-UNNAMED`
+automatically, so MockK's inline agent loads without warnings. The **Decoroutinator** plugin is applied
+across the modules to give readable stack traces through suspend calls.
+
+:::warning[`--tests` does not filter reliably here]
+Gradle's `--tests "cz.pizavo.omnisign.SomeTest"` filter reports *"No tests found"* against this Kotest
+setup even when the spec exists. Run the whole module task and read the per-spec results from
+`build/test-results/<task>/TEST-*.xml` instead.
+:::
+
+## Asserting on results
+
+Operations return `OperationResult<T>`, which is an Arrow `Either<OperationError, T>`. The Arrow Kotest
+matchers unwrap it:
+
+```kotlin
+class SignDocumentUseCaseTest : FunSpec({
+    test("returns a signing error when the token is locked") {
+        val repository = mockk<SigningRepository>()
+        coEvery { repository.sign(any()) } returns SigningError.TokenLocked.left()
+
+        val result = SignDocumentUseCase(repository).invoke(parameters)
+
+        result.shouldBeLeft() shouldBe SigningError.TokenLocked
+    }
+})
+```
+
+`shouldBeLeft()` and `shouldBeRight()` both assert *and* return the wrapped value, so you can chain
+straight into an assertion on it.
+
+## Prefer MockK over hand-written fakes
+
+Use a `mockk(relaxed = true)` rather than writing a class that implements the interface. Hand-written
+fakes break every time the interface grows a method, and the repository interfaces here are
+implemented by both a DSS-backed class and a `Remote*` HTTP class — so an interface change already has
+two real implementations to update without adding a third that exists only for tests.
+
+## Two testing patterns
+
+The codebase has two distinct setups, and which one you want depends on what you are testing.
+
+### CLI commands — Koin
+
+Clikt commands resolve their dependencies through `KoinComponent.inject()`, so a test has to stand up
+a Koin container. Use the Kotest `KoinExtension` with `KoinLifecycleMode.Test`, which gives each spec
+a fresh container:
+
+```kotlin
+class SignTest : FunSpec({
+    val signUseCase = mockk<SignDocumentUseCase>()
+    extension(KoinExtension(module { single { signUseCase } }, mode = KoinLifecycleMode.Test))
+    // ...
+})
+```
+
+The canonical example is `cli/src/test/.../commands/SignTest.kt`.
+
+### ViewModels — no Koin
+
+`composeApp` ViewModels take their dependencies as constructor parameters, so tests inject mocks
+directly and skip Koin entirely. What they do need is a controlled dispatcher:
+
+```kotlin
+class SigningViewModelTest : FunSpec({
+    val testDispatcher = StandardTestDispatcher()
+
+    beforeEach { Dispatchers.setMain(testDispatcher) }
+    afterEach { Dispatchers.resetMain() }
+
+    test("emits an error state when signing fails") {
+        runTest(testDispatcher) {
+            val vm = SigningViewModel(/* mocks */, ioDispatcher = testDispatcher)
+            // ...
+        }
+    }
+})
+```
+
+`Dispatchers.setMain` / `resetMain` are required because the ViewModels launch into `viewModelScope`.
+The same `testDispatcher` is also passed in as the ViewModel's `ioDispatcher`, so the background work
+it launches is driven by the test's scheduler rather than a real thread pool. See
+`composeApp/src/jvmTest/.../ui/viewmodel/SigningViewModelTest.kt`.
+
+## What is worth testing
+
+The DSS infrastructure classes each have a dedicated spec — `DssServiceFactoryTest`,
+`DssWarningSanitizerTest`, `DssLogCaptureTest`, `CollectingStatusAlertTest`, `TspErrorDetectorTest` —
+because they translate a third-party library's behaviour into the domain's vocabulary, and that
+translation is exactly what regresses silently when DSS is upgraded.
+
+Use cases are cheap to test: they depend only on `commonMain` interfaces, so a use-case test never
+touches DSS, the filesystem, or the network.

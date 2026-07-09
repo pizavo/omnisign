@@ -1,0 +1,114 @@
+---
+sidebar_position: 10
+---
+
+# The UI design system
+
+`composeApp` does not use Material Design. Every button, dialog, text field, and switch in OmniSign is
+a **Lumo** component, defined in `composeApp/src/commonMain/.../lumo/`.
+
+This is not a slight exaggeration: no source file in `composeApp` imports a Material 3 composable. The
+artifact is on the classpath, but the only reference to `androidx.compose.material` anywhere is Lumo's
+own ripple implementation.
+
+If you are adding UI, reach for a Lumo component first. If one does not exist, add it to `lumo/` rather
+than importing Material into `ui/`.
+
+## Layout
+
+| Path | Contents |
+| --- | --- |
+| `lumo/Theme.kt` | `LumoTheme` accessor and the theme composable |
+| `lumo/Color.kt`, `lumo/Typography.kt` | Design tokens |
+| `lumo/components/` | ~21 components plus `card/`, `textfield/`, `snackbar/`, `progressindicators/`, `otptextfield/` |
+| `lumo/foundation/` | `Elevation`, `Ripple`, `Providers`, insets |
+
+Lumo is generated and updated by the [Lumo Gradle plugin](https://github.com/nomanr/lumo-ui)
+(`com.nomanr.plugin.lumo`), configured through `lumo.properties` at the repository root:
+
+```properties
+ThemeName=LumoTheme
+```
+
+The generated sources are checked in and freely edited afterwards — treat them as ours, not as
+vendored code.
+
+## `LumoTheme` is one of the sanctioned `object`s
+
+[Coding conventions](conventions.mdx#dependency-injection-is-koin-exclusively) require Koin for
+dependency wiring, with a short list of exemptions. `LumoTheme` is one of them:
+
+```kotlin
+object LumoTheme {
+    val colors: Colors
+        @ReadOnlyComposable @Composable
+        get() = LocalColors.current
+
+    val typography: Typography
+        @ReadOnlyComposable @Composable
+        get() = LocalTypography.current
+}
+```
+
+It holds no state — it is a `@Composable` read of two CompositionLocals. Injecting it through Koin
+would be meaningless, because its values change with the composition, not with the container.
+
+The same reasoning covers the `*Defaults` objects that supply component default parameter values.
+
+## `LocalReadOnly`
+
+The web client renders most of the settings and profile UI in a view-only mode. Rather than threading
+an `enabled` flag through every field, Lumo inputs read a `staticCompositionLocalOf`:
+
+```kotlin
+CompositionLocalProvider(LocalReadOnly provides true) { SettingsForm() }
+```
+
+Every Lumo input computes its effective state as `enabled && !LocalReadOnly.current`, so a control that
+is already disabled stays disabled. Text fields, dropdowns, switches, checkboxes, and buttons grey out
+while still showing their current value.
+
+**Chips are the deliberate exception.** They keep their normal appearance and merely ignore
+interaction, because a greyed-out chip reads as "this option is unavailable" rather than "this option
+is selected but the form is locked".
+
+To carve out an editable region inside a read-only subtree, provide `false` again — this is how the
+Backup and Language and Region settings stay usable on web while the rest of the dialog is frozen.
+
+## Text selection, and the dialog trap
+
+`SelectableContent` wraps its children in a `SelectionContainer` so text can be selected and copied.
+It is used in 14 places.
+
+:::danger[Opening a dialog from inside `SelectableContent` will crash on click]
+A Compose dialog renders into a **separate window layer**. When it is opened from inside a
+`SelectionContainer`, it inherits that selection registrar across the layer boundary, and the first
+click inside the dialog throws:
+
+```text
+IllegalStateException: layouts are not part of the same hierarchy
+```
+
+The fix is to host the dialog's content under `DisableSelection`, which clears the inherited
+registrar. `CertificateDetailsDialog` does exactly this, and its KDoc records why.
+
+To re-enable copying for a specific region inside such a dialog, nest a fresh `SelectableContent`
+inside the `DisableSelection` scope — that is how the certificate detail rows stay copyable.
+
+There is no way to detect this automatically: `LocalSelectionRegistrar` is `internal` in Compose
+Multiplatform.
+:::
+
+## Platform seams
+
+`ui/platform/` holds the `expect` declarations for everything a composable cannot do portably — PDF
+rendering, file export, cursors, theme persistence, window controls, and the app locale. The desktop
+`actual`s are in `jvmMain`, the browser ones in `webMain`.
+
+Two are worth knowing about because they behave differently rather than merely being implemented
+twice:
+
+- **PDF rendering** — PDFBox on desktop, MuPDF compiled to WebAssembly in the browser.
+- **Saving a document** — Chromium's `showSaveFilePicker` returns the chosen name, so the app can
+report where the file went. Every other browser falls back to a download, and the app reports
+success without a filename.

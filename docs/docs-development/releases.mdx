@@ -1,0 +1,150 @@
+---
+sidebar_position: 11
+---
+
+# Releases and CI
+
+OmniSign releases **four components independently**: the CLI, the desktop app, the server, and the web
+client. Each has its own version, its own tag series, and its own release notes, all derived from the
+commit history rather than from a file anyone edits.
+
+## Which CI runs on your change
+
+Each component has a workflow that triggers on its own paths:
+
+| Workflow | Runs when you touch |
+| --- | --- |
+| `ci-cli.yml` | `cli/**`, `shared/**`, `gradle/**`, `*.gradle.kts`, `gradle.properties` |
+| `ci-desktop.yml` | `composeApp/**`, `shared/**`, `gradle/**`, `*.gradle.kts`, `gradle.properties` |
+| `ci-server.yml` | `server/**`, `shared/**`, `gradle/**`, `*.gradle.kts`, `gradle.properties` |
+| `ci-web.yml` | `composeApp/**`, `shared/**`, `gradle/**`, `*.gradle.kts`, `gradle.properties` |
+| `deploy-docs.yml` | `docs/**` and any module's `src/**`, on `main` |
+
+Two facts fall out of that table, and they explain most of the surprises:
+
+- The `shared` and `gradle` directories appear in *every* component's list. A one-line change to
+`shared` builds and tests all four.
+- The `composeApp` directory appears in *two* of them. Desktop and web are built from the same module.
+
+A composite action, `detect-changes`, encodes the same rule for the job level, so a workflow that is
+triggered can still skip its build when nothing relevant moved. `workflow_dispatch` is always relevant.
+
+## Versions come from tags, not from files
+
+Each module reads its version from a Gradle property, falling back to a hardcoded default for local
+builds:
+
+```kotlin
+version = project.findProperty("releaseVersion")?.toString() ?: "1.9.0"
+```
+
+Release workflows pass `-PreleaseVersion=<computed>`. Nothing in the repository records the current
+released version; the tag series is the source of truth.
+
+Tags are namespaced per component, in the form `<prefix>/v<semver>`:
+
+| Component | Tag prefix | Module path | Example tag |
+| --- | --- | --- | --- |
+| CLI | `cli` | `cli` | `cli/v1.13.2` |
+| Desktop | `desktop` | `composeApp` | `desktop/v1.4.0` |
+| Server | `server` | `server` | `server/v1.5.0` |
+| Web | `web` | `composeApp` | `web/v1.2.0-pre.1` |
+
+## How the version and notes are computed
+
+The `compute-release` composite action runs [git-cliff](https://git-cliff.org/) over the commits since
+the component's latest tag, and outputs `version`, `tag`, `should_release`, and `prerelease`.
+
+The commit types that drive a version bump, and which appear in the notes, are listed in
+[Contributing](contributing.mdx#commit-messages-are-the-release-notes). What matters here is **how the
+commits are scoped to a component**:
+
+```bash
+--include-path "${MODULE_PATH}/**" \
+--include-path 'shared/**' \
+--include-path 'gradle/**' \
+--include-path '*.gradle.kts' \
+--include-path 'gradle.properties'
+```
+
+:::warning[The scope in your commit message filters nothing]
+A commit is attributed to a component by the paths it touches, not by `feat(cli):`. Concretely:
+
+- A commit touching `shared/`, `gradle/`, a root Gradle script, or `gradle.properties` appears in
+**all four** components' release notes.
+- A commit touching `composeApp/` appears in **both** the desktop and web notes.
+
+There is no way to suppress this from the commit message. The only lever is keeping each commit
+confined to the module it belongs to — which is why
+[Contributing](contributing.mdx#releases-are-per-component) asks for it.
+:::
+
+When a release does happen, `should_release` is `true` and the rendered notes are uploaded as an
+artifact, then attached to the GitHub release.
+
+## Pre-releases
+
+The release workflows accept three `workflow_dispatch` inputs:
+
+| Input | Effect |
+| --- | --- |
+| `release_as` | Force an explicit version instead of the computed bump |
+| `prerelease` | Cut a pre-release, flagged as such on GitHub |
+| `prerelease_suffix` | The identifier to use, sanitized to `[A-Za-z0-9-]`; defaults to `pre` |
+
+A pre-release series bumps from the last **stable** tag and appends a counter: `1.1.2-pre.1`,
+`1.1.2-pre.2`, and so on. The action finds the highest existing counter for that target version and
+increments it.
+
+:::danger[Immutable releases burn tag names permanently]
+This repository has GitHub's **immutable releases** enabled. Publishing a release reserves that tag
+name in an internal ledger *forever* — it survives deleting the tag, deleting the release, and even
+deleting the repository.
+
+**Never delete a published release to "redo" it.** The `-pre.N` counter will deadlock: the action
+computes the next free counter from existing *tags*, but GitHub refuses to publish the burned name,
+and the tag no longer exists to push the counter past it.
+
+If you land in this state, roll forward to `pre.(N+1)` rather than trying to reclaim the name.
+:::
+
+## Building the artifacts
+
+Native installers cannot be cross-compiled, so each release workflow fans out across three runners and
+each builds only what its OS supports:
+
+```bash
+# linux
+./gradlew :composeApp:packageDeb :composeApp:packageRpm :composeApp:packageAppImage
+# windows
+./gradlew :composeApp:packageMsi :composeApp:packageExe :composeApp:createDistributable
+# macos
+./gradlew :composeApp:packageDmg :composeApp:createDistributable
+```
+
+The CLI uses its own per-format tasks (`:cli:jpackageDeb`, `:cli:jpackageWinMsi`, `:cli:jpackageDmg`,
+and so on). The server and web produce a single artifact each and need only one runner. See
+[Building and running](building.mdx#producing-artifacts).
+
+:::note[Why the Wasm npm package version is pinned]
+`composeApp/build.gradle.kts` pins the Wasm npm workspace version to a constant:
+
+```kotlin
+val wasmNpmPackageVersion = "1.0.0"
+```
+
+Without it, `-PreleaseVersion` leaks into the generated npm `package.json`, and
+`kotlinWasmStorePackageLock` fails on release builds while passing on ordinary CI for the *same*
+commit. These workspace packages are internal to the build and never published, so a constant version
+is safe.
+
+Do **not** "fix" such a failure by running `kotlinWasmUpgradePackageLock` — that bakes the release
+version into the committed lockfile.
+:::
+
+## Documentation
+
+`deploy-docs.yml` builds the Dokka API reference, copies it into `docs/static/api/`, builds the
+Docusaurus site with pnpm on Node 26, and publishes to GitHub Pages. It runs on pushes to `main` and
+can be triggered manually with `workflow_dispatch` — which is the only way to test a change to the
+docs toolchain before merging it.

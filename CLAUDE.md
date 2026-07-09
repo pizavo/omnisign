@@ -17,7 +17,7 @@ Four Gradle modules with strict dependency direction `cli` / `composeApp` / `ser
 - `composeApp` — Compose Multiplatform desktop (JVM) + web (Wasm) from one codebase. MVVM with Koin-Compose ViewModels exposing `StateFlow`. `expect`/`actual` split for platform concerns. Web target gracefully degrades for DSS-only use cases via `KoinPlatform.getKoinOrNull()`. Entry (desktop): `cz.pizavo.omnisign.MainKt`.
 - `server` — Ktor/Netty HTTP server. Routes mounted under `/api/v1`. SSO via OIDC (with provider presets) or trusted header injection; JWT (HS*) sessions. Allowed operations gated by `AllowedOperation` (`SIGN` is opt-in). Entry: `cz.pizavo.omnisign.ApplicationKt`.
 
-`docs/` is a Docusaurus site (`npm start` inside `docs/`).
+`docs/` is a Docusaurus site on pnpm, requiring Node 26+ (`pnpm start` inside `docs/`). Five doc sections: `docs-cli`, `docs-desktop`, `docs-server`, `docs-web`, `docs-development`.
 
 ## Build & Run
 
@@ -58,10 +58,10 @@ CLI tests use the Kotest `KoinExtension` with `KoinLifecycleMode.Test` (see `cli
 - **Prefer Kotlin APIs over Java**: `kotlin.uuid.Uuid` not `java.util.UUID`; `kotlin.time.Instant` / `kotlin.time.Duration` not `java.time.*`; `kotlin.io.path.*` over raw `java.nio.file.*`. Drop to Java only when bridging a Java library (e.g., DSS) and isolate the bridge in `jvmMain`.
 - **One top-level declaration per file.** No two top-level data classes/enums/objects in one `.kt`. Extension functions for that declaration may live alongside it. Name the file after the declaration.
 - **KDoc on every class, interface, and function.** Do **not** add inline comments unless asked. Do **not** create new Markdown files unless asked.
-- **`Sensitive<T>`** (inline value class in `domain/model/value/`) wraps credentials: its `toString()` returns `***` and serialization is intentionally blocked. Use it for any password/PIN-like value.
+- **`Sensitive<T>`** (a `data class` in `domain/model/value/` — deliberately *not* a `@JvmInline value class`; see its KDoc) wraps credentials: its `toString()` returns `***` and serialization is intentionally blocked. Use it for any password/PIN-like value.
 - **Config resolution** is a three-layer merge (global → profile → operation overrides) in `ResolvedConfig.resolve()`. Persisted as JSON under `~/.config/omnisign/` (Linux), `~/Library/Application Support/omnisign/` (macOS), `%APPDATA%/omnisign/` (Windows).
 - **DSS infrastructure**: `DssServiceFactory` centralizes TSP sources, certificate verifiers, and TL validation jobs — injected into all `Dss*Repository`s. DSS warnings flow through `CollectingStatusAlert` + `DssLogCapture` (Logback appender on `eu.europa.esig`) → `DssWarningSanitizer` → `WarningCategory` summaries; TSP failures go through `TspErrorDetector` for RFC 3161 `PKIFailureInfo` codes.
 - **`PasswordCallback`** is the platform boundary: CLI uses terminal input, desktop uses a dialog (`ComposePasswordCallback`), server returns null/error.
-- **JVM-only use cases**: `ExportImportConfigUseCase` (Jackson) and `RenewBatchUseCase` (DSS-backed archiving) are wired in `jvmRepositoryModule`, not `appModule`.
+- **JVM-only use cases**: `ExportImportConfigUseCase` (Jackson; class lives in `commonMain`), plus `ConfigArchiveUseCase` (ZIP archives), `RenewBatchUseCase` (DSS-backed archiving), and `MigrateTrustedCertificatesUseCase` (all three in `jvmMain`) are wired in `jvmRepositoryModule`, not `appModule`.
 
 When any of these conventions feel ambiguous in context, consult `AGENTS.md` — it has the long-form rationale and edge cases.
