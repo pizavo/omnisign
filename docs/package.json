@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "docusaurus": "docusaurus",
+    "diagrams": "node scripts/render-diagrams.mjs",
     "generate-icons": "node scripts/generate-icons.mjs",
     "prestart": "pnpm run generate-icons",
     "start": "docusaurus start",
@@ -22,6 +23,7 @@
     "@docusaurus/core": "3.10.1",
     "@docusaurus/faster": "3.10.1",
     "@docusaurus/preset-classic": "3.10.1",
+    "@docusaurus/theme-mermaid": "3.10.1",
     "@easyops-cn/docusaurus-search-local": "^0.55.2",
     "@mdx-js/react": "^3.1.1",
     "clsx": "^2.1.1",

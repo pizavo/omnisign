@@ -1,0 +1,46 @@
+---
+title: Deployment Diagram - OmniSign (standalone and institutional-server topologies)
+---
+flowchart TB
+  subgraph workstation["Workstation  [device] - standalone deployment"]
+    direction TB
+    desktop["OmniSign Desktop / CLI<br/>[artifact on JVM 25 / JBR: jpackage installer or fat JAR]"]
+    token["PKCS#11 token<br/>[device: smart card / USB]"]
+    desktop -->|uses| token
+  end
+
+  subgraph clients["Client devices"]
+    direction TB
+    browser["Browser<br/>OmniSign Web (Wasm)"]
+    scripts["CI / scripts<br/>(Bearer token)"]
+  end
+
+  subgraph serverhost["Server host  [device] - institutional deployment"]
+    direction TB
+    rp["Reverse proxy [optional]<br/>TLS termination, SSO header injection"]
+    server["OmniSign Server<br/>[artifact on JVM 25: Ktor / Netty]"]
+    hsm["HSM<br/>[device: PKCS#11 signing keys]"]
+    fsnode["Filesystem<br/>[config, trusted-certs, sessions.db]"]
+    rp -->|"HTTP, trusted headers"| server
+    server -->|PKCS#11| hsm
+    server -->|file I/O| fsnode
+  end
+
+  subgraph external["External services"]
+    direction TB
+    idp["OIDC Identity Provider"]
+    pki["EU Trusted Lists, TSA (RFC 3161), OCSP / CRL"]
+  end
+
+  desktop -->|HTTPS| pki
+  browser -->|HTTPS| rp
+  scripts -->|HTTPS + Bearer| rp
+  server -->|OpenID Connect| idp
+  server -->|HTTPS| pki
+
+  classDef dev fill:#1168bd,stroke:#0b4884,color:#ffffff
+  classDef store fill:#3b6fb5,stroke:#0b4884,color:#ffffff
+  classDef ext fill:#8a8a8a,stroke:#5f5f5f,color:#ffffff
+  class desktop,server,browser,scripts,rp,token,hsm dev
+  class fsnode store
+  class idp,pki ext

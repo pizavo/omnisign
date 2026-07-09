@@ -1,0 +1,20 @@
+---
+title: PAdES Baseline Levels and Archival Renewal Lifecycle - OmniSign
+---
+flowchart LR
+  B["PAdES-B (BASELINE_B)<br/>basic signature + certificate chain"]
+  BT["PAdES-B-T (BASELINE_T)<br/>+ RFC 3161 trusted timestamp"]
+  BLT["PAdES-B-LT (BASELINE_LT)<br/>+ revocation data (OCSP / CRL) + trust"]
+  BLTA["PAdES-B-LTA (BASELINE_LTA)<br/>+ archive timestamp (long-term archival)"]
+  CHECK{"renewal needed?<br/>uncovered archive timestamp:<br/>TSA cert expiring or algorithms aging out"}
+
+  B -->|"ExtendDocumentUseCase: add timestamp"| BT
+  BT -->|"embed revocation data"| BLT
+  BLT -->|"add archive timestamp"| BLTA
+  BLTA -.->|"CheckArchivalRenewalUseCase (periodic)"| CHECK
+  CHECK -.->|"yes: RenewBatchUseCase re-applies B-LTA (fresh archive timestamp)"| BLTA
+
+  classDef level fill:#1168bd,stroke:#0b4884,color:#ffffff
+  classDef decision fill:#fff8c5,stroke:#9a6700,color:#24292f
+  class B,BT,BLT,BLTA level
+  class CHECK decision

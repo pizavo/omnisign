@@ -1,0 +1,59 @@
+---
+title: Clean Architecture (Concentric Layers) - OmniSign
+---
+graph TB
+    subgraph L4["④ Frameworks &amp; Drivers   —   outermost (mostly external)"]
+        FW["EU DSS 6.3 · Ktor/Netty · Clikt · Compose MP<br/>PDFBox · Koin · Jackson · Auth0 JWT"]
+        DRV["OS (schedulers · keystores · PKCS#11)<br/>TSA · OCSP/CRL · EU LOTL · OIDC IdPs"]
+
+        subgraph L3["③ Interface Adapters   —   jvmMain (DSS) · wasmJsMain (HTTP) · client glue"]
+            DSSREPO["`Dss*Repository<br/>*implements domain ports*`"]
+            REMOTE["`Remote*Repository<br/>*same ports, over HTTP (wasmJsMain)*`"]
+            MAP["`DSS ↔ domain mappers<br/>*SignatureLevel.toDss() …*`"]
+            SER["Serializers (Jackson)<br/>Data Services · TL compiler"]
+            DELIVERY["CLI commands · Ktor routes + DTOs<br/>Compose ViewModels (MVVM)"]
+
+            subgraph L2["② Use Cases   —   application rules (commonMain)"]
+                UC["16 Use Cases<br/>Sign · Validate · Extend<br/>ListCertificates · ManageTrustedLists …"]
+                PORTS["Ports &amp; Repository Interfaces<br/>SigningRepository · TrustStore<br/>SchedulerPort · ConfigSerializer · PasswordCallback"]
+
+                subgraph L1["① Entities — domain models (commonMain)"]
+                    MODELS["Domain Models<br/>config · parameters · result<br/>validation · signature · trust · value"]
+                    ERR["Sealed Error Types<br/>OperationResult = Either&lt;OperationError, T&gt;"]
+                end
+            end
+        end
+    end
+
+    NOTE["`**Dependency Rule**<br/>Source dependencies point INWARD:<br/>entities ① and use cases ② depend on<br/>nothing outer and are DSS-free.<br/>Ring ③ adapters wrap the ④ frameworks —<br/>the one permitted outward dependency.`"]
+
+    %% Inward dependencies (outer depends on inner)
+    UC --> MODELS
+    UC --> ERR
+    UC --> PORTS
+    DELIVERY -.->|"invokes"| UC
+    DSSREPO -.->|"implements"| PORTS
+    REMOTE -.->|"implements"| PORTS
+    SER --> MODELS
+
+    %% Single outward boundary: adapters wrap external frameworks
+    DSSREPO -.->|"wraps"| FW
+    MAP -.->|"wraps"| FW
+    SER -.->|"drives"| DRV
+
+    style L1 fill:#1a7f37,stroke:#0d4f22,color:#fff
+    style L2 fill:#238636,stroke:#125021,color:#fff
+    style L3 fill:#bc4c00,stroke:#7a3100,color:#fff
+    style L4 fill:#4d5560,stroke:#2b3138,color:#fff
+
+    classDef entity fill:#2da44e,stroke:#0d4f22,color:#fff;
+    classDef usecase fill:#2da44e,stroke:#125021,color:#fff;
+    classDef adapter fill:#e8843c,stroke:#7a3100,color:#fff;
+    classDef framework fill:#6e7781,stroke:#2b3138,color:#fff;
+    classDef note fill:#fff8c5,stroke:#9a6700,color:#24292f;
+
+    class MODELS,ERR entity;
+    class UC,PORTS usecase;
+    class DSSREPO,REMOTE,MAP,SER,DELIVERY adapter;
+    class FW,DRV framework;
+    class NOTE note;

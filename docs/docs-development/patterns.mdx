@@ -2,6 +2,9 @@
 sidebar_position: 3
 ---
 
+import Diagram from '@site/src/components/Diagram';
+import portsAndAdapters from '@site/diagrams/03-clean-architecture-ports-adapters.mmd';
+
 # Design patterns
 
 This page is the vocabulary. [Architecture](architecture.mdx) describes *what the pieces are*; this
@@ -46,6 +49,12 @@ The `domain/port/` package is named after the pattern, and contains eight interf
 `SchedulerPort` is the port. `SchedulerPortAdapter` is the adapter, delegating to an
 `OsSchedulerService` — one of `WindowsTaskSchedulerService`, `SystemdSchedulerService`, or
 `LaunchdSchedulerService`. The domain schedules a job; it never learns which one ran.
+
+Both patterns are visible at once below. Solid arrows are source dependencies and always point inward;
+dashed arrows are an adapter realizing a port. Note that the driven ring has **two** adapter sets —
+DSS-backed on the JVM, HTTP-backed on Wasm — realizing the same ports.
+
+<Diagram source={portsAndAdapters} />
 
 ### MVVM
 

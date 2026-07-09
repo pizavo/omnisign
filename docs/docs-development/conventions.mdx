@@ -2,6 +2,9 @@
 sidebar_position: 6
 ---
 
+import Diagram from '@site/src/components/Diagram';
+import configResolution from '@site/diagrams/10-config-resolution.mmd';
+
 # Coding conventions
 
 These are the rules a pull request is reviewed against. Most exist because a previous violation caused
@@ -133,6 +136,12 @@ exactly the path Jackson's `KotlinModule` takes when constructing server config 
 overrides — later layers win. Every deliverable uses it, which is why a profile means the same thing
 in the CLI as in the desktop app. Configuration persists as JSON under `~/.config/omnisign/` on Linux,
 `~/Library/Application Support/omnisign/` on macOS, and `%APPDATA%/omnisign/` on Windows.
+
+<Diagram source={configResolution} />
+
+Note the asymmetry: scalar fields take the first non-null value from the highest layer down, but
+**disabled-algorithm sets are unioned across all three layers**. A profile cannot re-enable an
+algorithm the global config disabled.
 
 ## Domain enums carry their DSS name
 

@@ -20,10 +20,13 @@ const config: Config = {
 
   onBrokenLinks: 'throw',
   markdown: {
+    mermaid: true,
     hooks: {
       onBrokenMarkdownLinks: 'warn',
     },
   },
+
+  themes: ['@docusaurus/theme-mermaid'],
 
   i18n: {
     defaultLocale: 'en',
@@ -44,6 +47,14 @@ const config: Config = {
   ],
 
   plugins: [
+    () => ({
+      name: 'mmd-source-loader',
+      configureWebpack: () => ({
+        module: {
+          rules: [{test: /\.mmd$/, type: 'asset/source'}],
+        },
+      }),
+    }),
     [
       '@docusaurus/plugin-content-docs',
       {
@@ -109,6 +120,13 @@ const config: Config = {
     image: 'img/docusaurus-social-card.jpg',
     colorMode: {
       respectPrefersColorScheme: true,
+    },
+    mermaid: {
+      theme: {light: 'neutral', dark: 'dark'},
+      options: {
+        flowchart: {useMaxWidth: true},
+        sequence: {useMaxWidth: true},
+      },
     },
     navbar: {
       title: 'OmniSign',

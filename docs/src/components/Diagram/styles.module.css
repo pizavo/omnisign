@@ -1,0 +1,119 @@
+.figure {
+  margin: 0 0 var(--ifm-leading);
+}
+
+.trigger {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+  border-radius: var(--ifm-global-radius);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--ifm-color-primary);
+  outline-offset: 4px;
+}
+
+.hint {
+  position: absolute;
+  top: 0.5rem;
+  right: 0.5rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--ifm-global-radius);
+  background: var(--ifm-color-emphasis-200);
+  color: var(--ifm-color-emphasis-800);
+  font-size: 0.75rem;
+  opacity: 0;
+  transition: opacity 150ms ease-in-out;
+}
+
+.trigger:hover .hint,
+.trigger:focus-visible .hint {
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hint {
+    transition: none;
+  }
+}
+
+.caption {
+  margin-top: 0.6rem;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  text-align: center;
+  text-wrap: balance;
+}
+
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  color: #fff;
+}
+
+.title {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.close {
+  flex: 0 0 auto;
+  padding: 0 0.5rem;
+  border: 0;
+  background: none;
+  color: #fff;
+  font-size: 1.75rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.close:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.body {
+  display: flex;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 1rem;
+}
+
+/*
+ * The enlarged diagram carries explicit pixel width and height, so its container sizes to the
+ * diagram and `.body` scrolls around it.
+ *
+ * Centring uses `margin: auto` rather than `justify-content: center`, because a centred flex
+ * item that overflows its scroll container spills past the container's start edge, and that
+ * overflow cannot be scrolled to. Auto margins resolve to zero when there is no free space,
+ * so a diagram larger than the viewport aligns to the start and stays fully reachable.
+ */
+.body :global(.docusaurus-mermaid-container) {
+  flex: 0 0 auto;
+  margin: auto;
+  padding: 1rem;
+  border-radius: var(--ifm-global-radius);
+  background: var(--ifm-background-color);
+}
+
+.body :global(.docusaurus-mermaid-container) > svg {
+  display: block;
+}

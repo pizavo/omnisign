@@ -2,6 +2,10 @@
 sidebar_position: 8
 ---
 
+import Diagram from '@site/src/components/Diagram';
+import signingFlow from '@site/diagrams/06-signing-flow.mmd';
+import validationFlow from '@site/diagrams/07-validation-flow.mmd';
+
 # Working with DSS
 
 Every signature OmniSign creates or checks is ultimately produced by
@@ -11,6 +15,21 @@ reference implementation of the eIDAS signature standards. OmniSign uses **DSS 6
 DSS is a large, stateful Java library with an API shaped by the ETSI specifications rather than by
 ergonomics. Most of the code in `shared/src/jvmMain/data/repository/` exists to keep that shape from
 leaking into the rest of the application.
+
+## Signing, end to end
+
+Where the repository does the work, and where DSS does. Note that the signing identity resolves from
+**either** a PKCS#11 token **or** a PKCS#12 keystore file, and that the optional blocks are keyed to
+the requested PAdES level — a B-B signature never contacts a TSA.
+
+<Diagram source={signingFlow} />
+
+## Validating, end to end
+
+<Diagram source={validationFlow} />
+
+Both flows converge on the same two steps at the end — *collect and sanitize warnings*, then map into
+the domain. The rest of this page is about those two steps.
 
 ## The factory that owns the expensive things
 

@@ -1,0 +1,45 @@
+---
+title: Module Dependencies - OmniSign (the Dependency Rule)
+---
+flowchart TB
+  CLI["cli<br/>[Clikt, Shadow fat JAR]"]
+  CA["composeApp<br/>[Compose MP: JVM + Wasm]"]
+  SRV["server<br/>[Ktor / Netty]"]
+
+  subgraph SHARED["shared  [multiplatform core]"]
+    direction TB
+    JVM["jvmMain<br/>Dss*Repository, serializers,<br/>OS schedulers, PKCS#11"]
+    WASM["wasmJsMain<br/>Remote*Repository<br/>(same ports, over HTTP)"]
+    COMMON["commonMain<br/>domain, use cases, ports, sealed errors<br/>(no DSS, no platform I/O)"]
+    JVM -->|depends on| COMMON
+    WASM -->|depends on| COMMON
+  end
+
+  CLI -->|depends on| SHARED
+  CA -->|depends on| SHARED
+  SRV -->|depends on| SHARED
+
+  CLIKT(["Clikt"])
+  COMPOSE(["Compose Multiplatform"])
+  KTOR(["Ktor / Netty"])
+  KTORCL(["Ktor HTTP client"])
+  DSSLIB(["EU DSS 6.3"])
+  FUND(["Koin, Arrow,<br/>kotlinx.serialization"])
+
+  CLI -.-> CLIKT
+  CA -.-> COMPOSE
+  SRV -.-> KTOR
+  JVM -.-> DSSLIB
+  WASM -.-> KTORCL
+  COMMON -.-> FUND
+
+  subgraph legend["Legend"]
+    direction LR
+    la["module"] -->|"depends on"| lb["module"]
+    lc["module"] -.->|"uses library"| ld["external library"]
+  end
+
+  classDef mod fill:#1168bd,stroke:#0b4884,color:#ffffff
+  classDef lib fill:#8a8a8a,stroke:#5f5f5f,color:#ffffff
+  class CLI,CA,SRV,JVM,WASM,COMMON mod
+  class CLIKT,COMPOSE,KTOR,KTORCL,DSSLIB,FUND lib

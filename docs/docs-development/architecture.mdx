@@ -2,6 +2,10 @@
 sidebar_position: 2
 ---
 
+import Diagram from '@site/src/components/Diagram';
+import moduleDependencies from '@site/diagrams/04-module-dependencies.mmd';
+import composeAppComponents from '@site/diagrams/05-composeapp-components.mmd';
+
 # Architecture
 
 OmniSign is one Gradle build with four modules. Three of them are deliverables; the fourth holds
@@ -17,6 +21,10 @@ everything they share.
 The dependency direction is strict and one-way: `cli`, `composeApp`, and `server` each depend on
 `shared`, and `shared` depends on none of them. Nothing depends on a sibling deliverable. A change to
 the CLI can never break the server.
+
+<Diagram source={moduleDependencies} />
+
+Solid arrows are module dependencies; dashed arrows are the libraries each source set pulls in.
 
 ## The rule that shapes everything
 
@@ -54,15 +62,20 @@ carries a `dssName` property directly in `commonMain` rather than paying for a b
 `composeApp` produces the desktop app and the browser client from the same Compose source, using three
 source sets and Kotlin's `expect`/`actual` mechanism.
 
-| Source set | Contents |
-| --- | --- |
-| `commonMain` | `App.kt`, the Lumo design system, the Island shell and dialogs, the MVVM ViewModels, and `expect` declarations for anything platform-bound |
-| `jvmMain` | Desktop `actual`s — a PDFBox renderer, the dialog-backed `ComposePasswordCallback`, the JBR custom title bar, AWT file export, window and theme persistence |
-| `webMain` | Browser `actual`s — a **MuPDF WebAssembly** renderer, browser file export, `localStorage` theme persistence |
+| Source set   | Contents                                                                                                                                                    |
+|--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `commonMain` | `App.kt`, the Lumo design system, the Island shell and dialogs, the MVVM ViewModels, and `expect` declarations for anything platform-bound                  |
+| `jvmMain`    | Desktop `actual`s — a PDFBox renderer, the dialog-backed `ComposePasswordCallback`, the JBR custom title bar, AWT file export, window and theme persistence |
+| `webMain`    | Browser `actual`s — a **MuPDF WebAssembly** renderer, browser file export, `localStorage` theme persistence                                                 |
 
 The renderer split is worth calling out: the desktop draws pages with **Apache PDFBox**, while the
 browser uses **MuPDF compiled to WebAssembly**, wrapped in a small JavaScript shim and drawn through
 Skia. They share only the `expect` declaration.
+
+<Diagram source={composeAppComponents} />
+
+Node colour is the source set: blue `commonMain`, green `jvmMain`, purple Wasm, grey outside the
+module.
 
 ### The browser has no DSS
 
@@ -92,7 +105,7 @@ rendered. See [Web → Features](/web/features) for what that looks like to a us
 `shared` follows clean architecture, with dependencies pointing inward toward the domain:
 
 - **`domain/model/`** — configuration (`AppConfig`, `GlobalConfig`, `ProfileConfig`, `ResolvedConfig`),
-operation parameters, results, validation reports, and the `Sensitive<T>` value class.
+operation parameters, results, validation reports, and the `Sensitive<T>` credential wrapper.
 - **`domain/model/error/`** — sealed interfaces: `OperationError` and its `SigningError`,
 `ValidationError`, `ArchivingError`, `ConfigurationError`, `TrustStoreError` branches.
 - **`domain/repository/`** and **`domain/port/`** — the interfaces the data layer implements.
