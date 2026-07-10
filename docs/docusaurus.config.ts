@@ -2,6 +2,26 @@ import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
+const {getRemarkPlugin} = require('docusaurus-plugin-glossary');
+
+const BASE_URL = '/omnisign/';
+
+/**
+ * `routePath` carries `baseUrl` because the plugin passes it verbatim both to `addRoute` and to the
+ * anchor it renders, applying `baseUrl` to neither.
+ *
+ * `expandAcronymsOnFirstUse` stays off: the docs already gloss most acronyms parenthetically, and
+ * expanding the first occurrence nests a parenthesis inside that gloss. Every occurrence carries a
+ * tooltip naming the long form, so nothing is lost.
+ */
+const glossaryOptions = {
+  glossaryPath: 'glossary/glossary.json',
+  routePath: `${BASE_URL}glossary`,
+  expandAcronymsOnFirstUse: false,
+};
+
+const glossaryRemark = getRemarkPlugin(glossaryOptions, {siteDir: __dirname});
+
 const config: Config = {
   title: 'OmniSign',
   tagline: 'Multiplatform digital signature verification, signing and re-timestamping',
@@ -13,12 +33,13 @@ const config: Config = {
   },
 
   url: 'https://pizavo.github.io',
-  baseUrl: '/omnisign/',
+  baseUrl: BASE_URL,
 
   organizationName: 'pizavo',
   projectName: 'omnisign',
 
   onBrokenLinks: 'throw',
+  onBrokenAnchors: 'throw',
   markdown: {
     mermaid: true,
     hooks: {
@@ -27,6 +48,8 @@ const config: Config = {
   },
 
   themes: ['@docusaurus/theme-mermaid'],
+
+  clientModules: ['./src/clientModules/zoom.ts'],
 
   i18n: {
     defaultLocale: 'en',
@@ -63,6 +86,7 @@ const config: Config = {
         routeBasePath: 'cli',
         sidebarPath: './sidebars-cli.ts',
         editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
+        remarkPlugins: [glossaryRemark],
       },
     ],
     [
@@ -73,6 +97,7 @@ const config: Config = {
         routeBasePath: 'desktop',
         sidebarPath: './sidebars-desktop.ts',
         editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
+        remarkPlugins: [glossaryRemark],
       },
     ],
     [
@@ -83,6 +108,7 @@ const config: Config = {
         routeBasePath: 'web',
         sidebarPath: './sidebars-web.ts',
         editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
+        remarkPlugins: [glossaryRemark],
       },
     ],
     [
@@ -93,6 +119,7 @@ const config: Config = {
         routeBasePath: 'server',
         sidebarPath: './sidebars-server.ts',
         editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
+        remarkPlugins: [glossaryRemark],
       },
     ],
     [
@@ -103,12 +130,15 @@ const config: Config = {
         routeBasePath: 'development',
         sidebarPath: './sidebars-development.ts',
         editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
+        remarkPlugins: [glossaryRemark],
       },
     ],
+    ['docusaurus-plugin-glossary', glossaryOptions],
     [
       require.resolve('@easyops-cn/docusaurus-search-local'),
       {
         hashed: true,
+        indexPages: true,
         docsPluginIdForPreferredVersion: 'desktop',
         docsDir: ['docs-cli', 'docs-desktop', 'docs-web', 'docs-server', 'docs-development'],
         docsRouteBasePath: ['cli', 'desktop', 'web', 'server', 'development'],
@@ -184,6 +214,12 @@ const config: Config = {
           ],
         },
         {
+          to: '/glossary',
+          label: 'Glossary',
+          position: 'right',
+          activeBaseRegex: '/glossary',
+        },
+        {
           href: 'https://github.com/pizavo/omnisign',
           label: 'GitHub',
           position: 'right',
@@ -200,6 +236,7 @@ const config: Config = {
             {label: 'Web', to: '/web/'},
             {label: 'Server', to: '/server/'},
             {label: 'CLI', to: '/cli/'},
+            {label: 'Glossary', to: '/glossary'},
           ],
         },
         {

@@ -47,7 +47,7 @@ says so:
 ```kotlin
 override suspend fun unlockToken(tokenId: String): OperationResult<List<AvailableCertificateInfo>> =
     SigningError.tokenUnlockNotSupportedOnWeb(
-        "Hardware tokens are not available in the browser.",
+        details = "Server-side tokens are managed by the server administrator; the web client cannot supply PINs",
     ).left()
 ```
 

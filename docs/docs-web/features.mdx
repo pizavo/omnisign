@@ -24,7 +24,7 @@ Three of the actions below appear only if the server permits the corresponding o
 
 Validation is enabled by default on a server; signing and timestamping are opt-in. So a
 validation-only deployment shows no Sign or Timestamp button at all, and a sign-only deployment offers
-signing but only at PAdES BASELINE B, because the timestamp checkboxes are gone with it.
+signing but only at PAdES BASELINE B-B, because the timestamp checkboxes are gone with it.
 
 :::note[If the server cannot be reached]
 The capabilities are fetched once when the app loads. If that fetch fails, the app **assumes every
@@ -85,11 +85,11 @@ menu rather than the desktop app's styled one.
 | Open and view PDF documents                   |     ✅      | Locally, one document at a time                    |
 | Page navigation and zoom (25 %–400 %)         |     ✅      |                                                     |
 | Drag and drop a file onto the window          |     ❌      | Use the folder button                              |
-| Validate signed PDFs (PAdES B–LTA)            |     ✅      | On the server; requires `VALIDATE`                 |
+| Validate signed PDFs (PAdES B-LTA)            |     ✅      | On the server; requires `VALIDATE`                 |
 | EU LOTL emblems and off-LOTL alert            |     ✅      |                                                     |
 | Export validation report (TXT, JSON, XML)     |     ✅      | Downloads through the browser                      |
 | Add a certificate to trusted from the report  |     ❌      | The server's trust store is read-only              |
-| Sign PDFs (PAdES B / B-LT / B-LTA)            |     ✅      | With the server's certificate; requires `SIGN`     |
+| Sign PDFs (PAdES B-B / B-LT / B-LTA)            |     ✅      | With the server's certificate; requires `SIGN`     |
 | Timestamp / extend signatures                 |     ✅      | Requires `TIMESTAMP`                               |
 | PKCS#11 hardware tokens, PIN entry            |     ❌      | The browser holds no keys                          |
 | PKCS#12 file upload                           |     ❌      | Client key material is not accepted                |
