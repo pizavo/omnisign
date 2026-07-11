@@ -144,6 +144,23 @@ const config: Config = {
         docsRouteBasePath: ['cli', 'desktop', 'web', 'server', 'development'],
       },
     ],
+    [
+      'docusaurus-plugin-llms',
+      {
+        title: 'OmniSign',
+        description:
+          'Multiplatform digital signature app for PAdES signing, validation and re-timestamping.',
+        excludeImports: true,
+        generateMarkdownFiles: true,
+        docsDir: [
+          {path: 'docs-cli', routeBasePath: 'cli', label: 'CLI'},
+          {path: 'docs-desktop', routeBasePath: 'desktop', label: 'Desktop'},
+          {path: 'docs-web', routeBasePath: 'web', label: 'Web'},
+          {path: 'docs-server', routeBasePath: 'server', label: 'Server'},
+          {path: 'docs-development', routeBasePath: 'development', label: 'Development'},
+        ],
+      },
+    ],
   ],
 
   themeConfig: {
