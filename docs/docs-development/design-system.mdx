@@ -33,6 +33,57 @@ ThemeName=LumoTheme
 The generated sources are checked in and freely edited afterwards — treat them as ours, not as
 vendored code.
 
+## Icons
+
+Every icon in the app is a [Tabler](https://tabler.io/icons) icon. The set lives in
+`composeApp/src/commonMain/composeResources/drawable/` as 61 SVGs, stored with hard-coded `black`
+strokes and fills so that Compose can recolour them at render time with `tint`.
+
+Three are not stock Tabler: `icon_window_restore` is derived from Tabler's `copy`, and `icon_eu` and
+`icon_eu_crossed` are original artwork. Tabler is MIT-licensed — see
+[NOTICE.md](https://github.com/pizavo/omnisign/blob/main/NOTICE.md).
+
+### The documentation site keeps no copies of its own
+
+`docs/scripts/generate-icons.mjs` runs before every `start`, `build`, and `typecheck`. It reads each
+drawable out of the app, rewrites the `black` fills to `currentColor` so CSS can theme them, and emits a
+typed barrel. The result lands in `docs/src/icons/`, which is generated and git-ignored.
+
+The app's `drawable/` directory is therefore the single source of truth. Change an icon there and the
+docs follow on the next build — there is nothing to keep in sync by hand.
+
+Render one with `AppIcon`:
+
+```tsx
+import AppIcon from '@site/src/components/AppIcon';
+
+<AppIcon name="shield_check" color="success" label="Valid signature" />
+```
+
+`name` is the file stem without the `icon_` prefix. `color` is an optional semantic tint mirroring the
+desktop theme; omit it to inherit the surrounding text colour. Pass `label` when the icon carries meaning
+on its own — without one it is exposed to assistive technology as decorative.
+
+:::danger[A drawable's file name is not its Tabler name]
+`icon_window_minimize` is Tabler's **`minus`**. `icon_window_maximize` is Tabler's **`square`**. Tabler
+*also* publishes icons called `window-minimize` and `window-maximize`, and they are different glyphs.
+
+So never resolve an icon by guessing its Tabler name. The SVG in `drawable/` is the artwork, and it is
+the only thing that records what the app actually draws. This is why the docs copy the file rather than
+importing from an icon package — a name-based mapping would compile, typecheck, and render the wrong
+picture.
+:::
+
+### Adding an icon
+
+Drop `icon_<name>.svg` into `composeApp/src/commonMain/composeResources/drawable/` with `black` strokes
+and fills. It becomes `Res.drawable.icon_<name>` in the app and `<AppIcon name="<name>" />` in the docs
+on the next build. There is no registration step.
+
+Icons that belong to the documentation site rather than to the app — the "Enlarge" badge on the Mermaid
+diagrams, for instance — are inlined in the component that uses them. `AppIcon` exists to depict the
+app's own UI, so putting site chrome in `drawable/` would ship the app a resource it never draws.
+
 ## `LumoTheme` is one of the sanctioned `object`s
 
 [Coding conventions](conventions.mdx#dependency-injection-is-koin-exclusively) require Koin for

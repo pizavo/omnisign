@@ -231,4 +231,6 @@ The project uses **[Kotest 6](https://kotest.io/)** (FunSpec style),
 This project is licensed under the
 [GNU Affero General Public License v3.0 or later](LICENSE.md) (AGPL-3.0-or-later).
 
+Third-party material bundled in this repository is credited in [NOTICE.md](NOTICE.md).
+
 Copyright © 2026 [Pizavo](mailto:pizavo@gmail.com).
