@@ -3,6 +3,7 @@ sidebar_position: 2
 ---
 
 import useBaseUrl from '@docusaurus/useBaseUrl';
+import ZoomableImage from '@site/src/components/ZoomableImage';
 import AppIcon from '@site/src/components/AppIcon';
 
 # Validating Signatures
@@ -29,7 +30,8 @@ validate, a **Loading trusted lists…** progress bar appears at the top of the 
 action waits until it finishes. The bar is indeterminate until the EU LOTL has been fetched and the
 member-state and custom lists are known, then becomes a determinate *"loaded of N"* bar.
 
-<img src={useBaseUrl('/img/desktop/validation-refresh.avif')} alt="Refreshing the Signatures panel to validate the document" />
+{/* Animated AVIF (`avis`): Docusaurus's markdown image pipeline cannot read its dimensions, so it stays raw JSX and reaches the enlarge overlay via ZoomableImage. */}
+<ZoomableImage src={useBaseUrl('/img/desktop/validation-refresh.avif')} alt="Refreshing the Signatures panel to validate the document" />
 
 ## 3. Read the results
 

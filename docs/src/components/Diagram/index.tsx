@@ -1,21 +1,22 @@
-import {useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import type {ReactNode} from 'react';
+import {useCallback, useMemo, useRef, useState} from 'react';
 import Mermaid from '@theme/Mermaid';
+import Overlay from '@site/src/components/Overlay';
 import styles from './styles.module.css';
 
 interface DiagramProps {
-  source: string;
+    source: string;
 }
 
 /**
  * Forces natural-size rendering, overriding `useMaxWidth` from `themeConfig.mermaid`.
  *
- * Mermaid emits `width="100%"` plus a `max-width` style when `useMaxWidth` is on, and explicit
- * pixel `width`/`height` attributes when it is off. The enlarged copy wants the latter so it can
- * scroll inside the overlay at full resolution.
+ * Mermaid emits `width="100%"` plus an inline `max-width` style when `useMaxWidth` is on, and plain
+ * pixel `width`/`height` attributes when it is off. The enlarged copy wants the latter: the overlay
+ * sizes the diagram itself, and a stylesheet can override an attribute but not an inline style.
  */
 const NATURAL_SIZE_DIRECTIVE =
-  '%%{init: {"flowchart": {"useMaxWidth": false}, "sequence": {"useMaxWidth": false}} }%%';
+    '%%{init: {"flowchart": {"useMaxWidth": false}, "sequence": {"useMaxWidth": false}} }%%';
 
 const FRONT_MATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/;
 
@@ -35,110 +36,93 @@ const FRONT_MATTER = /^---\r?\n([\s\S]*?)\r?\n---\r?\n/;
  * ```
  *
  * The diagram scales to the content column, which leaves the labels on the wider ones small.
- * Clicking it opens the same diagram at natural size in a scrollable overlay.
+ * Clicking it opens the same diagram in an overlay, fitted to the viewport and zoomable from there.
  *
  * The `title:` front matter is never drawn by Mermaid itself; it is lifted out and reused as the
  * figure's caption, the overlay's heading, and the trigger's accessible name. Any other front
  * matter, such as a `config:` block tuning `nodeSpacing`, is preserved.
  */
 export default function Diagram({source}: DiagramProps): ReactNode {
-  const [enlarged, setEnlarged] = useState(false);
-  const triggerRef = useRef<HTMLButtonElement>(null);
+    const [enlarged, setEnlarged] = useState(false);
+    const [natural, setNatural] = useState<{width: number; height: number}>();
+    const triggerRef = useRef<HTMLButtonElement>(null);
 
-  const title = useMemo(() => extractTitle(source), [source]);
-  const inlineSource = useMemo(() => stripTitle(source), [source]);
-  const enlargedSource = useMemo(() => withNaturalSize(inlineSource), [inlineSource]);
+    const title = useMemo(() => extractTitle(source), [source]);
+    const inlineSource = useMemo(() => stripTitle(source), [source]);
+    const enlargedSource = useMemo(() => withNaturalSize(inlineSource), [inlineSource]);
 
-  const close = useCallback(() => {
-    setEnlarged(false);
-    triggerRef.current?.focus();
-  }, []);
+    const open = useCallback(() => {
+        const box = triggerRef.current?.querySelector('.docusaurus-mermaid-container svg')?.viewBox
+            ?.baseVal;
+        if (box?.width && box.height) {
+            setNatural({width: box.width, height: box.height});
+        }
+        setEnlarged(true);
+    }, []);
 
-  return (
-    <figure className={styles.figure}>
-      <button
-        ref={triggerRef}
-        type="button"
-        className={styles.trigger}
-        onClick={() => setEnlarged(true)}
-        aria-label={title ? `Enlarge diagram: ${title}` : 'Enlarge diagram'}>
-        <Mermaid value={inlineSource} />
-        <span aria-hidden="true" className={styles.hint}>
-          Click to enlarge
+    const close = useCallback(() => {
+        setEnlarged(false);
+        triggerRef.current?.focus();
+    }, []);
+
+    return (
+        <figure className={styles.figure}>
+            <button
+                ref={triggerRef}
+                type="button"
+                className={styles.trigger}
+                onClick={open}
+                aria-label={title ? `Enlarge diagram: ${title}` : 'Enlarge diagram'}>
+                <Mermaid value={inlineSource}/>
+                <span aria-hidden="true" className={styles.hint}>
+          <ZoomInIcon/>
+          Enlarge
         </span>
-      </button>
-      {title && <figcaption className={styles.caption}>{title}</figcaption>}
-      {enlarged && <Overlay title={title} source={enlargedSource} onClose={close} />}
-    </figure>
-  );
+            </button>
+            {title && <figcaption className={styles.caption}>{title}</figcaption>}
+            {enlarged && (
+                <Overlay title={title} natural={natural} onClose={close}>
+                    <Mermaid value={enlargedSource}/>
+                </Overlay>
+            )}
+        </figure>
+    );
 }
 
-interface OverlayProps {
-  title?: string;
-  source: string;
-  onClose: () => void;
-}
-
-/** Full-viewport overlay holding the diagram at natural size, scrollable in both axes. */
-function Overlay({title, source, onClose}: OverlayProps): ReactNode {
-  const closeRef = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    closeRef.current?.focus();
-
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        onClose();
-      }
-    };
-    document.addEventListener('keydown', onKeyDown);
-
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = 'hidden';
-
-    return () => {
-      document.removeEventListener('keydown', onKeyDown);
-      document.body.style.overflow = previousOverflow;
-    };
-  }, [onClose]);
-
-  return (
-    <div
-      className={styles.backdrop}
-      role="dialog"
-      aria-modal="true"
-      aria-label={title ?? 'Enlarged diagram'}
-      onClick={onClose}>
-      <div className={styles.header}>
-        <span className={styles.title}>{title}</span>
-        <button
-          ref={closeRef}
-          type="button"
-          className={styles.close}
-          onClick={onClose}
-          aria-label="Close enlarged diagram">
-          &times;
-        </button>
-      </div>
-      <div
-        className={styles.body}
-        onClick={(event) => {
-          event.stopPropagation();
-        }}>
-        <Mermaid value={source} />
-      </div>
-    </div>
-  );
+/**
+ * The Tabler `zoom-in` glyph, inlined rather than taken from `AppIcon`.
+ *
+ * `AppIcon` renders the *desktop app's* drawables, and the app has no magnifier: adding one to
+ * `composeResources/drawable/` would ship a resource the app never draws, and would imply to a
+ * reader that OmniSign has a magnifier button somewhere. This is site chrome, so it lives with the
+ * component that uses it. The path data comes from the same Tabler outline family as the app's
+ * icons, so it still looks native beside them.
+ *
+ * The label is a modality-neutral verb — the diagrams are at their least legible on a phone, which
+ * is exactly where "click" would be the wrong instruction.
+ */
+function ZoomInIcon(): ReactNode {
+    return (
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none"
+             stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round"
+             className={styles.hintIcon}>
+            <path stroke="none" d="M0 0h24v24H0z" fill="none"/>
+            <path d="M3 10a7 7 0 1 0 14 0a7 7 0 1 0 -14 0"/>
+            <path d="M7 10l6 0"/>
+            <path d="M10 7l0 6"/>
+            <path d="M21 21l-6 -6"/>
+        </svg>
+    );
 }
 
 /** Reads the `title:` value out of the diagram's YAML front matter, if it has one. */
 function extractTitle(source: string): string | undefined {
-  const match = FRONT_MATTER.exec(source);
-  return match?.[1]
-    .split(/\r?\n/)
-    .find((line) => /^title:\s/.test(line))
-    ?.replace(/^title:\s*/, '')
-    .trim();
+    const match = FRONT_MATTER.exec(source);
+    return match?.[1]
+        .split(/\r?\n/)
+        .find((line) => /^title:\s/.test(line))
+        ?.replace(/^title:\s*/, '')
+        .trim();
 }
 
 /**
@@ -146,26 +130,26 @@ function extractTitle(source: string): string | undefined {
  * block when `title:` was all it contained.
  */
 function stripTitle(source: string): string {
-  const match = FRONT_MATTER.exec(source);
-  if (!match) {
-    return source;
-  }
+    const match = FRONT_MATTER.exec(source);
+    if (!match) {
+        return source;
+    }
 
-  const body = source.slice(match[0].length);
-  const kept = match[1].split(/\r?\n/).filter((line) => !/^title:\s/.test(line));
+    const body = source.slice(match[0].length);
+    const kept = match[1].split(/\r?\n/).filter((line) => !/^title:\s/.test(line));
 
-  if (kept.every((line) => line.trim() === '')) {
-    return body;
-  }
+    if (kept.every((line) => line.trim() === '')) {
+        return body;
+    }
 
-  return `---\n${kept.join('\n')}\n---\n${body}`;
+    return `---\n${kept.join('\n')}\n---\n${body}`;
 }
 
 /** Inserts the natural-size directive after the front matter, or at the top when there is none. */
 function withNaturalSize(source: string): string {
-  const match = FRONT_MATTER.exec(source);
-  if (!match) {
-    return `${NATURAL_SIZE_DIRECTIVE}\n${source}`;
-  }
-  return `${match[0]}${NATURAL_SIZE_DIRECTIVE}\n${source.slice(match[0].length)}`;
+    const match = FRONT_MATTER.exec(source);
+    if (!match) {
+        return `${NATURAL_SIZE_DIRECTIVE}\n${source}`;
+    }
+    return `${match[0]}${NATURAL_SIZE_DIRECTIVE}\n${source.slice(match[0].length)}`;
 }

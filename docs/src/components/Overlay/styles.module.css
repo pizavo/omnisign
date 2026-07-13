@@ -1,0 +1,89 @@
+.backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  background: rgba(0, 0, 0, 0.72);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.75rem 1rem;
+  color: #fff;
+}
+
+.title {
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.close {
+  flex: 0 0 auto;
+  padding: 0 0.5rem;
+  border: 0;
+  background: none;
+  color: #fff;
+  font-size: 1.75rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.close:focus-visible {
+  outline: 2px solid #fff;
+  outline-offset: 2px;
+}
+
+.body {
+  display: flex;
+  flex: 1 1 auto;
+  overflow: auto;
+  padding: 1rem;
+}
+
+/*
+ * The frozen box the content is fitted into. It sizes to the content, and `.body` scrolls around it
+ * once a browser zoom has grown it past the viewport.
+ *
+ * Centring uses `margin: auto` rather than `justify-content: center`, because a centred flex item that
+ * overflows its scroll container spills past the container's start edge, and that overflow cannot be
+ * scrolled to. Auto margins resolve to zero when there is no free space, so content larger than the
+ * viewport aligns to the start and stays fully reachable.
+ *
+ * The background matters for diagrams: a Mermaid SVG is transparent, and its light-theme strokes would
+ * be invisible against the backdrop.
+ */
+.content {
+  flex: 0 0 auto;
+  margin: auto;
+  overflow: hidden;
+  border-radius: var(--ifm-global-radius);
+  background: var(--ifm-background-color);
+}
+
+/*
+ * The content fills the frozen box exactly, because the box was sized from the content's own aspect
+ * ratio.
+ *
+ * `max-width: none` is load-bearing. Infima caps every image with `img { max-width: 100% }`, and
+ * `@docusaurus/theme-mermaid` caps its container and SVG the same way. Either would re-fit the content
+ * to whatever space it is given, which is what makes a browser zoom cancel itself out. Both selectors
+ * are two classes deep, so they outrank the single-class rules they are overriding.
+ */
+.body .fitted > * {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: contain;
+}
+
+.body .fitted svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+}

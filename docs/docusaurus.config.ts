@@ -49,8 +49,6 @@ const config: Config = {
 
   themes: ['@docusaurus/theme-mermaid'],
 
-  clientModules: ['./src/clientModules/zoom.ts'],
-
   i18n: {
     defaultLocale: 'en',
     locales: ['en'],
