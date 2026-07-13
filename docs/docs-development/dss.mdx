@@ -1,0 +1,150 @@
+---
+sidebar_position: 8
+---
+
+import Diagram from '@site/src/components/Diagram';
+import signingFlow from '@site/diagrams/06-signing-flow.mmd';
+import validationFlow from '@site/diagrams/07-validation-flow.mmd';
+
+# Working with DSS
+
+Every signature OmniSign creates or checks is ultimately produced by
+**[DSS](https://github.com/esig/dss)** — *Digital Signature Services*, the European Commission's
+reference implementation of the eIDAS signature standards. OmniSign uses **DSS 6.3**.
+
+DSS is a large, stateful Java library with an API shaped by the ETSI specifications rather than by
+ergonomics. Most of the code in `shared/src/jvmMain/data/repository/` exists to keep that shape from
+leaking into the rest of the application.
+
+## Signing, end to end
+
+Where the repository does the work, and where DSS does. Note that the signing identity resolves from
+**either** a PKCS#11 token **or** a PKCS#12 keystore file, and that the optional blocks are keyed to
+the requested PAdES level — a B-B signature never contacts a TSA.
+
+<Diagram source={signingFlow} />
+
+## Validating, end to end
+
+<Diagram source={validationFlow} />
+
+Both flows converge on the same two steps at the end — *collect and sanitize warnings*, then map into
+the domain. The rest of this page is about those two steps.
+
+## The factory that owns the expensive things
+
+`DssServiceFactory` centralises everything costly or shared: TSP sources, certificate verifiers, and
+Trusted List validation jobs. It is a Koin `single`, injected into all three DSS repositories
+(`DssSigningRepository`, `DssValidationRepository`, `DssArchivingRepository`).
+
+It builds a **different certificate verifier for signing than for validation**, and the difference is
+not cosmetic. Both wire the same five DSS alert properties, but the signing verifier silences two of
+them:
+
+| Alert | Signing | Validation |
+| --- | --- | --- |
+| `alertOnMissingRevocationData` | suppressed | raised |
+| `alertOnNoRevocationAfterBestSignatureTime` | suppressed | raised |
+| `alertOnUncoveredPOE` | raised | raised |
+| `alertOnInvalidTimestamp` | raised | raised |
+| `alertOnRevokedCertificate` | raised | raised |
+
+The signing verifier additionally sets `isCheckRevocationForUntrustedChains = false`, and honours
+`validation.allowExpiredCertificate` by clearing `alertOnExpiredCertificate`.
+
+The asymmetry is deliberate. A signature being *created* has no revocation data covering it yet, so
+demanding some would fail every signature. A signature being *validated* is a claim about the past,
+and missing revocation data is exactly what undermines it. Collapsing the two into one verifier is the
+obvious-looking refactor, and it is wrong.
+
+Both paths short-circuit to a fully lenient verifier — every alert cleared — when `config` is `null`
+or `validation.checkRevocation` is off.
+
+Two more builders round it out. `buildTspSource()` constructs an `OnlineTSPSource` per configured
+timestamp server, wiring in that server's timeout and credentials. `buildPdfObjectFactory()` returns a
+`PdfBoxNativeObjectFactory` that spills large documents to a temporary file once the in-heap limit is
+exceeded, so signing a large PDF does not scale with its size in memory.
+
+## How a DSS warning becomes a sentence
+
+DSS reports problems in two incompatible ways: through *alerts* on the `CertificateVerifier`, and by
+logging to SLF4J. OmniSign captures both, then normalises them.
+
+1. **`CollectingStatusAlert`** is registered on the `CertificateVerifier`. Instead of throwing or
+printing, it accumulates DSS's status messages for the duration of an operation.
+2. **`DssLogCapture`** is a Logback appender attached to the `eu.europa.esig` parent logger while an
+operation runs. It catches the diagnostics DSS only ever logs. It is *not* `Closeable` — it is
+started and stopped in a `try`/`finally`.
+3. **`DssWarningSanitizer`** classifies each raw message into a `WarningCategory` and folds the
+affected certificate identifiers together, so ten warnings about ten certificates become one
+sentence.
+
+The categories, and roughly what each means:
+
+| Category | Meaning |
+| --- | --- |
+| `REVOCATION_NOT_FOUND` | CRL/OCSP could not be downloaded |
+| `REVOCATION_UNTRUSTED_CHAIN` | Revocation was skipped — the chain has no trusted anchor |
+| `REVOCATION_STATUS_UNKNOWN` | Neither *good* nor *revoked* could be established |
+| `REVOCATION_POE_MISSING` | Revocation data needed for proof-of-existence is absent |
+| `FRESH_REVOCATION_MISSING` | Cached revocation data was used; no fresh response |
+| `TIMESTAMP_UNTRUSTED` | The issuing TSA is not in any trusted list |
+| `CERTIFICATE_PARSE_ERROR` | Malformed ASN.1 extensions, typically in a third-party TSA certificate |
+| `TSP_FAILURE` | The timestamp server returned a `PKIFailureInfo` |
+
+Each category renders itself through `toSummary(ids)`, which is where the user-facing wording lives.
+The result is a list of `AnnotatedWarning`.
+
+:::tip[Warnings are suppressed per operation, not globally]
+`DssSigningRepository` deliberately suppresses `REVOCATION_NOT_FOUND`, `FRESH_REVOCATION_MISSING`, and
+`CERTIFICATE_PARSE_ERROR`. Not because they are unimportant, but because at *signing* time they are
+expected noise — the signature being created has no revocation data yet, and third-party TSA
+certificates routinely carry extensions DSS cannot parse. The same categories are surfaced during
+validation, where they mean something.
+
+If you add a category, decide explicitly what each repository does with it.
+:::
+
+## Timestamp failures
+
+`TspErrorDetector` pulls RFC 3161 `PKIFailureInfo` codes out of the exceptions DSS throws when a
+timestamp authority rejects a request. Without it, a TSA saying *"policy not supported"* and a TSA
+being unreachable are the same opaque failure.
+
+A TSP failure can be non-fatal: DSS may retry and succeed, in which case the failure survives only as
+a logged warning that `DssLogCapture` picks up. That is why `TSP_FAILURE` exists as a warning category
+*and* as a dedicated error — the operation's outcome decides which one the user sees.
+
+## Trusted Lists and the LOTL
+
+eIDAS trust is anchored in the **List of Trusted Lists**, published by the European Commission and
+signed with keys that rotate. DSS validates the LOTL against a bundled keystore, which OmniSign ships
+at `shared/src/jvmMain/resources/lotl-keystore.p12`.
+
+When the Commission rotates those keys, refresh it:
+
+```bash
+./gradlew :shared:updateLotlKeystore
+```
+
+The task downloads the current Official Journal keystore from the DSS demonstrations repository and
+overwrites the bundled copy. Commit the result — it is a build input, not a cache.
+
+Beyond the EU LOTL, OmniSign supports custom Trusted Lists and directly-trusted certificates. The
+trust store is app-managed and content-addressed: certificates are stored as `sha256-<hex>.der` files,
+deduplicated by fingerprint, and reference-counted so removing the last reference collects the file.
+`FileTrustStore` implements it; the desktop, server, and CLI all share the format.
+
+## Before you conclude DSS cannot do something
+
+DSS's API surface is much wider than the parts OmniSign uses, and it is easy to assume a limitation
+that is not there. Two capabilities OmniSign does **not** currently use, but which exist:
+
+- `TempFileResourcesHandlerBuilder` spools PAdES output to temporary files rather than building it in
+memory.
+- The `dss-cms-stream` module streams CMS data instead of materialising it.
+
+So "DSS cannot stream this" is usually false. Check
+[the DSS documentation](https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/doc/dss-documentation.html)
+or grep the DSS sources for `*Handler` and `*Builder` types before designing around a supposed
+constraint.

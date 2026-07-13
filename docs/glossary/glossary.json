@@ -1,0 +1,160 @@
+{
+  "title": "Glossary",
+  "description": "Terms used across the OmniSign documentation.",
+  "terms": [
+    {
+      "term": "PAdES",
+      "id": "pades",
+      "abbreviation": "PDF Advanced Electronic Signatures",
+      "caseSensitive": true,
+      "definition": "The ETSI standard for embedding advanced electronic signatures in PDF documents. OmniSign implements its four baseline levels: B-B, B-T, B-LT and B-LTA."
+    },
+    {
+      "term": "DSS",
+      "id": "dss",
+      "abbreviation": "Digital Signature Services",
+      "caseSensitive": true,
+      "definition": "The European Commission's open-source library for creating and validating eIDAS-conformant signatures. OmniSign performs all signing, validation and timestamping through it."
+    },
+    {
+      "term": "eIDAS",
+      "id": "eidas",
+      "abbreviation": "electronic IDentification, Authentication and trust Services",
+      "caseSensitive": true,
+      "definition": "Regulation (EU) No 910/2014 on electronic identification and trust services for electronic transactions in the internal market. It defines qualified signatures, trust service providers, and the trusted lists that validation resolves against."
+    },
+    {
+      "term": "ETSI",
+      "id": "etsi",
+      "abbreviation": "European Telecommunications Standards Institute",
+      "caseSensitive": true,
+      "definition": "The European standards body whose specifications define the PAdES signature levels, the trusted-list format, and the validation policy and report formats OmniSign uses."
+    },
+    {
+      "term": "LOTL",
+      "id": "lotl",
+      "abbreviation": "List of Trusted Lists",
+      "caseSensitive": true,
+      "definition": "The European Commission's root list, pointing at each member state's national trusted list. Validation walks it to decide whether a certificate belongs to a qualified trust service."
+    },
+    {
+      "term": "TSP",
+      "id": "tsp",
+      "abbreviation": "Trust Service Provider",
+      "caseSensitive": true,
+      "definition": "An organisation issuing certificates, timestamps or other trust services under eIDAS. A member state's trusted list enumerates its providers and the services each one offers."
+    },
+    {
+      "term": "TSA",
+      "id": "tsa",
+      "abbreviation": "Time Stamping Authority",
+      "caseSensitive": true,
+      "definition": "A trust service that issues RFC 3161 timestamp tokens. OmniSign contacts one to add the signature timestamp of B-T and the archival document timestamp of B-LTA."
+    },
+    {
+      "term": "CA",
+      "id": "ca",
+      "abbreviation": "Certificate Authority",
+      "caseSensitive": true,
+      "definition": "A trust service that issues digital certificates, binding a public key to a named subject. Validation walks a signature's certificate chain up to a CA it can trust through a trusted list."
+    },
+    {
+      "term": "B-B",
+      "id": "b-b",
+      "abbreviation": "Baseline Basic",
+      "caseSensitive": true,
+      "definition": "The base PAdES level: a basic electronic signature with no timestamp. It is verifiable only while the signing certificate and its revocation data are still available."
+    },
+    {
+      "term": "B-T",
+      "id": "b-t",
+      "abbreviation": "Baseline Timestamp",
+      "caseSensitive": true,
+      "definition": "The PAdES level that adds an RFC 3161 signature timestamp, fixing the moment the signature was made independently of the signing certificate's own clock."
+    },
+    {
+      "term": "B-LT",
+      "id": "b-lt",
+      "abbreviation": "Baseline Long-Term",
+      "caseSensitive": true,
+      "definition": "The PAdES baseline level that adds certificate revocation data (CRL or OCSP) to a timestamped signature, so it stays verifiable once the signing certificate has expired."
+    },
+    {
+      "term": "B-LTA",
+      "id": "b-lta",
+      "abbreviation": "Baseline Long-Term Archival",
+      "caseSensitive": true,
+      "definition": "The PAdES baseline level that adds an archival document timestamp on top of B-LT. Renewing that timestamp before its own algorithms or certificates weaken keeps the signature verifiable indefinitely."
+    },
+    {
+      "term": "CRL",
+      "id": "crl",
+      "abbreviation": "Certificate Revocation List",
+      "caseSensitive": true,
+      "definition": "A signed list, published by a certificate authority, of the certificates it has revoked before their expiry date."
+    },
+    {
+      "term": "OCSP",
+      "id": "ocsp",
+      "abbreviation": "Online Certificate Status Protocol",
+      "caseSensitive": true,
+      "definition": "A protocol for asking a certificate authority about the revocation status of a single certificate, instead of downloading a whole revocation list."
+    },
+    {
+      "term": "PKCS#11",
+      "id": "pkcs11",
+      "abbreviation": "Public-Key Cryptography Standards #11",
+      "caseSensitive": true,
+      "definition": "The standard interface to a cryptographic token. OmniSign loads a vendor library to sign with a smart card or USB token, so the private key never leaves the device."
+    },
+    {
+      "term": "PKCS#12",
+      "id": "pkcs12",
+      "abbreviation": "Public-Key Cryptography Standards #12",
+      "caseSensitive": true,
+      "definition": "A password-protected file (.p12 or .pfx) holding a private key together with its certificate chain. OmniSign can sign from one directly, without a hardware token."
+    },
+    {
+      "term": "SSO",
+      "id": "sso",
+      "abbreviation": "Single Sign-On",
+      "caseSensitive": true,
+      "definition": "Authenticating once against a central identity provider and reusing that session elsewhere. The OmniSign server supports it through OIDC, or by trusting headers injected by an authenticating proxy."
+    },
+    {
+      "term": "OIDC",
+      "id": "oidc",
+      "abbreviation": "OpenID Connect",
+      "caseSensitive": true,
+      "definition": "An identity layer built on OAuth 2.0. The OmniSign server can delegate sign-in to an OIDC provider and issue its own session token afterwards."
+    },
+    {
+      "term": "JWT",
+      "id": "jwt",
+      "abbreviation": "JSON Web Token",
+      "caseSensitive": true,
+      "definition": "A signed, self-contained token carrying claims about its bearer. The OmniSign server issues HMAC-signed tokens to represent an authenticated session."
+    },
+    {
+      "term": "JSON",
+      "id": "json",
+      "abbreviation": "JavaScript Object Notation",
+      "caseSensitive": true,
+      "definition": "A lightweight, text-based data format. OmniSign can export a validation report as JSON for machine processing."
+    },
+    {
+      "term": "XML",
+      "id": "xml",
+      "abbreviation": "Extensible Markup Language",
+      "caseSensitive": true,
+      "definition": "A structured, text-based markup format. OmniSign exports the DSS and ETSI validation reports as XML, and builds custom trusted lists as ETSI TS 119 612 XML."
+    },
+    {
+      "term": "TXT",
+      "id": "txt",
+      "abbreviation": "Plain Text",
+      "caseSensitive": true,
+      "definition": "An unstructured plain-text file. OmniSign can export a human-readable validation report as plain text."
+    }
+  ]
+}

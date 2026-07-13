@@ -23,12 +23,12 @@ leaf shows the corresponding form.
 
 Configure the default hash algorithm, encryption algorithm, and signature level used
 when signing documents. These defaults can be overridden per-profile or per-operation.
-See [Algorithms](../algorithms.md) for the full list of supported algorithms.
+See [Algorithms](../algorithms.mdx) for the full list of supported algorithms.
 
 | Setting              | Description                                                                                                     | Default |
 |----------------------|-----------------------------------------------------------------------------------------------------------------|---------|
-| Hash algorithm       | Digest algorithm for the signature (see [full list](../algorithms.md#hash-algorithms))                          | SHA-256 |
-| Encryption algorithm | Signing key algorithm (see [full list](../algorithms.md#encryption-algorithms); auto-detected from certificate) | Auto    |
+| Hash algorithm       | Digest algorithm for the signature (see [full list](../algorithms.mdx#hash-algorithms))                          | SHA-256 |
+| Encryption algorithm | Signing key algorithm (see [full list](../algorithms.mdx#encryption-algorithms); auto-detected from certificate) | Auto    |
 | Signature timestamp  | Include a signature timestamp and revocation data (B-LT)                                                        | Off     |
 | Archival timestamp   | Include an archival document timestamp (B-LTA)                                                                  | Off     |
 | Allow signing with an expired certificate | Produce a signature even if the signing certificate has expired. **Such signatures fail validation**, so leave off unless you specifically need it | Off |
@@ -86,7 +86,7 @@ Revocation List requests used during validation and B-LT/B-LTA signing.
   anchor is not on the EU LOTL with a red crossed EU emblem (per signature and in the overall
   badge). It requires **EU LOTL** to be enabled: when EU LOTL is off, the switch is disabled and
   shows an info hint, and its value is preserved so re-enabling EU LOTL restores it. See
-  [Validating Signatures → EU LOTL membership](validation.md#eu-lotl-membership).
+  [Validating Signatures → EU LOTL membership](validation.mdx#eu-lotl-membership).
 - **Trusted list refresh interval (hours)** — how often the EU LOTL and custom lists are
   refreshed automatically in the background (minimum 1 hour).
 - **Refresh now** — a refresh button, with a "Last refreshed" indicator, forces an immediate
@@ -120,14 +120,14 @@ files (CLI / server).
 Add CA and TSA certificates that should be directly trusted during validation, without
 requiring a full ETSI Trusted List XML document. They are wired into DSS alongside any ETSI
 trusted lists and apply to the **global** scope; profile-scoped certificates are managed in the
-[profile editor](profiles.md#trusted-certificates).
+[profile editor](profiles.mdx#trusted-certificates).
 
 For each certificate, choose a **trust role** — **CA**, **TSA**, or **Any** (trusted for both) —
 then pick a `.pem` / `.der` / `.crt` / `.cer` file (or type its path). Additions and removals are
 **staged**: a new certificate shows a **Pending** badge and a removed one stays visible marked
 **Removing** (with an undo button) until you click **Save**; closing the dialog without saving
 discards the staged changes. Adding a certificate whose fingerprint is already trusted in this
-scope is rejected. The read-only [Trusted Certificates panel](trusted-certificates.md) shows the
+scope is rejected. The read-only [Trusted Certificates panel](trusted-certificates.mdx) shows the
 resulting global and active-profile certificates.
 
 ![Global Trusted Certificates settings](/img/desktop/settings-trusted-certs.avif)
@@ -138,7 +138,7 @@ Register external ETSI TS 119612 Trusted List XML sources. Each entry may be an 
 or a local file path. An optional signing certificate verifies the TL's XML signature —
 strongly recommended for non-EU lists.
 
-A **Build** button opens the [Trusted List builder](tl-builder.md) dialog for creating new
+A **Build** button opens the [Trusted List builder](tl-builder.mdx) dialog for creating new
 TL documents from scratch.
 
 ### Tokens / PKCS#11 Libraries
@@ -161,7 +161,7 @@ clients work this way): OmniSign then shows no PIN dialog of its own for that li
 module drive PIN entry, avoiding a double prompt. Leave it off for middleware that accepts the PIN
 programmatically.
 
-:::tip Drop directory
+:::tip[Drop directory]
 This section also shows an auto-discovery **drop directory**. Copy a PKCS#11 library file
 (`.dll` / `.so` / `.dylib`) into it and OmniSign discovers it automatically — no manual entry
 needed. The path is a clickable link that reveals the folder in your file manager.

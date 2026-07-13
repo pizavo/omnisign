@@ -2,6 +2,26 @@ import {themes as prismThemes} from 'prism-react-renderer';
 import type {Config} from '@docusaurus/types';
 import type * as Preset from '@docusaurus/preset-classic';
 
+const {getRemarkPlugin} = require('docusaurus-plugin-glossary');
+
+const BASE_URL = '/omnisign/';
+
+/**
+ * `routePath` carries `baseUrl` because the plugin passes it verbatim both to `addRoute` and to the
+ * anchor it renders, applying `baseUrl` to neither.
+ *
+ * `expandAcronymsOnFirstUse` stays off: the docs already gloss most acronyms parenthetically, and
+ * expanding the first occurrence nests a parenthesis inside that gloss. Every occurrence carries a
+ * tooltip naming the long form, so nothing is lost.
+ */
+const glossaryOptions = {
+  glossaryPath: 'glossary/glossary.json',
+  routePath: `${BASE_URL}glossary`,
+  expandAcronymsOnFirstUse: false,
+};
+
+const glossaryRemark = getRemarkPlugin(glossaryOptions, {siteDir: __dirname});
+
 const config: Config = {
   title: 'OmniSign',
   tagline: 'Multiplatform digital signature verification, signing and re-timestamping',
@@ -9,20 +29,25 @@ const config: Config = {
 
   future: {
     v4: true,
+    faster: true,
   },
 
   url: 'https://pizavo.github.io',
-  baseUrl: '/omnisign/',
+  baseUrl: BASE_URL,
 
   organizationName: 'pizavo',
   projectName: 'omnisign',
 
   onBrokenLinks: 'throw',
+  onBrokenAnchors: 'throw',
   markdown: {
+    mermaid: true,
     hooks: {
       onBrokenMarkdownLinks: 'warn',
     },
   },
+
+  themes: ['@docusaurus/theme-mermaid'],
 
   i18n: {
     defaultLocale: 'en',
@@ -43,6 +68,14 @@ const config: Config = {
   ],
 
   plugins: [
+    () => ({
+      name: 'mmd-source-loader',
+      configureWebpack: () => ({
+        module: {
+          rules: [{test: /\.mmd$/, type: 'asset/source'}],
+        },
+      }),
+    }),
     [
       '@docusaurus/plugin-content-docs',
       {
@@ -51,6 +84,7 @@ const config: Config = {
         routeBasePath: 'cli',
         sidebarPath: './sidebars-cli.ts',
         editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
+        remarkPlugins: [glossaryRemark],
       },
     ],
     [
@@ -61,6 +95,7 @@ const config: Config = {
         routeBasePath: 'desktop',
         sidebarPath: './sidebars-desktop.ts',
         editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
+        remarkPlugins: [glossaryRemark],
       },
     ],
     [
@@ -71,6 +106,7 @@ const config: Config = {
         routeBasePath: 'web',
         sidebarPath: './sidebars-web.ts',
         editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
+        remarkPlugins: [glossaryRemark],
       },
     ],
     [
@@ -81,15 +117,46 @@ const config: Config = {
         routeBasePath: 'server',
         sidebarPath: './sidebars-server.ts',
         editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
+        remarkPlugins: [glossaryRemark],
       },
     ],
+    [
+      '@docusaurus/plugin-content-docs',
+      {
+        id: 'development',
+        path: 'docs-development',
+        routeBasePath: 'development',
+        sidebarPath: './sidebars-development.ts',
+        editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
+        remarkPlugins: [glossaryRemark],
+      },
+    ],
+    ['docusaurus-plugin-glossary', glossaryOptions],
     [
       require.resolve('@easyops-cn/docusaurus-search-local'),
       {
         hashed: true,
+        indexPages: true,
         docsPluginIdForPreferredVersion: 'desktop',
-        docsDir: ['docs-cli', 'docs-desktop', 'docs-web', 'docs-server'],
-        docsRouteBasePath: ['cli', 'desktop', 'web', 'server'],
+        docsDir: ['docs-cli', 'docs-desktop', 'docs-web', 'docs-server', 'docs-development'],
+        docsRouteBasePath: ['cli', 'desktop', 'web', 'server', 'development'],
+      },
+    ],
+    [
+      'docusaurus-plugin-llms',
+      {
+        title: 'OmniSign',
+        description:
+          'Multiplatform digital signature app for PAdES signing, validation and re-timestamping.',
+        excludeImports: true,
+        generateMarkdownFiles: true,
+        docsDir: [
+          {path: 'docs-cli', routeBasePath: 'cli', label: 'CLI'},
+          {path: 'docs-desktop', routeBasePath: 'desktop', label: 'Desktop'},
+          {path: 'docs-web', routeBasePath: 'web', label: 'Web'},
+          {path: 'docs-server', routeBasePath: 'server', label: 'Server'},
+          {path: 'docs-development', routeBasePath: 'development', label: 'Development'},
+        ],
       },
     ],
   ],
@@ -98,6 +165,13 @@ const config: Config = {
     image: 'img/docusaurus-social-card.jpg',
     colorMode: {
       respectPrefersColorScheme: true,
+    },
+    mermaid: {
+      theme: {light: 'neutral', dark: 'dark'},
+      options: {
+        flowchart: {useMaxWidth: true},
+        sequence: {useMaxWidth: true},
+      },
     },
     navbar: {
       title: 'OmniSign',
@@ -131,9 +205,34 @@ const config: Config = {
           activeBaseRegex: '/cli/',
         },
         {
-          href: 'https://pizavo.github.io/omnisign/api/',
-          label: 'API Reference',
-          position: 'left',
+          type: 'dropdown',
+          label: 'Development',
+          position: 'right',
+          items: [
+            {
+              to: '/development/',
+              label: 'Overview',
+              activeBaseRegex: '/development/',
+            },
+            {
+              to: '/development/architecture',
+              label: 'Architecture',
+            },
+            {
+              to: '/development/contributing',
+              label: 'Contributing',
+            },
+            {
+              href: 'https://pizavo.github.io/omnisign/api/',
+              label: 'API Reference',
+            },
+          ],
+        },
+        {
+          to: '/glossary',
+          label: 'Glossary',
+          position: 'right',
+          activeBaseRegex: '/glossary',
         },
         {
           href: 'https://github.com/pizavo/omnisign',
@@ -152,6 +251,15 @@ const config: Config = {
             {label: 'Web', to: '/web/'},
             {label: 'Server', to: '/server/'},
             {label: 'CLI', to: '/cli/'},
+            {label: 'Glossary', to: '/glossary'},
+          ],
+        },
+        {
+          title: 'Development',
+          items: [
+            {label: 'Overview', to: '/development/'},
+            {label: 'Architecture', to: '/development/architecture'},
+            {label: 'Contributing', to: '/development/contributing'},
             {label: 'API Reference', href: 'https://pizavo.github.io/omnisign/api/'},
           ],
         },

@@ -1,0 +1,129 @@
+---
+sidebar_position: 1
+---
+
+import AppIcon from '@site/src/components/AppIcon';
+
+# Signing a document
+
+Signing in the browser looks like signing on the desktop, but the key is somewhere else. Your browser
+sends the document to the [OmniSign Server](/server/), the server signs it with **its own** signing
+certificate, and the signed bytes come back for you to save. No private key, PIN, or keystore file
+ever exists in the browser.
+
+:::note[Requires a signing-enabled server]
+The **Sign** button appears only when the server permits the `SIGN` operation. If you cannot see it,
+signing is not enabled on your deployment — ask your administrator. See
+[Server → Operation gating](/server/security#operation-gating).
+:::
+
+## 1. Open a PDF
+
+Click the folder icon <AppIcon name="folder" color="folder" label="Open file" /> in the toolbar and
+pick a file. The document is opened and rendered in the browser.
+
+## 2. Open the signing dialog
+
+Click the pen icon <AppIcon name="sign" label="Sign" /> in the middle of the toolbar. The button is
+enabled only once a document is loaded.
+
+The dialog immediately asks the server which certificates it can sign with, showing a spinner while it
+waits.
+
+## 3. Choose a certificate
+
+The dropdown lists the certificates in the **server's** keystore — the PKCS#11 token or PKCS#12 file
+its administrator configured in [`signing.yml`](/server/signing-policy). Each entry shows the common
+name, the expiry date, and the source it was found in, for example
+`Jan Novák — valid until 14.03.2027; eToken 5110`, so you can tell apart two certificates for the same
+identity.
+
+Entries carry the same eIDAS indicators as the desktop app: a rosette
+<AppIcon name="rosette" color="qualified" label="Qualified" /> for a **Qualified** certificate, a
+check-rosette <AppIcon name="rosette_check" color="qualifiedQscd" label="Qualified (QSCD)" /> for a
+**Qualified (QSCD)** certificate, and a USB icon
+<AppIcon name="device_usb" color="success" label="PKCS#11 hardware token" /> when the server holds
+that key on a hardware token. The selected certificate's qualification is repeated as a badge below
+the dropdown.
+
+**There is no PIN prompt.** Where the desktop app would unlock a token, the server has already done
+so with its own credentials. For the same reason, the browser offers no **Import PKCS#12 file**
+button, no **Rescan tokens** action, and no PKCS#11 diagnostics — there is nothing local to scan.
+
+:::warning["No tokens detected"]
+If the dialog reports that no tokens were detected, the *server* has no usable signing certificate:
+its keystore is missing, unreadable, or empty. Nothing you can do in the browser will change that;
+it is a server-side configuration problem. (The banner's hints about inserting a smart card apply to
+the desktop app.)
+:::
+
+## 4. Configure the signature
+
+### Signature level
+
+Two checkboxes decide the PAdES level, exactly as on the desktop:
+
+| Checkbox                                                                       | Effective level |
+|--------------------------------------------------------------------------------|-----------------|
+| Neither checked                                                                | **B-B** (basic) |
+| ☑ Signature timestamp                                                          | **B-LT**        |
+| ☑ Signature timestamp + ☑ Archival timestamp                                   | **B-LTA**       |
+
+Checking the archival timestamp automatically enables the signature timestamp.
+
+Both checkboxes are **hidden when the server does not permit the `TIMESTAMP` operation**, because the
+timestamp would have to come from the server's timestamp authority. On such a deployment you can only
+produce B-B signatures.
+
+### Hash algorithm
+
+Pick the digest algorithm, or leave it at the default inherited from the active
+[profile](profiles.mdx) or the server's global configuration. See
+[Algorithms](/desktop/algorithms) for the full list.
+
+### Metadata
+
+**Reason**, **Location**, and **Contact info** are optional and are embedded in the PDF signature
+dictionary. They are sent to the server along with the document.
+
+There is no **Add to renewal job** checkbox: renewal jobs watch a local filesystem, which a browser
+does not have. Archival renewal is scheduled on the [desktop app](/desktop/guides/settings#renewal-jobs)
+or the [CLI](/cli/).
+
+## 5. Sign
+
+Click **Sign**. The document is uploaded, the server builds the signature, and the dialog shows
+*Signing document…*. The signed bytes are held in memory in the tab — **nothing has been written
+anywhere yet**.
+
+### Revocation warning
+
+If you asked for B-LT or B-LTA and the server could not obtain full revocation data (CRL/OCSP), an
+intermediate screen lists the affected certificates before anything is saved. You can:
+
+- **Abort** — discard the result; nothing is written.
+- **Continue anyway** — keep the signature despite the missing revocation data. The effective level
+  may end up lower than requested.
+
+## 6. Save the signed document
+
+Saving is the **last** step, so cancelling at any earlier point leaves nothing behind. What happens
+next depends on the browser:
+
+| Browser                | Behaviour                                                                  |
+|------------------------|-----------------------------------------------------------------------------|
+| Chrome, Edge, Chromium | A real **Save As** dialog opens, pre-filled with a suggested name.          |
+| Firefox, Safari, mobile | The file is **downloaded** to the default download location, with no dialog. |
+
+This difference comes from the browser's File System Access API, which only Chromium browsers
+implement.
+
+## 7. Review the result
+
+The success screen shows the **output file**, the **signature ID**, the achieved **PAdES level**, and
+any warnings the server raised while signing.
+
+On web the *output file* is only a **file name** — the browser never tells the page where the file
+actually landed on disk. On Firefox and Safari the page cannot even observe the final name, so the
+viewer does **not** reload the signed document after you close the dialog; open the downloaded file
+yourself to inspect the new signature.

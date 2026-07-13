@@ -3,132 +3,67 @@ sidebar_position: 1
 slug: /
 ---
 
+import AppIcon from '@site/src/components/AppIcon';
+
 # OmniSign Web
 
-The OmniSign web frontend is the **desktop app running in a browser** — the same Compose
-Multiplatform UI, compiled to Kotlin/Wasm — backed by an [OmniSign Server](/server/) for the
-operations a browser can't perform locally.
+OmniSign Web is the OmniSign desktop application running in a browser — the same interface, with
+nothing to install. Open a PDF, read its signatures, sign it, or extend an existing signature. The
+cryptography is carried out by the [OmniSign Server](/server/) your organization runs, which the
+browser talks to over HTTP.
 
-:::note Preview
-The web frontend runs the full Compose UI in the browser. It opens and displays PDFs locally, and
-**signs**, **timestamps**, and **validates** them through a connected [OmniSign Server](/server/) —
-the browser can't do the cryptography itself, so each operation is delegated to the
-[Server API](/server/api-reference). Which of the three are available depends on the server's
-[allowed operations](/server/security#operation-gating): validation is on by default, while signing
-and timestamping are opt-in server-side.
+:::info[The one thing to understand before you start]
+A browser cannot reach a smart card and never sees a private key. **Documents are signed by the
+server, using the server's own signing certificate** — not a certificate of yours. In the browser you
+choose *which* of the server's certificates to use and *how* to sign; the signature itself is produced
+server-side. See [Signing a document](guides/signing.mdx).
 :::
 
-## Building and running
+## Quick start
 
-import OsTabs from '@site/src/components/OsTabs';
-import TabItem from '@theme/TabItem';
+1. **Open the address** your administrator gave you. There is no installer, and there is no sign-in.
+2. **Open a PDF** — click the folder icon <AppIcon name="folder" color="folder" label="Open file" />
+   at the left of the toolbar and pick a file. The document is read inside the browser; nothing is
+   sent anywhere yet.
+3. **Read its signatures** — open the **Signatures** panel <AppIcon name="signature" label="Signatures panel" />
+   on the left edge and press refresh. See [Validating signatures](guides/validation.mdx).
+4. **Sign** <AppIcon name="sign" label="Sign" /> or **extend** <AppIcon name="stamp" label="Timestamp" />
+   the document from the middle of the toolbar. See [Signing](guides/signing.mdx) and
+   [Timestamping](guides/timestamping.mdx).
+5. **Save the result.** The signed file comes back through the browser — either a real *Save As*
+   dialog or an ordinary download, depending on your browser.
 
-### Development server
+## What runs where
 
-<OsTabs>
-<TabItem value="windows" label="Windows">
+Opening and reading a PDF are entirely local. Every other operation sends the document to the server.
 
-```powershell
-.\gradlew.bat :composeApp:wasmJsBrowserDevelopmentRun
-```
+| Step                              | Where it happens                                                    |
+|-----------------------------------|---------------------------------------------------------------------|
+| Opening and rendering the PDF     | In your browser (the file never leaves the tab)                     |
+| Page navigation, zoom, theme      | In your browser                                                     |
+| Validating signatures             | On the server — the document is uploaded and a report comes back    |
+| Signing                           | On the server, with the server's key and certificate                |
+| Timestamping / extending          | On the server, using the server's timestamp authority               |
+| Configuration, profiles, trust    | On the server — read-only in the browser                            |
 
-</TabItem>
-<TabItem value="linux" label="Linux">
+Once you sign, timestamp, or validate, the document's bytes are sent to the server so it can do the
+work; the server does not keep them. The browser itself stores only your interface preferences — see
+[Settings → What's stored in your browser](guides/settings.mdx#whats-stored-in-your-browser).
 
-```bash
-./gradlew :composeApp:wasmJsBrowserDevelopmentRun
-```
+## What you can do
 
-</TabItem>
-<TabItem value="macos" label="macOS">
+- **View** any PDF, with page navigation and zoom from 25 % to 400 %
+- **Validate** signed PDFs, including eIDAS EU LOTL qualification, and read the full report
+- **Export** the validation report as TXT, JSON, or one of four XML formats
+- **Sign** PDFs at PAdES BASELINE B-B / B-LT / B-LTA with the server's certificate
+- **Extend** existing signatures to a higher PAdES level, or renew an archival timestamp
+- **Inspect** every certificate in the chain, and download any of them
+- **Choose** which of the server's [signing profiles](guides/profiles.mdx) applies to your operations
+- **Read** the server's configuration and trusted certificates, and export the whole configuration as a ZIP
+- **Switch** the interface language, date format, and dark / light theme
 
-```bash
-./gradlew :composeApp:wasmJsBrowserDevelopmentRun
-```
-
-</TabItem>
-</OsTabs>
-
-A local dev server starts and opens the app in your default browser.
-
-### Production build
-
-<OsTabs>
-<TabItem value="windows" label="Windows">
-
-```powershell
-.\gradlew.bat :composeApp:wasmJsBrowserDistribution
-```
-
-</TabItem>
-<TabItem value="linux" label="Linux">
-
-```bash
-./gradlew :composeApp:wasmJsBrowserDistribution
-```
-
-</TabItem>
-<TabItem value="macos" label="macOS">
-
-```bash
-./gradlew :composeApp:wasmJsBrowserDistribution
-```
-
-</TabItem>
-</OsTabs>
-
-The bundle is written to `composeApp/build/dist/wasmJs/productionExecutable/` — static files you can
-serve from any web server (and point at an OmniSign Server via CORS; see
-[Server → Security](/server/security)).
-
-## Connecting to a server
-
-The web bundle is static, so the OmniSign Server it talks to is chosen at **deploy time**, not built
-in. On startup the app fetches an optional **`web-config.json`** served next to `index.html`:
-
-```json
-{
-  "serverUrl": "https://omnisign.example.com:18443",
-  "organizationName": "University of Ostrava"
-}
-```
-
-Both keys are optional:
-
-- **`serverUrl`** — the origin the app issues API requests against. When omitted or blank, requests go
-  to the **same origin** that served the bundle — the topology where one OmniSign Server hosts both the
-  web files and the API. Set it to point the bundle at a separate API host (CORS must then allow the
-  web origin; see [Server → Security](/server/security#cors)).
-- **`organizationName`** — a branding label shown alongside the product name (e.g.
-  `University of Ostrava · OmniSign`) in the browser-tab title, toolbar, and empty-state mark. The
-  `OmniSign` name is always kept; the label only prefixes it.
-
-The file is fetched with a 3-second timeout. If it is missing, blank, or unreachable, the app falls
-back to the server URL baked in at build time (the `OMNISIGN_SERVER_URL` value; empty = same origin). A
-**present but malformed** `web-config.json` is not silently ignored — the app logs a console warning
-and uses the build-time fallback, so a deploy typo stays visible. Retargeting a deployed bundle is
-therefore just editing `web-config.json` — no rebuild needed.
-
-:::note Two branding layers
-The server can *also* advertise an operator label via its own
-[`organizationName`](/server/configuration#organizationname) (returned from `/api/v1/capabilities`).
-When both are set, the web deployer's label and the server operator's label are combined, most-local
-first, always ending in `OmniSign` — e.g. `University of Ostrava · Microsoft · OmniSign`.
-:::
-
-## Authentication
-
-:::warning The web client has no sign-in
-The browser client sends no credentials and has no login flow, so it can only talk to an OmniSign
-Server whose **authentication is disabled** (no `auth:` block). Against an auth-enabled server the app
-still loads — `/api/v1/capabilities` is public — but every operation (validate, sign, timestamp, and
-reading configuration) comes back `401` and surfaces as a generic error, with no way to sign in.
-
-To restrict who can reach a web deployment, run the server on a trusted network or behind an
-**authenticating reverse proxy** that gates requests and forwards to an auth-disabled OmniSign backend.
-The server's built-in [SSO / OIDC](/server/authentication) is for API clients that can complete the
-OAuth flow and send a bearer token — the browser client does not do this yet.
-:::
+Which operations you actually see depends on what the server permits — a server may expose validation
+only, and hide signing and timestamping entirely. See [Features](features.mdx).
 
 ## Browser support
 
@@ -140,115 +75,11 @@ The frontend needs **WebAssembly** with **WebAssembly GC**:
 | Firefox       | 120+            |
 | Safari        | 18.2+           |
 
-## Current capabilities
+If the page stays blank, the browser is almost certainly too old — see
+[Troubleshooting](troubleshooting.mdx#the-page-is-blank-or-never-finishes-loading).
 
-| Feature                                  | Status |
-|------------------------------------------|:------:|
-| Open and view PDF documents              |   ✅   |
-| Page navigation and zoom                 |   ✅   |
-| Dark / light theme toggle                |   ✅   |
-| Choose UI language & date format         |   ✅   |
-| Validate documents (via Server API)      |   ✅   |
-| Sign documents (via Server API)          |   ✅   |
-| Timestamp documents (via Server API)     |   ✅   |
-| Export the server configuration (ZIP)    |   ✅   |
-| Select a server-defined profile          |   ✅   |
+## Also available
 
-✅ = available today. The *via Server API* operations run on a connected [OmniSign Server](/server/)
-the web app calls over HTTP, and each works only when the server
-[permits that operation](/server/security#operation-gating): **validation** is on by default, while
-**signing** and **timestamping** are opt-in server-side. All three also run in the
-[Desktop app](/desktop/) and the [CLI](/cli/), which perform them locally.
-
-## Opening and viewing documents
-
-Opening and viewing a PDF are fully local — no server is involved until you run an operation.
-
-- **Open** a PDF with the folder button, which uses the browser's file picker filtered to `.pdf`. You
-  work on one document at a time; there is no drag-and-drop, and the file is held in memory (the
-  browser never exposes its path on disk).
-- **Rendering is client-side.** Pages are rasterized by **MuPDF compiled to WebAssembly** — not a
-  server round-trip and not pdf.js — and drawn through Skia, the same engine the desktop uses.
-- **Navigate and zoom** with the usual controls; zoom ranges from **25 % to 400 %**. The current page
-  and zoom are not persisted — reloading the tab starts fresh.
-
-## Signing, timestamping, and validating
-
-The web frontend is the same Compose UI as the desktop app, so **signing**, **timestamping**, and
-**validating** follow the same [desktop guides](/desktop/guides/signing) — the signing dialog, the
-Signatures panel, the EU LOTL emblems, the revocation evidence, and the
-[full certificate view](/desktop/guides/validation#the-full-certificate-view) all render identically.
-What differs is that the cryptographic work runs on the connected [Server](/server/api-reference)
-rather than locally:
-
-- The **signing identity is the server's** — its PKCS#11 token or file keystore configured in
-  [`signing.yml`](/server/signing-policy). The certificate dropdown lists what the server offers (from
-  [`GET /api/v1/certificates`](/server/api-reference#operations)); you can pick an entry, but there is
-  no local token, `.p12` upload, or PIN entry in the browser.
-- **Validation reports come back in your UI language**, because the app advertises it on every request
-  and the server localizes the report accordingly.
-
-### Choosing a server profile
-
-The **Profiles** side panel lists the server's own [signing profiles](/server/signing-policy#profiles)
-(from `GET /api/v1/config/profiles`). Selecting one makes it active; the app remembers the choice in
-the browser and sends it as the `profile` field on every sign, timestamp, and validate request, so the
-server applies that profile's policy. Click the active profile again to deselect it and fall back to
-the server's global defaults. You can activate and inspect profiles here, but not create, edit, or
-delete them — the configuration is server-owned and read-only over the API.
-
-### What's different in the browser
-
-- **Settings is read-only except Language & Region.** The configuration is server-owned, so the
-  Settings dialog shows it for reference. The **Language**, **region preset**, and **date format**
-  controls stay editable — your choice is saved in the browser (not a config file) and takes effect
-  immediately.
-- **Trusted certificates are the server's, read-only.** The trusted-certificate panels list exactly
-  the trust the server validates with (from
-  [`GET /api/v1/config/trusted-certificates`](/server/api-reference#configuration-introspection)); the
-  browser has no local trust store, so *add to trusted* is desktop-only.
-- **You can export the configuration but not import it.** The **Export** button downloads the server's
-  full configuration as a ZIP (via
-  [`GET /api/v1/config/export`](/server/api-reference#configuration-introspection)); import is hidden
-  because the server config is read-only over the API.
-- **Desktop-only controls are hidden** — *Add to renewal job*, the PKCS#11 rescan / diagnostics /
-  `.p12`-upload actions, and the *Build Custom TL* / *Refresh Trusted Lists* buttons — all of which
-  need a local OS scheduler, local tokens, or a writable config that a browser doesn't have.
-- **Saving and exporting go through the browser.** Signed documents, exported validation reports, and
-  the configuration ZIP download through the browser — a real "Save As" picker on Chromium, a plain
-  download elsewhere. Exporting a certificate downloads a `.cer` file rather than offering a "save as
-  type" picker. Where the browser can't report the chosen filename (Firefox, Safari), a just-signed
-  document isn't reopened in the viewer afterward.
-- **Support tooling is absent.** The Help panel's **Support** section — log export and the
-  debug-logging toggles — is hidden, because a browser has no local log files.
-
-## Connectivity and errors
-
-Everything beyond opening and viewing a PDF needs the server, and the client keeps its network layer
-deliberately thin, so it helps to know how failures look:
-
-- **The capability buttons are optimistic.** If the server can't be reached when the app loads, it
-  assumes every operation is permitted and still shows the Sign / Timestamp / Validate actions — the
-  failure only appears when you actually run one. Button visibility is not a health check.
-- **All network failures look alike.** A server that is down, a wrong `serverUrl`, a blocked
-  [CORS](/server/security#cors) preflight, and a `4xx`/`5xx` response all collapse into one generic
-  error (*"Remote signing failed"*, *"Remote validation failed"*, …) with the raw browser/HTTP message
-  shown underneath as detail. There is no offline indicator and no automatic retry — only the
-  Signatures panel offers a **Retry** action.
-- **On a connection error, check first** that `serverUrl` points at the right server and that the
-  server's `cors.allowedOrigins` includes this web origin.
-
-## What's stored in your browser
-
-The client stores only your local UI preferences, in the browser's `localStorage` — never document
-contents, credentials, or server configuration. Three keys, scoped to the site's origin (a different
-browser, device, or private window starts fresh):
-
-| Key                           | Contents                                            |
-|-------------------------------|-----------------------------------------------------|
-| `omnisign.preferences.ui`     | Theme (light / dark) and the chosen UI language     |
-| `omnisign.preferences.format` | The date format                                     |
-| `omnisign.activeProfile`      | The name of the selected server profile             |
-
-No cookies, `sessionStorage`, or IndexedDB are used. The open document, the current page, and the zoom
-level live in memory only and are gone when you reload.
+The same operations run entirely on your own machine, with your own smart card or PKCS#12 file, in
+the [Desktop app](/desktop/) and the [CLI](/cli/). Administrators deploying the web bundle should read
+[Deployment](deployment.mdx).

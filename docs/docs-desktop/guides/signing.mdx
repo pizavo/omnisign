@@ -3,6 +3,7 @@ sidebar_position: 1
 ---
 
 import useBaseUrl from '@docusaurus/useBaseUrl';
+import ZoomableImage from '@site/src/components/ZoomableImage';
 import AppIcon from '@site/src/components/AppIcon';
 
 # Signing a Document
@@ -22,7 +23,8 @@ The button is only enabled when a document is loaded.
 OmniSign immediately begins discovering certificates from all available sources.
 A loading spinner is shown while discovery is in progress.
 
-<img src={useBaseUrl('/img/desktop/signing-discovery.avif')} alt="Opening the signing dialog and certificate discovery" />
+{/* Animated AVIF (`avis`): Docusaurus's markdown image pipeline cannot read its dimensions, so it stays raw JSX and reaches the enlarge overlay via ZoomableImage. */}
+<ZoomableImage src={useBaseUrl('/img/desktop/signing-discovery.avif')} alt="Opening the signing dialog and certificate discovery" />
 
 ## 3. Select a certificate
 
@@ -75,7 +77,7 @@ If discovery turns up nothing, a banner above the dropdown spells out the next s
 smart card, import a PKCS#12 file, or add a PKCS#11 library path under Settings → Tokens → PKCS#11
 Libraries. It also offers a **Show diagnostic info** button. The same PKCS#11 diagnostic dialog is
 always available from the **info icon** <AppIcon name="alert_info" label="Diagnostic info" /> in the dialog header. See
-[Troubleshooting → PKCS#11 tokens not detected](../troubleshooting.md#pkcs11-tokens-not-detected)
+[Troubleshooting → PKCS#11 tokens not detected](../troubleshooting.mdx#pkcs11-tokens-not-detected)
 for what the dialog shows and how to fix the common cases.
 
 ### Rescanning for tokens
@@ -86,7 +88,8 @@ otherwise trigger re-detection. The rescan is fire-and-forget: the control is re
 an inline progress indicator while it runs, and the certificate dropdown refreshes
 automatically when it settles.
 
-<img src={useBaseUrl('/img/desktop/signing-rescan.avif')} alt="Rescanning for tokens" />
+{/* Animated AVIF (`avis`): Docusaurus's markdown image pipeline cannot read its dimensions, so it stays raw JSX and reaches the enlarge overlay via ZoomableImage. */}
+<ZoomableImage src={useBaseUrl('/img/desktop/signing-rescan.avif')} alt="Rescanning for tokens" />
 
 The refresh is **silent** — a newly detected PIN-required token appears in the
 **Locked tokens** section rather than opening a PIN dialog (unlocking stays an explicit
@@ -130,7 +133,7 @@ Checking the archival timestamp automatically enables the signature timestamp.
 The signing dialog does not offer **B-T** as a standalone option. Enabling the signature
 timestamp always targets **B-LT** (timestamp plus embedded revocation data). B-T can only
 be reached as a fallback when B-LT is requested, but revocation data cannot be obtained —
-in that case the [timestamping dialog](timestamping.md) can later add the revocation data to
+in that case the [timestamping dialog](timestamping.mdx) can later add the revocation data to
 the resulting B-T document as a separate operation.
 :::
 
@@ -138,7 +141,7 @@ the resulting B-T document as a separate operation.
 
 Select the digest algorithm from the dropdown. The default is inherited from the active
 profile or global settings. Algorithms that are disabled in the configuration appear
-grayed out and cannot be selected. See [Algorithms](../algorithms.md) for the full list
+grayed out and cannot be selected. See [Algorithms](../algorithms.mdx) for the full list
 of supported hash algorithms and their compatibility with encryption algorithms.
 
 ### Metadata

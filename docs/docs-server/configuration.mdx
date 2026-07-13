@@ -11,7 +11,7 @@ reverse proxy, rate limiting, authentication, and which operations are allowed. 
 A fully-commented template ships as **`server.example.yml`** (in `server/src/main/resources/`, and
 inside the JAR — extract with `jar xf <jar> server.example.yml`). Copy it to `server.yml` and edit.
 
-## How the configuration is loaded {#resolution-order}
+## How the configuration is loaded {/* #resolution-order */}
 
 The server resolves its config file from the first source that exists, in order:
 
@@ -32,7 +32,7 @@ Two parsing rules protect you from silent misconfiguration:
   (`[A-Z_][A-Z0-9_]*`), expanded at load. Keys and comments are never substituted; a referenced-but-
   unset variable fails startup. Use this for non-secret values like an external URL.
 
-## Secrets {#secrets}
+## Secrets {/* #secrets */}
 
 Secrets are **environment variables only** — never YAML literals. Setting any of them in YAML fails
 startup with an error naming the variable to use instead (YAML ends up in backups, logs, images, and

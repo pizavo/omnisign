@@ -1,0 +1,243 @@
+---
+sidebar_position: 3
+---
+
+import Diagram from '@site/src/components/Diagram';
+import portsAndAdapters from '@site/diagrams/03-clean-architecture-ports-adapters.mmd';
+
+# Design patterns
+
+This page is the vocabulary. [Architecture](architecture.mdx) describes *what the pieces are*; this
+describes *what shapes recur, and what each one bought*.
+
+Every entry names the problem it solves in this codebase, the class that embodies it, and what would
+break without it. A pattern that cannot be described that way does not belong on this page.
+
+## Architectural patterns
+
+### Repository
+
+**Problem.** The domain needs to sign a document. The desktop signs locally with DSS; the browser
+cannot load DSS at all and must ask a server over HTTP.
+
+`SigningRepository`, `ValidationRepository`, `ArchivingRepository`, and `ConfigRepository` are
+interfaces in `shared/commonMain/domain/repository/`. Each has two implementations:
+
+| Interface | JVM | Wasm |
+| --- | --- | --- |
+| `SigningRepository` | `DssSigningRepository` | `RemoteSigningRepository` |
+| `ValidationRepository` | `DssValidationRepository` | `RemoteValidationRepository` |
+| `ArchivingRepository` | `DssArchivingRepository` | `RemoteArchivingRepository` |
+
+**What it bought.** The ViewModels above them are *the same code on both platforms*. Not "similar" —
+identical. `SigningViewModel` does not know whether its `SigningRepository` is calling DSS in-process
+or `POST /api/v1/sign` across a network. Without this, the browser client would be a fork of the
+desktop UI, and every feature would be written twice.
+
+This is Dependency Inversion made concrete: the domain owns the interface, and the data layer depends
+on the domain, not the reverse.
+
+### Ports and Adapters
+
+The `domain/port/` package is named after the pattern, and contains eight interfaces:
+`SchedulerPort`, `ConfigArchivePort`, `TrustedListCompilerPort`, `TrustedListRefreshPort`,
+`ConfigSerializer`, `ConfigSerializerRegistry`, `RenewalCheckCache`, and `RenewalRunRecordStore`.
+
+**Problem.** Scheduling a renewal job means `schtasks` on Windows, `systemd` timers on Linux, and
+`launchd` on macOS. None of that may appear in the domain.
+
+`SchedulerPort` is the port. `SchedulerPortAdapter` is the adapter, delegating to an
+`OsSchedulerService` — one of `WindowsTaskSchedulerService`, `SystemdSchedulerService`, or
+`LaunchdSchedulerService`. The domain schedules a job; it never learns which one ran.
+
+Both patterns are visible at once below. Solid arrows are source dependencies and always point inward;
+dashed arrows are an adapter realizing a port. Note that the driven ring has **two** adapter sets —
+DSS-backed on the JVM, HTTP-backed on Wasm — realizing the same ports.
+
+<Diagram source={portsAndAdapters} />
+
+### MVVM
+
+`composeApp` ViewModels extend Lifecycle's `ViewModel`, expose immutable state as `StateFlow<UiState>`,
+and are obtained with `koinViewModel()`. Composables observe; they never mutate state directly. Heavy
+work runs on an injected `CoroutineDispatcher`, which is also what makes the ViewModels testable — the
+test passes a `StandardTestDispatcher` and drives the clock itself.
+
+## Patterns in the data layer
+
+### Factory
+
+`DssServiceFactory` is a Koin `single` injected into all three DSS repositories. It does more than
+construct: it *owns the lifecycle* of things too expensive to rebuild per call — TSP sources,
+certificate verifiers, and Trusted List validation jobs.
+
+Its `alertFactory: () -> StatusAlert` parameter is a factory method passed as a lambda, and it is the
+seam that lets a test swap DSS's logging alert for a collecting one.
+
+### Strategy
+
+Three places select behaviour by injecting an implementation rather than branching:
+
+| Strategy | Implementations | Selected by |
+| --- | --- | --- |
+| `PasswordCallback` | terminal prompt (CLI), dialog (desktop), always-`null` (server) | Koin, per entry point |
+| `ConfigSerializer` | `JsonConfigSerializer`, `YamlConfigSerializer`, `XmlConfigSerializer` | `ConfigSerializerRegistry`, by file extension |
+| `StatusAlert` | `LogOnStatusAlert` (DSS), `CollectingStatusAlert` (ours) | `alertFactory` on the verifier builders |
+
+`PasswordCallback` is the platform boundary of the whole application. The server's implementation
+returning `null` unconditionally is a **Null Object**: it satisfies the interface so nothing needs a
+special case, and an operation that would require a PIN fails cleanly instead of hanging on a prompt
+nobody can answer.
+
+### Adapter
+
+Three adapters, none of which look like a classical wrapper class:
+
+- `SchedulerPortAdapter` — the textbook form, adapting `OsSchedulerService` to `SchedulerPort`.
+- `*Extension.kt` in `jvmMain/.../enums/` — adapts a domain enum to its DSS counterpart with an
+extension function (`SignatureLevel.toDss()`), so no wrapper type exists at all.
+- `DateExtensions.kt` — adapts `java.util.Date` to `kotlin.time.Instant` at the data-layer edge, which
+is why nothing above it ever sees a Java date.
+
+Kotlin extension functions give you Adapter without the object.
+
+### Registry
+
+`ConfigSerializerRegistry` resolves a serializer by format. `TrustedSourceRegistry` is a registry that
+is also a cache: it retains parsed Trusted List sources across calls, so the EU LOTL is downloaded,
+parsed, and signature-verified **once** rather than on every validation. Removing it would not change
+any result — it would just make every validation pay for a multi-megabyte download.
+
+### Value Object
+
+`Sensitive<T>` wraps credentials. Its `toString()` returns `***`, and its serializer throws on both
+`serialize` and `deserialize`. See [Coding conventions](conventions.mdx#wrap-credentials-in-sensitivet)
+for why it is a `data class` rather than a value class.
+
+## Where a Kotlin idiom replaces a pattern
+
+Naming these as Gang-of-Four patterns would overstate the case. What they do is occupy the same role:
+
+| Idiom | Classical role | Effect here |
+| --- | --- | --- |
+| `OperationResult<T>` = Arrow `Either` | Railway-oriented error handling | Failure is a value, not a thrown exception |
+| Sealed interfaces (`OperationError`) | Algebraic data type; replaces Visitor | The compiler forces every `when` to handle a new error branch |
+| `expect`/`actual` | Abstract Factory, resolved at compile time | Platform selection with zero runtime dispatch |
+| Enum constants overriding a method (`WarningCategory.toSummary`) | Strategy, one per constant | Each warning category renders its own sentence |
+| Extension functions | Adapter without a wrapper type | See above |
+
+## Two deviations worth knowing about
+
+Neither is a bug. Both are places where the code does something other than what its name promises, and
+a reader who notices deserves an explanation rather than silence.
+
+:::note[Not every "UseCase" is an interactor]
+Eleven of the sixteen use cases in `commonMain` are single-action interactors exposing one
+`operator fun invoke`. The remaining five are multi-method facades over a subsystem:
+
+| Use case | Public functions |
+| --- | --- |
+| `ManageTrustedListsUseCase` | 11 |
+| `ExportImportConfigUseCase` | 6 |
+| `ManageProfileUseCase` | 5 |
+| `ManageRenewalJobsUseCase` | 4 |
+| `ManagePkcs11LibrariesUseCase` | 3 |
+
+These are **Facades**, not Use Cases, and they are grouped that way because their operations share
+state and a repository. Splitting `ManageTrustedListsUseCase` into eleven classes would spread one
+cohesive concern across eleven files without making any of them independently useful.
+:::
+
+:::warning[Koin is used two ways, and only one of them is dependency injection]
+ViewModels receive their dependencies as **constructor parameters** — that is Dependency Injection.
+
+CLI commands resolve theirs from the container at the point of use:
+
+```kotlin
+class ConfigImport : CliktCommand(), KoinComponent {
+    private val exportImport: ExportImportConfigUseCase by inject()
+}
+```
+
+That is the **Service Locator** pattern. It is a different thing, and the difference is observable in
+the test suite: a ViewModel test constructs the ViewModel with mocks and needs no container, while a
+CLI command test must stand up a Koin container with `KoinExtension` because the command reaches into
+one. Clikt constructs its own commands, so there is no constructor to inject through — but the
+testability cost is real, and it is why the two [testing patterns](testing.mdx#two-testing-patterns)
+look so different.
+:::
+
+## SOLID
+
+Each principle, where it is enforced, and the concrete thing that would break.
+
+### Single responsibility
+
+Enforced structurally: **one top-level declaration per file**, named after it. A use case is one verb.
+The five `Manage*` facades above are the deliberate exception, and they are cohesive by shared state
+rather than by shared name.
+
+### Open/closed
+
+Adding a fourth configuration format means writing a `TomlConfigSerializer` and registering it. No
+caller changes, because callers depend on `ConfigSerializer` and resolve through
+`ConfigSerializerRegistry`. The same holds for `DssWarningSanitizer.WarningCategory`: a new category
+supplies its own `toSummary()` and no existing category is touched.
+
+### Liskov substitution
+
+This one is worth dwelling on, because the codebase does something subtle.
+
+`RemoteSigningRepository` cannot do everything `DssSigningRepository` can. There is no hardware token
+in a browser, so `unlockToken()` and `loadCertificatesFromFile()` have no meaning, and `signDocument()`
+cannot honour a local keystore file.
+
+The naive implementation throws `UnsupportedOperationException`. That would destroy substitutability:
+a ViewModel written against `SigningRepository` would crash depending on which platform it ran on.
+
+Instead, every method is **total**. Unsupported operations return a `Left`:
+
+```kotlin
+override suspend fun signDocument(parameters: SigningParameters): OperationResult<SigningResult> =
+    if (parameters.keystoreFile != null) {
+        SigningError.loadFileNotSupportedOnWeb(
+            "Signing with a local keystore file is not available on the web target.",
+        ).left()
+    } else Either.catch { /* POST /api/v1/sign */ }
+
+override suspend fun unlockToken(tokenId: String): OperationResult<List<AvailableCertificateInfo>> =
+    SigningError.tokenUnlockNotSupportedOnWeb(...).left()
+```
+
+Because failure is already part of the return type, callers must handle `Left` anyway. The capability
+narrowing becomes visible in the type system instead of exploding at runtime.
+
+:::tip[Error-as-value is what makes substitutability possible]
+This is the strongest argument for `Either` in the codebase. It is not merely tidier than exceptions —
+it is what lets one interface span a JVM implementation and a WebAssembly one whose capabilities
+genuinely differ.
+
+It is still a narrowing, and the application handles that honestly one layer up: the browser client
+queries `GET /api/v1/capabilities` at startup and *hides the affordances it cannot support*, so a user
+never reaches the error path. Substitutability keeps the code correct; the capabilities endpoint keeps
+the interface usable.
+:::
+
+### Interface segregation
+
+`domain/port/` is eight small interfaces rather than one `PlatformPort`. `RenewalCheckCache` and
+`RenewalRunRecordStore` are separate even though a single class implements both, because the use cases
+that need one rarely need the other.
+
+Compare `SigningRepository`, which carries four methods — three of which exist only to drive
+client-side hardware tokens, and which the web implementation must therefore stub out. That is the
+segregation principle showing you exactly where it was not followed.
+
+### Dependency inversion
+
+The domain declares interfaces; the data layer implements them; Koin wires the two at the entry point.
+`shared/commonMain` compiles with no knowledge of DSS, Jackson, Ktor, or PDFBox.
+
+This is not a stylistic preference — it is load-bearing. `commonMain` is compiled to WebAssembly, and
+a single DSS import anywhere in it breaks the browser build. The architecture is enforced by the
+compiler rather than by review.

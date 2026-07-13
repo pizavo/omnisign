@@ -1,0 +1,36 @@
+---
+title: Validation Flow (sequence) - OmniSign signature validation
+---
+sequenceDiagram
+  autonumber
+  actor User
+  participant App as Desktop / CLI
+  participant UC as ValidateDocumentUseCase
+  participant Repo as DssValidationRepository
+  participant DSS as DSS SignedDocumentValidator
+  participant Trust as EU LOTL + trusted lists
+  participant Rev as OCSP / CRL responders
+  participant Rep as ValidationReport
+
+  User->>App: validate(signedDocument, parameters)
+  App->>UC: invoke(ValidationParameters)
+  UC->>Repo: validateDocument(params)
+  Repo->>Trust: resolve trust anchors + build certificate verifier
+  Trust-->>Repo: certificate verifier (LOTL + custom TLs + app store)
+  Repo->>DSS: create validator + set certificate verifier
+  Repo->>DSS: validateDocument (optional ETSI policy)
+  Note over DSS: extract signatures, build certificate chains
+  opt checkRevocation enabled
+    DSS->>Rev: fetch OCSP / CRL
+    Rev-->>DSS: revocation status
+  end
+  DSS->>DSS: validate timestamps (POE), compute eIDAS qualification
+  DSS-->>Repo: Reports (Simple, Detailed, Diagnostic)
+  Repo->>Repo: convert reports to domain model
+  Note over Repo: per signature: indication + qualification mapped to SignatureTrustTier (QUALIFIED_QSCD / QUALIFIED / NOT_QUALIFIED)
+  Note over Repo: per timestamp: TimestampValidationResult
+  Repo->>Repo: collect + sanitize warnings
+  Repo->>Rep: build ValidationReport (overall + signatures + timestamps + warnings)
+  Repo-->>UC: OperationResult (ValidationReport)
+  UC-->>App: report
+  App-->>User: validation report

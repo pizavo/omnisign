@@ -1,0 +1,75 @@
+---
+sidebar_position: 1
+slug: /
+---
+
+# Development
+
+This section is for people who want to **build OmniSign from source, change it, contribute to it, or understand how it
+fits together**. If you only want to use the applications, start at
+[Desktop](/desktop/), [Web](/web/), [Server](/server/), or [CLI](/cli/) instead.
+
+OmniSign is a Kotlin Multiplatform project. One Gradle build produces four artifacts — a desktop
+application, a browser client, an HTTP server, and a command-line tool — from a single shared core
+built on the [EU DSS](https://github.com/esig/dss) library.
+
+## Prerequisites
+
+| Requirement | Needed for | Notes |
+| --- | --- | --- |
+| **JDK 25 or newer** | Everything | The Gradle wrapper runs on it; `--enable-native-access=ALL-UNNAMED` is already wired into `gradle.properties` |
+| **JetBrains Runtime 25** | The desktop target only | `composeApp` pins its JVM toolchain to the JetBrains vendor |
+| **Git** | Everything | |
+
+You do **not** need a separate Node.js install to build the web target — the Kotlin/Wasm toolchain
+provisions its own. Node is only required to work on this documentation site.
+
+:::info[Why the desktop target insists on JBR]
+`composeApp` sets `vendor.set(JvmVendorSpec.JETBRAINS)` on its JVM toolchain, because the desktop
+window uses JetBrains Runtime's Custom Title Bar API. Anything that compiles or runs that target —
+including `:composeApp:jvmTest` — therefore resolves a JBR 25 toolchain, not just `:composeApp:run`.
+
+The [foojay toolchain resolver](https://github.com/gradle/foojay-toolchains) applied in
+`settings.gradle.kts` will try to download one automatically. If it cannot, install JBR from the
+[JetBrains Runtime releases](https://github.com/JetBrains/JetBrainsRuntime/releases) into `~/.jdks/`
+and Gradle will detect it there. The `run` and packaging tasks fail with an explicit message when no
+JBR is found, rather than silently falling back to another JDK.
+:::
+
+## First build
+
+```bash
+git clone https://github.com/pizavo/omnisign.git
+cd omnisign
+./gradlew build
+```
+
+On Windows use `gradlew.bat` in place of `./gradlew` throughout this section.
+
+That compiles all four modules and runs their tests. To skip straight to running something, see
+[Building and running](building.mdx).
+
+## Where to go next
+
+| Page | What it covers |
+| --- | --- |
+| [Architecture](architecture.mdx) | The four modules, the dependency rule that holds them apart, and how one codebase targets the JVM and the browser |
+| [Design patterns](patterns.mdx) | The patterns the codebase uses, the two places it deviates, and how it maps onto SOLID |
+| [Building and running](building.mdx) | Every Gradle task worth knowing, per target, plus the platform-specific caveats |
+| [Testing](testing.mdx) | Kotest, MockK, and the two distinct patterns for CLI and ViewModel tests |
+| [Coding conventions](conventions.mdx) | Error handling, dependency injection, file layout, and the rules a pull request is reviewed against |
+| [Adding a feature](cookbook.mdx) | Recipes for a use case, a CLI command, an API route, an error, a config option |
+| [Working with DSS](dss.mdx) | The signature library underneath, and the infrastructure built around it |
+| [Internationalization](i18n.mdx) | Four mechanisms, and how to pick the right one |
+| [The UI design system](design-system.mdx) | Lumo, `LocalReadOnly`, and the platform seams |
+| [Releases and CI](releases.mdx) | Per-component versioning, what CI runs on your change, and two traps |
+| [Contributing](contributing.mdx) | Commit format, how release notes are generated, and the pull request flow |
+
+The [API reference](https://pizavo.github.io/omnisign/api/) is generated from KDoc by Dokka and
+documents every public declaration across the four modules.
+
+:::note[AGENTS.md]
+The repository root also carries an `AGENTS.md`, an exhaustive machine-readable map of the codebase
+aimed at AI coding assistants. It goes deeper into individual class names than these pages do. Where
+the two disagree, the source code wins.
+:::

@@ -1,0 +1,24 @@
+/*
+ * A bare button around the image, so the page's layout is unchanged: it stays inline like the `<img>`
+ * it wraps, and `max-width: 100%` keeps it inside the content column.
+ */
+.trigger {
+  display: inline-block;
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: none;
+  line-height: 0;
+  cursor: zoom-in;
+  border-radius: var(--ifm-global-radius);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--ifm-color-primary);
+  outline-offset: 4px;
+}
+
+/** Matches the themed `Img`, for the images that render through the plain `<img>` path. */
+.inline {
+  height: auto;
+}

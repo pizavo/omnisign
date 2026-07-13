@@ -1,0 +1,58 @@
+---
+title: Container Diagram - OmniSign (blue = inside OmniSign, grey = external)
+config:
+  flowchart:
+    nodeSpacing: 75
+    rankSpacing: 120
+---
+flowchart TB
+  user["Signer / Verifier<br/>[Person]"]
+  admin["Institutional Operator<br/>[Person]"]
+
+  cli["CLI<br/>[Container: Kotlin/JVM, Clikt]<br/>Scriptable signing, validation,<br/>timestamping. Entry: CliKt"]
+  desktop["Desktop App<br/>[Container: Compose MP, JVM / JBR 25]<br/>MVVM GUI: PDF preview,<br/>visible signatures. Entry: MainKt"]
+  web["Web App<br/>[Container: Compose MP, Wasm]<br/>Browser front-end of the HTTP Server;<br/>degrades where DSS is unavailable"]
+  server["HTTP Server<br/>[Container: Kotlin/JVM, Ktor / Netty]<br/>REST API /api/v1, OIDC SSO.<br/>Entry: ApplicationKt"]
+  cfg[("Config Store<br/>[Filesystem, JSON]")]
+  trust[("Trusted-Certs Store<br/>[Filesystem: DER + CBOR index]")]
+
+  pki["PKI and Timestamp Services<br/>[External System]<br/>EU LOTL/TL, OCSP/CRL, RFC 3161 TSA<br/>via HTTPS"]
+  token["PKCS#11 Token / HSM<br/>[External System]<br/>via PKCS#11"]
+  idp["OIDC Identity Provider<br/>[External System]<br/>via OpenID Connect"]
+
+  user -->cli
+  user -->desktop
+  user -->web
+  admin -->|"deploys / configures [YAML]"| server
+  web -->|"calls REST API [JSON / HTTPS]"| server
+
+  cli -->|reads / writes| cfg
+  desktop -->|reads / writes| cfg
+  cli --> trust
+  desktop --> trust
+  server -->|reads| trust
+
+  cli --> pki
+  desktop --> pki
+  server --> pki
+  cli --> token
+  desktop --> token
+  server --> token
+  server --> idp
+
+  subgraph legend["Legend  (solid arrow = uses / reads-writes; protocol shown on edge or in target node)"]
+    direction LR
+    lp["Person"]:::person
+    lc["Container"]:::container
+    lst[("Data store")]:::store
+    le["External System"]:::external
+  end
+
+  classDef person fill:#08427b,stroke:#052e56,color:#ffffff
+  classDef container fill:#1168bd,stroke:#0b4884,color:#ffffff
+  classDef store fill:#3b6fb5,stroke:#0b4884,color:#ffffff
+  classDef external fill:#8a8a8a,stroke:#5f5f5f,color:#ffffff
+  class user,admin person
+  class cli,desktop,web,server container
+  class cfg,trust store
+  class pki,token,idp external

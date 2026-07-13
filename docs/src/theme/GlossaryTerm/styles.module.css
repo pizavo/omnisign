@@ -1,0 +1,61 @@
+.wrapper {
+  display: inline;
+}
+
+.term {
+  color: var(--ifm-font-color-base);
+  text-decoration: none;
+  border-bottom: 1px dotted color-mix(in srgb, var(--ifm-font-color-base) 35%, transparent);
+  cursor: help;
+  transition: color 150ms ease-in-out;
+}
+
+.term:hover,
+.term:focus-visible {
+  color: var(--ifm-color-primary-dark);
+  text-decoration: none;
+}
+
+.term:focus-visible {
+  outline: 2px solid var(--ifm-color-primary);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .term {
+    transition: none;
+  }
+}
+
+/*
+ * Positioned from JavaScript against the viewport, so the tooltip escapes the overflow clipping of
+ * a table or a code block without needing a portal.
+ */
+.tooltip {
+  position: fixed;
+  z-index: 200;
+  max-width: 20rem;
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--ifm-color-emphasis-300);
+  border-radius: var(--ifm-global-radius);
+  background: var(--ifm-background-surface-color);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  color: var(--ifm-font-color-base);
+  font-size: 0.875rem;
+  font-style: normal;
+  font-weight: 400;
+  line-height: 1.4;
+  text-align: left;
+  white-space: normal;
+  pointer-events: none;
+}
+
+.title {
+  display: block;
+  margin-bottom: 0.25rem;
+  color: var(--ifm-color-primary);
+}
+
+[data-theme='dark'] .tooltip {
+  border-color: var(--ifm-color-emphasis-400);
+}

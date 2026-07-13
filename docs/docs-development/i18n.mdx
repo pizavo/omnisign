@@ -1,0 +1,235 @@
+---
+sidebar_position: 9
+---
+
+# Internationalization
+
+OmniSign ships in **English, Czech, and Slovak**. Getting a translated string in front of a user
+takes one of four mechanisms, and which one you need depends entirely on *where the string comes
+from*. Picking the wrong one is the most common mistake in this area.
+
+## Choosing a mechanism
+
+| The string originates in                    | Use                                | Lives in                                             |
+|---------------------------------------------|------------------------------------|------------------------------------------------------|
+| A composable, as literal UI text            | Compose Resources `stringResource` | `composeApp/commonMain/composeResources/values*/`    |
+| The domain, e.g. an error or a report label | `LocalizableText` + `MessageKey`   | `shared/commonMain/domain/model/text/`               |
+| A headless JVM surface (OS notifications)   | `ResourceBundle` `.properties`     | `shared/jvmMain/resources/`                          |
+| DSS's own validation report                 | DSS's message bundle               | `shared/jvmMain/resources/dss-messages_*.properties` |
+
+The dividing line is **`commonMain` cannot depend on Compose**. The domain must therefore describe
+*what* it wants to say without knowing how to render it.
+
+## UI strings: Compose Resources
+
+Ordinary interface text is a Compose Resource. English lives in `values/`, Czech in `values-cs/`, and
+Slovak in `values-sk/` — split by topic (`strings_errors.xml`, `strings_certdetails.xml`, and so on).
+
+```kotlin
+Text(stringResource(Res.string.signing_dialog_title))
+```
+
+The active locale is not necessarily the system locale. `LocalAppLocale` is an `expect object` backed
+by a `staticCompositionLocalOf`, provided once at the root of `App.kt`:
+
+```kotlin
+CompositionLocalProvider(LocalAppLocale provides languageTag) { /* ... */ }
+```
+
+Providing a new tag recomposes the whole provided scope, so every `stringResource` re-resolves —
+**without** disposing the subtree. UI state and ViewModel state survive a language switch. A `null`
+tag means "follow the system or browser locale".
+
+### How the override actually reaches Compose Resources
+
+Compose Resources does not read `LocalAppLocale`. It resolves against the *platform's* notion of the
+current locale, so each `actual` has to move that platform value:
+
+| Target        | What `provides` does                                                  |
+|---------------|-----------------------------------------------------------------------|
+| Desktop (JVM) | Calls `Locale.setDefault(locale)`                                     |
+| Web (Wasm)    | Writes the tag to `globalThis.__customLocale`, and sets `<html lang>` |
+
+The browser's `navigator.language` and `navigator.languages` are read-only, so the web target cannot
+set them. Instead, **`index.html` shims them** before the app loads, returning `__customLocale` when
+it is set and the real values otherwise. `applyWebLocale()` is also called from the web entry point
+before the first composition, so the initial render already uses the persisted language instead of
+flashing the browser locale.
+
+:::warning[Editing `index.html` can silently break language switching on web]
+The navigator shim is a workaround for a Compose Multiplatform limitation
+([CMP-8376](https://youtrack.jetbrains.com/issue/CMP-8376)). It lives in `index.html`, far from the
+Kotlin code that depends on it, and nothing fails at compile time if it is removed — the language
+dropdown simply stops having any effect on the browser.
+:::
+
+## Domain messages: `LocalizableText`
+
+The domain cannot call `stringResource`. Instead it emits a locale-independent description of the
+message, and lets each frontend resolve it.
+
+```kotlin
+sealed interface LocalizableText {
+    fun english(): String
+
+    data class Keyed(val key: MessageKey, val args: List<String> = emptyList()) : LocalizableText
+    data class Literal(val value: String) : LocalizableText
+}
+```
+
+`MessageKey` is a `@Serializable` enum of **104** stable identifiers. `Keyed` carries a key plus its
+arguments; `Literal` carries text that is already final (a filename, a certificate subject) and must
+not be translated.
+
+`english()` renders the bundled English template from `EnglishMessages`. It is the fallback for every
+surface that does not localize — the CLI, the server, and log output — and it is called in 21 places.
+
+:::tip[Why the key is serializable]
+Because `MessageKey` serializes by name, the **server can hand a key and its arguments to the web
+client, and let the client translate**. The error text never crosses the wire in a language the
+server happened to be running in. This is why `LocalizableText` is a domain type rather than a UI
+concern.
+:::
+
+### Errors carry it too
+
+A user-facing error implements `LocalizableError`, which exposes a `text: LocalizableText`.
+
+`LocalizableError` is deliberately *not* a subtype of `OperationError` — it is an orthogonal
+capability, so the sealed hierarchy and its exhaustive `when`s are unaffected by which errors happen
+to be localizable. An error that implements both derives its English `message` from its `text`, so
+there is one source of truth and the key cannot drift from the sentence.
+
+### The render layer
+
+`LocalizableTextResolver.kt` in `composeApp/commonMain/ui/model/` is the bridge. It holds a
+`MESSAGE_RES` map from `MessageKey` to Compose resource, and one composable extension:
+
+```kotlin
+@Composable
+fun LocalizableText.localized(): String = when (this) {
+    is LocalizableText.Literal -> value
+    is LocalizableText.Keyed  -> MESSAGE_RES[key]?.let { stringResource(it, *args.toTypedArray()) }
+        ?: english()
+}
+```
+
+Note the fallback: a key with no Compose resource silently renders its English template rather than
+crashing or showing a raw enum name.
+
+## Headless JVM surfaces: `ResourceBundle`
+
+Some text is produced where there is no composition at all — most notably OS-native renewal
+notifications, emitted by a background process. Those use plain Java `ResourceBundle`:
+
+- `renewal-notifications.properties`, `_cs`, `_sk`
+
+`RenewalNotifier` takes an injectable `localeProvider: () -> Locale = { Locale.getDefault() }`, which
+is what makes it testable.
+
+## The DSS validation report
+
+DSS renders its own report messages from its own bundle, and DSS 6.3 ships **only English**. OmniSign
+supplies the Czech and Slovak variants as `dss-messages_cs.properties` and `dss-messages_sk.properties`
+in `shared/jvmMain/resources/`, and selects them through the validator:
+
+```kotlin
+setLocale(parameters.language?.let { Locale.forLanguageTag(it) } ?: Locale.getDefault())
+```
+
+On the server, `ValidationParameters.language` is populated from the request's **`Accept-Language`**
+header by `api/RequestLanguage.kt`, which takes the caller's highest-priority tag. So report
+localization is per-request, not per-process. Sign and timestamp responses are not localized.
+
+:::warning[Two coverage tests guard these bundles, and they will fail on a DSS upgrade]
+`DssMessagesCzechCoverageTest` and `DssMessagesSlovakCoverageTest` assert that our bundles cover
+**every** key in DSS's base bundle, so no English text can leak into a Czech report.
+
+When DSS introduces new message keys, these tests fail by design. That is the signal to translate
+them, not to relax the test. `RenewalNotificationsCzechCoverageTest` and its Slovak twin do the same
+for the notification bundle.
+:::
+
+## The CLI is deliberately monolingual
+
+`cli.kt` pins `Locale.ENGLISH` at startup, before anything else runs. The CLI is a scriptable tool:
+its output, the DSS report it prints, and any notification text it triggers stay English regardless
+of the host's system locale, so downstream parsing does not depend on where it runs.
+
+The desktop app honours the user's chosen language independently.
+
+## Adding a language
+
+Five required steps, and one optional one. Nothing else is wired: `LocalAppLocale`, Compose Resources,
+and the `ResourceBundle` lookups all resolve the new tag automatically.
+
+1. Add the BCP 47 tag to `LanguageOptions` in `SettingsDialog.kt`.
+2. Add a branch to `languageEndonym(tag)` in the same file. Endonyms are hardcoded and deliberately
+not translated — Czech is always `Čeština`, never `Tschechisch`.
+3. Create `composeApp/src/commonMain/composeResources/values-<tag>/` by mirroring `values-cs/`.
+4. Add `dss-messages_<tag>.properties` (all **761** keys) and `renewal-notifications_<tag>.properties`
+under `shared/src/jvmMain/resources/`.
+5. Add two coverage tests mirroring the Czech and Slovak pairs.
+
+:::note[Mirror `values-cs/`, not `values/`]
+Three catalogs in `values/` are empty placeholders — `strings_dropdown.xml`, `strings_infotooltip.xml`,
+and `strings_password.xml`. Neither `values-cs/` nor `values-sk/` has a variant of them, which is why
+those directories hold 34 files against the base directory's 37. Do not create empty translations.
+:::
+
+### Plural categories are per language
+
+The base catalog only needs `one` and `other`. Czech and Slovak do not agree with each other, let alone
+with English:
+
+| Locale        | Categories present            |
+|---------------|-------------------------------|
+| `values` (en) | `one`, `other`                |
+| `values-cs`   | `one`, `few`, `many`, `other` |
+| `values-sk`   | `one`, `few`, `other`         |
+
+Follow the CLDR plural rules for the language you are adding. Supplying too few categories does not
+fail the build.
+
+:::danger[Nothing guards the XML catalogs]
+Compose Resources **silently falls back to the base `values/` string** when a key is missing from a
+localized catalog. A dropped key, or a `%1$s` placeholder you forgot to carry over, does not fail the
+compile and does not fail any test — the user just sees English in the middle of a Czech sentence.
+
+Only the `.properties` bundles are protected. `DssMessagesCzechCoverageTest`,
+`DssMessagesSlovakCoverageTest`, `RenewalNotificationsCzechCoverageTest`, and
+`RenewalNotificationsSlovakCoverageTest` assert full key coverage and will fail loudly.
+
+For the XML catalogs, diff the key sets and the placeholder counts per file yourself before you commit.
+:::
+
+### Optionally, a region preset
+
+`RegionPreset` pairs a language tag with a date format so one dropdown choice applies both — for
+example `SLOVAKIA("sk", DateFormat.DMY_DOT)`. Adding an entry plus a `label()` endonym gives the new
+language a one-click preset.
+
+It is genuinely optional. `RegionPreset.match(languageTag, dateFormat)` returns `null` when no entry
+matches, and the region selector falls back to showing `Custom`. The language itself works either way.
+
+### How the switch behaves
+
+Choosing a language does **not** stage an edit like the rest of the settings dialog. The language and
+date format are stored in `preferences/ui.json`, separately from the configuration, so they take a
+different path:
+
+- `onLanguageChange` applies the tag **live, as a preview**, and persists nothing.
+- `onPersistLocale` runs only when the dialog is **saved**.
+- Cancelling reverts the preview through `onLanguageChange` again.
+
+That is why `hasChanges` in `IslandLayout` is `settingsHasChanges || localeChanged` — a locale-only
+change still has to enable the Save button.
+
+:::note[Czech and Slovak use an en dash]
+Where English writes an em dash (`—`), the Czech and Slovak catalogs write an en dash (`–`). This
+includes the `OmniSign —` title prefix. The rule is absolute: `values-cs/` and `values-sk/` currently
+contain **zero** em dashes between them, against 22 in `values/`.
+
+If you sweep this mechanically, byte-replace `E2 80 94` with `E2 80 93` in the localized catalogs
+only. Leave English on the em dash.
+:::

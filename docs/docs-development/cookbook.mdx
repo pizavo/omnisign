@@ -1,0 +1,153 @@
+---
+sidebar_position: 7
+---
+
+# Adding a feature
+
+Recipes for the changes people actually make. Each one lists the files you touch, in order.
+
+Read [Coding conventions](conventions.mdx) first — these recipes assume it.
+
+## A new use case
+
+1. Create one file in `shared/src/commonMain/.../domain/usecase/`, named after the class.
+2. Take dependencies as constructor parameters — repository or port **interfaces**, never
+implementations.
+3. Expose a single `operator fun invoke` if it is one action. If it genuinely needs several related
+operations over shared state, it is a facade; say so in the KDoc.
+4. Register it in `shared/src/commonMain/.../di/AppModule.kt`.
+
+```kotlin
+class ArchiveDocumentUseCase(
+    private val archivingRepository: ArchivingRepository,
+) {
+    suspend operator fun invoke(parameters: ArchivingParameters): OperationResult<ArchivingResult> =
+        archivingRepository.archive(parameters)
+}
+```
+
+:::warning[If it touches a JVM API, it does not belong in `commonMain`]
+`commonMain` compiles to WebAssembly. A use case that reaches for Jackson, `java.util.zip`, or DSS —
+even transitively — must live in `jvmMain` and be registered in `jvmRepositoryModule` instead. See
+[the table of exceptions](conventions.mdx#where-a-use-case-may-live).
+:::
+
+## A new repository method
+
+The interface lives in `commonMain`; **every** implementation must satisfy it. For the three signing,
+validation, and archiving repositories that means two implementations, one per platform.
+
+1. Add the method to the interface in `shared/src/commonMain/.../domain/repository/`.
+2. Implement it in the JVM class (`DssSigningRepository` and friends).
+3. Implement it in the Wasm class (`RemoteSigningRepository` and friends).
+
+If the browser cannot support the operation, **do not throw**. Return a `Left` carrying an error that
+says so:
+
+```kotlin
+override suspend fun unlockToken(tokenId: String): OperationResult<List<AvailableCertificateInfo>> =
+    SigningError.tokenUnlockNotSupportedOnWeb(
+        details = "Server-side tokens are managed by the server administrator; the web client cannot supply PINs",
+    ).left()
+```
+
+This is what keeps the two implementations substitutable. See
+[Design patterns → Liskov substitution](patterns.mdx#liskov-substitution).
+
+Adding a method also breaks any hand-written test fake, which is one reason
+[MockK is preferred](testing.mdx#prefer-mockk-over-hand-written-fakes).
+
+## A new error
+
+Errors are branches of a sealed hierarchy, and user-facing ones are localizable.
+
+1. Add a `data class` to the relevant sealed interface (`SigningError`, `ValidationError`, …). It
+implements `OperationError` and, if a user will read it, `LocalizableError`.
+2. Add a constant to the `MessageKey` enum in `domain/model/text/`.
+3. Add the English template to `EnglishMessages`.
+4. Add a convenience factory to the error's `companion object`.
+5. Translate it — see [Internationalization](i18n.mdx).
+
+```kotlin
+data class TokenAccessError(
+    override val text: LocalizableText,
+    override val details: String? = null,
+    override val cause: Throwable? = null,
+) : SigningError
+```
+
+`LocalizableError` is deliberately **not** a subtype of `OperationError`. It is an orthogonal
+capability, so adding it to an error does not disturb the sealed hierarchy or any exhaustive `when`.
+An error that implements both derives its English `message` from its `text`, so the key and the
+sentence never drift apart.
+
+Because the sealed `when` is exhaustive, the compiler will now point you at every place that has to
+decide how to present the new case. Follow it.
+
+## A new CLI command
+
+1. Create a class extending `CliktCommand` that implements `KoinComponent`, under
+`cli/src/main/.../commands/`.
+2. Resolve dependencies with `by inject()`.
+3. Register it in the root command's `subcommands(...)` call in `cli/src/main/.../Omnisign.kt`.
+
+```kotlin
+class Archive : CliktCommand(), KoinComponent {
+    private val archiveUseCase: ArchiveDocumentUseCase by inject()
+
+    override fun run() { /* ... */ }
+}
+```
+
+Nest a command group by giving the parent its own `subcommands(...)` — `Algorithms` does exactly
+this. Shared options belong in `OperationConfigOptions` rather than being re-declared.
+
+Note that `by inject()` is Service Locator, not constructor injection, because Clikt constructs its
+own commands. The consequence is that command tests need a Koin container; see
+[Testing](testing.mdx#cli-commands--koin).
+
+## A new API route
+
+1. Add a function to a file in `server/src/main/.../api/routes/`, one file per route group.
+2. Gate it on its `AllowedOperation` as the **first** thing it does.
+3. Mount it in `server/src/main/.../plugins/Routing.kt`.
+
+```kotlin
+post("/sign") {
+    if (!call.requireOperation(AllowedOperation.SIGN, serverConfig)) return@post
+    // ...
+}
+```
+
+`requireOperation` responds `403` and returns `false` when the operation is not enabled, so the guard
+is a single early return.
+
+:::danger[Never rely on the client hiding a button]
+The web client reads `GET /api/v1/capabilities` and hides affordances it cannot use, but that is a
+usability affordance, not access control. Every route enforces its own gate on every request.
+:::
+
+If the route should be reachable without authentication, mount it outside the `authenticate("jwt-api")`
+block — currently only health and `/auth/**` are.
+
+## A new configuration option
+
+Configuration is a three-layer merge. Decide which layers your option belongs to before writing it:
+
+| Layer     | Class             | Meaning                                       |
+|-----------|-------------------|-----------------------------------------------|
+| Global    | `GlobalConfig`    | The default for everything                    |
+| Profile   | `ProfileConfig`   | Overrides the global default for one workflow |
+| Operation | `OperationConfig` | Overrides both, for one invocation            |
+
+Add the property to each layer it applies to, then teach `ResolvedConfig.resolve()` how to merge it —
+a later layer wins when it is non-null. Config models are `kotlinx.serialization`-annotated; the
+Jackson serializers in `data/serializer/` pick up YAML and XML automatically.
+
+If the value is a password, PIN, or secret, its type is `Sensitive<T>` and it can never be serialized.
+
+## A new npm dependency for the web target
+
+The Wasm target has exactly one npm dependency today (`mupdf`). If you add another, read
+[the lockfile note in Building](building.mdx#the-wasm-npm-lockfile) first — a stale lock does **not**
+fail the compile.

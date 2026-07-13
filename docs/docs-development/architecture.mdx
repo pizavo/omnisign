@@ -1,0 +1,136 @@
+---
+sidebar_position: 2
+---
+
+import Diagram from '@site/src/components/Diagram';
+import moduleDependencies from '@site/diagrams/04-module-dependencies.mmd';
+import composeAppComponents from '@site/diagrams/05-composeapp-components.mmd';
+
+# Architecture
+
+OmniSign is one Gradle build with four modules. Three of them are deliverables; the fourth holds
+everything they share.
+
+| Module | Role | Entry point |
+| --- | --- | --- |
+| `shared` | Domain model plus the JVM data layer | — |
+| `cli` | Clikt command-line app, packaged as a fat JAR | `cz.pizavo.omnisign.CliKt` |
+| `composeApp` | Compose Multiplatform desktop (JVM) **and** web (Wasm) | `cz.pizavo.omnisign.MainKt` |
+| `server` | Ktor/Netty HTTP server | `cz.pizavo.omnisign.ApplicationKt` |
+
+The dependency direction is strict and one-way: `cli`, `composeApp`, and `server` each depend on
+`shared`, and `shared` depends on none of them. Nothing depends on a sibling deliverable. A change to
+the CLI can never break the server.
+
+<Diagram source={moduleDependencies} />
+
+Solid arrows are module dependencies; dashed arrows are the libraries each source set pulls in.
+
+## The rule that shapes everything
+
+`shared/commonMain` **must not import DSS.**
+
+This is not a style preference. `commonMain` is compiled for both the JVM and WebAssembly, and DSS is
+a JVM library. A single DSS import in `commonMain` breaks the browser build.
+
+So `shared` splits along that line:
+
+- **`commonMain`** holds the platform-agnostic domain — configuration models, the sixteen use cases,
+repository and port *interfaces*, the sealed error hierarchy, and the `PasswordCallback` boundary.
+- **`jvmMain`** holds the DSS-backed *implementations*: `DssSigningRepository`,
+`DssValidationRepository`, `DssArchivingRepository`, the Jackson config serializers, OS schedulers,
+PKCS#11 discovery, and the content-addressed `FileTrustStore`.
+
+Use cases depend on the interfaces, so they stay in `commonMain` and remain testable without DSS.
+
+### Bridging the domain to DSS
+
+Domain enums live in `commonMain` and cannot name their DSS counterparts. The mapping is a set of
+Kotlin extension functions in `jvmMain`, one file per enum, named `*Extension.kt`:
+
+```kotlin
+// shared/src/jvmMain/.../domain/model/config/enums/SignatureLevelExtension.kt
+fun SignatureLevel.toDss(): eu.europa.esig.dss.enumerations.SignatureLevel = ...
+```
+
+`AlgorithmConstraintLevel`, `EncryptionAlgorithm`, `SignatureLevel`, and `SignatureQualification` all
+work this way. `HashAlgorithm` is the deliberate exception — its DSS mapping is a plain string, so it
+carries a `dssName` property directly in `commonMain` rather than paying for a bridge file.
+
+## How one UI codebase targets two platforms
+
+`composeApp` produces the desktop app and the browser client from the same Compose source, using three
+source sets and Kotlin's `expect`/`actual` mechanism.
+
+| Source set   | Contents                                                                                                                                                    |
+|--------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `commonMain` | `App.kt`, the Lumo design system, the Island shell and dialogs, the MVVM ViewModels, and `expect` declarations for anything platform-bound                  |
+| `jvmMain`    | Desktop `actual`s — a PDFBox renderer, the dialog-backed `ComposePasswordCallback`, the JBR custom title bar, AWT file export, window and theme persistence |
+| `webMain`    | Browser `actual`s — a **MuPDF WebAssembly** renderer, browser file export, `localStorage` theme persistence                                                 |
+
+The renderer split is worth calling out: the desktop draws pages with **Apache PDFBox**, while the
+browser uses **MuPDF compiled to WebAssembly**, wrapped in a small JavaScript shim and drawn through
+Skia. They share only the `expect` declaration.
+
+<Diagram source={composeAppComponents} />
+
+Node colour is the source set: blue `commonMain`, green `jvmMain`, purple Wasm, grey outside the
+module.
+
+### The browser has no DSS
+
+Wasm cannot load DSS, so the browser client cannot sign, validate, or timestamp locally. It performs
+those operations over HTTP against an [OmniSign Server](/server/).
+
+That is what `shared/src/wasmJsMain` is for. It supplies HTTP-backed implementations of the very same
+repository interfaces the desktop satisfies with DSS:
+
+- `RemoteSigningRepository`, `RemoteValidationRepository`, `RemoteArchivingRepository`
+- `RemoteConfigRepository`, `RemoteConfigArchive`, `RemoteTrustStore`
+- `RemoteCapabilitiesRepository`
+
+They are wired in `WebDataModule.kt`, and share a single Ktor `HttpClient` configured with
+`expectSuccess = true`. Because both sides implement the same interfaces, the ViewModels above them
+are identical on desktop and web.
+
+:::tip[Where the two platforms genuinely diverge]
+A handful of features have no browser equivalent — the Trusted List builder, hardware tokens, OS
+scheduling. Rather than fork the UI, `composeApp` degrades gracefully: platform-only ViewModels are
+resolved with `KoinPlatform.getKoinOrNull()` and the affordances that would need them are simply not
+rendered. See [Web → Features](/web/features) for what that looks like to a user.
+:::
+
+## The layers inside `shared`
+
+`shared` follows clean architecture, with dependencies pointing inward toward the domain:
+
+- **`domain/model/`** — configuration (`AppConfig`, `GlobalConfig`, `ProfileConfig`, `ResolvedConfig`),
+operation parameters, results, validation reports, and the `Sensitive<T>` credential wrapper.
+- **`domain/model/error/`** — sealed interfaces: `OperationError` and its `SigningError`,
+`ValidationError`, `ArchivingError`, `ConfigurationError`, `TrustStoreError` branches.
+- **`domain/repository/`** and **`domain/port/`** — the interfaces the data layer implements.
+- **`domain/usecase/`** — the application's verbs, one class each, injected with repositories.
+- **`data/`** (in `jvmMain`) — the DSS, filesystem, and OS-facing implementations.
+
+Configuration resolves through a three-layer merge — global, then profile, then per-operation
+overrides — in `ResolvedConfig.resolve()`. Every deliverable shares that logic, which is why a profile
+means the same thing in the CLI as it does in the desktop app.
+
+The names above are patterns, not incidental vocabulary: the repository interfaces are the
+**Repository** pattern, `domain/port/` is **Ports and Adapters**, and the fact that the domain owns
+both is **Dependency Inversion**. [Design patterns](patterns.mdx) walks through each one, what problem
+it solved here, and how the codebase maps onto SOLID.
+
+## The server
+
+`server` is a Ktor/Netty application that exposes the `shared` JVM data layer over HTTP. Routes mount
+under `/api/v1`, one file per group in `api/routes/`. Two things distinguish it from the other
+deliverables:
+
+- **Operations are gated.** `AllowedOperation` defaults to `{VALIDATE, TIMESTAMP}`; `SIGN` is opt-in,
+because a signing server signs with *its own* key. Every route group checks its operation at request
+time, and `GET /api/v1/capabilities` publishes the result so clients can adapt.
+- **It cannot prompt.** `ServerPasswordCallback` always returns `null`. Anything needing an interactive
+PIN fails rather than hanging.
+
+See [Server → Security](/server/security) for the authentication and gating model.

@@ -1,0 +1,45 @@
+---
+sidebar_position: 4
+---
+
+import AppIcon from '@site/src/components/AppIcon';
+
+# Profiles
+
+A **profile** is a named set of signing and validation settings — a timestamp authority, a signature
+level, an algorithm, a set of trusted certificates — that the server applies to an operation instead
+of its global defaults. Your organization might keep one profile for qualified signatures on a
+hardware token and another for internal seals.
+
+On the desktop app you create and edit profiles yourself. In the browser you **choose** among the
+profiles the server already defines; they are authored by the server administrator in
+[`signing.yml`](/server/signing-policy#profiles) and are read-only over the API.
+
+## Choosing a profile
+
+Open the **Profiles** panel <AppIcon name="profile" label="Profiles panel" /> on the right edge. It
+lists every profile the server publishes.
+
+- **Activate** a profile <AppIcon name="profile_select" label="Activate profile" /> to make it apply
+  to every operation you run.
+- **Deactivate** it <AppIcon name="profile_deselect" label="Deactivate profile" /> — click the active
+  profile again — to fall back to the server's global defaults.
+- **View** a profile <AppIcon name="eye" label="View profile" /> to read its settings. The eye icon
+  stands where the desktop app shows a pencil: the form opens read-only.
+
+There is no **Add profile** button, and no delete action.
+
+## What the choice does
+
+The active profile's name is sent with **every** sign, timestamp, and validate request, and the server
+resolves that profile's settings over its global configuration before doing the work. Selecting a
+profile therefore changes which TSA is used, which signature level is produced, and which certificates
+are trusted during validation.
+
+Your choice is remembered in the browser, not on the server — so it is per-browser, per-device, and
+does not affect anyone else using the same deployment. See
+[Settings → What's stored in your browser](settings.mdx#whats-stored-in-your-browser).
+
+The active profile also feeds the **Trusted Certificates** panel
+<AppIcon name="certificate" label="Trusted Certificates panel" />, which shows the global certificates
+and, separately, the ones scoped to the profile you have selected.

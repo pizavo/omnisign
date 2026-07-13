@@ -1,0 +1,107 @@
+---
+sidebar_position: 2
+---
+
+import AppIcon from '@site/src/components/AppIcon';
+
+# The interface
+
+The web frontend is the desktop application compiled to WebAssembly, so the window you see in the
+browser is the same one you would see on your machine: a toolbar across the top, a document viewer in
+the middle, and collapsible panels on both edges. This page maps out what is there, and — because a
+browser cannot open smart cards, write files, or own a configuration — what is not.
+
+## What the server decides
+
+Three of the actions below appear only if the server permits the corresponding operation
+(see [Server → Operation gating](/server/security#operation-gating)):
+
+| Server permits | Effect in the browser                                              |
+|----------------|--------------------------------------------------------------------|
+| `VALIDATE`     | The **Signatures** panel and its left-edge icon are shown           |
+| `SIGN`         | The **Sign** toolbar button is shown                                |
+| `TIMESTAMP`    | The **Timestamp** toolbar button and the signing dialog's timestamp checkboxes are shown |
+
+Validation is enabled by default on a server; signing and timestamping are opt-in. So a
+validation-only deployment shows no Sign or Timestamp button at all, and a sign-only deployment offers
+signing but only at PAdES BASELINE B-B, because the timestamp checkboxes are gone with it.
+
+:::note[If the server cannot be reached]
+The capabilities are fetched once when the app loads. If that fetch fails, the app **assumes every
+operation is permitted** and shows all the buttons anyway — the failure surfaces only when you press
+one. Button visibility is therefore not a connectivity check. See
+[Troubleshooting](troubleshooting.mdx).
+:::
+
+## Toolbar
+
+| Button                                                                                        | Location | Description                                                        |
+|-----------------------------------------------------------------------------------------------|----------|---------------------------------------------------------------------|
+| <AppIcon name="folder" color="folder" label="Open file" /> Open file                          | Left     | Opens the browser's file picker, filtered to PDF files.             |
+| <AppIcon name="sign" label="Sign" /> Sign                                                     | Center   | Opens the signing dialog. Enabled once a PDF is loaded.             |
+| <AppIcon name="stamp" label="Timestamp" /> Timestamp                                          | Center   | Opens the timestamp / extension dialog. Enabled once a PDF is loaded. |
+| <AppIcon name="settings" label="Settings" /> Settings                                         | Right    | Opens the settings dialog (read-only, except Language & Region).     |
+| <AppIcon name="moon" label="Dark theme" /> / <AppIcon name="sun" label="Light theme" /> Theme | Right    | Toggles between dark and light theme.                               |
+
+The OmniSign mark sits at the far left. There are no window controls — the browser supplies the
+window frame — and the browser tab is titled after your deployment's
+[organization branding](deployment.mdx#branding), falling back to *OmniSign*.
+
+## Side panels
+
+Panels slide out from either edge and can be resized by dragging their inner divider.
+
+| Panel                                                                                  | Side  | Description                                                                          |
+|----------------------------------------------------------------------------------------|-------|---------------------------------------------------------------------------------------|
+| <AppIcon name="signature" label="Signatures panel" /> Signatures                       | Left  | Validate the loaded document and inspect each signature. Hidden unless the server permits `VALIDATE`. |
+| <AppIcon name="profile" label="Profiles panel" /> Profiles                             | Right | View the server's signing profiles and choose the active one. Read-only.               |
+| <AppIcon name="certificate" label="Trusted Certificates panel" /> Trusted Certificates | Right | Read-only overview of the CA and TSA certificates the **server** trusts.               |
+| <AppIcon name="help" label="Help panel" /> Help                                        | Right | Links to the repository and this documentation, plus the licence and version.          |
+
+The Help panel has no **Support** section: log export and the debug-logging toggles are desktop-only,
+because a browser has no local log files to collect.
+
+## Viewer controls
+
+Before you open anything, the viewer shows your organization's branding above an
+*open a document* prompt. Once a PDF is loaded, a bar along the bottom carries every control:
+
+- **File name**, on the left.
+- **Zoom out**, the **current zoom percentage**, and **zoom in**. Zoom runs from **25 % to 400 %** in
+  25 % steps; clicking the percentage itself snaps back to 100 %.
+- **Previous page**, a **page X / Y** indicator, and **next page**.
+
+There are no keyboard shortcuts for zoom or page navigation; scrolling is the browser's own. Pages are
+rasterized by **MuPDF compiled to WebAssembly** and drawn through Skia, the same renderer the desktop
+uses — so no page image is ever fetched from the server. Because a page is drawn as an image, the
+document's own text is not selectable (this is true of the desktop app too); text in panels, dialogs,
+and reports is selectable and copyable as usual. Right-clicking gives you the browser's native context
+menu rather than the desktop app's styled one.
+
+## Feature summary
+
+| Feature                                       |    Web     | Notes                                              |
+|-----------------------------------------------|:----------:|-----------------------------------------------------|
+| Open and view PDF documents                   |     ✅      | Locally, one document at a time                    |
+| Page navigation and zoom (25 %–400 %)         |     ✅      |                                                     |
+| Drag and drop a file onto the window          |     ❌      | Use the folder button                              |
+| Validate signed PDFs (PAdES B-LTA)            |     ✅      | On the server; requires `VALIDATE`                 |
+| EU LOTL emblems and off-LOTL alert            |     ✅      |                                                     |
+| Export validation report (TXT, JSON, XML)     |     ✅      | Downloads through the browser                      |
+| Add a certificate to trusted from the report  |     ❌      | The server's trust store is read-only              |
+| Sign PDFs (PAdES B-B / B-LT / B-LTA)            |     ✅      | With the server's certificate; requires `SIGN`     |
+| Timestamp / extend signatures                 |     ✅      | Requires `TIMESTAMP`                               |
+| PKCS#11 hardware tokens, PIN entry            |     ❌      | The browser holds no keys                          |
+| PKCS#12 file upload                           |     ❌      | Client key material is not accepted                |
+| Token rescan and PKCS#11 diagnostics          |     ❌      | Nothing local to scan                              |
+| Configuration profiles                        | View only  | Created and edited on the server                   |
+| Settings dialog                               | Read-only  | Except Language & Region                           |
+| Trusted certificates overview                 | Read-only  | Mirrors the server's trust                         |
+| Custom ETSI Trusted List builder              |     ❌      | Desktop-only                                       |
+| Export the configuration as a ZIP             |     ✅      |                                                     |
+| Import a configuration                        |     ❌      | The server's configuration is read-only over the API |
+| Archival renewal jobs and scheduling          |     ❌      | Needs a local filesystem and OS scheduler          |
+| Choose UI language and date format            |     ✅      | Saved in the browser                               |
+| Dark / light theme toggle                     |     ✅      | Saved in the browser                               |
+| Support log export and debug logging          |     ❌      | No local log files                                 |
+| Sign-in / user accounts                       |     ❌      | See [Deployment → Authentication](deployment.mdx#authentication) |

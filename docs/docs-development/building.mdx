@@ -1,0 +1,155 @@
+---
+sidebar_position: 4
+---
+
+# Building and running
+
+
+import OsTabs from '@site/src/components/OsTabs';
+import TabItem from '@theme/TabItem';
+
+Every command below is a Gradle task run through the wrapper. Use `./gradlew` on Linux and macOS, and
+`gradlew.bat` on Windows. The examples show the Windows form where the two differ.
+
+`--enable-native-access=ALL-UNNAMED` is already configured in `gradle.properties` and in each module's
+build script, so you never need to pass it yourself. The build also has the Gradle configuration cache
+and build cache enabled.
+
+## Running each target
+
+### Desktop
+
+<OsTabs>
+    <TabItem value="windows" label="Windows">
+
+        ```powershell
+        .\gradlew.bat :composeApp:run
+        ```
+
+    </TabItem>
+    <TabItem value="linux" label="Linux">
+
+        ```bash
+        ./gradlew :composeApp:run
+        ```
+
+    </TabItem>
+    <TabItem value="macos" label="macOS">
+
+        ```bash
+        ./gradlew :composeApp:run
+        ```
+
+    </TabItem>
+</OsTabs>
+
+Requires **JBR 25** — see [the prerequisites](index.mdx#prerequisites). This is the only target with a
+vendor-specific toolchain.
+
+### Server
+
+```bash
+./gradlew :server:run
+```
+
+Listens on `http://localhost:18080` unless a `server.yml` says otherwise. Configuration resolution is
+described in [Server → Configuration](/server/configuration).
+
+### CLI
+
+```bash
+./gradlew :cli:run --args="--help"
+```
+
+Pass CLI arguments through `--args`. Note that interactive prompts (PIN entry) work under `:cli:run`
+because the build forwards the parent terminal's stdin.
+
+### Web
+
+```bash
+./gradlew :composeApp:wasmJsBrowserDevelopmentRun
+```
+
+Starts a development server and opens the app in your default browser. The browser client needs a
+running [OmniSign Server](/server/) to do anything useful — on its own it can open and view a PDF, but
+signing and validation are HTTP calls.
+
+:::warning[A cold Wasm build can produce a broken bundle]
+Immediately after `:composeApp:clean`, the first *development* Wasm build sometimes emits a mismatched
+JavaScript-glue and `.wasm` pair. The app then fails at load with:
+
+```text
+LinkError: WebAssembly.instantiate(): Import #0 "./skiko.mjs" "externrefToBoolean": function import requires a callable
+```
+
+Running the production task once regenerates a consistent pair and unblocks the development task:
+
+```bash
+./gradlew :composeApp:wasmJsBrowserProductionRun
+```
+:::
+
+## Producing artifacts
+
+| Target | Task | Output |
+| --- | --- | --- |
+| CLI fat JAR | `:cli:shadowJar` | `cli/build/libs/omnisign-*.jar` |
+| CLI installer | `:cli:jpackage` | MSI, DEB, RPM, or DMG for the current OS |
+| Desktop installer | `:composeApp:packageDistributionForCurrentOS` | MSI/EXE, DMG/PKG, DEB/RPM, or AppImage |
+| Server fat JAR | `:server:buildFatJar` | `server/build/libs/server-all.jar` |
+| Server dist | `:server:installDist` | `server/build/install/server/bin/server` |
+| Web bundle | `:composeApp:wasmJsBrowserDistribution` | `composeApp/build/dist/wasmJs/productionExecutable/` |
+| API docs | `:dokkaGenerate` | `build/dokka/html/` |
+
+Both packaging tasks also expose one task per format, which is what the release workflows invoke so
+each runner produces only what it can: `:composeApp:packageDeb`, `:composeApp:packageMsi`,
+`:composeApp:packageDmg`, and their `:cli:jpackage*` counterparts.
+
+Native installers are built by [`jpackage`](https://docs.oracle.com/en/java/javase/25/docs/specs/man/jpackage.html)
+and can only target the OS they run on — there is no cross-packaging. Producing all of them means
+building on all three platforms, which is what the release workflows do.
+
+Deployment guidance for the two server-side artifacts lives with its audience:
+[Server → Deployment](/server/deployment) and [Web → Deployment](/web/deployment).
+
+## The Wasm npm lockfile
+
+The web target has npm dependencies — currently just `mupdf` — and their lockfile is committed under
+`kotlin-js-store/wasm/`.
+
+:::warning[A clean compile does not mean the lockfile is current]
+`compileKotlinWasmJs` succeeds against a stale lock. Nothing tells you it drifted until CI runs
+`kotlinWasmStorePackageLock` and fails.
+
+After adding, removing, or updating **any** npm dependency — including a version-catalog edit that an
+`npm(...)` declaration consumes — regenerate it and commit the result:
+
+```bash
+./gradlew :composeApp:kotlinWasmUpgradePackageLock
+```
+
+The one time you must *not* run it is when `storePackageLock` fails only on a release build. That is a
+different problem, explained in [Releases and CI](releases.mdx#building-the-artifacts).
+:::
+
+## Other useful tasks
+
+```bash
+./gradlew build                        # compile everything and run all tests
+./gradlew :shared:updateLotlKeystore   # refresh the bundled EU LOTL keystore
+./gradlew generateIcons                # regenerate .ico/.icns/PNG icons from the masters
+```
+
+`updateLotlKeystore` downloads the current Official Journal keystore from the DSS demonstrations
+repository into `shared/src/jvmMain/resources/lotl-keystore.p12`. Run it when the European Commission
+rotates the LOTL signing keys, and commit the result.
+
+`generateIcons` needs ImageMagick 7 (`magick`) and `icnsify` on the `PATH`. It rewrites the icons in
+`assets/icons/` and copies them into the places that consume them, including this documentation site's
+favicon and logo.
+
+:::note[The API reference does not cover the browser target]
+`:dokkaGenerate` suppresses `composeApp`'s `wasmJs` source sets, because Dokka cannot fully process
+Wasm targets. The `webMain` `actual` implementations are therefore absent from the
+[API reference](https://pizavo.github.io/omnisign/api/); read them in the source tree instead.
+:::

@@ -1,0 +1,79 @@
+---
+title: Signing Flow (sequence) - OmniSign PAdES signature
+---
+sequenceDiagram
+  autonumber
+  actor User
+  participant App as Desktop / CLI
+  participant UC as SignDocumentUseCase
+  participant Repo as DssSigningRepository
+  participant Pwd as PasswordCallback
+  participant Tok as PKCS11 token
+  participant KS as PKCS12 keystore file
+  participant DSS as DSS PAdESService
+  participant TSA as Timestamp Authority
+  participant Trust as Trusted Lists + OCSP/CRL
+
+  User->>App: sign(document, parameters)
+  App->>UC: invoke(SigningParameters)
+  UC->>Repo: signDocument(params)
+  Repo->>Repo: resolve config (global, profile, operation)
+  Repo->>Repo: check signing algorithm not expired
+  opt signature level above B
+    Repo->>Repo: require timestamp server configured
+  end
+
+  Note over Repo,KS: resolve the signing identity (silent pass, then interactive)
+  alt keystoreFile supplied (PKCS12)
+    Repo->>KS: open keystore
+    opt password not supplied non-interactively
+      Repo->>Pwd: requestPassword("Enter keystore password")
+      Pwd->>User: prompt
+      User-->>Pwd: password
+      Pwd-->>Repo: password
+    end
+    KS-->>Repo: private key entry
+  else PKCS11 token / HSM
+    Repo->>Tok: discover tokens / probe present
+    alt token needs PIN and none cached
+      Repo->>Pwd: requestPassword("Enter PIN ...")
+      Pwd->>User: prompt
+      User-->>Pwd: PIN
+      Pwd-->>Repo: PIN
+    end
+    Repo->>Tok: PKCS11 login + load signing key
+    Tok-->>Repo: private key entry
+  end
+
+  Repo->>Trust: build certificate verifier (load EU LOTL + trusted lists)
+  opt level B-T / B-LT / B-LTA
+    Repo->>DSS: setTspSource(TSA endpoint)
+  end
+
+  Repo->>DSS: getDataToSign(document, params)
+  DSS-->>Repo: data to sign (digest)
+  alt PKCS11 token / HSM
+    Repo->>Tok: sign(dataToSign) on token
+    Tok-->>Repo: signature value
+  else PKCS12 keystore file
+    Repo->>KS: sign(dataToSign) with the loaded key
+    KS-->>Repo: signature value
+  end
+  Repo->>DSS: signDocument(document, params, signatureValue)
+  opt level B-T / B-LT / B-LTA
+    DSS->>TSA: RFC 3161 timestamp request
+    TSA-->>DSS: timestamp token
+  end
+  opt level B-LT / B-LTA
+    DSS->>Trust: fetch OCSP / CRL revocation data
+    Trust-->>DSS: revocation responses
+  end
+  opt level B-LTA
+    DSS->>TSA: archive timestamp request
+    TSA-->>DSS: archive timestamp token
+  end
+  DSS-->>Repo: signed PDF
+  Repo->>Repo: collect + sanitize DSS warnings
+  Repo-->>UC: OperationResult (SigningResult)
+  UC-->>App: result (+ warnings)
+  App-->>User: signed document

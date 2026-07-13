@@ -1,0 +1,136 @@
+---
+title: Server Architecture and Request Flow - OmniSign
+---
+graph TB
+    subgraph clients["Clients"]
+        BROWSER["Browser / Web app"]
+        CI["CI/CD · scripts (Bearer token)"]
+        INST["Institutional clients"]
+    end
+
+    subgraph netty["Transport — Netty embedded server"]
+        TLS["Optional TLS connector<br/>TLS 1.2 / 1.3 · HTTP/2 ALPN"]
+    end
+
+    subgraph pipeline["Ktor plugin pipeline (install order)"]
+        EDGE["DefaultHeaders (+ HSTS header) · ForwardedHeaders<br/>HttpsRedirect · CORS"]
+        RL["RateLimit — two token-bucket zones<br/>auth: 20 / 60s · api: 200 / 60s (per client IP)"]
+        OBS["CallId · CallLogging · StatusPages<br/>Serialization · AutoHeadResponse"]
+    end
+
+    subgraph authn["Authentication (configureAuthentication)"]
+        JWTGUARD["`**jwt-api** Bearer provider<br/>*always installed*`"]
+        OIDCPROV["`**oidc-(name)** OAuth2 providers<br/>*one per OidcProviderConfig*`"]
+        HDRINJ["`**Header-injection**<br/>Shibboleth / SAML 2.0<br/>via trusted reverse-proxy headers`"]
+    end
+
+    subgraph routing["Routing — /api/v1 (configureRouting)"]
+        PUBLIC["`**Public** — always open<br/>/auth/** · SystemRoutes (health)`"]
+        GUARDED["`**Guarded** — authenticate(jwt-api)<br/>when auth.enabled = true`"]
+        GATE["`**AllowedOperation gate** (per request)<br/>SIGN = opt-in · VALIDATE / TIMESTAMP = default`"]
+        subgraph routes["Operational route groups"]
+            SIGNR["SigningRoutes"]
+            VALR["ValidationRoutes"]
+            TSR["TimestampRoutes"]
+            CERTR["CertificateRoutes"]
+            CFGR["ConfigRoutes"]
+        end
+    end
+
+    subgraph authsvc["Auth services (di/ServerModule)"]
+        JWTSVC["JwtSessionService<br/>Auth0 java-jwt · HMAC HS256/384/512<br/>secret: config → env → ephemeral(dev)"]
+        DISC["OidcDiscoveryService"]
+        UINFO["OidcUserInfoService → AuthenticatedPrincipal"]
+        IDTOK["IdTokenVerifier<br/>validates the IdP id_token"]
+        PKCE["PkceService<br/>+ PkceVerifierStore"]
+        RT["RefreshTokenStore<br/>rotating refresh tokens"]
+        FILTERS["`EmailDomainFilter · OidcClaimsFilter<br/>*post-login, before JWT issued*`"]
+    end
+
+    subgraph persist["Session persistence"]
+        DB[("sessions.db<br/>[SQLite via Exposed]<br/>PKCE verifiers · refresh tokens")]
+    end
+
+    subgraph shared["shared — JVM data layer (reused by all clients)"]
+        UC["Use Cases (Sign · Validate · Timestamp …)"]
+        DSSREPO["Dss*Repository → DssServiceFactory"]
+        PWCB["`ServerPasswordCallback<br/>*always returns null (no interactive prompt)*`"]
+    end
+
+    subgraph config["Config bootstrap"]
+        YML["server.yml<br/>transport · auth · operations · secrets (env)"]
+        LOADER["ServerConfigLoader → ServerConfig<br/>(Jackson + SsoProviderConfigDeserializer)"]
+        EXTURL["resolveExternalUrl()<br/>OMNISIGN_EXTERNAL_URL → OAuth2 redirect URIs"]
+        SIGNYML["signing.yml<br/>provider-authored signing config"]
+        SLOADER["SigningConfigLoader → SigningConfig<br/>ProfileSources: inline · files · directories"]
+    end
+
+    subgraph ext["External Systems"]
+        IDP["OIDC / SSO IdPs<br/>Google · Microsoft · Keycloak · GitHub<br/>GitLab · Auth0 · Cognito · Apple · eduID.cz"]
+        DSSLIB["EU DSS 6.3 — PAdES B / B-T / B-LT / B-LTA"]
+        TRUST["TSA (RFC 3161) · OCSP / CRL · EU LOTL"]
+    end
+
+    subgraph legend["Legend"]
+        direction LR
+        LG1["Client"]:::client
+        LG2["Transport / infra plugin"]:::infra
+        LG3["Auth / security"]:::sec
+        LG4["Route group / op-gate"]:::route
+        LG5["Shared core (use cases / data)"]:::core
+        LG6["External system"]:::external
+    end
+
+    %% Main request flow (inbound)
+    BROWSER --> TLS
+    CI --> TLS
+    INST --> TLS
+    TLS --> EDGE --> RL --> OBS --> JWTGUARD
+    JWTGUARD --> PUBLIC
+    JWTGUARD --> GUARDED
+    GUARDED --> GATE --> routes
+    routes --> UC
+    UC --> DSSREPO --> DSSLIB --> TRUST
+    DSSREPO --- PWCB
+
+    %% OIDC / SSO login flow
+    PUBLIC -. "GET /redirect/(name)" .-> OIDCPROV
+    OIDCPROV -. "code_challenge" .-> PKCE
+    OIDCPROV -. "discovery" .-> DISC
+    OIDCPROV -. "GET /callback/(name)" .-> UINFO
+    UINFO --> IDTOK --> FILTERS
+    FILTERS -. "issue session JWT" .-> JWTSVC
+    JWTSVC -. "issue / rotate" .-> RT
+    PUBLIC -. "POST /refresh" .-> RT
+    DISC -. "discovery doc" .-> IDP
+    UINFO -. "userinfo" .-> IDP
+    HDRINJ -. "trusted headers" .-> PUBLIC
+
+    %% Session persistence
+    PKCE --> DB
+    RT --> DB
+
+    %% Config wiring
+    YML --> LOADER --> EXTURL
+    YML -. "signingConfigFile" .-> SIGNYML
+    SIGNYML --> SLOADER
+    SLOADER -. "global + profiles, trusted certs" .-> UC
+    LOADER -. "configures" .-> authn
+    LOADER -. "configures" .-> RL
+
+    classDef client fill:#1f6feb,stroke:#0b3d91,color:#fff;
+    classDef infra fill:#6e7781,stroke:#2b3138,color:#fff;
+    classDef sec fill:#8250df,stroke:#3e1f7a,color:#fff;
+    classDef route fill:#bc4c00,stroke:#7a3100,color:#fff;
+    classDef core fill:#1a7f37,stroke:#0d4f22,color:#fff;
+    classDef external fill:#424a53,stroke:#21262d,color:#fff;
+    classDef store fill:#3b6fb5,stroke:#0b4884,color:#fff;
+
+    class BROWSER,CI,INST client;
+    class TLS,EDGE,RL,OBS infra;
+    class JWTGUARD,OIDCPROV,HDRINJ,JWTSVC,DISC,UINFO,IDTOK,PKCE,RT,FILTERS sec;
+    class PUBLIC,GUARDED,GATE,SIGNR,VALR,TSR,CERTR,CFGR route;
+    class UC,DSSREPO,PWCB core;
+    class YML,LOADER,EXTURL,SIGNYML,SLOADER infra;
+    class DB store;
+    class IDP,DSSLIB,TRUST external;

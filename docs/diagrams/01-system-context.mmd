@@ -1,0 +1,36 @@
+---
+title: System Context - OmniSign Digital Signature System
+---
+flowchart TB
+  user["Signer / Verifier<br/>[Person]<br/>Creates and validates PAdES<br/>signatures on PDF documents"]
+  admin["Institutional Operator<br/>[Person]<br/>Deploys and configures<br/>the OmniSign server"]
+
+  omnisign["OmniSign<br/>[Software System]<br/>Creates, extends and validates PAdES<br/>BASELINE B / B-T / B-LT / B-LTA<br/>signatures, built on EU DSS 6.3"]
+
+  tl["EU Trusted Lists<br/>[External System]<br/>LOTL / national TLs;<br/>qualified trust anchors"]
+  tsa["Timestamp Authority<br/>[External System]<br/>RFC 3161 timestamps"]
+  rev["OCSP / CRL Responders<br/>[External System]<br/>Certificate revocation status"]
+  idp["OIDC Identity Provider<br/>[External System]<br/>Server single sign-on"]
+  token["PKCS#11 Token / HSM<br/>[External System]<br/>Signing key and certificate"]
+
+  user -->|"signs / validates using<br/>[CLI, Desktop, Web]"| omnisign
+  admin -->|"configures and operates<br/>[server.yml, signing.yml]"| omnisign
+  omnisign -->|"trust anchors from [HTTPS]"| tl
+  omnisign -->|"timestamps from [RFC 3161]"| tsa
+  omnisign -->|"revocation via [OCSP / HTTP]"| rev
+  omnisign -->|"signs hashes via [PKCS#11]"| token
+  omnisign -->|"authenticates users via [OIDC]"| idp
+
+  subgraph legend["Legend"]
+    direction LR
+    lp["Person"]:::person
+    ls["Software System"]:::system
+    le["External System"]:::external
+  end
+
+  classDef person fill:#08427b,stroke:#052e56,color:#ffffff
+  classDef system fill:#1168bd,stroke:#0b4884,color:#ffffff
+  classDef external fill:#8a8a8a,stroke:#5f5f5f,color:#ffffff
+  class user,admin person
+  class omnisign system
+  class tl,tsa,rev,idp,token external

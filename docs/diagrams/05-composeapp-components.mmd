@@ -1,0 +1,73 @@
+---
+title: Component Diagram - composeApp (Compose Multiplatform desktop JVM + web Wasm)
+config:
+  flowchart:
+    nodeSpacing: 45
+    rankSpacing: 70
+---
+flowchart TB
+  subgraph common["commonMain - shared UI codebase (platform-agnostic)"]
+    direction TB
+    UI["Compose UI<br/>App root, Lumo design system,<br/>Island shell, dialogs"]
+    VM["ViewModels (MVVM)<br/>StateFlow + UI state models<br/>UiPreferences, ServerCapabilities, sealed UI errors"]
+    PORTS["Platform seams (expect / actual)<br/>PdfPageRenderer, FileExporter, SaveDocument,<br/>UiPreferencesStore, LocalAppLocale, PlatformInfo, ..."]
+    UI -->|observes StateFlow| VM
+    VM -->|uses| PORTS
+  end
+
+  subgraph jvm["jvmMain - desktop actuals (JVM / JBR)"]
+    direction TB
+    JADAPT["UI adapters (actual)<br/>PDFBox renderer, AWT file export,<br/>JBR custom title bar"]
+    JPWD["ComposePasswordCallback (actual)<br/>+ PasswordDialogController (dialog)"]
+    JPREF["Preferences (actual)<br/>preferences/ui.json + format.json,<br/>WindowStateStore"]
+    JBOOT["Desktop entry point (main.kt)"]
+  end
+
+  subgraph web["webMain - web actuals (Wasm / browser)"]
+    direction TB
+    WADAPT["UI adapters (actual)<br/>MuPDF (WebAssembly) PDF renderer,<br/>browser file export / download"]
+    WPREF["Preferences (actual)<br/>localStorage: ui / format / profile selection"]
+    WLOC["LocalAppLocale (actual)<br/>navigator.language shim in index.html"]
+    WBOOT["Web entry point (main.kt)<br/>ComposeViewport"]
+  end
+
+  subgraph ext["Outside composeApp - shared library and other containers"]
+    direction TB
+    UC["shared use cases<br/>SignDocument, ValidateDocument, ...<br/>(Koin-injected from shared)"]
+    PWCB["PasswordCallback<br/>(shared platform boundary)<br/>credential prompts during signing"]
+    REMOTE["shared/wasmJsMain<br/>Remote*Repository + Ktor HttpClient<br/>(bound in WebDataModule)"]
+    SRV["HTTP Server<br/>REST API /api/v1"]
+  end
+
+  VM -->|"invokes use cases (Koin)"| UC
+
+  JADAPT -. actual .-> PORTS
+  JPREF -. actual .-> PORTS
+  WADAPT -. actual .-> PORTS
+  WPREF -. actual .-> PORTS
+  WLOC -. actual .-> PORTS
+  JPWD -. implements .-> PWCB
+
+  JBOOT -->|"startKoin: appModule + jvmRepositoryModule (full DSS)"| UC
+  WBOOT -. "startKoin: appModule + webDataModule; getKoinOrNull degrades" .-> UC
+
+  UC -. "(web) repository ports bound to" .-> REMOTE
+  REMOTE -->|"REST [JSON / HTTPS]"| SRV
+
+  subgraph legend["Legend  (node colour = source set: blue commonMain, green jvmMain, purple Wasm (webMain / shared wasmJsMain), grey external)"]
+    direction LR
+    lg1["component"] -->|"uses / depends on"| lg2["component"]
+    lg3["actual"] -. actual .-> lg4["expect port"]
+  end
+
+  classDef common fill:#1168bd,stroke:#0b4884,color:#ffffff
+  classDef jvm fill:#2da44e,stroke:#0d4f22,color:#ffffff
+  classDef web fill:#8250df,stroke:#3e1f7a,color:#ffffff
+  classDef ext fill:#8a8a8a,stroke:#5f5f5f,color:#ffffff
+  class UI,VM,PORTS common
+  class JADAPT,JPWD,JPREF,JBOOT jvm
+  class WADAPT,WPREF,WLOC,WBOOT web
+  class UC,PWCB,SRV ext
+  class REMOTE web
+  class lg1,lg2,lg4 common
+  class lg3 jvm

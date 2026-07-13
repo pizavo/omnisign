@@ -1,0 +1,78 @@
+---
+title: Clean Architecture / Ports and Adapters - OmniSign
+---
+flowchart TB
+  subgraph PRIMARY["DRIVING / PRIMARY ADAPTERS (delivery modules)"]
+    direction LR
+    CLI["CLI commands<br/>[Clikt - cli]"]
+    VM["Compose ViewModels<br/>[MVVM - composeApp]"]
+    ROUTES["Ktor routes /api/v1<br/>[server]"]
+  end
+
+  subgraph CORE["APPLICATION CORE - shared/commonMain (pure Kotlin: no DSS, no platform I/O)"]
+    direction TB
+    UC["Use Cases (16)<br/>SignDocument, ValidateDocument, ExtendDocument,<br/>ListCertificates, ManageTrustedLists, ..."]
+    PORTS["PORTS (interfaces)<br/>SigningRepository, ValidationRepository, ArchivingRepository,<br/>ConfigRepository, TrustStore, CapabilitiesRepository, TokenService,<br/>CredentialStore, SchedulerPort, ConfigSerializer, PasswordCallback, ..."]
+    DOMAIN["Domain model / Entities<br/>config, parameters, results, validation, signature,<br/>trust, sealed OperationError, Sensitive credential wrapper"]
+    UC -->|owns and depends on| PORTS
+    UC -->|operates on| DOMAIN
+  end
+
+  subgraph SECONDARY["DRIVEN / SECONDARY ADAPTERS - shared/jvmMain (DSS) and shared/wasmJsMain (HTTP)"]
+    direction LR
+    DSSREPO["Dss*Repository<br/>Signing / Validation / Archiving"]
+    FILECFG["FileConfigRepository"]
+    FILETRUST["FileTrustStore"]
+    TOKENSVC["DssTokenService"]
+    CRED["KeyringCredentialStore"]
+    SCHED["OS schedulers<br/>Windows / launchd / systemd"]
+    SER["Jackson serializers"]
+    PWCB["PasswordCallback adapters<br/>Cli / Compose / Server"]
+    REMOTE["Remote*Repository (wasmJsMain)<br/>Signing / Validation / Archiving / Config /<br/>TrustStore / Capabilities - over Ktor HTTP"]
+  end
+
+  subgraph FW["FRAMEWORKS and EXTERNAL SYSTEMS"]
+    direction LR
+    DSS["EU DSS 6.3"]
+    FS["Filesystem"]
+    PKCS["PKCS#11 token / HSM"]
+    KEYRING["OS keyring"]
+    OSSVC["OS scheduler service"]
+    API["OmniSign HTTP Server<br/>REST /api/v1"]
+  end
+
+  CLI --> UC
+  VM --> UC
+  ROUTES --> UC
+
+  DSSREPO -.-> PORTS
+  FILECFG -.-> PORTS
+  FILETRUST -.-> PORTS
+  TOKENSVC -.-> PORTS
+  CRED -.-> PORTS
+  SCHED -.-> PORTS
+  SER -.-> PORTS
+  PWCB -.-> PORTS
+  REMOTE -.-> PORTS
+
+  DSSREPO --> DSS
+  DSSREPO --> PKCS
+  FILECFG --> FS
+  FILETRUST --> FS
+  TOKENSVC --> PKCS
+  CRED --> KEYRING
+  SCHED --> OSSVC
+  REMOTE --> API
+
+  subgraph legend["Legend"]
+    direction LR
+    lh["high-level / inner"] -->|"solid = source dependency (points inward)"| labr["abstraction"]
+    lad["adapter"] -.->|"dashed = implements / realizes a port"| lpo["port"]
+  end
+
+  classDef core fill:#e8f0fe,stroke:#1168bd,color:#06214a
+  classDef adapter fill:#f3eafc,stroke:#7a3fb5,color:#2c0f4a
+  classDef ext fill:#8a8a8a,stroke:#5f5f5f,color:#ffffff
+  class UC,PORTS,DOMAIN core
+  class CLI,VM,ROUTES,DSSREPO,FILECFG,FILETRUST,TOKENSVC,CRED,SCHED,SER,PWCB,REMOTE adapter
+  class DSS,FS,PKCS,KEYRING,OSSVC,API ext

@@ -1,0 +1,63 @@
+.figure {
+  margin: 0 0 var(--ifm-leading);
+}
+
+.trigger {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 1.6rem 0 0;
+  border: 0;
+  background: none;
+  cursor: zoom-in;
+  border-radius: var(--ifm-global-radius);
+}
+
+.trigger:focus-visible {
+  outline: 2px solid var(--ifm-color-primary);
+  outline-offset: 4px;
+}
+
+.hint {
+  position: absolute;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--ifm-global-radius);
+  background: var(--ifm-color-emphasis-200);
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.75rem;
+  transition:
+    background-color 150ms ease-in-out,
+    color 150ms ease-in-out;
+}
+
+.hintIcon {
+  flex: 0 0 auto;
+  width: 1.2em;
+  height: 1.2em;
+}
+
+.trigger:hover .hint,
+.trigger:focus-visible .hint {
+  background: var(--ifm-color-emphasis-300);
+  color: var(--ifm-color-emphasis-900);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hint {
+    transition: none;
+  }
+}
+
+.caption {
+  margin-top: 0.6rem;
+  color: var(--ifm-color-emphasis-700);
+  font-size: 0.875rem;
+  line-height: 1.4;
+  text-align: center;
+  text-wrap: balance;
+}

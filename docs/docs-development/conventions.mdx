@@ -1,0 +1,151 @@
+---
+sidebar_position: 6
+---
+
+import Diagram from '@site/src/components/Diagram';
+import configResolution from '@site/diagrams/10-config-resolution.mmd';
+
+# Coding conventions
+
+These are the rules a pull request is reviewed against. Most exist because a previous violation caused
+a real problem.
+
+## Errors are values, not exceptions
+
+Every operation that can fail returns `OperationResult<T>`, an alias for Arrow's
+`Either<OperationError, T>`. Construct results with `.left()` and `.right()`; never throw for an
+expected failure.
+
+```kotlin
+suspend fun sign(parameters: SigningParameters): OperationResult<SigningResult> {
+    val token = tokenService.unlock(pin) ?: return SigningError.TokenLocked.left()
+    return SigningResult(document).right()
+}
+```
+
+Error types are **sealed interfaces** under `domain/model/error/` — `SigningError`, `ValidationError`,
+`ArchivingError`, `ConfigurationError`, `TrustStoreError` — all branches of `OperationError`. Being
+sealed, an exhaustive `when` over them is checked by the compiler, so adding an error case forces every
+consumer to decide how to present it.
+
+Exceptions remain appropriate for genuinely exceptional conditions: a bug, a broken invariant, or a
+third-party library throwing at us. When DSS throws, catch it at the repository boundary and map it
+into the domain's error vocabulary.
+
+## Dependency injection is Koin, exclusively
+
+Register every service, repository, use case, factory, and helper as a Koin definition. Common use
+cases are wired in `shared/commonMain/.../di/AppModule.kt`; JVM repository bindings in
+`shared/jvmMain/.../di/JvmModule.kt`; the browser's HTTP-backed bindings in
+`shared/wasmJsMain/.../di/WebDataModule.kt`.
+
+A Kotlin `object` is acceptable **only** where Koin is technically impossible or meaningless:
+
+- Compose `*Defaults` objects that supply default parameter values
+- Theme accessors such as `LumoTheme`
+- `expect`/`actual` utilities that must resolve at compile time
+- `companion object` blocks holding constants, loggers, or factory methods
+
+Anything else — a singleton service, a stateless helper — is a `single` or a `factory`.
+
+Each UI entry point bootstraps its own Koin container and must supply a `PasswordCallback`. That
+interface is the platform boundary: the CLI reads the terminal, the desktop opens a dialog
+(`ComposePasswordCallback`), and the server returns `null` because it cannot prompt.
+
+## Where a use case may live
+
+Most use cases live in `commonMain` and are registered in `appModule`. Four are exceptions:
+
+| Use case | Where it lives | Why |
+| --- | --- | --- |
+| `ExportImportConfigUseCase` | `commonMain` | Registered in `jvmRepositoryModule`, not `appModule`, because it needs the Jackson serializers |
+| `ConfigArchiveUseCase` | `jvmMain` | Reads and writes ZIP archives |
+| `RenewBatchUseCase` | `jvmMain` | Orchestrates DSS-backed archiving |
+| `MigrateTrustedCertificatesUseCase` | `jvmMain` | Moves inline certificates into the file-backed trust store |
+
+The distinction matters: a use case in `commonMain` compiles for the browser, so it must not reach for
+a JVM API even indirectly.
+
+## One top-level declaration per file
+
+Each `.kt` file contains at most one top-level class, interface, enum, `object`, or sealed hierarchy,
+and is named after it. Nested and inner classes are fine. Extension functions *for that declaration*
+may share the file.
+
+What this rules out: a data class and an enum in one file, or two data classes in one file. Sealed
+hierarchies are the deliberate exception — the branches belong with the parent.
+
+## KDoc on everything, comments on nothing
+
+Every class, interface, and function carries a KDoc comment. This is a graded thesis project, and the
+[API reference](https://pizavo.github.io/omnisign/api/) is generated from it.
+
+Do **not** write inline `//` or `/* */` comments inside function bodies. If a line needs explaining,
+either name it better or explain it in the enclosing declaration's KDoc.
+
+When a change makes a KDoc wrong, fix the KDoc in the same commit — including `@param`, `@return`, and
+cross-references to other declarations. Stale documentation is worse than none, because the next
+reader trusts it.
+
+## Prefer Kotlin APIs over Java ones
+
+Always reach for the Kotlin standard library or a multiplatform type first:
+
+| Use this | Not this |
+| --- | --- |
+| `kotlin.uuid.Uuid` | `java.util.UUID` |
+| `kotlin.time.Instant`, `kotlin.time.Duration` | `java.time.*` |
+| `kotlin.io.path.*` extensions | raw `java.nio.file.*` calls |
+| `resource.use { }` | `try { } finally { close() }` |
+
+Drop to a Java API only when bridging a Java library that demands it — DSS, Jackson, PDFBox — and keep
+that bridge isolated in `jvmMain`. `data/util/DateExtensions.kt` is the model: it converts
+`java.util.Date` to `kotlin.time.Instant` at the edge, so nothing above the data layer ever sees a
+Java date.
+
+`use { }` is worth singling out. It closes on every path — early return, exception, non-local return —
+and because it is `inline`, `suspend` calls work inside it. DSS's `SignatureTokenConnection` extends
+`AutoCloseable`, so it belongs in a `use` block. Reserve `try`/`finally` for cleanup of things that
+are not `Closeable`, such as `DssLogCapture.start()` / `stop()`.
+
+## Wrap credentials in `Sensitive<T>`
+
+Any password, PIN, or secret is held as `Sensitive<T>`. Its `toString()` returns `***` on every
+platform, so it cannot leak through a log line, string interpolation, or a data class's generated
+`toString()`. Serialization is blocked outright: `SensitiveSerializer` throws on both `serialize` and
+`deserialize`, so such a field can never reach a serialized form even if the containing class forgets
+`@Transient`.
+
+```kotlin
+val pin: Sensitive<String> = "1234".sensitive()
+logger.debug { "unlocking with $pin" }   // unlocking with ***
+```
+
+:::note[It is a data class, not a value class]
+Despite holding a single property, `Sensitive<T>` is a plain `data class`. Two reasons, both recorded
+in its KDoc: as a generic type argument it erases to the boxed form on the JVM anyway, so `@JvmInline`
+would buy nothing; and an inline value class trips a Kotlin reflection bug where `callBy` cannot
+invoke a primary constructor mixing default-valued parameters with a value-class parameter — which is
+exactly the path Jackson's `KotlinModule` takes when constructing server config classes like
+`TlsConfig`.
+:::
+
+## Configuration resolves in three layers
+
+`ResolvedConfig.resolve()` merges global settings, then the active profile, then per-operation
+overrides — later layers win. Every deliverable uses it, which is why a profile means the same thing
+in the CLI as in the desktop app. Configuration persists as JSON under `~/.config/omnisign/` on Linux,
+`~/Library/Application Support/omnisign/` on macOS, and `%APPDATA%/omnisign/` on Windows.
+
+<Diagram source={configResolution} />
+
+Note the asymmetry: scalar fields take the first non-null value from the highest layer down, but
+**disabled-algorithm sets are unioned across all three layers**. A profile cannot re-enable an
+algorithm the global config disabled.
+
+## Domain enums carry their DSS name
+
+Enums in `commonMain` cannot reference DSS types. They are mapped by extension functions in
+`jvmMain/.../enums/*Extension.kt`, one file per enum. `HashAlgorithm` is the exception: its mapping is
+a plain string, so it carries a `dssName` property directly. See
+[Architecture](architecture.mdx#bridging-the-domain-to-dss).
