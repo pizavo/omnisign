@@ -3,6 +3,8 @@ package cz.pizavo.omnisign.data.repository
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.text.MessageKey
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import eu.europa.esig.dss.alert.LogOnStatusAlert
 import eu.europa.esig.dss.alert.StatusAlert
@@ -33,11 +35,13 @@ import javax.net.ssl.X509TrustManager
  * Result of building a [CommonCertificateVerifier] with optional trusted-list wiring.
  *
  * @property verifier The fully configured certificate verifier.
- * @property tlWarnings Non-fatal warnings from trusted-list loading (e.g., unreachable TL hosts).
+ * @property tlWarnings Non-fatal, localizable warnings from trusted-list loading (e.g., unreachable
+ *   TL hosts). Rendered per-locale by the validation report; the signing/archiving paths take their
+ *   English rendering.
  */
 data class CertificateVerifierResult(
 	val verifier: CommonCertificateVerifier,
-	val tlWarnings: List<String> = emptyList()
+	val tlWarnings: List<LocalizableText> = emptyList()
 )
 
 /**
@@ -609,14 +613,17 @@ class DssServiceFactory(
 		}
 
 		/**
-		 * Inspect a post-refresh [TLValidationJobSummary] and return user-readable warning strings
-		 * for every member-state trusted list that could not be downloaded or parsed.
+		 * Inspect a post-refresh [TLValidationJobSummary] and return a localizable warning for the
+		 * member-state and standalone trusted lists that could not be downloaded or parsed, or an
+		 * empty list when all loaded. The single [MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE]
+		 * entry names the failed hosts; its first argument is the English count phrase so a localizing
+		 * frontend can re-render it in the target language's plural.
 		 *
 		 * Only download failures are reported; partial parse failures (e.g., old certificate
 		 * entries inside an otherwise intact TL) are treated as non-actionable noise and
 		 * omitted intentionally.
 		 */
-		internal fun collectTlWarnings(summary: TLValidationJobSummary): List<String> {
+		internal fun collectTlWarnings(summary: TLValidationJobSummary): List<LocalizableText> {
 			val failedHosts = mutableListOf<String>()
 			
 			for (lotlInfo in summary.lotlInfos) {
@@ -636,15 +643,20 @@ class DssServiceFactory(
 			}
 			
 			if (failedHosts.isEmpty()) return emptyList()
-			
-			val plural = if (failedHosts.size == 1) "list" else "lists"
+
 			return listOf(
-				"${failedHosts.size} trusted $plural could not be refreshed " +
-						"(${failedHosts.joinToString(", ")}). " +
-						"Qualification assessment for certificates from these sources may be incomplete."
+				LocalizableText.of(
+					MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE,
+					pluralLists(failedHosts.size),
+					failedHosts.joinToString(", "),
+				)
 			)
 		}
-		
+
+		/** English count phrase for [count] trusted lists, baked as a warning argument for locale re-pluralization. */
+		private fun pluralLists(count: Int): String =
+			if (count == 1) "1 trusted list" else "$count trusted lists"
+
 		/**
 		 * Extract a short, human-readable host label from a trusted list [url].
 		 * Falls back to the raw URL if parsing fails.

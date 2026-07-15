@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.data.repository
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedSourceId
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor
 import cz.pizavo.omnisign.domain.model.trust.TrustedListRefreshFailure
 import eu.europa.esig.dss.service.http.commons.CommonsDataLoader
@@ -68,7 +69,7 @@ class TrustedSourceRegistry(
 		var initialized = false
 
 		@Volatile
-		var warnings: List<String> = emptyList()
+		var warnings: List<LocalizableText> = emptyList()
 	}
 
 	/**
@@ -173,10 +174,10 @@ class TrustedSourceRegistry(
 		cv: CommonCertificateVerifier,
 		config: ResolvedConfig,
 		directAnchors: List<ResolvedTrustAnchor> = emptyList(),
-	): List<String> = withProgressSession {
+	): List<LocalizableText> = withProgressSession {
 		val validation = config.validation
 		val sources = mutableListOf<CertificateSource>()
-		val warnings = mutableListOf<String>()
+		val warnings = mutableListOf<LocalizableText>()
 
 		if (validation.useEuLotl) {
 			val entry = acquireLotl()

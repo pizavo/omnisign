@@ -189,7 +189,7 @@ class DssValidationRepository(
 					annotateRevocationCoverage(it, verifierWarnings, reports)
 				},
 				tlWarnings = euLotlWarning +
-					tlWarnings.map { LocalizableText.Literal(it) } +
+					tlWarnings +
 					unattributableSummaries(verifierWarnings, reports),
 				rawReports = extractRawReports(reports, parameters.rawReportFormats),
 			)
