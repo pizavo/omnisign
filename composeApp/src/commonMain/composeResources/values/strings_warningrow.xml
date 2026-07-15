@@ -1,4 +1,23 @@
 <resources>
 	<string name="warningrow_affected_timestamps">Affected Timestamps</string>
 	<string name="warningrow_affected_certificates">Affected Certificates</string>
+	<string name="warning_revocation_not_found">Revocation data (CRL/OCSP) could not be retrieved for %1$s. Long-term signature validity may be affected.</string>
+	<string name="warning_revocation_untrusted_chain">Revocation checks were skipped for %1$s in untrusted chain(s). This is expected when no trusted list is configured.</string>
+	<string name="warning_revocation_status_unknown">Revocation status could not be confirmed for %1$s. The certificate chain may not be fully trusted by all validators.</string>
+	<string name="warning_revocation_poe_missing">Revocation data required for proof-of-existence is missing for %1$s.</string>
+	<string name="warning_revocation_poe_stale_by_time">Revocation data for %1$s predates the signature timestamp, so it does not cover the timestamp\'s proof-of-existence. The issuer guarantees newer revocation data by %2$s; augmenting the signature after that time closes the gap.</string>
+	<string name="warning_revocation_poe_stale_generic">Revocation data for %1$s predates the signature timestamp, so it does not cover the timestamp\'s proof-of-existence. Augmenting the signature once newer revocation data is published closes the gap.</string>
+	<string name="warning_fresh_revocation_missing_by_time">Revocation data for %1$s in the signing chain predates the signature timestamp, so it does not cover the moment of signing. The issuer guarantees newer revocation data by %2$s; augmenting the signature after that time closes the gap.</string>
+	<string name="warning_fresh_revocation_missing_generic">Revocation data for %1$s in the signing chain predates the signature timestamp, so it does not cover the moment of signing. Augmenting the signature once newer revocation data is published closes the gap.</string>
+	<string name="warning_timestamp_untrusted">Proof-of-existence could not be established for %1$s because the issuing TSA is not in the trusted list.</string>
+	<string name="warning_certificate_parse_error">Some certificates in the chain contain malformed extensions that could not be fully parsed. This is typically caused by non-standard third-party certificates (e.g. TSA) and does not affect the signature itself.</string>
+	<string name="warning_tsp_failure">The timestamp server reported a problem (PKIFailureInfo). If the operation succeeded, the timestamp may have been obtained on a retry.</string>
+	<plurals name="warning_affected_certificates">
+		<item quantity="one">%1$s certificate</item>
+		<item quantity="other">%1$s certificates</item>
+	</plurals>
+	<plurals name="warning_affected_timestamps">
+		<item quantity="one">%1$s timestamp</item>
+		<item quantity="other">%1$s timestamps</item>
+	</plurals>
 </resources>

@@ -1,4 +1,27 @@
 <resources>
 	<string name="warningrow_affected_timestamps">Dotčená časová razítka</string>
 	<string name="warningrow_affected_certificates">Dotčené certifikáty</string>
+	<string name="warning_revocation_not_found">Data o zneplatnění (CRL/OCSP) se nepodařilo získat pro %1$s. Může to ovlivnit dlouhodobou platnost podpisu.</string>
+	<string name="warning_revocation_untrusted_chain">Kontroly zneplatnění byly přeskočeny pro %1$s v nedůvěryhodných řetězcích. To je očekávané, pokud není nakonfigurován žádný důvěryhodný seznam.</string>
+	<string name="warning_revocation_status_unknown">Stav zneplatnění se nepodařilo potvrdit pro %1$s. Certifikační řetězec nemusí být plně důvěryhodný pro všechny ověřovatele.</string>
+	<string name="warning_revocation_poe_missing">Data o zneplatnění potřebná pro důkaz existence (POE) chybí pro %1$s.</string>
+	<string name="warning_revocation_poe_stale_by_time">Data o zneplatnění pro %1$s jsou starší než časové razítko podpisu, takže nepokrývají důkaz existence (POE) tohoto razítka. Vydavatel garantuje novější data o zneplatnění do %2$s; rozšíření podpisu po tomto okamžiku tuto mezeru uzavře.</string>
+	<string name="warning_revocation_poe_stale_generic">Data o zneplatnění pro %1$s jsou starší než časové razítko podpisu, takže nepokrývají důkaz existence (POE) tohoto razítka. Rozšíření podpisu po zveřejnění novějších dat o zneplatnění tuto mezeru uzavře.</string>
+	<string name="warning_fresh_revocation_missing_by_time">Data o zneplatnění pro %1$s v podpisovém řetězci jsou starší než časové razítko podpisu, takže nepokrývají okamžik podepsání. Vydavatel garantuje novější data o zneplatnění do %2$s; rozšíření podpisu po tomto okamžiku tuto mezeru uzavře.</string>
+	<string name="warning_fresh_revocation_missing_generic">Data o zneplatnění pro %1$s v podpisovém řetězci jsou starší než časové razítko podpisu, takže nepokrývají okamžik podepsání. Rozšíření podpisu po zveřejnění novějších dat o zneplatnění tuto mezeru uzavře.</string>
+	<string name="warning_timestamp_untrusted">Důkaz existence (POE) se nepodařilo prokázat pro %1$s, protože vydávající autorita časových razítek (TSA) není v důvěryhodném seznamu.</string>
+	<string name="warning_certificate_parse_error">Některé certifikáty v řetězci obsahují poškozená rozšíření, která se nepodařilo plně zpracovat. To obvykle způsobují nestandardní certifikáty třetích stran (např. TSA) a samotného podpisu se to netýká.</string>
+	<string name="warning_tsp_failure">Server časových razítek nahlásil problém (PKIFailureInfo). Pokud operace proběhla úspěšně, časové razítko se mohlo získat při opakovaném pokusu.</string>
+	<plurals name="warning_affected_certificates">
+		<item quantity="one">%1$s certifikát</item>
+		<item quantity="few">%1$s certifikáty</item>
+		<item quantity="many">%1$s certifikátu</item>
+		<item quantity="other">%1$s certifikátů</item>
+	</plurals>
+	<plurals name="warning_affected_timestamps">
+		<item quantity="one">%1$s časové razítko</item>
+		<item quantity="few">%1$s časová razítka</item>
+		<item quantity="many">%1$s časového razítka</item>
+		<item quantity="other">%1$s časových razítek</item>
+	</plurals>
 </resources>

@@ -1,4 +1,27 @@
 <resources>
 	<string name="warningrow_affected_timestamps">Dotknuté časové pečiatky</string>
 	<string name="warningrow_affected_certificates">Dotknuté certifikáty</string>
+	<string name="warning_revocation_not_found">Údaje o zrušení (CRL/OCSP) sa nepodarilo získať pre %1$s. Môže to ovplyvniť dlhodobú platnosť podpisu.</string>
+	<string name="warning_revocation_untrusted_chain">Kontroly zrušenia boli preskočené pre %1$s v nedôveryhodných reťazcoch. To je očakávané, ak nie je nakonfigurovaný žiadny dôveryhodný zoznam.</string>
+	<string name="warning_revocation_status_unknown">Stav zrušenia sa nepodarilo potvrdiť pre %1$s. Certifikačný reťazec nemusí byť plne dôveryhodný pre všetkých overovateľov.</string>
+	<string name="warning_revocation_poe_missing">Údaje o zrušení potrebné pre dôkaz existencie (POE) chýbajú pre %1$s.</string>
+	<string name="warning_revocation_poe_stale_by_time">Údaje o zrušení pre %1$s sú staršie ako časová pečiatka podpisu, takže nepokrývajú dôkaz existencie (POE) tejto pečiatky. Vydavateľ garantuje novšie údaje o zrušení do %2$s; rozšírenie podpisu po tomto okamihu túto medzeru uzavrie.</string>
+	<string name="warning_revocation_poe_stale_generic">Údaje o zrušení pre %1$s sú staršie ako časová pečiatka podpisu, takže nepokrývajú dôkaz existencie (POE) tejto pečiatky. Rozšírenie podpisu po zverejnení novších údajov o zrušení túto medzeru uzavrie.</string>
+	<string name="warning_fresh_revocation_missing_by_time">Údaje o zrušení pre %1$s v podpisovom reťazci sú staršie ako časová pečiatka podpisu, takže nepokrývajú okamih podpísania. Vydavateľ garantuje novšie údaje o zrušení do %2$s; rozšírenie podpisu po tomto okamihu túto medzeru uzavrie.</string>
+	<string name="warning_fresh_revocation_missing_generic">Údaje o zrušení pre %1$s v podpisovom reťazci sú staršie ako časová pečiatka podpisu, takže nepokrývajú okamih podpísania. Rozšírenie podpisu po zverejnení novších údajov o zrušení túto medzeru uzavrie.</string>
+	<string name="warning_timestamp_untrusted">Dôkaz existencie (POE) sa nepodarilo preukázať pre %1$s, pretože vydávajúca autorita časových pečiatok (TSA) nie je v dôveryhodnom zozname.</string>
+	<string name="warning_certificate_parse_error">Niektoré certifikáty v reťazci obsahujú poškodené rozšírenia, ktoré sa nepodarilo plne spracovať. To zvyčajne spôsobujú neštandardné certifikáty tretích strán (napr. TSA) a samotného podpisu sa to netýka.</string>
+	<string name="warning_tsp_failure">Server časových pečiatok nahlásil problém (PKIFailureInfo). Ak operácia prebehla úspešne, časová pečiatka sa mohla získať pri opakovanom pokuse.</string>
+	<plurals name="warning_affected_certificates">
+		<item quantity="one">%1$s certifikát</item>
+		<item quantity="few">%1$s certifikáty</item>
+		<item quantity="many">%1$s certifikátu</item>
+		<item quantity="other">%1$s certifikátov</item>
+	</plurals>
+	<plurals name="warning_affected_timestamps">
+		<item quantity="one">%1$s časovú pečiatku</item>
+		<item quantity="few">%1$s časové pečiatky</item>
+		<item quantity="many">%1$s časovej pečiatky</item>
+		<item quantity="other">%1$s časových pečiatok</item>
+	</plurals>
 </resources>

@@ -86,7 +86,7 @@ class SignDocumentUseCaseTest : FunSpec({
 			outputName = "output.pdf",
 			signatureId = "sig-3",
 			signatureLevel = "PAdES-BASELINE-LT",
-			annotatedWarnings = listOf(AnnotatedWarning("Revocation data fetch slow")),
+			annotatedWarnings = listOf(AnnotatedWarning(LocalizableText.Literal("Revocation data fetch slow"))),
 			rawWarnings = listOf("eu.europa.esig: CRL download timeout"),
 			hasRevocationWarnings = true,
 		)

@@ -64,7 +64,7 @@ class JsonMappersTest : FunSpec({
 			outputName = "out.pdf",
 			signatureId = "sig-1",
 			signatureLevel = "PAdES-BASELINE-B",
-			annotatedWarnings = listOf(AnnotatedWarning("w1")),
+			annotatedWarnings = listOf(AnnotatedWarning(LocalizableText.Literal("w1"))),
 			rawWarnings = listOf("raw1"),
 		)
 
@@ -82,7 +82,7 @@ class JsonMappersTest : FunSpec({
 			outputBytes = ByteArray(0),
 			outputName = "ext.pdf",
 			newSignatureLevel = "PAdES-BASELINE-LTA",
-			annotatedWarnings = listOf(AnnotatedWarning("w2")),
+			annotatedWarnings = listOf(AnnotatedWarning(LocalizableText.Literal("w2"))),
 			rawWarnings = listOf("raw2"),
 		)
 

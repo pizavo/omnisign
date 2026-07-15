@@ -1,6 +1,8 @@
 package cz.pizavo.omnisign.data.repository
 
 import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.text.MessageKey
 import kotlin.time.Instant
 
 
@@ -80,7 +82,7 @@ class DssWarningSanitizer {
 			)
 		}
 		for (raw in unmatched) {
-			annotated += AnnotatedWarning(summary = raw)
+			annotated += AnnotatedWarning(summary = LocalizableText.Literal(raw))
 		}
 		
 		return SanitizedWarnings(
@@ -231,9 +233,7 @@ class DssWarningSanitizer {
 		 */
 		REVOCATION_NOT_FOUND {
 			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) =
-				"Revocation data (CRL/OCSP) could not be retrieved for " +
-						"${pluralCerts(ids.size)}. " +
-						"Long-term signature validity may be affected."
+				LocalizableText.of(MessageKey.WARNING_REVOCATION_NOT_FOUND, pluralCerts(ids.size))
 		},
 		
 		/**
@@ -242,8 +242,7 @@ class DssWarningSanitizer {
 		 */
 		REVOCATION_UNTRUSTED_CHAIN {
 			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) =
-				"Revocation checks were skipped for ${pluralCerts(ids.size)} " +
-						"in untrusted chain(s). This is expected when no trusted list is configured."
+				LocalizableText.of(MessageKey.WARNING_REVOCATION_UNTRUSTED_CHAIN, pluralCerts(ids.size))
 		},
 		
 		/**
@@ -251,8 +250,7 @@ class DssWarningSanitizer {
 		 */
 		REVOCATION_STATUS_UNKNOWN {
 			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) =
-				"Revocation status could not be confirmed for ${pluralCerts(ids.size)}. " +
-						"The certificate chain may not be fully trusted by all validators."
+				LocalizableText.of(MessageKey.WARNING_REVOCATION_STATUS_UNKNOWN, pluralCerts(ids.size))
 		},
 		
 		/**
@@ -261,8 +259,7 @@ class DssWarningSanitizer {
 		 */
 		REVOCATION_POE_MISSING {
 			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) =
-				"Revocation data required for proof-of-existence is missing " +
-						"for ${pluralCerts(ids.size)}."
+				LocalizableText.of(MessageKey.WARNING_REVOCATION_POE_MISSING, pluralCerts(ids.size))
 		},
 		
 		/**
@@ -281,25 +278,39 @@ class DssWarningSanitizer {
 		 * can produce a `thisUpdate` later than the timestamp, and a cached response never can.
 		 */
 		REVOCATION_POE_STALE {
-			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) = buildString {
-				append("Revocation data for ${pluralCerts(ids.size)} predates the signature timestamp, ")
-				append("so it does not cover the timestamp's proof-of-existence. ")
-				if (nextUpdate != null) {
-					append("Newer revocation data is due by $nextUpdate — augmenting the signature ")
-					append("after that time closes the gap.")
+			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) =
+				if (nextUpdate == null) {
+					LocalizableText.of(MessageKey.WARNING_REVOCATION_POE_STALE_GENERIC, pluralCerts(ids.size))
 				} else {
-					append("Augmenting the signature once newer revocation data is published closes the gap.")
+					LocalizableText.of(
+						MessageKey.WARNING_REVOCATION_POE_STALE_BY_TIME,
+						pluralCerts(ids.size),
+						nextUpdate.toString(),
+					)
 				}
-			}
 		},
-		
+
 		/**
-		 * Cached revocation data exists, but a fresh response could not be obtained.
+		 * Revocation data was collected for the signing chain, but every response predates the
+		 * signature's own timestamp, so none of it covers the moment the signature was made.
+		 *
+		 * The signing-chain counterpart of [REVOCATION_POE_STALE], raised by DSS's
+		 * `alertOnNoRevocationAfterBestSignatureTime`. Unavoidable while signing — no revocation
+		 * data in existence can postdate a signature that is only being made now — which is why it
+		 * is suppressed there. When validating it is worth reporting, because it then says that
+		 * nothing covering the signature could be obtained *since*, either.
 		 */
 		FRESH_REVOCATION_MISSING {
 			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) =
-				"Fresh revocation data could not be obtained for ${pluralCerts(ids.size)}. " +
-						"Existing cached revocation data was used instead."
+				if (nextUpdate == null) {
+					LocalizableText.of(MessageKey.WARNING_FRESH_REVOCATION_MISSING_GENERIC, pluralCerts(ids.size))
+				} else {
+					LocalizableText.of(
+						MessageKey.WARNING_FRESH_REVOCATION_MISSING_BY_TIME,
+						pluralCerts(ids.size),
+						nextUpdate.toString(),
+					)
+				}
 		},
 		
 		/**
@@ -307,11 +318,8 @@ class DssWarningSanitizer {
 		 * is not in the trusted list.
 		 */
 		TIMESTAMP_UNTRUSTED {
-			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) = buildString {
-				append("Proof-of-existence could not be established for ")
-				append(pluralTimestamps(ids.size))
-				append(" because the issuing TSA is not in the trusted list.")
-			}
+			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) =
+				LocalizableText.of(MessageKey.WARNING_TIMESTAMP_UNTRUSTED, pluralTimestamps(ids.size))
 		},
 		
 		/**
@@ -320,9 +328,7 @@ class DssWarningSanitizer {
 		 */
 		CERTIFICATE_PARSE_ERROR {
 			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) =
-				"Some certificates in the chain contain malformed extensions that could not " +
-						"be fully parsed. This is typically caused by non-standard third-party " +
-						"certificates (e.g. TSA) and does not affect the signature itself."
+				LocalizableText.of(MessageKey.WARNING_CERTIFICATE_PARSE_ERROR)
 		},
 		
 		/**
@@ -332,18 +338,21 @@ class DssWarningSanitizer {
 		 */
 		TSP_FAILURE {
 			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) =
-				"The timestamp server reported a problem (PKIFailureInfo). " +
-						"If the operation succeeded, the timestamp may have been obtained on a retry."
+				LocalizableText.of(MessageKey.WARNING_TSP_FAILURE)
 		};
 		
 		/**
-		 * Produce a single user-facing summary line for all [ids] that fell into this category.
+		 * Produce the locale-independent summary for all [ids] that fell into this category: a
+		 * [LocalizableText.Keyed] carrying this category's [MessageKey] and the arguments it needs.
+		 * The certificate or timestamp count is baked into the arguments as its English phrase, which
+		 * [LocalizableText.english] renders directly and a localizing frontend re-derives per locale.
 		 *
 		 * @param nextUpdate The time by which the issuers promise newer revocation data, when DSS
-		 *   reported one. Only categories raised by revocation data being older than the time it
-		 *   has to cover act on it; every other category ignores it.
+		 *   reported one. Only categories raised by revocation data being older than the time it has
+		 *   to cover act on it — selecting a template variant that names the time; every other
+		 *   category ignores it.
 		 */
-		abstract fun toSummary(ids: Set<String>, nextUpdate: Instant? = null): String
+		abstract fun toSummary(ids: Set<String>, nextUpdate: Instant? = null): LocalizableText
 		
 		/**
 		 * Whether this category indicates that revocation data could not be obtained.
@@ -354,12 +363,22 @@ class DssWarningSanitizer {
 		val isRevocationRelated: Boolean
 			get() = this in REVOCATION_CATEGORIES
 		
+		/**
+		 * The English phrase for [count] certificates, baked into a summary's arguments so that
+		 * [LocalizableText.english] renders correctly; a localizing frontend re-derives the phrase
+		 * from the affected-entity count in its own locale.
+		 */
 		protected fun pluralCerts(count: Int) =
 			if (count == 1) "1 certificate" else "$count certificates"
-		
+
+		/**
+		 * The English phrase for [count] timestamps, baked into a summary's arguments so that
+		 * [LocalizableText.english] renders correctly; a localizing frontend re-derives the phrase
+		 * from the affected-entity count in its own locale.
+		 */
 		protected fun pluralTimestamps(count: Int) =
 			if (count == 1) "1 timestamp" else "$count timestamps"
-		
+
 		companion object {
 			private val REVOCATION_CATEGORIES = setOf(
 				REVOCATION_STATUS_UNKNOWN,
@@ -385,10 +404,12 @@ data class SanitizedWarnings(
 	val suppressed: Set<DssWarningSanitizer.WarningCategory> = emptySet(),
 ) {
 	/**
-	 * Plain-text summaries derived from [annotatedSummaries] for backward-compatible consumers.
+	 * Plain-text English summaries derived from [annotatedSummaries] for backward-compatible
+	 * consumers (CLI, JSON, verbose output). Frontends that localize render [annotatedSummaries]
+	 * directly instead.
 	 */
 	val summaries: List<String>
-		get() = annotatedSummaries.map { it.summary }
+		get() = annotatedSummaries.map { it.summary.english() }
 	
 	/**
 	 * Whether any category reported to the user relates to missing or failed revocation data.

@@ -29,10 +29,11 @@ data class SigningResult(
 	val hasRevocationWarnings: Boolean = false,
 ) {
 	/**
-	 * Plain-text warning summaries derived from [annotatedWarnings] for backward-compatible consumers.
+	 * Plain-text English warning summaries derived from [annotatedWarnings] for backward-compatible
+	 * consumers (CLI, JSON). Frontends that localize render [annotatedWarnings] directly instead.
 	 */
 	val warnings: List<String>
-		get() = annotatedWarnings.map { it.summary }
+		get() = annotatedWarnings.map { it.summary.english() }
 
 	override fun equals(other: Any?): Boolean {
 		if (this === other) return true

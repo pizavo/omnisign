@@ -1,6 +1,8 @@
 package cz.pizavo.omnisign.data.repository
 
 import cz.pizavo.omnisign.data.repository.DssWarningSanitizer.WarningCategory
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.text.MessageKey
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
@@ -8,6 +10,7 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
+import io.kotest.matchers.types.shouldBeInstanceOf
 
 /**
  * Verifies the [DssWarningSanitizer] correctly classifies, groups, and summarizes
@@ -104,20 +107,20 @@ class DssWarningSanitizerTest : FunSpec({
 		result.annotatedSummaries[0].affectedIds shouldContainExactly listOf("C-660A98F1", "C-AB12CD34")
 	}
 
-	test("the stale POE summary names the time by which newer revocation data is due") {
+	test("the stale POE summary names the time by which newer revocation data is guaranteed") {
 		val raw = listOf("Revocation data is missing for one or more POE(s). [C-660A98F1: $stalePoeDetail]")
 		val result = sanitizer.sanitize(raw)
-		result.summaries[0] shouldContain "due by 2026-07-16T02:36:55Z"
+		result.summaries[0] shouldContain "guarantees newer revocation data by 2026-07-16T02:36:55Z"
 		result.summaries[0] shouldContain "closes the gap"
 	}
 
-	test("the stale POE summary reports the latest due time when certificates refresh separately") {
+	test("the stale POE summary reports the latest guaranteed time when certificates refresh separately") {
 		val raw = listOf(
 			"Revocation data is missing for one or more POE(s). " +
 					"[C-660A98F1: $stalePoeDetail; C-AB12CD34: $laterStalePoeDetail]"
 		)
 		val result = sanitizer.sanitize(raw)
-		result.summaries[0] shouldContain "due by 2026-07-23T02:36:55Z"
+		result.summaries[0] shouldContain "guarantees newer revocation data by 2026-07-23T02:36:55Z"
 		result.summaries[0] shouldNotContain "2026-07-16T02:36:55Z"
 	}
 
@@ -126,7 +129,36 @@ class DssWarningSanitizerTest : FunSpec({
 		val result = sanitizer.sanitize(raw)
 		result.categories shouldBe setOf(WarningCategory.REVOCATION_POE_STALE)
 		result.summaries[0] shouldContain "once newer revocation data is published"
-		result.summaries[0] shouldNotContain "due by"
+		result.summaries[0] shouldNotContain "guarantees"
+	}
+
+	test("a recognized warning is a translatable Keyed summary carrying the count phrase as its argument") {
+		val raw = listOf("Revocation data is missing for one or more certificate(s). [C-AAAA1111: $absentPoeDetail]")
+		val keyed = sanitizer.sanitize(raw).annotatedSummaries[0].summary
+			.shouldBeInstanceOf<LocalizableText.Keyed>()
+		keyed.key shouldBe MessageKey.WARNING_REVOCATION_NOT_FOUND
+		keyed.args shouldContainExactly listOf("1 certificate")
+	}
+
+	test("a dated stale-POE warning is Keyed with the by-time key and the due time as its second argument") {
+		val raw = listOf("Revocation data is missing for one or more POE(s). [C-660A98F1: $stalePoeDetail]")
+		val keyed = sanitizer.sanitize(raw).annotatedSummaries[0].summary
+			.shouldBeInstanceOf<LocalizableText.Keyed>()
+		keyed.key shouldBe MessageKey.WARNING_REVOCATION_POE_STALE_BY_TIME
+		keyed.args shouldContainExactly listOf("1 certificate", "2026-07-16T02:36:55Z")
+	}
+
+	test("an undated stale-POE warning is Keyed with the generic key and only the count phrase") {
+		val raw = listOf("Revocation data is missing for one or more POE(s). [C-660A98F1: $undatedStalePoeDetail]")
+		val keyed = sanitizer.sanitize(raw).annotatedSummaries[0].summary
+			.shouldBeInstanceOf<LocalizableText.Keyed>()
+		keyed.key shouldBe MessageKey.WARNING_REVOCATION_POE_STALE_GENERIC
+		keyed.args shouldContainExactly listOf("1 certificate")
+	}
+
+	test("an unmatched DSS message is kept as a verbatim Literal") {
+		val summary = sanitizer.sanitize(listOf("Some completely unknown DSS message")).annotatedSummaries[0].summary
+		summary.shouldBeInstanceOf<LocalizableText.Literal>().value shouldBe "Some completely unknown DSS message"
 	}
 
 	test("POE warning with no revocation data at all is REVOCATION_POE_MISSING") {
@@ -163,7 +195,8 @@ class DssWarningSanitizerTest : FunSpec({
 		)
 		val result = sanitizer.sanitize(raw)
 		result.summaries shouldHaveSize 1
-		result.summaries[0] shouldContain "Fresh revocation data"
+		result.summaries[0] shouldContain "in the signing chain"
+		result.summaries[0] shouldContain "does not cover the moment of signing"
 	}
 
 	test("TIMESTAMP_UNTRUSTED pattern is matched") {
@@ -327,7 +360,7 @@ class DssWarningSanitizerTest : FunSpec({
 		val result = sanitizer.sanitize(raw)
 		result.hasRevocationWarnings shouldBe false
 		result.summaries shouldHaveSize 1
-		result.summaries[0] shouldContain "Fresh revocation data"
+		result.summaries[0] shouldContain "in the signing chain"
 	}
 	
 	test("REVOCATION_NOT_FOUND is not revocation-related") {
@@ -352,7 +385,7 @@ class DssWarningSanitizerTest : FunSpec({
 		val result = sanitizer.sanitize(raw)
 		result.annotatedSummaries shouldHaveSize 1
 		result.annotatedSummaries[0].affectedIds shouldContainExactly listOf("C-AAAA", "C-BBBB")
-		result.annotatedSummaries[0].summary shouldContain "2 certificates"
+		result.annotatedSummaries[0].summary.english() shouldContain "2 certificates"
 	}
 	
 	test("annotatedSummaries for unmatched messages have empty affectedIds") {
@@ -360,7 +393,7 @@ class DssWarningSanitizerTest : FunSpec({
 		val result = sanitizer.sanitize(raw)
 		result.annotatedSummaries shouldHaveSize 1
 		result.annotatedSummaries[0].affectedIds.shouldBeEmpty()
-		result.annotatedSummaries[0].summary shouldBe "Some completely unknown DSS message"
+		result.annotatedSummaries[0].summary.english() shouldBe "Some completely unknown DSS message"
 	}
 	
 	test("annotatedSummaries carry timestamp IDs for TIMESTAMP_UNTRUSTED") {
@@ -380,9 +413,9 @@ class DssWarningSanitizerTest : FunSpec({
 		)
 		val result = sanitizer.sanitize(raw)
 		result.annotatedSummaries shouldHaveSize 2
-		result.annotatedSummaries[0].summary shouldContain "Fresh revocation data"
+		result.annotatedSummaries[0].summary.english() shouldContain "in the signing chain"
 		result.annotatedSummaries[0].affectedIds.shouldBeEmpty()
-		result.annotatedSummaries[1].summary shouldContain "malformed extensions"
+		result.annotatedSummaries[1].summary.english() shouldContain "malformed extensions"
 		result.annotatedSummaries[1].affectedIds.shouldBeEmpty()
 	}
 
@@ -395,7 +428,7 @@ class DssWarningSanitizerTest : FunSpec({
 		val result = sanitizer.sanitize(raw)
 		result.annotatedSummaries shouldHaveSize 1
 		result.annotatedSummaries[0].affectedIds shouldContainExactly listOf("C-AAAA", "C-BBBB")
-		result.annotatedSummaries[0].summary shouldContain "2 certificates"
+		result.annotatedSummaries[0].summary.english() shouldContain "2 certificates"
 	}
 	
 	test("certIdNames are propagated to annotatedSummaries idNames") {
@@ -441,7 +474,7 @@ class DssWarningSanitizerTest : FunSpec({
 			),
 		)
 		result.annotatedSummaries shouldHaveSize 1
-		result.annotatedSummaries[0].summary shouldContain "malformed extensions"
+		result.annotatedSummaries[0].summary.english() shouldContain "malformed extensions"
 	}
 	
 	test("suppressedCategories still records categories in the categories set") {

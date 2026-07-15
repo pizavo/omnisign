@@ -82,7 +82,7 @@ class RemoteArchivingRepository(
                 outputName = parameters.inputName,
                 newSignatureLevel = meta.newLevel,
                 annotatedWarnings = meta.annotatedWarnings,
-                rawWarnings = meta.annotatedWarnings.map { it.summary },
+                rawWarnings = meta.annotatedWarnings.map { it.summary.english() },
             )
         }.mapLeft { exception ->
             ArchivingError.remoteExtensionFailed(details = exception.message, cause = exception)

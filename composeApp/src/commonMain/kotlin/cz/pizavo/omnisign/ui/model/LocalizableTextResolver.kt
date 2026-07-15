@@ -1,10 +1,13 @@
 package cz.pizavo.omnisign.ui.model
 
 import androidx.compose.runtime.Composable
+import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.text.MessageKey
 import omnisign.composeapp.generated.resources.*
+import org.jetbrains.compose.resources.PluralStringResource
 import org.jetbrains.compose.resources.StringResource
+import org.jetbrains.compose.resources.pluralStringResource
 import org.jetbrains.compose.resources.stringResource
 
 /** Compose Resource for each translated [MessageKey]; absent keys fall back to bundled English. */
@@ -114,6 +117,34 @@ private val MESSAGE_RES: Map<MessageKey, StringResource> = mapOf(
 	MessageKey.TRUST_TIER_RECOGNIZED to Res.string.trust_tier_recognized,
 	MessageKey.TRUST_TIER_NOT_QUALIFIED to Res.string.trust_tier_not_qualified,
 	MessageKey.SIGNATURE_QSCD_RESIDENCE to Res.string.signature_qscd_residence,
+	MessageKey.WARNING_REVOCATION_NOT_FOUND to Res.string.warning_revocation_not_found,
+	MessageKey.WARNING_REVOCATION_UNTRUSTED_CHAIN to Res.string.warning_revocation_untrusted_chain,
+	MessageKey.WARNING_REVOCATION_STATUS_UNKNOWN to Res.string.warning_revocation_status_unknown,
+	MessageKey.WARNING_REVOCATION_POE_MISSING to Res.string.warning_revocation_poe_missing,
+	MessageKey.WARNING_REVOCATION_POE_STALE_BY_TIME to Res.string.warning_revocation_poe_stale_by_time,
+	MessageKey.WARNING_REVOCATION_POE_STALE_GENERIC to Res.string.warning_revocation_poe_stale_generic,
+	MessageKey.WARNING_FRESH_REVOCATION_MISSING_BY_TIME to Res.string.warning_fresh_revocation_missing_by_time,
+	MessageKey.WARNING_FRESH_REVOCATION_MISSING_GENERIC to Res.string.warning_fresh_revocation_missing_generic,
+	MessageKey.WARNING_TIMESTAMP_UNTRUSTED to Res.string.warning_timestamp_untrusted,
+	MessageKey.WARNING_CERTIFICATE_PARSE_ERROR to Res.string.warning_certificate_parse_error,
+	MessageKey.WARNING_TSP_FAILURE to Res.string.warning_tsp_failure,
+)
+
+/**
+ * The affected-entity count plural for each warning key whose summary embeds a count, keyed so a
+ * localizing frontend can render the phrase ("2 certificates") in its own locale with correct plural
+ * agreement. Keys absent here carry no count.
+ */
+private val WARNING_COUNT_PLURAL: Map<MessageKey, PluralStringResource> = mapOf(
+	MessageKey.WARNING_REVOCATION_NOT_FOUND to Res.plurals.warning_affected_certificates,
+	MessageKey.WARNING_REVOCATION_UNTRUSTED_CHAIN to Res.plurals.warning_affected_certificates,
+	MessageKey.WARNING_REVOCATION_STATUS_UNKNOWN to Res.plurals.warning_affected_certificates,
+	MessageKey.WARNING_REVOCATION_POE_MISSING to Res.plurals.warning_affected_certificates,
+	MessageKey.WARNING_REVOCATION_POE_STALE_BY_TIME to Res.plurals.warning_affected_certificates,
+	MessageKey.WARNING_REVOCATION_POE_STALE_GENERIC to Res.plurals.warning_affected_certificates,
+	MessageKey.WARNING_FRESH_REVOCATION_MISSING_BY_TIME to Res.plurals.warning_affected_certificates,
+	MessageKey.WARNING_FRESH_REVOCATION_MISSING_GENERIC to Res.plurals.warning_affected_certificates,
+	MessageKey.WARNING_TIMESTAMP_UNTRUSTED to Res.plurals.warning_affected_timestamps,
 )
 
 /** Resolve this text to the active locale: translated Compose Resource if present, else bundled English. */
@@ -121,4 +152,45 @@ private val MESSAGE_RES: Map<MessageKey, StringResource> = mapOf(
 fun LocalizableText.localized(): String = when (this) {
 	is LocalizableText.Literal -> value
 	is LocalizableText.Keyed -> MESSAGE_RES[key]?.let { stringResource(it, *args.toTypedArray()) } ?: english()
+}
+
+/**
+ * Resolve a sanitized warning's [AnnotatedWarning.summary] to the active locale.
+ *
+ * For a [LocalizableText.Keyed] summary whose category embeds an affected-entity count, the count is
+ * re-derived from [AnnotatedWarning.affectedIds] and rendered as a locale-correct plural phrase,
+ * replacing the English phrase the sanitizer baked into the first argument for headless callers; any
+ * further arguments (e.g. a due time, which is locale-independent) pass through. Other summaries
+ * resolve exactly as [localized] does, falling back to the bundled English for untranslated keys.
+ */
+@Composable
+fun AnnotatedWarning.localizedSummary(): String = when (val text = summary) {
+	is LocalizableText.Literal -> text.value
+	is LocalizableText.Keyed -> {
+		val res = MESSAGE_RES[text.key]
+		val plural = WARNING_COUNT_PLURAL[text.key]
+		when {
+			res == null -> text.english()
+			plural == null -> stringResource(res, *text.args.toTypedArray())
+			else -> {
+				val count = affectedIds.size.coerceAtLeast(1)
+				val phrase = pluralStringResource(plural, count, count)
+				stringResource(res, phrase, *text.args.drop(1).toTypedArray())
+			}
+		}
+	}
+}
+
+/**
+ * The localized, pluralized count phrase (e.g. "2 certificates") a warning's summary embeds, or null
+ * when the warning carries no count or names no specific entity. The count comes from
+ * [AnnotatedWarning.affectedIds] so the phrase agrees with what the "show affected" affordance lists,
+ * letting a caller locate it within [localizedSummary] to render it as the clickable span.
+ */
+@Composable
+fun AnnotatedWarning.localizedCountPhrase(): String? {
+	val keyed = summary as? LocalizableText.Keyed ?: return null
+	val plural = WARNING_COUNT_PLURAL[keyed.key] ?: return null
+	if (affectedIds.isEmpty()) return null
+	return pluralStringResource(plural, affectedIds.size, affectedIds.size)
 }

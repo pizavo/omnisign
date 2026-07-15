@@ -98,7 +98,7 @@ class RemoteSigningRepository(
                 signatureId = meta.signatureId,
                 signatureLevel = meta.signatureLevel,
                 annotatedWarnings = meta.annotatedWarnings,
-                rawWarnings = meta.annotatedWarnings.map { it.summary },
+                rawWarnings = meta.annotatedWarnings.map { it.summary.english() },
                 hasRevocationWarnings = meta.hasRevocationWarnings,
             )
         }.mapLeft { exception ->
