@@ -42,4 +42,8 @@
 	<string name="trust_tier_recognized">Uznaný</string>
 	<string name="trust_tier_not_qualified">Nekvalifikovaný</string>
 	<string name="signature_qscd_residence">Súkromný kľúč sa nachádza v QSCD v čase vydania aj v čase podpisu.</string>
+	<string name="validation_signature_policy_untrusted">Podpis nie je podľa zásady dôveryhodný: jeho kotva dôvery je dôveryhodná len pre časové pečiatky, nie pre podpisovanie</string>
+	<string name="validation_timestamp_policy_untrusted">Časová pečiatka nie je podľa zásady dôveryhodná: jej kotva dôvery je dôveryhodná len ako certifikačná autorita, nie pre časové pečiatky</string>
+	<string name="validation_hash_disabled">Hašovací algoritmus %1$s je vo vašej konfigurácii zakázaný</string>
+	<string name="validation_encryption_disabled">Šifrovací algoritmus %1$s je vo vašej konfigurácii zakázaný</string>
 </resources>

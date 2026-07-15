@@ -135,12 +135,13 @@ class DssServiceFactoryTest : FunSpec({
 		result.verifier.alertOnExpiredCertificate shouldBe null
 	}
 
-	test("validation verifier keeps the expired-certificate alert even when allowed for signing") {
+	test("validation verifier silences the expired-certificate alert, which DSS defaults to throwing") {
 		val config = minimalConfig().copy(
 			validation = minimalConfig().validation.copy(allowExpiredCertificate = true),
 		)
 		val result = factory.buildValidationCertificateVerifier(config)
-		result.verifier.alertOnExpiredCertificate shouldNotBe null
+		result.verifier.alertOnExpiredCertificate shouldBe null
+		result.verifier.alertOnNotYetValidCertificate shouldBe null
 	}
 
 	// ── buildValidationCertificateVerifier ────────────────────────────────────
@@ -166,8 +167,17 @@ class DssServiceFactoryTest : FunSpec({
 			)
 		)
 		val result = factory.buildValidationCertificateVerifier(config)
-		result.verifier.alertOnMissingRevocationData shouldNotBe null
+		result.verifier.alertOnUncoveredPOE shouldNotBe null
 		result.tlWarnings.shouldBeEmpty()
+	}
+
+	test("validation verifier reports only revocation coverage, leaving the report to say the rest") {
+		val result = factory.buildValidationCertificateVerifier(minimalConfig(checkRevocation = true))
+		result.verifier.alertOnUncoveredPOE shouldNotBe null
+		result.verifier.alertOnNoRevocationAfterBestSignatureTime shouldNotBe null
+		result.verifier.alertOnMissingRevocationData shouldBe null
+		result.verifier.alertOnInvalidTimestamp shouldBe null
+		result.verifier.alertOnRevokedCertificate shouldBe null
 	}
 	
 	// ── buildCertificateVerifier (simple timeout-based) ──────────────────────

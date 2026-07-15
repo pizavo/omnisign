@@ -326,4 +326,55 @@ enum class MessageKey {
 
 	/** Qualification info: the private key resides in a QSCD at issuance and signing time. */
 	SIGNATURE_QSCD_RESIDENCE,
+
+	/** Sanitized warning: CRL/OCSP revocation data could not be retrieved (arg: affected-count phrase). */
+	WARNING_REVOCATION_NOT_FOUND,
+
+	/** Sanitized warning: revocation checks skipped for an untrusted chain (arg: affected-count phrase). */
+	WARNING_REVOCATION_UNTRUSTED_CHAIN,
+
+	/** Sanitized warning: a certificate's revocation status could not be confirmed (arg: affected-count phrase). */
+	WARNING_REVOCATION_STATUS_UNKNOWN,
+
+	/** Sanitized warning: revocation data required for proof-of-existence is missing (arg: affected-count phrase). */
+	WARNING_REVOCATION_POE_MISSING,
+
+	/**
+	 * Sanitized warning: embedded revocation data predates the timestamp's proof-of-existence, and the
+	 * issuer guarantees newer data by a time (args: affected-count phrase, due time).
+	 */
+	WARNING_REVOCATION_POE_STALE_BY_TIME,
+
+	/** Sanitized warning: embedded revocation data predates the timestamp's proof-of-existence (arg: affected-count phrase). */
+	WARNING_REVOCATION_POE_STALE_GENERIC,
+
+	/**
+	 * Sanitized warning: signing-chain revocation data predates the signature, and the issuer guarantees
+	 * newer data by a time (args: affected-count phrase, due time).
+	 */
+	WARNING_FRESH_REVOCATION_MISSING_BY_TIME,
+
+	/** Sanitized warning: signing-chain revocation data predates the signature (arg: affected-count phrase). */
+	WARNING_FRESH_REVOCATION_MISSING_GENERIC,
+
+	/** Sanitized warning: a timestamp's proof-of-existence could not be established, the TSA being untrusted (arg: affected-count phrase). */
+	WARNING_TIMESTAMP_UNTRUSTED,
+
+	/** Sanitized warning: one or more certificates carry malformed extensions that could not be parsed. */
+	WARNING_CERTIFICATE_PARSE_ERROR,
+
+	/** Sanitized warning: the timestamp server reported a failure (PKIFailureInfo). */
+	WARNING_TSP_FAILURE,
+
+	/** Validation: a signature's trust anchor is trusted for timestamping only, not for signing. */
+	VALIDATION_SIGNATURE_POLICY_UNTRUSTED,
+
+	/** Validation: a timestamp's trust anchor is trusted as a CA only, not for timestamping. */
+	VALIDATION_TIMESTAMP_POLICY_UNTRUSTED,
+
+	/** Validation: the signature's hash algorithm is disabled in the active configuration (arg: algorithm). */
+	VALIDATION_HASH_DISABLED,
+
+	/** Validation: the signature's encryption algorithm is disabled in the active configuration (arg: algorithm). */
+	VALIDATION_ENCRYPTION_DISABLED,
 }

@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.domain.model.validation
 
 import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import kotlinx.serialization.Serializable
 import kotlin.time.Instant
 
@@ -28,11 +29,14 @@ data class ValidationReport(
     val signatures: List<SignatureValidationResult>,
     val timestamps: List<TimestampValidationResult> = emptyList(),
     /**
-     * User-readable notices about trusted list loading issues encountered during validation.
-     * A non-empty list means one or more member-state trusted lists could not be refreshed,
-     * which may affect qualification assessment but does not invalidate the signature itself.
+     * User-readable notices about trusted list loading issues encountered during validation, plus
+     * any revocation-coverage warnings DSS raised without naming a signature or timestamp of the
+     * document. A non-empty list means one or more member-state trusted lists could not be refreshed
+     * (which may affect qualification assessment but does not invalidate the signature itself), or a
+     * gap could not be attributed to a specific chain. Each entry is a [LocalizableText] —
+     * OmniSign-authored notices as [LocalizableText.Keyed], propagated text as [LocalizableText.Literal].
      */
-    val tlWarnings: List<String> = emptyList(),
+    val tlWarnings: List<LocalizableText> = emptyList(),
     val rawReports: Map<RawReportFormat, String> = emptyMap(),
 ) {
     /**

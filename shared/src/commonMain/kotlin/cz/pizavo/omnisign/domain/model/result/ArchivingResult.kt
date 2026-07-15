@@ -21,10 +21,11 @@ data class ArchivingResult(
     val rawWarnings: List<String> = emptyList(),
 ) {
     /**
-     * Plain-text warning summaries derived from [annotatedWarnings] for backward-compatible consumers.
+     * Plain-text English warning summaries derived from [annotatedWarnings] for backward-compatible
+     * consumers (CLI, JSON). Frontends that localize render [annotatedWarnings] directly instead.
      */
     val warnings: List<String>
-        get() = annotatedWarnings.map { it.summary }
+        get() = annotatedWarnings.map { it.summary.english() }
 
     /**
      * Structural equality that compares [outputBytes] by content rather than by reference.

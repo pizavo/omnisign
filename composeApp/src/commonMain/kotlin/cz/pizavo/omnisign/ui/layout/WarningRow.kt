@@ -12,12 +12,11 @@ import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
+import cz.pizavo.omnisign.ui.model.localizedCountPhrase
+import cz.pizavo.omnisign.ui.model.localizedSummary
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
-
-private val CERT_COUNT_PATTERN = Regex("""\d+ certificates?""")
-private val TIMESTAMP_COUNT_PATTERN = Regex("""\d+ timestamps?""")
 
 /**
  * Renders a single warning row with a warning icon and annotated summary text.
@@ -48,11 +47,14 @@ fun WarningRow(
 			tint = LumoTheme.colors.warning,
 		)
 		SelectableContent {
-			if (warning.affectedIds.isNotEmpty()) {
-				AnnotatedWarningText(warning)
+			val summary = warning.localizedSummary()
+			val countPhrase = warning.localizedCountPhrase()
+			val countStart = countPhrase?.let { summary.indexOf(it) } ?: -1
+			if (countPhrase != null && countStart >= 0) {
+				AnnotatedWarningText(warning, summary, countStart, countPhrase)
 			} else {
 				Text(
-					text = warning.summary,
+					text = summary,
 					style = LumoTheme.typography.body2,
 					color = LumoTheme.colors.warning,
 				)
@@ -62,60 +64,54 @@ fun WarningRow(
 }
 
 /**
- * Renders the warning summary as a single flowing text with the entity count span
- * as an underlined, clickable link. Clicking the link opens a dialog listing the
- * affected entity identifiers with selectable text.
+ * Renders the warning [summary] as a single flowing text with the affected-entity count phrase —
+ * [countPhrase], found at index [countStart] — as an underlined, clickable link. Clicking the link
+ * opens a dialog listing the affected entity identifiers with selectable text.
  *
- * Uses [LinkAnnotation.Clickable] so that the hand cursor is shown automatically
- * when hovering over the underlined portion, and [BasicText] handles click detection
- * on the annotated range.
+ * Uses [LinkAnnotation.Clickable] so that the hand cursor is shown automatically when hovering over
+ * the underlined portion, and [BasicText] handles click detection on the annotated range.
  */
 @Composable
-private fun AnnotatedWarningText(warning: AnnotatedWarning) {
+private fun AnnotatedWarningText(
+	warning: AnnotatedWarning,
+	summary: String,
+	countStart: Int,
+	countPhrase: String,
+) {
 	var showDialog by remember { mutableStateOf(false) }
-	
-	val summary = warning.summary
-	val countMatch = CERT_COUNT_PATTERN.find(summary)
-		?: TIMESTAMP_COUNT_PATTERN.find(summary)
-	
+
 	val warningColor = LumoTheme.colors.warning
 	val style = LumoTheme.typography.body2
-	
+
 	val annotatedString = buildAnnotatedString {
-		if (countMatch != null) {
-			withStyle(SpanStyle(color = warningColor)) {
-				append(summary.substring(0, countMatch.range.first))
-			}
-			withLink(
-				LinkAnnotation.Clickable(
-					tag = "ids",
-					styles = TextLinkStyles(
-						style = SpanStyle(
-							color = warningColor,
-							textDecoration = TextDecoration.Underline,
-						),
+		withStyle(SpanStyle(color = warningColor)) {
+			append(summary.substring(0, countStart))
+		}
+		withLink(
+			LinkAnnotation.Clickable(
+				tag = "ids",
+				styles = TextLinkStyles(
+					style = SpanStyle(
+						color = warningColor,
+						textDecoration = TextDecoration.Underline,
 					),
-				) {
-					showDialog = true
-				},
+				),
 			) {
-				append(countMatch.value)
-			}
-			withStyle(SpanStyle(color = warningColor)) {
-				append(summary.substring(countMatch.range.last + 1))
-			}
-		} else {
-			withStyle(SpanStyle(color = warningColor)) {
-				append(summary)
-			}
+				showDialog = true
+			},
+		) {
+			append(countPhrase)
+		}
+		withStyle(SpanStyle(color = warningColor)) {
+			append(summary.substring(countStart + countPhrase.length))
 		}
 	}
-	
+
 	BasicText(
 		text = annotatedString,
 		style = style,
 	)
-	
+
 	if (showDialog) {
 		val entityLabel = if (warning.affectedIds.any { it.startsWith("T-") })
 			stringResource(Res.string.warningrow_affected_timestamps)

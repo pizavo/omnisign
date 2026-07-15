@@ -238,5 +238,52 @@ internal object EnglishMessages {
 			"Not qualified"
 		MessageKey.SIGNATURE_QSCD_RESIDENCE ->
 			"The private key resides in a QSCD at both issuance and signing time."
+		MessageKey.WARNING_REVOCATION_NOT_FOUND ->
+			"Revocation data (CRL/OCSP) could not be retrieved for %1\$s. " +
+				"Long-term signature validity may be affected."
+		MessageKey.WARNING_REVOCATION_UNTRUSTED_CHAIN ->
+			"Revocation checks were skipped for %1\$s in untrusted chain(s). " +
+				"This is expected when no trusted list is configured."
+		MessageKey.WARNING_REVOCATION_STATUS_UNKNOWN ->
+			"Revocation status could not be confirmed for %1\$s. " +
+				"The certificate chain may not be fully trusted by all validators."
+		MessageKey.WARNING_REVOCATION_POE_MISSING ->
+			"Revocation data required for proof-of-existence is missing for %1\$s."
+		MessageKey.WARNING_REVOCATION_POE_STALE_BY_TIME ->
+			"Revocation data for %1\$s predates the signature timestamp, so it does not " +
+				"cover the timestamp's proof-of-existence. The issuer guarantees newer " +
+				"revocation data by %2\$s; augmenting the signature after that time closes the gap."
+		MessageKey.WARNING_REVOCATION_POE_STALE_GENERIC ->
+			"Revocation data for %1\$s predates the signature timestamp, so it does not " +
+				"cover the timestamp's proof-of-existence. Augmenting the signature once newer " +
+				"revocation data is published closes the gap."
+		MessageKey.WARNING_FRESH_REVOCATION_MISSING_BY_TIME ->
+			"Revocation data for %1\$s in the signing chain predates the signature timestamp, " +
+				"so it does not cover the moment of signing. The issuer guarantees newer " +
+				"revocation data by %2\$s; augmenting the signature after that time closes the gap."
+		MessageKey.WARNING_FRESH_REVOCATION_MISSING_GENERIC ->
+			"Revocation data for %1\$s in the signing chain predates the signature timestamp, " +
+				"so it does not cover the moment of signing. Augmenting the signature once newer " +
+				"revocation data is published closes the gap."
+		MessageKey.WARNING_TIMESTAMP_UNTRUSTED ->
+			"Proof-of-existence could not be established for %1\$s because the issuing TSA " +
+				"is not in the trusted list."
+		MessageKey.WARNING_CERTIFICATE_PARSE_ERROR ->
+			"Some certificates in the chain contain malformed extensions that could not be " +
+				"fully parsed. This is typically caused by non-standard third-party certificates " +
+				"(e.g. TSA) and does not affect the signature itself."
+		MessageKey.WARNING_TSP_FAILURE ->
+			"The timestamp server reported a problem (PKIFailureInfo). If the operation " +
+				"succeeded, the timestamp may have been obtained on a retry."
+		MessageKey.VALIDATION_SIGNATURE_POLICY_UNTRUSTED ->
+			"Signature distrusted by policy: its trust anchor is trusted for timestamping only, " +
+				"not for signing"
+		MessageKey.VALIDATION_TIMESTAMP_POLICY_UNTRUSTED ->
+			"Timestamp distrusted by policy: its trust anchor is trusted as a certificate authority " +
+				"only, not for timestamping"
+		MessageKey.VALIDATION_HASH_DISABLED ->
+			"Hash algorithm %1\$s is disabled in your configuration"
+		MessageKey.VALIDATION_ENCRYPTION_DISABLED ->
+			"Encryption algorithm %1\$s is disabled in your configuration"
 	}
 }

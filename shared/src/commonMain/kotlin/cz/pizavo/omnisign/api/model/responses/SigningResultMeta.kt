@@ -14,9 +14,9 @@ import kotlinx.serialization.Serializable
  * @property signatureId DSS-assigned identifier of the created signature.
  * @property signatureLevel PAdES level used.
  * @property annotatedWarnings Warnings enriched with the DSS identifiers of the affected
- *   certificates or timestamps. Clients can render the [AnnotatedWarning.summary] as the
- *   headline text and use the per-warning identifier set to surface tooltips or "show
- *   affected entity" affordances.
+ *   certificates or timestamps. Each [AnnotatedWarning.summary] is a localizable text a client
+ *   renders in the active locale (falling back to English), and the per-warning identifier set
+ *   backs tooltips or "show affected entity" affordances.
  * @property hasRevocationWarnings Whether any warnings relate to missing or failed
  *   revocation data. Mirrors
  *   [cz.pizavo.omnisign.domain.model.result.SigningResult.hasRevocationWarnings] so a

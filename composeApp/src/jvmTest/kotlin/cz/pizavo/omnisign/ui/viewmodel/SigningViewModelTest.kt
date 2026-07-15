@@ -363,7 +363,7 @@ class SigningViewModelTest : FunSpec({
 						outputName = "test-signed.pdf",
 						signatureId = "sig-1",
 						signatureLevel = "PAdES-BASELINE-LT",
-						annotatedWarnings = listOf(AnnotatedWarning("Revocation data missing")),
+						annotatedWarnings = listOf(AnnotatedWarning(LocalizableText.Literal("Revocation data missing"))),
 						hasRevocationWarnings = true,
 					).right()
 
@@ -389,7 +389,7 @@ class SigningViewModelTest : FunSpec({
 						outputName = "test-signed.pdf",
 						signatureId = "sig-1",
 						signatureLevel = "PAdES-BASELINE-B",
-						annotatedWarnings = listOf(AnnotatedWarning("Revocation data missing")),
+						annotatedWarnings = listOf(AnnotatedWarning(LocalizableText.Literal("Revocation data missing"))),
 						hasRevocationWarnings = true,
 					).right()
 
@@ -425,7 +425,7 @@ class SigningViewModelTest : FunSpec({
 						outputName = "test-signed.pdf",
 						signatureId = "sig-1",
 						signatureLevel = "PAdES-BASELINE-LT",
-						annotatedWarnings = listOf(AnnotatedWarning("Revocation data missing")),
+						annotatedWarnings = listOf(AnnotatedWarning(LocalizableText.Literal("Revocation data missing"))),
 						hasRevocationWarnings = true,
 					).right()
 
@@ -519,7 +519,7 @@ class SigningViewModelTest : FunSpec({
 						outputName = "test-signed.pdf",
 						signatureId = "sig-1",
 						signatureLevel = "PAdES-BASELINE-LT",
-						annotatedWarnings = listOf(AnnotatedWarning("Revocation data missing")),
+						annotatedWarnings = listOf(AnnotatedWarning(LocalizableText.Literal("Revocation data missing"))),
 						hasRevocationWarnings = true,
 					).right()
 

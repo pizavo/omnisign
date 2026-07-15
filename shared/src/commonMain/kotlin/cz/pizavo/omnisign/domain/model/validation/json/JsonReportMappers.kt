@@ -34,7 +34,7 @@ fun ValidationReport.toJsonReport(): JsonValidationReport {
             failed = failed,
             indeterminate = indeterminate,
         ),
-        tlWarnings = tlWarnings,
+        tlWarnings = tlWarnings.map { it.english() },
     )
 }
 
@@ -56,8 +56,8 @@ fun SignatureValidationResult.toJsonReport(): JsonSignatureReport =
         encryptionAlgorithm = encryptionAlgorithm,
         certificate = certificate.toJsonReport(),
         revocations = revocations.map { it.toJsonReport() },
-        errors = errors,
-        warnings = warnings,
+        errors = errors.map { it.english() },
+        warnings = warnings.map { it.english() },
         infos = infos,
         qualificationErrors = qualificationErrors,
         qualificationWarnings = qualificationWarnings,
@@ -155,8 +155,8 @@ fun TimestampValidationResult.toJsonReport(): JsonTimestampReport =
         qualification = qualification,
         tsaSubjectDN = tsaSubjectDN,
         euLotlBacked = euLotlBacked,
-        errors = errors,
-        warnings = warnings,
+        errors = errors.map { it.english() },
+        warnings = warnings.map { it.english() },
         infos = infos,
         chain = chain.map { it.toJsonReport() },
     )
