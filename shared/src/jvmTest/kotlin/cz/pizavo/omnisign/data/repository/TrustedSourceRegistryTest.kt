@@ -20,9 +20,10 @@ import kotlin.time.toJavaInstant
  * Verifies the network-free invariants of [TrustedSourceRegistry]: the
  * direct-trusted-anchor composition contract, per-call isolation (no trust
  * bleed between configurations sharing one registry), and that the warmup /
- * refresh / shutdown entry points are safe no-ops when no trusted lists are
- * configured. EU LOTL paths are intentionally not exercised here because they
- * require network access.
+ * refresh / shutdown entry points are safe no-ops — recording neither success
+ * nor failure on the refresh signal — when no trusted lists are configured. EU
+ * LOTL paths are intentionally not exercised here because they require network
+ * access.
  */
 class TrustedSourceRegistryTest : FunSpec({
 
@@ -94,6 +95,18 @@ class TrustedSourceRegistryTest : FunSpec({
 		registry.refreshAll()
 		registry.forceRefreshAll()
 		registry.shutdown()
+	}
+
+	test("refreshAll and forceRefreshAll stamp neither success nor failure when no sources are retained") {
+		val signal = TrustedListRefreshSignal()
+		val emptyRegistry = TrustedSourceRegistry(signal)
+
+		emptyRegistry.warmUp(useEuLotl = false, customTls = emptyList())
+		emptyRegistry.refreshAll()
+		emptyRegistry.forceRefreshAll()
+
+		signal.lastRefreshAt.value shouldBe null
+		signal.lastFailure.value shouldBe null
 	}
 }) {
 	companion object {

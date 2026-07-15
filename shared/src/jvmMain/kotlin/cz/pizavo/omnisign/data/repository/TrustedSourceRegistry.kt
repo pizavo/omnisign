@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedSourceId
 import cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor
+import cz.pizavo.omnisign.domain.model.trust.TrustedListRefreshFailure
 import eu.europa.esig.dss.service.http.commons.CommonsDataLoader
 import eu.europa.esig.dss.service.http.commons.FileCacheDataLoader
 import eu.europa.esig.dss.spi.tsl.TrustedListsCertificateSource
@@ -49,15 +50,17 @@ class TrustedSourceRegistry(
 	 * A retained trusted-list source: the long-lived [TLValidationJob] (whose
 	 * cache makes scheduled re-refreshes cheap), the stable
 	 * [TrustedListsCertificateSource] it populates, its own lock, the most recent
-	 * loading warnings, and [buildJob] — the factory used to spin up a *fresh*
-	 * job (empty cache) for a user-initiated hard refresh that must genuinely
-	 * re-download and re-parse.
+	 * loading warnings, [buildJob] — the factory used to spin up a *fresh* job
+	 * (empty cache) for a user-initiated hard refresh that must genuinely
+	 * re-download and re-parse — and [displayName], the source's human-readable
+	 * name for user-facing failure notifications (`null` for the EU LOTL).
 	 */
 	private class RetainedTl(
 		val id: TrustedSourceId,
 		val job: TLValidationJob,
 		val source: TrustedListsCertificateSource,
 		val buildJob: (TrustedListsCertificateSource, FileCacheDataLoader) -> TLValidationJob,
+		val displayName: String?,
 	) {
 		val lock = ReentrantLock()
 
@@ -110,17 +113,49 @@ class TrustedSourceRegistry(
 	private val progressSessionDepth = java.util.concurrent.atomic.AtomicInteger(0)
 
 	/**
-	 * Run [block] as one progress session: zero the shared [countingExecutor] counters when the
-	 * outermost session starts and clear the published progress when it ends, so the count spans
-	 * every source the refresh touches (the EU LOTL's member-state lists and each custom list).
+	 * Failures accumulated during the current refresh session, flushed as one aggregate
+	 * [TrustedListRefreshFailure] when the outermost session ends — so a whole cycle (startup
+	 * warmup or a refresh) yields a single notification rather than one per failed source.
+	 * [sessionLotlFailed] is the EU LOTL flag (prioritised on flush); [sessionFailedCustomNames]
+	 * collects the names of the custom lists that failed. Both are thread-safe because concurrent
+	 * operations share one process-global session.
+	 */
+	private val sessionLotlFailed = java.util.concurrent.atomic.AtomicBoolean(false)
+	private val sessionFailedCustomNames = java.util.concurrent.ConcurrentLinkedQueue<String>()
+
+	/**
+	 * Run [block] as one progress session: zero the shared [countingExecutor] counters and the
+	 * failure accumulator when the outermost session starts, and when it ends clear the published
+	 * progress and flush any accumulated failures as a single aggregate [TrustedListRefreshFailure]
+	 * — so the progress count spans every source the refresh touches and failures collapse to one
+	 * notification (EU LOTL prioritised).
 	 */
 	private fun <T> withProgressSession(block: () -> T): T {
-		if (progressSessionDepth.getAndIncrement() == 0) countingExecutor.reset()
+		if (progressSessionDepth.getAndIncrement() == 0) {
+			countingExecutor.reset()
+			sessionLotlFailed.set(false)
+			sessionFailedCustomNames.clear()
+		}
 		try {
 			return block()
 		} finally {
-			if (progressSessionDepth.decrementAndGet() == 0) signal.resetTrustedListProgress()
+			if (progressSessionDepth.decrementAndGet() == 0) {
+				signal.resetTrustedListProgress()
+				TrustedListRefreshFailure.of(
+					lotlFailed = sessionLotlFailed.get(),
+					failedCustomNames = sessionFailedCustomNames.toList(),
+					at = Clock.System.now(),
+				)?.let { signal.reportFailure(it) }
+			}
 		}
+	}
+
+	/**
+	 * Record, within the current refresh session, that the source named [displayName]
+	 * (`null` = the EU LOTL) failed to load. Flushed as one aggregate by [withProgressSession].
+	 */
+	private fun accumulateFailure(displayName: String?) {
+		if (displayName == null) sessionLotlFailed.set(true) else sessionFailedCustomNames.add(displayName)
 	}
 
 	/**
@@ -177,19 +212,27 @@ class TrustedSourceRegistry(
 	 * Online-refresh every retained source on the global refresh cycle. Each
 	 * entry is refreshed under its own lock and bracketed with the refresh
 	 * signal, so a validation needing a different source is not blocked.
+	 *
+	 * The cycle's outcome is recorded on the signal: each source whose download
+	 * throws is accumulated (its last good trust keeps being served) and flushed as
+	 * one aggregate failure when the session ends, and a fresh "Last refreshed"
+	 * timestamp is stamped when at least one source refreshed — both when the cycle
+	 * is mixed.
 	 */
 	fun refreshAll() = withProgressSession {
+		var loadedAny = false
 		entries.values.forEach { entry ->
 			entry.lock.withLock {
 				signal.begin(entry.id)
 				try {
-					refreshOnline(entry, entry.job)
+					if (refreshOnline(entry, entry.job)) loadedAny = true
+					else accumulateFailure(entry.displayName)
 				} finally {
 					signal.end(entry.id)
 				}
 			}
 		}
-		if (entries.isNotEmpty()) signal.markRefreshed(Clock.System.now())
+		if (loadedAny) signal.markRefreshed(Clock.System.now())
 	}
 
 	/**
@@ -206,6 +249,7 @@ class TrustedSourceRegistry(
 	 */
 	fun forceRefreshAll() = withProgressSession {
 		logger.info { "Hard refresh: ${entries.size} retained trusted source(s) to re-download" }
+		var loadedAny = false
 		entries.values.forEach { entry ->
 			entry.lock.withLock {
 				signal.begin(entry.id)
@@ -215,13 +259,14 @@ class TrustedSourceRegistry(
 						setCacheExpirationTime(FORCE_REFRESH_EXPIRATION_MS)
 					}
 					val freshJob = entry.buildJob(entry.source, freshLoader)
-					refreshOnline(entry, freshJob)
+					if (refreshOnline(entry, freshJob)) loadedAny = true
+					else accumulateFailure(entry.displayName)
 				} finally {
 					signal.end(entry.id)
 				}
 			}
 		}
-		if (entries.isNotEmpty()) signal.markRefreshed(Clock.System.now())
+		if (loadedAny) signal.markRefreshed(Clock.System.now())
 	}
 
 	/**
@@ -233,7 +278,7 @@ class TrustedSourceRegistry(
 	}
 
 	/** Acquire the shared EU LOTL entry, building + offline-first warming once. */
-	private fun acquireLotl(): RetainedTl = acquire(TrustedSourceId.EuLotl) { source, onlineLoader ->
+	private fun acquireLotl(): RetainedTl = acquire(TrustedSourceId.EuLotl, displayName = null) { source, onlineLoader ->
 		newJob(source, onlineLoader, countingExecutor).apply {
 			setListOfTrustedListSources(
 				LOTLSource().apply {
@@ -247,7 +292,10 @@ class TrustedSourceRegistry(
 
 	/** Acquire the retained entry for a custom trusted list by its identity. */
 	private fun acquireCustom(config: CustomTrustedListConfig): RetainedTl =
-		acquire(TrustedSourceId.CustomList(config.source, config.signingCertPath)) { source, onlineLoader ->
+		acquire(
+			TrustedSourceId.CustomList(config.source, config.signingCertPath),
+			displayName = config.name.ifBlank { config.source },
+		) { source, onlineLoader ->
 			newJob(source, onlineLoader, countingExecutor).apply {
 				setTrustedListSources(
 					TLSource().apply {
@@ -265,27 +313,38 @@ class TrustedSourceRegistry(
 	 * no network) is created atomically per id; the slow offline-first warm runs
 	 * once under the entry's own lock, bracketed with the refresh signal so the
 	 * first lazy load is visible to scoped waiters.
+	 *
+	 * The one-time warm records its outcome — [markRefreshed] on the signal when
+	 * usable trust was loaded, or [accumulateFailure] when it was not (a cold cache
+	 * while offline) so the session flush notifies the user — keeping the "Last
+	 * refreshed" indicator honest instead of silently degrading to an empty trust
+	 * store. The entry is still marked [initialized][RetainedTl.initialized] on
+	 * failure: re-attempting on every subsequent validation would stall each one up
+	 * to the fetch timeout while offline; recovery is via the scheduled cycle or a
+	 * manual refresh.
 	 */
 	private fun acquire(
 		id: TrustedSourceId,
+		displayName: String?,
 		buildJob: (TrustedListsCertificateSource, FileCacheDataLoader) -> TLValidationJob,
 	): RetainedTl {
 		entries[id]?.let { if (it.initialized) return it }
 		val entry = entries.computeIfAbsent(id) { key ->
 			val source = TrustedListsCertificateSource()
 			val onlineLoader = newOnlineLoader()
-			RetainedTl(key, buildJob(source, onlineLoader), source, buildJob)
+			RetainedTl(key, buildJob(source, onlineLoader), source, buildJob, displayName)
 		}
 		entry.lock.withLock {
 			if (!entry.initialized) {
 				signal.begin(id)
-				try {
+				val loaded = try {
 					refreshOfflineFirst(entry)
 				} finally {
 					signal.end(id)
 				}
 				entry.initialized = true
-				signal.markRefreshed(Clock.System.now())
+				if (loaded) signal.markRefreshed(Clock.System.now())
+				else accumulateFailure(entry.displayName)
 			}
 		}
 		return entry
@@ -346,8 +405,12 @@ class TrustedSourceRegistry(
 	 * unreachable-host stalls); fall back to a synchronous online refresh only
 	 * when the cache is genuinely cold (first ever run). The scheduled
 	 * [refreshAll] keeps the retained source fresh afterwards.
+	 *
+	 * @return `true` when the source ended up with usable trust (a cache hit or a
+	 *   successful online fetch); `false` when both paths yielded nothing — e.g. a
+	 *   cold cache while offline — leaving the source empty.
 	 */
-	private fun refreshOfflineFirst(entry: RetainedTl) {
+	private fun refreshOfflineFirst(entry: RetainedTl): Boolean {
 		runCatching { entry.job.offlineRefresh() }
 			.onFailure { logger.debug(it) { "Offline TL refresh failed; trying online" } }
 		if (entry.source.certificates.isEmpty()) {
@@ -355,19 +418,27 @@ class TrustedSourceRegistry(
 				.onFailure { logger.warn(it) { "Online TL refresh failed; trust may be incomplete" } }
 		}
 		entry.warnings = DssServiceFactory.collectTlWarnings(entry.job.summary)
+		return entry.source.certificates.isNotEmpty()
 	}
 
 	/**
 	 * Online-refresh [job] (the retained job for the scheduled cycle, or a fresh
 	 * job for a forced hard refresh), then refresh [entry]'s warnings from it.
+	 *
+	 * @return `true` when the online fetch completed and left the source with
+	 *   usable trust; `false` when the download threw — the last good trust is
+	 *   still served — or completed but yielded no certificates.
 	 */
-	private fun refreshOnline(entry: RetainedTl, job: TLValidationJob) {
+	private fun refreshOnline(entry: RetainedTl, job: TLValidationJob): Boolean {
+		var fetched = false
 		val elapsed = kotlin.system.measureTimeMillis {
 			runCatching { job.onlineRefresh() }
+				.onSuccess { fetched = true }
 				.onFailure { logger.warn(it) { "Online TL refresh of ${entry.id} failed; serving last good trust" } }
 		}
 		logger.info { "onlineRefresh(${entry.id}) took ${elapsed}ms" }
 		entry.warnings = DssServiceFactory.collectTlWarnings(job.summary)
+		return fetched && entry.source.certificates.isNotEmpty()
 	}
 
 	/** Registry constants. */

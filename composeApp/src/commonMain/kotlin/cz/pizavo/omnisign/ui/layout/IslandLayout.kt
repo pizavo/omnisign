@@ -8,6 +8,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
+import cz.pizavo.omnisign.domain.model.trust.TrustedListRefreshFailure
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.port.SchedulerPort
@@ -183,7 +184,35 @@ fun IslandLayout(
 	}
 	
 	val toastService = remember { ToastService() }
-	
+
+	val trustedListRefreshPort = remember { KoinPlatform.getKoinOrNull()?.getOrNull<TrustedListRefreshPort>() }
+	val trustedListFailure by (trustedListRefreshPort?.lastFailure ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow<TrustedListRefreshFailure?>(null)
+	}).collectAsState()
+	LaunchedEffect(trustedListFailure) {
+		val text = when (val failure = trustedListFailure) {
+			null -> return@LaunchedEffect
+			is TrustedListRefreshFailure.EuLotl -> ToastText.Resource(Res.string.tlloadingbar_refresh_failed_lotl)
+			is TrustedListRefreshFailure.EuLotlAndOthers ->
+				ToastText.Resource(Res.string.tlloadingbar_refresh_failed_lotl_and_others)
+			is TrustedListRefreshFailure.CustomList ->
+				ToastText.Resource(Res.string.tlloadingbar_refresh_failed_custom, listOf(failure.name))
+			is TrustedListRefreshFailure.Multiple -> ToastText.Resource(Res.string.tlloadingbar_refresh_failed_several)
+		}
+		toastService.show(
+			ToastMessage(
+				text = text,
+				actionLabel = ToastText.Resource(Res.string.tlloadingbar_refresh_retry),
+				onAction = {
+					trustedListRefreshPort?.let { port ->
+						scope.launch { withContext(Dispatchers.Default) { runCatching { port.refreshNow() } } }
+					}
+				},
+				duration = ToastDuration.Long,
+			),
+		)
+	}
+
 	val signingViewModel: SigningViewModel? = remember {
 		runCatching {
 			val koin = KoinPlatform.getKoinOrNull() ?: return@runCatching null

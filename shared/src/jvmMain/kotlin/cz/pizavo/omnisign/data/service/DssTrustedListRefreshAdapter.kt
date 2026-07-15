@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.data.service
 import cz.pizavo.omnisign.data.repository.TrustedListRefreshSignal
 import cz.pizavo.omnisign.domain.model.config.TrustedSourceId
 import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
+import cz.pizavo.omnisign.domain.model.trust.TrustedListRefreshFailure
 import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.time.Instant
@@ -25,6 +26,8 @@ class DssTrustedListRefreshAdapter(
 	override val trustedListLoadProgress: StateFlow<TrustedListLoadProgress> get() = signal.trustedListProgress
 
 	override val lastRefreshAt: StateFlow<Instant?> get() = signal.lastRefreshAt
+
+	override val lastFailure: StateFlow<TrustedListRefreshFailure?> get() = signal.lastFailure
 
 	override suspend fun refreshNow() = scheduler.refreshNow()
 }

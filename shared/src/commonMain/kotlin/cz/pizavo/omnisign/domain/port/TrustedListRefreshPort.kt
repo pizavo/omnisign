@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.domain.port
 
 import cz.pizavo.omnisign.domain.model.config.TrustedSourceId
 import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
+import cz.pizavo.omnisign.domain.model.trust.TrustedListRefreshFailure
 import kotlinx.coroutines.flow.StateFlow
 import kotlin.time.Instant
 
@@ -36,6 +37,16 @@ interface TrustedListRefreshPort {
 	 * refresh has completed yet this process. Drives the "Last refreshed" label.
 	 */
 	val lastRefreshAt: StateFlow<Instant?>
+
+	/**
+	 * The most recent trusted-list refresh that failed to obtain usable trust (e.g.
+	 * the app was offline on a cold cache, or a source's download threw), or `null`
+	 * if none has failed this process. A fresh non-null value is the desktop's cue to
+	 * notify the user, naming the source via
+	 * [TrustedListRefreshFailure.customListName]. Always `null` on targets without a
+	 * DSS backend (web).
+	 */
+	val lastFailure: StateFlow<TrustedListRefreshFailure?>
 
 	/**
 	 * Trigger an immediate online refresh of every retained trusted source and
