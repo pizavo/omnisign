@@ -44,21 +44,50 @@ class TrustedListRefreshScheduler(
 	 * (re-canonicalize/re-digest) data we already have, adding a redundant CPU
 	 * pass at the worst moment — startup.
 	 *
+	 * The exception is failure: when a source did not load (offline at startup, or a
+	 * temporarily unreachable source), the next refresh is retried after a short
+	 * [RETRY_INTERVAL_MS] for up to [MAX_FAST_RETRIES] attempts,
+	 * so a reconnected host recovers within minutes instead of a full interval. A
+	 * source that stays unreachable then falls back to the normal cadence rather than
+	 * being hammered; the user can still force a refresh in the meantime.
+	 *
 	 * Suspends for the lifetime of the host; launch it in a background scope. The
 	 * shared refresh executor is released when the coroutine completes.
 	 */
 	suspend fun run() {
 		try {
-			val intervalMillis = prime()
+			val configuredInterval = prime()
+			var fastRetries = 0
+			var incompleteTrust = factory.hasIncompleteTrustedSources()
 			while (true) {
-				delay(intervalMillis)
+				delay(nextRefreshDelay(incompleteTrust, fastRetries, configuredInterval))
 				coroutineContext.ensureActive()
 				factory.refreshTrustedSources()
+				incompleteTrust = factory.hasIncompleteTrustedSources()
+				fastRetries = if (incompleteTrust) fastRetries + 1 else 0
 			}
 		} finally {
 			factory.shutdownTrustedSources()
 		}
 	}
+
+	/**
+	 * The delay before the next refresh: a short [RETRY_INTERVAL_MS] (never longer
+	 * than [configuredInterval]) while trust is [incompleteTrust] and fewer than
+	 * [MAX_FAST_RETRIES] fast retries have run — so a transient failure recovers within
+	 * minutes — otherwise the full [configuredInterval], so a persistently unreachable source is
+	 * not hammered.
+	 *
+	 * @param incompleteTrust Whether a retained source currently holds no trust (failed to load).
+	 * @param fastRetries How many consecutive fast retries have already run without recovering.
+	 * @param configuredInterval The normal refresh interval, in milliseconds.
+	 */
+	internal fun nextRefreshDelay(incompleteTrust: Boolean, fastRetries: Int, configuredInterval: Long): Long =
+		if (incompleteTrust && fastRetries < MAX_FAST_RETRIES) {
+			RETRY_INTERVAL_MS.coerceAtMost(configuredInterval)
+		} else {
+			configuredInterval
+		}
 
 	/**
 	 * Trigger an immediate, out-of-cycle **hard** refresh of every distinct
@@ -133,5 +162,11 @@ class TrustedListRefreshScheduler(
 	private companion object {
 		const val MIN_INTERVAL_HOURS = 1L
 		const val MILLIS_PER_HOUR = 60L * 60L * 1000L
+
+		/** Short interval between refreshes while a source is failing to load, so a reconnect recovers fast. */
+		const val RETRY_INTERVAL_MS = 5L * 60L * 1000L
+
+		/** Consecutive fast retries after which a still-failing source falls back to the normal cadence. */
+		const val MAX_FAST_RETRIES = 6
 	}
 }

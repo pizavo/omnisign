@@ -285,5 +285,8 @@ internal object EnglishMessages {
 			"Hash algorithm %1\$s is disabled in your configuration"
 		MessageKey.VALIDATION_ENCRYPTION_DISABLED ->
 			"Encryption algorithm %1\$s is disabled in your configuration"
+		MessageKey.VALIDATION_EU_LOTL_UNAVAILABLE ->
+			"The EU list of trusted lists (LOTL) could not be downloaded, so a signature or timestamp " +
+				"could not be checked against EU trust. Reconnect and refresh the trusted lists, then re-validate."
 	}
 }

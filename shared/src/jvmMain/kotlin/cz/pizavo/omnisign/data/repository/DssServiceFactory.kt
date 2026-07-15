@@ -342,6 +342,19 @@ class DssServiceFactory(
 	}
 
 	/**
+	 * Whether any retained trusted source failed to load its trust (see
+	 * [TrustedSourceRegistry.hasIncompleteTrust]). Polled by the refresh scheduler to
+	 * retry soon after a failure rather than waiting a full interval.
+	 */
+	fun hasIncompleteTrustedSources(): Boolean = trustedSources.hasIncompleteTrust()
+
+	/**
+	 * Whether the shared EU LOTL currently holds trust (see [TrustedSourceRegistry.euLotlTrustLoaded]).
+	 * Used by validation to distinguish "no EU trust loaded" from "certificate not on the LOTL".
+	 */
+	fun isEuLotlTrustLoaded(): Boolean = trustedSources.euLotlTrustLoaded()
+
+	/**
 	 * Set the process-global trusted-list re-download interval, in milliseconds,
 	 * derived from `GlobalConfig.trustedListRefreshIntervalHours`. Must be applied
 	 * before the first verifier is built so the persistent online loader picks it up.

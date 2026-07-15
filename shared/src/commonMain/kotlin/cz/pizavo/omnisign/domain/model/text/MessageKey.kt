@@ -377,4 +377,7 @@ enum class MessageKey {
 
 	/** Validation: the signature's encryption algorithm is disabled in the active configuration (arg: algorithm). */
 	VALIDATION_ENCRYPTION_DISABLED,
+
+	/** Validation: the EU LOTL could not be downloaded, leaving a signature or timestamp unverifiable against EU trust. */
+	VALIDATION_EU_LOTL_UNAVAILABLE,
 }

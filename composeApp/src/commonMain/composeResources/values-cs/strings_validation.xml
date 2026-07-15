@@ -46,4 +46,5 @@
 	<string name="validation_timestamp_policy_untrusted">Časové razítko není podle zásady důvěryhodné: jeho kotva důvěry je důvěryhodná jen jako certifikační autorita, ne pro časová razítka</string>
 	<string name="validation_hash_disabled">Hašovací algoritmus %1$s je ve vaší konfiguraci zakázán</string>
 	<string name="validation_encryption_disabled">Šifrovací algoritmus %1$s je ve vaší konfiguraci zakázán</string>
+	<string name="validation_eu_lotl_unavailable">Nepodařilo se stáhnout seznam důvěryhodných seznamů EU (LOTL), takže podpis nebo časové razítko nebylo možné ověřit vůči důvěře EU. Obnovte připojení, aktualizujte důvěryhodné seznamy a ověřte znovu.</string>
 </resources>

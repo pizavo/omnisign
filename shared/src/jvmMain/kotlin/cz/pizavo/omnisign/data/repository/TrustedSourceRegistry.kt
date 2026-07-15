@@ -270,6 +270,25 @@ class TrustedSourceRegistry(
 	}
 
 	/**
+	 * Whether any retained trusted source finished loading but holds no certificates —
+	 * i.e. it failed to obtain trust (a cold cache while offline, or an unreachable
+	 * source URL). The refresh scheduler polls this to retry soon after a failure
+	 * instead of waiting a full cycle. `false` when every retained source has trust,
+	 * or none is retained.
+	 */
+	fun hasIncompleteTrust(): Boolean =
+		entries.values.any { it.initialized && it.source.certificates.isEmpty() }
+
+	/**
+	 * Whether the shared EU LOTL source is retained and currently holds trust. `false` when the
+	 * LOTL was never acquired, or when it failed to load (a cold cache while offline). Lets the
+	 * validation layer tell "no EU trust data at all" apart from "this certificate simply isn't on
+	 * the LOTL", so it warns about a failed LOTL download only when EU trust is genuinely missing.
+	 */
+	fun euLotlTrustLoaded(): Boolean =
+		entries[TrustedSourceId.EuLotl]?.source?.certificates?.isNotEmpty() == true
+
+	/**
 	 * Shut the shared executor down. Invoked when a long-running host stops; a
 	 * one-shot CLI relies on the daemon threads instead and need not call this.
 	 */

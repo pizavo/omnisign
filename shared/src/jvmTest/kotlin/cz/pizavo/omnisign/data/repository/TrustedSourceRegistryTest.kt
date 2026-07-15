@@ -108,6 +108,12 @@ class TrustedSourceRegistryTest : FunSpec({
 		signal.lastRefreshAt.value shouldBe null
 		signal.lastFailure.value shouldBe null
 	}
+
+	test("health queries report no trust when no sources are retained") {
+		val emptyRegistry = TrustedSourceRegistry()
+		emptyRegistry.hasIncompleteTrust() shouldBe false
+		emptyRegistry.euLotlTrustLoaded() shouldBe false
+	}
 }) {
 	companion object {
 		/**

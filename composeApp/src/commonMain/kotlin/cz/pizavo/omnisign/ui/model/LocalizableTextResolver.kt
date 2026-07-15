@@ -132,6 +132,7 @@ private val MESSAGE_RES: Map<MessageKey, StringResource> = mapOf(
 	MessageKey.VALIDATION_TIMESTAMP_POLICY_UNTRUSTED to Res.string.validation_timestamp_policy_untrusted,
 	MessageKey.VALIDATION_HASH_DISABLED to Res.string.validation_hash_disabled,
 	MessageKey.VALIDATION_ENCRYPTION_DISABLED to Res.string.validation_encryption_disabled,
+	MessageKey.VALIDATION_EU_LOTL_UNAVAILABLE to Res.string.validation_eu_lotl_unavailable,
 )
 
 /**
