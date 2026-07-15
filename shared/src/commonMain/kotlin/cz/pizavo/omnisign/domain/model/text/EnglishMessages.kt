@@ -275,5 +275,15 @@ internal object EnglishMessages {
 		MessageKey.WARNING_TSP_FAILURE ->
 			"The timestamp server reported a problem (PKIFailureInfo). If the operation " +
 				"succeeded, the timestamp may have been obtained on a retry."
+		MessageKey.VALIDATION_SIGNATURE_POLICY_UNTRUSTED ->
+			"Signature distrusted by policy: its trust anchor is trusted for timestamping only, " +
+				"not for signing"
+		MessageKey.VALIDATION_TIMESTAMP_POLICY_UNTRUSTED ->
+			"Timestamp distrusted by policy: its trust anchor is trusted as a certificate authority " +
+				"only, not for timestamping"
+		MessageKey.VALIDATION_HASH_DISABLED ->
+			"Hash algorithm %1\$s is disabled in your configuration"
+		MessageKey.VALIDATION_ENCRYPTION_DISABLED ->
+			"Encryption algorithm %1\$s is disabled in your configuration"
 	}
 }

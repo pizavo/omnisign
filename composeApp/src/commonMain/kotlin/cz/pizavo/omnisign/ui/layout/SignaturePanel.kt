@@ -25,6 +25,8 @@ import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.ui.model.SignaturePanelState
 import cz.pizavo.omnisign.ui.model.localized
+import cz.pizavo.omnisign.ui.model.localizedMessage
+import cz.pizavo.omnisign.ui.model.localizedMessages
 import cz.pizavo.omnisign.ui.platform.formattedDate
 import cz.pizavo.omnisign.ui.platform.formattedDateTime
 import omnisign.composeapp.generated.resources.*
@@ -212,7 +214,7 @@ private fun ReportDetails(report: ValidationReport, alertIfNotEuLotl: Boolean) {
                         tint = LumoTheme.colors.warning,
                     )
                     Text(
-                        text = warning,
+                        text = warning.localizedMessage(),
                         style = LumoTheme.typography.body2,
                         color = LumoTheme.colors.warning,
                     )
@@ -387,8 +389,8 @@ private fun SignatureAccordion(
             signature.hashAlgorithm?.let { LabelValue(label = stringResource(Res.string.label_hash_algorithm), value = it) }
             signature.encryptionAlgorithm?.let { LabelValue(label = stringResource(Res.string.signature_label_encryption), value = it) }
 
-            MessageList(title = stringResource(Res.string.signature_label_errors), messages = signature.errors, color = LumoTheme.colors.error)
-            MessageList(title = stringResource(Res.string.signature_label_warnings), messages = signature.warnings, color = LumoTheme.colors.warning)
+            MessageList(title = stringResource(Res.string.signature_label_errors), messages = signature.errors.localizedMessages(), color = LumoTheme.colors.error)
+            MessageList(title = stringResource(Res.string.signature_label_warnings), messages = signature.warnings.localizedMessages(), color = LumoTheme.colors.warning)
             MessageList(
                 title = stringResource(Res.string.signature_label_qualification_errors),
                 messages = signature.qualificationErrors,
@@ -573,8 +575,8 @@ private fun SignatureTimestampAccordion(timestamp: TimestampValidationResult) {
             timestamp.tsaSubjectDN?.let { LabelValue(label = stringResource(Res.string.signature_label_tsa), value = it) }
             ViewFullCertificateAction(chain = timestamp.chain, trustRole = TrustedCertificateType.TSA)
 
-            MessageList(title = stringResource(Res.string.signature_label_errors), messages = timestamp.errors, color = LumoTheme.colors.error)
-            MessageList(title = stringResource(Res.string.signature_label_warnings), messages = timestamp.warnings, color = LumoTheme.colors.warning)
+            MessageList(title = stringResource(Res.string.signature_label_errors), messages = timestamp.errors.localizedMessages(), color = LumoTheme.colors.error)
+            MessageList(title = stringResource(Res.string.signature_label_warnings), messages = timestamp.warnings.localizedMessages(), color = LumoTheme.colors.warning)
             MessageList(title = stringResource(Res.string.signature_label_information), messages = timestamp.infos, color = LumoTheme.colors.textSecondary)
         }
     }
@@ -635,8 +637,8 @@ private fun TimestampAccordion(
             timestamp.tsaSubjectDN?.let { LabelValue(label = stringResource(Res.string.signature_label_tsa), value = it) }
             ViewFullCertificateAction(chain = timestamp.chain, trustRole = TrustedCertificateType.TSA)
 
-            MessageList(title = stringResource(Res.string.signature_label_errors), messages = timestamp.errors, color = LumoTheme.colors.error)
-            MessageList(title = stringResource(Res.string.signature_label_warnings), messages = timestamp.warnings, color = LumoTheme.colors.warning)
+            MessageList(title = stringResource(Res.string.signature_label_errors), messages = timestamp.errors.localizedMessages(), color = LumoTheme.colors.error)
+            MessageList(title = stringResource(Res.string.signature_label_warnings), messages = timestamp.warnings.localizedMessages(), color = LumoTheme.colors.warning)
             MessageList(title = stringResource(Res.string.signature_label_information), messages = timestamp.infos, color = LumoTheme.colors.textSecondary)
         }
     }

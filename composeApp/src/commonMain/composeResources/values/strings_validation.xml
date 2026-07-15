@@ -42,4 +42,8 @@
 	<string name="trust_tier_recognized">Recognized</string>
 	<string name="trust_tier_not_qualified">Not qualified</string>
 	<string name="signature_qscd_residence">The private key resides in a QSCD at both issuance and signing time.</string>
+	<string name="validation_signature_policy_untrusted">Signature distrusted by policy: its trust anchor is trusted for timestamping only, not for signing</string>
+	<string name="validation_timestamp_policy_untrusted">Timestamp distrusted by policy: its trust anchor is trusted as a certificate authority only, not for timestamping</string>
+	<string name="validation_hash_disabled">Hash algorithm %1$s is disabled in your configuration</string>
+	<string name="validation_encryption_disabled">Encryption algorithm %1$s is disabled in your configuration</string>
 </resources>

@@ -189,12 +189,28 @@ class DssServiceFactory(
 	 * signature-verification are repeated on every validation. [directAnchors] (the app-managed
 	 * trust store's certificates for the active scope) are aggregated alongside them.
 	 *
+	 * Verifier alerts only fire at all because [DssValidationRepository] installs DSS's
+	 * [eu.europa.esig.dss.spi.validation.executor.CompleteValidationContextExecutor]; the two
+	 * that are left active report the one condition the validation report itself stays silent
+	 * about — revocation data that predates the time it has to cover:
+	 * - [CommonCertificateVerifier.setAlertOnUncoveredPOE] — for the timestamps' chains, revocation
+	 *   data older than the timestamp whose proof-of-existence it has to cover.
+	 * - [CommonCertificateVerifier.setAlertOnNoRevocationAfterBestSignatureTime] — the same for the
+	 *   signing chain, against the best signature time.
+	 *
+	 * Both are self-limiting: DSS fetches newer revocation data before the alerts are evaluated, so
+	 * they fire only when nothing that covers the signature could be obtained — validating offline,
+	 * or against an issuer that no longer publishes, or one still serving the same cached response.
+	 *
+	 * Every other alert is [silenceAlertsCoveredByTheReport]; see there for why leaving them in
+	 * place would be actively harmful.
+	 *
 	 * @param config Resolved configuration driving revocation and trusted-list selection; a `null`
 	 *   config or one with revocation disabled yields a lenient verifier with alerts suppressed.
 	 * @param directAnchors Directly-trusted certificates (from the trust store) aggregated with the
 	 *   trusted-list sources.
-	 * @param alertFactory Optional factory for the [StatusAlert] wired to all five verifier
-	 *   alert properties.  Pass a [CollectingStatusAlert] to capture warnings
+	 * @param alertFactory Optional factory for the [StatusAlert] wired to the two verifier alert
+	 *   properties that remain active.  Pass a [CollectingStatusAlert] to capture warnings
 	 *   programmatically; defaults to [LogOnStatusAlert] at WARN level.
 	 * @return A [CertificateVerifierResult] containing the verifier and any TL loading warnings.
 	 */
@@ -204,19 +220,17 @@ class DssServiceFactory(
 		alertFactory: () -> StatusAlert = { LogOnStatusAlert(Level.WARN) },
 	): CertificateVerifierResult {
 		val cv = CommonCertificateVerifier()
-		
+		cv.silenceAlertsCoveredByTheReport()
+
 		if (config == null || !config.validation.checkRevocation) {
 			return CertificateVerifierResult(
 				verifier = cv.apply {
-					alertOnMissingRevocationData = null
 					alertOnUncoveredPOE = null
-					alertOnInvalidTimestamp = null
 					alertOnNoRevocationAfterBestSignatureTime = null
-					alertOnRevokedCertificate = null
 				}
 			)
 		}
-		
+
 		val timeout = minOf(config.ocsp.timeout, config.crl.timeout)
 		val dataLoader = CommonsDataLoader().apply {
 			timeoutConnection = timeout
@@ -226,21 +240,46 @@ class DssServiceFactory(
 			timeoutConnection = timeout
 			timeoutSocket = timeout
 		}
-		
+
 		val alert = alertFactory()
 		cv.apply {
 			aiaSource = DefaultAIASource(dataLoader)
 			ocspSource = OnlineOCSPSource().apply { setDataLoader(ocspLoader) }
 			crlSource = OnlineCRLSource().apply { setDataLoader(dataLoader) }
-			alertOnMissingRevocationData = alert
 			alertOnUncoveredPOE = alert
-			alertOnInvalidTimestamp = alert
 			alertOnNoRevocationAfterBestSignatureTime = alert
-			alertOnRevokedCertificate = alert
 		}
-		
+
 		val tlWarnings = trustedSources.composeInto(cv, config, directAnchors)
 		return CertificateVerifierResult(cv, tlWarnings)
+	}
+
+	/**
+	 * Disable the verifier alerts whose conditions the validation report already states as ETSI
+	 * indications, so that enabling the alerter for validation adds no duplicate warnings.
+	 *
+	 * A revoked certificate, an invalid timestamp and missing revocation data each drive the
+	 * report's own indication and sub-indication, which say more than an alert could.
+	 *
+	 * [CommonCertificateVerifier.setAlertOnExpiredCertificate] and
+	 * [CommonCertificateVerifier.setAlertOnNotYetValidCertificate] must be silenced for a second,
+	 * harder reason: DSS defaults both to [eu.europa.esig.dss.alert.ExceptionOnStatusAlert], which
+	 * throws rather than reports. With the alerter running, a document they fire on would come back
+	 * as a failed *operation* — no report, no indication, nothing for the user to read — because the
+	 * throw escapes before any report is built.
+	 *
+	 * They fire on a signature whose certificate has expired *and* that has no proof-of-existence
+	 * within the certificate's validity, so a timestamped signature is unaffected: its timestamp is
+	 * that proof. The document they would abort on is the un-timestamped one whose certificate has
+	 * since expired — exactly the case the report handles well on its own, returning INDETERMINATE
+	 * with `OUT_OF_BOUNDS_NO_POE` and saying why.
+	 */
+	private fun CommonCertificateVerifier.silenceAlertsCoveredByTheReport() {
+		alertOnMissingRevocationData = null
+		alertOnInvalidTimestamp = null
+		alertOnRevokedCertificate = null
+		alertOnExpiredCertificate = null
+		alertOnNotYetValidCertificate = null
 	}
 	
 	/**

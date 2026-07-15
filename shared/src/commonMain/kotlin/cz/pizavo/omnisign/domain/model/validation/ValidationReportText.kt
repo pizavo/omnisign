@@ -35,11 +35,11 @@ fun ValidationReport.toPlainText(detailed: Boolean = false): String = buildStrin
 		appendCertificateChain(ts.chain, TrustedCertificateType.TSA, pad, detailed)
 		if (ts.errors.isNotEmpty()) {
 			appendLine("${pad}Errors:")
-			ts.errors.forEach { appendLine("$pad  • $it") }
+			ts.errors.forEach { appendLine("$pad  • ${it.english()}") }
 		}
 		if (ts.warnings.isNotEmpty()) {
 			appendLine("${pad}Warnings:")
-			ts.warnings.forEach { appendLine("$pad  • $it") }
+			ts.warnings.forEach { appendLine("$pad  • ${it.english()}") }
 		}
 		if (ts.infos.isNotEmpty()) {
 			appendLine("${pad}Information:")
@@ -82,8 +82,8 @@ fun ValidationReport.toPlainText(detailed: Boolean = false): String = buildStrin
 			}
 			sig.hashAlgorithm?.let { appendLine("  Hash algorithm: $it") }
 			sig.encryptionAlgorithm?.let { appendLine("  Encryption:     $it") }
-			appendMessages("Errors", sig.errors)
-			appendMessages("Warnings", sig.warnings)
+			appendMessages("Errors", sig.errors.map { it.english() })
+			appendMessages("Warnings", sig.warnings.map { it.english() })
 			appendMessages("Qualification Errors", sig.qualificationErrors)
 			appendMessages("Qualification Warnings", sig.qualificationWarnings)
 			appendMessages("Information", sig.infos)
@@ -136,7 +136,7 @@ fun ValidationReport.toPlainText(detailed: Boolean = false): String = buildStrin
 
 	if (tlWarnings.isNotEmpty()) {
 		appendLine("── Trusted List Warnings ──")
-		tlWarnings.forEach { appendLine("  ⚠ $it") }
+		tlWarnings.forEach { appendLine("  ⚠ ${it.english()}") }
 	}
 }
 

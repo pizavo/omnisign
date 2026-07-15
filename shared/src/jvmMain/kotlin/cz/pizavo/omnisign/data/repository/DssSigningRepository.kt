@@ -663,11 +663,16 @@ class DssSigningRepository(
 		/**
 		 * Warning categories suppressed during signing.
 		 *
-		 * [DssWarningSanitizer.WarningCategory.REVOCATION_NOT_FOUND] and
-		 * [DssWarningSanitizer.WarningCategory.FRESH_REVOCATION_MISSING] are suppressed because the
-		 * PAdES extension process embeds revocation data independently of the certificate
-		 * verifier's pre-extension check: if the extension fails DSS throws, and if it succeeds the
-		 * data is embedded, so these warnings are false positives.
+		 * [DssWarningSanitizer.WarningCategory.REVOCATION_NOT_FOUND] is suppressed because the PAdES
+		 * extension process embeds revocation data independently of the certificate verifier's
+		 * pre-extension check: if the extension fails DSS throws, and if it succeeds the data is
+		 * embedded, so the warning is a false positive.
+		 *
+		 * [DssWarningSanitizer.WarningCategory.FRESH_REVOCATION_MISSING] is suppressed because it is
+		 * unavoidable here: it reports revocation data that does not postdate the signature, and no
+		 * revocation data in existence can postdate a signature that is only being made now. The
+		 * signer has nothing to act on. Validation reports it instead, where it carries real
+		 * information — that nothing covering the signature could be obtained *since*, either.
 		 *
 		 * [DssWarningSanitizer.WarningCategory.CERTIFICATE_PARSE_ERROR] is suppressed because DSS
 		 * raises it while parsing non-standard extensions (typically a Subject Alternative Name

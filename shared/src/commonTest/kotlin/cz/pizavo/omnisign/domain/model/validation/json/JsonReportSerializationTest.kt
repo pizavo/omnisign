@@ -5,6 +5,7 @@ import cz.pizavo.omnisign.domain.model.signature.CertificateDetailSection
 import cz.pizavo.omnisign.domain.model.signature.CertificateField
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
 import cz.pizavo.omnisign.domain.model.signature.CertificateTrustSource
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.validation.RevocationInfo
 import cz.pizavo.omnisign.domain.model.validation.SignatureValidationResult
 import cz.pizavo.omnisign.domain.model.validation.TimestampValidationResult
@@ -60,8 +61,8 @@ class JsonReportSerializationTest : FunSpec({
                 hashAlgorithm = "SHA256",
                 encryptionAlgorithm = "RSA",
                 euLotlBacked = true,
-                errors = listOf("err1"),
-                warnings = listOf("warn1"),
+                errors = listOf(LocalizableText.Literal("err1")),
+                warnings = listOf(LocalizableText.Literal("warn1")),
                 timestamps = listOf(
                     TimestampValidationResult(
                         timestampId = "ts-1",
@@ -83,7 +84,7 @@ class JsonReportSerializationTest : FunSpec({
                 productionTime = Instant.parse("2026-03-28T11:30:00Z"),
             )
         ),
-        tlWarnings = listOf("TL refresh failed"),
+        tlWarnings = listOf(LocalizableText.Literal("TL refresh failed")),
     )
 
     test("toJsonReport maps all top-level fields") {

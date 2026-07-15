@@ -365,4 +365,16 @@ enum class MessageKey {
 
 	/** Sanitized warning: the timestamp server reported a failure (PKIFailureInfo). */
 	WARNING_TSP_FAILURE,
+
+	/** Validation: a signature's trust anchor is trusted for timestamping only, not for signing. */
+	VALIDATION_SIGNATURE_POLICY_UNTRUSTED,
+
+	/** Validation: a timestamp's trust anchor is trusted as a CA only, not for timestamping. */
+	VALIDATION_TIMESTAMP_POLICY_UNTRUSTED,
+
+	/** Validation: the signature's hash algorithm is disabled in the active configuration (arg: algorithm). */
+	VALIDATION_HASH_DISABLED,
+
+	/** Validation: the signature's encryption algorithm is disabled in the active configuration (arg: algorithm). */
+	VALIDATION_ENCRYPTION_DISABLED,
 }

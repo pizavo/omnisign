@@ -128,6 +128,10 @@ private val MESSAGE_RES: Map<MessageKey, StringResource> = mapOf(
 	MessageKey.WARNING_TIMESTAMP_UNTRUSTED to Res.string.warning_timestamp_untrusted,
 	MessageKey.WARNING_CERTIFICATE_PARSE_ERROR to Res.string.warning_certificate_parse_error,
 	MessageKey.WARNING_TSP_FAILURE to Res.string.warning_tsp_failure,
+	MessageKey.VALIDATION_SIGNATURE_POLICY_UNTRUSTED to Res.string.validation_signature_policy_untrusted,
+	MessageKey.VALIDATION_TIMESTAMP_POLICY_UNTRUSTED to Res.string.validation_timestamp_policy_untrusted,
+	MessageKey.VALIDATION_HASH_DISABLED to Res.string.validation_hash_disabled,
+	MessageKey.VALIDATION_ENCRYPTION_DISABLED to Res.string.validation_encryption_disabled,
 )
 
 /**
@@ -155,31 +159,51 @@ fun LocalizableText.localized(): String = when (this) {
 }
 
 /**
- * Resolve a sanitized warning's [AnnotatedWarning.summary] to the active locale.
+ * Resolve a single message [LocalizableText] to the active locale.
  *
- * For a [LocalizableText.Keyed] summary whose category embeds an affected-entity count, the count is
- * re-derived from [AnnotatedWarning.affectedIds] and rendered as a locale-correct plural phrase,
- * replacing the English phrase the sanitizer baked into the first argument for headless callers; any
- * further arguments (e.g. a due time, which is locale-independent) pass through. Other summaries
- * resolve exactly as [localized] does, falling back to the bundled English for untranslated keys.
+ * Behaves like [localized], with one addition for sanitized-warning summaries: for a
+ * [LocalizableText.Keyed] whose category embeds an affected-entity count (see [WARNING_COUNT_PLURAL]),
+ * the count is read back from the first argument — the English count phrase the sanitizer baked for
+ * headless callers — and re-rendered as a locale-correct plural, so a translated sentence reads
+ * "2 certifikáty" rather than the English "2 certificates" spliced in. Any further arguments (e.g. a
+ * locale-independent due time) pass through. Untranslated keys fall back to the bundled English.
  */
 @Composable
-fun AnnotatedWarning.localizedSummary(): String = when (val text = summary) {
-	is LocalizableText.Literal -> text.value
+fun LocalizableText.localizedMessage(): String = when (this) {
+	is LocalizableText.Literal -> value
 	is LocalizableText.Keyed -> {
-		val res = MESSAGE_RES[text.key]
-		val plural = WARNING_COUNT_PLURAL[text.key]
+		val res = MESSAGE_RES[key]
+		val plural = WARNING_COUNT_PLURAL[key]
 		when {
-			res == null -> text.english()
-			plural == null -> stringResource(res, *text.args.toTypedArray())
+			res == null -> english()
+			plural == null -> stringResource(res, *args.toTypedArray())
 			else -> {
-				val count = affectedIds.size.coerceAtLeast(1)
+				val count = args.firstOrNull()?.takeWhile { it.isDigit() }?.toIntOrNull() ?: 1
 				val phrase = pluralStringResource(plural, count, count)
-				stringResource(res, phrase, *text.args.drop(1).toTypedArray())
+				stringResource(res, phrase, *args.drop(1).toTypedArray())
 			}
 		}
 	}
 }
+
+/**
+ * Resolve each message in this list to the active locale via [localizedMessage]. A `@Composable`
+ * for-loop, because [localizedMessage] cannot be invoked inside a `map` lambda.
+ */
+@Composable
+fun List<LocalizableText>.localizedMessages(): List<String> {
+	val resolved = ArrayList<String>(size)
+	for (message in this) resolved += message.localizedMessage()
+	return resolved
+}
+
+/**
+ * Resolve a sanitized warning's [AnnotatedWarning.summary] to the active locale via [localizedMessage],
+ * which re-derives the plural count from the baked count phrase (equal to the [AnnotatedWarning.affectedIds]
+ * count). [localizedCountPhrase] locates the same phrase for the clickable span.
+ */
+@Composable
+fun AnnotatedWarning.localizedSummary(): String = summary.localizedMessage()
 
 /**
  * The localized, pluralized count phrase (e.g. "2 certificates") a warning's summary embeds, or null

@@ -16,6 +16,9 @@ import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.error.ValidationError
 import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
+import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.text.MessageKey
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.signature.CertificateChainLink
 import cz.pizavo.omnisign.domain.model.signature.CertificateDetailSection
@@ -39,6 +42,7 @@ import eu.europa.esig.dss.model.InMemoryDocument
 import eu.europa.esig.dss.model.x509.CertificateToken
 import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.simplereport.SimpleReport
+import eu.europa.esig.dss.spi.validation.executor.CompleteValidationContextExecutor
 import eu.europa.esig.dss.validation.SignedDocumentValidator
 import eu.europa.esig.dss.validation.reports.Reports
 import java.io.File
@@ -55,10 +59,15 @@ import java.util.Locale
  * DSS accepts is flagged [SignatureValidationResult.policyUntrusted] /
  * [TimestampValidationResult.policyUntrusted] when its terminating store anchor is trusted only for
  * the other role (see [isDowngradedByPolicy]).
+ *
+ * Revocation data that predates the time it has to cover is reported as a warning without changing
+ * the indication, because it does not make the signature invalid — it makes it under-evidenced (see
+ * [annotateRevocationCoverage]).
  */
 class DssValidationRepository(
 	private val dssServiceFactory: DssServiceFactory,
 	private val trustStore: TrustStore,
+	private val warningSanitizer: DssWarningSanitizer,
 ) : ValidationRepository {
 	
 	private val adeSPolicy = AdESPolicy()
@@ -86,6 +95,7 @@ class DssValidationRepository(
 			val validator = SignedDocumentValidator.fromDocument(document)
 				.apply {
 					setCertificateVerifier(cv)
+					setValidationContextExecutor(CompleteValidationContextExecutor.INSTANCE)
 					setTokenExtractionStrategy(TokenExtractionStrategy.EXTRACT_CERTIFICATES_ONLY)
 					setLocale(parameters.language?.let { Locale.forLanguageTag(it) } ?: Locale.getDefault())
 					if (this is PDFDocumentValidator) {
@@ -102,7 +112,9 @@ class DssValidationRepository(
 				writeRawReport(reports, outPath, parameters.rawReportFormat)
 			}
 
-			val verifierWarnings = statusAlert.drain()
+			val verifierWarnings = warningSanitizer
+				.sanitize(statusAlert.drain(), certificateNamesById(reports))
+				.annotatedSummaries
 			val disabledHash = parameters.resolvedConfig?.disabledHashAlgorithms ?: emptySet()
 			val disabledEncryption = parameters.resolvedConfig?.disabledEncryptionAlgorithms ?: emptySet()
 
@@ -118,11 +130,18 @@ class DssValidationRepository(
 
 			val report = convertReports(reports, parameters.inputName, anchorTypeByDssId(directAnchors), trustSourcesOf)
 			val annotatedSignatures = report.signatures.map { sig ->
-				annotateDisabledAlgorithms(sig, disabledHash, disabledEncryption)
+				annotateRevocationCoverage(
+					annotateDisabledAlgorithms(sig, disabledHash, disabledEncryption),
+					verifierWarnings,
+					reports,
+				)
 			}
 			report.copy(
 				signatures = annotatedSignatures,
-				tlWarnings = tlWarnings + verifierWarnings,
+				timestamps = report.timestamps.map {
+					annotateRevocationCoverage(it, verifierWarnings, reports)
+				},
+				tlWarnings = tlWarnings.map { LocalizableText.Literal(it) } + unattributableSummaries(verifierWarnings, reports),
 				rawReports = extractRawReports(reports, parameters.rawReportFormats),
 			)
 		}.mapLeft { exception ->
@@ -304,8 +323,8 @@ class DssValidationRepository(
 			null
 		}
 		
-		val errors = bbb?.conclusion?.errors?.map { it.value } ?: emptyList()
-		val warnings = bbb?.conclusion?.warnings?.map { it.value } ?: emptyList()
+		val errors: List<LocalizableText> = bbb?.conclusion?.errors?.map { LocalizableText.Literal(it.value) } ?: emptyList()
+		val warnings: List<LocalizableText> = bbb?.conclusion?.warnings?.map { LocalizableText.Literal(it.value) } ?: emptyList()
 		val infos = bbb?.conclusion?.infos?.map { it.value } ?: emptyList()
 		
 		val tsaSubjectDN = tsw.signingCertificate?.getCertificateDN()?.let(::readableDistinguishedName)
@@ -323,7 +342,7 @@ class DssValidationRepository(
 			qualification = qualification,
 			tsaSubjectDN = tsaSubjectDN,
 			euLotlBacked = isEuLotlBacked(tsw.certificateChain),
-			errors = if (policyUntrusted) errors + TIMESTAMP_POLICY_MESSAGE else errors,
+			errors = if (policyUntrusted) errors + LocalizableText.of(MessageKey.VALIDATION_TIMESTAMP_POLICY_UNTRUSTED) else errors,
 			warnings = warnings,
 			infos = infos,
 			policyUntrusted = policyUntrusted,
@@ -353,8 +372,8 @@ class DssValidationRepository(
 			else -> ValidationIndication.INDETERMINATE
 		}
 		
-		val errors = simpleReport.getAdESValidationErrors(signatureId).map { it.value }
-		val warnings = simpleReport.getAdESValidationWarnings(signatureId).map { it.value }
+		val errors: List<LocalizableText> = simpleReport.getAdESValidationErrors(signatureId).map { LocalizableText.Literal(it.value) }
+		val warnings: List<LocalizableText> = simpleReport.getAdESValidationWarnings(signatureId).map { LocalizableText.Literal(it.value) }
 		val infos = simpleReport.getAdESValidationInfo(signatureId).map { it.value }
 		val qualificationErrors = simpleReport.getQualificationErrors(signatureId).map { it.value }
 		val qualificationWarnings = simpleReport.getQualificationWarnings(signatureId).map { it.value }
@@ -402,7 +421,7 @@ class DssValidationRepository(
 			signatureId = signatureId,
 			indication = indication,
 			subIndication = simpleReport.getSubIndication(signatureId)?.toString(),
-			errors = if (policyUntrusted) errors + SIGNATURE_POLICY_MESSAGE else errors,
+			errors = if (policyUntrusted) errors + LocalizableText.of(MessageKey.VALIDATION_SIGNATURE_POLICY_UNTRUSTED) else errors,
 			warnings = warnings,
 			infos = infos,
 			qualificationErrors = qualificationErrors,
@@ -570,28 +589,129 @@ class DssValidationRepository(
 		disabledHash: Set<HashAlgorithm>,
 		disabledEncryption: Set<EncryptionAlgorithm>,
 	): SignatureValidationResult {
-		val extra = mutableListOf<String>()
-		
+		val extra = mutableListOf<LocalizableText>()
+
 		val sigHashName = sig.hashAlgorithm
 		if (sigHashName != null) {
 			val matched = disabledHash.find { it.dssName.equals(sigHashName, ignoreCase = true) }
 			if (matched != null) {
-				extra += "Hash algorithm $sigHashName is disabled in your configuration"
+				extra += LocalizableText.of(MessageKey.VALIDATION_HASH_DISABLED, sigHashName)
 			}
 		}
-		
+
 		val sigEncName = sig.encryptionAlgorithm
 		if (sigEncName != null) {
 			val matched = disabledEncryption.find { it.dssName.equals(sigEncName, ignoreCase = true) }
 			if (matched != null) {
-				extra += "Encryption algorithm $sigEncName is disabled in your configuration"
+				extra += LocalizableText.of(MessageKey.VALIDATION_ENCRYPTION_DISABLED, sigEncName)
 			}
 		}
 		
 		return if (extra.isEmpty()) sig
 		else sig.copy(warnings = sig.warnings + extra)
 	}
-	
+
+	/**
+	 * Attach the certificate verifier's revocation-coverage warnings to the signature, and to each
+	 * of its timestamps, that they are actually about.
+	 *
+	 * DSS raises these against the validation context as a whole while naming the certificates they
+	 * concern, so a document carrying several signatures would otherwise see one signature's gap
+	 * repeated on all of them. Each warning is placed where it belongs: one naming the signing chain
+	 * goes to the signature, one naming a timestamp's own chain goes to that timestamp.
+	 *
+	 * The indication is deliberately left untouched. Revocation data issued before the time it has
+	 * to cover does not make a signature invalid — the ETSI process reaches PASSED without it, since
+	 * DSS's default policy sets revocation freshness to `IGNORE` — but it does leave the signature
+	 * resting on evidence that could not have recorded a revocation happening after that evidence
+	 * was issued. That is a warning, not a failure.
+	 */
+	private fun annotateRevocationCoverage(
+		sig: SignatureValidationResult,
+		warnings: List<AnnotatedWarning>,
+		reports: Reports,
+	): SignatureValidationResult {
+		val chainIds = reports.diagnosticData.getSignatureById(sig.signatureId)
+			?.certificateChain
+			?.map { it.id }
+			?.toSet()
+			?: emptySet()
+		return sig.copy(
+			warnings = sig.warnings + summariesNaming(warnings, chainIds),
+			timestamps = sig.timestamps.map { annotateRevocationCoverage(it, warnings, reports) },
+		)
+	}
+
+	/**
+	 * Attach the revocation-coverage warnings naming [timestamp] itself or a certificate of its
+	 * chain — the proof-of-existence gap DSS reports when a timestamp's TSA chain has no revocation
+	 * data issued after the timestamp it has to cover.
+	 */
+	private fun annotateRevocationCoverage(
+		timestamp: TimestampValidationResult,
+		warnings: List<AnnotatedWarning>,
+		reports: Reports,
+	): TimestampValidationResult {
+		val ownedIds = reports.diagnosticData.getTimestampList()
+			.find { it.id == timestamp.timestampId }
+			?.let { tsw -> tsw.certificateChain.map { it.id }.toSet() + tsw.id }
+			?: emptySet()
+		return timestamp.copy(warnings = timestamp.warnings + summariesNaming(warnings, ownedIds))
+	}
+
+	/**
+	 * The summaries of the [warnings] naming at least one of [ownedIds].
+	 */
+	private fun summariesNaming(warnings: List<AnnotatedWarning>, ownedIds: Set<String>): List<LocalizableText> =
+		if (ownedIds.isEmpty()) emptyList()
+		else warnings.filter { warning -> warning.affectedIds.any { it in ownedIds } }.map { it.summary }
+
+	/**
+	 * The summaries of the [warnings] naming no signature and no timestamp of the document, which
+	 * [annotateRevocationCoverage] therefore cannot place: one DSS raised without naming its objects
+	 * at all, or one naming an object belonging to no chain. Reported at document level so that a
+	 * warning is never silently dropped.
+	 */
+	private fun unattributableSummaries(warnings: List<AnnotatedWarning>, reports: Reports): List<LocalizableText> {
+		val attributable = attributableDssIds(reports)
+		return warnings
+			.filter { warning -> warning.affectedIds.none { it in attributable } }
+			.map { it.summary }
+	}
+
+	/**
+	 * Every DSS identifier a signature or a timestamp of the document answers for: the certificates
+	 * of each signing chain, each timestamp, and the certificates of each timestamp's own chain.
+	 */
+	private fun attributableDssIds(reports: Reports): Set<String> {
+		val diagnosticData = reports.diagnosticData
+		val ids = mutableSetOf<String>()
+		reports.simpleReport.signatureIdList
+			.mapNotNull { diagnosticData.getSignatureById(it) }
+			.forEach { signature -> signature.certificateChain.forEach { ids += it.id } }
+		diagnosticData.getTimestampList().forEach { timestamp ->
+			ids += timestamp.id
+			timestamp.certificateChain.forEach { ids += it.id }
+		}
+		return ids
+	}
+
+	/**
+	 * Map every certificate DSS saw in a signing or a timestamp chain to its readable distinguished
+	 * name, so that [DssWarningSanitizer] can name the certificates a warning is about rather than
+	 * only counting them.
+	 */
+	private fun certificateNamesById(reports: Reports): Map<String, String> {
+		val diagnosticData = reports.diagnosticData
+		val signatureChains = reports.simpleReport.signatureIdList
+			.mapNotNull { diagnosticData.getSignatureById(it) }
+			.flatMap { it.certificateChain }
+		val timestampChains = diagnosticData.getTimestampList().flatMap { it.certificateChain }
+		return (signatureChains + timestampChains)
+			.mapNotNull { cert -> cert.getCertificateDN()?.let { cert.id to readableDistinguishedName(it) } }
+			.toMap()
+	}
+
 	/**
 	 * Marshal the raw DSS report XML strings the caller actually requested via
 	 * [ValidationParameters.rawReportFormats] so they can be carried on the domain
@@ -661,11 +781,4 @@ class DssValidationRepository(
 		anchorTypes: Map<String, TrustedCertificateType>,
 	): List<TrustedCertificateType> =
 		chain.filter { it.isTrusted }.mapNotNull { anchorTypes[it.id] }
-
-	private companion object {
-		const val SIGNATURE_POLICY_MESSAGE =
-			"Signature distrusted by policy: its trust anchor is trusted for timestamping only, not for signing"
-		const val TIMESTAMP_POLICY_MESSAGE =
-			"Timestamp distrusted by policy: its trust anchor is trusted as a certificate authority only, not for timestamping"
-	}
 }

@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.domain.model.validation
 
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import kotlinx.serialization.Serializable
 import kotlin.time.Instant
 
@@ -10,9 +11,14 @@ import kotlin.time.Instant
  * @property signatureId DSS internal identifier for this signature.
  * @property indication Overall validation indication.
  * @property subIndication Optional sub-indication providing additional detail.
- * @property errors AdES validation errors for this signature.
- * @property warnings AdES validation warnings for this signature.
- * @property infos AdES informational messages for this signature.
+ * @property errors AdES validation errors for this signature. A [LocalizableText] per message so
+ *   OmniSign-authored entries (e.g. the per-reference trust-policy distrust reason) localize as
+ *   [LocalizableText.Keyed], while DSS report text — already rendered in the report locale by
+ *   `setLocale` — is carried verbatim as [LocalizableText.Literal].
+ * @property warnings AdES validation warnings for this signature, [LocalizableText] like [errors]:
+ *   OmniSign-authored entries (disabled-algorithm and revocation-coverage warnings) are
+ *   [LocalizableText.Keyed]; DSS report text is [LocalizableText.Literal].
+ * @property infos AdES informational messages for this signature (DSS report text, verbatim).
  * @property qualificationErrors eIDAS qualification errors (e.g. certificate not on a trusted list).
  * @property qualificationWarnings eIDAS qualification warnings (e.g. unexpected key-usage).
  * @property qualificationInfos eIDAS qualification informational messages.
@@ -42,8 +48,8 @@ data class SignatureValidationResult(
     val signatureId: String,
     val indication: ValidationIndication,
     val subIndication: String? = null,
-    val errors: List<String> = emptyList(),
-    val warnings: List<String> = emptyList(),
+    val errors: List<LocalizableText> = emptyList(),
+    val warnings: List<LocalizableText> = emptyList(),
     val infos: List<String> = emptyList(),
     val qualificationErrors: List<String> = emptyList(),
     val qualificationWarnings: List<String> = emptyList(),

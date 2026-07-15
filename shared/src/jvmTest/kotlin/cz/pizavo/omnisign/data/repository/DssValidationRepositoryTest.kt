@@ -32,7 +32,11 @@ import java.io.File
  */
 class DssValidationRepositoryTest : FunSpec({
 
-	val repository = DssValidationRepository(DssServiceFactory(mockk(relaxed = true)), FileTrustStore(tempdir().toPath()))
+	val repository = DssValidationRepository(
+		DssServiceFactory(mockk(relaxed = true)),
+		FileTrustStore(tempdir().toPath()),
+		DssWarningSanitizer(),
+	)
 	val tmpDir = tempdir()
 
 	fun tmpFile(name: String): File = File(tmpDir, name).also { it.createNewFile() }
