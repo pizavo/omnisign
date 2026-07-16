@@ -10,8 +10,6 @@ import cz.pizavo.omnisign.config.ServerSecrets
 import cz.pizavo.omnisign.config.SsoProviderPreset
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.client.HttpClient
-import io.ktor.client.engine.cio.CIO
-import io.ktor.client.plugins.HttpTimeout
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
 import io.ktor.util.NonceManager
@@ -38,7 +36,19 @@ private val logger = KotlinLogging.logger {}
  * 2. **`oidc-{name}`** — one [OAuthServerSettings.OAuth2ServerSettings] block per
  *    [OidcProviderConfig] in [config]. Each provider's authorization and token endpoints
  *    are resolved from the OIDC discovery document (or hard-coded for GitHub). These
- *    providers are used exclusively by the `/auth/callback/{name}` route.
+ *    providers back **both** legs of the authorization-code flow: `/auth/redirect/{name}`
+ *    (where the provider issues the `302` challenge to the IdP) and `/auth/callback/{name}`
+ *    (where it exchanges the returned `code` for tokens and produces the
+ *    [OAuthAccessTokenResponse.OAuth2] principal). Both routes must therefore live inside
+ *    the same `authenticate("oidc-{name}") { }` block — Ktor only runs the OAuth
+ *    interceptor for routes enclosed by it, so a callback mounted outside would never
+ *    perform the token exchange and would always see a `null` principal.
+ *
+ *    The token-exchange POST uses the shared [HttpClient] from
+ *    [serverModule][cz.pizavo.omnisign.di.serverModule] — the same client the discovery,
+ *    UserInfo, and id_token-verification services use. Injecting it (rather than
+ *    constructing one here) keeps a single configured outbound client for all IdP traffic
+ *    and lets tests substitute a `MockEngine` for the IdP.
  *
  *    Each `oauth { … }` block is configured with the injected [NonceManager] so the
  *    OAuth2 `state` parameter is verified on the authorization-code callback. Ktor's
@@ -71,6 +81,7 @@ fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String
     val oauthNonceManager by inject<NonceManager>()
     val pkceService by inject<PkceService>()
     val serverSecrets by inject<ServerSecrets>()
+    val httpClient by inject<HttpClient>()
 
     install(Authentication) {
         bearer(JwtSessionService.AUTH_NAME_JWT) {
@@ -129,13 +140,7 @@ fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String
                         },
                     )
                 }
-                client = HttpClient(CIO) {
-                    install(HttpTimeout) {
-                        requestTimeoutMillis = OAUTH_REQUEST_TIMEOUT_MS
-                        connectTimeoutMillis = OAUTH_CONNECT_TIMEOUT_MS
-                        socketTimeoutMillis = OAUTH_SOCKET_TIMEOUT_MS
-                    }
-                }
+                client = httpClient
             }
 
             val pkceLabel = if (provider.pkce) " — PKCE enabled" else " — PKCE disabled"
@@ -167,28 +172,5 @@ private fun resolveEndpoints(
     val doc = runBlocking { discoveryService.discover(provider) }
     return doc.authorizationEndpoint to doc.tokenEndpoint
 }
-
-/**
- * End-to-end timeout for a single OAuth token-exchange POST. Chosen large enough to
- * absorb a slow IdP under modest load (TLS handshake + multiple round trips for a
- * federated provider can easily span several seconds) but tight enough that a
- * pathologically slow / hung IdP cannot pin a request thread indefinitely. A hostile
- * or partitioned IdP that took longer than this would let the request queue grow
- * unboundedly, exhausting the CIO connection pool — exactly the availability hit
- * L-4 closes.
- */
-private const val OAUTH_REQUEST_TIMEOUT_MS = 10_000L
-
-/** TCP connect timeout for the OAuth token-exchange POST. Lower than the overall
- * request timeout because connect-stage stalls are a different failure mode (DNS
- * black-hole, dropped SYNs) that should fail fast and try the next configured IdP
- * (or surface to the user) rather than tie up resources. */
-private const val OAUTH_CONNECT_TIMEOUT_MS = 5_000L
-
-/** Idle-socket timeout for the OAuth token-exchange POST. Mirrors
- * [OAUTH_REQUEST_TIMEOUT_MS] because the OAuth POST is a single request/response
- * round-trip with no streaming — the request-level cap is the meaningful one and
- * the socket timeout exists for symmetry with the connect timeout. */
-private const val OAUTH_SOCKET_TIMEOUT_MS = 10_000L
 
 

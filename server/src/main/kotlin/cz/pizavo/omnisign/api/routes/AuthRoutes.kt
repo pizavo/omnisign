@@ -31,11 +31,23 @@ private val logger = KotlinLogging.logger {}
  * - `GET /auth/login` — returns [LoginOptionsResponse] listing all active providers and
  *   their login URLs. The browser or web UI should redirect to `loginUrl` of the chosen entry.
  *
+ * - `GET /auth/redirect/{provider}` — OIDC providers only. Carries no handler body: the
+ *   enclosing `authenticate("oidc-{provider}") { }` block makes Ktor's OAuth provider issue
+ *   a `302` to the IdP's authorization endpoint, appending `state` and (when
+ *   [OidcProviderConfig.pkce] is enabled) the PKCE `code_challenge`.
+ *
  * - `GET /auth/callback/{provider}` — OAuth2 authorization-code callback for OIDC providers
  *   (or trusted-header injection callback for Shibboleth-style providers). Resolves the
  *   user identity, then mints **both** a short-lived JWT access token and a long-lived
  *   opaque refresh token (persisted in the [RefreshTokenStore]). Both are returned in
  *   [TokenResponse].
+ *
+ *   The OIDC callback sits inside the **same** `authenticate("oidc-{provider}") { }` block as
+ *   its `/auth/redirect/{provider}` counterpart. That is load-bearing rather than stylistic:
+ *   Ktor runs the OAuth token exchange only for routes enclosed by that block, so a callback
+ *   mounted outside it would always observe a `null`
+ *   [OAuthAccessTokenResponse.OAuth2][io.ktor.server.auth.OAuthAccessTokenResponse.OAuth2]
+ *   principal and reject every login with `401 OAUTH_FAILED`.
  *
  * - `GET /auth/session` — returns [SessionResponse] for the caller identified by a valid
  *   JWT Bearer token, or `401 Unauthorized` when no valid token is present.
@@ -104,107 +116,107 @@ fun Route.authRoutes(config: AuthConfig?) {
             authenticate(oidcAuthName) {
                 get("/redirect/${provider.name}") {
                 }
-            }
 
-            get("/callback/${provider.name}") {
-                val oauthPrincipal = call.principal<OAuthAccessTokenResponse.OAuth2>()
-                if (oauthPrincipal == null) {
-                    call.respond(
-                        HttpStatusCode.Unauthorized,
-                        ApiError(error = "OAUTH_FAILED", message = "OAuth2 authorization failed for provider '${provider.name}'"),
+                get("/callback/${provider.name}") {
+                    val oauthPrincipal = call.principal<OAuthAccessTokenResponse.OAuth2>()
+                    if (oauthPrincipal == null) {
+                        call.respond(
+                            HttpStatusCode.Unauthorized,
+                            ApiError(error = "OAUTH_FAILED", message = "OAuth2 authorization failed for provider '${provider.name}'"),
+                        )
+                        return@get
+                    }
+
+                    val shouldVerifyIdToken =
+                        provider.verifyIdToken && provider.preset?.requiresManualUrls != true
+                    val verifiedIdToken: VerifiedIdToken? = if (shouldVerifyIdToken) {
+                        val idTokenString = oauthPrincipal.extraParameters["id_token"]
+                        if (idTokenString.isNullOrBlank()) {
+                            call.respond(
+                                HttpStatusCode.Unauthorized,
+                                ApiError(
+                                    error = "ID_TOKEN_MISSING",
+                                    message = "Provider '${provider.name}' did not return an id_token. " +
+                                        "Either the IdP is not OIDC-compliant or the `openid` scope was rejected; " +
+                                        "set verifyIdToken: false in server.yml for non-OIDC providers.",
+                                ),
+                            )
+                            return@get
+                        }
+                        try {
+                            idTokenVerifier.verify(provider, idTokenString)
+                        } catch (e: IdTokenVerificationException) {
+                            logger.warn(e) { "id_token verification failed for provider '${provider.name}'" }
+                            call.respond(
+                                HttpStatusCode.Unauthorized,
+                                ApiError(
+                                    error = "ID_TOKEN_INVALID",
+                                    message = "id_token from provider '${provider.name}' failed verification: " +
+                                        "${e.message}",
+                                ),
+                            )
+                            return@get
+                        }
+                    } else {
+                        null
+                    }
+
+                    val result = resolvePrincipalFromOidc(
+                        provider = provider,
+                        oauthToken = oauthPrincipal,
+                        discoveryService = discoveryService,
+                        userInfoService = userInfoService,
                     )
-                    return@get
-                }
 
-                val shouldVerifyIdToken =
-                    provider.verifyIdToken && provider.preset?.requiresManualUrls != true
-                val verifiedIdToken: VerifiedIdToken? = if (shouldVerifyIdToken) {
-                    val idTokenString = oauthPrincipal.extraParameters["id_token"]
-                    if (idTokenString.isNullOrBlank()) {
+                    if (result == null) {
+                        call.respond(
+                            HttpStatusCode.Unauthorized,
+                            ApiError(error = "USERINFO_FAILED", message = "Could not resolve user identity from provider '${provider.name}'"),
+                        )
+                        return@get
+                    }
+
+                    if (verifiedIdToken != null && verifiedIdToken.subject != result.principal.userId) {
+                        logger.warn {
+                            "id_token sub ('${verifiedIdToken.subject}') does not match UserInfo sub " +
+                                "('${result.principal.userId}') for provider '${provider.name}' — possible " +
+                                "UserInfo substitution or IdP misconfiguration"
+                        }
                         call.respond(
                             HttpStatusCode.Unauthorized,
                             ApiError(
-                                error = "ID_TOKEN_MISSING",
-                                message = "Provider '${provider.name}' did not return an id_token. " +
-                                    "Either the IdP is not OIDC-compliant or the `openid` scope was rejected; " +
-                                    "set verifyIdToken: false in server.yml for non-OIDC providers.",
+                                error = "ID_TOKEN_SUB_MISMATCH",
+                                message = "id_token subject does not match UserInfo subject; " +
+                                    "rejecting the login to avoid trusting a substituted identity.",
                             ),
                         )
                         return@get
                     }
-                    try {
-                        idTokenVerifier.verify(provider, idTokenString)
-                    } catch (e: IdTokenVerificationException) {
-                        logger.warn(e) { "id_token verification failed for provider '${provider.name}'" }
+
+                    if (!isEmailDomainAllowed(result.principal.email, provider.allowedEmailDomains)) {
                         call.respond(
-                            HttpStatusCode.Unauthorized,
+                            HttpStatusCode.Forbidden,
                             ApiError(
-                                error = "ID_TOKEN_INVALID",
-                                message = "id_token from provider '${provider.name}' failed verification: " +
-                                    "${e.message}",
+                                error = "DOMAIN_NOT_ALLOWED",
+                                message = "Your account domain is not permitted to access this server.",
                             ),
                         )
                         return@get
                     }
-                } else {
-                    null
-                }
 
-                val result = resolvePrincipalFromOidc(
-                    provider = provider,
-                    oauthToken = oauthPrincipal,
-                    discoveryService = discoveryService,
-                    userInfoService = userInfoService,
-                )
-
-                if (result == null) {
-                    call.respond(
-                        HttpStatusCode.Unauthorized,
-                        ApiError(error = "USERINFO_FAILED", message = "Could not resolve user identity from provider '${provider.name}'"),
-                    )
-                    return@get
-                }
-
-                if (verifiedIdToken != null && verifiedIdToken.subject != result.principal.userId) {
-                    logger.warn {
-                        "id_token sub ('${verifiedIdToken.subject}') does not match UserInfo sub " +
-                            "('${result.principal.userId}') for provider '${provider.name}' — possible " +
-                            "UserInfo substitution or IdP misconfiguration"
+                    if (!areRequiredClaimsSatisfied(result.claims, provider.requiredClaims)) {
+                        call.respond(
+                            HttpStatusCode.Forbidden,
+                            ApiError(
+                                error = "CLAIMS_NOT_SATISFIED",
+                                message = "Your account does not satisfy the required claim constraints for this server.",
+                            ),
+                        )
+                        return@get
                     }
-                    call.respond(
-                        HttpStatusCode.Unauthorized,
-                        ApiError(
-                            error = "ID_TOKEN_SUB_MISMATCH",
-                            message = "id_token subject does not match UserInfo subject; " +
-                                "rejecting the login to avoid trusting a substituted identity.",
-                        ),
-                    )
-                    return@get
-                }
 
-                if (!isEmailDomainAllowed(result.principal.email, provider.allowedEmailDomains)) {
-                    call.respond(
-                        HttpStatusCode.Forbidden,
-                        ApiError(
-                            error = "DOMAIN_NOT_ALLOWED",
-                            message = "Your account domain is not permitted to access this server.",
-                        ),
-                    )
-                    return@get
+                    respondWithTokens(call, result.principal, jwtService, refreshTokenStore, config.session)
                 }
-
-                if (!areRequiredClaimsSatisfied(result.claims, provider.requiredClaims)) {
-                    call.respond(
-                        HttpStatusCode.Forbidden,
-                        ApiError(
-                            error = "CLAIMS_NOT_SATISFIED",
-                            message = "Your account does not satisfy the required claim constraints for this server.",
-                        ),
-                    )
-                    return@get
-                }
-
-                respondWithTokens(call, result.principal, jwtService, refreshTokenStore, config.session)
             }
         }
 

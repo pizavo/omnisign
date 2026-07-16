@@ -21,6 +21,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldNotBeBlank
+import io.kotest.matchers.string.shouldStartWith
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
@@ -515,6 +516,42 @@ class AuthRoutesTest : FunSpec({
 				val locUrl = Url(location)
 				locUrl.parameters["code_challenge"].shouldBeNull()
 				locUrl.parameters["code_challenge_method"].shouldBeNull()
+			}
+		}
+	}
+
+	/**
+	 * Regression test: `/auth/callback/{name}` must live inside the same
+	 * `authenticate("oidc-{name}") { }` block as `/auth/redirect/{name}`.
+	 *
+	 * Ktor attaches the OAuth token-exchange interceptor only to routes enclosed by that
+	 * block. A callback mounted outside it never exchanges the authorization code, so
+	 * `call.principal<OAuthAccessTokenResponse.OAuth2>()` is always `null` and every OIDC
+	 * login dies with `401 OAUTH_FAILED` — the entire authorization-code flow is unreachable
+	 * past the IdP redirect.
+	 *
+	 * Calling the callback with **no** `code` parameter isolates that wiring without needing
+	 * a live or mocked IdP: `oauth2HandleCallback()` finds no code, yields
+	 * `AuthenticationFailedCause.NoCredentials`, and — because that is not an
+	 * `AuthenticationFailedCause.Error` — Ktor issues the authorize challenge instead. So a
+	 * `302` to the IdP proves the interceptor ran, whereas the unwired route answers `401`.
+	 * The happy-path exchange is covered separately where an IdP can be substituted.
+	 */
+	test("OIDC /auth/callback is enclosed by its authenticate block so Ktor runs the OAuth interceptor") {
+		withTempSessionsDb {
+			testApplication {
+				application { module(authTestConfig(oidcAuthConfig(pkceEnabled = true)), authTestSecrets(mapOf("github" to githubClientSecret))) }
+
+				val noRedirectClient = createClient {
+					followRedirects = false
+				}
+				val response = noRedirectClient.get("/auth/callback/github")
+
+				response.status shouldBe HttpStatusCode.Found
+				val location = response.headers["Location"]
+				location.shouldNotBeNull()
+				location shouldStartWith OidcDiscoveryService.GITHUB_AUTHORIZATION_URL
+				Url(location).parameters["state"].shouldNotBeBlank()
 			}
 		}
 	}
