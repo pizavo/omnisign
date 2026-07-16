@@ -432,7 +432,7 @@ class DssSigningRepository(
 				?.takeIf { addTimestamp || signatureLevel != DssSignatureLevel.PAdES_BASELINE_B }
 				?.let { setTspSource(dssServiceFactory.buildTspSource(it)) }
 		}
-		return service to tlWarnings
+		return service to tlWarnings.map { it.english() }
 	}
 	
 	/**

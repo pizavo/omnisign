@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.data.repository
 
 import cz.pizavo.omnisign.domain.model.config.TrustedSourceId
+import cz.pizavo.omnisign.domain.model.trust.TrustedListRefreshFailure
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldBeEmpty
@@ -11,7 +12,7 @@ import kotlin.time.Clock
 /**
  * Verifies the per-identity refcounting of [TrustedListRefreshSignal]: an id is
  * "running" while at least one refresh holds it, ids are independent, and the
- * last-refreshed stamp is published.
+ * last-refreshed and last-failure stamps are published independently.
  */
 class TrustedListRefreshSignalTest : FunSpec({
 
@@ -58,5 +59,27 @@ class TrustedListRefreshSignalTest : FunSpec({
 		val now = Clock.System.now()
 		signal.markRefreshed(now)
 		signal.lastRefreshAt.value.shouldNotBeNull() shouldBe now
+	}
+
+	test("reportFailure publishes the failure without touching lastRefreshAt") {
+		val signal = TrustedListRefreshSignal()
+		signal.lastFailure.value shouldBe null
+
+		val failure = TrustedListRefreshFailure.CustomList("My Custom List", Clock.System.now())
+		signal.reportFailure(failure)
+		signal.lastFailure.value shouldBe failure
+		signal.lastRefreshAt.value shouldBe null
+	}
+
+	test("markRefreshed and reportFailure are tracked independently for a mixed cycle") {
+		val signal = TrustedListRefreshSignal()
+		val failure = TrustedListRefreshFailure.EuLotl(Clock.System.now())
+		signal.reportFailure(failure)
+
+		val refreshedAt = Clock.System.now()
+		signal.markRefreshed(refreshedAt)
+
+		signal.lastRefreshAt.value.shouldNotBeNull() shouldBe refreshedAt
+		signal.lastFailure.value shouldBe failure
 	}
 })

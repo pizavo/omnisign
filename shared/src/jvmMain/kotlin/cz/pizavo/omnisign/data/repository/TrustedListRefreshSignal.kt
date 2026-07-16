@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.data.repository
 
 import cz.pizavo.omnisign.domain.model.config.TrustedSourceId
 import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
+import cz.pizavo.omnisign.domain.model.trust.TrustedListRefreshFailure
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -39,6 +40,21 @@ class TrustedListRefreshSignal {
 	/** Timestamp of the last successfully completed refresh, or `null`. */
 	val lastRefreshAt: StateFlow<Instant?> = _lastRefreshAt.asStateFlow()
 
+	private val _lastFailure = MutableStateFlow<TrustedListRefreshFailure?>(null)
+
+	/**
+	 * The most recent refresh that failed to obtain usable trust (e.g. the app was
+	 * offline on a cold cache, or a source's download threw), or `null` if none has
+	 * failed this process.
+	 *
+	 * Independent of [lastRefreshAt]: a mixed cycle where one source loads and
+	 * another fails advances *both*. A fresh non-null value is the desktop's cue to
+	 * surface a failure toast — [TrustedListRefreshFailure.customListName] names the
+	 * culprit, and each failure carries a distinct instant so a `StateFlow` observer
+	 * re-fires even on a repeated, otherwise-identical failure.
+	 */
+	val lastFailure: StateFlow<TrustedListRefreshFailure?> = _lastFailure.asStateFlow()
+
 	/**
 	 * Mark [id] as refreshing. Pair every call with [end] in a `finally` block so
 	 * a failed refresh cannot leak the id into [running] forever.
@@ -63,11 +79,20 @@ class TrustedListRefreshSignal {
 	}
 
 	/**
-	 * Record that a refresh completed successfully at [at], driving the
-	 * "Last refreshed" indicator.
+	 * Record that a refresh completed successfully at [at] — the source ended up
+	 * with usable trust — driving the "Last refreshed" indicator.
 	 */
 	fun markRefreshed(at: Instant) {
 		_lastRefreshAt.value = at
+	}
+
+	/**
+	 * Record that a refresh failed to obtain usable trust, updating [lastFailure]
+	 * so the desktop can notify the user and name the [failure]'s source. Does not
+	 * touch [lastRefreshAt]; the two outcomes are tracked independently.
+	 */
+	fun reportFailure(failure: TrustedListRefreshFailure) {
+		_lastFailure.value = failure
 	}
 
 	private val _trustedListProgress = MutableStateFlow(TrustedListLoadProgress())

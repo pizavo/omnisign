@@ -128,10 +128,12 @@ private val MESSAGE_RES: Map<MessageKey, StringResource> = mapOf(
 	MessageKey.WARNING_TIMESTAMP_UNTRUSTED to Res.string.warning_timestamp_untrusted,
 	MessageKey.WARNING_CERTIFICATE_PARSE_ERROR to Res.string.warning_certificate_parse_error,
 	MessageKey.WARNING_TSP_FAILURE to Res.string.warning_tsp_failure,
+	MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE to Res.string.warning_tl_refresh_incomplete,
 	MessageKey.VALIDATION_SIGNATURE_POLICY_UNTRUSTED to Res.string.validation_signature_policy_untrusted,
 	MessageKey.VALIDATION_TIMESTAMP_POLICY_UNTRUSTED to Res.string.validation_timestamp_policy_untrusted,
 	MessageKey.VALIDATION_HASH_DISABLED to Res.string.validation_hash_disabled,
 	MessageKey.VALIDATION_ENCRYPTION_DISABLED to Res.string.validation_encryption_disabled,
+	MessageKey.VALIDATION_EU_LOTL_UNAVAILABLE to Res.string.validation_eu_lotl_unavailable,
 )
 
 /**
@@ -149,6 +151,7 @@ private val WARNING_COUNT_PLURAL: Map<MessageKey, PluralStringResource> = mapOf(
 	MessageKey.WARNING_FRESH_REVOCATION_MISSING_BY_TIME to Res.plurals.warning_affected_certificates,
 	MessageKey.WARNING_FRESH_REVOCATION_MISSING_GENERIC to Res.plurals.warning_affected_certificates,
 	MessageKey.WARNING_TIMESTAMP_UNTRUSTED to Res.plurals.warning_affected_timestamps,
+	MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE to Res.plurals.warning_affected_trusted_lists,
 )
 
 /** Resolve this text to the active locale: translated Compose Resource if present, else bundled English. */

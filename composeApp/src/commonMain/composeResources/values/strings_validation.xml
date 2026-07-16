@@ -46,4 +46,5 @@
 	<string name="validation_timestamp_policy_untrusted">Timestamp distrusted by policy: its trust anchor is trusted as a certificate authority only, not for timestamping</string>
 	<string name="validation_hash_disabled">Hash algorithm %1$s is disabled in your configuration</string>
 	<string name="validation_encryption_disabled">Encryption algorithm %1$s is disabled in your configuration</string>
+	<string name="validation_eu_lotl_unavailable">The EU list of trusted lists (LOTL) could not be downloaded, so a signature or timestamp could not be checked against EU trust. Reconnect and refresh the trusted lists, then re-validate.</string>
 </resources>

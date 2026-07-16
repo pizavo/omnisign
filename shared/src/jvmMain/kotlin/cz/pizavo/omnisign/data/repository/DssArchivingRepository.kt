@@ -453,7 +453,7 @@ class DssArchivingRepository(
 			setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 			setTspSource(dssServiceFactory.buildTspSource(tsConfig))
 		}
-		return service to tlWarnings
+		return service to tlWarnings.map { it.english() }
 	}
 	
 	companion object {

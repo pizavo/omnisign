@@ -32,9 +32,11 @@ data class ValidationReport(
      * User-readable notices about trusted list loading issues encountered during validation, plus
      * any revocation-coverage warnings DSS raised without naming a signature or timestamp of the
      * document. A non-empty list means one or more member-state trusted lists could not be refreshed
-     * (which may affect qualification assessment but does not invalidate the signature itself), or a
-     * gap could not be attributed to a specific chain. Each entry is a [LocalizableText] —
-     * OmniSign-authored notices as [LocalizableText.Keyed], propagated text as [LocalizableText.Literal].
+     * (which may affect qualification assessment but does not by itself invalidate a signature), the
+     * EU LOTL could not be downloaded and that left a signature or timestamp INDETERMINATE for want
+     * of a trust anchor, or a revocation-coverage gap could not be attributed to a specific chain.
+     * Each entry is a [LocalizableText] — OmniSign-authored notices as [LocalizableText.Keyed],
+     * propagated text as [LocalizableText.Literal].
      */
     val tlWarnings: List<LocalizableText> = emptyList(),
     val rawReports: Map<RawReportFormat, String> = emptyMap(),

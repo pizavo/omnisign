@@ -12,6 +12,7 @@
 	<string name="warning_timestamp_untrusted">Dôkaz existencie (POE) sa nepodarilo preukázať pre %1$s, pretože vydávajúca autorita časových pečiatok (TSA) nie je v dôveryhodnom zozname.</string>
 	<string name="warning_certificate_parse_error">Niektoré certifikáty v reťazci obsahujú poškodené rozšírenia, ktoré sa nepodarilo plne spracovať. To zvyčajne spôsobujú neštandardné certifikáty tretích strán (napr. TSA) a samotného podpisu sa to netýka.</string>
 	<string name="warning_tsp_failure">Server časových pečiatok nahlásil problém (PKIFailureInfo). Ak operácia prebehla úspešne, časová pečiatka sa mohla získať pri opakovanom pokuse.</string>
+	<string name="warning_tl_refresh_incomplete">Nepodarilo sa obnoviť %1$s (%2$s). Posúdenie kvalifikácie certifikátov z týchto zdrojov môže byť neúplné.</string>
 	<plurals name="warning_affected_certificates">
 		<item quantity="one">%1$s certifikát</item>
 		<item quantity="few">%1$s certifikáty</item>
@@ -23,5 +24,11 @@
 		<item quantity="few">%1$s časové pečiatky</item>
 		<item quantity="many">%1$s časovej pečiatky</item>
 		<item quantity="other">%1$s časových pečiatok</item>
+	</plurals>
+	<plurals name="warning_affected_trusted_lists">
+		<item quantity="one">%1$s dôveryhodný zoznam</item>
+		<item quantity="few">%1$s dôveryhodné zoznamy</item>
+		<item quantity="many">%1$s dôveryhodného zoznamu</item>
+		<item quantity="other">%1$s dôveryhodných zoznamov</item>
 	</plurals>
 </resources>

@@ -1,4 +1,9 @@
 <resources>
 	<string name="tlloadingbar_loading">Načítavajú sa dôveryhodné zoznamy…</string>
 	<string name="tlloadingbar_loading_progress">Načítavajú sa dôveryhodné zoznamy… %1$s z %2$s</string>
+	<string name="tlloadingbar_refresh_failed_lotl">Nepodarilo sa stiahnuť zoznam dôveryhodných zoznamov EÚ (LOTL). Podpisy sa môžu javiť ako nedôveryhodné.</string>
+	<string name="tlloadingbar_refresh_failed_lotl_and_others">Nepodarilo sa stiahnuť EÚ LOTL a ďalšie dôveryhodné zoznamy. Podpisy sa môžu javiť ako nedôveryhodné.</string>
+	<string name="tlloadingbar_refresh_failed_custom">Nepodarilo sa stiahnuť dôveryhodný zoznam \'%1$s\'. Podpisy sa môžu javiť ako nedôveryhodné.</string>
+	<string name="tlloadingbar_refresh_failed_several">Nepodarilo sa stiahnuť viacero dôveryhodných zoznamov. Podpisy sa môžu javiť ako nedôveryhodné.</string>
+	<string name="tlloadingbar_refresh_retry">Skúsiť znova</string>
 </resources>

@@ -46,4 +46,5 @@
 	<string name="validation_timestamp_policy_untrusted">Časová pečiatka nie je podľa zásady dôveryhodná: jej kotva dôvery je dôveryhodná len ako certifikačná autorita, nie pre časové pečiatky</string>
 	<string name="validation_hash_disabled">Hašovací algoritmus %1$s je vo vašej konfigurácii zakázaný</string>
 	<string name="validation_encryption_disabled">Šifrovací algoritmus %1$s je vo vašej konfigurácii zakázaný</string>
+	<string name="validation_eu_lotl_unavailable">Nepodarilo sa stiahnuť zoznam dôveryhodných zoznamov EÚ (LOTL), takže podpis alebo časovú pečiatku nebolo možné overiť voči dôvere EÚ. Obnovte pripojenie, aktualizujte dôveryhodné zoznamy a overte znova.</string>
 </resources>

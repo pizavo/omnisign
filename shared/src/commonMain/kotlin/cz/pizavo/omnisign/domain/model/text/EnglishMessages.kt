@@ -275,6 +275,9 @@ internal object EnglishMessages {
 		MessageKey.WARNING_TSP_FAILURE ->
 			"The timestamp server reported a problem (PKIFailureInfo). If the operation " +
 				"succeeded, the timestamp may have been obtained on a retry."
+		MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE ->
+			"Could not refresh %1\$s (%2\$s). Qualification assessment for certificates from these " +
+				"sources may be incomplete."
 		MessageKey.VALIDATION_SIGNATURE_POLICY_UNTRUSTED ->
 			"Signature distrusted by policy: its trust anchor is trusted for timestamping only, " +
 				"not for signing"
@@ -285,5 +288,8 @@ internal object EnglishMessages {
 			"Hash algorithm %1\$s is disabled in your configuration"
 		MessageKey.VALIDATION_ENCRYPTION_DISABLED ->
 			"Encryption algorithm %1\$s is disabled in your configuration"
+		MessageKey.VALIDATION_EU_LOTL_UNAVAILABLE ->
+			"The EU list of trusted lists (LOTL) could not be downloaded, so a signature or timestamp " +
+				"could not be checked against EU trust. Reconnect and refresh the trusted lists, then re-validate."
 	}
 }

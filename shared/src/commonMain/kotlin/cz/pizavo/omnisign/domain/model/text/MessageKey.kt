@@ -366,6 +366,9 @@ enum class MessageKey {
 	/** Sanitized warning: the timestamp server reported a failure (PKIFailureInfo). */
 	WARNING_TSP_FAILURE,
 
+	/** Trusted-list loading: one or more trusted lists could not be refreshed (arg: count phrase; arg: failed hosts). */
+	WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE,
+
 	/** Validation: a signature's trust anchor is trusted for timestamping only, not for signing. */
 	VALIDATION_SIGNATURE_POLICY_UNTRUSTED,
 
@@ -377,4 +380,7 @@ enum class MessageKey {
 
 	/** Validation: the signature's encryption algorithm is disabled in the active configuration (arg: algorithm). */
 	VALIDATION_ENCRYPTION_DISABLED,
+
+	/** Validation: the EU LOTL could not be downloaded, leaving a signature or timestamp unverifiable against EU trust. */
+	VALIDATION_EU_LOTL_UNAVAILABLE,
 }

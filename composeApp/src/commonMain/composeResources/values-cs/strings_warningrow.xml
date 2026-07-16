@@ -12,6 +12,7 @@
 	<string name="warning_timestamp_untrusted">Důkaz existence (POE) se nepodařilo prokázat pro %1$s, protože vydávající autorita časových razítek (TSA) není v důvěryhodném seznamu.</string>
 	<string name="warning_certificate_parse_error">Některé certifikáty v řetězci obsahují poškozená rozšíření, která se nepodařilo plně zpracovat. To obvykle způsobují nestandardní certifikáty třetích stran (např. TSA) a samotného podpisu se to netýká.</string>
 	<string name="warning_tsp_failure">Server časových razítek nahlásil problém (PKIFailureInfo). Pokud operace proběhla úspěšně, časové razítko se mohlo získat při opakovaném pokusu.</string>
+	<string name="warning_tl_refresh_incomplete">Nepodařilo se obnovit %1$s (%2$s). Posouzení kvalifikace certifikátů z těchto zdrojů může být neúplné.</string>
 	<plurals name="warning_affected_certificates">
 		<item quantity="one">%1$s certifikát</item>
 		<item quantity="few">%1$s certifikáty</item>
@@ -23,5 +24,11 @@
 		<item quantity="few">%1$s časová razítka</item>
 		<item quantity="many">%1$s časového razítka</item>
 		<item quantity="other">%1$s časových razítek</item>
+	</plurals>
+	<plurals name="warning_affected_trusted_lists">
+		<item quantity="one">%1$s důvěryhodný seznam</item>
+		<item quantity="few">%1$s důvěryhodné seznamy</item>
+		<item quantity="many">%1$s důvěryhodného seznamu</item>
+		<item quantity="other">%1$s důvěryhodných seznamů</item>
 	</plurals>
 </resources>

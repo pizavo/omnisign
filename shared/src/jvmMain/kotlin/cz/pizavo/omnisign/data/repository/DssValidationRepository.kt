@@ -49,6 +49,45 @@ import java.io.File
 import java.util.Locale
 
 /**
+ * DSS sub-indications ([SubIndication.toString], i.e. the enum name our report stores) that mean the
+ * signing certificate has no chain to a *trusted* anchor — the outcome when the EU LOTL failed to
+ * load and no other trust covers the certificate. Emitted by DSS's `ProspectiveCertificateChainCheck`
+ * when neither the certificate nor its chain is trusted; [SubIndication.NO_CERTIFICATE_CHAIN_FOUND_NO_POE]
+ * is the past-validation variant (the anchor is not trusted at the relevant time).
+ */
+private val NO_TRUSTED_CHAIN_SUBINDICATIONS: Set<String> = setOf(
+	SubIndication.NO_CERTIFICATE_CHAIN_FOUND.name,
+	SubIndication.NO_CERTIFICATE_CHAIN_FOUND_NO_POE.name,
+)
+
+/**
+ * Whether a "EU LOTL unavailable" validation warning is warranted: the configuration uses the EU
+ * LOTL ([useEuLotl]), the LOTL failed to load ([euLotlTrustLoaded] is `false` — it holds no trust),
+ * and at least one signature/timestamp is [ValidationIndication.INDETERMINATE] *with a
+ * no-trusted-chain sub-indication* ([NO_TRUSTED_CHAIN_SUBINDICATIONS]) — so the missing EU trust
+ * actually left something unverified.
+ *
+ * When everything passed (trust came from a direct anchor or a custom list), the LOTL loaded fine, or
+ * the INDETERMINATE is for an unrelated reason (e.g. stale revocation on an otherwise-trusted chain),
+ * no warning is warranted. The pairing of "EU LOTL holds no trust" with the sub-indication is what
+ * tells "untrusted *because* the list didn't load" apart from a certificate that simply isn't on the
+ * LOTL (same sub-indication, but the list *did* load) or a non-trust INDETERMINATE.
+ *
+ * @param results The (indication, sub-indication) of every signature and document-level timestamp.
+ * @param useEuLotl Whether the active configuration enables the EU LOTL.
+ * @param euLotlTrustLoaded Whether the EU LOTL currently holds trust (see [DssServiceFactory.isEuLotlTrustLoaded]).
+ */
+internal fun euLotlUnavailableWarranted(
+	results: List<Pair<ValidationIndication, String?>>,
+	useEuLotl: Boolean,
+	euLotlTrustLoaded: Boolean,
+): Boolean =
+	useEuLotl && !euLotlTrustLoaded &&
+		results.any { (indication, subIndication) ->
+			indication == ValidationIndication.INDETERMINATE && subIndication in NO_TRUSTED_CHAIN_SUBINDICATIONS
+		}
+
+/**
  * JVM implementation of [ValidationRepository] using the EU DSS library.
  *
  * Builds a certificate verifier with online CRL/OCSP sources, AIA support, optional EU LOTL and
@@ -136,12 +175,22 @@ class DssValidationRepository(
 					reports,
 				)
 			}
+			val euLotlWarning = if (
+				euLotlUnavailableWarranted(
+					results = report.signatures.map { it.indication to it.subIndication } +
+						report.timestamps.map { it.indication to it.subIndication },
+					useEuLotl = parameters.resolvedConfig?.validation?.useEuLotl == true,
+					euLotlTrustLoaded = dssServiceFactory.isEuLotlTrustLoaded(),
+				)
+			) listOf(LocalizableText.Keyed(MessageKey.VALIDATION_EU_LOTL_UNAVAILABLE)) else emptyList()
 			report.copy(
 				signatures = annotatedSignatures,
 				timestamps = report.timestamps.map {
 					annotateRevocationCoverage(it, verifierWarnings, reports)
 				},
-				tlWarnings = tlWarnings.map { LocalizableText.Literal(it) } + unattributableSummaries(verifierWarnings, reports),
+				tlWarnings = euLotlWarning +
+					tlWarnings +
+					unattributableSummaries(verifierWarnings, reports),
 				rawReports = extractRawReports(reports, parameters.rawReportFormats),
 			)
 		}.mapLeft { exception ->
