@@ -114,4 +114,30 @@ class PkceServiceTest : FunSpec({
         store.putTtls shouldHaveSize 1
         store.putTtls.single() shouldBe kotlin.time.Duration.parse("PT7M")
     }
+
+    test("challengeFor matches begin's derivation for the same verifier") {
+        val store = InMemoryStore()
+        val service = PkceService(store)
+
+        kotlinx.coroutines.runBlocking { service.begin("state-1") }
+        val verifier = store.entries["state-1"]!!
+        val fromBegin = Base64.getUrlEncoder().withoutPadding().encodeToString(
+            MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII)),
+        )
+
+        service.challengeFor(verifier) shouldBe fromBegin
+    }
+
+    test("verifyChallenge accepts the verifier that produced the challenge") {
+        val service = PkceService(InMemoryStore())
+        val verifier = "a-perfectly-ordinary-verifier-string"
+
+        service.verifyChallenge(verifier, service.challengeFor(verifier)) shouldBe true
+    }
+
+    test("verifyChallenge rejects a verifier that did not produce the challenge") {
+        val service = PkceService(InMemoryStore())
+
+        service.verifyChallenge("some-other-verifier", service.challengeFor("the-real-verifier")) shouldBe false
+    }
 })

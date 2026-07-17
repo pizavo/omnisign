@@ -55,9 +55,10 @@ interface PkceVerifierStore {
     /**
      * Delete every entry whose expiry is in the past.
      *
-     * Provided so abandoned flows (where the user closed the tab between redirect and
-     * callback) do not accumulate. Safe to call periodically — for OmniSign's scale a
-     * single call at server startup is sufficient to drain rows orphaned across deploys.
+     * Provided so abandoned flows (where the user closed the tab between redirect and callback)
+     * do not accumulate; [consume] already rejects an expired verifier regardless, so this only
+     * bounds disk. The boot-time session-store prune cycle calls it once at startup and then
+     * hourly when auth is configured (see `Application.launchSessionStorePruneIfNeeded`).
      *
      * @return The number of rows pruned.
      */

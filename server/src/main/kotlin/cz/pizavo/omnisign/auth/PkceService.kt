@@ -23,6 +23,13 @@ import kotlin.time.Duration.Companion.minutes
  * which never crosses the wire to anyone but us. RFC 9700 / OAuth 2.1 requires PKCE
  * for all clients regardless of confidentiality for this reason.
  *
+ * The same construction is reused a second time, one hop further on. [challengeFor] and
+ * [verifyChallenge] are the verifier side of the mechanism without the store, and
+ * [HandoffCodeStore] uses them to bind its hand-off code to the single-page app that
+ * started the login — the code travels in a URL and faces exactly the leak paths listed
+ * above, so it gets exactly the same defence. This class stays the one place that knows
+ * how an S256 challenge is derived.
+ *
  * @param store Backing store of `state → verifier` mappings. Concrete implementation
  *   typically [ExposedPkceVerifierStore].
  * @param ttl Per-flow lifetime of a stored verifier. Defaults to 5 minutes — long
@@ -52,8 +59,7 @@ class PkceService(
         val verifierBytes = ByteArray(VERIFIER_RANDOM_BYTES).also { secureRandom.nextBytes(it) }
         val verifier = base64UrlNoPad(verifierBytes)
         store.put(state, verifier, ttl)
-        val challengeBytes = sha256(verifier.toByteArray(Charsets.US_ASCII))
-        return PkceChallenge(challenge = base64UrlNoPad(challengeBytes), method = METHOD_S256)
+        return PkceChallenge(challenge = challengeFor(verifier), method = METHOD_S256)
     }
 
     /**
@@ -63,6 +69,35 @@ class PkceService(
      *   flow has expired, or the verifier has already been consumed.
      */
     suspend fun consume(state: String): String? = store.consume(state)
+
+    /**
+     * Derive the `S256` challenge for [verifier] — RFC 7636 §4.2's
+     * `BASE64URL(SHA256(ASCII(verifier)))`.
+     *
+     * @param verifier A PKCE code verifier.
+     * @return The base64url-encoded, unpadded SHA-256 digest.
+     */
+    fun challengeFor(verifier: String): String =
+        base64UrlNoPad(sha256(verifier.toByteArray(Charsets.US_ASCII)))
+
+    /**
+     * Whether [verifier] is the pre-image of [challenge] under `S256` — RFC 7636 §4.6's
+     * comparison, expressed the way round.
+     *
+     * The comparison is constant-time even though neither side is secret (the challenge was
+     * published in an authorize URL, and SHA-256 keeps the verifier out of reach of anyone
+     * holding it). It costs nothing, and the alternative invites a reader to work out
+     * whether the exception is sound rather than reading on.
+     *
+     * @param verifier The verifier presented by the client.
+     * @param challenge The challenge recorded when the flow began.
+     * @return `true` when [verifier] hashes to [challenge].
+     */
+    fun verifyChallenge(verifier: String, challenge: String): Boolean =
+        MessageDigest.isEqual(
+            challengeFor(verifier).toByteArray(Charsets.US_ASCII),
+            challenge.toByteArray(Charsets.US_ASCII),
+        )
 
     companion object {
         /**

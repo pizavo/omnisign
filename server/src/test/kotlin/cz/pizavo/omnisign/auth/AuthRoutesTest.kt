@@ -20,6 +20,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotBeBlank
 import io.kotest.matchers.string.shouldStartWith
 import io.ktor.client.request.*
@@ -552,6 +553,230 @@ class AuthRoutesTest : FunSpec({
 				location.shouldNotBeNull()
 				location shouldStartWith OidcDiscoveryService.GITHUB_AUTHORIZATION_URL
 				Url(location).parameters["state"].shouldNotBeBlank()
+			}
+		}
+	}
+
+	fun handoffAuthConfig(allowedRedirectUris: List<String>) = authConfig.copy(
+		providers = listOf(
+			OidcProviderConfig(
+				name = "github",
+				preset = SsoProviderPreset.GITHUB,
+				clientId = "test-client-id",
+				allowedEmailDomains = listOf("*"),
+			),
+		),
+		oauthStateSecret = oauthStateSecret,
+		allowedRedirectUris = allowedRedirectUris,
+	)
+
+	test("hand-off: a login carrying returnTo parks it and redirects the browser back with a code") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				application {
+					module(
+						authTestConfig(handoffAuthConfig(listOf("https://app.example.com/"))),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+					)
+				}
+
+				val noRedirect = createClient { followRedirects = false }
+
+				// Redirect leg: the app asks to be returned to an allowlisted page.
+				val redirect = noRedirect.get("/auth/redirect/github") {
+					url {
+						parameters.append("returnTo", "https://app.example.com/")
+						parameters.append("handoffChallenge", "challenge-value")
+					}
+				}
+				redirect.status shouldBe HttpStatusCode.Found
+				val state = Url(redirect.headers["Location"]!!).parameters["state"]
+				state.shouldNotBeNull()
+
+				// The login request was parked under that state.
+				val loginStore = ExposedLoginRequestStore(
+					Database.connect("jdbc:sqlite:${tempDb.absolutePath}", driver = "org.sqlite.JDBC"),
+				)
+				val parked = loginStore.consume(state)
+				parked.shouldNotBeNull()
+				parked.returnTo shouldBe "https://app.example.com/"
+				parked.handoffChallenge shouldBe "challenge-value"
+			}
+		}
+	}
+
+	test("/auth/exchange rejects a malformed body with MISSING_HANDOFF_CODE") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(handoffAuthConfig(listOf("https://app.example.com/"))),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+					)
+				}
+				val response = client.post("/auth/exchange") {
+					contentType(ContentType.Application.Json)
+					setBody("""{"code":"","codeVerifier":""}""")
+				}
+				response.status shouldBe HttpStatusCode.BadRequest
+				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+				body["error"]?.jsonPrimitive?.content shouldBe "MISSING_HANDOFF_CODE"
+			}
+		}
+	}
+
+	test("/auth/exchange rejects an unknown hand-off code with INVALID_HANDOFF_CODE") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(handoffAuthConfig(listOf("https://app.example.com/"))),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+					)
+				}
+				val response = client.post("/auth/exchange") {
+					contentType(ContentType.Application.Json)
+					setBody("""{"code":"never-issued","codeVerifier":"whatever"}""")
+				}
+				response.status shouldBe HttpStatusCode.Unauthorized
+				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+				body["error"]?.jsonPrimitive?.content shouldBe "INVALID_HANDOFF_CODE"
+			}
+		}
+	}
+
+	test("/auth/exchange redeems a valid code for a session and sets the refresh cookie") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				application {
+					module(
+						authTestConfig(handoffAuthConfig(listOf("https://app.example.com/"))),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+					)
+				}
+
+				val verifier = "handoff-verifier-string-kept-by-the-client"
+				val challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(
+					MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII)),
+				)
+				val database = Database.connect("jdbc:sqlite:${tempDb.absolutePath}", driver = "org.sqlite.JDBC")
+				val pkce = PkceService(ExposedPkceVerifierStore(database).also { it.initSchema() })
+				val handoffStore = ExposedHandoffCodeStore(database, pkce).also { it.initSchema() }
+				val principal = AuthenticatedPrincipal(
+					userId = "u-handoff",
+					email = "handoff@example.com",
+					displayName = "Hand Off",
+					providerName = "github",
+					authTime = Clock.System.now(),
+				)
+				val code = runBlocking { handoffStore.issue(principal, challenge, 30.seconds) }
+
+				val response = client.post("/auth/exchange") {
+					contentType(ContentType.Application.Json)
+					setBody("""{"code":"$code","codeVerifier":"$verifier"}""")
+				}
+				response.status shouldBe HttpStatusCode.OK
+				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+				body["token"]?.jsonPrimitive?.content.shouldNotBeBlank()
+				body["refreshToken"]?.jsonPrimitive?.content.shouldNotBeBlank()
+
+				val setCookie = response.headers["Set-Cookie"]
+				setCookie.shouldNotBeNull()
+				setCookie shouldContain "omnisign_refresh="
+				setCookie shouldContain "HttpOnly"
+				setCookie shouldContain "SameSite=Lax"
+			}
+		}
+	}
+
+	test("POST /auth/refresh accepts the refresh token from the cookie when the body omits it") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				application { module(authTestConfig(authConfig), authTestSecrets()) }
+
+				val store = testRefreshTokenStore(tempDb)
+				val principal = AuthenticatedPrincipal(
+					userId = "u-cookie",
+					email = "cookie@example.com",
+					displayName = null,
+					providerName = "test",
+					authTime = Clock.System.now(),
+				)
+				val refresh = runBlocking { store.issue(principal, 1.days) }
+
+				val response = client.post("/auth/refresh") {
+					header(HttpHeaders.Cookie, "omnisign_refresh=${refresh.token}")
+				}
+				response.status shouldBe HttpStatusCode.OK
+				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+				body["refreshToken"]?.jsonPrimitive?.content.shouldNotBeBlank()
+				body["refreshToken"]?.jsonPrimitive?.content shouldNotBe refresh.token
+			}
+		}
+	}
+
+	test("POST /auth/logout clears the refresh cookie") {
+		withTempSessionsDb {
+			testApplication {
+				application { module(authTestConfig(authConfig), authTestSecrets()) }
+				val response = client.post("/auth/logout")
+				response.status shouldBe HttpStatusCode.NoContent
+				val setCookie = response.headers["Set-Cookie"]
+				setCookie.shouldNotBeNull()
+				setCookie shouldContain "omnisign_refresh="
+				setCookie shouldContain "Max-Age=0"
+			}
+		}
+	}
+
+	test("POST /auth/refresh clears the cookie when the invalid token came from the cookie") {
+		withTempSessionsDb {
+			testApplication {
+				application { module(authTestConfig(authConfig), authTestSecrets()) }
+				val response = client.post("/auth/refresh") {
+					header(HttpHeaders.Cookie, "omnisign_refresh=stale-rotated-or-unknown-token")
+				}
+				response.status shouldBe HttpStatusCode.Unauthorized
+				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+				body["error"]?.jsonPrimitive?.content shouldBe "INVALID_REFRESH_TOKEN"
+				val setCookie = response.headers["Set-Cookie"]
+				setCookie.shouldNotBeNull()
+				setCookie shouldContain "omnisign_refresh="
+				setCookie shouldContain "Max-Age=0"
+			}
+		}
+	}
+
+	test("POST /auth/refresh does not clear a valid cookie when the invalid token came from the body") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				application { module(authTestConfig(authConfig), authTestSecrets()) }
+
+				val store = testRefreshTokenStore(tempDb)
+				val principal = AuthenticatedPrincipal(
+					userId = "u-body-wins",
+					email = "bodywins@example.com",
+					displayName = null,
+					providerName = "test",
+					authTime = Clock.System.now(),
+				)
+				val valid = runBlocking { store.issue(principal, 1.days) }
+
+				// Body token wins over the cookie; it is garbage, so the refresh fails — but the
+				// still-valid cookie token must not be cleared as collateral.
+				val rejected = client.post("/auth/refresh") {
+					header(HttpHeaders.Cookie, "omnisign_refresh=${valid.token}")
+					contentType(ContentType.Application.Json)
+					setBody("""{"refreshToken":"garbage-body-token"}""")
+				}
+				rejected.status shouldBe HttpStatusCode.Unauthorized
+				rejected.headers["Set-Cookie"].shouldBeNull()
+
+				// The cookie token still works on its own.
+				val accepted = client.post("/auth/refresh") {
+					header(HttpHeaders.Cookie, "omnisign_refresh=${valid.token}")
+				}
+				accepted.status shouldBe HttpStatusCode.OK
 			}
 		}
 	}

@@ -83,6 +83,19 @@ development: false
 #     audience: omnisign-api
 #     tokenExpirySeconds: 3600
 #     # HMAC signing secret resolved from OMNISIGN_JWT_SECRET (required when auth.enabled: true).
+#
+#   # Return URLs the OmniSign web app may be handed back to after a browser login.
+#   # Leave unset (the default) for a server with no browser front-end — the login callback
+#   # then answers API clients with token JSON and performs no redirect. Set it to the exact
+#   # page the web bundle is served from to let the browser app sign users in: after the IdP
+#   # login the callback redirects here with a single-use hand-off code the app exchanges for
+#   # tokens at POST /auth/exchange. Matching is EXACT — not a prefix, not a host — because a
+#   # loose match would let the login endpoint deliver a hand-off code to a page an attacker
+#   # controls. Entries must be absolute https URLs (http only for loopback dev hosts). Also
+#   # set cors.allowCredentials: true below when the app is on a different origin to the API.
+#   # allowedRedirectUris:
+#   #   - "https://omnisign.example.com/"
+#
 #   providers:
 #
 #     # `allowedEmailDomains` is REQUIRED on every OIDC provider — there is no implicit
@@ -327,6 +340,16 @@ cors:
     - "http://localhost:8080"   # Compose Multiplatform Wasm dev server (default)
     - "http://localhost:3000"   # generic dev server (Next.js / CRA)
     - "http://localhost:5173"   # Vite dev server
+  # Allow the browser to send its session cookie on cross-origin requests and read the
+  # response. Defaults to false, which is correct whenever clients authenticate with a JWT
+  # bearer token — that travels in the Authorization header, which is not a credential and
+  # needs no opt-in. Set it to true only to serve the OmniSign web app from a DIFFERENT
+  # origin to this API (app.example.com + api.example.com, or one host on two ports), where
+  # the app relies on the HttpOnly refresh cookie to resume a session across reloads. It is
+  # incompatible with allowedOrigins: ["*"] and startup rejects the pair — with credentials
+  # enabled the wildcard is reflected back as the caller's own origin, which would let any
+  # site the user visits read authenticated responses. List your app's origin explicitly.
+  # allowCredentials: true
 
 # Maximum upload file size in bytes (default: 100 MB).
 maxFileSize: 104857600

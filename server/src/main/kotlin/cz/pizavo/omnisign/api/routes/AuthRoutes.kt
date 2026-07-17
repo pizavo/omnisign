@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.api.routes
 
+import cz.pizavo.omnisign.api.model.requests.ExchangeCodeRequest
 import cz.pizavo.omnisign.api.model.requests.RefreshTokenRequest
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.api.model.responses.LoginOptionsResponse
@@ -19,6 +20,7 @@ import io.ktor.server.routing.*
 import org.koin.ktor.ext.inject
 import java.security.MessageDigest
 import kotlin.time.Clock
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 private val logger = KotlinLogging.logger {}
@@ -36,11 +38,24 @@ private val logger = KotlinLogging.logger {}
  *   a `302` to the IdP's authorization endpoint, appending `state` and (when
  *   [OidcProviderConfig.pkce] is enabled) the PKCE `code_challenge`.
  *
+ *   A browser app additionally passes `?returnTo=…&handoffChallenge=…` here to ask for the
+ *   hand-off described below; [cz.pizavo.omnisign.plugins.configureAuthentication] parks them
+ *   against this flow's `state`.
+ *
  * - `GET /auth/callback/{provider}` — OAuth2 authorization-code callback for OIDC providers
  *   (or trusted-header injection callback for Shibboleth-style providers). Resolves the
  *   user identity, then mints **both** a short-lived JWT access token and a long-lived
- *   opaque refresh token (persisted in the [RefreshTokenStore]). Both are returned in
- *   [TokenResponse].
+ *   opaque refresh token (persisted in the [RefreshTokenStore]).
+ *
+ *   How it answers depends on who asked. A plain hit — an API client, a header-injection
+ *   proxy, an operator testing the flow by hand — gets [TokenResponse] as JSON. A hit that
+ *   began with a `returnTo` gets a `302` back to that page carrying a single-use hand-off
+ *   code, because a single-page app cannot read a JSON body the browser navigated to. The
+ *   tokens themselves are deliberately not what travels: a URL is logged, remembered, and
+ *   passed on in `Referer`, so what travels is a code that is worthless without the verifier
+ *   the app kept, and the app trades it at `/auth/exchange`. `returnTo` must match
+ *   `auth.allowedRedirectUris` exactly or the login is refused with
+ *   `400 REDIRECT_URI_NOT_ALLOWED` — see [isRedirectUriAllowed] for why nothing looser will do.
  *
  *   The OIDC callback sits inside the **same** `authenticate("oidc-{provider}") { }` block as
  *   its `/auth/redirect/{provider}` counterpart. That is load-bearing rather than stylistic:
@@ -49,31 +64,54 @@ private val logger = KotlinLogging.logger {}
  *   [OAuthAccessTokenResponse.OAuth2][io.ktor.server.auth.OAuthAccessTokenResponse.OAuth2]
  *   principal and reject every login with `401 OAUTH_FAILED`.
  *
+ * - `POST /auth/exchange` — accepts an [ExchangeCodeRequest] and redeems a hand-off code for
+ *   a real session, answering exactly as the callback's JSON branch would. Rejects with
+ *   `401 INVALID_HANDOFF_CODE` when the code is unknown / expired / already-redeemed / not
+ *   bound to the presented verifier, `400 MISSING_HANDOFF_CODE` on a malformed body, and
+ *   `503 AUTH_NOT_CONFIGURED` when no auth providers are configured.
+ *
  * - `GET /auth/session` — returns [SessionResponse] for the caller identified by a valid
  *   JWT Bearer token, or `401 Unauthorized` when no valid token is present.
  *
- * - `POST /auth/refresh` — accepts a [RefreshTokenRequest] body, atomically consumes the
- *   refresh token (single-use rotation), and mints a fresh access-token + refresh-token
- *   pair preserving the original `auth_time`. Rejects with `401 SESSION_EXPIRED` when the
- *   total session age exceeds [cz.pizavo.omnisign.config.SessionConfig.maxSessionSeconds],
- *   `401 INVALID_REFRESH_TOKEN` when the token is unknown / expired / already-consumed,
- *   `503 AUTH_NOT_CONFIGURED` when no auth providers are configured.
+ * - `POST /auth/refresh` — atomically consumes the refresh token (single-use rotation) and
+ *   mints a fresh access-token + refresh-token pair preserving the original `auth_time`. The
+ *   token is taken from a [RefreshTokenRequest] body when present, otherwise from the
+ *   [REFRESH_TOKEN_COOKIE] cookie: an API client has only the body, and a browser app that
+ *   has just been reloaded has only the cookie, since its in-memory copy died with the page.
+ *   Rejects with `401 SESSION_EXPIRED` when the total session age exceeds
+ *   [cz.pizavo.omnisign.config.SessionConfig.maxSessionSeconds], `401 INVALID_REFRESH_TOKEN`
+ *   when the token is unknown / expired / already-consumed, `400 MISSING_REFRESH_TOKEN` when
+ *   neither channel carries one, `503 AUTH_NOT_CONFIGURED` when no auth providers are
+ *   configured.
  *
- * - `POST /auth/logout` — accepts a [RefreshTokenRequest] body and deletes the token from
- *   the store. Idempotent — always returns `204 No Content`.
+ * - `POST /auth/logout` — accepts a [RefreshTokenRequest] body, deletes that token from the
+ *   store, and clears the refresh cookie. Idempotent — always returns `204 No Content`.
+ *   Takes the token from the body, not the cookie: the cookie is scoped to `/auth/refresh`, so
+ *   the browser does not send it here. A client still holding its refresh token — an API client,
+ *   or a browser tab that has not been reloaded since its last issue/refresh — revokes
+ *   server-side and clears its cookie in one call. A browser reloaded since its last refresh has
+ *   lost the in-memory token and can only clear its own cookie; that session's refresh-token row
+ *   then lingers until it expires or [cz.pizavo.omnisign.config.SessionConfig.maxSessionSeconds]
+ *   elapses. Closing that gap is a client concern (refresh first, then log out with the fresh
+ *   token), not a server one — widening the cookie's path to reach `/auth/logout` would hand the
+ *   credential to more endpoints than need it, which is the opposite of what the scope is for.
  *
- * `/auth/login`, `/auth/refresh`, `/auth/logout`, and the callbacks are mounted
- * unconditionally so clients can authenticate (or end their session) without a JWT.
+ * `/auth/login`, `/auth/refresh`, `/auth/exchange`, `/auth/logout`, and the callbacks are
+ * mounted unconditionally so clients can authenticate (or end their session) without a JWT.
  * `/auth/session` is the only route that requires a valid Bearer JWT.
  *
  * @param config Root authentication configuration, or `null` when auth is disabled.
+ * @param secureCookies Whether the refresh cookie is marked `Secure`; `true` whenever the
+ *   deployment terminates TLS itself or sits behind a proxy that does.
  */
-fun Route.authRoutes(config: AuthConfig?) {
+fun Route.authRoutes(config: AuthConfig?, secureCookies: Boolean = false) {
     val jwtService by inject<JwtSessionService>()
     val discoveryService by inject<OidcDiscoveryService>()
     val userInfoService by inject<OidcUserInfoService>()
     val idTokenVerifier by inject<IdTokenVerifier>()
     val refreshTokenStore by inject<RefreshTokenStore>()
+    val loginRequestStore by inject<LoginRequestStore>()
+    val handoffCodeStore by inject<HandoffCodeStore>()
 
     route("/auth") {
         get("/login") {
@@ -215,7 +253,40 @@ fun Route.authRoutes(config: AuthConfig?) {
                         return@get
                     }
 
-                    respondWithTokens(call, result.principal, jwtService, refreshTokenStore, config.session)
+                    val loginRequest = call.request.queryParameters["state"]
+                        ?.let { loginRequestStore.consume(it) }
+                    if (loginRequest == null) {
+                        respondWithTokens(
+                            call, result.principal, jwtService, refreshTokenStore,
+                            config.session, secureCookies,
+                        )
+                        return@get
+                    }
+
+                    if (!isRedirectUriAllowed(loginRequest.returnTo, config.allowedRedirectUris)) {
+                        logger.warn {
+                            "Refused a login hand-off to '${loginRequest.returnTo}' — not listed in " +
+                                "auth.allowedRedirectUris. Either the front-end is configured with the " +
+                                "wrong URL, or someone is trying to have a hand-off code delivered to a " +
+                                "page they control."
+                        }
+                        call.respond(
+                            HttpStatusCode.BadRequest,
+                            ApiError(
+                                error = "REDIRECT_URI_NOT_ALLOWED",
+                                message = "This server will not return a login to that address. Add it to " +
+                                    "auth.allowedRedirectUris in server.yml if it is your front-end.",
+                            ),
+                        )
+                        return@get
+                    }
+
+                    val handoffCode = handoffCodeStore.issue(
+                        principal = result.principal,
+                        handoffChallenge = loginRequest.handoffChallenge,
+                        ttl = HANDOFF_CODE_TTL,
+                    )
+                    call.respondRedirect(appendHandoffCode(loginRequest.returnTo, handoffCode))
                 }
             }
         }
@@ -260,7 +331,7 @@ fun Route.authRoutes(config: AuthConfig?) {
                     authTime = Clock.System.now(),
                 )
 
-                respondWithTokens(call, principal, jwtService, refreshTokenStore, config.session)
+                respondWithTokens(call, principal, jwtService, refreshTokenStore, config.session, secureCookies)
             }
         }
 
@@ -298,20 +369,26 @@ fun Route.authRoutes(config: AuthConfig?) {
                 return@post
             }
 
-            val request = runCatching { call.receive<RefreshTokenRequest>() }.getOrNull()
-            if (request == null || request.refreshToken.isBlank()) {
+            val bodyToken = runCatching { call.receive<RefreshTokenRequest>() }.getOrNull()
+                ?.refreshToken?.takeIf { it.isNotBlank() }
+            val presentedToken = bodyToken ?: call.refreshCookie()
+            if (presentedToken == null) {
                 call.respond(
                     HttpStatusCode.BadRequest,
                     ApiError(
                         error = "MISSING_REFRESH_TOKEN",
-                        message = "Request body must be a JSON object with a non-empty `refreshToken` field.",
+                        message = "Send the refresh token as a JSON body with a non-empty `refreshToken` " +
+                            "field, or as the `$REFRESH_TOKEN_COOKIE` cookie.",
                     ),
                 )
                 return@post
             }
 
-            val principal = refreshTokenStore.consume(request.refreshToken)
+            val principal = refreshTokenStore.consume(presentedToken)
             if (principal == null) {
+                if (bodyToken == null) {
+                    call.response.clearRefreshCookie(secureCookies)
+                }
                 call.respond(
                     HttpStatusCode.Unauthorized,
                     ApiError(
@@ -324,6 +401,7 @@ fun Route.authRoutes(config: AuthConfig?) {
 
             val sessionAge = Clock.System.now().epochSeconds - principal.authTime.epochSeconds
             if (sessionAge > config.session.maxSessionSeconds) {
+                call.response.clearRefreshCookie(secureCookies)
                 call.respond(
                     HttpStatusCode.Unauthorized,
                     ApiError(
@@ -336,7 +414,48 @@ fun Route.authRoutes(config: AuthConfig?) {
                 return@post
             }
 
-            respondWithTokens(call, principal, jwtService, refreshTokenStore, config.session)
+            respondWithTokens(call, principal, jwtService, refreshTokenStore, config.session, secureCookies)
+        }
+
+        post("/exchange") {
+            if (config == null) {
+                call.respond(
+                    HttpStatusCode.ServiceUnavailable,
+                    ApiError(
+                        error = "AUTH_NOT_CONFIGURED",
+                        message = "Authentication is not configured on this server",
+                    ),
+                )
+                return@post
+            }
+
+            val request = runCatching { call.receive<ExchangeCodeRequest>() }.getOrNull()
+            if (request == null || request.code.isBlank() || request.codeVerifier.isBlank()) {
+                call.respond(
+                    HttpStatusCode.BadRequest,
+                    ApiError(
+                        error = "MISSING_HANDOFF_CODE",
+                        message = "Request body must be a JSON object with non-empty `code` and " +
+                            "`codeVerifier` fields.",
+                    ),
+                )
+                return@post
+            }
+
+            val principal = handoffCodeStore.consume(request.code, request.codeVerifier)
+            if (principal == null) {
+                call.respond(
+                    HttpStatusCode.Unauthorized,
+                    ApiError(
+                        error = "INVALID_HANDOFF_CODE",
+                        message = "Hand-off code is unknown, expired, already redeemed, or was not " +
+                            "issued to the client presenting it. Start the login again.",
+                    ),
+                )
+                return@post
+            }
+
+            respondWithTokens(call, principal, jwtService, refreshTokenStore, config.session, secureCookies)
         }
 
         post("/logout") {
@@ -344,6 +463,7 @@ fun Route.authRoutes(config: AuthConfig?) {
             if (request != null && request.refreshToken.isNotBlank()) {
                 refreshTokenStore.delete(request.refreshToken)
             }
+            call.response.clearRefreshCookie(secureCookies)
             call.respond(HttpStatusCode.NoContent)
         }
     }
@@ -408,15 +528,33 @@ private fun sharedSecretMatches(provided: String, expected: String): Boolean =
     )
 
 /**
- * Mint a fresh access + refresh token pair for [principal] and write a [TokenResponse]
- * JSON body to [call].
+ * Mint a fresh access + refresh token pair for [principal], set the refresh cookie, and write
+ * a [TokenResponse] JSON body to [call].
  *
  * The refresh token is persisted in [refreshTokenStore] with TTL
  * [cz.pizavo.omnisign.config.SessionConfig.refreshTokenLifetimeSeconds]; the access token
  * is a signed JWT with TTL [cz.pizavo.omnisign.config.SessionConfig.tokenExpirySeconds].
- * Called from both initial-login callbacks and `/auth/refresh` — the latter passes the
- * principal returned by [RefreshTokenStore.consume], whose `authTime` is the original
- * SSO authentication instant (preserved across rotation).
+ * Every route that starts or continues a session funnels through here — the login callbacks,
+ * `/auth/exchange`, and `/auth/refresh`, the last of which passes the principal returned by
+ * [RefreshTokenStore.consume], whose `authTime` is the original SSO authentication instant
+ * (preserved across rotation).
+ *
+ * The refresh token goes out through **both** channels, every time, and that is load-bearing
+ * rather than belt-and-braces. The two channels serve different clients and different moments:
+ *
+ * - The **body** is what a non-browser client reads, and what a browser app holds in memory to
+ *   refresh with while the page is alive. It is also the only channel that works at all for an
+ *   app deployed cross-site from the API, where the cookie will never come back.
+ * - The **cookie** is what survives a page reload, which memory does not. It is what lets a
+ *   returning user resume a session instead of bouncing through the identity provider again.
+ *
+ * Because refresh rotates the token, the two copies would diverge the moment only one of them
+ * were updated: a browser that refreshed from memory would leave a consumed token in its cookie
+ * and get logged out on its next reload, for no reason it could see. Writing both on every
+ * issue keeps them the same value at every point in the sequence, so it never matters which one
+ * the client comes back with.
+ *
+ * @param secureCookies Whether the refresh cookie carries `Secure` — see [setRefreshCookie].
  */
 private suspend fun respondWithTokens(
     call: RoutingCall,
@@ -424,9 +562,11 @@ private suspend fun respondWithTokens(
     jwtService: JwtSessionService,
     refreshTokenStore: RefreshTokenStore,
     sessionConfig: cz.pizavo.omnisign.config.SessionConfig,
+    secureCookies: Boolean,
 ) {
     val jwt = jwtService.issue(principal)
     val refresh = refreshTokenStore.issue(principal, sessionConfig.refreshTokenLifetimeSeconds.seconds)
+    call.response.setRefreshCookie(refresh.token, secureCookies)
     call.respond(
         TokenResponse(
             token = jwt,
@@ -441,3 +581,32 @@ private suspend fun respondWithTokens(
         ),
     )
 }
+
+/**
+ * Append the hand-off [code] to [returnTo] as a query parameter, preserving anything already
+ * in the URL.
+ *
+ * [returnTo] has already been matched verbatim against `auth.allowedRedirectUris`, so this is
+ * building on a value the operator wrote rather than one a caller supplied.
+ *
+ * @param returnTo An allowlisted absolute URL.
+ * @param code The single-use hand-off code.
+ * @return The redirect target.
+ */
+private fun appendHandoffCode(returnTo: String, code: String): String =
+    URLBuilder(returnTo).apply { parameters.append(HANDOFF_CODE_PARAMETER, code) }.buildString()
+
+/**
+ * Query parameter the hand-off code arrives in at the single-page app.
+ */
+const val HANDOFF_CODE_PARAMETER: String = "code"
+
+/**
+ * How long a hand-off code stays redeemable.
+ *
+ * Thirty seconds. The code is minted by a redirect and redeemed by the page that redirect
+ * lands on, so the window covers a browser navigation and a script's first fetch — no human is
+ * in the loop and nothing here waits on one. Anything longer only widens the interval in which
+ * a code sitting in a URL, browser history, or a proxy log is still worth something.
+ */
+private val HANDOFF_CODE_TTL: Duration = 30.seconds

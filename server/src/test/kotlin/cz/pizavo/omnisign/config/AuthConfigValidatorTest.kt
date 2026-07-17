@@ -94,4 +94,63 @@ class AuthConfigValidatorTest : FunSpec({
         )
         validateAuthConfig(mixed)
     }
+
+    test("accepts an empty allowedRedirectUris (no browser hand-off configured)") {
+        validateAuthConfig(AuthConfig(providers = listOf(oidc("g", listOf("*"))), allowedRedirectUris = emptyList()))
+    }
+
+    test("accepts an https allowedRedirectUris entry") {
+        validateAuthConfig(
+            AuthConfig(
+                providers = listOf(oidc("g", listOf("*"))),
+                allowedRedirectUris = listOf("https://omnisign.example.com/"),
+            ),
+        )
+    }
+
+    test("accepts an http allowedRedirectUris entry on a loopback host (local development)") {
+        validateAuthConfig(
+            AuthConfig(
+                providers = listOf(oidc("g", listOf("*"))),
+                allowedRedirectUris = listOf("http://localhost:8080/", "http://127.0.0.1:3000/app"),
+            ),
+        )
+    }
+
+    test("rejects a non-absolute allowedRedirectUris entry") {
+        val ex = shouldThrow<IllegalArgumentException> {
+            validateAuthConfig(
+                AuthConfig(
+                    providers = listOf(oidc("g", listOf("*"))),
+                    allowedRedirectUris = listOf("/app"),
+                ),
+            )
+        }
+        ex.message!! shouldContain "/app"
+        ex.message!! shouldContain "absolute URL"
+    }
+
+    test("rejects a plain-http allowedRedirectUris entry on a non-loopback host") {
+        val ex = shouldThrow<IllegalArgumentException> {
+            validateAuthConfig(
+                AuthConfig(
+                    providers = listOf(oidc("g", listOf("*"))),
+                    allowedRedirectUris = listOf("http://omnisign.example.com/"),
+                ),
+            )
+        }
+        ex.message!! shouldContain "omnisign.example.com"
+        ex.message!! shouldContain "https"
+    }
+
+    test("rejects a non-http(s) scheme in an allowedRedirectUris entry") {
+        shouldThrow<IllegalArgumentException> {
+            validateAuthConfig(
+                AuthConfig(
+                    providers = listOf(oidc("g", listOf("*"))),
+                    allowedRedirectUris = listOf("ftp://omnisign.example.com/"),
+                ),
+            )
+        }
+    }
 })

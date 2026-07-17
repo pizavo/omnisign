@@ -209,6 +209,50 @@ class ServerConfigLoaderTest : FunSpec({
 		config.operations.signingKeystorePath shouldBe "/etc/omnisign/signing.p12"
 	}
 
+	test("load parses auth.allowedRedirectUris") {
+		val yaml = """
+			auth:
+			  allowedRedirectUris:
+			    - "https://omnisign.example.com/"
+			    - "http://localhost:8080/"
+		""".trimIndent()
+
+		val config = loader.loadFromString(yaml)
+		config.auth.shouldNotBeNull()
+		config.auth.allowedRedirectUris shouldBe listOf("https://omnisign.example.com/", "http://localhost:8080/")
+	}
+
+	test("auth.allowedRedirectUris defaults to empty when omitted") {
+		val config = loader.loadFromString("auth:\n  enabled: true")
+		config.auth.shouldNotBeNull()
+		config.auth.allowedRedirectUris shouldBe emptyList()
+	}
+
+	test("load parses cors.allowCredentials") {
+		val yaml = """
+			cors:
+			  allowedOrigins:
+			    - "https://omnisign.example.com"
+			  allowCredentials: true
+		""".trimIndent()
+
+		val config = loader.loadFromString(yaml)
+		config.cors.shouldNotBeNull()
+		config.cors.allowCredentials.shouldBeTrue()
+	}
+
+	test("cors.allowCredentials defaults to false when omitted") {
+		val yaml = """
+			cors:
+			  allowedOrigins:
+			    - "https://omnisign.example.com"
+		""".trimIndent()
+
+		val config = loader.loadFromString(yaml)
+		config.cors.shouldNotBeNull()
+		config.cors.allowCredentials.shouldBeFalse()
+	}
+
 	test("load parses an explicit empty operations.allowed as an empty set") {
 		val yaml = """
 			operations:
