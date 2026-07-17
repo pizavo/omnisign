@@ -10,7 +10,7 @@ import io.kotest.matchers.string.shouldContain
  *
  * Pins the operator-facing contract: missing `cors:` block and empty `allowedOrigins`
  * list both surface as startup failures with messages that name the field and offer
- * the wildcard escape hatch.
+ * the wildcard escape hatch, and the wildcard may not be combined with credentialed CORS.
  */
 class CorsConfigValidatorTest : FunSpec({
 
@@ -39,5 +39,37 @@ class CorsConfigValidatorTest : FunSpec({
         val origins = listOf("https://omnisign.example.com", "https://staging.example.com")
         val result = validateCorsConfig(CorsConfig(allowedOrigins = origins))
         result.allowedOrigins shouldBe origins
+    }
+
+    test("rejects allowCredentials combined with the \"*\" wildcard") {
+        val ex = shouldThrow<IllegalArgumentException> {
+            validateCorsConfig(CorsConfig(allowedOrigins = listOf("*"), allowCredentials = true))
+        }
+        ex.message!! shouldContain "cors.allowCredentials"
+        ex.message!! shouldContain "any site the user visits"
+    }
+
+    test("rejects allowCredentials when \"*\" appears alongside concrete origins") {
+        shouldThrow<IllegalArgumentException> {
+            validateCorsConfig(
+                CorsConfig(
+                    allowedOrigins = listOf("https://omnisign.example.com", "*"),
+                    allowCredentials = true,
+                ),
+            )
+        }
+    }
+
+    test("accepts allowCredentials with a concrete allowedOrigins list") {
+        val result = validateCorsConfig(
+            CorsConfig(allowedOrigins = listOf("https://omnisign.example.com"), allowCredentials = true),
+        )
+        result.allowCredentials shouldBe true
+    }
+
+    test("accepts the \"*\" wildcard while credentials stay off") {
+        val result = validateCorsConfig(CorsConfig(allowedOrigins = listOf("*"), allowCredentials = false))
+        result.allowedOrigins shouldBe listOf("*")
+        result.allowCredentials shouldBe false
     }
 })
