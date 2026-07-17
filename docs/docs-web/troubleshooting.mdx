@@ -40,9 +40,9 @@ shown beneath as detail. In order of likelihood:
 2. **CORS is blocking the request.** The browser refuses to let the page talk to a different origin
    unless the server allows it. The server's `cors.allowedOrigins` must include the origin serving the
    web bundle. See [Server → CORS](/server/security#cors).
-3. **The server requires authentication.** The web client sends no credentials, so an auth-enabled
-   server rejects every operation with `401`. See
-   [Deployment → Authentication](deployment.mdx#authentication).
+3. **Your session ended.** On an auth-enabled server, a session that has expired (or a sign-in that
+   did not complete) makes operations come back `401`. Reload the page to return to the sign-in
+   screen. See [Deployment → Authentication](deployment.mdx#authentication).
 4. **The operation genuinely failed** — an unreachable timestamp authority, an expired server
    certificate, a malformed PDF. The detail line is the server's own message.
 

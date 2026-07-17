@@ -87,19 +87,39 @@ browser console when diagnosing. See [Server → CORS](/server/security#cors).
 
 ## Authentication
 
-:::warning[The web client has no sign-in]
-The browser client sends no credentials and has no login flow, so it can only talk to an OmniSign
-Server whose **authentication is disabled** (no `auth:` block). Against an auth-enabled server the app
-still loads — `/api/v1/capabilities` is public — but every operation, including reading the
-configuration, comes back `401` and surfaces as a generic error, with no way to sign in.
+When the server's [`auth:` block](/server/authentication) is enabled, the web app gates its **whole**
+UI behind sign-in. At startup it reads the public `GET /api/v1/capabilities`, sees `authEnabled`, and
+shows a login screen listing the server's OIDC providers instead of the app — nothing operational
+renders until the user has a session. With authentication disabled the app loads straight into the UI,
+as it always has.
+
+### How sign-in works
+
+The browser never handles the identity provider's tokens itself. Clicking a provider sends it to the
+server's `/auth/redirect/{provider}`, which bounces to the IdP (Google, Microsoft Entra, eduID.cz, …);
+once the user authenticates, the server redirects back to the app with a **one-time hand-off code**,
+which the app exchanges for a short-lived session. The access token lives only in the tab's memory,
+and an `HttpOnly` refresh cookie scoped to `/auth/refresh` lets a page reload resume the session
+without another trip to the IdP. Closing the tab ends the session.
+
+Two server settings make this work:
+
+- **`auth.allowedRedirectUris`** must list the exact URL the web app is served from — scheme, host,
+  and path, **including the trailing slash**. The app asks to return to its own `origin + pathname`
+  (e.g. `https://sign.example.org/`), and the server matches it character-for-character:
+  `https://sign.example.org` without the slash will **not** match. The match is deliberately exact
+  rather than a prefix, because whatever this permits receives a login credential.
+- **`cors.allowCredentials: true`** is needed only when the web app and the API are on **different
+  origins** (e.g. `app.example.org` + `api.example.org`), so the browser will send the refresh cookie
+  to `/auth/refresh` across origins. The server rejects it in combination with
+  `cors.allowedOrigins: ["*"]` — list the app's origin explicitly. On a same-origin deployment you do
+  not need it.
+
+:::note[Reverse-proxy SSO]
+The server also supports header-injection (Shibboleth / SAML) providers, where an authenticating
+reverse proxy in front of the server establishes the identity. Those present no login button in the
+app — the proxy signs the user in before the request reaches it.
 :::
-
-To restrict who can reach a web deployment, run the server on a trusted network, or put an
-**authenticating reverse proxy** in front of it that gates requests and forwards to an auth-disabled
-OmniSign backend.
-
-The server's built-in [SSO / OIDC](/server/authentication) is for API clients that can complete the
-OAuth flow and present a bearer token; the browser client does not do this.
 
 ## Choosing what users can do
 
@@ -138,5 +158,6 @@ combined, most-local first, always ending in `OmniSign` — for example
    branding label.
 3. Allow the web origin in the server's `cors.allowedOrigins`.
 4. Confirm the server's `operations.allowed` matches what you want users to see.
-5. Make sure the server is either on a trusted network or behind an authenticating proxy — the browser
-   client cannot sign in.
+5. If the server enables authentication, list the web app's exact URL (with its trailing slash) in
+   `auth.allowedRedirectUris`, and set `cors.allowCredentials: true` when the app and API are on
+   different origins.

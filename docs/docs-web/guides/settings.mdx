@@ -80,5 +80,8 @@ a different browser, device, or private window starts fresh:
 | `omnisign.preferences.format` | The date format                                 |
 | `omnisign.activeProfile`      | The name of the selected [server profile](profiles.mdx) |
 
-No cookies, `sessionStorage`, or IndexedDB are used. The open document, the current page, and the zoom
-level live in memory only and are gone when you reload the tab.
+No IndexedDB is used, and there are no cookies or `sessionStorage` entries unless the server requires
+sign-in: in that case the [SSO login](../deployment.mdx#authentication) writes a short-lived verifier to
+`sessionStorage` during the redirect and the server sets an `HttpOnly` refresh cookie scoped to
+`/auth/refresh` (which scripts cannot read). The open document, the current page, and the zoom level
+live in memory only and are gone when you reload the tab.
