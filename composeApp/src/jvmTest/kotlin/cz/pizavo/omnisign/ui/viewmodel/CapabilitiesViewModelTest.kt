@@ -38,7 +38,25 @@ class CapabilitiesViewModelTest : FunSpec({
         caps.canValidate shouldBe true
         caps.canSign shouldBe true
         caps.canTimestamp shouldBe true
+        caps.authEnabled shouldBe false
         caps.organizationName shouldBe null
+    }
+
+    test("maps authEnabled through to the capabilities flag") {
+        runTest(testDispatcher) {
+            val repo = mockk<CapabilitiesRepository>()
+            coEvery { repo.get() } returns CapabilitiesResponse(
+                allowedOperations = listOf("VALIDATE"),
+                profiles = emptyList(),
+                maxFileSize = 1024,
+                authEnabled = true,
+            )
+
+            val vm = CapabilitiesViewModel(repo, testDispatcher)
+            advanceUntilIdle()
+
+            vm.capabilities.value.authEnabled shouldBe true
+        }
     }
 
     test("maps allowedOperations to the matching flags") {

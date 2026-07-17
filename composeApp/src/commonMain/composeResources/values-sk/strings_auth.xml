@@ -1,0 +1,6 @@
+<resources>
+	<string name="login_heading">Prihlásenie</string>
+	<string name="login_prompt">Vyberte spôsob prihlásenia.</string>
+	<string name="login_no_providers">Tento server nemá nakonfigurovaný žiadny spôsob interaktívneho prihlásenia. Obráťte sa na prevádzkovateľa.</string>
+	<string name="login_failed">Prihlásenie sa nepodarilo dokončiť. Skúste to znova.</string>
+</resources>
