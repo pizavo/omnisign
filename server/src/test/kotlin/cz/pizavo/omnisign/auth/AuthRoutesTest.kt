@@ -3,7 +3,6 @@ package cz.pizavo.omnisign.auth
 import cz.pizavo.omnisign.config.AuthConfig
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.CorsConfig
-import cz.pizavo.omnisign.config.HeaderInjectionProviderConfig
 import cz.pizavo.omnisign.config.JwtAlgorithmType
 import cz.pizavo.omnisign.config.ListenConfig
 import cz.pizavo.omnisign.config.OidcProviderConfig
@@ -386,64 +385,6 @@ class AuthRoutesTest : FunSpec({
 			application { module(authTestConfig(authConfig.copy(enabled = true)), authTestSecrets()) }
 			val response = client.get("/api/v1/health")
 			response.status shouldBe HttpStatusCode.OK
-		}
-	}
-
-	val headerInjectionSecret = "header-injection-secret-padded-to-at-least-64-bytes-for-test-use!"
-	val headerInjectionProvider = HeaderInjectionProviderConfig(
-		name = "shib",
-		userHeader = "X-Remote-User",
-		emailHeader = "X-Shib-Mail",
-		displayNameHeader = "X-Shib-Cn",
-		sharedSecret = headerInjectionSecret.sensitive(),
-	)
-	val headerInjectionAuthConfig = authConfig.copy(providers = listOf(headerInjectionProvider))
-
-	test("header-injection callback rejects requests without the shared-secret header") {
-		testApplication {
-			application { module(authTestConfig(headerInjectionAuthConfig), authTestSecrets()) }
-			val response = client.get("/auth/callback/shib") {
-				header("X-Remote-User", "attacker@evil.com")
-			}
-			response.status shouldBe HttpStatusCode.Unauthorized
-		}
-	}
-
-	test("header-injection callback rejects requests with a wrong shared-secret value") {
-		testApplication {
-			application { module(authTestConfig(headerInjectionAuthConfig), authTestSecrets()) }
-			val response = client.get("/auth/callback/shib") {
-				header("X-Header-Injection-Token", "wrong-secret")
-				header("X-Remote-User", "attacker@evil.com")
-			}
-			response.status shouldBe HttpStatusCode.Unauthorized
-		}
-	}
-
-	test("header-injection callback issues a token when the shared secret matches") {
-		withTempSessionsDb {
-			testApplication {
-				application { module(authTestConfig(headerInjectionAuthConfig), authTestSecrets()) }
-				val response = client.get("/auth/callback/shib") {
-					header("X-Header-Injection-Token", headerInjectionSecret)
-					header("X-Remote-User", "alice@example.com")
-					header("X-Shib-Mail", "alice@example.com")
-				}
-				response.status shouldBe HttpStatusCode.OK
-				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-				body["token"]?.jsonPrimitive?.content.shouldNotBeBlank()
-				body["refreshToken"]?.jsonPrimitive?.content.shouldNotBeBlank()
-			}
-		}
-	}
-
-	test("header-injection callback rejects when the user header is missing even with a valid secret") {
-		testApplication {
-			application { module(authTestConfig(headerInjectionAuthConfig), authTestSecrets()) }
-			val response = client.get("/auth/callback/shib") {
-				header("X-Header-Injection-Token", headerInjectionSecret)
-			}
-			response.status shouldBe HttpStatusCode.Unauthorized
 		}
 	}
 

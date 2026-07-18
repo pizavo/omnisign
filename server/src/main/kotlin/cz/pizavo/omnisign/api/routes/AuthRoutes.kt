@@ -8,7 +8,6 @@ import cz.pizavo.omnisign.api.model.responses.SessionResponse
 import cz.pizavo.omnisign.api.model.responses.TokenResponse
 import cz.pizavo.omnisign.auth.*
 import cz.pizavo.omnisign.config.AuthConfig
-import cz.pizavo.omnisign.config.HeaderInjectionProviderConfig
 import cz.pizavo.omnisign.config.OidcProviderConfig
 import cz.pizavo.omnisign.config.SsoProviderPreset
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -18,7 +17,6 @@ import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import org.koin.ktor.ext.inject
-import java.security.MessageDigest
 import kotlin.time.Clock
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
@@ -42,13 +40,12 @@ private val logger = KotlinLogging.logger {}
  *   hand-off described below; [cz.pizavo.omnisign.plugins.configureAuthentication] parks them
  *   against this flow's `state`.
  *
- * - `GET /auth/callback/{provider}` — OAuth2 authorization-code callback for OIDC providers
- *   (or trusted-header injection callback for Shibboleth-style providers). Resolves the
- *   user identity, then mints **both** a short-lived JWT access token and a long-lived
- *   opaque refresh token (persisted in the [RefreshTokenStore]).
+ * - `GET /auth/callback/{provider}` — OAuth2 authorization-code callback for OIDC providers.
+ *   Resolves the user identity, then mints **both** a short-lived JWT access token and a
+ *   long-lived opaque refresh token (persisted in the [RefreshTokenStore]).
  *
- *   How it answers depends on who asked. A plain hit — an API client, a header-injection
- *   proxy, an operator testing the flow by hand — gets [TokenResponse] as JSON. A hit that
+ *   How it answers depends on who asked. A plain hit — an API client or an operator testing
+ *   the flow by hand — gets [TokenResponse] as JSON. A hit that
  *   began with a `returnTo` gets a `302` back to that page carrying a single-use hand-off
  *   code, because a single-page app cannot read a JSON body the browser navigated to. The
  *   tokens themselves are deliberately not what travels: a URL is logged, remembered, and
@@ -126,23 +123,12 @@ fun Route.authRoutes(config: AuthConfig?, secureCookies: Boolean = false) {
                 return@get
             }
 
-            val providers = config.providers.map { provider ->
+            val providers = config.providers.filterIsInstance<OidcProviderConfig>().map { provider ->
                 LoginOptionsResponse.ProviderInfo(
                     name = provider.name,
-                    displayName = when (provider) {
-                        is OidcProviderConfig -> provider.displayName
-                        is HeaderInjectionProviderConfig -> provider.displayName
-                    },
-                    type = when (provider) {
-                        is OidcProviderConfig -> "oidc"
-                        is HeaderInjectionProviderConfig -> "header-injection"
-                    },
-                    loginUrl = when (provider) {
-                        is OidcProviderConfig ->
-                            "/auth/redirect/${provider.name}"
-                        is HeaderInjectionProviderConfig ->
-                            "/auth/callback/${provider.name}"
-                    },
+                    displayName = provider.displayName,
+                    type = "oidc",
+                    loginUrl = "/auth/redirect/${provider.name}",
                 )
             }
             call.respond(LoginOptionsResponse(providers))
@@ -288,50 +274,6 @@ fun Route.authRoutes(config: AuthConfig?, secureCookies: Boolean = false) {
                     )
                     call.respondRedirect(appendHandoffCode(loginRequest.returnTo, handoffCode))
                 }
-            }
-        }
-
-        config?.providers?.filterIsInstance<HeaderInjectionProviderConfig>()?.forEach { provider ->
-            get("/callback/${provider.name}") {
-                val providedSecret = call.request.headers[provider.sharedSecretHeader]
-                if (providedSecret == null || !sharedSecretMatches(providedSecret, provider.sharedSecret.value)) {
-                    call.respond(
-                        HttpStatusCode.Unauthorized,
-                        ApiError(
-                            error = "INVALID_HEADER_INJECTION_TOKEN",
-                            message = "Header-injection callback rejected: missing or invalid " +
-                                    "'${provider.sharedSecretHeader}' header. The trusted upstream proxy must " +
-                                    "inject this header with the configured shared secret on every authenticated request.",
-                        ),
-                    )
-                    return@get
-                }
-
-                val userId = call.request.headers[provider.userHeader]
-                if (userId.isNullOrBlank()) {
-                    call.respond(
-                        HttpStatusCode.Unauthorized,
-                        ApiError(
-                            error = "MISSING_SHIB_HEADER",
-                            message = "Expected header '${provider.userHeader}' was not present. " +
-                                    "Ensure the Shibboleth SP reverse proxy is correctly configured.",
-                        ),
-                    )
-                    return@get
-                }
-
-                val email = call.request.headers[provider.emailHeader]
-                val displayName = call.request.headers[provider.displayNameHeader]
-
-                val principal = AuthenticatedPrincipal(
-                    userId = userId,
-                    email = email,
-                    displayName = displayName,
-                    providerName = provider.name,
-                    authTime = Clock.System.now(),
-                )
-
-                respondWithTokens(call, principal, jwtService, refreshTokenStore, config.session, secureCookies)
             }
         }
 
@@ -506,26 +448,6 @@ private suspend fun resolvePrincipalFromOidc(
         null
     }
 }
-
-/**
- * Compare a client-supplied shared secret against the configured value in constant time.
- *
- * Uses [MessageDigest.isEqual] which performs a length-independent byte comparison after
- * the length check, avoiding timing side channels that a naive `==` on Strings would
- * expose. Returns `false` immediately when lengths differ — a minor leak for HMAC-style
- * fixed-length secrets, irrelevant here because the configured secret is ≥32 bytes
- * (enforced by [HeaderInjectionProviderConfig]) so brute-forcing the length is not the
- * weak link.
- *
- * @param provided The value supplied by the inbound request header.
- * @param expected The configured shared secret from the provider's config.
- * @return `true` when the two values are byte-for-byte equal.
- */
-private fun sharedSecretMatches(provided: String, expected: String): Boolean =
-    MessageDigest.isEqual(
-        provided.toByteArray(Charsets.UTF_8),
-        expected.toByteArray(Charsets.UTF_8),
-    )
 
 /**
  * Mint a fresh access + refresh token pair for [principal], set the refresh cookie, and write

@@ -21,7 +21,6 @@ graph TB
     subgraph authn["Authentication (configureAuthentication)"]
         JWTGUARD["`**jwt-api** Bearer provider<br/>*always installed*`"]
         OIDCPROV["`**oidc-(name)** OAuth2 providers<br/>*one per OidcProviderConfig*`"]
-        HDRINJ["`**Header-injection**<br/>Shibboleth / SAML 2.0<br/>via trusted reverse-proxy headers`"]
     end
 
     subgraph routing["Routing — /api/v1 (configureRouting)"]
@@ -104,7 +103,6 @@ graph TB
     PUBLIC -. "POST /refresh" .-> RT
     DISC -. "discovery doc" .-> IDP
     UINFO -. "userinfo" .-> IDP
-    HDRINJ -. "trusted headers" .-> PUBLIC
 
     %% Session persistence
     PKCE --> DB
@@ -128,7 +126,7 @@ graph TB
 
     class BROWSER,CI,INST client;
     class TLS,EDGE,RL,OBS infra;
-    class JWTGUARD,OIDCPROV,HDRINJ,JWTSVC,DISC,UINFO,IDTOK,PKCE,RT,FILTERS sec;
+    class JWTGUARD,OIDCPROV,JWTSVC,DISC,UINFO,IDTOK,PKCE,RT,FILTERS sec;
     class PUBLIC,GUARDED,GATE,SIGNR,VALR,TSR,CERTR,CFGR route;
     class UC,DSSREPO,PWCB core;
     class YML,LOADER,EXTURL,SIGNYML,SLOADER infra;

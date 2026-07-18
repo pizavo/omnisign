@@ -1,15 +1,8 @@
 package cz.pizavo.omnisign.config
 
-import cz.pizavo.omnisign.domain.model.value.sensitive
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.string.shouldContain
-
-/**
- * 64-byte filler for [HeaderInjectionProviderConfig.sharedSecret] in tests that combine
- * mixed providers; length matches the production minimum so construction succeeds.
- */
-private const val HEADER_INJECTION_TEST_SECRET = "test-shared-secret-padded-to-at-least-64-bytes-for-test-fixtures!"
 
 /**
  * Unit tests for [validateAuthConfig] — startup-time misconfiguration checks for OIDC
@@ -80,19 +73,6 @@ class AuthConfigValidatorTest : FunSpec({
             validateAuthConfig(AuthConfig(providers = listOf(good, bad)))
         }
         ex.message!! shouldContain "bad"
-    }
-
-    test("skips HeaderInjectionProviderConfig (no email/claims filter to validate)") {
-        val mixed = AuthConfig(
-            providers = listOf(
-                oidc("o", listOf("*")),
-                HeaderInjectionProviderConfig(
-                    name = "shib",
-                    sharedSecret = HEADER_INJECTION_TEST_SECRET.sensitive(),
-                ),
-            ),
-        )
-        validateAuthConfig(mixed)
     }
 
     test("accepts an empty allowedRedirectUris (no browser hand-off configured)") {

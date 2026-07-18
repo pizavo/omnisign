@@ -40,10 +40,11 @@ import org.jetbrains.compose.resources.stringResource
  * authentication and no session could be established at boot.
  *
  * Lists the server's OIDC providers (fetched once on composition) as buttons; clicking one starts
- * the PKCE hand-off via [startLogin], which navigates away to the identity provider. Header-injection
- * providers are omitted — that flow is driven by a reverse proxy, not a browser click, so it has no
- * button to offer here. While the provider list loads a spinner shows; if the server exposes no
- * interactive provider, that is said plainly rather than leaving an empty panel.
+ * the PKCE hand-off via [startLogin], which navigates away to the identity provider. Only
+ * browser-drivable providers are shown (the `type` filter) — a provider the server advertises but
+ * that a click cannot start has no button to offer here. While the provider list loads a spinner
+ * shows; if the server exposes no interactive provider, that is said plainly rather than leaving an
+ * empty panel.
  *
  * Owns its own theme resolution (persisted preference, else the system setting) because it renders
  * outside [cz.pizavo.omnisign.App], which is where the in-app theme state normally lives.

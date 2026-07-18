@@ -7,8 +7,8 @@ import kotlinx.serialization.Serializable
  *
  * @property userId Stable unique identifier from the identity provider.
  * @property email Authenticated user's e-mail address, or `null` when the IdP does not
- *   supply one (e.g., a GitHub user with private email visibility, or a Shibboleth SP
- *   that does not inject the email attribute).
+ *   supply one (e.g., a GitHub user with private email visibility, or an IdP that does
+ *   not release the email claim).
  * @property displayName Human-readable full name, or `null` if not provided by the IdP.
  * @property providerName Name of the SSO provider that authenticated this user.
  */

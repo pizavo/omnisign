@@ -6,7 +6,6 @@ import cz.pizavo.omnisign.auth.LoginRequestStore
 import cz.pizavo.omnisign.auth.OidcDiscoveryService
 import cz.pizavo.omnisign.auth.PkceService
 import cz.pizavo.omnisign.config.AuthConfig
-import cz.pizavo.omnisign.config.HeaderInjectionProviderConfig
 import cz.pizavo.omnisign.config.OidcProviderConfig
 import cz.pizavo.omnisign.config.ServerSecrets
 import cz.pizavo.omnisign.config.SsoProviderPreset
@@ -80,9 +79,6 @@ private val logger = KotlinLogging.logger {}
  *    has been through `providerLookup` again — where the PKCE row keyed by the same `state`
  *    is consumed. Reading the parameters in `providerLookup` and writing them in the
  *    interceptor closure it returns is what gets both halves into one place.
- *
- * [HeaderInjectionProviderConfig] providers are not registered here; they are handled
- * directly in the `/auth/callback/{name}` route by reading the injected request headers.
  *
  * @param config Root authentication configuration, or `null` when auth is disabled.
  * @param externalUrl Base public URL of the server used to build OAuth2 redirect URIs.
@@ -166,10 +162,6 @@ fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String
 
             val pkceLabel = if (provider.pkce) " — PKCE enabled" else " — PKCE disabled"
             logger.info { "Registered OIDC provider '${provider.name}' (${provider.displayName}) — redirect: $redirectUrl$pkceLabel" }
-        }
-
-        config?.providers?.filterIsInstance<HeaderInjectionProviderConfig>()?.forEach { provider ->
-            logger.info { "Registered header-injection provider '${provider.name}' — user header: ${provider.userHeader}" }
         }
     }
 }

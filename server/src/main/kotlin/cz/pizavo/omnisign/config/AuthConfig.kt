@@ -10,8 +10,8 @@ import cz.pizavo.omnisign.domain.model.value.Sensitive
  * and the `/auth/​**` endpoints require a valid JWT session token.
  *
  * Example `server.yml` snippet. Note: secret-bearing fields (`session.secret`, OIDC
- * `clientSecret`, header-injection `sharedSecret`) are resolved from environment
- * variables — they cannot appear in YAML. See [ServerSecrets] for the env-var names.
+ * `clientSecret`) are resolved from environment variables — they cannot appear in YAML.
+ * See [ServerSecrets] for the env-var names.
  *
  * ```yaml
  * auth:
@@ -34,13 +34,6 @@ import cz.pizavo.omnisign.domain.model.value.Sensitive
  *       clientId: "…"
  *       allowedEmailDomains: ["contoso.com"]
  *       # clientSecret resolved from OMNISIGN_OIDC_MICROSOFT_CLIENT_SECRET
- *     - type: header-injection
- *       name: shibboleth
- *       userHeader: "X-Remote-User"
- *       emailHeader: "X-Shib-Mail"
- *       displayNameHeader: "X-Shib-Cn"
- *       # sharedSecret declared via env-var substitution:
- *       sharedSecret: "${OMNISIGN_SHIB_TOKEN}"
  * ```
  *
  * @property enabled When `true`, all operational API routes require a valid JWT Bearer token.

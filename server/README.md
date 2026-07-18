@@ -73,14 +73,11 @@ token (`/health`, `/capabilities`, and `/auth/*` stay public).
 
 ## Authentication
 
-SSO is optional (`auth.enabled`). Two provider types are supported:
-
-- **OIDC** — presets for Google, Microsoft (Entra ID), Amazon Cognito, Keycloak, GitHub, GitLab,
-  Auth0, Apple, and **eduID.cz** (the Czech academic federation). Authorization-code flow with PKCE,
-  id_token verification, and single-use refresh-token rotation. A required `allowedEmailDomains`
-  (and optional `requiredClaims`) restricts who may sign in.
-- **Header injection** — for a Shibboleth SP reverse proxy that injects identity headers, guarded by
-  a shared secret.
+SSO is optional (`auth.enabled`) and uses **OIDC** providers — presets for Google, Microsoft
+(Entra ID), Amazon Cognito, Keycloak, GitHub, GitLab, Auth0, Apple, and **eduID.cz** (the Czech
+academic federation). Authorization-code flow with PKCE, id_token verification, and single-use
+refresh-token rotation. A required `allowedEmailDomains` (and optional `requiredClaims`) restricts
+who may sign in.
 
 Sessions are JWTs (HS256/384/512; RS\*/ES\* planned).
 

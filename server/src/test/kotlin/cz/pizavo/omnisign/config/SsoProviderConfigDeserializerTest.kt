@@ -1,19 +1,11 @@
 package cz.pizavo.omnisign.config
 
-import cz.pizavo.omnisign.domain.model.value.sensitive
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
-
-/**
- * 64-byte test secret used in tests that construct a [HeaderInjectionProviderConfig].
- * Length matches the production minimum so deserialization succeeds; value is fixed for
- * deterministic test output.
- */
-private const val HEADER_INJECTION_TEST_SECRET = "test-shared-secret-padded-to-at-least-64-bytes-for-test-fixtures!"
 
 /**
  * Unit tests for [ServerConfigLoader] focusing on the SSO provider YAML deserialization
@@ -45,28 +37,7 @@ class SsoProviderConfigDeserializerTest : FunSpec({
         provider.preset shouldBe SsoProviderPreset.GOOGLE
     }
 
-    test("deserializes a header-injection provider from YAML") {
-        val yaml = """
-            auth:
-              providers:
-                - type: header-injection
-                  name: shibboleth
-                  userHeader: "X-Remote-User"
-                  emailHeader: "X-Shib-Mail"
-                  displayNameHeader: "X-Shib-Cn"
-                  sharedSecret: "$HEADER_INJECTION_TEST_SECRET"
-        """.trimIndent()
-
-        val config = loader.loadFromString(yaml)
-        val provider = config.auth?.providers?.first()
-        provider.shouldBeInstanceOf<HeaderInjectionProviderConfig>()
-        provider.name shouldBe "shibboleth"
-        provider.userHeader shouldBe "X-Remote-User"
-        provider.sharedSecret shouldBe HEADER_INJECTION_TEST_SECRET.sensitive()
-        provider.sharedSecretHeader shouldBe "X-Header-Injection-Token"
-    }
-
-    test("deserializes multiple mixed providers") {
+    test("deserializes multiple providers") {
         val yaml = """
             auth:
               providers:
@@ -76,40 +47,18 @@ class SsoProviderConfigDeserializerTest : FunSpec({
                   tenantId: "common"
                   clientId: "ms-id"
                   allowedEmailDomains: ["*"]
-                - type: header-injection
-                  name: eduid
-                  userHeader: "REMOTE_USER"
-                  sharedSecret: "$HEADER_INJECTION_TEST_SECRET"
+                - type: oidc
+                  name: google
+                  preset: GOOGLE
+                  clientId: "g-id"
+                  allowedEmailDomains: ["*"]
         """.trimIndent()
 
         val config = loader.loadFromString(yaml)
         val providers = config.auth!!.providers
         providers.size shouldBe 2
         providers[0].shouldBeInstanceOf<OidcProviderConfig>()
-        providers[1].shouldBeInstanceOf<HeaderInjectionProviderConfig>()
-    }
-
-    test("header-injection provider rejects sharedSecret shorter than the minimum") {
-        val yaml = """
-            auth:
-              providers:
-                - type: header-injection
-                  name: shib
-                  sharedSecret: "too-short"
-        """.trimIndent()
-
-        shouldThrow<Exception> { loader.loadFromString(yaml) }
-    }
-
-    test("header-injection provider requires sharedSecret to be present") {
-        val yaml = """
-            auth:
-              providers:
-                - type: header-injection
-                  name: shib
-        """.trimIndent()
-
-        shouldThrow<Exception> { loader.loadFromString(yaml) }
+        providers[1].shouldBeInstanceOf<OidcProviderConfig>()
     }
 
     test("throws on unknown provider type") {

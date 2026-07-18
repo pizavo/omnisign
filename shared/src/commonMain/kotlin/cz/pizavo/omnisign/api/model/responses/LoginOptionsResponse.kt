@@ -16,7 +16,7 @@ data class LoginOptionsResponse(
      *
      * @property name Machine-readable provider identifier used in callback URLs.
      * @property displayName Human-readable label for the login button.
-     * @property type Protocol type: `oidc` or `header-injection`.
+     * @property type Protocol type identifier; currently always `oidc`.
      * @property loginUrl URL to redirect the browser to in order to start the login flow.
      */
     @Serializable

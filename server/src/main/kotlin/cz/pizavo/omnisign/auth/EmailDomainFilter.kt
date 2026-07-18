@@ -23,8 +23,8 @@ package cz.pizavo.omnisign.auth
  * configuration contract.
  *
  * @param email The user's email address resolved from IdP claims, or `null` when the
- *   IdP did not supply one (GitHub user with private email, Shibboleth SP that does
- *   not inject the email attribute, etc.).
+ *   IdP did not supply one (e.g. a GitHub user with private email, or an IdP that does
+ *   not release the email claim).
  * @param allowedDomains Non-empty list of permitted domain entries (e.g. `["contoso.com"]`)
  *   or the singleton `["*"]` to allow every authenticated user.
  * @return `true` when [allowedDomains] contains `"*"`, or when [email] is non-null and

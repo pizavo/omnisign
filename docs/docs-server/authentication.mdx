@@ -70,24 +70,6 @@ institution with `allowedEmailDomains` (e.g. `["osu.cz"]`), or more authoritativ
       allowedEmailDomains: ["osu.cz"]
 ```
 
-## Shibboleth / header injection
-
-For institutions running a Shibboleth SP (Apache + `mod_shib`) as a reverse proxy: the SP
-authenticates the user and injects identity attributes as headers. The OmniSign port must **not** be
-reachable directly — only the proxy should be exposed (see [Security → Reverse proxy](security#reverse-proxy)).
-
-```yaml
-    - type: header-injection
-      name: shibboleth
-      displayName: "University SSO (Shibboleth)"
-      userHeader: "X-Remote-User"
-      emailHeader: "X-Shib-Mail"
-      displayNameHeader: "X-Shib-Cn"
-```
-
-The proxy must also send a configured shared-secret header so the server only trusts callbacks coming
-through it; the secret is supplied from the environment.
-
 ## Login flow and tokens
 
 1. `GET /auth/login` returns the active providers and each one's `loginUrl`.

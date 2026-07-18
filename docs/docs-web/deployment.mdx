@@ -115,12 +115,6 @@ Two server settings make this work:
   `cors.allowedOrigins: ["*"]` — list the app's origin explicitly. On a same-origin deployment you do
   not need it.
 
-:::note[Reverse-proxy SSO]
-The server also supports header-injection (Shibboleth / SAML) providers, where an authenticating
-reverse proxy in front of the server establishes the identity. Those present no login button in the
-app — the proxy signs the user in before the request reaches it.
-:::
-
 ## Choosing what users can do
 
 The frontend adapts to the server. At startup it reads `GET /api/v1/capabilities` and hides the

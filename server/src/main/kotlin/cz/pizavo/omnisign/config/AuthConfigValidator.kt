@@ -32,8 +32,7 @@ import java.net.URI
  * Called from [cz.pizavo.omnisign.moduleWith] before any provider-dependent component
  * is wired into the application module, so a misconfiguration aborts the server boot
  * with a clear `IllegalArgumentException` rather than producing an undefined runtime
- * state. Header-injection providers carry no email/claims filter today (see
- * `HeaderInjectionProviderConfig` KDoc) so they are not validated here.
+ * state.
  *
  * @param authConfig Root authentication configuration, or `null` when auth is disabled.
  * @throws IllegalArgumentException with a provider-named message when any OIDC provider

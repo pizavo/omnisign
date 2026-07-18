@@ -105,12 +105,8 @@ enum class SsoProviderPreset(
      * Czech Academic Identity Federation (eduID.cz) OIDC proxy service.
      *
      * eduID.cz is operated by CESNET and used by Czech universities, including the
-     * University of Ostrava. It's supported OIDC since 2020 and federates into EduGAIN.
+     * University of Ostrava. It has supported OIDC since 2020 and federates into EduGAIN.
      * Register an OIDC client at https://www.eduid.cz/cs/tech/oidc.
-     *
-     * For institutions whose IdP supports only SAML 2.0 (traditional Shibboleth),
-     * use the [HeaderInjectionProviderConfig] provider type behind an Apache/mod_shib
-     * reverse proxy instead.
      */
     EDUID_CZ(discoveryUrl = "https://login.cesnet.cz/oidc/.well-known/openid-configuration"),
 }
