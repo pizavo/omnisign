@@ -195,39 +195,32 @@ development: false
 #       clientId: "YOUR_APPLE_SERVICE_ID"
 #       allowedEmailDomains: ["yourcompany.com"]   # Apple is public — domain-restrict
 #
-#     # ── eduID.cz / Czech Academic Federation (OIDC mode) ─────────────────────
-#     # Register an OIDC client at https://www.eduid.cz/cs/tech/oidc
-#     # eduID.cz is a FEDERATION — a single clientId/clientSecret grants access to users
-#     # from ALL ~60+ federated Czech universities (Charles University, Masaryk University,
-#     # University of Ostrava, CTU Prague, etc.). Users pick their home institution on
-#     # the eduID.cz login page. The clientId does NOT restrict which institution can log in.
-#     #
-#     # Restrict by institution using one of the following approaches:
-#     #   1. allowedEmailDomains — simple domain check on the email claim.
-#     #   2. requiredClaims.schac_home_organization — authoritative institution identifier;
-#     #      works even when users have personal e-mail addresses on file.
-#     #   3. requiredClaims.eduperson_scoped_affiliation — restricts by institution AND role
-#     #      (student / staff / faculty / member). Multi-valued; at least one must match.
+#     # ── eduID.cz / Czech academic federation (CESNET e-INFRA OIDC proxy) ─────
+#     # The EDUID_CZ preset targets the login.e-infra.cz hub, which fronts the whole
+#     # eduID.cz SAML federation as ONE OIDC provider — a single clientId/clientSecret
+#     # grants access to users from ALL ~60 federated Czech universities (Charles,
+#     # Masaryk, University of Ostrava, CTU Prague, …). Users pick their home institution
+#     # on the eduID.cz page, so the clientId does NOT restrict which institution logs in;
+#     # you MUST restrict it yourself.
+#     # Register an OIDC client (self-service) at https://spadmin.e-infra.cz/ — set the
+#     # redirect URI and pick scopes there; the default openid/email/profile set is enough
+#     # for the email-domain restriction below.
 #     # client_secret env var: OMNISIGN_OIDC_EDUID_CLIENT_SECRET
 #     - type: oidc
 #       name: eduid
 #       preset: EDUID_CZ
 #       displayName: "Sign in with eduID.cz"
 #       clientId: "YOUR_EDUID_CLIENT_ID"
-#       scopes: ["openid", "email", "profile", "eduperson_principal_name"]
-#       # Option 1 — restrict to University of Ostrava by email domain (use this line as written):
+#       # Restrict to the University of Ostrava by institutional e-mail domain — the reliable
+#       # per-institution gate on this proxy. Do NOT gate on eduperson_scoped_affiliation or
+#       # organization here: the proxy fixes eduperson_scoped_affiliation to "@einfra.cesnet.cz"
+#       # (E-INFRA membership, not the home university) and exposes organization as a display
+#       # name, not a domain — so "staff@osu.cz" / "osu.cz" would never match. Finer
+#       # affiliation/role gating uses the proxy's voperson_external_affiliation or
+#       # eduperson_entitlement claims (request the matching scope, then confirm the exact
+#       # values against a real token):
+#       # https://aai.cesnet.cz/en/index/documentation/sp/proxy/attributes_and_scopes
 #       allowedEmailDomains: ["osu.cz"]
-#       #
-#       # Option 2 — restrict by schac_home_organization (more authoritative than email).
-#       # Pair with allowedEmailDomains: ["*"] above so the email check doesn't double-restrict.
-#       # requiredClaims:
-#       #   schac_home_organization: ["osu.cz"]
-#       #
-#       # Option 3 — restrict to UO staff and faculty only (excludes students).
-#       # Same note on allowedEmailDomains as Option 2.
-#       # requiredClaims:
-#       #   schac_home_organization: ["osu.cz"]
-#       #   eduperson_scoped_affiliation: ["staff@osu.cz", "faculty@osu.cz"]
 
 # Operation gating: which API operations the server exposes and which certificate
 # aliases are eligible for signing. The two fields are tightly coupled —
