@@ -74,6 +74,9 @@ import org.koin.mp.KoinPlatform
  * @param onFormatChange Applies the chosen date format live as a preview only, like [onLanguageChange].
  * @param onPersistLocale Persists the given language tag and date format. Invoked only when the user
  *   saves the settings dialog, so a previewed language/format reverts on cancel unless it was saved.
+ * @param onLogout Sign-out action for the toolbar, forwarded to [IslandToolbar]. `null` (desktop, or
+ *   web with auth disabled) hides the sign-out button; the web target passes a non-null action only
+ *   when the server has auth enabled.
  * @param modifier Optional [Modifier] applied to the outermost container.
  */
 @Composable
@@ -85,6 +88,7 @@ fun IslandLayout(
 	onLanguageChange: (String?) -> Unit,
 	onFormatChange: (DateFormat) -> Unit,
 	onPersistLocale: (String?, DateFormat) -> Unit,
+	onLogout: (() -> Unit)? = null,
 	modifier: Modifier = Modifier,
 ) {
 	val pdfViewModel: PdfViewerViewModel = viewModel { PdfViewerViewModel() }
@@ -366,6 +370,7 @@ fun IslandLayout(
 					canSign = capabilities.canSign,
 					canTimestamp = capabilities.canTimestamp,
 					fileLoaded = pdfState.document != null,
+					onLogout = onLogout,
 				)
 				
 				if (showSettingsDialog) {

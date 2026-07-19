@@ -43,10 +43,12 @@ import cz.pizavo.omnisign.ui.platform.saveThemePreference
  *   only; `null` on desktop), provided through [LocalOrganizationName]. It is combined with the server
  *   operator's label (from the capabilities) and the fixed OmniSign name to compose the title, so the
  *   toolbar logo tooltip and the no-document branding block read the same de-duplicated chain.
+ * @param onLogout Sign-out action wired to the toolbar's sign-out button (web only, and only when the
+ *   server has auth enabled). `null` — the default and the desktop value — hides the button.
  */
 @Composable
 @Preview
-fun App(organizationName: String? = null) {
+fun App(organizationName: String? = null, onLogout: (() -> Unit)? = null) {
     val systemDark = isSystemInDarkTheme()
     val initialPreferences = remember { loadUiPreferences() }
     var isDarkTheme by remember { mutableStateOf(initialPreferences.isDark ?: systemDark) }
@@ -76,6 +78,7 @@ fun App(organizationName: String? = null) {
                     saveLanguagePreference(tag)
                     saveFormatPreference(fmt)
                 },
+                onLogout = onLogout,
                 modifier = Modifier
                     .fillMaxSize()
                     .background(LumoTheme.colors.background)

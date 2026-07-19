@@ -54,7 +54,9 @@ import org.koin.mp.KoinPlatform
  *     that requires auth shows nothing operational until the user is signed in. Once [App] mounts,
  *     [cz.pizavo.omnisign.ui.viewmodel.CapabilitiesViewModel] re-fetches capabilities to narrow the
  *     visible affordances (hiding Sign / Timestamp or the validation panel) to what the server
- *     allows and to pick up the now-authenticated profile list.
+ *     allows and to pick up the now-authenticated profile list. When auth is enabled, [App] is also
+ *     handed a sign-out action that revokes the session, clears the in-memory tokens, and reloads
+ *     back to this gate.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
@@ -78,11 +80,20 @@ fun main() {
 
         val koin = KoinPlatform.getKoin()
         val authEnabled = runCatching { koin.get<CapabilitiesRepository>().get().authEnabled }.getOrDefault(false)
-        val session = if (authEnabled) establishSession(koin.get<WebAuthApi>()) else SessionOutcome(authenticated = true)
+        val webAuthApi = if (authEnabled) koin.get<WebAuthApi>() else null
+        val session = if (webAuthApi != null) establishSession(webAuthApi) else SessionOutcome(authenticated = true)
+        val onLogout: (() -> Unit)? = webAuthApi?.let { api ->
+            {
+                CoroutineScope(Dispatchers.Default).launch {
+                    api.logout()
+                    window.location.reload()
+                }
+            }
+        }
 
         ComposeViewport {
             if (session.authenticated) {
-                App(organizationName = runtimeConfig.organizationName)
+                App(organizationName = runtimeConfig.organizationName, onLogout = onLogout)
             } else {
                 LoginScreen(
                     authApi = koin.get(),

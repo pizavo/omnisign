@@ -3,4 +3,5 @@
 	<string name="login_prompt">Vyberte způsob přihlášení.</string>
 	<string name="login_no_providers">Tento server nemá nakonfigurovaný žádný způsob interaktivního přihlášení. Obraťte se na provozovatele.</string>
 	<string name="login_failed">Přihlášení se nepodařilo dokončit. Zkuste to prosím znovu.</string>
+	<string name="logout_button">Odhlásit se</string>
 </resources>
