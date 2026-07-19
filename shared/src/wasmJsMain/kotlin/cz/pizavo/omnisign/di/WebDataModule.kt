@@ -16,6 +16,7 @@ import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.repository.ValidationRepository
 import cz.pizavo.omnisign.web.auth.WebAuthApi
 import cz.pizavo.omnisign.web.auth.WebAuthState
+import cz.pizavo.omnisign.web.auth.WebSessionState
 import cz.pizavo.omnisign.web.auth.authRefreshPlugin
 import io.ktor.client.HttpClient
 import io.ktor.client.plugins.contentnegotiation.ContentNegotiation
@@ -46,7 +47,8 @@ import org.koin.dsl.module
  * [SigningRepository], and [ArchivingRepository] against their remote-backed
  * implementations, plus a read-only [cz.pizavo.omnisign.domain.repository.TrustStore]
  * ([RemoteTrustStore]) so the trusted-certificate panels show exactly the trust the
- * server validates with, and [WebAuthState] + [WebAuthApi] for the login flow.
+ * server validates with, and [WebAuthState], [WebAuthApi], and [WebSessionState] for the login flow
+ * and the reactive auth gate.
  *
  * @param serverBaseUrl Origin of the OmniSign server (e.g.
  *   `"https://omnisign.example.com"`). All HTTP requests are issued relative
@@ -60,6 +62,7 @@ import org.koin.dsl.module
  */
 fun webDataModule(serverBaseUrl: String, languageProvider: () -> String? = { null }): Module = module {
     single { WebAuthState() }
+    single { WebSessionState() }
 
     single(named(AUTH_HTTP_CLIENT)) {
         HttpClient {
@@ -85,6 +88,7 @@ fun webDataModule(serverBaseUrl: String, languageProvider: () -> String? = { nul
     single {
         val authState: WebAuthState = get()
         val authApi: WebAuthApi = get()
+        val sessionState: WebSessionState = get()
         HttpClient {
             expectSuccess = true
             install(ContentNegotiation) {
@@ -95,7 +99,12 @@ fun webDataModule(serverBaseUrl: String, languageProvider: () -> String? = { nul
                     },
                 )
             }
-            install(authRefreshPlugin(authState, authApi))
+            install(
+                authRefreshPlugin(authState, authApi) {
+                    authState.clear()
+                    sessionState.set(false)
+                },
+            )
             defaultRequest {
                 if (serverBaseUrl.isNotBlank()) url(serverBaseUrl)
                 languageProvider()?.takeIf { it.isNotBlank() }

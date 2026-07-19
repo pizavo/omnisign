@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.window.ComposeViewport
 import cz.pizavo.omnisign.data.remote.BrowserProfileSelectionStore
@@ -14,6 +16,7 @@ import cz.pizavo.omnisign.ui.platform.loadUiPreferences
 import cz.pizavo.omnisign.web.auth.LoginScreen
 import cz.pizavo.omnisign.web.auth.SessionOutcome
 import cz.pizavo.omnisign.web.auth.WebAuthApi
+import cz.pizavo.omnisign.web.auth.WebSessionState
 import cz.pizavo.omnisign.web.auth.establishSession
 import cz.pizavo.omnisign.web.resolveWebRuntimeConfig
 import kotlinx.browser.document
@@ -54,9 +57,11 @@ import org.koin.mp.KoinPlatform
  *     that requires auth shows nothing operational until the user is signed in. Once [App] mounts,
  *     [cz.pizavo.omnisign.ui.viewmodel.CapabilitiesViewModel] re-fetches capabilities to narrow the
  *     visible affordances (hiding Sign / Timestamp or the validation panel) to what the server
- *     allows and to pick up the now-authenticated profile list. When auth is enabled, [App] is also
- *     handed a sign-out action that revokes the session, clears the in-memory tokens, and reloads
- *     back to this gate.
+ *     allows and to pick up the now-authenticated profile list. Because the switch is reactive, both
+ *     an explicit sign-out and a mid-session refresh that returns
+ *     [cz.pizavo.omnisign.web.auth.RefreshOutcome.SessionOver] fall back to the login screen in
+ *     place, with no page reload; sign-out flips the state at once and revokes server-side in the
+ *     background.
  */
 @OptIn(ExperimentalComposeUiApi::class)
 fun main() {
@@ -81,18 +86,19 @@ fun main() {
         val koin = KoinPlatform.getKoin()
         val authEnabled = runCatching { koin.get<CapabilitiesRepository>().get().authEnabled }.getOrDefault(false)
         val webAuthApi = if (authEnabled) koin.get<WebAuthApi>() else null
+        val sessionState = koin.get<WebSessionState>()
         val session = if (webAuthApi != null) establishSession(webAuthApi) else SessionOutcome(authenticated = true)
+        sessionState.set(session.authenticated)
         val onLogout: (() -> Unit)? = webAuthApi?.let { api ->
             {
-                CoroutineScope(Dispatchers.Default).launch {
-                    api.logout()
-                    window.location.reload()
-                }
+                sessionState.set(false)
+                CoroutineScope(Dispatchers.Default).launch { api.logout() }
             }
         }
 
         ComposeViewport {
-            if (session.authenticated) {
+            val authenticated by sessionState.authenticated.collectAsState()
+            if (authenticated) {
                 App(organizationName = runtimeConfig.organizationName, onLogout = onLogout)
             } else {
                 LoginScreen(

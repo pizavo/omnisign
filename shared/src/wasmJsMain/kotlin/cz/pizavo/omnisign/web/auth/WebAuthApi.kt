@@ -75,10 +75,13 @@ class WebAuthApi(
      * server read the HttpOnly refresh cookie. That empty-body form is the boot-time reload-recovery
      * path: an app that just loaded has no in-memory token but may still have a valid cookie.
      *
-     * @return `true` and [authState] refreshed on success; `false` when there is no resumable
-     *   session (no valid cookie and no in-memory token, or the token has expired/rotated away).
+     * @return [RefreshOutcome.Refreshed] with [authState] repopulated on success;
+     *   [RefreshOutcome.SessionOver] when the server answers `401` (unknown / expired / rotated-away
+     *   token, or the session cap is exceeded); [RefreshOutcome.TransientError] when the server is
+     *   unreachable or answers otherwise — the session may still be valid, so the caller should
+     *   surface a retryable error rather than sign the user out.
      */
-    suspend fun refresh(): Boolean {
+    suspend fun refresh(): RefreshOutcome {
         val response = runCatching {
             client.post("auth/refresh") {
                 authState.refreshToken?.let { token ->
@@ -86,8 +89,12 @@ class WebAuthApi(
                     setBody(RefreshTokenRequest(token))
                 }
             }
-        }.getOrNull() ?: return false
-        return storeIfOk(response)
+        }.getOrNull() ?: return RefreshOutcome.TransientError
+        return when {
+            storeIfOk(response) -> RefreshOutcome.Refreshed
+            response.status == HttpStatusCode.Unauthorized -> RefreshOutcome.SessionOver
+            else -> RefreshOutcome.TransientError
+        }
     }
 
     /**

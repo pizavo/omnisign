@@ -24,19 +24,29 @@ import kotlinx.coroutines.sync.withLock
  *   header. So the retried builder still carries the *stale* token; the plugin removes and re-appends
  *   the header itself, or the retry would go out with the just-expired token (or a duplicate).
  * - **Concurrent 401s must refresh once, not once each.** A [Mutex] serialises the refresh, and each
- *   waiter re-checks whether the token already changed while it waited — if a sibling request
- *   already refreshed, it skips straight to the retry rather than rotating the refresh token a
- *   second time.
+ *   waiter re-checks whether a sibling already installed a *fresh* token (non-null and different)
+ *   while it waited — if so it skips straight to the retry rather than rotating the refresh token a
+ *   second time. The non-null half matters because [onSessionExpired] clears the token, so a bare
+ *   "changed" test would let a dead session masquerade as a completed refresh.
  *
  * The refresh call itself goes through [WebAuthApi] (the bare client), never this client, so it
- * cannot recurse back into this interceptor. A refresh that fails (the session is genuinely over —
- * refresh token expired or past `maxSessionSeconds`) leaves the original `401` to propagate, which
- * the repository layer surfaces as an error; the user reloads and lands back on the login gate.
+ * cannot recurse back into this interceptor. Its [RefreshOutcome] then forks the response:
+ * [RefreshOutcome.Refreshed] retries the request with the new token; [RefreshOutcome.SessionOver]
+ * (the server rejected the refresh token — expired, rotated away, or past `maxSessionSeconds`) fires
+ * [onSessionExpired] so the app can switch to its login gate, and lets the original `401` return;
+ * [RefreshOutcome.TransientError] (the server was unreachable) simply lets the `401` propagate as an
+ * ordinary retryable error, so a momentary blip is never mistaken for a sign-out.
  *
  * @param authState The in-memory token holder the retry reads the refreshed access token from.
  * @param authApi The auth API whose [WebAuthApi.refresh] performs the out-of-band token refresh.
+ * @param onSessionExpired Invoked once when a refresh comes back [RefreshOutcome.SessionOver], so the
+ *   caller can drop the UI to its login gate. Not called for transient failures.
  */
-fun authRefreshPlugin(authState: WebAuthState, authApi: WebAuthApi) =
+fun authRefreshPlugin(
+    authState: WebAuthState,
+    authApi: WebAuthApi,
+    onSessionExpired: () -> Unit,
+) =
     createClientPlugin("OmniSignAuthRefresh") {
         val refreshMutex = Mutex()
 
@@ -47,15 +57,24 @@ fun authRefreshPlugin(authState: WebAuthState, authApi: WebAuthApi) =
                 return@on call
             }
 
-            val refreshed = refreshMutex.withLock {
-                if (authState.accessToken != tokenBeforeSend) true else authApi.refresh()
+            val outcome = refreshMutex.withLock {
+                val current = authState.accessToken
+                if (current != null && current != tokenBeforeSend) RefreshOutcome.Refreshed
+                else authApi.refresh()
             }
-            if (!refreshed) {
-                return@on call
-            }
+            when (outcome) {
+                RefreshOutcome.Refreshed -> {
+                    request.headers.remove(HttpHeaders.Authorization)
+                    authState.accessToken?.let { request.headers.append(HttpHeaders.Authorization, "Bearer $it") }
+                    proceed(request)
+                }
 
-            request.headers.remove(HttpHeaders.Authorization)
-            authState.accessToken?.let { request.headers.append(HttpHeaders.Authorization, "Bearer $it") }
-            proceed(request)
+                RefreshOutcome.SessionOver -> {
+                    onSessionExpired()
+                    call
+                }
+
+                RefreshOutcome.TransientError -> call
+            }
         }
     }

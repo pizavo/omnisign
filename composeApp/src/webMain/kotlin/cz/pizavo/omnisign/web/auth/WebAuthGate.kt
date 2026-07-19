@@ -28,13 +28,13 @@ suspend fun establishSession(authApi: WebAuthApi): SessionOutcome {
         if (verifier != null && authApi.exchange(code, verifier)) {
             return SessionOutcome(authenticated = true)
         }
-        if (authApi.refresh()) {
+        if (authApi.refresh() == RefreshOutcome.Refreshed) {
             return SessionOutcome(authenticated = true)
         }
         return SessionOutcome(authenticated = false, afterFailedExchange = true)
     }
 
-    if (authApi.refresh()) {
+    if (authApi.refresh() == RefreshOutcome.Refreshed) {
         return SessionOutcome(authenticated = true)
     }
     return SessionOutcome(authenticated = false)
