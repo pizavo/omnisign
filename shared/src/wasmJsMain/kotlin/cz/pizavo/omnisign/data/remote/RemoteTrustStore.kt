@@ -43,7 +43,7 @@ class RemoteTrustStore(
 				}.body()
 			certificates.map { it.toCertificate() }
 		}.mapLeft { exception ->
-			TrustStoreError.operationFailed(details = exception.message, cause = exception)
+			TrustStoreError.operationFailed(cause = exception)
 		}
 
 	override suspend fun add(

@@ -101,9 +101,7 @@ class RemoteSigningRepository(
                 rawWarnings = meta.annotatedWarnings.map { it.summary.english() },
                 hasRevocationWarnings = meta.hasRevocationWarnings,
             )
-        }.mapLeft { exception ->
-            SigningError.remoteSigningFailed(details = exception.message, cause = exception)
-        }
+        }.mapLeftSuspend { exception -> signingError(exception) }
 
     override suspend fun listAvailableCertificates(
         promptForLocked: Boolean,
@@ -111,7 +109,7 @@ class RemoteSigningRepository(
         Either.catch {
             client.get("api/v1/certificates").body<CertificateDiscoveryResult>()
         }.mapLeft { exception ->
-            SigningError.listCertificatesFromServerFailed(details = exception.message, cause = exception)
+            SigningError.listCertificatesFromServerFailed(cause = exception)
         }
 
     override suspend fun unlockToken(tokenId: String): OperationResult<List<AvailableCertificateInfo>> =
@@ -132,4 +130,14 @@ class RemoteSigningRepository(
             details = "Enumerating a server keystore is a server-side operation; the web client lists the " +
                 "server's signing certificates through GET /api/v1/certificates",
         ).left()
+
+    /**
+     * Map a failed [signDocument] request to a localizable [SigningError]: a keyed message for a
+     * recognized server gating code, otherwise the generic remote-signing message. The server's raw
+     * text is never propagated (no `details`), so no JSON or DSS reason reaches the user.
+     */
+    private suspend fun signingError(exception: Throwable): SigningError =
+        serverErrorText(exception.serverErrorCode())
+            ?.let { SigningError.SigningFailed(text = it, cause = exception) }
+            ?: SigningError.remoteSigningFailed(cause = exception)
 }

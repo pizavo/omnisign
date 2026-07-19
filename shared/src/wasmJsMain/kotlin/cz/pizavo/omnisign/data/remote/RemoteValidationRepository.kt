@@ -72,10 +72,15 @@ class RemoteValidationRepository(
                     }
                 },
             ).body<ValidationReport>()
-        }.mapLeft { exception ->
-            ValidationError.remoteValidationFailed(
-                details = exception.message,
-                cause = exception,
-            )
-        }
+        }.mapLeftSuspend { exception -> validationError(exception) }
+
+    /**
+     * Map a failed [validateDocument] request to a localizable [ValidationError]: a keyed message for a
+     * recognized server gating code, otherwise the generic remote-validation message. The server's raw
+     * text is never propagated (no `details`), so no JSON or DSS reason reaches the user.
+     */
+    private suspend fun validationError(exception: Throwable): ValidationError =
+        serverErrorText(exception.serverErrorCode())
+            ?.let { ValidationError.ValidationFailed(text = it, cause = exception) }
+            ?: ValidationError.remoteValidationFailed(cause = exception)
 }

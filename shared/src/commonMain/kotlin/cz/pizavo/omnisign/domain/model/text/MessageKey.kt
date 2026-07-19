@@ -90,6 +90,15 @@ enum class MessageKey {
 	/** Remote (server-delegated) signing failed. */
 	SIGNING_REMOTE_SIGNING_FAILED,
 
+	/** Web target: the server rejected the operation because the resolved profile configuration is not valid for it. */
+	SERVER_INVALID_CONFIGURATION,
+
+	/** Web target: the server does not permit timestamping. */
+	SERVER_TIMESTAMP_NOT_ALLOWED,
+
+	/** Web target: the server does not permit the selected signing certificate. */
+	SERVER_CERTIFICATE_NOT_ALLOWED,
+
 	/** The signing operation failed for an unclassified reason. */
 	SIGNING_SIGNING_FAILED,
 

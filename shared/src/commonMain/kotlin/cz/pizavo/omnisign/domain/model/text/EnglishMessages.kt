@@ -78,6 +78,12 @@ internal object EnglishMessages {
 			"No suitable certificate found for alias '%1\$s'"
 		MessageKey.SIGNING_REMOTE_SIGNING_FAILED ->
 			"Remote signing failed"
+		MessageKey.SERVER_INVALID_CONFIGURATION ->
+			"The server can't perform this operation with the selected profile's configuration"
+		MessageKey.SERVER_TIMESTAMP_NOT_ALLOWED ->
+			"This server does not permit timestamping"
+		MessageKey.SERVER_CERTIFICATE_NOT_ALLOWED ->
+			"The selected signing certificate is not permitted by the server"
 		MessageKey.SIGNING_SIGNING_FAILED ->
 			"Signing failed"
 		MessageKey.SIGNING_LIST_CERTS_FROM_SERVER_FAILED ->
