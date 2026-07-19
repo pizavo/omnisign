@@ -3,7 +3,6 @@ package cz.pizavo.omnisign.auth
 import cz.pizavo.omnisign.config.AuthConfig
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.CorsConfig
-import cz.pizavo.omnisign.config.HeaderInjectionProviderConfig
 import cz.pizavo.omnisign.config.JwtAlgorithmType
 import cz.pizavo.omnisign.config.ListenConfig
 import cz.pizavo.omnisign.config.OidcProviderConfig
@@ -20,7 +19,10 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotBeBlank
+import io.kotest.matchers.string.shouldStartWith
+import io.ktor.client.engine.mock.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
@@ -83,6 +85,39 @@ private fun authTestConfig(auth: AuthConfig?): ServerConfig =
         operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)),
         cors = CorsConfig(allowedOrigins = listOf("*")),
     )
+
+/**
+ * A [MockEngine] standing in for the GitHub IdP: it answers the OAuth2 token exchange with a canned
+ * bearer token (form-encoded, as GitHub does) and the user API with [userInfoJson]. Substituted for
+ * the CIO engine of the server's outbound [io.ktor.client.HttpClient] via the [module]
+ * `httpClientEngine` seam, so the callback's token-exchange -> UserInfo hop runs end-to-end with no
+ * live IdP. GitHub is deliberate: its hard-coded endpoints skip OIDC discovery and its non-OIDC
+ * nature skips id_token verification, so the mock only serves these two endpoints.
+ */
+private fun githubIdpMockEngine(userInfoJson: String): MockEngine =
+    MockEngine { request ->
+        val url = request.url.toString()
+        when {
+            url.startsWith(OidcDiscoveryService.GITHUB_TOKEN_URL) ->
+                respond(
+                    "access_token=gh-access-token&token_type=bearer",
+                    HttpStatusCode.OK,
+                    headersOf(HttpHeaders.ContentType, ContentType.Application.FormUrlEncoded.toString()),
+                )
+            url.startsWith(OidcDiscoveryService.GITHUB_USER_API_URL) ->
+                respond(
+                    userInfoJson,
+                    HttpStatusCode.OK,
+                    headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                )
+            else -> respond("unexpected IdP request: $url", HttpStatusCode.InternalServerError)
+        }
+    }
+
+/** UserInfo JSON for a GitHub user in the `example.com` email domain. */
+private const val OCTOCAT_USER_INFO =
+    """{"id":12345,"login":"octocat","email":"octocat@example.com","name":"The Octocat"}"""
+
 /**
  * Integration tests for the `/auth` route group, verifying login discovery, JWT
  * session endpoints, and authentication enforcement on protected routes.
@@ -387,64 +422,6 @@ class AuthRoutesTest : FunSpec({
 		}
 	}
 
-	val headerInjectionSecret = "header-injection-secret-padded-to-at-least-64-bytes-for-test-use!"
-	val headerInjectionProvider = HeaderInjectionProviderConfig(
-		name = "shib",
-		userHeader = "X-Remote-User",
-		emailHeader = "X-Shib-Mail",
-		displayNameHeader = "X-Shib-Cn",
-		sharedSecret = headerInjectionSecret.sensitive(),
-	)
-	val headerInjectionAuthConfig = authConfig.copy(providers = listOf(headerInjectionProvider))
-
-	test("header-injection callback rejects requests without the shared-secret header") {
-		testApplication {
-			application { module(authTestConfig(headerInjectionAuthConfig), authTestSecrets()) }
-			val response = client.get("/auth/callback/shib") {
-				header("X-Remote-User", "attacker@evil.com")
-			}
-			response.status shouldBe HttpStatusCode.Unauthorized
-		}
-	}
-
-	test("header-injection callback rejects requests with a wrong shared-secret value") {
-		testApplication {
-			application { module(authTestConfig(headerInjectionAuthConfig), authTestSecrets()) }
-			val response = client.get("/auth/callback/shib") {
-				header("X-Header-Injection-Token", "wrong-secret")
-				header("X-Remote-User", "attacker@evil.com")
-			}
-			response.status shouldBe HttpStatusCode.Unauthorized
-		}
-	}
-
-	test("header-injection callback issues a token when the shared secret matches") {
-		withTempSessionsDb {
-			testApplication {
-				application { module(authTestConfig(headerInjectionAuthConfig), authTestSecrets()) }
-				val response = client.get("/auth/callback/shib") {
-					header("X-Header-Injection-Token", headerInjectionSecret)
-					header("X-Remote-User", "alice@example.com")
-					header("X-Shib-Mail", "alice@example.com")
-				}
-				response.status shouldBe HttpStatusCode.OK
-				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
-				body["token"]?.jsonPrimitive?.content.shouldNotBeBlank()
-				body["refreshToken"]?.jsonPrimitive?.content.shouldNotBeBlank()
-			}
-		}
-	}
-
-	test("header-injection callback rejects when the user header is missing even with a valid secret") {
-		testApplication {
-			application { module(authTestConfig(headerInjectionAuthConfig), authTestSecrets()) }
-			val response = client.get("/auth/callback/shib") {
-				header("X-Header-Injection-Token", headerInjectionSecret)
-			}
-			response.status shouldBe HttpStatusCode.Unauthorized
-		}
-	}
-
 	val oauthStateSecret = "oauth-state-secret-padded-to-at-least-64-bytes-for-hmac-nonce-key!".sensitive()
 	fun oidcAuthConfig(pkceEnabled: Boolean) = authConfig.copy(
 		providers = listOf(
@@ -515,6 +492,380 @@ class AuthRoutesTest : FunSpec({
 				val locUrl = Url(location)
 				locUrl.parameters["code_challenge"].shouldBeNull()
 				locUrl.parameters["code_challenge_method"].shouldBeNull()
+			}
+		}
+	}
+
+	/**
+	 * Regression test: `/auth/callback/{name}` must live inside the same
+	 * `authenticate("oidc-{name}") { }` block as `/auth/redirect/{name}`.
+	 *
+	 * Ktor attaches the OAuth token-exchange interceptor only to routes enclosed by that
+	 * block. A callback mounted outside it never exchanges the authorization code, so
+	 * `call.principal<OAuthAccessTokenResponse.OAuth2>()` is always `null` and every OIDC
+	 * login dies with `401 OAUTH_FAILED` — the entire authorization-code flow is unreachable
+	 * past the IdP redirect.
+	 *
+	 * Calling the callback with **no** `code` parameter isolates that wiring without needing
+	 * a live or mocked IdP: `oauth2HandleCallback()` finds no code, yields
+	 * `AuthenticationFailedCause.NoCredentials`, and — because that is not an
+	 * `AuthenticationFailedCause.Error` — Ktor issues the authorize challenge instead. So a
+	 * `302` to the IdP proves the interceptor ran, whereas the unwired route answers `401`.
+	 * The happy-path exchange is covered separately where an IdP can be substituted.
+	 */
+	test("OIDC /auth/callback is enclosed by its authenticate block so Ktor runs the OAuth interceptor") {
+		withTempSessionsDb {
+			testApplication {
+				application { module(authTestConfig(oidcAuthConfig(pkceEnabled = true)), authTestSecrets(mapOf("github" to githubClientSecret))) }
+
+				val noRedirectClient = createClient {
+					followRedirects = false
+				}
+				val response = noRedirectClient.get("/auth/callback/github")
+
+				response.status shouldBe HttpStatusCode.Found
+				val location = response.headers["Location"]
+				location.shouldNotBeNull()
+				location shouldStartWith OidcDiscoveryService.GITHUB_AUTHORIZATION_URL
+				Url(location).parameters["state"].shouldNotBeBlank()
+			}
+		}
+	}
+
+	fun callbackAuthConfig(
+		allowedRedirectUris: List<String> = emptyList(),
+		allowedEmailDomains: List<String> = listOf("*"),
+	) = authConfig.copy(
+		providers = listOf(
+			OidcProviderConfig(
+				name = "github",
+				preset = SsoProviderPreset.GITHUB,
+				clientId = "test-client-id",
+				allowedEmailDomains = allowedEmailDomains,
+			),
+		),
+		oauthStateSecret = oauthStateSecret,
+		allowedRedirectUris = allowedRedirectUris,
+	)
+
+	test("OIDC callback issues a hand-off code and 302s back to returnTo (happy path)") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(callbackAuthConfig(allowedRedirectUris = listOf("https://app.example.com/"))),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(OCTOCAT_USER_INFO),
+					)
+				}
+				val noRedirect = createClient { followRedirects = false }
+
+				val redirect = noRedirect.get("/auth/redirect/github") {
+					url {
+						parameters.append("returnTo", "https://app.example.com/")
+						parameters.append("handoffChallenge", "challenge-value")
+					}
+				}
+				val state = Url(redirect.headers["Location"]!!).parameters["state"]
+				state.shouldNotBeNull()
+
+				val callback = noRedirect.get("/auth/callback/github") {
+					url {
+						parameters.append("code", "authorization-code-from-idp")
+						parameters.append("state", state)
+					}
+				}
+				callback.status shouldBe HttpStatusCode.Found
+				val location = callback.headers["Location"]
+				location.shouldNotBeNull()
+				location shouldStartWith "https://app.example.com/"
+				Url(location).parameters["code"].shouldNotBeBlank()
+			}
+		}
+	}
+
+	test("OIDC callback with no parked hand-off returns a session as JSON with the refresh cookie") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(callbackAuthConfig()),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(OCTOCAT_USER_INFO),
+					)
+				}
+				val noRedirect = createClient { followRedirects = false }
+
+				val redirect = noRedirect.get("/auth/redirect/github")
+				val state = Url(redirect.headers["Location"]!!).parameters["state"]
+				state.shouldNotBeNull()
+
+				val callback = noRedirect.get("/auth/callback/github") {
+					url {
+						parameters.append("code", "authorization-code-from-idp")
+						parameters.append("state", state)
+					}
+				}
+				callback.status shouldBe HttpStatusCode.OK
+				val body = Json.parseToJsonElement(callback.bodyAsText()).jsonObject
+				body["token"]?.jsonPrimitive?.content.shouldNotBeBlank()
+				body["refreshToken"]?.jsonPrimitive?.content.shouldNotBeBlank()
+				val setCookie = callback.headers["Set-Cookie"]
+				setCookie.shouldNotBeNull()
+				setCookie shouldContain "omnisign_refresh="
+			}
+		}
+	}
+
+	test("OIDC callback rejects a user whose email domain is not in allowedEmailDomains") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(callbackAuthConfig(allowedEmailDomains = listOf("other.com"))),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(OCTOCAT_USER_INFO),
+					)
+				}
+				val noRedirect = createClient { followRedirects = false }
+
+				val redirect = noRedirect.get("/auth/redirect/github")
+				val state = Url(redirect.headers["Location"]!!).parameters["state"]
+				state.shouldNotBeNull()
+
+				val callback = noRedirect.get("/auth/callback/github") {
+					url {
+						parameters.append("code", "authorization-code-from-idp")
+						parameters.append("state", state)
+					}
+				}
+				callback.status shouldBe HttpStatusCode.Forbidden
+				val body = Json.parseToJsonElement(callback.bodyAsText()).jsonObject
+				body["error"]?.jsonPrimitive?.content shouldBe "DOMAIN_NOT_ALLOWED"
+			}
+		}
+	}
+
+	fun handoffAuthConfig(allowedRedirectUris: List<String>) = authConfig.copy(
+		providers = listOf(
+			OidcProviderConfig(
+				name = "github",
+				preset = SsoProviderPreset.GITHUB,
+				clientId = "test-client-id",
+				allowedEmailDomains = listOf("*"),
+			),
+		),
+		oauthStateSecret = oauthStateSecret,
+		allowedRedirectUris = allowedRedirectUris,
+	)
+
+	test("hand-off: a login carrying returnTo parks it and redirects the browser back with a code") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				application {
+					module(
+						authTestConfig(handoffAuthConfig(listOf("https://app.example.com/"))),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+					)
+				}
+
+				val noRedirect = createClient { followRedirects = false }
+
+				// Redirect leg: the app asks to be returned to an allowlisted page.
+				val redirect = noRedirect.get("/auth/redirect/github") {
+					url {
+						parameters.append("returnTo", "https://app.example.com/")
+						parameters.append("handoffChallenge", "challenge-value")
+					}
+				}
+				redirect.status shouldBe HttpStatusCode.Found
+				val state = Url(redirect.headers["Location"]!!).parameters["state"]
+				state.shouldNotBeNull()
+
+				// The login request was parked under that state.
+				val loginStore = ExposedLoginRequestStore(
+					Database.connect("jdbc:sqlite:${tempDb.absolutePath}", driver = "org.sqlite.JDBC"),
+				)
+				val parked = loginStore.consume(state)
+				parked.shouldNotBeNull()
+				parked.returnTo shouldBe "https://app.example.com/"
+				parked.handoffChallenge shouldBe "challenge-value"
+			}
+		}
+	}
+
+	test("/auth/exchange rejects a malformed body with MISSING_HANDOFF_CODE") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(handoffAuthConfig(listOf("https://app.example.com/"))),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+					)
+				}
+				val response = client.post("/auth/exchange") {
+					contentType(ContentType.Application.Json)
+					setBody("""{"code":"","codeVerifier":""}""")
+				}
+				response.status shouldBe HttpStatusCode.BadRequest
+				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+				body["error"]?.jsonPrimitive?.content shouldBe "MISSING_HANDOFF_CODE"
+			}
+		}
+	}
+
+	test("/auth/exchange rejects an unknown hand-off code with INVALID_HANDOFF_CODE") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(handoffAuthConfig(listOf("https://app.example.com/"))),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+					)
+				}
+				val response = client.post("/auth/exchange") {
+					contentType(ContentType.Application.Json)
+					setBody("""{"code":"never-issued","codeVerifier":"whatever"}""")
+				}
+				response.status shouldBe HttpStatusCode.Unauthorized
+				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+				body["error"]?.jsonPrimitive?.content shouldBe "INVALID_HANDOFF_CODE"
+			}
+		}
+	}
+
+	test("/auth/exchange redeems a valid code for a session and sets the refresh cookie") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				application {
+					module(
+						authTestConfig(handoffAuthConfig(listOf("https://app.example.com/"))),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+					)
+				}
+
+				val verifier = "handoff-verifier-string-kept-by-the-client"
+				val challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(
+					MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII)),
+				)
+				val database = Database.connect("jdbc:sqlite:${tempDb.absolutePath}", driver = "org.sqlite.JDBC")
+				val pkce = PkceService(ExposedPkceVerifierStore(database).also { it.initSchema() })
+				val handoffStore = ExposedHandoffCodeStore(database, pkce).also { it.initSchema() }
+				val principal = AuthenticatedPrincipal(
+					userId = "u-handoff",
+					email = "handoff@example.com",
+					displayName = "Hand Off",
+					providerName = "github",
+					authTime = Clock.System.now(),
+				)
+				val code = runBlocking { handoffStore.issue(principal, challenge, 30.seconds) }
+
+				val response = client.post("/auth/exchange") {
+					contentType(ContentType.Application.Json)
+					setBody("""{"code":"$code","codeVerifier":"$verifier"}""")
+				}
+				response.status shouldBe HttpStatusCode.OK
+				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+				body["token"]?.jsonPrimitive?.content.shouldNotBeBlank()
+				body["refreshToken"]?.jsonPrimitive?.content.shouldNotBeBlank()
+
+				val setCookie = response.headers["Set-Cookie"]
+				setCookie.shouldNotBeNull()
+				setCookie shouldContain "omnisign_refresh="
+				setCookie shouldContain "HttpOnly"
+				setCookie shouldContain "SameSite=Lax"
+			}
+		}
+	}
+
+	test("POST /auth/refresh accepts the refresh token from the cookie when the body omits it") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				application { module(authTestConfig(authConfig), authTestSecrets()) }
+
+				val store = testRefreshTokenStore(tempDb)
+				val principal = AuthenticatedPrincipal(
+					userId = "u-cookie",
+					email = "cookie@example.com",
+					displayName = null,
+					providerName = "test",
+					authTime = Clock.System.now(),
+				)
+				val refresh = runBlocking { store.issue(principal, 1.days) }
+
+				val response = client.post("/auth/refresh") {
+					header(HttpHeaders.Cookie, "omnisign_refresh=${refresh.token}")
+				}
+				response.status shouldBe HttpStatusCode.OK
+				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+				body["refreshToken"]?.jsonPrimitive?.content.shouldNotBeBlank()
+				body["refreshToken"]?.jsonPrimitive?.content shouldNotBe refresh.token
+			}
+		}
+	}
+
+	test("POST /auth/logout clears the refresh cookie") {
+		withTempSessionsDb {
+			testApplication {
+				application { module(authTestConfig(authConfig), authTestSecrets()) }
+				val response = client.post("/auth/logout")
+				response.status shouldBe HttpStatusCode.NoContent
+				val setCookie = response.headers["Set-Cookie"]
+				setCookie.shouldNotBeNull()
+				setCookie shouldContain "omnisign_refresh="
+				setCookie shouldContain "Max-Age=0"
+			}
+		}
+	}
+
+	test("POST /auth/refresh clears the cookie when the invalid token came from the cookie") {
+		withTempSessionsDb {
+			testApplication {
+				application { module(authTestConfig(authConfig), authTestSecrets()) }
+				val response = client.post("/auth/refresh") {
+					header(HttpHeaders.Cookie, "omnisign_refresh=stale-rotated-or-unknown-token")
+				}
+				response.status shouldBe HttpStatusCode.Unauthorized
+				val body = Json.parseToJsonElement(response.bodyAsText()).jsonObject
+				body["error"]?.jsonPrimitive?.content shouldBe "INVALID_REFRESH_TOKEN"
+				val setCookie = response.headers["Set-Cookie"]
+				setCookie.shouldNotBeNull()
+				setCookie shouldContain "omnisign_refresh="
+				setCookie shouldContain "Max-Age=0"
+			}
+		}
+	}
+
+	test("POST /auth/refresh does not clear a valid cookie when the invalid token came from the body") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				application { module(authTestConfig(authConfig), authTestSecrets()) }
+
+				val store = testRefreshTokenStore(tempDb)
+				val principal = AuthenticatedPrincipal(
+					userId = "u-body-wins",
+					email = "bodywins@example.com",
+					displayName = null,
+					providerName = "test",
+					authTime = Clock.System.now(),
+				)
+				val valid = runBlocking { store.issue(principal, 1.days) }
+
+				// Body token wins over the cookie; it is garbage, so the refresh fails — but the
+				// still-valid cookie token must not be cleared as collateral.
+				val rejected = client.post("/auth/refresh") {
+					header(HttpHeaders.Cookie, "omnisign_refresh=${valid.token}")
+					contentType(ContentType.Application.Json)
+					setBody("""{"refreshToken":"garbage-body-token"}""")
+				}
+				rejected.status shouldBe HttpStatusCode.Unauthorized
+				rejected.headers["Set-Cookie"].shouldBeNull()
+
+				// The cookie token still works on its own.
+				val accepted = client.post("/auth/refresh") {
+					header(HttpHeaders.Cookie, "omnisign_refresh=${valid.token}")
+				}
+				accepted.status shouldBe HttpStatusCode.OK
 			}
 		}
 	}

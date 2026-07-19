@@ -1,15 +1,8 @@
 package cz.pizavo.omnisign.config
 
-import cz.pizavo.omnisign.domain.model.value.sensitive
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.string.shouldContain
-
-/**
- * 64-byte filler for [HeaderInjectionProviderConfig.sharedSecret] in tests that combine
- * mixed providers; length matches the production minimum so construction succeeds.
- */
-private const val HEADER_INJECTION_TEST_SECRET = "test-shared-secret-padded-to-at-least-64-bytes-for-test-fixtures!"
 
 /**
  * Unit tests for [validateAuthConfig] — startup-time misconfiguration checks for OIDC
@@ -82,16 +75,62 @@ class AuthConfigValidatorTest : FunSpec({
         ex.message!! shouldContain "bad"
     }
 
-    test("skips HeaderInjectionProviderConfig (no email/claims filter to validate)") {
-        val mixed = AuthConfig(
-            providers = listOf(
-                oidc("o", listOf("*")),
-                HeaderInjectionProviderConfig(
-                    name = "shib",
-                    sharedSecret = HEADER_INJECTION_TEST_SECRET.sensitive(),
-                ),
+    test("accepts an empty allowedRedirectUris (no browser hand-off configured)") {
+        validateAuthConfig(AuthConfig(providers = listOf(oidc("g", listOf("*"))), allowedRedirectUris = emptyList()))
+    }
+
+    test("accepts an https allowedRedirectUris entry") {
+        validateAuthConfig(
+            AuthConfig(
+                providers = listOf(oidc("g", listOf("*"))),
+                allowedRedirectUris = listOf("https://omnisign.example.com/"),
             ),
         )
-        validateAuthConfig(mixed)
+    }
+
+    test("accepts an http allowedRedirectUris entry on a loopback host (local development)") {
+        validateAuthConfig(
+            AuthConfig(
+                providers = listOf(oidc("g", listOf("*"))),
+                allowedRedirectUris = listOf("http://localhost:8080/", "http://127.0.0.1:3000/app"),
+            ),
+        )
+    }
+
+    test("rejects a non-absolute allowedRedirectUris entry") {
+        val ex = shouldThrow<IllegalArgumentException> {
+            validateAuthConfig(
+                AuthConfig(
+                    providers = listOf(oidc("g", listOf("*"))),
+                    allowedRedirectUris = listOf("/app"),
+                ),
+            )
+        }
+        ex.message!! shouldContain "/app"
+        ex.message!! shouldContain "absolute URL"
+    }
+
+    test("rejects a plain-http allowedRedirectUris entry on a non-loopback host") {
+        val ex = shouldThrow<IllegalArgumentException> {
+            validateAuthConfig(
+                AuthConfig(
+                    providers = listOf(oidc("g", listOf("*"))),
+                    allowedRedirectUris = listOf("http://omnisign.example.com/"),
+                ),
+            )
+        }
+        ex.message!! shouldContain "omnisign.example.com"
+        ex.message!! shouldContain "https"
+    }
+
+    test("rejects a non-http(s) scheme in an allowedRedirectUris entry") {
+        shouldThrow<IllegalArgumentException> {
+            validateAuthConfig(
+                AuthConfig(
+                    providers = listOf(oidc("g", listOf("*"))),
+                    allowedRedirectUris = listOf("ftp://omnisign.example.com/"),
+                ),
+            )
+        }
     }
 })

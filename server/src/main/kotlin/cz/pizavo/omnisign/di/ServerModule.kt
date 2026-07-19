@@ -1,9 +1,13 @@
 package cz.pizavo.omnisign.di
 
+import cz.pizavo.omnisign.auth.ExposedHandoffCodeStore
+import cz.pizavo.omnisign.auth.ExposedLoginRequestStore
 import cz.pizavo.omnisign.auth.ExposedPkceVerifierStore
 import cz.pizavo.omnisign.auth.ExposedRefreshTokenStore
+import cz.pizavo.omnisign.auth.HandoffCodeStore
 import cz.pizavo.omnisign.auth.IdTokenVerifier
 import cz.pizavo.omnisign.auth.JwtSessionService
+import cz.pizavo.omnisign.auth.LoginRequestStore
 import cz.pizavo.omnisign.auth.OidcDiscoveryService
 import cz.pizavo.omnisign.auth.OidcUserInfoService
 import cz.pizavo.omnisign.auth.PkceService
@@ -24,6 +28,7 @@ import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.platform.PasswordCallback
 import io.ktor.client.*
+import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.*
@@ -74,7 +79,13 @@ import kotlin.coroutines.CoroutineContext
  *   When the binding does resolve the field is required and must be at least
  *   [MIN_NONCE_KEY_BYTES] bytes — startup fails otherwise.
  * - [Database] singleton: SQLite connection rooted at [sessionsDbFile]. Created lazily
- *   on first injection; the parent directory is created if it does not exist.
+ *   on first injection; the parent directory is created if it does not exist. Each
+ *   connection sets `PRAGMA busy_timeout` ([SQLITE_BUSY_TIMEOUT_MS]) so that when two
+ *   session writes contend for the same row — two browser tabs firing `/auth/refresh` on
+ *   the same cookie at once — the loser waits for the winner to commit and then reads an
+ *   already-consumed row (a clean `401`), rather than failing immediately with `SQLITE_BUSY`
+ *   (a `500`). Exposed runs SQLite at `SERIALIZABLE`, so without the timeout the contended
+ *   write has no grace period at all.
  * - [RefreshTokenStore] (concrete [ExposedRefreshTokenStore]) for persisting refresh
  *   tokens across server restarts. Schema is initialised on first injection; the
  *   binding is lazy so deployments that never reach `/auth/refresh` or `/auth/logout`
@@ -86,6 +97,12 @@ import kotlin.coroutines.CoroutineContext
  *   touch SQLite for PKCE either.
  * - [PkceService] (RFC 7636) — verifier generation, S256 challenge derivation, and the
  *   thin protocol layer over [PkceVerifierStore].
+ * - [LoginRequestStore] (concrete [ExposedLoginRequestStore]) and [HandoffCodeStore]
+ *   (concrete [ExposedHandoffCodeStore]) for the browser hand-off: the first parks what a
+ *   single-page app asked for across the IdP round trip, the second carries the finished
+ *   login back to the app's own origin. Both share the sessions database file with
+ *   [RefreshTokenStore]; schemas are initialised on first injection, and the bindings are
+ *   lazy so a deployment with no browser front-end never creates either table.
  * - [OidcDiscoveryService] and [OidcUserInfoService] for the OIDC authorization-code flow.
  * - [IdTokenVerifier] for cryptographic verification of the OIDC `id_token` returned by
  *   the IdP alongside the access token on the authorization-code callback.
@@ -94,8 +111,10 @@ import kotlin.coroutines.CoroutineContext
  * @param secrets Secret values resolved from environment variables.
  * @param signingConfig Provider signing/validation policy resolved from signing.yml at
  *   startup, exposed through the read-only [ConfigRepository] binding.
+ * @param httpClientEngine Test-only override for the outbound [HttpClient]'s engine — a `MockEngine`
+ *   standing in for the IdP. Production passes `null`, which uses the CIO engine.
  */
-fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConfig: AppConfig) = module {
+fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConfig: AppConfig, httpClientEngine: HttpClientEngine? = null) = module {
 	single<ServerConfig> { serverConfig }
 	single<ServerSecrets> { secrets }
 	single<ServerConfigLoader> { ServerConfigLoader() }
@@ -111,7 +130,8 @@ fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConf
 	}
 
 	single<HttpClient> {
-		HttpClient(CIO) {
+		val engine = httpClientEngine ?: CIO.create()
+		HttpClient(engine) {
 			install(ContentNegotiation) {
 				json(Json { ignoreUnknownKeys = true })
 			}
@@ -158,7 +178,13 @@ fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConf
 	single<Database> {
 		val dbFile = sessionsDbFile()
 		dbFile.parentFile?.mkdirs()
-		Database.connect("jdbc:sqlite:${dbFile.absolutePath}", driver = "org.sqlite.JDBC")
+		Database.connect(
+			"jdbc:sqlite:${dbFile.absolutePath}",
+			driver = "org.sqlite.JDBC",
+			setupConnection = { connection ->
+				connection.createStatement().use { it.execute("PRAGMA busy_timeout = $SQLITE_BUSY_TIMEOUT_MS") }
+			},
+		)
 	}
 
 	single<RefreshTokenStore> {
@@ -171,6 +197,14 @@ fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConf
 
 	single<PkceService> {
 		PkceService(get())
+	}
+
+	single<LoginRequestStore> {
+		ExposedLoginRequestStore(get()).also { it.initSchema() }
+	}
+
+	single<HandoffCodeStore> {
+		ExposedHandoffCodeStore(get(), get()).also { it.initSchema() }
 	}
 }
 
@@ -213,6 +247,19 @@ private const val MIN_JWT_SECRET_BYTES = 64
  * Operators generate a compliant key with `openssl rand -base64 64`.
  */
 private const val MIN_NONCE_KEY_BYTES = 64
+
+/**
+ * How long, in milliseconds, a SQLite connection waits for a contended write lock before
+ * giving up with `SQLITE_BUSY`.
+ *
+ * 5 seconds — generous for the only contention this database sees, which is two writes to the
+ * same session row landing within milliseconds of each other (concurrent `/auth/refresh` from
+ * duplicate tabs, or a double-submitted hand-off code). The winner's transaction is a single
+ * indexed delete that commits in well under a millisecond, so the loser almost never waits a
+ * measurable fraction of this; the cap only exists to bound a pathological stall rather than
+ * to be reached in normal operation.
+ */
+private const val SQLITE_BUSY_TIMEOUT_MS = 5_000
 
 /**
  * End-to-end timeout for an OIDC discovery or UserInfo HTTP call.

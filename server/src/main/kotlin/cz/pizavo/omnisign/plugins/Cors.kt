@@ -19,6 +19,12 @@ import io.ktor.server.plugins.cors.routing.*
  * only the `https` scheme is permitted for allowed hosts. Otherwise, both `http` and
  * `https` are accepted.
  *
+ * [CorsConfig.allowCredentials] drives Ktor's `allowCredentials`, which is what lets a
+ * browser front-end on another origin send the refresh cookie to `/auth/refresh` and read
+ * the reply. The validator has already established it is not paired with the `["*"]`
+ * wildcard, so `anyHost()` and credentialed CORS can never both be active here — the
+ * combination would make `anyHost()` reflect the caller's origin rather than emit `*`.
+ *
  * The following request headers are allowed: `Content-Type`, `Authorization`, `X-Request-Id`.
  * The following response headers are exposed to JavaScript: `X-OmniSign-Result`, `X-Request-Id`.
  *
@@ -37,6 +43,8 @@ fun Application.configureCors(config: CorsConfig, tlsEnabled: Boolean = false) {
 				allowHost(origin.removePrefix("https://").removePrefix("http://"), schemes = schemes)
 			}
 		}
+
+		allowCredentials = config.allowCredentials
 
 		allowMethod(HttpMethod.Post)
 		allowMethod(HttpMethod.Get)

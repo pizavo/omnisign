@@ -47,6 +47,7 @@ class CapabilitiesViewModel(
                             canValidate = OPERATION_VALIDATE in allowed,
                             canSign = OPERATION_SIGN in allowed,
                             canTimestamp = OPERATION_TIMESTAMP in allowed,
+                            authEnabled = response.authEnabled,
                             organizationName = response.organizationName?.takeIf { it.isNotBlank() },
                         )
                     }

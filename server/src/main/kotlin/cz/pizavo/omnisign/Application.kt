@@ -16,6 +16,10 @@ import cz.pizavo.omnisign.config.validateTransportSecurity
 import cz.pizavo.omnisign.data.service.PcscMonitorService
 import cz.pizavo.omnisign.data.service.Pkcs11CacheInvalidator
 import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
+import cz.pizavo.omnisign.auth.HandoffCodeStore
+import cz.pizavo.omnisign.auth.LoginRequestStore
+import cz.pizavo.omnisign.auth.PkceVerifierStore
+import cz.pizavo.omnisign.auth.RefreshTokenStore
 import cz.pizavo.omnisign.data.service.TrustedListRefreshScheduler
 import cz.pizavo.omnisign.data.service.pkcs11DropDir
 import cz.pizavo.omnisign.di.appModule
@@ -25,13 +29,17 @@ import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.plugins.*
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.ktor.client.engine.HttpClientEngine
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
+import kotlin.time.Duration.Companion.hours
 import org.koin.ktor.ext.get
 import org.koin.ktor.plugin.Koin
 import java.io.File
@@ -129,8 +137,10 @@ fun main(args: Array<String>) {
  * @param serverConfig Server configuration instance.
  * @param secrets Secret values resolved from environment variables. Tests inject an
  *   explicit instance; production callers obtain it from [ServerSecrets.resolveFromEnv].
+ * @param httpClientEngine Test-only outbound-HTTP engine override (a `MockEngine` IdP), threaded to
+ *   [configureKoin]; `null` in production.
  */
-fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets) {
+fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets, httpClientEngine: HttpClientEngine? = null) {
 	validateAuthConfig(serverConfig.auth)
 	val parsedProxy = validateProxyConfig(serverConfig.proxy)
 	val corsConfig = validateCorsConfig(serverConfig.cors)
@@ -144,12 +154,13 @@ fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets) {
 		logger.info { "Signing key source: file keystore at $path" }
 	}
 	val signingConfig = SigningConfigLoader().load(serverConfig.signingConfigFile)
-	configureKoin(serverConfig, secrets, signingConfig)
+	configureKoin(serverConfig, secrets, signingConfig, httpClientEngine)
 	reconcileTrustIfConfigured(serverConfig, signingConfig)
 	if (backgroundServicesEnabled()) {
 		launchPkcs11WarmupIfNeeded(serverConfig)
 		launchTrustedListRefreshIfNeeded(serverConfig)
 		attachPkcs11CacheInvalidatorIfNeeded(serverConfig)
+		launchSessionStorePruneIfNeeded(serverConfig.auth)
 	}
 	configureDefaultHeaders(hstsConfig = serverConfig.tls?.hsts)
 	configureSerialization()
@@ -164,8 +175,9 @@ fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets) {
 
 	val authConfig = serverConfig.auth
 	val externalUrl = if (authConfig != null) resolveExternalUrl(serverConfig) else ""
+	val secureCookies = serverConfig.tls != null || parsedProxy.enabled
 	configureAuthentication(authConfig, externalUrl)
-	configureRouting(authConfig, serverConfig.rateLimiting)
+	configureRouting(authConfig, serverConfig.rateLimiting, secureCookies)
 
 	if (authConfig?.enabled == true) {
 		if (authConfig.providers.isEmpty()) {
@@ -229,23 +241,28 @@ private fun backgroundServicesEnabled(): Boolean =
  * @param secrets Resolved env-var secrets. Defaults to [ServerSecrets.resolveFromEnv]; tests
  *   typically supply an explicit instance with literal test values so they do not need to
  *   set process-wide env vars before each run.
+ * @param httpClientEngine Test-only override for the server's outbound HTTP-client engine, letting a
+ *   test substitute a `MockEngine` for the IdP so the OIDC callback's token-exchange → UserInfo hop
+ *   runs end-to-end; `null` (production) uses CIO.
  */
 fun Application.module(
 	serverConfig: ServerConfig = ServerConfig(),
 	secrets: ServerSecrets = ServerSecrets.resolveFromEnv(serverConfig),
+	httpClientEngine: HttpClientEngine? = null,
 ) {
-	moduleWith(serverConfig, secrets)
+	moduleWith(serverConfig, secrets, httpClientEngine)
 }
 
 /**
- * Install Koin DI with shared and server-specific modules.
+ * Install Koin DI with shared and server-specific modules. [httpClientEngine], when non-null,
+ * overrides the outbound HTTP client's engine so tests can inject a `MockEngine` IdP.
  */
-fun Application.configureKoin(serverConfig: ServerConfig, secrets: ServerSecrets, signingConfig: AppConfig) {
+fun Application.configureKoin(serverConfig: ServerConfig, secrets: ServerSecrets, signingConfig: AppConfig, httpClientEngine: HttpClientEngine? = null) {
 	install(Koin) {
 		modules(
 			appModule,
 			jvmRepositoryModule,
-			serverModule(serverConfig, secrets, signingConfig),
+			serverModule(serverConfig, secrets, signingConfig, httpClientEngine),
 		)
 	}
 }
@@ -366,6 +383,62 @@ private fun Application.launchTrustedListRefreshIfNeeded(serverConfig: ServerCon
 		}
 	}
 }
+
+/**
+ * Launch a background coroutine that periodically deletes expired rows from the four session
+ * stores (refresh tokens, hand-off codes, in-flight login requests, PKCE verifiers).
+ *
+ * Expiry is already enforced lazily — every store's `consume` rejects a row whose timestamp
+ * has passed — so this cycle is about disk, not correctness: without it, abandoned flows and
+ * sessions that expire without an explicit logout would accumulate rows forever over a long
+ * uptime. It prunes once at boot (draining whatever the previous run left behind across a
+ * deploy) and then on [SESSION_STORE_PRUNE_INTERVAL].
+ *
+ * Skipped entirely when [authConfig] is `null`: with no auth configured no session row is ever
+ * written, and resolving the stores here would defeat their laziness by creating the SQLite
+ * file on a deployment that never needs it. Also skipped in tests, which run with background
+ * services off (see [backgroundServicesEnabled]).
+ *
+ * @param authConfig Root authentication configuration, or `null` when auth is disabled.
+ */
+private fun Application.launchSessionStorePruneIfNeeded(authConfig: cz.pizavo.omnisign.config.AuthConfig?) {
+	if (authConfig == null) {
+		logger.debug { "Auth not configured — skipping session-store prune cycle" }
+		return
+	}
+
+	val refreshTokenStore: RefreshTokenStore = get()
+	val pkceVerifierStore: PkceVerifierStore = get()
+	val handoffCodeStore: HandoffCodeStore = get()
+	val loginRequestStore: LoginRequestStore = get()
+
+	launch(Dispatchers.IO) {
+		while (isActive) {
+			try {
+				val pruned = refreshTokenStore.pruneExpired() +
+						handoffCodeStore.pruneExpired() +
+						loginRequestStore.pruneExpired() +
+						pkceVerifierStore.pruneExpired()
+				if (pruned > 0) {
+					logger.debug { "Session-store prune removed $pruned expired row(s)" }
+				}
+			} catch (e: Exception) {
+				logger.warn(e) { "Session-store prune cycle failed — expired rows will be retried next cycle" }
+			}
+			delay(SESSION_STORE_PRUNE_INTERVAL)
+		}
+	}
+}
+
+/**
+ * How often the session-store prune cycle runs after its initial boot-time sweep.
+ *
+ * One hour — the rows it removes are already inert (expired rows can never be consumed), so the
+ * only thing a longer interval costs is a little disk between sweeps, and a shorter one would
+ * add wake-ups that buy nothing. An hour keeps the four small session tables from drifting far
+ * past their live working set on a long-running server.
+ */
+private val SESSION_STORE_PRUNE_INTERVAL = 1.hours
 
 /**
  * Load a JKS or PKCS#12 keystore from the filesystem.

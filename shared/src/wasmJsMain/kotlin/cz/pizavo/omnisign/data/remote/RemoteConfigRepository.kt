@@ -14,6 +14,7 @@ import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
 import io.ktor.client.request.get
+import kotlin.js.ExperimentalWasmJsInterop
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -50,9 +51,13 @@ import kotlinx.coroutines.sync.withLock
  * server's `signing.yml` is provider-authored and the web target has no write
  * surface against it. [setActiveProfile] is the exception: it persists the new
  * selection in [profileSelectionStore] (not to the server) and reflects it in the
- * cache. A `getCurrentConfig` failure surfaces as a synchronous fallback to an
- * empty [AppConfig], matching the JVM `FileConfigRepository`'s behavior when its
- * on-disk config is missing.
+ * cache. A `getCurrentConfig` failure falls back to an empty [AppConfig] — its
+ * non-`Either` return type cannot carry an error, and this mirrors the JVM
+ * `FileConfigRepository` when its on-disk config is missing — but the discarded
+ * failure is written to the browser console rather than swallowed silently, so a
+ * post-login transport error reads as a diagnosable "no profiles" instead of a
+ * mystery. (The whole-app auth gate fetches config only once authenticated, so
+ * this path is a genuine transport failure, never a masked auth problem.)
  *
  * @param client Pre-configured Ktor client with kotlinx-serialization content
  *   negotiation installed and a default request URL pointing at the OmniSign server.
@@ -81,7 +86,10 @@ class RemoteConfigRepository(
 
     override suspend fun getCurrentConfig(): AppConfig = mutex.withLock {
         cachedConfig ?: fetchAndCache().fold(
-            ifLeft = { AppConfig(global = GlobalConfig()) },
+            ifLeft = { error ->
+                consoleError("OmniSign: " + error.message + (error.details?.let { " ($it)" } ?: ""))
+                AppConfig(global = GlobalConfig())
+            },
             ifRight = { it },
         )
     }
@@ -134,3 +142,14 @@ class RemoteConfigRepository(
             },
         )
 }
+
+/**
+ * Write [message] to the browser console at error level.
+ *
+ * [RemoteConfigRepository.getCurrentConfig] must, by its non-`Either` contract, return an
+ * [AppConfig] even when the server fetch fails, so the discarded load error can only surface as a
+ * console line a developer can find. The web target has no shared logging facility, so this drops
+ * straight to the browser API in the same `js(...)` interop style the web navigation helpers use.
+ */
+@OptIn(ExperimentalWasmJsInterop::class)
+private fun consoleError(message: String): Unit = js("console.error(message)")

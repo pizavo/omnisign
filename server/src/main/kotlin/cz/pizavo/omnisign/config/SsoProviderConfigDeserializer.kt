@@ -12,7 +12,6 @@ import com.fasterxml.jackson.databind.node.ObjectNode
  *
  * Supported type values:
  * - `oidc` → [OidcProviderConfig]
- * - `header-injection` → [HeaderInjectionProviderConfig]
  *
  * The `type` discriminator is consumed by this deserializer and then stripped from the
  * node before the concrete subtype is bound, so that [ServerConfigLoader]'s strict
@@ -37,9 +36,8 @@ class SsoProviderConfigDeserializer : JsonDeserializer<SsoProviderConfig>() {
 
         return when (type.lowercase()) {
             "oidc" -> mapper.treeToValue(withoutType, OidcProviderConfig::class.java)
-            "header-injection" -> mapper.treeToValue(withoutType, HeaderInjectionProviderConfig::class.java)
             else -> throw IllegalArgumentException(
-                "Unknown SSO provider type '$type'. Supported values: oidc, header-injection",
+                "Unknown SSO provider type '$type'. Supported values: oidc",
             )
         }
     }

@@ -3,13 +3,27 @@ package cz.pizavo.omnisign.config
 /**
  * CORS policy configuration.
  *
- * No `allowCredentials` field by design. JWT bearer tokens are sent in the `Authorization`
- * header (already in the allowlist), which the Fetch spec treats as a regular request
- * header rather than a credential — so credentialed-CORS opt-in is not needed for the
- * current auth model. If/when OmniSign migrates to cookie-based sessions the field must
- * be re-added together with a startup guard that rejects the `["*"]` + credentials
- * combination (a CORS misconfiguration that, via Ktor's origin-reflecting `anyHost()`,
- * would otherwise let any origin read authenticated responses).
+ * @property allowCredentials Whether cross-origin requests may carry credentials (cookies)
+ *   and, correspondingly, whether the browser is allowed to read the response. Defaults to
+ *   `false`, which is right for every deployment whose clients authenticate with a JWT
+ *   bearer token: the Fetch spec treats `Authorization` as an ordinary request header
+ *   rather than a credential, so bearer-token CORS needs no opt-in.
+ *
+ *   Set it to `true` only to serve a browser front-end that keeps its session in the
+ *   refresh cookie — the OmniSign web app on a different origin to the API, which is the
+ *   usual split (`app.example.com` and `api.example.com`, or one host with the API on a
+ *   second port). Without it the browser withholds the cookie from `/auth/refresh`, and the
+ *   app falls back to a full round-trip through the identity provider on every page load;
+ *   it still works, just less quietly.
+ *
+ *   `true` is incompatible with the `["*"]` wildcard and [validateCorsConfig] rejects the
+ *   pair at startup. The two look combinable but are not: Ktor's `anyHost()` does not emit
+ *   a literal `*` when credentials are enabled, it **reflects the caller's `Origin` header**
+ *   back as `Access-Control-Allow-Origin`, and a reflected origin paired with
+ *   `Access-Control-Allow-Credentials: true` is exactly the pattern browsers honour — so
+ *   any site the user visits could issue credentialed requests and read the authenticated
+ *   responses. The wildcard's "I have not thought about origins" meaning is safe on its own
+ *   and unsafe here, so the combination is refused rather than silently reinterpreted.
  *
  * @property allowedOrigins Required, non-empty list of origins permitted to access the
  *   API. Operators must always make a deliberate, explicit choice — there is no
@@ -30,5 +44,6 @@ package cz.pizavo.omnisign.config
  */
 data class CorsConfig(
 	val allowedOrigins: List<String> = emptyList(),
+	val allowCredentials: Boolean = false,
 )
 

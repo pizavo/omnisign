@@ -99,8 +99,10 @@ class ExposedPkceVerifierStore(private val database: Database) : PkceVerifierSto
                     .where { PkceVerifiers.state eq state }
                     .singleOrNull()
                     ?: return@transaction null
+                if (PkceVerifiers.deleteWhere { PkceVerifiers.state eq state } == 0) {
+                    return@transaction null
+                }
                 val expiresAt = row[PkceVerifiers.expiresAtEpochSeconds]
-                PkceVerifiers.deleteWhere { PkceVerifiers.state eq state }
                 if (expiresAt < Clock.System.now().epochSeconds) {
                     null
                 } else {

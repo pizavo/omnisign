@@ -83,6 +83,19 @@ development: false
 #     audience: omnisign-api
 #     tokenExpirySeconds: 3600
 #     # HMAC signing secret resolved from OMNISIGN_JWT_SECRET (required when auth.enabled: true).
+#
+#   # Return URLs the OmniSign web app may be handed back to after a browser login.
+#   # Leave unset (the default) for a server with no browser front-end — the login callback
+#   # then answers API clients with token JSON and performs no redirect. Set it to the exact
+#   # page the web bundle is served from to let the browser app sign users in: after the IdP
+#   # login the callback redirects here with a single-use hand-off code the app exchanges for
+#   # tokens at POST /auth/exchange. Matching is EXACT — not a prefix, not a host — because a
+#   # loose match would let the login endpoint deliver a hand-off code to a page an attacker
+#   # controls. Entries must be absolute https URLs (http only for loopback dev hosts). Also
+#   # set cors.allowCredentials: true below when the app is on a different origin to the API.
+#   # allowedRedirectUris:
+#   #   - "https://omnisign.example.com/"
+#
 #   providers:
 #
 #     # `allowedEmailDomains` is REQUIRED on every OIDC provider — there is no implicit
@@ -182,51 +195,32 @@ development: false
 #       clientId: "YOUR_APPLE_SERVICE_ID"
 #       allowedEmailDomains: ["yourcompany.com"]   # Apple is public — domain-restrict
 #
-#     # ── eduID.cz / Czech Academic Federation (OIDC mode) ─────────────────────
-#     # Register an OIDC client at https://www.eduid.cz/cs/tech/oidc
-#     # eduID.cz is a FEDERATION — a single clientId/clientSecret grants access to users
-#     # from ALL ~60+ federated Czech universities (Charles University, Masaryk University,
-#     # University of Ostrava, CTU Prague, etc.). Users pick their home institution on
-#     # the eduID.cz login page. The clientId does NOT restrict which institution can log in.
-#     #
-#     # Restrict by institution using one of the following approaches:
-#     #   1. allowedEmailDomains — simple domain check on the email claim.
-#     #   2. requiredClaims.schac_home_organization — authoritative institution identifier;
-#     #      works even when users have personal e-mail addresses on file.
-#     #   3. requiredClaims.eduperson_scoped_affiliation — restricts by institution AND role
-#     #      (student / staff / faculty / member). Multi-valued; at least one must match.
+#     # ── eduID.cz / Czech academic federation (CESNET e-INFRA OIDC proxy) ─────
+#     # The EDUID_CZ preset targets the login.e-infra.cz hub, which fronts the whole
+#     # eduID.cz SAML federation as ONE OIDC provider — a single clientId/clientSecret
+#     # grants access to users from ALL ~60 federated Czech universities (Charles,
+#     # Masaryk, University of Ostrava, CTU Prague, …). Users pick their home institution
+#     # on the eduID.cz page, so the clientId does NOT restrict which institution logs in;
+#     # you MUST restrict it yourself.
+#     # Register an OIDC client (self-service) at https://spadmin.e-infra.cz/ — set the
+#     # redirect URI and pick scopes there; the default openid/email/profile set is enough
+#     # for the email-domain restriction below.
 #     # client_secret env var: OMNISIGN_OIDC_EDUID_CLIENT_SECRET
 #     - type: oidc
 #       name: eduid
 #       preset: EDUID_CZ
 #       displayName: "Sign in with eduID.cz"
 #       clientId: "YOUR_EDUID_CLIENT_ID"
-#       scopes: ["openid", "email", "profile", "eduperson_principal_name"]
-#       # Option 1 — restrict to University of Ostrava by email domain (use this line as written):
+#       # Restrict to the University of Ostrava by institutional e-mail domain — the reliable
+#       # per-institution gate on this proxy. Do NOT gate on eduperson_scoped_affiliation or
+#       # organization here: the proxy fixes eduperson_scoped_affiliation to "@einfra.cesnet.cz"
+#       # (E-INFRA membership, not the home university) and exposes organization as a display
+#       # name, not a domain — so "staff@osu.cz" / "osu.cz" would never match. Finer
+#       # affiliation/role gating uses the proxy's voperson_external_affiliation or
+#       # eduperson_entitlement claims (request the matching scope, then confirm the exact
+#       # values against a real token):
+#       # https://aai.cesnet.cz/en/index/documentation/sp/proxy/attributes_and_scopes
 #       allowedEmailDomains: ["osu.cz"]
-#       #
-#       # Option 2 — restrict by schac_home_organization (more authoritative than email).
-#       # Pair with allowedEmailDomains: ["*"] above so the email check doesn't double-restrict.
-#       # requiredClaims:
-#       #   schac_home_organization: ["osu.cz"]
-#       #
-#       # Option 3 — restrict to UO staff and faculty only (excludes students).
-#       # Same note on allowedEmailDomains as Option 2.
-#       # requiredClaims:
-#       #   schac_home_organization: ["osu.cz"]
-#       #   eduperson_scoped_affiliation: ["staff@osu.cz", "faculty@osu.cz"]
-#
-#     # ── Shibboleth / SAML 2.0 reverse-proxy mode ─────────────────────────────
-#     # For institutions using a traditional Shibboleth SP (Apache + mod_shib).
-#     # The SP authenticates the user and injects identity attributes as headers.
-#     # IMPORTANT: Ensure the Ktor server is not reachable directly from the internet;
-#     # only the Apache/Nginx reverse proxy should be exposed.
-#     - type: header-injection
-#       name: shibboleth
-#       displayName: "University SSO (Shibboleth)"
-#       userHeader: "X-Remote-User"        # or "REMOTE_USER" depending on SP config
-#       emailHeader: "X-Shib-Mail"         # Shibboleth attribute: mail
-#       displayNameHeader: "X-Shib-Cn"     # Shibboleth attribute: cn
 
 # Operation gating: which API operations the server exposes and which certificate
 # aliases are eligible for signing. The two fields are tightly coupled —
@@ -327,6 +321,16 @@ cors:
     - "http://localhost:8080"   # Compose Multiplatform Wasm dev server (default)
     - "http://localhost:3000"   # generic dev server (Next.js / CRA)
     - "http://localhost:5173"   # Vite dev server
+  # Allow the browser to send its session cookie on cross-origin requests and read the
+  # response. Defaults to false, which is correct whenever clients authenticate with a JWT
+  # bearer token — that travels in the Authorization header, which is not a credential and
+  # needs no opt-in. Set it to true only to serve the OmniSign web app from a DIFFERENT
+  # origin to this API (app.example.com + api.example.com, or one host on two ports), where
+  # the app relies on the HttpOnly refresh cookie to resume a session across reloads. It is
+  # incompatible with allowedOrigins: ["*"] and startup rejects the pair — with credentials
+  # enabled the wildcard is reflected back as the caller's own origin, which would let any
+  # site the user visits read authenticated responses. List your app's origin explicitly.
+  # allowCredentials: true
 
 # Maximum upload file size in bytes (default: 100 MB).
 maxFileSize: 104857600

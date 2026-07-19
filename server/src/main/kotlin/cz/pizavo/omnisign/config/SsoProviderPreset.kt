@@ -102,16 +102,23 @@ enum class SsoProviderPreset(
     APPLE(discoveryUrl = "https://appleid.apple.com/.well-known/openid-configuration"),
 
     /**
-     * Czech Academic Identity Federation (eduID.cz) OIDC proxy service.
+     * Czech academic identity — the CESNET e-INFRA / eduID Connect OIDC proxy.
      *
-     * eduID.cz is operated by CESNET and used by Czech universities, including the
-     * University of Ostrava. It's supported OIDC since 2020 and federates into EduGAIN.
-     * Register an OIDC client at https://www.eduid.cz/cs/tech/oidc.
+     * Fronts the whole eduID.cz SAML federation (all ~60 Czech universities, including the
+     * University of Ostrava) as a single OIDC provider, so OmniSign's authorization-code +
+     * PKCE flow reaches every member institution. The proxy issues Perun-backed claims
+     * beyond the standard OIDC set (`organization`, `eduperson_scoped_affiliation`,
+     * `eduperson_entitlement`, `voperson_external_affiliation`, …), each behind an OIDC scope
+     * of the same name that must be requested explicitly via [OidcProviderConfig.scopes].
      *
-     * For institutions whose IdP supports only SAML 2.0 (traditional Shibboleth),
-     * use the [HeaderInjectionProviderConfig] provider type behind an Apache/mod_shib
-     * reverse proxy instead.
+     * This preset targets the richer `login.e-infra.cz/oidc` hub; the older
+     * `login.cesnet.cz/oidc` deployment advertises only the `openid` scope. Note the proxy
+     * re-scopes affiliation: `eduperson_scoped_affiliation` is fixed to `@einfra.cesnet.cz`
+     * (E-INFRA membership, not the home university) and `organization` is a display name
+     * rather than a domain, so gate by the home institution with
+     * [OidcProviderConfig.allowedEmailDomains]. Register an OIDC client (self-service) at
+     * https://spadmin.e-infra.cz/.
      */
-    EDUID_CZ(discoveryUrl = "https://login.cesnet.cz/oidc/.well-known/openid-configuration"),
+    EDUID_CZ(discoveryUrl = "https://login.e-infra.cz/oidc/.well-known/openid-configuration"),
 }
 

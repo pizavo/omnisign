@@ -5,8 +5,11 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotBeBlank
+import io.kotest.matchers.string.shouldNotContain
 import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.sql.transactions.transaction
 import java.io.File
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
@@ -24,18 +27,23 @@ import kotlin.time.Duration.Companion.seconds
  */
 class ExposedRefreshTokenStoreTest : FunSpec({
 
-    fun withStore(block: suspend (ExposedRefreshTokenStore) -> Unit) {
+    fun withDatabase(block: suspend (Database, File) -> Unit) {
         val tempDb = File.createTempFile("exposed-store-test-", ".db").also { it.delete() }
         try {
             val database = Database.connect(
                 "jdbc:sqlite:${tempDb.absolutePath}",
                 driver = "org.sqlite.JDBC",
             )
-            val store = ExposedRefreshTokenStore(database).also { it.initSchema() }
-            kotlinx.coroutines.runBlocking { block(store) }
+            kotlinx.coroutines.runBlocking { block(database, tempDb) }
         } finally {
             tempDb.delete()
             File("${tempDb.absolutePath}-journal").delete()
+        }
+    }
+
+    fun withStore(block: suspend (ExposedRefreshTokenStore) -> Unit) {
+        withDatabase { database, _ ->
+            block(ExposedRefreshTokenStore(database).also { it.initSchema() })
         }
     }
 
@@ -119,6 +127,48 @@ class ExposedRefreshTokenStoreTest : FunSpec({
             store.pruneExpired() shouldBe 1
             store.consume(fresh.token).shouldNotBeNull()
             store.consume(stale.token).shouldBeNull()
+        }
+    }
+
+    /**
+     * Asserts the at-rest property directly against the database file rather than against a
+     * column the store controls: whatever schema the store settles on, the bytes on disk
+     * must not contain a replayable bearer credential. Reading the file as ASCII is enough
+     * — the token is base64url and SQLite stores text verbatim, so a plaintext token would
+     * appear as a literal substring.
+     */
+    test("issue writes the token's digest to disk and never its plaintext") {
+        withDatabase { database, dbFile ->
+            val store = ExposedRefreshTokenStore(database).also { it.initSchema() }
+            val issued = store.issue(samplePrincipal, 1.days)
+
+            val onDisk = dbFile.readBytes().toString(Charsets.US_ASCII)
+            onDisk shouldNotContain issued.token
+            onDisk shouldContain ExposedRefreshTokenStore.hashToken(issued.token)
+        }
+    }
+
+    /**
+     * The plaintext-era `refresh_tokens` table must not survive a boot under the hashed
+     * schema. Its rows are already unusable — [ExposedRefreshTokenStore.consume] matches on
+     * a digest, which no plaintext value can equal — so the only property they retain is
+     * being replayable credentials at rest, which is precisely what hashing removes.
+     */
+    test("initSchema drops a pre-existing plaintext refresh_tokens table") {
+        withDatabase { database, _ ->
+            transaction(database) {
+                exec("CREATE TABLE refresh_tokens (token VARCHAR(64) NOT NULL PRIMARY KEY)")
+                exec("INSERT INTO refresh_tokens (token) VALUES ('plaintext-token-from-a-past-release')")
+            }
+
+            ExposedRefreshTokenStore(database).initSchema()
+
+            val survived = transaction(database) {
+                exec("SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'refresh_tokens'") { rs ->
+                    rs.next()
+                }
+            }
+            survived shouldBe false
         }
     }
 })

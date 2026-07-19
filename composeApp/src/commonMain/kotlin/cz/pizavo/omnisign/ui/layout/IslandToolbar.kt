@@ -63,6 +63,9 @@ private val CompactButtonPadding = PaddingValues(2.dp)
  *   Timestamp button is not rendered.
  * @param fileLoaded Whether a PDF document is currently loaded. When `false` the rendered
  *   Sign and Timestamp buttons are disabled.
+ * @param onLogout Invoked when the user clicks the sign-out button. `null` (the default, and always
+ *   on desktop) hides the button entirely; the web target supplies it only when the server has auth
+ *   enabled, so the button's presence and the sign-out action are one and the same signal.
  * @param modifier Optional [Modifier] applied to the toolbar root.
  */
 @Composable
@@ -76,6 +79,7 @@ fun IslandToolbar(
 	canSign: Boolean = true,
 	canTimestamp: Boolean = true,
 	fileLoaded: Boolean = false,
+	onLogout: (() -> Unit)? = null,
 	modifier: Modifier = Modifier,
 ) {
 	val themeLabel = if (isDarkTheme) stringResource(Res.string.toolbar_switch_to_light_theme) else stringResource(Res.string.toolbar_switch_to_dark_theme)
@@ -196,6 +200,29 @@ fun IslandToolbar(
 					verticalAlignment = Alignment.CenterVertically,
 					horizontalArrangement = Arrangement.spacedBy(4.dp),
 				) {
+					if (onLogout != null) {
+						TooltipBox(
+							tooltip = { Tooltip { Text(text = stringResource(Res.string.logout_button)) } },
+							state = rememberTooltipState(),
+						) {
+							IconButton(
+								modifier = Modifier.defaultMinSize(
+									minWidth = CompactButtonSize,
+									minHeight = CompactButtonSize,
+								),
+								variant = IconButtonVariant.Ghost,
+								onClick = onLogout,
+								contentPadding = CompactButtonPadding,
+							) {
+								Icon(
+									painter = painterResource(Res.drawable.icon_logout),
+									contentDescription = stringResource(Res.string.logout_button),
+									modifier = Modifier.size(22.dp),
+								)
+							}
+						}
+					}
+
 					TooltipBox(
 						tooltip = { Tooltip { Text(text = stringResource(Res.string.label_settings)) } },
 						state = rememberTooltipState(),

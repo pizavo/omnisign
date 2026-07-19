@@ -17,11 +17,11 @@ flowchart TB
 
   subgraph serverhost["Server host  [device] - institutional deployment"]
     direction TB
-    rp["Reverse proxy [optional]<br/>TLS termination, SSO header injection"]
+    rp["Reverse proxy [optional]<br/>TLS termination"]
     server["OmniSign Server<br/>[artifact on JVM 25: Ktor / Netty]"]
     hsm["HSM<br/>[device: PKCS#11 signing keys]"]
     fsnode["Filesystem<br/>[config, trusted-certs, sessions.db]"]
-    rp -->|"HTTP, trusted headers"| server
+    rp -->|"HTTP, X-Forwarded-For"| server
     server -->|PKCS#11| hsm
     server -->|file I/O| fsnode
   end

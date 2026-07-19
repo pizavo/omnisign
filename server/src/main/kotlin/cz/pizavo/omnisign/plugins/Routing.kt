@@ -22,8 +22,14 @@ import io.ktor.server.routing.*
  *
  * @param authConfig Root authentication configuration, or `null` when auth is disabled.
  * @param rateLimitConfig Rate limit configuration, or `null` when rate limiting is disabled.
+ * @param secureCookies Whether the refresh cookie the auth routes set carries `Secure`; `true`
+ *   whenever the deployment terminates TLS itself or sits behind a TLS-terminating proxy.
  */
-fun Application.configureRouting(authConfig: AuthConfig? = null, rateLimitConfig: RateLimitConfig? = null) {
+fun Application.configureRouting(
+	authConfig: AuthConfig? = null,
+	rateLimitConfig: RateLimitConfig? = null,
+	secureCookies: Boolean = false,
+) {
 	val rateLimitEnabled = rateLimitConfig != null
 	routing {
 		authenticate(JwtSessionService.AUTH_NAME_JWT, optional = true) {
@@ -31,7 +37,7 @@ fun Application.configureRouting(authConfig: AuthConfig? = null, rateLimitConfig
 		}
 
 		rateLimitedIf(AUTH_RATE_LIMIT_NAME, rateLimitEnabled) {
-			authRoutes(authConfig)
+			authRoutes(authConfig, secureCookies)
 		}
 
 		rateLimitedIf(API_RATE_LIMIT_NAME, rateLimitEnabled) {

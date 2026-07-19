@@ -1,0 +1,7 @@
+<resources>
+	<string name="login_heading">Sign in</string>
+	<string name="login_prompt">Choose how to sign in to continue.</string>
+	<string name="login_no_providers">This server has no interactive sign-in method configured. Contact the operator.</string>
+	<string name="login_failed">Sign-in could not be completed. Please try again.</string>
+	<string name="logout_button">Sign out</string>
+</resources>

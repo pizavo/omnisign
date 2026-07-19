@@ -1,7 +1,5 @@
 package cz.pizavo.omnisign.config
 
-import cz.pizavo.omnisign.domain.model.value.Sensitive
-
 /**
  * Sealed hierarchy of supported SSO provider configurations.
  *
@@ -87,78 +85,3 @@ data class OidcProviderConfig(
     val pkce: Boolean = true,
     val verifyIdToken: Boolean = true,
 ) : SsoProviderConfig
-
-/**
- * Header-injection provider for Shibboleth / SAML 2.0 reverse-proxy deployments.
- *
- * In this mode a trusted upstream reverse proxy (Apache httpd with `mod_shib`, or an
- * equivalent Shibboleth SP) authenticates the user via SAML 2.0 and forwards identity
- * attributes as HTTP request headers. The Ktor server extracts the principal from those
- * headers without performing any OAuth/OIDC handshake itself.
- *
- * **Transport-level integrity is enforced application-side.** Header values cannot be
- * cryptographically verified by their content alone — an attacker who reaches the Ktor
- * port directly could otherwise forge any identity by setting [userHeader]. To close
- * that gap the callback requires a shared secret in [sharedSecretHeader]; the reverse
- * proxy must inject both the identity headers and the secret, and the Ktor route
- * rejects any request whose secret value does not match [sharedSecret] (constant-time
- * comparison). Operators should still restrict network access at the OS/firewall level
- * — defence in depth — but the secret-check makes header forgery non-trivial even if
- * the network boundary is misconfigured.
- *
- * Common Shibboleth attribute header names (may vary by IdP / SP configuration):
- * - User principal: `REMOTE_USER` or `X-Remote-User` or `X-Shib-Uid`
- * - E-mail: `X-Shib-Mail` or `Mail`
- * - Display name: `X-Shib-Cn` or `Cn`
- *
- * @property name Unique provider identifier (e.g. `shibboleth` or `eduid`).
- * @property userHeader Header name that carries the authenticated user's unique identifier.
- * @property emailHeader Header name for the user's e-mail address.
- * @property displayNameHeader Header name for the user's full display name.
- * @property displayName Human-readable label shown in the login UI.
- * @property sharedSecret Bearer-style shared secret that the trusted reverse proxy must
- *   inject in [sharedSecretHeader] on every header-injection callback. Required, at
- *   least 64 bytes of entropy (typically generated with `openssl rand -base64 64`).
- *   Declare in `server.yml` via env-var substitution to keep it out of the file:
- *   `sharedSecret: "${OMNISIGN_SHIB_TOKEN}"`. The reverse proxy must be configured
- *   to inject the same value as the [sharedSecretHeader] header on each authenticated
- *   request it forwards. Wrapped in [Sensitive] so the value cannot leak through
- *   `toString` (data-class-generated, logger interpolation, status pages echoing
- *   `cause.message`).
- * @property sharedSecretHeader Name of the header that carries [sharedSecret]. Defaults
- *   to `X-Header-Injection-Token`. Pick something unlikely to collide with other
- *   infrastructure headers; the value is matched case-insensitively by Ktor.
- */
-data class HeaderInjectionProviderConfig(
-    override val name: String,
-    val userHeader: String = "X-Remote-User",
-    val emailHeader: String = "X-Shib-Mail",
-    val displayNameHeader: String = "X-Shib-Cn",
-    val displayName: String = name,
-    val sharedSecret: Sensitive<String>,
-    val sharedSecretHeader: String = "X-Header-Injection-Token",
-) : SsoProviderConfig {
-    init {
-        val secretBytes = sharedSecret.value.toByteArray(Charsets.UTF_8).size
-        require(secretBytes >= MIN_SHARED_SECRET_BYTES) {
-            "HeaderInjectionProviderConfig '$name': sharedSecret must be at least " +
-                "$MIN_SHARED_SECRET_BYTES bytes (512 bits) — got $secretBytes. Generate one " +
-                "with `openssl rand -base64 64`."
-        }
-        require(sharedSecretHeader.isNotBlank()) {
-            "HeaderInjectionProviderConfig '$name': sharedSecretHeader must not be blank."
-        }
-    }
-
-    companion object {
-        /**
-         * Minimum acceptable length, in bytes, of the shared secret that the trusted reverse
-         * proxy injects on each header-injection callback. 64 bytes (512 bits) is well above
-         * the brute-force-infeasibility threshold for a bearer-style token (which 32 bytes
-         * would also clear) and matches the floor applied to the server's other secrets
-         * (`MIN_JWT_SECRET_BYTES`, `MIN_NONCE_KEY_BYTES`) for a single uniform rule across
-         * the auth surface.
-         */
-        const val MIN_SHARED_SECRET_BYTES = 64
-    }
-}

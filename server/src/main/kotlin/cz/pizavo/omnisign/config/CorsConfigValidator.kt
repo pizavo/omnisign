@@ -18,6 +18,19 @@ package cz.pizavo.omnisign.config
  * `cors:` block listing the common local-development origins so the default workflow
  * passes without operator action.
  *
+ * Separately, closes a fail-open *combination*: `allowedOrigins: ["*"]` together with
+ * `allowCredentials: true`. Each is a reasonable setting alone, which is what makes the
+ * pair dangerous — an operator who enables credentials for the web app and leaves the
+ * development wildcard in place reads the result as "allow any origin, and allow cookies",
+ * but gets "let every site the user visits make authenticated requests as them and read
+ * the replies". The mechanism is Ktor's [anyHost][io.ktor.server.plugins.cors.CORSConfig.anyHost]:
+ * with credentials enabled it reflects the request's `Origin` header into
+ * `Access-Control-Allow-Origin` instead of emitting a literal `*`, and browsers accept a
+ * reflected origin where they would reject the wildcard. The Fetch spec's own
+ * wildcard-plus-credentials ban is therefore not enforced anywhere in this path, so it is
+ * enforced here — at startup, where an operator can act on it, rather than as a silent
+ * runtime property nobody observes.
+ *
  * Called from [cz.pizavo.omnisign.moduleWith] before any plugin that depends on the CORS
  * settings is installed. The validated [CorsConfig] is returned so the
  * [cz.pizavo.omnisign.plugins.configureCors] call can take a non-null argument and
@@ -25,9 +38,11 @@ package cz.pizavo.omnisign.config
  *
  * @param config Raw CORS configuration as parsed from `server.yml`, or `null` when the
  *   `cors:` block is absent entirely.
- * @return The validated [CorsConfig] (non-null, non-empty `allowedOrigins`).
+ * @return The validated [CorsConfig] (non-null, non-empty `allowedOrigins`, and not the
+ *   wildcard-with-credentials combination).
  * @throws IllegalArgumentException with operator-actionable guidance when [config] is
- *   `null` or when [CorsConfig.allowedOrigins] is empty.
+ *   `null`, when [CorsConfig.allowedOrigins] is empty, or when [CorsConfig.allowCredentials]
+ *   is combined with the `["*"]` wildcard.
  */
 fun validateCorsConfig(config: CorsConfig?): CorsConfig {
 	requireNotNull(config) {
@@ -39,5 +54,19 @@ fun validateCorsConfig(config: CorsConfig?): CorsConfig {
 		"cors.allowedOrigins must not be empty. Use [\"*\"] to allow any origin, or list " +
 			"specific origins (host, host:port, or http(s)://host[:port])."
 	}
+	require(!(config.allowCredentials && WILDCARD_ORIGIN in config.allowedOrigins)) {
+		"cors.allowCredentials: true cannot be combined with cors.allowedOrigins: " +
+			"[\"$WILDCARD_ORIGIN\"] — the wildcard is reflected back as the caller's own " +
+			"origin once credentials are enabled, which would let any site the user visits " +
+			"make authenticated requests to this server and read the responses. List the " +
+			"origins your browser front-end is served from (e.g. " +
+			"[\"https://omnisign.example.com\"]), or set cors.allowCredentials: false if no " +
+			"browser front-end uses the refresh cookie."
+	}
 	return config
 }
+
+/**
+ * The explicit allow-all entry accepted in [CorsConfig.allowedOrigins].
+ */
+private const val WILDCARD_ORIGIN = "*"

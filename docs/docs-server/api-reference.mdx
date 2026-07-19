@@ -121,9 +121,9 @@ See [Authentication & SSO](authentication) for the full flow.
 
 | Endpoint                       | Auth | Notes                                                       |
 |--------------------------------|:----:|------------------------------------------------------------|
-| `GET /auth/login`              |  —   | Lists providers; each has a `loginUrl` (`/auth/redirect/{name}` for OIDC, `/auth/callback/{name}` for header-injection). |
+| `GET /auth/login`              |  —   | Lists providers; each has a `loginUrl` (`/auth/redirect/{name}`). |
 | `GET /auth/redirect/{name}`    |  —   | Starts the OIDC authorization-code + PKCE flow.            |
-| `GET /auth/callback/{name}`    |  —   | OAuth2 / header-injection callback; mints the token pair.  |
+| `GET /auth/callback/{name}`    |  —   | OAuth2 authorization-code callback; mints the token pair.  |
 | `GET /auth/session`            | JWT  | Returns `SessionResponse` for the bearer, else `401`.      |
 | `POST /auth/refresh`           |  —   | Body `{ "refreshToken": "…" }`; single-use rotation. `401 INVALID_REFRESH_TOKEN` / `401 SESSION_EXPIRED`. |
 | `POST /auth/logout`            |  —   | Body `{ "refreshToken": "…" }`; idempotent, always `204`.  |
