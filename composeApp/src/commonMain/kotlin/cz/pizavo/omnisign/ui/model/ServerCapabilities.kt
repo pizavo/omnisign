@@ -3,11 +3,14 @@ package cz.pizavo.omnisign.ui.model
 /**
  * UI-facing view of which operations the connected server permits.
  *
- * On the desktop target there is no server, so every flag defaults to `true` — the local
- * app can perform every operation. On the web target a
- * [cz.pizavo.omnisign.ui.viewmodel.CapabilitiesViewModel] queries the server's
- * `GET /api/v1/capabilities` and narrows these flags to the reported `allowedOperations`,
- * so the UI hides affordances for operations the server does not expose.
+ * The operation flags **default to `false` (deny)** so the web target fails closed: until a
+ * successful `GET /api/v1/capabilities` response confirms otherwise, no operation affordance is
+ * shown, and a capabilities fetch that fails leaves every operation denied rather than exposing a
+ * button that cannot work. [cz.pizavo.omnisign.ui.viewmodel.CapabilitiesViewModel] narrows these
+ * flags to the server's reported `allowedOperations` on success.
+ *
+ * The desktop target has no server to gate it, so the view model sets every operation flag to `true`
+ * explicitly there — the deny-by-default is a web concern only.
  *
  * @property canValidate Whether signature validation is offered (server `VALIDATE`).
  * @property canSign Whether the Sign affordance is offered (server `SIGN`).
@@ -21,9 +24,9 @@ package cz.pizavo.omnisign.ui.model
  *   server (desktop). Composed with the frontend deployer's label into the displayed title.
  */
 data class ServerCapabilities(
-    val canValidate: Boolean = true,
-    val canSign: Boolean = true,
-    val canTimestamp: Boolean = true,
+    val canValidate: Boolean = false,
+    val canSign: Boolean = false,
+    val canTimestamp: Boolean = false,
     val authEnabled: Boolean = false,
     val organizationName: String? = null,
 )

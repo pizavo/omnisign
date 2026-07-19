@@ -25,6 +25,9 @@
 	<string name="err_signing_no_cert_found">No suitable certificate found</string>
 	<string name="err_signing_no_cert_found_for_alias">No suitable certificate found for alias \'%1$s\'</string>
 	<string name="err_signing_remote_signing_failed">Remote signing failed</string>
+	<string name="err_server_invalid_configuration">The server can\'t perform this operation with the selected profile\'s configuration</string>
+	<string name="err_server_timestamp_not_allowed">This server does not permit timestamping</string>
+	<string name="err_server_certificate_not_allowed">The selected signing certificate is not permitted by the server</string>
 	<string name="err_signing_signing_failed">Signing failed</string>
 	<string name="err_signing_list_certs_from_server_failed">Failed to list certificates from server</string>
 	<string name="err_signing_unlock_not_supported_web">Token unlock is not supported on the web target</string>

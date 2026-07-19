@@ -132,7 +132,6 @@ class RemoteConfigRepository(
         }.fold(
             ifLeft = { exception ->
                 ConfigurationError.loadFromServerFailed(
-                    details = exception.message,
                     cause = exception,
                 ).left()
             },

@@ -16,19 +16,22 @@ browser console will usually show a WebAssembly error.
 
 ## The Sign or Timestamp button is missing
 
-The server does not permit that operation. Signing and timestamping are opt-in server-side and
-validation is on by default, so a deployment may legitimately offer validation only. There is nothing
-to configure in the browser — ask the administrator to enable the operation. See
-[Server → Operation gating](/server/security#operation-gating).
+Either the server does not permit that operation, or the app could not reach the server at startup.
+Signing and timestamping are opt-in server-side and validation is on by default, so a deployment may
+legitimately offer validation only — ask the administrator to enable it. But the capability check also
+**fails closed**: if it cannot reach the server, it assumes *no* operation is permitted and hides every
+button, so a missing button can equally mean the server is unreachable. Rule of thumb — if *all* the
+operation buttons (and the **Signatures** panel) are gone, suspect connectivity first; if only one is
+missing, suspect operation gating. See [Server → Operation gating](/server/security#operation-gating).
 
-The same applies to the **Signatures** panel: it disappears when the server does not permit
-`VALIDATE`.
+The **Signatures** panel likewise disappears when the server does not permit `VALIDATE` — or cannot be
+reached.
 
-## The buttons are there, but every operation fails
+## The buttons are there, but an operation fails
 
-The capability check the app runs at startup is **optimistic**: if it cannot reach the server, it
-assumes every operation is permitted and shows all the buttons anyway. Seeing a Sign button therefore
-tells you nothing about whether the server is reachable — the failure only appears when you press it.
+The capability check runs once at startup and fails closed, so if the buttons *are* present the server
+was reachable when the app loaded. A later failure therefore means the server has since gone down, the
+request was rejected, or your session ended — see the messages below.
 
 ## "Remote signing failed" / "Remote validation failed"
 

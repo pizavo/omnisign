@@ -28,7 +28,7 @@ class RemoteConfigArchive(
 		Either.catch {
 			client.get("api/v1/config/export").body<ByteArray>()
 		}.mapLeft { exception ->
-			ConfigurationError.loadFromServerFailed(details = exception.message, cause = exception)
+			ConfigurationError.loadFromServerFailed(cause = exception)
 		}
 
 	override suspend fun importFullConfig(archive: ByteArray): OperationResult<Unit> =

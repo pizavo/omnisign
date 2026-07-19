@@ -25,6 +25,9 @@
 	<string name="err_signing_no_cert_found">Nenašiel sa žiadny vhodný certifikát</string>
 	<string name="err_signing_no_cert_found_for_alias">Pre alias \'%1$s\' sa nenašiel žiadny vhodný certifikát</string>
 	<string name="err_signing_remote_signing_failed">Vzdialené podpisovanie zlyhalo</string>
+	<string name="err_server_invalid_configuration">Server nemôže túto operáciu vykonať s konfiguráciou vybraného profilu</string>
+	<string name="err_server_timestamp_not_allowed">Tento server neumožňuje vytváranie časových pečiatok</string>
+	<string name="err_server_certificate_not_allowed">Vybraný podpisový certifikát nie je serverom povolený</string>
 	<string name="err_signing_signing_failed">Podpisovanie zlyhalo</string>
 	<string name="err_signing_list_certs_from_server_failed">Nepodarilo sa vypísať certifikáty zo servera</string>
 	<string name="err_signing_unlock_not_supported_web">Odomknutie tokenu nie je podporované vo webovej verzii</string>

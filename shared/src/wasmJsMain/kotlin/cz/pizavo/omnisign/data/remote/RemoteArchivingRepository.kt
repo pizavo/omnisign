@@ -84,9 +84,7 @@ class RemoteArchivingRepository(
                 annotatedWarnings = meta.annotatedWarnings,
                 rawWarnings = meta.annotatedWarnings.map { it.summary.english() },
             )
-        }.mapLeft { exception ->
-            ArchivingError.remoteExtensionFailed(details = exception.message, cause = exception)
-        }
+        }.mapLeftSuspend { exception -> extensionError(exception) }
 
     override suspend fun needsArchivalRenewal(
         filePath: String,
@@ -112,6 +110,16 @@ class RemoteArchivingRepository(
                 },
             ).body<DocumentTimestampInfo>()
         }.mapLeft { exception ->
-            ArchivingError.remoteInspectFailed(details = exception.message, cause = exception)
+            ArchivingError.remoteInspectFailed(cause = exception)
         }
+
+    /**
+     * Map a failed [extendDocument] request to a localizable [ArchivingError]: a keyed message for a
+     * recognized server gating code, otherwise the generic remote-extension message. The server's raw
+     * text is never propagated (no `details`), so no JSON or DSS reason reaches the user.
+     */
+    private suspend fun extensionError(exception: Throwable): ArchivingError =
+        serverErrorText(exception.serverErrorCode())
+            ?.let { ArchivingError.ExtensionFailed(text = it, cause = exception) }
+            ?: ArchivingError.remoteExtensionFailed(cause = exception)
 }

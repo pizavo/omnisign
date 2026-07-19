@@ -103,7 +103,7 @@ class CapabilitiesViewModelTest : FunSpec({
         }
     }
 
-    test("fetch failure keeps the optimistic all-permitted default") {
+    test("fetch failure denies every operation (pessimistic, fails closed)") {
         runTest(testDispatcher) {
             val repo = mockk<CapabilitiesRepository>()
             coEvery { repo.get() } throws RuntimeException("network down")
@@ -112,9 +112,9 @@ class CapabilitiesViewModelTest : FunSpec({
             advanceUntilIdle()
 
             val caps = vm.capabilities.value
-            caps.canValidate shouldBe true
-            caps.canSign shouldBe true
-            caps.canTimestamp shouldBe true
+            caps.canValidate shouldBe false
+            caps.canSign shouldBe false
+            caps.canTimestamp shouldBe false
         }
     }
 
