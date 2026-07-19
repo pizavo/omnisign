@@ -29,6 +29,7 @@ import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.plugins.*
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.ktor.client.engine.HttpClientEngine
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
@@ -136,8 +137,10 @@ fun main(args: Array<String>) {
  * @param serverConfig Server configuration instance.
  * @param secrets Secret values resolved from environment variables. Tests inject an
  *   explicit instance; production callers obtain it from [ServerSecrets.resolveFromEnv].
+ * @param httpClientEngine Test-only outbound-HTTP engine override (a `MockEngine` IdP), threaded to
+ *   [configureKoin]; `null` in production.
  */
-fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets) {
+fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets, httpClientEngine: HttpClientEngine? = null) {
 	validateAuthConfig(serverConfig.auth)
 	val parsedProxy = validateProxyConfig(serverConfig.proxy)
 	val corsConfig = validateCorsConfig(serverConfig.cors)
@@ -151,7 +154,7 @@ fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets) {
 		logger.info { "Signing key source: file keystore at $path" }
 	}
 	val signingConfig = SigningConfigLoader().load(serverConfig.signingConfigFile)
-	configureKoin(serverConfig, secrets, signingConfig)
+	configureKoin(serverConfig, secrets, signingConfig, httpClientEngine)
 	reconcileTrustIfConfigured(serverConfig, signingConfig)
 	if (backgroundServicesEnabled()) {
 		launchPkcs11WarmupIfNeeded(serverConfig)
@@ -238,23 +241,28 @@ private fun backgroundServicesEnabled(): Boolean =
  * @param secrets Resolved env-var secrets. Defaults to [ServerSecrets.resolveFromEnv]; tests
  *   typically supply an explicit instance with literal test values so they do not need to
  *   set process-wide env vars before each run.
+ * @param httpClientEngine Test-only override for the server's outbound HTTP-client engine, letting a
+ *   test substitute a `MockEngine` for the IdP so the OIDC callback's token-exchange → UserInfo hop
+ *   runs end-to-end; `null` (production) uses CIO.
  */
 fun Application.module(
 	serverConfig: ServerConfig = ServerConfig(),
 	secrets: ServerSecrets = ServerSecrets.resolveFromEnv(serverConfig),
+	httpClientEngine: HttpClientEngine? = null,
 ) {
-	moduleWith(serverConfig, secrets)
+	moduleWith(serverConfig, secrets, httpClientEngine)
 }
 
 /**
- * Install Koin DI with shared and server-specific modules.
+ * Install Koin DI with shared and server-specific modules. [httpClientEngine], when non-null,
+ * overrides the outbound HTTP client's engine so tests can inject a `MockEngine` IdP.
  */
-fun Application.configureKoin(serverConfig: ServerConfig, secrets: ServerSecrets, signingConfig: AppConfig) {
+fun Application.configureKoin(serverConfig: ServerConfig, secrets: ServerSecrets, signingConfig: AppConfig, httpClientEngine: HttpClientEngine? = null) {
 	install(Koin) {
 		modules(
 			appModule,
 			jvmRepositoryModule,
-			serverModule(serverConfig, secrets, signingConfig),
+			serverModule(serverConfig, secrets, signingConfig, httpClientEngine),
 		)
 	}
 }

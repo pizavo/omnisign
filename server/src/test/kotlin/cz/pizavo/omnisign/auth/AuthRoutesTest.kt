@@ -22,6 +22,7 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotBeBlank
 import io.kotest.matchers.string.shouldStartWith
+import io.ktor.client.engine.mock.*
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
@@ -84,6 +85,39 @@ private fun authTestConfig(auth: AuthConfig?): ServerConfig =
         operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)),
         cors = CorsConfig(allowedOrigins = listOf("*")),
     )
+
+/**
+ * A [MockEngine] standing in for the GitHub IdP: it answers the OAuth2 token exchange with a canned
+ * bearer token (form-encoded, as GitHub does) and the user API with [userInfoJson]. Substituted for
+ * the CIO engine of the server's outbound [io.ktor.client.HttpClient] via the [module]
+ * `httpClientEngine` seam, so the callback's token-exchange -> UserInfo hop runs end-to-end with no
+ * live IdP. GitHub is deliberate: its hard-coded endpoints skip OIDC discovery and its non-OIDC
+ * nature skips id_token verification, so the mock only serves these two endpoints.
+ */
+private fun githubIdpMockEngine(userInfoJson: String): MockEngine =
+    MockEngine { request ->
+        val url = request.url.toString()
+        when {
+            url.startsWith(OidcDiscoveryService.GITHUB_TOKEN_URL) ->
+                respond(
+                    "access_token=gh-access-token&token_type=bearer",
+                    HttpStatusCode.OK,
+                    headersOf(HttpHeaders.ContentType, ContentType.Application.FormUrlEncoded.toString()),
+                )
+            url.startsWith(OidcDiscoveryService.GITHUB_USER_API_URL) ->
+                respond(
+                    userInfoJson,
+                    HttpStatusCode.OK,
+                    headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                )
+            else -> respond("unexpected IdP request: $url", HttpStatusCode.InternalServerError)
+        }
+    }
+
+/** UserInfo JSON for a GitHub user in the `example.com` email domain. */
+private const val OCTOCAT_USER_INFO =
+    """{"id":12345,"login":"octocat","email":"octocat@example.com","name":"The Octocat"}"""
+
 /**
  * Integration tests for the `/auth` route group, verifying login discovery, JWT
  * session endpoints, and authentication enforcement on protected routes.
@@ -494,6 +528,120 @@ class AuthRoutesTest : FunSpec({
 				location.shouldNotBeNull()
 				location shouldStartWith OidcDiscoveryService.GITHUB_AUTHORIZATION_URL
 				Url(location).parameters["state"].shouldNotBeBlank()
+			}
+		}
+	}
+
+	fun callbackAuthConfig(
+		allowedRedirectUris: List<String> = emptyList(),
+		allowedEmailDomains: List<String> = listOf("*"),
+	) = authConfig.copy(
+		providers = listOf(
+			OidcProviderConfig(
+				name = "github",
+				preset = SsoProviderPreset.GITHUB,
+				clientId = "test-client-id",
+				allowedEmailDomains = allowedEmailDomains,
+			),
+		),
+		oauthStateSecret = oauthStateSecret,
+		allowedRedirectUris = allowedRedirectUris,
+	)
+
+	test("OIDC callback issues a hand-off code and 302s back to returnTo (happy path)") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(callbackAuthConfig(allowedRedirectUris = listOf("https://app.example.com/"))),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(OCTOCAT_USER_INFO),
+					)
+				}
+				val noRedirect = createClient { followRedirects = false }
+
+				val redirect = noRedirect.get("/auth/redirect/github") {
+					url {
+						parameters.append("returnTo", "https://app.example.com/")
+						parameters.append("handoffChallenge", "challenge-value")
+					}
+				}
+				val state = Url(redirect.headers["Location"]!!).parameters["state"]
+				state.shouldNotBeNull()
+
+				val callback = noRedirect.get("/auth/callback/github") {
+					url {
+						parameters.append("code", "authorization-code-from-idp")
+						parameters.append("state", state)
+					}
+				}
+				callback.status shouldBe HttpStatusCode.Found
+				val location = callback.headers["Location"]
+				location.shouldNotBeNull()
+				location shouldStartWith "https://app.example.com/"
+				Url(location).parameters["code"].shouldNotBeBlank()
+			}
+		}
+	}
+
+	test("OIDC callback with no parked hand-off returns a session as JSON with the refresh cookie") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(callbackAuthConfig()),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(OCTOCAT_USER_INFO),
+					)
+				}
+				val noRedirect = createClient { followRedirects = false }
+
+				val redirect = noRedirect.get("/auth/redirect/github")
+				val state = Url(redirect.headers["Location"]!!).parameters["state"]
+				state.shouldNotBeNull()
+
+				val callback = noRedirect.get("/auth/callback/github") {
+					url {
+						parameters.append("code", "authorization-code-from-idp")
+						parameters.append("state", state)
+					}
+				}
+				callback.status shouldBe HttpStatusCode.OK
+				val body = Json.parseToJsonElement(callback.bodyAsText()).jsonObject
+				body["token"]?.jsonPrimitive?.content.shouldNotBeBlank()
+				body["refreshToken"]?.jsonPrimitive?.content.shouldNotBeBlank()
+				val setCookie = callback.headers["Set-Cookie"]
+				setCookie.shouldNotBeNull()
+				setCookie shouldContain "omnisign_refresh="
+			}
+		}
+	}
+
+	test("OIDC callback rejects a user whose email domain is not in allowedEmailDomains") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(callbackAuthConfig(allowedEmailDomains = listOf("other.com"))),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(OCTOCAT_USER_INFO),
+					)
+				}
+				val noRedirect = createClient { followRedirects = false }
+
+				val redirect = noRedirect.get("/auth/redirect/github")
+				val state = Url(redirect.headers["Location"]!!).parameters["state"]
+				state.shouldNotBeNull()
+
+				val callback = noRedirect.get("/auth/callback/github") {
+					url {
+						parameters.append("code", "authorization-code-from-idp")
+						parameters.append("state", state)
+					}
+				}
+				callback.status shouldBe HttpStatusCode.Forbidden
+				val body = Json.parseToJsonElement(callback.bodyAsText()).jsonObject
+				body["error"]?.jsonPrimitive?.content shouldBe "DOMAIN_NOT_ALLOWED"
 			}
 		}
 	}

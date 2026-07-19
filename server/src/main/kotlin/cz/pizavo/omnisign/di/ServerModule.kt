@@ -28,6 +28,7 @@ import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.platform.PasswordCallback
 import io.ktor.client.*
+import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.cio.*
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.contentnegotiation.*
@@ -110,8 +111,10 @@ import kotlin.coroutines.CoroutineContext
  * @param secrets Secret values resolved from environment variables.
  * @param signingConfig Provider signing/validation policy resolved from signing.yml at
  *   startup, exposed through the read-only [ConfigRepository] binding.
+ * @param httpClientEngine Test-only override for the outbound [HttpClient]'s engine — a `MockEngine`
+ *   standing in for the IdP. Production passes `null`, which uses the CIO engine.
  */
-fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConfig: AppConfig) = module {
+fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConfig: AppConfig, httpClientEngine: HttpClientEngine? = null) = module {
 	single<ServerConfig> { serverConfig }
 	single<ServerSecrets> { secrets }
 	single<ServerConfigLoader> { ServerConfigLoader() }
@@ -127,7 +130,8 @@ fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConf
 	}
 
 	single<HttpClient> {
-		HttpClient(CIO) {
+		val engine = httpClientEngine ?: CIO.create()
+		HttpClient(engine) {
 			install(ContentNegotiation) {
 				json(Json { ignoreUnknownKeys = true })
 			}
