@@ -1,7 +1,9 @@
 allowBuilds:
+  '@parcel/watcher': true
   '@swc/core': false
   core-js: false
   core-js-pure: false
+  postman-code-generators: true
 
 minimumReleaseAgeExclude:
   - '@docusaurus/babel@3.10.2'

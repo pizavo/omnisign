@@ -88,7 +88,7 @@ PKCS#11 token/HSM. When set (with `SIGN` enabled), every sign request signs from
 sole key. Its password comes from `OMNISIGN_SIGNING_KEYSTORE_PASSWORD` (see [Secrets](#secrets)).
 Setting the path without `SIGN` in `allowed`, or pointing it at a missing file, is rejected at
 startup. Leave it unset for a PKCS#11/HSM-backed deployment. The keystore's certificate(s) are also
-surfaced through [`GET /api/v1/certificates`](api-reference#operations) so remote clients can pick the
+surfaced through [`GET /api/v1/certificates`](/server/api/list-certificates) so remote clients can pick the
 server's signing identity.
 
 ### `proxy`
@@ -169,8 +169,8 @@ Maximum upload size in bytes. Defaults to `104857600` (100 MB).
 ### `organizationName`
 
 Optional deploy-time branding label for the operator running this server (e.g.
-`"University of Ostrava"`). It is surfaced in the [`GET /api/v1/health`](api-reference#system) and
-[`GET /api/v1/capabilities`](api-reference#system) responses as `organizationName`, alongside a fixed
+`"University of Ostrava"`). It is surfaced in the [`GET /api/v1/health`](/server/api/get-health) and
+[`GET /api/v1/capabilities`](/server/api/get-capabilities) responses as `organizationName`, alongside a fixed
 `poweredBy: "OmniSign"`. Web and desktop clients compose it into the window title and toolbar (e.g.
 `University of Ostrava · OmniSign`). When omitted or blank, no operator label is published and clients
 show plain **OmniSign** — the product name is never replaceable, only prefixed.

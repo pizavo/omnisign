@@ -1,0 +1,1672 @@
+openapi: 3.1.0
+info:
+  title: OmniSign Server API
+  version: 1.0.0
+  description: |
+    HTTP API of the OmniSign signature server — PAdES signing, validation, and
+    re-timestamping on the EU DSS library.
+
+    ## Conventions
+
+    - Operational endpoints live under `/api/v1`; authentication endpoints live under `/auth`.
+    - File uploads are `multipart/form-data`. The `profile` field selects a named
+      [signing profile](https://pizavo.github.io/omnisign/server/signing-policy); when omitted,
+      `global` defaults apply — there is no server-side "active profile" fallback.
+    - `disableHashAlgorithm` and `disableEncryptionAlgorithm` are comma-separated, case-insensitive,
+      and **strictly tightening**: they can only add to the disabled set, never re-enable something a
+      profile or the global policy disabled.
+    - Errors are a JSON `ApiError`: `{ "error": "CODE", "message": "human-readable detail" }`.
+    - Every response carries an `X-Request-Id` correlation header (echoed from the request when
+      supplied and ≤ 64 chars, otherwise server-generated).
+
+    ## Operation gating
+
+    Each operation is gated by an `AllowedOperation` the operator enables in server config:
+    `VALIDATE` is on by default; `SIGN` and `TIMESTAMP` are opt-in. A call to a disabled
+    operation is rejected with `403 OPERATION_NOT_ALLOWED`.
+
+    ## Authentication
+
+    Authentication is optional and off by default. When the server runs with `auth.enabled: true`,
+    the operational and config endpoints require a session JWT
+    (`Authorization: Bearer <jwt>`); `GET /api/v1/health`, `GET /api/v1/capabilities`, and the
+    `/auth/*` endpoints (except `GET /auth/session`) are always reachable without one. Obtain a JWT
+    through the OIDC login flow under `/auth`.
+  contact:
+    name: OmniSign
+    url: https://pizavo.github.io/omnisign/
+    email: pizavo@gmail.com
+  license:
+    name: AGPL-3.0-or-later
+    identifier: AGPL-3.0-or-later
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server (default Ktor port)
+  - url: https://omnisign.pizavo.cz
+    description: Reference deployment (adjust to your front-end proxy)
+
+tags:
+  - name: Signing
+    description: Produce PAdES signatures.
+  - name: Validation
+    description: Validate signatures and produce a report.
+  - name: Timestamping
+    description: Extend a signed PDF to a higher PAdES level.
+  - name: Certificates
+    description: Discover the server's signing certificates.
+  - name: Configuration
+    description: Read-only, sanitized configuration introspection.
+  - name: System
+    description: Always-public health and capability probes.
+  - name: Authentication
+    description: OIDC login, session, refresh, and logout.
+
+paths:
+  /api/v1/health:
+    get:
+      tags: [System]
+      summary: Health probe
+      description: Liveness/identity probe for monitoring. Always public.
+      operationId: getHealth
+      security: []
+      responses:
+        '200':
+          description: Server is up.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/HealthResponse'
+
+  /api/v1/capabilities:
+    get:
+      tags: [System]
+      summary: Server capabilities
+      description: |
+        Describes enabled operations, available profiles, and upload limits. Always public, but
+        when auth is enabled the `profiles` list is empty for unauthenticated callers to avoid
+        leaking internal profile names.
+      operationId: getCapabilities
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Capability descriptor.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CapabilitiesResponse'
+
+  /api/v1/sign:
+    post:
+      tags: [Signing]
+      summary: Sign a PDF
+      description: |
+        Signs an uploaded PDF at the requested (or profile/global default) PAdES level. Requires the
+        **SIGN** operation. When the effective level embeds an RFC 3161 timestamp, **TIMESTAMP** must
+        also be enabled.
+      operationId: signDocument
+      security:
+        - bearerAuth: []
+        - {}
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The PDF to sign.
+                certificateAlias:
+                  type: string
+                  description: Signing certificate alias; must pass the `certificateAliases` allow-list when set.
+                hashAlgorithm:
+                  allOf:
+                    - $ref: '#/components/schemas/HashAlgorithm'
+                  description: >
+                    Digest algorithm (e.g. `SHA256`). Matched case-insensitively; an unrecognized
+                    value is ignored and the profile/global default applies.
+                signatureLevel:
+                  allOf:
+                    - $ref: '#/components/schemas/SignatureLevel'
+                  description: >
+                    PAdES level (e.g. `PADES_BASELINE_T`). Matched case-insensitively; an
+                    unrecognized value is ignored and the profile/global default applies.
+                reason:
+                  type: string
+                  description: Optional signature reason metadata.
+                location:
+                  type: string
+                  description: Optional signature location metadata.
+                contactInfo:
+                  type: string
+                  description: Optional signature contact metadata.
+                noTimestamp:
+                  type: boolean
+                  description: Set `true` to omit the RFC 3161 timestamp (only valid for `PADES_BASELINE_B`).
+                profile:
+                  type: string
+                  description: Named configuration profile. When omitted, global defaults apply.
+                disableHashAlgorithm:
+                  type: string
+                  description: Comma-separated `HashAlgorithm` names to additionally disable (strictly tightening).
+                disableEncryptionAlgorithm:
+                  type: string
+                  description: Comma-separated `EncryptionAlgorithm` names to additionally disable (strictly tightening).
+            encoding:
+              file:
+                contentType: application/pdf
+      responses:
+        '200':
+          description: The signed PDF.
+          headers:
+            X-OmniSign-Result:
+              description: '`SigningResultMeta` serialized as JSON.'
+              schema:
+                $ref: '#/components/schemas/SigningResultMeta'
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Missing file, malformed (non-PDF) document, or an invalid algorithm name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                missingFile:
+                  value: { error: MISSING_FILE, message: "Multipart field 'file' is required" }
+                malformed:
+                  value: { error: MALFORMED_DOCUMENT, message: "The upload is not a valid PDF" }
+        '403':
+          description: The SIGN operation is disabled, or the certificate alias is not allowed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                operationNotAllowed:
+                  value: { error: OPERATION_NOT_ALLOWED, message: "The SIGN operation is not enabled on this server" }
+                certificateNotAllowed:
+                  value: { error: CERTIFICATE_NOT_ALLOWED, message: "Certificate alias 'x' is not in the server's allowed list" }
+        '422':
+          description: Invalid resolved configuration, an encrypted document, or a timestamp is required but TIMESTAMP is disabled.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                timestampNotAllowed:
+                  value: { error: TIMESTAMP_NOT_ALLOWED, message: "Signing at PADES_BASELINE_T embeds a timestamp, but TIMESTAMP is not enabled" }
+                encrypted:
+                  value: { error: ENCRYPTED_DOCUMENT, message: "The PDF is encrypted or password-protected and cannot be signed" }
+
+  /api/v1/validate:
+    post:
+      tags: [Validation]
+      summary: Validate a PDF's signatures
+      description: |
+        Validates all signatures and document timestamps in an uploaded PDF. Requires **VALIDATE**
+        (enabled by default). The report is localized per request from the `Accept-Language` header,
+        falling back to the server's default locale.
+      operationId: validateDocument
+      parameters:
+        - $ref: '#/components/parameters/AcceptLanguage'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The PDF to validate.
+                profile:
+                  type: string
+                  description: Named configuration profile. When omitted, global defaults apply.
+                formats:
+                  type: string
+                  description: >
+                    Comma-separated `RawReportFormat` names whose XML payloads are included under
+                    `rawReports`. Unknown names → `400 INVALID_FORMAT`.
+                disableHashAlgorithm:
+                  type: string
+                  description: Comma-separated `HashAlgorithm` names to additionally disable (strictly tightening).
+                disableEncryptionAlgorithm:
+                  type: string
+                  description: Comma-separated `EncryptionAlgorithm` names to additionally disable (strictly tightening).
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: |
+            The validation report. Each signature and document timestamp carries its full
+            certificate chain — every certificate's parsed fields and extensions, plus which
+            certificates are trusted and via which source (a trusted list, global trust, or a
+            profile's).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ValidationReport'
+        '400':
+          description: Missing file, or an invalid `formats`/algorithm name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          $ref: '#/components/responses/OperationNotAllowed'
+        '422':
+          $ref: '#/components/responses/InvalidConfiguration'
+
+  /api/v1/timestamp:
+    post:
+      tags: [Timestamping]
+      summary: Extend a signed PDF to a higher PAdES level
+      description: |
+        Adds a document timestamp, extending the signature to `targetLevel`. Requires **TIMESTAMP**.
+        The TSA is always the server's configured one — clients cannot supply TSA credentials.
+      operationId: timestampDocument
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The signed PDF to extend.
+                targetLevel:
+                  allOf:
+                    - $ref: '#/components/schemas/SignatureLevel'
+                  description: Target PAdES level. Defaults to `PADES_BASELINE_LTA`.
+                profile:
+                  type: string
+                  description: Named configuration profile. When omitted, global defaults apply.
+                disableHashAlgorithm:
+                  type: string
+                  description: Comma-separated `HashAlgorithm` names to additionally disable (strictly tightening).
+                disableEncryptionAlgorithm:
+                  type: string
+                  description: Comma-separated `EncryptionAlgorithm` names to additionally disable (strictly tightening).
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: The extended PDF.
+          headers:
+            X-OmniSign-Result:
+              description: '`TimestampResultMeta` serialized as JSON.'
+              schema:
+                $ref: '#/components/schemas/TimestampResultMeta'
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+        '400':
+          description: Missing file, malformed (non-PDF) document, or an invalid algorithm name.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          $ref: '#/components/responses/OperationNotAllowed'
+        '422':
+          description: Invalid resolved configuration, or an encrypted document.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /api/v1/timestamp/inspect:
+    post:
+      tags: [Timestamping]
+      summary: Pre-flight valid extension levels
+      description: |
+        Lightweight inspection of a signed PDF to learn which target levels are valid extensions,
+        without running a full validation. Requires **TIMESTAMP**.
+      operationId: inspectTimestamp
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+                  description: The signed PDF to inspect.
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Document timestamp information.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DocumentTimestampInfo'
+        '400':
+          description: Missing file.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          $ref: '#/components/responses/OperationNotAllowed'
+
+  /api/v1/certificates:
+    get:
+      tags: [Certificates]
+      summary: List signing certificates
+      description: |
+        Lists the server's signing-capable certificates (token discovery plus any configured file
+        keystore), filtered by `certificateAliases` when set, with per-token warnings and
+        locked-token entries. Requires **SIGN** because it reveals installed signing material.
+      operationId: listCertificates
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Discovered certificates and per-token diagnostics.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CertificateDiscoveryResponse'
+        '403':
+          $ref: '#/components/responses/OperationNotAllowed'
+
+  /api/v1/config/global:
+    get:
+      tags: [Configuration]
+      summary: Global configuration defaults
+      operationId: getGlobalConfig
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Sanitized global configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GlobalConfigResponse'
+
+  /api/v1/config/profiles:
+    get:
+      tags: [Configuration]
+      summary: List profiles
+      operationId: listProfiles
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: All profiles, sorted by name.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/ProfileConfigResponse'
+
+  /api/v1/config/profiles/{name}:
+    get:
+      tags: [Configuration]
+      summary: Get one profile
+      operationId: getProfile
+      parameters:
+        - name: name
+          in: path
+          required: true
+          schema:
+            type: string
+          description: Profile name.
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: The requested profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileConfigResponse'
+        '404':
+          description: No such profile.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example: { error: PROFILE_NOT_FOUND, message: "Profile 'x' does not exist" }
+
+  /api/v1/config/resolved:
+    get:
+      tags: [Configuration]
+      summary: Effective configuration after merge
+      description: The effective config after the global → profile → operation merge. Omit `profile` for global defaults.
+      operationId: getResolvedConfig
+      parameters:
+        - $ref: '#/components/parameters/ProfileQuery'
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Resolved configuration.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ResolvedConfigResponse'
+        '404':
+          description: The named profile does not exist.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '422':
+          $ref: '#/components/responses/InvalidConfiguration'
+
+  /api/v1/config/trusted-certificates:
+    get:
+      tags: [Configuration]
+      summary: Directly-trusted certificates in a scope
+      description: The directly-trusted certificates the server validates with in the requested scope (a profile's, or global when `profile` is omitted).
+      operationId: getTrustedCertificates
+      parameters:
+        - $ref: '#/components/parameters/ProfileQuery'
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Trusted certificates.
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/TrustedCertificateResponse'
+
+  /api/v1/config/export:
+    get:
+      tags: [Configuration]
+      summary: Export the full configuration as a ZIP
+      description: |
+        The full configuration (global settings, every profile, and their trusted certificates) as a
+        ZIP attachment, identical to the desktop Backup export. Contains no secrets.
+      operationId: exportConfig
+      security:
+        - bearerAuth: []
+        - {}
+      responses:
+        '200':
+          description: Configuration archive.
+          headers:
+            Content-Disposition:
+              description: Attachment with filename `omnisign-config.zip`.
+              schema:
+                type: string
+          content:
+            application/zip:
+              schema:
+                type: string
+                format: binary
+
+  /auth/login:
+    get:
+      tags: [Authentication]
+      summary: List login providers
+      description: Lists the active OIDC providers; the client should redirect to a provider's `loginUrl`.
+      operationId: getLoginOptions
+      security: []
+      responses:
+        '200':
+          description: Available providers.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LoginOptionsResponse'
+        '503':
+          description: Authentication is not configured on this server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example: { error: AUTH_NOT_CONFIGURED, message: "Authentication is not configured on this server" }
+
+  /auth/redirect/{provider}:
+    get:
+      tags: [Authentication]
+      summary: Start the OIDC authorization-code + PKCE flow
+      description: |
+        Issues a `302` to the identity provider's authorization endpoint. A browser app may add
+        `returnTo` and `handoffChallenge` query parameters to request a login hand-off (see
+        `/auth/callback` and `/auth/exchange`). Only mounted for configured OIDC providers.
+      operationId: startOidcRedirect
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ProviderPath'
+        - name: returnTo
+          in: query
+          required: false
+          schema:
+            type: string
+          description: Front-end URL to hand the login back to. Must match `auth.allowedRedirectUris` exactly.
+        - name: handoffChallenge
+          in: query
+          required: false
+          schema:
+            type: string
+          description: PKCE-style challenge binding the hand-off code to this client.
+      responses:
+        '302':
+          description: Redirect to the identity provider.
+
+  /auth/callback/{provider}:
+    get:
+      tags: [Authentication]
+      summary: OAuth2 authorization-code callback
+      description: |
+        Completes the OAuth2 code exchange and mints a token pair. A plain hit returns
+        `TokenResponse` as JSON; a hit that began with `returnTo` is answered with a `302` back to
+        that page carrying a single-use hand-off code (redeemed at `/auth/exchange`).
+      operationId: oidcCallback
+      security: []
+      parameters:
+        - $ref: '#/components/parameters/ProviderPath'
+      responses:
+        '200':
+          description: The minted session (direct/API flow).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '302':
+          description: Redirect back to `returnTo` with a hand-off code (browser flow).
+        '400':
+          description: The `returnTo` is not in `auth.allowedRedirectUris`.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: OAuth2 failed, or id_token verification / UserInfo resolution failed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '403':
+          description: The account's email domain or claims are not permitted.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /auth/session:
+    get:
+      tags: [Authentication]
+      summary: Current session
+      description: Returns the session for the caller's bearer JWT. The only `/auth` route that requires a token.
+      operationId: getSession
+      security:
+        - bearerAuth: []
+      responses:
+        '200':
+          description: The authenticated session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionResponse'
+        '401':
+          description: No valid session token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              example: { error: UNAUTHENTICATED, message: "No valid session token" }
+
+  /auth/refresh:
+    post:
+      tags: [Authentication]
+      summary: Rotate the session (refresh)
+      description: |
+        Single-use refresh-token rotation; mints a fresh access + refresh pair preserving the
+        original authentication time. The token is read from the JSON body when present, otherwise
+        from the refresh cookie.
+      operationId: refreshSession
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '200':
+          description: The rotated session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: No refresh token supplied via body or cookie.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: The refresh token is invalid, or the session exceeded its maximum lifetime.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                invalid:
+                  value: { error: INVALID_REFRESH_TOKEN, message: "Refresh token is unknown, expired, or already used" }
+                expired:
+                  value: { error: SESSION_EXPIRED, message: "Session exceeded the maximum lifetime" }
+        '503':
+          description: Authentication is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /auth/exchange:
+    post:
+      tags: [Authentication]
+      summary: Redeem a login hand-off code
+      description: Trades a single-use hand-off code (plus its PKCE verifier) for a real session, as the callback's JSON branch would.
+      operationId: exchangeHandoffCode
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ExchangeCodeRequest'
+      responses:
+        '200':
+          description: The minted session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TokenResponse'
+        '400':
+          description: Malformed body (missing `code` or `codeVerifier`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '401':
+          description: The hand-off code is unknown, expired, already redeemed, or not bound to the presented verifier.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+        '503':
+          description: Authentication is not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+
+  /auth/logout:
+    post:
+      tags: [Authentication]
+      summary: Log out
+      description: Revokes the presented refresh token server-side and clears the refresh cookie. Idempotent.
+      operationId: logout
+      security: []
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshTokenRequest'
+      responses:
+        '204':
+          description: Logged out (always, whether or not a valid token was supplied).
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: |
+        Session JWT from the `/auth` flow. Required on operational and config endpoints **only when
+        the server is started with `auth.enabled: true`**; otherwise those endpoints are open. Health,
+        capabilities, and the `/auth` endpoints (except `/auth/session`) never require it. Endpoints
+        that list both `bearerAuth` and `{}` accept either a valid token or no token, reflecting this
+        conditional gating.
+
+  parameters:
+    ProfileQuery:
+      name: profile
+      in: query
+      required: false
+      schema:
+        type: string
+      description: Named profile. When omitted, the global scope/defaults apply.
+    ProviderPath:
+      name: provider
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Configured OIDC provider name.
+    AcceptLanguage:
+      name: Accept-Language
+      in: header
+      required: false
+      schema:
+        type: string
+        example: cs
+      description: Preferred language for the localized validation report (e.g. `cs`, `sk`).
+
+  responses:
+    OperationNotAllowed:
+      description: The required operation is not enabled on this server.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { error: OPERATION_NOT_ALLOWED, message: "The operation is not enabled on this server" }
+    InvalidConfiguration:
+      description: The resolved configuration is invalid.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { error: INVALID_CONFIGURATION, message: "..." }
+
+  schemas:
+    ApiError:
+      type: object
+      required: [error, message]
+      properties:
+        error:
+          type: string
+          description: Machine-readable error code.
+          example: MISSING_FILE
+        message:
+          type: string
+          description: Human-readable detail.
+
+    SignatureLevel:
+      type: string
+      description: PAdES baseline level.
+      enum:
+        - PADES_BASELINE_B
+        - PADES_BASELINE_T
+        - PADES_BASELINE_LT
+        - PADES_BASELINE_LTA
+
+    HealthResponse:
+      type: object
+      required: [status, version, poweredBy]
+      properties:
+        status:
+          type: string
+          description: Always `ok` when the server is running.
+          example: ok
+        version:
+          type: string
+          description: Application version string (`dev` when unset).
+        organizationName:
+          type: [string, 'null']
+          description: Operator branding label, when configured.
+        poweredBy:
+          type: string
+          description: Fixed OmniSign attribution.
+          example: OmniSign
+
+    CapabilitiesResponse:
+      type: object
+      required: [allowedOperations, profiles, maxFileSize, authEnabled, poweredBy]
+      properties:
+        allowedOperations:
+          type: array
+          items:
+            $ref: '#/components/schemas/AllowedOperation'
+        profiles:
+          type: array
+          items:
+            type: string
+          description: Available profile names (empty for unauthenticated callers when auth is enabled).
+        maxFileSize:
+          type: integer
+          format: int64
+          description: Maximum upload size in bytes.
+        authEnabled:
+          type: boolean
+          description: Whether the server requires authentication.
+        organizationName:
+          type: [string, 'null']
+        poweredBy:
+          type: string
+          example: OmniSign
+
+    AllowedOperation:
+      type: string
+      enum: [SIGN, VALIDATE, TIMESTAMP]
+
+    SigningResultMeta:
+      type: object
+      description: JSON carried in the `X-OmniSign-Result` response header of a successful sign.
+      properties:
+        signatureId:
+          type: string
+        signatureLevel:
+          $ref: '#/components/schemas/SignatureLevel'
+        annotatedWarnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnnotatedWarning'
+        hasRevocationWarnings:
+          type: boolean
+
+    TimestampResultMeta:
+      type: object
+      description: JSON carried in the `X-OmniSign-Result` response header of a successful timestamp.
+      properties:
+        newLevel:
+          $ref: '#/components/schemas/SignatureLevel'
+        annotatedWarnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/AnnotatedWarning'
+
+    DocumentTimestampInfo:
+      type: object
+      properties:
+        hasDocumentTimestamp:
+          type: boolean
+          description: Whether the PDF already carries a document timestamp.
+        containsLtData:
+          type: boolean
+          description: Whether long-term validation data is already embedded.
+
+    TrustedCertificateResponse:
+      type: object
+      properties:
+        fingerprint:
+          type: string
+        subjectDN:
+          type: string
+        notBefore:
+          type: string
+          format: date-time
+        notAfter:
+          type: string
+          format: date-time
+        type:
+          type: string
+          enum: [ANY, CA, TSA]
+
+    SessionResponse:
+      type: object
+      properties:
+        userId:
+          type: string
+        email:
+          type: [string, 'null']
+        displayName:
+          type: [string, 'null']
+        providerName:
+          type: string
+
+    TokenResponse:
+      type: object
+      description: The minted session returned by the callbacks, `/auth/refresh`, and `/auth/exchange`.
+      properties:
+        token:
+          type: string
+          description: Short-lived access JWT.
+        refreshToken:
+          type: string
+          description: Opaque, single-use refresh token.
+        expiresIn:
+          type: integer
+          format: int64
+          description: Access-token lifetime in seconds.
+        user:
+          $ref: '#/components/schemas/SessionResponse'
+
+    LoginOptionsResponse:
+      type: object
+      properties:
+        providers:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProviderInfo'
+
+    ProviderInfo:
+      type: object
+      properties:
+        name:
+          type: string
+        displayName:
+          type: [string, 'null']
+        type:
+          type: string
+          example: oidc
+        loginUrl:
+          type: string
+          description: Path to start this provider's flow, e.g. `/auth/redirect/google`.
+
+    RefreshTokenRequest:
+      type: object
+      properties:
+        refreshToken:
+          type: string
+      required: [refreshToken]
+
+    ExchangeCodeRequest:
+      type: object
+      properties:
+        code:
+          type: string
+          description: Single-use hand-off code from the callback redirect.
+        codeVerifier:
+          type: string
+          description: PKCE verifier the client kept, binding it to the code.
+      required: [code, codeVerifier]
+
+    AnnotatedWarning:
+      type: object
+      description: A categorized warning (as carried in the `X-OmniSign-Result` header) — a summary plus the ids it affects.
+      required: [summary, affectedIds, idNames]
+      properties:
+        summary:
+          $ref: '#/components/schemas/LocalizableText'
+        affectedIds:
+          type: array
+          items:
+            type: string
+        idNames:
+          type: object
+          description: Map from affected id to a human-readable name.
+          additionalProperties:
+            type: string
+
+    ValidationReport:
+      type: object
+      description: >
+        Validation report for the uploaded PDF, localized per the `Accept-Language` header. Every
+        field is always present in the response; fields documented as nullable may carry `null`.
+      required: [documentName, validationTime, overallResult, signatures, timestamps, tlWarnings, rawReports]
+      properties:
+        documentName:
+          type: string
+        validationTime:
+          type: string
+          format: date-time
+        overallResult:
+          $ref: '#/components/schemas/ValidationResult'
+        signatures:
+          type: array
+          items:
+            $ref: '#/components/schemas/SignatureValidationResult'
+        timestamps:
+          type: array
+          description: Standalone document timestamps.
+          items:
+            $ref: '#/components/schemas/TimestampValidationResult'
+        tlWarnings:
+          type: array
+          description: Trusted-list warnings.
+          items:
+            $ref: '#/components/schemas/LocalizableText'
+        rawReports:
+          type: object
+          description: Raw DSS XML reports keyed by requested format; empty unless the request supplied `formats`.
+          additionalProperties:
+            type: string
+          propertyNames:
+            enum: [XML_DETAILED, XML_SIMPLE, XML_DIAGNOSTIC, XML_ETSI]
+
+    ValidationResult:
+      type: string
+      description: Overall validation conclusion.
+      enum: [VALID, INVALID, INDETERMINATE]
+
+    ValidationIndication:
+      type: string
+      description: ETSI validation indication.
+      enum: [TOTAL_PASSED, TOTAL_FAILED, INDETERMINATE]
+
+    SignatureTrustTier:
+      type: string
+      enum: [QUALIFIED_QSCD, QUALIFIED, NOT_QUALIFIED]
+
+    SignatureValidationResult:
+      type: object
+      required:
+        - signatureId
+        - indication
+        - errors
+        - warnings
+        - infos
+        - qualificationErrors
+        - qualificationWarnings
+        - qualificationInfos
+        - signedBy
+        - signatureLevel
+        - signatureTime
+        - certificate
+        - trustTier
+        - euLotlBacked
+        - timestamps
+        - policyUntrusted
+        - revocations
+      properties:
+        signatureId:
+          type: string
+        indication:
+          $ref: '#/components/schemas/ValidationIndication'
+        subIndication:
+          type: [string, 'null']
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalizableText'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalizableText'
+        infos:
+          type: array
+          items:
+            type: string
+        qualificationErrors:
+          type: array
+          items:
+            type: string
+        qualificationWarnings:
+          type: array
+          items:
+            type: string
+        qualificationInfos:
+          type: array
+          items:
+            type: string
+        signedBy:
+          type: string
+        signatureLevel:
+          type: string
+          description: PAdES level as a display string, e.g. `PAdES-BASELINE-LTA`.
+        signatureTime:
+          type: string
+          format: date-time
+        certificate:
+          $ref: '#/components/schemas/CertificateInfo'
+        signatureQualification:
+          type: [string, 'null']
+        trustTier:
+          $ref: '#/components/schemas/SignatureTrustTier'
+        euLotlBacked:
+          type: boolean
+        hashAlgorithm:
+          type: [string, 'null']
+          description: Digest algorithm display name, e.g. `SHA256`.
+        encryptionAlgorithm:
+          type: [string, 'null']
+          description: Signature algorithm display name, e.g. `RSA`.
+        timestamps:
+          type: array
+          items:
+            $ref: '#/components/schemas/TimestampValidationResult'
+        policyUntrusted:
+          type: boolean
+        revocations:
+          type: array
+          items:
+            $ref: '#/components/schemas/RevocationInfo'
+
+    TimestampValidationResult:
+      type: object
+      required: [timestampId, type, indication, productionTime, euLotlBacked, errors, warnings, infos, policyUntrusted, chain]
+      properties:
+        timestampId:
+          type: string
+        type:
+          type: string
+          description: Timestamp kind, e.g. `Signature timestamp`, `Document timestamp`.
+        indication:
+          $ref: '#/components/schemas/ValidationIndication'
+        subIndication:
+          type: [string, 'null']
+        productionTime:
+          type: string
+          format: date-time
+        qualification:
+          type: [string, 'null']
+        tsaSubjectDN:
+          type: [string, 'null']
+        euLotlBacked:
+          type: boolean
+        errors:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalizableText'
+        warnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/LocalizableText'
+        infos:
+          type: array
+          items:
+            type: string
+        policyUntrusted:
+          type: boolean
+        chain:
+          type: array
+          items:
+            $ref: '#/components/schemas/CertificateChainLink'
+
+    RevocationInfo:
+      type: object
+      required: [method, status, revoked, embedded, sealedByTimestamp, origin]
+      properties:
+        method:
+          type: string
+          description: e.g. `OCSP`, `CRL`.
+        status:
+          type: string
+          description: e.g. `GOOD`, `REVOKED`, `UNKNOWN`.
+        revoked:
+          type: boolean
+        embedded:
+          type: boolean
+        sealedByTimestamp:
+          type: boolean
+        origin:
+          type: string
+        sourceUrl:
+          type: [string, 'null']
+        producedAt:
+          type: [string, 'null']
+          format: date-time
+        thisUpdate:
+          type: [string, 'null']
+          format: date-time
+        nextUpdate:
+          type: [string, 'null']
+          format: date-time
+        revocationDate:
+          type: [string, 'null']
+          format: date-time
+        reason:
+          type: [string, 'null']
+
+    CertificateInfo:
+      type: object
+      required: [subjectDN, issuerDN, serialNumber, validFrom, validTo, keyUsages, isQualified, chain]
+      properties:
+        subjectDN:
+          type: string
+        issuerDN:
+          type: string
+        serialNumber:
+          type: string
+        validFrom:
+          type: string
+          format: date-time
+        validTo:
+          type: string
+          format: date-time
+        keyUsages:
+          type: array
+          items:
+            type: string
+        isQualified:
+          type: boolean
+        publicKeyAlgorithm:
+          type: [string, 'null']
+        sha256Fingerprint:
+          type: [string, 'null']
+          description: Colon-separated hex.
+        chain:
+          type: array
+          items:
+            $ref: '#/components/schemas/CertificateChainLink'
+
+    CertificateChainLink:
+      type: object
+      required: [subjectDN, selfSigned, trustedVia, details, der]
+      properties:
+        commonName:
+          type: [string, 'null']
+        subjectDN:
+          type: string
+        selfSigned:
+          type: boolean
+        trustedVia:
+          type: array
+          items:
+            $ref: '#/components/schemas/CertificateTrustSource'
+        details:
+          type: array
+          items:
+            $ref: '#/components/schemas/CertificateDetailSection'
+        der:
+          type: array
+          description: >
+            DER-encoded certificate as an array of signed byte values (-128 to 127) —
+            kotlinx-serialization's default byte-array encoding, not Base64.
+          items:
+            type: integer
+            format: int32
+            minimum: -128
+            maximum: 127
+
+    CertificateDetailSection:
+      type: object
+      required: [title, fields]
+      properties:
+        title:
+          type: string
+        fields:
+          type: array
+          items:
+            $ref: '#/components/schemas/CertificateField'
+
+    CertificateField:
+      type: object
+      required: [label, value]
+      properties:
+        label:
+          type: string
+        value:
+          type: string
+
+    CertificateTrustSource:
+      description: >
+        Where a certificate is trusted from — a tagged union whose `type` discriminator carries the
+        fully-qualified variant name.
+      oneOf:
+        - type: object
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: ['cz.pizavo.omnisign.domain.model.signature.CertificateTrustSource.TrustedList']
+            name:
+              type: [string, 'null']
+              description: Trusted-list name.
+        - type: object
+          required: [type]
+          properties:
+            type:
+              type: string
+              enum: ['cz.pizavo.omnisign.domain.model.signature.CertificateTrustSource.GlobalStore']
+        - type: object
+          required: [type, profileName]
+          properties:
+            type:
+              type: string
+              enum: ['cz.pizavo.omnisign.domain.model.signature.CertificateTrustSource.ProfileStore']
+            profileName:
+              type: string
+
+    LocalizableText:
+      description: >
+        A localizable message — either a message key with arguments (resolved to a localized string
+        client-side) or a literal string. The `type` discriminator carries the fully-qualified
+        variant name.
+      oneOf:
+        - type: object
+          required: [type, key, args]
+          properties:
+            type:
+              type: string
+              enum: ['cz.pizavo.omnisign.domain.model.text.LocalizableText.Keyed']
+            key:
+              type: string
+              description: A `MessageKey` enum name, resolved to a localized string client-side.
+            args:
+              type: array
+              items:
+                type: string
+        - type: object
+          required: [type, value]
+          properties:
+            type:
+              type: string
+              enum: ['cz.pizavo.omnisign.domain.model.text.LocalizableText.Literal']
+            value:
+              type: string
+
+    CertificateDiscoveryResponse:
+      type: object
+      description: Discovered signing certificates plus per-token warnings and locked-token entries.
+      required: [certificates, tokenWarnings, lockedTokens]
+      properties:
+        certificates:
+          type: array
+          items:
+            $ref: '#/components/schemas/AvailableCertificateInfo'
+        tokenWarnings:
+          type: array
+          items:
+            $ref: '#/components/schemas/TokenDiscoveryWarning'
+        lockedTokens:
+          type: array
+          items:
+            $ref: '#/components/schemas/LockedTokenInfo'
+
+    AvailableCertificateInfo:
+      type: object
+      required: [alias, subjectDN, issuerDN, validFrom, validTo, tokenType, tokenName, keyUsages]
+      properties:
+        alias:
+          type: string
+        subjectDN:
+          type: string
+        issuerDN:
+          type: string
+        validFrom:
+          type: string
+          format: date-time
+        validTo:
+          type: string
+          format: date-time
+        tokenType:
+          type: string
+        tokenName:
+          type: string
+        keyUsages:
+          type: array
+          items:
+            type: string
+        isQualified:
+          type: [boolean, 'null']
+        isQscd:
+          type: [boolean, 'null']
+        pkcs11SlotId:
+          type: [integer, 'null']
+          format: int64
+
+    TokenDiscoveryWarning:
+      type: object
+      required: [tokenId, tokenName, message]
+      properties:
+        tokenId:
+          type: string
+        tokenName:
+          type: string
+        message:
+          $ref: '#/components/schemas/LocalizableText'
+        details:
+          type: [string, 'null']
+
+    LockedTokenInfo:
+      type: object
+      required: [tokenId, tokenName, tokenTypeName]
+      properties:
+        tokenId:
+          type: string
+        tokenName:
+          type: string
+        tokenTypeName:
+          type: string
+
+    GlobalConfigResponse:
+      type: object
+      description: Sanitized global configuration (TSA credentials and local-only fields stripped).
+      required: [defaultHashAlgorithm, defaultSignatureLevel, disabledHashAlgorithms, disabledEncryptionAlgorithms, ocsp, crl, validation]
+      properties:
+        defaultHashAlgorithm:
+          $ref: '#/components/schemas/HashAlgorithm'
+        defaultEncryptionAlgorithm:
+          oneOf:
+            - $ref: '#/components/schemas/EncryptionAlgorithm'
+            - type: 'null'
+        defaultSignatureLevel:
+          $ref: '#/components/schemas/SignatureLevel'
+        disabledHashAlgorithms:
+          type: array
+          items:
+            $ref: '#/components/schemas/HashAlgorithm'
+        disabledEncryptionAlgorithms:
+          type: array
+          items:
+            $ref: '#/components/schemas/EncryptionAlgorithm'
+        timestampServer:
+          oneOf:
+            - $ref: '#/components/schemas/TimestampServerSummary'
+            - type: 'null'
+        ocsp:
+          $ref: '#/components/schemas/OcspConfig'
+        crl:
+          $ref: '#/components/schemas/CrlConfig'
+        validation:
+          $ref: '#/components/schemas/ValidationConfig'
+
+    ProfileConfigResponse:
+      type: object
+      description: Sanitized profile configuration. Override fields are `null` when inherited from global.
+      required: [name, disabledHashAlgorithms, disabledEncryptionAlgorithms]
+      properties:
+        name:
+          type: string
+        description:
+          type: [string, 'null']
+        hashAlgorithm:
+          oneOf:
+            - $ref: '#/components/schemas/HashAlgorithm'
+            - type: 'null'
+        encryptionAlgorithm:
+          oneOf:
+            - $ref: '#/components/schemas/EncryptionAlgorithm'
+            - type: 'null'
+        disabledHashAlgorithms:
+          type: array
+          items:
+            $ref: '#/components/schemas/HashAlgorithm'
+        disabledEncryptionAlgorithms:
+          type: array
+          items:
+            $ref: '#/components/schemas/EncryptionAlgorithm'
+        signatureLevel:
+          oneOf:
+            - $ref: '#/components/schemas/SignatureLevel'
+            - type: 'null'
+        timestampServer:
+          oneOf:
+            - $ref: '#/components/schemas/TimestampServerSummary'
+            - type: 'null'
+        ocsp:
+          oneOf:
+            - $ref: '#/components/schemas/OcspConfig'
+            - type: 'null'
+        crl:
+          oneOf:
+            - $ref: '#/components/schemas/CrlConfig'
+            - type: 'null'
+        validation:
+          oneOf:
+            - $ref: '#/components/schemas/ValidationConfig'
+            - type: 'null'
+
+    ResolvedConfigResponse:
+      type: object
+      description: Effective configuration after the global → profile → operation merge.
+      required: [hashAlgorithm, signatureLevel, ocsp, crl, validation, disabledHashAlgorithms, disabledEncryptionAlgorithms]
+      properties:
+        resolvedProfileName:
+          type: [string, 'null']
+          description: Null when global defaults were applied (no `profile`).
+        hashAlgorithm:
+          $ref: '#/components/schemas/HashAlgorithm'
+        encryptionAlgorithm:
+          oneOf:
+            - $ref: '#/components/schemas/EncryptionAlgorithm'
+            - type: 'null'
+        signatureLevel:
+          $ref: '#/components/schemas/SignatureLevel'
+        timestampServer:
+          oneOf:
+            - $ref: '#/components/schemas/TimestampServerSummary'
+            - type: 'null'
+        ocsp:
+          $ref: '#/components/schemas/OcspConfig'
+        crl:
+          $ref: '#/components/schemas/CrlConfig'
+        validation:
+          $ref: '#/components/schemas/ValidationConfig'
+        disabledHashAlgorithms:
+          type: array
+          items:
+            $ref: '#/components/schemas/HashAlgorithm'
+        disabledEncryptionAlgorithms:
+          type: array
+          items:
+            $ref: '#/components/schemas/EncryptionAlgorithm'
+
+    HashAlgorithm:
+      type: string
+      enum: [SHA256, SHA384, SHA512, SHA3_256, SHA3_384, SHA3_512, WHIRLPOOL, RIPEMD160]
+
+    EncryptionAlgorithm:
+      type: string
+      enum: [RSA, RSA_SSA_PSS, ECDSA, PLAIN_ECDSA, DSA, EDDSA]
+
+    ValidationPolicyType:
+      type: string
+      enum: [DEFAULT_ETSI, CUSTOM_FILE]
+
+    AlgorithmConstraintLevel:
+      type: string
+      enum: [FAIL, WARN, INFORM, IGNORE]
+
+    TrustedCertificateType:
+      type: string
+      enum: [ANY, CA, TSA]
+
+    TimestampServerSummary:
+      type: object
+      description: TSA summary with credential material stripped.
+      required: [url, hasCredentials, timeout]
+      properties:
+        url:
+          type: string
+        username:
+          type: [string, 'null']
+        hasCredentials:
+          type: boolean
+          description: Whether TSA credentials are configured; the credentials themselves are never exposed.
+        timeout:
+          type: integer
+          description: Timeout in milliseconds.
+
+    OcspConfig:
+      type: object
+      required: [timeout]
+      properties:
+        timeout:
+          type: integer
+          description: Timeout in milliseconds.
+
+    CrlConfig:
+      type: object
+      required: [timeout]
+      properties:
+        timeout:
+          type: integer
+          description: Timeout in milliseconds.
+
+    ValidationConfig:
+      type: object
+      required: [policyType, checkRevocation, useEuLotl, customTrustedLists, trustedCertificates, algorithmConstraints]
+      properties:
+        policyType:
+          $ref: '#/components/schemas/ValidationPolicyType'
+        customPolicyPath:
+          type: [string, 'null']
+        checkRevocation:
+          type: boolean
+        useEuLotl:
+          type: boolean
+        alertIfNotEuLotl:
+          type: [boolean, 'null']
+        customTrustedLists:
+          type: array
+          items:
+            $ref: '#/components/schemas/CustomTrustedListConfig'
+        trustedCertificates:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrustedCertificateRef'
+        algorithmConstraints:
+          $ref: '#/components/schemas/AlgorithmConstraintsConfig'
+        allowExpiredCertificate:
+          type: [boolean, 'null']
+
+    CustomTrustedListConfig:
+      type: object
+      required: [name, source]
+      properties:
+        name:
+          type: string
+        source:
+          type: string
+        signingCertPath:
+          type: [string, 'null']
+
+    TrustedCertificateRef:
+      type: object
+      required: [type]
+      properties:
+        path:
+          type: [string, 'null']
+        inline:
+          type: [string, 'null']
+          description: Base64-encoded DER.
+        type:
+          $ref: '#/components/schemas/TrustedCertificateType'
+        fingerprint:
+          type: [string, 'null']
+
+    AlgorithmConstraintsConfig:
+      type: object
+      required: [expirationDateOverrides]
+      properties:
+        expirationLevel:
+          oneOf:
+            - $ref: '#/components/schemas/AlgorithmConstraintLevel'
+            - type: 'null'
+        expirationLevelAfterUpdate:
+          oneOf:
+            - $ref: '#/components/schemas/AlgorithmConstraintLevel'
+            - type: 'null'
+        policyUpdateDate:
+          type: [string, 'null']
+          description: ISO-8601 date, e.g. `2024-10-13`.
+        expirationDateOverrides:
+          type: object
+          description: Algorithm name to ISO-8601 expiration date.
+          additionalProperties:
+            type: string
