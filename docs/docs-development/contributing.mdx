@@ -15,7 +15,8 @@ Contributions are welcome. This page covers the process; the rules your code is 
 4. Open a pull request against `main`.
 
 CI builds and tests the affected components, and a pull request needs one approving review before it
-can merge. Keep pull requests focused, and reference any related issue. Which workflows run is decided
+can merge. Keep pull requests focused, and reference any related issue — blank issues are disabled, so
+open a *Bug report* or a *Feature request* from the issue templates. Which workflows run is decided
 by the paths you touched — see [Releases and CI](releases.mdx#which-ci-runs-on-your-change).
 
 By participating you agree to the
@@ -46,8 +47,12 @@ The `type` decides whether the commit is published:
 | `docs`, `test`, `refactor`, `style`, `chore`, `build`, `ci` | No — still welcome, just not published |
 | Anything that does not parse | No |
 
-A `BREAKING CHANGE:` footer has the same effect as `!`. `scope` is optional, lowercase, and names the
-area you touched: `pkcs11`, `dss`, `cli`, `web`.
+A `BREAKING CHANGE:` footer marks the commit as breaking and protects it from being filtered out, but
+only `!` in the subject moves it into the always-first *Breaking Changes* section — git-cliff's parsers
+read the subject line, not the body. Use `!`; add the footer only as extra prose.
+
+`scope` is optional, lowercase, and names the area you touched. The ones in use: `server`, `web`,
+`desktop`, `cli`, `i18n`, `auth`, `renewal`, `validation`, `signing`, `pkcs11`, `tl`.
 
 Two consequences follow from how the changelog is assembled, and both change how you should commit.
 
@@ -83,7 +88,7 @@ The template asks you to confirm four things:
 
 ## Working on this documentation site
 
-The site is [Docusaurus](https://docusaurus.io/) 3.10.1, managed with **pnpm**, and requires
+The site is [Docusaurus](https://docusaurus.io/) 3.10.2, managed with **pnpm**, and requires
 **Node.js 26+**.
 
 ```bash
@@ -119,5 +124,7 @@ grep -r ':::' build/ --include=*.html
 That must find nothing.
 :::
 
-Run `pnpm run typecheck` before opening a pull request. `onBrokenLinks` is set to `throw`, so a broken
-internal link fails the build — which is the one class of error you can rely on the build to catch.
+Run `pnpm run typecheck` before opening a pull request. `onBrokenLinks` and `onBrokenAnchors` are both
+set to `throw`, so a broken internal link *or* a link to a heading that no longer exists fails the
+build — the two classes of error you can rely on the build to catch. `onBrokenMarkdownLinks` is only
+`warn`.

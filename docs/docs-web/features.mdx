@@ -18,7 +18,7 @@ Three of the actions below appear only if the server permits the corresponding o
 
 | Server permits | Effect in the browser                                              |
 |----------------|--------------------------------------------------------------------|
-| `VALIDATE`     | The **Signatures** panel and its left-edge icon are shown           |
+| `VALIDATE`     | The **Signature** panel and its left-edge icon are shown           |
 | `SIGN`         | The **Sign** toolbar button is shown                                |
 | `TIMESTAMP`    | The **Timestamp** toolbar button and the signing dialog's timestamp checkboxes are shown |
 
@@ -27,9 +27,10 @@ validation-only deployment shows no Sign or Timestamp button at all, and a sign-
 signing but only at PAdES BASELINE B-B, because the timestamp checkboxes are gone with it.
 
 :::note[If the server cannot be reached]
-The capabilities are fetched once when the app loads. If that fetch fails, the app **assumes every
-operation is permitted** and shows all the buttons anyway — the failure surfaces only when you press
-one. Button visibility is therefore not a connectivity check. See
+The capabilities are fetched once when the app loads, and the check **fails closed**: if that fetch
+fails, the app assumes *no* operation is permitted and hides the Sign button, the Timestamp button,
+and the Signature panel alike. A missing button therefore means either the server disallows the
+operation or the server could not be reached at all. See
 [Troubleshooting](troubleshooting.mdx).
 :::
 
@@ -53,7 +54,7 @@ Panels slide out from either edge and can be resized by dragging their inner div
 
 | Panel                                                                                  | Side  | Description                                                                          |
 |----------------------------------------------------------------------------------------|-------|---------------------------------------------------------------------------------------|
-| <AppIcon name="signature" label="Signatures panel" /> Signatures                       | Left  | Validate the loaded document and inspect each signature. Hidden unless the server permits `VALIDATE`. |
+| <AppIcon name="signature" label="Signature panel" /> Signature                       | Left  | Validate the loaded document and inspect each signature. Hidden unless the server permits `VALIDATE`. |
 | <AppIcon name="profile" label="Profiles panel" /> Profiles                             | Right | View the server's signing profiles and choose the active one. Read-only.               |
 | <AppIcon name="certificate" label="Trusted Certificates panel" /> Trusted Certificates | Right | Read-only overview of the CA and TSA certificates the **server** trusts.               |
 | <AppIcon name="help" label="Help panel" /> Help                                        | Right | Links to the repository and this documentation, plus the licence and version.          |
@@ -71,7 +72,7 @@ Before you open anything, the viewer shows your organization's branding above an
   25 % steps; clicking the percentage itself snaps back to 100 %.
 - **Previous page**, a **page X / Y** indicator, and **next page**.
 
-There are no keyboard shortcuts for zoom or page navigation; scrolling is the browser's own. Pages are
+There are no keyboard shortcuts for zoom or page navigation; The document area scrolls with the wheel and drag, but that scrolling is the app's own — the browser page itself never scrolls, because the canvas fills the viewport. Pages are
 rasterized by **MuPDF compiled to WebAssembly** and drawn through Skia, the same renderer the desktop
 uses — so no page image is ever fetched from the server. Because a page is drawn as an image, the
 document's own text is not selectable (this is true of the desktop app too); text in panels, dialogs,
@@ -89,7 +90,7 @@ menu rather than the desktop app's styled one.
 | EU LOTL emblems and off-LOTL alert            |     ✅      |                                                     |
 | Export validation report (TXT, JSON, XML)     |     ✅      | Downloads through the browser                      |
 | Add a certificate to trusted from the report  |     ❌      | The server's trust store is read-only              |
-| Sign PDFs (PAdES B-B / B-LT / B-LTA)            |     ✅      | With the server's certificate; requires `SIGN`     |
+| Sign PDFs (PAdES B-B / B-T / B-LT / B-LTA)          |     ✅      | With the server's certificate; requires `SIGN`     |
 | Timestamp / extend signatures                 |     ✅      | Requires `TIMESTAMP`                               |
 | PKCS#11 hardware tokens, PIN entry            |     ❌      | The browser holds no keys                          |
 | PKCS#12 file upload                           |     ❌      | Client key material is not accepted                |

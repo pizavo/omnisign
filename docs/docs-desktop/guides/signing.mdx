@@ -189,7 +189,7 @@ obtained, OmniSign shows an intermediate **revocation warning** screen listing t
 certificates and warning details. You can:
 
 - **Abort** — discard the signed output; nothing is written.
-- **Continue** — proceed to the **Save As** dialog and keep the output despite missing revocation
+- **Continue anyway** — proceed to the **Save As** dialog and keep the output despite missing revocation
   data. The signature may be at a lower effective level than requested.
 
 ![Signing revocation-warning screen](/img/desktop/signing-revocation-warning.avif)
@@ -214,10 +214,11 @@ When signing at the B-LTA level, OmniSign may show a **renewal job offer** dialo
 the success screen. You can:
 
 - **Assign to an existing job** — select a configured renewal job from the dropdown.
-- **Create a new job** — define a new renewal job with a name, glob pattern, buffer days,
-  and an optional profile.
+- **Create a new job** — define a new renewal job with a name, buffer days, an optional profile, an
+  optional log file, and a **Desktop notifications** checkbox. The glob pattern is not editable here:
+  the job is created with the saved output file as its single pattern.
 
 ![Renewal job offer dialog](/img/desktop/renewal-job-offer.avif)
 
-If the output file is already covered by an existing job (detected from glob patterns), the
-dialog shows the covering job name and no further action is needed.
+If the output file is already covered by an existing job (detected from its glob patterns), no dialog
+is shown at all — the file is renewed by that job regardless.

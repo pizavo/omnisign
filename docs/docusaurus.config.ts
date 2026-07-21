@@ -47,7 +47,7 @@ const config: Config = {
     },
   },
 
-  themes: ['@docusaurus/theme-mermaid'],
+  themes: ['@docusaurus/theme-mermaid', 'docusaurus-theme-openapi-docs'],
 
   i18n: {
     defaultLocale: 'en',
@@ -118,6 +118,7 @@ const config: Config = {
         sidebarPath: './sidebars-server.ts',
         editUrl: 'https://github.com/pizavo/omnisign/tree/main/docs/',
         remarkPlugins: [glossaryRemark],
+        docItemComponent: '@theme/ApiItem',
       },
     ],
     [
@@ -132,6 +133,24 @@ const config: Config = {
       },
     ],
     ['docusaurus-plugin-glossary', glossaryOptions],
+    'docusaurus-plugin-sass',
+    [
+      'docusaurus-plugin-openapi-docs',
+      {
+        id: 'openapi',
+        docsPluginId: 'server',
+        config: {
+          omnisign: {
+            specPath: 'static/openapi.yaml',
+            outputDir: 'docs-server/api',
+            sidebarOptions: {
+              groupPathsBy: 'tag',
+              categoryLinkSource: 'tag',
+            },
+          },
+        },
+      },
+    ],
     [
       require.resolve('@easyops-cn/docusaurus-search-local'),
       {
@@ -163,6 +182,29 @@ const config: Config = {
 
   themeConfig: {
     image: 'img/docusaurus-social-card.jpg',
+    languageTabs: [
+      {language: 'kotlin'},
+      {language: 'curl'},
+      {language: 'java'},
+      {language: 'javascript'},
+      {language: 'csharp'},
+      {language: 'python'},
+      {language: 'php'},
+      {language: 'rust'},
+      {language: 'swift'},
+      {language: 'go'},
+      {language: 'ruby'},
+      {language: 'nodejs'},
+      {language: 'shell'},
+      {language: 'powershell'},
+      {language: 'c'},
+      {language: 'objective-c'},
+      {language: 'dart'},
+      {language: 'r'},
+      {language: 'ocaml'},
+      {language: 'http'},
+      {language: 'postman-cli'},
+    ],
     colorMode: {
       respectPrefersColorScheme: true,
     },
@@ -193,10 +235,13 @@ const config: Config = {
           activeBaseRegex: '/web/',
         },
         {
-          to: '/server/',
+          type: 'dropdown',
           label: 'Server',
           position: 'left',
-          activeBaseRegex: '/server/',
+          items: [
+            {to: '/server/', label: 'Documentation'},
+            {to: '/server/api/omnisign-server-api', label: 'HTTP API'},
+          ],
         },
         {
           to: '/cli/',
@@ -224,7 +269,7 @@ const config: Config = {
             },
             {
               href: 'https://pizavo.github.io/omnisign/api/',
-              label: 'API Reference',
+              label: 'API Reference (KDoc)',
             },
           ],
         },
@@ -260,7 +305,7 @@ const config: Config = {
             {label: 'Overview', to: '/development/'},
             {label: 'Architecture', to: '/development/architecture'},
             {label: 'Contributing', to: '/development/contributing'},
-            {label: 'API Reference', href: 'https://pizavo.github.io/omnisign/api/'},
+            {label: 'API Reference (KDoc)', href: 'https://pizavo.github.io/omnisign/api/'},
           ],
         },
         {

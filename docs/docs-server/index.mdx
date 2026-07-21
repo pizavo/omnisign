@@ -11,7 +11,7 @@ deployment behind your own authentication and policy.
 
 It is a **provider/operator-facing** component: you deploy it, an administrator configures *how* it
 signs and validates and *who* may reach it, and clients (the [web frontend](/web/), scripts, or other
-services) call its [API](api-reference).
+services) call its [API](/server/api/omnisign-server-api).
 
 ## Architecture
 
@@ -31,8 +31,10 @@ The server is configured by **two** files, deliberately separated:
   level, TSA, validation policy, trusted certificates, and named profiles. This is the server's
   equivalent of the desktop "global settings + profiles", loaded read-only.
 
-Secrets (the JWT signing key, OIDC client secrets, TLS keystore passwords, TSA passwords) are **never**
-written to either file — they are supplied through [environment variables](configuration#secrets).
+Secrets (the JWT signing key, OIDC client secrets, TLS keystore passwords) are **never** written to
+either file — they are supplied through [environment variables](configuration#secrets). Two more are
+referenced in the files but resolved from the environment at load: `auth.oauthStateSecret` in
+`server.yml` and the TSA password in `signing.yml`, both written as `"${VAR}"` placeholders.
 
 ## Quick start
 
@@ -40,9 +42,14 @@ The server needs a `server.yml`. Start from the bundled `server.example.yml` (ex
 with `jar xf <jar> server.example.yml`, or copy it from `server/src/main/resources/`):
 
 ```bash
-cp server.example.yml server.yml      # then edit cors:/listen: as needed
+# that path is gitignored; :server:run picks it up automatically
+cp server/src/main/resources/server.example.yml server/src/main/resources/server.yml
 ./gradlew :server:run                 # use .\gradlew.bat on Windows
 ```
+
+`:server:run` passes `--config server/src/main/resources/server.yml` whenever that file exists. A
+packaged deployment instead uses `--config`, `OMNISIGN_SERVER_CONFIG`, or a `server.yml` in the
+working directory.
 
 With the defaults it binds to **`127.0.0.1:18080`** (loopback) and allows only the **VALIDATE**
 operation. See [Configuration](configuration) for the full file reference and
@@ -50,8 +57,8 @@ operation. See [Configuration](configuration) for the full file reference and
 
 :::warning
 Run behind TLS (or a TLS-terminating reverse proxy) before exposing the server beyond `localhost`.
-Binding to a non-loopback host without `tls:` or `proxy:` is refused at startup. See
-[Security](security).
+Binding to any host other than `127.0.0.1`, `::1`, or `localhost` without a `tls:` block or
+`proxy.enabled: true` is refused at startup. See [Security](security).
 :::
 
 ## Where to next
@@ -63,4 +70,4 @@ Binding to a non-loopback host without `tls:` or `proxy:` is refused at startup.
 | [Authentication](authentication)      | SSO via OIDC providers; JWT sessions              |
 | [Security](security)                  | TLS, CORS, rate limiting, proxy trust, and operation gating      |
 | [Deployment](deployment)              | Docker, bare-metal, systemd, reverse proxy                       |
-| [API reference](api-reference)        | Every `/api/v1` and `/auth` endpoint                             |
+| [HTTP API](/server/api/omnisign-server-api)        | Every `/api/v1` and `/auth` endpoint                             |

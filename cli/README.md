@@ -148,12 +148,18 @@ Explicit command-line options always take precedence over environment variables.
 omnisign [global-flags] [command]
 ```
 
-| Global flag     | Description                                                      |
-|-----------------|------------------------------------------------------------------|
-| `--json`        | Emit machine-readable JSON output instead of human-readable text |
-| `--verbose`     | Enable verbose (DEBUG-level) logging to stderr                   |
-| `--quiet`       | Suppress all informational output; only errors are printed       |
-| `-v, --version` | Print the application version and exit                           |
+| Global flag         | Description                                                                   |
+|---------------------|-------------------------------------------------------------------------------|
+| `--json`            | Emit machine-readable JSON output instead of human-readable text              |
+| `--verbose`         | Enable INFO-level logging to stderr                                           |
+| `--debug`           | Enable DEBUG-level logging to stderr (most detail)                           |
+| `--debug-extended`  | Also lower DSS / Apache library loggers to DEBUG (implies `--debug`)          |
+| `--quiet`           | Suppress all informational output; only errors are printed                    |
+| `--log-file <path>` | Also write this run's log to the given file (appended, in addition to stderr) |
+| `-v, --version`     | Print the application version and exit                                        |
+
+All options can also be set via `OMNISIGN_`-prefixed environment variables (see
+[Environment Variables](#environment-variables)).
 
 | Command        | Description                                                                               |
 |----------------|-------------------------------------------------------------------------------------------|
@@ -164,6 +170,7 @@ omnisign [global-flags] [command]
 | `algorithms`   | List supported cryptographic algorithms                                                   |
 | `certificates` | Discover and inspect available signing certificates                                       |
 | `config`       | Manage application configuration (profiles, trusted lists, trusted certificates, PKCS#11) |
+| `diagnose`     | Run read-only diagnostic probes over OmniSign subsystems (e.g. PKCS#11 discovery)         |
 | `schedule`     | Manage the automatic re-timestamping scheduler and renewal jobs                           |
 
 ---
@@ -299,31 +306,34 @@ provability (digital continuity / re-archiving).
 omnisign sign -f <input> -o <output> [options]
 ```
 
-| Option                      | Description                                                         |
-|-----------------------------|---------------------------------------------------------------------|
-| `-f, --file <path>`         | **(Required)** Path to the input PDF                                |
-| `-o, --output <path>`       | **(Required)** Path for the signed output PDF                       |
-| `-c, --certificate <alias>` | Certificate alias to use (see `certificates list`)                  |
-| `-r, --reason <text>`       | Reason for signing (embedded in the signature)                      |
-| `--location <text>`         | Location of signing (embedded in the signature)                     |
-| `--contact <text>`          | Contact information of the signer (embedded in the signature)       |
-| `--no-timestamp`            | Omit the RFC 3161 timestamp — produces B-B instead of B-T or higher |
-| `--profile <name>`          | Use a named configuration profile for this operation                |
-| `--visible`                 | Add a visible signature appearance                                  |
-| `--vis-page <n>`            | Page for the visible signature (default: `1`)                       |
-| `--vis-x <n>`               | X position in PDF user units (required with `--visible`)            |
-| `--vis-y <n>`               | Y position in PDF user units (required with `--visible`)            |
-| `--vis-width <n>`           | Width in PDF user units (required with `--visible`)                 |
-| `--vis-height <n>`          | Height in PDF user units (required with `--visible`)                |
-| `--vis-text <text>`         | Custom text inside the visible signature                            |
-| `--vis-image <path>`        | Path to an image for the visible signature                          |
+| Option                        | Description                                                                                  |
+|-------------------------------|----------------------------------------------------------------------------------------------|
+| `-f, --file <path>`           | **(Required)** Path to the input PDF                                                         |
+| `-o, --output <path>`         | **(Required)** Path for the signed output PDF                                                |
+| `-c, --certificate <alias>`   | Certificate alias to sign with (see `certificates list`); optional with `--keystore`         |
+| `-k, --keystore <path>`       | Sign with a PKCS#12 (`.p12`/`.pfx`) keystore file instead of a discovered token              |
+| `--keystore-password <pass>`  | Password for `--keystore` (in-memory only); `-` prompts, or set `OMNISIGN_KEYSTORE_PASSWORD` |
+| `-r, --reason <text>`         | Reason for signing (embedded in the signature)                                               |
+| `--location <text>`           | Location of signing (embedded in the signature)                                              |
+| `--contact <text>`            | Contact information of the signer (embedded in the signature)                                |
+| `--no-timestamp`              | Skip the RFC 3161 timestamp. Only has an effect when the resolved level is `PADES_BASELINE_B`, where it lifts the need for a configured TSA; at B-T or above the level itself mandates the timestamp |
+| `--allow-expired-certificate` | Allow signing with an expired certificate (such signatures fail validation)                  |
+| `--profile <name>`            | Use a named configuration profile for this operation                                         |
+| `--visible`                   | Add a visible signature appearance                                                           |
+| `--vis-page <n>`              | Page for the visible signature (default: `1`)                                                |
+| `--vis-x <n>`                 | X position in PDF user units (required with `--visible`)                                     |
+| `--vis-y <n>`                 | Y position in PDF user units (required with `--visible`)                                     |
+| `--vis-width <n>`             | Width in PDF user units (required with `--visible`)                                          |
+| `--vis-height <n>`            | Height in PDF user units (required with `--visible`)                                         |
+| `--vis-text <text>`           | Custom text inside the visible signature                                                     |
+| `--vis-image <path>`          | Path to an image for the visible signature                                                   |
 
 Supports all [config overrides](#config-overrides).
 
 **Examples:**
 
 ```shell
-# Sign at the default level (B-T by default) using the first available certificate
+# Sign at the configured default level (B-B out of the box) using the first available certificate
 omnisign sign -f thesis.pdf -o thesis-signed.pdf
 
 # Sign at B-LTA level with a specific certificate and a visible signature
@@ -332,6 +342,10 @@ omnisign sign -f thesis.pdf -o thesis-signed.pdf \
   --signature-level PADES_BASELINE_LTA \
   --reason "Author signature" \
   --visible --vis-x 50 --vis-y 700 --vis-width 200 --vis-height 50
+
+# Sign with a PKCS#12 keystore file instead of a discovered token
+# (--keystore-password - prompts for the password with hidden input)
+omnisign sign -f thesis.pdf -o thesis-signed.pdf --keystore my-cert.p12 --keystore-password -
 
 # Sign without a timestamp (B-B only)
 omnisign sign -f doc.pdf -o doc-signed.pdf --no-timestamp
@@ -460,6 +474,17 @@ Print the resolved configuration file path. Useful for scripting or debugging.
 omnisign config path
 ```
 
+#### `config date-format`
+
+Get or set the date format used in CLI output. Run without an argument to print the current
+format and a table of every available format with a worked example; pass a format name to set it.
+The choice is persisted to a cross-surface preferences store, so it is honoured by the desktop app too.
+
+```shell
+omnisign config date-format               # list available formats
+omnisign config date-format ISO_8601      # set the format
+```
+
 #### `config set`
 
 Modify the global (default) configuration. Only provided options are updated.
@@ -487,6 +512,8 @@ omnisign config set [options]
 | `--enable-hash-algorithm <alg>`                | Re-enable a globally disabled hash algorithm. Repeatable.                         |
 | `--disable-encryption-algorithm <alg>`         | Globally disable an encryption algorithm. Repeatable.                             |
 | `--enable-encryption-algorithm <alg>`          | Re-enable a globally disabled encryption algorithm. Repeatable.                   |
+| `--pkcs11-probe-timeout <sec>`                 | Max seconds to wait for a single PKCS#11 library probe (1–120)                    |
+| `--trusted-list-refresh-interval <hours>`      | Hours a downloaded trusted list (EU LOTL / custom) is cached before re-fetch (min 1) |
 
 **Example:**
 
@@ -644,10 +671,11 @@ Register custom ETSI Trusted List sources for signature validation.
 
 | Subcommand                | Description                                                     |
 |---------------------------|-----------------------------------------------------------------|
-| `config tl add`           | Register a custom trusted list source (HTTPS URL or local file) |
-| `config tl list`          | List all registered custom trusted lists                        |
-| `config tl remove <name>` | Remove a registered custom trusted list                         |
-| `config tl build`         | Build a custom trusted list interactively or edit a draft       |
+| `config tl add`           | Register a custom trusted list source (HTTPS URL or local file)             |
+| `config tl list`          | List all registered custom trusted lists                                    |
+| `config tl remove <name>` | Remove a registered custom trusted list                                     |
+| `config tl refresh`       | Refresh the EU LOTL and custom trusted lists now (updates the shared cache) |
+| `config tl build`         | Build a custom trusted list interactively or edit a draft                   |
 
 **`config tl add` options:**
 
@@ -733,10 +761,11 @@ autodiscovery results and the built-in fallback candidate list.
 
 **`config pkcs11 add` options:**
 
-| Option              | Description                                                                            |
-|---------------------|----------------------------------------------------------------------------------------|
-| `-n, --name <name>` | **(Required)** Unique label for this library (used in `pkcs11 remove`)                 |
-| `-p, --path <path>` | **(Required)** Absolute path to the PKCS#11 shared library (`.dll` / `.so` / `.dylib`) |
+| Option                | Description                                                                            |
+|-----------------------|----------------------------------------------------------------------------------------|
+| `-n, --name <name>`   | **(Required)** Unique label for this library (used in `pkcs11 remove`)                 |
+| `-p, --path <path>`   | **(Required)** Absolute path to the PKCS#11 shared library (`.dll` / `.so` / `.dylib`) |
+| `--protected-pin-pad` | The middleware collects the PIN on its own secure pin-pad; OmniSign shows no PIN dialog for this library |
 
 **Examples:**
 
@@ -749,6 +778,24 @@ omnisign config pkcs11 list
 
 # Remove a registration
 omnisign config pkcs11 remove safenet
+```
+
+---
+
+### `diagnose` — Run diagnostic probes
+
+Read-only diagnostic probes for troubleshooting and bug reports. These subcommands never modify
+any state — they do not warm up the application, touch the keystore, or call `C_Login`.
+
+#### `diagnose pkcs11`
+
+Print a verbose, ground-truth PKCS#11 discovery report for the current host: the JVM environment,
+candidate library paths grouped by discovery layer, connected PC/SC readers, per-candidate
+subprocess probe outcomes with timings, and a no-login certificate enumeration. The report is
+intentionally verbose so it can be copy-pasted into a bug report or compared across machines.
+
+```shell
+omnisign diagnose pkcs11
 ```
 
 ---
@@ -806,7 +853,8 @@ with which settings (TSA profile, buffer window, notification behavior).
 | Option                  | Description                                                                                              |
 |-------------------------|----------------------------------------------------------------------------------------------------------|
 | `-g, --glob <pattern>`  | **(Required, repeatable)** Glob pattern matching PDF files to watch                                      |
-| `-b, --buffer-days <n>` | Days before timestamp certificate expiry at which re-timestamping is triggered. Default: library default |
+| `-b, --buffer-days <n>` | Days before timestamp certificate expiry at which re-timestamping is triggered. Default: `90`            |
+| `-B, --backups <n>`     | Timestamped pre-renewal `.bak` copies to keep per file (0 disables backups). Default: `3`                |
 | `--profile <name>`      | Named configuration profile to use for TSA and revocation settings                                       |
 | `--log-file <path>`     | Absolute path to an append-only log file for this job's renewal output                                   |
 | `--no-notify`           | Disable OS desktop notifications for this job (recommended for headless deployments)                     |
@@ -851,8 +899,7 @@ TSA credentials supplied here are held in memory only and are never written to d
 
 ## Exit Codes
 
-| Code     | Meaning                                                                                 |
-|----------|-----------------------------------------------------------------------------------------|
-| `0`      | Success                                                                                 |
-| `1`      | Command error (invalid arguments, missing required options, etc.)                       |
-| non-zero | Operational failure (signing error, validation error, etc.) — details printed to stderr |
+| Code | Meaning                                                                                                          |
+|------|------------------------------------------------------------------------------------------------------------------|
+| `0`  | Success                                                                                                          |
+| `1`  | Any failure — usage or argument error, configuration error, or an operational failure (signing, validation, extension). Details are printed to stderr |

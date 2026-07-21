@@ -20,14 +20,16 @@ break without it. A pattern that cannot be described that way does not belong on
 **Problem.** The domain needs to sign a document. The desktop signs locally with DSS; the browser
 cannot load DSS at all and must ask a server over HTTP.
 
-`SigningRepository`, `ValidationRepository`, `ArchivingRepository`, and `ConfigRepository` are
-interfaces in `shared/commonMain/domain/repository/`. Each has two implementations:
+`SigningRepository`, `ValidationRepository`, `ArchivingRepository`, and `ConfigRepository` are four of
+the six interfaces in `shared/commonMain/domain/repository/` (`TrustStore` and `CapabilitiesRepository`
+are the other two). Each has two implementations:
 
 | Interface | JVM | Wasm |
 | --- | --- | --- |
 | `SigningRepository` | `DssSigningRepository` | `RemoteSigningRepository` |
 | `ValidationRepository` | `DssValidationRepository` | `RemoteValidationRepository` |
 | `ArchivingRepository` | `DssArchivingRepository` | `RemoteArchivingRepository` |
+| `ConfigRepository` | `FileConfigRepository` | `RemoteConfigRepository` |
 
 **What it bought.** The ViewModels above them are *the same code on both platforms*. Not "similar" —
 identical. `SigningViewModel` does not know whether its `SigningRepository` is calling DSS in-process
@@ -39,9 +41,11 @@ on the domain, not the reverse.
 
 ### Ports and Adapters
 
-The `domain/port/` package is named after the pattern, and contains eight interfaces:
+The `domain/port/` package is named after the pattern and holds eight declarations: seven interfaces —
 `SchedulerPort`, `ConfigArchivePort`, `TrustedListCompilerPort`, `TrustedListRefreshPort`,
-`ConfigSerializer`, `ConfigSerializerRegistry`, `RenewalCheckCache`, and `RenewalRunRecordStore`.
+`ConfigSerializer`, `RenewalCheckCache`, `RenewalRunRecordStore` — plus one concrete class,
+`ConfigSerializerRegistry`, which is the dispatcher over the `ConfigSerializer` port rather than a
+port itself.
 
 **Problem.** Scheduling a renewal job means `schtasks` on Windows, `systemd` timers on Linux, and
 `launchd` on macOS. None of that may appear in the domain.
@@ -58,21 +62,29 @@ DSS-backed on the JVM, HTTP-backed on Wasm — realizing the same ports.
 
 ### MVVM
 
-`composeApp` ViewModels extend Lifecycle's `ViewModel`, expose immutable state as `StateFlow<UiState>`,
-and are obtained with `koinViewModel()`. Composables observe; they never mutate state directly. Heavy
-work runs on an injected `CoroutineDispatcher`, which is also what makes the ViewModels testable — the
-test passes a `StandardTestDispatcher` and drives the clock itself.
+`composeApp` ViewModels extend Lifecycle's `ViewModel` and expose immutable state as
+`StateFlow<UiState>`. They are **not** obtained with `koinViewModel()`: `IslandLayout.kt` constructs
+each one by hand inside a `remember { runCatching { … } }` block, pulling its dependencies from
+`KoinPlatform.getKoinOrNull()` and falling back to `null` when a definition is absent. That is what
+lets the same shell run on the web target, where the platform-only definitions are simply not
+registered. Composables observe; they never mutate state directly. Heavy work runs on a
+constructor-parameter `CoroutineDispatcher` that defaults to `Dispatchers.Default`, which is also what
+makes the ViewModels testable — the test passes a `StandardTestDispatcher` and drives the clock itself.
 
 ## Patterns in the data layer
 
 ### Factory
 
 `DssServiceFactory` is a Koin `single` injected into all three DSS repositories. It does more than
-construct: it *owns the lifecycle* of things too expensive to rebuild per call — TSP sources,
-certificate verifiers, and Trusted List validation jobs.
+construct: it centralises the wiring of `OnlineTSPSource`, `CommonCertificateVerifier`, and
+`PdfBoxNativeObjectFactory` so all the DSS paths agree, and it delegates trusted-list wiring to a
+shared `TrustedSourceRegistry` that *owns the lifecycle* of the one thing genuinely too expensive to
+rebuild per call — the DSS `TLValidationJob`, retained one per distinct trust-source identity.
 
-Its `alertFactory: () -> StatusAlert` parameter is a factory method passed as a lambda, and it is the
-seam that lets a test swap DSS's logging alert for a collecting one.
+The `alertFactory: () -> StatusAlert` parameter on `buildSigningCertificateVerifier` and
+`buildValidationCertificateVerifier` is a factory method passed as a lambda. It defaults to
+`{ LogOnStatusAlert(Level.WARN) }` and is the seam that lets a test swap DSS's logging alert for a
+collecting one.
 
 ### Strategy
 
@@ -81,7 +93,7 @@ Three places select behaviour by injecting an implementation rather than branchi
 | Strategy | Implementations | Selected by |
 | --- | --- | --- |
 | `PasswordCallback` | terminal prompt (CLI), dialog (desktop), always-`null` (server) | Koin, per entry point |
-| `ConfigSerializer` | `JsonConfigSerializer`, `YamlConfigSerializer`, `XmlConfigSerializer` | `ConfigSerializerRegistry`, by file extension |
+| `ConfigSerializer` | `JsonConfigSerializer`, `YamlConfigSerializer`, `XmlConfigSerializer` | `ConfigSerializerRegistry`, keyed on `ConfigFormat` (callers get there via `ConfigFormat.fromExtension()`) |
 | `StatusAlert` | `LogOnStatusAlert` (DSS), `CollectingStatusAlert` (ours) | `alertFactory` on the verifier builders |
 
 `PasswordCallback` is the platform boundary of the whole application. The server's implementation
@@ -154,7 +166,8 @@ ViewModels receive their dependencies as **constructor parameters** — that is 
 CLI commands resolve theirs from the container at the point of use:
 
 ```kotlin
-class ConfigImport : CliktCommand(), KoinComponent {
+class ConfigImport : CliktCommand(name = "import"), KoinComponent {
+    private val archive: ConfigArchiveUseCase by inject()
     private val exportImport: ExportImportConfigUseCase by inject()
 }
 ```
@@ -179,9 +192,9 @@ rather than by shared name.
 
 ### Open/closed
 
-Adding a fourth configuration format means writing a `TomlConfigSerializer` and registering it. No
-caller changes, because callers depend on `ConfigSerializer` and resolve through
-`ConfigSerializerRegistry`. The same holds for `DssWarningSanitizer.WarningCategory`: a new category
+Adding a fourth configuration format means writing a `TomlConfigSerializer`, adding one `ConfigFormat`
+constant, and registering the serializer. No *caller* changes, because callers depend on
+`ConfigSerializer` and resolve through `ConfigSerializerRegistry`. The same holds for `DssWarningSanitizer.WarningCategory`: a new category
 supplies its own `toSummary()` and no existing category is touched.
 
 ### Liskov substitution
@@ -189,8 +202,8 @@ supplies its own `toSummary()` and no existing category is touched.
 This one is worth dwelling on, because the codebase does something subtle.
 
 `RemoteSigningRepository` cannot do everything `DssSigningRepository` can. There is no hardware token
-in a browser, so `unlockToken()` and `loadCertificatesFromFile()` have no meaning, and `signDocument()`
-cannot honour a local keystore file.
+in a browser, so `unlockToken()`, `loadCertificatesFromFile()`, and `listCertificatesFromKeystore()`
+have no meaning, and `signDocument()` cannot honour a local keystore file.
 
 The naive implementation throws `UnsupportedOperationException`. That would destroy substitutability:
 a ViewModel written against `SigningRepository` would crash depending on which platform it ran on.
@@ -225,13 +238,14 @@ the interface usable.
 
 ### Interface segregation
 
-`domain/port/` is eight small interfaces rather than one `PlatformPort`. `RenewalCheckCache` and
-`RenewalRunRecordStore` are separate even though a single class implements both, because the use cases
-that need one rarely need the other.
+`domain/port/` is seven small interfaces (plus the `ConfigSerializerRegistry` dispatcher) rather than
+one `PlatformPort`. `RenewalCheckCache` and `RenewalRunRecordStore` are separate even though a single
+class implements both, because the use cases that need one rarely need the other.
 
-Compare `SigningRepository`, which carries four methods — three of which exist only to drive
-client-side hardware tokens, and which the web implementation must therefore stub out. That is the
-segregation principle showing you exactly where it was not followed.
+Compare `SigningRepository`, which carries five methods — `signDocument` plus four that exist to
+enumerate or unlock client-side key material (`listAvailableCertificates`, `unlockToken`,
+`loadCertificatesFromFile`, `listCertificatesFromKeystore`). The web implementation must stub out three
+of those four. That is the segregation principle showing you exactly where it was not followed.
 
 ### Dependency inversion
 

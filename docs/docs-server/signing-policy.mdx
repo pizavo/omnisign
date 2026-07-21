@@ -45,6 +45,9 @@ global:
     policyType: DEFAULT_ETSI            # or CUSTOM_FILE (+ customPolicyPath)
     checkRevocation: true
     useEuLotl: true
+    # alertIfNotEuLotl: false           # flag signatures whose anchor is not on the EU LOTL
+    # allowExpiredCertificate: false    # allow SIGNING with an expired certificate
+    #                                   # (signing only; such signatures fail validation)
     # customTrustedLists:               # extra ETSI TS 119612 lists, by reference
     #   - name: "national-tl"
     #     source: "https://tl.example.gov/tl.xml"     # https:// or file://
@@ -79,11 +82,15 @@ PEM/DER file, relative to `signing.yml`) or `inline` (Base64 DER), plus a requir
 directory, so the source file may be removed afterward. A fatal reconcile condition (integrity
 mismatch, unresolvable reference) aborts startup.
 
+A profile may also declare its own `validation.trustedCertificates`; each profile gets its own trust
+scope, and a profile removed from the policy has its scope cleared at the next boot.
+
 ## `profiles`
 
-Named overrides selected per request via the `profile` field (e.g. `?profile=archival`). A profile's
-identity is its inner `name`; a name appearing in more than one source fails startup. Every
-per-profile field is optional and overrides the matching `global` value.
+Named overrides selected per request via the `profile` **multipart form field** — a `profile=archival`
+part sent alongside `file`. There is no query-string form. A profile's identity is its inner `name`; a
+name appearing in more than one source fails startup. Every per-profile field is optional and
+overrides the matching `global` value.
 
 Profiles come from any combination of three sources:
 
@@ -101,5 +108,5 @@ profiles:
 ```
 
 See [`signing.example.yml`](https://github.com/pizavo/omnisign/blob/main/server/src/main/resources/signing.example.yml)
-for the fully-commented template, and the [API reference](api-reference) for how clients select a
+for the fully-commented template, and the [API reference](/server/api/omnisign-server-api) for how clients select a
 profile per request.

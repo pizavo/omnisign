@@ -18,11 +18,15 @@ Kotest matchers** for asserting on `OperationResult`.
 
 Or `./gradlew build` for everything. Note the task names differ: the multiplatform modules (`shared`,
 `composeApp`) use `jvmTest`, while the JVM-only modules (`cli`, `server`) use `test`. Test sources sit
-in `src/jvmTest` and `src/test` respectively.
+in `src/jvmTest` and `src/test` respectively, plus `src/commonTest` for the platform-agnostic specs in
+`shared` — those run as part of `:shared:jvmTest`.
 
-Each JVM test task adds `-XX:+EnableDynamicAgentLoading -Xshare:off --enable-native-access=ALL-UNNAMED`
-automatically, so MockK's inline agent loads without warnings. The **Decoroutinator** plugin is applied
-across the modules to give readable stack traces through suspend calls.
+`:shared:jvmTest`, `:cli:test`, and `:server:test` add
+`-XX:+EnableDynamicAgentLoading -Xshare:off --enable-native-access=ALL-UNNAMED` (plus `java.smartcardio`
+access flags), so MockK's inline agent loads without warnings; `:composeApp:jvmTest` configures only
+`useJUnitPlatform()`. **Decoroutinator**, which gives readable stack traces through suspend calls, is
+applied as a Gradle plugin in `shared` and `composeApp`, while `cli` and `server` pull the
+`stacktrace-decoroutinator-jvm` runtime artifact instead.
 
 :::warning[`--tests` does not filter reliably here]
 Gradle's `--tests "cz.pizavo.omnisign.SomeTest"` filter reports *"No tests found"* against this Kotest

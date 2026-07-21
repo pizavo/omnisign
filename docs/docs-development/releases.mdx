@@ -26,29 +26,37 @@ Two facts fall out of that table, and they explain most of the surprises:
 `shared` builds and tests all four.
 - The `composeApp` directory appears in *two* of them. Desktop and web are built from the same module.
 
+Those path filters apply to **pushes to `main`** only. All four `ci-*.yml` workflows also declare
+`pull_request: branches: [main]` with *no* path filter, plus `workflow_dispatch` — so every pull
+request starts all four. `deploy-docs.yml` has no pull-request trigger at all.
+
 A composite action, `detect-changes`, encodes the same rule for the job level, so a workflow that is
 triggered can still skip its build when nothing relevant moved. `workflow_dispatch` is always relevant.
 
 ## Versions come from tags, not from files
 
-Each module reads its version from a Gradle property, falling back to a hardcoded default for local
-builds:
+Each releasable module reads its version from a Gradle property, falling back to a hardcoded default
+for local builds — `1.9.0` in `cli`, `1.0.0` in `server` and `composeApp`. `shared` declares no
+version at all (it stays `unspecified`, which is why the Wasm workspace version has to be pinned
+separately, below):
 
 ```kotlin
 version = project.findProperty("releaseVersion")?.toString() ?: "1.9.0"
 ```
 
-Release workflows pass `-PreleaseVersion=<computed>`. Nothing in the repository records the current
-released version; the tag series is the source of truth.
+Release workflows pass `-PreleaseVersion=<computed>` — except the Windows packaging jobs in
+`release-cli.yml` and `release-desktop.yml`, which set the equivalent
+`ORG_GRADLE_PROJECT_releaseVersion` environment variable instead. Nothing in the repository records
+the current released version; the tag series is the source of truth.
 
 Tags are namespaced per component, in the form `<prefix>/v<semver>`:
 
 | Component | Tag prefix | Module path | Example tag |
 | --- | --- | --- | --- |
-| CLI | `cli` | `cli` | `cli/v1.13.2` |
-| Desktop | `desktop` | `composeApp` | `desktop/v1.4.0` |
-| Server | `server` | `server` | `server/v1.5.0` |
-| Web | `web` | `composeApp` | `web/v1.2.0-pre.1` |
+| CLI | `cli` | `cli` | `cli/v1.17.0` |
+| Desktop | `desktop` | `composeApp` | `desktop/v1.11.0` |
+| Server | `server` | `server` | `server/v1.6.0` |
+| Web | `web` | `composeApp` | `web/v1.3.0`, and `web/v1.1.2-pre.2` for a pre-release |
 
 ## How the version and notes are computed
 
@@ -84,10 +92,11 @@ artifact, then attached to the GitHub release.
 
 ## Pre-releases
 
-The release workflows accept three `workflow_dispatch` inputs:
+The release workflows accept four `workflow_dispatch` inputs:
 
 | Input | Effect |
 | --- | --- |
+| `dry_run` | Compute the version and render the notes into the job summary, then stop — nothing is tested, built, tagged, or released |
 | `release_as` | Force an explicit version instead of the computed bump |
 | `prerelease` | Cut a pre-release, flagged as such on GitHub |
 | `prerelease_suffix` | The identifier to use, sanitized to `[A-Za-z0-9-]`; defaults to `pre` |
@@ -110,8 +119,9 @@ If you land in this state, roll forward to `pre.(N+1)` rather than trying to rec
 
 ## Building the artifacts
 
-Native installers cannot be cross-compiled, so each release workflow fans out across three runners and
-each builds only what its OS supports:
+Native installers cannot be cross-compiled, so the **CLI and desktop** release workflows run a
+three-OS `test` job and then fan out across three packaging runners, each building only what its OS
+supports:
 
 ```bash
 # linux
@@ -123,7 +133,11 @@ each builds only what its OS supports:
 ```
 
 The CLI uses its own per-format tasks (`:cli:jpackageDeb`, `:cli:jpackageWinMsi`, `:cli:jpackageDmg`,
-and so on). The server and web produce a single artifact each and need only one runner. See
+and so on). The server and web releases each need only one Linux runner: `release-server.yml` runs
+`:server:buildFatJar`, attaches `server/build/libs/*-all.jar` to the release, **and** builds
+`server/Dockerfile` and pushes it to `ghcr.io/<owner>/omnisign-server`, tagged with the version plus
+`latest` for non-pre-releases; `release-web.yml` runs `:composeApp:wasmJsBrowserDistribution` and
+attaches the zipped `productionExecutable/` as `web-dist.zip`. See
 [Building and running](building.mdx#producing-artifacts).
 
 :::note[Why the Wasm npm package version is pinned]
@@ -145,6 +159,8 @@ version into the committed lockfile.
 ## Documentation
 
 `deploy-docs.yml` builds the Dokka API reference, copies it into `docs/static/api/`, builds the
-Docusaurus site with pnpm on Node 26, and publishes to GitHub Pages. It runs on pushes to `main` and
+Docusaurus site with **pnpm 11** on Node 26 (`docs/package.json` pins `packageManager: pnpm@11.10.0`
+and `engines.node: >=26.0`; CI installs via `pnpm/action-setup` and runs
+`pnpm install --frozen-lockfile`), and publishes to GitHub Pages. It runs on pushes to `main` and
 can be triggered manually with `workflow_dispatch` — which is the only way to test a change to the
 docs toolchain before merging it.

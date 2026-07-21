@@ -5,8 +5,9 @@ sidebar_position: 4
 # Troubleshooting
 
 Almost everything the web app does beyond opening a PDF needs the server, and its network layer is
-deliberately thin: it does not retry, it has no offline indicator, and every kind of network failure
-looks the same. This page explains how to tell them apart.
+deliberately thin: it retries only once, and only to refresh an expired session token; it has no
+offline indicator, and every kind of network failure looks the same. This page explains how to tell
+them apart.
 
 ## The page is blank or never finishes loading
 
@@ -21,10 +22,10 @@ Signing and timestamping are opt-in server-side and validation is on by default,
 legitimately offer validation only — ask the administrator to enable it. But the capability check also
 **fails closed**: if it cannot reach the server, it assumes *no* operation is permitted and hides every
 button, so a missing button can equally mean the server is unreachable. Rule of thumb — if *all* the
-operation buttons (and the **Signatures** panel) are gone, suspect connectivity first; if only one is
+operation buttons (and the **Signature** panel) are gone, suspect connectivity first; if only one is
 missing, suspect operation gating. See [Server → Operation gating](/server/security#operation-gating).
 
-The **Signatures** panel likewise disappears when the server does not permit `VALIDATE` — or cannot be
+The **Signature** panel likewise disappears when the server does not permit `VALIDATE` — or cannot be
 reached.
 
 ## The buttons are there, but an operation fails
@@ -35,24 +36,33 @@ request was rejected, or your session ended — see the messages below.
 
 ## "Remote signing failed" / "Remote validation failed"
 
-These generic messages cover every network-level failure, with the underlying browser or HTTP message
-shown beneath as detail. In order of likelihood:
+These generic messages cover every network-level failure, and they are deliberately bare: the client
+reads only the server's error *code* and discards its message and details, so no HTTP status, JSON
+envelope, or DSS reason is ever shown in the UI. Only three server rejections get a specific message
+instead (invalid configuration, timestamping not allowed, certificate not allowed). In order of
+likelihood:
 
 1. **The server is unreachable** — it is down, or the address is wrong. See
    [Deployment → Connecting to a server](deployment.mdx#connecting-to-a-server).
 2. **CORS is blocking the request.** The browser refuses to let the page talk to a different origin
    unless the server allows it. The server's `cors.allowedOrigins` must include the origin serving the
    web bundle. See [Server → CORS](/server/security#cors).
-3. **Your session ended.** On an auth-enabled server, a session that has expired (or a sign-in that
-   did not complete) makes operations come back `401`. Reload the page to return to the sign-in
-   screen. See [Deployment → Authentication](deployment.mdx#authentication).
-4. **The operation genuinely failed** — an unreachable timestamp authority, an expired server
-   certificate, a malformed PDF. The detail line is the server's own message.
+3. **Your session ended.** On an auth-enabled server, an expired session makes operations come back
+   `401`. The app tries to refresh silently and retries the request once; only if the server rejects
+   the refresh does it drop back to the sign-in screen — in place, with no page reload. If the server
+   was merely unreachable, you stay signed in and see an ordinary failure instead. See
+   [Deployment → Authentication](deployment.mdx#authentication).
+4. **The server refused the upload.** A PDF above the server's `maxFileSize` (100 MB by default)
+   comes back `413`, and too many requests from one address come back `429`. Both look like any other
+   failure in the app.
+5. **The operation genuinely failed** — an unreachable timestamp authority, an expired server
+   certificate, a malformed PDF. The reason stays in the server's log; the browser shows only the
+   generic message.
 
 Open the browser's developer console: it shows the actual HTTP status, which separates a failed
 preflight (CORS) from a `401` (authentication) from a connection refused (server down).
 
-Only the **Signatures** panel offers a **Retry** button. Everywhere else, close the dialog and try
+Only the **Signature** panel offers a **Retry** button. Everywhere else, close the dialog and try
 again.
 
 ## Signing reports "No tokens detected"

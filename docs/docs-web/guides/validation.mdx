@@ -12,7 +12,7 @@ List of Trusted Lists, any custom trusted lists, and the certificates its admini
 trusted — and returns a report the browser renders.
 
 :::note[Requires a validation-enabled server]
-The **Signatures** panel and its left-edge icon appear only when the server permits the `VALIDATE`
+The **Signature** panel and its left-edge icon appear only when the server permits the `VALIDATE`
 operation. It is enabled by default. See
 [Server → Operation gating](/server/security#operation-gating).
 :::
@@ -20,11 +20,11 @@ operation. It is enabled by default. See
 ## 1. Open a signed PDF
 
 Open the document with the folder icon <AppIcon name="folder" color="folder" label="Open file" />.
-Until you do, the Signatures panel simply says so.
+Until you do, the Signature panel simply says so.
 
 ## 2. Validate
 
-Open the **Signatures** panel <AppIcon name="signature" label="Signatures panel" /> on the left edge
+Open the **Signature** panel <AppIcon name="signature" label="Signature panel" /> on the left edge
 and press the refresh button <AppIcon name="refresh" label="Refresh" />. The document is uploaded, the
 server validates it, and the report appears in the panel.
 
@@ -64,7 +64,7 @@ the certificate to a `.cer` file through the browser.
 
 What is missing here is **Add to trusted certificates**. On the desktop that action writes into your
 own trust store; in the browser, trust belongs to the server and is
-[read-only over the API](/server/api-reference#configuration-introspection). To trust a new anchor, an
+[read-only over the API](/server/api/configuration). To trust a new anchor, an
 administrator adds it to the server's configuration. You can see what the server currently trusts in
 the **Trusted Certificates** panel <AppIcon name="certificate" label="Trusted Certificates panel" />
 on the right edge.

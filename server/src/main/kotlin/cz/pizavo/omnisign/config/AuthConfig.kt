@@ -58,12 +58,15 @@ import cz.pizavo.omnisign.domain.model.value.Sensitive
  *   downgraded by a typo. Rejected at startup otherwise ([validateAuthConfig]).
  * @property oauthStateSecret HMAC key used to sign and verify the OAuth2 `state` parameter
  *   on the authorization-code callback (CSRF protection for the login flow). Must be at
- *   least 32 bytes when supplied. Typically declared via env-var substitution:
- *   `oauthStateSecret: "${OMNISIGN_OAUTH_NONCE_SECRET}"`. When `null` and OIDC providers
- *   are configured, the server falls back to an ephemeral random key in development mode
- *   (with a warning) and fails to start in production. Wrapped in [Sensitive] so the
- *   value cannot leak through `toString` (data-class-generated, logger interpolation,
- *   status pages echoing `cause.message`).
+ *   least 64 bytes (512 bits). Typically declared via env-var substitution:
+ *   `oauthStateSecret: "${OMNISIGN_OAUTH_NONCE_SECRET}"`. It is required whenever an OIDC
+ *   provider is configured: the `NonceManager` binding resolves it with `requireNotNull` and
+ *   startup fails when it is absent or too short. There is no ephemeral-key fallback, in
+ *   development mode or otherwise — a generated-per-boot key would silently invalidate every
+ *   in-flight login on restart. Deployments without OIDC providers never resolve the binding
+ *   and may leave it unset. Wrapped in [Sensitive] so the value cannot leak through
+ *   `toString` (data-class-generated, logger interpolation, status pages echoing
+ *   `cause.message`).
  */
 data class AuthConfig(
 	val enabled: Boolean = false,

@@ -18,11 +18,11 @@ operations over shared state, it is a facade; say so in the KDoc.
 4. Register it in `shared/src/commonMain/.../di/AppModule.kt`.
 
 ```kotlin
-class ArchiveDocumentUseCase(
+class ExtendDocumentUseCase(
     private val archivingRepository: ArchivingRepository,
 ) {
     suspend operator fun invoke(parameters: ArchivingParameters): OperationResult<ArchivingResult> =
-        archivingRepository.archive(parameters)
+        archivingRepository.extendDocument(parameters)
 }
 ```
 
@@ -34,8 +34,10 @@ even transitively — must live in `jvmMain` and be registered in `jvmRepository
 
 ## A new repository method
 
-The interface lives in `commonMain`; **every** implementation must satisfy it. For the three signing,
-validation, and archiving repositories that means two implementations, one per platform.
+The interface lives in `commonMain`; **every** implementation must satisfy it. For
+`SigningRepository`, `ValidationRepository`, `ArchivingRepository`, `ConfigRepository`, and
+`TrustStore` that means two implementations, one per platform. `CapabilitiesRepository` is the
+exception — it exists only on the web target.
 
 1. Add the method to the interface in `shared/src/commonMain/.../domain/repository/`.
 2. Implement it in the JVM class (`DssSigningRepository` and friends).
@@ -61,8 +63,9 @@ Adding a method also breaks any hand-written test fake, which is one reason
 
 Errors are branches of a sealed hierarchy, and user-facing ones are localizable.
 
-1. Add a `data class` to the relevant sealed interface (`SigningError`, `ValidationError`, …). It
-implements `OperationError` and, if a user will read it, `LocalizableError`.
+1. Add a `data class` to the relevant sealed interface (`SigningError`, `ValidationError`, …). The
+parent already extends both `OperationError` and `LocalizableError`, so your branch inherits them and
+must override `text` — every error in the hierarchy is localizable by construction.
 2. Add a constant to the `MessageKey` enum in `domain/model/text/`.
 3. Add the English template to `EnglishMessages`.
 4. Add a convenience factory to the error's `companion object`.
@@ -86,14 +89,14 @@ decide how to present the new case. Follow it.
 
 ## A new CLI command
 
-1. Create a class extending `CliktCommand` that implements `KoinComponent`, under
-`cli/src/main/.../commands/`.
+1. Create a class extending `CliktCommand(name = "…")` that implements `KoinComponent`, under
+`cli/src/main/.../commands/`. Every command passes its name explicitly.
 2. Resolve dependencies with `by inject()`.
 3. Register it in the root command's `subcommands(...)` call in `cli/src/main/.../Omnisign.kt`.
 
 ```kotlin
-class Archive : CliktCommand(), KoinComponent {
-    private val archiveUseCase: ArchiveDocumentUseCase by inject()
+class Extend : CliktCommand(name = "extend"), KoinComponent {
+    private val extendDocument: ExtendDocumentUseCase by inject()
 
     override fun run() { /* ... */ }
 }
@@ -113,11 +116,13 @@ own commands. The consequence is that command tests need a Koin container; see
 3. Mount it in `server/src/main/.../plugins/Routing.kt`.
 
 ```kotlin
-post("/sign") {
+post("/api/v1/sign") {
     if (!call.requireOperation(AllowedOperation.SIGN, serverConfig)) return@post
     // ...
 }
 ```
+
+Routes mount the full versioned path themselves — there is no route-base prefix.
 
 `requireOperation` responds `403` and returns `false` when the operation is not enabled, so the guard
 is a single early return.
@@ -127,8 +132,11 @@ The web client reads `GET /api/v1/capabilities` and hides affordances it cannot 
 usability affordance, not access control. Every route enforces its own gate on every request.
 :::
 
-If the route should be reachable without authentication, mount it outside the `authenticate("jwt-api")`
-block — currently only health and `/auth/**` are.
+If the route should be reachable without authentication, add it to `systemRoutes()`, which `Routing.kt`
+mounts in an `authenticate(jwt-api, optional = true)` scope — the principal is available when a token
+is supplied, but a missing token is not rejected. Currently only `/api/v1/health`,
+`/api/v1/capabilities`, and `/auth/**` sit outside the mandatory block. (When `auth.enabled` is
+`false`, the mandatory block is skipped for every route.)
 
 ## A new configuration option
 
@@ -141,8 +149,15 @@ Configuration is a three-layer merge. Decide which layers your option belongs to
 | Operation | `OperationConfig` | Overrides both, for one invocation            |
 
 Add the property to each layer it applies to, then teach `ResolvedConfig.resolve()` how to merge it —
-a later layer wins when it is non-null. Config models are `kotlinx.serialization`-annotated; the
-Jackson serializers in `data/serializer/` pick up YAML and XML automatically.
+a later layer wins when it is non-null.
+
+Persisted config models (`GlobalConfig`, `ProfileConfig`, `AppConfig`) are
+`kotlinx.serialization`-annotated; `OperationConfig` and `ResolvedConfig` are not, because they never
+leave memory. Export and import run through the Jackson-based serializers in
+`shared/src/jvmMain/.../data/serializer/` for all three formats — JSON, XML, and YAML. Jackson
+reflects over constructors and ignores kotlinx annotations, so a property that must stay out of an
+exported file needs an explicit mixin in `JacksonConfigSerializer.kt`;
+`@kotlinx.serialization.Transient` alone will not hide it.
 
 If the value is a password, PIN, or secret, its type is `Sensitive<T>` and it can never be serialized.
 

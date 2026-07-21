@@ -40,16 +40,20 @@ Set this to your web frontend's origin(s) before deployment.
 ## Rate limiting
 
 `rateLimiting` applies per-IP token buckets to the `/auth/*` routes (`auth`) and the operational API
-(`api`); system routes are never limited. Omit the block to disable. Behind a proxy, client IPs are
-taken from `X-Forwarded-For` only for connections from a [trusted proxy](#reverse-proxy).
+(`api`); system routes are never limited. Defaults are 20 requests / 60 s for `auth` and 200 / 60 s
+for `api`; over-quota requests get `429 Too Many Requests` with `Retry-After`. Omit the block to
+disable. Behind a proxy, client IPs are taken from `X-Forwarded-For` only for connections from a
+[trusted proxy](#reverse-proxy).
 
 ## Reverse proxy
 
 With `proxy.enabled: true`, TLS is terminated upstream (nginx, Caddy, Traefik) and the server runs on
-the plain-HTTP connector. `X-Forwarded-*` headers are honored **only** when the TCP source IP matches
-an entry in `proxy.trusted` (literal IPs or CIDRs — hostnames and `*` are rejected), so a client
-reaching the Ktor port directly cannot spoof its IP. `proxy.enabled: true` requires a non-empty
-`trusted` list. See [Deployment → Reverse proxy](deployment#reverse-proxy).
+the plain-HTTP connector. Only `X-Forwarded-For` is honored — its **first** entry becomes the client
+IP — and only when the TCP source IP matches an entry in `proxy.trusted` (literal IPs or CIDRs;
+hostnames and `*` are rejected), so a client reaching the Ktor port directly cannot spoof its IP.
+`X-Forwarded-Proto` and `X-Forwarded-Host` are deliberately **not** consumed; use
+`OMNISIGN_EXTERNAL_URL` to tell the server its public scheme and host. `proxy.enabled: true` requires
+a non-empty `trusted` list. See [Deployment → Reverse proxy](deployment#reverse-proxy).
 
 ## Operation gating {/* #operation-gating */}
 
@@ -67,7 +71,8 @@ operations:
   enabled, the server logs a warning unless authentication is on, because every network-reachable
   client could otherwise sign. Restrict the usable certificates with `certificateAliases` for
   defense-in-depth.
-- **`TIMESTAMP`** exposes the server's pre-configured TSA via `/api/v1/timestamp`.
+- **`TIMESTAMP`** exposes the server's pre-configured TSA via `POST /api/v1/timestamp` and
+  `POST /api/v1/timestamp/inspect`.
 
 Combine the allowlist with [authentication](authentication) for any internet-facing `SIGN` deployment.
 
@@ -78,4 +83,9 @@ Combine the allowlist with [authentication](authentication) for any internet-fac
 - **Secrets via environment only** — JWT secret, OIDC client secrets, TLS, TSA, and file
   signing-keystore passwords are never read from YAML.
 - Uploads are streamed to disk and bounded by `maxFileSize`; multiple file parts are rejected.
-- The `X-Powered-By` header is suppressed and a client-supplied `X-Request-Id` is length-bounded.
+- Every response carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
+  `Referrer-Policy: strict-origin-when-cross-origin`, and
+  `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`. No `X-Powered-By` is sent.
+- A client-supplied `X-Request-Id` is accepted only if it matches `[a-z0-9+/=-]` and is 1–64
+  characters; anything else is replaced by a server-generated UUIDv7. The character check is what
+  stops CRLF injection into the MDC log context.

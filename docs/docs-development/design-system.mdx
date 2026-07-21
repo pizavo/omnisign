@@ -20,14 +20,19 @@ than importing Material into `ui/`.
 | --- | --- |
 | `lumo/Theme.kt` | `LumoTheme` accessor and the theme composable |
 | `lumo/Color.kt`, `lumo/Typography.kt` | Design tokens |
-| `lumo/components/` | ~21 components plus `card/`, `textfield/`, `snackbar/`, `progressindicators/`, `otptextfield/` |
-| `lumo/foundation/` | `Elevation`, `Ripple`, `Providers`, insets |
+| `lumo/components/` | 20 top-level components plus `card/`, `otptextfield/`, `progressindicators/`, `snackbar/`, `textfield/`, `topbar/` — 36 files in all |
+| `lumo/foundation/` | `Elevation`, `ButtonElevation`, `Ripple`, `Providers`, `SystemBarsDefaultInsets` |
+| `lumo/PlatformContextMenu.kt` | `expect fun ProvidePlatformContextMenu` — Lumo-styled right-click menu on desktop, passthrough on web |
 
 Lumo is generated and updated by the [Lumo Gradle plugin](https://github.com/nomanr/lumo-ui)
-(`com.nomanr.plugin.lumo`), configured through `lumo.properties` at the repository root:
+(`com.nomanr.plugin.lumo`, pinned to `1.2.5` in `gradle/libs.versions.toml`), configured through
+`lumo.properties` at the repository root:
 
 ```properties
 ThemeName=LumoTheme
+ComponentsDir=composeApp/src/commonMain/kotlin/cz/pizavo/omnisign/lumo
+PackageName=cz.pizavo.omnisign.lumo
+KotlinMultiplatform=true
 ```
 
 The generated sources are checked in and freely edited afterwards — treat them as ours, not as
@@ -36,7 +41,7 @@ vendored code.
 ## Icons
 
 Every icon in the app is a [Tabler](https://tabler.io/icons) icon. The set lives in
-`composeApp/src/commonMain/composeResources/drawable/` as 61 SVGs, stored with hard-coded `black`
+`composeApp/src/commonMain/composeResources/drawable/` as 62 SVGs, stored with hard-coded `black`
 strokes and fills so that Compose can recolour them at render time with `tint`.
 
 Three are not stock Tabler: `icon_window_restore` is derived from Tabler's `copy`, and `icon_eu` and
@@ -129,7 +134,7 @@ Backup and Language and Region settings stay usable on web while the rest of the
 ## Text selection, and the dialog trap
 
 `SelectableContent` wraps its children in a `SelectionContainer` so text can be selected and copied.
-It is used in 14 places.
+It is used in 17 places.
 
 :::danger[Opening a dialog from inside `SelectableContent` will crash on click]
 A Compose dialog renders into a **separate window layer**. When it is opened from inside a
@@ -153,8 +158,10 @@ Multiplatform.
 ## Platform seams
 
 `ui/platform/` holds the `expect` declarations for everything a composable cannot do portably — PDF
-rendering, file export, cursors, theme persistence, window controls, and the app locale. The desktop
-`actual`s are in `jvmMain`, the browser ones in `webMain`.
+rendering, file export, cursors, theme persistence, and the app locale. The desktop `actual`s are in
+`jvmMain`, the browser ones in `webMain`. Window controls are the exception: `WindowControls.kt` lives
+only in `commonMain` and exposes CompositionLocals (`LocalDragAreaCallback`, `LocalWindowDragModifier`)
+that each host provides values into.
 
 Two are worth knowing about because they behave differently rather than merely being implemented
 twice:

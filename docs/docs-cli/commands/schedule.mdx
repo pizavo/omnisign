@@ -55,7 +55,8 @@ with which settings (TSA profile, buffer window, notification behavior).
 | Option                  | Description                                                                                              |
 |-------------------------|----------------------------------------------------------------------------------------------------------|
 | `-g, --glob <pattern>`  | **(Required, repeatable)** Glob pattern matching PDF files to watch                                      |
-| `-b, --buffer-days <n>` | Days before timestamp certificate expiry at which re-timestamping is triggered. Default: library default |
+| `-b, --buffer-days <n>` | Days before timestamp certificate expiry at which re-timestamping is triggered. Default: `90` |
+| `-B, --backups <n>`     | Timestamped pre-renewal `.bak` copies to keep per file (`0` disables backups). Default: `3` |
 | `--profile <name>`      | Named configuration profile to use for TSA and revocation settings                                       |
 | `--log-file <path>`     | Absolute path to an append-only log file for this job's renewal output                                   |
 | `--no-notify`           | Disable OS desktop notifications for this job                                                            |

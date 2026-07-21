@@ -154,7 +154,7 @@ fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConf
 			val secretBytes = secret.value.toByteArray(Charsets.UTF_8).size
 			require(secretBytes >= MIN_JWT_SECRET_BYTES) {
 				"${ServerSecrets.JWT_SECRET_ENV} must be at least $MIN_JWT_SECRET_BYTES bytes " +
-						"(256 bits) — got $secretBytes."
+						"(512 bits) — got $secretBytes."
 			}
 		}
 		JwtSessionService(config, secret)

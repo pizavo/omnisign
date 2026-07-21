@@ -23,7 +23,7 @@ omnisign certificates list
 
 The discovery process probes:
 
-1. **OS-native stores** — Windows Certificate Store (`MSCAPI`), macOS Keychain
+1. **OS-native stores** — Windows Certificate Store (`WINDOWS_MY`), macOS Keychain (`MACOS_KEYCHAIN`)
 2. **PKCS#11 hardware tokens** — smart cards, USB tokens (e.g., YubiKey, SafeNet)
 3. **PKCS#12 files** — `.p12` / `.pfx` keystores configured in the application
 4. **Custom PKCS#11 libraries** — registered via [`config pkcs11 add`](../configuration/pkcs11)

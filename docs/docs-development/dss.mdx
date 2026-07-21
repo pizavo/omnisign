@@ -33,37 +33,51 @@ the domain. The rest of this page is about those two steps.
 
 ## The factory that owns the expensive things
 
-`DssServiceFactory` centralises everything costly or shared: TSP sources, certificate verifiers, and
-Trusted List validation jobs. It is a Koin `single`, injected into all three DSS repositories
-(`DssSigningRepository`, `DssValidationRepository`, `DssArchivingRepository`).
+`DssServiceFactory` centralises everything costly or shared: TSP sources, certificate verifiers, and —
+via the `TrustedSourceRegistry` it delegates to — one retained `TLValidationJob` per distinct trust
+source. It is a Koin `single`, injected into all three DSS repositories (`DssSigningRepository`,
+`DssValidationRepository`, `DssArchivingRepository`) and into `TrustedListRefreshScheduler`.
 
 It builds a **different certificate verifier for signing than for validation**, and the difference is
-not cosmetic. Both wire the same five DSS alert properties, but the signing verifier silences two of
-them:
+not cosmetic — the two barely overlap:
 
 | Alert | Signing | Validation |
 | --- | --- | --- |
-| `alertOnMissingRevocationData` | suppressed | raised |
-| `alertOnNoRevocationAfterBestSignatureTime` | suppressed | raised |
 | `alertOnUncoveredPOE` | raised | raised |
-| `alertOnInvalidTimestamp` | raised | raised |
-| `alertOnRevokedCertificate` | raised | raised |
+| `alertOnNoRevocationAfterBestSignatureTime` | suppressed | raised |
+| `alertOnMissingRevocationData` | suppressed | suppressed |
+| `alertOnInvalidTimestamp` | raised | suppressed |
+| `alertOnRevokedCertificate` | raised | suppressed |
+| `alertOnExpiredCertificate` | DSS default (aborts) | suppressed |
+| `alertOnNotYetValidCertificate` | DSS default (aborts) | suppressed |
 
 The signing verifier additionally sets `isCheckRevocationForUntrustedChains = false`, and honours
 `validation.allowExpiredCertificate` by clearing `alertOnExpiredCertificate`.
 
-The asymmetry is deliberate. A signature being *created* has no revocation data covering it yet, so
-demanding some would fail every signature. A signature being *validated* is a claim about the past,
-and missing revocation data is exactly what undermines it. Collapsing the two into one verifier is the
-obvious-looking refactor, and it is wrong.
+Signing suppresses the two revocation alerts because they fire in the verifier's pre-extension check,
+before the PAdES extension embeds CRL/OCSP data — if the extension fails DSS throws anyway, and if it
+succeeds the alerts were false positives.
 
-Both paths short-circuit to a fully lenient verifier — every alert cleared — when `config` is `null`
-or `validation.checkRevocation` is off.
+Validation suppresses almost everything for the opposite reason: it opens with
+`silenceAlertsCoveredByTheReport()`, which clears every alert whose condition the ETSI report already
+states as an indication, so the alerter adds no duplicates. For `alertOnExpiredCertificate` and
+`alertOnNotYetValidCertificate` there is a harder reason: DSS defaults both to `ExceptionOnStatusAlert`,
+so leaving them active would turn a readable INDETERMINATE / `OUT_OF_BOUNDS_NO_POE` report into a
+failed *operation* with no report at all. Collapsing the two verifiers into one is the obvious-looking
+refactor, and it is wrong.
 
-Two more builders round it out. `buildTspSource()` constructs an `OnlineTSPSource` per configured
-timestamp server, wiring in that server's timeout and credentials. `buildPdfObjectFactory()` returns a
-`PdfBoxNativeObjectFactory` that spills large documents to a temporary file once the in-heap limit is
-exceeded, so signing a large PDF does not scale with its size in memory.
+Both paths short-circuit when `config` is `null` or `validation.checkRevocation` is off. Validation
+returns a fully lenient verifier, every alert cleared; signing clears the five revocation- and
+timestamp-related alerts but leaves the expired- and not-yet-valid-certificate alerts at their DSS
+defaults, so an expired signing certificate still aborts unless `validation.allowExpiredCertificate`
+is set.
+
+Three more builders round it out. `buildCertificateVerifier(timeout)` returns a lenient verifier with
+AIA/OCSP/CRL sources but no config and no alerts. `buildTspSource()` constructs an `OnlineTSPSource`
+per configured timestamp server, wiring in that server's timeout and credentials.
+`buildPdfObjectFactory()` returns a `PdfBoxNativeObjectFactory` that spills large documents to a
+temporary file once the in-heap limit is exceeded, so signing a large PDF does not scale with its size
+in memory.
 
 ## How a DSS warning becomes a sentence
 
@@ -72,8 +86,10 @@ logging to SLF4J. OmniSign captures both, then normalises them.
 
 1. **`CollectingStatusAlert`** is registered on the `CertificateVerifier`. Instead of throwing or
 printing, it accumulates DSS's status messages for the duration of an operation.
-2. **`DssLogCapture`** is a Logback appender attached to the `eu.europa.esig` parent logger while an
-operation runs. It catches the diagnostics DSS only ever logs. It is *not* `Closeable` — it is
+2. **`DssLogCapture`** attaches a capturing Logback appender — by reflection, so `shared` needs no
+compile-time `logback-classic` dependency — to the `eu.europa.esig` parent logger while an operation
+runs. It catches the diagnostics DSS only ever logs, minus the `eu.europa.esig.dss.tsl.` loggers,
+whose output the separate trusted-list warning mechanism handles. It is *not* `Closeable` — it is
 started and stopped in a `try`/`finally`.
 3. **`DssWarningSanitizer`** classifies each raw message into a `WarningCategory` and folds the
 affected certificate identifiers together, so ten warnings about ten certificates become one
@@ -87,13 +103,16 @@ The categories, and roughly what each means:
 | `REVOCATION_UNTRUSTED_CHAIN` | Revocation was skipped — the chain has no trusted anchor |
 | `REVOCATION_STATUS_UNKNOWN` | Neither *good* nor *revoked* could be established |
 | `REVOCATION_POE_MISSING` | Revocation data needed for proof-of-existence is absent |
-| `FRESH_REVOCATION_MISSING` | Cached revocation data was used; no fresh response |
+| `REVOCATION_POE_STALE` | Revocation data was collected, but every response predates the timestamp whose proof-of-existence it has to cover |
+| `FRESH_REVOCATION_MISSING` | Revocation data for the signing chain predates the signature's own timestamp, so none of it covers the moment of signing |
 | `TIMESTAMP_UNTRUSTED` | The issuing TSA is not in any trusted list |
 | `CERTIFICATE_PARSE_ERROR` | Malformed ASN.1 extensions, typically in a third-party TSA certificate |
 | `TSP_FAILURE` | The timestamp server returned a `PKIFailureInfo` |
 
-Each category renders itself through `toSummary(ids)`, which is where the user-facing wording lives.
-The result is a list of `AnnotatedWarning`.
+Each category renders itself through `toSummary(ids, nextUpdate)`, which is where the user-facing
+wording lives. `nextUpdate` is the time DSS reports newer revocation data as due; the two
+stale-revocation categories use it to pick a `_BY_TIME` template over their `_GENERIC` one, and every
+other category ignores it. The result is a list of `AnnotatedWarning`.
 
 :::tip[Warnings are suppressed per operation, not globally]
 `DssSigningRepository` deliberately suppresses `REVOCATION_NOT_FOUND`, `FRESH_REVOCATION_MISSING`, and
