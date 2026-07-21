@@ -26,7 +26,7 @@ graph TB
     subgraph routing["Routing — /api/v1 (configureRouting)"]
         PUBLIC["`**Public** — always open<br/>/auth/** · SystemRoutes (health)`"]
         GUARDED["`**Guarded** — authenticate(jwt-api)<br/>when auth.enabled = true`"]
-        GATE["`**AllowedOperation gate** (per request)<br/>SIGN = opt-in · VALIDATE / TIMESTAMP = default`"]
+        GATE["`**AllowedOperation gate** (per request)<br/>VALIDATE = default · SIGN and TIMESTAMP = opt-in`"]
         subgraph routes["Operational route groups"]
             SIGNR["SigningRoutes"]
             VALR["ValidationRoutes"]
@@ -37,17 +37,18 @@ graph TB
     end
 
     subgraph authsvc["Auth services (di/ServerModule)"]
-        JWTSVC["JwtSessionService<br/>Auth0 java-jwt · HMAC HS256/384/512<br/>secret: config → env → ephemeral(dev)"]
+        JWTSVC["JwtSessionService<br/>Auth0 java-jwt · HS / RS / ES 256 · 384 · 512<br/>secret: OMNISIGN_JWT_SECRET (env, required)"]
         DISC["OidcDiscoveryService"]
         UINFO["OidcUserInfoService → AuthenticatedPrincipal"]
         IDTOK["IdTokenVerifier<br/>validates the IdP id_token"]
         PKCE["PkceService<br/>+ PkceVerifierStore"]
-        RT["RefreshTokenStore<br/>rotating refresh tokens"]
+        RT["RefreshTokenStore<br/>rotating refresh tokens (SHA-256 at rest)"]
+        HANDOFF["`HandoffCodeStore · LoginRequestStore<br/>*single-use hand-off code, PKCE-bound*`"]
         FILTERS["`EmailDomainFilter · OidcClaimsFilter<br/>*post-login, before JWT issued*`"]
     end
 
     subgraph persist["Session persistence"]
-        DB[("sessions.db<br/>[SQLite via Exposed]<br/>PKCE verifiers · refresh tokens")]
+        DB[("sessions.db<br/>[SQLite via Exposed]<br/>login requests · PKCE verifiers<br/>hand-off codes · refresh-token hashes")]
     end
 
     subgraph shared["shared — JVM data layer (reused by all clients)"]
@@ -101,12 +102,15 @@ graph TB
     FILTERS -. "issue session JWT" .-> JWTSVC
     JWTSVC -. "issue / rotate" .-> RT
     PUBLIC -. "POST /refresh" .-> RT
+    JWTSVC -. "hand-off code → browser redirect" .-> HANDOFF
+    PUBLIC -. "POST /exchange (code + verifier)" .-> HANDOFF
     DISC -. "discovery doc" .-> IDP
     UINFO -. "userinfo" .-> IDP
 
     %% Session persistence
     PKCE --> DB
     RT --> DB
+    HANDOFF --> DB
 
     %% Config wiring
     YML --> LOADER --> EXTURL
@@ -126,7 +130,7 @@ graph TB
 
     class BROWSER,CI,INST client;
     class TLS,EDGE,RL,OBS infra;
-    class JWTGUARD,OIDCPROV,JWTSVC,DISC,UINFO,IDTOK,PKCE,RT,FILTERS sec;
+    class JWTGUARD,OIDCPROV,JWTSVC,DISC,UINFO,IDTOK,PKCE,RT,HANDOFF,FILTERS sec;
     class PUBLIC,GUARDED,GATE,SIGNR,VALR,TSR,CERTR,CFGR route;
     class UC,DSSREPO,PWCB core;
     class YML,LOADER,EXTURL,SIGNYML,SLOADER infra;
