@@ -166,6 +166,8 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 				trustedListRefreshIntervalHours = trustedListRefreshInterval?.toLong()?.coerceAtLeast(1)
 					?: trustedListRefreshIntervalHours,
 				validation = validation.copy(
+					policyType = validationPolicy ?: validation.policyType,
+					checkRevocation = checkRevocation?.toBooleanStrictOrNull() ?: validation.checkRevocation,
 					useEuLotl = useEuLotl?.toBooleanStrictOrNull() ?: validation.useEuLotl,
 					algorithmConstraints = validation.algorithmConstraints.copy(
 						expirationLevel = algoExpirationLevel
