@@ -82,7 +82,7 @@ arguments; `Literal` carries text that is already final (a filename, a certifica
 not be translated.
 
 `english()` renders the bundled English template from `EnglishMessages`. It is the fallback for every
-surface that does not localize — the CLI, the server, and log output — and it is called in 21 places.
+surface that does not localize — the CLI, the server, and log output — and it is called in 32 places.
 
 :::tip[Why the key is serializable]
 Because `MessageKey` serializes by name, the **server can hand a key and its arguments to the web
@@ -103,7 +103,9 @@ there is one source of truth and the key cannot drift from the sentence.
 ### The render layer
 
 `LocalizableTextResolver.kt` in `composeApp/commonMain/ui/model/` is the bridge. It holds a
-`MESSAGE_RES` map from `MessageKey` to Compose resource, and one composable extension:
+`MESSAGE_RES` map from `MessageKey` to Compose resource, a `WARNING_COUNT_PLURAL` map from the
+count-bearing warning keys to a `PluralStringResource`, and three composable extensions. The plain
+one:
 
 ```kotlin
 @Composable
@@ -116,6 +118,11 @@ fun LocalizableText.localized(): String = when (this) {
 
 Note the fallback: a key with no Compose resource silently renders its English template rather than
 crashing or showing a raw enum name.
+
+`localizedMessage()` adds one thing for sanitized warnings: it reads the count back out of the English
+count phrase the sanitizer baked into the first argument and re-renders it as a locale-correct plural,
+so a Czech sentence reads "2 certifikáty" rather than "2 certificates". `localizedMessages()` is the
+`@Composable` for-loop over a list, because `localizedMessage()` cannot be called inside `map`.
 
 ## Headless JVM surfaces: `ResourceBundle`
 
@@ -174,19 +181,21 @@ under `shared/src/jvmMain/resources/`.
 :::note[Mirror `values-cs/`, not `values/`]
 Three catalogs in `values/` are empty placeholders — `strings_dropdown.xml`, `strings_infotooltip.xml`,
 and `strings_password.xml`. Neither `values-cs/` nor `values-sk/` has a variant of them, which is why
-those directories hold 34 files against the base directory's 37. Do not create empty translations.
+those directories hold 35 files against the base directory's 38. Do not create empty translations.
 :::
 
 ### Plural categories are per language
 
-The base catalog only needs `one` and `other`. Czech and Slovak do not agree with each other, let alone
-with English:
+The base catalog only needs `one` and `other`. Czech and Slovak both need four categories:
 
 | Locale        | Categories present            |
 |---------------|-------------------------------|
 | `values` (en) | `one`, `other`                |
 | `values-cs`   | `one`, `few`, `many`, `other` |
-| `values-sk`   | `one`, `few`, `other`         |
+| `values-sk`   | `one`, `few`, `many`, `other` |
+
+Not every catalog exercises all four — `many` appears only where a `%1$s`-substituted count needs the
+genitive singular (`strings_warningrow.xml` in both, plus four more files in `values-cs`).
 
 Follow the CLDR plural rules for the language you are adding. Supplying too few categories does not
 fail the build.
@@ -214,9 +223,9 @@ matches, and the region selector falls back to showing `Custom`. The language it
 
 ### How the switch behaves
 
-Choosing a language does **not** stage an edit like the rest of the settings dialog. The language and
-date format are stored in `preferences/ui.json`, separately from the configuration, so they take a
-different path:
+Choosing a language does **not** stage an edit like the rest of the settings dialog. The language is
+stored in `preferences/ui.json` and the date format in the cross-surface `preferences/format.json`
+store — both separate from the configuration, so they take a different path:
 
 - `onLanguageChange` applies the tag **live, as a preview**, and persists nothing.
 - `onPersistLocale` runs only when the dialog is **saved**.

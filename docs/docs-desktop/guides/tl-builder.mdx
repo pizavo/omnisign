@@ -12,8 +12,8 @@ of the EU LOTL and you want OmniSign to trust it during validation and signing.
 
 The Trusted List builder can be opened from two places:
 
-- **Settings → Validation → Trusted Lists** — click the **Build** button.
-- **Profile editor → Trusted Lists** — click the **Build** button within a profile's
+- **Settings → Validation → Trusted Lists** — click the **Build Custom TL** button.
+- **Profile editor → Trusted Lists** — click the **Build Custom TL** button within a profile's
   trusted list section.
 
 ![Trusted List builder dialog](/img/desktop/tl-builder-dialog.avif)
@@ -54,9 +54,11 @@ type a custom URI directly into the text field.
 
 ## 3. Register after compile
 
-The **Register after compile** checkbox (checked by default) controls whether the compiled
-Trusted List is automatically added to the settings or profile from which the builder was
-opened. When unchecked, the XML is written to disk but not registered.
+The **Register as a custom trusted list source after compiling** checkbox (checked by default)
+controls whether the compiled Trusted List is staged into **Settings → Validation → Trusted Lists**.
+Registration always targets the **global** scope, even when the builder was opened from a profile
+editor, and is committed when you save the Settings dialog. When unchecked, the XML is written to
+disk but not registered.
 
 ## 4. Compile
 

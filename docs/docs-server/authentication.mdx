@@ -5,18 +5,29 @@ sidebar_position: 4
 # Authentication & SSO
 
 When `auth.enabled` is `true`, every operational API route requires a valid **JWT Bearer token**;
-`/api/v1/health`, `/api/v1/capabilities`, and the `/auth/*` routes stay public. Users obtain a token
-by signing in through a configured SSO provider. Without an `auth:` block the server installs no
-authentication (suitable only for a trusted private network or a `VALIDATE`-only deployment).
+`/api/v1/health`, `/api/v1/capabilities`, and the `/auth/*` routes stay public — with one exception:
+`GET /auth/session` requires a valid Bearer JWT. When auth is enabled, `/api/v1/capabilities` still
+answers unauthenticated callers but returns `profiles: []` so internal profile names are not leaked.
+Users obtain a token by signing in through a configured SSO provider. Without an `auth:` block the
+server installs no authentication (suitable only for a trusted private network or a `VALIDATE`-only
+deployment).
 
 ```yaml
 auth:
   enabled: true
+  # HMAC key for the OAuth2 `state` parameter (login-CSRF defence).
+  # Required whenever an OIDC provider is configured; must be >= 64 bytes.
+  oauthStateSecret: "${OMNISIGN_OAUTH_NONCE_SECRET}"
+  # Exact URLs a finished browser login may be handed back to. Empty by default,
+  # which disables the hand-off and makes the callback answer with token JSON.
+  allowedRedirectUris: ["https://omnisign.example.com/"]
   session:
     algorithm: HS512          # HS256 | HS384 | HS512 (HMAC). RS*/ES* are planned, not yet implemented.
     issuer: omnisign
     audience: omnisign-api
-    tokenExpirySeconds: 3600
+    tokenExpirySeconds: 3600         # access-token TTL; the default is 300 (5 min)
+    refreshTokenLifetimeSeconds: 2592000   # default: 30 days
+    maxSessionSeconds: 28800         # default: 8 h from the original SSO login
   providers:
     - type: oidc
       name: google
@@ -26,14 +37,18 @@ auth:
       allowedEmailDomains: ["yourcompany.com"]
 ```
 
-The JWT signing secret comes from **`OMNISIGN_JWT_SECRET`** (required when auth is enabled) — never
-from YAML. See [Configuration → Secrets](configuration#secrets).
+The JWT signing secret comes from **`OMNISIGN_JWT_SECRET`** (required when auth is enabled, and at
+least **64 bytes** — generate it with `openssl rand -base64 64`) — never from YAML.
+`oauthStateSecret` is generated the same way and supplied through `${VAR}` substitution. Entries in
+`allowedRedirectUris` must be absolute URLs (`http` only for loopback hosts) and are matched
+**exactly** — not by prefix or host. See [Configuration → Secrets](configuration#secrets).
 
 ## OIDC providers
 
-Each OIDC provider needs a `preset`, a `clientId`, and a **required** `allowedEmailDomains`, plus a
-client secret in `OMNISIGN_OIDC_<NAME>_CLIENT_SECRET` (where `<NAME>` is the provider `name`,
-uppercased, non-alphanumerics → `_`; e.g. `name: google` → `OMNISIGN_OIDC_GOOGLE_CLIENT_SECRET`).
+Each OIDC provider needs `type: oidc`, a unique `name`, a `clientId`, either a `preset` or an explicit
+`discoveryUrl`, and a **required** `allowedEmailDomains`, plus a client secret in
+`OMNISIGN_OIDC_<NAME>_CLIENT_SECRET` (where `<NAME>` is the provider `name`, uppercased,
+non-alphanumerics → `_`; e.g. `name: google` → `OMNISIGN_OIDC_GOOGLE_CLIENT_SECRET`).
 
 | Preset          | `tenantId`                        | Notes                                              |
 |-----------------|-----------------------------------|----------------------------------------------------|
@@ -41,16 +56,18 @@ uppercased, non-alphanumerics → `_`; e.g. `name: google` → `OMNISIGN_OIDC_GO
 | `MICROSOFT`     | `common` / `organizations` / GUID | Entra ID (Azure AD)                                |
 | `AMAZON_COGNITO`| `{region}/{userPoolId}`           |                                                    |
 | `KEYCLOAK`      | `{host}/{realm}`                  | self-hosted                                        |
-| `GITHUB`        | —                                 | OAuth2 (not full OIDC); needs `scopes: [read:user, user:email]` |
-| `GITLAB`        | —                                 |                                                    |
+| `GITHUB`        | —                                 | OAuth2 (not full OIDC); needs `scopes: [read:user, user:email]`. No discovery document — endpoints are hard-coded and `id_token` verification is skipped automatically |
+| `GITLAB`        | —                                 | GitLab.com; for a self-hosted instance set `discoveryUrl` explicitly |
 | `AUTH0`         | your Auth0 domain                 |                                                    |
 | `APPLE`         | —                                 | public IdP — domain-restrict                       |
 | `EDUID_CZ`      | —                                 | Czech academic federation (see below)             |
 
 `allowedEmailDomains` is mandatory — pick `["*"]` (deliberate allow-all, e.g., a private Cognito pool
 or self-hosted Keycloak realm), `["yourcompany.com"]`, or several. An empty list or a missing field
-is rejected at startup. `requiredClaims` (a map of claim → allowed values, at least one must match)
-adds finer control.
+is rejected at startup. `requiredClaims` (a map of claim → allowed values) adds finer control:
+**every** listed claim must be present and match **at least one** of its listed values. Single-valued
+and array-valued claims both work. A key with an empty value list is rejected at startup — it would
+reject every login.
 
 ### eduID.cz (Czech academic federation)
 
@@ -81,13 +98,24 @@ scope, then confirm the exact values against a real token
 
 1. `GET /auth/login` returns the active providers and each one's `loginUrl`.
 2. The client sends the user to that URL; OmniSign runs the OAuth2 **authorization-code flow with
-   PKCE** (RFC 7636) for OIDC providers.
-3. On the callback, OmniSign verifies the **id_token** signature and its `iss`/`aud`/`exp` and
-   cross-checks `sub` against UserInfo, then enforces `allowedEmailDomains` and `requiredClaims`.
+   PKCE** (RFC 7636, `S256`) and signs the `state` parameter with an HMAC keyed from
+   `auth.oauthStateSecret`, verifying it on the callback — Ktor's default nonce manager accepts any
+   `state`.
+3. On the callback, OmniSign verifies the **id_token** signature against the IdP's JWKS plus its
+   `iss`/`aud`/`exp`, and rejects the login with `401 ID_TOKEN_SUB_MISMATCH` if its `sub` differs from
+   the UserInfo `sub`; it then enforces `allowedEmailDomains` and `requiredClaims`. (Verification is
+   skipped for OAuth2-only providers such as `GITHUB`.)
 4. It issues a short-lived **access JWT** plus a single-use **refresh token** (rotated on every
-   `POST /auth/refresh`, bounded by the session's maximum lifetime).
+   `POST /auth/refresh`, bounded by `maxSessionSeconds`). The refresh token also goes out as an
+   `HttpOnly` cookie scoped to `/auth/refresh`.
+5. A browser app that passed `?returnTo=…&handoffChallenge=…` to `/auth/redirect/{provider}` instead
+   gets a `302` back to `returnTo` carrying a single-use, PKCE-bound hand-off code valid for
+   **30 seconds**, which it trades for tokens at `POST /auth/exchange`. `returnTo` must appear
+   verbatim in `auth.allowedRedirectUris` or the login is refused with `400 REDIRECT_URI_NOT_ALLOWED`.
 
 Set **`OMNISIGN_EXTERNAL_URL`** to your public base URL so the OAuth2 redirect URIs are built
-correctly behind a proxy. See the [API reference](/server/api/authentication) for the `/auth` endpoints and
+correctly behind a proxy. The redirect URI you register at the IdP is
+`<OMNISIGN_EXTERNAL_URL>/auth/callback/<provider-name>`; without the variable the URL is derived from
+`listen.host`/port, which is wrong behind a proxy. See the [API reference](/server/api/authentication) for the `/auth` endpoints and
 [`server.example.yml`](https://github.com/pizavo/omnisign/blob/main/server/src/main/resources/server.example.yml)
 for every provider's full example.

@@ -11,9 +11,9 @@ time by Gradle and npm are not listed here, because their licences travel inside
 The icons under `composeApp/src/commonMain/composeResources/drawable/` are
 [Tabler Icons](https://tabler.io/icons) by Paweł Kuna, used under the MIT License.
 
-Of the 61 icons in that directory:
+Of the 62 icons in that directory:
 
-- 58 are Tabler icons whose artwork is unmodified.
+- 59 are Tabler icons whose artwork is unmodified.
 - `icon_window_restore.svg` is derived from Tabler's `copy` icon.
 - `icon_eu.svg` and `icon_eu_crossed.svg` are original OmniSign artwork, not Tabler icons.
 

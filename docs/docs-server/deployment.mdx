@@ -46,28 +46,42 @@ task reference.
 The image (`server/Dockerfile`, Temurin 25 JRE) expects the fat JAR to already be built — the build
 context is the **repository root**, not `server/`:
 
+Released versions are published to GHCR — `docker pull ghcr.io/pizavo/omnisign-server:latest`, or a
+specific version tag. Build locally only when running an unreleased revision:
+
 ```bash
 ./gradlew :server:buildFatJar
 docker build -t omnisign-server -f server/Dockerfile .
 ```
 
-The image declares a `/app/config` volume and sets `OMNISIGN_SERVER_CONFIG=/app/config/server.yml`,
-so mount a directory containing `server.yml`, `signing.yml`, your trusted-certificate sources, and a
-writable trust-store dir; pass every secret with `-e`:
+The image declares three volumes — `/app/config` (operator-supplied `server.yml`, `signing.yml`, and
+source certificate files), `/app/trusted-certs` (the trust store reconciled at boot), and `/app/data`
+(`$HOME`, holding the `sessions.db` refresh-token / PKCE database) — and sets
+`OMNISIGN_SERVER_CONFIG=/app/config/server.yml`. It runs as the non-root user `omnisign`, so every
+mounted directory must be readable by that user, and `/app/trusted-certs` and `/app/data` must be
+writable by it. Mount all three, and pass every secret with `-e`:
 
 ```bash
 docker run -d --name omnisign-server \
   -p 18080:18080 \
   -v "$(pwd)/config:/app/config" \
-  -e OMNISIGN_JWT_SECRET="$(openssl rand -base64 48)" \
+  -v omnisign-trusted-certs:/app/trusted-certs \
+  -v omnisign-data:/app/data \
+  -e OMNISIGN_EXTERNAL_URL="https://sign.example.org" \
+  -e OMNISIGN_JWT_SECRET="$(openssl rand -base64 64)" \
+  -e OMNISIGN_OAUTH_NONCE_SECRET="$(openssl rand -base64 64)" \
   -e OMNISIGN_OIDC_GOOGLE_CLIENT_SECRET="…" \
   omnisign-server
 ```
 
-Inside `server.yml`, point `signingConfigFile` at `/app/config/signing.yml` and set `trustStoreDir`
-to a path on the volume (e.g. `/app/config/trust-store`) so the reconciled store persists across
-container restarts. Add `-p 18443:18443` when terminating TLS in-process. The image declares a
-`HEALTHCHECK` against `/api/v1/health`.
+Omitting `/app/data` sends the session database to an anonymous volume, so every refresh token is
+lost on `docker rm`. Omitting `OMNISIGN_OAUTH_NONCE_SECRET` while `server.yml` references it fails
+config load at startup.
+
+Inside `server.yml`, point `signingConfigFile` at `/app/config/signing.yml`. Leave `trustStoreDir`
+unset — the default relative `trusted-certs` resolves to the image's `/app/trusted-certs` volume, so
+the reconciled store persists with no config change. Add `-p 18443:18443` when terminating TLS
+in-process. The image declares a `HEALTHCHECK` against `/api/v1/health`.
 
 If the server signs from a [file keystore](configuration#operations) rather than a PKCS#11 token,
 place the `.p12` on the mounted volume, point `operations.signingKeystorePath` at it, and pass its
@@ -105,7 +119,9 @@ password with `-e OMNISIGN_SIGNING_KEYSTORE_PASSWORD="…"`.
 </OsTabs>
 
 The launcher resolves its config from `--config <path>`, then `OMNISIGN_SERVER_CONFIG`, then
-`server.yml` in the working directory (see [Configuration](configuration#resolution-order)). Under
+`server.yml` in the working directory (see [Configuration](configuration#resolution-order)); a path
+that does not exist logs a warning and falls through to the next source. If none resolves, the server
+falls back to built-in defaults — which have no `cors:` block and therefore refuse to start. Under
 **systemd**, keep secrets in a root-owned `EnvironmentFile` (mode `600`) rather than the unit:
 
 ```ini
@@ -118,6 +134,8 @@ After=network.target
 Type=simple
 User=omnisign
 WorkingDirectory=/opt/omnisign
+StateDirectory=omnisign
+Environment=HOME=/var/lib/omnisign
 Environment=OMNISIGN_SERVER_CONFIG=/etc/omnisign/server.yml
 EnvironmentFile=/etc/omnisign/secrets.env
 ExecStart=/opt/omnisign/bin/server
@@ -126,6 +144,13 @@ Restart=on-failure
 [Install]
 WantedBy=multi-user.target
 ```
+
+`HOME` must be set and writable: the refresh-token / PKCE SQLite database lives at
+`$HOME/.config/omnisign/sessions.db`, and systemd does not set `HOME` for system services — without
+it the first refresh-token write fails. `trustStoreDir` likewise resolves relative to
+`WorkingDirectory` when left unset. The `EnvironmentFile` must carry `OMNISIGN_JWT_SECRET` and
+`OMNISIGN_OAUTH_NONCE_SECRET` when auth is enabled; systemd reads it as root before dropping to
+`User=omnisign`, so root-owned mode `600` is correct.
 
 ```bash
 sudo systemctl daemon-reload
@@ -141,15 +166,17 @@ Set `proxy.enabled: true` with the proxy's source IP in `proxy.trusted`, keep `l
 
 ```nginx
 server {
-    listen 443 ssl http2;
+    listen 443 ssl;
+    http2 on;
     server_name sign.example.org;
     ssl_certificate     /etc/ssl/certs/sign.example.org.pem;
     ssl_certificate_key /etc/ssl/private/sign.example.org.key;
 
-    client_max_body_size 50m;   # keep aligned with server.yml maxFileSize
+    client_max_body_size 100m;  # matches the default maxFileSize (104857600 bytes)
 
     location / {
         proxy_pass http://127.0.0.1:18080;
+        # Only X-Forwarded-For is read by the server; set OMNISIGN_EXTERNAL_URL for scheme/host.
         proxy_set_header Host              $host;
         proxy_set_header X-Forwarded-For   $remote_addr;
         proxy_set_header X-Forwarded-Proto $scheme;
@@ -167,4 +194,11 @@ proxy:
   trusted: ["127.0.0.1/32"]
 cors:
   allowedOrigins: ["https://app.example.org"]
+  allowCredentials: true          # cross-origin front-end needs the refresh cookie
+auth:
+  allowedRedirectUris: ["https://app.example.org/"]
+  oauthStateSecret: "${OMNISIGN_OAUTH_NONCE_SECRET}"
 ```
+
+Also export `OMNISIGN_EXTERNAL_URL=https://sign.example.org` so the OAuth2 redirect URIs match what
+you registered at the IdP.

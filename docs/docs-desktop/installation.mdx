@@ -9,7 +9,10 @@ import TabItem from '@theme/TabItem';
 
 ## Prerequisites
 
-OmniSign Desktop requires **JetBrains Runtime (JBR) 25** or newer.
+OmniSign Desktop ships with its own bundled JetBrains Runtime — **end users do not need to install
+Java**. Building or running from source requires **JDK 25** and specifically **JetBrains Runtime
+(JBR) 25** (for the Custom Title Bar API); `composeApp` pins `JvmVendorSpec.JETBRAINS` and the build
+fails with a descriptive error if JBR 25 is not found.
 
 <OsTabs>
 <TabItem value="windows" label="Windows">
@@ -39,8 +42,11 @@ IntelliJ IDEA's Gradle JDK settings.
 <OsTabs>
 <TabItem value="windows" label="Windows">
 
-Download `omnisign-desktop-x.y.z.msi` from
-[GitHub Releases](https://github.com/pizavo/omnisign/releases) and run the installer.
+Download `OmniSign-x.y.z.msi` (or `OmniSign-x.y.z.exe`) from
+[GitHub Releases](https://github.com/pizavo/omnisign/releases) and run the installer. The installer
+is **per-user**, so no administrator rights are required; it lets you choose the install directory
+and creates a desktop shortcut plus an **OmniSign** Start-menu group. A portable ZIP
+(`omnisign-desktop-x.y.z-win-portable.zip`) is also published.
 
 </TabItem>
 <TabItem value="linux" label="Linux">
@@ -48,21 +54,30 @@ Download `omnisign-desktop-x.y.z.msi` from
 **DEB (Debian / Ubuntu)**
 
 ```bash
-sudo dpkg -i omnisign-desktop_x.y.z_amd64.deb
+sudo dpkg -i omnisign_x.y.z-1_amd64.deb
 ```
 
 **RPM (Fedora / RHEL)**
 
 ```bash
-sudo rpm -i omnisign-desktop-x.y.z.x86_64.rpm
+sudo rpm -i omnisign-x.y.z-1.x86_64.rpm
 ```
+
+Both packages install to `/opt/omnisign` and require `xdg-utils` (pulled in automatically). The
+desktop package (`omnisign`) and the CLI package (`omnisign-cli`, at `/opt/omnisign-cli`) are
+independent and can be installed side by side. A portable archive
+(`omnisign-desktop-x.y.z-linux-portable.tar.gz`) is also published.
 
 </TabItem>
 <TabItem value="macos" label="macOS">
 
-Download `omnisign-desktop-x.y.z.dmg` from
+Download `OmniSign-x.y.z.dmg` from
 [GitHub Releases](https://github.com/pizavo/omnisign/releases) and drag OmniSign
 to your Applications folder.
+
+OmniSign installs as `/Applications/OmniSign.app`. The build is not code-signed or notarized: on
+first launch right-click **OmniSign.app → Open**, or clear the quarantine flag with
+`xattr -cr /Applications/OmniSign.app`.
 
 </TabItem>
 </OsTabs>

@@ -15,7 +15,7 @@ info:
     - `disableHashAlgorithm` and `disableEncryptionAlgorithm` are comma-separated, case-insensitive,
       and **strictly tightening**: they can only add to the disabled set, never re-enable something a
       profile or the global policy disabled.
-    - Errors are a JSON `ApiError`: `{ "error": "CODE", "message": "human-readable detail" }`.
+    - Errors are a JSON `ApiError`: `{ "error": "CODE", "message": "human-readable detail", "details": null }`.
     - Every response carries an `X-Request-Id` correlation header (echoed from the request when
       supplied and ≤ 64 chars, otherwise server-generated).
 
@@ -23,7 +23,7 @@ info:
 
     Each operation is gated by an `AllowedOperation` the operator enables in server config:
     `VALIDATE` is on by default; `SIGN` and `TIMESTAMP` are opt-in. A call to a disabled
-    operation is rejected with `403 OPERATION_NOT_ALLOWED`.
+    operation is rejected with `403 OPERATION_DISABLED`.
 
     ## Authentication
 
@@ -41,10 +41,20 @@ info:
     identifier: AGPL-3.0-or-later
 
 servers:
-  - url: http://localhost:8080
-    description: Local development server (default Ktor port)
-  - url: https://omnisign.pizavo.cz
-    description: Reference deployment (adjust to your front-end proxy)
+  - url: http://127.0.0.1:18080
+    description: Default local bind (`listen.host` / `listen.port`, loopback-only)
+  - url: https://127.0.0.1:18443
+    description: Default local bind when `tls` is configured (`tls.port`)
+  - url: '{scheme}://{host}:{port}'
+    description: Your deployment
+    variables:
+      scheme:
+        default: https
+        enum: [http, https]
+      host:
+        default: localhost
+      port:
+        default: '18080'
 
 tags:
   - name: Signing
@@ -193,7 +203,7 @@ paths:
                 $ref: '#/components/schemas/ApiError'
               examples:
                 operationNotAllowed:
-                  value: { error: OPERATION_NOT_ALLOWED, message: "The SIGN operation is not enabled on this server" }
+                  value: { error: OPERATION_DISABLED, message: "The SIGN operation is disabled on this server", details: null }
                 certificateNotAllowed:
                   value: { error: CERTIFICATE_NOT_ALLOWED, message: "Certificate alias 'x' is not in the server's allowed list" }
         '422':
@@ -787,12 +797,12 @@ components:
 
   responses:
     OperationNotAllowed:
-      description: The required operation is not enabled on this server.
+      description: The required operation is disabled on this server.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
-          example: { error: OPERATION_NOT_ALLOWED, message: "The operation is not enabled on this server" }
+          example: { error: OPERATION_DISABLED, message: "The VALIDATE operation is disabled on this server", details: null }
     InvalidConfiguration:
       description: The resolved configuration is invalid.
       content:
@@ -800,11 +810,50 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
           example: { error: INVALID_CONFIGURATION, message: "..." }
+    Unauthenticated:
+      description: >
+        No valid Bearer JWT, on a server running with `auth.enabled: true`. This is emitted by Ktor's
+        bearer challenge before the handler runs, so the body is **empty** — it is not an `ApiError`.
+      headers:
+        WWW-Authenticate:
+          schema:
+            type: string
+          example: Bearer realm="Ktor Server"
+    PayloadTooLarge:
+      description: The uploaded file exceeds `maxFileSize` (advertised by `GET /api/v1/capabilities`; 100 MiB by default).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { error: FILE_TOO_LARGE, message: "Uploaded file exceeds the maximum allowed size", details: null }
+    RateLimited:
+      description: >
+        Rate limit exceeded, counted per remote address. Defaults are 20 requests / 60 s for
+        `/auth/*` and 200 requests / 60 s for the operational and config routes. `GET /api/v1/health`
+        and `GET /api/v1/capabilities` are deliberately not rate-limited.
+      headers:
+        Retry-After:
+          schema:
+            type: integer
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { error: RATE_LIMIT_EXCEEDED, message: "Too many requests — please slow down and try again later.", details: null }
+    InternalError:
+      description: >
+        Unhandled server error. `details` carries the cause message only when the server runs with
+        `development: true`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { error: INTERNAL_ERROR, message: "An unexpected error occurred", details: null }
 
   schemas:
     ApiError:
       type: object
-      required: [error, message]
+      required: [error, message, details]
       properties:
         error:
           type: string
@@ -813,6 +862,12 @@ components:
         message:
           type: string
           description: Human-readable detail.
+        details:
+          type: [string, 'null']
+          description: >
+            Optional extra diagnostic text. Always present on the wire, but `null` unless the
+            underlying domain error carried one — or, for `INTERNAL_ERROR`, unless the server runs
+            with `development: true`.
 
     SignatureLevel:
       type: string
@@ -900,6 +955,7 @@ components:
 
     DocumentTimestampInfo:
       type: object
+      required: [hasDocumentTimestamp, containsLtData, hasSignatureTimestamp]
       properties:
         hasDocumentTimestamp:
           type: boolean
@@ -907,6 +963,9 @@ components:
         containsLtData:
           type: boolean
           description: Whether long-term validation data is already embedded.
+        hasSignatureTimestamp:
+          type: boolean
+          description: Whether at least one signature carries a signature timestamp (B-T or higher).
 
     TrustedCertificateResponse:
       type: object

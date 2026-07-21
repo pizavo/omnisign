@@ -17,7 +17,7 @@ omnisign validate -f <file> [options]
 | `-f, --file <path>`        | **(Required)** Path to the PDF file to validate                                                                                      |
 | `-p, --policy <path>`      | Path to a custom ETSI validation policy XML file                                                                                     |
 | `--profile <name>`         | Use a named configuration profile for this operation                                                                                 |
-| `-d, --detailed`           | Expand every certificate in a chain into its full parsed dump (all fields and extensions), plus the raw DSS signature/timestamp IDs and the resolved configuration                                        |
+| `-d, --detailed`           | Expand every certificate in a chain into its full parsed dump (all fields and extensions), and append a `── Configuration ──` block showing the resolved policy, revocation, EU LOTL and trusted-list settings |
 | `--report-out <path>`      | Write the raw DSS validation report to this file                                                                                     |
 | `--report-format <format>` | Format of the report written by `--report-out` (`XML_DETAILED`, `XML_SIMPLE`, `XML_DIAGNOSTIC`, `XML_ETSI`). Default: `XML_DETAILED` |
 
@@ -78,7 +78,7 @@ Overall result:  VALID
       Timestamp certificate: tsa.example.com
 
 ── Trusted List Warnings ──
-  ⚠ 1 trusted list could not be refreshed (eidas.gov.ie). Qualification assessment for
+  ⚠ Could not refresh 1 trusted list (eidas.gov.ie). Qualification assessment for
     certificates from these sources may be incomplete.
 ```
 
@@ -94,7 +94,7 @@ These are individual constraint check results reported by the DSS validation eng
   For example, *"Unable to build a certificate chain up to a trusted list!"* means the
   signing certificate is not issued by any CA present in the EU LOTL or a registered
   custom trusted list. This is expected for certificates outside the eIDAS trust framework.
-  The overall `PASSED` indication remains the authoritative result.
+  The overall `VALID` result remains the authoritative verdict.
 - **Warnings** — Non-critical findings. For example, *"The signing certificate does not
   have an expected key-usage!"* is reported when the certificate lacks a `nonRepudiation`
   key usage.
@@ -114,7 +114,8 @@ the terminal equivalent of the desktop app's full-certificate view.
 ### Trusted list notices
 
 If one or more EU member-state trusted lists cannot be reached at validation time (e.g., due to
-a network error), a notice is printed below the report header. This does not affect the
+a network error), a `── Trusted List Warnings ──` section is printed at the **end** of the
+report. This does not affect the
 cryptographic validity of the signature. Only the eIDAS qualification assessment for signing
 certificates issued by the affected member state may be unavailable.
 

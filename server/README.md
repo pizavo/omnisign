@@ -64,10 +64,10 @@ token (`/health`, `/capabilities`, and `/auth/*` stay public).
 | `POST /api/v1/timestamp`          | `TIMESTAMP` | Extend a signed PDF to a higher PAdES level             |
 | `POST /api/v1/timestamp/inspect`  | `TIMESTAMP` | Pre-flight which target levels are valid extensions     |
 | `GET /api/v1/certificates`        | `SIGN`      | List the server's signing certificates                  |
-| `GET /api/v1/config/*`            | auth        | Read-only, sanitized config (global / profiles / resolved) |
+| `GET /api/v1/config/*`            | auth        | Read-only, sanitized config (global / profiles / resolved / trusted-certificates) plus `config/export` (whole config as a ZIP) |
 | `GET /api/v1/health`              | public      | Health probe                                            |
 | `GET /api/v1/capabilities`        | public      | Allowed operations, profiles, upload limits             |
-| `/auth/login` · `/auth/callback/{p}` · `/auth/session` · `/auth/refresh` · `/auth/logout` | mixed | SSO login flow and session management |
+| `/auth/login` · `/auth/redirect/{p}` · `/auth/callback/{p}` · `/auth/exchange` · `/auth/session` · `/auth/refresh` · `/auth/logout` | mixed | SSO login flow and session management |
 
 → [API reference](https://pizavo.github.io/omnisign/server/api/omnisign-server-api) (interactive — request/response schemas and a "Try it" console)
 
@@ -95,9 +95,9 @@ available.
 ## Deployment
 
 A [`Dockerfile`](Dockerfile) (Temurin 25 JRE) is included — it expects the fat JAR to be built first,
-declares a `/app/config` volume, and exposes ports **18080**/**18443**. Bare-metal deployment uses
-`installDist` + systemd; the recommended production topology terminates TLS at a reverse proxy with
-`proxy.enabled: true`.
+declares `/app/config`, `/app/trusted-certs`, and `/app/data` volumes, and exposes ports
+**18080**/**18443**. Bare-metal deployment uses `installDist` + systemd; the recommended production
+topology terminates TLS at a reverse proxy with `proxy.enabled: true`.
 
 → [Deployment](https://pizavo.github.io/omnisign/server/deployment)
 

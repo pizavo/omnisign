@@ -17,10 +17,10 @@ Every operation that can fail returns `OperationResult<T>`, an alias for Arrow's
 expected failure.
 
 ```kotlin
-suspend fun sign(parameters: SigningParameters): OperationResult<SigningResult> {
-    val token = tokenService.unlock(pin) ?: return SigningError.TokenLocked.left()
-    return SigningResult(document).right()
-}
+override suspend fun unlockToken(tokenId: String): OperationResult<List<AvailableCertificateInfo>> =
+    SigningError.tokenUnlockNotSupportedOnWeb(
+        details = "Server-side tokens are managed by the server administrator",
+    ).left()
 ```
 
 Error types are **sealed interfaces** under `domain/model/error/` — `SigningError`, `ValidationError`,
@@ -35,9 +35,10 @@ into the domain's error vocabulary.
 ## Dependency injection is Koin, exclusively
 
 Register every service, repository, use case, factory, and helper as a Koin definition. Common use
-cases are wired in `shared/commonMain/.../di/AppModule.kt`; JVM repository bindings in
-`shared/jvmMain/.../di/JvmModule.kt`; the browser's HTTP-backed bindings in
-`shared/wasmJsMain/.../di/WebDataModule.kt`.
+cases are wired as `appModule` in `shared/src/commonMain/.../di/AppModule.kt`; JVM repository bindings
+as `jvmRepositoryModule` in `shared/src/jvmMain/.../di/JvmModule.kt`; the browser's HTTP-backed
+bindings as `webDataModule(serverBaseUrl, languageProvider)` — a module *factory function*, not a
+`val` — in `shared/src/wasmJsMain/.../di/WebDataModule.kt`.
 
 A Kotlin `object` is acceptable **only** where Koin is technically impossible or meaningless:
 
@@ -45,12 +46,19 @@ A Kotlin `object` is acceptable **only** where Koin is technically impossible or
 - Theme accessors such as `LumoTheme`
 - `expect`/`actual` utilities that must resolve at compile time
 - `companion object` blocks holding constants, loggers, or factory methods
+- Pure stateless formatters and message tables with no injectable collaborators (`InstantFormatter`,
+`EnglishMessages`)
+- Subprocess entry points invoked before Koin starts (`Pkcs11ProbeWorker`,
+`Pkcs11ModuleDiscoveryWorker`)
+- Build-generated constant holders and platform reflection shims (`BuildConfig`, `JbrTitleBarHelper`)
 
 Anything else — a singleton service, a stateless helper — is a `single` or a `factory`.
 
-Each UI entry point bootstraps its own Koin container and must supply a `PasswordCallback`. That
-interface is the platform boundary: the CLI reads the terminal, the desktop opens a dialog
-(`ComposePasswordCallback`), and the server returns `null` because it cannot prompt.
+Each UI entry point bootstraps its own Koin container. The three that sign locally must supply a
+`PasswordCallback` — that interface is the platform boundary: the CLI reads the terminal
+(`CliPasswordCallback`), the desktop opens a dialog (`ComposePasswordCallback`), and the server
+returns `null` because it cannot prompt (`ServerPasswordCallback`). The web target registers none:
+signing is delegated to the server, so nothing in `webDataModule` ever asks for a PIN.
 
 ## Where a use case may live
 
@@ -60,7 +68,7 @@ Most use cases live in `commonMain` and are registered in `appModule`. Four are 
 | --- | --- | --- |
 | `ExportImportConfigUseCase` | `commonMain` | Registered in `jvmRepositoryModule`, not `appModule`, because it needs the Jackson serializers |
 | `ConfigArchiveUseCase` | `jvmMain` | Reads and writes ZIP archives |
-| `RenewBatchUseCase` | `jvmMain` | Orchestrates DSS-backed archiving |
+| `RenewBatchUseCase` | `jvmMain` | Walks the filesystem and takes a host-wide `RenewalLock` (a `jvmMain`-only port) |
 | `MigrateTrustedCertificatesUseCase` | `jvmMain` | Moves inline certificates into the file-backed trust store |
 
 The distinction matters: a use case in `commonMain` compiles for the browser, so it must not reach for
@@ -75,13 +83,21 @@ may share the file.
 What this rules out: a data class and an enum in one file, or two data classes in one file. Sealed
 hierarchies are the deliberate exception — the branches belong with the parent.
 
+Three further exceptions are settled practice: a serialization DTO bundle whose types exist only as
+one wire shape (`JsonModels.kt`, `JsonReportModels.kt`, `CertificateDiscoveryResult.kt`); a
+`KSerializer` living beside the type it serializes (`Sensitive.kt`); and a parameter object carrying
+the enum only it uses (`ValidationParameters.kt`). `composeApp/src/jvmMain/.../WindowStateStore.kt` is
+a genuine violation, not an exception.
+
 ## KDoc on everything, comments on nothing
 
 Every class, interface, and function carries a KDoc comment. This is a graded thesis project, and the
 [API reference](https://pizavo.github.io/omnisign/api/) is generated from it.
 
 Do **not** write inline `//` or `/* */` comments inside function bodies. If a line needs explaining,
-either name it better or explain it in the enclosing declaration's KDoc.
+either name it better or explain it in the enclosing declaration's KDoc. The rule binds hand-written
+code: `composeApp/src/commonMain/.../lumo/` is emitted by the Lumo generator and carries its
+generator's comments, which are not hand-stripped.
 
 When a change makes a KDoc wrong, fix the KDoc in the same commit — including `@param`, `@return`, and
 cross-references to other declarations. Stale documentation is worse than none, because the next
@@ -96,6 +112,7 @@ Always reach for the Kotlin standard library or a multiplatform type first:
 | `kotlin.uuid.Uuid` | `java.util.UUID` |
 | `kotlin.time.Instant`, `kotlin.time.Duration` | `java.time.*` |
 | `kotlin.io.path.*` extensions | raw `java.nio.file.*` calls |
+| `kotlinx.datetime.LocalDate`, `LocalDateTime` | `java.time.LocalDate` |
 | `resource.use { }` | `try { } finally { close() }` |
 
 Drop to a Java API only when bridging a Java library that demands it — DSS, Jackson, PDFBox — and keep
@@ -104,9 +121,15 @@ that bridge isolated in `jvmMain`. `data/util/DateExtensions.kt` is the model: i
 Java date.
 
 `use { }` is worth singling out. It closes on every path — early return, exception, non-local return —
-and because it is `inline`, `suspend` calls work inside it. DSS's `SignatureTokenConnection` extends
-`AutoCloseable`, so it belongs in a `use` block. Reserve `try`/`finally` for cleanup of things that
-are not `Closeable`, such as `DssLogCapture.start()` / `stop()`.
+and because it is `inline`, `suspend` calls work inside it. It is for streams and documents:
+`signedDocument.openStream().use { … }`, `ZipOutputStream(buffer).use { … }`, `PDDocument().use { … }`.
+Reserve `try`/`finally` for cleanup of things that are not `Closeable`, such as
+`DssLogCapture.start()` / `stop()`.
+
+DSS's `AbstractSignatureTokenConnection` is the deliberate exception: an unlocked PKCS#11 session
+outlives the operation that opened it, so it is pooled process-wide in `Pkcs11SessionCache` and closed
+on card removal or shutdown — never by a `use` block. One PIN-pad login therefore serves the
+signatures that follow.
 
 ## Wrap credentials in `Sensitive<T>`
 
@@ -115,6 +138,11 @@ platform, so it cannot leak through a log line, string interpolation, or a data 
 `toString()`. Serialization is blocked outright: `SensitiveSerializer` throws on both `serialize` and
 `deserialize`, so such a field can never reach a serialized form even if the containing class forgets
 `@Transient`.
+
+That is the kotlinx-serialization path. Jackson does not route through `SensitiveSerializer`, so the
+server registers `SensitiveStringJacksonDeserializer` to lift a YAML literal into `Sensitive<String>`
+at config load. No matching Jackson *serializer* is registered, so the write direction still fails
+loudly.
 
 ```kotlin
 val pin: Sensitive<String> = "1234".sensitive()
@@ -143,9 +171,13 @@ Note the asymmetry: scalar fields take the first non-null value from the highest
 **disabled-algorithm sets are unioned across all three layers**. A profile cannot re-enable an
 algorithm the global config disabled.
 
-## Domain enums carry their DSS name
+## How domain enums reach DSS
 
-Enums in `commonMain` cannot reference DSS types. They are mapped by extension functions in
-`jvmMain/.../enums/*Extension.kt`, one file per enum. `HashAlgorithm` is the exception: its mapping is
-a plain string, so it carries a `dssName` property directly. See
+Enums in `commonMain` cannot reference DSS types. Three are bridged by an extension function in
+`jvmMain/.../config/enums/*Extension.kt` — `SignatureLevelExtension`, `EncryptionAlgorithmExtension`,
+`AlgorithmConstraintLevelExtension` — each exposing `toDss()`. Two enums instead carry a
+`dssName: String`, because their DSS mapping is a plain name: `HashAlgorithm` needs no bridge file at
+all, and `EncryptionAlgorithm` keeps both — its extension is one line,
+`DssEncryptionAlgorithm.forName(dssName)`, so a DSS upgrade needs no edit. The remaining enums
+(`TokenType`, `ValidationPolicyType`, `ConfigFormat`) never cross into DSS. See
 [Architecture](architecture.mdx#bridging-the-domain-to-dss).

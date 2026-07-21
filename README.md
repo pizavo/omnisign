@@ -12,7 +12,7 @@
 [![CI — Server](https://github.com/pizavo/omnisign/actions/workflows/ci-server.yml/badge.svg)](https://github.com/pizavo/omnisign/actions/workflows/ci-server.yml)
 [![CI — Web](https://github.com/pizavo/omnisign/actions/workflows/ci-web.yml/badge.svg)](https://github.com/pizavo/omnisign/actions/workflows/ci-web.yml)
 
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.3.10-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.3.21-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
 [![Compose Multiplatform](https://img.shields.io/badge/Compose_Multiplatform-1.10.1-4285F4?logo=jetpackcompose&logoColor=white)](https://github.com/JetBrains/compose-multiplatform)
 [![EU DSS](https://img.shields.io/badge/EU_DSS-6.3-003399?logo=europeanunion&logoColor=white)](https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/doc/dss-documentation.html)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE.md)
@@ -63,7 +63,7 @@ OmniSign supports four levels of signature strength, each building on the previo
 
 |     | Feature                           | What It Does                                                                                                                                                                                                           |
 |-----|-----------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| ✍️  | **Signing**                       | Sign PDF documents using certificates stored in software files (PKCS #12), hardware tokens (PKCS #11, including qualified smart cards), the Windows Certificate Store, or the macOS Keychain.                          |
+| ✍️  | **Signing**                       | Sign PDF documents using certificates stored in software files (PKCS #12), hardware tokens (PKCS #11, including qualified smart cards), the Windows Certificate Store, or the macOS Keychain — or, from the web app and HTTP API, a key held by a deployed server. |
 | ✅   | **Validation**                    | Verify that a signed PDF is authentic and untampered. Checks against the EU Trusted Lists (eIDAS / LOTL), your own custom trusted lists, or standalone certificate chains — with full CRL and OCSP revocation support. |
 | 🕑  | **Timestamping**                  | Upgrade an existing signature step by step — from B-B → B-T → B-LT → B-LTA — by adding RFC 3161 timestamps and revocation data.                                                                                        |
 | 🗄️ | **Archival (Digital Continuity)** | Keep B-LTA documents valid indefinitely. OmniSign can automatically re-timestamp them before archival timestamps expire, scheduled by your operating system so you never have to think about it.                       |
@@ -80,7 +80,7 @@ on your machine or on a shared server.
 | Platform    | Module                               | Technology             | Description                                                                                                              |
 |-------------|--------------------------------------|------------------------|--------------------------------------------------------------------------------------------------------------------------|
 | **Desktop** | [`composeApp`](composeApp/README.md) | Compose Multiplatform  | Graphical app for Linux, Windows, and macOS with PDF preview, signing, validation, and a settings UI.                    |
-| **Web**     | [`composeApp`](composeApp/README.md) | Compose for Web (Wasm) | Browser-based PDF viewer; signing and validation are planned via the server API.                                         |
+| **Web**     | [`composeApp`](composeApp/README.md) | Compose for Web (Wasm) | Browser client for a deployed server — view, validate, sign, and timestamp with nothing to install; the server signs with its own certificate. |
 | **Server**  | [`server`](server/README.md)         | Ktor (Kotlin/JVM)      | HTTP API for institutional deployments — sign, validate, and archive from any client.                                    |
 | **CLI**     | [`cli`](cli/README.md)               | Kotlin/JVM             | Full-featured command line for scripting and power users. Ships as a fat JAR and native installers (MSI, DEB, RPM, PKG). |
 
@@ -100,6 +100,21 @@ The simplest way to use OmniSign. Download the installer for your operating syst
 Then follow the [Desktop guide](https://pizavo.github.io/omnisign/desktop/) to sign, validate, and
 archive your documents.
 
+### Web app
+
+Nothing to install — open the address your administrator gives you. It is the same interface as the
+desktop app, served alongside a deployed [OmniSign server](server/README.md) that does the
+cryptography. Opening and reading a PDF happen locally in the tab; everything else is sent to the
+server.
+
+> ⚠️ **Signing works differently in the browser.** A browser cannot reach a smart card and never
+> sees a private key, so documents are signed **by the server, with the server's own certificate** —
+> not one of yours. You pick which of the server's certificates and profiles to use; the signature
+> itself is produced server-side. Which operations appear at all depends on what that server permits.
+
+Requires WebAssembly GC — Chrome/Edge 119+, Firefox 120+, or Safari 18.2+. See the
+[Web guide](https://pizavo.github.io/omnisign/web/).
+
 ### Command line
 
 The CLI ships as native installers (MSI, DEB, RPM, PKG) and a cross-platform fat JAR — ideal for
@@ -116,7 +131,7 @@ authentication, and deployment.
 
 | Resource                                       | Location                                                                                           |
 |------------------------------------------------|----------------------------------------------------------------------------------------------------|
-| **User guides** (Desktop · Web · Server · CLI) | [Documentation site](https://pizavo.github.io/omnisign/) — or run `npm start` inside [`docs/`](docs/) |
+| **User guides** (Desktop · Web · Server · CLI) | [Documentation site](https://pizavo.github.io/omnisign/) — or run `pnpm start` inside [`docs/`](docs/) |
 | **API reference** (KDoc)                       | Generated via `./gradlew :dokkaGenerate` → `build/dokka/html/`                                      |
 | **HTTP API reference** (OpenAPI)               | [Interactive reference](https://pizavo.github.io/omnisign/server/api/omnisign-server-api) — server endpoints with schemas and a "Try it" console |
 | **CLI reference**                              | [`cli/README.md`](cli/README.md)                                                                   |
@@ -195,7 +210,10 @@ See the [Server README](server/README.md) for configuration, authentication, and
 .\gradlew.bat :composeApp:wasmJsBrowserDevelopmentRun        # Windows
 ```
 
-A local development server starts and opens the app in the default browser.
+A local development server starts and opens the app in the default browser. The web target is a
+*client* of the OmniSign server, so point it at a running one with the `OMNISIGN_SERVER_URL`
+environment variable at build time (unset means "same origin"). Without a reachable server the app
+still opens and renders PDFs, but every server-backed operation stays hidden.
 
 ### Testing
 
@@ -225,7 +243,8 @@ The project uses **[Kotest 6](https://kotest.io/)** (FunSpec style),
 | [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization)                              | JSON configuration persistence                                 |
 | [Jackson](https://github.com/FasterXML/jackson)                                                       | YAML / XML config export & import                              |
 | [Apache PDFBox](https://pdfbox.apache.org/)                                                           | PDF page rendering (desktop)                                   |
-| [FileKit](https://github.com/nicholosP/filekit)                                                       | Cross-platform file picker dialogs                             |
+| [MuPDF](https://mupdf.com/)                                                                           | PDF page rendering (web / Wasm)                                |
+| [FileKit](https://github.com/vinceglb/FileKit)                                                        | Cross-platform file picker dialogs                             |
 
 ## License
 

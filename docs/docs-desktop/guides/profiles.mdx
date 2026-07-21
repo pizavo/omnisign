@@ -114,16 +114,19 @@ the global trusted certificates during config resolution.
 
 ### Custom trusted lists
 
-Register profile-scoped ETSI Trusted List XML sources. A **Build** button opens the
+Register profile-scoped ETSI Trusted List XML sources. A **Build Custom TL** button opens the
 [Trusted List builder](tl-builder.mdx) dialog. When the builder compiles a list with
-"Register after compile" enabled, the resulting entry is automatically added to this
-profile's trusted lists section.
+"Register as a custom trusted list source after compiling" enabled, the resulting entry is staged
+into the **global** Settings → Validation → Trusted Lists section — not into this profile. To scope
+a compiled list to the profile, add its XML here manually with the Add form.
 
 ## Active profile indicator
 
-When a profile is active, its name appears in the toolbar. All signing and validation
-operations use the profile's settings merged with the global defaults (three-layer merge:
-global → profile → operation overrides).
+The active profile is highlighted in the Profiles panel — its name is shown in the accent colour and
+its row's toggle switches to "Deselect profile". There is no profile indicator in the toolbar; open
+the Profiles panel to see which profile is active. All signing and validation operations use the
+profile's settings merged with the global defaults (three-layer merge: global → profile → operation
+overrides).
 
 :::tip
 The desktop signing and timestamp dialogs always use the **active** profile (merged with the

@@ -41,9 +41,18 @@ import TabItem from '@theme/TabItem';
 </OsTabs>
 
 The output lands in `composeApp/build/dist/wasmJs/productionExecutable/` — static files you can serve
-from any web server, or from the OmniSign Server itself. Building requires **JDK 25+**; see
+from any web server. Building requires **JDK 25+**; see
 [Development → Building and running](/development/building) for the prerequisites, the development
 server, and the rest of the task reference.
+
+If you would rather not build it yourself, every web release attaches the same directory as a
+`web-dist.zip` asset on the GitHub release.
+
+:::note[Same-origin hosting]
+The OmniSign Server serves only `/api/v1/**` and `/auth/**` — it has no static-file route. To put the
+bundle and the API on one origin, front both with a reverse proxy that serves the static files and
+passes those two prefixes through.
+:::
 
 ## Connecting to a server
 
@@ -100,7 +109,10 @@ server's `/auth/redirect/{provider}`, which bounces to the IdP (Google, Microsof
 once the user authenticates, the server redirects back to the app with a **one-time hand-off code**,
 which the app exchanges for a short-lived session. The access token lives only in the tab's memory,
 and an `HttpOnly` refresh cookie scoped to `/auth/refresh` lets a page reload resume the session
-without another trip to the IdP. Closing the tab ends the session.
+without another trip to the IdP. Closing the **browser** ends the session: the refresh cookie carries
+no `Max-Age`, so it is dropped when the browser exits. Closing just the tab does not — reopening the
+app in the same browser resumes silently from the cookie. The server caps a session at
+`auth.session.maxSessionSeconds` (8 hours by default) regardless.
 
 Two server settings make this work:
 
@@ -109,9 +121,12 @@ Two server settings make this work:
   (e.g. `https://sign.example.org/`), and the server matches it character-for-character:
   `https://sign.example.org` without the slash will **not** match. The match is deliberately exact
   rather than a prefix, because whatever this permits receives a login credential.
-- **`cors.allowCredentials: true`** is needed only when the web app and the API are on **different
-  origins** (e.g. `app.example.org` + `api.example.org`), so the browser will send the refresh cookie
-  to `/auth/refresh` across origins. The server rejects it in combination with
+- **`cors.allowCredentials: true`** is needed when the web app and the API are on **different origins
+  of the same site** (e.g. `app.example.org` + `api.example.org`, or one host with the API on a second
+  port), so the browser will send the refresh cookie to `/auth/refresh`. The cookie is `SameSite=Lax`,
+  so on a genuinely **cross-site** split — different registrable domains — it is withheld regardless of
+  CORS; the app still works, it just re-authenticates through the identity provider on every page load
+  (a redirect the user does not see). The server rejects it in combination with
   `cors.allowedOrigins: ["*"]` — list the app's origin explicitly. On a same-origin deployment you do
   not need it.
 
@@ -122,16 +137,17 @@ affordances for operations the server does not expose:
 
 | `operations.allowed` | What disappears from the UI                                     |
 |----------------------|------------------------------------------------------------------|
-| without `VALIDATE`   | The Signatures panel and its left-edge icon                      |
+| without `VALIDATE`   | The Signature panel and its left-edge icon                      |
 | without `SIGN`       | The Sign toolbar button                                          |
 | without `TIMESTAMP`  | The Timestamp toolbar button, and the signing dialog's timestamp checkboxes |
 
 `VALIDATE` is enabled by default; `SIGN` and `TIMESTAMP` are opt-in. See
 [Server → Operation gating](/server/security#operation-gating).
 
-If the capabilities request fails, the app assumes everything is permitted and shows all the buttons —
-so a misconfigured deployment fails at the first operation rather than at load. Do not rely on button
-visibility as an access control; the server enforces the gating on every request.
+If the capabilities request fails, the app **fails closed**: every flag stays denied, so the Sign and
+Timestamp buttons and the Signature panel are all hidden and the deployment looks empty rather than
+broken. Do not rely on button visibility as an access control either way; the server enforces the
+gating on every request.
 
 ## Branding
 

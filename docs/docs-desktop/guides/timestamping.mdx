@@ -73,8 +73,10 @@ regardless and no offer is shown.
 
 ## 5. Extend
 
-Click **Extend** and choose where to save the extended document in the **Save As** dialog (it is
-pre-filled with a suggested name based on the input file). The operation then runs.
+Click **Extend**. The extension runs first — a progress indicator is shown and the dialog cannot be
+dismissed — and only once the extended bytes exist does a native **Save As** dialog open, pre-filled
+with a suggested name based on the input file (e.g. `contract-extended`). Because the file is written
+only at that final step, cancelling the save writes nothing and returns you to the form.
 
 ### Revocation warning
 
@@ -82,7 +84,7 @@ If the extension targets B-LT and revocation data cannot be retrieved, OmniSign 
 warning dialog listing the affected certificates and the issues encountered. You can:
 
 - **Abort** — discard the output and return to the form.
-- **Continue** — accept the fallback to B-T (signature timestamp without embedded
+- **Continue anyway** — accept the fallback to B-T (signature timestamp without embedded
   revocation data).
 
 ## 6. Review the result
@@ -100,9 +102,12 @@ Closing the dialog automatically reloads the extended document in the viewer.
 When extending to B-LTA, OmniSign may show a **renewal job offer** dialog. You can:
 
 - **Assign to an existing job** — select a configured renewal job from the dropdown.
-- **Create a new job** — define a new renewal job with a name, glob pattern, buffer days,
-  and an optional profile.
+- **Create a new job** — define a new renewal job with a name, buffer days, an optional profile, an
+  optional log file, and a **Desktop notifications** checkbox. The glob pattern is not editable here:
+  the job is created with the saved output file as its single pattern.
 
-The offer is also shown if the output file is not yet covered by any existing job's patterns.
+The offer appears only when you ticked **Add to renewal job**, the result is B-LTA, and the saved file
+is not already covered by an existing job's glob patterns. If it is already covered, it is renewed by
+that job regardless and no dialog is shown.
 
 

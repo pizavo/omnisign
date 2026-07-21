@@ -13,7 +13,7 @@ everything they share.
 
 | Module | Role | Entry point |
 | --- | --- | --- |
-| `shared` | Domain model plus the JVM data layer | — |
+| `shared` | Domain model plus both data layers — DSS on the JVM, HTTP on Wasm | — |
 | `cli` | Clikt command-line app, packaged as a fat JAR | `cz.pizavo.omnisign.CliKt` |
 | `composeApp` | Compose Multiplatform desktop (JVM) **and** web (Wasm) | `cz.pizavo.omnisign.MainKt` |
 | `server` | Ktor/Netty HTTP server | `cz.pizavo.omnisign.ApplicationKt` |
@@ -35,8 +35,10 @@ a JVM library. A single DSS import in `commonMain` breaks the browser build.
 
 So `shared` splits along that line:
 
-- **`commonMain`** holds the platform-agnostic domain — configuration models, the sixteen use cases,
-repository and port *interfaces*, the sealed error hierarchy, and the `PasswordCallback` boundary.
+- **`commonMain`** holds the platform-agnostic domain — configuration models, the sixteen
+platform-agnostic use cases (three more — `ConfigArchiveUseCase`, `RenewBatchUseCase`,
+`MigrateTrustedCertificatesUseCase` — are JVM-only and live in `jvmMain`), repository and port
+*interfaces*, the sealed error hierarchy, and the `PasswordCallback` boundary.
 - **`jvmMain`** holds the DSS-backed *implementations*: `DssSigningRepository`,
 `DssValidationRepository`, `DssArchivingRepository`, the Jackson config serializers, OS schedulers,
 PKCS#11 discovery, and the content-addressed `FileTrustStore`.
@@ -53,9 +55,16 @@ Kotlin extension functions in `jvmMain`, one file per enum, named `*Extension.kt
 fun SignatureLevel.toDss(): eu.europa.esig.dss.enumerations.SignatureLevel = ...
 ```
 
-`AlgorithmConstraintLevel`, `EncryptionAlgorithm`, `SignatureLevel`, and `SignatureQualification` all
-work this way. `HashAlgorithm` is the deliberate exception — its DSS mapping is a plain string, so it
-carries a `dssName` property directly in `commonMain` rather than paying for a bridge file.
+Exactly three bridge files exist: `SignatureLevelExtension.kt`, `EncryptionAlgorithmExtension.kt`, and
+`AlgorithmConstraintLevelExtension.kt`. Two domain enums — `HashAlgorithm` and `EncryptionAlgorithm` —
+additionally carry a `dssName: String` property directly in `commonMain`, because their DSS mapping is
+a plain name. `HashAlgorithm` needs nothing else and has no bridge file at all; `EncryptionAlgorithm`'s
+bridge is a one-liner that feeds `dssName` to `DssEncryptionAlgorithm.forName()`. The remaining enums
+(`TokenType`, `ValidationPolicyType`, `ConfigFormat`) never cross into DSS.
+
+A fourth file, `domain/model/validation/SignatureQualificationExtension.kt`, runs the *other*
+direction: it maps DSS's own `SignatureQualification` down to the domain's `SignatureTrustTier`.
+`SignatureQualification` is a DSS type, not a domain enum.
 
 ## How one UI codebase targets two platforms
 
@@ -77,27 +86,36 @@ Skia. They share only the `expect` declaration.
 Node colour is the source set: blue `commonMain`, green `jvmMain`, purple Wasm, grey outside the
 module.
 
-### The browser has no DSS
+### The browser has no DSS — it has a server
 
-Wasm cannot load DSS, so the browser client cannot sign, validate, or timestamp locally. It performs
-those operations over HTTP against an [OmniSign Server](/server/).
+Wasm cannot load DSS, so the browser client performs no cryptography locally. It is not a degraded
+viewer: it is a full client that performs every operation over HTTP against an
+[OmniSign Server](/server/), behind an OIDC login gate (`WebAuthGate`, `LoginScreen`, PKCE) when the
+server reports `authEnabled`, and it renders PDFs with MuPDF compiled to WebAssembly.
 
 That is what `shared/src/wasmJsMain` is for. It supplies HTTP-backed implementations of the very same
-repository interfaces the desktop satisfies with DSS:
+repository interfaces the desktop satisfies with DSS, plus one port:
 
 - `RemoteSigningRepository`, `RemoteValidationRepository`, `RemoteArchivingRepository`
-- `RemoteConfigRepository`, `RemoteConfigArchive`, `RemoteTrustStore`
-- `RemoteCapabilitiesRepository`
+- `RemoteConfigRepository`, `RemoteCapabilitiesRepository`, `RemoteTrustStore` (a read-only `TrustStore`)
+- `RemoteConfigArchive`, which realises the `ConfigArchivePort` rather than a repository
 
-They are wired in `WebDataModule.kt`, and share a single Ktor `HttpClient` configured with
-`expectSuccess = true`. Because both sides implement the same interfaces, the ViewModels above them
-are identical on desktop and web.
+They are wired in `WebDataModule.kt`, which builds **two** Ktor `HttpClient`s. The repositories all
+bind to the session-carrying API client — it attaches the `WebAuthState` bearer token and sets
+`expectSuccess = true`, so a non-2xx surfaces as an exception the `Remote*` implementations map to a
+domain `OperationError`. A second, `AUTH_HTTP_CLIENT`-qualified bare client (no token,
+`expectSuccess = false`) backs `WebAuthApi` alone, because the `/auth` bootstrap calls must not carry
+a token and must read a `401` as a value rather than an exception. Because both sides implement the
+same interfaces, the ViewModels above them are identical on desktop and web.
 
 :::tip[Where the two platforms genuinely diverge]
 A handful of features have no browser equivalent — the Trusted List builder, hardware tokens, OS
 scheduling. Rather than fork the UI, `composeApp` degrades gracefully: platform-only ViewModels are
-resolved with `KoinPlatform.getKoinOrNull()` and the affordances that would need them are simply not
-rendered. See [Web → Features](/web/features) for what that looks like to a user.
+built by hand in `ui/layout/IslandLayout.kt` from `KoinPlatform.getKoinOrNull()`, resolving their
+dependencies with `getOrNull<…>()`; when the web container has no such definition the ViewModel stays
+`null` and the affordance is simply not rendered. Server-gated operations are hidden by a second,
+independent mechanism — `CapabilitiesViewModel` reads `GET /api/v1/capabilities` at startup and fails
+**closed**. See [Web → Features](/web/features) for what that looks like to a user.
 :::
 
 ## The layers inside `shared`
@@ -109,8 +127,11 @@ operation parameters, results, validation reports, and the `Sensitive<T>` creden
 - **`domain/model/error/`** — sealed interfaces: `OperationError` and its `SigningError`,
 `ValidationError`, `ArchivingError`, `ConfigurationError`, `TrustStoreError` branches.
 - **`domain/repository/`** and **`domain/port/`** — the interfaces the data layer implements.
+- **`domain/service/`** — cross-cutting domain services the UI observes directly, notably
+`TokenService` and `CredentialStore`.
 - **`domain/usecase/`** — the application's verbs, one class each, injected with repositories.
-- **`data/`** (in `jvmMain`) — the DSS, filesystem, and OS-facing implementations.
+- **`data/`** — the implementations: DSS, filesystem, and OS-facing in `jvmMain`; HTTP-backed in
+`wasmJsMain/data/remote/`.
 
 Configuration resolves through a three-layer merge — global, then profile, then per-operation
 overrides — in `ResolvedConfig.resolve()`. Every deliverable shares that logic, which is why a profile
@@ -127,9 +148,12 @@ it solved here, and how the codebase maps onto SOLID.
 under `/api/v1`, one file per group in `api/routes/`. Two things distinguish it from the other
 deliverables:
 
-- **Operations are gated.** `AllowedOperation` defaults to `{VALIDATE, TIMESTAMP}`; `SIGN` is opt-in,
-because a signing server signs with *its own* key. Every route group checks its operation at request
-time, and `GET /api/v1/capabilities` publishes the result so clients can adapt.
+- **Operations are gated.** `AllowedOperation` defaults to `{VALIDATE}` alone; both `SIGN` and
+`TIMESTAMP` are opt-in, because a signing server signs with *its own* key and a timestamping server
+spends *its own* TSA quota. The operation route groups — `SigningRoutes`, `TimestampRoutes`,
+`ValidationRoutes`, and `CertificateRoutes` (gated on `SIGN`, because it reveals the server's own
+certificates) — call `requireOperation(…)` at request time, and `GET /api/v1/capabilities` publishes
+the result so clients can adapt.
 - **It cannot prompt.** `ServerPasswordCallback` always returns `null`. Anything needing an interactive
 PIN fails rather than hanging.
 

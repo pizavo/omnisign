@@ -4,16 +4,21 @@ The OmniSign user documentation, built with [Docusaurus](https://docusaurus.io/)
 guides for the **Desktop**, **Web**, **Server**, and **CLI** surfaces and is published at
 **[pizavo.github.io/omnisign](https://pizavo.github.io/omnisign/)**.
 
+## Prerequisites
+
+- **Node.js 26+** and **[pnpm](https://pnpm.io/)** — the repo pins `pnpm@11` via the `packageManager`
+  field, so running `corepack enable` once selects the correct pnpm version automatically.
+
 ## Installation
 
 ```bash
-npm install
+pnpm install
 ```
 
 ## Local development
 
 ```bash
-npm start
+pnpm start
 ```
 
 Starts a local development server and opens a browser window. Most changes are reflected live
@@ -22,7 +27,7 @@ without restarting the server.
 ## Build
 
 ```bash
-npm run build
+pnpm build
 ```
 
 Generates static content into the `build/` directory, servable by any static host. The build runs
@@ -33,11 +38,11 @@ documentation changes.
 
 **KDoc (code API)** — shown under `/api/`, generated separately from the Kotlin sources with
 `./gradlew :dokkaGenerate` (from the repository root) and copied into `static/api/` during the CI
-build. It is **not** produced by `npm run build`.
+build. It is **not** produced by `pnpm build`.
 
 **HTTP API (OpenAPI)** — the server's REST reference under `/server/api/` is generated from
 [`static/openapi.yaml`](static/openapi.yaml) by `docusaurus-plugin-openapi-docs`, via the `generate`
-step that runs automatically before `npm start` / `npm run build`. Edit the spec, not the generated
+step that runs automatically before `pnpm start` / `pnpm build`. Edit the spec, not the generated
 `docs-server/api/` pages, which are git-ignored and rebuilt on every run.
 
 ## Deployment

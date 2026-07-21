@@ -52,8 +52,11 @@ vendor-specific toolchain.
 ./gradlew :server:run
 ```
 
-Listens on `http://localhost:18080` unless a `server.yml` says otherwise. Configuration resolution is
-described in [Server → Configuration](/server/configuration).
+Listens on `http://localhost:18080` unless a `server.yml` says otherwise. `:server:run` additionally
+passes `--config server/src/main/resources/server.yml` when that file exists — it is gitignored, so a
+fresh clone starts on the built-in defaults; copy `server.example.yml` next to it to customise a
+development run. Configuration resolution is described in
+[Server → Configuration](/server/configuration).
 
 ### CLI
 
@@ -73,6 +76,22 @@ because the build forwards the parent terminal's stdin.
 Starts a development server and opens the app in your default browser. The browser client needs a
 running [OmniSign Server](/server/) to do anything useful — on its own it can open and view a PDF, but
 signing and validation are HTTP calls.
+
+Which server it calls is baked in at **build time**: `generateBuildConfig` reads the
+`OMNISIGN_SERVER_URL` environment variable into `BuildConfig.SERVER_URL`. Leaving it unset means
+*same origin*, which is correct when one OmniSign Server hosts both the bundle and the `/api/v1`
+routes. For a separate development server, set it explicitly:
+
+```bash
+OMNISIGN_SERVER_URL=http://localhost:18080 ./gradlew :composeApp:wasmJsBrowserDevelopmentRun
+```
+
+```powershell
+$env:OMNISIGN_SERVER_URL='http://localhost:18080'; .\gradlew.bat :composeApp:wasmJsBrowserDevelopmentRun
+```
+
+An already-built bundle can be retargeted without recompiling by serving a `web-config.json` next to
+`index.html` — it is read at startup and takes precedence over `BuildConfig.SERVER_URL`.
 
 :::warning[A cold Wasm build can produce a broken bundle]
 Immediately after `:composeApp:clean`, the first *development* Wasm build sometimes emits a mismatched
@@ -94,8 +113,8 @@ Running the production task once regenerates a consistent pair and unblocks the 
 | Target | Task | Output |
 | --- | --- | --- |
 | CLI fat JAR | `:cli:shadowJar` | `cli/build/libs/omnisign-*.jar` |
-| CLI installer | `:cli:jpackage` | MSI, DEB, RPM, or DMG for the current OS |
-| Desktop installer | `:composeApp:packageDistributionForCurrentOS` | MSI/EXE, DMG/PKG, DEB/RPM, or AppImage |
+| CLI installer | `:cli:jpackage` | Windows: MSI + app-image; Linux: DEB + RPM + app-image; macOS: DMG + PKG — all under `cli/build/jpackage/` |
+| Desktop installer | `:composeApp:packageDistributionForCurrentOS` | MSI + EXE (Windows), DMG + PKG (macOS), DEB + RPM (Linux), plus the jpackage app-image directory on every OS |
 | Server fat JAR | `:server:buildFatJar` | `server/build/libs/server-all.jar` |
 | Server dist | `:server:installDist` | `server/build/install/server/bin/server` |
 | Web bundle | `:composeApp:wasmJsBrowserDistribution` | `composeApp/build/dist/wasmJs/productionExecutable/` |
@@ -108,6 +127,12 @@ each runner produces only what it can: `:composeApp:packageDeb`, `:composeApp:pa
 Native installers are built by [`jpackage`](https://docs.oracle.com/en/java/javase/25/docs/specs/man/jpackage.html)
 and can only target the OS they run on — there is no cross-packaging. Producing all of them means
 building on all three platforms, which is what the release workflows do.
+
+Note that Compose's `TargetFormat.AppImage` is jpackage's `--type app-image`: a self-contained
+*directory* under `composeApp/build/compose/binaries/main/app/`, not a Linux `.AppImage` bundle. It is
+declared for the current OS, so `packageDistributionForCurrentOS` produces it on every platform
+alongside the installers. `:composeApp:createDistributable` builds the same directory on its own,
+which is what the Windows and macOS release jobs use.
 
 Deployment guidance for the two server-side artifacts lives with its audience:
 [Server → Deployment](/server/deployment) and [Web → Deployment](/web/deployment).
@@ -125,8 +150,11 @@ After adding, removing, or updating **any** npm dependency — including a versi
 `npm(...)` declaration consumes — regenerate it and commit the result:
 
 ```bash
-./gradlew :composeApp:kotlinWasmUpgradePackageLock
+./gradlew kotlinWasmUpgradePackageLock
 ```
+
+This is a **root-project** task — qualifying it as `:composeApp:kotlinWasmUpgradePackageLock` fails
+with `Task 'kotlinWasmUpgradePackageLock' not found in project ':composeApp'`.
 
 The one time you must *not* run it is when `storePackageLock` fails only on a release build. That is a
 different problem, explained in [Releases and CI](releases.mdx#building-the-artifacts).
@@ -149,7 +177,8 @@ rotates the LOTL signing keys, and commit the result.
 favicon and logo.
 
 :::note[The API reference does not cover the browser target]
-`:dokkaGenerate` suppresses `composeApp`'s `wasmJs` source sets, because Dokka cannot fully process
-Wasm targets. The `webMain` `actual` implementations are therefore absent from the
+`:dokkaGenerate` suppresses the Wasm source sets in **both** `shared` and `composeApp` (`composeApp`
+also suppresses any source set named `web*`), because Dokka cannot fully process Wasm targets. The
+`webMain` `actual` implementations and `shared`'s `Remote*` classes are therefore absent from the
 [API reference](https://pizavo.github.io/omnisign/api/); read them in the source tree instead.
 :::
