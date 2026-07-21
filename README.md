@@ -118,6 +118,7 @@ authentication, and deployment.
 |------------------------------------------------|----------------------------------------------------------------------------------------------------|
 | **User guides** (Desktop · Web · Server · CLI) | [Documentation site](https://pizavo.github.io/omnisign/) — or run `npm start` inside [`docs/`](docs/) |
 | **API reference** (KDoc)                       | Generated via `./gradlew :dokkaGenerate` → `build/dokka/html/`                                      |
+| **HTTP API reference** (OpenAPI)               | [Interactive reference](https://pizavo.github.io/omnisign/server/api/omnisign-server-api) — server endpoints with schemas and a "Try it" console |
 | **CLI reference**                              | [`cli/README.md`](cli/README.md)                                                                   |
 | **Desktop & Web details**                      | [`composeApp/README.md`](composeApp/README.md)                                                     |
 | **Server reference**                           | [`server/README.md`](server/README.md)                                                             |

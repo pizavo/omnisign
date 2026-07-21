@@ -29,11 +29,16 @@ Generates static content into the `build/` directory, servable by any static hos
 with `onBrokenLinks: 'throw'`, so a broken link or anchor fails the build — run it before pushing
 documentation changes.
 
-## API reference
+## API references
 
-The KDoc/API reference shown under `/api/` is generated separately from the Kotlin sources with
+**KDoc (code API)** — shown under `/api/`, generated separately from the Kotlin sources with
 `./gradlew :dokkaGenerate` (from the repository root) and copied into `static/api/` during the CI
-build. It is not produced by `npm run build`.
+build. It is **not** produced by `npm run build`.
+
+**HTTP API (OpenAPI)** — the server's REST reference under `/server/api/` is generated from
+[`static/openapi.yaml`](static/openapi.yaml) by `docusaurus-plugin-openapi-docs`, via the `generate`
+step that runs automatically before `npm start` / `npm run build`. Edit the spec, not the generated
+`docs-server/api/` pages, which are git-ignored and rebuilt on every run.
 
 ## Deployment
 

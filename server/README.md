@@ -69,7 +69,7 @@ token (`/health`, `/capabilities`, and `/auth/*` stay public).
 | `GET /api/v1/capabilities`        | public      | Allowed operations, profiles, upload limits             |
 | `/auth/login` · `/auth/callback/{p}` · `/auth/session` · `/auth/refresh` · `/auth/logout` | mixed | SSO login flow and session management |
 
-→ [API reference](https://pizavo.github.io/omnisign/server/api-reference)
+→ [API reference](https://pizavo.github.io/omnisign/server/api/omnisign-server-api) (interactive — request/response schemas and a "Try it" console)
 
 ## Authentication
 
