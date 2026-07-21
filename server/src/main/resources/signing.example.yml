@@ -15,9 +15,10 @@
 # (activeProfile, tlDrafts, renewalJobs, schedulerConfig) are intentionally not part of
 # this schema and are rejected if present.
 #
-# Every field is shown below. Uncommented entries are the built-in defaults (so this file
-# also works as a starting point); commented entries are optional and show their syntax and
-# the full set of allowed values.
+# Every field is shown below. Commented entries are optional and show their syntax and the
+# full set of allowed values. Uncommented entries are the built-in defaults (so this file also
+# works as a starting point) — with one deliberate exception, disabledHashAlgorithms, noted at
+# that field.
 
 # ----------------------------------------------------------------------------------------
 # Global signing and validation defaults, applied to every operation unless a profile or a
@@ -40,13 +41,20 @@ global:
 
   # PAdES baseline level for new signatures. One of:
   #   PADES_BASELINE_B   - basic, no timestamp
-  #   PADES_BASELINE_T   - adds an RFC 3161 signature timestamp (needs timestampServer)
-  #   PADES_BASELINE_LT  - adds long-term revocation material (CRL/OCSP)
+  #   PADES_BASELINE_LT  - adds an RFC 3161 signature timestamp (needs timestampServer) plus
+  #                        long-term revocation material (CRL/OCSP)
   #   PADES_BASELINE_LTA - adds an archival document timestamp
+  # PADES_BASELINE_T is NOT configurable and is rejected at startup: B-T exists only as a
+  # runtime fallback, applied automatically when a B-LT signature cannot obtain revocation
+  # data. Configuring it as a target would silently produce B-B.
   defaultSignatureLevel: PADES_BASELINE_B
 
   # Hash algorithms forbidden everywhere; a profile or per-request override can never
   # re-enable them. Same value set as defaultHashAlgorithm.
+  # NOTE: this is the one uncommented entry that is NOT a built-in default — the built-in
+  # default is an empty set (nothing disabled). Both algorithms listed here are expired under
+  # ETSI TS 119 312 (RIPEMD-160 since 2014-08-01, Whirlpool since 2020-12-01), so this template
+  # disables them deliberately. Remove the entries to allow every algorithm again.
   disabledHashAlgorithms:
     - RIPEMD160
     - WHIRLPOOL
