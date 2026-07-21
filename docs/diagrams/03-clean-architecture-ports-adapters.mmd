@@ -28,7 +28,7 @@ flowchart TB
     SCHED["OS schedulers<br/>Windows / launchd / systemd"]
     SER["Jackson serializers"]
     PWCB["PasswordCallback adapters<br/>Cli / Compose / Server"]
-    REMOTE["Remote*Repository (wasmJsMain)<br/>Signing / Validation / Archiving / Config /<br/>TrustStore / Capabilities - over Ktor HTTP"]
+    REMOTE["Remote* adapters (wasmJsMain)<br/>Signing / Validation / Archiving / Config / TrustStore /<br/>Capabilities / ConfigArchive - over Ktor HTTP"]
   end
 
   subgraph FW["FRAMEWORKS and EXTERNAL SYSTEMS"]

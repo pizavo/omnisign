@@ -11,7 +11,7 @@ flowchart TB
 
   cli["CLI<br/>[Container: Kotlin/JVM, Clikt]<br/>Scriptable signing, validation,<br/>timestamping. Entry: CliKt"]
   desktop["Desktop App<br/>[Container: Compose MP, JVM / JBR 25]<br/>MVVM GUI: PDF preview,<br/>visible signatures. Entry: MainKt"]
-  web["Web App<br/>[Container: Compose MP, Wasm]<br/>Browser front-end of the HTTP Server;<br/>degrades where DSS is unavailable"]
+  web["Web App<br/>[Container: Compose MP, Wasm]<br/>Full browser client; every operation<br/>runs on the HTTP Server (no DSS in Wasm)"]
   server["HTTP Server<br/>[Container: Kotlin/JVM, Ktor / Netty]<br/>REST API /api/v1, OIDC SSO.<br/>Entry: ApplicationKt"]
   cfg[("Config Store<br/>[Filesystem, JSON]")]
   trust[("Trusted-Certs Store<br/>[Filesystem: DER + CBOR index]")]
