@@ -83,7 +83,7 @@ which combinations are valid for PAdES signing.
 | SHA3-384              |  ✅  |    ✅    |   ✅   |      ✅      |  ✅  | *(fixed)* |
 | SHA3-512              |  ✅  |    ✅    |   ✅   |      ✅      |  ✅  | *(fixed)* |
 | Whirlpool             |  ❌  |    ❌    |   ❌   |      ❌      |  ❌  | *(fixed)* |
-| RIPEMD-160            |  ✅  |    ✅    |   ✅   |      ✅      |  ❌  | *(fixed)* |
+| RIPEMD-160            |  ✅  |    ❌    |   ✅   |      ✅      |  ❌  | *(fixed)* |
 
 *(fixed)* — EdDSA uses an intrinsic hash; external selection is ignored.
 
@@ -96,6 +96,12 @@ platforms** — including Linux, macOS, and hardware QSCDs — not just Windows.
 
 Whirlpool is included in OmniSign's hash algorithm list for completeness and for potential
 future use if DSS adds signing support.
+:::
+
+:::note[RIPEMD-160 key pairings]
+RIPEMD-160 signs with RSA (PKCS#1 v1.5), ECDSA, and Plain-ECDSA, but **not with RSA-PSS or
+DSA** — DSS 6.3 defines no `SignatureAlgorithm` pairing RIPEMD-160 with those. Choose plain
+RSA or ECDSA when signing with RIPEMD-160.
 :::
 
 :::tip
