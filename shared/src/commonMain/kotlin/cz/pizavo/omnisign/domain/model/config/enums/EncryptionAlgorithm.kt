@@ -100,20 +100,20 @@ enum class EncryptionAlgorithm {
 	 * cannot be configured externally.
 	 *
 	 * The matrix is derived from [eu.europa.esig.dss.enumerations.SignatureAlgorithm]:
-	 * - RSA/RSA_SSA_PSS: SHA-2, SHA-3 families, RIPEMD-160 (but not Whirlpool)
-	 * - ECDSA/PLAIN_ECDSA: SHA-2, SHA-3 families, RIPEMD-160 (but not Whirlpool)
+	 * - RSA/ECDSA/PLAIN_ECDSA: SHA-2, SHA-3 families, RIPEMD-160 (but not Whirlpool)
+	 * - RSA_SSA_PSS: SHA-2 and SHA-3 families only (DSS defines no RSASSA-PSS + RIPEMD-160 pairing)
 	 * - DSA: SHA-2 and SHA-3 families only (no RIPEMD-160, no Whirlpool)
 	 * - EdDSA: intrinsic — empty set (no external selection possible)
 	 */
 	val compatibleHashAlgorithms: Set<HashAlgorithm>
 		get() = when (this) {
-			RSA, RSA_SSA_PSS, ECDSA, PLAIN_ECDSA -> setOf(
+			RSA, ECDSA, PLAIN_ECDSA -> setOf(
 				HashAlgorithm.SHA256, HashAlgorithm.SHA384, HashAlgorithm.SHA512,
 				HashAlgorithm.SHA3_256, HashAlgorithm.SHA3_384, HashAlgorithm.SHA3_512,
 				HashAlgorithm.RIPEMD160
 			)
 			
-			DSA -> setOf(
+			RSA_SSA_PSS, DSA -> setOf(
 				HashAlgorithm.SHA256, HashAlgorithm.SHA384, HashAlgorithm.SHA512,
 				HashAlgorithm.SHA3_256, HashAlgorithm.SHA3_384, HashAlgorithm.SHA3_512
 			)

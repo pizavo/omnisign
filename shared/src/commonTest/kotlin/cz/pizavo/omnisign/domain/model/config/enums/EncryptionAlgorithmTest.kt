@@ -22,12 +22,12 @@ class EncryptionAlgorithmTest : FunSpec({
 		)
 	}
 	
-	test("RSA_SSA_PSS is compatible with SHA-2 SHA-3 and RIPEMD160") {
+	test("RSA_SSA_PSS is compatible with SHA-2 and SHA-3 but not RIPEMD160 or WHIRLPOOL") {
 		val compatible = EncryptionAlgorithm.RSA_SSA_PSS.compatibleHashAlgorithms
 		(HashAlgorithm.SHA256 in compatible).shouldBeTrue()
 		(HashAlgorithm.SHA512 in compatible).shouldBeTrue()
 		(HashAlgorithm.SHA3_512 in compatible).shouldBeTrue()
-		(HashAlgorithm.RIPEMD160 in compatible).shouldBeTrue()
+		(HashAlgorithm.RIPEMD160 in compatible).shouldBeFalse()
 		(HashAlgorithm.WHIRLPOOL in compatible).shouldBeFalse()
 	}
 	
