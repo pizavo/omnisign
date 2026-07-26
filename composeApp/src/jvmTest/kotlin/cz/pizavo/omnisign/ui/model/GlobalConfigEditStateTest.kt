@@ -112,9 +112,9 @@ class GlobalConfigEditStateTest : FunSpec({
 		state.toGlobalConfig().trustedListRefreshIntervalHours shouldBe 1L
 	}
 
-	test("toGlobalConfig falls back to 24h when the interval string is blank") {
+	test("toGlobalConfig falls back to 4h when the interval string is blank") {
 		val state = GlobalConfigEditState(trustedListRefreshInterval = "")
-		state.toGlobalConfig().trustedListRefreshIntervalHours shouldBe 24L
+		state.toGlobalConfig().trustedListRefreshIntervalHours shouldBe 4L
 	}
 
 	test("round-trip from and toGlobalConfig preserves pkcs11ProbeTimeoutSeconds") {

@@ -697,8 +697,14 @@ class DssServiceFactory(
 		 */
 		const val OJ_KEYSTORE_PASSWORD = "dss-password"
 		
-		/** 24 hours — how long a cached TL response is considered fresh before re-downloading. */
-		const val TL_CACHE_EXPIRATION_MS = 24 * 60 * 60 * 1000L
+		/**
+		 * 4 hours — how long a cached TL response is considered fresh before re-downloading.
+		 *
+		 * Matches the default of [cz.pizavo.omnisign.domain.model.config.GlobalConfig.trustedListRefreshIntervalHours],
+		 * which supersedes it once a host's refresh scheduler primes; see there for why the
+		 * interval stays under the ETSI policy's 6-hour `TLFreshness` limit.
+		 */
+		const val TL_CACHE_EXPIRATION_MS = 4 * 60 * 60 * 1000L
 		
 		/** Sentinel for [FileCacheDataLoader.setCacheExpirationTime]: never re-download. */
 		const val CACHE_NEVER_EXPIRE = -1L

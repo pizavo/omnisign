@@ -97,9 +97,18 @@ data class GlobalConfig(
 	 * [cz.pizavo.omnisign.domain.model.config.ResolvedConfig] resolution.
 	 *
 	 * Consumers clamp this to a minimum of 1 hour so a misconfigured value cannot
-	 * hammer the European Commission's trusted-list endpoints. Defaults to 24 hours.
+	 * hammer the European Commission's trusted-list endpoints.
+	 *
+	 * Defaults to 4 hours, below the 6-hour `TLFreshness` limit that the ETSI validation
+	 * policy applies to eIDAS qualification: DSS compares the validation time against the
+	 * trusted list's last successful synchronization and warns that "the trusted list is
+	 * not considered as fresh" once that gap exceeds the limit. A longer interval leaves
+	 * every qualified validation carrying that warning for the remainder of each cycle,
+	 * so the default keeps a margin for the refresh duration, clock skew and a missed tick.
+	 * Re-synchronizing an unchanged list is cheap — DSS re-stamps it on a matching digest
+	 * without re-parsing or re-verifying it.
 	 */
-	val trustedListRefreshIntervalHours: Long = 24,
+	val trustedListRefreshIntervalHours: Long = 4,
 )
 
 

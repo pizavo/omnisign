@@ -277,7 +277,7 @@ data class GlobalConfigEditState(
 		),
 		customPkcs11Libraries = customPkcs11Libraries,
 		pkcs11ProbeTimeoutSeconds = (pkcs11ProbeTimeout.toLongOrNull() ?: 30).coerceIn(1, 120),
-		trustedListRefreshIntervalHours = (trustedListRefreshInterval.toLongOrNull() ?: 24).coerceAtLeast(1),
+		trustedListRefreshIntervalHours = (trustedListRefreshInterval.toLongOrNull() ?: 4).coerceAtLeast(1),
 	)
 
 	companion object {

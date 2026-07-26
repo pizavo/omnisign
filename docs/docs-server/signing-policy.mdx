@@ -65,8 +65,14 @@ global:
   # customPkcs11Libraries:              # only when the server signs with a PKCS#11 token
   #   - { name: "vendor-token", path: "/usr/lib/vendor-pkcs11.so" }
   pkcs11ProbeTimeoutSeconds: 30
-  trustedListRefreshIntervalHours: 24
+  trustedListRefreshIntervalHours: 4
 ```
+
+Keep `trustedListRefreshIntervalHours` at or below **6**. The ETSI validation policy treats a
+trusted list as fresh only for 6 hours after its last successful synchronization, so a longer
+interval leaves every qualified validation reporting *"the trusted list is not considered as
+fresh"* for the rest of each cycle. Re-synchronizing an unchanged list is cheap — it is
+re-stamped on a matching digest, without being re-parsed or re-verified.
 
 **`PADES_BASELINE_T` cannot be configured** — neither as `global.defaultSignatureLevel` nor as a
 profile's `signatureLevel`. The server rejects it at startup and points you to `PADES_BASELINE_LT`.
