@@ -88,7 +88,10 @@ Revocation List requests used during validation and B-LT/B-LTA signing.
   shows an info hint, and its value is preserved so re-enabling EU LOTL restores it. See
   [Validating Signatures → EU LOTL membership](validation.mdx#eu-lotl-membership).
 - **Trusted list refresh interval (hours)** — how often the EU LOTL and custom lists are
-  refreshed automatically in the background (minimum 1 hour).
+  refreshed automatically in the background (minimum 1 hour, 4 by default). Keep this at or
+  below **6**: the ETSI validation policy considers a trusted list fresh only for 6 hours after
+  its last successful synchronization, so a longer interval leaves qualified validations
+  reporting *"the trusted list is not considered as fresh"* for the rest of each cycle.
 - **Refresh now** — a refresh button, with a "Last refreshed" indicator, forces an immediate
   online refresh of the EU LOTL and every custom list into the shared cache. While the refresh
   runs, a **Loading trusted lists…** progress bar appears below the row — indeterminate until the

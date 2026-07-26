@@ -131,7 +131,9 @@ global:
   pkcs11ProbeTimeoutSeconds: 30
 
   # How often (hours) the EU LOTL and custom trusted lists are refreshed (minimum 1).
-  trustedListRefreshIntervalHours: 24
+  # Keep at or below 6 — past that, the ETSI policy stops considering the lists fresh
+  # and every qualified validation reports a TLFreshness warning.
+  trustedListRefreshIntervalHours: 4
 
 # ----------------------------------------------------------------------------------------
 # Named profiles, supplied via any combination of three sources (inline / files /
