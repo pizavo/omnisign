@@ -18,23 +18,48 @@ The Trusted List builder can be opened from two places:
 
 ![Trusted List builder dialog](/img/desktop/tl-builder-dialog.avif)
 
-## 1. Fill in the list metadata
+## 1. Fill in the scheme information
 
-| Field                    | Description                                                          |
-|--------------------------|----------------------------------------------------------------------|
-| **Name**                 | Unique identifier for the list (also the suggested file name when you save). |
-| **Territory**            | ISO 3166-1 alpha-2 code (e.g. `CZ`, `SK`, `XX` for custom).          |
-| **Scheme Operator Name** | Name of the entity publishing this trusted list.                     |
+| Field                     | Description                                                                  |
+|---------------------------|------------------------------------------------------------------------------|
+| **Name**                  | Unique identifier for the list (also the suggested file name when you save). |
+| **Territory**             | ISO 3166-1 alpha-2 code (e.g. `CZ`, `SK`, `XX` for custom).                  |
+| **Scheme Operator Name**  | Name of the entity publishing this trusted list.                             |
+| **Scheme name**           | What this list of trust anchors is called, e.g. *Internal PKI trust anchors*.|
+| **Scheme information URI**| Where readers can find out about the scheme.                                 |
+
+Below those fields, the **Scheme operator address** section collects the postal and electronic
+address the standard requires of the publishing organization (clause 5.3.5):
+
+| Field                  | Description                                                        |
+|------------------------|--------------------------------------------------------------------|
+| **Street address**     | Required.                                                          |
+| **Postal code**        | Optional.                                                          |
+| **Town or city**       | Required.                                                          |
+| **State or province**  | Optional — for territories that use one.                           |
+| **Country**            | Required. A country name or an ISO 3166-1 code.                    |
+| **Contact URI**        | Required. Typically a `mailto:` address or an `https:` contact page.|
+
+:::note[Why so many fields]
+None of this is derivable from the certificates you are listing — it identifies organizations, not
+keys — so it has to be typed in. The compiled document is validated against the ETSI schema before
+it is written, and a list missing any mandatory field is rejected outright rather than produced in
+a degraded form.
+:::
 
 ## 2. Add Trust Service Providers (TSPs)
 
 Click **Add TSP** to create a new provider entry. Each TSP card is expandable and contains:
 
-| Field          | Description                                          |
-|----------------|------------------------------------------------------|
-| **Name**       | Official name of the TSP.                            |
-| **Trade name** | Optional brand or trade name.                        |
-| **Info URL**   | URL pointing to the TSP's information page.          |
+| Field          | Description                                                           |
+|----------------|-----------------------------------------------------------------------|
+| **Name**       | Official name of the TSP.                                             |
+| **Trade name** | Optional brand or trade name.                                         |
+| **Info URL**   | URL pointing to the TSP's information page. Required (clause 5.4.5).  |
+
+Each card also carries its own **Provider address** section, with the same six fields and the same
+requirements as the scheme operator address above — the standard asks for one per provider as well
+(clause 5.4.4).
 
 ### Add services to a TSP
 
@@ -67,9 +92,14 @@ dialog (pre-filled with the list name). The compiler validates all required fiel
 the file. On success, the dialog shows the output path and — when registration is enabled — the
 resulting trusted list entry that was added.
 
+Two fields are filled in for you and are not shown in the dialog: the status determination approach
+is set to `http://uri.etsi.org/TrstSvc/TrustedList/StatusDetn/appropriate`, the generic approach
+appropriate to a list published outside an EU member-state supervisory scheme, and the historical
+information period is set to `65535` days, the value EU trusted lists carry.
+
 ### Errors
 
 If validation fails (e.g., a required field is empty or a certificate file cannot be read),
-the error message is displayed inline in the form. Compilation errors show a detailed
-message with optional technical details.
-
+the error message is displayed inline in the form — naming the missing field, and the provider it
+belongs to when it is one of theirs. Compilation errors show a detailed message with optional
+technical details.

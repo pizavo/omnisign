@@ -14,12 +14,33 @@ Kotest matchers** for asserting on `OperationResult`.
 ./gradlew :cli:test
 ./gradlew :server:test
 ./gradlew :composeApp:jvmTest
+./gradlew :shared:wasmJsBrowserTest
+./gradlew :composeApp:wasmJsBrowserTest
 ```
 
 Or `./gradlew build` for everything. Note the task names differ: the multiplatform modules (`shared`,
 `composeApp`) use `jvmTest`, while the JVM-only modules (`cli`, `server`) use `test`. Test sources sit
 in `src/jvmTest` and `src/test` respectively, plus `src/commonTest` for the platform-agnostic specs in
 `shared` — those run as part of `:shared:jvmTest`.
+
+### The browser suites
+
+The two `wasmJsBrowserTest` tasks cover the web target, and they are the only suites that do not run
+on the JVM — Kotlin/Wasm compiles them to a bundle that karma loads into a headless Chrome. They are
+part of `build` like every other test task, so a full build needs a browser available; CI runs them
+in `ci-web.yml`.
+
+| Source set | What it covers |
+| --- | --- |
+| `shared/src/wasmJsTest` | The seven `Remote*` classes, `ServerErrorMapping`, `WebAuthApi`, the `AuthRefreshPlugin`, the auth and session state holders, and the web Koin graph |
+| `composeApp/src/webTest` | The browser `actual` implementations — PKCE generation, OAuth callback navigation, and the `localStorage`-backed profile and preference stores |
+
+:::warning[The two modules use different directory names]
+`shared` keeps its browser code in `wasmJsMain`/`wasmJsTest`, `composeApp` in `webMain`/`webTest`.
+Both modules declare the same two targets, so both names are valid in both — but only the one
+already in use has any sources under it. Put a new spec next to the module's existing ones; a spec
+filed under the other name compiles nothing and runs nothing, and the task reports success.
+:::
 
 `:shared:jvmTest`, `:cli:test`, and `:server:test` add
 `-XX:+EnableDynamicAgentLoading -Xshare:off --enable-native-access=ALL-UNNAMED` (plus `java.smartcardio`
@@ -61,6 +82,11 @@ Use a `mockk(relaxed = true)` rather than writing a class that implements the in
 fakes break every time the interface grows a method, and the repository interfaces here are
 implemented by both a DSS-backed class and a `Remote*` HTTP class — so an interface change already has
 two real implementations to update without adding a third that exists only for tests.
+
+The browser suites are the exception, and not by choice: MockK is a JVM-only library, so nothing in
+`wasmJsTest` or `webTest` can use it. Those specs stub with a hand-written class — see
+`RecordingProfileSelectionStore`, which also records its writes so a spec can assert that a
+repository actively *cleared* an orphaned selection rather than merely not setting one.
 
 ## Two testing patterns
 
@@ -107,6 +133,61 @@ class SigningViewModelTest : FunSpec({
 The same `testDispatcher` is also passed in as the ViewModel's `ioDispatcher`, so the background work
 it launches is driven by the test's scheduler rather than a real thread pool. See
 `composeApp/src/jvmTest/.../ui/viewmodel/SigningViewModelTest.kt`.
+
+## Browser repositories — a mock engine, not a mock client
+
+The `Remote*` classes are thin: they build a request, send it, and map the response. Mocking the
+`HttpClient` would therefore assert that the code calls the method it obviously calls. Ktor's
+`MockEngine` swaps out the transport instead, so the request is genuinely built and the response
+genuinely parsed, and the spec can assert on the wire format.
+
+The helper that stands one up carries the same content negotiation the real client gets:
+
+```kotlin
+val repository = RemoteCapabilitiesRepository(
+    mockApiClient { request ->
+        method = request.method
+        url = request.url.toString()
+        respond(
+            content = Json.encodeToString(CapabilitiesResponse(/* ... */)),
+            headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+        )
+    },
+)
+```
+
+Two details are worth copying. `mockApiClient` takes an `expectSuccess` flag, because the
+session-carrying client treats a non-2xx as an exception while the bare client behind `WebAuthApi`
+reads a `401` as an expected value — pass `false` for the latter or the spec asserts the wrong
+failure mode. And request bodies are asserted through `OutgoingContent.bodyText()`, which decodes
+the multipart payload to text so a substring assertion can pin down which parts were sent without
+reimplementing the multipart grammar.
+
+## Verifying the Koin graph
+
+Koin resolves lazily, so a missing or mistyped binding is invisible until something asks for it —
+at application start if you are lucky, on first use of one uncommon command if you are not.
+`JvmKoinGraphTest`, `ServerKoinGraphTest` and `WebKoinGraphTest` reflect over the modules and fail
+here instead.
+
+```kotlin
+val graph = Verification(appModule, extraTypes) + Verification(jvmRepositoryModule, extraTypes)
+
+graph.verify()
+```
+
+:::danger[Merge the verifications; do not use `verifyAll`]
+Koin's `verifyAll` is a plain `forEach { module.verify() }`, so it checks each module against its
+own definitions alone. Under it every use case in `appModule` is reported as missing the repository
+that `jvmRepositoryModule` binds. The obvious response — widening `extraTypes` until it passes —
+suppresses exactly the defects the spec exists to catch. Adding the `Verification` objects together
+first checks the merged graph, which is what the application actually starts from.
+:::
+
+`extraTypes` names the types deliberately left unbound: `PasswordCallback`, the platform boundary
+each entry point fills in itself, and `MutableStateFlow`, the PKCS#11 warm-up signal resolved with
+`getOrNull` and supplied only by the interactive front ends. Anything else appearing there deserves
+a second look.
 
 ## What is worth testing
 

@@ -93,6 +93,7 @@ decide how to present the new case. Follow it.
 `cli/src/main/.../commands/`. Every command passes its name explicitly.
 2. Resolve dependencies with `by inject()`.
 3. Register it in the root command's `subcommands(...)` call in `cli/src/main/.../Omnisign.kt`.
+4. Report failures in the shape every other command uses — see below.
 
 ```kotlin
 class Extend : CliktCommand(name = "extend"), KoinComponent {
@@ -108,6 +109,32 @@ this. Shared options belong in `OperationConfigOptions` rather than being re-dec
 Note that `by inject()` is Service Locator, not constructor injection, because Clikt constructs its
 own commands. The consequence is that command tests need a Koin container; see
 [Testing](testing.mdx#cli-commands--koin).
+
+### Reporting a failure
+
+An `OperationError` carries up to three things worth showing, and every command prints them the
+same way — all to stderr, so piping stdout to a file still surfaces the failure:
+
+```kotlin
+manageTl.upsertTsp(draftName, tsp).fold(
+    ifLeft = { error ->
+        echo("❌ ${error.message}", err = true)
+        error.details?.let { echo("Details: $it", err = true) }
+        error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+    },
+    ifRight = { /* ... */ },
+)
+```
+
+The `takeIf` matters. Several errors are constructed with `details = e.message`, so printing both
+unguarded repeats the same sentence under two different labels — which reads as though the command
+found two problems.
+
+Commands that support `--json` write the same error through `error.toJsonError()` instead of the
+three `echo` calls, so the machine-readable output carries the details and cause too rather than
+just the headline. Where the JSON needs a prefix the human output gets from a literal — `Validate`
+distinguishes a configuration failure from a validation one — add it with
+`.copy(message = "Configuration Error: ${error.message}")` rather than by hand-building the object.
 
 ## A new API route
 

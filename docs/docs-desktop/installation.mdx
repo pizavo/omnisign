@@ -48,6 +48,10 @@ is **per-user**, so no administrator rights are required; it lets you choose the
 and creates a desktop shortcut plus an **OmniSign** Start-menu group. A portable ZIP
 (`omnisign-desktop-x.y.z-win-portable.zip`) is also published.
 
+The desktop and CLI are separate products, each with its own upgrade code and its own folder under
+whichever install root you pick — `OmniSign` here, `omnisign-cli` for the CLI — so the two can be
+installed side by side in either order.
+
 </TabItem>
 <TabItem value="linux" label="Linux">
 
@@ -78,6 +82,9 @@ to your Applications folder.
 OmniSign installs as `/Applications/OmniSign.app`. The build is not code-signed or notarized: on
 first launch right-click **OmniSign.app → Open**, or clear the quarantine flag with
 `xattr -cr /Applications/OmniSign.app`.
+
+The CLI keeps its own bundle in `/Applications/omnisign-cli/` rather than beside this one, so the two
+can be installed side by side.
 
 </TabItem>
 </OsTabs>
