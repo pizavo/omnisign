@@ -44,13 +44,34 @@ data class PersistedWindowState(
  * - **Windows**: `%APPDATA%/omnisign/window-state.properties`
  * - **macOS**: `~/Library/Application Support/omnisign/window-state.properties`
  * - **Linux**: `~/.config/omnisign/window-state.properties`
+ *
+ * @param path File the state is read from and written to. Defaults to the platform-native location
+ *   above; supplied explicitly by tests, which must not write to the real user configuration.
  */
-class WindowStateStore {
+class WindowStateStore(private val path: Path = defaultStorePath()) {
 	companion object {
 		private const val FILE_NAME = "window-state.properties"
-	}
 
-	private val path: Path by lazy { resolveStorePath() }
+		/**
+		 * Resolves the platform-specific file for storing window state,
+		 * matching the convention used by [cz.pizavo.omnisign.data.repository.FileConfigRepository].
+		 */
+		private fun defaultStorePath(): Path {
+			val userHome = System.getProperty("user.home")
+			val os = System.getProperty("os.name").lowercase()
+			val dir = when {
+				os.contains("win") ->
+					Paths.get(System.getenv("APPDATA") ?: "$userHome/AppData/Roaming", "omnisign")
+
+				os.contains("mac") ->
+					Paths.get(userHome, "Library", "Application Support", "omnisign")
+
+				else ->
+					Paths.get(userHome, ".config", "omnisign")
+			}
+			return dir.resolve(FILE_NAME)
+		}
+	}
 
 	/**
 	 * Loads the previously persisted window state, or `null` when no state
@@ -104,25 +125,6 @@ class WindowStateStore {
 		}
 	}
 
-	/**
-	 * Resolves the platform-specific directory for storing window state,
-	 * matching the convention used by [cz.pizavo.omnisign.data.repository.FileConfigRepository].
-	 */
-	private fun resolveStorePath(): Path {
-		val userHome = System.getProperty("user.home")
-		val os = System.getProperty("os.name").lowercase()
-		val dir = when {
-			os.contains("win") ->
-				Paths.get(System.getenv("APPDATA") ?: "$userHome/AppData/Roaming", "omnisign")
-
-			os.contains("mac") ->
-				Paths.get(userHome, "Library", "Application Support", "omnisign")
-
-			else ->
-				Paths.get(userHome, ".config", "omnisign")
-		}
-		return dir.resolve(FILE_NAME)
-	}
 }
 
 

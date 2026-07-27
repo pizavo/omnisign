@@ -17,6 +17,7 @@ import cz.pizavo.omnisign.domain.model.config.SERVICE_TYPE_HINTS
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
+import cz.pizavo.omnisign.ui.model.AddressEditState
 import cz.pizavo.omnisign.ui.model.ServiceEditState
 import cz.pizavo.omnisign.ui.model.TlBuilderDialogState
 import cz.pizavo.omnisign.ui.model.TspEditState
@@ -197,6 +198,44 @@ private fun TlBuilderFormContent(
 			placeholder = { Text(stringResource(Res.string.tlbuilder_field_scheme_operator_name_placeholder)) },
 			singleLine = true,
 			modifier = Modifier.fillMaxWidth(),
+		)
+
+		Spacer(modifier = Modifier.height(4.dp))
+
+		UnderlinedTextField(
+			value = state.schemeName,
+			onValueChange = { v -> onFieldChange { it.copy(schemeName = v, error = null) } },
+			label = { Text(stringResource(Res.string.tlbuilder_field_scheme_name)) },
+			placeholder = { Text(stringResource(Res.string.tlbuilder_field_scheme_name_placeholder)) },
+			singleLine = true,
+			modifier = Modifier.fillMaxWidth(),
+		)
+
+		Spacer(modifier = Modifier.height(4.dp))
+
+		UnderlinedTextField(
+			value = state.schemeInformationUri,
+			onValueChange = { v -> onFieldChange { it.copy(schemeInformationUri = v, error = null) } },
+			label = { Text(stringResource(Res.string.tlbuilder_field_scheme_info_uri)) },
+			placeholder = { Text(stringResource(Res.string.tlbuilder_field_scheme_info_uri_placeholder)) },
+			singleLine = true,
+			modifier = Modifier.fillMaxWidth(),
+		)
+
+		Spacer(modifier = Modifier.height(12.dp))
+
+		Text(
+			text = stringResource(Res.string.tlbuilder_section_operator_address),
+			style = LumoTheme.typography.h4,
+		)
+
+		Spacer(modifier = Modifier.height(4.dp))
+
+		AddressFields(
+			address = state.schemeOperatorAddress,
+			onAddressChange = { update ->
+				onFieldChange { it.copy(schemeOperatorAddress = update(it.schemeOperatorAddress), error = null) }
+			},
 		)
 
 		Spacer(modifier = Modifier.height(16.dp))
@@ -395,6 +434,28 @@ private fun TspCard(
 						modifier = Modifier.weight(1f),
 					)
 				}
+
+				Spacer(modifier = Modifier.height(12.dp))
+
+				Text(
+					text = stringResource(Res.string.tlbuilder_section_tsp_address),
+					style = LumoTheme.typography.label1,
+				)
+
+				Spacer(modifier = Modifier.height(4.dp))
+
+				AddressFields(
+					address = tsp.address,
+					onAddressChange = { update ->
+						onFieldChange { editing ->
+							editing.copy(
+								tsps = editing.tsps.mapIndexed { i, t ->
+									if (i == tspIndex) t.copy(address = update(t.address)) else t
+								},
+							)
+						}
+					},
+				)
 
 				Spacer(modifier = Modifier.height(12.dp))
 
@@ -781,3 +842,79 @@ private fun TlBuilderFooter(
 
 
 
+/**
+ * The postal and electronic address fields ETSI TS 119612 requires, laid out for reuse by both the
+ * scheme operator and each trust service provider.
+ *
+ * Street, town, country and contact URI are mandatory to compile; state and postal code are marked
+ * optional in their labels because the schema treats them so.
+ *
+ * @param address Current values.
+ * @param onAddressChange Receives a transform to apply to [address], mirroring how the rest of the
+ *   dialog reports edits.
+ */
+@Composable
+private fun AddressFields(
+	address: AddressEditState,
+	onAddressChange: ((AddressEditState) -> AddressEditState) -> Unit,
+) {
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		horizontalArrangement = Arrangement.spacedBy(8.dp),
+	) {
+		UnderlinedTextField(
+			value = address.street,
+			onValueChange = { v -> onAddressChange { it.copy(street = v) } },
+			label = { Text(stringResource(Res.string.tlbuilder_field_street)) },
+			singleLine = true,
+			modifier = Modifier.weight(2f),
+		)
+		UnderlinedTextField(
+			value = address.postalCode,
+			onValueChange = { v -> onAddressChange { it.copy(postalCode = v) } },
+			label = { Text(stringResource(Res.string.tlbuilder_field_postal_code)) },
+			singleLine = true,
+			modifier = Modifier.weight(1f),
+		)
+	}
+
+	Spacer(modifier = Modifier.height(4.dp))
+
+	Row(
+		modifier = Modifier.fillMaxWidth(),
+		horizontalArrangement = Arrangement.spacedBy(8.dp),
+	) {
+		UnderlinedTextField(
+			value = address.locality,
+			onValueChange = { v -> onAddressChange { it.copy(locality = v) } },
+			label = { Text(stringResource(Res.string.tlbuilder_field_locality)) },
+			singleLine = true,
+			modifier = Modifier.weight(1f),
+		)
+		UnderlinedTextField(
+			value = address.stateOrProvince,
+			onValueChange = { v -> onAddressChange { it.copy(stateOrProvince = v) } },
+			label = { Text(stringResource(Res.string.tlbuilder_field_state)) },
+			singleLine = true,
+			modifier = Modifier.weight(1f),
+		)
+		UnderlinedTextField(
+			value = address.country,
+			onValueChange = { v -> onAddressChange { it.copy(country = v) } },
+			label = { Text(stringResource(Res.string.tlbuilder_field_country)) },
+			singleLine = true,
+			modifier = Modifier.weight(1f),
+		)
+	}
+
+	Spacer(modifier = Modifier.height(4.dp))
+
+	UnderlinedTextField(
+		value = address.electronicAddress,
+		onValueChange = { v -> onAddressChange { it.copy(electronicAddress = v) } },
+		label = { Text(stringResource(Res.string.tlbuilder_field_electronic_address)) },
+		placeholder = { Text(stringResource(Res.string.tlbuilder_field_electronic_address_placeholder)) },
+		singleLine = true,
+		modifier = Modifier.fillMaxWidth(),
+	)
+}

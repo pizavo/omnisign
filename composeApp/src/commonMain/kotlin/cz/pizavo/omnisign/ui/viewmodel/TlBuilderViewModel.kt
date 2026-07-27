@@ -13,6 +13,8 @@ import cz.pizavo.omnisign.ui.model.ServiceEditState
 import cz.pizavo.omnisign.ui.model.TlBuilderDialogState
 import cz.pizavo.omnisign.ui.model.TlValidationError
 import cz.pizavo.omnisign.ui.model.TspEditState
+import cz.pizavo.omnisign.ui.model.isComplete
+import cz.pizavo.omnisign.ui.model.toAddress
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -180,10 +182,15 @@ class TlBuilderViewModel(
 		if (editing.name.isBlank()) return TlValidationError.NameRequired
 		if (editing.territory.isBlank()) return TlValidationError.TerritoryRequired
 		if (editing.schemeOperatorName.isBlank()) return TlValidationError.SchemeOperatorRequired
+		if (editing.schemeName.isBlank()) return TlValidationError.SchemeNameRequired
+		if (editing.schemeInformationUri.isBlank()) return TlValidationError.SchemeInformationUriRequired
+		if (!editing.schemeOperatorAddress.isComplete()) return TlValidationError.SchemeOperatorAddressRequired
 		if (editing.tsps.isEmpty()) return TlValidationError.TspRequired
 
 		editing.tsps.forEachIndexed { tspIdx, tsp ->
 			if (tsp.name.isBlank()) return TlValidationError.TspNameRequired(tspIdx + 1)
+			if (tsp.infoUrl.isBlank()) return TlValidationError.TspInfoUrlRequired(tsp.name)
+			if (!tsp.address.isComplete()) return TlValidationError.TspAddressRequired(tsp.name)
 			if (tsp.services.isEmpty()) return TlValidationError.TspServiceRequired(tsp.name)
 
 			tsp.services.forEachIndexed { svcIdx, svc ->
@@ -205,10 +212,14 @@ class TlBuilderViewModel(
 			name = editing.name.trim(),
 			territory = editing.territory.trim().uppercase(),
 			schemeOperatorName = editing.schemeOperatorName.trim(),
+			schemeOperatorAddress = editing.schemeOperatorAddress.toAddress(),
+			schemeName = editing.schemeName.trim(),
+			schemeInformationUri = editing.schemeInformationUri.trim(),
 			trustServiceProviders = editing.tsps.map { tsp ->
 				TrustServiceProviderDraft(
 					name = tsp.name.trim(),
 					tradeName = tsp.tradeName.trim().ifBlank { null },
+					address = tsp.address.toAddress(),
 					infoUrl = tsp.infoUrl.trim(),
 					services = tsp.services.map { svc ->
 						TrustServiceDraft(

@@ -27,7 +27,11 @@ class TrustCertLister : CliktCommand(name = "list"), KoinComponent {
 		val scope = TrustScope.of(profile)
 		val scopeLabel = profile?.let { "profile '$it'" } ?: "global scope"
 		trustStore.list(scope).fold(
-			ifLeft = { error -> echo("❌ ${error.message}", err = true) },
+			ifLeft = { error ->
+				echo("❌ ${error.message}", err = true)
+				error.details?.let { echo("Details: $it", err = true) }
+				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+			},
 			ifRight = { certs ->
 				if (certs.isEmpty()) {
 					echo("No trusted certificates in $scopeLabel. Add one with: config trust add --cert <file>")

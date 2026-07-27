@@ -17,7 +17,11 @@ class ScheduleJobList : CliktCommand(name = "list"), KoinComponent {
 	
 	override fun run(): Unit = runBlocking {
 		manageJobs.list().fold(
-			ifLeft = { echo("Failed to load jobs: ${it.message}", err = true) },
+			ifLeft = { error ->
+				echo("Failed to load jobs: ${error.message}", err = true)
+				error.details?.let { echo("Details: $it", err = true) }
+				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+			},
 			ifRight = { jobs ->
 				if (jobs.isEmpty()) {
 					echo("No renewal jobs configured.")

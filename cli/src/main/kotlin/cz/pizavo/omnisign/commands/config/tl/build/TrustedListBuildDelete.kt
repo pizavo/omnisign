@@ -21,7 +21,11 @@ class TrustedListBuildDelete : CliktCommand(name = "delete"), KoinComponent {
 	
 	override fun run(): Unit = runBlocking {
 		manageTl.deleteDraft(name).fold(
-			ifLeft = { error -> echo("❌ ${error.message}", err = true) },
+			ifLeft = { error ->
+				echo("❌ ${error.message}", err = true)
+				error.details?.let { echo("Details: $it", err = true) }
+				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+			},
 			ifRight = { echo("✅ Draft '$name' deleted.") }
 		)
 	}

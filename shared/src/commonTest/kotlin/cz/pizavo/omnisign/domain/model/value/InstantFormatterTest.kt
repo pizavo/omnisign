@@ -31,28 +31,28 @@ class InstantFormatterTest : FunSpec({
     }
 
     test("formatDateTime respects positive UTC offset") {
-        val cet = TimeZone.of("Europe/Prague")
+        val plusTwo = TimeZone.of("+02:00")
         val instant = Instant.parse("2026-07-14T10:00:00Z")
 
-        val result = instant.formatDateTime(cet)
+        val result = instant.formatDateTime(plusTwo)
 
         result shouldBe "Tue, 14 July 2026, 12:00:00 (+02:00)"
     }
 
     test("formatDateTime respects negative UTC offset") {
-        val nyc = TimeZone.of("America/New_York")
+        val minusFour = TimeZone.of("-04:00")
         val instant = Instant.parse("2026-03-14T10:00:00Z")
 
-        val result = instant.formatDateTime(nyc)
+        val result = instant.formatDateTime(minusFour)
 
         result shouldBe "Sat, 14 March 2026, 06:00:00 (-04:00)"
     }
 
     test("formatDate crosses day boundary in positive offset timezone") {
-        val cet = TimeZone.of("Europe/Prague")
+        val plusOne = TimeZone.of("+01:00")
         val instant = Instant.parse("2026-03-14T23:30:00Z")
 
-        instant.formatDate(cet) shouldBe "Sun, 15 March 2026"
+        instant.formatDate(plusOne) shouldBe "Sun, 15 March 2026"
     }
 
     test("formatDateTime epoch zero") {

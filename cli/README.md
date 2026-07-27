@@ -82,7 +82,7 @@ sudo rpm -i omnisign-cli-<version>.rpm
 
 ### macOS — PKG installer (recommended)
 
-The `.pkg` installer places the application in `/Applications/omnisign.app`
+The `.pkg` installer places the application in `/Applications/omnisign-cli/omnisign.app`
 and creates a `/usr/local/bin/omnisign` symlink so the command is available
 in every new terminal session. It also installs an `omnisign-uninstall`
 helper (see [Uninstalling on macOS](#uninstalling-on-macos)).
@@ -93,7 +93,7 @@ The `.dmg` is a drag-to-Applications disk image and **does not** register
 `omnisign` in PATH. If you prefer the DMG, create the symlink manually:
 
 ```shell
-ln -s /Applications/omnisign.app/Contents/MacOS/omnisign /usr/local/bin/omnisign
+ln -s /Applications/omnisign-cli/omnisign.app/Contents/MacOS/omnisign /usr/local/bin/omnisign
 ```
 
 Or use the `.pkg` installer instead.
@@ -109,7 +109,7 @@ The macOS packages are currently unsigned. On first launch macOS may show an
 "unidentified developer" warning. You can bypass it with:
 
 ```shell
-xattr -cr /Applications/omnisign.app
+xattr -cr /Applications/omnisign-cli/omnisign.app
 ```
 
 Or by right-clicking the application and choosing **Open**.
@@ -131,7 +131,7 @@ To uninstall manually (e.g., after a DMG installation):
 
 ```shell
 rm -f /usr/local/bin/omnisign
-rm -rf /Applications/omnisign.app
+rm -rf /Applications/omnisign-cli
 ```
 
 ## Environment Variables

@@ -48,6 +48,7 @@ class TrustCertAdder : CliktCommand(name = "add"), KoinComponent {
 			ifLeft = { error ->
 				echo("❌ ${error.message}", err = true)
 				error.details?.let { echo("Details: $it", err = true) }
+				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
 			},
 			ifRight = { trusted ->
 				val scope = profile?.let { "profile '$it'" } ?: "global scope"

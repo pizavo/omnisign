@@ -50,4 +50,21 @@
 		<item quantity="other">(%1$s services)</item>
 	</plurals>
 	<string name="tlbuilder_service_fallback_name">Service #%1$s</string>
-</resources>
+	<string name="tlbuilder_field_scheme_name">Scheme name</string>
+	<string name="tlbuilder_field_scheme_name_placeholder">Internal PKI trust anchors</string>
+	<string name="tlbuilder_field_scheme_info_uri">Scheme information URI</string>
+	<string name="tlbuilder_field_scheme_info_uri_placeholder">https://example.org/trusted-list</string>
+	<string name="tlbuilder_section_operator_address">Scheme operator address</string>
+	<string name="tlbuilder_section_tsp_address">Provider address</string>
+	<string name="tlbuilder_field_street">Street address</string>
+	<string name="tlbuilder_field_locality">Town or city</string>
+	<string name="tlbuilder_field_country">Country</string>
+	<string name="tlbuilder_field_state">State or province (optional)</string>
+	<string name="tlbuilder_field_postal_code">Postal code (optional)</string>
+	<string name="tlbuilder_field_electronic_address">Contact URI</string>
+	<string name="tlbuilder_field_electronic_address_placeholder">mailto:info@example.org</string>
+	<string name="tlbuilder_validation_scheme_name">Scheme name is required.</string>
+	<string name="tlbuilder_validation_scheme_info_uri">Scheme information URI is required.</string>
+	<string name="tlbuilder_validation_operator_address">Scheme operator address needs a street, town, country and contact URI.</string>
+	<string name="tlbuilder_validation_tsp_info_url">Provider "%1$s" needs an information URL.</string>
+	<string name="tlbuilder_validation_tsp_address">Provider "%1$s" needs a street, town, country and contact URI.</string></resources>

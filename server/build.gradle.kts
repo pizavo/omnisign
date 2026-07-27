@@ -65,6 +65,7 @@ dependencies {
     testImplementation(libs.kotest.ktor)
     testImplementation(libs.kotest.decoroutinator)
     testImplementation(libs.mockk)
+    testImplementation(libs.koin.test)
 
     implementation(project.dependencies.platform(libs.koin.bom))
     implementation(libs.koin.ktor)

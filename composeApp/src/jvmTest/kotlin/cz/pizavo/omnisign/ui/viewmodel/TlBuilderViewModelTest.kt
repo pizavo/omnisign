@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.domain.model.config.CustomTrustedListDraft
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
+import cz.pizavo.omnisign.ui.model.AddressEditState
 import cz.pizavo.omnisign.ui.model.ErrorMessage
 import cz.pizavo.omnisign.ui.model.ServiceEditState
 import cz.pizavo.omnisign.ui.model.TlBuilderDialogState
@@ -20,6 +21,7 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.clearMocks
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.slot
 import io.mockk.verify
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -130,6 +132,82 @@ class TlBuilderViewModelTest : FunSpec({
 		editing.error shouldBe TlValidationError.NameRequired
 	}
 
+	test("compile without a scheme name shows validation error") {
+		val vm = TlBuilderViewModel(compilerPort, testDispatcher)
+		vm.open()
+		vm.updateState { validEditingState().copy(schemeName = "") }
+		vm.compile(outPath)
+
+		(vm.state.value as TlBuilderDialogState.Editing).error shouldBe TlValidationError.SchemeNameRequired
+	}
+
+	test("compile without a scheme information URI shows validation error") {
+		val vm = TlBuilderViewModel(compilerPort, testDispatcher)
+		vm.open()
+		vm.updateState { validEditingState().copy(schemeInformationUri = "") }
+		vm.compile(outPath)
+
+		(vm.state.value as TlBuilderDialogState.Editing).error shouldBe
+			TlValidationError.SchemeInformationUriRequired
+	}
+
+	test("compile with an incomplete operator address shows validation error") {
+		val vm = TlBuilderViewModel(compilerPort, testDispatcher)
+		vm.open()
+		vm.updateState { validEditingState().copy(schemeOperatorAddress = testAddress.copy(country = "")) }
+		vm.compile(outPath)
+
+		(vm.state.value as TlBuilderDialogState.Editing).error shouldBe
+			TlValidationError.SchemeOperatorAddressRequired
+	}
+
+	test("compile without a provider information URL names the provider") {
+		val vm = TlBuilderViewModel(compilerPort, testDispatcher)
+		vm.open()
+		vm.updateState {
+			val valid = validEditingState()
+			valid.copy(tsps = valid.tsps.map { tsp -> tsp.copy(infoUrl = "") })
+		}
+		vm.compile(outPath)
+
+		(vm.state.value as TlBuilderDialogState.Editing).error shouldBe
+			TlValidationError.TspInfoUrlRequired("TSP One")
+	}
+
+	test("compile with an incomplete provider address names the provider") {
+		val vm = TlBuilderViewModel(compilerPort, testDispatcher)
+		vm.open()
+		vm.updateState {
+			val valid = validEditingState()
+			valid.copy(tsps = valid.tsps.map { tsp -> tsp.copy(address = testAddress.copy(street = "")) })
+		}
+		vm.compile(outPath)
+
+		(vm.state.value as TlBuilderDialogState.Editing).error shouldBe
+			TlValidationError.TspAddressRequired("TSP One")
+	}
+
+	test("the compiled draft carries the scheme fields and both addresses") {
+		runTest(testDispatcher) {
+			val draft = slot<CustomTrustedListDraft>()
+			every { compilerPort.compileTo(capture(draft), any()) } returns Unit.right()
+			val vm = TlBuilderViewModel(compilerPort, testDispatcher)
+			vm.open()
+			vm.updateState { validEditingState() }
+
+			vm.compile(outPath)
+			advanceUntilIdle()
+
+			val compiled = draft.captured
+			compiled.schemeName shouldBe "Test Scheme"
+			compiled.schemeInformationUri shouldBe "https://omnisign.test/tl"
+			compiled.schemeOperatorAddress?.streetAddress shouldBe "Technicka 2"
+			compiled.schemeOperatorAddress?.electronicAddress shouldBe "mailto:tl@omnisign.test"
+			compiled.trustServiceProviders.single().infoUrl shouldBe "https://tsp.omnisign.test"
+			compiled.trustServiceProviders.single().address?.locality shouldBe "Praha"
+		}
+	}
+
 	test("compile with empty TSPs shows validation error") {
 		val vm = TlBuilderViewModel(compilerPort, testDispatcher)
 		vm.open()
@@ -138,6 +216,9 @@ class TlBuilderViewModelTest : FunSpec({
 				name = "test",
 				territory = "CZ",
 				schemeOperatorName = "Operator",
+				schemeName = "Scheme",
+				schemeInformationUri = "https://omnisign.test/tl",
+				schemeOperatorAddress = testAddress,
 			)
 		}
 		vm.compile(outPath)
@@ -154,9 +235,14 @@ class TlBuilderViewModelTest : FunSpec({
 				name = "test",
 				territory = "CZ",
 				schemeOperatorName = "Operator",
+				schemeName = "Scheme",
+				schemeInformationUri = "https://omnisign.test/tl",
+				schemeOperatorAddress = testAddress,
 				tsps = listOf(
 					TspEditState(
 						name = "TSP1",
+						infoUrl = "https://tsp.test",
+						address = testAddress,
 						services = listOf(ServiceEditState(name = "Svc1")),
 					)
 				),
@@ -248,16 +334,32 @@ class TlBuilderViewModelTest : FunSpec({
 })
 
 /**
+ * The postal and electronic address ETSI TS 119612 requires of the scheme operator and of every
+ * provider; the same value serves both in these specs.
+ */
+private val testAddress = AddressEditState(
+	street = "Technicka 2",
+	locality = "Praha",
+	country = "CZ",
+	electronicAddress = "mailto:tl@omnisign.test",
+)
+
+/**
  * Build a fully-populated [TlBuilderDialogState.Editing] state that passes validation.
  */
 private fun validEditingState(): TlBuilderDialogState.Editing = TlBuilderDialogState.Editing(
 	name = "test",
 	territory = "CZ",
 	schemeOperatorName = "Test Operator",
+	schemeName = "Test Scheme",
+	schemeInformationUri = "https://omnisign.test/tl",
+	schemeOperatorAddress = testAddress,
 	registerAfterCompile = true,
 	tsps = listOf(
 		TspEditState(
 			name = "TSP One",
+			infoUrl = "https://tsp.omnisign.test",
+			address = testAddress,
 			services = listOf(
 				ServiceEditState(
 					name = "CA Service",

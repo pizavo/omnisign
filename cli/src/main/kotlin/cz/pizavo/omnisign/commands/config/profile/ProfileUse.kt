@@ -23,6 +23,8 @@ class ProfileUse : CliktCommand(name = "use"), KoinComponent {
 		manageProfile.setActive(target).fold(
 			ifLeft = { error ->
 				echo("❌ ${error.message}", err = true)
+				error.details?.let { echo("Details: $it", err = true) }
+				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
 			},
 			ifRight = {
 				if (target == null) {

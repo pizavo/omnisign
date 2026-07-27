@@ -41,7 +41,11 @@ class TrustCertRemover : CliktCommand(name = "remove"), KoinComponent {
 		when (matches.size) {
 			0 -> echo("❌ No trusted certificate matching '$fingerprint' in $scopeLabel.", err = true)
 			1 -> trustStore.remove(scope, matches.first().fingerprint).fold(
-				ifLeft = { echo("❌ ${it.message}", err = true) },
+				ifLeft = { error ->
+					echo("❌ ${error.message}", err = true)
+					error.details?.let { echo("Details: $it", err = true) }
+					error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+				},
 				ifRight = { echo("✅ Trusted certificate ${matches.first().fingerprint} removed from $scopeLabel.") },
 			)
 
