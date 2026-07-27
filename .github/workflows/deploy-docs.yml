@@ -45,9 +45,19 @@ jobs:
           cache: pnpm
           cache-dependency-path: docs/pnpm-lock.yaml
 
+      # postman-code-generators, pulled in by docusaurus-theme-openapi-docs, runs a postinstall that
+      # picks a package manager with detect-package-manager. That looks for a lockfile in its own
+      # directory, finds none, and falls back to probing for a global yarn *before* a global pnpm.
+      # The runner image ships yarn 1, which then refuses to run at all because docs/package.json
+      # pins pnpm through "packageManager". A yarn that fails its version probe makes the fallback
+      # reach pnpm instead, so the postinstall does its real work rather than dying on the mismatch.
       - name: Install docs dependencies
         working-directory: docs
-        run: pnpm install --frozen-lockfile
+        run: |
+          mkdir -p "$RUNNER_TEMP/pm-shim"
+          printf '#!/bin/sh\nexit 1\n' > "$RUNNER_TEMP/pm-shim/yarn"
+          chmod +x "$RUNNER_TEMP/pm-shim/yarn"
+          PATH="$RUNNER_TEMP/pm-shim:$PATH" pnpm install --frozen-lockfile
 
       - name: Copy Dokka output into static directory
         run: |

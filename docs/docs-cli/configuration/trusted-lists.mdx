@@ -66,6 +66,56 @@ useful for organisations that need to trust internal CAs.
 Both `create` and `compile` accept `-p, --profile <name>` to register the compiled list into a
 profile's validation config instead of the global config.
 
+### What the standard requires
+
+The compiled document is validated against the ETSI TS 119612 schema before it is written, so a
+draft missing a mandatory field cannot be compiled. None of these fields can be derived from the
+certificates you are listing — they identify organisations, not keys — so they have to be supplied
+while the draft is authored:
+
+- **Scheme level** — operator name and address (clause 5.3.5), scheme name (5.3.6) and a scheme
+  information URI (5.3.7).
+- **Per provider** — a postal and electronic address (clause 5.4.4), an information URI (5.4.5),
+  and at least one service.
+
+Two further fields are filled in for you and rarely need changing: the status determination
+approach defaults to `http://uri.etsi.org/TrstSvc/TrustedList/StatusDetn/appropriate`, the generic
+approach appropriate to a list published outside an EU member-state supervisory scheme; and the
+historical information period defaults to `65535` days, the value EU trusted lists carry.
+
+`config tl build show <draft>` marks anything still outstanding, and `compile` names every gap at
+once rather than stopping at the first:
+
+```text
+❌ Trusted list 'my-org' cannot be compiled — ETSI TS 119612 requires: provider
+'Example University CA' information URI, provider 'Example University CA' address
+```
+
+:::note[Drafts are created interactively]
+`config tl build create` is the only command that creates a draft, and it is the only place the
+scheme-level fields can be entered — the remaining subcommands edit the providers and services of
+a draft that already exists. Run `create` first, then use `tsp add` and `service add` to fill in
+or amend the rest non-interactively.
+:::
+
+### `tsp add` options
+
+| Option                       | Description                                                                     |
+|------------------------------|---------------------------------------------------------------------------------|
+| `--name, -n <name>`          | **(Required)** Official name of the Trust Service Provider                      |
+| `--info-url <url>`           | URL pointing to the TSP's information page or registration. Required to compile |
+| `--street <street>`          | Street address. Required to compile                                             |
+| `--locality <town>`          | Town or city. Required to compile                                               |
+| `--country <country>`        | Country name or ISO 3166-1 code. Required to compile                            |
+| `--electronic-address <uri>` | Contact URI, e.g. `mailto:info@tsp.example`. Required to compile                 |
+| `--trade-name <name>`        | Optional trade/brand name                                                       |
+| `--state <state>`            | Optional state or province                                                      |
+| `--postal-code <code>`       | Optional postal code                                                            |
+
+Only `--name` is enforced by the command itself; the rest are checked at compile time, so a
+partially filled provider can be saved and completed later by running `tsp add` again with the
+same `--name`.
+
 ### `service add` options
 
 | Option              | Description                                                                                          |
@@ -74,14 +124,6 @@ profile's validation config instead of the global config.
 | `--type-id <uri>`   | **(Required)** Service type identifier URI (e.g. `http://uri.etsi.org/TrstSvc/Svctype/CA/QC`)        |
 | `--status <uri>`    | **(Required)** Service status URI (e.g. `http://uri.etsi.org/TrstSvc/TrustedList/Svcstatus/granted`) |
 | `--cert <path>`     | **(Required)** Path to the PEM or DER certificate representing the service                           |
-
-### `tsp add` options
-
-| Option                | Description                                                |
-|-----------------------|------------------------------------------------------------|
-| `--name, -n <name>`   | **(Required)** Official name of the Trust Service Provider |
-| `--trade-name <name>` | Optional trade/brand name                                  |
-| `--info-url <url>`    | URL pointing to the TSP's information page or registration |
 
 ### `compile` options
 
@@ -94,11 +136,20 @@ profile's validation config instead of the global config.
 ### Example workflow
 
 ```bash
-# Create a draft interactively
+# Create the draft. The wizard collects the scheme name, information URI and the
+# scheme operator's address, then offers to add providers and services inline.
 omnisign config tl build create my-org
 
-# Or build non-interactively: add a TSP
-omnisign config tl build tsp add my-org --name "Example University CA"
+# Providers can also be added afterwards, without the wizard. Give the address
+# and information URI here, or the draft will not compile.
+omnisign config tl build tsp add my-org \
+  --name "Example University CA" \
+  --info-url "https://pki.example.edu" \
+  --street "Univerzitni 8" \
+  --locality "Plzen" \
+  --postal-code "301 00" \
+  --country "CZ" \
+  --electronic-address "mailto:pki@example.edu"
 
 # Add a service to the TSP
 omnisign config tl build service add my-org "Example University CA" \
@@ -106,6 +157,9 @@ omnisign config tl build service add my-org "Example University CA" \
   --type-id "http://uri.etsi.org/TrstSvc/Svctype/CA/QC" \
   --status "http://uri.etsi.org/TrstSvc/TrustedList/Svcstatus/granted" \
   --cert /path/to/ca-cert.pem
+
+# Review the draft and confirm nothing mandatory is outstanding
+omnisign config tl build show my-org
 
 # Compile the draft and register it
 omnisign config tl build compile my-org --register
@@ -116,4 +170,3 @@ omnisign config tl build list
 # Verify it's registered
 omnisign config tl list
 ```
-

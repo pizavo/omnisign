@@ -58,8 +58,14 @@ brew install --cask temurin@25
 **Option A — MSI installer**
 
 Download `omnisign-cli-x.y.z.msi` from
-[GitHub Releases](https://github.com/pizavo/omnisign/releases) and run it.
-The installer adds `omnisign` to your `PATH`.
+[GitHub Releases](https://github.com/pizavo/omnisign/releases) and run it. You can install either
+for the current user (no administrator rights, under `%LOCALAPPDATA%`) or system-wide (elevated,
+under `Program Files`); the installer adds the install directory to the matching `PATH`, so
+`omnisign` is available from any new terminal.
+
+The files go into an `omnisign-cli` subdirectory of whichever location you choose, and the package
+carries its own upgrade code, so the CLI and the desktop app are independent and can be installed
+side by side in either order.
 
 **Option B — Fat JAR**
 
@@ -91,13 +97,28 @@ java -jar omnisign-cli.jar --help
 </TabItem>
 <TabItem value="macos" label="macOS">
 
-**Option A — DMG installer**
+**Option A — PKG installer**
+
+Download `omnisign-cli-x.y.z.pkg` from
+[GitHub Releases](https://github.com/pizavo/omnisign/releases) and run it. It installs to
+`/Applications/omnisign-cli/`, symlinks the launcher to `/usr/local/bin/omnisign` so the command is
+on your `PATH`, and writes an `omnisign-uninstall` script alongside it.
+
+**Option B — DMG installer**
 
 Download `omnisign-cli-x.y.z.dmg` from
-[GitHub Releases](https://github.com/pizavo/omnisign/releases) and drag OmniSign
-to your Applications folder.
+[GitHub Releases](https://github.com/pizavo/omnisign/releases) and drag the app bundle to the
+`omnisign-cli` folder it offers. The DMG copies the files but does not create the `/usr/local/bin`
+symlink, so invoke the launcher by its full path or add one yourself:
 
-**Option B — Fat JAR**
+```bash
+sudo ln -sf /Applications/omnisign-cli/omnisign.app/Contents/MacOS/omnisign /usr/local/bin/omnisign
+```
+
+Both installers keep the CLI in its own `/Applications/omnisign-cli/` folder rather than beside the
+desktop app's `/Applications/OmniSign.app`, so the two can be installed side by side.
+
+**Option C — Fat JAR**
 
 ```bash
 java -jar omnisign-cli.jar --help

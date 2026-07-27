@@ -168,6 +168,10 @@ different problem, explained in [Releases and CI](releases.mdx#building-the-arti
 ./gradlew generateIcons                # regenerate .ico/.icns/PNG icons from the masters
 ```
 
+`build` includes the two `wasmJsBrowserTest` tasks, which run under karma in a headless Chrome — so a
+full build needs a browser available, unlike every other test task. Run the JVM suites individually
+if you do not have one; see [Testing](testing.mdx#the-browser-suites).
+
 `updateLotlKeystore` downloads the current Official Journal keystore from the DSS demonstrations
 repository into `shared/src/jvmMain/resources/lotl-keystore.p12`. Run it when the European Commission
 rotates the LOTL signing keys, and commit the result.
