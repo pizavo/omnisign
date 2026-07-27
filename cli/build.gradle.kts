@@ -281,6 +281,37 @@ val prepareJpackageInput by tasks.registering(Copy::class) {
 
 val jpackageInputDir: Provider<Directory> = layout.buildDirectory.dir("jpackage/input")
 
+/**
+ * Sub-directory the Windows installer places the CLI in, under the per-user install root.
+ *
+ * Deliberately *not* the `--name` default. jpackage would otherwise derive the folder from the
+ * launcher name and install to `%LOCALAPPDATA%\omnisign`, which on a case-insensitive filesystem is
+ * the same directory the desktop app uses for `%LOCALAPPDATA%\OmniSign`. Both app images contain a
+ * `runtime\` directory, so whichever was installed second replaced the other's jlinked runtime and
+ * left its launcher running against a module set the bundled CDS archive no longer matched — which
+ * surfaces as a JDK-internal class missing during VM initialisation rather than anything legible.
+ * Mirrors what `--linux-package-name` already does for the DEB and RPM.
+ */
+val windowsInstallSubdir = "omnisign-cli"
+
+/**
+ * Upgrade code identifying the CLI to the Windows Installer across versions.
+ *
+ * Must stay fixed for upgrades and uninstalls to track the same product, and must differ from the
+ * desktop app's own `upgradeUuid`; jpackage otherwise derives one that is not stable across builds.
+ */
+val windowsUpgradeUuid = "8dd0e055-1fb3-4664-90a4-d39e502930f3"
+
+/**
+ * Directory the macOS installers place the CLI's application bundle in.
+ *
+ * Same collision as on Windows, for the same reason: APFS is case-insensitive by default, so the
+ * bundle this produces would otherwise sit at `/Applications/omnisign.app` alongside — that is, on
+ * top of — the desktop app's `/Applications/OmniSign.app`. Nesting the CLI one level down keeps the
+ * launcher named `omnisign`, so the command users type is unchanged on every platform.
+ */
+val macosInstallDir = "/Applications/omnisign-cli"
+
 /** Common jpackage arguments shared by every package type. */
 val commonJpackageArgsList: List<String> = listOf(
 	"--name", "omnisign",
@@ -373,6 +404,8 @@ registerJPackageTask(
 		"--win-console",
 		"--win-help-url", "https://pizavo.github.io/omnisign/cli/",
 		"--win-update-url", "https://github.com/pizavo/omnisign/releases",
+		"--install-dir", windowsInstallSubdir,
+		"--win-upgrade-uuid", windowsUpgradeUuid,
 		"--add-modules", "jdk.crypto.mscapi",
 		"--java-options", "--add-modules=jdk.crypto.mscapi",
 	),
@@ -430,6 +463,7 @@ registerJPackageTask(
 		"--mac-package-identifier", "cz.pizavo.omnisign.cli",
 		"--mac-package-name", "omnisign",
 		"--mac-app-category", "public.app-category.utilities",
+		"--install-dir", macosInstallDir,
 	),
 )
 renamePackageOutput("jpackageDmg", "dmg")
@@ -445,6 +479,7 @@ registerJPackageTask(
 		"--mac-package-identifier", "cz.pizavo.omnisign.cli",
 		"--mac-package-name", "omnisign",
 		"--mac-app-category", "public.app-category.utilities",
+		"--install-dir", macosInstallDir,
 	),
 	resourceDirPath = "$jpackageResourcesDir/mac",
 )
