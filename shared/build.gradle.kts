@@ -61,11 +61,11 @@ kotlin {
 			implementation(libs.kotlinx.datetime)
 		}
 		commonTest.dependencies {
-			implementation(libs.koin.test)
 			implementation(libs.kotest.engine)
 			implementation(libs.kotest.core)
 		}
 		jvmTest.dependencies {
+			implementation(libs.koin.test)
 			implementation(libs.mockk)
 			implementation(libs.kotlinx.coroutines.test)
 			implementation(libs.kotest.arrow)
@@ -73,6 +73,10 @@ kotlin {
 			implementation(libs.kotest.decoroutinator)
 			implementation(libs.decoroutinator.jvm)
 			implementation(libs.logback)
+		}
+		wasmJsTest.dependencies {
+			implementation(libs.ktor.client.mock)
+			implementation(libs.kotest.arrow)
 		}
 		wasmJsMain.dependencies {
 			implementation(libs.ktor.client.core)
