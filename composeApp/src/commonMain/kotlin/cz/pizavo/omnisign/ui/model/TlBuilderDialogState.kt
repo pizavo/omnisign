@@ -21,6 +21,10 @@ sealed interface TlBuilderDialogState {
 	 * @property name Unique name for the trusted list (also used as the default output file stem).
 	 * @property territory ISO 3166-1 alpha-2 territory code (e.g. `CZ`, `SK`).
 	 * @property schemeOperatorName Name of the entity publishing this trusted list.
+	 * @property schemeOperatorAddress Postal and electronic address of that entity, required by
+	 *   ETSI TS 119612 clause 5.3.5.
+	 * @property schemeName Name of the scheme this list represents (clause 5.3.6).
+	 * @property schemeInformationUri Where information about the scheme is published (clause 5.3.7).
 	 * @property tsps Mutable list of Trust Service Provider drafts.
 	 * @property outputDirectory Initial directory for the save dialog; the file name defaults to [name].
 	 * @property registerAfterCompile Whether to register the compiled file as a custom TL source.
@@ -30,6 +34,9 @@ sealed interface TlBuilderDialogState {
 		val name: String = "",
 		val territory: String = "XX",
 		val schemeOperatorName: String = "",
+		val schemeOperatorAddress: AddressEditState = AddressEditState(),
+		val schemeName: String = "",
+		val schemeInformationUri: String = "",
 		val tsps: List<TspEditState> = emptyList(),
 		val outputDirectory: String = "",
 		val registerAfterCompile: Boolean = true,
@@ -65,13 +72,16 @@ sealed interface TlBuilderDialogState {
  *
  * @property name Official name of the TSP.
  * @property tradeName Optional trade/brand name.
- * @property infoUrl URL pointing to the TSP's information page.
+ * @property address Postal and electronic address of this provider, required by ETSI TS 119612
+ *   clause 5.4.4.
+ * @property infoUrl URL pointing to the TSP's information page. Required by clause 5.4.5.
  * @property services Services provided by this TSP.
  * @property expanded Whether the TSP card is currently expanded in the UI.
  */
 data class TspEditState(
 	val name: String = "",
 	val tradeName: String = "",
+	val address: AddressEditState = AddressEditState(),
 	val infoUrl: String = "",
 	val services: List<ServiceEditState> = emptyList(),
 	val expanded: Boolean = true,

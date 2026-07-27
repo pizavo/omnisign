@@ -78,8 +78,31 @@ class TrustedListBuildCreate : CliktCommand(name = "create"), KoinComponent {
 			"Scheme operator name",
 			hint = "The organisation publishing this trusted list"
 		)
-		
-		var draft = CustomTrustedListDraft(name = name, territory = territory, schemeOperatorName = operatorName)
+
+		val schemeName = t.promptRequired(
+			"Scheme name",
+			default = name,
+			hint = "What this list of trust anchors is called"
+		)
+
+		val schemeInformationUri = t.promptRequired(
+			"Scheme information URI",
+			hint = "Where readers can find out about this scheme"
+		)
+
+		t.println("\n  ── Scheme operator address ──────────────────────────────")
+		t.println("  ETSI TS 119612 requires a postal and electronic address for the")
+		t.println("  organisation publishing the list.")
+		val operatorAddress = t.promptAddress(defaultCountry = territory)
+
+		var draft = CustomTrustedListDraft(
+			name = name,
+			territory = territory,
+			schemeOperatorName = operatorName,
+			schemeOperatorAddress = operatorAddress,
+			schemeName = schemeName,
+			schemeInformationUri = schemeInformationUri,
+		)
 		manageTl.upsertDraft(draft).onLeft { e ->
 			echo("❌ Failed to save draft: ${e.message}", err = true); return@runBlocking
 		}
@@ -92,9 +115,10 @@ class TrustedListBuildCreate : CliktCommand(name = "create"), KoinComponent {
 			t.println("\n  ── New TSP ──────────────────────────────────────────────")
 			val tspName = t.promptRequired("  TSP official name")
 			val tradeName = t.promptOptional("  TSP trade/brand name", hint = "(optional — press Enter to skip)")
-			val infoUrl = t.promptOptional("  TSP information URL", hint = "(optional — homepage or registry entry)")
-				?: ""
-			
+			val infoUrl = t.promptRequired("  TSP information URL", hint = "Homepage or registry entry")
+			t.println("\n  ── Address for '$tspName' ───────────────────────────────")
+			val tspAddress = t.promptAddress(defaultCountry = territory)
+
 			val services = mutableListOf<TrustServiceDraft>()
 			
 			t.println("\n  ── Services for '$tspName' ──────────────────────────────")
@@ -117,7 +141,14 @@ class TrustedListBuildCreate : CliktCommand(name = "create"), KoinComponent {
 				addAnotherService = t.confirm("  Add another service to '$tspName'?", default = false)
 			}
 			
-			manageTl.upsertTsp(name, TrustServiceProviderDraft(tspName, tradeName, infoUrl, services)).fold(
+			val tsp = TrustServiceProviderDraft(
+				name = tspName,
+				tradeName = tradeName,
+				address = tspAddress,
+				infoUrl = infoUrl,
+				services = services,
+			)
+			manageTl.upsertTsp(name, tsp).fold(
 				ifLeft = { e -> echo("❌ Failed to save TSP: ${e.message}", err = true) },
 				ifRight = { t.println("\n  ✅ TSP '$tspName' saved (${services.size} service(s)).") }
 			)

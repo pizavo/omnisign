@@ -52,4 +52,21 @@
 		<item quantity="other">(%1$s služeb)</item>
 	</plurals>
 	<string name="tlbuilder_service_fallback_name">Služba č. %1$s</string>
-</resources>
+	<string name="tlbuilder_field_scheme_name">Název schématu</string>
+	<string name="tlbuilder_field_scheme_name_placeholder">Interní kotvy důvěry PKI</string>
+	<string name="tlbuilder_field_scheme_info_uri">URI s informacemi o schématu</string>
+	<string name="tlbuilder_field_scheme_info_uri_placeholder">https://example.org/trusted-list</string>
+	<string name="tlbuilder_section_operator_address">Adresa provozovatele schématu</string>
+	<string name="tlbuilder_section_tsp_address">Adresa poskytovatele</string>
+	<string name="tlbuilder_field_street">Ulice a číslo</string>
+	<string name="tlbuilder_field_locality">Obec</string>
+	<string name="tlbuilder_field_country">Země</string>
+	<string name="tlbuilder_field_state">Kraj nebo region (nepovinné)</string>
+	<string name="tlbuilder_field_postal_code">PSČ (nepovinné)</string>
+	<string name="tlbuilder_field_electronic_address">Kontaktní URI</string>
+	<string name="tlbuilder_field_electronic_address_placeholder">mailto:info@example.org</string>
+	<string name="tlbuilder_validation_scheme_name">Název schématu je povinný.</string>
+	<string name="tlbuilder_validation_scheme_info_uri">URI s informacemi o schématu je povinné.</string>
+	<string name="tlbuilder_validation_operator_address">Adresa provozovatele schématu vyžaduje ulici, obec, zemi a kontaktní URI.</string>
+	<string name="tlbuilder_validation_tsp_info_url">Poskytovatel „%1$s“ vyžaduje informační URL.</string>
+	<string name="tlbuilder_validation_tsp_address">Poskytovatel „%1$s“ vyžaduje ulici, obec, zemi a kontaktní URI.</string></resources>

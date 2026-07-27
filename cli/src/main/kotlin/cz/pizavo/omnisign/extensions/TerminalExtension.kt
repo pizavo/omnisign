@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.extensions
 import com.github.ajalt.mordant.terminal.Terminal
 import com.github.ajalt.mordant.terminal.YesNoPrompt
 import com.github.ajalt.mordant.terminal.prompt
+import cz.pizavo.omnisign.domain.model.config.TrustedListAddress
 import java.io.File
 
 /**
@@ -17,6 +18,30 @@ internal fun Terminal.promptRequired(text: String, hint: String? = null, default
 		println("   ⚠️ This field is required.")
 	}
 }
+
+/**
+ * Prompt for the postal and electronic address ETSI TS 119612 requires of both the scheme operator
+ * and every trust service provider.
+ *
+ * Street, locality, country and the contact URI are re-asked until answered, because a trusted list
+ * missing any of them cannot be compiled; state/province and postal code are genuinely optional in
+ * the schema and may be skipped.
+ *
+ * @param defaultCountry Pre-filled country, normally the draft's scheme territory.
+ * @return The collected address.
+ */
+internal fun Terminal.promptAddress(defaultCountry: String? = null): TrustedListAddress =
+	TrustedListAddress(
+		streetAddress = promptRequired("  Street address"),
+		locality = promptRequired("  Town or city"),
+		countryName = promptRequired("  Country", default = defaultCountry),
+		stateOrProvince = promptOptional("  State or province", hint = "(optional — press Enter to skip)"),
+		postalCode = promptOptional("  Postal code", hint = "(optional — press Enter to skip)"),
+		electronicAddress = promptRequired(
+			"  Contact URI",
+			hint = "e.g. mailto:info@example.org or https://example.org/contact"
+		),
+	)
 
 /**
  * Prompt for an optional string; returns null when the user submits blank input.

@@ -20,8 +20,23 @@ sealed interface TlValidationError {
 	/** The scheme operator name is empty. */
 	data object SchemeOperatorRequired : TlValidationError
 
+	/** The scheme name is empty. */
+	data object SchemeNameRequired : TlValidationError
+
+	/** The scheme information URI is empty. */
+	data object SchemeInformationUriRequired : TlValidationError
+
+	/** The scheme operator's address is missing a part ETSI TS 119612 requires. */
+	data object SchemeOperatorAddressRequired : TlValidationError
+
 	/** No Trust Service Provider has been added. */
 	data object TspRequired : TlValidationError
+
+	/** TSP [tspName] has no information URI. */
+	data class TspInfoUrlRequired(val tspName: String) : TlValidationError
+
+	/** TSP [tspName] is missing a part of its address that ETSI TS 119612 requires. */
+	data class TspAddressRequired(val tspName: String) : TlValidationError
 
 	/** The TSP at 1-based position [number] has an empty name. */
 	data class TspNameRequired(val number: Int) : TlValidationError
@@ -50,6 +65,15 @@ fun TlValidationError.resolve(): String = when (this) {
 	TlValidationError.NameRequired -> stringResource(Res.string.tlbuilder_validation_name)
 	TlValidationError.TerritoryRequired -> stringResource(Res.string.tlbuilder_validation_territory)
 	TlValidationError.SchemeOperatorRequired -> stringResource(Res.string.tlbuilder_validation_scheme_operator)
+	TlValidationError.SchemeNameRequired -> stringResource(Res.string.tlbuilder_validation_scheme_name)
+	TlValidationError.SchemeInformationUriRequired ->
+		stringResource(Res.string.tlbuilder_validation_scheme_info_uri)
+	TlValidationError.SchemeOperatorAddressRequired ->
+		stringResource(Res.string.tlbuilder_validation_operator_address)
+	is TlValidationError.TspInfoUrlRequired ->
+		stringResource(Res.string.tlbuilder_validation_tsp_info_url, tspName)
+	is TlValidationError.TspAddressRequired ->
+		stringResource(Res.string.tlbuilder_validation_tsp_address, tspName)
 	TlValidationError.TspRequired -> stringResource(Res.string.tlbuilder_validation_tsp_required)
 	is TlValidationError.TspNameRequired -> stringResource(Res.string.tlbuilder_validation_tsp_name, number)
 	is TlValidationError.TspServiceRequired -> stringResource(Res.string.tlbuilder_validation_tsp_service, tspName)

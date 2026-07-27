@@ -27,10 +27,57 @@ data class CustomTrustedListDraft(
     val schemeOperatorName: String = "",
 
     /**
+     * Postal and electronic address of the scheme operator.
+     *
+     * Mandatory for compilation (ETSI TS 119612 clause 5.3.5) but nullable here, because a draft is
+     * an in-progress definition that may not have collected it yet; the compiler reports it as a
+     * missing field rather than failing on a schema violation.
+     */
+    val schemeOperatorAddress: TrustedListAddress? = null,
+
+    /**
+     * Name of the scheme this list represents (clause 5.3.6) — e.g. `"Internal PKI trust anchors"`.
+     * Distinct from [name], which identifies the draft locally.
+     */
+    val schemeName: String = "",
+
+    /**
+     * URI where information about the scheme is published (clause 5.3.7).
+     */
+    val schemeInformationUri: String = "",
+
+    /**
+     * URI naming how the operator determines the status of the services it lists (clause 5.3.9).
+     * Defaults to the generic ETSI approach, which is the appropriate one for a list published
+     * outside an EU member-state supervisory scheme.
+     */
+    val statusDeterminationApproach: String = STATUS_DETERMINATION_APPROPRIATE,
+
+    /**
+     * Number of days of service history the list retains (clause 5.3.12). Defaults to the value EU
+     * trusted lists use to mean "the entire history".
+     */
+    val historicalInformationPeriod: Int = DEFAULT_HISTORICAL_INFORMATION_PERIOD_DAYS,
+
+    /**
      * Trust service providers listed in this trusted list.
      */
     val trustServiceProviders: List<TrustServiceProviderDraft> = emptyList()
 )
+
+/**
+ * Status-determination approach for a list published outside an EU member-state supervisory scheme
+ * (ETSI TS 119612 clause 5.3.9). The EU-specific approaches assert supervision this list does not
+ * carry, so the generic one is the honest default for a self-published trust anchor list.
+ */
+const val STATUS_DETERMINATION_APPROPRIATE: String =
+    "http://uri.etsi.org/TrstSvc/TrustedList/StatusDetn/appropriate"
+
+/**
+ * Default retention period, in days, advertised as the list's historical information period
+ * (ETSI TS 119612 clause 5.3.12). Matches the value EU trusted lists carry.
+ */
+const val DEFAULT_HISTORICAL_INFORMATION_PERIOD_DAYS: Int = 65535
 
 /**
  * Draft representation of a Trust Service Provider (TSP) within a [CustomTrustedListDraft].
@@ -48,7 +95,16 @@ data class TrustServiceProviderDraft(
     val tradeName: String? = null,
 
     /**
-     * URL pointing to the TSP's information page or registration.
+     * Postal and electronic address of this provider.
+     *
+     * Mandatory for compilation (ETSI TS 119612 clause 5.4.4), nullable here for the same reason
+     * [CustomTrustedListDraft.schemeOperatorAddress] is: a draft may be mid-authoring.
+     */
+    val address: TrustedListAddress? = null,
+
+    /**
+     * URL pointing to the TSP's information page or registration. Mandatory for compilation
+     * (clause 5.4.5) — the schema has no way to express "this provider publishes nothing".
      */
     val infoUrl: String = "",
 
