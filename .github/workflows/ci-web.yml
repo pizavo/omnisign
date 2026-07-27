@@ -33,6 +33,16 @@ jobs:
       - uses: ./.github/actions/setup-gradle
         if: steps.detect.outputs.relevant == 'true'
 
-      - name: Build Wasm distribution
+      - name: Test and build Wasm distribution
         if: steps.detect.outputs.relevant == 'true'
-        run: ./gradlew :composeApp:wasmJsBrowserDistribution
+        run: ./gradlew :shared:wasmJsBrowserTest :composeApp:wasmJsBrowserTest :composeApp:wasmJsBrowserDistribution
+
+      - name: Upload Wasm test reports
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: wasm-test-reports
+          path: |
+            shared/build/reports/tests/wasmJsBrowserTest/
+            composeApp/build/reports/tests/wasmJsBrowserTest/
+          if-no-files-found: ignore
