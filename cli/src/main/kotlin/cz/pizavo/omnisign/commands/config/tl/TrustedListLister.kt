@@ -27,7 +27,11 @@ class TrustedListLister : CliktCommand(name = "list"), KoinComponent {
 	
 	override fun run(): Unit = runBlocking {
 		manageTl.listTrustedLists(profile).fold(
-			ifLeft = { error -> echo("❌ ${error.message}", err = true) },
+			ifLeft = { error ->
+				echo("❌ ${error.message}", err = true)
+				error.details?.let { echo("Details: $it", err = true) }
+				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+			},
 			ifRight = { lists ->
 				val scope = profile?.let { "profile '$it'" } ?: "global config"
 				if (lists.isEmpty()) {

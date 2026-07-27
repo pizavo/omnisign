@@ -167,6 +167,8 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 		manageProfile.get(name).fold(
 			ifLeft = { error ->
 				echo("❌ ${error.message}", err = true)
+				error.details?.let { echo("Details: $it", err = true) }
+				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
 			},
 			ifRight = { existing ->
 				val updated = buildPatchedProfile(existing)
@@ -174,6 +176,7 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 					ifLeft = { error ->
 						echo("❌ Failed to save profile: ${error.message}", err = true)
 						error.details?.let { echo("Details: $it", err = true) }
+						error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
 					},
 					ifRight = {
 						echo("✅ Profile '$name' updated.")

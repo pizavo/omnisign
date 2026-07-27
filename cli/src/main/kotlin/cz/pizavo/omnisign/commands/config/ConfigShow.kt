@@ -28,6 +28,7 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 			ifLeft = { error ->
 				echo("❌ Failed to load configuration: ${error.message}", err = true)
 				if (error.details != null) echo("Details: ${error.details}", err = true)
+				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
 				throw ProgramResult(1)
 			},
 			ifRight = { config ->

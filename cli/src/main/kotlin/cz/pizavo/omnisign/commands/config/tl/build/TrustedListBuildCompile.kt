@@ -40,7 +40,11 @@ class TrustedListBuildCompile : CliktCommand(name = "compile"), KoinComponent {
 	
 	override fun run(): Unit = runBlocking {
 		manageTl.getDraft(draftName).fold(
-			ifLeft = { error -> echo("❌ ${error.message}", err = true) },
+			ifLeft = { error ->
+				echo("❌ ${error.message}", err = true)
+				error.details?.let { echo("Details: $it", err = true) }
+				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+			},
 			ifRight = { draft ->
 				val outputFile = out?.toFile() ?: File("$draftName.xml")
 				runCatching { compiler.compileTo(draft, outputFile) }
@@ -52,7 +56,11 @@ class TrustedListBuildCompile : CliktCommand(name = "compile"), KoinComponent {
 						CustomTrustedListConfig(draftName, outputFile.toURI().toString()),
 						profile
 					).fold(
-						ifLeft = { error -> echo("❌ Failed to register: ${error.message}", err = true) },
+						ifLeft = { error ->
+							echo("❌ Failed to register: ${error.message}", err = true)
+							error.details?.let { echo("Details: $it", err = true) }
+							error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+						},
 						ifRight = {
 							echo("✅ Registered as trusted list '$draftName' in $scope.")
 							echo("⚠️ No signing certificate — TL signature will not be verified.")

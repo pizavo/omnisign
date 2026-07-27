@@ -152,12 +152,15 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 					Json.encodeToString(
 						JsonSigningResult(
 							success = false,
-							error = JsonError(message = "Configuration Error: ${error.message}")
+							error = error.toJsonError()
+								.copy(message = "Configuration Error: ${error.message}")
 						)
 					)
 				)
 			} else {
 				echo("❌ Configuration Error: ${error.message}", err = true)
+				error.details?.let { echo("Details: $it", err = true) }
+				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
 			}
 			throw ProgramResult(1)
 		}
@@ -203,7 +206,7 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 				} else {
 					echo("❌ Signing Error: ${error.message}", err = true)
 					error.details?.let { echo("Details: $it", err = true) }
-					error.cause?.let { echo("Cause: ${it.message}", err = true) }
+					error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
 				}
 				throw ProgramResult(1)
 			},

@@ -77,7 +77,11 @@ class ScheduleJobAdd : CliktCommand(name = "add"), KoinComponent {
 			backupRetention = backups,
 		)
 		manageJobs.upsert(job).fold(
-			ifLeft = { echo("Failed to save job: ${it.message}", err = true) },
+			ifLeft = { error ->
+				echo("Failed to save job: ${error.message}", err = true)
+				error.details?.let { echo("Details: $it", err = true) }
+				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+			},
 			ifRight = {
 				echo("Renewal job '$name' saved.")
 				echo("   Globs        : ${resolvedGlobs.joinToString()}")

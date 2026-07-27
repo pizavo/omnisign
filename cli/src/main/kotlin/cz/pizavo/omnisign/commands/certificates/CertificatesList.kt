@@ -52,7 +52,7 @@ class CertificatesList : CliktCommand(name = "list"), KoinComponent {
 				} else {
 					echo("❌ Failed to list certificates: ${error.message}", err = true)
 					error.details?.let { echo("Details: $it", err = true) }
-					error.cause?.let { echo("Cause: ${it.message}", err = true) }
+					error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
 				}
 				throw ProgramResult(1)
 			},

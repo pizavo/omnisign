@@ -12,7 +12,6 @@ import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.path
 import cz.pizavo.omnisign.cli.OperationConfigOptions
 import cz.pizavo.omnisign.cli.OutputConfig
-import cz.pizavo.omnisign.cli.json.JsonError
 import cz.pizavo.omnisign.cli.json.JsonExtensionResult
 import cz.pizavo.omnisign.cli.json.toJsonError
 import cz.pizavo.omnisign.cli.json.toJsonResult
@@ -88,12 +87,15 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
 					Json.encodeToString(
 						JsonExtensionResult(
 							success = false,
-							error = JsonError(message = "Configuration Error: ${error.message}")
+							error = error.toJsonError()
+								.copy(message = "Configuration Error: ${error.message}")
 						)
 					)
 				)
 			} else {
 				echo("❌ Configuration Error: ${error.message}", err = true)
+				error.details?.let { echo("Details: $it", err = true) }
+				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
 			}
 			throw ProgramResult(1)
 		}
@@ -120,6 +122,7 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
 				} else {
 					echo("❌ Extension Error: ${error.message}", err = true)
 					error.details?.let { echo("Details: $it", err = true) }
+					error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
 				}
 				throw ProgramResult(1)
 			},

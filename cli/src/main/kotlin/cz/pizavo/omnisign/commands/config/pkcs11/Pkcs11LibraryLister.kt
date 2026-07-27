@@ -23,7 +23,11 @@ class Pkcs11LibraryLister : CliktCommand(name = "list"), KoinComponent {
 
     override fun run(): Unit = runBlocking {
         managePkcs11.listLibraries().fold(
-            ifLeft = { error -> echo("❌ ${error.message}", err = true) },
+            ifLeft = { error ->
+                echo("❌ ${error.message}", err = true)
+                error.details?.let { echo("Details: $it", err = true) }
+                error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+            },
             ifRight = { libraries ->
                 if (libraries.isEmpty()) {
                     echo("No custom PKCS#11 libraries registered.")
