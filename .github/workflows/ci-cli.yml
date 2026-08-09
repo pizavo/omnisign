@@ -40,3 +40,7 @@ jobs:
       - name: Build and test
         if: steps.detect.outputs.relevant == 'true'
         run: ./gradlew :shared:jvmTest :cli:test :cli:shadowJar
+
+      - name: Verify third-party notices
+        if: steps.detect.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest'
+        run: ./gradlew generateThirdPartyNotices -PnoticesCheck=true

@@ -1,0 +1,10 @@
+<resources>
+	<string name="credits_title">Credits</string>
+	<string name="credits_intro">OmniSign is built on the open-source components below. Each is used under its own licence, separately from OmniSign\'s own. The full text of every licence named here is installed with the application.</string>
+	<string name="credits_license_file">Full text: licenses/%1$s</string>
+	<string name="credits_artifact_count">%1$s module(s)</string>
+	<string name="credits_licenses_location">Licence texts are installed in the licenses folder next to the application.</string>
+	<string name="credits_full_notices">Full third-party notices</string>
+	<string name="credits_loading">Loading credits…</string>
+	<string name="credits_unavailable">The credits list could not be loaded.</string>
+</resources>

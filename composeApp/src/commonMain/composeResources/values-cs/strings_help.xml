@@ -3,6 +3,7 @@
 	<string name="help_cd_open_github_repository">Otevřít repozitář na GitHubu</string>
 	<string name="help_action_documentation">Dokumentace</string>
 	<string name="help_cd_open_documentation">Otevřít online dokumentaci</string>
+	<string name="help_cd_open_credits">Zobrazit poděkování a licence třetích stran</string>
 	<string name="help_label_license">Licence</string>
 	<string name="help_section_support">Podpora</string>
 	<string name="help_support_description">Pokud něco selže, povolte ladicí protokolování, problém zopakujte, poté protokoly exportujte a přiložte je ke svému hlášení.</string>

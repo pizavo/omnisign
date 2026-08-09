@@ -1,0 +1,10 @@
+<resources>
+	<string name="credits_title">Poděkování</string>
+	<string name="credits_intro">OmniSign staví na níže uvedených open-source komponentách. Každá z nich se užívá pod vlastní licencí, oddělenou od licence aplikace OmniSign. Úplné znění každé zde jmenované licence se instaluje spolu s aplikací.</string>
+	<string name="credits_license_file">Úplné znění: licenses/%1$s</string>
+	<string name="credits_artifact_count">%1$s modulů</string>
+	<string name="credits_licenses_location">Znění licencí se instaluje do složky licenses vedle aplikace.</string>
+	<string name="credits_full_notices">Úplný přehled licencí třetích stran</string>
+	<string name="credits_loading">Načítání poděkování…</string>
+	<string name="credits_unavailable">Seznam komponent se nepodařilo načíst.</string>
+</resources>

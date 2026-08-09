@@ -74,9 +74,11 @@ private const val HelpAuthorLine = "© 2026 Pizavo"
 /**
  * Help panel body rendered inside the right-hand [IslandSidePanel].
  *
- * Shows the source repository and online documentation as icon buttons at the
- * top and pins the license, build version and author to the bottom of the
- * panel. Between them, on the desktop target only, a Support section exposes
+ * Shows the source repository, online documentation and third-party credits as
+ * icon buttons at the top and pins the license, build version and author to the
+ * bottom of the panel. The credits open in a [CreditsDialog] rather than inline,
+ * so the panel stays short while the third-party notices remain one click away.
+ * Between them, on the desktop target only, a Support section exposes
  * log export and debug-logging controls — it is hidden on web, where
  * [isSupportLogAvailable] is `false`. External links open through
  * [LocalUriHandler] so the panel works unchanged on desktop (JVM) and web
@@ -97,6 +99,7 @@ fun ColumnScope.HelpPanel(
     onDebugLoggingChange: (Boolean) -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
+    var creditsVisible by remember { mutableStateOf(false) }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -115,6 +118,16 @@ fun ColumnScope.HelpPanel(
             contentDescription = stringResource(Res.string.help_cd_open_documentation),
             onClick = { uriHandler.openUri(HelpDocumentationUrl) },
         )
+        HelpActionButton(
+            label = stringResource(Res.string.credits_title),
+            icon = Res.drawable.icon_scale,
+            contentDescription = stringResource(Res.string.help_cd_open_credits),
+            onClick = { creditsVisible = true },
+        )
+    }
+
+    if (creditsVisible) {
+        CreditsDialog(onDismiss = { creditsVisible = false })
     }
 
     if (remember { isSupportLogAvailable() }) {

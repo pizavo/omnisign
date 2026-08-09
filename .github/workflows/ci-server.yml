@@ -36,3 +36,7 @@ jobs:
       - name: Build and test
         if: steps.detect.outputs.relevant == 'true'
         run: ./gradlew :shared:jvmTest :server:test :server:buildFatJar
+
+      - name: Verify third-party notices
+        if: steps.detect.outputs.relevant == 'true'
+        run: ./gradlew generateThirdPartyNotices -PnoticesCheck=true

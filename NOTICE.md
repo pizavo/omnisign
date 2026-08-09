@@ -4,7 +4,28 @@ OmniSign is distributed under the GNU Affero General Public License v3.0 or late
 [LICENSE.md](LICENSE.md).
 
 This file records third-party material **copied into this repository**. Libraries resolved at build
-time by Gradle and npm are not listed here, because their licences travel inside their own artifacts.
+time and shipped inside the installers are listed in [THIRD-PARTY.md](THIRD-PARTY.md), together with
+their licences and copyright notices; the full text of every licence involved is in
+[`licenses/`](licenses/). Both files are installed alongside the application and are reachable from
+the desktop app under Help → Credits.
+
+## EU DSS
+
+OmniSign is built on [EU DSS (Digital Signature Services)](https://github.com/esig/dss), which the
+CLI, server and desktop packages include. DSS is used under the **GNU Lesser General Public License,
+version 2.1 or later**; its full text is in [`licenses/LGPL-2.1.txt`](licenses/LGPL-2.1.txt).
+
+Copyright © 2015 European Commission, provided under the CEF programme.
+
+DSS is a separate work with its own licence, not part of OmniSign. Its sources are available from the
+project above and from the same place this distribution was obtained. OmniSign links DSS without
+modifying it, and the desktop and server packages ship it as separate, replaceable jars. The web
+build contains no DSS at all — it runs in WebAssembly, where a Java library cannot execute, and
+delegates signing and validation to the server.
+
+This notice is given because the DSS artifacts published to Maven Central carry no licence text of
+their own — the licence is declared only in their POM metadata, which is not distributed with the
+application.
 
 ## Tabler Icons
 
