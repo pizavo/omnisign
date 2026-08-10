@@ -247,6 +247,10 @@ internal object EnglishMessages {
 		MessageKey.WARNING_REVOCATION_NOT_FOUND ->
 			"Revocation data (CRL/OCSP) could not be retrieved for %1\$s. " +
 				"Long-term signature validity may be affected."
+		MessageKey.WARNING_REVOCATION_AFTER_CERTIFICATE_EXPIRY ->
+			"Revocation data for %1\$s was issued after the certificate expired and cannot be used: " +
+				"the issuer no longer vouches for that period. Long-term validation material has to " +
+				"be added while the certificate is still valid."
 		MessageKey.WARNING_REVOCATION_UNTRUSTED_CHAIN ->
 			"Revocation checks were skipped for %1\$s in untrusted chain(s). " +
 				"This is expected when no trusted list is configured."

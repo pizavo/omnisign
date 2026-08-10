@@ -665,8 +665,13 @@ class DssSigningRepository(
 		 *
 		 * [DssWarningSanitizer.WarningCategory.REVOCATION_NOT_FOUND] is suppressed because the PAdES
 		 * extension process embeds revocation data independently of the certificate verifier's
-		 * pre-extension check: if the extension fails DSS throws, and if it succeeds the data is
-		 * embedded, so the warning is a false positive.
+		 * pre-extension check, which runs before anything has been embedded: on a signing operation
+		 * that reaches B-LT or B-LTA the warning describes a gap the very next step closes.
+		 *
+		 * This holds only while *signing*. Augmenting an already-signed document has no later step to
+		 * close the gap, which is why the archiving path keeps the category — see
+		 * [DssServiceFactory.buildExtendCertificateVerifier] and
+		 * [DssWarningSanitizer.WarningCategory.blocksLongTermMaterial].
 		 *
 		 * [DssWarningSanitizer.WarningCategory.FRESH_REVOCATION_MISSING] is suppressed because it is
 		 * unavoidable here: it reports revocation data that does not postdate the signature, and no

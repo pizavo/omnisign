@@ -134,6 +134,7 @@ fun Route.timestampRoutes() {
 					val meta = TimestampResultMeta(
 						newLevel = result.newSignatureLevel,
 						annotatedWarnings = result.annotatedWarnings,
+						revocationDataMissing = result.revocationDataMissing,
 					)
 					call.response.header("X-OmniSign-Result", serverJson.encodeToString(meta))
 					call.respondBytes(result.outputBytes, ContentType.Application.Pdf)

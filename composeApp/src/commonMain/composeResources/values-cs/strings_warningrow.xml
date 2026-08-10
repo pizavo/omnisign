@@ -2,6 +2,7 @@
 	<string name="warningrow_affected_timestamps">Dotčená časová razítka</string>
 	<string name="warningrow_affected_certificates">Dotčené certifikáty</string>
 	<string name="warning_revocation_not_found">Data o zneplatnění (CRL/OCSP) se nepodařilo získat pro %1$s. Může to ovlivnit dlouhodobou platnost podpisu.</string>
+	<string name="warning_revocation_after_certificate_expiry">Data o zneplatnění pro %1$s byla vydána až po vypršení certifikátu, a nelze je proto použít – vydavatel se ke stavu certifikátu po jeho vypršení již nevyjadřuje. Materiál pro dlouhodobé ověření je nutné doplnit ještě v době platnosti certifikátu.</string>
 	<string name="warning_revocation_untrusted_chain">Kontroly zneplatnění byly přeskočeny pro %1$s v nedůvěryhodných řetězcích. To je očekávané, pokud není nakonfigurován žádný důvěryhodný seznam.</string>
 	<string name="warning_revocation_status_unknown">Stav zneplatnění se nepodařilo potvrdit pro %1$s. Certifikační řetězec nemusí být plně důvěryhodný pro všechny ověřovatele.</string>
 	<string name="warning_revocation_poe_missing">Data o zneplatnění potřebná pro důkaz existence (POE) chybí pro %1$s.</string>

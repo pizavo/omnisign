@@ -3,12 +3,13 @@ package cz.pizavo.omnisign.data.remote
 import arrow.core.Either
 import arrow.core.left
 import cz.pizavo.omnisign.api.model.responses.TimestampResultMeta
+import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.model.result.OperationResult
-import cz.pizavo.omnisign.domain.model.result.RenewalNeed
+import cz.pizavo.omnisign.domain.model.result.RenewalAssessment
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import io.ktor.client.HttpClient
 import io.ktor.client.call.body
@@ -83,13 +84,15 @@ class RemoteArchivingRepository(
                 newSignatureLevel = meta.newLevel,
                 annotatedWarnings = meta.annotatedWarnings,
                 rawWarnings = meta.annotatedWarnings.map { it.summary.english() },
+                revocationDataMissing = meta.revocationDataMissing,
+                achievedLevel = SignatureLevel.entries.firstOrNull { it.name == meta.newLevel },
             )
         }.mapLeftSuspend { exception -> extensionError(exception) }
 
     override suspend fun needsArchivalRenewal(
         filePath: String,
         renewalBufferDays: Int,
-    ): OperationResult<RenewalNeed> =
+    ): OperationResult<RenewalAssessment> =
         ArchivingError.webRenewalUnsupported(
             details = "Renewal jobs scan the local filesystem; the web client has no filesystem access",
         ).left()

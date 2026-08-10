@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.domain.model.result
 
+import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+
 /**
  * Result of an archiving operation.
  *
@@ -9,9 +11,24 @@ package cz.pizavo.omnisign.domain.model.result
  *
  * @property outputBytes Raw bytes of the extended PDF.
  * @property outputName Suggested document name for the extended output.
- * @property newSignatureLevel Name of the PAdES level the document was extended to.
+ * @property newSignatureLevel Display name of the PAdES level the output document actually reached,
+ *   as read back from [outputBytes]. Because it has to name something, it falls back to the
+ *   requested level when the produced document could not be inspected at all; [achievedLevel] is the
+ *   field that distinguishes that case, and a caller deciding anything of consequence should read
+ *   that one instead.
+ * @property achievedLevel The level reached, typed — or `null` when it could not be determined,
+ *   because the output could not be parsed or its signature falls outside the four PAdES baseline
+ *   levels. `null` means *unknown*, not *low*: it is deliberately distinct from a level below the
+ *   requested one, so a caller can refuse to act on an unconfirmed result rather than assume either
+ *   way. Comparing it against the requested level is how a caller learns whether the operation
+ *   delivered.
  * @property annotatedWarnings Warnings enriched with affected entity IDs for tooltip display.
  * @property rawWarnings Original, unsanitized warning strings from DSS for verbose / JSON output.
+ * @property revocationDataMissing Whether the extension could not embed the revocation data the
+ *   requested level needs, so [outputBytes] did not reach [newSignatureLevel]. The bytes are still
+ *   returned — they carry whatever the extension did achieve — but a caller must not present them as
+ *   the requested level: the desktop asks before saving them and the renewal scheduler refuses to
+ *   overwrite the original with them.
  */
 data class ArchivingResult(
     val outputBytes: ByteArray,
@@ -19,6 +36,8 @@ data class ArchivingResult(
     val newSignatureLevel: String,
     val annotatedWarnings: List<AnnotatedWarning> = emptyList(),
     val rawWarnings: List<String> = emptyList(),
+    val revocationDataMissing: Boolean = false,
+    val achievedLevel: SignatureLevel? = null,
 ) {
     /**
      * Plain-text English warning summaries derived from [annotatedWarnings] for backward-compatible
@@ -37,7 +56,9 @@ data class ArchivingResult(
                 outputName == other.outputName &&
                 newSignatureLevel == other.newSignatureLevel &&
                 annotatedWarnings == other.annotatedWarnings &&
-                rawWarnings == other.rawWarnings
+                rawWarnings == other.rawWarnings &&
+                revocationDataMissing == other.revocationDataMissing &&
+                achievedLevel == other.achievedLevel
     }
 
     /**
@@ -49,6 +70,8 @@ data class ArchivingResult(
         result = 31 * result + newSignatureLevel.hashCode()
         result = 31 * result + annotatedWarnings.hashCode()
         result = 31 * result + rawWarnings.hashCode()
+        result = 31 * result + revocationDataMissing.hashCode()
+        result = 31 * result + achievedLevel.hashCode()
         return result
     }
 }

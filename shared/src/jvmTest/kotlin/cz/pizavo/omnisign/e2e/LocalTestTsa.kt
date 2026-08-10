@@ -38,8 +38,19 @@ class LocalTestTsa private constructor(private val server: HttpServer) : AutoClo
 	override fun close() = server.stop(0)
 
 	companion object {
-		/** Start a TSA backed by [p12Bytes] (PKCS#12, password [password]) on an ephemeral loopback port. */
-		fun start(p12Bytes: ByteArray, password: String = "test1234"): LocalTestTsa {
+		/**
+		 * Start a TSA backed by [p12Bytes] (PKCS#12, password [password]) on an ephemeral loopback port.
+		 *
+		 * @param genTime Supplies the time each issued token asserts. Defaults to the wall clock;
+		 *   override it to date tokens in the past, which is the only way a test can build a document
+		 *   that was timestamped while its signing certificate was still valid and has since expired.
+		 *   The TSA certificate must itself be valid at whatever time this returns.
+		 */
+		fun start(
+			p12Bytes: ByteArray,
+			password: String = "test1234",
+			genTime: () -> Date = { Date() },
+		): LocalTestTsa {
 			Security.addProvider(BouncyCastleProvider())
 			val keyStore = KeyStore.getInstance("PKCS12")
 			p12Bytes.inputStream().use { keyStore.load(it, password.toCharArray()) }
@@ -62,7 +73,8 @@ class LocalTestTsa private constructor(private val server: HttpServer) : AutoClo
 			server.createContext("/") { exchange ->
 				try {
 					val request = TimeStampRequest(exchange.requestBody.readAllBytes())
-					val response = responseGenerator.generate(request, BigInteger.valueOf(counter.incrementAndGet()), Date())
+					val response =
+						responseGenerator.generate(request, BigInteger.valueOf(counter.incrementAndGet()), genTime())
 					val bytes = response.encoded
 					exchange.responseHeaders.set("Content-Type", "application/timestamp-reply")
 					exchange.sendResponseHeaders(200, bytes.size.toLong())

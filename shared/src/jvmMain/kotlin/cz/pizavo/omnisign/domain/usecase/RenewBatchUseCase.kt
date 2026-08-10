@@ -11,7 +11,9 @@ import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.RenewBatchResult
 import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
 import cz.pizavo.omnisign.domain.model.result.RenewJobResult
+import cz.pizavo.omnisign.domain.model.result.RenewalAssessment
 import cz.pizavo.omnisign.domain.model.result.RenewalNeed
+import cz.pizavo.omnisign.domain.model.result.RenewalReason
 import cz.pizavo.omnisign.domain.model.result.RenewalRunError
 import cz.pizavo.omnisign.domain.model.result.RenewalRunJobSummary
 import cz.pizavo.omnisign.domain.model.result.RenewalRunOutcome
@@ -55,6 +57,27 @@ private val logger = KotlinLogging.logger {}
  * sealed by one, is nearing the expiry of its signing certificate or of one of its
  * algorithms. Because the target is always B-LTA, a matched B-T or B-LT document is
  * promoted to B-LTA as part of renewal.
+ *
+ * A file is only overwritten once the extension is known to have delivered. Two independent checks
+ * guard that, and either one leaves the original untouched and logs the reason rather than reporting
+ * a renewal that did not happen: the cause, when the extension reports
+ * [cz.pizavo.omnisign.domain.model.result.ArchivingResult.revocationDataMissing], and the effect,
+ * when [cz.pizavo.omnisign.domain.model.result.ArchivingResult.achievedLevel] read back out of the
+ * produced bytes is below B-LTA. Overwriting an archive with a weaker document would not just lose
+ * ground — the fresh timestamp resets the renewal clock, hiding the gap until it too ages.
+ *
+ * An achieved level that could not be established at all counts as a failure too, for the same
+ * reason [cz.pizavo.omnisign.domain.model.result.RenewalNeed] treats an unresolvable timestamp
+ * certificate as undeterminable rather than safe: an archival job may only replace a file it has
+ * confirmed is stronger, and "unknown" is not a confirmation.
+ *
+ * One failure is recorded as terminal rather than as an error: an extension that could not obtain
+ * usable revocation data for a document whose deadline
+ * ([cz.pizavo.omnisign.domain.model.result.RenewalAssessment.dueAt]) has already passed. The
+ * assessment deliberately stops short of calling such a document hopeless, because it runs offline
+ * and cannot see the trusted-list metadata that might still rescue it; the extension attempt does
+ * load that metadata, so its failure is the confirmation. Recording it as an error instead would
+ * leave every future run reporting itself as failing over a file nothing can repair.
  *
  * This use case encapsulates the core batch logic shared by the CLI `renew`
  * command and the desktop app's headless renewal mode. Presentation concerns
@@ -166,7 +189,14 @@ class RenewBatchUseCase(
                     .map { RenewalRunError(path = it.path, message = it.message ?: "unknown error") }
             }
             val warnings = result.jobs.flatMap { it.files }.flatMap { it.warnings }.distinct()
-            val jobs = result.jobs.map { RenewalRunJobSummary(name = it.name, renewed = it.renewed, errors = it.errors) }
+            val jobs = result.jobs.map {
+                RenewalRunJobSummary(
+                    name = it.name,
+                    renewed = it.renewed,
+                    errors = it.errors,
+                    unrecoverable = it.unrecoverable,
+                )
+            }
             runRecordStore.save(
                 RenewalRunRecord(
                     lastRunAt = now,
@@ -175,6 +205,8 @@ class RenewBatchUseCase(
                     renewed = result.renewed,
                     skipped = result.skipped,
                     errors = result.errors,
+                    unrecoverable = result.unrecoverable,
+                    unrecoverablePaths = result.unrecoverablePaths,
                     failureReason = result.lockError,
                     errorDetails = errorDetails,
                     warnings = warnings,
@@ -267,6 +299,12 @@ class RenewBatchUseCase(
         var totalRenewed = 0
         var totalSkipped = 0
         var totalErrors = 0
+        var totalUnrecoverable = 0
+
+        val previouslyTerminal = runCatching { runRecordStore.load()?.unrecoverablePaths?.toSet() }
+            .getOrNull()
+            .orEmpty()
+        val terminalPaths = mutableListOf<String>()
         val jobResults = mutableListOf<RenewJobResult>()
 
         for ((_, job) in jobsToRun) {
@@ -301,7 +339,32 @@ class RenewBatchUseCase(
 
             var jobRenewed = 0
             var jobErrors = 0
+            var jobUnrecoverable = 0
+            var jobNewlyUnrecoverable = 0
             val fileStatuses = mutableListOf<RenewFileStatus>()
+
+            /**
+             * Record [path] as past its preservation deadline: counted apart from errors, logged and
+             * announced only the first time, and never retried into a permanent run failure.
+             */
+            fun recordTerminal(path: String, message: String, reason: RenewalReason?) {
+                totalUnrecoverable++
+                jobUnrecoverable++
+                terminalPaths += path
+                if (path !in previouslyTerminal) {
+                    jobNewlyUnrecoverable++
+                    logger.warn { "[TERMINAL] $path — $message" }
+                    appendLog(job.logFile, "[TERMINAL] $path — $message")
+                }
+                fileStatuses.add(
+                    RenewFileStatus(
+                        path = path,
+                        status = RenewFileStatus.Status.UNRECOVERABLE,
+                        message = message,
+                        reason = reason,
+                    )
+                )
+            }
 
             for (file in files) {
                 totalChecked++
@@ -316,12 +379,14 @@ class RenewBatchUseCase(
                             RenewFileStatus(path = path, status = RenewFileStatus.Status.ERROR, message = error.message)
                         )
                     },
-                    ifRight = { need ->
-                        when (need) {
+                    ifRight = { assessment ->
+                        when (assessment.need) {
                             RenewalNeed.NOT_NEEDED -> {
                                 totalSkipped++
-                                appendLog(job.logFile, "[SKIP]  $path — timestamp still valid")
-                                fileStatuses.add(RenewFileStatus(path = path, status = RenewFileStatus.Status.SKIPPED))
+                                appendLog(job.logFile, "[SKIP]  $path — protection is current, nothing due yet")
+                                fileStatuses.add(
+                                    RenewFileStatus(path = path, status = RenewFileStatus.Status.SKIPPED)
+                                )
                                 return@fold
                             }
                             RenewalNeed.NO_SIGNATURE -> {
@@ -331,8 +396,29 @@ class RenewBatchUseCase(
                                 fileStatuses.add(RenewFileStatus(path = path, status = RenewFileStatus.Status.SKIPPED, message = "No signature to renew"))
                                 return@fold
                             }
+                            RenewalNeed.UNRECOVERABLE -> {
+                                recordTerminal(path, unrecoverableMessage(assessment), assessment.reason)
+                                return@fold
+                            }
                             RenewalNeed.NEEDED -> { }
                         }
+
+                        if (assessment.reason == RenewalReason.BELOW_LT && !job.promoteBelowLt) {
+                            totalSkipped++
+                            val message = "below B-LT and this job does not promote such documents"
+                            appendLog(job.logFile, "[SKIP]  $path — $message")
+                            fileStatuses.add(
+                                RenewFileStatus(
+                                    path = path,
+                                    status = RenewFileStatus.Status.SKIPPED_BY_POLICY,
+                                    message = message,
+                                    reason = assessment.reason,
+                                )
+                            )
+                            return@fold
+                        }
+
+                        val targetLevel = targetLevelFor(assessment.reason)
 
                         if (dryRun) {
                             totalRenewed++
@@ -376,7 +462,7 @@ class RenewBatchUseCase(
                             ArchivingParameters(
                                 inputBytes = inputBytes,
                                 inputName = file.name,
-                                targetLevel = SignatureLevel.PADES_BASELINE_LTA,
+                                targetLevel = targetLevel,
                                 resolvedConfig = resolvedConfig,
                             )
                         ).fold(
@@ -393,7 +479,58 @@ class RenewBatchUseCase(
                                 )
                             },
                             ifRight = { result ->
-                                val validationError = verifyRenewedOutput(file, result.outputBytes, job.renewalBufferDays)
+                                if (result.revocationDataMissing) {
+                                    val deadline = assessment.dueAt
+                                    if (deadline != null && deadline <= Clock.System.now()) {
+                                        recordTerminal(
+                                            path,
+                                            "the attempt confirmed no usable revocation data can be obtained: the " +
+                                                "deadline passed $deadline and the original was left unchanged",
+                                            assessment.reason,
+                                        )
+                                        return@fold
+                                    }
+                                    totalErrors++
+                                    jobErrors++
+                                    val reason = "renewal could not embed the revocation data " +
+                                        "${targetLevel.name} requires; the original was left unchanged"
+                                    logFileError(job.logFile, path, reason)
+                                    fileStatuses.add(
+                                        RenewFileStatus(
+                                            path = path,
+                                            status = RenewFileStatus.Status.ERROR,
+                                            message = reason,
+                                            warnings = result.warnings,
+                                        )
+                                    )
+                                    return@fold
+                                }
+                                val achieved = result.achievedLevel
+                                if (achieved == null || achieved < targetLevel) {
+                                    totalErrors++
+                                    jobErrors++
+                                    val reason = if (achieved == null) {
+                                        "the level of the renewed document could not be established, so it was not " +
+                                            "confirmed to have reached ${targetLevel.name}; " +
+                                            "the original was left unchanged"
+                                    } else {
+                                        "renewal produced a ${achieved.name} document rather than " +
+                                            "${targetLevel.name}; the original was left unchanged"
+                                    }
+                                    logFileError(job.logFile, path, reason)
+                                    fileStatuses.add(
+                                        RenewFileStatus(
+                                            path = path,
+                                            status = RenewFileStatus.Status.ERROR,
+                                            message = reason,
+                                            warnings = result.warnings,
+                                        )
+                                    )
+                                    return@fold
+                                }
+                                val validationError = verifyRenewedOutput(
+                                    file, result.outputBytes, job.renewalBufferDays, assessment.reason,
+                                )
                                 if (validationError != null) {
                                     totalErrors++
                                     jobErrors++
@@ -443,7 +580,7 @@ class RenewBatchUseCase(
                                 }
                                 totalRenewed++
                                 jobRenewed++
-                                appendLog(job.logFile, "[RENEWED] $path")
+                                appendLog(job.logFile, "${renewedTag(assessment.reason)} $path — now ${achieved.name}")
                                 result.rawWarnings.forEach { w ->
                                     appendLog(job.logFile, "[WARN] $path — $w")
                                 }
@@ -452,6 +589,7 @@ class RenewBatchUseCase(
                                         path = path,
                                         status = RenewFileStatus.Status.RENEWED,
                                         warnings = result.warnings,
+                                        reason = assessment.reason,
                                     )
                                 )
                             }
@@ -466,6 +604,8 @@ class RenewBatchUseCase(
                     files = fileStatuses,
                     renewed = jobRenewed,
                     errors = jobErrors,
+                    unrecoverable = jobUnrecoverable,
+                    newlyUnrecoverable = jobNewlyUnrecoverable,
                     notify = job.notify,
                 )
             )
@@ -476,9 +616,52 @@ class RenewBatchUseCase(
             renewed = totalRenewed,
             skipped = totalSkipped,
             errors = totalErrors,
+            unrecoverable = totalUnrecoverable,
+            unrecoverablePaths = terminalPaths,
             dryRun = dryRun,
             jobs = jobResults,
         )
+    }
+
+    /**
+     * The level a document has to be extended to in order to close the gap [reason] names.
+     *
+     * [RenewalReason.LT_REFRESH_NEEDED] deliberately targets B-LT rather than B-LTA: its revocation
+     * data does not cover the signature, and an archival timestamp would seal that gap rather than
+     * close it. Refreshing first leaves the document at B-LT with data that does cover it, and the
+     * next run seals it as [RenewalReason.LT_NOT_SEALED]. Every other reason is closed by reaching
+     * B-LTA, which embeds revocation data and anchors it in one operation.
+     */
+    private fun targetLevelFor(reason: RenewalReason?): SignatureLevel =
+        if (reason == RenewalReason.LT_REFRESH_NEEDED) {
+            SignatureLevel.PADES_BASELINE_LT
+        } else {
+            SignatureLevel.PADES_BASELINE_LTA
+        }
+
+    /**
+     * The job-log tag for a completed step, so the log distinguishes a document that was brought up
+     * to a level it had never reached from one whose existing protection was renewed.
+     */
+    private fun renewedTag(reason: RenewalReason?): String = when (reason) {
+        RenewalReason.BELOW_LT, RenewalReason.LT_NOT_SEALED -> "[PROMOTED]"
+        RenewalReason.LT_REFRESH_NEEDED -> "[REFRESHED]"
+        else -> "[RENEWED]"
+    }
+
+    /**
+     * A human-readable explanation of why nothing can be done for a document any more, naming the
+     * deadline that has passed so the operator can see how long ago the chance was lost.
+     */
+    private fun unrecoverableMessage(assessment: RenewalAssessment): String {
+        val deadline = assessment.dueAt?.let { " (expired $it)" } ?: ""
+        return when (assessment.reason) {
+            RenewalReason.BELOW_LT ->
+                "the signing certificate expired$deadline before revocation data was embedded, so this " +
+                    "document can no longer reach ${SignatureLevel.PADES_BASELINE_LT.name}"
+
+            else -> "the deadline for the required preservation step has passed$deadline"
+        }
     }
 
     /**
@@ -670,16 +853,26 @@ class RenewBatchUseCase(
 
     /**
      * Re-run the coverage-aware renewal check on the just-produced [outputBytes] before they
-     * overwrite [file]. A sound renewal must parse and report that it *no longer* needs renewal;
-     * otherwise the extension produced a malformed or no-stronger document and the original must be
-     * preserved rather than replaced.
+     * overwrite [file]. A sound step must parse and must have *moved the document on*: the check is
+     * that it no longer reports the same [actedOn] reason, not that it reports nothing at all.
+     *
+     * The distinction matters once a step can be partial. Refreshing stale revocation data leaves a
+     * document at B-LT that legitimately still needs sealing, and demanding "needs nothing" would
+     * reject that progress and preserve the weaker original for ever. Re-reporting the very same
+     * reason, on the other hand, means the extension changed nothing that mattered.
      *
      * The bytes are checked through a short-lived verify file in [file]'s own directory — the same
      * path that decides renewal in the first place — which is always deleted afterwards.
      *
+     * @param actedOn The reason the renewal set out to address.
      * @return `null` when the renewed document is sound, or a human-readable reason it is not.
      */
-    private suspend fun verifyRenewedOutput(file: File, outputBytes: ByteArray, bufferDays: Int): String? {
+    private suspend fun verifyRenewedOutput(
+        file: File,
+        outputBytes: ByteArray,
+        bufferDays: Int,
+        actedOn: RenewalReason?,
+    ): String? {
         val directory = file.absoluteFile.toPath().parent
             ?: return "could not resolve a directory to validate the renewed document"
         val verifyFile = try {
@@ -691,8 +884,12 @@ class RenewBatchUseCase(
             verifyFile.writeBytes(outputBytes)
             checkRenewalUseCase(verifyFile.absolutePathString(), bufferDays).fold(
                 ifLeft = { "the renewed document failed validation: ${it.message}" },
-                ifRight = { need ->
-                    if (need == RenewalNeed.NEEDED) "the renewed document still reports that it needs renewal" else null
+                ifRight = { assessment ->
+                    if (assessment.need == RenewalNeed.NEEDED && assessment.reason == actedOn) {
+                        "the renewed document still reports the same need (${actedOn?.name})"
+                    } else {
+                        null
+                    }
                 },
             )
         } catch (e: Exception) {

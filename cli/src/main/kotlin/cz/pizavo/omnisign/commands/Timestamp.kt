@@ -17,7 +17,9 @@ import cz.pizavo.omnisign.cli.json.toJsonError
 import cz.pizavo.omnisign.cli.json.toJsonResult
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
+import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.ExtendDocumentUseCase
 import cz.pizavo.omnisign.platform.PasswordCallback
@@ -127,6 +129,9 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
 				throw ProgramResult(1)
 			},
 			ifRight = { result ->
+				if (result.revocationDataMissing) {
+					reportIncompleteExtension(result)
+				}
 				val outputPath = outputFile.toAbsolutePath().toString()
 				outputFile.toFile().also { it.parentFile?.mkdirs() }.writeBytes(result.outputBytes)
 				if (output.json) {
@@ -147,6 +152,30 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
 		)
 	}
 	
+	/**
+	 * Report an extension that produced a document below its requested level because the revocation
+	 * data that level needs could not be embedded, and end the command with a failure exit code
+	 * without writing anything.
+	 *
+	 * Deliberately handled exactly like an extension that failed outright: the requested level was
+	 * not reached, so writing the bytes and printing "extended successfully" would tell a script the
+	 * archive is stronger than it is. A caller that wants the partial document can ask for the level
+	 * it actually reached. The collected warnings name the certificates involved.
+	 */
+	private fun reportIncompleteExtension(result: ArchivingResult): Nothing {
+		val error = ArchivingError.revocationInfoFailed(
+			details = result.warnings.joinToString("; ").ifBlank { null },
+		)
+		if (output.json) {
+			echo(Json.encodeToString(JsonExtensionResult(success = false, error = error.toJsonError())))
+		} else {
+			echo("❌ Extension incomplete: ${error.message}", err = true)
+			result.warnings.forEach { echo("  • $it", err = true) }
+			echo("Nothing was written; the document did not reach the requested level.", err = true)
+		}
+		throw ProgramResult(1)
+	}
+
 	/**
 	 * Print a formatted summary of the completed extension operation to stdout.
 	 */

@@ -4,10 +4,8 @@ sidebar_position: 4
 
 # renew
 
-Execute configured renewal jobs — checks each matched PDF tracked by renewal jobs and
-re-timestamps it in-place, always to PAdES **B-LTA**, when its archival timestamp (or a
-signature timestamp not yet sealed by one) is nearing expiry. Because the target is always
-B-LTA, a matched B-T or B-LT document is promoted to B-LTA as part of renewal.
+Execute configured renewal jobs — inspects each matched PDF and performs whichever preservation step
+that document actually needs, in place.
 
 Intended to be invoked daily by the OS scheduler registered via
 [`schedule install`](schedule#schedule-install), but can also be run manually at any time.
@@ -16,12 +14,49 @@ Intended to be invoked daily by the OS scheduler registered via
 omnisign renew [options]
 ```
 
+## What "needs renewal" means
+
+Preservation is not one action on one clock. Each PAdES level is missing something different, and the
+deadlines are not the same length — so the step a document needs, and how urgent it is, depend on
+where it currently stands:
+
+| Document is at | Step | Deadline |
+|---|---|---|
+| **B-B / B-T** — no revocation data | Embed revocation data and seal (→ B-LTA) | The **signing certificate's** expiry |
+| **B-LT**, revocation predates the signature timestamp | Refresh the revocation data (→ B-LT) | The issuer's next CRL/OCSP publication |
+| **B-LT**, revocation sound | Seal it with an archival timestamp (→ B-LTA) | The earlier of the revocation's `nextUpdate` and its issuer's expiry |
+| **B-LTA** | Re-timestamp (→ B-LTA) | The outermost timestamp's certificate expiry, or its algorithms aging out |
+
+Only the last row is the "wait until it is nearly expiring" case, and only it uses the job's renewal
+buffer. The rows above it are **due immediately**: the material they need is available now and will
+not be later, so waiting only shrinks the window.
+
+:::warning[The signing certificate is the deadline that cannot be extended]
+Once a signing certificate expires, its issuer stops vouching for that certificate's revocation
+status, and no acceptable revocation data for it can be obtained again — the standards forbid using
+data issued after expiry, and DSS enforces that. A document still at B-T when its signing certificate
+expires can therefore **never** reach B-LT. `renew` reports such a file as terminal (`[TERMINAL]`)
+rather than retrying it, because no later run can succeed either.
+
+This is why enrolling a document in a renewal job while its certificate is still valid matters, and
+why a B-T document is reported as due on its first run rather than years later when some timestamp
+approaches expiry.
+:::
+
+Renewal is coverage-aware at B-LTA: a timestamp already sealed by a current document timestamp does
+not drive a renewal of its own, so a document is not re-timestamped on every run once one of its
+inner timestamps ages.
+
 ## Options
 
 | Option             | Description                                                            |
 |--------------------|------------------------------------------------------------------------|
 | `-j, --job <name>` | Run only the named renewal job. Runs all configured jobs when omitted. |
 | `--dry-run`        | Report which files need renewal without modifying any file.            |
+
+A job may decline to bring up documents that carry no long-term validation material, with
+`schedule job add --no-promote` (see [`schedule job add`](schedule#schedule-job-add-options)). Such files are
+then reported as skipped by policy, never silently ignored.
 
 ## Examples
 
@@ -36,6 +71,28 @@ omnisign renew --dry-run
 omnisign renew --job university
 ```
 
+## Per-file outcomes
+
+| Tag | Meaning |
+|---|---|
+| `[PROMOTED]` | The document reached a level it had not held before |
+| `[REFRESHED]` | Stale revocation data was replaced; the document is at B-LT and will be sealed next run |
+| `[RENEWED]` | Existing B-LTA protection was re-timestamped |
+| `[SKIP]` | Nothing was due, or the job declines this document's step |
+| `[TERMINAL]` | The deadline has passed — reported once, then left alone |
+| `[ERROR]` | The step failed; **the original file is left untouched** |
+
+A renewal only overwrites a file once the output is confirmed to have delivered: the extension must
+report that it embedded the revocation data the target level needs, and the level read back out of
+the produced bytes must have reached that target. A level that cannot be established counts as not
+confirmed. Otherwise the original stays as it was and the run reports an error — replacing an archive
+with a weaker document would also reset the renewal clock, hiding the gap until the new timestamp
+itself ages.
+
+Terminal files are counted separately from errors, and do not make a run unsuccessful. Nothing
+failed, and treating them as failures would leave the run permanently reporting itself as broken over
+something no run can fix — including the staleness warning, which would then never clear.
+
 ## OS notifications
 
 When a renewal job has notifications enabled (the default), OmniSign fires an OS desktop
@@ -44,6 +101,9 @@ notification after the job completes:
 - **Success** — `"N file(s) successfully re-timestamped."`
 - **Partial failure** — `"N re-timestamped, M error(s)."`
 - **Full failure** — `"N file(s) could not be re-timestamped. Digital continuity may be at risk."`
+- **Terminal documents** — raised alongside the outcome above when a run finds documents whose
+  deadline has passed. Only *newly* terminal documents are announced; a file already reported is not
+  announced again, since the condition cannot be acted on and cannot change.
 
 Disable notifications per job with `schedule job add --no-notify` (recommended for headless
 server deployments).
@@ -56,6 +116,7 @@ Pass `--json` (the global flag) to get machine-readable output:
 omnisign --json renew
 ```
 
-Returns a JSON object with `success`, `checked`, `renewed`, `skipped`, `errors`,
-`dryRun`, `jobs` (with per-file statuses), and optional `error` fields.
-
+Returns a JSON object with `success`, `checked`, `renewed`, `skipped`, `errors`, `unrecoverable`,
+`dryRun`, `jobs` and an optional `error`. Each per-file entry in `jobs` carries `path`, `status`,
+`message`, `warnings`, and a `reason` naming the preservation gap it relates to (`BELOW_LT`,
+`LT_REFRESH_NEEDED`, `LT_NOT_SEALED`, `TIMESTAMP_EXPIRING`, `ALGORITHM_WEAKENING`).

@@ -144,6 +144,50 @@ class DssServiceFactoryTest : FunSpec({
 		result.verifier.alertOnNotYetValidCertificate shouldBe null
 	}
 
+	// ── buildExtendCertificateVerifier ────────────────────────────────────────
+
+	test("extend verifier reports missing revocation data, unlike the signing verifier") {
+		val statusAlert = CollectingStatusAlert()
+		val result = factory.buildExtendCertificateVerifier(minimalConfig(checkRevocation = true)) { statusAlert }
+		result.verifier.alertOnMissingRevocationData shouldBe statusAlert
+		result.verifier.alertOnNoRevocationAfterBestSignatureTime shouldBe statusAlert
+	}
+
+	test("extend verifier keeps the signing verifier's other alerts and wiring") {
+		val statusAlert = CollectingStatusAlert()
+		val result = factory.buildExtendCertificateVerifier(minimalConfig(checkRevocation = true)) { statusAlert }
+		result.verifier.alertOnUncoveredPOE shouldBe statusAlert
+		result.verifier.alertOnInvalidTimestamp shouldBe statusAlert
+		result.verifier.alertOnRevokedCertificate shouldBe statusAlert
+		result.verifier.aiaSource shouldNotBe null
+		result.verifier.ocspSource shouldNotBe null
+		result.verifier.crlSource shouldNotBe null
+		result.verifier.isCheckRevocationForUntrustedChains shouldBe false
+	}
+
+	test("extend verifier with revocation disabled suppresses every alert") {
+		val result = factory.buildExtendCertificateVerifier(minimalConfig(checkRevocation = false))
+		result.verifier.alertOnMissingRevocationData shouldBe null
+		result.verifier.alertOnNoRevocationAfterBestSignatureTime shouldBe null
+		result.verifier.alertOnUncoveredPOE shouldBe null
+		result.tlWarnings.shouldBeEmpty()
+	}
+
+	test("extend verifier with null config suppresses every alert") {
+		val result = factory.buildExtendCertificateVerifier(null)
+		result.verifier.alertOnMissingRevocationData shouldBe null
+		result.verifier.alertOnNoRevocationAfterBestSignatureTime shouldBe null
+		result.tlWarnings.shouldBeEmpty()
+	}
+
+	test("extend verifier honours allowExpiredCertificate like the signing verifier") {
+		val config = minimalConfig().copy(
+			validation = minimalConfig().validation.copy(allowExpiredCertificate = true),
+		)
+		factory.buildExtendCertificateVerifier(config).verifier.alertOnExpiredCertificate shouldBe null
+		factory.buildExtendCertificateVerifier(minimalConfig()).verifier.alertOnExpiredCertificate shouldNotBe null
+	}
+
 	// ── buildValidationCertificateVerifier ────────────────────────────────────
 	
 	test("validation verifier with null config returns suppressed alerts and empty warnings") {

@@ -19,8 +19,16 @@ import kotlin.time.Instant
  * @property renewed Files re-timestamped in the most recent run.
  * @property skipped Files whose timestamps were still valid in the most recent run.
  * @property errors Files that failed in the most recent run.
+ * @property unrecoverable Files whose preservation deadline had already passed in the most recent
+ *   run. Recorded apart from [errors] so they neither mark the run unsuccessful nor hold back
+ *   [lastSuccessAt], which would leave the staleness alert firing for ever over something no run can
+ *   fix.
  * @property failureReason Why the run could not start, when [outcome] is [RenewalRunOutcome.FAILED]
  *   (e.g. the lock could not be acquired); `null` otherwise.
+ * @property unrecoverablePaths Files found past their preservation deadline in the most recent run.
+ *   Carried forward so the next run can tell a newly terminal document from one it has already
+ *   reported, and notify only about the former: a condition nobody can act on must be raised once,
+ *   not every day for as long as the file sits in the job's globs.
  * @property errorDetails File-scoped errors from the most recent run.
  * @property warnings Distinct user-friendly warning summaries emitted during the most recent run.
  * @property jobs Per-job rollup of the most recent run.
@@ -41,6 +49,8 @@ data class RenewalRunRecord(
     val renewed: Int = 0,
     val skipped: Int = 0,
     val errors: Int = 0,
+    val unrecoverable: Int = 0,
+    val unrecoverablePaths: List<String> = emptyList(),
     val failureReason: String? = null,
     val errorDetails: List<RenewalRunError> = emptyList(),
     val warnings: List<String> = emptyList(),

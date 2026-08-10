@@ -98,6 +98,17 @@ class CliSigningPipelineE2ETest : FunSpec({
 			},
 		)
 	}
+	every { dssServiceFactory.buildExtendCertificateVerifier(any(), any(), any()) } answers {
+		CertificateVerifierResult(
+			CommonCertificateVerifier().apply {
+				alertOnMissingRevocationData = null
+				alertOnUncoveredPOE = null
+				alertOnInvalidTimestamp = null
+				alertOnNoRevocationAfterBestSignatureTime = null
+				alertOnRevokedCertificate = null
+			},
+		)
+	}
 	every { dssServiceFactory.buildTspSource(any()) } returns
 		OnlineTSPSource(tsa.url).apply { setDataLoader(TimestampDataLoader()) }
 

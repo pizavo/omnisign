@@ -62,19 +62,26 @@ sealed interface TimestampDialogState {
 	) : TimestampDialogState
 
 	/**
-	 * Extension to B-LT failed because revocation data could not be obtained.
+	 * The extension could not obtain the revocation data the requested level needs, so the user has
+	 * to decide how to proceed. Reached in two distinct ways, told apart by [outputHeld]:
 	 *
-	 * The user can either accept a fallback to B-T (signature timestamp without
-	 * revocation data) or abort. This state is only reachable when the document
-	 * does not already contain LT-level data — if it does, an [Error] is shown
-	 * instead.
+	 * - **The extension failed outright** ([outputHeld] `false`) — DSS could not reach the CRL/OCSP
+	 *   endpoints at all and threw, so no bytes exist. Continuing re-runs the extension at B-T.
+	 *   Only reachable when the document does not already contain LT-level data; if it does, an
+	 *   [Error] is shown instead.
+	 * - **The extension produced a document below its target level** ([outputHeld] `true`) — DSS
+	 *   obtained no usable revocation data but still wrote a DSS dictionary, so the bytes exist and
+	 *   are held in the ViewModel. Continuing saves them as they are; nothing is re-run.
 	 *
 	 * @property warnings Revocation-related warnings / error details, each resolved to display text by the UI.
 	 * @property details Optional detailed error information from DSS.
+	 * @property outputHeld Whether extended bytes are already held, which decides both the
+	 *   explanation shown and what continuing does.
 	 */
 	data class RevocationWarning(
 		val warnings: List<LocalizableText>,
 		val details: String? = null,
+		val outputHeld: Boolean = false,
 	) : TimestampDialogState
 
 	/**

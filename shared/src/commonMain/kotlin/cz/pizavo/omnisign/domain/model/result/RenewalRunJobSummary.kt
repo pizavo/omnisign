@@ -14,4 +14,5 @@ data class RenewalRunJobSummary(
     val name: String,
     val renewed: Int,
     val errors: Int,
+    val unrecoverable: Int = 0,
 )

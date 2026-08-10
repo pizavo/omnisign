@@ -3,10 +3,13 @@ package cz.pizavo.omnisign.domain.usecase
 import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.RenewalJob
+import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
+import cz.pizavo.omnisign.domain.model.result.RenewalAssessment
 import cz.pizavo.omnisign.domain.model.result.RenewalNeed
+import cz.pizavo.omnisign.domain.model.result.RenewalReason
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import io.kotest.core.spec.style.FunSpec
@@ -43,7 +46,7 @@ class RenewBatchTest : FunSpec({
 				checkRenewal(path, job.renewalBufferDays).fold(
 					ifLeft = { errors++ },
 					ifRight = { needs ->
-						if (needs != RenewalNeed.NEEDED) { skipped++; return@fold }
+						if (needs.need != RenewalNeed.NEEDED) { skipped++; return@fold }
 						extend(ArchivingParameters(inputBytes = File(path).readBytes(), inputName = File(path).name))
 							.fold(ifLeft = { errors++ }, ifRight = { renewed++ })
 					}
@@ -55,7 +58,7 @@ class RenewBatchTest : FunSpec({
 	
 	test("files not needing renewal are skipped") {
 		val file = tmpFile("ok.pdf").absolutePath
-		coEvery { archivingRepository.needsArchivalRenewal(file, any()) } returns RenewalNeed.NOT_NEEDED.right()
+		coEvery { archivingRepository.needsArchivalRenewal(file, any()) } returns RenewalAssessment.notNeeded().right()
 		
 		val job = RenewalJob(name = "j", globs = emptyList())
 		val (renewed, skipped, errors) = runBatch(mapOf("j" to job), mapOf("j" to listOf(file)))
@@ -68,9 +71,9 @@ class RenewBatchTest : FunSpec({
 	
 	test("files needing renewal are extended in-place") {
 		val file = tmpFile("expiring.pdf").absolutePath
-		coEvery { archivingRepository.needsArchivalRenewal(file, any()) } returns RenewalNeed.NEEDED.right()
+		coEvery { archivingRepository.needsArchivalRenewal(file, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
 		coEvery { archivingRepository.extendDocument(match { it.inputName == File(file).name }) } returns
-			ArchivingResult(outputBytes = ByteArray(0), outputName = File(file).name, newSignatureLevel = "PADES_BASELINE_LTA").right()
+			ArchivingResult(outputBytes = ByteArray(0), outputName = File(file).name, newSignatureLevel = "PADES_BASELINE_LTA", achievedLevel = SignatureLevel.PADES_BASELINE_LTA).right()
 		
 		val job = RenewalJob(name = "j", globs = emptyList())
 		val (renewed, skipped, errors) = runBatch(mapOf("j" to job), mapOf("j" to listOf(file)))
@@ -84,11 +87,11 @@ class RenewBatchTest : FunSpec({
 		val bad = tmpFile("bad.pdf").absolutePath
 		val good = tmpFile("good.pdf").absolutePath
 		
-		coEvery { archivingRepository.needsArchivalRenewal(any(), any()) } returns RenewalNeed.NEEDED.right()
+		coEvery { archivingRepository.needsArchivalRenewal(any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
 		coEvery { archivingRepository.extendDocument(match { it.inputName == File(bad).name }) } returns
 			ArchivingError.ExtensionFailed(LocalizableText.Literal("boom")).left()
 		coEvery { archivingRepository.extendDocument(match { it.inputName == File(good).name }) } returns
-			ArchivingResult(outputBytes = ByteArray(0), outputName = File(good).name, newSignatureLevel = "PADES_BASELINE_LTA").right()
+			ArchivingResult(outputBytes = ByteArray(0), outputName = File(good).name, newSignatureLevel = "PADES_BASELINE_LTA", achievedLevel = SignatureLevel.PADES_BASELINE_LTA).right()
 		
 		val job = RenewalJob(name = "j", globs = emptyList())
 		val (renewed, skipped, errors) = runBatch(mapOf("j" to job), mapOf("j" to listOf(bad, good)))
@@ -104,7 +107,7 @@ class RenewBatchTest : FunSpec({
 		
 		coEvery { archivingRepository.needsArchivalRenewal(bad, any()) } returns
 			ArchivingError.ExtensionFailed(LocalizableText.Literal("check failed")).left()
-		coEvery { archivingRepository.needsArchivalRenewal(good, any()) } returns RenewalNeed.NOT_NEEDED.right()
+		coEvery { archivingRepository.needsArchivalRenewal(good, any()) } returns RenewalAssessment.notNeeded().right()
 		
 		val job = RenewalJob(name = "j", globs = emptyList())
 		val (renewed, skipped, errors) = runBatch(mapOf("j" to job), mapOf("j" to listOf(bad, good)))
@@ -116,7 +119,7 @@ class RenewBatchTest : FunSpec({
 	
 	test("renewal buffer from job is forwarded to check use case") {
 		val file = tmpFile("f.pdf").absolutePath
-		coEvery { archivingRepository.needsArchivalRenewal(file, 14) } returns RenewalNeed.NOT_NEEDED.right()
+		coEvery { archivingRepository.needsArchivalRenewal(file, 14) } returns RenewalAssessment.notNeeded().right()
 		
 		val job = RenewalJob(name = "j", globs = emptyList(), renewalBufferDays = 14)
 		runBatch(mapOf("j" to job), mapOf("j" to listOf(file)))

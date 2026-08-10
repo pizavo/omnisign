@@ -174,6 +174,10 @@ private fun TimestampFormContent(
  * Warning content shown when revocation data could not be obtained during
  * a B-LT extension attempt.
  *
+ * The explanation follows [TimestampDialogState.RevocationWarning.outputHeld]: either the extension
+ * failed and continuing falls back to B-T, or it produced a document below its target level and
+ * continuing saves that document as it is.
+ *
  * @param state The [TimestampDialogState.RevocationWarning] state.
  */
 @Composable
@@ -200,7 +204,11 @@ private fun TimestampRevocationWarningContent(state: TimestampDialogState.Revoca
 		Spacer(modifier = Modifier.height(4.dp))
 
 		Text(
-			text = stringResource(Res.string.timestamp_revocation_message),
+			text = if (state.outputHeld) {
+				stringResource(Res.string.timestamp_revocation_incomplete_message)
+			} else {
+				stringResource(Res.string.timestamp_revocation_message)
+			},
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)

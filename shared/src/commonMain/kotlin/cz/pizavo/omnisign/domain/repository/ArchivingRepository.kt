@@ -4,7 +4,9 @@ import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.model.result.OperationResult
+import cz.pizavo.omnisign.domain.model.result.RenewalAssessment
 import cz.pizavo.omnisign.domain.model.result.RenewalNeed
+import cz.pizavo.omnisign.domain.model.result.RenewalReason
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository.Companion.DEFAULT_RENEWAL_BUFFER_DAYS
 
 /**
@@ -30,18 +32,26 @@ interface ArchivingRepository {
 	suspend fun extendDocument(parameters: ArchivingParameters): OperationResult<ArchivingResult>
 	
 	/**
-	 * Check whether [filePath] should be re-timestamped to keep its archival protection current.
+	 * Assess what [filePath] needs to keep — or to reach — long-term protection.
 	 *
-	 * The decision is **coverage-aware**: renewal is needed when a timestamp that no current
-	 * document timestamp seals is approaching the expiry of its signing (TSA) certificate — either
-	 * the outermost document timestamp itself (the B-LTA seal), the signature timestamp of a B-LT
-	 * document with no seal yet, or a signature timestamp applied after the last archival timestamp.
-	 * Timestamps already covered by a still-valid document timestamp are ignored, so a document is
-	 * not re-timestamped on every scheduler run once one of its inner timestamps ages.
+	 * The decision is driven by the level the document is actually at, because each level is missing
+	 * something different and each gap has its own deadline:
 	 *
-	 * Renewal is likewise needed when such a timestamp's cryptographic algorithms have aged out — its
-	 * message-imprint or TSA-signature digest, or the TSA signature key — judged against the standard
-	 * cryptographic schedule, so a document is re-protected before its primitives are challenged.
+	 * - **Below B-LT** — no usable revocation data. It must be embedded before the *signing*
+	 *   certificate expires, after which no acceptable revocation data for it can be obtained ever
+	 *   again. Reported as [RenewalReason.BELOW_LT] straight away rather than at some timestamp's
+	 *   expiry, or as [RenewalNeed.UNRECOVERABLE] when that deadline has already passed.
+	 * - **B-LT** — revocation data is present but nothing proves when it existed. It is sealed with
+	 *   an archival timestamp ([RenewalReason.LT_NOT_SEALED]) before the earlier of its `nextUpdate`
+	 *   and its issuer's expiry, or refreshed first ([RenewalReason.LT_REFRESH_NEEDED]) when it
+	 *   predates the signature timestamp and so covers nothing.
+	 * - **B-LTA** — protection is complete and merely ages. Here, and only here, the
+	 *   **coverage-aware** rule applies: renewal is due when a timestamp that no current document
+	 *   timestamp seals approaches its signing (TSA) certificate's expiry
+	 *   ([RenewalReason.TIMESTAMP_EXPIRING]) or its algorithms age out
+	 *   ([RenewalReason.ALGORITHM_WEAKENING]). Timestamps already covered by a current document
+	 *   timestamp are ignored, so a document is not re-timestamped on every run once an inner
+	 *   timestamp ages.
 	 *
 	 * When a renewal-relevant timestamp's signing certificate cannot be resolved — so its expiry is
 	 * unknown — the status cannot be determined and a
@@ -50,18 +60,16 @@ interface ArchivingRepository {
 	 *
 	 * @param filePath Absolute path to the PAdES document to inspect.
 	 * @param renewalBufferDays Number of days before a timestamp certificate's expiry at which
-	 *   renewal is considered necessary. Defaults to [DEFAULT_RENEWAL_BUFFER_DAYS].
-	 * @return [RenewalNeed.NEEDED] when an uncovered timestamp's signing certificate expires within the
-	 *   renewal window, [RenewalNeed.NOT_NEEDED] when none does, [RenewalNeed.NO_SIGNATURE] when the
-	 *   document carries timestamps but no signature for OmniSign's signature-scoped renewal to extend,
-	 *   or an [cz.pizavo.omnisign.domain.model.error.ArchivingError]
-	 *   (e.g. [cz.pizavo.omnisign.domain.model.error.ArchivingError.RenewalStatusUndeterminable] when
-	 *   a relevant timestamp's certificate cannot be resolved).
+	 *   renewal is considered necessary. Defaults to [DEFAULT_RENEWAL_BUFFER_DAYS]. It applies to the
+	 *   B-LTA aging case only: the lower levels are missing material that is available now and will
+	 *   not be later, so there is nothing to wait for.
+	 * @return The [RenewalAssessment] — what the document needs, why, and by when — or an
+	 *   [cz.pizavo.omnisign.domain.model.error.ArchivingError].
 	 */
 	suspend fun needsArchivalRenewal(
 		filePath: String,
 		renewalBufferDays: Int = DEFAULT_RENEWAL_BUFFER_DAYS,
-	): OperationResult<RenewalNeed>
+	): OperationResult<RenewalAssessment>
 	
 	/**
 	 * Perform a lightweight check of the document to determine its current timestamp

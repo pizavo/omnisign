@@ -1,7 +1,7 @@
 package cz.pizavo.omnisign.domain.usecase
 
 import cz.pizavo.omnisign.domain.model.result.OperationResult
-import cz.pizavo.omnisign.domain.model.result.RenewalNeed
+import cz.pizavo.omnisign.domain.model.result.RenewalAssessment
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository.Companion.DEFAULT_RENEWAL_BUFFER_DAYS
 
@@ -12,21 +12,22 @@ class CheckArchivalRenewalUseCase(
 	private val archivingRepository: ArchivingRepository
 ) {
 	/**
-	 * Check if the document at [filePath] needs re-timestamping.
+	 * Assess what the document at [filePath] needs to reach or keep long-term protection.
 	 *
-	 * Delegates to [ArchivingRepository.needsArchivalRenewal], whose coverage-aware rule re-times
-	 * only the outermost document timestamp and any signature timestamp not sealed by it — never a
-	 * timestamp a current document timestamp already covers.
+	 * Delegates to [ArchivingRepository.needsArchivalRenewal], whose verdict is driven by the level
+	 * the document is at: a document below B-LT needs revocation data before its signing certificate
+	 * expires, a B-LT document needs sealing (or refreshing first), and only a B-LTA document is
+	 * governed by the coverage-aware timestamp-aging rule.
 	 *
 	 * @param filePath Path to the PAdES document to inspect.
 	 * @param renewalBufferDays Days before timestamp certificate expiry at which renewal is
-	 *   triggered. Defaults to [DEFAULT_RENEWAL_BUFFER_DAYS].
-	 * @return The [RenewalNeed] outcome (needed, not needed, or no signature to renew), or an error.
+	 *   triggered, for the B-LTA aging case. Defaults to [DEFAULT_RENEWAL_BUFFER_DAYS].
+	 * @return The [RenewalAssessment] — what the document needs, why, and by when — or an error.
 	 */
 	suspend operator fun invoke(
 		filePath: String,
 		renewalBufferDays: Int = DEFAULT_RENEWAL_BUFFER_DAYS,
-	): OperationResult<RenewalNeed> =
+	): OperationResult<RenewalAssessment> =
 		archivingRepository.needsArchivalRenewal(filePath, renewalBufferDays)
 }
 

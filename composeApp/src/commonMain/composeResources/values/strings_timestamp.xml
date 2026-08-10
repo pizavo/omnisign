@@ -9,6 +9,7 @@
 	<string name="timestamp_option_renew_archival">Renew archival timestamp</string>
 	<string name="timestamp_add_to_renewal_tooltip">Offer to set up automatic archival renewal after extending</string>
 	<string name="timestamp_revocation_message">The extension to B-LT failed because revocation information (CRL/OCSP) could not be obtained. You can continue with a B-T extension (signature timestamp only, without revocation data), or abort and try again later.</string>
+	<string name="timestamp_revocation_incomplete_message">The document was extended, but the revocation data the requested level needs could not be embedded, so it stayed at its previous level. You can save the result anyway, or abort and keep the original document.</string>
 	<string name="timestamp_success_title">Document extended successfully</string>
 	<string name="timestamp_new_level_label">New level:</string>
 	<string name="timestamp_extend_button">Extend</string>

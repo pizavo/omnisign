@@ -217,15 +217,22 @@ class TimestampViewModel(
 	/**
 	 * Derive the document's current PAdES level from its inspected timestamp state.
 	 *
-	 * Checks the strongest signal first: a document timestamp means B-LTA, LT data means B-LT, a
-	 * signature timestamp alone means B-T, and otherwise the document is still B-B.
+	 * Prefers [DocumentTimestampInfo.level], the level DSS determined from the document itself, so
+	 * the dialog agrees with the validation report.
+	 *
+	 * The remaining branches apply only when no level could be established at all, and read the
+	 * document's structure instead. They are a labelling fallback, not a conformance claim: a
+	 * document timestamp maps to B-LTA because that is the level whose options the dialog must then
+	 * offer — [TimestampDialogState.Ready.unavailableTypes] withdraws the B-LT option for the same
+	 * structural reason, and the two have to agree or the dialog would default to an option it has
+	 * disabled. There is no `containsLtData` branch, because that flag is itself derived from the
+	 * level and so can never be `true` while the level is `null`.
 	 *
 	 * @param info The inspected timestamp state of the document.
 	 * @return The PAdES level the document is currently at.
 	 */
-	private fun currentLevelOf(info: DocumentTimestampInfo): SignatureLevel = when {
+	private fun currentLevelOf(info: DocumentTimestampInfo): SignatureLevel = info.level ?: when {
 		info.hasDocumentTimestamp -> SignatureLevel.PADES_BASELINE_LTA
-		info.containsLtData -> SignatureLevel.PADES_BASELINE_LT
 		info.hasSignatureTimestamp -> SignatureLevel.PADES_BASELINE_T
 		else -> SignatureLevel.PADES_BASELINE_B
 	}
@@ -320,11 +327,19 @@ class TimestampViewModel(
 						}
 					},
 					ifRight = { result ->
-						holdAndAwaitSave(
+						holdExtension(
 							result = result,
 							addToRenewalJob = ready.addToRenewalJob,
 							isArchival = ready.timestampType == TimestampType.ARCHIVAL_TIMESTAMP,
 						)
+						_state.value = if (result.revocationDataMissing) {
+							TimestampDialogState.RevocationWarning(
+								warnings = result.annotatedWarnings.map { it.summary },
+								outputHeld = true,
+							)
+						} else {
+							awaitingSaveState()
+						}
 					},
 				)
 			}
@@ -332,15 +347,27 @@ class TimestampViewModel(
 	}
 
 	/**
-	 * Accept the revocation warning and retry the extension at B-T level, holding the produced bytes.
+	 * Accept the revocation warning and continue, which means one of two things depending on how the
+	 * warning was reached (see [TimestampDialogState.RevocationWarning]).
 	 *
-	 * The B-LT attempt produced no output (it failed to obtain revocation data), so continuing
-	 * re-runs the extension at [SignatureLevel.PADES_BASELINE_T]. On success the bytes are held and
-	 * the dialog advances to [TimestampDialogState.AwaitingSave] to pick a save location; nothing is
-	 * written until then. Called when the user clicks "Continue anyway" on the revocation warning.
+	 * When extended bytes are already held
+	 * ([TimestampDialogState.RevocationWarning.outputHeld]), the extension produced a document below
+	 * its target level and continuing keeps it: the dialog advances straight to
+	 * [TimestampDialogState.AwaitingSave] with those bytes, running nothing again.
+	 *
+	 * Otherwise the B-LT attempt produced no output at all, so continuing re-runs the extension at
+	 * [SignatureLevel.PADES_BASELINE_T]. On success the bytes are held and the dialog advances to
+	 * [TimestampDialogState.AwaitingSave] to pick a save location.
+	 *
+	 * Either way nothing is written until the user picks a destination. Called when the user clicks
+	 * "Continue anyway" on the revocation warning.
 	 */
 	fun acceptRevocationWarning() {
-		if (_state.value !is TimestampDialogState.RevocationWarning) return
+		val warning = _state.value as? TimestampDialogState.RevocationWarning ?: return
+		if (warning.outputHeld) {
+			_state.value = awaitingSaveState()
+			return
+		}
 		val document = currentDocument ?: return
 		val config = resolvedConfig ?: return
 
@@ -372,14 +399,26 @@ class TimestampViewModel(
 
 	/**
 	 * Hold [result]'s extended bytes in [pendingExtension] and advance to
-	 * [TimestampDialogState.AwaitingSave] so the UI can prompt for a save location. Shared by
-	 * [extend] and [acceptRevocationWarning] — the two paths that produce extended output.
+	 * [TimestampDialogState.AwaitingSave] so the UI can prompt for a save location. Used by the paths
+	 * that produce output the user should save without further questions.
 	 *
 	 * @param addToRenewalJob Whether the user opted the output into a renewal job.
 	 * @param isArchival Whether this is an archival (B-LTA) extension — a renewal offer only applies
 	 *   there, so the B-T fallback passes `false`.
 	 */
 	private fun holdAndAwaitSave(result: ArchivingResult, addToRenewalJob: Boolean, isArchival: Boolean) {
+		holdExtension(result, addToRenewalJob, isArchival)
+		_state.value = awaitingSaveState()
+	}
+
+	/**
+	 * Park [result]'s extended bytes in [pendingExtension] without deciding what the dialog shows
+	 * next, so a caller can interpose a confirmation step before the save prompt.
+	 *
+	 * @param addToRenewalJob Whether the user opted the output into a renewal job.
+	 * @param isArchival Whether this is an archival (B-LTA) extension.
+	 */
+	private fun holdExtension(result: ArchivingResult, addToRenewalJob: Boolean, isArchival: Boolean) {
 		pendingExtension = PendingExtension(
 			outputBytes = result.outputBytes,
 			newLevel = result.newSignatureLevel,
@@ -388,8 +427,15 @@ class TimestampViewModel(
 			isArchival = isArchival,
 			pageCount = currentDocument?.pageCount ?: 1,
 		)
+	}
+
+	/**
+	 * The [TimestampDialogState.AwaitingSave] state for the currently held extension, seeded with the
+	 * suggested name and directory captured while the form was open.
+	 */
+	private fun awaitingSaveState(): TimestampDialogState.AwaitingSave {
 		val ready = lastReadyState
-		_state.value = TimestampDialogState.AwaitingSave(
+		return TimestampDialogState.AwaitingSave(
 			suggestedName = ready?.suggestedName ?: "",
 			inputDirectory = ready?.inputDirectory,
 		)

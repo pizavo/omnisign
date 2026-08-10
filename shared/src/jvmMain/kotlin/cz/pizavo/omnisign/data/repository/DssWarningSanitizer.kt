@@ -193,6 +193,10 @@ class DssWarningSanitizer {
 				Regex("""Revocation data is missing for one or more certificate.*?untrusted"""),
 			),
 			
+			WarningCategory.REVOCATION_AFTER_CERTIFICATE_EXPIRY to listOf(
+				Regex("""was not issued during the validity period of the certificate"""),
+			),
+
 			WarningCategory.REVOCATION_NOT_FOUND to listOf(
 				Regex("""No revocation found for the certificate $CERT_ID"""),
 				Regex("""No revocation data found"""),
@@ -236,6 +240,28 @@ class DssWarningSanitizer {
 				LocalizableText.of(MessageKey.WARNING_REVOCATION_NOT_FOUND, pluralCerts(ids.size))
 		},
 		
+		/**
+		 * Revocation data was retrieved for a certificate but rejected because it was issued after
+		 * that certificate had expired.
+		 *
+		 * DSS enforces this in `RevocationDataVerifier`: a response whose `thisUpdate` postdates the
+		 * certificate's `notAfter` is discarded unless the issuer explicitly asserts knowledge of the
+		 * period — a CRL `expiredCertsOnCRL` extension, an OCSP `archiveCutoff`, or a matching
+		 * `certHash`. Absent those, the issuer is not vouching for the certificate's status after its
+		 * expiry, so the data cannot support long-term validation.
+		 *
+		 * Unlike [REVOCATION_NOT_FOUND] this is terminal for the affected certificate: no later
+		 * attempt can succeed, because the window in which usable revocation data existed has closed.
+		 * The material had to be embedded while the certificate was still valid.
+		 */
+		REVOCATION_AFTER_CERTIFICATE_EXPIRY {
+			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) =
+				LocalizableText.of(
+					MessageKey.WARNING_REVOCATION_AFTER_CERTIFICATE_EXPIRY,
+					pluralCerts(ids.size),
+				)
+		},
+
 		/**
 		 * Revocation checks were skipped because the certificate chain is not anchored
 		 * in a configured trusted list.
@@ -362,7 +388,22 @@ class DssWarningSanitizer {
 		 */
 		val isRevocationRelated: Boolean
 			get() = this in REVOCATION_CATEGORIES
-		
+
+		/**
+		 * Whether this category means an augmentation could not embed the long-term validation
+		 * material the requested level needs.
+		 *
+		 * Deliberately a wider set than [isRevocationRelated], because the same DSS condition means
+		 * different things in the two operations. While *signing*, revocation data that cannot be
+		 * retrieved is noise: the alert fires in the verifier's pre-extension check, before the PAdES
+		 * extension embeds anything, and the signing path suppresses it for that reason. While
+		 * *augmenting an already-signed document*, embedding that data is the entire operation, so the
+		 * same condition means the document did not reach the requested level and the output must not
+		 * be presented as if it had.
+		 */
+		val blocksLongTermMaterial: Boolean
+			get() = this in LONG_TERM_MATERIAL_CATEGORIES
+
 		/**
 		 * The English phrase for [count] certificates, baked into a summary's arguments so that
 		 * [LocalizableText.english] renders correctly; a localizing frontend re-derives the phrase
@@ -381,6 +422,21 @@ class DssWarningSanitizer {
 
 		companion object {
 			private val REVOCATION_CATEGORIES = setOf(
+				REVOCATION_STATUS_UNKNOWN,
+				REVOCATION_POE_MISSING,
+			)
+
+			/**
+			 * Categories that mean the requested long-term material is absent from the output.
+			 *
+			 * [REVOCATION_POE_STALE] and [FRESH_REVOCATION_MISSING] are excluded on purpose: the data
+			 * *was* obtained and embedded, it merely does not yet cover the time it has to. Augmenting
+			 * again once the issuer publishes newer data closes that gap, so the output is a genuine
+			 * step forward rather than a failed one.
+			 */
+			private val LONG_TERM_MATERIAL_CATEGORIES = setOf(
+				REVOCATION_NOT_FOUND,
+				REVOCATION_AFTER_CERTIFICATE_EXPIRY,
 				REVOCATION_STATUS_UNKNOWN,
 				REVOCATION_POE_MISSING,
 			)
@@ -420,5 +476,17 @@ data class SanitizedWarnings(
 	 */
 	val hasRevocationWarnings: Boolean
 		get() = categories.any { it.isRevocationRelated && it !in suppressed }
+
+	/**
+	 * Whether any category reported to the user means the augmentation could not embed the long-term
+	 * validation material the requested level needs (see
+	 * [DssWarningSanitizer.WarningCategory.blocksLongTermMaterial]).
+	 *
+	 * Drives the archiving path: an extension that raises this produced a document below its target
+	 * level, so the desktop asks before saving it and the scheduler refuses to overwrite the original
+	 * with it. [suppressed] categories are excluded for the same reason as in [hasRevocationWarnings].
+	 */
+	val longTermMaterialMissing: Boolean
+		get() = categories.any { it.blocksLongTermMaterial && it !in suppressed }
 }
 

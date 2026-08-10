@@ -23,6 +23,12 @@ import kotlinx.serialization.Serializable
  * @property backupRetention Number of timestamped `.bak` copies of the pre-renewal document to keep
  *   beside each renewed file. `0` disables backups; otherwise the oldest beyond this many are pruned
  *   after each successful renewal. Defaults to [DEFAULT_BACKUP_RETENTION].
+ * @property promoteBelowLt When true (the default), a matched document that carries no long-term
+ *   validation material is brought up to B-LTA rather than left alone — enrolling a file in a
+ *   preservation job is taken as asking for it to be preserved, and the chance to embed revocation
+ *   data expires with the signing certificate. Set to false for a job that should only maintain
+ *   documents already at B-LT or above; such files are then reported as skipped by policy, never
+ *   silently ignored.
  */
 @Serializable
 data class RenewalJob(
@@ -33,6 +39,7 @@ data class RenewalJob(
 	val logFile: String? = null,
 	val notify: Boolean = true,
 	val backupRetention: Int = DEFAULT_BACKUP_RETENTION,
+	val promoteBelowLt: Boolean = true,
 ) {
 	companion object {
 		/** Default number of timestamped pre-renewal backups retained per file. */

@@ -106,10 +106,17 @@ class DssServiceFactory(
 	 * [CommonCertificateVerifier.setAlertOnNoRevocationAfterBestSignatureTime] are
 	 * intentionally **suppressed** for signing. These alerts fire during the verifier's
 	 * internal pre-extension check, before the PAdES extension process downloads and embeds
-	 * CRL/OCSP data. If the extension fails, DSS throws an exception; if it succeeds, the
-	 * revocation data IS embedded and the alerts are false positives. Keeping them active
-	 * would produce misleading "revocation data unavailable" warnings on every B-LT/B-LTA
-	 * signing operation even though the output document contains valid revocation data.
+	 * CRL/OCSP data, so on a signing operation that reaches B-LT/B-LTA they report a gap the
+	 * very next step closes. Keeping them active would produce misleading "revocation data
+	 * unavailable" warnings on every long-term signing operation even though the output
+	 * document contains valid revocation data.
+	 *
+	 * They are **not** suppressed when augmenting an already-signed document; see
+	 * [buildExtendCertificateVerifier], which is the verifier the archiving path uses. Note that
+	 * suppressing them also removes the abort they would otherwise cause: DSS skips the whole check
+	 * when the alert is null rather than falling back to throwing (see
+	 * `SignatureValidationAlerter.assertAllRequiredRevocationDataPresent`), so nothing else stops an
+	 * augmentation that embedded nothing.
 	 *
 	 * The three alerts that remain active detect genuinely actionable conditions:
 	 * - [CommonCertificateVerifier.setAlertOnUncoveredPOE] — proof-of-existence gaps.
@@ -139,6 +146,64 @@ class DssServiceFactory(
 		config: ResolvedConfig?,
 		directAnchors: List<cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor> = emptyList(),
 		alertFactory: () -> StatusAlert = { LogOnStatusAlert(Level.WARN) },
+	): CertificateVerifierResult =
+		buildAugmentingCertificateVerifier(config, directAnchors, alertFactory, reportMissingRevocationData = false)
+
+	/**
+	 * Build a [CommonCertificateVerifier] for **augmenting an already-signed document** to a higher
+	 * PAdES level.
+	 *
+	 * Identical to [buildSigningCertificateVerifier] except that
+	 * [CommonCertificateVerifier.setAlertOnMissingRevocationData] and
+	 * [CommonCertificateVerifier.setAlertOnNoRevocationAfterBestSignatureTime] stay **active**, so
+	 * the caller learns when the augmentation could not obtain the revocation data the target level
+	 * needs.
+	 *
+	 * The difference is not cosmetic. While signing, those alerts describe a gap the extension step
+	 * closes moments later. While augmenting, embedding that data *is* the operation, and it can fail
+	 * in two shapes — neither of which DSS reports on its own once these alerts are off:
+	 *
+	 * - the revocation data cannot be fetched, so the DSS dictionary holds certificates and nothing
+	 *   else, and the document stays at B-T;
+	 * - the revocation data *is* fetched and embedded but cannot be used, because it postdates the
+	 *   signing certificate's expiry. DSS's baseline-LT check counts the embedded CRL, so the level
+	 *   reads as B-LT even though `RevocationDataVerifier` will discard that CRL at validation time.
+	 *
+	 * The second shape is why these alerts matter: the level cannot distinguish it from a genuine
+	 * promotion, and only the captured warnings can. The archiving path turns them into
+	 * [cz.pizavo.omnisign.domain.model.result.ArchivingResult.revocationDataMissing].
+	 *
+	 * A [eu.europa.esig.dss.alert.ExceptionOnStatusAlert] is deliberately not used: aborting would
+	 * discard the partially augmented document, and the caller — the desktop dialog or the renewal
+	 * scheduler — is better placed to decide whether to keep it.
+	 *
+	 * @param config Resolved configuration driving revocation and trusted-list selection; a `null`
+	 *   config or one with revocation disabled yields a lenient verifier with alerts suppressed.
+	 * @param directAnchors Directly-trusted certificates (from the trust store) aggregated with the
+	 *   trusted-list sources.
+	 * @param alertFactory Factory for the [StatusAlert] wired to the active verifier alerts. Pass a
+	 *   [CollectingStatusAlert] to capture warnings programmatically.
+	 * @return A [CertificateVerifierResult] containing the verifier and any TL loading warnings.
+	 */
+	fun buildExtendCertificateVerifier(
+		config: ResolvedConfig?,
+		directAnchors: List<cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor> = emptyList(),
+		alertFactory: () -> StatusAlert = { LogOnStatusAlert(Level.WARN) },
+	): CertificateVerifierResult =
+		buildAugmentingCertificateVerifier(config, directAnchors, alertFactory, reportMissingRevocationData = true)
+
+	/**
+	 * Shared body of [buildSigningCertificateVerifier] and [buildExtendCertificateVerifier].
+	 *
+	 * @param reportMissingRevocationData Whether the two revocation alerts stay active. `false` for
+	 *   signing, where they precede the step that embeds the data; `true` for augmentation, where
+	 *   they are the only signal that the step achieved nothing.
+	 */
+	private fun buildAugmentingCertificateVerifier(
+		config: ResolvedConfig?,
+		directAnchors: List<cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor>,
+		alertFactory: () -> StatusAlert,
+		reportMissingRevocationData: Boolean,
 	): CertificateVerifierResult {
 		val cv = CommonCertificateVerifier()
 		if (config?.validation?.allowExpiredCertificate == true) {
@@ -173,10 +238,10 @@ class DssServiceFactory(
 			ocspSource = OnlineOCSPSource().apply { setDataLoader(ocspLoader) }
 			crlSource = OnlineCRLSource().apply { setDataLoader(dataLoader) }
 			isCheckRevocationForUntrustedChains = false
-			alertOnMissingRevocationData = null
+			alertOnMissingRevocationData = alert.takeIf { reportMissingRevocationData }
 			alertOnUncoveredPOE = alert
 			alertOnInvalidTimestamp = alert
-			alertOnNoRevocationAfterBestSignatureTime = null
+			alertOnNoRevocationAfterBestSignatureTime = alert.takeIf { reportMissingRevocationData }
 			alertOnRevokedCertificate = alert
 		}
 

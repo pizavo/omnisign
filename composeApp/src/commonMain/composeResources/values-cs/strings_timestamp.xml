@@ -9,6 +9,7 @@
 	<string name="timestamp_option_renew_archival">Obnovit archivní časové razítko</string>
 	<string name="timestamp_add_to_renewal_tooltip">Po rozšíření nabídnout nastavení automatického obnovení archivního razítka</string>
 	<string name="timestamp_revocation_message">Rozšíření na úroveň B-LT selhalo, protože nebylo možné získat informace o zneplatnění (CRL/OCSP). Můžete pokračovat rozšířením na B-T (pouze časové razítko podpisu, bez údajů o zneplatnění), nebo akci přerušit a zkusit to později.</string>
+	<string name="timestamp_revocation_incomplete_message">Dokument byl rozšířen, ale údaje o zneplatnění, které požadovaná úroveň vyžaduje, se nepodařilo vložit – zůstal proto na původní úrovni. Výsledek můžete přesto uložit, nebo akci přerušit a ponechat původní dokument.</string>
 	<string name="timestamp_success_title">Dokument byl úspěšně rozšířen</string>
 	<string name="timestamp_new_level_label">Nová úroveň:</string>
 	<string name="timestamp_extend_button">Rozšířit</string>

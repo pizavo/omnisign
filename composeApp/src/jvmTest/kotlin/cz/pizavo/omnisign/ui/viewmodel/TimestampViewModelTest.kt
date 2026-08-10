@@ -7,6 +7,8 @@ import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
+import io.kotest.matchers.collections.shouldNotBeIn
+import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
@@ -46,7 +48,12 @@ class TimestampViewModelTest : FunSpec({
 
 	val noTimestamps = DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = false)
 	val hasDocTs = DocumentTimestampInfo(hasDocumentTimestamp = true, containsLtData = true)
-	val hasLtOnly = DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = true)
+	val hasLtOnly = DocumentTimestampInfo(
+		hasDocumentTimestamp = false,
+		containsLtData = true,
+		hasSignatureTimestamp = true,
+		level = SignatureLevel.PADES_BASELINE_LT,
+	)
 	val hasSigTsOnly = DocumentTimestampInfo(
 		hasDocumentTimestamp = false,
 		containsLtData = false,
@@ -175,6 +182,66 @@ class TimestampViewModelTest : FunSpec({
 		}
 	}
 
+	test("open reports the level DSS determined, not the one the structure suggests") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns DocumentTimestampInfo(
+				hasDocumentTimestamp = true,
+				containsLtData = false,
+				hasSignatureTimestamp = true,
+				level = SignatureLevel.PADES_BASELINE_T,
+			).right()
+
+			val vm = buildVm()
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
+			state.currentLevel shouldBe SignatureLevel.PADES_BASELINE_T
+			state.unavailableTypes shouldBe setOf(TimestampType.SIGNATURE_TIMESTAMP)
+		}
+	}
+
+	test("open falls back to the structural guess when no level could be established") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns hasSigTsOnly.right()
+
+			val vm = buildVm()
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
+				.currentLevel shouldBe SignatureLevel.PADES_BASELINE_T
+		}
+	}
+
+	test("the structural fallback agrees with the options the dialog offers") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns DocumentTimestampInfo(
+				hasDocumentTimestamp = true,
+				containsLtData = false,
+				hasSignatureTimestamp = false,
+				level = null,
+			).right()
+
+			val vm = buildVm()
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
+			state.currentLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+			state.timestampType shouldNotBeIn state.unavailableTypes
+		}
+	}
+
 	test("extend transitions to Success on successful extension") {
 		runTest(testDispatcher) {
 			coEvery { archivingRepository.extendDocument(any()) } returns
@@ -200,6 +267,66 @@ class TimestampViewModelTest : FunSpec({
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Success>()
 			state.outputFile shouldBe "/tmp/signed-extended.pdf"
 			state.newLevel shouldBe "PAdES-BASELINE-LTA"
+		}
+	}
+
+	test("extend that embedded no revocation data asks before saving, holding the produced bytes") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingResult(
+						outputBytes = ByteArray(0), outputName = "signed-extended.pdf",
+						newSignatureLevel = "PAdES-BASELINE-LT",
+						annotatedWarnings = listOf(
+							AnnotatedWarning(summary = LocalizableText.Literal("Revocation data was issued too late")),
+						),
+						revocationDataMissing = true,
+					).right()
+
+			val vm = buildVm()
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			vm.extend()
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.RevocationWarning>()
+			state.outputHeld shouldBe true
+			state.warnings shouldBe listOf(LocalizableText.Literal("Revocation data was issued too late"))
+		}
+	}
+
+	test("continuing past a held-output revocation warning saves those bytes without re-extending") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingResult(
+						outputBytes = ByteArray(0), outputName = "signed-extended.pdf",
+						newSignatureLevel = "PAdES-BASELINE-LT",
+						revocationDataMissing = true,
+					).right()
+
+			val vm = buildVm()
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			vm.extend()
+			advanceUntilIdle()
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.RevocationWarning>()
+
+			vm.acceptRevocationWarning()
+			advanceUntilIdle()
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.AwaitingSave>()
+
+			vm.completeSave(SaveOutcome.Saved(extendedPath))
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Success>().newLevel shouldBe "PAdES-BASELINE-LT"
+			coVerify(exactly = 1) { archivingRepository.extendDocument(any()) }
 		}
 	}
 
