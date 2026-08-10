@@ -203,6 +203,7 @@ class TimestampViewModel(
 							timestampType = defaultTypeFor(currentLevel),
 							currentLevel = currentLevel,
 							unavailableTypes = unavailableTypes,
+							ltMaterialUsable = tsInfo.ltMaterialUsable,
 							suggestedName = SigningViewModel.suggestedSaveName(sourceName, "-extended"),
 							inputDirectory = document.filePath?.let { SigningViewModel.parentDirectory(it) },
 						)
@@ -243,6 +244,13 @@ class TimestampViewModel(
 	 * A B-T document most likely needs only revocation data added, so the B-LT option
 	 * ([TimestampType.SIGNATURE_TIMESTAMP]) is the default there; every other level defaults to the
 	 * archival option — the natural next step, and the only enabled one at B-LTA.
+	 *
+	 * Deliberately *not* influenced by [DocumentTimestampInfo.ltMaterialUsable]. Unusable validation
+	 * material means the data was issued after the signing certificate expired — and since a
+	 * response can only ever be issued before now, that condition is reachable only once the
+	 * certificate is already expired. Steering such a document towards the B-LT option would
+	 * recommend fetching replacement data that no longer exists. The dialog states the problem
+	 * instead and leaves the choice alone.
 	 *
 	 * @param currentLevel The document's current PAdES level.
 	 * @return The timestamp type to pre-select.

@@ -627,6 +627,7 @@ class DssArchivingRepository(
 					containsLtData = containsLtData,
 					hasSignatureTimestamp = detectSignatureTimestamp(inputBytes),
 					level = level,
+					ltMaterialUsable = !containsLtData || hasUsableLtMaterial(inputBytes),
 				).right()
 			}
 		} catch (e: Exception) {
@@ -673,6 +674,33 @@ class DssArchivingRepository(
 		} catch (e: Exception) {
 			logger.warn(e) { "Could not read the achieved PAdES level back out of the extended document" }
 			null
+		}
+
+	/**
+	 * Whether the long-term validation material embedded in [pdfBytes] can be used, judged by the
+	 * same rule the renewal assessment applies (see [hasUsableSigningCertificateRevocation]).
+	 *
+	 * Called only for a document that has such material, so the extra parse is paid where the answer
+	 * changes what the dialog should offer: a document carrying revocation data no validator will
+	 * accept needs that data refreshed, not sealed. Offline, like every other inspection here.
+	 *
+	 * A document that cannot be parsed is reported as usable rather than not: this drives a caveat in
+	 * the UI, and inventing a warning out of a failed inspection would be worse than staying quiet —
+	 * the level itself is already `null` in that case, which is the honest signal.
+	 */
+	@Suppress("TooGenericExceptionCaught")
+	private fun hasUsableLtMaterial(pdfBytes: ByteArray): Boolean =
+		try {
+			PDFDocumentValidator(InMemoryDocument(pdfBytes))
+				.apply {
+					setCertificateVerifier(CommonCertificateVerifier())
+					setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
+				}
+				.validateDocument().diagnosticData.signatures
+				.all { hasUsableSigningCertificateRevocation(it) }
+		} catch (e: Exception) {
+			logger.warn(e) { "Could not judge whether the document's validation material is usable" }
+			true
 		}
 
 	/**

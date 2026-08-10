@@ -299,6 +299,11 @@ class ExpiredCertificatePreservationE2ETest : FunSpec({
 		assessment.need shouldBe RenewalNeed.NEEDED
 		assessment.reason shouldBe RenewalReason.LT_REFRESH_NEEDED
 		assessment.reason shouldNotBe RenewalReason.LT_NOT_SEALED
+
+		val info = archivingRepository.getDocumentTimestampInfo(extended.outputBytes).shouldBeRight()
+		info.level shouldBe SignatureLevel.PADES_BASELINE_LT
+		info.containsLtData.shouldBeTrue()
+		info.ltMaterialUsable.shouldBeFalse()
 	}
 
 	test("a B-LT document whose CRL covers expired certificates is treated as sound and sealed") {
@@ -314,6 +319,9 @@ class ExpiredCertificatePreservationE2ETest : FunSpec({
 
 		assessment.need shouldBe RenewalNeed.NEEDED
 		assessment.reason shouldBe RenewalReason.LT_NOT_SEALED
+
+		archivingRepository.getDocumentTimestampInfo(extended.outputBytes).shouldBeRight()
+			.ltMaterialUsable.shouldBeTrue()
 	}
 
 	test("renewal reports an expired-certificate B-T document as terminal, not as work to retry") {

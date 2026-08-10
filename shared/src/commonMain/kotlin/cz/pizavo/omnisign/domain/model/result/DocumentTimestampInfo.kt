@@ -29,6 +29,18 @@ import kotlinx.serialization.Serializable
  *   signature, or a signature outside the four baseline levels). Callers that display a level
  *   should prefer it over inferring one from the flags above, which describe structure rather
  *   than conformance.
+ * @property ltMaterialUsable Whether the embedded long-term validation material can actually be
+ *   used. Only meaningful when [containsLtData] is set, and deliberately kept apart from [level]:
+ *   a level says what a document *carries*, and revocation data that was issued after the signing
+ *   certificate expired is carried without being usable, so the document is a well-formed B-LT
+ *   container whose contents no validator will accept. Presenting it as anything other than B-LT
+ *   would contradict the validation report; presenting it without this caveat would repeat the
+ *   mistake of reading a level as a verdict.
+ *
+ *   `false` implies the signing certificate has **already expired**: revocation data cannot be
+ *   issued in the future, so data that postdates the certificate's expiry can only be found once
+ *   that expiry is in the past. A caller must not read this as "fetch newer data" — there is none to
+ *   fetch, short of an issuer that explicitly covers expired certificates.
  */
 @Serializable
 data class DocumentTimestampInfo(
@@ -36,5 +48,6 @@ data class DocumentTimestampInfo(
     val containsLtData: Boolean,
     val hasSignatureTimestamp: Boolean = false,
     val level: SignatureLevel? = null,
+    val ltMaterialUsable: Boolean = true,
 )
 

@@ -204,6 +204,31 @@ class TimestampViewModelTest : FunSpec({
 		}
 	}
 
+	test("open reports unusable validation data without proposing a replacement that cannot exist") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns DocumentTimestampInfo(
+				hasDocumentTimestamp = false,
+				containsLtData = true,
+				hasSignatureTimestamp = true,
+				level = SignatureLevel.PADES_BASELINE_LT,
+				ltMaterialUsable = false,
+			).right()
+
+			val vm = buildVm()
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
+			state.currentLevel shouldBe SignatureLevel.PADES_BASELINE_LT
+			state.ltMaterialUsable shouldBe false
+			state.timestampType shouldBe TimestampType.ARCHIVAL_TIMESTAMP
+			state.timestampType shouldNotBeIn state.unavailableTypes
+		}
+	}
+
 	test("open falls back to the structural guess when no level could be established") {
 		runTest(testDispatcher) {
 			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns hasSigTsOnly.right()

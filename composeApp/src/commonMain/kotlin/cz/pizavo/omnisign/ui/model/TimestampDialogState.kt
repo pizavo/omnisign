@@ -30,6 +30,11 @@ sealed interface TimestampDialogState {
 	 * @property suggestedName Default file-name stem (no extension) for the save dialog, e.g. `contract-extended`.
 	 * @property inputDirectory Source-document directory used as the save dialog's initial location; `null` on the web target.
 	 * @property addToRenewalJob Whether to offer adding the output file to a renewal job after a successful LTA extension.
+	 * @property ltMaterialUsable Whether the long-term validation material the document already
+	 *   carries can be used. When `false` the document is at [currentLevel] in form only — its
+	 *   revocation data is there but no validator will accept it, and the signing certificate has
+	 *   expired, so no replacement can be obtained. The dialog states that rather than proposing a
+	 *   remedy that does not exist.
 	 */
 	data class Ready(
 		val timestampType: TimestampType = TimestampType.ARCHIVAL_TIMESTAMP,
@@ -38,6 +43,7 @@ sealed interface TimestampDialogState {
 		val suggestedName: String = "",
 		val inputDirectory: String? = null,
 		val addToRenewalJob: Boolean = false,
+		val ltMaterialUsable: Boolean = true,
 	) : TimestampDialogState
 
 	/**

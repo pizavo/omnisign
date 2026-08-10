@@ -150,6 +150,25 @@ private fun TimestampFormContent(
 			modifier = Modifier.fillMaxWidth(),
 		)
 
+		if (!state.ltMaterialUsable) {
+			Row(
+				horizontalArrangement = Arrangement.spacedBy(6.dp),
+				verticalAlignment = Alignment.Top,
+			) {
+				Icon(
+					painter = painterResource(Res.drawable.icon_alert_warning),
+					contentDescription = null,
+					modifier = Modifier.padding(top = 2.dp).size(16.dp),
+					tint = LumoTheme.colors.warning,
+				)
+				Text(
+					text = stringResource(Res.string.timestamp_lt_material_unusable),
+					style = LumoTheme.typography.body2,
+					color = LumoTheme.colors.textSecondary,
+				)
+			}
+		}
+
 		if (state.timestampType == TimestampType.ARCHIVAL_TIMESTAMP && !isWebPlatform()) {
 			Row(
 				verticalAlignment = Alignment.CenterVertically,
