@@ -1,4 +1,4 @@
-package cz.pizavo.omnisign.ui.model
+package cz.pizavo.omnisign.legal
 
 import io.kotest.matchers.collections.shouldBeIn
 import io.kotest.matchers.collections.shouldContain
@@ -12,13 +12,17 @@ import io.kotest.core.spec.style.FunSpec
 import kotlinx.serialization.json.Json
 
 /**
- * Pins the contract between the root `:generateThirdPartyNotices` task and [ThirdPartyComponent].
+ * Pins the contract between the root `:generateThirdPartyNotices` task and [ThirdPartyComponent]
+ * as the desktop and web applications consume it.
  *
  * The Credits dialog reads the generated credits list at runtime from the packaged Compose
  * resource, so a change to the generator's output shape would otherwise only surface as an empty
  * dialog on a user's machine. These tests parse the very file that ships and assert the fields the
  * dialog depends on are present, including the licence attributions that the weak-copyleft
  * dependencies legally require the application to display.
+ *
+ * The identical copy the CLI and server read from the JVM classpath is covered separately by
+ * `ThirdPartyCreditsReaderTest` in `shared`.
  */
 class ThirdPartyComponentTest : FunSpec({
 

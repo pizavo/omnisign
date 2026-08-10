@@ -45,7 +45,23 @@ Rather than fight that, `:composeApp:collectWebRuntimeCoordinates` resolves its 
 
 All four are installed with the application: next to the binary in the desktop and CLI packages,
 inside the CLI and server fat JARs under `META-INF/legal/`, and beside `index.html` in the web
-bundle. The desktop and web apps also surface them under **Help → Credits**.
+bundle.
+
+Files on disk are easy to never notice, though, so every package also surfaces the list from inside
+itself — which is what the LGPL actually asks for, its notice duty being toward the person using the
+program rather than toward the filesystem:
+
+| Surface | Where the user sees it |
+|---|---|
+| `desktop`, `web` | **Help → Credits** |
+| `cli` | [`omnisign credits`](/cli/commands/credits), or `--json credits` for the machine-readable form |
+| `server` | [`GET /api/v1/credits`](/server/api/get-credits), always public — a duty owed to whoever interacts with the deployment cannot be conditioned on having an account |
+
+All four read the same generated list, filtered to their own surface. The desktop and web apps read
+it as a Compose resource, the only form the Wasm target can load; the CLI and server read a
+byte-identical copy from `shared`'s JVM resources, which puts it on their classpath with no
+packaging step of their own. The generator writes both and the check gate compares both, so they
+cannot drift.
 
 Readers get a per-package view too, generated from the same data and filtered to that surface:
 [CLI](/cli/credits), [server](/server/credits), [desktop](/desktop/credits) and
@@ -102,7 +118,7 @@ taken under LGPL-3.0, itself a set of additional permissions on top of GPLv3.
 Compatibility is not the whole obligation, though. LGPL-2.1 §6 separately requires *prominent notice*
 that the library is used, *a copy of its licence*, and — because the app displays copyright notices
 at runtime — the library's copyright among them with a pointer to that licence copy. That is what
-`NOTICE.md`, `licenses/` and the Credits dialog exist for.
+`NOTICE.md`, `licenses/` and the four in-app credits surfaces exist for.
 :::
 
 ## Regenerating after a dependency change
@@ -112,7 +128,8 @@ at runtime — the library's copyright among them with a pointer to that licence
 ```
 
 This resolves all four surfaces, matches every artifact against the curated data, and rewrites
-`THIRD-PARTY.md` plus the credits list the desktop and web apps read at runtime. Commit both.
+`THIRD-PARTY.md`, both copies of the credits list the applications read at runtime, and the four
+per-package credits pages. Commit them all.
 
 **The task fails on any artifact it cannot account for**, so a new or bumped dependency cannot
 silently ship an undocumented licence:

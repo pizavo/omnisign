@@ -27,7 +27,8 @@ import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.IconButton
 import cz.pizavo.omnisign.lumo.components.IconButtonVariant
 import cz.pizavo.omnisign.lumo.components.Text
-import cz.pizavo.omnisign.ui.model.ThirdPartyComponent
+import cz.pizavo.omnisign.legal.THIRD_PARTY_NOTICES_URL
+import cz.pizavo.omnisign.legal.ThirdPartyComponent
 import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
 import cz.pizavo.omnisign.ui.platform.isWebPlatform
 import kotlinx.serialization.json.Json
@@ -37,9 +38,6 @@ import org.jetbrains.compose.resources.stringResource
 
 /** Compose resource path of the generated credits list. */
 private const val CreditsResourcePath = "files/third-party-credits.json"
-
-/** Web location of the full, generated third-party notices. */
-private const val CreditsNoticesUrl = "https://github.com/pizavo/omnisign/blob/main/THIRD-PARTY.md"
 
 /** Lenient reader, so a future field added by the generator cannot break the dialog. */
 private val CreditsJson = Json { ignoreUnknownKeys = true }
@@ -108,7 +106,7 @@ fun CreditsDialog(onDismiss: () -> Unit) {
                 )
                 ExternalLink(
                     text = stringResource(Res.string.credits_full_notices),
-                    url = CreditsNoticesUrl,
+                    url = THIRD_PARTY_NOTICES_URL,
                 )
             }
         }

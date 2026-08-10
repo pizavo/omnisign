@@ -29,9 +29,9 @@ info:
 
     Authentication is optional and off by default. When the server runs with `auth.enabled: true`,
     the operational and config endpoints require a session JWT
-    (`Authorization: Bearer <jwt>`); `GET /api/v1/health`, `GET /api/v1/capabilities`, and the
-    `/auth/*` endpoints (except `GET /auth/session`) are always reachable without one. Obtain a JWT
-    through the OIDC login flow under `/auth`.
+    (`Authorization: Bearer <jwt>`); `GET /api/v1/health`, `GET /api/v1/capabilities`,
+    `GET /api/v1/credits`, and the `/auth/*` endpoints (except `GET /auth/session`) are always
+    reachable without one. Obtain a JWT through the OIDC login flow under `/auth`.
   contact:
     name: OmniSign
     url: https://pizavo.github.io/omnisign/
@@ -68,7 +68,7 @@ tags:
   - name: Configuration
     description: Read-only, sanitized configuration introspection.
   - name: System
-    description: Always-public health and capability probes.
+    description: Always-public health, capability and third-party credit probes.
   - name: Authentication
     description: OIDC login, session, refresh, and logout.
 
@@ -107,6 +107,34 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CapabilitiesResponse'
+
+  /api/v1/credits:
+    get:
+      tags: [System]
+      summary: Third-party credits
+      description: |
+        Lists every third-party component this server distributes, each with the licence it is used
+        under, its copyright and where its source can be obtained, alongside OmniSign's own licence
+        and source location.
+
+        The desktop and web applications show the same list in a Credits dialog; a server has no
+        interface to show it in, so this endpoint is its equivalent. Several of the bundled
+        libraries — EU DSS, used under the GNU LGPL, above all — require that attribution to
+        accompany every copy of the work, and the GNU AGPL requires the offer of source to reach
+        anyone interacting with the deployment over a network. It is therefore always public,
+        regardless of whether authentication is enabled.
+
+        The list is filtered to what this package actually ships, so it credits the server's own
+        dependency set rather than everything OmniSign builds anywhere.
+      operationId: getCredits
+      security: []
+      responses:
+        '200':
+          description: Third-party components distributed with this server.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreditsResponse'
 
   /api/v1/sign:
     post:
@@ -926,6 +954,75 @@ components:
     AllowedOperation:
       type: string
       enum: [SIGN, VALIDATE, TIMESTAMP]
+
+    CreditsResponse:
+      type: object
+      required: [components, license, source, notices, poweredBy]
+      properties:
+        components:
+          type: array
+          description: Every third-party component this server distributes.
+          items:
+            $ref: '#/components/schemas/ThirdPartyComponent'
+        license:
+          type: string
+          description: SPDX identifier of OmniSign's own licence, distinct from those of the components it bundles.
+          example: AGPL-3.0-or-later
+        source:
+          type: string
+          format: uri
+          description: Where OmniSign's corresponding source can be obtained.
+          example: https://github.com/pizavo/omnisign
+        notices:
+          type: string
+          format: uri
+          description: |
+            Where the full notices live, including the verbatim attribution text the shipped
+            artifacts carry and the full text of every licence named here.
+          example: https://github.com/pizavo/omnisign/blob/main/THIRD-PARTY.md
+        poweredBy:
+          type: string
+          example: OmniSign
+
+    ThirdPartyComponent:
+      type: object
+      required: [name, licenseId, licenseName, licenseText, surfaces, artifacts]
+      properties:
+        name:
+          type: string
+          description: Human-readable project name.
+          example: EU DSS (Digital Signature Services)
+        licenseId:
+          type: string
+          description: SPDX-style identifier of the licence the component is used under.
+          example: LGPL-2.1-or-later
+        licenseName:
+          type: string
+          description: Full licence name.
+          example: GNU Lesser General Public License v2.1 or later
+        licenseText:
+          type: string
+          description: File name of the licence's full text inside the `licenses/` directory shipped with the application.
+          example: LGPL-2.1.txt
+        copyright:
+          type: [string, 'null']
+          description: Copyright line, absent when the component states none.
+        homepage:
+          type: [string, 'null']
+          format: uri
+          description: Project homepage, which doubles as the source-code location the weak-copyleft licences require.
+        surfaces:
+          type: array
+          description: |
+            OmniSign packages that contain this component. Always `["server"]` here, since the
+            response is filtered to what this package ships.
+          items:
+            type: string
+            enum: [cli, server, desktop, web]
+        artifacts:
+          type: integer
+          description: Number of individual artifacts (jars or npm packages) this component contributes.
+          example: 40
 
     SigningResultMeta:
       type: object

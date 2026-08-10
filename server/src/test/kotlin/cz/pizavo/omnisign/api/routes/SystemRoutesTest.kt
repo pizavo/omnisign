@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.api.routes
 
 import cz.pizavo.omnisign.api.model.responses.CapabilitiesResponse
+import cz.pizavo.omnisign.api.model.responses.CreditsResponse
 import cz.pizavo.omnisign.api.model.responses.HealthResponse
 import cz.pizavo.omnisign.auth.AuthenticatedPrincipal
 import cz.pizavo.omnisign.auth.JwtSessionService
@@ -17,6 +18,9 @@ import cz.pizavo.omnisign.domain.model.value.sensitive
 import cz.pizavo.omnisign.module
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotBeEmpty
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.ktor.client.request.*
@@ -216,6 +220,41 @@ class SystemRoutesTest : FunSpec({
             val response = client.get("/api/v1/capabilities")
             val body = json.decodeFromString<CapabilitiesResponse>(response.bodyAsText())
             body.organizationName shouldBe null
+        }
+    }
+
+    test("GET /api/v1/credits lists the components this server actually distributes") {
+        testApplication {
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+            val response = client.get("/api/v1/credits")
+            response.status shouldBe HttpStatusCode.OK
+            val body = json.decodeFromString<CreditsResponse>(response.bodyAsText())
+
+            body.components.shouldNotBeEmpty()
+            body.components.forEach { it.surfaces shouldContain "server" }
+            body.components.map { it.name } shouldContain "EU DSS (Digital Signature Services)"
+            body.components.map { it.name } shouldNotContain "Clikt"
+        }
+    }
+
+    test("GET /api/v1/credits carries OmniSign's own licence, source and attribution") {
+        testApplication {
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*")))) }
+            val body = json.decodeFromString<CreditsResponse>(client.get("/api/v1/credits").bodyAsText())
+
+            body.license shouldBe "AGPL-3.0-or-later"
+            body.source shouldBe "https://github.com/pizavo/omnisign"
+            body.notices shouldBe "https://github.com/pizavo/omnisign/blob/main/THIRD-PARTY.md"
+            body.poweredBy shouldBe "OmniSign"
+        }
+    }
+
+    test("GET /api/v1/credits stays public when authentication is enabled") {
+        testApplication {
+            application { module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), auth = authConfig, operations = OperationsConfig(allowed = setOf(AllowedOperation.VALIDATE)), cors = CorsConfig(allowedOrigins = listOf("*"))), authSecrets) }
+            val response = client.get("/api/v1/credits")
+            response.status shouldBe HttpStatusCode.OK
+            json.decodeFromString<CreditsResponse>(response.bodyAsText()).components.shouldNotBeEmpty()
         }
     }
 })

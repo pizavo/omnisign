@@ -78,7 +78,13 @@ dependencies {
 
 /**
  * Regenerates `THIRD-PARTY.md`, the notice file that accompanies every OmniSign
- * distribution, and the credits list the desktop and web applications show at runtime.
+ * distribution, and the credits list each package surfaces at runtime.
+ *
+ * That list is written twice, byte for byte identical: once as a Compose resource, which is
+ * the only form the web target can read, and once into `shared`'s JVM resources, from where
+ * the CLI's `credits` command and the server's `GET /api/v1/credits` read it on the classpath
+ * with no packaging step of their own. Both copies are committed and both are checked, so
+ * they cannot drift.
  *
  * Each shipping surface is resolved separately — the CLI, server and desktop runtime
  * classpaths here, the web one through `:composeApp:collectWebRuntimeCoordinates` plus
@@ -124,6 +130,9 @@ tasks.register("generateThirdPartyNotices") {
     val creditsFile = rootProject.file(
         "composeApp/src/commonMain/composeResources/files/third-party-credits.json",
     )
+    val sharedCreditsFile = rootProject.file(
+        "shared/src/jvmMain/resources/third-party-credits.json",
+    )
     val verifyOnly = providers.gradleProperty("noticesCheck").map { it.toBoolean() }.orElse(false)
     val surfaceOrder = listOf("cli", "server", "desktop", "web")
 
@@ -132,13 +141,13 @@ tasks.register("generateThirdPartyNotices") {
             "file" to "docs/docs-cli/credits.mdx",
             "position" to "5",
             "product" to "The OmniSign CLI",
-            "location" to "The full text of every licence below is installed next to the CLI, in a `legal/licenses/` folder, and is also carried inside the executable JAR under `META-INF/legal/`.",
+            "location" to "The full text of every licence below is installed next to the CLI, in a `legal/licenses/` folder, and is also carried inside the executable JAR under `META-INF/legal/`. The same list is printed by the tool itself with `omnisign credits`.",
         ),
         "server" to mapOf(
             "file" to "docs/docs-server/credits.mdx",
             "position" to "7",
             "product" to "The OmniSign server",
-            "location" to "The full text of every licence below travels inside the server JAR under `META-INF/legal/`, so it is present in the container image without any extra mount.",
+            "location" to "The full text of every licence below travels inside the server JAR under `META-INF/legal/`, so it is present in the container image without any extra mount. A running deployment serves the same list at `GET /api/v1/credits`, without authentication.",
         ),
         "desktop" to mapOf(
             "file" to "docs/docs-desktop/credits.mdx",
@@ -512,6 +521,9 @@ tasks.register("generateThirdPartyNotices") {
             val staleFiles = buildList {
                 if (!noticeFile.isFile || noticeFile.readText() != rendered) add(noticeFile.name)
                 if (!creditsFile.isFile || creditsFile.readText() != renderedCredits) add(creditsFile.name)
+                if (!sharedCreditsFile.isFile || sharedCreditsFile.readText() != renderedCredits) {
+                    add("${sharedCreditsFile.name} (shared)")
+                }
                 renderedPages.forEach { (surface, content) ->
                     val target = docsPageFiles.getValue(surface)
                     if (!target.isFile || target.readText() != content) add(target.name + " ($surface)")
@@ -525,15 +537,17 @@ tasks.register("generateThirdPartyNotices") {
             logger.lifecycle("Notices are up to date (${usedComponents.size} components, $totalArtifacts artifacts).")
         } else {
             noticeFile.writeText(rendered)
-            creditsFile.parentFile.mkdirs()
-            creditsFile.writeText(renderedCredits)
+            listOf(creditsFile, sharedCreditsFile).forEach { target ->
+                target.parentFile.mkdirs()
+                target.writeText(renderedCredits)
+            }
             renderedPages.forEach { (surface, content) ->
                 docsPageFiles.getValue(surface).writeText(content)
             }
             val perSurface = surfaceOrder.joinToString(", ") { surface ->
                 "$surface=${usedComponents.count { surface in surfacesOf(it) }}"
             }
-            logger.lifecycle("Wrote ${noticeFile.name}, ${creditsFile.name} and ${renderedPages.size} docs pages: ${usedComponents.size} components ($perSurface), $totalArtifacts artifacts, ${noticeTexts.size} attribution notices.")
+            logger.lifecycle("Wrote ${noticeFile.name}, 2x ${creditsFile.name} and ${renderedPages.size} docs pages: ${usedComponents.size} components ($perSurface), $totalArtifacts artifacts, ${noticeTexts.size} attribution notices.")
         }
     }
 }

@@ -1,0 +1,93 @@
+---
+sidebar_position: 9
+---
+
+# credits
+
+List every third-party component this CLI distributes, with the licence each is used under, its
+copyright, and where its source can be obtained.
+
+```bash
+omnisign credits
+```
+
+The command takes no options beyond the global ones. It reads only data baked into the package at
+build time, so it works offline and never touches your configuration.
+
+## Why it exists
+
+The desktop and web applications show the same list in a Credits dialog. A terminal tool has no
+dialog, and the licence texts installed beside the executable are easy to never notice — so this
+command is where the attributions actually become visible.
+
+That is not only courtesy. Several of the bundled libraries are used under the GNU LGPL, EU DSS
+among them, which requires each copy of the work to name the library, carry its licence, and show
+its copyright wherever the program shows copyright notices at all. `omnisign credits` is how the
+CLI discharges that.
+
+## What it prints
+
+Components are grouped by licence, and each group names the file in `licenses/` holding that
+licence's full text:
+
+```text
+═══════════════════════════════════════════════════════════════
+  THIRD-PARTY COMPONENTS (37)
+═══════════════════════════════════════════════════════════════
+
+  OmniSign is distributed under the GNU Affero General Public License
+  v3.0 or later. The components below are licensed by their own authors
+  under their own terms, separately from OmniSign.
+
+  GNU Lesser General Public License v2.1 or later
+  └─ full text in licenses/LGPL-2.1.txt
+
+     EU DSS (Digital Signature Services) (40 artifacts)
+       Copyright © 2015 European Commission, provided under the CEF programme
+       https://github.com/esig/dss
+```
+
+The listing closes with where to find the licence texts on disk, the full notices, and OmniSign's
+own source.
+
+The list is filtered to what this package really ships. The server's and the desktop application's
+dependency sets are recorded in the same generated file but are never printed here — see the
+[Credits](../credits) page for the complete inventory of this package, and
+[`THIRD-PARTY.md`](https://github.com/pizavo/omnisign/blob/main/THIRD-PARTY.md) for all four.
+
+## JSON output
+
+With the global `--json` flag the command emits the same document the server returns from
+`GET /api/v1/credits`, so one format covers both headless surfaces:
+
+```bash
+omnisign --json credits | jq '.components[] | select(.licenseId | startswith("LGPL"))'
+```
+
+```json
+{
+  "components": [
+    {
+      "name": "EU DSS (Digital Signature Services)",
+      "licenseId": "LGPL-2.1-or-later",
+      "licenseName": "GNU Lesser General Public License v2.1 or later",
+      "licenseText": "LGPL-2.1.txt",
+      "copyright": "Copyright © 2015 European Commission, provided under the CEF programme",
+      "homepage": "https://github.com/esig/dss",
+      "surfaces": ["cli", "server", "desktop"],
+      "artifacts": 40
+    }
+  ],
+  "license": "AGPL-3.0-or-later",
+  "source": "https://github.com/pizavo/omnisign",
+  "notices": "https://github.com/pizavo/omnisign/blob/main/THIRD-PARTY.md",
+  "poweredBy": "OmniSign"
+}
+```
+
+## Exit codes
+
+| Code | Meaning |
+|------|---------|
+| `0`  | The credits were printed. |
+| `1`  | No credits data was found in the package — a packaging fault, not a usage error. |
