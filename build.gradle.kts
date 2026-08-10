@@ -61,6 +61,18 @@ fun Configuration.asJvmRuntimeAggregate() {
     }
 }
 
+/**
+ * Trailing OS/architecture classifier on artifacts Gradle selects for the *building* host, such as
+ * `skiko-awt-runtime-windows-x64`.
+ *
+ * Only one variant resolves per machine, so leaving the classifier in place would make the
+ * generated notices host-dependent: a file written on Windows can never match the same file checked
+ * on a Linux CI runner, and the check would fail forever. Collapsing the classifier to a placeholder
+ * keeps the output identical everywhere and is the more honest statement anyway — the component
+ * genuinely ships as a per-platform native artifact, and every desktop release produces all of them.
+ */
+val HOST_VARIANT_CLASSIFIER = Regex("-(windows|linux|macos)-(x64|arm64)$")
+
 /** Everything the CLI ships on its runtime classpath. */
 val cliRuntimeClasspath: Configuration by configurations.creating { asJvmRuntimeAggregate() }
 
@@ -135,6 +147,7 @@ tasks.register("generateThirdPartyNotices") {
     )
     val verifyOnly = providers.gradleProperty("noticesCheck").map { it.toBoolean() }.orElse(false)
     val surfaceOrder = listOf("cli", "server", "desktop", "web")
+    val hostVariantClassifier = HOST_VARIANT_CLASSIFIER
 
     val docsPages: Map<String, Map<String, String>> = mapOf(
         "cli" to mapOf(
@@ -204,9 +217,10 @@ tasks.register("generateThirdPartyNotices") {
             artifacts.get().forEach { artifact ->
                 val id = artifact.id.componentIdentifier as? ModuleComponentIdentifier
                     ?: return@forEach
+                val module = id.module.replace(hostVariantClassifier, "-<os>-<arch>")
                 record(
-                    coordinate = "${id.group}:${id.module}:${id.version}",
-                    moduleKey = "${id.group}:${id.module}",
+                    coordinate = "${id.group}:$module:${id.version}",
+                    moduleKey = "${id.group}:$module",
                     surface = surface,
                     file = artifact.file,
                 )

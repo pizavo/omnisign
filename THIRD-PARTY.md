@@ -655,7 +655,7 @@ Ships in: desktop, web.
 
 <details><summary>4 artifact(s)</summary>
 
-- `org.jetbrains.skiko:skiko-awt-runtime-windows-x64:0.9.37.4` — desktop
+- `org.jetbrains.skiko:skiko-awt-runtime-<os>-<arch>:0.9.37.4` — desktop
 - `org.jetbrains.skiko:skiko-awt:0.9.37.4` — desktop
 - `org.jetbrains.skiko:skiko-js-wasm-runtime:0.9.37.4` — web
 - `org.jetbrains.skiko:skiko-wasm-js:0.9.37.4` — web
