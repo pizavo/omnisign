@@ -476,7 +476,7 @@ class TimestampViewModel(
 
 			is SaveOutcome.Saved -> {
 				val coveringJob = RenewalJobAssigner.findCoveringJob(outcome.path, cachedRenewalJobs)
-				addToRenewalJobFlag = pending.addToRenewalJob && pending.isArchival && coveringJob == null
+				addToRenewalJobFlag = pending.addToRenewalJob && coveringJob == null
 				extendedDocument = PdfDocumentInfo(
 					name = outcome.path.substringAfterLast('/').substringAfterLast('\\'),
 					data = pending.outputBytes,
@@ -602,7 +602,9 @@ class TimestampViewModel(
 	 * the steps and discarded on [abortAfterRevocationWarning] / [cancelSave] so a cancelled flow
 	 * writes nothing.
 	 *
-	 * @property isArchival Whether the extension is archival (B-LTA) — gates the renewal-job offer.
+	 * @property isArchival Whether the extension is archival (B-LTA). Kept for the offer's wording,
+	 *   not to gate it: an output that stops short of B-LTA still owes a step, on a deadline that
+	 *   cannot be recovered once missed, so it needs watching at least as much as a sealed one.
 	 * @property pageCount Source-document page count, reused for the web [extendedDocument] reload.
 	 */
 	private class PendingExtension(

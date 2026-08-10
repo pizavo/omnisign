@@ -509,7 +509,7 @@ class SigningViewModel(
 
 			is SaveOutcome.Saved -> {
 				val coveringJob = RenewalJobAssigner.findCoveringJob(outcome.path, cachedRenewalJobs)
-				addToRenewalJobFlag = pending.addToRenewalJob && pending.addArchivalTimestamp && coveringJob == null
+				addToRenewalJobFlag = pending.addToRenewalJob && coveringJob == null
 				signedDocument = PdfDocumentInfo(
 					name = outcome.path.substringAfterLast('/').substringAfterLast('\\'),
 					data = pending.outputBytes,
@@ -769,8 +769,14 @@ class SigningViewModel(
 	}
 
 	/**
-	 * Populate [_pendingRenewalOffer] when the signing produced a B-LTA document
-	 * and the user opted in to renewal job assignment.
+	 * Populate [_pendingRenewalOffer] when the user opted in to renewal job assignment and no
+	 * existing job already covers the saved path.
+	 *
+	 * Deliberately not restricted to B-LTA output. A document that stops short of B-LTA is the one
+	 * that most needs watching: it still owes a preservation step, and the chance to take that step
+	 * expires with the signing certificate rather than with a timestamp, so nothing can recover it
+	 * afterwards. A B-LTA document only owes re-timestamping, whose deadline is recoverable — it is
+	 * the safer of the two to leave unwatched, not the more urgent.
 	 */
 	private suspend fun populateRenewalOfferIfNeeded(outputFile: String) {
 		if (!addToRenewalJobFlag || renewalJobAssigner == null) return

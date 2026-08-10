@@ -623,7 +623,7 @@ class TimestampViewModelTest : FunSpec({
 		}
 	}
 
-	test("pendingRenewalOffer is null for Signature Timestamp even with addToRenewalJob checked") {
+	test("a B-LT output is offered a renewal job too — it still owes a step, on a deadline that cannot be recovered") {
 		runTest(testDispatcher) {
 			coEvery { archivingRepository.extendDocument(any()) } returns
 					ArchivingResult(
@@ -646,6 +646,32 @@ class TimestampViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Success>()
+			vm.pendingRenewalOffer.value.shouldNotBeNull()
+		}
+	}
+
+	test("no renewal job is offered when the user did not ask for one") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingResult(
+						outputBytes = ByteArray(0), outputName = "signed-extended.pdf",
+						newSignatureLevel = "PAdES-BASELINE-LT",
+					).right()
+
+			val assigner = RenewalJobAssigner(configRepository)
+			val vm = TimestampViewModel(extendUseCase, getTimestampInfoUseCase, configRepository, assigner, testDispatcher)
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			vm.updateState { it.copy(timestampType = TimestampType.SIGNATURE_TIMESTAMP, addToRenewalJob = false) }
+			vm.extend()
+			advanceUntilIdle()
+			vm.completeSave(SaveOutcome.Saved(extendedPath))
+			advanceUntilIdle()
+
 			vm.pendingRenewalOffer.value.shouldBeNull()
 		}
 	}

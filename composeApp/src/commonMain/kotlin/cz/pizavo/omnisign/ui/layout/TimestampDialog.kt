@@ -169,7 +169,7 @@ private fun TimestampFormContent(
 			}
 		}
 
-		if (state.timestampType == TimestampType.ARCHIVAL_TIMESTAMP && !isWebPlatform()) {
+		if (!isWebPlatform()) {
 			Row(
 				verticalAlignment = Alignment.CenterVertically,
 				horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -182,7 +182,13 @@ private fun TimestampFormContent(
 				)
 				Text(text = stringResource(Res.string.label_add_to_renewal_job), style = LumoTheme.typography.body2)
 				InfoTooltip(
-					text = stringResource(Res.string.timestamp_add_to_renewal_tooltip),
+					text = stringResource(
+						if (state.timestampType == TimestampType.ARCHIVAL_TIMESTAMP) {
+							Res.string.timestamp_add_to_renewal_tooltip
+						} else {
+							Res.string.signing_add_to_renewal_job_owed_tooltip
+						}
+					),
 				)
 			}
 		}

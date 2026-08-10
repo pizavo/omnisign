@@ -576,6 +576,43 @@ class SigningViewModelTest : FunSpec({
 		}
 	}
 
+	test("a signature that stops short of B-LTA is offered a renewal job as well") {
+		runTest(testDispatcher) {
+			val btConfig = AppConfig(
+				global = GlobalConfig(
+					defaultSignatureLevel = cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel.PADES_BASELINE_T,
+				),
+				profiles = mapOf("prod" to ProfileConfig(name = "prod")),
+				activeProfile = "prod",
+			)
+			coEvery { configRepository.getCurrentConfig() } returns btConfig
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { signingRepository.signDocument(any()) } returns
+					SigningResult(
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-T",
+					).right()
+
+			val assigner = RenewalJobAssigner(configRepository)
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, assigner, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			vm.updateState {
+				it.copy(selectedAlias = "test-cert", addArchivalTimestamp = false, addToRenewalJob = true)
+			}
+			vm.sign()
+			advanceUntilIdle()
+			vm.completeSave(SaveOutcome.Saved(signedPath))
+			advanceUntilIdle()
+
+			vm.pendingRenewalOffer.value.shouldNotBeNull()
+		}
+	}
+
 	test("pendingRenewalOffer is null when addToRenewalJob is not checked") {
 		runTest(testDispatcher) {
 			coEvery { signingRepository.listAvailableCertificates(false) } returns
