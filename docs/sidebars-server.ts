@@ -15,6 +15,7 @@ const sidebars: SidebarsConfig = {
       link: {type: 'generated-index', title: 'OmniSign Server HTTP API'},
       items: apiSidebar as never,
     },
+    'credits',
   ],
 };
 
