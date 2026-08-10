@@ -105,6 +105,14 @@
     <Icon Id="JpARPPRODUCTICON" SourceFile="$(var.JpIcon)" />
     <?endif ?>
 
+    <!-- Point WixUI_InstallDir's license dialog at the file jpackage was given.
+         jpackage's own template defines this variable; because this resource
+         directory replaces that template wholesale, omitting it left the dialog
+         showing WiX's built-in empty placeholder instead of our terms. -->
+    <?ifdef JpLicenseRtf ?>
+    <WixVariable Id="WixUILicenseRtf" Value="$(var.JpLicenseRtf)" />
+    <?endif ?>
+
     <UIRef Id="JpUI" />
 
     <InstallUISequence>
