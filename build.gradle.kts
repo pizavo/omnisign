@@ -159,7 +159,7 @@ tasks.register("generateThirdPartyNotices") {
             "file" to "docs/docs-web/credits.mdx",
             "position" to "6",
             "product" to "The OmniSign web application",
-            "location" to "The full text of every licence below is served alongside the bundle, in a `licenses/` folder next to `index.html`. The same list is available in the app itself under Help then Credits.",
+            "location" to "The full text of every licence below is served alongside the bundle, in a `licenses/` folder next to `index.html`. The same list is available in the app itself under Help then Credits, where a second section additionally credits the components running on the connected server — the browser downloads none of the signing stack, so that is where the signing actually happens.",
         ),
     )
     val docsPageFiles: Map<String, File> = docsPages.mapValues { (_, page) ->

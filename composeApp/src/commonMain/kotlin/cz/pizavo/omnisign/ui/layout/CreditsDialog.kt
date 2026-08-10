@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.ui.layout
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -20,6 +22,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import cz.pizavo.omnisign.domain.repository.ServerCreditsRepository
+import cz.pizavo.omnisign.legal.THIRD_PARTY_NOTICES_URL
+import cz.pizavo.omnisign.legal.ThirdPartyComponent
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Dialog
 import cz.pizavo.omnisign.lumo.components.HorizontalDivider
@@ -27,14 +32,15 @@ import cz.pizavo.omnisign.lumo.components.Icon
 import cz.pizavo.omnisign.lumo.components.IconButton
 import cz.pizavo.omnisign.lumo.components.IconButtonVariant
 import cz.pizavo.omnisign.lumo.components.Text
-import cz.pizavo.omnisign.legal.THIRD_PARTY_NOTICES_URL
-import cz.pizavo.omnisign.legal.ThirdPartyComponent
+import cz.pizavo.omnisign.ui.model.ServerCreditsState
 import cz.pizavo.omnisign.ui.platform.VerticalScrollableColumn
 import cz.pizavo.omnisign.ui.platform.isWebPlatform
+import cz.pizavo.omnisign.ui.viewmodel.CreditsViewModel
 import kotlinx.serialization.json.Json
 import omnisign.composeapp.generated.resources.*
 import org.jetbrains.compose.resources.painterResource
 import org.jetbrains.compose.resources.stringResource
+import org.koin.mp.KoinPlatform
 
 /** Compose resource path of the generated credits list. */
 private const val CreditsResourcePath = "files/third-party-credits.json"
@@ -49,25 +55,36 @@ private val currentSurface: String
 /**
  * Dialog listing every third-party component distributed with OmniSign, grouped by licence.
  *
- * The list is read at runtime from [CreditsResourcePath], which the root
- * `:generateThirdPartyNotices` task generates, so the dialog cannot drift from what the
- * build actually ships. Desktop and web share that one file but ship very different
- * dependency sets — the web bundle contains none of the JVM signing stack and instead
- * carries npm packages the desktop build never sees — so entries are filtered to the
- * surface this build actually runs on.
+ * The bundled list is read at runtime from [CreditsResourcePath], which the root
+ * `:generateThirdPartyNotices` task generates, so the dialog cannot drift from what the build
+ * actually ships. Desktop and web share that one file but ship very different dependency sets — the
+ * web bundle contains none of the JVM signing stack and instead carries npm packages the desktop
+ * build never sees — so entries are filtered to the surface this build actually runs on.
  *
- * Beyond crediting the authors, this dialog is what discharges the runtime-notice duty of
- * the weak-copyleft licences OmniSign depends on: the GNU LGPL v2.1 requires a program that
- * displays copyright notices — which the Help panel does — to name the library, show its
- * copyright among them, and point the user at the licence text. Each entry therefore shows
- * the component's copyright and the file holding the licence's full text, all of which are
- * installed alongside the application.
+ * On the web target a **second section** credits the connected server, fetched through
+ * [CreditsViewModel]. It exists because filtering by surface, while truthful, otherwise leaves a
+ * hole: the browser downloads none of the signing stack, so a web user would never learn that EU
+ * DSS is producing their signatures on the server. The two are kept visually separate rather than
+ * merged, since merging would claim the browser received libraries it never did. The section is
+ * absent on desktop, which signs in-process and already credits those components in the first list.
+ *
+ * Beyond crediting the authors, this dialog is what discharges the runtime-notice duty of the
+ * weak-copyleft licences OmniSign depends on: the GNU LGPL v2.1 requires a program that displays
+ * copyright notices — which the Help panel does — to name the library, show its copyright among
+ * them, and point the user at the licence text. Each entry therefore shows the component's
+ * copyright and the file holding the licence's full text, all of which are installed alongside the
+ * application. The server section additionally carries that deployment's offer of source, which the
+ * GNU AGPL extends to whoever interacts with it over a network.
  *
  * @param onDismiss Invoked to close the dialog.
  */
 @Composable
 fun CreditsDialog(onDismiss: () -> Unit) {
     var components by remember { mutableStateOf<List<ThirdPartyComponent>?>(null) }
+    val creditsViewModel = remember {
+        CreditsViewModel(KoinPlatform.getKoinOrNull()?.getOrNull<ServerCreditsRepository>())
+    }
+    val serverCredits by creditsViewModel.serverCredits.collectAsState()
 
     LaunchedEffect(Unit) {
         components = runCatching {
@@ -89,7 +106,11 @@ fun CreditsDialog(onDismiss: () -> Unit) {
             when {
                 loaded == null -> CreditsMessage(stringResource(Res.string.credits_loading))
                 loaded.isEmpty() -> CreditsMessage(stringResource(Res.string.credits_unavailable))
-                else -> CreditsList(components = loaded, modifier = Modifier.weight(1f))
+                else -> CreditsList(
+                    components = loaded,
+                    serverCredits = serverCredits,
+                    modifier = Modifier.weight(1f),
+                )
             }
 
             HorizontalDivider()
@@ -155,25 +176,27 @@ private fun CreditsMessage(text: String) {
 }
 
 /**
- * Scrollable body: an explanatory lead-in, then one section per licence listing the
- * components used under it.
+ * Scrollable body: an explanatory lead-in, the components this build ships, and — where a server
+ * does the signing — the ones running there.
  *
- * Uses [VerticalScrollableColumn] rather than a `LazyColumn` so the desktop target gets the
- * app's themed scrollbar track — the list is a few dozen rows, well within what a plain
- * scrolling column handles, and without a visible track there is nothing to signal that the
- * majority of the components are below the fold.
+ * The section headings appear only when there is a server section to distinguish the first list
+ * from, so the desktop dialog keeps the plain single-list shape it had before.
+ *
+ * Uses [VerticalScrollableColumn] rather than a `LazyColumn` so the desktop target gets the app's
+ * themed scrollbar track — the list is a few dozen rows, well within what a plain scrolling column
+ * handles, and without a visible track there is nothing to signal that the majority of the
+ * components are below the fold.
  *
  * @param components Every bundled component, in the order the generator emitted them.
+ * @param serverCredits State of the connected server's credits.
  * @param modifier Modifier applied to the scrolling container.
  */
 @Composable
-private fun CreditsList(components: List<ThirdPartyComponent>, modifier: Modifier = Modifier) {
-    val grouped: List<Pair<String, List<ThirdPartyComponent>>> = remember(components) {
-        components.groupBy { it.licenseName }
-            .map { (licenseName, entries) -> licenseName to entries }
-            .sortedBy { it.first }
-    }
-
+private fun CreditsList(
+    components: List<ThirdPartyComponent>,
+    serverCredits: ServerCreditsState,
+    modifier: Modifier = Modifier,
+) {
     VerticalScrollableColumn(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(6.dp),
@@ -186,20 +209,114 @@ private fun CreditsList(components: List<ThirdPartyComponent>, modifier: Modifie
             modifier = Modifier.padding(bottom = 6.dp),
         )
 
-        grouped.forEach { (licenseName, entries) ->
-            Column(modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)) {
+        if (serverCredits != ServerCreditsState.NotApplicable) {
+            CreditsSectionHeader(
+                title = stringResource(Res.string.credits_section_bundled),
+                note = stringResource(Res.string.credits_section_bundled_note),
+            )
+        }
+        CreditsLicenseGroups(components)
+
+        if (serverCredits != ServerCreditsState.NotApplicable) {
+            CreditsSectionHeader(
+                title = stringResource(Res.string.credits_section_server),
+                note = stringResource(Res.string.credits_section_server_note),
+            )
+            CreditsServerBody(serverCredits)
+        }
+    }
+}
+
+/**
+ * Heading introducing one of the dialog's two lists, naming where those components run.
+ *
+ * @param title Section title.
+ * @param note One-line explanation of where the section's components execute.
+ */
+@Composable
+private fun ColumnScope.CreditsSectionHeader(title: String, note: String) {
+    HorizontalDivider(modifier = Modifier.padding(top = 14.dp))
+    Column(modifier = Modifier.padding(top = 10.dp)) {
+        Text(text = title, style = LumoTheme.typography.h4)
+        Text(
+            text = note,
+            style = LumoTheme.typography.body3,
+            color = LumoTheme.colors.textSecondary,
+        )
+    }
+}
+
+/**
+ * One licence heading per distinct licence, each followed by the components used under it.
+ *
+ * @param components Components to group and render.
+ */
+@Composable
+private fun ColumnScope.CreditsLicenseGroups(components: List<ThirdPartyComponent>) {
+    val grouped: List<Pair<String, List<ThirdPartyComponent>>> = remember(components) {
+        components.groupBy { it.licenseName }
+            .map { (licenseName, entries) -> licenseName to entries }
+            .sortedBy { it.first }
+    }
+
+    grouped.forEach { (licenseName, entries) ->
+        Column(modifier = Modifier.padding(top = 10.dp, bottom = 2.dp)) {
+            Text(
+                text = licenseName,
+                style = LumoTheme.typography.body1,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(
+                text = stringResource(Res.string.credits_license_file, entries.first().licenseText),
+                style = LumoTheme.typography.body3,
+                color = LumoTheme.colors.textSecondary,
+            )
+        }
+        entries.forEach { component -> CreditsRow(component) }
+    }
+}
+
+/**
+ * Body of the server section: the fetch's progress, or the server's components followed by its own
+ * licence and the location of its source.
+ *
+ * A failed or unanswered fetch degrades to a single explanatory line, never to an error that would
+ * hide the bundled list above it.
+ *
+ * @param state Current state of the server credits fetch.
+ */
+@Composable
+private fun ColumnScope.CreditsServerBody(state: ServerCreditsState) {
+    when (state) {
+        ServerCreditsState.NotApplicable -> Unit
+
+        ServerCreditsState.Loading -> Text(
+            text = stringResource(Res.string.credits_server_loading),
+            style = LumoTheme.typography.body3,
+            color = LumoTheme.colors.textSecondary,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+
+        ServerCreditsState.Unavailable -> Text(
+            text = stringResource(Res.string.credits_server_unavailable),
+            style = LumoTheme.typography.body3,
+            color = LumoTheme.colors.textSecondary,
+            modifier = Modifier.padding(top = 8.dp),
+        )
+
+        is ServerCreditsState.Loaded -> {
+            CreditsLicenseGroups(state.components)
+            Column(modifier = Modifier.padding(top = 12.dp)) {
                 Text(
-                    text = licenseName,
-                    style = LumoTheme.typography.body1,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = stringResource(Res.string.credits_license_file, entries.first().licenseText),
+                    text = stringResource(Res.string.credits_server_license, state.license),
                     style = LumoTheme.typography.body3,
                     color = LumoTheme.colors.textSecondary,
                 )
+                ExternalLink(
+                    text = stringResource(Res.string.credits_server_source),
+                    url = state.source,
+                )
             }
-            entries.forEach { component -> CreditsRow(component) }
         }
     }
 }

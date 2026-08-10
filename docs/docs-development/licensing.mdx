@@ -53,9 +53,24 @@ program rather than toward the filesystem:
 
 | Surface | Where the user sees it |
 |---|---|
-| `desktop`, `web` | **Help → Credits** |
+| `desktop` | **Help → Credits** |
+| `web` | **Help → Credits**, in two sections — see below |
 | `cli` | [`omnisign credits`](/cli/commands/credits), or `--json credits` for the machine-readable form |
 | `server` | [`GET /api/v1/credits`](/server/api/get-credits), always public — a duty owed to whoever interacts with the deployment cannot be conditioned on having an account |
+
+:::note[Why the web dialog has two sections]
+Filtering by surface is truthful but leaves a hole on the web: the browser downloads none of the
+signing stack, so a web user would never learn that EU DSS is producing their signatures. The dialog
+therefore adds a second section fetched from the connected server's `GET /api/v1/credits`, headed
+separately from the bundled list — merging them would claim the browser received libraries it never
+did. It also carries that deployment's own licence and source location, which is the offer the AGPL
+extends to a network user and matters most when the server belongs to someone else.
+
+`ServerCreditsRepository` is bound only in `webDataModule`, so the section cannot appear on the
+desktop, which signs in-process and already credits those components in its first list. A server that
+is unreachable, or older than the endpoint, degrades to one explanatory line and never blocks the
+bundled list.
+:::
 
 All four read the same generated list, filtered to their own surface. The desktop and web apps read
 it as a Compose resource, the only form the Wasm target can load; the CLI and server read a

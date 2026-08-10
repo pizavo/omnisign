@@ -7,4 +7,12 @@
 	<string name="credits_full_notices">Full third-party notices</string>
 	<string name="credits_loading">Loading credits…</string>
 	<string name="credits_unavailable">The credits list could not be loaded.</string>
+	<string name="credits_section_bundled">Loaded by your browser</string>
+	<string name="credits_section_bundled_note">These components are downloaded to your device and run here, in the browser.</string>
+	<string name="credits_section_server">Running on the server</string>
+	<string name="credits_section_server_note">Signing and validation are carried out by the OmniSign server. The components below do that work there and are never downloaded to your device.</string>
+	<string name="credits_server_loading">Loading the server\'s credits…</string>
+	<string name="credits_server_unavailable">The server did not report its credits. It may be unreachable, or running a version that predates this list.</string>
+	<string name="credits_server_license">The server itself is licensed under %1$s.</string>
+	<string name="credits_server_source">Server source code</string>
 </resources>

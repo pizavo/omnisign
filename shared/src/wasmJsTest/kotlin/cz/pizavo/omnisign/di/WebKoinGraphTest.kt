@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.data.remote.BrowserProfileSelectionStore
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.CapabilitiesRepository
+import cz.pizavo.omnisign.domain.repository.ServerCreditsRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.SigningRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
@@ -58,6 +59,7 @@ class WebKoinGraphTest : FunSpec({
 		val koin = webKoin()
 
 		koin.get<CapabilitiesRepository>()
+		koin.get<ServerCreditsRepository>()
 		koin.get<ValidationRepository>()
 		koin.get<ConfigRepository>()
 		koin.get<SigningRepository>()

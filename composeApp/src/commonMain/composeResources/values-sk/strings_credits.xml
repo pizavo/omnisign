@@ -7,4 +7,12 @@
 	<string name="credits_full_notices">Úplný prehľad licencií tretích strán</string>
 	<string name="credits_loading">Načítava sa poďakovanie…</string>
 	<string name="credits_unavailable">Zoznam komponentov sa nepodarilo načítať.</string>
+	<string name="credits_section_bundled">Načítané prehliadačom</string>
+	<string name="credits_section_bundled_note">Tieto komponenty sa sťahujú do vášho zariadenia a bežia tu, v prehliadači.</string>
+	<string name="credits_section_server">Beží na serveri</string>
+	<string name="credits_section_server_note">Podpisovanie a overovanie vykonáva server OmniSign. Nižšie uvedené komponenty túto prácu vykonávajú tam a do vášho zariadenia sa nikdy nesťahujú.</string>
+	<string name="credits_server_loading">Načítava sa poďakovanie zo servera…</string>
+	<string name="credits_server_unavailable">Server svoje komponenty neuviedol. Môže byť nedostupný alebo beží vo verzii, ktorá tento zoznam ešte nepozná.</string>
+	<string name="credits_server_license">Samotný server je licencovaný pod %1$s.</string>
+	<string name="credits_server_source">Zdrojový kód servera</string>
 </resources>
