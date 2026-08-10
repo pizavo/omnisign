@@ -1,0 +1,502 @@
+{
+	"$comment": [
+		"Curated licence facts for every third-party artifact OmniSign distributes.",
+		"Consumed by the root :generateThirdPartyNotices task, which fails the build when a",
+		"resolved artifact matches no entry here - so a dependency bump cannot silently ship",
+		"an undocumented licence.",
+		"",
+		"Matching precedence: 'artifacts' (exact group:name) wins over 'groups' (whole group).",
+		"'npmPackages' matches entries from the Wasm lockfile, which the web bundle ships.",
+		"'license' refers to a key in the licenses map. 'election' records which branch of a",
+		"multi-licensed component OmniSign takes, and why."
+	],
+
+	"licenses": {
+		"Apache-2.0": {
+			"name": "Apache License, Version 2.0",
+			"url": "https://www.apache.org/licenses/LICENSE-2.0",
+			"text": "Apache-2.0.txt"
+		},
+		"MIT": {
+			"name": "MIT License",
+			"url": "https://opensource.org/license/mit",
+			"text": "MIT.txt"
+		},
+		"BSD-2-Clause": {
+			"name": "BSD 2-Clause \"Simplified\" License",
+			"url": "https://opensource.org/license/bsd-2-clause",
+			"text": "BSD-2-Clause.txt"
+		},
+		"BSD-3-Clause": {
+			"name": "BSD 3-Clause \"New\" License",
+			"url": "https://opensource.org/license/bsd-3-clause",
+			"text": "BSD-3-Clause.txt"
+		},
+		"BSD-unspecified": {
+			"name": "BSD License (upstream does not state which variant)",
+			"url": "http://www.opensource.org/licenses/bsd-license.html",
+			"text": "BSD-3-Clause.txt"
+		},
+		"LGPL-2.1-or-later": {
+			"name": "GNU Lesser General Public License, version 2.1 or later",
+			"url": "https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html",
+			"text": "LGPL-2.1.txt"
+		},
+		"MPL-2.0": {
+			"name": "Mozilla Public License, Version 2.0",
+			"url": "https://www.mozilla.org/MPL/2.0/",
+			"text": "MPL-2.0.txt"
+		},
+		"EDL-1.0": {
+			"name": "Eclipse Distribution License, Version 1.0",
+			"url": "https://www.eclipse.org/org/documents/edl-v10.php",
+			"text": "EDL-1.0.txt"
+		},
+		"BouncyCastle": {
+			"name": "Bouncy Castle Licence (MIT-style)",
+			"url": "https://www.bouncycastle.org/licence.html",
+			"text": "BouncyCastle.txt"
+		},
+		"AGPL-3.0-or-later": {
+			"name": "GNU Affero General Public License, version 3 or later",
+			"url": "https://www.gnu.org/licenses/agpl-3.0.html",
+			"text": "AGPL-3.0.txt"
+		}
+	},
+
+	"components": [
+		{
+			"name": "MuPDF",
+			"npmPackages": ["mupdf"],
+			"license": "AGPL-3.0-or-later",
+			"copyright": "Copyright © Artifex Software, Inc.",
+			"homepage": "https://mupdf.com/",
+			"notes": "Renders PDF pages in the web build, where PDFBox is unavailable because it needs a JVM. Distributed under the same licence as OmniSign itself, so no additional obligation arises beyond this attribution and the source availability the AGPL already requires."
+		},
+		{
+			"name": "js-joda",
+			"npmPackages": ["@js-joda/core"],
+			"license": "BSD-3-Clause",
+			"copyright": "Copyright © 2016 Philipp Thuerwaechter and Pattrick Hueper; Copyright © 2007-present Stephen Colebourne and Michael Nascimento Santos",
+			"homepage": "https://js-joda.github.io/js-joda/",
+			"notes": "Pulled in by the Kotlin/Wasm build of kotlinx-datetime; its copyright headers are the ones webpack preserves in the bundled composeApp.js.LICENSE.txt."
+		},
+		{
+			"name": "ws",
+			"npmPackages": ["ws"],
+			"license": "MIT",
+			"copyright": "Copyright © Einar Otto Stangvik and contributors",
+			"homepage": "https://github.com/websockets/ws",
+			"notes": "Declared by the Kotlin/Wasm build of the Ktor client as its WebSocket implementation."
+		},
+		{
+			"name": "EU DSS (Digital Signature Services)",
+			"groups": ["eu.europa.ec.joinup.sd-dss"],
+			"license": "LGPL-2.1-or-later",
+			"copyright": "Copyright © 2015 European Commission, provided under the CEF programme",
+			"homepage": "https://github.com/esig/dss",
+			"notes": "The published POM names only \"GNU Lesser General Public License\"; the version and the \"or later\" grant are taken from the licence header carried in every DSS source file. The DSS artifacts themselves ship no licence text, which is why it is reproduced here."
+		},
+		{
+			"name": "Logback",
+			"groups": ["ch.qos.logback"],
+			"license": "LGPL-2.1-or-later",
+			"copyright": "Copyright © 1999-2024 QOS.ch Sarl",
+			"homepage": "https://logback.qos.ch",
+			"election": "Dual-licensed EPL-1.0 or LGPL-2.1. OmniSign takes the LGPL-2.1 branch: EPL-1.0 is not compatible with the GNU GPL family, so it could not be combined with an AGPL-3.0 work."
+		},
+		{
+			"name": "veraPDF",
+			"groups": ["org.verapdf"],
+			"license": "MPL-2.0",
+			"copyright": "Copyright © The veraPDF Consortium",
+			"homepage": "https://verapdf.org/",
+			"election": "Dual-licensed GPL-3.0 or MPL-2.0. OmniSign takes MPL-2.0, whose section 3.3 expressly permits distributing a Larger Work under a Secondary Licence such as the GNU AGPL.",
+			"notes": "Reached transitively through dss-pdfa."
+		},
+		{
+			"name": "veraPDF XMP core",
+			"artifacts": ["org.verapdf:verapdf-xmp-core-jakarta"],
+			"license": "BSD-3-Clause",
+			"copyright": "Copyright © Adobe Systems Incorporated",
+			"homepage": "https://verapdf.org/",
+			"notes": "Licensed separately from the rest of veraPDF: this module is an Adobe XMP derivative under BSD-3-Clause."
+		},
+		{
+			"name": "Mozilla Rhino",
+			"groups": ["org.mozilla"],
+			"license": "MPL-2.0",
+			"copyright": "Copyright © The Mozilla Foundation",
+			"homepage": "https://github.com/mozilla/rhino"
+		},
+		{
+			"name": "Java Native Access (JNA)",
+			"groups": ["net.java.dev.jna"],
+			"license": "Apache-2.0",
+			"homepage": "https://github.com/java-native-access/jna",
+			"election": "Dual-licensed LGPL-2.1-or-later or Apache-2.0. OmniSign takes Apache-2.0, which carries no relinking obligation."
+		},
+		{
+			"name": "Jetty ALPN API",
+			"groups": ["org.eclipse.jetty.alpn"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © Mort Bay Consulting Pty Ltd",
+			"homepage": "https://www.eclipse.org/jetty",
+			"election": "Dual-licensed Apache-2.0 or EPL-1.0. OmniSign takes Apache-2.0, which is compatible with the GNU AGPL."
+		},
+		{
+			"name": "Bouncy Castle",
+			"groups": ["org.bouncycastle"],
+			"license": "BouncyCastle",
+			"copyright": "Copyright © 2000-2023 The Legion of the Bouncy Castle Inc.",
+			"homepage": "https://www.bouncycastle.org/"
+		},
+		{
+			"name": "Apache PDFBox",
+			"groups": ["org.apache.pdfbox"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © The Apache Software Foundation",
+			"homepage": "https://pdfbox.apache.org/"
+		},
+		{
+			"name": "Apache Commons",
+			"groups": ["org.apache.commons", "commons-codec", "commons-io", "commons-logging"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © The Apache Software Foundation",
+			"homepage": "https://commons.apache.org/",
+			"notes": "The published POMs inherit their licence from the Apache parent POM; the shipped jars each carry the Apache-2.0 text in META-INF."
+		},
+		{
+			"name": "Apache HttpComponents",
+			"groups": ["org.apache.httpcomponents.client5", "org.apache.httpcomponents.core5"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © The Apache Software Foundation",
+			"homepage": "https://hc.apache.org/"
+		},
+		{
+			"name": "Apache Santuario (XML Security)",
+			"groups": ["org.apache.santuario"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © The Apache Software Foundation",
+			"homepage": "https://santuario.apache.org/"
+		},
+		{
+			"name": "Apache Jansi",
+			"groups": ["org.fusesource.jansi"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © FuseSource, Corp.",
+			"homepage": "https://fusesource.github.io/jansi"
+		},
+		{
+			"name": "SnakeYAML",
+			"groups": ["org.yaml"],
+			"license": "Apache-2.0",
+			"homepage": "https://bitbucket.org/snakeyaml/snakeyaml"
+		},
+		{
+			"name": "Jackson",
+			"groups": ["com.fasterxml.jackson.core", "com.fasterxml.jackson.dataformat", "com.fasterxml.jackson.module"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © FasterXML, LLC",
+			"homepage": "https://github.com/FasterXML/jackson"
+		},
+		{
+			"name": "Woodstox",
+			"groups": ["com.fasterxml.woodstox"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © FasterXML, LLC",
+			"homepage": "https://github.com/FasterXML/woodstox"
+		},
+		{
+			"name": "Stax2 API",
+			"groups": ["org.codehaus.woodstox"],
+			"license": "BSD-2-Clause",
+			"copyright": "Copyright © FasterXML, LLC",
+			"homepage": "https://github.com/FasterXML/stax2-api"
+		},
+		{
+			"name": "stax-utils",
+			"groups": ["net.java.dev.stax-utils"],
+			"license": "BSD-unspecified",
+			"homepage": "https://github.com/javaee/stax-utils",
+			"notes": "Reached transitively through veraPDF and dss-pdfa. The published POM names only \"BSD\" and links a page that no longer resolves; the jar carries no licence text. The BSD-3-Clause text is reproduced as the broader of the candidate variants."
+		},
+		{
+			"name": "Jakarta XML Binding and Activation",
+			"groups": ["jakarta.xml.bind", "jakarta.activation", "org.glassfish.jaxb", "com.sun.istack", "org.eclipse.angus"],
+			"license": "EDL-1.0",
+			"copyright": "Copyright © Oracle and/or its affiliates; Copyright © Eclipse Foundation",
+			"homepage": "https://eclipse-ee4j.github.io/jaxb-ri/"
+		},
+		{
+			"name": "Kotlin",
+			"groups": ["org.jetbrains.kotlin", "org.jetbrains.kotlinx"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © JetBrains s.r.o.",
+			"homepage": "https://kotlinlang.org/"
+		},
+		{
+			"name": "Compose Multiplatform",
+			"groups": [
+				"org.jetbrains.compose.animation",
+				"org.jetbrains.compose.components",
+				"org.jetbrains.compose.desktop",
+				"org.jetbrains.compose.foundation",
+				"org.jetbrains.compose.material",
+				"org.jetbrains.compose.material3",
+				"org.jetbrains.compose.runtime",
+				"org.jetbrains.compose.ui",
+				"org.jetbrains.compose.annotation-internal",
+				"org.jetbrains.compose.collection-internal",
+				"org.jetbrains.androidx.lifecycle",
+				"org.jetbrains.androidx.savedstate"
+			],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © JetBrains s.r.o. and respective authors",
+			"homepage": "https://github.com/JetBrains/compose-multiplatform",
+			"notes": "The `*-internal` groups are JetBrains' WebAssembly ports of the AndroidX annotation and collection libraries, published under the Compose Multiplatform umbrella and reached only by the web build."
+		},
+		{
+			"name": "AndroidX (Jetpack)",
+			"groups": [
+				"androidx.annotation",
+				"androidx.arch.core",
+				"androidx.collection",
+				"androidx.compose.runtime",
+				"androidx.lifecycle",
+				"androidx.navigationevent",
+				"androidx.savedstate"
+			],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © The Android Open Source Project",
+			"homepage": "https://developer.android.com/jetpack/androidx"
+		},
+		{
+			"name": "Skiko",
+			"groups": ["org.jetbrains.skiko"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © JetBrains s.r.o.",
+			"homepage": "https://github.com/JetBrains/skiko"
+		},
+		{
+			"name": "JetBrains Runtime API",
+			"groups": ["org.jetbrains.runtime"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © JetBrains s.r.o.",
+			"homepage": "https://github.com/JetBrains/JetBrainsRuntimeApi"
+		},
+		{
+			"name": "JetBrains Java annotations and Markdown",
+			"groups": ["org.jetbrains"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © JetBrains s.r.o.",
+			"homepage": "https://github.com/JetBrains/java-annotations"
+		},
+		{
+			"name": "Exposed",
+			"groups": ["org.jetbrains.exposed"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © JetBrains s.r.o.",
+			"homepage": "https://github.com/JetBrains/Exposed"
+		},
+		{
+			"name": "Ktor",
+			"groups": ["io.ktor"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © JetBrains s.r.o.",
+			"homepage": "https://ktor.io/"
+		},
+		{
+			"name": "Koin",
+			"groups": ["io.insert-koin"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © Arrow-kt and Kotzilla",
+			"homepage": "https://insert-koin.io/"
+		},
+		{
+			"name": "Arrow",
+			"groups": ["io.arrow-kt"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © The Arrow authors",
+			"homepage": "https://arrow-kt.io/"
+		},
+		{
+			"name": "Netty",
+			"groups": ["io.netty"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © The Netty Project",
+			"homepage": "https://netty.io/"
+		},
+		{
+			"name": "kotlin-logging",
+			"groups": ["io.github.oshai"],
+			"license": "Apache-2.0",
+			"homepage": "https://github.com/oshai/kotlin-logging"
+		},
+		{
+			"name": "FileKit",
+			"groups": ["io.github.vinceglb"],
+			"license": "MIT",
+			"copyright": "Copyright © Vince Glb",
+			"homepage": "https://github.com/vinceglb/FileKit"
+		},
+		{
+			"name": "SLF4J",
+			"groups": ["org.slf4j"],
+			"license": "MIT",
+			"copyright": "Copyright © 2004-2024 QOS.ch Sarl",
+			"homepage": "https://www.slf4j.org"
+		},
+		{
+			"name": "Clikt",
+			"groups": ["com.github.ajalt.clikt"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © AJ Alt",
+			"homepage": "https://github.com/ajalt/clikt"
+		},
+		{
+			"name": "Mordant",
+			"groups": ["com.github.ajalt.mordant"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © AJ Alt",
+			"homepage": "https://github.com/ajalt/mordant"
+		},
+		{
+			"name": "Colormath",
+			"groups": ["com.github.ajalt.colormath"],
+			"license": "MIT",
+			"copyright": "Copyright © AJ Alt",
+			"homepage": "https://github.com/ajalt/colormath"
+		},
+		{
+			"name": "Stately",
+			"groups": ["co.touchlab"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © Touchlab",
+			"homepage": "https://github.com/touchlab/Stately"
+		},
+		{
+			"name": "HKDF",
+			"groups": ["at.favre.lib"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © Patrick Favre-Bulle",
+			"homepage": "https://github.com/patrickfav/hkdf"
+		},
+		{
+			"name": "Stacktrace Decoroutinator",
+			"groups": ["dev.reformator.stacktracedecoroutinator", "dev.reformator.kotlin-metadata-jvm-repack"],
+			"license": "Apache-2.0",
+			"homepage": "https://github.com/Anamorphosee/stacktrace-decoroutinator"
+		},
+		{
+			"name": "Byte Buddy",
+			"groups": ["net.bytebuddy"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © Rafael Winterhalter",
+			"homepage": "https://bytebuddy.net"
+		},
+		{
+			"name": "ASM",
+			"groups": ["org.ow2.asm"],
+			"license": "BSD-3-Clause",
+			"copyright": "Copyright © 2000-2011 INRIA, France Telecom",
+			"homepage": "https://asm.ow2.io/"
+		},
+		{
+			"name": "Guava",
+			"groups": ["com.google.guava"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © Google LLC",
+			"homepage": "https://github.com/google/guava",
+			"notes": "The failureaccess and listenablefuture marker artifacts declare no licence of their own; both are Guava components published from guava-parent."
+		},
+		{
+			"name": "Error Prone annotations",
+			"groups": ["com.google.errorprone"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © Google LLC",
+			"homepage": "https://errorprone.info"
+		},
+		{
+			"name": "JSR 305 annotations",
+			"groups": ["com.google.code.findbugs"],
+			"license": "Apache-2.0",
+			"homepage": "https://findbugs.sourceforge.net/"
+		},
+		{
+			"name": "Checker Framework qualifiers",
+			"groups": ["org.checkerframework"],
+			"license": "MIT",
+			"copyright": "Copyright © the Checker Framework developers",
+			"homepage": "https://checkerframework.org/"
+		},
+		{
+			"name": "JSpecify",
+			"groups": ["org.jspecify"],
+			"license": "Apache-2.0",
+			"homepage": "https://jspecify.org/"
+		},
+		{
+			"name": "Auth0 Java JWT and JWKS",
+			"groups": ["com.auth0"],
+			"license": "MIT",
+			"copyright": "Copyright © Auth0, Inc.",
+			"homepage": "https://github.com/auth0/java-jwt"
+		},
+		{
+			"name": "jmail",
+			"groups": ["com.sanctionco.jmail"],
+			"license": "MIT",
+			"copyright": "Copyright © Rohan Nagar",
+			"homepage": "https://github.com/RohanNagar/jmail"
+		},
+		{
+			"name": "json-sKema",
+			"groups": ["com.github.erosb"],
+			"license": "MIT",
+			"copyright": "Copyright © Elemer Erosb Sarkozi",
+			"homepage": "https://github.com/erosb/json-sKema"
+		},
+		{
+			"name": "dbus-java",
+			"groups": ["com.github.hypfvieh"],
+			"license": "MIT",
+			"copyright": "Copyright © hypfvieh",
+			"homepage": "https://github.com/hypfvieh/dbus-java"
+		},
+		{
+			"name": "java-keyring",
+			"groups": ["com.github.javakeyring"],
+			"license": "BSD-3-Clause",
+			"homepage": "https://github.com/javakeyring/java-keyring"
+		},
+		{
+			"name": "jkeychain",
+			"groups": ["pt.davidafsilva.apple"],
+			"license": "BSD-2-Clause",
+			"copyright": "Copyright © David Silva",
+			"homepage": "https://github.com/davidafsilva/jkeychain"
+		},
+		{
+			"name": "secret-service",
+			"groups": ["org.purejava"],
+			"license": "MIT",
+			"copyright": "Copyright © Ralph Plawetzki",
+			"homepage": "https://github.com/purejava/secret-service"
+		},
+		{
+			"name": "Typesafe Config",
+			"groups": ["com.typesafe"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © Lightbend, Inc.",
+			"homepage": "https://github.com/lightbend/config"
+		},
+		{
+			"name": "SQLite JDBC",
+			"groups": ["org.xerial"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © Taro L. Saito and contributors",
+			"homepage": "https://github.com/xerial/sqlite-jdbc"
+		}
+	]
+}

@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.data.remote.RemoteArchivingRepository
 import cz.pizavo.omnisign.data.remote.RemoteCapabilitiesRepository
 import cz.pizavo.omnisign.data.remote.RemoteConfigArchive
 import cz.pizavo.omnisign.data.remote.RemoteConfigRepository
+import cz.pizavo.omnisign.data.remote.RemoteServerCreditsRepository
 import cz.pizavo.omnisign.data.remote.RemoteSigningRepository
 import cz.pizavo.omnisign.data.remote.RemoteTrustStore
 import cz.pizavo.omnisign.data.remote.RemoteValidationRepository
@@ -11,6 +12,7 @@ import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.CapabilitiesRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.domain.repository.ServerCreditsRepository
 import cz.pizavo.omnisign.domain.repository.SigningRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.repository.ValidationRepository
@@ -49,6 +51,11 @@ import org.koin.dsl.module
  * ([RemoteTrustStore]) so the trusted-certificate panels show exactly the trust the
  * server validates with, and [WebAuthState], [WebAuthApi], and [WebSessionState] for the login flow
  * and the reactive auth gate.
+ *
+ * [ServerCreditsRepository] is bound here and nowhere else, which is what keeps the Credits
+ * dialog's server section web-only: the desktop signs in-process, so the components doing that work
+ * are already in its own list, whereas the browser bundle carries none of the signing stack and
+ * would otherwise never credit it at all.
  *
  * @param serverBaseUrl Origin of the OmniSign server (e.g.
  *   `"https://omnisign.example.com"`). All HTTP requests are issued relative
@@ -114,6 +121,7 @@ fun webDataModule(serverBaseUrl: String, languageProvider: () -> String? = { nul
         }
     }
     single<CapabilitiesRepository> { RemoteCapabilitiesRepository(get()) }
+    single<ServerCreditsRepository> { RemoteServerCreditsRepository(get()) }
     single<ValidationRepository> { RemoteValidationRepository(get()) }
     single<ConfigRepository> { RemoteConfigRepository(get(), get()) }
     single<SigningRepository> { RemoteSigningRepository(get()) }

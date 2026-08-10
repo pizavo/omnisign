@@ -25,6 +25,7 @@ import cz.pizavo.omnisign.domain.usecase.ConfigArchiveUseCase
 import cz.pizavo.omnisign.domain.usecase.ExportImportConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.MigrateTrustedCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.RenewBatchUseCase
+import cz.pizavo.omnisign.legal.ThirdPartyCreditsReader
 import kotlinx.coroutines.flow.MutableStateFlow
 import org.koin.core.module.dsl.singleOf
 import org.koin.dsl.bind
@@ -146,7 +147,8 @@ val jvmRepositoryModule = module {
 	singleOf(::RenewBatchUseCase)
 	single { RenewalNotifier(get()) }
 	single { MigrateTrustedCertificatesUseCase(get(), get()) }
-	
+	singleOf(::ThirdPartyCreditsReader)
+
 	single<OsSchedulerService> {
 		val os = System.getProperty("os.name", "").lowercase()
 		when {

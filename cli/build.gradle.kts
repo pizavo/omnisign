@@ -147,6 +147,34 @@ tasks.named<JavaExec>("run") {
 	standardInput = System.`in`
 }
 
+/**
+ * Legal files bundled into every CLI package under `META-INF/legal/`.
+ *
+ * Merging ~180 dependency jars into one archive collapses their `META-INF/LICENSE`
+ * and `META-INF/NOTICE` entries onto a single path, so only whichever jar is
+ * copied first survives and every other library's notice is silently dropped.
+ * Those ambiguous paths are therefore excluded outright and replaced by the
+ * aggregate that `:generateThirdPartyNotices` produces: `THIRD-PARTY.md` carries
+ * every component's licence, copyright and verbatim upstream `NOTICE` text, and
+ * `licenses/` carries the full text of each licence named there.
+ */
+val bundledLegalFiles: List<File> = listOf(
+	rootProject.file("LICENSE.md"),
+	rootProject.file("NOTICE.md"),
+	rootProject.file("THIRD-PARTY.md"),
+)
+
+/** Directory holding the full text of every licence referenced by [bundledLegalFiles]. */
+val bundledLicenseTexts: File = rootProject.file("licenses")
+
+/**
+ * Licence text the native installers ask the user to accept: OmniSign's own AGPL terms
+ * prefixed with a summary of the third-party components the package installs. Produced by
+ * the root `:generateInstallerLicense` task, which every jpackage task depends on.
+ */
+val installerLicenseFile: File = rootProject.layout.buildDirectory
+	.file("legal/installer-license-cli.md").get().asFile
+
 tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
 	archiveBaseName.set("omnisign")
 	archiveClassifier.set("")
@@ -156,6 +184,24 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
 		attributes["Enable-Native-Access"] = "ALL-UNNAMED"
 	}
 	mergeServiceFiles()
+
+	exclude(
+		"META-INF/LICENSE",
+		"META-INF/LICENSE.txt",
+		"META-INF/LICENSE.md",
+		"META-INF/NOTICE",
+		"META-INF/NOTICE.txt",
+		"META-INF/NOTICE.md",
+		"META-INF/DEPENDENCIES",
+		"META-INF/LGPL2.1",
+		"META-INF/AL2.0",
+		"META-INF/thirdparty-LICENSE",
+		"META-INF/FastDoubleParser-LICENSE",
+		"META-INF/FastDoubleParser-NOTICE",
+	)
+
+	from(bundledLegalFiles) { into("META-INF/legal") }
+	from(bundledLicenseTexts) { into("META-INF/legal/licenses") }
 }
 
 tasks.named<CreateStartScripts>("startScripts") {
@@ -270,12 +316,18 @@ val iconsDir: File = rootProject.file("assets/icons")
  * Copies only the shadow JAR into a dedicated staging directory used as the jpackage {@code --input}.
  * This prevents the thin CLI JAR from also appearing on the packaged application's classpath,
  * which would otherwise cause duplicate resource warnings (e.g. {@code logback.xml}).
+ *
+ * The third-party legal files are staged alongside it under {@code legal/}, so the installed
+ * package carries the licence of every bundled library as readable files and not only inside the
+ * fat JAR. They are plain text and Markdown, so unlike a second JAR they never reach the classpath.
  */
 val prepareJpackageInput by tasks.registering(Copy::class) {
 	group = "distribution"
-	description = "Stages the shadow JAR into build/jpackage/input for use as the jpackage --input directory."
+	description = "Stages the shadow JAR and the third-party legal files into build/jpackage/input."
 	dependsOn(shadowJarTask)
 	from(shadowJarFile)
+	from(bundledLegalFiles) { into("legal") }
+	from(bundledLicenseTexts) { into("legal/licenses") }
 	into(layout.buildDirectory.dir("jpackage/input"))
 }
 
@@ -327,7 +379,7 @@ val commonJpackageArgsList: List<String> = listOf(
 
 /** Arguments valid only for installer types (not app-image). */
 val installerOnlyArgsList: List<String> = listOf(
-	"--license-file", rootProject.file("LICENSE.md").absolutePath,
+	"--license-file", installerLicenseFile.absolutePath,
 	"--about-url", "https://pizavo.github.io/omnisign/cli/",
 )
 
@@ -346,6 +398,7 @@ fun registerJPackageTask(
 		this.group = "distribution"
 		this.description = description
 		dependsOn("prepareJpackageInput")
+		if (type != "app-image") dependsOn(":generateInstallerLicense")
 		jpackageBin.set(jpackageBinPath)
 		shadowJar.set(shadowJarFile)
 		inputDir.set(jpackageInputDir)
