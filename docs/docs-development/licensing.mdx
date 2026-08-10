@@ -43,9 +43,13 @@ Rather than fight that, `:composeApp:collectWebRuntimeCoordinates` resolves its 
 | [`THIRD-PARTY.md`](https://github.com/pizavo/omnisign/blob/main/THIRD-PARTY.md) | Every bundled component, grouped by licence, with copyright, homepage and the verbatim `NOTICE` text each artifact ships. Generated. |
 | `licenses/` | Full text of each licence named above. |
 
-All four are installed with the application: next to the binary in the desktop and CLI packages, and
-inside the CLI fat JAR under `META-INF/legal/`. The desktop and web apps also surface them under
-**Help → Credits**.
+All four are installed with the application: next to the binary in the desktop and CLI packages,
+inside the CLI and server fat JARs under `META-INF/legal/`, and beside `index.html` in the web
+bundle. The desktop and web apps also surface them under **Help → Credits**.
+
+Readers get a per-package view too, generated from the same data and filtered to that surface:
+[CLI](/cli/credits), [server](/server/credits), [desktop](/desktop/credits) and
+[web](/web/credits). Those pages are generated — edit the data, not the Markdown.
 
 ## Why this is not scraped from POMs
 

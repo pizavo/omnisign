@@ -95,3 +95,35 @@ dokka {
 		footerMessage.set("OmniSign — server module API reference")
 	}
 }
+
+/**
+ * Legal files bundled into the server fat JAR under `META-INF/legal/`.
+ *
+ * The server ships as a single merged archive inside a container image, which collapses
+ * every dependency's `META-INF/LICENSE` and `META-INF/NOTICE` onto one path so that only
+ * whichever jar is copied first survives. Those ambiguous paths are excluded and replaced
+ * by the aggregate `:generateThirdPartyNotices` produces, so the image carries the licence
+ * of every library it runs — EU DSS included, whose own artifacts ship none.
+ */
+val bundledLegalFiles: List<File> = listOf(
+    rootProject.file("LICENSE.md"),
+    rootProject.file("NOTICE.md"),
+    rootProject.file("THIRD-PARTY.md"),
+)
+
+tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
+    exclude(
+        "META-INF/LICENSE",
+        "META-INF/LICENSE.txt",
+        "META-INF/LICENSE.md",
+        "META-INF/NOTICE",
+        "META-INF/NOTICE.txt",
+        "META-INF/NOTICE.md",
+        "META-INF/DEPENDENCIES",
+        "META-INF/LGPL2.1",
+        "META-INF/AL2.0",
+    )
+
+    from(bundledLegalFiles) { into("META-INF/legal") }
+    from(rootProject.file("licenses")) { into("META-INF/legal/licenses") }
+}
