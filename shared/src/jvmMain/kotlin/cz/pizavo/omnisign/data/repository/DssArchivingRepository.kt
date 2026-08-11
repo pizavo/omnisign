@@ -12,13 +12,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.toDss
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
-import cz.pizavo.omnisign.domain.model.result.ArchivingResult
-import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
-import cz.pizavo.omnisign.domain.model.result.OperationResult
-import cz.pizavo.omnisign.domain.model.result.RenewalAssessment
-import cz.pizavo.omnisign.domain.model.result.RenewalCheckCacheEntry
-import cz.pizavo.omnisign.domain.model.result.RenewalNeed
-import cz.pizavo.omnisign.domain.model.result.RenewalReason
+import cz.pizavo.omnisign.domain.model.result.*
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.port.RenewalCheckCache
@@ -44,7 +38,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.apache.pdfbox.Loader
 import java.io.File
-import java.util.Date
+import java.util.*
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
@@ -76,6 +70,7 @@ class DssArchivingRepository(
 	private val documentInputErrorDetector: DocumentInputErrorDetector,
 	private val trustStore: TrustStore,
 	private val renewalCheckCache: RenewalCheckCache,
+	private val signatureSpaceErrorDetector: SignatureSpaceErrorDetector,
 ) : ArchivingRepository {
 	
 	private val adesPolicy = AdESPolicy()
@@ -116,7 +111,10 @@ class DssArchivingRepository(
 			val statusAlert = CollectingStatusAlert()
 			val logCapture = DssLogCapture()
 			val (service, tlWarnings) = buildExtendService(resolvedConfig, tsConfig, statusAlert)
-			val extendParams = PAdESSignatureParameters().apply { setSignatureLevel(dssLevel) }
+			val extendParams = PAdESSignatureParameters().apply {
+				setSignatureLevel(dssLevel)
+				dssServiceFactory.applyTimestampContentSize(this)
+			}
 			logCapture.start()
 			try {
 				val extendedDocument = service.extendDocument(
@@ -161,6 +159,10 @@ class DssArchivingRepository(
 			
 			if (documentInputErrorDetector.isEncrypted(e)) {
 				return ArchivingError.pdfEncrypted(details = e.message, cause = e).left()
+			}
+
+			if (signatureSpaceErrorDetector.isSignatureTooLarge(e)) {
+				return ArchivingError.timestampTooLarge(details = e.message, cause = e).left()
 			}
 
 			if (revocationErrorDetector.isRevocationException(e)) {

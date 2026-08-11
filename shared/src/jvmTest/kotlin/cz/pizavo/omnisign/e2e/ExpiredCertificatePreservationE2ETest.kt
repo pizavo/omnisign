@@ -1,14 +1,7 @@
 package cz.pizavo.omnisign.e2e
 
 import arrow.core.right
-import cz.pizavo.omnisign.data.repository.CertificateVerifierResult
-import cz.pizavo.omnisign.data.repository.DocumentInputErrorDetector
-import cz.pizavo.omnisign.data.repository.DssArchivingRepository
-import cz.pizavo.omnisign.data.repository.DssServiceFactory
-import cz.pizavo.omnisign.data.repository.DssSigningRepository
-import cz.pizavo.omnisign.data.repository.DssWarningSanitizer
-import cz.pizavo.omnisign.data.repository.RevocationErrorDetector
-import cz.pizavo.omnisign.data.repository.TspErrorDetector
+import cz.pizavo.omnisign.data.repository.*
 import cz.pizavo.omnisign.data.service.Pkcs11SessionCache
 import cz.pizavo.omnisign.data.service.pkcs11CertAlias
 import cz.pizavo.omnisign.data.trust.FileTrustStore
@@ -26,12 +19,7 @@ import cz.pizavo.omnisign.domain.model.result.RenewalNeed
 import cz.pizavo.omnisign.domain.model.result.RenewalReason
 import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
-import cz.pizavo.omnisign.domain.service.AlgorithmExpirationChecker
-import cz.pizavo.omnisign.domain.service.CertificateEntry
-import cz.pizavo.omnisign.domain.service.CredentialStore
-import cz.pizavo.omnisign.domain.service.SigningToken
-import cz.pizavo.omnisign.domain.service.TokenInfo
-import cz.pizavo.omnisign.domain.service.TokenService
+import cz.pizavo.omnisign.domain.service.*
 import eu.europa.esig.dss.alert.StatusAlert
 import eu.europa.esig.dss.model.InMemoryDocument
 import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
@@ -60,7 +48,7 @@ import java.security.KeyStore
 import java.security.PrivateKey
 import java.security.cert.X509CRL
 import java.security.cert.X509Certificate
-import java.util.Date
+import java.util.*
 
 /**
  * End-to-end tests of the case the whole preservation review turns on: a PAdES B-T document whose
@@ -207,12 +195,12 @@ class ExpiredCertificatePreservationE2ETest : FunSpec({
 	val signingRepository = DssSigningRepository(
 		tokenService, configRepository, mockk<CredentialStore>(relaxed = true), dssServiceFactory,
 		AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
-		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(), Pkcs11SessionCache(),
+		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(), Pkcs11SessionCache(), SignatureSpaceErrorDetector(),
 	)
 	val archivingRepository = DssArchivingRepository(
 		configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(),
 		RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()),
-		mockk<RenewalCheckCache>(relaxed = true),
+		mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(),
 	)
 
 	fun plainPdf(): ByteArray {

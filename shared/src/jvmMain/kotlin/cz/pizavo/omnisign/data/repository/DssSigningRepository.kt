@@ -59,6 +59,7 @@ class DssSigningRepository(
 	private val trustStore: TrustStore,
 	private val documentInputErrorDetector: DocumentInputErrorDetector,
 	private val sessionCache: Pkcs11SessionCache,
+	private val signatureSpaceErrorDetector: SignatureSpaceErrorDetector,
 ) : SigningRepository {
 	
 	private var discoveredTokens: List<TokenInfo> = emptyList()
@@ -194,6 +195,8 @@ class DssSigningRepository(
 				).left()
 			} else if (documentInputErrorDetector.isEncrypted(e)) {
 				SigningError.pdfEncrypted(details = e.message, cause = e).left()
+			} else if (signatureSpaceErrorDetector.isSignatureTooLarge(e)) {
+				SigningError.signatureTooLarge(details = e.message, cause = e).left()
 			} else {
 				SigningError.signingFailed(details = e.message, cause = e).left()
 			}
@@ -659,6 +662,18 @@ class DssSigningRepository(
 	
 	private companion object {
 		const val TOKEN_CREDENTIAL_SERVICE = "omnisign-token"
+
+		/**
+		 * Reservation for a B-B signature, which carries no timestamp token.
+		 */
+		const val BARE_SIGNATURE_CONTENT_SIZE = 13_312
+
+		/**
+		 * Reservation for every level that carries a signature timestamp (B-T and above).
+		 * Below [DssServiceFactory.PDFA_MAX_STRING_LENGTH]; see [contentSizeForLevel] for why it does not grow
+		 * with the level.
+		 */
+		const val TIMESTAMPED_CONTENT_SIZE = 30_720
 		
 		/**
 		 * Warning categories suppressed during signing.
@@ -735,7 +750,8 @@ class DssSigningRepository(
 		setSigningCertificate(privateKey.certificate)
 		certificateChain = privateKey.certificateChain.toMutableList()
 		contentSize = contentSizeForLevel(dssLevel)
-		
+		dssServiceFactory.applyTimestampContentSize(this)
+
 		parameters.reason?.let { reason = it }
 		parameters.location?.let { location = it }
 		parameters.contactInfo?.let { contactInfo = it }
@@ -743,26 +759,44 @@ class DssSigningRepository(
 	}
 	
 	/**
-	 * Returns the PDF signature content-area reservation in bytes for [level].
+	 * Returns the `/Contents` reservation in bytes for [level] — the space set aside in the PDF for
+	 * the CMS signature before that signature exists.
 	 *
-	 * The default DSS value of 9,472 bytes is not enough for any level above B-B because
-	 * higher levels embed a certificate chain, CRL/OCSP revocation data, one or more RFC 3161
-	 * timestamp tokens, and (for B-LTA) an archive timestamp.  The values below are chosen
-	 * with comfortable headroom over the typical content sizes observed in practice:
+	 * A reservation is unavoidable: `/ByteRange` must state exact byte offsets before the document
+	 * can be digested, so the size of `/Contents` is fixed before the CMS that fills it has been
+	 * produced, and it cannot be shrunk afterwards without moving every following byte and
+	 * invalidating the digest just signed. DSS passes the value straight to PDFBox as
+	 * `setPreferredSignatureSize`; neither grows it, so a CMS that does not fit fails the save.
+	 * The reservation must therefore over-estimate, and the unused tail stays as zero padding.
 	 *
-	 * | Level    | Budget  | Contains                                          |
-	 * |----------|---------|---------------------------------------------------|
-	 * | B-B      | 13 KB   | signature and cert chain                          |
-	 * | B-T      | 22 KB   | + document timestamp (~5–8 KB)                    |
-	 * | B-LT     | 37 KB   | + CRL/OCSP revocation data (~10–15 KB)            |
-	 * | B-LTA    | 65 KB   | + archive timestamp and extra revocation (~15 KB) |
+	 * **The reservation does not scale with the signature level above B-T.** Only three things ever
+	 * occupy `/Contents`: the signing certificate chain, the signature value, and at most one
+	 * signature timestamp token. Per ETSI EN 319 142-1 the B-LT validation data goes into the
+	 * document-level `/DSS` dictionary, and the B-LTA archive timestamp is a separate signature
+	 * dictionary with its own reservation — neither passes through here. Measured payloads: 6,441
+	 * bytes for a single self-signed RSA-3072 certificate, 6,965 for a two-certificate RSA-2048
+	 * chain, and 8,442 for a real qualified signature (PostSignum chain, RSA-4096, SHA-512,
+	 * qualified TSA) of which the timestamp token alone is 5,052.
+	 *
+	 * The upper bound is a conformance constraint, not a capacity one. PDF/A-1, -2 and -3 inherit
+	 * ISO 32000-1 Annex C Table C.1, which caps a string object at [DssServiceFactory.PDFA_MAX_STRING_LENGTH] bytes
+	 * (ISO 19005-3 clause 6.1.13, test 3; clause 6.1.12 test 2 for PDF/A-1). Because PDF/A measures
+	 * the declared string length rather than its meaningful content, an over-large reservation
+	 * alone makes a signed PDF/A document non-conformant even though the signature itself is
+	 * unaffected. Any value between the real payload and that cap is equally correct, so
+	 * [TIMESTAMPED_CONTENT_SIZE] sits near the top of the window rather than the bottom: an
+	 * over-large reservation costs only file bytes, whereas one that is too small fails the save
+	 * outright, and does so only for the users whose certificate chain or TSA happens to be larger
+	 * than the ones measured here. It leaves roughly 2x headroom over a pessimistic 16 KB estimate
+	 * for a three-certificate qualified chain. PDF 2.0 dropped Annex C, so PDF/A-4 has no such
+	 * limit — this ceiling exists for PDF/A-1/2/3 inputs.
+	 *
+	 * @param level The PAdES level being produced.
+	 * @return Bytes to reserve, always at most [DssServiceFactory.PDFA_MAX_STRING_LENGTH].
 	 */
 	private fun contentSizeForLevel(level: DssSignatureLevel): Int = when (level) {
-		DssSignatureLevel.PAdES_BASELINE_B -> 13_312
-		DssSignatureLevel.PAdES_BASELINE_T -> 22_528
-		DssSignatureLevel.PAdES_BASELINE_LT -> 37_888
-		DssSignatureLevel.PAdES_BASELINE_LTA -> 65_536
-		else -> 22_528
+		DssSignatureLevel.PAdES_BASELINE_B -> BARE_SIGNATURE_CONTENT_SIZE
+		else -> TIMESTAMPED_CONTENT_SIZE
 	}
 	
 	/**

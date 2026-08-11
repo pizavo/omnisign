@@ -1,5 +1,10 @@
 package cz.pizavo.omnisign.data.repository
 
+import cz.pizavo.omnisign.data.repository.DssServiceFactory.Companion.AIA_CA_ISSUERS_PROPERTY
+import cz.pizavo.omnisign.data.repository.DssServiceFactory.Companion.ALLOWED_AIA_LOCATIONS_PROPERTY
+import cz.pizavo.omnisign.data.repository.DssServiceFactory.Companion.DIGICERT_AIA_REPOSITORY
+import cz.pizavo.omnisign.data.repository.DssServiceFactory.Companion.TL_TRANSPORT_ROOT_RESOURCES
+import cz.pizavo.omnisign.data.repository.DssServiceFactory.Companion.tlTransportTrustStore
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
@@ -11,12 +16,12 @@ import eu.europa.esig.dss.alert.StatusAlert
 import eu.europa.esig.dss.model.DSSDocument
 import eu.europa.esig.dss.model.InMemoryDocument
 import eu.europa.esig.dss.model.tsl.TLValidationJobSummary
+import eu.europa.esig.dss.pades.PAdESSignatureParameters
 import eu.europa.esig.dss.pdf.PdfMemoryUsageSetting
 import eu.europa.esig.dss.pdf.pdfbox.PdfBoxNativeObjectFactory
 import eu.europa.esig.dss.service.crl.OnlineCRLSource
 import eu.europa.esig.dss.service.http.commons.*
 import eu.europa.esig.dss.service.ocsp.OnlineOCSPSource
-
 import eu.europa.esig.dss.service.tsp.OnlineTSPSource
 import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import eu.europa.esig.dss.spi.x509.CommonTrustedCertificateSource
@@ -64,7 +69,7 @@ class DssServiceFactory(
 	private val credentialStore: CredentialStore,
 	private val trustedSources: TrustedSourceRegistry = TrustedSourceRegistry(),
 ) {
-
+	
 	/**
 	 * Build an [OnlineTSPSource] for [tsConfig], resolving the HTTP Basic password from
 	 * the injected [CredentialStore] when a credential key is configured on the server.
@@ -148,7 +153,7 @@ class DssServiceFactory(
 		alertFactory: () -> StatusAlert = { LogOnStatusAlert(Level.WARN) },
 	): CertificateVerifierResult =
 		buildAugmentingCertificateVerifier(config, directAnchors, alertFactory, reportMissingRevocationData = false)
-
+	
 	/**
 	 * Build a [CommonCertificateVerifier] for **augmenting an already-signed document** to a higher
 	 * PAdES level.
@@ -191,7 +196,7 @@ class DssServiceFactory(
 		alertFactory: () -> StatusAlert = { LogOnStatusAlert(Level.WARN) },
 	): CertificateVerifierResult =
 		buildAugmentingCertificateVerifier(config, directAnchors, alertFactory, reportMissingRevocationData = true)
-
+	
 	/**
 	 * Shared body of [buildSigningCertificateVerifier] and [buildExtendCertificateVerifier].
 	 *
@@ -209,7 +214,7 @@ class DssServiceFactory(
 		if (config?.validation?.allowExpiredCertificate == true) {
 			cv.alertOnExpiredCertificate = null
 		}
-
+		
 		if (config == null || !config.validation.checkRevocation) {
 			return CertificateVerifierResult(
 				verifier = cv.apply {
@@ -244,11 +249,11 @@ class DssServiceFactory(
 			alertOnNoRevocationAfterBestSignatureTime = alert.takeIf { reportMissingRevocationData }
 			alertOnRevokedCertificate = alert
 		}
-
+		
 		val tlWarnings = trustedSources.composeInto(cv, config, directAnchors)
 		return CertificateVerifierResult(cv, tlWarnings)
 	}
-
+	
 	/**
 	 * Build a [CommonCertificateVerifier] optimized for **validation**.
 	 *
@@ -290,7 +295,7 @@ class DssServiceFactory(
 	): CertificateVerifierResult {
 		val cv = CommonCertificateVerifier()
 		cv.silenceAlertsCoveredByTheReport()
-
+		
 		if (config == null || !config.validation.checkRevocation) {
 			return CertificateVerifierResult(
 				verifier = cv.apply {
@@ -299,7 +304,7 @@ class DssServiceFactory(
 				}
 			)
 		}
-
+		
 		val timeout = minOf(config.ocsp.timeout, config.crl.timeout)
 		val dataLoader = CommonsDataLoader().apply {
 			timeoutConnection = timeout
@@ -309,7 +314,7 @@ class DssServiceFactory(
 			timeoutConnection = timeout
 			timeoutSocket = timeout
 		}
-
+		
 		val alert = alertFactory()
 		cv.apply {
 			aiaSource = DefaultAIASource(dataLoader)
@@ -318,11 +323,11 @@ class DssServiceFactory(
 			alertOnUncoveredPOE = alert
 			alertOnNoRevocationAfterBestSignatureTime = alert
 		}
-
+		
 		val tlWarnings = trustedSources.composeInto(cv, config, directAnchors)
 		return CertificateVerifierResult(cv, tlWarnings)
 	}
-
+	
 	/**
 	 * Disable the verifier alerts whose conditions the validation report already states as ETSI
 	 * indications, so that enabling the alerter for validation adds no duplicate warnings.
@@ -372,6 +377,28 @@ class DssServiceFactory(
 	}
 	
 	/**
+	 * Size the `/Contents` reservation of every timestamp dictionary [parameters] may produce —
+	 * the document timestamp of a B-T extension and the archive timestamp of B-LTA — to
+	 * [TIMESTAMP_CONTENT_SIZE].
+	 *
+	 * Applies to both the signing and the archiving path, because both can append a timestamp
+	 * dictionary and each one is an independent PDF string subject to
+	 * [PDFA_MAX_STRING_LENGTH]. DSS's own default of 9,472 bytes leaves only 1.23x over the
+	 * largest token measured across thirty live TSAs (GlobalSign, 7,672 bytes with a
+	 * four-certificate chain), which is thinner than the margin the signature reservation
+	 * carries; see [DssSigningRepository]'s `contentSizeForLevel`.
+	 *
+	 * A signature timestamp is not covered here: at B-T it rides inside the CMS as an unsigned
+	 * attribute rather than in a dictionary of its own, so it is bounded by the signature
+	 * reservation instead.
+	 */
+	fun applyTimestampContentSize(parameters: PAdESSignatureParameters) {
+		parameters.archiveTimestampParameters.contentSize = TIMESTAMP_CONTENT_SIZE
+		parameters.signatureTimestampParameters.contentSize = TIMESTAMP_CONTENT_SIZE
+		parameters.contentTimestampParameters.contentSize = TIMESTAMP_CONTENT_SIZE
+	}
+	
+	/**
 	 * Build a memory-efficient [PdfBoxNativeObjectFactory] that spills large documents to a
 	 * temporary file once the in-heap limit is exceeded.
 	 */
@@ -391,7 +418,7 @@ class DssServiceFactory(
 	fun warmUpTrustedSources(useEuLotl: Boolean, customTls: List<CustomTrustedListConfig>) {
 		trustedSources.warmUp(useEuLotl, customTls)
 	}
-
+	
 	/**
 	 * Online-refresh every retained trusted source as one coherent set. Invoked by
 	 * the global refresh cycle; cheap when upstream content is unchanged.
@@ -399,7 +426,7 @@ class DssServiceFactory(
 	fun refreshTrustedSources() {
 		trustedSources.refreshAll()
 	}
-
+	
 	/**
 	 * Hard-refresh every retained trusted source, forcing a real network
 	 * re-download regardless of cache freshness. Backs the user-initiated
@@ -409,20 +436,20 @@ class DssServiceFactory(
 	fun forceRefreshTrustedSources() {
 		trustedSources.forceRefreshAll()
 	}
-
+	
 	/**
 	 * Whether any retained trusted source failed to load its trust (see
 	 * [TrustedSourceRegistry.hasIncompleteTrust]). Polled by the refresh scheduler to
 	 * retry soon after a failure rather than waiting a full interval.
 	 */
 	fun hasIncompleteTrustedSources(): Boolean = trustedSources.hasIncompleteTrust()
-
+	
 	/**
 	 * Whether the shared EU LOTL currently holds trust (see [TrustedSourceRegistry.euLotlTrustLoaded]).
 	 * Used by validation to distinguish "no EU trust loaded" from "certificate not on the LOTL".
 	 */
 	fun isEuLotlTrustLoaded(): Boolean = trustedSources.euLotlTrustLoaded()
-
+	
 	/**
 	 * Set the process-global trusted-list re-download interval, in milliseconds,
 	 * derived from `GlobalConfig.trustedListRefreshIntervalHours`. Must be applied
@@ -431,7 +458,7 @@ class DssServiceFactory(
 	fun configureTrustedListRefreshInterval(intervalMillis: Long) {
 		trustedSources.cacheExpirationMillis = intervalMillis
 	}
-
+	
 	/**
 	 * Release the registry's shared refresh executor. Called when a long-running
 	 * host shuts down; the CLI relies on daemon threads and need not call this.
@@ -439,8 +466,31 @@ class DssServiceFactory(
 	fun shutdownTrustedSources() {
 		trustedSources.shutdown()
 	}
-
+	
 	companion object {
+		
+		/**
+		 * Longest string a PDF/A-1/2/3 conforming file may contain, from ISO 32000-1 Annex C
+		 * Table C.1, made normative by ISO 19005-3 clause 6.1.13 test 3. Every `/Contents`
+		 * reservation — signature or timestamp — is an independent string and must stay below it,
+		 * or signing turns a conformant PDF/A input into a non-conformant output.
+		 */
+		const val PDFA_MAX_STRING_LENGTH = 32_767
+		
+		/**
+		 * Reservation for a timestamp dictionary, replacing DSS's 9,472-byte default.
+		 *
+		 * Timestamp tokens measured across thirty live TSAs (including the Czech CESNET, Belgian,
+		 * Greek and Spanish qualified services alongside DigiCert, Sectigo, Entrust and GlobalSign)
+		 * span 1,647 to 7,672 bytes, the largest being GlobalSign's four-certificate chain. This
+		 * value keeps 1.60x over that maximum, matching the ratio the signature reservation holds
+		 * over its own measured maximum, and stays well below [PDFA_MAX_STRING_LENGTH].
+		 *
+		 * It is deliberately not raised further: a timestamp is appended on every archival renewal,
+		 * so this is the one reservation whose padding accumulates over a document's lifetime.
+		 */
+		const val TIMESTAMP_CONTENT_SIZE = 12_288
+		
 		/**
 		 * Load the Official Journal (OJ) keystore bundled as a classpath resource and wrap it
 		 * in a [CommonTrustedCertificateSource] so DSS can verify EU LOTL pivot signatures.
@@ -493,8 +543,8 @@ class DssServiceFactory(
 		 */
 		internal fun buildCertSourceFromFile(certPath: String): CommonTrustedCertificateSource {
 			val x509 = File(certPath).inputStream().use { stream ->
-				java.security.cert.CertificateFactory.getInstance("X.509")
-					.generateCertificate(stream) as java.security.cert.X509Certificate
+				CertificateFactory.getInstance("X.509")
+					.generateCertificate(stream) as X509Certificate
 			}
 			val token = eu.europa.esig.dss.model.x509.CertificateToken(x509)
 			return CommonTrustedCertificateSource().also { it.addCertificate(token) }
@@ -511,13 +561,13 @@ class DssServiceFactory(
 			if (anchors.isEmpty()) return null
 			val source = CommonTrustedCertificateSource()
 			for (anchor in anchors) {
-				val x509 = java.security.cert.CertificateFactory.getInstance("X.509")
-					.generateCertificate(anchor.der.inputStream()) as java.security.cert.X509Certificate
+				val x509 = CertificateFactory.getInstance("X.509")
+					.generateCertificate(anchor.der.inputStream()) as X509Certificate
 				source.addCertificate(eu.europa.esig.dss.model.x509.CertificateToken(x509))
 			}
 			return source
 		}
-
+		
 		/**
 		 * Classpath locations (DER) of the national eIDAS roots that augment the
 		 * platform trust for trusted-list **transport**. Each is the exact CA anchor a
@@ -535,17 +585,17 @@ class DssServiceFactory(
 			"/tl-transport-roots/certum-trusted-root-ca.der",
 			"/tl-transport-roots/microsec-e-szigno-root-ca-2009.der",
 		)
-
+		
 		/** Keystore type of the in-memory [configureTlTransportTrust] truststore. */
 		private const val TL_TRUSTSTORE_TYPE = "PKCS12"
-
+		
 		/**
 		 * Throwaway integrity password for the in-memory TL-transport truststore.
 		 * **Not a secret**: the store is never persisted and holds only public CA
 		 * certificates; PKCS#12 simply requires a password to seal the document.
 		 */
 		private const val TL_TRUSTSTORE_PASSWORD = "omnisign-tl-transport"
-
+		
 		/**
 		 * In-memory PKCS#12 truststore for trusted-list **transport**: the running
 		 * JVM's default trust anchors augmented with the bundled national eIDAS roots
@@ -563,7 +613,7 @@ class DssServiceFactory(
 		 * used, so transport authenticity is not weakened.
 		 */
 		private val tlTransportTrustStore: DSSDocument by lazy { buildTlTransportTrustStore() }
-
+		
 		/**
 		 * Apply the augmented [tlTransportTrustStore] to [loader] so trusted-list
 		 * downloads succeed on JVMs whose default `cacerts` lacks the bundled national
@@ -576,7 +626,7 @@ class DssServiceFactory(
 			loader.setSslTruststoreType(TL_TRUSTSTORE_TYPE)
 			loader.setSslTruststorePassword(TL_TRUSTSTORE_PASSWORD.toCharArray())
 		}
-
+		
 		/**
 		 * Build [tlTransportTrustStore]: load every platform trust anchor under a
 		 * distinct alias, add each bundled root from [TL_TRANSPORT_ROOT_RESOURCES] the
@@ -587,12 +637,12 @@ class DssServiceFactory(
 		private fun buildTlTransportTrustStore(): DSSDocument {
 			val keyStore = KeyStore.getInstance(TL_TRUSTSTORE_TYPE).apply { load(null, null) }
 			val certFactory = CertificateFactory.getInstance("X.509")
-
+			
 			val platformAnchors = platformTrustAnchors()
 			platformAnchors.forEachIndexed { index, anchor ->
 				keyStore.setCertificateEntry("default-$index", anchor)
 			}
-
+			
 			val trusted = platformAnchors.toHashSet()
 			TL_TRANSPORT_ROOT_RESOURCES.forEachIndexed { index, resource ->
 				val root = DssServiceFactory::class.java.getResourceAsStream(resource)?.use { stream ->
@@ -602,14 +652,14 @@ class DssServiceFactory(
 					keyStore.setCertificateEntry("bundled-$index", root)
 				}
 			}
-
+			
 			val bytes = ByteArrayOutputStream().use { out ->
 				keyStore.store(out, TL_TRUSTSTORE_PASSWORD.toCharArray())
 				out.toByteArray()
 			}
 			return InMemoryDocument(bytes)
 		}
-
+		
 		/**
 		 * The running JVM's default X.509 trust anchors — the issuers a default
 		 * [TrustManagerFactory] (initialized from the platform `cacerts`) would accept.
@@ -627,23 +677,23 @@ class DssServiceFactory(
 				?.toList()
 				.orEmpty()
 		}
-
+		
 		/** System property toggling JDK AIA *caIssuers* fetching during path building. */
 		private const val AIA_CA_ISSUERS_PROPERTY = "com.sun.security.enableAIAcaIssuers"
-
+		
 		/**
 		 * System property holding the allowlist of permitted AIA fetch locations
 		 * (deny-all by default on recent JDKs).
 		 */
 		private const val ALLOWED_AIA_LOCATIONS_PROPERTY = "com.sun.security.allowedAIALocations"
-
+		
 		/**
 		 * The single AIA location permitted by [enableAiaCaIssuerFetching]: DigiCert's
 		 * public certificate repository, source of the one intermediate the known
 		 * incomplete-chain endpoint (`eidas.gov.ie`) omits.
 		 */
 		private const val DIGICERT_AIA_REPOSITORY = "http://cacerts.digicert.com"
-
+		
 		/**
 		 * Enable JDK AIA *caIssuers* fetching, narrowly allowlisted to DigiCert's public
 		 * certificate repository, so trusted-list endpoints that serve an **incomplete**
@@ -676,7 +726,7 @@ class DssServiceFactory(
 				System.setProperty(ALLOWED_AIA_LOCATIONS_PROPERTY, DIGICERT_AIA_REPOSITORY)
 			}
 		}
-
+		
 		/**
 		 * Inspect a post-refresh [TLValidationJobSummary] and return a localizable warning for the
 		 * member-state and standalone trusted lists that could not be downloaded or parsed, or an
@@ -708,7 +758,7 @@ class DssServiceFactory(
 			}
 			
 			if (failedHosts.isEmpty()) return emptyList()
-
+			
 			return listOf(
 				LocalizableText.of(
 					MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE,
@@ -717,11 +767,11 @@ class DssServiceFactory(
 				)
 			)
 		}
-
+		
 		/** English count phrase for [count] trusted lists, baked as a warning argument for locale re-pluralization. */
 		private fun pluralLists(count: Int): String =
 			if (count == 1) "1 trusted list" else "$count trusted lists"
-
+		
 		/**
 		 * Extract a short, human-readable host label from a trusted list [url].
 		 * Falls back to the raw URL if parsing fails.
@@ -735,7 +785,7 @@ class DssServiceFactory(
 		private const val MEMORY_LIMIT_BYTES = 32L * 1024 * 1024
 		private const val TEMP_FILE_LIMIT_BYTES = 2L * 1024 * 1024 * 1024
 		private const val DEFAULT_TIMEOUT = 30_000
-
+		
 		/**
 		 * Process-global connect/read timeout (ms) for fetching trusted-list XML.
 		 *
@@ -747,13 +797,13 @@ class DssServiceFactory(
 		
 		/** URL of the EU List of Trusted Lists (LOTL) XML document. */
 		const val EU_LOTL_URL = "https://ec.europa.eu/tools/lotl/eu-lotl.xml"
-
+		
 		/** Classpath location of the pre-built Official Journal (OJ) keystore. */
 		const val OJ_KEYSTORE_RESOURCE = "/lotl-keystore.p12"
-
+		
 		/** Keystore type for the OJ keystore. */
 		const val OJ_KEYSTORE_TYPE = "PKCS12"
-
+		
 		/**
 		 * Well-known password for the pre-built OJ keystore from the EU DSS demonstrations
 		 * repository. This is **not a secret** — the keystore contains only public LOTL

@@ -5,6 +5,7 @@
 	<string name="err_archiving_malformed_pdf">Soubor není platné PDF nebo se jej nepodařilo zpracovat</string>
 	<string name="err_archiving_revocation_info_failed">Nepodařilo se získat informace o zneplatnění</string>
 	<string name="err_archiving_extension_failed">Rozšíření dokumentu selhalo</string>
+	<string name="err_archiving_timestamp_too_large">Archivní časové razítko se nevešlo do místa, které je pro něj v dokumentu vyhrazeno, takže se nic nezapsalo a původní soubor zůstal beze změny. Autorita vydala token větší, než je tato rezervace, kterou nelze po vyžádání razítka zvětšit. Nahlaste prosím tento dokument, aby bylo možné vyhrazené místo zvětšit</string>
 	<string name="err_archiving_file_not_found">Soubor nenalezen: %1$s</string>
 	<string name="err_archiving_renewal_status_undeterminable">Nelze určit, zda dokument vyžaduje obnovení: podpisový certifikát časového razítka se nepodařilo rozpoznat</string>
 	<string name="err_archiving_renewal_check_failed">Kontrola archivního obnovení selhala</string>
@@ -36,6 +37,7 @@
 	<string name="err_signing_hash_not_supported_windows">Hašovací algoritmus %1$s není podporován úložištěm certifikátů systému Windows</string>
 	<string name="err_signing_pdf_encrypted">PDF je zašifrované nebo chráněné heslem a nelze jej podepsat</string>
 	<string name="err_signing_malformed_pdf">Soubor není platné PDF nebo se jej nepodařilo zpracovat</string>
+	<string name="err_signing_signature_too_large">Podpis se nevešel do místa, které je pro něj v dokumentu vyhrazeno, takže se nic nezapsalo a původní soubor zůstal beze změny. Řetězec podpisových certifikátů spolu s tokenem časového razítka na úrovních nad B-B tuto rezervaci přesahuje a zvětšit ji po zahájení podpisu už nelze. Nahlaste prosím tento dokument, aby bylo možné vyhrazené místo zvětšit</string>
 	<string name="err_validation_validation_failed">Ověření selhalo</string>
 	<string name="err_validation_remote_validation_failed">Vzdálené ověření selhalo</string>
 	<string name="err_truststore_parse_failed">Certifikát se nepodařilo zpracovat</string>

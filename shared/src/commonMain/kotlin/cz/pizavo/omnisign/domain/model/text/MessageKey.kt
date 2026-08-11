@@ -30,6 +30,9 @@ enum class MessageKey {
 	/** A document extension failed for an unclassified reason. */
 	ARCHIVING_EXTENSION_FAILED,
 
+	/** The archival timestamp did not fit the space reserved for it in the document. */
+	ARCHIVING_TIMESTAMP_TOO_LARGE,
+
 	/** The referenced file does not exist (arg: file path). */
 	ARCHIVING_FILE_NOT_FOUND,
 
@@ -122,6 +125,9 @@ enum class MessageKey {
 
 	/** The input is not a valid PDF or could not be parsed for signing. */
 	SIGNING_MALFORMED_PDF,
+
+	/** The finished signature did not fit the space reserved for it in the document. */
+	SIGNING_SIGNATURE_TOO_LARGE,
 
 	/** Local (DSS-backed) document validation failed for an unclassified reason. */
 	VALIDATION_VALIDATION_FAILED,
