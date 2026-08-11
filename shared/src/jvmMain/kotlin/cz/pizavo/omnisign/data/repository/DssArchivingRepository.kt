@@ -264,7 +264,7 @@ class DssArchivingRepository(
 			)
 			RenewalAssessment.unrecoverable(RenewalReason.BELOW_LT, deadline).right()
 		} else {
-			RenewalAssessment.needed(RenewalReason.BELOW_LT, deadline).right()
+			RenewalAssessment.needed(RenewalReason.BELOW_LT, deadline, deadlineIsFinal = true).right()
 		}
 	}
 
@@ -292,7 +292,7 @@ class DssArchivingRepository(
 	): OperationResult<RenewalAssessment> {
 		renewalCheckCache.remove(filePath)
 		val deadline = signatures.mapNotNull { it.signingCertificate?.notAfter?.toKotlinInstant() }.minOrNull()
-		return RenewalAssessment.needed(RenewalReason.LT_REFRESH_NEEDED, deadline).right()
+		return RenewalAssessment.needed(RenewalReason.LT_REFRESH_NEEDED, deadline, deadlineIsFinal = true).right()
 	}
 
 	/**

@@ -1,6 +1,8 @@
 package cz.pizavo.omnisign.domain.usecase
 
 import arrow.core.Either
+import arrow.core.left
+import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
@@ -71,13 +73,18 @@ private val logger = KotlinLogging.logger {}
  * certificate as undeterminable rather than safe: an archival job may only replace a file it has
  * confirmed is stronger, and "unknown" is not a confirmation.
  *
- * One failure is recorded as terminal rather than as an error: an extension that could not obtain
- * usable revocation data for a document whose deadline
- * ([cz.pizavo.omnisign.domain.model.result.RenewalAssessment.dueAt]) has already passed. The
- * assessment deliberately stops short of calling such a document hopeless, because it runs offline
- * and cannot see the trusted-list metadata that might still rescue it; the extension attempt does
- * load that metadata, so its failure is the confirmation. Recording it as an error instead would
- * leave every future run reporting itself as failing over a file nothing can repair.
+ * One failure is recorded as terminal rather than as an error: an extension whose purpose was to
+ * obtain revocation data could not obtain any, and the document's deadline was a final one
+ * ([cz.pizavo.omnisign.domain.model.result.RenewalAssessment.deadlineIsFinal]) that has already
+ * passed. The assessment deliberately stops short of calling such a document hopeless, because it
+ * runs offline and cannot see the trusted-list metadata that might still rescue it; the extension
+ * attempt does load that metadata, so its failure is the confirmation. Recording it as an error
+ * instead would leave every future run reporting itself as failing over a file nothing can repair.
+ *
+ * Both qualifiers are load-bearing. Keying on the deadline merely being in the past would treat an
+ * ordinary stale revocation horizon as a closed window and drop a recoverable file from every future
+ * run; letting the warning veto a seal would refuse to anchor a document whose existing material is
+ * sound, because re-collection failed for a certificate that has since expired.
  *
  * This use case encapsulates the core batch logic shared by the CLI `renew`
  * command and the desktop app's headless renewal mode. Presentation concerns
@@ -479,9 +486,9 @@ class RenewBatchUseCase(
                                 )
                             },
                             ifRight = { result ->
-                                if (result.revocationDataMissing) {
+                                if (result.revocationDataMissing && obtainsMaterial(assessment.reason)) {
                                     val deadline = assessment.dueAt
-                                    if (deadline != null && deadline <= Clock.System.now()) {
+                                    if (assessment.deadlineIsFinal && deadline != null && deadline <= Clock.System.now()) {
                                         recordTerminal(
                                             path,
                                             "the attempt confirmed no usable revocation data can be obtained: the " +
@@ -528,10 +535,11 @@ class RenewBatchUseCase(
                                     )
                                     return@fold
                                 }
-                                val validationError = verifyRenewedOutput(
+                                val verified = verifyRenewedOutput(
                                     file, result.outputBytes, job.renewalBufferDays, assessment.reason,
                                 )
-                                if (validationError != null) {
+                                if (verified.isLeft()) {
+                                    val validationError = verified.leftOrNull()!!
                                     totalErrors++
                                     jobErrors++
                                     logFileError(job.logFile, path, validationError)
@@ -543,6 +551,21 @@ class RenewBatchUseCase(
                                         )
                                     )
                                     return@fold
+                                }
+
+                                val sealedBytes = if (
+                                    assessment.reason == RenewalReason.LT_REFRESH_NEEDED &&
+                                    verified.getOrNull()?.reason == RenewalReason.LT_NOT_SEALED
+                                ) {
+                                    sealAfterRefresh(file, result.outputBytes, resolvedConfig, job.renewalBufferDays)
+                                } else {
+                                    null
+                                }
+                                val finalBytes = sealedBytes ?: result.outputBytes
+                                val completedReason = if (sealedBytes != null) {
+                                    RenewalReason.LT_NOT_SEALED
+                                } else {
+                                    assessment.reason
                                 }
                                 if (job.backupRetention > 0) {
                                     val backupError = runCatching { writeBackup(file, inputBytes) }.exceptionOrNull()
@@ -560,7 +583,7 @@ class RenewBatchUseCase(
                                         return@fold
                                     }
                                 }
-                                val writeError = runCatching { writeAtomically(file, result.outputBytes) }.exceptionOrNull()
+                                val writeError = runCatching { writeAtomically(file, finalBytes) }.exceptionOrNull()
                                 if (writeError != null) {
                                     totalErrors++
                                     jobErrors++
@@ -580,7 +603,12 @@ class RenewBatchUseCase(
                                 }
                                 totalRenewed++
                                 jobRenewed++
-                                appendLog(job.logFile, "${renewedTag(assessment.reason)} $path — now ${achieved.name}")
+                                val reachedLevel = if (sealedBytes != null) {
+                                    SignatureLevel.PADES_BASELINE_LTA
+                                } else {
+                                    achieved
+                                }
+                                appendLog(job.logFile, "${renewedTag(completedReason)} $path — now ${reachedLevel.name}")
                                 result.rawWarnings.forEach { w ->
                                     appendLog(job.logFile, "[WARN] $path — $w")
                                 }
@@ -589,7 +617,7 @@ class RenewBatchUseCase(
                                         path = path,
                                         status = RenewFileStatus.Status.RENEWED,
                                         warnings = result.warnings,
-                                        reason = assessment.reason,
+                                        reason = completedReason,
                                     )
                                 )
                             }
@@ -632,6 +660,20 @@ class RenewBatchUseCase(
      * next run seals it as [RenewalReason.LT_NOT_SEALED]. Every other reason is closed by reaching
      * B-LTA, which embeds revocation data and anchors it in one operation.
      */
+    /**
+     * Whether the step [reason] calls for is one whose *purpose* is to obtain revocation data, so
+     * that failing to obtain any means the step achieved nothing.
+     *
+     * For [RenewalReason.LT_NOT_SEALED] and the two aging reasons the document already holds usable
+     * material and the step is to seal or re-timestamp it. Those operations re-collect revocation
+     * data as a side effect, and that collection can fail — an expired signing certificate makes
+     * every freshly fetched response unusable — without the operation itself having failed. Letting
+     * that warning veto the write would refuse to seal exactly the documents whose existing material
+     * most needs anchoring before it ages out.
+     */
+    private fun obtainsMaterial(reason: RenewalReason?): Boolean =
+        reason == RenewalReason.BELOW_LT || reason == RenewalReason.LT_REFRESH_NEEDED
+
     private fun targetLevelFor(reason: RenewalReason?): SignatureLevel =
         if (reason == RenewalReason.LT_REFRESH_NEEDED) {
             SignatureLevel.PADES_BASELINE_LT
@@ -872,31 +914,67 @@ class RenewBatchUseCase(
         outputBytes: ByteArray,
         bufferDays: Int,
         actedOn: RenewalReason?,
-    ): String? {
+    ): Either<String, RenewalAssessment> {
         val directory = file.absoluteFile.toPath().parent
-            ?: return "could not resolve a directory to validate the renewed document"
+            ?: return "could not resolve a directory to validate the renewed document".left()
         val verifyFile = try {
             createTempFile(directory, ".${file.name}.verify.", ".pdf")
         } catch (e: Exception) {
-            return "could not stage the renewed document for validation: ${e.message}"
+            return "could not stage the renewed document for validation: ${e.message}".left()
         }
         return try {
             verifyFile.writeBytes(outputBytes)
             checkRenewalUseCase(verifyFile.absolutePathString(), bufferDays).fold(
-                ifLeft = { "the renewed document failed validation: ${it.message}" },
+                ifLeft = { "the renewed document failed validation: ${it.message}".left() },
                 ifRight = { assessment ->
                     if (assessment.need == RenewalNeed.NEEDED && assessment.reason == actedOn) {
-                        "the renewed document still reports the same need (${actedOn?.name})"
+                        "the renewed document still reports the same need (${actedOn?.name})".left()
                     } else {
-                        null
+                        assessment.right()
                     }
                 },
             )
         } catch (e: Exception) {
-            "could not validate the renewed document: ${e.message}"
+            "could not validate the renewed document: ${e.message}".left()
         } finally {
             verifyFile.deleteIfExists()
         }
+    }
+
+    /**
+     * Seal a document that has just been refreshed, in the same run.
+     *
+     * Refreshing stale revocation data leaves the document at B-LT with material that now covers the
+     * signature but has nothing anchoring it — the state the next run would seal anyway. Doing it
+     * here spares the document a day in the one state that carries no proof of existence at all,
+     * without weakening the rule that produced the two steps: the seal happens only after the
+     * refreshed bytes have been re-assessed and found to need exactly sealing, so stale material can
+     * still never be frozen under a timestamp.
+     *
+     * A failure is not an error. The refresh itself succeeded and is worth keeping; the caller writes
+     * the refreshed document and the next run seals it, which is precisely the behaviour this
+     * optimisation shortcuts.
+     *
+     * @return the sealed bytes, or `null` when sealing did not happen and the refreshed bytes stand.
+     */
+    private suspend fun sealAfterRefresh(
+        file: File,
+        refreshedBytes: ByteArray,
+        resolvedConfig: ResolvedConfig,
+        bufferDays: Int,
+    ): ByteArray? {
+        val sealed = extendDocumentUseCase(
+            ArchivingParameters(
+                inputBytes = refreshedBytes,
+                inputName = file.name,
+                targetLevel = SignatureLevel.PADES_BASELINE_LTA,
+                resolvedConfig = resolvedConfig,
+            )
+        ).getOrNull() ?: return null
+
+        if (sealed.achievedLevel != SignatureLevel.PADES_BASELINE_LTA) return null
+        return verifyRenewedOutput(file, sealed.outputBytes, bufferDays, RenewalReason.LT_NOT_SEALED)
+            .fold(ifLeft = { null }, ifRight = { sealed.outputBytes })
     }
 
     /**

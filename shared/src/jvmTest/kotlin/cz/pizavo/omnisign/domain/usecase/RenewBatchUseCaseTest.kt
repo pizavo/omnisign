@@ -208,6 +208,83 @@ class RenewBatchUseCaseTest : FunSpec({
         coVerify(exactly = 0) { archivingRepository.extendDocument(any()) }
     }
 
+    test("a refresh is sealed in the same run once the refreshed bytes ask for sealing") {
+        val dir = subDir("chain")
+        val file = File(dir, "chained.pdf").also { it.writeBytes("original".toByteArray()) }
+        val refreshed = "refreshed".toByteArray()
+        val sealed = "sealed".toByteArray()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+            RenewalAssessment.needed(RenewalReason.LT_REFRESH_NEEDED).right()
+        coEvery {
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+        } returns RenewalAssessment.needed(RenewalReason.LT_NOT_SEALED).right() andThen
+            RenewalAssessment.notNeeded().right()
+        coEvery {
+            archivingRepository.extendDocument(
+                match { it.targetLevel == SignatureLevel.PADES_BASELINE_LT }
+            )
+        } returns ArchivingResult(
+            outputBytes = refreshed,
+            outputName = file.name,
+            newSignatureLevel = SignatureLevel.PADES_BASELINE_LT.name,
+            achievedLevel = SignatureLevel.PADES_BASELINE_LT,
+        ).right()
+        coEvery {
+            archivingRepository.extendDocument(
+                match { it.targetLevel == SignatureLevel.PADES_BASELINE_LTA }
+            )
+        } returns ArchivingResult(
+            outputBytes = sealed,
+            outputName = file.name,
+            newSignatureLevel = SignatureLevel.PADES_BASELINE_LTA.name,
+            achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
+        ).right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val result = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))()
+
+        result.shouldNotBeNull()
+        result.renewed shouldBe 1
+        result.errors shouldBe 0
+        file.readBytes() shouldBe sealed
+        result.jobs.first().files.first().reason shouldBe RenewalReason.LT_NOT_SEALED
+    }
+
+    test("a refresh whose sealing fails still keeps the refreshed document") {
+        val dir = subDir("chain-degrade")
+        val file = File(dir, "degraded.pdf").also { it.writeBytes("original".toByteArray()) }
+        val refreshed = "refreshed".toByteArray()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+            RenewalAssessment.needed(RenewalReason.LT_REFRESH_NEEDED).right()
+        coEvery {
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+        } returns RenewalAssessment.needed(RenewalReason.LT_NOT_SEALED).right()
+        coEvery {
+            archivingRepository.extendDocument(
+                match { it.targetLevel == SignatureLevel.PADES_BASELINE_LT }
+            )
+        } returns ArchivingResult(
+            outputBytes = refreshed,
+            outputName = file.name,
+            newSignatureLevel = SignatureLevel.PADES_BASELINE_LT.name,
+            achievedLevel = SignatureLevel.PADES_BASELINE_LT,
+        ).right()
+        coEvery {
+            archivingRepository.extendDocument(
+                match { it.targetLevel == SignatureLevel.PADES_BASELINE_LTA }
+            )
+        } returns ArchivingError.ExtensionFailed(LocalizableText.Literal("TSA unreachable")).left()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val result = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))()
+
+        result.shouldNotBeNull()
+        result.renewed shouldBe 1
+        result.errors shouldBe 0
+        file.readBytes() shouldBe refreshed
+        result.jobs.first().files.first().reason shouldBe RenewalReason.LT_REFRESH_NEEDED
+    }
+
     test("stale LT material is refreshed to B-LT rather than sealed at B-LTA") {
         val dir = subDir("refresh")
         val file = File(dir, "stale-lt.pdf").also { it.createNewFile() }
@@ -278,7 +355,11 @@ class RenewBatchUseCaseTest : FunSpec({
         val original = "original".toByteArray()
         val file = File(dir, "confirmed.pdf").also { it.writeBytes(original) }
         coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
-            RenewalAssessment.needed(RenewalReason.LT_REFRESH_NEEDED, Clock.System.now() - 30.days).right()
+            RenewalAssessment.needed(
+                RenewalReason.LT_REFRESH_NEEDED,
+                Clock.System.now() - 30.days,
+                deadlineIsFinal = true,
+            ).right()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName == file.name })
         } returns ArchivingResult(
@@ -298,6 +379,60 @@ class RenewBatchUseCaseTest : FunSpec({
         result.success shouldBe true
         result.jobs.first().files.first().status shouldBe RenewFileStatus.Status.UNRECOVERABLE
         file.readBytes() shouldBe original
+    }
+
+    test("a stale revocation horizon in the past is not mistaken for a closed window") {
+        val dir = subDir("stale-horizon")
+        val file = File(dir, "old-crl.pdf").also { it.writeBytes("original".toByteArray()) }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+            RenewalAssessment.needed(
+                RenewalReason.LT_REFRESH_NEEDED,
+                Clock.System.now() - 30.days,
+                deadlineIsFinal = false,
+            ).right()
+        coEvery {
+            archivingRepository.extendDocument(match { it.inputName == file.name })
+        } returns ArchivingResult(
+            outputBytes = "no better".toByteArray(),
+            outputName = file.name,
+            newSignatureLevel = SignatureLevel.PADES_BASELINE_LT.name,
+            achievedLevel = SignatureLevel.PADES_BASELINE_LT,
+            revocationDataMissing = true,
+        ).right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val result = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))()
+
+        result.shouldNotBeNull()
+        result.errors shouldBe 1
+        result.unrecoverable shouldBe 0
+        result.jobs.first().files.first().status shouldBe RenewFileStatus.Status.ERROR
+    }
+
+    test("a seal is not vetoed because re-collecting revocation data failed") {
+        val dir = subDir("seal-anyway")
+        val file = File(dir, "sound-lt.pdf").also { it.writeBytes("original".toByteArray()) }
+        val sealed = "sealed archive".toByteArray()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+            RenewalAssessment.needed(RenewalReason.LT_NOT_SEALED, Clock.System.now() - 7.days).right()
+        coEvery {
+            archivingRepository.extendDocument(match { it.inputName == file.name })
+        } returns ArchivingResult(
+            outputBytes = sealed,
+            outputName = file.name,
+            newSignatureLevel = SignatureLevel.PADES_BASELINE_LTA.name,
+            achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
+            revocationDataMissing = true,
+        ).right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val result = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))()
+
+        result.shouldNotBeNull()
+        result.renewed shouldBe 1
+        result.errors shouldBe 0
+        result.unrecoverable shouldBe 0
+        file.readBytes() shouldBe sealed
     }
 
     test("an extension that fails while the deadline is still ahead stays an error") {
