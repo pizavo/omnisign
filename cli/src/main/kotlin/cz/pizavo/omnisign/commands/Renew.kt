@@ -126,6 +126,7 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 						renewed = result.renewed,
 						skipped = result.skipped,
 						errors = result.errors,
+						unrecoverable = result.unrecoverable,
 						dryRun = result.dryRun,
 						jobs = result.jobs.map { job ->
 							JsonRenewalJobResult(
@@ -136,6 +137,7 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 										status = f.status.name,
 										message = f.message,
 										warnings = f.warnings,
+										reason = f.reason?.name,
 									)
 								},
 							)
@@ -153,15 +155,19 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 				for (f in job.files) {
 					val icon = when (f.status) {
 						RenewFileStatus.Status.RENEWED -> "✅"
-						RenewFileStatus.Status.SKIPPED -> "✔"
+						RenewFileStatus.Status.SKIPPED,
+						RenewFileStatus.Status.SKIPPED_BY_POLICY -> "✔"
 						RenewFileStatus.Status.DRY_RUN -> "🔶"
+						RenewFileStatus.Status.UNRECOVERABLE -> "⛔"
 						RenewFileStatus.Status.ERROR,
 						RenewFileStatus.Status.CONFIG_ERROR -> "❌"
 					}
 					val label = when (f.status) {
 						RenewFileStatus.Status.RENEWED -> "[RENEWED] ${f.path}"
-						RenewFileStatus.Status.SKIPPED -> "[SKIP]  ${f.path} — ${f.message ?: "timestamp still valid"}"
-						RenewFileStatus.Status.DRY_RUN -> "[DRY-RUN] ${f.path} — would be re-timestamped"
+						RenewFileStatus.Status.SKIPPED -> "[SKIP]  ${f.path} — ${f.message ?: "nothing due yet"}"
+						RenewFileStatus.Status.SKIPPED_BY_POLICY -> "[SKIP]  ${f.path} — ${f.message}"
+						RenewFileStatus.Status.DRY_RUN -> "[DRY-RUN] ${f.path} — would be extended"
+						RenewFileStatus.Status.UNRECOVERABLE -> "[TERMINAL] ${f.path} — ${f.message}"
 						RenewFileStatus.Status.ERROR -> "[ERROR] ${f.path} — ${f.message}"
 						RenewFileStatus.Status.CONFIG_ERROR -> "[ERROR] Configuration Error: ${f.message}"
 					}
@@ -182,6 +188,9 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 			echo("  Renewed : ${result.renewed}${if (result.dryRun) " (dry-run)" else ""}")
 			echo("  Skipped : ${result.skipped}")
 			echo("  Errors  : ${result.errors}")
+			if (result.unrecoverable > 0) {
+				echo("  Terminal: ${result.unrecoverable} (deadline passed — no further attempt can succeed)")
+			}
 			echo("═══════════════════════════════════════════════════════════════")
 		}
 	}

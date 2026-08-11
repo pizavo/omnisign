@@ -155,6 +155,65 @@ class RenewalNotifierTest : FunSpec({
 		}
 	}
 
+	test("raises a critical notification for newly terminal documents, alongside the job outcome") {
+		notifier.notify(
+			RenewBatchResult(
+				jobs = listOf(
+					RenewJobResult(
+						name = "job",
+						renewed = 1,
+						unrecoverable = 3,
+						newlyUnrecoverable = 2,
+						notify = true,
+					),
+				),
+			),
+		)
+		verify(exactly = 1) {
+			notificationService.notify(
+				match { it.contains("no longer be preserved") },
+				match { it.contains("2") },
+				eq(NotificationUrgency.CRITICAL),
+			)
+		}
+		verify(exactly = 1) { notificationService.notify(match { it.contains("complete") }, any(), eq(NotificationUrgency.NORMAL)) }
+		verify(exactly = 2) { notificationService.notify(any(), any(), any()) }
+	}
+
+	test("says nothing about terminal documents that were already reported") {
+		notifier.notify(
+			RenewBatchResult(
+				jobs = listOf(
+					RenewJobResult(name = "job", unrecoverable = 4, newlyUnrecoverable = 0, notify = true),
+				),
+			),
+		)
+		verify(exactly = 0) { notificationService.notify(any(), any(), any()) }
+	}
+
+	test("respects the per-job opt-out for terminal documents") {
+		notifier.notify(
+			RenewBatchResult(
+				jobs = listOf(
+					RenewJobResult(name = "job", unrecoverable = 1, newlyUnrecoverable = 1, notify = false),
+				),
+			),
+		)
+		verify(exactly = 0) { notificationService.notify(any(), any(), any()) }
+	}
+
+	test("sends nothing about terminal documents on a dry-run") {
+		notifier.notify(
+			RenewBatchResult(
+				dryRun = true,
+				jobs = listOf(
+					RenewJobResult(name = "job", unrecoverable = 1, newlyUnrecoverable = 1, notify = true),
+				),
+			),
+		)
+		verify(exactly = 0) { notificationService.notify(any(), any(), any()) }
+	}
+
 	test("sends a single critical staleness notification when renewal has gone too long without success") {
 		notifier.notify(RenewBatchResult(stalenessAlert = StalenessAlert(daysWithoutSuccess = 21)))
 		verify(exactly = 1) {

@@ -9,6 +9,7 @@
 	<string name="signing_import_pkcs12_file">Importovať súbor PKCS#12</string>
 	<string name="signing_hash_algorithm_label">Hašovací algoritmus</string>
 	<string name="signing_add_to_renewal_job_tooltip">Po podpísaní ponúknuť nastavenie automatickej archívnej obnovy</string>
+	<string name="signing_add_to_renewal_job_owed_tooltip">Dokumentu bude stále chýbať jeden krok uchovania. Sledovanie zaistí, že sa vykoná automaticky, kým je to ešte možné – validačné údaje možno doplniť iba počas platnosti podpisového certifikátu, neskôr už nie.</string>
 	<string name="signing_reason_label">Dôvod (voliteľné)</string>
 	<string name="signing_location_label">Miesto (voliteľné)</string>
 	<string name="signing_contact_info_label">Kontaktné údaje (voliteľné)</string>

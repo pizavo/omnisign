@@ -55,11 +55,12 @@ with which settings (TSA profile, buffer window, notification behavior).
 | Option                  | Description                                                                                              |
 |-------------------------|----------------------------------------------------------------------------------------------------------|
 | `-g, --glob <pattern>`  | **(Required, repeatable)** Glob pattern matching PDF files to watch                                      |
-| `-b, --buffer-days <n>` | Days before timestamp certificate expiry at which re-timestamping is triggered. Default: `90` |
+| `-b, --buffer-days <n>` | Days before timestamp certificate expiry at which re-timestamping is triggered. Applies to B-LTA documents, the only case with something to wait for. Default: `90` |
 | `-B, --backups <n>`     | Timestamped pre-renewal `.bak` copies to keep per file (`0` disables backups). Default: `3` |
 | `--profile <name>`      | Named configuration profile to use for TSA and revocation settings                                       |
 | `--log-file <path>`     | Absolute path to an append-only log file for this job's renewal output                                   |
 | `--no-notify`           | Disable OS desktop notifications for this job                                                            |
+| `--no-promote`          | Only maintain documents already at B-LT or above; do not bring up B-B / B-T ones. See [the deadlines](renew#what-needs-renewal-means) before using it — the chance to add validation data expires with the signing certificate |
 
 ### Examples
 

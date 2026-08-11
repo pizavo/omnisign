@@ -15,6 +15,12 @@
 	<string name="scheduler_no_auto_detect_hint">Cestu ke spustitelnému souboru se nepodařilo zjistit automaticky. Zadejte ji prosím ručně, aby bylo možné plánovač nainstalovat.</string>
 	<string name="scheduler_last_success">Poslední úspěšné spuštění: %1$s</string>
 	<string name="scheduler_last_run">Poslední spuštění: %1$s – %2$s (zkontrolováno %3$s, obnoveno %4$s, chyby %5$s)</string>
+	<plurals name="scheduler_unrecoverable">
+		<item quantity="one">%1$s dokument již nelze uchovat – vypršela jeho lhůta.</item>
+		<item quantity="few">%1$s dokumenty již nelze uchovat – vypršela jejich lhůta.</item>
+		<item quantity="many">%1$s dokumentu již nelze uchovat – vypršela jejich lhůta.</item>
+		<item quantity="other">%1$s dokumentů již nelze uchovat – vypršela jejich lhůta.</item>
+	</plurals>
 	<plurals name="scheduler_failures_since_success">
 		<item quantity="one">%1$s neúspěšné spuštění od posledního úspěchu.</item>
 		<item quantity="few">%1$s neúspěšná spuštění od posledního úspěchu.</item>

@@ -3,7 +3,9 @@ package cz.pizavo.omnisign.domain.usecase
 import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
+import cz.pizavo.omnisign.domain.model.result.RenewalAssessment
 import cz.pizavo.omnisign.domain.model.result.RenewalNeed
+import cz.pizavo.omnisign.domain.model.result.RenewalReason
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository.Companion.DEFAULT_RENEWAL_BUFFER_DAYS
@@ -30,21 +32,21 @@ class CheckArchivalRenewalUseCaseTest : FunSpec({
 	beforeTest { clearMocks(repo) }
 
 	test("returns NEEDED when renewal is needed") {
-		coEvery { repo.needsArchivalRenewal(filePath, DEFAULT_RENEWAL_BUFFER_DAYS) } returns RenewalNeed.NEEDED.right()
+		coEvery { repo.needsArchivalRenewal(filePath, DEFAULT_RENEWAL_BUFFER_DAYS) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
 
-		useCase(filePath).shouldBeRight() shouldBe RenewalNeed.NEEDED
+		useCase(filePath).shouldBeRight().need shouldBe RenewalNeed.NEEDED
 	}
 
 	test("returns NOT_NEEDED when renewal is not needed") {
-		coEvery { repo.needsArchivalRenewal(filePath, DEFAULT_RENEWAL_BUFFER_DAYS) } returns RenewalNeed.NOT_NEEDED.right()
+		coEvery { repo.needsArchivalRenewal(filePath, DEFAULT_RENEWAL_BUFFER_DAYS) } returns RenewalAssessment.notNeeded().right()
 
-		useCase(filePath).shouldBeRight() shouldBe RenewalNeed.NOT_NEEDED
+		useCase(filePath).shouldBeRight().need shouldBe RenewalNeed.NOT_NEEDED
 	}
 
 	test("forwards custom renewal buffer days") {
-		coEvery { repo.needsArchivalRenewal(filePath, 30) } returns RenewalNeed.NEEDED.right()
+		coEvery { repo.needsArchivalRenewal(filePath, 30) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
 
-		useCase(filePath, renewalBufferDays = 30).shouldBeRight() shouldBe RenewalNeed.NEEDED
+		useCase(filePath, renewalBufferDays = 30).shouldBeRight().need shouldBe RenewalNeed.NEEDED
 		coVerify(exactly = 1) { repo.needsArchivalRenewal(filePath, 30) }
 	}
 
@@ -58,7 +60,7 @@ class CheckArchivalRenewalUseCaseTest : FunSpec({
 	}
 
 	test("uses default buffer days when not specified") {
-		coEvery { repo.needsArchivalRenewal(any(), any()) } returns RenewalNeed.NOT_NEEDED.right()
+		coEvery { repo.needsArchivalRenewal(any(), any()) } returns RenewalAssessment.notNeeded().right()
 
 		useCase(filePath)
 		coVerify(exactly = 1) { repo.needsArchivalRenewal(filePath, DEFAULT_RENEWAL_BUFFER_DAYS) }

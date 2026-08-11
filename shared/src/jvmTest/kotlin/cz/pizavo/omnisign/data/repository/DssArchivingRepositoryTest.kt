@@ -28,6 +28,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
@@ -96,8 +97,11 @@ class DssArchivingRepositoryTest : FunSpec({
 	}
 	
 	/**
-	 * Create a valid PDF whose catalog contains a `/DSS` dictionary entry,
-	 * simulating a PAdES-BASELINE-LT document without doing real signing.
+	 * Create a valid PDF whose catalog contains an **empty** `/DSS` dictionary entry.
+	 *
+	 * This is not a PAdES-BASELINE-LT document and must not be reported as one: the dictionary holds
+	 * no revocation data, and there is not even a signature for it to cover. It stands in for the
+	 * shape a failed B-LT augmentation leaves behind, which structure-reading tools mistake for LT.
 	 */
 	fun createPdfWithDssDictionary(name: String): File {
 		val file = File(tmpDir, name)
@@ -172,13 +176,15 @@ class DssArchivingRepositoryTest : FunSpec({
 		val info = repository.getDocumentTimestampInfo(pdf.readBytes()).shouldBeRight()
 		info.hasDocumentTimestamp.shouldBeFalse()
 		info.containsLtData.shouldBeFalse()
+		info.level.shouldBeNull()
 	}
 
-	test("getDocumentTimestampInfo detects LT data when DSS dictionary is present") {
+	test("getDocumentTimestampInfo does not read an empty DSS dictionary as LT data") {
 		val pdf = createPdfWithDssDictionary("with-dss.pdf")
 		val info = repository.getDocumentTimestampInfo(pdf.readBytes()).shouldBeRight()
 		info.hasDocumentTimestamp.shouldBeFalse()
-		info.containsLtData.shouldBeTrue()
+		info.containsLtData.shouldBeFalse()
+		info.level.shouldBeNull()
 	}
 
 	test("getDocumentTimestampInfo returns error for corrupt bytes") {

@@ -30,6 +30,11 @@ sealed interface TimestampDialogState {
 	 * @property suggestedName Default file-name stem (no extension) for the save dialog, e.g. `contract-extended`.
 	 * @property inputDirectory Source-document directory used as the save dialog's initial location; `null` on the web target.
 	 * @property addToRenewalJob Whether to offer adding the output file to a renewal job after a successful LTA extension.
+	 * @property ltMaterialUsable Whether the long-term validation material the document already
+	 *   carries can be used. When `false` the document is at [currentLevel] in form only — its
+	 *   revocation data is there but no validator will accept it, and the signing certificate has
+	 *   expired, so no replacement can be obtained. The dialog states that rather than proposing a
+	 *   remedy that does not exist.
 	 */
 	data class Ready(
 		val timestampType: TimestampType = TimestampType.ARCHIVAL_TIMESTAMP,
@@ -38,6 +43,7 @@ sealed interface TimestampDialogState {
 		val suggestedName: String = "",
 		val inputDirectory: String? = null,
 		val addToRenewalJob: Boolean = false,
+		val ltMaterialUsable: Boolean = true,
 	) : TimestampDialogState
 
 	/**
@@ -62,19 +68,26 @@ sealed interface TimestampDialogState {
 	) : TimestampDialogState
 
 	/**
-	 * Extension to B-LT failed because revocation data could not be obtained.
+	 * The extension could not obtain the revocation data the requested level needs, so the user has
+	 * to decide how to proceed. Reached in two distinct ways, told apart by [outputHeld]:
 	 *
-	 * The user can either accept a fallback to B-T (signature timestamp without
-	 * revocation data) or abort. This state is only reachable when the document
-	 * does not already contain LT-level data — if it does, an [Error] is shown
-	 * instead.
+	 * - **The extension failed outright** ([outputHeld] `false`) — DSS could not reach the CRL/OCSP
+	 *   endpoints at all and threw, so no bytes exist. Continuing re-runs the extension at B-T.
+	 *   Only reachable when the document does not already contain LT-level data; if it does, an
+	 *   [Error] is shown instead.
+	 * - **The extension produced a document below its target level** ([outputHeld] `true`) — DSS
+	 *   obtained no usable revocation data but still wrote a DSS dictionary, so the bytes exist and
+	 *   are held in the ViewModel. Continuing saves them as they are; nothing is re-run.
 	 *
 	 * @property warnings Revocation-related warnings / error details, each resolved to display text by the UI.
 	 * @property details Optional detailed error information from DSS.
+	 * @property outputHeld Whether extended bytes are already held, which decides both the
+	 *   explanation shown and what continuing does.
 	 */
 	data class RevocationWarning(
 		val warnings: List<LocalizableText>,
 		val details: String? = null,
+		val outputHeld: Boolean = false,
 	) : TimestampDialogState
 
 	/**

@@ -9,6 +9,7 @@
 	<string name="signing_import_pkcs12_file">Import PKCS#12 file</string>
 	<string name="signing_hash_algorithm_label">Hash Algorithm</string>
 	<string name="signing_add_to_renewal_job_tooltip">Offer to set up automatic archival renewal after signing</string>
+	<string name="signing_add_to_renewal_job_owed_tooltip">This document will still owe a preservation step. Watching it lets that step happen automatically while it is still possible — validation data can only be added while the signing certificate is valid, and no later.</string>
 	<string name="signing_reason_label">Reason (optional)</string>
 	<string name="signing_location_label">Location (optional)</string>
 	<string name="signing_contact_info_label">Contact Info (optional)</string>

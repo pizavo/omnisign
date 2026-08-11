@@ -99,6 +99,7 @@ data class JsonRenewalResult(
 	val renewed: Int = 0,
 	val skipped: Int = 0,
 	val errors: Int = 0,
+	val unrecoverable: Int = 0,
 	val dryRun: Boolean = false,
 	val alreadyRunning: Boolean = false,
 	val jobs: List<JsonRenewalJobResult> = emptyList(),
@@ -123,6 +124,7 @@ data class JsonRenewalFileResult(
 	val status: String,
 	val message: String? = null,
 	val warnings: List<String> = emptyList(),
+	val reason: String? = null,
 )
 
 /**

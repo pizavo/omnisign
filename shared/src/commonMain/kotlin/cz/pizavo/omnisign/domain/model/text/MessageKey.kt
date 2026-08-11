@@ -339,6 +339,12 @@ enum class MessageKey {
 	/** Sanitized warning: CRL/OCSP revocation data could not be retrieved (arg: affected-count phrase). */
 	WARNING_REVOCATION_NOT_FOUND,
 
+	/**
+	 * Sanitized warning: revocation data was retrieved but rejected because it was issued after the
+	 * certificate expired, so its issuer no longer vouches for that period (arg: affected-count phrase).
+	 */
+	WARNING_REVOCATION_AFTER_CERTIFICATE_EXPIRY,
+
 	/** Sanitized warning: revocation checks skipped for an untrusted chain (arg: affected-count phrase). */
 	WARNING_REVOCATION_UNTRUSTED_CHAIN,
 

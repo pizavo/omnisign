@@ -9,6 +9,8 @@
 	<string name="timestamp_option_renew_archival">Obnoviť archívnu časovú pečiatku</string>
 	<string name="timestamp_add_to_renewal_tooltip">Po rozšírení ponúknuť nastavenie automatickej archívnej obnovy</string>
 	<string name="timestamp_revocation_message">Rozšírenie na B-LT zlyhalo, pretože sa nepodarilo získať informácie o zrušení (CRL/OCSP). Môžete pokračovať rozšírením na B-T (iba časová pečiatka podpisu, bez údajov o zrušení), alebo akciu prerušiť a skúsiť to neskôr.</string>
+	<string name="timestamp_lt_material_unusable">Dokument obsahuje validačné údaje, žiadne z nich však nemožno použiť: boli vydané až po vypršaní podpisového certifikátu a k jeho stavu sa vydavateľ po vypršaní už nevyjadruje. Pokiaľ vydavateľ nezverejňuje údaje výslovne pokrývajúce vypršané certifikáty, nemožno ich nahradiť novšími a dokument úroveň B-LT nedosiahne. Archívna časová pečiatka zachová súčasný stav, medzeru neuzavrie.</string>
+	<string name="timestamp_revocation_incomplete_message">Dokument bol rozšírený, ale údaje o zrušení, ktoré požadovaná úroveň vyžaduje, sa nepodarilo vložiť – zostal preto na pôvodnej úrovni. Výsledok môžete napriek tomu uložiť, alebo akciu prerušiť a ponechať pôvodný dokument.</string>
 	<string name="timestamp_success_title">Dokument bol úspešne rozšírený</string>
 	<string name="timestamp_new_level_label">Nová úroveň:</string>
 	<string name="timestamp_extend_button">Rozšíriť</string>

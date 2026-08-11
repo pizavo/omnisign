@@ -7,6 +7,12 @@ package cz.pizavo.omnisign.domain.model.result
  * @property renewed Total number of files successfully re-timestamped (or would be, during dry-run).
  * @property skipped Total number of files whose timestamps are still valid.
  * @property errors Total number of files (or jobs) that encountered errors.
+ * @property unrecoverable Total number of files whose preservation deadline has already passed.
+ *   Deliberately outside [errors] and outside [success]: the run did its job, and reporting these as
+ *   failures would stop [success] from ever being true again and keep the staleness clock from
+ *   advancing over a condition nobody can fix.
+ * @property unrecoverablePaths The files behind [unrecoverable], carried into the run record so the
+ *   next run can tell which of them it has already reported.
  * @property dryRun Whether this was a dry-run (no files were modified).
  * @property jobs Per-job breakdown of file outcomes.
  * @property alreadyRunning `true` when the run was skipped because another renewal process held
@@ -23,6 +29,8 @@ data class RenewBatchResult(
     val renewed: Int = 0,
     val skipped: Int = 0,
     val errors: Int = 0,
+    val unrecoverable: Int = 0,
+    val unrecoverablePaths: List<String> = emptyList(),
     val dryRun: Boolean = false,
     val jobs: List<RenewJobResult> = emptyList(),
     val alreadyRunning: Boolean = false,

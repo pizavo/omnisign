@@ -366,6 +366,67 @@ class DssWarningSanitizerTest : FunSpec({
 	test("REVOCATION_NOT_FOUND is not revocation-related") {
 		WarningCategory.REVOCATION_NOT_FOUND.isRevocationRelated shouldBe false
 	}
+
+	test("classify recognises revocation rejected for postdating the certificate") {
+		sanitizer.classify(
+			"The revocation 'R-1234ABCD' was not issued during the validity period of the certificate! " +
+				"Certificate: C-ABCD1234"
+		)?.first shouldBe WarningCategory.REVOCATION_AFTER_CERTIFICATE_EXPIRY
+	}
+
+	test("revocation-after-expiry summarises with its own key and the affected certificate") {
+		val raw = listOf(
+			"The revocation 'R-1234ABCD' was not issued during the validity period of the certificate! " +
+				"Certificate: C-ABCD1234"
+		)
+		val result = sanitizer.sanitize(raw)
+		val keyed = result.annotatedSummaries[0].summary.shouldBeInstanceOf<LocalizableText.Keyed>()
+		keyed.key shouldBe MessageKey.WARNING_REVOCATION_AFTER_CERTIFICATE_EXPIRY
+		keyed.args shouldContainExactly listOf("1 certificate")
+		result.annotatedSummaries[0].affectedIds shouldContainExactly listOf("C-ABCD1234")
+	}
+
+	test("categories that leave the output below its target level block long-term material") {
+		WarningCategory.REVOCATION_NOT_FOUND.blocksLongTermMaterial shouldBe true
+		WarningCategory.REVOCATION_AFTER_CERTIFICATE_EXPIRY.blocksLongTermMaterial shouldBe true
+		WarningCategory.REVOCATION_STATUS_UNKNOWN.blocksLongTermMaterial shouldBe true
+		WarningCategory.REVOCATION_POE_MISSING.blocksLongTermMaterial shouldBe true
+	}
+
+	test("data that was embedded but does not yet cover its time does not block long-term material") {
+		WarningCategory.REVOCATION_POE_STALE.blocksLongTermMaterial shouldBe false
+		WarningCategory.FRESH_REVOCATION_MISSING.blocksLongTermMaterial shouldBe false
+		WarningCategory.TSP_FAILURE.blocksLongTermMaterial shouldBe false
+	}
+
+	test("sanitize reports longTermMaterialMissing for revocation that postdates the certificate") {
+		val raw = listOf(
+			"The revocation 'R-1234ABCD' was not issued during the validity period of the certificate! " +
+				"Certificate: C-ABCD1234"
+		)
+		sanitizer.sanitize(raw).longTermMaterialMissing shouldBe true
+	}
+
+	test("sanitize reports longTermMaterialMissing when revocation could not be retrieved") {
+		val raw = listOf("Revocation data is missing for one or more certificate(s). [C-ABCD1234: detail]")
+		sanitizer.sanitize(raw).longTermMaterialMissing shouldBe true
+	}
+
+	test("sanitize does not report longTermMaterialMissing for stale-but-present revocation data") {
+		val raw = listOf(
+			"Fresh revocation data is missing for one or more certificate(s). [C-AAAA: detail]"
+		)
+		sanitizer.sanitize(raw).longTermMaterialMissing shouldBe false
+	}
+
+	test("a suppressed category does not report longTermMaterialMissing") {
+		val raw = listOf("Revocation data is missing for one or more certificate(s). [C-ABCD1234: detail]")
+		val result = sanitizer.sanitize(
+			raw,
+			suppressedCategories = setOf(WarningCategory.REVOCATION_NOT_FOUND),
+		)
+		result.longTermMaterialMissing shouldBe false
+	}
 	
 	test("REVOCATION_STATUS_UNKNOWN is revocation-related") {
 		WarningCategory.REVOCATION_STATUS_UNKNOWN.isRevocationRelated shouldBe true

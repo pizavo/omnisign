@@ -53,6 +53,13 @@ class ScheduleJobAdd : CliktCommand(name = "add"), KoinComponent {
 		"--no-notify",
 		help = "Disable OS desktop notifications for this job. Recommended for headless server deployments."
 	).flag(default = false)
+	private val noPromote by option(
+		"--no-promote",
+		help = "Do not bring matched documents that carry no long-term validation material (B-B, B-T) " +
+				"up to B-LTA; only maintain those already at B-LT or above. Such files are then reported " +
+				"as skipped by policy. Note that the chance to add that material expires with the " +
+				"signing certificate and cannot be recovered afterwards."
+	).flag(default = false)
 	
 	override fun help(context: Context): String = "Add or replace a renewal job"
 	
@@ -75,6 +82,7 @@ class ScheduleJobAdd : CliktCommand(name = "add"), KoinComponent {
 			logFile = logFile,
 			notify = !noNotify,
 			backupRetention = backups,
+			promoteBelowLt = !noPromote,
 		)
 		manageJobs.upsert(job).fold(
 			ifLeft = { error ->

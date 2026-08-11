@@ -421,15 +421,15 @@ private fun SigningFormContent(
 					onCheckedChange = { checked ->
 						onFieldChange {
 							if (checked) it.copy(addArchivalTimestamp = true, addSignatureTimestamp = true)
-							else it.copy(addArchivalTimestamp = false, addToRenewalJob = false)
+							else it.copy(addArchivalTimestamp = false)
 						}
 					},
 				)
 				Text(text = stringResource(Res.string.label_archival_timestamp), style = LumoTheme.typography.body2)
 				InfoTooltip(text = stringResource(Res.string.label_produces_b_lta))
 			}
-			
-			if (state.addArchivalTimestamp && !isWebPlatform()) {
+
+			if (!isWebPlatform()) {
 				Row(
 					verticalAlignment = Alignment.CenterVertically,
 					horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -442,7 +442,13 @@ private fun SigningFormContent(
 					)
 					Text(text = stringResource(Res.string.label_add_to_renewal_job), style = LumoTheme.typography.body2)
 					InfoTooltip(
-						text = stringResource(Res.string.signing_add_to_renewal_job_tooltip),
+						text = stringResource(
+							if (state.addArchivalTimestamp) {
+								Res.string.signing_add_to_renewal_job_tooltip
+							} else {
+								Res.string.signing_add_to_renewal_job_owed_tooltip
+							}
+						),
 					)
 				}
 			}

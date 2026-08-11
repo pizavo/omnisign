@@ -2,6 +2,7 @@
 	<string name="warningrow_affected_timestamps">Dotknuté časové pečiatky</string>
 	<string name="warningrow_affected_certificates">Dotknuté certifikáty</string>
 	<string name="warning_revocation_not_found">Údaje o zrušení (CRL/OCSP) sa nepodarilo získať pre %1$s. Môže to ovplyvniť dlhodobú platnosť podpisu.</string>
+	<string name="warning_revocation_after_certificate_expiry">Údaje o zrušení pre %1$s boli vydané až po vypršaní certifikátu, a preto ich nemožno použiť – vydavateľ sa k stavu certifikátu po jeho vypršaní už nevyjadruje. Materiál pre dlhodobé overenie je nutné doplniť ešte počas platnosti certifikátu.</string>
 	<string name="warning_revocation_untrusted_chain">Kontroly zrušenia boli preskočené pre %1$s v nedôveryhodných reťazcoch. To je očakávané, ak nie je nakonfigurovaný žiadny dôveryhodný zoznam.</string>
 	<string name="warning_revocation_status_unknown">Stav zrušenia sa nepodarilo potvrdiť pre %1$s. Certifikačný reťazec nemusí byť plne dôveryhodný pre všetkých overovateľov.</string>
 	<string name="warning_revocation_poe_missing">Údaje o zrušení potrebné pre dôkaz existencie (POE) chýbajú pre %1$s.</string>

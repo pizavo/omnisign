@@ -150,7 +150,26 @@ private fun TimestampFormContent(
 			modifier = Modifier.fillMaxWidth(),
 		)
 
-		if (state.timestampType == TimestampType.ARCHIVAL_TIMESTAMP && !isWebPlatform()) {
+		if (!state.ltMaterialUsable) {
+			Row(
+				horizontalArrangement = Arrangement.spacedBy(6.dp),
+				verticalAlignment = Alignment.Top,
+			) {
+				Icon(
+					painter = painterResource(Res.drawable.icon_alert_warning),
+					contentDescription = null,
+					modifier = Modifier.padding(top = 2.dp).size(16.dp),
+					tint = LumoTheme.colors.warning,
+				)
+				Text(
+					text = stringResource(Res.string.timestamp_lt_material_unusable),
+					style = LumoTheme.typography.body2,
+					color = LumoTheme.colors.textSecondary,
+				)
+			}
+		}
+
+		if (!isWebPlatform()) {
 			Row(
 				verticalAlignment = Alignment.CenterVertically,
 				horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -163,7 +182,13 @@ private fun TimestampFormContent(
 				)
 				Text(text = stringResource(Res.string.label_add_to_renewal_job), style = LumoTheme.typography.body2)
 				InfoTooltip(
-					text = stringResource(Res.string.timestamp_add_to_renewal_tooltip),
+					text = stringResource(
+						if (state.timestampType == TimestampType.ARCHIVAL_TIMESTAMP) {
+							Res.string.timestamp_add_to_renewal_tooltip
+						} else {
+							Res.string.signing_add_to_renewal_job_owed_tooltip
+						}
+					),
 				)
 			}
 		}
@@ -173,6 +198,10 @@ private fun TimestampFormContent(
 /**
  * Warning content shown when revocation data could not be obtained during
  * a B-LT extension attempt.
+ *
+ * The explanation follows [TimestampDialogState.RevocationWarning.outputHeld]: either the extension
+ * failed and continuing falls back to B-T, or it produced a document below its target level and
+ * continuing saves that document as it is.
  *
  * @param state The [TimestampDialogState.RevocationWarning] state.
  */
@@ -200,7 +229,11 @@ private fun TimestampRevocationWarningContent(state: TimestampDialogState.Revoca
 		Spacer(modifier = Modifier.height(4.dp))
 
 		Text(
-			text = stringResource(Res.string.timestamp_revocation_message),
+			text = if (state.outputHeld) {
+				stringResource(Res.string.timestamp_revocation_incomplete_message)
+			} else {
+				stringResource(Res.string.timestamp_revocation_message)
+			},
 			style = LumoTheme.typography.body2,
 			color = LumoTheme.colors.textSecondary,
 		)

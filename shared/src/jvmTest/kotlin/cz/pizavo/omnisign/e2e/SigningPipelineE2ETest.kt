@@ -21,6 +21,8 @@ import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
+import cz.pizavo.omnisign.domain.model.result.RenewalNeed
+import cz.pizavo.omnisign.domain.model.result.RenewalReason
 import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.AlgorithmExpirationChecker
@@ -29,7 +31,9 @@ import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.service.SigningToken
 import cz.pizavo.omnisign.domain.service.TokenInfo
 import cz.pizavo.omnisign.domain.service.TokenService
+import eu.europa.esig.dss.alert.StatusAlert
 import eu.europa.esig.dss.model.InMemoryDocument
+import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.pdf.pdfbox.PdfBoxNativeObjectFactory
 import eu.europa.esig.dss.service.http.commons.TimestampDataLoader
 import eu.europa.esig.dss.service.tsp.OnlineTSPSource
@@ -38,7 +42,10 @@ import eu.europa.esig.dss.token.Pkcs12SignatureToken
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
+import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.ints.shouldBeGreaterThan
+import io.kotest.matchers.shouldBe
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -134,6 +141,28 @@ class SigningPipelineE2ETest : FunSpec({
 			alertOnRevokedCertificate = null
 		}
 
+	/**
+	 * Mirrors [DssServiceFactory.buildExtendCertificateVerifier]: the augmentation path keeps the two
+	 * revocation alerts active, wired to the alert the repository supplies, so that an extension
+	 * which embeds no revocation data is observable here exactly as it is in production.
+	 */
+	fun extendVerifier(alert: StatusAlert): CommonCertificateVerifier =
+		trustAndRevocationVerifier().apply {
+			alertOnMissingRevocationData = alert
+			alertOnNoRevocationAfterBestSignatureTime = alert
+		}
+
+	/**
+	 * The CRLs and OCSP responses actually present in the output document's DSS dictionary. Reading
+	 * the contents rather than the dictionary's presence is what tells a real B-LT promotion from a
+	 * dictionary holding certificates alone.
+	 */
+	fun embeddedRevocationCount(pdf: ByteArray): Int =
+		PDFDocumentValidator(InMemoryDocument(pdf))
+			.apply { setCertificateVerifier(CommonCertificateVerifier()) }
+			.dssDictionaries
+			.sumOf { it.crLs.size + it.ocsPs.size }
+
 	fun realSigningToken(): SigningToken {
 		val token = Pkcs12SignatureToken(signerP12, KeyStore.PasswordProtection(pass.toCharArray()))
 		return object : SigningToken {
@@ -156,6 +185,9 @@ class SigningPipelineE2ETest : FunSpec({
 	every { dssServiceFactory.buildPdfObjectFactory() } returns PdfBoxNativeObjectFactory()
 	every { dssServiceFactory.buildSigningCertificateVerifier(any(), any(), any()) } answers {
 		CertificateVerifierResult(trustAndRevocationVerifier())
+	}
+	every { dssServiceFactory.buildExtendCertificateVerifier(any(), any(), any()) } answers {
+		CertificateVerifierResult(extendVerifier(arg<() -> StatusAlert>(2)()))
 	}
 	every { dssServiceFactory.buildTspSource(any()) } returns
 		OnlineTSPSource(tsa.url).apply { setDataLoader(TimestampDataLoader()) }
@@ -213,6 +245,10 @@ class SigningPipelineE2ETest : FunSpec({
 		).shouldBeRight()
 
 		archivingRepository.getDocumentTimestampInfo(extended.outputBytes).shouldBeRight().containsLtData.shouldBeTrue()
+		embeddedRevocationCount(extended.outputBytes) shouldBeGreaterThan 0
+		extended.revocationDataMissing.shouldBeFalse()
+		extended.achievedLevel shouldBe SignatureLevel.PADES_BASELINE_LT
+		extended.newSignatureLevel shouldBe SignatureLevel.PADES_BASELINE_LT.name
 	}
 
 	test("extends a signed PDF to PAdES-B-LTA, adding an archival document timestamp over the LT data") {
@@ -230,5 +266,95 @@ class SigningPipelineE2ETest : FunSpec({
 		val info = archivingRepository.getDocumentTimestampInfo(extended.outputBytes).shouldBeRight()
 		info.containsLtData.shouldBeTrue()
 		info.hasDocumentTimestamp.shouldBeTrue()
+		embeddedRevocationCount(extended.outputBytes) shouldBeGreaterThan 0
+		extended.revocationDataMissing.shouldBeFalse()
+		extended.achievedLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+	}
+
+	test("a B-T document is due for preservation now, on the signing certificate's clock") {
+		val signed = File(tmp, "b-t-renewal.pdf").also { it.writeBytes(signBaselineT()) }
+
+		val assessment = archivingRepository.needsArchivalRenewal(signed.absolutePath).shouldBeRight()
+
+		assessment.need shouldBe RenewalNeed.NEEDED
+		assessment.reason shouldBe RenewalReason.BELOW_LT
+		assessment.dueAt shouldBe signerCert.notAfter.toKotlinInstant()
+	}
+
+	test("a B-LT document whose revocation data predates its timestamp is refreshed before sealing") {
+		val extended = archivingRepository.extendDocument(
+			ArchivingParameters(
+				inputBytes = signBaselineT(),
+				inputName = "input.pdf",
+				targetLevel = SignatureLevel.PADES_BASELINE_LT,
+				resolvedConfig = resolvedConfig(GlobalConfig(timestampServer = TimestampServerConfig(url = tsa.url))),
+			)
+		).shouldBeRight()
+		val file = File(tmp, "b-lt-renewal.pdf").also { it.writeBytes(extended.outputBytes) }
+
+		val assessment = archivingRepository.needsArchivalRenewal(file.absolutePath).shouldBeRight()
+
+		assessment.need shouldBe RenewalNeed.NEEDED
+		assessment.reason shouldBe RenewalReason.LT_REFRESH_NEEDED
+	}
+
+	test("a freshly sealed B-LTA document is not due for anything") {
+		val extended = archivingRepository.extendDocument(
+			ArchivingParameters(
+				inputBytes = signBaselineT(),
+				inputName = "input.pdf",
+				targetLevel = SignatureLevel.PADES_BASELINE_LTA,
+				resolvedConfig = resolvedConfig(GlobalConfig(timestampServer = TimestampServerConfig(url = tsa.url))),
+			)
+		).shouldBeRight()
+		val file = File(tmp, "b-lta-renewal.pdf").also { it.writeBytes(extended.outputBytes) }
+
+		archivingRepository.needsArchivalRenewal(file.absolutePath).shouldBeRight()
+			.need shouldBe RenewalNeed.NOT_NEEDED
+	}
+
+	test("a document timestamp over no validation data is reported as B-T, not B-LTA") {
+		val signed = signingRepository.signDocument(
+			SigningParameters(
+				inputBytes = plainPdf(),
+				inputName = "input.pdf",
+				certificateAlias = certEntry.alias,
+				signatureLevel = SignatureLevel.PADES_BASELINE_B,
+				addTimestamp = false,
+				resolvedConfig = resolvedConfig(GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_B)),
+			)
+		).shouldBeRight().outputBytes
+
+		val extended = archivingRepository.extendDocument(
+			ArchivingParameters(
+				inputBytes = signed,
+				inputName = "input.pdf",
+				targetLevel = SignatureLevel.PADES_BASELINE_T,
+				resolvedConfig = resolvedConfig(GlobalConfig(timestampServer = TimestampServerConfig(url = tsa.url))),
+			)
+		).shouldBeRight()
+
+		val info = archivingRepository.getDocumentTimestampInfo(extended.outputBytes).shouldBeRight()
+		info.hasDocumentTimestamp.shouldBeTrue()
+		embeddedRevocationCount(extended.outputBytes) shouldBe 0
+		info.level shouldBe SignatureLevel.PADES_BASELINE_T
+		info.containsLtData.shouldBeFalse()
+	}
+
+	test("reports the level the document actually reached, not the one that was requested") {
+		val signed = signBaselineT()
+
+		val extended = archivingRepository.extendDocument(
+			ArchivingParameters(
+				inputBytes = signed,
+				inputName = "input.pdf",
+				targetLevel = SignatureLevel.PADES_BASELINE_T,
+				resolvedConfig = resolvedConfig(GlobalConfig(timestampServer = TimestampServerConfig(url = tsa.url))),
+			)
+		).shouldBeRight()
+
+		extended.achievedLevel shouldBe SignatureLevel.PADES_BASELINE_T
+		embeddedRevocationCount(extended.outputBytes) shouldBe 0
+		extended.revocationDataMissing.shouldBeFalse()
 	}
 })

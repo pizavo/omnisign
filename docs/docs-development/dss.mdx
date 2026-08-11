@@ -38,25 +38,62 @@ via the `TrustedSourceRegistry` it delegates to — one retained `TLValidationJo
 source. It is a Koin `single`, injected into all three DSS repositories (`DssSigningRepository`,
 `DssValidationRepository`, `DssArchivingRepository`) and into `TrustedListRefreshScheduler`.
 
-It builds a **different certificate verifier for signing than for validation**, and the difference is
-not cosmetic — the two barely overlap:
+It builds a **different certificate verifier for each of the three operations**, and the difference is
+not cosmetic — they barely overlap:
 
-| Alert | Signing | Validation |
-| --- | --- | --- |
-| `alertOnUncoveredPOE` | raised | raised |
-| `alertOnNoRevocationAfterBestSignatureTime` | suppressed | raised |
-| `alertOnMissingRevocationData` | suppressed | suppressed |
-| `alertOnInvalidTimestamp` | raised | suppressed |
-| `alertOnRevokedCertificate` | raised | suppressed |
-| `alertOnExpiredCertificate` | DSS default (aborts) | suppressed |
-| `alertOnNotYetValidCertificate` | DSS default (aborts) | suppressed |
+| Alert | Signing | Extension | Validation |
+| --- | --- | --- | --- |
+| `alertOnUncoveredPOE` | raised | raised | raised |
+| `alertOnNoRevocationAfterBestSignatureTime` | suppressed | **raised** | raised |
+| `alertOnMissingRevocationData` | suppressed | **raised** | suppressed |
+| `alertOnInvalidTimestamp` | raised | raised | suppressed |
+| `alertOnRevokedCertificate` | raised | raised | suppressed |
+| `alertOnExpiredCertificate` | DSS default (aborts) | DSS default (aborts) | suppressed |
+| `alertOnNotYetValidCertificate` | DSS default (aborts) | DSS default (aborts) | suppressed |
 
-The signing verifier additionally sets `isCheckRevocationForUntrustedChains = false`, and honours
-`validation.allowExpiredCertificate` by clearing `alertOnExpiredCertificate`.
+Signing and extension share a body (`buildSigningCertificateVerifier` and
+`buildExtendCertificateVerifier` both delegate to one private builder); both set
+`isCheckRevocationForUntrustedChains = false` and honour `validation.allowExpiredCertificate` by
+clearing `alertOnExpiredCertificate`.
 
 Signing suppresses the two revocation alerts because they fire in the verifier's pre-extension check,
-before the PAdES extension embeds CRL/OCSP data — if the extension fails DSS throws anyway, and if it
-succeeds the alerts were false positives.
+before the PAdES extension embeds CRL/OCSP data — on a signing operation that reaches B-LT or B-LTA
+they describe a gap the very next step closes.
+
+**Extension keeps them**, because there is no next step: embedding that data *is* the operation. It
+can fail in two shapes, and only one of them is visible in the resulting level:
+
+- the revocation data cannot be fetched — the DSS dictionary holds certificates and nothing else, and
+the document stays at B-T;
+- it *is* fetched and embedded but cannot be used, because it postdates the signing certificate's
+expiry. DSS's baseline-LT check counts the embedded CRL, so the level reads **B-LT** even though
+`RevocationDataVerifier` discards that CRL at validation time.
+
+The second shape is why these alerts carry their weight: the level cannot tell it from a genuine
+promotion, and only the captured warnings can. Note also that suppressing
+`alertOnMissingRevocationData` removes the abort it would otherwise cause: DSS skips the check
+entirely when the alert is null rather than falling back to throwing, so nothing else stops an
+augmentation that embedded nothing. `DssArchivingRepository` turns the captured warnings into
+`ArchivingResult.revocationDataMissing` (only for targets ≥ B-LT, since B-T needs no revocation
+data); the desktop asks before saving such a document, the CLI refuses to write it, and the renewal
+scheduler leaves the original file untouched.
+
+`ArchivingResult.newSignatureLevel` is the level the output **actually reached**, not the one that
+was requested: `DssArchivingRepository` reads it back out of the produced bytes with DSS's own
+`getDataFoundUpToLevel`, the same determination that drives the level in a validation report, so the
+two can never disagree. It matters here because DSS's LT requirement is non-empty CRL/OCSP data for
+the chain — not the presence of a DSS dictionary — so a dictionary holding only certificates reports
+B-T. The typed `achievedLevel` carries the same answer for callers that compare it against what they
+asked for; the renewal scheduler does exactly that before overwriting anything, and treats a level it
+could not establish as a failure rather than a pass — an archival job may only replace a file it has
+confirmed is stronger.
+
+The same helper fills `DocumentTimestampInfo.level`, which is what the desktop extension dialog
+displays, and `containsLtData` is derived from that level. The presence of a `/DSS` dictionary is
+never consulted — it can be there and hold nothing usable, which is exactly how a B-T document comes
+to be labelled B-LT by tools that read structure instead of content. `hasDocumentTimestamp` remains
+a structural fact used to decide which extension options apply, not to infer a level: a document
+timestamp over missing or unusable validation data is still a B-T document.
 
 Validation suppresses almost everything for the opposite reason: it opens with
 `silenceAlertsCoveredByTheReport()`, which clears every alert whose condition the ETSI report already
@@ -100,6 +137,7 @@ The categories, and roughly what each means:
 | Category | Meaning |
 | --- | --- |
 | `REVOCATION_NOT_FOUND` | CRL/OCSP could not be downloaded |
+| `REVOCATION_AFTER_CERTIFICATE_EXPIRY` | Revocation data was retrieved but rejected: it was issued after the certificate expired, and the issuer asserts no knowledge of that period |
 | `REVOCATION_UNTRUSTED_CHAIN` | Revocation was skipped — the chain has no trusted anchor |
 | `REVOCATION_STATUS_UNKNOWN` | Neither *good* nor *revoked* could be established |
 | `REVOCATION_POE_MISSING` | Revocation data needed for proof-of-existence is absent |
@@ -121,7 +159,10 @@ expected noise — the signature being created has no revocation data yet, and t
 certificates routinely carry extensions DSS cannot parse. The same categories are surfaced during
 validation, where they mean something.
 
-If you add a category, decide explicitly what each repository does with it.
+If you add a category, decide explicitly what each repository does with it — including whether it
+belongs in `blocksLongTermMaterial`, the wider set that tells the archiving path an augmentation did
+not reach its target level. `REVOCATION_POE_STALE` and `FRESH_REVOCATION_MISSING` are deliberately
+outside it: that data *was* embedded, it just does not yet cover the time it has to.
 :::
 
 ## Timestamp failures

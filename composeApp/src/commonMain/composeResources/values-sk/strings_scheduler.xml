@@ -15,6 +15,11 @@
 	<string name="scheduler_no_auto_detect_hint">Cestu k spustiteľnému súboru sa nepodarilo zistiť automaticky. Zadajte ju manuálne, aby bolo možné nainštalovať plánovač.</string>
 	<string name="scheduler_last_success">Posledné úspešné spustenie: %1$s</string>
 	<string name="scheduler_last_run">Posledné spustenie: %1$s – %2$s (skontrolované %3$s, obnovené %4$s, chyby %5$s)</string>
+	<plurals name="scheduler_unrecoverable">
+		<item quantity="one">%1$s dokument už nemožno uchovať – uplynula jeho lehota.</item>
+		<item quantity="few">%1$s dokumenty už nemožno uchovať – uplynula ich lehota.</item>
+		<item quantity="other">%1$s dokumentov už nemožno uchovať – uplynula ich lehota.</item>
+	</plurals>
 	<plurals name="scheduler_failures_since_success">
 		<item quantity="one">%1$s neúspešné spustenie od posledného úspešného behu.</item>
 		<item quantity="few">%1$s neúspešné spustenia od posledného úspešného behu.</item>

@@ -87,6 +87,29 @@ fun SchedulerSection(
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)
+			if (record.unrecoverable > 0) {
+				Spacer(modifier = Modifier.height(4.dp))
+				Row(
+					verticalAlignment = Alignment.CenterVertically,
+					horizontalArrangement = Arrangement.spacedBy(4.dp),
+				) {
+					Icon(
+						painter = painterResource(Res.drawable.icon_alert_warning),
+						contentDescription = null,
+						tint = LumoTheme.colors.warning,
+						modifier = Modifier.size(14.dp),
+					)
+					Text(
+						text = pluralStringResource(
+							Res.plurals.scheduler_unrecoverable,
+							record.unrecoverable,
+							record.unrecoverable,
+						),
+						style = LumoTheme.typography.body2,
+						color = LumoTheme.colors.warning,
+					)
+				}
+			}
 			if (record.failuresSinceSuccess > 0) {
 				Spacer(modifier = Modifier.height(4.dp))
 				Row(
