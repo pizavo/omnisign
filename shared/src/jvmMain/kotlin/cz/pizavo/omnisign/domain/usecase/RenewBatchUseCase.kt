@@ -24,6 +24,7 @@ import cz.pizavo.omnisign.domain.model.result.RenewalRunJobSummary
 import cz.pizavo.omnisign.domain.model.result.RenewalRunOutcome
 import cz.pizavo.omnisign.domain.model.result.RenewalRunRecord
 import cz.pizavo.omnisign.domain.model.result.StalenessAlert
+import cz.pizavo.omnisign.domain.port.RenewalAlertSink
 import cz.pizavo.omnisign.domain.port.RenewalLock
 import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -120,6 +121,8 @@ private val logger = KotlinLogging.logger {}
  *   same documents at once.
  * @param runRecordStore Persists a summary of each run so the CLI and desktop can surface last-run
  *   status (when it ran, whether it succeeded, and any failures since the last success).
+ * @param alertSink Receives the one alert that cannot travel in the result, because the run carrying
+ *   it is being killed. `null` where nothing can notify, leaving the condition recorded but silent.
  */
 class RenewBatchUseCase(
     private val checkRenewalUseCase: CheckArchivalRenewalUseCase,
@@ -127,6 +130,7 @@ class RenewBatchUseCase(
     private val configRepository: ConfigRepository,
     private val renewalLock: RenewalLock,
     private val runRecordStore: RenewalRunRecordStore,
+    private val alertSink: RenewalAlertSink? = null,
 ) {
 
     /**
@@ -199,6 +203,11 @@ class RenewBatchUseCase(
      * announced again, and [RenewalRunRecord.lastStaleNotifiedAt] keeps the alert from re-firing
      * inside its window.
      *
+     * Once [INTERRUPTION_ALERT_THRESHOLD] runs in a row have died, [alertSink] is told here and not
+     * through the returned result, because a run that is about to be killed never returns one. The
+     * staleness alert cannot serve this case for the same reason: it is only ever evaluated by a run
+     * that finishes.
+     *
      * A persistence failure is logged and otherwise ignored, so status bookkeeping can never break a
      * run.
      */
@@ -221,8 +230,10 @@ class RenewBatchUseCase(
                 runRecordStore.save(previous.copy(runStartedAt = now))
                 return
             }
+            val streak = previous.consecutiveInterruptions + 1
             logger.warn {
-                "The renewal run started $deadRunStartedAt never finished — recording it as interrupted"
+                "The renewal run started $deadRunStartedAt never finished — recording it as " +
+                    "interrupted ($streak in a row)"
             }
             runRecordStore.save(
                 previous.copy(
@@ -239,8 +250,13 @@ class RenewBatchUseCase(
                     jobs = emptyList(),
                     failuresSinceSuccess = previous.failuresSinceSuccess + 1,
                     runStartedAt = now,
+                    consecutiveInterruptions = streak,
                 )
             )
+            if (streak == INTERRUPTION_ALERT_THRESHOLD) {
+                runCatching { alertSink?.runsKeepBeingInterrupted(streak) }
+                    .onFailure { logger.warn(it) { "Could not raise the interrupted-run alert" } }
+            }
         } catch (e: Exception) {
             logger.warn(e) { "Could not mark the renewal run as started" }
         }
@@ -338,6 +354,7 @@ class RenewBatchUseCase(
                     failuresSinceSuccess = if (succeeded) 0 else (previous?.failuresSinceSuccess ?: 0) + 1,
                     lastStaleNotifiedAt = nextNotifiedAt,
                     runStartedAt = null,
+                    consecutiveInterruptions = 0,
                 )
             )
             staleAlert
@@ -1297,6 +1314,16 @@ class RenewBatchUseCase(
          * where three retries of the same one would not.
          */
         internal const val TSA_FAILURE_LIMIT: Int = 3
+
+        /**
+         * How many runs in a row must be killed before the user is told about it.
+         *
+         * One interruption is an ordinary restart landing on the nightly batch, and saying so would
+         * be noise. Three in a row is a pattern, and reaching it takes about as many days — far
+         * sooner than the staleness alert's default fortnight, which in any case never fires for
+         * interrupted runs because it is only evaluated by a run that finishes.
+         */
+        internal const val INTERRUPTION_ALERT_THRESHOLD: Int = 3
 
         /**
          * Formats the UTC instant embedded in a backup file name, in basic ISO-8601

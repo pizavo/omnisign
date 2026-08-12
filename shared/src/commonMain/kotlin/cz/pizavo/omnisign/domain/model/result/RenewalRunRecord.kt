@@ -47,6 +47,11 @@ import kotlin.time.Instant
  *   — this record, the OS notification, the job log — is produced only after the batch returns.
  *   Telling "still running" from "died" additionally needs
  *   [cz.pizavo.omnisign.domain.port.RenewalActivityProbe].
+ * @property consecutiveInterruptions How many runs in a row have been killed before finishing, reset
+ *   by any run that completes. Counted apart from [failuresSinceSuccess], which a completed run that
+ *   merely failed also increments: a machine shutting down mid-batch every night is a different
+ *   problem from a document that keeps erroring, and only the first is invisible to every other
+ *   channel.
  */
 @Serializable
 data class RenewalRunRecord(
@@ -66,4 +71,5 @@ data class RenewalRunRecord(
     val failuresSinceSuccess: Int = 0,
     val lastStaleNotifiedAt: Instant? = null,
     val runStartedAt: Instant? = null,
+    val consecutiveInterruptions: Int = 0,
 )

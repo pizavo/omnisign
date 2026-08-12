@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.domain.usecase
 
 import arrow.core.left
 import arrow.core.right
+import cz.pizavo.omnisign.data.service.FileRenewalRunRecordStore
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
@@ -20,6 +21,7 @@ import cz.pizavo.omnisign.domain.model.result.RenewalReason
 import cz.pizavo.omnisign.domain.model.result.RenewalRunOutcome
 import cz.pizavo.omnisign.domain.model.result.RenewalRunRecord
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.port.RenewalAlertSink
 import cz.pizavo.omnisign.domain.port.RenewalLock
 import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
@@ -47,6 +49,7 @@ import io.mockk.slot
 import io.mockk.verify
 import java.io.File
 import java.io.IOException
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
@@ -1560,6 +1563,147 @@ class RenewBatchUseCaseTest : FunSpec({
         result.shouldNotBeNull()
         result.renewed shouldBe 1
         result.jobs.single { it.name == "live" }.files.single().status shouldBe RenewFileStatus.Status.RENEWED
+    }
+
+    test("a JVM Error raised while extending is one error row, not a dead batch") {
+        val dir = subDir("error-extend")
+        val boom = File(dir, "boom.pdf").also { it.createNewFile() }
+        val fine = File(dir, "fine.pdf").also { it.createNewFile() }
+        coEvery {
+            archivingRepository.needsArchivalRenewal(boom.absolutePath, any())
+        } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery {
+            archivingRepository.needsArchivalRenewal(fine.absolutePath, any())
+        } returns RenewalAssessment.notNeeded().right()
+        coEvery {
+            archivingRepository.extendDocument(any())
+        } throws OutOfMemoryError("simulated heap exhaustion")
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.errors shouldBe 1
+        result.skipped shouldBe 1
+        boom.readBytes().size shouldBe 0
+    }
+
+    test("cancelling a run is not turned into a document error") {
+        val dir = subDir("cancelled")
+        val file = File(dir, "doc.pdf").also { it.createNewFile() }
+        coEvery {
+            archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+        } throws CancellationException("run cancelled")
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+
+        shouldThrow<CancellationException> { uc() }
+    }
+
+    test("a run aborted mid-batch leaves a marker the next run turns into a recorded failure") {
+        val dir = subDir("abort-marker")
+        val file = File(dir, "doc.pdf").also { it.createNewFile() }
+        val store = FileRenewalRunRecordStore(File(tmpDir, "abort-run.json").toPath())
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        coEvery { configRepository.getCurrentConfig() } returns
+            baseConfig.copy(renewalJobs = mapOf("j" to job))
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, grantingLock, store)
+
+        coEvery {
+            archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+        } throws CancellationException("run cancelled")
+        shouldThrow<CancellationException> { uc() }
+
+        store.load().shouldNotBeNull().runStartedAt.shouldNotBeNull()
+
+        coEvery {
+            archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+        } returns ArchivingError.renewalCheckFailed(details = "still broken").left()
+        uc()
+
+        val record = store.load().shouldNotBeNull()
+        record.runStartedAt.shouldBeNull()
+        record.failuresSinceSuccess shouldBe 2
+    }
+
+    test("interrupted runs in a row are counted, and the alert fires once the streak is long enough") {
+        val alertSink: RenewalAlertSink = mockk(relaxed = true)
+        val saved = mutableListOf<RenewalRunRecord>()
+        every { runRecordStore.save(capture(saved)) } returns Unit
+        val died = Clock.System.now() - 1.days
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, grantingLock, runRecordStore, alertSink)
+        coEvery { configRepository.getCurrentConfig() } returns baseConfig
+
+        (1..RenewBatchUseCase.INTERRUPTION_ALERT_THRESHOLD).forEach { streak ->
+            every { runRecordStore.load() } returns RenewalRunRecord(
+                lastRunAt = died,
+                outcome = RenewalRunOutcome.INTERRUPTED,
+                lastSuccessAt = died - 10.days,
+                runStartedAt = died,
+                consecutiveInterruptions = streak - 1,
+            )
+            saved.clear()
+            uc()
+            saved.first().consecutiveInterruptions shouldBe streak
+        }
+
+        verify(exactly = 1) {
+            alertSink.runsKeepBeingInterrupted(RenewBatchUseCase.INTERRUPTION_ALERT_THRESHOLD)
+        }
+    }
+
+    test("a single interruption is not announced") {
+        val alertSink: RenewalAlertSink = mockk(relaxed = true)
+        val died = Clock.System.now() - 1.days
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = died,
+            outcome = RenewalRunOutcome.SUCCESS,
+            lastSuccessAt = died,
+            runStartedAt = died,
+        )
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, grantingLock, runRecordStore, alertSink)
+        coEvery { configRepository.getCurrentConfig() } returns baseConfig
+
+        uc()
+
+        verify(exactly = 0) { alertSink.runsKeepBeingInterrupted(any()) }
+    }
+
+    test("a run that finishes clears the interruption streak") {
+        val died = Clock.System.now() - 1.days
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = died,
+            outcome = RenewalRunOutcome.INTERRUPTED,
+            lastSuccessAt = died - 10.days,
+            consecutiveInterruptions = 2,
+        )
+        val saved = mutableListOf<RenewalRunRecord>()
+        every { runRecordStore.save(capture(saved)) } returns Unit
+        val uc = useCaseWith(baseConfig)
+
+        uc()
+
+        saved.last().consecutiveInterruptions shouldBe 0
+    }
+
+    test("the run is not broken by an alert sink that throws") {
+        val alertSink: RenewalAlertSink = mockk {
+            every { runsKeepBeingInterrupted(any()) } throws IllegalStateException("notifier down")
+        }
+        val died = Clock.System.now() - 1.days
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = died,
+            outcome = RenewalRunOutcome.INTERRUPTED,
+            lastSuccessAt = died - 10.days,
+            runStartedAt = died,
+            consecutiveInterruptions = RenewBatchUseCase.INTERRUPTION_ALERT_THRESHOLD - 1,
+        )
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, grantingLock, runRecordStore, alertSink)
+        coEvery { configRepository.getCurrentConfig() } returns baseConfig
+
+        uc().shouldNotBeNull()
     }
 
     test("the file staged to verify a renewal is invisible to the job's own glob") {

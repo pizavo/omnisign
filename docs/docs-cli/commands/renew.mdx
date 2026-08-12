@@ -20,12 +20,12 @@ Preservation is not one action on one clock. Each PAdES level is missing somethi
 deadlines are not the same length — so the step a document needs, and how urgent it is, depend on
 where it currently stands:
 
-| Document is at | Step | Deadline |
-|---|---|---|
-| **B-B / B-T** — no revocation data | Embed revocation data and seal (→ B-LTA) | The **signing certificate's** expiry |
-| **B-LT**, revocation predates the signature timestamp | Refresh the revocation data (→ B-LT) | The issuer's next CRL/OCSP publication |
-| **B-LT**, revocation sound | Seal it with an archival timestamp (→ B-LTA) | The earlier of the revocation's `nextUpdate` and its issuer's expiry |
-| **B-LTA** | Re-timestamp (→ B-LTA) | The outermost timestamp's certificate expiry, or its algorithms aging out |
+| Document is at                                        | Step                                         | Deadline                                                                  |
+|-------------------------------------------------------|----------------------------------------------|---------------------------------------------------------------------------|
+| **B-B / B-T** — no revocation data                    | Embed revocation data and seal (→ B-LTA)     | The **signing certificate's** expiry                                      |
+| **B-LT**, revocation predates the signature timestamp | Refresh the revocation data (→ B-LT)         | The issuer's next CRL/OCSP publication                                    |
+| **B-LT**, revocation sound                            | Seal it with an archival timestamp (→ B-LTA) | The earlier of the revocation's `nextUpdate` and its issuer's expiry      |
+| **B-LTA**                                             | Re-timestamp (→ B-LTA)                       | The outermost timestamp's certificate expiry, or its algorithms aging out |
 
 Only the last row is the "wait until it is nearly expiring" case, and only it uses the job's renewal
 buffer. The rows above it are **due immediately**: the material they need is available now and will
@@ -73,14 +73,14 @@ omnisign renew --job university
 
 ## Per-file outcomes
 
-| Tag | Meaning |
-|---|---|
-| `[PROMOTED]` | The document reached a level it had not held before |
+| Tag           | Meaning                                                                                 |
+|---------------|-----------------------------------------------------------------------------------------|
+| `[PROMOTED]`  | The document reached a level it had not held before                                     |
 | `[REFRESHED]` | Stale revocation data was replaced; the document is at B-LT and will be sealed next run |
-| `[RENEWED]` | Existing B-LTA protection was re-timestamped |
-| `[SKIP]` | Nothing was due, or the job declines this document's step |
-| `[TERMINAL]` | The deadline has passed — reported once, then left alone |
-| `[ERROR]` | The step failed; **the original file is left untouched** |
+| `[RENEWED]`   | Existing B-LTA protection was re-timestamped                                            |
+| `[SKIP]`      | Nothing was due, or the job declines this document's step                               |
+| `[TERMINAL]`  | The deadline has passed — reported once, then left alone                                |
+| `[ERROR]`     | The step failed; **the original file is left untouched**                                |
 
 A renewal only overwrites a file once the output is confirmed to have delivered: the extension must
 report that it embedded the revocation data the target level needs, and the level read back out of
@@ -93,6 +93,31 @@ Terminal files are counted separately from errors, and do not make a run unsucce
 failed, and treating them as failures would leave the run permanently reporting itself as broken over
 something no run can fix — including the staleness warning, which would then never clear.
 
+## When the timestamp server is down
+
+Reaching the TSA is the last thing an extension does, so every document first parses the archive and
+collects revocation data before the timestamp call can fail — and if the server is unreachable, it
+then waits out the full connection timeout. Against a large backlog that is hours of work that renews
+nothing.
+
+A run therefore stops calling a timestamp server after **three consecutive documents** fail against
+it, and reports the rest immediately:
+
+```
+[ERROR] /archive/e.pdf — the timestamp server https://tsa.example.com could not be reached
+        on the last 3 attempts, so this run stopped calling it; the original was left
+        unchanged and the next run will try again
+```
+
+Only failures that would repeat count towards those three — the server could not be reached, or it
+answered with something that is not a timestamp token. A server that answers and *rejects* a request
+(an RFC 3161 `PKIFailureInfo`) says nothing about the next document, so it never stops the run, and
+any document that does get timestamped resets the count. The message names which of the two it was,
+because they call for opposite responses: an outage is waited out, while an endpoint that answers
+without producing a timestamp is usually a URL that does not point at an RFC 3161 service.
+
+The skipped documents are reported as errors, not as skips. They are retried in full on the next run.
+
 ## OS notifications
 
 When a renewal job has notifications enabled (the default), OmniSign fires an OS desktop
@@ -104,6 +129,23 @@ notification after the job completes:
 - **Terminal documents** — raised alongside the outcome above when a run finds documents whose
   deadline has passed. Only *newly* terminal documents are announced; a file already reported is not
   announced again, since the condition cannot be acted on and cannot change.
+
+Two further notifications are run-wide rather than per-job, so they ignore the per-job opt-in:
+
+- **Renewal has stalled** — no run has succeeded for the configured number of days (14 by default).
+- **Runs keep being interrupted** — three runs in a row were stopped before they could finish, which
+  a restart or a shutdown landing on the scheduled time will do. A single interruption is not
+  announced; the next run normally completes and nothing is wrong. Raised once per streak rather than
+  nightly, the standing signal being `schedule status` and, on the desktop, a badge on the settings
+  button.
+
+:::note[Why an interrupted run is announced from the *next* run]
+A process that is killed executes no further code, so it cannot report its own death — no run record,
+no notification, no log entry is written. The following run is the first thing able to notice, which
+is also why the count needs a few days to build up. On a machine that was switched off at the
+scheduled time the catch-up run fires shortly after boot, so the notification arrives while you are
+at the computer.
+:::
 
 Disable notifications per job with `schedule job add --no-notify` (recommended for headless
 server deployments).

@@ -248,4 +248,26 @@ class RenewalNotifierTest : FunSpec({
 			)
 		}
 	}
+
+	test("raises a critical notification for runs that keep being interrupted") {
+		notifier.runsKeepBeingInterrupted(3)
+		verify(exactly = 1) {
+			notificationService.notify(
+				match { it.contains("OmniSign") && it.contains("keeps being interrupted") },
+				match { it.contains("3") && it.contains("before they could finish") },
+				eq(NotificationUrgency.CRITICAL),
+			)
+		}
+	}
+
+	test("renders the Czech interrupted-run title and body when the locale is Czech") {
+		czechNotifier.runsKeepBeingInterrupted(4)
+		verify(exactly = 1) {
+			notificationService.notify(
+				match { it.contains("Obnova se opakovaně přerušuje") },
+				match { it.contains("4") && it.contains("než mohlo doběhnout") },
+				eq(NotificationUrgency.CRITICAL),
+			)
+		}
+	}
 })

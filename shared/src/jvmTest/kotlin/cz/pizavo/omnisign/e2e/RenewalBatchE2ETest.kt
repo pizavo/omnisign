@@ -9,6 +9,8 @@ import cz.pizavo.omnisign.domain.model.config.*
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
+import cz.pizavo.omnisign.domain.model.error.ArchivingError
+import cz.pizavo.omnisign.domain.model.error.TimestampFailureKind
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
@@ -35,6 +37,7 @@ import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -338,5 +341,46 @@ class RenewalBatchE2ETest : FunSpec({
 		assessment.need shouldBe RenewalNeed.NEEDED
 		assessment.reason shouldBe RenewalReason.TIMESTAMP_EXPIRING
 		assessment.deadlineIsFinal shouldBe false
+	}
+
+	test("a timestamp server that refuses connections is classified as unreachable, not as a generic failure") {
+		val dead = "http://127.0.0.1:1/tsa"
+
+		val error = archivingRepository.extendDocument(
+			ArchivingParameters(
+				inputBytes = signBaselineT(validEntry, configWith(tsa.url)),
+				inputName = "input.pdf",
+				targetLevel = SignatureLevel.PADES_BASELINE_LTA,
+				resolvedConfig = resolved(configWith(dead, allowExpired = true)),
+			)
+		).leftOrNull().shouldNotBeNull()
+
+		error.shouldBeInstanceOf<ArchivingError.TimestampFailed>()
+		error.kind shouldBe TimestampFailureKind.UNREACHABLE
+	}
+
+	test("a dead timestamp server is dialled only until the breaker trips, on real documents") {
+		val dir = File(tmp, "dead-tsa").also { it.mkdirs() }
+		val dead = "http://127.0.0.1:1/tsa"
+		val documents = (1..RenewBatchUseCase.TSA_FAILURE_LIMIT + 2).map { index ->
+			File(dir, "doc-$index.pdf").also { it.writeBytes(signBaselineT(validEntry, configWith(tsa.url))) }
+		}
+
+		val job = RenewalJob(
+			name = "dead",
+			globs = listOf(dir.absolutePath.replace('\\', '/') + "/*.pdf"),
+			backupRetention = 0,
+		)
+		coEvery { configRepository.getCurrentConfig() } returns AppConfig(
+			global = configWith(dead, allowExpired = true),
+			renewalJobs = mapOf("dead" to job),
+		)
+		val result = batch().shouldNotBeNull()
+
+		result.errors shouldBe documents.size
+		result.renewed shouldBe 0
+		val messages = result.jobs.single().files.map { it.message.orEmpty() }
+		messages.count { it.contains("stopped calling it") } shouldBe 2
+		documents.forEach { levelOf(it) shouldBe SignatureLevel.PADES_BASELINE_T }
 	}
 })
