@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.domain.usecase
 
 import arrow.core.left
 import arrow.core.right
+import cz.pizavo.omnisign.data.service.FileRenewalRunRecordStore
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
@@ -11,6 +12,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
+import cz.pizavo.omnisign.domain.model.error.TimestampFailureKind
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
 import cz.pizavo.omnisign.domain.model.result.RenewalAssessment
@@ -19,16 +21,21 @@ import cz.pizavo.omnisign.domain.model.result.RenewalReason
 import cz.pizavo.omnisign.domain.model.result.RenewalRunOutcome
 import cz.pizavo.omnisign.domain.model.result.RenewalRunRecord
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.port.RenewalAlertSink
 import cz.pizavo.omnisign.domain.port.RenewalLock
 import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import io.kotest.assertions.arrow.core.shouldBeLeft
+import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldEndWith
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -42,6 +49,7 @@ import io.mockk.slot
 import io.mockk.verify
 import java.io.File
 import java.io.IOException
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
@@ -752,7 +760,7 @@ class RenewBatchUseCaseTest : FunSpec({
 
         val uc = useCaseWith(baseConfig)
         val glob = sub.absolutePath.replace('\\', '/') + "/*.pdf"
-        val files = uc.resolveGlobs(listOf(glob))
+        val files = uc.resolveGlobs(listOf(glob)).shouldBeRight()
 
         files shouldHaveSize 2
         files.all { it.extension == "pdf" } shouldBe true
@@ -761,7 +769,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("resolveGlobs handles non-existent root gracefully") {
         val uc = useCaseWith(baseConfig)
         val nonExistent = File(tmpDir, "nonexistent").absolutePath.replace('\\', '/') + "/*.pdf"
-        val files = uc.resolveGlobs(listOf(nonExistent))
+        val files = uc.resolveGlobs(listOf(nonExistent)).shouldBeRight()
         files shouldHaveSize 0
     }
 
@@ -775,7 +783,7 @@ class RenewBatchUseCaseTest : FunSpec({
 
         val uc = useCaseWith(baseConfig)
         val glob = root.absolutePath.replace('\\', '/') + "/**/*.pdf"
-        val files = uc.resolveGlobs(listOf(glob))
+        val files = uc.resolveGlobs(listOf(glob)).shouldBeRight()
 
         files.map { it.name }.sorted() shouldContainExactly listOf("deep.pdf", "mid.pdf")
     }
@@ -788,7 +796,7 @@ class RenewBatchUseCaseTest : FunSpec({
 
         val uc = useCaseWith(baseConfig)
         val glob = sub.absolutePath.replace('\\', '/') + "/*"
-        val files = uc.resolveGlobs(listOf(glob))
+        val files = uc.resolveGlobs(listOf(glob)).shouldBeRight()
 
         files.map { it.name } shouldContainExactly listOf("a.pdf")
     }
@@ -1237,6 +1245,496 @@ class RenewBatchUseCaseTest : FunSpec({
                 }
             )
         }
+    }
+
+    test("marks the run as in flight before the batch and clears the marker once it finishes") {
+        val saved = mutableListOf<RenewalRunRecord>()
+        every { runRecordStore.save(capture(saved)) } returns Unit
+        val uc = useCaseWith(baseConfig)
+
+        uc()
+
+        saved.first().runStartedAt.shouldNotBeNull()
+        saved.last().runStartedAt.shouldBeNull()
+    }
+
+    test("a dry-run leaves no in-flight marker behind") {
+        val uc = useCaseWith(baseConfig)
+
+        uc(dryRun = true)
+
+        verify(exactly = 0) { runRecordStore.save(any()) }
+    }
+
+    test("a run that never finished is recorded as interrupted and counted as a failure") {
+        val died = Clock.System.now() - 1.days
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = died - 1.days,
+            outcome = RenewalRunOutcome.SUCCESS,
+            lastSuccessAt = died - 1.days,
+            failuresSinceSuccess = 2,
+            runStartedAt = died,
+        )
+        val saved = mutableListOf<RenewalRunRecord>()
+        every { runRecordStore.save(capture(saved)) } returns Unit
+        val uc = useCaseWith(baseConfig)
+
+        uc()
+
+        val interrupted = saved.first()
+        interrupted.outcome shouldBe RenewalRunOutcome.INTERRUPTED
+        interrupted.lastRunAt shouldBe died
+        interrupted.failuresSinceSuccess shouldBe 3
+        interrupted.runStartedAt.shouldNotBeNull()
+    }
+
+    test("an interrupted run carries the last success and the reported terminal files forward") {
+        val died = Clock.System.now() - 1.days
+        val succeeded = died - 5.days
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = succeeded,
+            outcome = RenewalRunOutcome.SUCCESS,
+            unrecoverablePaths = listOf("/archive/lost.pdf"),
+            lastSuccessAt = succeeded,
+            runStartedAt = died,
+        )
+        val saved = mutableListOf<RenewalRunRecord>()
+        every { runRecordStore.save(capture(saved)) } returns Unit
+        val uc = useCaseWith(baseConfig)
+
+        uc()
+
+        val interrupted = saved.first()
+        interrupted.lastSuccessAt shouldBe succeeded
+        interrupted.unrecoverablePaths shouldContainExactly listOf("/archive/lost.pdf")
+    }
+
+    test("resolveGlobs reports an unparseable pattern instead of throwing it at the whole batch") {
+        val dir = subDir("bad-glob")
+        val uc = useCaseWith(baseConfig)
+        val glob = dir.absolutePath.replace('\\', '/') + "/[.pdf"
+
+        uc.resolveGlobs(listOf(glob)).shouldBeLeft().shouldContain("not a valid glob pattern")
+    }
+
+    test("a malformed glob fails its own job and leaves the other jobs running") {
+        val goodDir = subDir("glob-good")
+        val badDir = subDir("glob-bad")
+        val file = File(goodDir, "doc.pdf").also { it.createNewFile() }
+        coEvery {
+            archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+        } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery {
+            archivingRepository.extendDocument(match { it.inputName == file.name })
+        } returns ArchivingResult(
+            outputBytes = ByteArray(0),
+            outputName = file.name,
+            newSignatureLevel = "PAdES-BASELINE-LTA",
+            achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
+        ).right()
+
+        val broken = RenewalJob(name = "broken", globs = listOf(badDir.absolutePath.replace('\\', '/') + "/[.pdf"))
+        val healthy = RenewalJob(name = "healthy", globs = listOf(globDir(goodDir)), backupRetention = 0)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("broken" to broken, "healthy" to healthy)))
+
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.errors shouldBe 1
+        result.renewed shouldBe 1
+        val brokenJob = result.jobs.single { it.name == "broken" }
+        brokenJob.files.single().status shouldBe RenewFileStatus.Status.CONFIG_ERROR
+        result.jobs.single { it.name == "healthy" }.files.single().status shouldBe RenewFileStatus.Status.RENEWED
+    }
+
+    test("a document that fails with a JVM Error is one error row, not a dead batch") {
+        val dir = subDir("error-guard")
+        val boom = File(dir, "boom.pdf").also { it.createNewFile() }
+        val fine = File(dir, "fine.pdf").also { it.createNewFile() }
+        coEvery {
+            archivingRepository.needsArchivalRenewal(boom.absolutePath, any())
+        } throws OutOfMemoryError("simulated heap exhaustion")
+        coEvery {
+            archivingRepository.needsArchivalRenewal(fine.absolutePath, any())
+        } returns RenewalAssessment.notNeeded().right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.errors shouldBe 1
+        result.skipped shouldBe 1
+        result.jobs.single().files
+            .single { it.path == boom.absolutePath }.status shouldBe RenewFileStatus.Status.ERROR
+    }
+
+    test("an unreachable timestamp server is dialled only until the breaker trips") {
+        val dir = subDir("tsa-breaker")
+        val names = listOf("a", "b", "c", "d", "e")
+        names.forEach { name ->
+            val file = File(dir, "$name.pdf").also { it.createNewFile() }
+            coEvery {
+                archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+            } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        }
+        coEvery { archivingRepository.extendDocument(any()) } returns ArchivingError.TimestampFailed(
+            text = LocalizableText.Literal("Timestamp server could not be reached."),
+            kind = TimestampFailureKind.UNREACHABLE,
+        ).left()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull()
+        coVerify(exactly = RenewBatchUseCase.TSA_FAILURE_LIMIT) {
+            archivingRepository.extendDocument(any())
+        }
+        result.errors shouldBe names.size
+        result.skipped shouldBe 0
+        result.success shouldBe false
+        result.jobs.single().files.last().message.shouldNotBeNull() shouldContain "stopped calling it"
+    }
+
+    test("documents the breaker skips are errors, never skips, so the run cannot claim success") {
+        val dir = subDir("tsa-breaker-status")
+        listOf("a", "b", "c", "d").forEach { name ->
+            val file = File(dir, "$name.pdf").also { it.createNewFile() }
+            coEvery {
+                archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+            } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        }
+        coEvery { archivingRepository.extendDocument(any()) } returns ArchivingError.TimestampFailed(
+            text = LocalizableText.Literal("Timestamp server could not be reached."),
+            kind = TimestampFailureKind.UNREACHABLE,
+        ).left()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.jobs.single().files.forEach { it.status shouldBe RenewFileStatus.Status.ERROR }
+    }
+
+    test("a timestamp server that answers again resets the breaker") {
+        val dir = subDir("tsa-recovers")
+        listOf("a", "b", "c", "d", "e").forEach { name ->
+            val file = File(dir, "$name.pdf").also { it.createNewFile() }
+            coEvery {
+                archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+            } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        }
+        coEvery {
+            archivingRepository.extendDocument(match { it.inputName != "c.pdf" })
+        } returns ArchivingError.TimestampFailed(
+            text = LocalizableText.Literal("Timestamp server could not be reached."),
+            kind = TimestampFailureKind.UNREACHABLE,
+        ).left()
+        coEvery {
+            archivingRepository.extendDocument(match { it.inputName == "c.pdf" })
+        } returns ArchivingResult(
+            outputBytes = ByteArray(0),
+            outputName = "c.pdf",
+            newSignatureLevel = "PAdES-BASELINE-LTA",
+            achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
+        ).right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull()
+        coVerify(exactly = 5) { archivingRepository.extendDocument(any()) }
+        result.renewed shouldBe 1
+        result.errors shouldBe 4
+    }
+
+    test("a timestamp server answering with something that is not a token also trips the breaker") {
+        val dir = subDir("tsa-garbage")
+        listOf("a", "b", "c", "d", "e").forEach { name ->
+            val file = File(dir, "$name.pdf").also { it.createNewFile() }
+            coEvery {
+                archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+            } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        }
+        coEvery { archivingRepository.extendDocument(any()) } returns ArchivingError.TimestampFailed(
+            text = LocalizableText.Literal("Timestamp server returned a malformed response."),
+            kind = TimestampFailureKind.MALFORMED_RESPONSE,
+        ).left()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull()
+        coVerify(exactly = RenewBatchUseCase.TSA_FAILURE_LIMIT) { archivingRepository.extendDocument(any()) }
+        result.errors shouldBe 5
+        result.jobs.single().files.last().message.shouldNotBeNull() shouldContain "did not return a valid timestamp"
+    }
+
+    test("the breaker's reason distinguishes an unreachable server from a misconfigured one") {
+        val dir = subDir("tsa-kind-message")
+        listOf("a", "b", "c", "d").forEach { name ->
+            val file = File(dir, "$name.pdf").also { it.createNewFile() }
+            coEvery {
+                archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+            } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        }
+        coEvery { archivingRepository.extendDocument(any()) } returns ArchivingError.TimestampFailed(
+            text = LocalizableText.Literal("Timestamp server could not be reached."),
+            kind = TimestampFailureKind.UNREACHABLE,
+        ).left()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.jobs.single().files.last().message.shouldNotBeNull() shouldContain "could not be reached"
+    }
+
+    test("a timestamp server that answers and rejects the request does not trip the breaker") {
+        val dir = subDir("tsa-rejects")
+        listOf("a", "b", "c", "d", "e").forEach { name ->
+            val file = File(dir, "$name.pdf").also { it.createNewFile() }
+            coEvery {
+                archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+            } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        }
+        coEvery { archivingRepository.extendDocument(any()) } returns ArchivingError.TimestampFailed(
+            text = LocalizableText.Literal("Timestamp server rejected the request: badRequest"),
+            kind = TimestampFailureKind.REJECTED,
+        ).left()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull()
+        coVerify(exactly = 5) { archivingRepository.extendDocument(any()) }
+        result.errors shouldBe 5
+    }
+
+    test("a job pointing at a healthy timestamp server is unaffected by another job's dead one") {
+        val deadDir = subDir("tsa-dead")
+        val liveDir = subDir("tsa-live")
+        listOf("a", "b", "c", "d").forEach { name ->
+            val file = File(deadDir, "$name.pdf").also { it.createNewFile() }
+            coEvery {
+                archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+            } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        }
+        val healthy = File(liveDir, "live.pdf").also { it.createNewFile() }
+        coEvery {
+            archivingRepository.needsArchivalRenewal(healthy.absolutePath, any())
+        } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery {
+            archivingRepository.extendDocument(match { it.inputName != "live.pdf" })
+        } returns ArchivingError.TimestampFailed(
+            text = LocalizableText.Literal("Timestamp server could not be reached."),
+            kind = TimestampFailureKind.UNREACHABLE,
+        ).left()
+        coEvery {
+            archivingRepository.extendDocument(match { it.inputName == "live.pdf" })
+        } returns ArchivingResult(
+            outputBytes = ByteArray(0),
+            outputName = "live.pdf",
+            newSignatureLevel = "PAdES-BASELINE-LTA",
+            achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
+        ).right()
+
+        val config = baseConfig.copy(
+            profiles = mapOf(
+                "other" to ProfileConfig(
+                    name = "other",
+                    timestampServer = TimestampServerConfig(url = "https://other-tsa.example.com"),
+                )
+            ),
+            renewalJobs = mapOf(
+                "dead" to RenewalJob(name = "dead", globs = listOf(globDir(deadDir))),
+                "live" to RenewalJob(name = "live", globs = listOf(globDir(liveDir)), profile = "other", backupRetention = 0),
+            ),
+        )
+        val uc = useCaseWith(config)
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.renewed shouldBe 1
+        result.jobs.single { it.name == "live" }.files.single().status shouldBe RenewFileStatus.Status.RENEWED
+    }
+
+    test("a JVM Error raised while extending is one error row, not a dead batch") {
+        val dir = subDir("error-extend")
+        val boom = File(dir, "boom.pdf").also { it.createNewFile() }
+        val fine = File(dir, "fine.pdf").also { it.createNewFile() }
+        coEvery {
+            archivingRepository.needsArchivalRenewal(boom.absolutePath, any())
+        } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery {
+            archivingRepository.needsArchivalRenewal(fine.absolutePath, any())
+        } returns RenewalAssessment.notNeeded().right()
+        coEvery {
+            archivingRepository.extendDocument(any())
+        } throws OutOfMemoryError("simulated heap exhaustion")
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        val result = uc()
+
+        result.shouldNotBeNull()
+        result.errors shouldBe 1
+        result.skipped shouldBe 1
+        boom.readBytes().size shouldBe 0
+    }
+
+    test("cancelling a run is not turned into a document error") {
+        val dir = subDir("cancelled")
+        val file = File(dir, "doc.pdf").also { it.createNewFile() }
+        coEvery {
+            archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+        } throws CancellationException("run cancelled")
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+
+        shouldThrow<CancellationException> { uc() }
+    }
+
+    test("a run aborted mid-batch leaves a marker the next run turns into a recorded failure") {
+        val dir = subDir("abort-marker")
+        val file = File(dir, "doc.pdf").also { it.createNewFile() }
+        val store = FileRenewalRunRecordStore(File(tmpDir, "abort-run.json").toPath())
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        coEvery { configRepository.getCurrentConfig() } returns
+            baseConfig.copy(renewalJobs = mapOf("j" to job))
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, grantingLock, store)
+
+        coEvery {
+            archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+        } throws CancellationException("run cancelled")
+        shouldThrow<CancellationException> { uc() }
+
+        store.load().shouldNotBeNull().runStartedAt.shouldNotBeNull()
+
+        coEvery {
+            archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+        } returns ArchivingError.renewalCheckFailed(details = "still broken").left()
+        uc()
+
+        val record = store.load().shouldNotBeNull()
+        record.runStartedAt.shouldBeNull()
+        record.failuresSinceSuccess shouldBe 2
+    }
+
+    test("interrupted runs in a row are counted, and the alert fires once the streak is long enough") {
+        val alertSink: RenewalAlertSink = mockk(relaxed = true)
+        val saved = mutableListOf<RenewalRunRecord>()
+        every { runRecordStore.save(capture(saved)) } returns Unit
+        val died = Clock.System.now() - 1.days
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, grantingLock, runRecordStore, alertSink)
+        coEvery { configRepository.getCurrentConfig() } returns baseConfig
+
+        (1..RenewBatchUseCase.INTERRUPTION_ALERT_THRESHOLD).forEach { streak ->
+            every { runRecordStore.load() } returns RenewalRunRecord(
+                lastRunAt = died,
+                outcome = RenewalRunOutcome.INTERRUPTED,
+                lastSuccessAt = died - 10.days,
+                runStartedAt = died,
+                consecutiveInterruptions = streak - 1,
+            )
+            saved.clear()
+            uc()
+            saved.first().consecutiveInterruptions shouldBe streak
+        }
+
+        verify(exactly = 1) {
+            alertSink.runsKeepBeingInterrupted(RenewBatchUseCase.INTERRUPTION_ALERT_THRESHOLD)
+        }
+    }
+
+    test("a single interruption is not announced") {
+        val alertSink: RenewalAlertSink = mockk(relaxed = true)
+        val died = Clock.System.now() - 1.days
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = died,
+            outcome = RenewalRunOutcome.SUCCESS,
+            lastSuccessAt = died,
+            runStartedAt = died,
+        )
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, grantingLock, runRecordStore, alertSink)
+        coEvery { configRepository.getCurrentConfig() } returns baseConfig
+
+        uc()
+
+        verify(exactly = 0) { alertSink.runsKeepBeingInterrupted(any()) }
+    }
+
+    test("a run that finishes clears the interruption streak") {
+        val died = Clock.System.now() - 1.days
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = died,
+            outcome = RenewalRunOutcome.INTERRUPTED,
+            lastSuccessAt = died - 10.days,
+            consecutiveInterruptions = 2,
+        )
+        val saved = mutableListOf<RenewalRunRecord>()
+        every { runRecordStore.save(capture(saved)) } returns Unit
+        val uc = useCaseWith(baseConfig)
+
+        uc()
+
+        saved.last().consecutiveInterruptions shouldBe 0
+    }
+
+    test("the run is not broken by an alert sink that throws") {
+        val alertSink: RenewalAlertSink = mockk {
+            every { runsKeepBeingInterrupted(any()) } throws IllegalStateException("notifier down")
+        }
+        val died = Clock.System.now() - 1.days
+        every { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = died,
+            outcome = RenewalRunOutcome.INTERRUPTED,
+            lastSuccessAt = died - 10.days,
+            runStartedAt = died,
+            consecutiveInterruptions = RenewBatchUseCase.INTERRUPTION_ALERT_THRESHOLD - 1,
+        )
+        val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, grantingLock, runRecordStore, alertSink)
+        coEvery { configRepository.getCurrentConfig() } returns baseConfig
+
+        uc().shouldNotBeNull()
+    }
+
+    test("the file staged to verify a renewal is invisible to the job's own glob") {
+        val dir = subDir("verify-invisible")
+        val file = File(dir, "doc.pdf").also { it.writeText("ORIGINAL") }
+        val inspected = mutableListOf<String>()
+        coEvery { archivingRepository.needsArchivalRenewal(any(), any()) } answers {
+            val inspectedPath = firstArg<String>()
+            inspected += inspectedPath
+            if (inspectedPath == file.absolutePath) {
+                RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+            } else {
+                RenewalAssessment.notNeeded().right()
+            }
+        }
+        coEvery { archivingRepository.extendDocument(any()) } returns ArchivingResult(
+            outputBytes = "RENEWED".toByteArray(),
+            outputName = file.name,
+            newSignatureLevel = "PAdES-BASELINE-LTA",
+            achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
+        ).right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
+        uc()
+
+        val staged = inspected.single { it.contains(".verify.") }
+        staged.shouldEndWith(".tmp")
+        File(staged).parentFile shouldBe dir.absoluteFile
+        uc.resolveGlobs(listOf(globDir(dir))).shouldBeRight()
+            .map { it.absolutePath } shouldNotContain staged
     }
 })
 

@@ -4,6 +4,7 @@
 	<string name="toolbar_timestamp_tooltip">Timestamp</string>
 	<string name="toolbar_timestamp_description">Timestamp document</string>
 	<string name="toolbar_settings_description">Open settings</string>
+	<string name="toolbar_settings_renewal_attention">Settings — automatic renewal needs attention</string>
 	<string name="toolbar_switch_to_light_theme">Switch to light theme</string>
 	<string name="toolbar_switch_to_dark_theme">Switch to dark theme</string>
 </resources>

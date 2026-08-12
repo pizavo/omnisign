@@ -15,6 +15,8 @@
 	<string name="scheduler_no_auto_detect_hint">Could not auto-detect the executable path. Please specify it manually to enable scheduler installation.</string>
 	<string name="scheduler_last_success">Last successful run: %1$s</string>
 	<string name="scheduler_last_run">Last run: %1$s — %2$s (checked %3$s, renewed %4$s, errors %5$s)</string>
+	<string name="scheduler_run_in_progress">A renewal run has been in progress since %1$s.</string>
+	<string name="scheduler_run_interrupted">The run started %1$s never finished — it was interrupted, most likely by a restart or a shutdown.</string>
 	<plurals name="scheduler_unrecoverable">
 		<item quantity="one">%1$s document can no longer be preserved — its deadline passed.</item>
 		<item quantity="other">%1$s documents can no longer be preserved — their deadlines passed.</item>

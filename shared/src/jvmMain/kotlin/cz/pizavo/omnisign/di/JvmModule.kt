@@ -131,11 +131,12 @@ val jvmRepositoryModule = module {
 	single<RenewalRunRecordStore> {
 		FileRenewalRunRecordStore(FileConfigRepository.getDefaultConfigPath().resolveSibling("last-renewal.json"))
 	}
+	single<RenewalActivityProbe> { LockBackedRenewalActivityProbe(get()) }
 	single<RenewalCheckCache> {
 		FileRenewalCheckCache(FileConfigRepository.getDefaultConfigPath().resolveSibling("renewal-check-cache.json"))
 	}
-	singleOf(::RenewBatchUseCase)
-	single { RenewalNotifier(get()) }
+	single { RenewBatchUseCase(get(), get(), get(), get(), get(), getOrNull()) }
+	single { RenewalNotifier(get()) } bind RenewalAlertSink::class
 	single { MigrateTrustedCertificatesUseCase(get(), get()) }
 	singleOf(::ThirdPartyCreditsReader)
 

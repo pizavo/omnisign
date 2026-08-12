@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.data.service
 
 import cz.pizavo.omnisign.domain.model.result.RenewBatchResult
+import cz.pizavo.omnisign.domain.port.RenewalAlertSink
 import java.text.MessageFormat
 import java.util.Locale
 import java.util.ResourceBundle
@@ -37,7 +38,26 @@ import java.util.ResourceBundle
 class RenewalNotifier(
 	private val notificationService: OsNotificationService,
 	private val localeProvider: () -> Locale = { Locale.getDefault() },
-) {
+) : RenewalAlertSink {
+
+	/**
+	 * Raise the [NotificationUrgency.CRITICAL] notification for runs that keep being killed before
+	 * they finish.
+	 *
+	 * Implemented here rather than in a sink of its own so that every renewal notification resolves
+	 * its wording from the same bundle. Unlike the rest, this one is called from inside the run: the
+	 * result it would otherwise travel in never reaches a caller when the run is killed.
+	 *
+	 * @param consecutive How many runs in a row have now been killed before finishing.
+	 */
+	override fun runsKeepBeingInterrupted(consecutive: Int) {
+		val messages = ResourceBundle.getBundle(BUNDLE, localeProvider(), NO_FALLBACK)
+		notificationService.notify(
+			title = messages.format("interrupted.title"),
+			body = messages.format("interrupted.body", consecutive),
+			urgency = NotificationUrgency.CRITICAL,
+		)
+	}
 
 	/**
 	 * Fire OS notifications summarising [result].

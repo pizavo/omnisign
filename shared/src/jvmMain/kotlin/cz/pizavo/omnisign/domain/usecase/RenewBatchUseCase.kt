@@ -8,7 +8,10 @@ import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.SchedulerConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.error.TimestampFailureKind
+import cz.pizavo.omnisign.domain.model.error.isServerWide
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.RenewBatchResult
 import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
@@ -21,6 +24,7 @@ import cz.pizavo.omnisign.domain.model.result.RenewalRunJobSummary
 import cz.pizavo.omnisign.domain.model.result.RenewalRunOutcome
 import cz.pizavo.omnisign.domain.model.result.RenewalRunRecord
 import cz.pizavo.omnisign.domain.model.result.StalenessAlert
+import cz.pizavo.omnisign.domain.port.RenewalAlertSink
 import cz.pizavo.omnisign.domain.port.RenewalLock
 import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -40,6 +44,7 @@ import java.nio.file.StandardOpenOption
 import java.nio.file.attribute.BasicFileAttributes
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.io.path.absolutePathString
 import kotlin.io.path.createTempFile
 import kotlin.io.path.deleteIfExists
@@ -86,6 +91,25 @@ private val logger = KotlinLogging.logger {}
  * run; letting the warning veto a seal would refuse to anchor a document whose existing material is
  * sound, because re-collection failed for a certificate that has since expired.
  *
+ * A run stops calling a timestamp server that has failed [TSA_FAILURE_LIMIT] consecutive documents
+ * with a [TimestampFailureKind] that [isServerWide], and fails the remaining documents immediately.
+ * Reaching the TSA is the last step of an extension, so without this every document would first parse
+ * the archive and collect revocation data, then wait out the connection timeout, before failing.
+ *
+ * Only failures that would repeat count — the server was unreachable, or answered with something that
+ * is not a timestamp token. An RFC 3161 rejection concerns one request and never trips the breaker,
+ * and any completed extension resets the count. Skipped documents are recorded as errors rather than
+ * skips, because a run of skips would report success, reset the last-success timestamp, and hold off
+ * the staleness alert over documents nothing renewed.
+ *
+ * No single document can end the run. Expected failures are already values rather than throws, and
+ * the per-document step adds a `Throwable` guard on top, because the blanket `catch (e: Exception)`
+ * blocks in the DSS layer do not cover a JVM `Error`; DSS holds whole documents in memory, so an
+ * oversized PDF can raise one. Unguarded, that would abort the remaining jobs and skip the run record,
+ * leaving the scheduler looking healthy. Continuing after an `OutOfMemoryError` is only partly sound,
+ * since the heap may stay degraded — the gain is that later failures are reported rather than silent.
+ * A [CancellationException] is re-thrown, since cancelling a run is not a document-level failure.
+ *
  * This use case encapsulates the core batch logic shared by the CLI `renew`
  * command and the desktop app's headless renewal mode. Presentation concerns
  * (console output, JSON formatting) remain in the caller.
@@ -97,6 +121,8 @@ private val logger = KotlinLogging.logger {}
  *   same documents at once.
  * @param runRecordStore Persists a summary of each run so the CLI and desktop can surface last-run
  *   status (when it ran, whether it succeeded, and any failures since the last success).
+ * @param alertSink Receives the one alert that cannot travel in the result, because the run carrying
+ *   it is being killed. `null` where nothing can notify, leaving the condition recorded but silent.
  */
 class RenewBatchUseCase(
     private val checkRenewalUseCase: CheckArchivalRenewalUseCase,
@@ -104,6 +130,7 @@ class RenewBatchUseCase(
     private val configRepository: ConfigRepository,
     private val renewalLock: RenewalLock,
     private val runRecordStore: RenewalRunRecordStore,
+    private val alertSink: RenewalAlertSink? = null,
 ) {
 
     /**
@@ -116,6 +143,10 @@ class RenewBatchUseCase(
      * staleness, so a lock that stays held for too long is surfaced rather than silently skipped. If
      * the lock cannot be established at all, the run is **not** attempted and a result with
      * [RenewBatchResult.lockError] is returned.
+     *
+     * Before the batch starts, the run is marked as in flight (see [markRunStarted]) and any marker a
+     * previous run left behind is written up as an interrupted run. A dry-run neither marks nor
+     * records anything.
      *
      * @param jobName Optional name of a single job to execute. When `null`, all
      *   configured jobs are processed.
@@ -140,10 +171,108 @@ class RenewBatchUseCase(
         }
         if (lock == null) return RenewBatchResult(alreadyRunning = true, stalenessAlert = recordSkippedRun())
         return try {
-            val result = runBatch(jobName, dryRun) ?: return null
-            if (dryRun) result else result.copy(stalenessAlert = recordRun(result, emitStaleness = true))
+            if (!dryRun) markRunStarted()
+            val result = runBatch(jobName, dryRun)
+            when {
+                result == null -> {
+                    if (!dryRun) clearRunMarker()
+                    null
+                }
+                dryRun -> result
+                else -> result.copy(stalenessAlert = recordRun(result, emitStaleness = true))
+            }
         } finally {
             lock.close()
+        }
+    }
+
+    /**
+     * Stamp [RenewalRunRecord.runStartedAt] before the batch begins, and record any marker a previous
+     * run left behind as an interrupted run.
+     *
+     * A marker that is already set means the previous run began and never reached [recordRun], so it
+     * was killed. This is the one place that can be concluded safely, because the renewal lock is held
+     * here and no other run can be in flight to explain the marker.
+     *
+     * The dead run is recorded as [RenewalRunOutcome.INTERRUPTED] with its counts zeroed, since nothing
+     * is known about how far it got, and it adds one to the failures since the last success. That
+     * count is what eventually lets the staleness alert fire on a machine interrupted every night.
+     *
+     * Three fields are carried forward: [RenewalRunRecord.lastSuccessAt] is the staleness clock,
+     * [RenewalRunRecord.unrecoverablePaths] keeps already-reported terminal documents from being
+     * announced again, and [RenewalRunRecord.lastStaleNotifiedAt] keeps the alert from re-firing
+     * inside its window.
+     *
+     * Once [INTERRUPTION_ALERT_THRESHOLD] runs in a row have died, [alertSink] is told here and not
+     * through the returned result, because a run that is about to be killed never returns one. The
+     * staleness alert cannot serve this case for the same reason: it is only ever evaluated by a run
+     * that finishes.
+     *
+     * A persistence failure is logged and otherwise ignored, so status bookkeeping can never break a
+     * run.
+     */
+    private suspend fun markRunStarted() {
+        try {
+            val now = Clock.System.now()
+            val previous = runRecordStore.load()
+            val deadRunStartedAt = previous?.runStartedAt
+            if (previous == null) {
+                runRecordStore.save(
+                    RenewalRunRecord(
+                        lastRunAt = now,
+                        outcome = RenewalRunOutcome.INTERRUPTED,
+                        runStartedAt = now,
+                    )
+                )
+                return
+            }
+            if (deadRunStartedAt == null) {
+                runRecordStore.save(previous.copy(runStartedAt = now))
+                return
+            }
+            val streak = previous.consecutiveInterruptions + 1
+            logger.warn {
+                "The renewal run started $deadRunStartedAt never finished — recording it as " +
+                    "interrupted ($streak in a row)"
+            }
+            runRecordStore.save(
+                previous.copy(
+                    lastRunAt = deadRunStartedAt,
+                    outcome = RenewalRunOutcome.INTERRUPTED,
+                    checked = 0,
+                    renewed = 0,
+                    skipped = 0,
+                    errors = 0,
+                    unrecoverable = 0,
+                    failureReason = "the run started $deadRunStartedAt did not finish",
+                    errorDetails = emptyList(),
+                    warnings = emptyList(),
+                    jobs = emptyList(),
+                    failuresSinceSuccess = previous.failuresSinceSuccess + 1,
+                    runStartedAt = now,
+                    consecutiveInterruptions = streak,
+                )
+            )
+            if (streak == INTERRUPTION_ALERT_THRESHOLD) {
+                runCatching { alertSink?.runsKeepBeingInterrupted(streak) }
+                    .onFailure { logger.warn(it) { "Could not raise the interrupted-run alert" } }
+            }
+        } catch (e: Exception) {
+            logger.warn(e) { "Could not mark the renewal run as started" }
+        }
+    }
+
+    /**
+     * Clear [RenewalRunRecord.runStartedAt] for a run that ended without producing a result, which
+     * happens when the requested job does not exist. Without this the next run would read the marker
+     * as a run that was killed. A persistence failure is logged and otherwise ignored.
+     */
+    private suspend fun clearRunMarker() {
+        try {
+            val previous = runRecordStore.load() ?: return
+            if (previous.runStartedAt != null) runRecordStore.save(previous.copy(runStartedAt = null))
+        } catch (e: Exception) {
+            logger.warn(e) { "Could not clear the renewal run marker" }
         }
     }
 
@@ -152,6 +281,9 @@ class RenewBatchUseCase(
      * and counting consecutive failures since it. Never called for dry-runs or for runs skipped
      * because another run held the lock. A persistence failure is logged and otherwise ignored, so
      * status bookkeeping can never break a run.
+     *
+     * Writing this record also clears [RenewalRunRecord.runStartedAt]. An interrupted run never
+     * reaches this point, so the marker [markRunStarted] set survives only when the run died.
      *
      * When [emitStaleness] is `true` — a run that actually executed, as opposed to a lock failure
      * reported separately — and renewal has now gone [SchedulerConfig.stalenessThresholdDays] without
@@ -221,6 +353,8 @@ class RenewBatchUseCase(
                     lastSuccessAt = lastSuccessAt,
                     failuresSinceSuccess = if (succeeded) 0 else (previous?.failuresSinceSuccess ?: 0) + 1,
                     lastStaleNotifiedAt = nextNotifiedAt,
+                    runStartedAt = null,
+                    consecutiveInterruptions = 0,
                 )
             )
             staleAlert
@@ -314,8 +448,28 @@ class RenewBatchUseCase(
         val terminalPaths = mutableListOf<String>()
         val jobResults = mutableListOf<RenewJobResult>()
 
+        /**
+         * Consecutive server-wide timestamp failures, per TSA URL, within this run. Keyed by URL so
+         * that jobs sharing a timestamp server share the verdict, while a job pointing at a different
+         * server is unaffected. Any completed extension resets the entry.
+         */
+        val tsaServerFailures = mutableMapOf<String, Int>()
+
+        /**
+         * The kind of the most recent server-wide failure, per TSA URL. Kept so the reason recorded
+         * against each skipped document can name what went wrong; the breaker itself treats both kinds
+         * alike, but an operator needs to tell them apart.
+         */
+        val tsaFailureKinds = mutableMapOf<String, TimestampFailureKind>()
+
         for ((_, job) in jobsToRun) {
-            val files = resolveGlobs(job.globs, job.logFile)
+            val globResult = resolveGlobs(job.globs, job.logFile)
+            if (globResult.isLeft()) {
+                totalErrors++
+                jobResults.add(configErrorResult(job, globResult.leftOrNull()!!))
+                continue
+            }
+            val files = globResult.getOrNull()!!
             if (files.isEmpty()) {
                 jobResults.add(RenewJobResult(name = job.name, notify = job.notify))
                 continue
@@ -326,23 +480,11 @@ class RenewBatchUseCase(
                 val error = resolvedConfigResult.leftOrNull()!!
                 logger.warn { "Renewal job '${job.name}' configuration error — ${error.message}" }
                 totalErrors++
-                jobResults.add(
-                    RenewJobResult(
-                        name = job.name,
-                        files = listOf(
-                            RenewFileStatus(
-                                path = "",
-                                status = RenewFileStatus.Status.CONFIG_ERROR,
-                                message = error.message,
-                            )
-                        ),
-                        errors = 1,
-                        notify = job.notify,
-                    )
-                )
+                jobResults.add(configErrorResult(job, error.message))
                 continue
             }
             val resolvedConfig = resolvedConfigResult.getOrNull()!!
+            val tsaUrl = resolvedConfig.timestampServer?.url
 
             var jobRenewed = 0
             var jobErrors = 0
@@ -373,10 +515,15 @@ class RenewBatchUseCase(
                 )
             }
 
-            for (file in files) {
-                totalChecked++
-                val path = file.absolutePath
-
+            /**
+             * The whole per-document step: assess [file] and, when something is due, extend it and
+             * write it back. Updates the enclosing job's counters and file statuses in place.
+             *
+             * @param file The matched document.
+             * @param path [file]'s absolute path. Passed in because the caller resolves it anyway, to
+             *   report a failure of this function itself.
+             */
+            suspend fun processFile(file: File, path: String) {
                 checkRenewalUseCase(path, job.renewalBufferDays).fold(
                     ifLeft = { error ->
                         totalErrors++
@@ -435,6 +582,24 @@ class RenewBatchUseCase(
                             return@fold
                         }
 
+                        if (tsaUrl != null && (tsaServerFailures[tsaUrl] ?: 0) >= TSA_FAILURE_LIMIT) {
+                            totalErrors++
+                            jobErrors++
+                            val reason = "the timestamp server $tsaUrl " +
+                                "${tsaFailureDescription(tsaFailureKinds[tsaUrl])} on the last " +
+                                "$TSA_FAILURE_LIMIT attempts, so this run stopped calling it; " +
+                                "the original was left unchanged and the next run will try again"
+                            logFileError(job.logFile, path, reason)
+                            fileStatuses.add(
+                                RenewFileStatus(
+                                    path = path,
+                                    status = RenewFileStatus.Status.ERROR,
+                                    message = reason,
+                                )
+                            )
+                            return@fold
+                        }
+
                         val writabilityError = probeDirectoryWritable(file)
                         if (writabilityError != null) {
                             totalErrors++
@@ -474,6 +639,11 @@ class RenewBatchUseCase(
                             )
                         ).fold(
                             ifLeft = { error ->
+                                val failureKind = (error as? ArchivingError.TimestampFailed)?.kind
+                                if (tsaUrl != null && failureKind?.isServerWide == true) {
+                                    tsaServerFailures[tsaUrl] = (tsaServerFailures[tsaUrl] ?: 0) + 1
+                                    tsaFailureKinds[tsaUrl] = failureKind
+                                }
                                 totalErrors++
                                 jobErrors++
                                 logFileError(job.logFile, path, "renewal failed: ${error.message}")
@@ -486,6 +656,7 @@ class RenewBatchUseCase(
                                 )
                             },
                             ifRight = { result ->
+                                if (tsaUrl != null) tsaServerFailures[tsaUrl] = 0
                                 if (result.revocationDataMissing && obtainsMaterial(assessment.reason)) {
                                     val deadline = assessment.dueAt
                                     if (assessment.deadlineIsFinal && deadline != null && deadline <= Clock.System.now()) {
@@ -626,6 +797,28 @@ class RenewBatchUseCase(
                 )
             }
 
+            for (file in files) {
+                totalChecked++
+                val path = file.absolutePath
+                try {
+                    processFile(file, path)
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Throwable) {
+                    totalErrors++
+                    jobErrors++
+                    val reason = "renewal failed unexpectedly: ${e.message ?: e::class.simpleName}"
+                    logFileError(job.logFile, path, reason)
+                    fileStatuses.add(
+                        RenewFileStatus(
+                            path = path,
+                            status = RenewFileStatus.Status.ERROR,
+                            message = reason,
+                        )
+                    )
+                }
+            }
+
             jobResults.add(
                 RenewJobResult(
                     name = job.name,
@@ -650,6 +843,40 @@ class RenewBatchUseCase(
             jobs = jobResults,
         )
     }
+
+    /**
+     * How to describe a TSA the breaker has given up on. An unreachable server is an outage to wait
+     * out; one that answers without producing a timestamp is usually a URL pointing somewhere that
+     * does not speak RFC 3161, which needs a configuration change instead.
+     *
+     * @param kind The kind of the most recent failure, or `null` if none was recorded.
+     */
+    private fun tsaFailureDescription(kind: TimestampFailureKind?): String = when (kind) {
+        TimestampFailureKind.UNREACHABLE -> "could not be reached"
+        TimestampFailureKind.MALFORMED_RESPONSE -> "did not return a valid timestamp"
+        else -> "failed"
+    }
+
+    /**
+     * The single-row [RenewJobResult] reporting [job] as unrunnable because of the configuration
+     * problem [message] describes — an unresolvable profile, or a glob the platform cannot parse.
+     *
+     * Counted as one error so that a job which never ran cannot leave the run reporting success, which
+     * would reset the last-success timestamp and hold off the staleness alert.
+     */
+    private fun configErrorResult(job: RenewalJob, message: String): RenewJobResult =
+        RenewJobResult(
+            name = job.name,
+            files = listOf(
+                RenewFileStatus(
+                    path = "",
+                    status = RenewFileStatus.Status.CONFIG_ERROR,
+                    message = message,
+                )
+            ),
+            errors = 1,
+            notify = job.notify,
+        )
 
     /**
      * The level a document has to be extended to in order to close the gap [reason] names.
@@ -724,8 +951,18 @@ class RenewBatchUseCase(
      * single permission problem cannot stop every job from renewing. Each skipped path is
      * logged to the application log and appended to [logFile] when one is configured, so the
      * gap is never silent.
+     *
+     * A pattern the platform cannot parse at all is reported as a configuration error for the job,
+     * which the caller surfaces like an unresolvable profile. Both the root ([Paths.get], which
+     * rejects characters illegal in a path) and the wildcard tail
+     * ([java.nio.file.FileSystem.getPathMatcher], which rejects an unclosed `[` or `{`) raise
+     * unchecked exceptions, while add-time validation inspects only the root. Unguarded, such a
+     * pattern would escape the whole batch, skipping every remaining job and writing no run record, so
+     * a single typo would stop renewal indefinitely and leave no record of why.
+     *
+     * @return the matched files, or a description of the pattern that could not be parsed.
      */
-    internal fun resolveGlobs(globs: List<String>, logFile: String? = null): List<File> {
+    internal fun resolveGlobs(globs: List<String>, logFile: String? = null): Either<String, List<File>> {
         val seen = LinkedHashSet<String>()
         val results = mutableListOf<File>()
 
@@ -744,11 +981,19 @@ class RenewBatchUseCase(
             val prefix = normalised.substring(0, wildcardIndex)
             val lastSlash = prefix.lastIndexOf('/')
             val rootStr = if (lastSlash == -1) "." else normalised.substring(0, lastSlash)
-            val rootPath = Paths.get(rootStr).toAbsolutePath().normalize()
+            val rootPath = try {
+                Paths.get(rootStr).toAbsolutePath().normalize()
+            } catch (e: Exception) {
+                return malformedGlob(glob, "its directory '$rootStr' is not a valid path", e, logFile)
+            }
             if (!Files.isDirectory(rootPath)) continue
 
             val tail = normalised.substring(lastSlash + 1)
-            val matcher = rootPath.fileSystem.getPathMatcher("glob:$tail")
+            val matcher = try {
+                rootPath.fileSystem.getPathMatcher("glob:$tail")
+            } catch (e: Exception) {
+                return malformedGlob(glob, "'$tail' is not a valid glob pattern", e, logFile)
+            }
 
             val matched = mutableListOf<Path>()
             var nonPdfCount = 0
@@ -782,7 +1027,28 @@ class RenewBatchUseCase(
                 appendLog(logFile, "[SKIP] $glob — ignored $nonPdfCount non-PDF file(s) (PDFs only)")
             }
         }
-        return results
+        return results.right()
+    }
+
+    /**
+     * Report [glob] as unparseable, logging it to the application log and to the job's [logFile]
+     * before returning the message [resolveGlobs] fails with.
+     *
+     * @param glob The pattern as the user configured it.
+     * @param reason Which half of the pattern the platform rejected.
+     * @param cause The exception the path or matcher API raised.
+     * @param logFile The job's optional audit-log file path.
+     */
+    private fun malformedGlob(
+        glob: String,
+        reason: String,
+        cause: Exception,
+        logFile: String?,
+    ): Either<String, List<File>> {
+        val message = "renewal glob '$glob' cannot be used: $reason"
+        logger.warn(cause) { message }
+        appendLog(logFile, "[ERROR] $message")
+        return message.left()
     }
 
     /**
@@ -904,7 +1170,18 @@ class RenewBatchUseCase(
      * reason, on the other hand, means the extension changed nothing that mattered.
      *
      * The bytes are checked through a short-lived verify file in [file]'s own directory — the same
-     * path that decides renewal in the first place — which is always deleted afterwards.
+     * path that decides renewal in the first place — which is always deleted afterwards. That
+     * directory is used rather than the system temp directory because it is already known to be
+     * writable ([probeDirectoryWritable] has just checked it) and to have room for these bytes, which
+     * are about to be written there anyway. Neither holds for a shared temp location that may be small
+     * or memory-backed.
+     *
+     * The suffix is deliberately not `.pdf`. A run killed before the `finally` below — a crash, a
+     * reboot, power loss — leaves the verify file behind, and [resolveGlobs] admits a wildcard match
+     * only when it ends in `.pdf` (see its `nonPdfCount` branch). That check is what keeps every other
+     * temporary file this class writes invisible to the next run. A `.pdf` verify file would step
+     * around it and be picked up as a document of the job: counted, re-validated, and possibly
+     * re-timestamped on every run from then on.
      *
      * @param actedOn The reason the renewal set out to address.
      * @return `null` when the renewed document is sound, or a human-readable reason it is not.
@@ -918,7 +1195,7 @@ class RenewBatchUseCase(
         val directory = file.absoluteFile.toPath().parent
             ?: return "could not resolve a directory to validate the renewed document".left()
         val verifyFile = try {
-            createTempFile(directory, ".${file.name}.verify.", ".pdf")
+            createTempFile(directory, ".${file.name}.verify.", ".tmp")
         } catch (e: Exception) {
             return "could not stage the renewed document for validation: ${e.message}".left()
         }
@@ -1025,6 +1302,29 @@ class RenewBatchUseCase(
     }
 
     companion object {
+        /**
+         * How many consecutive documents may fail against the same TSA before a run stops calling it.
+         *
+         * A threshold above one keeps the breaker from making things worse. Without a breaker, a brief
+         * outage costs only the documents attempted while it lasted; tripping on the first failure
+         * would turn that same outage into a lost batch.
+         *
+         * The attempts are spent on successive documents rather than on retrying one, so that a server
+         * which is merely flaky still makes progress: three separate documents may partly succeed
+         * where three retries of the same one would not.
+         */
+        internal const val TSA_FAILURE_LIMIT: Int = 3
+
+        /**
+         * How many runs in a row must be killed before the user is told about it.
+         *
+         * One interruption is an ordinary restart landing on the nightly batch, and saying so would
+         * be noise. Three in a row is a pattern, and reaching it takes about as many days — far
+         * sooner than the staleness alert's default fortnight, which in any case never fires for
+         * interrupted runs because it is only evaluated by a run that finishes.
+         */
+        internal const val INTERRUPTION_ALERT_THRESHOLD: Int = 3
+
         /**
          * Formats the UTC instant embedded in a backup file name, in basic ISO-8601
          * (e.g. `20260614T020000Z`) so the name is a valid filename on Windows (no `:`).

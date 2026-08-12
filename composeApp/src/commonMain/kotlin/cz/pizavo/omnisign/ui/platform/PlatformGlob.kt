@@ -23,3 +23,10 @@ expect fun globTargetExists(glob: String): Boolean
  * no files and is therefore rejected. Platforms without a filesystem (web) always report `false`.
  */
 expect fun globNeedsFilePattern(glob: String): Boolean
+
+/**
+ * Whether [glob]'s wildcard tail is a pattern the platform can parse; an unclosed `[` or `{` is not.
+ * Rejected here so it never reaches a scheduled run, where it would abort the whole batch. Platforms
+ * without a filesystem (web) always report `true`, leaving the check to the run, which guards it too.
+ */
+expect fun isParseableGlob(glob: String): Boolean

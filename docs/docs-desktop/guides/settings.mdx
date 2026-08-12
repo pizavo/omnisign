@@ -2,9 +2,9 @@
 sidebar_position: 3
 ---
 
-import AppIcon from '@site/src/components/AppIcon';
-
 # Settings
+
+import AppIcon from '@site/src/components/AppIcon';
 
 The Settings dialog configures global defaults for all signing and validation operations.
 Open it via the **gear icon** <AppIcon name="settings" label="Settings" /> in the toolbar.
@@ -25,13 +25,13 @@ Configure the default hash algorithm, encryption algorithm, and signature level 
 when signing documents. These defaults can be overridden per-profile or per-operation.
 See [Algorithms](../algorithms.mdx) for the full list of supported algorithms.
 
-| Setting              | Description                                                                                                     | Default |
-|----------------------|-----------------------------------------------------------------------------------------------------------------|---------|
-| Hash algorithm       | Digest algorithm for the signature (see [full list](../algorithms.mdx#hash-algorithms))                          | SHA-256 |
-| Encryption algorithm | Signing key algorithm (see [full list](../algorithms.mdx#encryption-algorithms); auto-detected from certificate) | Auto    |
-| Signature timestamp  | Include a signature timestamp and revocation data (B-LT)                                                        | Off     |
-| Archival timestamp   | Include an archival document timestamp (B-LTA)                                                                  | Off     |
-| Allow signing with an expired certificate | Produce a signature even if the signing certificate has expired. **Such signatures fail validation**, so leave off unless you specifically need it | Off |
+| Setting                                   | Description                                                                                                                                        | Default |
+|-------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------|---------|
+| Hash algorithm                            | Digest algorithm for the signature (see [full list](../algorithms.mdx#hash-algorithms))                                                            | SHA-256 |
+| Encryption algorithm                      | Signing key algorithm (see [full list](../algorithms.mdx#encryption-algorithms); auto-detected from certificate)                                   | Auto    |
+| Signature timestamp                       | Include a signature timestamp and revocation data (B-LT)                                                                                           | Off     |
+| Archival timestamp                        | Include an archival document timestamp (B-LTA)                                                                                                     | Off     |
+| Allow signing with an expired certificate | Produce a signature even if the signing certificate has expired. **Such signatures fail validation**, so leave off unless you specifically need it | Off     |
 
 The effective PAdES level is derived from the two timestamp checkboxes: neither → B-B,
 signature only → B-LT, both → B-LTA.
@@ -179,13 +179,13 @@ needed. The path is a clickable link that reveals the folder in your file manage
 Configure named renewal jobs for automatic archival re-timestamping of B-LTA documents.
 Each job defines:
 
-| Field         | Description                                                          |
-|---------------|----------------------------------------------------------------------|
-| Name          | Unique identifier for the renewal job.                               |
-| Glob patterns | File path patterns to watch (e.g. `/data/signed/**/*.pdf`).          |
-| Buffer (days) | Re-timestamp when the archival timestamp expires within this window. |
-| Profile       | Optional profile whose settings are used for the renewal operation.  |
-| Notify        | Whether to send OS notifications on completion or failure.           |
+| Field         | Description                                                                                                                                                                                           |
+|---------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Name          | Unique identifier for the renewal job.                                                                                                                                                                |
+| Glob patterns | File path patterns to watch (e.g. `/data/signed/**/*.pdf`). A pattern is rejected if it is not an absolute path, if it matches no files, or if the platform cannot parse it — an unclosed `[` or `{`. |
+| Buffer (days) | Re-timestamp when the archival timestamp expires within this window.                                                                                                                                  |
+| Profile       | Optional profile whose settings are used for the renewal operation.                                                                                                                                   |
+| Notify        | Whether to send OS notifications on completion or failure.                                                                                                                                            |
 
 ![Renewal Jobs settings](/img/desktop/settings-renewal-jobs.avif)
 
@@ -214,6 +214,23 @@ it checks every configured renewal job, re-timestamps the B-LTA files whose arch
 falls within the job's buffer window, and appends to the scheduler log file when one is set. Jobs
 with **Notify** enabled raise an OS notification on completion or failure, so unattended renewals
 stay visible. (This is the same batch OmniSign runs when started with the `renew` argument.)
+
+Below the installation indicator the section reports what the last run actually did — when renewal
+last succeeded, and the last run's outcome with its checked / renewed / error counts. Warning rows
+appear when documents have passed their preservation deadline, when runs have failed since the last
+success, and when a run began and never finished.
+
+That last case is the one nothing else can report. Renewal runs in a separate process, and a process
+killed by a restart or a shutdown writes no run record and fires no notification — so the run that
+follows it is the first thing able to notice. OmniSign distinguishes a run that is *still executing*
+from one that was killed, and only calls the second interrupted.
+
+:::tip[You do not have to open Settings to find out]
+When renewal needs attention — any failure since the last success, or a run that never finished — the
+**settings button in the toolbar carries a badge**. The status is refreshed when the app starts and
+whenever the settings dialog is opened or closed. It is not polled while the window sits open, so a
+run that fails overnight shows up the next time you come back to the app.
+:::
 
 ### Backup
 
@@ -245,11 +262,11 @@ Changing this setting requires an application restart to take effect.
 Choose the application's UI language and how dates are displayed. This category is available on every
 platform.
 
-| Field             | Description                                                                                                                                                                                       |
-|-------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Field             | Description                                                                                                                                                                                                                                     |
+|-------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Region preset** | Sets the language and date format together in one step — *United Kingdom*, *United States*, *Česko*, or *Slovensko*. *System default* follows the OS locale; *Custom* is shown (read-only) when the chosen language and format match no preset. |
-| **Language**      | The UI language: *English*, *Čeština*, *Slovenčina*, or *System default* (follows the operating system).                                                                                          |
-| **Date format**   | How dates are shown: *System default*, `dd/mm/yyyy`, `dd.mm.yyyy`, `mm/dd/yyyy`, or ISO 8601 (`yyyy-mm-dd`). This preference is shared with the CLI's `config date-format` command.                |
+| **Language**      | The UI language: *English*, *Čeština*, *Slovenčina*, or *System default* (follows the operating system).                                                                                                                                        |
+| **Date format**   | How dates are shown: *System default*, `dd/mm/yyyy`, `dd.mm.yyyy`, `mm/dd/yyyy`, or ISO 8601 (`yyyy-mm-dd`). This preference is shared with the CLI's `config date-format` command.                                                             |
 
 Changes **preview live** as you pick them, **take effect when you save**, and **revert if you close the
 dialog without saving**; the saved choice is restored on the next launch. Switching the language also

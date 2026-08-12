@@ -17,3 +17,5 @@ actual fun absoluteGlobExample(): String = "/srv/docs/**/*.pdf"
 actual fun globTargetExists(glob: String): Boolean = true
 
 actual fun globNeedsFilePattern(glob: String): Boolean = false
+
+actual fun isParseableGlob(glob: String): Boolean = true

@@ -35,6 +35,23 @@ class GlobPathsTest : FunSpec({
 		isAbsoluteGlobRoot("*.pdf").shouldBeFalse()
 	}
 
+	test("accepts glob patterns the platform can parse") {
+		isParseableGlob("$absoluteRoot/**/*.pdf").shouldBeTrue()
+		isParseableGlob("$absoluteRoot/doc-?.pdf").shouldBeTrue()
+		isParseableGlob("$absoluteRoot/doc.pdf").shouldBeTrue()
+	}
+
+	test("rejects a pattern whose brackets or braces are left open") {
+		isParseableGlob("$absoluteRoot/[.pdf").shouldBeFalse()
+		isParseableGlob("$absoluteRoot/{a,b.pdf").shouldBeFalse()
+	}
+
+	test("rejects an unparseable pattern the absolute-root check accepts") {
+		val glob = "$absoluteRoot/[.pdf"
+		isAbsoluteGlobRoot(glob).shouldBeTrue()
+		isParseableGlob(glob).shouldBeFalse()
+	}
+
 	test("leaves an already-absolute glob unchanged") {
 		absolutizeGlob("$baseSlash/sub/*.pdf", base) shouldBe "$baseSlash/sub/*.pdf"
 	}

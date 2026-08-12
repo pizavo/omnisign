@@ -37,11 +37,17 @@ sealed interface ArchivingError : OperationError, LocalizableError {
 
 	/**
 	 * The timestamp server could not be reached or returned an error during extension.
+	 *
+	 * @property kind How the request failed, or `null` when the caller did not classify it. A batch
+	 *   reads [TimestampFailureKind.isServerWide] to decide whether calling the same server for the
+	 *   next document is worth anything; the distinction between the two server-wide kinds is what
+	 *   tells an operator whether the server was down or is pointed at the wrong URL.
 	 */
 	data class TimestampFailed(
 		override val text: LocalizableText,
 		override val details: String? = null,
 		override val cause: Throwable? = null,
+		val kind: TimestampFailureKind? = null,
 	) : ArchivingError
 
 	/**

@@ -9,6 +9,7 @@ import cz.pizavo.omnisign.domain.model.error.localizableText
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
+import cz.pizavo.omnisign.domain.port.RenewalActivityProbe
 import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
@@ -63,6 +64,9 @@ import kotlin.time.Instant
  *   (export / import) settings section. `null` on targets without a JVM file backend (web).
  * @param trustStore Optional app-managed trust store backing the Trusted Certificates section.
  *   `null` on targets without a backend (web), where that section renders unavailable.
+ * @param renewalActivityProbe Optional probe telling whether a renewal run is executing right now, so
+ *   that a run marker left in the record can be reported as interrupted rather than as still in
+ *   progress. `null` on targets that never run batch renewal (web).
  */
 class SettingsViewModel(
     private val getConfigUseCase: GetConfigUseCase,
@@ -77,6 +81,7 @@ class SettingsViewModel(
     private val configArchive: ConfigArchivePort? = null,
     private val trustStore: TrustStore? = null,
     private val renewalRunRecordStore: RenewalRunRecordStore? = null,
+    private val renewalActivityProbe: RenewalActivityProbe? = null,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GlobalConfigEditState())
@@ -151,6 +156,9 @@ class SettingsViewModel(
                     val runRecord = withContext(ioDispatcher) {
                         try { renewalRunRecordStore?.load() } catch (_: Exception) { null }
                     }
+                    val runInFlight = withContext(ioDispatcher) {
+                        runRecord?.runStartedAt != null && renewalActivityProbe?.isRunInFlight() == true
+                    }
                     val trustedCerts = trustStore?.list(TrustScope.Global)
                         ?.fold(ifLeft = { emptyList() }, ifRight = { it }).orEmpty()
                     val editState = GlobalConfigEditState.from(
@@ -166,6 +174,7 @@ class SettingsViewModel(
                     ).copy(
                         trustedCertsAvailable = trustStore != null,
                         renewalRunRecord = runRecord,
+                        renewalRunInFlight = runInFlight,
                     ).let {
                         if (isLinuxDesktop) it.copy(
                             useNativeTitleBar = loadUseNativeTitleBar() ?: false,
