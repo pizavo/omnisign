@@ -109,6 +109,13 @@ sealed interface ArchivingError : OperationError, LocalizableError {
 		fun extensionFailed(details: String? = null, cause: Throwable? = null): ExtensionFailed =
 			ExtensionFailed(LocalizableText.of(MessageKey.ARCHIVING_EXTENSION_FAILED), details, cause)
 
+		/**
+		 * The archival timestamp exceeded the `/Contents` space reserved for it, so the extension
+		 * was aborted and the input is unchanged.
+		 */
+		fun timestampTooLarge(details: String? = null, cause: Throwable? = null): ExtensionFailed =
+			ExtensionFailed(LocalizableText.of(MessageKey.ARCHIVING_TIMESTAMP_TOO_LARGE), details, cause)
+
 		/** The referenced file does not exist. */
 		fun fileNotFound(path: String): ExtensionFailed =
 			ExtensionFailed(LocalizableText.of(MessageKey.ARCHIVING_FILE_NOT_FOUND, path))

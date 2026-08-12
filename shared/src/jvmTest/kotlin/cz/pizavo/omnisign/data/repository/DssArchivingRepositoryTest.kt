@@ -11,17 +11,8 @@ import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import eu.europa.esig.dss.diagnostic.TimestampWrapper
-import eu.europa.esig.dss.diagnostic.jaxb.XmlBasicSignature
-import eu.europa.esig.dss.diagnostic.jaxb.XmlCertificate
-import eu.europa.esig.dss.diagnostic.jaxb.XmlDigestMatcher
-import eu.europa.esig.dss.diagnostic.jaxb.XmlSigningCertificate
-import eu.europa.esig.dss.diagnostic.jaxb.XmlTimestamp
-import eu.europa.esig.dss.diagnostic.jaxb.XmlTimestampedObject
-import eu.europa.esig.dss.enumerations.DigestAlgorithm
-import eu.europa.esig.dss.enumerations.DigestMatcherType
-import eu.europa.esig.dss.enumerations.EncryptionAlgorithm
-import eu.europa.esig.dss.enumerations.TimestampType
-import eu.europa.esig.dss.enumerations.TimestampedObjectType
+import eu.europa.esig.dss.diagnostic.jaxb.*
+import eu.europa.esig.dss.enumerations.*
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
@@ -38,7 +29,7 @@ import org.apache.pdfbox.cos.COSDictionary
 import org.apache.pdfbox.cos.COSName
 import org.apache.pdfbox.pdmodel.PDDocument
 import java.io.File
-import java.util.Date
+import java.util.*
 import kotlin.time.Instant
 
 /**
@@ -52,7 +43,7 @@ class DssArchivingRepositoryTest : FunSpec({
 	val configRepository: ConfigRepository = mockk()
 	val dssServiceFactory: DssServiceFactory = mockk(relaxed = true)
 	
-	val repository = DssArchivingRepository(configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(), RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()), mockk<RenewalCheckCache>(relaxed = true))
+	val repository = DssArchivingRepository(configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(), RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()), mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector())
 
 	val cryptographicSuite = AdESPolicy().cryptographicSuite()
 	

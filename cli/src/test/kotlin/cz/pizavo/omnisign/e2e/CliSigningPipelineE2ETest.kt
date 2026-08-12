@@ -2,16 +2,9 @@ package cz.pizavo.omnisign.e2e
 
 import com.github.ajalt.clikt.testing.test
 import cz.pizavo.omnisign.Omnisign
-import cz.pizavo.omnisign.data.repository.CertificateVerifierResult
-import cz.pizavo.omnisign.data.repository.DocumentInputErrorDetector
-import cz.pizavo.omnisign.data.repository.DssArchivingRepository
-import cz.pizavo.omnisign.data.repository.DssServiceFactory
-import cz.pizavo.omnisign.data.repository.DssSigningRepository
-import cz.pizavo.omnisign.data.service.Pkcs11SessionCache
-import cz.pizavo.omnisign.data.repository.DssWarningSanitizer
-import cz.pizavo.omnisign.data.repository.RevocationErrorDetector
-import cz.pizavo.omnisign.data.repository.TspErrorDetector
+import cz.pizavo.omnisign.data.repository.*
 import cz.pizavo.omnisign.data.service.DssTokenService
+import cz.pizavo.omnisign.data.service.Pkcs11SessionCache
 import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
@@ -115,12 +108,12 @@ class CliSigningPipelineE2ETest : FunSpec({
 	val signingRepository = DssSigningRepository(
 		tokenService, configRepository, mockk<CredentialStore>(relaxed = true), dssServiceFactory,
 		AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
-		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(), Pkcs11SessionCache(),
+		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(), Pkcs11SessionCache(), SignatureSpaceErrorDetector(),
 	)
 	val archivingRepository = DssArchivingRepository(
 		configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(),
 		RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()),
-		mockk<RenewalCheckCache>(relaxed = true),
+		mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(),
 	)
 
 	extension(

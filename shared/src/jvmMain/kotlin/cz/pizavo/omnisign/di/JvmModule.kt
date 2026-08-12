@@ -1,24 +1,13 @@
 package cz.pizavo.omnisign.di
 
 import cz.pizavo.omnisign.data.repository.*
-import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.data.serializer.JsonConfigSerializer
 import cz.pizavo.omnisign.data.serializer.XmlConfigSerializer
 import cz.pizavo.omnisign.data.serializer.YamlConfigSerializer
 import cz.pizavo.omnisign.data.service.*
-import cz.pizavo.omnisign.domain.port.ConfigSerializerRegistry
-import cz.pizavo.omnisign.domain.port.ConfigArchivePort
-import cz.pizavo.omnisign.domain.port.RenewalCheckCache
-import cz.pizavo.omnisign.domain.port.RenewalLock
-import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
-import cz.pizavo.omnisign.domain.port.SchedulerPort
-import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
-import cz.pizavo.omnisign.domain.port.TrustedListRefreshPort
-import cz.pizavo.omnisign.domain.repository.ArchivingRepository
-import cz.pizavo.omnisign.domain.repository.ConfigRepository
-import cz.pizavo.omnisign.domain.repository.SigningRepository
-import cz.pizavo.omnisign.domain.repository.TrustStore
-import cz.pizavo.omnisign.domain.repository.ValidationRepository
+import cz.pizavo.omnisign.data.trust.FileTrustStore
+import cz.pizavo.omnisign.domain.port.*
+import cz.pizavo.omnisign.domain.repository.*
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.service.TokenService
 import cz.pizavo.omnisign.domain.usecase.ConfigArchiveUseCase
@@ -121,6 +110,7 @@ val jvmRepositoryModule = module {
 	singleOf(::TspErrorDetector)
 	singleOf(::RevocationErrorDetector)
 	singleOf(::DocumentInputErrorDetector)
+	singleOf(::SignatureSpaceErrorDetector)
 	singleOf(::DssValidationRepository) bind ValidationRepository::class
 	singleOf(::DssSigningRepository) bind SigningRepository::class
 	singleOf(::DssArchivingRepository) bind ArchivingRepository::class

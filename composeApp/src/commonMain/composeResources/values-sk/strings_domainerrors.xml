@@ -5,6 +5,7 @@
 	<string name="err_archiving_malformed_pdf">Súbor nie je platný PDF alebo sa ho nepodarilo analyzovať</string>
 	<string name="err_archiving_revocation_info_failed">Nepodarilo sa získať informácie o zrušení</string>
 	<string name="err_archiving_extension_failed">Rozšírenie dokumentu zlyhalo</string>
+	<string name="err_archiving_timestamp_too_large">Archívna časová pečiatka sa nezmestila do miesta, ktoré je preň v dokumente vyhradené, takže sa nič nezapísalo a pôvodný súbor zostal bez zmeny. Autorita vydala token väčší, než je táto rezervácia, ktorú po vyžiadaní pečiatky už nemožno zväčšiť. Nahláste prosím tento dokument, aby bolo možné vyhradené miesto zväčšiť</string>
 	<string name="err_archiving_file_not_found">Súbor sa nenašiel: %1$s</string>
 	<string name="err_archiving_renewal_status_undeterminable">Nie je možné určiť, či dokument vyžaduje obnovu: podpisový certifikát časovej pečiatky sa nepodarilo rozlíšiť</string>
 	<string name="err_archiving_renewal_check_failed">Nepodarilo sa skontrolovať stav archívnej obnovy</string>
@@ -36,6 +37,7 @@
 	<string name="err_signing_hash_not_supported_windows">Hašovací algoritmus %1$s nie je podporovaný úložiskom certifikátov systému Windows</string>
 	<string name="err_signing_pdf_encrypted">Súbor PDF je šifrovaný alebo chránený heslom a nie je možné ho podpísať</string>
 	<string name="err_signing_malformed_pdf">Súbor nie je platný PDF alebo sa ho nepodarilo analyzovať</string>
+	<string name="err_signing_signature_too_large">Podpis sa nezmestil do miesta, ktoré je preň v dokumente vyhradené, takže sa nič nezapísalo a pôvodný súbor zostal bez zmeny. Reťazec podpisových certifikátov spolu s tokenom časovej pečiatky na úrovniach nad B-B túto rezerváciu presahuje a zväčšiť ju po začatí podpisu už nie je možné. Nahláste prosím tento dokument, aby bolo možné vyhradené miesto zväčšiť</string>
 	<string name="err_validation_validation_failed">Validácia zlyhala</string>
 	<string name="err_validation_remote_validation_failed">Vzdialená validácia zlyhala</string>
 	<string name="err_truststore_parse_failed">Certifikát sa nepodarilo analyzovať</string>

@@ -153,6 +153,13 @@ sealed interface SigningError : OperationError, LocalizableError {
 		fun malformedDocument(details: String? = null, cause: Throwable? = null): MalformedDocument =
 			MalformedDocument(LocalizableText.of(MessageKey.SIGNING_MALFORMED_PDF), details, cause)
 
+		/**
+		 * The finished CMS signature exceeded the `/Contents` space reserved for it before the
+		 * document was digested, so the save was aborted and the input is unchanged.
+		 */
+		fun signatureTooLarge(details: String? = null, cause: Throwable? = null): SigningFailed =
+			SigningFailed(LocalizableText.of(MessageKey.SIGNING_SIGNATURE_TOO_LARGE), details, cause)
+
 		/** The input PDF is encrypted or password-protected. */
 		fun pdfEncrypted(details: String? = null, cause: Throwable? = null): EncryptedDocument =
 			EncryptedDocument(LocalizableText.of(MessageKey.SIGNING_PDF_ENCRYPTED), details, cause)

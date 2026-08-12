@@ -38,6 +38,12 @@ internal object EnglishMessages {
 			"Failed to obtain revocation information"
 		MessageKey.ARCHIVING_EXTENSION_FAILED ->
 			"Document extension failed"
+		MessageKey.ARCHIVING_TIMESTAMP_TOO_LARGE ->
+			"The archival timestamp did not fit the space reserved for it in the document, so " +
+				"nothing was written and the original file is unchanged. The timestamp authority " +
+				"returned a token larger than that reservation, which is fixed before the timestamp " +
+				"is requested and cannot grow afterwards. Report this document so the reserved size " +
+				"can be raised"
 		MessageKey.ARCHIVING_FILE_NOT_FOUND ->
 			"File not found: %1\$s"
 		MessageKey.ARCHIVING_RENEWAL_STATUS_UNDETERMINABLE ->
@@ -100,6 +106,12 @@ internal object EnglishMessages {
 			"The PDF is encrypted or password-protected and cannot be signed"
 		MessageKey.SIGNING_MALFORMED_PDF ->
 			"The file is not a valid PDF or could not be parsed"
+		MessageKey.SIGNING_SIGNATURE_TOO_LARGE ->
+			"The signature did not fit the space reserved for it in the document, so nothing was " +
+				"written and the original file is unchanged. The signing certificate chain, together " +
+				"with the timestamp token at levels above B-B, exceeds that reservation, which is " +
+				"fixed before signing starts and cannot grow afterwards. Report this document so the " +
+				"reserved size can be raised"
 		MessageKey.VALIDATION_VALIDATION_FAILED ->
 			"Validation failed"
 		MessageKey.VALIDATION_REMOTE_VALIDATION_FAILED ->
