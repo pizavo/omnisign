@@ -56,7 +56,68 @@ runs:
         PRERELEASE: ${{ inputs.prerelease }}
         PRERELEASE_SUFFIX: ${{ inputs.prerelease-suffix }}
       run: |
-        inc=(--include-path "${MODULE_PATH}/**" --include-path 'shared/**' --include-path 'gradle/**' --include-path '*.gradle.kts' --include-path 'gradle.properties')
+        # "This component + the shared core + build infra". The root build files
+        # are spelled out instead of '*.gradle.kts' because git-cliff's globs let
+        # `*` cross `/`: the bare pattern also matched cli/build.gradle.kts and
+        # composeApp/build.gradle.kts, so one module's build tweak surfaced in
+        # all four components' notes. detect-changes pins the same root-only
+        # intent with `:(glob)*.gradle.kts`; module build files stay covered by
+        # the module's own include path.
+        cliff_args=(
+          --include-path "${MODULE_PATH}/**"
+          --include-path 'shared/**'
+          --include-path 'gradle/**'
+          --include-path 'build.gradle.kts'
+          --include-path 'settings.gradle.kts'
+          --include-path 'gradle.properties'
+        )
+
+        # Tests never ship, so a test-only change is not release news.
+        cliff_args+=(
+          --exclude-path 'shared/src/commonTest/**'
+          --exclude-path 'shared/src/jvmTest/**'
+          --exclude-path 'shared/src/wasmJsTest/**'
+        )
+        if [ "$MODULE_PATH" = "composeApp" ]; then
+          cliff_args+=(
+            --exclude-path 'composeApp/src/commonTest/**'
+            --exclude-path 'composeApp/src/jvmTest/**'
+            --exclude-path 'composeApp/src/webTest/**'
+          )
+        else
+          cliff_args+=(--exclude-path "${MODULE_PATH}/src/test/**")
+        fi
+
+        # Each component compiles only some of the shared source sets; a change
+        # confined to the others cannot reach it. Desktop and web share the
+        # composeApp module, so they are split the same way.
+        case "$TAG_PREFIX" in
+          web)
+            cliff_args+=(--exclude-path 'shared/src/jvmMain/**' --exclude-path 'composeApp/src/jvmMain/**')
+            ;;
+          desktop)
+            cliff_args+=(--exclude-path 'shared/src/wasmJsMain/**' --exclude-path 'composeApp/src/webMain/**')
+            ;;
+          *)
+            cliff_args+=(--exclude-path 'shared/src/wasmJsMain/**')
+            ;;
+        esac
+
+        # Paths alone cannot separate desktop from web (one module, shared
+        # commonMain), nor tell a shared-touching desktop feature from a real
+        # cross-cutting one. Resolve the config's __FOREIGN_SCOPES__ placeholder
+        # with the other three components' scopes so those commits are skipped.
+        case "$TAG_PREFIX" in
+          cli)     foreign='desktop|web|server' ;;
+          server)  foreign='desktop|web|cli' ;;
+          desktop) foreign='web|cli|server' ;;
+          web)     foreign='desktop|cli|server' ;;
+          *)       foreign='__none__' ;;
+        esac
+        cliff_config="${RUNNER_TEMP:-.}/cliff-${TAG_PREFIX}.toml"
+        sed "s/__FOREIGN_SCOPES__/${foreign}/" "${GITHUB_WORKSPACE:-.}/cliff.toml" > "$cliff_config"
+        cliff_args+=(--config "$cliff_config")
+
         pattern="${TAG_PREFIX}/v.*"
         # Stable-only pattern (anchored): matches x.y.z but not x.y.z-<pre>, so a
         # pre-release series can bump its target from the last stable tag.
@@ -77,7 +138,7 @@ runs:
         else
           # git-cliff echoes the latest tag unchanged when nothing is releasable,
           # so a proposal that is not yet a tag means there are real changes.
-          bumped=$(git cliff --tag-pattern "$pattern" "${inc[@]}" --bumped-version 2>/dev/null || true)
+          bumped=$(git cliff --tag-pattern "$pattern" "${cliff_args[@]}" --bumped-version 2>/dev/null || true)
           if [ -n "$bumped" ] && ! git rev-parse -q --verify "refs/tags/${bumped}" >/dev/null 2>&1; then
             has_changes=true
           else
@@ -91,7 +152,7 @@ runs:
           # paths so a stable finalize lands on the right number no matter how the
           # series got there, and a pre never compounds a previous suffix.
           core_cliff=$(printf '%s\n' "$bumped" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
-          stable_bumped=$(git cliff --tag-pattern "$stable_pattern" "${inc[@]}" --bumped-version 2>/dev/null || true)
+          stable_bumped=$(git cliff --tag-pattern "$stable_pattern" "${cliff_args[@]}" --bumped-version 2>/dev/null || true)
           core_stable=$(printf '%s\n' "$stable_bumped" | grep -Eo '[0-9]+\.[0-9]+\.[0-9]+' | head -n1)
           target=$(core_max "$core_cliff" "$core_stable")
 
@@ -141,7 +202,7 @@ runs:
         # Only render notes when actually releasing; label them with the resolved tag.
         : > release-notes.md
         if [ "$should_release" = "true" ]; then
-          git cliff --tag-pattern "$pattern" "${inc[@]}" --unreleased --tag "$tag" -o release-notes.md
+          git cliff --tag-pattern "$pattern" "${cliff_args[@]}" --unreleased --tag "$tag" -o release-notes.md
         fi
 
         echo "tag=$tag" >> "$GITHUB_OUTPUT"
