@@ -6,13 +6,21 @@
 #   git-cliff <prevTag>..HEAD \
 #     --tag-pattern 'cli/v.*' \
 #     --include-path 'cli/**' --include-path 'shared/**' \
-#     --include-path 'gradle/**' --include-path '*.gradle.kts' \
-#     --include-path 'gradle.properties' \
+#     --include-path 'gradle/**' --include-path 'build.gradle.kts' \
+#     --include-path 'settings.gradle.kts' --include-path 'gradle.properties' \
+#     --exclude-path 'shared/src/*Test/**' --exclude-path 'shared/src/wasmJsMain/**' \
 #     --unreleased --bump
 #
 # --tag-pattern picks the component's tag series (so the version bumps from the
 # right previous tag); --include-path is the "this component + the shared core +
-# build infra" set, mirrored from each ci-*.yml `paths:` filter.
+# build infra" set, mirrored from each ci-*.yml `paths:` filter; --exclude-path
+# then drops what the component never ships (tests, foreign source sets).
+#
+# The root build files are listed literally rather than as '*.gradle.kts':
+# git-cliff's globs let `*` cross `/`, so the bare pattern also matched
+# cli/build.gradle.kts and leaked every module's build tweak into all four
+# components' notes. Module build files are covered by the module's own
+# --include-path anyway.
 
 [changelog]
 # Empty header/footer: output drops straight into a GitHub Release body, which
@@ -27,11 +35,20 @@ footer = ""
 body = """
 {% if version %}## [{{ version | split(pat="/") | last }}] - {{ timestamp | date(format="%Y-%m-%d") }}{% else %}## [Unreleased]{% endif %}
 {% for group, commits in commits | group_by(attribute="group") %}
+{%- set folded = group is starting_with("<!-- 5 -->") or group is starting_with("<!-- 6 -->") %}
+{%- if folded %}
+<details>
+<summary><strong>{{ group | striptags | trim | upper_first }}</strong> ({{ commits | length }})</summary>
+{% else %}
 ### {{ group | striptags | trim | upper_first }}
-{% for commit in commits %}
+{% endif %}
+{%- for commit in commits %}
 - {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message | upper_first }}{% if commit.remote.pr_number %} (#{{ commit.remote.pr_number }}){% else %} ({{ commit.id | truncate(length=7, end="") }}){% endif %}{% if commit.remote.username %} by @{{ commit.remote.username }}{% endif %}
 {%- endfor %}
-{% endfor %}
+{% if folded %}
+</details>
+{% endif %}
+{%- endfor %}
 {%- if github.contributors | filter(attribute="is_first_time", value=true) | length > 0 %}
 ### New Contributors
 {% for contributor in github.contributors | filter(attribute="is_first_time", value=true) %}
@@ -53,14 +70,34 @@ filter_unconventional = true
 # (e.g. a `refactor!:` that changes a public API).
 protect_breaking_commits = true
 
-# First match wins. Visible sections first (ordered via the <!-- N --> prefix),
-# everything else skipped so the notes stay user-facing.
+# The guiding rule: only --include-path/--exclude-path evidence may remove a
+# commit from a component's notes, because paths are ground truth about what the
+# component actually ships. A commit's *scope* is a human label and may be
+# wrong, so it can only ever change how prominently a commit is listed. A
+# commit's *type* is the author's explicit statement that the change is not
+# user-facing, so type-based skips are honoured (they are also the bulk of the
+# traffic: 13 type-skipped commits against 12 real ones over the last two
+# release rounds — demoting them too would bury the notes).
+#
+# First match wins, so the reclassifying parsers come *before* the visible
+# groups: `fix(build):` has type `fix` and would otherwise be claimed by the
+# `^fix` group, since the type-only skips match `build:` but never `(build)`.
+# Breaking changes escape every rule via protect_breaking_commits.
+#
+# Groups 5 and 6 render inside a collapsed <details> block (see the body
+# template), so they are one click away rather than absent.
+#
+# `__FOREIGN_SCOPES__` is substituted per run by .github/actions/compute-release
+# with the other three components' scopes. Such a commit reached this component
+# only by touching shared code or the root build — the paths already proved
+# that — so it is demoted rather than dropped. This is also the only thing that
+# separates desktop from web, which share the composeApp module and cannot be
+# told apart by path at all. Left unsubstituted — running git-cliff by hand —
+# it is an inert literal matching no real scope.
 commit_parsers = [
   { message = '^[a-z]+(\(.+\))?!:', group = "<!-- 0 -->Breaking Changes" },
-  { message = "^feat", group = "<!-- 1 -->Features" },
-  { message = "^fix", group = "<!-- 2 -->Bug Fixes" },
-  { message = "^perf", group = "<!-- 3 -->Performance" },
-  { message = "^revert", group = "<!-- 4 -->Reverts" },
+  { message = '^[a-z]+\((__FOREIGN_SCOPES__)\)', group = "<!-- 5 -->Other Changes" },
+  { message = '^[a-z]+\((build|ci|docs|test|chore|style|refactor|workflows|actions)\)', group = "<!-- 6 -->Maintenance" },
   { message = "^docs", skip = true },
   { message = "^test", skip = true },
   { message = "^refactor", skip = true },
@@ -68,6 +105,10 @@ commit_parsers = [
   { message = "^chore", skip = true },
   { message = "^build", skip = true },
   { message = "^ci", skip = true },
+  { message = "^feat", group = "<!-- 1 -->Features" },
+  { message = "^fix", group = "<!-- 2 -->Bug Fixes" },
+  { message = "^perf", group = "<!-- 3 -->Performance" },
+  { message = "^revert", group = "<!-- 4 -->Reverts" },
   { message = ".*", skip = true },
 ]
 
