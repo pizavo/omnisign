@@ -16,6 +16,17 @@ enum class RenewalRunOutcome {
 
     /** The run could not start — the host-wide renewal lock could not be acquired. */
     FAILED,
+
+    /**
+     * The run began but never reported a result, its process having died first — a system restart,
+     * power loss, or a kill.
+     *
+     * Recorded by the *following* run. A killed process executes no further code, so the next run is
+     * the first thing able to observe that the previous one died. Without this the status would keep
+     * showing the last successful run, and a machine interrupted every night would look healthy
+     * indefinitely.
+     */
+    INTERRUPTED,
 }
 
 /**
@@ -26,4 +37,5 @@ val RenewalRunOutcome.label: String
         RenewalRunOutcome.SUCCESS -> "success"
         RenewalRunOutcome.COMPLETED_WITH_ERRORS -> "completed with errors"
         RenewalRunOutcome.FAILED -> "failed"
+        RenewalRunOutcome.INTERRUPTED -> "interrupted"
     }

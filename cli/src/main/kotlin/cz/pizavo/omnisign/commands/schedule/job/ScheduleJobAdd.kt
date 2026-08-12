@@ -11,6 +11,7 @@ import com.github.ajalt.clikt.parameters.types.int
 import cz.pizavo.omnisign.data.util.absoluteGlobExample
 import cz.pizavo.omnisign.data.util.absolutizeGlob
 import cz.pizavo.omnisign.data.util.isAbsoluteGlobRoot
+import cz.pizavo.omnisign.data.util.isParseableGlob
 import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
 import cz.pizavo.omnisign.domain.usecase.ManageRenewalJobsUseCase
@@ -69,6 +70,12 @@ class ScheduleJobAdd : CliktCommand(name = "add"), KoinComponent {
 		if (nonAbsolute.isNotEmpty()) {
 			echo("Renewal globs must be absolute paths; rejected: ${nonAbsolute.joinToString()}", err = true)
 			echo("Example: ${absoluteGlobExample()}", err = true)
+			return@runBlocking
+		}
+		val malformed = resolvedGlobs.filterNot { isParseableGlob(it) }
+		if (malformed.isNotEmpty()) {
+			echo("Renewal globs must be valid glob patterns; rejected: ${malformed.joinToString()}", err = true)
+			echo("Check that every '[' and '{' is closed. Example: ${absoluteGlobExample()}", err = true)
 			return@runBlocking
 		}
 		globs.zip(resolvedGlobs)

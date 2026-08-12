@@ -10,6 +10,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.model.trust.TrustedListRefreshFailure
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
+import cz.pizavo.omnisign.domain.port.RenewalActivityProbe
 import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.port.TrustedListCompilerPort
@@ -157,9 +158,23 @@ fun IslandLayout(
 				configArchive = koin.getOrNull<ConfigArchivePort>(),
 				trustStore = koin.getOrNull<TrustStore>(),
 				renewalRunRecordStore = koin.getOrNull<RenewalRunRecordStore>(),
+				renewalActivityProbe = koin.getOrNull<RenewalActivityProbe>(),
 			)
 		}.recover { if (it is NoDefinitionFoundException || it.cause is NoDefinitionFoundException) null else throw it }.getOrNull()
 	}
+	val renewalStatusViewModel: RenewalStatusViewModel? = remember {
+		runCatching {
+			val koin = KoinPlatform.getKoinOrNull() ?: return@runCatching null
+			RenewalStatusViewModel(
+				runRecordStore = koin.getOrNull<RenewalRunRecordStore>(),
+				activityProbe = koin.getOrNull<RenewalActivityProbe>(),
+			)
+		}.recover { if (it is NoDefinitionFoundException || it.cause is NoDefinitionFoundException) null else throw it }.getOrNull()
+	}
+	val renewalNeedsAttention by (renewalStatusViewModel?.needsAttention ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow(false)
+	}).collectAsState()
+
 	val settingsState by (settingsViewModel?.state ?: remember {
 		kotlinx.coroutines.flow.MutableStateFlow(GlobalConfigEditState())
 	}).collectAsState()
@@ -176,6 +191,8 @@ fun IslandLayout(
 		kotlinx.coroutines.flow.MutableStateFlow(cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress())
 	}).collectAsState()
 	var showSettingsDialog by remember { mutableStateOf(false) }
+
+	LaunchedEffect(showSettingsDialog) { renewalStatusViewModel?.refresh() }
 	var initialSettingsCategory by remember { mutableStateOf<SettingsCategory?>(null) }
 	var settingsLanguageBaseline by remember { mutableStateOf(languageTag) }
 	var settingsFormatBaseline by remember { mutableStateOf(dateFormat) }
@@ -371,6 +388,7 @@ fun IslandLayout(
 					canTimestamp = capabilities.canTimestamp,
 					fileLoaded = pdfState.document != null,
 					onLogout = onLogout,
+					renewalNeedsAttention = renewalNeedsAttention,
 				)
 				
 				if (showSettingsDialog) {

@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.data.util
 
+import java.nio.file.FileSystems
 import java.nio.file.Path
 import kotlin.io.path.Path
 import kotlin.io.path.absolute
@@ -21,6 +22,26 @@ fun isAbsoluteGlobRoot(glob: String): Boolean {
 	val wildcardIndex = glob.indexOfFirst { it == '*' || it == '?' || it == '[' || it == '{' }
 	val root = if (wildcardIndex == -1) glob else glob.substring(0, wildcardIndex)
 	return runCatching { Path(root).isAbsolute }.getOrDefault(false)
+}
+
+/**
+ * Whether [glob]'s wildcard tail is a pattern this platform's filesystem can parse.
+ *
+ * [isAbsoluteGlobRoot] inspects only the literal prefix, so a glob with a valid absolute root but a
+ * malformed pattern — an unclosed `[` or `{` — passes that check and gets persisted. At run time it
+ * then throws out of the scheduled run, taking every remaining job with it and skipping the run
+ * record. Callers validate here so the pattern is rejected while the user can still fix it; the batch
+ * guards the same calls again, since a job may also come from a hand-edited configuration file.
+ *
+ * A wildcard-free pattern is a literal path, and always parseable.
+ */
+fun isParseableGlob(glob: String): Boolean {
+	val normalised = glob.replace('\\', '/')
+	val wildcardIndex = normalised.indexOfFirst { it == '*' || it == '?' || it == '[' || it == '{' }
+	if (wildcardIndex == -1) return true
+	val prefix = normalised.substring(0, wildcardIndex)
+	val tail = normalised.substring(prefix.lastIndexOf('/') + 1)
+	return runCatching { FileSystems.getDefault().getPathMatcher("glob:$tail") }.isSuccess
 }
 
 /**

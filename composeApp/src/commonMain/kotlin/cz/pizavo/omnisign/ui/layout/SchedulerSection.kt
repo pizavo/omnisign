@@ -87,6 +87,39 @@ fun SchedulerSection(
 				style = LumoTheme.typography.body2,
 				color = LumoTheme.colors.textSecondary,
 			)
+			record.runStartedAt?.let { startedAt ->
+				Spacer(modifier = Modifier.height(4.dp))
+				if (state.renewalRunInFlight) {
+					Text(
+						text = stringResource(
+							Res.string.scheduler_run_in_progress,
+							startedAt.formattedDateTime(),
+						),
+						style = LumoTheme.typography.body2,
+						color = LumoTheme.colors.textSecondary,
+					)
+				} else {
+					Row(
+						verticalAlignment = Alignment.CenterVertically,
+						horizontalArrangement = Arrangement.spacedBy(4.dp),
+					) {
+						Icon(
+							painter = painterResource(Res.drawable.icon_alert_warning),
+							contentDescription = null,
+							tint = LumoTheme.colors.warning,
+							modifier = Modifier.size(14.dp),
+						)
+						Text(
+							text = stringResource(
+								Res.string.scheduler_run_interrupted,
+								startedAt.formattedDateTime(),
+							),
+							style = LumoTheme.typography.body2,
+							color = LumoTheme.colors.warning,
+						)
+					}
+				}
+			}
 			if (record.unrecoverable > 0) {
 				Spacer(modifier = Modifier.height(4.dp))
 				Row(

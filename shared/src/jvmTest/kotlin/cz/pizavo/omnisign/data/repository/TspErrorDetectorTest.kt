@@ -5,14 +5,25 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import cz.pizavo.omnisign.domain.model.error.TimestampFailureKind
+import cz.pizavo.omnisign.domain.model.error.isServerWide
+import java.net.ConnectException
+import java.net.SocketTimeoutException
+import java.net.UnknownHostException
 
 /**
  * Unit tests for [TspErrorDetector] verifying TSP exception detection,
- * PKIFailureInfo parsing, and user-friendly message generation.
+ * PKIFailureInfo parsing, reachability classification, and user-friendly message generation.
+ *
+ * The reachability cases reproduce the wrapper DSS actually raises: `CommonsDataLoader` reports a
+ * failed HTTP call as `Unable to process POST call for url [...]. Reason : [...]` with the transport
+ * exception as its cause, and uses the same shape for revocation fetches — which is why the URL has
+ * to be part of the verdict.
  */
 class TspErrorDetectorTest : FunSpec({
 
 	val detector = TspErrorDetector()
+	val tsa = "https://tsa.example.com/timestamp"
 
 	test("isTspException returns true for 'No timestamp token' message") {
 		val ex = RuntimeException("No timestamp token has been retrieved (TSP Status : ...)")
@@ -178,6 +189,75 @@ class TspErrorDetectorTest : FunSpec({
 		val msg = detector.buildUserMessage(ex, null)
 		msg shouldContain "malformed response"
 		msg shouldContain "verify the timestamp server URL"
+	}
+
+	test("classify calls the TSA unreachable for the wrapper DSS raises when it cannot be dialled") {
+		val ex = RuntimeException(
+			"Unable to process POST call for url [$tsa]. Reason : [Connect timed out]",
+			SocketTimeoutException("Connect timed out"),
+		)
+		detector.classify(ex, tsa) shouldBe TimestampFailureKind.UNREACHABLE
+	}
+
+	test("classify calls a refused connection and an unresolvable host unreachable too") {
+		val refused = RuntimeException(
+			"Unable to process POST call for url [$tsa]. Reason : [Connection refused]",
+			ConnectException("Connection refused"),
+		)
+		val unknownHost = RuntimeException(
+			"Unable to process POST call for url [$tsa]. Reason : [tsa.example.com]",
+			UnknownHostException("tsa.example.com"),
+		)
+		detector.classify(refused, tsa) shouldBe TimestampFailureKind.UNREACHABLE
+		detector.classify(unknownHost, tsa) shouldBe TimestampFailureKind.UNREACHABLE
+	}
+
+	test("classify separates a server that answered with rubbish from one that could not be reached") {
+		val ex = RuntimeException(
+			"Invalid TSP response : malformed timestamp response: " +
+				"java.lang.IllegalArgumentException: failed to construct sequence from byte[]: " +
+				"corrupted stream - out of bounds length found: 108 >= 18"
+		)
+		detector.classify(ex, tsa) shouldBe TimestampFailureKind.MALFORMED_RESPONSE
+		detector.classify(ex, tsa).isServerWide shouldBe true
+	}
+
+	test("classify calls a PKIFailureInfo refusal rejected, which does not stop a batch") {
+		val ex = RuntimeException("No timestamp token has been retrieved (PKIFailureInfo: 0x4)")
+		detector.isTspException(ex) shouldBe true
+		detector.classify(ex, tsa) shouldBe TimestampFailureKind.REJECTED
+		detector.classify(ex, tsa).isServerWide shouldBe false
+	}
+
+	test("classify does not blame the TSA when a different endpoint is the one that timed out") {
+		val ex = RuntimeException(
+			"Unable to process GET call for url [http://ocsp.example.com]. Reason : [Read timed out]",
+			SocketTimeoutException("Read timed out"),
+		)
+		detector.classify(ex, tsa).isServerWide shouldBe false
+	}
+
+	test("classify cannot attribute a transport failure without a configured TSA URL") {
+		val ex = RuntimeException("Unable to process POST call", SocketTimeoutException("Connect timed out"))
+		detector.classify(ex, null).isServerWide shouldBe false
+	}
+
+	test("classify does not blame the TSA for an ASN.1 failure with nothing tying it to one") {
+		val ex = RuntimeException(
+			"failed to construct sequence from byte[]: corrupted stream - out of bounds length found: 108 >= 18"
+		)
+		detector.isMalformedResponse(ex) shouldBe true
+		detector.classify(ex, tsa) shouldBe TimestampFailureKind.REJECTED
+	}
+
+	test("buildUserMessage says the server could not be reached for a transport failure") {
+		val ex = RuntimeException(
+			"Unable to process POST call for url [$tsa]. Reason : [Connect timed out]",
+			SocketTimeoutException("Connect timed out"),
+		)
+		val msg = detector.buildUserMessage(ex, tsa)
+		msg shouldContain "could not be reached"
+		msg shouldContain tsa
 	}
 })
 

@@ -11,6 +11,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.toDomainOrNull
 import cz.pizavo.omnisign.domain.model.config.enums.toDss
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
+import cz.pizavo.omnisign.domain.model.error.isServerWide
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.*
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
@@ -144,16 +145,20 @@ class DssArchivingRepository(
 				logCapture.stop()
 			}
 		} catch (e: Exception) {
-			if (tspErrorDetector.isTspException(e)) {
-				val tsaUrl = (parameters.resolvedConfig ?: ResolvedConfig.resolve(
+			val tsaUrl = runCatching {
+				(parameters.resolvedConfig ?: ResolvedConfig.resolve(
 					global = configRepository.getCurrentConfig().global,
 					profile = null,
 					operationOverrides = null
 				).getOrNull())?.timestampServer?.url
+			}.getOrNull()
+			val timestampFailure = tspErrorDetector.classify(e, tsaUrl)
+			if (timestampFailure.isServerWide || tspErrorDetector.isTspException(e)) {
 				return ArchivingError.TimestampFailed(
 					LocalizableText.Literal(tspErrorDetector.buildUserMessage(e, tsaUrl)),
 					details = e.message,
 					cause = e,
+					kind = timestampFailure,
 				).left()
 			}
 			

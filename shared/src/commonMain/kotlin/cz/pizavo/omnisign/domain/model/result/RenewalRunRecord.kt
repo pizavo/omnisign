@@ -40,6 +40,13 @@ import kotlin.time.Instant
  *   wall-clock time since [lastSuccessAt] — so it re-fires at most once per
  *   [cz.pizavo.omnisign.domain.model.config.SchedulerConfig.stalenessThresholdDays] while renewal
  *   stays stale; `null` when none is outstanding (including after a success resets it).
+ * @property runStartedAt When the run currently in flight began, or `null` when no run is under way.
+ *   Written before the batch starts and cleared by the record it writes when it finishes, so a value
+ *   that survives means that run never finished. This is the only way an interrupted run can be
+ *   noticed at all, since a killed process cannot report its own death and every other failure channel
+ *   — this record, the OS notification, the job log — is produced only after the batch returns.
+ *   Telling "still running" from "died" additionally needs
+ *   [cz.pizavo.omnisign.domain.port.RenewalActivityProbe].
  */
 @Serializable
 data class RenewalRunRecord(
@@ -58,4 +65,5 @@ data class RenewalRunRecord(
     val lastSuccessAt: Instant? = null,
     val failuresSinceSuccess: Int = 0,
     val lastStaleNotifiedAt: Instant? = null,
+    val runStartedAt: Instant? = null,
 )

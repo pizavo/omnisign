@@ -66,6 +66,8 @@ private val CompactButtonPadding = PaddingValues(2.dp)
  * @param onLogout Invoked when the user clicks the sign-out button. `null` (the default, and always
  *   on desktop) hides the button entirely; the web target supplies it only when the server has auth
  *   enabled, so the button's presence and the sign-out action are one and the same signal.
+ * @param renewalNeedsAttention Whether scheduled renewal is failing, which marks the settings button
+ *   with a badge. The detail lives in Settings > Scheduler; this only says that it is worth opening.
  * @param modifier Optional [Modifier] applied to the toolbar root.
  */
 @Composable
@@ -80,6 +82,7 @@ fun IslandToolbar(
 	canTimestamp: Boolean = true,
 	fileLoaded: Boolean = false,
 	onLogout: (() -> Unit)? = null,
+	renewalNeedsAttention: Boolean = false,
 	modifier: Modifier = Modifier,
 ) {
 	val themeLabel = if (isDarkTheme) stringResource(Res.string.toolbar_switch_to_light_theme) else stringResource(Res.string.toolbar_switch_to_dark_theme)
@@ -224,7 +227,17 @@ fun IslandToolbar(
 					}
 
 					TooltipBox(
-						tooltip = { Tooltip { Text(text = stringResource(Res.string.label_settings)) } },
+						tooltip = {
+							Tooltip {
+								Text(
+									text = if (renewalNeedsAttention) {
+										stringResource(Res.string.toolbar_settings_renewal_attention)
+									} else {
+										stringResource(Res.string.label_settings)
+									},
+								)
+							}
+						},
 						state = rememberTooltipState(),
 					) {
 						IconButton(
@@ -236,11 +249,23 @@ fun IslandToolbar(
 							onClick = onOpenSettings,
 							contentPadding = CompactButtonPadding,
 						) {
-							Icon(
-								painter = painterResource(Res.drawable.icon_settings),
-								contentDescription = stringResource(Res.string.toolbar_settings_description),
-								modifier = Modifier.size(22.dp),
-							)
+							BadgedBox(
+								badge = {
+									if (renewalNeedsAttention) {
+										Badge(containerColor = LumoTheme.colors.warning)
+									}
+								},
+							) {
+								Icon(
+									painter = painterResource(Res.drawable.icon_settings),
+									contentDescription = if (renewalNeedsAttention) {
+										stringResource(Res.string.toolbar_settings_renewal_attention)
+									} else {
+										stringResource(Res.string.toolbar_settings_description)
+									},
+									modifier = Modifier.size(22.dp),
+								)
+							}
 						}
 					}
 

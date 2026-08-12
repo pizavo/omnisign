@@ -4,6 +4,7 @@
 	<string name="toolbar_timestamp_tooltip">Časová pečiatka</string>
 	<string name="toolbar_timestamp_description">Opatriť dokument časovou pečiatkou</string>
 	<string name="toolbar_settings_description">Otvoriť nastavenia</string>
+	<string name="toolbar_settings_renewal_attention">Nastavenia – automatická obnova vyžaduje pozornosť</string>
 	<string name="toolbar_switch_to_light_theme">Prepnúť na svetlý motív</string>
 	<string name="toolbar_switch_to_dark_theme">Prepnúť na tmavý motív</string>
 </resources>

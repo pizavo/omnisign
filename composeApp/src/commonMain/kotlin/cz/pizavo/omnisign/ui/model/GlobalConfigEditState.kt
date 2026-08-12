@@ -66,6 +66,9 @@ import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
  *   stored as a string for the text field. Coerced to at least 1 on save.
  * @property schedulerInstalled Whether the OS scheduler job is currently registered (read-only, queried on the load).
  * @property renewalRunRecord Status of the most recent renewal batch run (read-only, queried on load), or `null` when none has run or no backend is available.
+ * @property renewalRunInFlight Whether a renewal run is executing right now (read-only, queried on
+ *   load). Tells a [RenewalRunRecord.runStartedAt] marker belonging to a live run apart from one a
+ *   killed run left behind, so only the latter is reported as interrupted.
  * @property saving Whether a save operation is currently in progress.
  * @property error Error from the last failed operation, or `null`. Emitted as locale-agnostic data;
  *   the UI resolves it to a message via [SettingsError.resolve].
@@ -120,6 +123,7 @@ data class GlobalConfigEditState(
 	val stalenessThresholdDays: String = "14",
 	val schedulerInstalled: Boolean = false,
 	val renewalRunRecord: RenewalRunRecord? = null,
+	val renewalRunInFlight: Boolean = false,
 	val saving: Boolean = false,
 	val error: SettingsError? = null,
 	val tlAddError: String? = null,

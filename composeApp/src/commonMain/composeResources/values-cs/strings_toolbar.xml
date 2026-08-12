@@ -4,6 +4,7 @@
 	<string name="toolbar_timestamp_tooltip">Časové razítko</string>
 	<string name="toolbar_timestamp_description">Orazítkovat dokument časovým razítkem</string>
 	<string name="toolbar_settings_description">Otevřít nastavení</string>
+	<string name="toolbar_settings_renewal_attention">Nastavení – automatická obnova vyžaduje pozornost</string>
 	<string name="toolbar_switch_to_light_theme">Přepnout na světlý motiv</string>
 	<string name="toolbar_switch_to_dark_theme">Přepnout na tmavý motiv</string>
 </resources>

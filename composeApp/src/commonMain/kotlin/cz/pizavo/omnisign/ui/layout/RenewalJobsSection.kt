@@ -50,6 +50,7 @@ import cz.pizavo.omnisign.ui.model.GlobChip
 import cz.pizavo.omnisign.ui.model.GlobalConfigEditState
 import cz.pizavo.omnisign.ui.platform.absoluteGlobExample
 import cz.pizavo.omnisign.ui.platform.globNeedsFilePattern
+import cz.pizavo.omnisign.ui.platform.isParseableGlob
 import cz.pizavo.omnisign.ui.platform.globTargetExists
 import cz.pizavo.omnisign.ui.platform.isAbsoluteGlob
 import cz.pizavo.omnisign.ui.platform.platformFilePath
@@ -498,7 +499,9 @@ internal fun addGlobChips(
 	tokens.forEach { token ->
 		when {
 			chips.any { it.glob == token } -> Unit
-			!isAbsoluteGlob(token) || globNeedsFilePattern(token) -> invalid += token
+			!isAbsoluteGlob(token) ||
+				globNeedsFilePattern(token) ||
+				!isParseableGlob(token) -> invalid += token
 			else -> chips += GlobChip(
 				glob = token,
 				warning = when {
