@@ -12,13 +12,13 @@ commit history rather than from a file anyone edits.
 
 Each component has a workflow that triggers on its own paths:
 
-| Workflow | Runs when you touch |
-| --- | --- |
-| `ci-cli.yml` | `cli/**`, `shared/**`, `gradle/**`, `*.gradle.kts`, `gradle.properties` |
-| `ci-desktop.yml` | `composeApp/**`, `shared/**`, `gradle/**`, `*.gradle.kts`, `gradle.properties` |
-| `ci-server.yml` | `server/**`, `shared/**`, `gradle/**`, `*.gradle.kts`, `gradle.properties` |
-| `ci-web.yml` | `composeApp/**`, `shared/**`, `gradle/**`, `*.gradle.kts`, `gradle.properties` |
-| `deploy-docs.yml` | `docs/**` and any module's `src/**`, on `main` |
+| Workflow          | Runs when you touch                                                            |
+|-------------------|--------------------------------------------------------------------------------|
+| `ci-cli.yml`      | `cli/**`, `shared/**`, `gradle/**`, `*.gradle.kts`, `gradle.properties`        |
+| `ci-desktop.yml`  | `composeApp/**`, `shared/**`, `gradle/**`, `*.gradle.kts`, `gradle.properties` |
+| `ci-server.yml`   | `server/**`, `shared/**`, `gradle/**`, `*.gradle.kts`, `gradle.properties`     |
+| `ci-web.yml`      | `composeApp/**`, `shared/**`, `gradle/**`, `*.gradle.kts`, `gradle.properties` |
+| `deploy-docs.yml` | `docs/**` and any module's `src/**`, on `main`                                 |
 
 Two facts fall out of that table, and they explain most of the surprises:
 
@@ -51,12 +51,12 @@ the current released version; the tag series is the source of truth.
 
 Tags are namespaced per component, in the form `<prefix>/v<semver>`:
 
-| Component | Tag prefix | Module path | Example tag |
-| --- | --- | --- | --- |
-| CLI | `cli` | `cli` | `cli/v1.17.0` |
-| Desktop | `desktop` | `composeApp` | `desktop/v1.11.0` |
-| Server | `server` | `server` | `server/v1.6.0` |
-| Web | `web` | `composeApp` | `web/v1.3.0`, and `web/v1.1.2-pre.2` for a pre-release |
+| Component | Tag prefix | Module path  | Example tag                                            |
+|-----------|------------|--------------|--------------------------------------------------------|
+| CLI       | `cli`      | `cli`        | `cli/v1.17.0`                                          |
+| Desktop   | `desktop`  | `composeApp` | `desktop/v1.11.0`                                      |
+| Server    | `server`   | `server`     | `server/v1.6.0`                                        |
+| Web       | `web`      | `composeApp` | `web/v1.3.0`, and `web/v1.1.2-pre.2` for a pre-release |
 
 ## How the version and notes are computed
 
@@ -94,12 +94,12 @@ artifact, then attached to the GitHub release.
 
 The release workflows accept four `workflow_dispatch` inputs:
 
-| Input | Effect |
-| --- | --- |
-| `dry_run` | Compute the version and render the notes into the job summary, then stop — nothing is tested, built, tagged, or released |
-| `release_as` | Force an explicit version instead of the computed bump |
-| `prerelease` | Cut a pre-release, flagged as such on GitHub |
-| `prerelease_suffix` | The identifier to use, sanitized to `[A-Za-z0-9-]`; defaults to `pre` |
+| Input               | Effect                                                                                                                   |
+|---------------------|--------------------------------------------------------------------------------------------------------------------------|
+| `dry_run`           | Compute the version and render the notes into the job summary, then stop — nothing is tested, built, tagged, or released |
+| `release_as`        | Force an explicit version instead of the computed bump                                                                   |
+| `prerelease`        | Cut a pre-release, flagged as such on GitHub                                                                             |
+| `prerelease_suffix` | The identifier to use, sanitized to `[A-Za-z0-9-]`; defaults to `pre`                                                    |
 
 A pre-release series bumps from the last **stable** tag and appends a counter: `1.1.2-pre.1`,
 `1.1.2-pre.2`, and so on. The action finds the highest existing counter for that target version and
@@ -115,6 +115,34 @@ computes the next free counter from existing *tags*, but GitHub refuses to publi
 and the tag no longer exists to push the counter past it.
 
 If you land in this state, roll forward to `pre.(N+1)` rather than trying to reclaim the name.
+:::
+
+## Releasing all four at once
+
+`release-all.yml` — **Release — All** in the Actions sidebar — is a launcher, not a fifth pipeline.
+It dispatches the four release workflows, waits for them, and writes one summary table:
+
+| Component | Outcome                   |
+|-----------|---------------------------|
+| CLI       | ✅ Released `cli/v1.20.0` |
+| Desktop   | ⏭️ Nothing to release      |
+| Server    | ❌ failure                |
+
+Four checkboxes pick the components (all on by default); `dry_run`, `prerelease`, and
+`prerelease_suffix` are passed through unchanged. `release_as` is deliberately **not** offered — it
+forces one explicit version, which four independently versioned components cannot share. Run that
+component's own workflow when you need it.
+
+Nothing about the per-component workflows changes. Each still computes its own version, still decides
+for itself whether it has anything to release, and still appears in the Actions tab as its own run
+that can be inspected or re-run on its own. The launcher only reads the outcome: a run whose jobs are
+all skipped apart from `Compute version & notes` had nothing to release, and the aggregate run fails
+if any component's run did.
+
+:::note[Why this needs no personal access token]
+Events triggered with the built-in `GITHUB_TOKEN` normally do not create workflow runs at all —
+`workflow_dispatch` and `repository_dispatch` are the two documented exceptions. So the launcher
+dispatches with `github.token` and needs nothing beyond `permissions: actions: write`.
 :::
 
 ## Building the artifacts
