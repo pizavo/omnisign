@@ -1,0 +1,171 @@
+name: Release — All
+
+# A launcher, not a fifth release pipeline: it dispatches the per-component
+# release workflows, then waits for them so one run reports what shipped. Each
+# component still decides for itself whether it has anything to release.
+#
+# `release_as` is deliberately absent — it forces one explicit version, which
+# four independently versioned components cannot share. Run that component's own
+# workflow instead.
+
+on:
+  workflow_dispatch:
+    inputs:
+      cli:
+        description: "Include the CLI"
+        type: boolean
+        default: true
+      desktop:
+        description: "Include the desktop app"
+        type: boolean
+        default: true
+      server:
+        description: "Include the server"
+        type: boolean
+        default: true
+      web:
+        description: "Include the web client"
+        type: boolean
+        default: true
+      dry_run:
+        description: "Preview the computed versions and notes without tagging or releasing"
+        type: boolean
+        default: false
+      prerelease:
+        description: "Cut a pre-release: append a -<suffix>.N identifier and flag the GitHub release as a pre-release"
+        type: boolean
+        default: false
+      prerelease_suffix:
+        description: "Pre-release identifier used when 'prerelease' is checked (e.g. pre, rc, beta)"
+        type: string
+        default: "pre"
+
+permissions:
+  contents: read
+  actions: write
+
+jobs:
+  release-all:
+    name: Dispatch component releases
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      REF: ${{ github.ref_name }}
+      DRY_RUN: ${{ inputs.dry_run }}
+      PRERELEASE: ${{ inputs.prerelease }}
+      PRERELEASE_SUFFIX: ${{ inputs.prerelease_suffix }}
+      RUN_CLI: ${{ inputs.cli }}
+      RUN_DESKTOP: ${{ inputs.desktop }}
+      RUN_SERVER: ${{ inputs.server }}
+      RUN_WEB: ${{ inputs.web }}
+
+    steps:
+      - name: Dispatch the selected releases
+        run: |
+          set -u
+
+          : > "$RUNNER_TEMP/runs.tsv"
+          links=""
+
+          for entry in \
+            "cli:CLI:release-cli.yml:$RUN_CLI" \
+            "desktop:Desktop:release-desktop.yml:$RUN_DESKTOP" \
+            "server:Server:release-server.yml:$RUN_SERVER" \
+            "web:Web:release-web.yml:$RUN_WEB"
+          do
+            IFS=: read -r prefix label file enabled <<< "$entry"
+            [ "$enabled" = "true" ] || continue
+
+            # Every release workflow is workflow_dispatch-only, so the newest run
+            # of that file after the dispatch is necessarily the one started here.
+            before=$(gh run list --repo "$REPO" --workflow "$file" --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+
+            # -f sends plain strings, matching what the manual "Run workflow" form
+            # posts; the workflows compare against 'true'/'false' as strings.
+            gh workflow run "$file" --repo "$REPO" --ref "$REF" \
+              -f dry_run="$DRY_RUN" \
+              -f prerelease="$PRERELEASE" \
+              -f prerelease_suffix="$PRERELEASE_SUFFIX"
+
+            # A dispatch is asynchronous — the run surfaces a moment later.
+            id=0
+            for _ in $(seq 1 30); do
+              sleep 2
+              id=$(gh run list --repo "$REPO" --workflow "$file" --limit 1 --json databaseId --jq '.[0].databaseId // 0')
+              if [ "$id" -gt "$before" ]; then break; fi
+              id=0
+            done
+
+            if [ "$id" -eq 0 ]; then
+              echo "::error::Dispatched the $label release but its run never appeared."
+              exit 1
+            fi
+
+            url="${GITHUB_SERVER_URL}/${REPO}/actions/runs/${id}"
+            printf '%s\t%s\t%s\n' "$prefix" "$label" "$id" >> "$RUNNER_TEMP/runs.tsv"
+            links+="- $label — $url"$'\n'
+            echo "$label → $url"
+          done
+
+          if [ ! -s "$RUNNER_TEMP/runs.tsv" ]; then
+            echo "::error::No components were selected — nothing to release."
+            exit 1
+          fi
+
+          {
+            echo "## Dispatched"
+            echo ""
+            printf '%s' "$links"
+            echo ""
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Wait for them and summarize
+        run: |
+          set -u
+
+          mapfile -t entries < "$RUNNER_TEMP/runs.tsv"
+          failed=0
+          rows=""
+
+          for entry in "${entries[@]}"; do
+            IFS=$'\t' read -r prefix label id <<< "$entry"
+
+            # Already-finished runs make watch exit non-zero; the conclusion below
+            # is what actually decides the outcome.
+            gh run watch "$id" --repo "$REPO" --interval 30 > /dev/null 2>&1 || true
+
+            info=$(gh run view "$id" --repo "$REPO" --json conclusion,url,jobs)
+            conclusion=$(jq -r '.conclusion // "unknown"' <<< "$info")
+            url=$(jq -r '.url' <<< "$info")
+
+            if [ "$conclusion" != "success" ]; then
+              rows+="| $label | ❌ $conclusion | [run]($url) |"$'\n'
+              failed=1
+            elif [ "$DRY_RUN" = "true" ]; then
+              rows+="| $label | 🔍 Dry run — preview in the run | [run]($url) |"$'\n'
+            else
+              # "Compute version & notes" always runs; when a component has nothing
+              # to release every other job is skipped, which is how a no-op run is
+              # told apart from one that actually shipped.
+              shipped=$(jq -r '[.jobs[] | select(.name | startswith("Compute version & notes") | not) | .conclusion] | any(. == "success")' <<< "$info")
+              if [ "$shipped" = "true" ]; then
+                # Decorative only, so a hiccup here must not fail the summary.
+                tag=$(gh api "repos/$REPO/releases?per_page=100" --jq "[.[] | select(.tag_name | startswith(\"$prefix/v\"))][0].tag_name // \"\"" 2> /dev/null || true)
+                rows+="| $label | ✅ Released \`${tag:-unknown}\` | [run]($url) |"$'\n'
+              else
+                rows+="| $label | ⏭️ Nothing to release | [run]($url) |"$'\n'
+              fi
+            fi
+          done
+
+          {
+            echo "## Results"
+            echo ""
+            echo "| Component | Outcome | Run |"
+            echo "| --- | --- | --- |"
+            printf '%s' "$rows"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          exit "$failed"
