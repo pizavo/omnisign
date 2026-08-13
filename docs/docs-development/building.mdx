@@ -115,14 +115,25 @@ Running the production task once regenerates a consistent pair and unblocks the 
 | CLI fat JAR | `:cli:shadowJar` | `cli/build/libs/omnisign-*.jar` |
 | CLI installer | `:cli:jpackage` | Windows: MSI + app-image; Linux: DEB + RPM + app-image; macOS: DMG + PKG — all under `cli/build/jpackage/` |
 | Desktop installer | `:composeApp:packageDistributionForCurrentOS` | MSI + EXE (Windows), DMG + PKG (macOS), DEB + RPM (Linux), plus the jpackage app-image directory on every OS |
+| Desktop Linux packages | `:composeApp:packageDeb`, `:composeApp:packageRpm` | `composeApp/build/compose/binaries/main/deb/` and `.../rpm/` |
 | Server fat JAR | `:server:buildFatJar` | `server/build/libs/server-all.jar` |
 | Server dist | `:server:installDist` | `server/build/install/server/bin/server` |
 | Web bundle | `:composeApp:wasmJsBrowserDistribution` | `composeApp/build/dist/wasmJs/productionExecutable/` |
 | API docs | `:dokkaGenerate` | `build/dokka/html/` |
 
 Both packaging tasks also expose one task per format, which is what the release workflows invoke so
-each runner produces only what it can: `:composeApp:packageDeb`, `:composeApp:packageMsi`,
-`:composeApp:packageDmg`, and their `:cli:jpackage*` counterparts.
+each runner produces only what it can: `:composeApp:packageMsi`, `:composeApp:packageDmg`, and
+their `:cli:jpackage*` counterparts.
+
+The desktop DEB and RPM are the exception. `:composeApp:packageDeb` and `:composeApp:packageRpm`
+keep the names the plugin would have used, but the build declares them itself and they call
+jpackage directly on the app-image that `:composeApp:createDistributable` produces. The plugin appends
+its own `--resource-dir` after any argument the build adds, and jpackage keeps only the last
+occurrence of a repeated option, so the desktop-entry and packaging-script overrides in
+`composeApp/packaging/linux/` can only be applied by invoking jpackage ourselves. Those overrides
+are what give the launcher its `%U` field code (without which the shell cannot hand a PDF to the
+app), its `StartupWMClass`, and the AppStream metainfo and hicolor icon the maintainer scripts
+install.
 
 Native installers are built by [`jpackage`](https://docs.oracle.com/en/java/javase/25/docs/specs/man/jpackage.html)
 and can only target the OS they run on — there is no cross-packaging. Producing all of them means

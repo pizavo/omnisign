@@ -93,7 +93,7 @@ jobs:
       - name: Build Linux packages
         run: >-
           ./gradlew
-          :composeApp:packageDeb :composeApp:packageRpm :composeApp:packageAppImage
+          :composeApp:packageDeb :composeApp:packageRpm :composeApp:createDistributable
           -PreleaseVersion=${{ needs.prepare.outputs.version }}
 
       - name: Upload jpackage logs

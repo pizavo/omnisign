@@ -41,6 +41,16 @@ jobs:
         if: steps.detect.outputs.relevant == 'true'
         run: ./gradlew :shared:jvmTest :composeApp:jvmTest :composeApp:createDistributable
 
+      - name: Install tooling
+        if: steps.detect.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y rpm
+
+      - name: Build Linux packages
+        if: steps.detect.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest'
+        run: ./gradlew :composeApp:packageDeb :composeApp:packageRpm
+
       - name: Verify third-party notices
         if: steps.detect.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest'
         run: ./gradlew generateThirdPartyNotices -PnoticesCheck=true

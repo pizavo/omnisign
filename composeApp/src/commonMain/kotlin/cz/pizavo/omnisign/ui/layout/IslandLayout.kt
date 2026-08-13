@@ -39,6 +39,7 @@ import cz.pizavo.omnisign.ui.viewmodel.*
 import io.github.vinceglb.filekit.PlatformFile
 import io.github.vinceglb.filekit.dialogs.FileKitType
 import io.github.vinceglb.filekit.dialogs.compose.rememberFilePickerLauncher
+import io.github.vinceglb.filekit.name
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -308,17 +309,41 @@ fun IslandLayout(
 		kotlinx.coroutines.flow.MutableStateFlow<PasswordDialogRequest?>(null)
 	}).collectAsState()
 	
+	val documentOpenController = remember { KoinPlatform.getKoinOrNull()?.getOrNull<DocumentOpenController>() }
+	val requestedDocument by (documentOpenController?.request ?: remember {
+		kotlinx.coroutines.flow.MutableStateFlow<PlatformFile?>(null)
+	}).collectAsState()
+
+	suspend fun openDocument(platformFile: PlatformFile) {
+		runCatching { loadPdfFromPlatformFile(platformFile) }.fold(
+			onSuccess = { document ->
+				pdfViewModel.onDocumentLoaded(document)
+				signatureViewModel?.onDocumentChanged(document)
+				timestampViewModel?.onDocumentChanged(document)
+			},
+			onFailure = {
+				toastService.show(
+					ToastMessage(
+						text = ToastText.Resource(Res.string.islandlayout_open_document_failed, listOf(platformFile.name)),
+						duration = ToastDuration.Long,
+					),
+				)
+			},
+		)
+	}
+
 	val filePickerLauncher = rememberFilePickerLauncher(
 		type = FileKitType.File(extensions = listOf("pdf")),
 	) { platformFile: PlatformFile? ->
 		if (platformFile != null) {
-			scope.launch {
-				val document = loadPdfFromPlatformFile(platformFile)
-				pdfViewModel.onDocumentLoaded(document)
-				signatureViewModel?.onDocumentChanged(document)
-				timestampViewModel?.onDocumentChanged(document)
-			}
+			scope.launch { openDocument(platformFile) }
 		}
+	}
+
+	LaunchedEffect(requestedDocument) {
+		val platformFile = requestedDocument ?: return@LaunchedEffect
+		openDocument(platformFile)
+		documentOpenController?.consume()
 	}
 	
 	val leftPanels = remember(capabilities.canValidate) {

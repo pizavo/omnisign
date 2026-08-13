@@ -2,4 +2,5 @@
 	<string name="islandlayout_refresh_signatures">Obnovit podpisy</string>
 	<string name="islandlayout_edit_profile">Upravit profil</string>
 	<string name="islandlayout_profiles_placeholder">Konfigurační profily se zobrazí zde.</string>
+	<string name="islandlayout_open_document_failed">Soubor \'%1$s\' se nepodařilo otevřít – nejde o platné PDF.</string>
 </resources>
