@@ -98,6 +98,38 @@ Run the desktop app from source (requires the JBR 25 toolchain):
 
 :::
 
+## PDF file association
+
+Every installer registers OmniSign as a handler for `application/pdf`, which places it in the
+system's **Open with** menu. It does not claim the file type outright — the default PDF application
+stays your choice:
+
+<OsTabs>
+<TabItem value="windows" label="Windows">
+
+Right-click a PDF and choose **Open with → Choose another app**, select OmniSign and tick **Always
+use this app**. The same assignment is available under **Settings → Apps → Default apps**.
+
+</TabItem>
+<TabItem value="linux" label="Linux">
+
+The package installs a desktop entry declaring `MimeType=application/pdf`. Most desktop
+environments offer **Properties → Open With** on a PDF; from a terminal:
+
+```bash
+xdg-mime default omnisign-OmniSign.desktop application/pdf
+```
+
+</TabItem>
+<TabItem value="macos" label="macOS">
+
+Select a PDF in Finder, press `Cmd+I`, pick OmniSign under **Open with** and click **Change All…**.
+
+</TabItem>
+</OsTabs>
+
+The portable ZIP and tarball register nothing, since they are unpacked rather than installed.
+
 ## Configuration & log directories
 
 OmniSign stores its configuration file and logs in platform-native directories.

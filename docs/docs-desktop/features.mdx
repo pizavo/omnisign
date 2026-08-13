@@ -9,6 +9,7 @@ import AppIcon from '@site/src/components/AppIcon';
 | Feature                                     | Supported |
 |---------------------------------------------|:---------:|
 | Open and view PDF documents                 |     ✅     |
+| PDF file association (Open with)            |     ✅     |
 | Page navigation and zoom (25 %–400 %)       |     ✅     |
 | Sign PDF documents (PAdES B-B / B-T / B-LT / B-LTA) |     ✅     |
 | Validate signed PDFs (all baseline levels, B-B through B-LTA) |     ✅     |
@@ -52,6 +53,21 @@ All primary actions are accessible from the toolbar at the top of the window:
 | <AppIcon name="moon" label="Dark theme" /> / <AppIcon name="sun" label="Light theme" /> Theme | Right    | Toggles between dark and light theme.                           |
 
 ![OmniSign toolbar](/img/desktop/toolbar.avif)
+
+## Opening documents
+
+The toolbar picker is not the only route into the viewer. Every installer registers OmniSign as a
+handler for PDF files, so it also appears in the system's **Open with** menu; a document chosen
+there — or double-clicked, once OmniSign is the default PDF application — loads straight into the
+viewer with no further steps.
+
+Registering a handler is not the same as becoming the default. Which application owns `.pdf` stays
+a per-user choice on every platform, and
+[Installation](installation.mdx#pdf-file-association) covers how to set it.
+
+On macOS the document is handed to the OmniSign window that is already open. On Windows and Linux
+it always starts a new window, so opening a document this way while OmniSign is running leaves the
+first window untouched.
 
 ## Sidebar panels
 

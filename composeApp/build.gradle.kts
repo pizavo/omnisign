@@ -250,6 +250,39 @@ val desktopJvmArgs: List<String> = buildList {
 	}
 }
 
+/**
+ * Package metadata shared by the Compose DSL and the hand-rolled Linux installer tasks.
+ *
+ * The DEB and RPM are built by [LinuxInstallerTask] rather than by the Compose plugin (see its
+ * KDoc), so every value both of them need is declared once here. Letting the two copies drift
+ * would ship a DEB whose description or vendor disagrees with the MSI built from the same commit.
+ */
+val appDescription = "Digital signature verification, signing and re-timestamping"
+
+/** Vendor recorded in every package. */
+val appVendor = "Pizavo"
+
+/** Copyright line recorded in every package. */
+val appCopyright = "Copyright (C) 2026 Pizavo"
+
+/** Documentation URL passed to jpackage as `--about-url`. */
+val appAboutUrl = "https://pizavo.github.io/omnisign/desktop/"
+
+/** Name of the DEB/RPM package itself, which also fixes the install prefix at `/opt/omnisign`. */
+val linuxPackageName = "omnisign"
+
+/** Freedesktop category the desktop entry is filed under. */
+val linuxAppCategory = "utils"
+
+/** Menu group the desktop entry appears in. */
+val linuxMenuGroup = "Utility"
+
+/** Maintainer recorded in the DEB control file. */
+val debMaintainer = "pizavo@gmail.com"
+
+/** Licence identifier recorded in the RPM spec. */
+val rpmLicenseType = "AGPL-3.0-or-later"
+
 compose.desktop {
 	application {
 		mainClass = "cz.pizavo.omnisign.MainKt"
@@ -287,20 +320,17 @@ compose.desktop {
 			targetFormats(
 				TargetFormat.Msi,
 				TargetFormat.Exe,
-				
+
 				TargetFormat.Dmg,
 				TargetFormat.Pkg,
-				
-				TargetFormat.Deb,
-				TargetFormat.Rpm,
-				
+
 				TargetFormat.AppImage
 			)
 			packageName = "OmniSign"
 			packageVersion = project.version.toString().toNativeDistributionVersion()
-			description = "Digital signature verification, signing and re-timestamping"
-			vendor = "Pizavo"
-			copyright = "Copyright (C) 2026 Pizavo"
+			description = appDescription
+			vendor = appVendor
+			copyright = appCopyright
 			licenseFile.set(rootProject.layout.buildDirectory.file("legal/installer-license-desktop.md"))
 
 			appResourcesRootDir.set(layout.buildDirectory.dir("appResources"))
@@ -317,12 +347,6 @@ compose.desktop {
 
 			linux {
 				iconFile.set(rootProject.file("assets/icons/omnisign-logo-512.png"))
-				shortcut = true
-				menuGroup = "Utility"
-				packageName = "omnisign"
-				appCategory = "utils"
-				debMaintainer = "pizavo@gmail.com"
-				rpmLicenseType = "AGPL-3.0-or-later"
 			}
 
 			macOS {
@@ -337,43 +361,230 @@ compose.desktop {
 
 /**
  * Injects additional jpackage metadata arguments into every Compose Desktop packaging task.
- * The Compose Gradle plugin does not expose DSL properties for about-url, Windows help/update
- * URLs, Linux package dependencies, or jpackage's `--resource-dir`, so the underlying
- * [AbstractJPackageTask.freeArgs] list is used to pass them to jpackage. Tasks that produce
- * app-images (AppImage and Distributable) are excluded because jpackage rejects installer-only
- * options such as `--about-url` when `--type app-image` is used.
+ * The Compose Gradle plugin does not expose DSL properties for about-url or the Windows
+ * help/update URLs, so the underlying [AbstractJPackageTask.freeArgs] list is used to pass them
+ * to jpackage. Tasks that produce app-images (AppImage and Distributable) are excluded because
+ * jpackage rejects installer-only options such as `--about-url` when `--type app-image` is used.
+ * The Linux installers are not configured here at all — they are built by [LinuxInstallerTask],
+ * which owns its whole argument list.
  *
- * On Linux, two extra flags are appended:
- *  - `--linux-package-deps "xdg-utils"` declares the runtime requirement so the post-install
- *    scripts (`xdg-desktop-menu install`, `xdg-mime install`) succeed on minimal RPM-based
- *    systems. The DEB target has it via the Compose plugin's auto-injected dependency list;
- *    the RPM does not.
- *  - `--resource-dir packaging/linux` points jpackage at a custom `OmniSign.desktop` template
- *    that adds `StartupWMClass=OmniSign`, `Exec=APPLICATION_LAUNCHER %U`, and
- *    `StartupNotify=true` — keys jpackage cannot emit on its own (tracked upstream as
- *    JetBrains YouTrack CMP-8559, closed "As designed"). The Compose plugin already passes
- *    its own `--resource-dir` pointing at `build/compose/tmp/resources/`, but jpackage
- *    resolves duplicate `--resource-dir` arguments last-wins via
- *    `DeployParams.addBundleArgument` (LinkedHashMap.put), and the plugin's `clearDirs`
- *    call only touches its own path, so the override file is preserved.
+ * On Windows every jpackage task additionally has [AbstractJPackageTask.packageDescription]
+ * rewritten to the package name. jpackage stamps `--description` into the launcher
+ * executable's `FileDescription` version-resource field, and Windows reads `FileDescription`
+ * as the friendly application name — it is the label the shell shows in its "Open with" menu,
+ * and the one Task Manager and the file's Details tab display — so the long package
+ * description would stand in for the product name there. No task can be left out: each one
+ * builds, and therefore stamps, its own app-image instead of reusing the distributable. The
+ * remaining Windows readers of `--description` follow the same value, which reads correctly
+ * for all of them: WiX `ARPCOMMENTS`, the MSI package description, and the self-extracting
+ * installer's own `Installer of ...` description. Rewriting the task property is what makes
+ * this work — appending `--description` to [AbstractJPackageTask.freeArgs] cannot, because
+ * free args are emitted ahead of the plugin's own arguments and jpackage resolves a repeated
+ * option to its last occurrence. Linux and macOS keep the long description.
  */
 afterEvaluate {
 	tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask>().configureEach {
+		if (org.gradle.internal.os.OperatingSystem.current().isWindows) {
+			packageDescription.set(packageName)
+		}
+
 		if (name.contains("AppImage", ignoreCase = true) || name.contains("Distributable", ignoreCase = true)) return@configureEach
 
 		freeArgs.addAll(
-			"--about-url", "https://pizavo.github.io/omnisign/desktop/",
+			"--about-url", appAboutUrl,
 			"--file-associations", project.file("file-associations/pdf.properties").absolutePath,
 		)
 		if (name.contains("Msi", ignoreCase = true) || name.contains("Exe", ignoreCase = true)) {
 			freeArgs.addAll(
-				"--win-help-url", "https://pizavo.github.io/omnisign/desktop/",
+				"--win-help-url", appAboutUrl,
 				"--win-update-url", "https://github.com/pizavo/omnisign/releases",
 			)
 		}
-		if (name.contains("Deb", ignoreCase = true) || name.contains("Rpm", ignoreCase = true)) {
-			freeArgs.addAll("--linux-package-deps", "xdg-utils")
-			freeArgs.addAll("--resource-dir", project.file("packaging/linux").absolutePath)
+	}
+}
+
+/**
+ * Packages the app-image `createDistributable` produces into a Linux DEB or RPM.
+ *
+ * The Compose plugin's own DEB and RPM bundlers cannot build these, which is why
+ * `TargetFormat.Deb` and `TargetFormat.Rpm` are absent from `targetFormats` above — dropping the
+ * two formats also frees the `packageDeb` and `packageRpm` task names, which the tasks registered
+ * below take over. jpackage needs
+ * `--resource-dir packaging/linux` to pick up the desktop-entry and packaging-script overrides —
+ * `OmniSign.desktop` supplies `Exec=APPLICATION_LAUNCHER %U` (without a field code the shell
+ * cannot hand a PDF to the launcher at all), `StartupWMClass=OmniSign` to match the WM_CLASS
+ * `main.kt` forces, and `StartupNotify=true`; `omnisign.spec` and `postinst` / `prerm` install the
+ * AppStream metainfo and the hicolor icon. The plugin emits its own `--resource-dir` pointing at
+ * `build/compose/tmp/resources`, and it emits it *after* [AbstractJPackageTask.freeArgs]; since
+ * jpackage resolves a repeated option to its last occurrence, anything passed through `freeArgs`
+ * is discarded. That directory is only ever populated on macOS, so on Linux the plugin hands
+ * jpackage an empty override directory and wins. Nothing in the plugin's API can reorder the two:
+ * `makeArgs` always emits `freeArgs` first, and `run` clears the directory and execs jpackage
+ * inside a single `@TaskAction`, so no `doFirst` can stage files into it.
+ *
+ * Building from a finished app-image sidesteps all of it and keeps the arguments small, since
+ * everything application-level is already baked into the image. This mirrors how `:cli` packages
+ * itself, which passes `--resource-dir` exactly once and is unaffected by the same defect.
+ */
+abstract class LinuxInstallerTask @Inject constructor(private val execOps: ExecOperations) : DefaultTask() {
+
+	/** Path to the jpackage binary of the JDK the Compose plugin builds the app-image with. */
+	@get:Input
+	abstract val jpackageBin: Property<String>
+
+	/** Directory `createDistributable` writes into; it holds exactly one app-image directory. */
+	@get:InputDirectory
+	abstract val appImageRootDir: DirectoryProperty
+
+	/** jpackage `--type` value: `deb` or `rpm`. */
+	@get:Input
+	abstract val packageType: Property<String>
+
+	/** Directory jpackage writes the finished package into. */
+	@get:OutputDirectory
+	abstract val destDir: DirectoryProperty
+
+	/**
+	 * Directory holding the jpackage resource overrides.
+	 *
+	 * Declared as an input so Gradle reruns the task whenever the desktop entry, the RPM spec or
+	 * either maintainer script changes.
+	 */
+	@get:InputDirectory
+	abstract val resourceDir: DirectoryProperty
+
+	/** Licence the installer presents, generated by the root `:generateInstallerLicense` task. */
+	@get:InputFile
+	abstract val licenseFile: RegularFileProperty
+
+	/** Property file describing the PDF file association. */
+	@get:InputFile
+	abstract val fileAssociations: RegularFileProperty
+
+	/** Arguments shared by both Linux package types. */
+	@get:Input
+	abstract val commonArgs: ListProperty<String>
+
+	/** Arguments that apply to one package type only. */
+	@get:Input
+	abstract val extraArgs: ListProperty<String>
+
+	/**
+	 * Resolves the app-image and hands it to jpackage.
+	 *
+	 * The package name is taken from the app-image directory rather than repeated as a literal, so
+	 * it cannot drift from the `packageName` the Compose DSL gave the launcher.
+	 */
+	@TaskAction
+	fun pack() {
+		val root = appImageRootDir.get().asFile
+		val appImage = root.listFiles()?.singleOrNull { it.isDirectory }
+			?: error("Expected exactly one app-image directory in $root, found ${root.list()?.joinToString()}")
+
+		val dest = destDir.get().asFile
+		dest.deleteRecursively()
+		dest.mkdirs()
+
+		execOps.exec {
+			executable(jpackageBin.get())
+			args(
+				listOf(
+					"--type", packageType.get(),
+					"--app-image", appImage.absolutePath,
+					"--name", appImage.name,
+					"--dest", dest.absolutePath,
+					"--license-file", licenseFile.get().asFile.absolutePath,
+					"--file-associations", fileAssociations.get().asFile.absolutePath,
+					"--resource-dir", resourceDir.get().asFile.absolutePath,
+				) + commonArgs.get() + extraArgs.get()
+			)
+		}
+	}
+}
+
+/** jpackage arguments both Linux package types share. */
+val linuxCommonJpackageArgs: List<String> = listOf(
+	"--app-version", project.version.toString().toNativeDistributionVersion(),
+	"--description", appDescription,
+	"--vendor", appVendor,
+	"--copyright", appCopyright,
+	"--about-url", appAboutUrl,
+	"--linux-package-name", linuxPackageName,
+	"--linux-app-category", linuxAppCategory,
+	"--linux-menu-group", linuxMenuGroup,
+	"--linux-shortcut",
+)
+
+/**
+ * Registers the two Linux installer tasks and joins them to the plugin's per-OS aggregate.
+ *
+ * Deferred to [Project.afterEvaluate] because the Compose plugin creates `createDistributable` in
+ * an `afterEvaluate` block of its own, and both tasks derive their app-image directory and their
+ * jpackage binary from it — the latter so the installers are built with the same JDK (the JBR the
+ * `application` block selects) that produced the image.
+ *
+ * They take the `packageDeb` / `packageRpm` names the dropped target formats left free, so that
+ * they read as part of the same family as `packageMsi`, `packageExe`, `packageDmg` and
+ * `packagePkg` instead of introducing a second naming scheme for one platform — and so that the
+ * name cannot be confused with `:cli`'s unrelated `jpackageDeb` / `jpackageRpm`. Restoring either
+ * target format then fails the build on a duplicate task name instead of silently shadowing these.
+ *
+ * `packageDistributionForCurrentOS` is wired from `targetFormats` alone, so on Linux it now stops
+ * at the app-image; the [dependsOn] below carries it through to the installers again. Its release
+ * counterpart is deliberately left alone, as it packages the minified `createReleaseDistributable`
+ * image these tasks do not build from.
+ *
+ * `--linux-package-deps xdg-utils` is deliberately **not** passed, even though the generated
+ * maintainer scripts call `xdg-desktop-menu` and `xdg-mime`. Because these tasks request desktop
+ * integration, jpackage already derives that dependency for both formats on its own; passing it
+ * again lists `xdg-utils` twice in the DEB's `Depends` field and adds nothing to the RPM's
+ * `Requires`. Both tasks are disabled off Linux, where jpackage cannot build a DEB or RPM at all,
+ * mirroring how the Compose plugin gates its own packaging tasks.
+ *
+ * The RPM build logs `Warning: app-image dir not generated by jpackage.` even for an image
+ * jpackage itself produced. It comes from the RPM bundler alone — the DEB build of the same image
+ * is silent, and it is not order-dependent — and the package is correct regardless, since the name
+ * and version come from the arguments above rather than from the image's own metadata.
+ */
+afterEvaluate {
+	val createDistributableTask =
+		tasks.named<org.jetbrains.compose.desktop.application.tasks.AbstractJPackageTask>("createDistributable")
+
+	fun registerLinuxInstallerTask(name: String, description: String, type: String, extraArgsList: List<String>) {
+		tasks.register<LinuxInstallerTask>(name) {
+			this.group = "distribution"
+			this.description = description
+			enabled = org.gradle.internal.os.OperatingSystem.current().isLinux
+			dependsOn(createDistributableTask, ":generateInstallerLicense")
+			jpackageBin.set(createDistributableTask.flatMap { it.javaHome }.map { "$it/bin/jpackage" })
+			appImageRootDir.set(createDistributableTask.flatMap { it.destinationDir })
+			packageType.set(type)
+			destDir.set(layout.buildDirectory.dir("compose/binaries/main/$type"))
+			resourceDir.set(layout.projectDirectory.dir("packaging/linux"))
+			licenseFile.set(rootProject.layout.buildDirectory.file("legal/installer-license-desktop.md"))
+			fileAssociations.set(layout.projectDirectory.file("file-associations/pdf.properties"))
+			commonArgs.set(linuxCommonJpackageArgs)
+			extraArgs.set(extraArgsList)
+		}
+	}
+
+	registerLinuxInstallerTask(
+		name = "packageDeb",
+		description = "Packages the desktop app as a Debian/Ubuntu .deb from the app-image.",
+		type = "deb",
+		extraArgsList = listOf("--linux-deb-maintainer", debMaintainer),
+	)
+
+	registerLinuxInstallerTask(
+		name = "packageRpm",
+		description = "Packages the desktop app as a Red Hat/Fedora .rpm from the app-image.",
+		type = "rpm",
+		extraArgsList = listOf("--linux-rpm-license-type", rpmLicenseType),
+	)
+
+	if (org.gradle.internal.os.OperatingSystem.current().isLinux) {
+		tasks.named("packageDistributionForCurrentOS") {
+			dependsOn("packageDeb", "packageRpm")
 		}
 	}
 }

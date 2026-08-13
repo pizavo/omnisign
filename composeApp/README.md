@@ -127,6 +127,11 @@ Individual formats can be built with dedicated tasks:
 ./gradlew :composeApp:packageAppImage
 ```
 
+`packageDeb` and `packageRpm` are declared by this build rather than by the Compose plugin, because
+the plugin cannot pass the `--resource-dir` that applies the desktop-entry and packaging-script
+overrides in `packaging/linux/`. They package the app-image `createDistributable` builds, so run
+on a Linux host only.
+
 ### macOS Gatekeeper note
 
 The macOS packages are currently unsigned. On first launch macOS may show an

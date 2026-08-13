@@ -32,6 +32,7 @@ import cz.pizavo.omnisign.domain.usecase.RenewBatchUseCase
 import cz.pizavo.omnisign.platform.PasswordCallback
 import cz.pizavo.omnisign.ui.platform.*
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.github.vinceglb.filekit.PlatformFile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -133,6 +134,15 @@ private const val FORCE_HIT_TEST_POLL_MS = 8
 private val isLinux: Boolean = System.getProperty("os.name").lowercase().let {
 	!it.contains("win") && !it.contains("mac")
 }
+
+/**
+ * Whether the app is running on macOS.
+ *
+ * Only used to decide whether to register an Apple-event handler for file associations:
+ * macOS delivers documents through `openFiles` events rather than on the command line
+ * (see [OsDocumentOpenController]).
+ */
+private val isMacOs: Boolean = System.getProperty("os.name").lowercase().contains("mac")
 
 /**
  * User preference for using the native (decorated) title bar on Linux instead of
@@ -255,6 +265,20 @@ fun main(args: Array<String> = emptyArray()) {
 		ds
 	} else null
 
+	val documentOpenController = OsDocumentOpenController(OsDocumentOpenController.fromArgs(args))
+	if (isMacOs) {
+		runCatching {
+			val desktop = java.awt.Desktop.getDesktop()
+			if (desktop.isSupported(java.awt.Desktop.Action.APP_OPEN_FILE)) {
+				desktop.setOpenFileHandler { event ->
+					event.files.firstOrNull()?.let { documentOpenController.offer(PlatformFile(it)) }
+				}
+			}
+		}.onFailure {
+			logger.warn(it) { "Could not register the macOS open-file handler — associations will not open documents" }
+		}
+	}
+
 	application {
 		startKoin {
 			modules(
@@ -265,6 +289,7 @@ fun main(args: Array<String> = emptyArray()) {
 					single { ComposePasswordCallback() }
 					single<PasswordCallback> { get<ComposePasswordCallback>() }
 					single<PasswordDialogController> { get<ComposePasswordCallback>() }
+					single<DocumentOpenController> { documentOpenController }
 					single { WindowStateStore() }
 				},
 			)
