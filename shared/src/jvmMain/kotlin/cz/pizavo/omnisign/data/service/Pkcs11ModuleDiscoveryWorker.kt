@@ -22,8 +22,9 @@ import com.sun.jna.Pointer
  * constructor is confined here rather than the host JVM.
  *
  * Exit behaviour:
- * - Normal completion prints zero or more paths and exits `0`.  Empty output simply means no
- *   modules are registered, or libp11-kit is not installed — both yield no candidates.
+ * - Normal completion prints zero or more paths, then [Pkcs11Prober.OUTPUT_TERMINATOR] to mark
+ *   the payload complete, and exits `0`.  Empty output simply means no modules are registered,
+ *   or libp11-kit is not installed — both yield no candidates.
  * - A fatal native fault (a module's `dlopen` constructor crashing the process) terminates
  *   with a signal; the parent classifies that as a crash and contributes no candidates.
  */
@@ -39,6 +40,8 @@ object Pkcs11ModuleDiscoveryWorker {
 		for (path in discoverModulePaths()) {
 			println(path)
 		}
+		println(Pkcs11Prober.OUTPUT_TERMINATOR)
+		System.out.flush()
 	}
 
 	/**

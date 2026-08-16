@@ -272,10 +272,22 @@ class Pkcs11SubprocessProber(
 
 	/**
 	 * Shared subprocess lifecycle: spawn [command], drain stdout/stderr on daemon threads
-	 * (avoiding the 64 KB pipe-buffer deadlock), wait up to [timeoutSeconds], classify.
-	 * A `finally` forcibly kills a leaked process so discovery never hangs.
+	 * (avoiding the 64 KB pipe-buffer deadlock), wait up to [timeoutSeconds] for the output to
+	 * be **complete**, classify.  A `finally` forcibly kills a leaked process so discovery never
+	 * hangs.
+	 *
+	 * Completeness is decided by the worker's [Pkcs11Prober.OUTPUT_TERMINATOR] line, not by the
+	 * child's exit: middleware that has talked to a live card can deadlock the child inside the
+	 * C runtime's `DLL_PROCESS_DETACH` handling, where it neither exits nor closes its stdout,
+	 * so waiting for exit (or for EOF) would discard a payload the child had already delivered
+	 * in full.  On the sentinel the child is killed and its output accepted; a child that
+	 * reaches EOF without one is classified from its exit code exactly as before, which keeps
+	 * output truncated by a native crash — a crash cannot print the sentinel — a [Crashed].
+	 *
+	 * Visible for testing so a fixture can exercise the never-exits and no-sentinel paths with
+	 * an arbitrary command.
 	 */
-	private fun runResolvedProbeSubprocess(
+	internal fun runResolvedProbeSubprocess(
 		command: List<String>,
 		description: String,
 		timeoutSeconds: Long,
@@ -287,13 +299,21 @@ class Pkcs11SubprocessProber(
 		logger.debug { "PKCS#11 subprocess pid=$pid started for '$description'" }
 
 		try {
-			val stdoutResult = CompletableFuture<String>()
+			val stdoutResult = CompletableFuture<DrainedStdout>()
 			val stderrResult = CompletableFuture<String>()
 
 			thread(isDaemon = true, name = "pkcs11-stdout-$pid") {
-				stdoutResult.complete(
-					runCatching { process.inputStream.bufferedReader().readText() }.getOrDefault("")
-				)
+				val payload = StringBuilder()
+				runCatching {
+					process.inputStream.bufferedReader().forEachLine { line ->
+						if (line.trim() == Pkcs11Prober.OUTPUT_TERMINATOR) {
+							stdoutResult.complete(DrainedStdout(payload.toString(), sentinelSeen = true))
+						} else if (!stdoutResult.isDone) {
+							payload.appendLine(line)
+						}
+					}
+				}
+				stdoutResult.complete(DrainedStdout(payload.toString(), sentinelSeen = false))
 			}
 			thread(isDaemon = true, name = "pkcs11-stderr-$pid") {
 				stderrResult.complete(
@@ -301,7 +321,31 @@ class Pkcs11SubprocessProber(
 				)
 			}
 
-			val completed = process.waitFor(timeoutSeconds, TimeUnit.SECONDS)
+			val drained = runCatching {
+				stdoutResult.get(timeoutSeconds, TimeUnit.SECONDS)
+			}.getOrNull()
+
+			if (drained == null) {
+				process.destroyForcibly()
+				process.waitFor(STREAM_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+				return Pkcs11SubprocessResult.TimedOut(pid)
+			}
+
+			if (drained.sentinelSeen) {
+				if (process.isAlive) {
+					logger.debug {
+						"PKCS#11 subprocess pid=$pid for '$description' delivered complete output but is still " +
+								"alive — killing it rather than waiting for an exit it may never reach"
+					}
+					process.destroyForcibly()
+				}
+				val stderr = runCatching {
+					stderrResult.get(STREAM_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
+				}.getOrDefault("")
+				return Pkcs11SubprocessResult.Success(pid, drained.text, stderr.take(MAX_STDERR_LOG_CHARS))
+			}
+
+			val completed = process.waitFor(STREAM_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
 
 			if (!completed) {
 				process.destroyForcibly()
@@ -309,21 +353,16 @@ class Pkcs11SubprocessProber(
 				return Pkcs11SubprocessResult.TimedOut(pid)
 			}
 
-			val exitCode = process.exitValue()
-			if (exitCode != 0) {
-				val stderr = runCatching {
-					stderrResult.get(STREAM_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-				}.getOrDefault("")
-				return Pkcs11SubprocessResult.Crashed(pid, exitCode, stderr.take(MAX_STDERR_LOG_CHARS))
-			}
-
-			val stdout = runCatching {
-				stdoutResult.get(STREAM_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
-			}.getOrDefault("")
 			val stderr = runCatching {
 				stderrResult.get(STREAM_DRAIN_TIMEOUT_SECONDS, TimeUnit.SECONDS)
 			}.getOrDefault("")
-			return Pkcs11SubprocessResult.Success(pid, stdout, stderr.take(MAX_STDERR_LOG_CHARS))
+
+			val exitCode = process.exitValue()
+			if (exitCode != 0) {
+				return Pkcs11SubprocessResult.Crashed(pid, exitCode, stderr.take(MAX_STDERR_LOG_CHARS))
+			}
+
+			return Pkcs11SubprocessResult.Success(pid, drained.text, stderr.take(MAX_STDERR_LOG_CHARS))
 		} finally {
 			if (process.isAlive) {
 				logger.debug { "Destroying leaked subprocess pid=$pid for '$description'" }
@@ -331,6 +370,18 @@ class Pkcs11SubprocessProber(
 			}
 		}
 	}
+
+	/**
+	 * A subprocess's drained standard output, with the reason draining stopped.
+	 *
+	 * @property text The payload, with [Pkcs11Prober.OUTPUT_TERMINATOR] removed.
+	 * @property sentinelSeen `true` when the worker announced the payload complete by printing
+	 *   the sentinel, `false` when draining ended at EOF instead.  Only the sentinel proves
+	 *   completeness for a child that may be unable to exit; EOF without one means the child is
+	 *   ending, and its exit code decides between [Pkcs11SubprocessResult.Success] and
+	 *   [Pkcs11SubprocessResult.Crashed].
+	 */
+	private data class DrainedStdout(val text: String, val sentinelSeen: Boolean)
 
 	private companion object {
 		val logger = KotlinLogging.logger {}

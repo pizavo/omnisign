@@ -13,10 +13,16 @@ package cz.pizavo.omnisign.data.service
 sealed interface Pkcs11SubprocessResult {
 
 	/**
-	 * Subprocess exited with code 0 — the library loaded and probed successfully.
+	 * The subprocess delivered a complete output payload — the library loaded and probed
+	 * successfully.
+	 *
+	 * Either it printed [Pkcs11Prober.OUTPUT_TERMINATOR], after which [Pkcs11SubprocessProber]
+	 * kills it without waiting for an exit that middleware deadlocked at native exit may never
+	 * reach, or it reached EOF and exited with code 0.
 	 *
 	 * @property pid PID of the child process.
-	 * @property stdout Full standard output captured from the subprocess.
+	 * @property stdout Full standard output captured from the subprocess, excluding the
+	 *   terminator line.
 	 * @property stderr Standard error captured from the subprocess, truncated by
 	 *   [Pkcs11SubprocessProber] to keep log output bounded.  A worker that exits cleanly may
 	 *   still report a non-fatal diagnostic here (e.g. `Pkcs11ModuleDiscoveryWorker` noting

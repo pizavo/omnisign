@@ -79,5 +79,23 @@ interface Pkcs11Prober {
 		 * safety net for middleware that hangs (crashed probes exit immediately).
 		 */
 		const val DEFAULT_PROBE_TIMEOUT_SECONDS = 30L
+
+		/**
+		 * Sentinel line every worker prints, and flushes, after its last output line.
+		 *
+		 * It makes output completeness observable **without** waiting for the child to exit,
+		 * which some middleware makes impossible: a PKCS#11 library that has talked to a live
+		 * card can deadlock the process inside the C runtime's `DLL_PROCESS_DETACH` handling
+		 * (the Czech eObčanka libraries do exactly this), a state no `System.exit` or
+		 * `Runtime.halt` in the child can escape, and one that never closes the child's stdout
+		 * so the parent never sees EOF either.  Seeing this line lets
+		 * [Pkcs11SubprocessProber] accept a complete payload and kill the wedged child, while
+		 * output truncated by a native crash — which cannot have printed the sentinel — is
+		 * still correctly classified as a crash.
+		 *
+		 * Deliberately tab-free so it can never be mistaken for a `label\tserialNumber\tslotId`
+		 * identity row, and prefixed so it cannot collide with a module path.
+		 */
+		const val OUTPUT_TERMINATOR = "__OMNISIGN_WORKER_DONE__"
 	}
 }
