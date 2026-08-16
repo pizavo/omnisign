@@ -1,0 +1,32 @@
+---
+title: Nasazení serveru a webu
+config:
+  flowchart:
+    nodeSpacing: 18
+    rankSpacing: 26
+---
+flowchart TB
+  subgraph B["b) Oddělené nasazení (CORS)"]
+    direction TB
+    BRB["Prohlížeč"]
+    WEBB["Web<br/>(statické soubory)"]
+    SRVB["OmniSign Server<br/>(kontejner)<br/>ukončení TLS"]
+    BRB -->|HTTPS| WEBB
+    BRB -->|HTTPS + CORS| SRVB
+  end
+
+  subgraph A["a) Sdílená reverzní proxy (stejný původ)"]
+    direction TB
+    BRA["Prohlížeč"]
+    RPA["Reverzní proxy<br/>ukončení TLS"]
+    WEBA["Statické<br/>soubory webu"]
+    SRVA["OmniSign Server<br/>(kontejner)"]
+    BRA -->|HTTPS| RPA
+    RPA --> WEBA
+    RPA -->|/api/v1| SRVA
+  end
+
+  classDef dev fill:#1168bd,stroke:#0b4884,color:#ffffff
+  classDef store fill:#3b6fb5,stroke:#0b4884,color:#ffffff
+  class BRA,RPA,SRVA,BRB,SRVB dev
+  class WEBA,WEBB store

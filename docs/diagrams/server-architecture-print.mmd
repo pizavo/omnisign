@@ -1,0 +1,29 @@
+---
+title: Zpracování požadavku serverem
+config:
+  flowchart:
+    nodeSpacing: 22
+    rankSpacing: 30
+    wrappingWidth: 460
+---
+flowchart TB
+  CL["Klient — webová aplikace, skript, instituce"]
+  EDGE["TLS a pipeline Ktor — CORS, omezení četnosti, záznam"]
+  AUTH["Ověření totožnosti — token JWT, přihlášení OIDC"]
+  GATE["Brána operací — výchozí jen ověření platnosti,<br/>podpis a razítko volitelně"]
+  ROUTES["Koncové body /api/v1 — podpis, ověření, razítko,<br/>certifikáty, konfigurace"]
+  UC["Sdílené jádro — případy užití nad realizací DSS"]
+  EXT["EU LOTL, TSA, OCSP / CRL"]
+
+  CL --> EDGE --> AUTH --> GATE --> ROUTES --> UC --> EXT
+
+  classDef infra fill:#6e7781,stroke:#2b3138,color:#ffffff
+  classDef sec fill:#8250df,stroke:#3e1f7a,color:#ffffff
+  classDef route fill:#bc4c00,stroke:#7a3100,color:#ffffff
+  classDef core fill:#1a7f37,stroke:#0d4f22,color:#ffffff
+  classDef ext fill:#424a53,stroke:#21262d,color:#ffffff
+  class CL,EDGE infra
+  class AUTH,GATE sec
+  class ROUTES route
+  class UC core
+  class EXT ext

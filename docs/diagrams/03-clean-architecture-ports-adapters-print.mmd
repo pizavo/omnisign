@@ -1,0 +1,41 @@
+---
+title: Doménové jádro, porty a jejich realizace
+config:
+  flowchart:
+    nodeSpacing: 18
+    rankSpacing: 34
+---
+flowchart TB
+  subgraph UI["Nadstavby (uživatelská rozhraní)"]
+    direction LR
+    CLI["cli"]
+    CA["composeApp"]
+    SRV["server"]
+  end
+
+  subgraph IMPL["Realizace portů"]
+    direction LR
+    JVMR["jvmMain<br/>nad knihovnou DSS"]
+    WASMR["wasmJsMain<br/>přes HTTP na server"]
+  end
+
+  subgraph CORE["Doménové jádro – commonMain"]
+    direction TB
+    UC["Případy užití"]
+    PORTS["Porty<br/>SigningRepository,<br/>ValidationRepository,<br/>ConfigRepository, TrustStore"]
+    DOMAIN["Doménový model<br/>parametry, výsledky,<br/>OperationError"]
+    UC --> PORTS
+    UC --> DOMAIN
+  end
+
+  CLI --> UC
+  CA --> UC
+  SRV --> UC
+
+  JVMR -.->|"realizuje"| PORTS
+  WASMR -.->|"realizuje"| PORTS
+
+  classDef jadro fill:#1168bd,stroke:#0b4884,color:#ffffff
+  classDef nadstavba fill:#3b6fb5,stroke:#0b4884,color:#ffffff
+  class UC,PORTS,DOMAIN jadro
+  class CLI,CA,SRV,JVMR,WASMR nadstavba

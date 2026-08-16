@@ -19,7 +19,7 @@ flowchart TB
     direction TB
     JADAPT["UI adapters (actual)<br/>PDFBox renderer, AWT file export,<br/>JBR custom title bar"]
     JPWD["ComposePasswordCallback (actual)<br/>+ PasswordDialogController (dialog)"]
-    JPREF["Preferences (actual)<br/>preferences/ui.json + format.json,<br/>WindowStateStore"]
+    JPREF["Preferences (actual)<br/>preferences/ui.json, WindowStateStore<br/>(preferences/format.json is owned by shared/jvmMain)"]
     JBOOT["Desktop entry point (main.kt)"]
   end
 

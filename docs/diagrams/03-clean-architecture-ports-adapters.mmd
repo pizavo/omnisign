@@ -1,5 +1,8 @@
 ---
 title: Clean Architecture / Ports and Adapters - OmniSign
+config:
+  flowchart:
+    wrappingWidth: 640
 ---
 flowchart TB
   subgraph PRIMARY["DRIVING / PRIMARY ADAPTERS (delivery modules)"]
@@ -11,31 +14,33 @@ flowchart TB
 
   subgraph CORE["APPLICATION CORE - shared/commonMain (pure Kotlin: no DSS, no platform I/O)"]
     direction TB
-    UC["Use Cases (16)<br/>SignDocument, ValidateDocument, ExtendDocument,<br/>ListCertificates, ManageTrustedLists, ..."]
-    PORTS["PORTS (interfaces)<br/>SigningRepository, ValidationRepository, ArchivingRepository,<br/>ConfigRepository, TrustStore, CapabilitiesRepository, TokenService,<br/>CredentialStore, SchedulerPort, ConfigSerializer, PasswordCallback, ..."]
+    UC["Use Cases (16 in commonMain)<br/>SignDocument, ValidateDocument, ExtendDocument,<br/>ListCertificates, ManageTrustedLists, ..."]
+    PORTS["PORTS (interfaces)<br/>SigningRepository, ValidationRepository, ArchivingRepository,<br/>ConfigRepository, TrustStore, CapabilitiesRepository, ServerCreditsRepository,<br/>TokenService, CredentialStore, SchedulerPort, ConfigSerializer,<br/>ConfigArchivePort, PasswordCallback, ..."]
     DOMAIN["Domain model / Entities<br/>config, parameters, results, validation, signature,<br/>trust, sealed OperationError, Sensitive credential wrapper"]
     UC -->|owns and depends on| PORTS
     UC -->|operates on| DOMAIN
   end
 
-  subgraph SECONDARY["DRIVEN / SECONDARY ADAPTERS - shared/jvmMain (DSS) and shared/wasmJsMain (HTTP)"]
+  JVMUC["JVM-only use cases - shared/jvmMain<br/>ConfigArchiveUseCase, RenewBatchUseCase, MigrateTrustedCertificatesUseCase<br/>(need DSS or the filesystem directly; wired in jvmRepositoryModule, not appModule)"]
+
+  subgraph SECONDARY["DRIVEN / SECONDARY ADAPTERS - shared/jvmMain (DSS), shared/wasmJsMain (HTTP), and the per-module PasswordCallback"]
     direction LR
     DSSREPO["Dss*Repository<br/>Signing / Validation / Archiving"]
     FILECFG["FileConfigRepository"]
     FILETRUST["FileTrustStore"]
-    TOKENSVC["DssTokenService"]
+    TOKENSVC["DssTokenService<br/>PKCS#11 · PKCS#12 file<br/>OS-native stores"]
     CRED["KeyringCredentialStore"]
     SCHED["OS schedulers<br/>Windows / launchd / systemd"]
     SER["Jackson serializers"]
-    PWCB["PasswordCallback adapters<br/>Cli / Compose / Server"]
-    REMOTE["Remote* adapters (wasmJsMain)<br/>Signing / Validation / Archiving / Config / TrustStore /<br/>Capabilities / ConfigArchive - over Ktor HTTP"]
+    PWCB["PasswordCallback adapters<br/>CliPasswordCallback (cli) · ComposePasswordCallback (composeApp)<br/>ServerPasswordCallback (server) - each delivery module brings its own"]
+    REMOTE["Remote* adapters (wasmJsMain)<br/>Signing / Validation / Archiving / Config / TrustStore / Capabilities /<br/>ServerCredits / ConfigArchive - over Ktor HTTP"]
   end
 
   subgraph FW["FRAMEWORKS and EXTERNAL SYSTEMS"]
     direction LR
     DSS["EU DSS 6.3"]
     FS["Filesystem"]
-    PKCS["PKCS#11 token / HSM"]
+    PKCS["Signing key stores<br/>PKCS#11 token / HSM<br/>Windows certificate store<br/>macOS Keychain"]
     KEYRING["OS keyring"]
     OSSVC["OS scheduler service"]
     API["OmniSign HTTP Server<br/>REST /api/v1"]
@@ -44,6 +49,10 @@ flowchart TB
   CLI --> UC
   VM --> UC
   ROUTES --> UC
+
+  CLI --> JVMUC
+  VM --> JVMUC
+  JVMUC -->|"depends on"| PORTS
 
   DSSREPO -.-> PORTS
   FILECFG -.-> PORTS
@@ -75,4 +84,5 @@ flowchart TB
   classDef ext fill:#8a8a8a,stroke:#5f5f5f,color:#ffffff
   class UC,PORTS,DOMAIN core
   class CLI,VM,ROUTES,DSSREPO,FILECFG,FILETRUST,TOKENSVC,CRED,SCHED,SER,PWCB,REMOTE adapter
+  class JVMUC core
   class DSS,FS,PKCS,KEYRING,OSSVC,API ext

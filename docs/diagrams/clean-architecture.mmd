@@ -1,9 +1,11 @@
 ---
 title: Clean Architecture (Concentric Layers) - OmniSign
+config:
+  layout: elk
 ---
 graph TB
     subgraph L4["④ Frameworks &amp; Drivers   —   outermost (mostly external)"]
-        FW["EU DSS 6.3 · Ktor/Netty · Clikt · Compose MP<br/>PDFBox · Koin · Jackson · Auth0 JWT"]
+        FW["EU DSS 6.3 · Ktor/Netty · Clikt · Compose MP<br/>PDFBox · Koin · Jackson · Auth0 JWT · Exposed + SQLite"]
         DRV["OS (schedulers · keystores · PKCS#11)<br/>TSA · OCSP/CRL · EU LOTL · OIDC IdPs"]
 
         subgraph L3["③ Interface Adapters   —   jvmMain (DSS) · wasmJsMain (HTTP) · client glue"]

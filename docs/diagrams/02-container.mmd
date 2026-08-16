@@ -30,7 +30,7 @@ flowchart TB
   desktop -->|reads / writes| cfg
   cli --> trust
   desktop --> trust
-  server -->|reads| trust
+  server -->|"reconciles from signing.yml at startup; API exposes it read-only"| trust
 
   cli --> pki
   desktop --> pki
