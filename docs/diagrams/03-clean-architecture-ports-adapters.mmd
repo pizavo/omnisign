@@ -28,7 +28,7 @@ flowchart TB
     DSSREPO["Dss*Repository<br/>Signing / Validation / Archiving"]
     FILECFG["FileConfigRepository"]
     FILETRUST["FileTrustStore"]
-    TOKENSVC["DssTokenService"]
+    TOKENSVC["DssTokenService<br/>PKCS#11 · PKCS#12 file<br/>OS-native stores"]
     CRED["KeyringCredentialStore"]
     SCHED["OS schedulers<br/>Windows / launchd / systemd"]
     SER["Jackson serializers"]
@@ -40,7 +40,7 @@ flowchart TB
     direction LR
     DSS["EU DSS 6.3"]
     FS["Filesystem"]
-    PKCS["PKCS#11 token / HSM"]
+    PKCS["Signing key stores<br/>PKCS#11 token / HSM<br/>Windows certificate store<br/>macOS Keychain"]
     KEYRING["OS keyring"]
     OSSVC["OS scheduler service"]
     API["OmniSign HTTP Server<br/>REST /api/v1"]

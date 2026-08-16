@@ -1,0 +1,42 @@
+---
+title: Web Deployment Modes - OmniSign (same-origin and split-origin)
+config:
+  flowchart:
+    nodeSpacing: 30
+    rankSpacing: 45
+    wrappingWidth: 460
+---
+flowchart TB
+  subgraph A["a) Shared reverse proxy - the web app and the API share one origin"]
+    direction TB
+    BRA["Browser"]
+    RPA["Reverse proxy<br/>TLS termination"]
+    WEBA["Web bundle (static files)<br/>Wasm + JS + web-config.json"]
+    SRVA["OmniSign Server<br/>Ktor / Netty"]
+    BRA -->|"HTTPS"| RPA
+    RPA -->|"everything else (static)"| WEBA
+    RPA -->|"/api/v1"| SRVA
+  end
+
+  subgraph B["b) Separate origins - the browser talks to two hosts, so CORS applies"]
+    direction TB
+    BRB["Browser"]
+    WEBB["Web bundle (static files)<br/>on its own origin"]
+    SRVB["OmniSign Server<br/>own TLS or its own proxy,<br/>a second host or a second port"]
+    BRB -->|"HTTPS"| WEBB
+    BRB -->|"HTTPS + CORS preflight"| SRVB
+  end
+
+  NOTEA["web-config.json absent, or its url empty, means same origin.<br/>The refresh cookie is then first-party, so allowCredentials can stay false."]
+  NOTEB["web-config.json supplies url (and the optional organizationName branding),<br/>which retargets a pre-built bundle without recompiling it.<br/>cors.allowedOrigins must list the web origin, and allowCredentials: true is what<br/>lets /auth/refresh receive the cookie - without it login still works, but every<br/>page load falls back to a full round trip through the identity provider."]
+  GUARD["Both modes must configure cors.allowedOrigins deliberately:<br/>a missing cors: block and an empty list are each rejected at startup,<br/>and allowCredentials: true combined with the * wildcard is refused,<br/>because Ktor reflects the caller's Origin instead of emitting a literal *"]
+
+  SRVA -.-> NOTEA
+  SRVB -.-> NOTEB
+
+  classDef dev fill:#1168bd,stroke:#0b4884,color:#ffffff
+  classDef store fill:#3b6fb5,stroke:#0b4884,color:#ffffff
+  classDef note fill:#fff8c5,stroke:#9a6700,color:#24292f
+  class BRA,RPA,SRVA,BRB,SRVB dev
+  class WEBA,WEBB store
+  class NOTEA,NOTEB,GUARD note

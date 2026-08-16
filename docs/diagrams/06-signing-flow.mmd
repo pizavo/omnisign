@@ -10,6 +10,7 @@ sequenceDiagram
   participant Pwd as PasswordCallback
   participant Tok as PKCS11 token
   participant KS as PKCS12 keystore file
+  participant OS as Windows store / macOS Keychain
   participant DSS as DSS PAdESService
   participant TSA as Timestamp Authority
   participant Trust as Trusted Lists + OCSP/CRL
@@ -18,12 +19,13 @@ sequenceDiagram
   App->>UC: invoke(SigningParameters)
   UC->>Repo: signDocument(params)
   Repo->>Repo: resolve config (global, profile, operation)
-  Repo->>Repo: check signing algorithm not expired
+  Repo->>Repo: check the hash algorithm against algorithmConstraints
+  Note over Repo: EXPIRED_FAIL rejects the request, EXPIRED_WARN records a warning and continues - the severity is configurable
   opt signature level above B
     Repo->>Repo: require timestamp server configured
   end
 
-  Note over Repo,KS: resolve the signing identity (silent pass, then interactive)
+  Note over Repo,OS: resolve the signing identity (silent pass, then interactive)
   alt keystoreFile supplied (PKCS12)
     Repo->>KS: open keystore
     opt password not supplied non-interactively
@@ -43,6 +45,14 @@ sequenceDiagram
     end
     Repo->>Tok: PKCS11 login + load signing key
     Tok-->>Repo: private key entry
+  else OS-native store (WINDOWS_MY / MACOS_KEYCHAIN)
+    Note over Repo,OS: added to discovery automatically on Windows and macOS, with requiresPin = false - OmniSign never prompts, the OS shows its own consent dialog
+    Repo->>OS: open MSCAPISignatureToken / AppleSignatureToken
+    OS-->>Repo: private key entry
+  end
+
+  opt Windows certificate store
+    Repo->>Repo: reject a hash Windows CNG cannot sign with (SHA-256 / 384 / 512 only)
   end
 
   Repo->>Trust: build certificate verifier (load EU LOTL + trusted lists)
@@ -58,6 +68,9 @@ sequenceDiagram
   else PKCS12 keystore file
     Repo->>KS: sign(dataToSign) with the loaded key
     KS-->>Repo: signature value
+  else OS-native store
+    Repo->>OS: sign(dataToSign) through the OS provider
+    OS-->>Repo: signature value
   end
   Repo->>DSS: signDocument(document, params, signatureValue)
   opt level B-T / B-LT / B-LTA

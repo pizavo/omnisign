@@ -1,11 +1,14 @@
 ---
 title: Configuration Resolution - OmniSign (three-layer merge)
+config:
+  flowchart:
+    wrappingWidth: 700
 ---
 flowchart TB
   O["OperationConfig<br/>per-call overrides (CLI flags / request)<br/>HIGHEST priority"]
   P["ProfileConfig<br/>per-profile overrides (e.g. qualified-cz)"]
   G["GlobalConfig<br/>defaults: hash, encryption, signature level,<br/>timestamp server, OCSP / CRL, disabled algorithms<br/>LOWEST priority"]
-  RESOLVE["ResolvedConfig.resolve()<br/>scalar fields: operation ?? profile ?? global (first non-null wins)<br/>disabled-algorithm sets: UNION of all three layers<br/>rejects a resolved algorithm that is in the disabled set"]
+  RESOLVE["ResolvedConfig.resolve()<br/>scalar fields: operation ?? profile ?? global (first non-null wins)<br/>disabled-algorithm sets: UNION of all three layers, so no layer can re-enable what a higher one disabled<br/>customTrustedLists: UNION keyed by name - the higher layer wins a name collision<br/>(excludeGlobalTls omits the global layer, leaving profile and operation TLs only)<br/>expirationDateOverrides: merged additively - all three layers contribute, higher layer wins a key collision<br/>rejects a resolved algorithm that lands in the disabled set"]
   R["ResolvedConfig<br/>effective signing parameters<br/>(hash, encryption, level, TSA, OCSP / CRL, trust)"]
 
   O --> RESOLVE
