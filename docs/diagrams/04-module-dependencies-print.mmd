@@ -1,0 +1,27 @@
+---
+title: Závislosti mezi moduly řešení
+config:
+  flowchart:
+    nodeSpacing: 25
+    rankSpacing: 40
+---
+flowchart TB
+  CLI["cli"]
+  CA["composeApp"]
+  SRV["server"]
+
+  subgraph SHARED["shared"]
+    direction TB
+    JVM["jvmMain<br/>realizace nad DSS"]
+    WASM["wasmJsMain<br/>realizace přes HTTP"]
+    COMMON["commonMain<br/>doména, případy užití, porty"]
+    JVM --> COMMON
+    WASM --> COMMON
+  end
+
+  CLI --> SHARED
+  CA --> SHARED
+  SRV --> SHARED
+
+  classDef mod fill:#1168bd,stroke:#0b4884,color:#ffffff
+  class CLI,CA,SRV,JVM,WASM,COMMON mod

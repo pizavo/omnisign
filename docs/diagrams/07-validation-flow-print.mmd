@@ -1,0 +1,29 @@
+---
+title: Průběh ověření podpisu
+config:
+  sequence:
+    actorMargin: 20
+    width: 115
+    boxMargin: 6
+    wrap: true
+---
+sequenceDiagram
+  autonumber
+  participant App as Aplikace
+  participant Repo as Repozitář<br/>ověření
+  participant DSS as Validátor<br/>DSS
+  participant TL as Důvěryhodné<br/>seznamy
+  participant Rev as OCSP<br/>/ CRL
+
+  App->>Repo: ověř<br/>dokument
+  Repo->>TL: sestavení<br/>kotev důvěry
+  TL-->>Repo: ověřovatel<br/>certifikátů
+  Repo->>DSS: validace<br/>dokumentu
+  opt kontrola zneplatnění
+    DSS->>Rev: stav<br/>certifikátu
+    Rev-->>DSS: odpověď<br/>o zneplatnění
+  end
+  DSS->>DSS: ověření razítek,<br/>kvalifikace dle eIDAS
+  DSS-->>Repo: zprávy<br/>o validaci
+  Repo->>Repo: převod na<br/>ValidationReport
+  Repo-->>App: indikace<br/>a podrobnosti

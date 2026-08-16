@@ -1,0 +1,33 @@
+---
+title: Průběh vytvoření podpisu PAdES
+config:
+  sequence:
+    actorMargin: 20
+    width: 115
+    boxMargin: 6
+    messageFontSize: 20
+    actorFontSize: 20
+    noteFontSize: 19
+    wrap: true
+---
+sequenceDiagram
+  autonumber
+  participant App as Aplikace
+  participant Repo as Repozitář<br/>podpisu
+  participant DSS as Služba<br/>PAdES
+  participant Tok as Token
+  participant TSA as TSA
+
+  App->>Repo: podepiš<br/>dokument
+  Repo->>DSS: data k podpisu<br/>(getDataToSign)
+  DSS-->>Repo: otisk<br/>k podpisu
+  Repo->>Tok: podpisová hodnota<br/>(sign)
+  Note over Tok: klíč neopouští<br/>úložiště
+  Tok-->>Repo: podpisová<br/>hodnota
+  Repo->>DSS: vložení podpisu<br/>(signDocument)
+  opt B-T a vyšší
+    DSS->>TSA: časové razítko<br/>(RFC 3161)
+    TSA-->>DSS: token<br/>razítka
+  end
+  DSS-->>Repo: podepsaný<br/>dokument
+  Repo-->>App: výsledek<br/>a varování

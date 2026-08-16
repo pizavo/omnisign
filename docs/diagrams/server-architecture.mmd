@@ -14,7 +14,7 @@ graph TB
 
     subgraph pipeline["Ktor plugin pipeline (install order)"]
         EDGE["DefaultHeaders (+ HSTS header) · ForwardedHeaders<br/>HttpsRedirect · CORS"]
-        RL["RateLimit — two token-bucket zones<br/>auth: 20 / 60s · api: 200 / 60s (per client IP)"]
+        RL["RateLimit [optional] — two token-bucket zones<br/>auth: 20 / 60s · api: 200 / 60s (per client IP)<br/>installed only when rateLimiting: is present"]
         OBS["CallId · CallLogging · StatusPages<br/>Serialization · AutoHeadResponse"]
     end
 
@@ -24,7 +24,7 @@ graph TB
     end
 
     subgraph routing["Routing — /api/v1 (configureRouting)"]
-        PUBLIC["`**Public** — always open<br/>/auth/** · SystemRoutes (health)`"]
+        PUBLIC["`**Public** — always open<br/>/auth/** · SystemRoutes (health · info · capabilities · credits)`"]
         GUARDED["`**Guarded** — authenticate(jwt-api)<br/>when auth.enabled = true`"]
         GATE["`**AllowedOperation gate** (per request)<br/>VALIDATE = default · SIGN and TIMESTAMP = opt-in`"]
         subgraph routes["Operational route groups"]
@@ -37,7 +37,7 @@ graph TB
     end
 
     subgraph authsvc["Auth services (di/ServerModule)"]
-        JWTSVC["JwtSessionService<br/>Auth0 java-jwt · HS / RS / ES 256 · 384 · 512<br/>secret: OMNISIGN_JWT_SECRET (env, required)"]
+        JWTSVC["JwtSessionService<br/>Auth0 java-jwt · HS256 / HS384 / HS512 (HS512 default)<br/>RS* and ES* are stubbed, not yet implemented<br/>secret: OMNISIGN_JWT_SECRET (env, required, ≥ 64 bytes)"]
         DISC["OidcDiscoveryService"]
         UINFO["OidcUserInfoService → AuthenticatedPrincipal"]
         IDTOK["IdTokenVerifier<br/>validates the IdP id_token"]
@@ -45,6 +45,7 @@ graph TB
         RT["RefreshTokenStore<br/>rotating refresh tokens (SHA-256 at rest)"]
         HANDOFF["`HandoffCodeStore · LoginRequestStore<br/>*single-use hand-off code, PKCE-bound*`"]
         FILTERS["`EmailDomainFilter · OidcClaimsFilter<br/>*post-login, before JWT issued*`"]
+        REDIR["`RedirectUriFilter<br/>*allow-lists the post-login return target*`"]
     end
 
     subgraph persist["Session persistence"]
@@ -55,6 +56,12 @@ graph TB
         UC["Use Cases (Sign · Validate · Timestamp …)"]
         DSSREPO["Dss*Repository → DssServiceFactory"]
         PWCB["`ServerPasswordCallback<br/>*always returns null (no interactive prompt)*`"]
+        CREDITS["`ThirdPartyCreditsReader<br/>*generated notices behind GET /api/v1/credits*`"]
+        TRUSTREC["`TrustReconciler<br/>*materialises signing.yml trustedCertificates into the store*`"]
+    end
+
+    subgraph trust["Trust store — writable, on the server host"]
+        TRUSTDIR[("trusted-certs/<br/>[content-addressed DER + CBOR scope index]")]
     end
 
     subgraph config["Config bootstrap"]
@@ -92,6 +99,9 @@ graph TB
     routes --> UC
     UC --> DSSREPO --> DSSLIB --> TRUST
     DSSREPO --- PWCB
+    PUBLIC -. "GET /api/v1/credits" .-> CREDITS
+    CERTR -. "reads" .-> TRUSTDIR
+    DSSREPO -. "trust anchors" .-> TRUSTDIR
 
     %% OIDC / SSO login flow
     PUBLIC -. "GET /redirect/(name)" .-> OIDCPROV
@@ -116,7 +126,9 @@ graph TB
     YML --> LOADER --> EXTURL
     YML -. "signingConfigFile" .-> SIGNYML
     SIGNYML --> SLOADER
-    SLOADER -. "global + profiles, trusted certs" .-> UC
+    SLOADER -. "global + profiles" .-> UC
+    SLOADER -. "trustedCertificates refs" .-> TRUSTREC
+    TRUSTREC -->|"add · reference · remove · clearProfileScope (at startup)"| TRUSTDIR
     LOADER -. "configures" .-> authn
     LOADER -. "configures" .-> RL
 
@@ -130,9 +142,9 @@ graph TB
 
     class BROWSER,CI,INST client;
     class TLS,EDGE,RL,OBS infra;
-    class JWTGUARD,OIDCPROV,JWTSVC,DISC,UINFO,IDTOK,PKCE,RT,HANDOFF,FILTERS sec;
+    class JWTGUARD,OIDCPROV,JWTSVC,DISC,UINFO,IDTOK,PKCE,RT,HANDOFF,FILTERS,REDIR sec;
     class PUBLIC,GUARDED,GATE,SIGNR,VALR,TSR,CERTR,CFGR route;
-    class UC,DSSREPO,PWCB core;
+    class UC,DSSREPO,PWCB,CREDITS,TRUSTREC core;
     class YML,LOADER,EXTURL,SIGNYML,SLOADER infra;
-    class DB store;
+    class DB,TRUSTDIR store;
     class IDP,DSSLIB,TRUST external;

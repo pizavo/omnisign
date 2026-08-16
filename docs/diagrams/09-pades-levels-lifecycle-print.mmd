@@ -1,0 +1,26 @@
+---
+title: Úrovně PAdES a udržení dlouhodobé platnosti
+config:
+  flowchart:
+    nodeSpacing: 20
+    rankSpacing: 30
+---
+flowchart LR
+  B["B<br/>podpis"]
+  BT["B-T<br/>+ razítko"]
+  BLT["B-LT<br/>+ zneplatnění"]
+  BLTA["B-LTA<br/>+ archivní<br/>razítko"]
+  CHECK{"pravidelná<br/>kontrola"}
+
+  B --> BT --> BLT --> BLTA
+
+  B -.-> CHECK
+  BT -.-> CHECK
+  BLT -.-> CHECK
+  BLTA -.-> CHECK
+  CHECK -.->|"doplnění<br/>či obnova"| BLTA
+
+  classDef level fill:#1168bd,stroke:#0b4884,color:#ffffff
+  classDef decision fill:#fff8c5,stroke:#9a6700,color:#24292f
+  class B,BT,BLT,BLTA level
+  class CHECK decision

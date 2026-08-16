@@ -1,0 +1,52 @@
+---
+title: Execution Paths - the same ports, bound in-process or over HTTP
+config:
+  layout: elk
+  flowchart:
+    wrappingWidth: 420
+---
+flowchart LR
+  subgraph BROWSER["In the browser - composeApp web target (Kotlin/Wasm). The bundle contains no DSS."]
+    WEB["Compose UI + ViewModels<br/>commonMain, compiled to Wasm"]
+    UCW["shared use cases<br/>appModule"]
+    PORTSW["domain ports<br/>SigningRepository, ValidationRepository,<br/>ConfigRepository, TrustStore, ..."]
+    REM["webDataModule binds<br/>Remote*Repository<br/>shared/wasmJsMain, Ktor HTTP client<br/>satisfies the same contracts; returns Left for what a<br/>browser cannot do (local-keystore signing, PKCS#11, config writes)"]
+    WEB --> UCW --> PORTSW --> REM
+  end
+
+  HOP{{"HTTPS<br/>REST /api/v1 (JSON)"}}
+  REM --> HOP
+
+  subgraph JVM["In-process on the JVM - cli, composeApp desktop and server each run this whole stack themselves"]
+    CLI["cli<br/>Clikt commands"]
+    DESK["composeApp desktop<br/>Compose UI + ViewModels"]
+    SRV["server<br/>Ktor routes /api/v1"]
+    UCJ["shared use cases<br/>appModule<br/>the same commonMain code, on the JVM"]
+    PORTSJ["domain ports<br/>the same interfaces"]
+    DSSREPO["jvmRepositoryModule binds<br/>Dss*Repository"]
+    DSS["EU DSS 6.3"]
+    CLI --> UCJ
+    DESK --> UCJ
+    SRV --> UCJ
+    UCJ --> PORTSJ --> DSSREPO --> DSS
+  end
+
+  HOP --> SRV
+
+  EXT["PKCS#11 token / HSM<br/>TSA (RFC 3161) · OCSP / CRL · EU LOTL"]
+  DSS --> EXT
+
+  NOTE["appModule is loaded by every entry point, so the use cases and the ports are the same code;<br/>only the module that binds them differs. This is why the web path appears to leave and come back:<br/>the server is not a layer beneath the browser, it is a second host of the very same stack,<br/>entered through its Ktor routes."]
+
+  classDef entry fill:#1168bd,stroke:#0b4884,color:#ffffff
+  classDef shared fill:#2da44e,stroke:#0d4f22,color:#ffffff
+  classDef binding fill:#8250df,stroke:#3e1f7a,color:#ffffff
+  classDef hop fill:#bc4c00,stroke:#7a3100,color:#ffffff
+  classDef ext fill:#8a8a8a,stroke:#5f5f5f,color:#ffffff
+  classDef note fill:#fff8c5,stroke:#9a6700,color:#24292f
+  class WEB,CLI,DESK,SRV entry
+  class UCW,PORTSW,UCJ,PORTSJ shared
+  class REM,DSSREPO binding
+  class HOP hop
+  class DSS,EXT ext
+  class NOTE note

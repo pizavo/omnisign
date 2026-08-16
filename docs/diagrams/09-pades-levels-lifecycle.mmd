@@ -1,20 +1,49 @@
 ---
-title: PAdES Baseline Levels and Archival Renewal Lifecycle - OmniSign
+title: PAdES Baseline Levels and Preservation Lifecycle - OmniSign
+config:
+  flowchart:
+    nodeSpacing: 30
+    rankSpacing: 55
+    wrappingWidth: 380
 ---
-flowchart LR
-  B["PAdES-B (BASELINE_B)<br/>basic signature + certificate chain"]
-  BT["PAdES-B-T (BASELINE_T)<br/>+ RFC 3161 trusted timestamp"]
-  BLT["PAdES-B-LT (BASELINE_LT)<br/>+ revocation data (OCSP / CRL) + trust"]
-  BLTA["PAdES-B-LTA (BASELINE_LTA)<br/>+ archive timestamp (long-term archival)"]
-  CHECK{"renewal needed?<br/>uncovered archive timestamp:<br/>TSA cert expiring or algorithms aging out"}
+flowchart TB
+  subgraph LADDER["Level progression - ExtendDocumentUseCase"]
+    B["PAdES-B (BASELINE_B)<br/>basic signature<br/>+ certificate chain"]
+    BT["PAdES-B-T (BASELINE_T)<br/>+ RFC 3161<br/>trusted timestamp"]
+    BLT["PAdES-B-LT (BASELINE_LT)<br/>+ revocation data<br/>(OCSP / CRL) + trust"]
+    BLTA["PAdES-B-LTA (BASELINE_LTA)<br/>+ archive timestamp<br/>(long-term archival)"]
+    B -->|"add timestamp"| BT
+    BT -->|"embed revocation data"| BLT
+    BLT -->|"add archive timestamp"| BLTA
+  end
 
-  B -->|"ExtendDocumentUseCase: add timestamp"| BT
-  BT -->|"embed revocation data"| BLT
-  BLT -->|"add archive timestamp"| BLTA
-  BLTA -.->|"CheckArchivalRenewalUseCase (periodic)"| CHECK
-  CHECK -.->|"yes: RenewBatchUseCase re-applies B-LTA (fresh archive timestamp)"| BLTA
+  subgraph ASSESS["CheckArchivalRenewalUseCase (periodic) - the verdict follows the level the document is at, because each level lacks something different and each gap has its own deadline"]
+    direction LR
+    A1["document is below B-LT<br/>reason: BELOW_LT<br/>no usable revocation data;<br/>deadline is the expiry of the<br/>signing certificate"]
+    A2["document is at B-LT<br/>reason: LT_NOT_SEALED / LT_REFRESH_NEEDED<br/>revocation data is present, but nothing<br/>proves when it existed; deadline is the<br/>earlier of its nextUpdate and its issuer's expiry"]
+    A3["document is at B-LTA<br/>reason: TIMESTAMP_EXPIRING / ALGORITHM_WEAKENING<br/>complete, and merely ages. Coverage-aware: a<br/>timestamp already sealed by a current document<br/>timestamp is ignored. renewalBufferDays<br/>(default 90) applies here only"]
+  end
+
+  OUT["RenewBatchUseCase<br/>applies the target level for the reason:<br/>B-LT for LT_REFRESH_NEEDED, B-LTA otherwise<br/>(BELOW_LT only when the job sets promoteBelowLt)"]
+  DEAD["RenewalNeed.UNRECOVERABLE<br/>the deadline has already passed - no acceptable revocation<br/>data for the signature can be obtained ever again"]
+
+  B -.-> A1
+  BT -.-> A1
+  BLT -.-> A2
+  BLTA -.-> A3
+
+  A1 --> OUT
+  A2 --> OUT
+  A3 --> OUT
+  A1 -.->|"deadline already passed"| DEAD
+
+  OUT -.->|"re-signed document is back at a protected level"| BLTA
 
   classDef level fill:#1168bd,stroke:#0b4884,color:#ffffff
   classDef decision fill:#fff8c5,stroke:#9a6700,color:#24292f
+  classDef action fill:#2da44e,stroke:#0d4f22,color:#ffffff
+  classDef dead fill:#8a8a8a,stroke:#5f5f5f,color:#ffffff
   class B,BT,BLT,BLTA level
-  class CHECK decision
+  class A1,A2,A3 decision
+  class OUT action
+  class DEAD dead

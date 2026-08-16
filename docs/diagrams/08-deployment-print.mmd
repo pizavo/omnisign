@@ -1,0 +1,39 @@
+---
+title: Nasazení OmniSign
+config:
+  flowchart:
+    nodeSpacing: 18
+    rankSpacing: 28
+---
+flowchart TB
+  subgraph WS["Pracovní stanice"]
+    direction TB
+    DESK["Desktop<br/>a konzole"]
+    TOK["Token<br/>PKCS#11"]
+    DESK --> TOK
+  end
+
+  BR["Prohlížeč<br/>(web)"]
+
+  subgraph SRVH["Server instituce"]
+    direction TB
+    RP["Reverzní proxy<br/>ukončení TLS"]
+    SRV["OmniSign<br/>Server"]
+    FSN["Konfigurace<br/>a certifikáty"]
+    RP --> SRV --> FSN
+  end
+
+  IDP["Poskytovatel<br/>OIDC"]
+  EXT["EU LOTL, TSA<br/>OCSP / CRL"]
+
+  BR -->|HTTPS| RP
+  DESK --> EXT
+  SRV --> EXT
+  SRV --> IDP
+
+  classDef dev fill:#1168bd,stroke:#0b4884,color:#ffffff
+  classDef store fill:#3b6fb5,stroke:#0b4884,color:#ffffff
+  classDef ext fill:#8a8a8a,stroke:#5f5f5f,color:#ffffff
+  class DESK,TOK,BR,RP,SRV dev
+  class FSN store
+  class IDP,EXT ext

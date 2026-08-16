@@ -1,0 +1,47 @@
+---
+title: Kde se operace skutečně provádí
+config:
+  layout: elk
+  flowchart:
+    nodeSpacing: 22
+    rankSpacing: 34
+    wrappingWidth: 300
+---
+flowchart LR
+  subgraph PROH["Prohlížeč – webová nadstavba (Wasm), bez knihovny DSS"]
+    W["Uživatelské<br/>rozhraní"]
+    UCW["Případy užití"]
+    PW["Porty"]
+    REM["Remote*Repository<br/>wasmJsMain"]
+    W --> UCW --> PW --> REM
+  end
+
+  HOP{{"HTTPS<br/>/api/v1"}}
+  REM --> HOP
+
+  subgraph JVM["Vlastní proces na JVM – konzole, desktop i server"]
+    CLI["cli"]
+    DESK["Desktop"]
+    SRV["Server<br/>koncové body Ktor"]
+    UCJ["Případy užití<br/>tentýž kód"]
+    PJ["Porty<br/>tatáž rozhraní"]
+    DR["Dss*Repository<br/>jvmMain"]
+    DSS["Knihovna DSS"]
+    CLI --> UCJ
+    DESK --> UCJ
+    SRV --> UCJ
+    UCJ --> PJ --> DR --> DSS
+  end
+
+  HOP --> SRV
+
+  classDef entry fill:#1168bd,stroke:#0b4884,color:#ffffff
+  classDef shared fill:#2da44e,stroke:#0d4f22,color:#ffffff
+  classDef binding fill:#8250df,stroke:#3e1f7a,color:#ffffff
+  classDef hop fill:#bc4c00,stroke:#7a3100,color:#ffffff
+  classDef ext fill:#8a8a8a,stroke:#5f5f5f,color:#ffffff
+  class W,CLI,DESK,SRV entry
+  class UCW,PW,UCJ,PJ shared
+  class REM,DR binding
+  class HOP hop
+  class DSS ext
