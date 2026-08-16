@@ -25,6 +25,11 @@ import kotlin.system.exitProcess
  * isolated in a `runCatching`, so it can never suppress or corrupt the identity output
  * that discovery depends on.
  *
+ * The final line is always [Pkcs11Prober.OUTPUT_TERMINATOR], flushed, marking the payload
+ * complete.  The parent accepts the output on that line alone, because a worker holding a
+ * library that deadlocks the process at native exit can neither exit nor reach EOF on its
+ * stdout; see the constant's documentation.
+ *
  * Exit codes:
  * - `0` — probing completed successfully (output may still be empty if no tokens are present).
  * - `1` — no library path argument was supplied.
@@ -56,6 +61,8 @@ object Pkcs11ProbeWorker {
                 }
             }
         }
+        println(Pkcs11Prober.OUTPUT_TERMINATOR)
+        System.out.flush()
     }
 }
 

@@ -6,10 +6,13 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.longs.shouldBeGreaterThan
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.spyk
 import io.mockk.unmockkAll
+import java.nio.file.Path
 
 /**
  * Verifies [Pkcs11SubprocessResult] sealed variants, [Pkcs11SubprocessProber] subprocess
@@ -22,6 +25,21 @@ import io.mockk.unmockkAll
 class Pkcs11SubprocessProberTest : FunSpec({
 
 	afterEach { unmockkAll() }
+
+	/**
+	 * Build the command line that runs [SubprocessProbeFixture] in [mode], reusing this test
+	 * JVM's own `java` binary and classpath so the fixture needs no packaging.
+	 */
+	fun fixtureCommand(mode: String): List<String> {
+		val javaBinaryName = if (System.getProperty("os.name").lowercase().contains("win")) "java.exe" else "java"
+		return listOf(
+			Path.of(System.getProperty("java.home"), "bin", javaBinaryName).toString(),
+			"-cp",
+			System.getProperty("java.class.path"),
+			SubprocessProbeFixture::class.java.name,
+			mode,
+		)
+	}
 
 	test("Success holds pid and stdout") {
 		val result = Pkcs11SubprocessResult.Success(pid = 42L, stdout = "label\tserial\n")
@@ -146,6 +164,82 @@ class Pkcs11SubprocessProberTest : FunSpec({
 				Pkcs11SubprocessResult.Success(pid = 104L, stdout = "")
 
 		prober.probeIdentities("/empty/lib.so").shouldBeEmpty()
+	}
+
+	test("runResolvedProbeSubprocess accepts complete output from a child that never exits") {
+		val result = Pkcs11SubprocessProber().runResolvedProbeSubprocess(
+			fixtureCommand("sentinel-then-hang"),
+			"sentinel-then-hang fixture",
+			10L,
+		)
+
+		val success = result.shouldBeInstanceOf<Pkcs11SubprocessResult.Success>()
+		success.stdout shouldContain "First Token\tSN-001\t0"
+		success.stdout shouldContain "Second Token\tSN-002\t1"
+		success.stdout shouldNotContain Pkcs11Prober.OUTPUT_TERMINATOR
+	}
+
+	test("identities parse from a never-exiting child's accepted output") {
+		val prober = Pkcs11SubprocessProber()
+		val result = prober.runResolvedProbeSubprocess(
+			fixtureCommand("sentinel-then-hang"),
+			"sentinel-then-hang fixture",
+			10L,
+		)
+
+		val identities = prober.parseIdentities(
+			result.shouldBeInstanceOf<Pkcs11SubprocessResult.Success>().stdout,
+			"/test/lib.so",
+		)
+
+		identities.shouldHaveSize(2)
+		identities[0].serialNumber shouldBe "SN-001"
+		identities[0].slotId shouldBe 0L
+		identities[1].serialNumber shouldBe "SN-002"
+		identities[1].slotId shouldBe 1L
+	}
+
+	test("runResolvedProbeSubprocess accepts output from a child that exits after the sentinel") {
+		val result = Pkcs11SubprocessProber().runResolvedProbeSubprocess(
+			fixtureCommand("sentinel-then-exit"),
+			"sentinel-then-exit fixture",
+			10L,
+		)
+
+		val success = result.shouldBeInstanceOf<Pkcs11SubprocessResult.Success>()
+		success.stdout shouldContain "Only Token\tSN-003\t0"
+		success.stdout shouldNotContain Pkcs11Prober.OUTPUT_TERMINATOR
+	}
+
+	test("runResolvedProbeSubprocess accepts output from a child that exits without a sentinel") {
+		val result = Pkcs11SubprocessProber().runResolvedProbeSubprocess(
+			fixtureCommand("no-sentinel-exit"),
+			"no-sentinel-exit fixture",
+			10L,
+		)
+
+		val success = result.shouldBeInstanceOf<Pkcs11SubprocessResult.Success>()
+		success.stdout shouldContain "Legacy Token\tSN-004\t0"
+	}
+
+	test("runResolvedProbeSubprocess classifies a non-zero exit without a sentinel as crashed") {
+		val result = Pkcs11SubprocessProber().runResolvedProbeSubprocess(
+			fixtureCommand("no-sentinel-crash"),
+			"no-sentinel-crash fixture",
+			10L,
+		)
+
+		result.shouldBeInstanceOf<Pkcs11SubprocessResult.Crashed>().exitCode shouldBe 3
+	}
+
+	test("runResolvedProbeSubprocess times out on a child that produces no output and hangs") {
+		val result = Pkcs11SubprocessProber().runResolvedProbeSubprocess(
+			fixtureCommand("silent-hang"),
+			"silent-hang fixture",
+			2L,
+		)
+
+		result.shouldBeInstanceOf<Pkcs11SubprocessResult.TimedOut>()
 	}
 
 	test("signalName maps common POSIX signals correctly") {

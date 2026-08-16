@@ -12,6 +12,7 @@ import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
@@ -20,7 +21,9 @@ import io.mockk.mockk
 import kotlin.time.Instant
 
 /**
- * Verifies [ListCertificatesUseCase] signing-capability filtering logic.
+ * Verifies [ListCertificatesUseCase] signing-capability filtering, and that surviving
+ * certificates are handed back in
+ * [cz.pizavo.omnisign.domain.repository.signingCertificateOrder].
  */
 class ListCertificatesUseCaseTest : FunSpec({
 
@@ -90,7 +93,19 @@ class ListCertificatesUseCaseTest : FunSpec({
 
 		val result = useCase().shouldBeRight()
 		result.certificates.shouldHaveSize(2)
-		result.certificates.map { it.alias } shouldBe listOf("signing", "no-usage-non-self")
+		result.certificates.map { it.alias }
+			.shouldContainExactlyInAnyOrder("signing", "no-usage-non-self")
+	}
+
+	test("surviving certificates come back in signingCertificateOrder") {
+		coEvery { signingRepository.listAvailableCertificates() } returns discovery(
+			cert("plain", keyUsages = listOf("digitalSignature")),
+			cert("qscd", keyUsages = listOf("digitalSignature")).copy(isQualified = true, isQscd = true),
+			cert("qualified", keyUsages = listOf("digitalSignature")).copy(isQualified = true),
+		).right()
+
+		useCase().shouldBeRight().certificates.map { it.alias } shouldBe
+			listOf("qscd", "qualified", "plain")
 	}
 
 	test("token warnings are preserved after filtering") {

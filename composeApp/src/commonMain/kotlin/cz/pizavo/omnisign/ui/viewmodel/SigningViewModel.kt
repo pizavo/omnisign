@@ -10,6 +10,7 @@ import cz.pizavo.omnisign.domain.model.error.localizableText
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.domain.repository.signingCertificateOrder
 import cz.pizavo.omnisign.domain.service.Pkcs11DiagnosticSnapshot
 import cz.pizavo.omnisign.domain.service.TokenService
 import cz.pizavo.omnisign.domain.usecase.ListCertificatesUseCase
@@ -315,9 +316,12 @@ class SigningViewModel(
 	/**
 	 * Unlock a PIN-protected token and merge its certificates into the Ready state.
 	 *
-	 * Prompts the user for the token PIN and, on success, appends discovered certificates
-	 * to [SigningDialogState.Ready.certificates] and removes the token from
-	 * [SigningDialogState.Ready.lockedTokens].
+	 * Prompts the user for the token PIN and, on success, merges the discovered certificates
+	 * into [SigningDialogState.Ready.certificates] in
+	 * [cz.pizavo.omnisign.domain.repository.signingCertificateOrder] — re-sorting the whole
+	 * list rather than appending, so a late unlock cannot strand its certificates below
+	 * lower-ranked ones — and removes the token from [SigningDialogState.Ready.lockedTokens].
+	 * Selection moves to the unlocked token's highest-ranked certificate.
 	 *
 	 * On failure the token stays in [SigningDialogState.Ready.lockedTokens] so the user
 	 * can retry. Any previous warning for the same token is replaced to avoid stacking
@@ -348,12 +352,13 @@ class SigningViewModel(
 					ifRight = { certs ->
 						_state.update { current ->
 							if (current is SigningDialogState.Ready) {
-								val merged = current.certificates + certs
+								val merged = (current.certificates + certs).sortedWith(signingCertificateOrder)
 								current.copy(
 									certificates = merged,
 									lockedTokens = current.lockedTokens.filterNot { it.tokenId == tokenId },
 									tokenWarnings = current.tokenWarnings.filterNot { it.tokenId == tokenId },
-									selectedAlias = certs.firstOrNull()?.alias ?: current.selectedAlias,
+									selectedAlias = certs.minWithOrNull(signingCertificateOrder)?.alias
+										?: current.selectedAlias,
 								)
 							} else current
 						}
@@ -366,8 +371,10 @@ class SigningViewModel(
 	/**
 	 * Load certificates from a PKCS#12 file and merge them into the Ready state.
 	 *
-	 * Prompts the user for the file password and, on success, appends the discovered
-	 * certificates to [SigningDialogState.Ready.certificates].
+	 * Prompts the user for the file password and, on success, merges the discovered
+	 * certificates into [SigningDialogState.Ready.certificates] in
+	 * [cz.pizavo.omnisign.domain.repository.signingCertificateOrder], re-sorting the whole
+	 * list rather than appending.
 	 *
 	 * @param filePath Absolute path to the PKCS#12 (.p12 / .pfx) file.
 	 */
@@ -393,7 +400,7 @@ class SigningViewModel(
 					ifRight = { certs ->
 						_state.update { current ->
 							if (current is SigningDialogState.Ready) {
-								val merged = current.certificates + certs
+								val merged = (current.certificates + certs).sortedWith(signingCertificateOrder)
 								current.copy(
 									certificates = merged,
 									selectedAlias = current.selectedAlias ?: merged.firstOrNull()?.alias,
