@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.domain.model.validation
 
+import cz.pizavo.omnisign.domain.model.value.DateFormat
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
@@ -68,4 +69,34 @@ class RevocationInfoTest : FunSpec({
 		val online = revocation(status = "GOOD", embedded = false)
 		listOf(online).signingTimeRepresentative() shouldBe online
 	}
+
+	test("displayRows render their times in the requested date format") {
+		val token = revocation(status = "GOOD", producedAt = Instant.parse("2026-01-15T09:50:00Z"))
+			.copy(nextUpdate = Instant.parse("2026-01-22T09:50:00Z"))
+
+		val iso = token.displayRows(DateFormat.ISO_8601).map { it.second.english() }
+		val numeric = token.displayRows(DateFormat.DMY_DOT).map { it.second.english() }
+
+		iso.count { it.matches(ISO_DATE_TIME) } shouldBe 2
+		numeric.count { it.matches(DOTTED_DATE_TIME) } shouldBe 2
+	}
+
+	test("the conclusion renders its time in the requested date format") {
+		val tokens = listOf(revocation(status = "GOOD"))
+
+		tokens.revocationConclusion(asOf, DateFormat.ISO_8601)!!.english() shouldContain ISO_DATE
+		tokens.revocationConclusion(asOf, DateFormat.DMY_DOT)!!.english() shouldContain DOTTED_DATE
+	}
 })
+
+/** `2026-01-15`, wherever in the world the test runs. */
+private val ISO_DATE = Regex("""\d{4}-\d{2}-\d{2}""")
+
+/** `15.01.2026`, wherever in the world the test runs. */
+private val DOTTED_DATE = Regex("""\d{2}\.\d{2}\.\d{4}""")
+
+/** A full row value in ISO style, e.g. `2026-01-15, 10:50:00 (+01:00)`. */
+private val ISO_DATE_TIME = Regex("""\d{4}-\d{2}-\d{2}, .*""")
+
+/** A full row value in dotted style, e.g. `15.01.2026, 10:50:00 (+01:00)`. */
+private val DOTTED_DATE_TIME = Regex("""\d{2}\.\d{2}\.\d{4}, .*""")
