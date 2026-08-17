@@ -201,7 +201,11 @@ fun IslandLayout(
 	val renewalJobAssigner: RenewalJobAssigner? = remember {
 		runCatching {
 			val koin = KoinPlatform.getKoinOrNull() ?: return@runCatching null
-			RenewalJobAssigner(koin.get<ConfigRepository>())
+			RenewalJobAssigner(
+				configRepository = koin.get<ConfigRepository>(),
+				schedulerPort = koin.getOrNull<SchedulerPort>(),
+				autoDetectedExecutablePath = resolveExecutablePath(),
+			)
 		}.recover { if (it is NoDefinitionFoundException || it.cause is NoDefinitionFoundException) null else throw it }.getOrNull()
 	}
 	
