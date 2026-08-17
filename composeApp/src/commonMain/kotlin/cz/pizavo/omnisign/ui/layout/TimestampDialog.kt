@@ -23,6 +23,8 @@ import org.jetbrains.compose.resources.stringResource
  * - [TimestampDialogState.Ready]: form with the timestamp type selector.
  * - [TimestampDialogState.Extending]: progress indicator.
  * - [TimestampDialogState.RevocationWarning]: revocation data warning with abort/continue options.
+ * - [TimestampDialogState.RevocationNotRefreshed]: the extension obtained nothing newer than what was
+ *   already embedded, offered for saving before the save prompt rather than reported after it.
  * - [TimestampDialogState.Success]: summary of the extension result.
  * - [TimestampDialogState.Error]: error message.
  *
@@ -69,6 +71,8 @@ fun TimestampDialog(
 					is TimestampDialogState.Extending -> LoadingContent(stringResource(Res.string.timestamp_extending))
 					is TimestampDialogState.AwaitingSave -> LoadingContent(stringResource(Res.string.timestamp_extending))
 					is TimestampDialogState.RevocationWarning -> TimestampRevocationWarningContent(state)
+					is TimestampDialogState.RevocationNotRefreshed ->
+						TimestampRevocationNotRefreshedContent(state)
 					is TimestampDialogState.Success -> TimestampSuccessContent(state)
 					is TimestampDialogState.Error -> ErrorContent(error = state.content)
 				}
@@ -264,6 +268,75 @@ private fun TimestampRevocationWarningContent(state: TimestampDialogState.Revoca
 }
 
 /**
+ * Content shown when the extension succeeded but obtained no revocation data newer than the
+ * signature, so the document is unchanged in the respect the user asked about.
+ *
+ * Deliberately not framed as a failure: the output is sound and keeps its level, which is why saving
+ * is the primary action here while it is the secondary one on
+ * [TimestampDialogState.RevocationWarning]. What the screen is for is the fact that running the same
+ * operation again now will achieve just as little — the warnings beneath name the time after which it
+ * will not.
+ *
+ * @param state The state carrying the extension's warnings.
+ */
+@Composable
+private fun TimestampRevocationNotRefreshedContent(state: TimestampDialogState.RevocationNotRefreshed) {
+	Column(
+		modifier = Modifier
+			.fillMaxSize()
+			.padding(24.dp),
+		verticalArrangement = Arrangement.spacedBy(8.dp),
+	) {
+		Row(
+			horizontalArrangement = Arrangement.spacedBy(6.dp),
+			verticalAlignment = Alignment.CenterVertically,
+		) {
+			Icon(
+				painter = painterResource(Res.drawable.icon_alert_warning),
+				contentDescription = null,
+				modifier = Modifier.size(20.dp),
+				tint = LumoTheme.colors.warning,
+			)
+			Text(
+				text = stringResource(Res.string.label_revocation_not_refreshed),
+				style = LumoTheme.typography.h4,
+			)
+		}
+
+		Spacer(modifier = Modifier.height(4.dp))
+
+		Text(
+			text = stringResource(Res.string.timestamp_revocation_not_refreshed_message),
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.textSecondary,
+		)
+
+		Spacer(modifier = Modifier.height(8.dp))
+
+		state.warnings.forEach { warning ->
+			Row(
+				horizontalArrangement = Arrangement.spacedBy(4.dp),
+				verticalAlignment = Alignment.Top,
+			) {
+				Icon(
+					painter = painterResource(Res.drawable.icon_alert_warning),
+					contentDescription = null,
+					modifier = Modifier.padding(top = 3.dp).size(14.dp),
+					tint = LumoTheme.colors.warning,
+				)
+				SelectableContent {
+					Text(
+						text = warning.localized(),
+						style = LumoTheme.typography.body2,
+						color = LumoTheme.colors.warning,
+					)
+				}
+			}
+		}
+	}
+}
+
+/**
  * Success summary shown after a successful extension operation.
  *
  * @param state The [TimestampDialogState.Success] state with result details.
@@ -365,6 +438,19 @@ private fun TimestampDialogFooter(
 					text = stringResource(Res.string.action_abort),
 					variant = ButtonVariant.Primary,
 					onClick = onAbortRevocation,
+				)
+			}
+
+			is TimestampDialogState.RevocationNotRefreshed -> {
+				Button(
+					text = stringResource(Res.string.action_abort),
+					variant = ButtonVariant.SecondaryOutlined,
+					onClick = onAbortRevocation,
+				)
+				Button(
+					text = stringResource(Res.string.action_save),
+					variant = ButtonVariant.Primary,
+					onClick = onAcceptRevocation,
 				)
 			}
 

@@ -31,6 +31,7 @@
 	<string name="label_produces_b_lt">Produces PAdES BASELINE B-LT</string>
 	<string name="label_produces_b_lta">Produces PAdES BASELINE B-LTA</string>
 	<string name="label_profile_none">None (global settings only)</string>
+	<string name="label_revocation_not_refreshed">No newer revocation data</string>
 	<string name="label_revocation_unavailable">Revocation data unavailable</string>
 	<string name="label_settings">Settings</string>
 	<string name="label_signature_timestamp">Signature timestamp</string>

@@ -28,6 +28,7 @@ import eu.europa.esig.dss.pades.PAdESSignatureParameters
 import eu.europa.esig.dss.pades.SignatureImageParameters
 import eu.europa.esig.dss.pades.SignatureImageTextParameters
 import eu.europa.esig.dss.pades.signature.PAdESService
+import eu.europa.esig.dss.spi.validation.CertificateVerifier
 import eu.europa.esig.dss.token.AbstractSignatureTokenConnection
 import eu.europa.esig.dss.token.DSSPrivateKeyEntry
 import kotlinx.coroutines.*
@@ -47,6 +48,12 @@ import eu.europa.esig.dss.enumerations.SignatureLevel as DssSignatureLevel
  * - Optional visible signature appearance
  * - CRL/OCSP revocation data for B-LT and B-LTA levels
  * - PdfBox memory-efficient document handling
+ *
+ * [SigningResult.signatureLevel] is read back out of the signed bytes with [readPadesLevel] rather
+ * than echoed from the request, so a document that fell short of the level it was signed at — most
+ * often a B-LT request whose revocation data could not be fetched — is reported as what it is. A
+ * signing tool that overstated a conformance level would be worse than one that declined to state
+ * it, and the request alone is not evidence of anything.
  */
 class DssSigningRepository(
 	private val tokenService: TokenService,
@@ -143,7 +150,7 @@ class DssSigningRepository(
 				val privateKey = resolvedKey.privateKey
 				val statusAlert = CollectingStatusAlert()
 				val logCapture = DssLogCapture()
-				val (service, tlWarnings) = buildSigningService(
+				val (service, verifier, tlWarnings) = buildSigningService(
 					resolvedConfig,
 					dssSignatureLevel,
 					parameters.addTimestamp,
@@ -170,11 +177,14 @@ class DssSigningRepository(
 						signedDocument.openStream().use { it.readAllBytes() }
 					}
 					
+					val achievedLevel =
+						readPadesLevel(outputBytes, verifier, dssServiceFactory.buildPdfObjectFactory())
+
 					SigningResult(
 						outputBytes = outputBytes,
 						outputName = parameters.inputName,
 						signatureId = extractSignatureId(parameters.inputName),
-						signatureLevel = effectiveLevel.name,
+						signatureLevel = (achievedLevel ?: effectiveLevel).name,
 						annotatedWarnings = sanitized.annotatedSummaries,
 						rawWarnings = sanitized.raw,
 						hasRevocationWarnings = sanitized.hasRevocationWarnings,
@@ -416,14 +426,14 @@ class DssSigningRepository(
 	 *
 	 * @param statusAlert A [CollectingStatusAlert] that will capture verifier warnings
 	 *   (missing revocation data, uncovered POE, etc.) fired during the signing operation.
-	 * @return A pair of the wired [PAdESService] and any TL-loading warnings.
+	 * @return The wired [PAdESService], the verifier behind it, and any TL-loading warnings.
 	 */
 	private suspend fun buildSigningService(
 		resolvedConfig: ResolvedConfig,
 		signatureLevel: DssSignatureLevel,
 		addTimestamp: Boolean,
 		statusAlert: CollectingStatusAlert,
-	): Pair<PAdESService, List<String>> {
+	): SigningService {
 		val anchors = trustStore.resolve(TrustScope.of(resolvedConfig.profileName)).getOrElse { emptyList() }
 		val (cv, tlWarnings) = dssServiceFactory.buildSigningCertificateVerifier(
 			resolvedConfig,
@@ -435,9 +445,27 @@ class DssSigningRepository(
 				?.takeIf { addTimestamp || signatureLevel != DssSignatureLevel.PAdES_BASELINE_B }
 				?.let { setTspSource(dssServiceFactory.buildTspSource(it)) }
 		}
-		return service to tlWarnings.map { it.english() }
+		return SigningService(service, cv, tlWarnings.map { it.english() })
 	}
-	
+
+	/**
+	 * A [PAdESService] wired for signing, together with the [CertificateVerifier] behind it.
+	 *
+	 * The verifier is carried out of [buildSigningService] so that the level can be read back out of
+	 * the signed bytes under the same trust anchors the signature was made with — see
+	 * [readPadesLevel], which explains why anchorless answers are wrong. Reusing this one rather than
+	 * building a second costs nothing, since its trusted lists are already composed.
+	 *
+	 * @property service The service to sign with.
+	 * @property verifier The verifier the service validates against.
+	 * @property warnings TL-loading warnings, already rendered in English.
+	 */
+	private data class SigningService(
+		val service: PAdESService,
+		val verifier: CertificateVerifier,
+		val warnings: List<String>,
+	)
+
 	/**
 	 * Iterate all discovered tokens and return the first [DSSPrivateKeyEntry] that matches
 	 * the requested alias (or the first available key when no alias is requested), together
@@ -682,6 +710,11 @@ class DssSigningRepository(
 		 * extension process embeds revocation data independently of the certificate verifier's
 		 * pre-extension check, which runs before anything has been embedded: on a signing operation
 		 * that reaches B-LT or B-LTA the warning describes a gap the very next step closes.
+		 *
+		 * Suppressing it is only defensible because [SigningResult.signatureLevel] is read back out of
+		 * the signed bytes with [readPadesLevel] rather than echoed from the request. Should that step
+		 * *not* have closed the gap, the reported level says so — the document comes back as B-T — so
+		 * hiding the warning hides noise rather than the failure itself.
 		 *
 		 * This holds only while *signing*. Augmenting an already-signed document has no later step to
 		 * close the gap, which is why the archiving path keeps the category — see

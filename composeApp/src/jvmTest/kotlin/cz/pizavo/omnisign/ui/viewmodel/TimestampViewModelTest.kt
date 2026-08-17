@@ -323,6 +323,117 @@ class TimestampViewModelTest : FunSpec({
 		}
 	}
 
+	test("extend that obtained nothing newer says so before the save prompt, not after it") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingResult(
+						outputBytes = ByteArray(0), outputName = "signed-extended.pdf",
+						newSignatureLevel = "PAdES-BASELINE-LT",
+						annotatedWarnings = listOf(
+							AnnotatedWarning(summary = LocalizableText.Literal("Newer revocation data is due by 2026-09-01")),
+						),
+						revocationNotRefreshed = true,
+					).right()
+
+			val vm = buildVm()
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			vm.extend()
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.RevocationNotRefreshed>()
+			state.warnings shouldBe listOf(LocalizableText.Literal("Newer revocation data is due by 2026-09-01"))
+		}
+	}
+
+	test("continuing past a not-refreshed notice saves the held bytes without re-extending") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingResult(
+						outputBytes = ByteArray(0), outputName = "signed-extended.pdf",
+						newSignatureLevel = "PAdES-BASELINE-LT",
+						revocationNotRefreshed = true,
+					).right()
+
+			val vm = buildVm()
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			vm.extend()
+			advanceUntilIdle()
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.RevocationNotRefreshed>()
+
+			vm.acceptRevocationWarning()
+			advanceUntilIdle()
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.AwaitingSave>()
+
+			vm.completeSave(SaveOutcome.Saved(extendedPath))
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Success>().newLevel shouldBe "PAdES-BASELINE-LT"
+			coVerify(exactly = 1) { archivingRepository.extendDocument(any()) }
+		}
+	}
+
+	test("aborting a not-refreshed notice returns to the form and writes nothing") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingResult(
+						outputBytes = ByteArray(0), outputName = "signed-extended.pdf",
+						newSignatureLevel = "PAdES-BASELINE-LT",
+						revocationNotRefreshed = true,
+					).right()
+
+			val vm = buildVm()
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			vm.extend()
+			advanceUntilIdle()
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.RevocationNotRefreshed>()
+
+			vm.abortAfterRevocationWarning()
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
+			vm.pendingOutputBytes shouldBe null
+		}
+	}
+
+	test("a deficient extension outranks a not-refreshed one when both are reported") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingResult(
+						outputBytes = ByteArray(0), outputName = "signed-extended.pdf",
+						newSignatureLevel = "PAdES-BASELINE-T",
+						revocationDataMissing = true,
+						revocationNotRefreshed = true,
+					).right()
+
+			val vm = buildVm()
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			vm.extend()
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.RevocationWarning>().outputHeld shouldBe true
+		}
+	}
+
 	test("continuing past a held-output revocation warning saves those bytes without re-extending") {
 		runTest(testDispatcher) {
 			coEvery { archivingRepository.extendDocument(any()) } returns

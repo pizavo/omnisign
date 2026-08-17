@@ -419,6 +419,31 @@ class DssWarningSanitizerTest : FunSpec({
 		sanitizer.sanitize(raw).longTermMaterialMissing shouldBe false
 	}
 
+	test("sanitize reports revocationNotRefreshed for stale-but-present revocation data") {
+		val raw = listOf(
+			"Fresh revocation data is missing for one or more certificate(s). [C-AAAA: detail]"
+		)
+		val result = sanitizer.sanitize(raw)
+		result.revocationNotRefreshed shouldBe true
+		result.longTermMaterialMissing shouldBe false
+	}
+
+	test("sanitize does not report revocationNotRefreshed when revocation could not be retrieved at all") {
+		val raw = listOf("Revocation data is missing for one or more certificate(s). [C-ABCD1234: detail]")
+		sanitizer.sanitize(raw).revocationNotRefreshed shouldBe false
+	}
+
+	test("a suppressed FRESH_REVOCATION_MISSING does not report revocationNotRefreshed") {
+		val raw = listOf(
+			"Fresh revocation data is missing for one or more certificate(s). [C-AAAA: detail]"
+		)
+		val result = sanitizer.sanitize(
+			raw,
+			suppressedCategories = setOf(WarningCategory.FRESH_REVOCATION_MISSING),
+		)
+		result.revocationNotRefreshed shouldBe false
+	}
+
 	test("a suppressed category does not report longTermMaterialMissing") {
 		val raw = listOf("Revocation data is missing for one or more certificate(s). [C-ABCD1234: detail]")
 		val result = sanitizer.sanitize(

@@ -31,6 +31,7 @@
 	<string name="label_produces_b_lt">Vytvára PAdES BASELINE B-LT</string>
 	<string name="label_produces_b_lta">Vytvára PAdES BASELINE B-LTA</string>
 	<string name="label_profile_none">Žiadny (iba globálne nastavenia)</string>
+	<string name="label_revocation_not_refreshed">Novšie údaje o zrušení nie sú k dispozícii</string>
 	<string name="label_revocation_unavailable">Údaje o zrušení nie sú dostupné</string>
 	<string name="label_settings">Nastavenia</string>
 	<string name="label_signature_timestamp">Časová pečiatka podpisu</string>

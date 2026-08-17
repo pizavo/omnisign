@@ -32,7 +32,7 @@ import eu.europa.esig.dss.model.policy.CryptographicSuite
 import eu.europa.esig.dss.pades.PAdESSignatureParameters
 import eu.europa.esig.dss.pades.signature.PAdESService
 import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
-import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
+import eu.europa.esig.dss.spi.validation.CertificateVerifier
 import eu.europa.esig.dss.validation.policy.CryptographicSuiteUtils
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
@@ -111,7 +111,7 @@ class DssArchivingRepository(
 			val dssLevel = parameters.targetLevel.toDss()
 			val statusAlert = CollectingStatusAlert()
 			val logCapture = DssLogCapture()
-			val (service, tlWarnings) = buildExtendService(resolvedConfig, tsConfig, statusAlert)
+			val (service, verifier, tlWarnings) = buildExtendService(resolvedConfig, tsConfig, statusAlert)
 			val extendParams = PAdESSignatureParameters().apply {
 				setSignatureLevel(dssLevel)
 				dssServiceFactory.applyTimestampContentSize(this)
@@ -129,7 +129,7 @@ class DssArchivingRepository(
 					extendedDocument.openStream().use { it.readAllBytes() }
 				}
 
-				val achieved = detectAchievedLevel(outputBytes)
+				val achieved = readPadesLevel(outputBytes, verifier, dssServiceFactory.buildPdfObjectFactory())
 
 				ArchivingResult(
 					outputBytes = outputBytes,
@@ -140,6 +140,8 @@ class DssArchivingRepository(
 					revocationDataMissing = sanitized.longTermMaterialMissing &&
 						parameters.targetLevel >= SignatureLevel.PADES_BASELINE_LT,
 					achievedLevel = achieved,
+					revocationNotRefreshed = sanitized.revocationNotRefreshed &&
+						parameters.targetLevel >= SignatureLevel.PADES_BASELINE_LT,
 				).right()
 			} finally {
 				logCapture.stop()
@@ -207,7 +209,7 @@ class DssArchivingRepository(
 
 			val document = FileDocument(file)
 			val validator = PDFDocumentValidator(document).apply {
-				setCertificateVerifier(CommonCertificateVerifier())
+				setCertificateVerifier(levelInspectionVerifier())
 				setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 			}
 			val diagnosticData = validator.validateDocument().diagnosticData
@@ -607,8 +609,10 @@ class DssArchivingRepository(
 	 * Inspect [inputBytes] for the timestamp and level state the extension dialog needs.
 	 *
 	 * [DocumentTimestampInfo.hasDocumentTimestamp] is a structural fact read with PDFBox, but the
-	 * level — and with it [DocumentTimestampInfo.containsLtData] — comes from [detectAchievedLevel],
-	 * so that the dialog reports what the document *is* rather than what its structure hints at.
+	 * level — and with it [DocumentTimestampInfo.containsLtData] — comes from [readPadesLevel], so
+	 * that the dialog reports what the document *is* rather than what its structure hints at. It is
+	 * read under [levelInspectionVerifier]'s anchors, without which a conformant B-LT document reads
+	 * as B-T and the dialog offers to add validation material the document already carries.
 	 *
 	 * The presence of a `/DSS` dictionary is deliberately **not** consulted, not even as a fallback.
 	 * That dictionary can be present and hold nothing usable — certificates but no revocation data,
@@ -621,20 +625,21 @@ class DssArchivingRepository(
 	@Suppress("TooGenericExceptionCaught")
 	override suspend fun getDocumentTimestampInfo(inputBytes: ByteArray): OperationResult<DocumentTimestampInfo> {
 		return try {
+			val verifier = levelInspectionVerifier()
 			Loader.loadPDF(inputBytes).use { pdf ->
 				val hasDocumentTimestamp = pdf.signatureDictionaries.any { sig ->
 					sig.subFilter == PADES_TIMESTAMP_SUBFILTER
 				}
-				
-				val level = detectAchievedLevel(inputBytes)
+
+				val level = readPadesLevel(inputBytes, verifier, dssServiceFactory.buildPdfObjectFactory())
 				val containsLtData = level != null && level >= SignatureLevel.PADES_BASELINE_LT
 
 				DocumentTimestampInfo(
 					hasDocumentTimestamp = hasDocumentTimestamp,
 					containsLtData = containsLtData,
-					hasSignatureTimestamp = detectSignatureTimestamp(inputBytes),
+					hasSignatureTimestamp = detectSignatureTimestamp(inputBytes, verifier),
 					level = level,
-					ltMaterialUsable = !containsLtData || hasUsableLtMaterial(inputBytes),
+					ltMaterialUsable = !containsLtData || hasUsableLtMaterial(inputBytes, verifier),
 				).right()
 			}
 		} catch (e: Exception) {
@@ -643,64 +648,27 @@ class DssArchivingRepository(
 	}
 
 	/**
-	 * The PAdES baseline level [pdfBytes] actually reached, as DSS reads it back out of the document.
-	 *
-	 * Delegates to DSS's own `getDataFoundUpToLevel`, the same determination that drives the level
-	 * shown in a validation report, so the two can never disagree. That matters most for the case
-	 * this exists to catch: a B-LT augmentation that wrote a DSS dictionary holding certificates but
-	 * no revocation data reports B-T here, because DSS's LT requirement is non-empty CRL/OCSP data
-	 * for the chain, not the presence of the dictionary.
-	 *
-	 * Parses without validating — the certificate verifier carries no trust anchors and no online
-	 * revocation sources, so nothing here reaches the network. It reuses the extension's own
-	 * memory-spilling PDF factory, because it runs on a document the extension just produced and
-	 * would otherwise load a large one entirely into the heap. When a document carries several
-	 * signatures the lowest level wins: an archive is only as strong as its weakest signature.
-	 *
-	 * A failure here never fails the extension: the document exists and is sound, only its
-	 * description could not be read back. The failure is logged rather than swallowed — DSS being
-	 * unable to re-parse bytes it has just written is an anomaly worth seeing — and the `null` is
-	 * carried through to [ArchivingResult.achievedLevel] so callers can tell "did not reach the
-	 * level" from "could not be established", which are not the same thing.
-	 *
-	 * @param pdfBytes The produced document to inspect.
-	 * @return The level reached, or `null` when the document could not be parsed, carries no
-	 *   signature, or its level is outside the four PAdES baseline levels.
-	 */
-	@Suppress("TooGenericExceptionCaught")
-	private fun detectAchievedLevel(pdfBytes: ByteArray): SignatureLevel? =
-		try {
-			PDFDocumentValidator(InMemoryDocument(pdfBytes))
-				.apply {
-					setCertificateVerifier(CommonCertificateVerifier())
-					setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
-				}
-				.signatures
-				.mapNotNull { it.dataFoundUpToLevel?.toDomainOrNull() }
-				.minOrNull()
-		} catch (e: Exception) {
-			logger.warn(e) { "Could not read the achieved PAdES level back out of the extended document" }
-			null
-		}
-
-	/**
 	 * Whether the long-term validation material embedded in [pdfBytes] can be used, judged by the
 	 * same rule the renewal assessment applies (see [hasUsableSigningCertificateRevocation]).
 	 *
 	 * Called only for a document that has such material, so the extra parse is paid where the answer
 	 * changes what the dialog should offer: a document carrying revocation data no validator will
-	 * accept needs that data refreshed, not sealed. Offline, like every other inspection here.
+	 * accept needs that data refreshed, not sealed.
+	 *
+	 * Takes [verifier] from the caller so it judges under the same trust anchors as the level it
+	 * accompanies, and shares the parse cost of resolving them; the verifier carries no online
+	 * sources, so nothing here reaches the network.
 	 *
 	 * A document that cannot be parsed is reported as usable rather than not: this drives a caveat in
 	 * the UI, and inventing a warning out of a failed inspection would be worse than staying quiet —
 	 * the level itself is already `null` in that case, which is the honest signal.
 	 */
 	@Suppress("TooGenericExceptionCaught")
-	private fun hasUsableLtMaterial(pdfBytes: ByteArray): Boolean =
+	private fun hasUsableLtMaterial(pdfBytes: ByteArray, verifier: CertificateVerifier): Boolean =
 		try {
 			PDFDocumentValidator(InMemoryDocument(pdfBytes))
 				.apply {
-					setCertificateVerifier(CommonCertificateVerifier())
+					setCertificateVerifier(verifier)
 					setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 				}
 				.validateDocument().diagnosticData.signatures
@@ -714,21 +682,26 @@ class DssArchivingRepository(
 	 * Whether any signature in [inputBytes] embeds a signature timestamp — the unsigned attribute
 	 * that marks PAdES BASELINE-T.
 	 *
-	 * Parses the signatures with DSS but runs no validation: the certificate verifier carries no
-	 * trust or online revocation sources, so no network lookups occur. This is what lets the dialog
-	 * tell a B-B document (no timestamp) apart from a B-T one, which the PDF-structure flags in
-	 * [getDocumentTimestampInfo] cannot. A parse failure degrades to `false` — the dialog then offers
-	 * the B-B options, which is the safe direction — and is logged rather than swallowed, so the
-	 * reason a document is mislabelled in the dialog is recoverable from the log.
+	 * Parses the signatures with DSS but runs no validation: [verifier] carries no online revocation
+	 * sources, so no network lookups occur. This is what lets the dialog tell a B-B document (no
+	 * timestamp) apart from a B-T one, which the PDF-structure flags in [getDocumentTimestampInfo]
+	 * cannot. A parse failure degrades to `false` — the dialog then offers the B-B options, which is
+	 * the safe direction — and is logged rather than swallowed, so the reason a document is
+	 * mislabelled in the dialog is recoverable from the log.
+	 *
+	 * Unlike the level, the answer does not depend on which certificates are trusted: an embedded
+	 * signature timestamp is either present or it is not. The verifier is shared with the rest of the
+	 * inspection only to avoid resolving trust twice.
 	 *
 	 * @param inputBytes The raw PDF bytes to inspect.
+	 * @param verifier The inspection verifier, shared with the level read-back.
 	 * @return `true` when at least one signature carries a signature timestamp.
 	 */
 	@Suppress("TooGenericExceptionCaught")
-	private fun detectSignatureTimestamp(inputBytes: ByteArray): Boolean =
+	private fun detectSignatureTimestamp(inputBytes: ByteArray, verifier: CertificateVerifier): Boolean =
 		try {
 			val validator = PDFDocumentValidator(InMemoryDocument(inputBytes)).apply {
-				setCertificateVerifier(CommonCertificateVerifier())
+				setCertificateVerifier(verifier)
 				setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 			}
 			validator.signatures.any { it.signatureTimestamps.isNotEmpty() }
@@ -750,22 +723,69 @@ class DssArchivingRepository(
 	 *
 	 * @param statusAlert A [CollectingStatusAlert] that will capture verifier warnings
 	 *   fired during the extension operation.
-	 * @return A pair of the wired [PAdESService] and any TL-loading warnings.
+	 * @return The wired [PAdESService], the verifier behind it, and any TL-loading warnings.
 	 */
 	private suspend fun buildExtendService(
 		config: ResolvedConfig,
 		tsConfig: TimestampServerConfig,
 		statusAlert: CollectingStatusAlert,
-	): Pair<PAdESService, List<String>> {
+	): ExtendService {
 		val anchors = trustStore.resolve(TrustScope.of(config.profileName)).getOrElse { emptyList() }
 		val (cv, tlWarnings) = dssServiceFactory.buildExtendCertificateVerifier(config, anchors) { statusAlert }
 		val service = PAdESService(cv).apply {
 			setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 			setTspSource(dssServiceFactory.buildTspSource(tsConfig))
 		}
-		return service to tlWarnings.map { it.english() }
+		return ExtendService(service, cv, tlWarnings.map { it.english() })
 	}
-	
+
+	/**
+	 * A [PAdESService] wired for extension, together with the [CertificateVerifier] behind it.
+	 *
+	 * The verifier is carried out of [buildExtendService] because reading the produced level back
+	 * needs the same trust anchors the extension ran with — see [readPadesLevel]. Taking it from here
+	 * rather than building a second one keeps the two in step by construction and costs nothing: the
+	 * trusted lists have already been composed into it.
+	 *
+	 * @property service The service to extend with.
+	 * @property verifier The verifier the service validates against.
+	 * @property warnings TL-loading warnings, already rendered in English.
+	 */
+	private data class ExtendService(
+		val service: PAdESService,
+		val verifier: CertificateVerifier,
+		val warnings: List<String>,
+	)
+
+	/**
+	 * A verifier for the inspections that run on their own, outside any signing or augmenting
+	 * operation — [getDocumentTimestampInfo] and [needsArchivalRenewal] — carrying the active
+	 * profile's trust anchors and no network sources.
+	 *
+	 * Both inspections judge a document's PAdES level, and that judgement depends on which
+	 * certificates count as trust anchors (see [readPadesLevel]). Resolving the anchors here keeps
+	 * them agreeing with the validation report and with the extension that produced the document.
+	 *
+	 * A configuration that cannot be read or resolved yields an anchorless verifier rather than an
+	 * error. That understates the level — a document may be reported as B-T when it is B-LT — which
+	 * errs toward offering the user more protection and toward attempting a renewal that turns out
+	 * to be unnecessary, rather than toward sealing or skipping something on a level it does not have.
+	 */
+	private suspend fun levelInspectionVerifier(): CertificateVerifier {
+		val resolved = runCatching {
+			val config = configRepository.getCurrentConfig()
+			ResolvedConfig.resolve(
+				global = config.global,
+				profile = config.activeProfile?.let { config.profiles[it] },
+				operationOverrides = null,
+			).getOrNull()
+		}.getOrNull()
+		val anchors = resolved
+			?.let { trustStore.resolve(TrustScope.of(it.profileName)).getOrElse { emptyList() } }
+			?: emptyList()
+		return dssServiceFactory.buildLevelInspectionVerifier(resolved, anchors).verifier
+	}
+
 	companion object {
 		/**
 		 * PDF SubFilter value identifying a PAdES document timestamp (RFC 3161).

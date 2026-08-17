@@ -29,6 +29,14 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
  *   returned — they carry whatever the extension did achieve — but a caller must not present them as
  *   the requested level: the desktop asks before saving them and the renewal scheduler refuses to
  *   overwrite the original with them.
+ * @property revocationNotRefreshed Whether the extension embedded revocation data that still does not
+ *   postdate the signature it has to cover — meaning the issuer had published nothing newer, so the
+ *   operation obtained nothing the document did not already have. Distinct from
+ *   [revocationDataMissing]: the output is sound and keeps its level, and only the *point* of this
+ *   particular run came to nothing. A caller offering to save it should say so first, because
+ *   repeating the operation now will achieve just as little; [annotatedWarnings] carries the time
+ *   after which it will not. Only ever set for a target of B-LT or higher, the levels for which
+ *   revocation data is the thing being asked for.
  */
 data class ArchivingResult(
     val outputBytes: ByteArray,
@@ -38,6 +46,7 @@ data class ArchivingResult(
     val rawWarnings: List<String> = emptyList(),
     val revocationDataMissing: Boolean = false,
     val achievedLevel: SignatureLevel? = null,
+    val revocationNotRefreshed: Boolean = false,
 ) {
     /**
      * Plain-text English warning summaries derived from [annotatedWarnings] for backward-compatible
@@ -58,7 +67,8 @@ data class ArchivingResult(
                 annotatedWarnings == other.annotatedWarnings &&
                 rawWarnings == other.rawWarnings &&
                 revocationDataMissing == other.revocationDataMissing &&
-                achievedLevel == other.achievedLevel
+                achievedLevel == other.achievedLevel &&
+                revocationNotRefreshed == other.revocationNotRefreshed
     }
 
     /**
@@ -72,6 +82,7 @@ data class ArchivingResult(
         result = 31 * result + rawWarnings.hashCode()
         result = 31 * result + revocationDataMissing.hashCode()
         result = 31 * result + achievedLevel.hashCode()
+        result = 31 * result + revocationNotRefreshed.hashCode()
         return result
     }
 }

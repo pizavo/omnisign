@@ -11,6 +11,7 @@
 	<string name="timestamp_revocation_message">Rozšíření na úroveň B-LT selhalo, protože nebylo možné získat informace o zneplatnění (CRL/OCSP). Můžete pokračovat rozšířením na B-T (pouze časové razítko podpisu, bez údajů o zneplatnění), nebo akci přerušit a zkusit to později.</string>
 	<string name="timestamp_lt_material_unusable">Dokument obsahuje validační data, žádná z nich však nelze použít: byla vydána až po vypršení podpisového certifikátu a k jeho stavu se vydavatel po vypršení již nevyjadřuje. Pokud vydavatel nezveřejňuje data výslovně pokrývající vypršelé certifikáty, nelze je nahradit novějšími a dokument úrovně B-LT nedosáhne. Archivní časové razítko zachová stávající stav, mezeru neuzavře.</string>
 	<string name="timestamp_revocation_incomplete_message">Dokument byl rozšířen, ale údaje o zneplatnění, které požadovaná úroveň vyžaduje, se nepodařilo vložit – zůstal proto na původní úrovni. Výsledek můžete přesto uložit, nebo akci přerušit a ponechat původní dokument.</string>
+	<string name="timestamp_revocation_not_refreshed_message">Dokument byl rozšířen a zachovává si svou úroveň, vydavatel však nezveřejnil žádná data o zneplatnění novější než podpis – nebylo tedy vloženo nic, co by dokument již neobsahoval. Uložením se výsledek zachová; opakované rozšíření před níže uvedeným okamžikem přinese stejně málo.</string>
 	<string name="timestamp_success_title">Dokument byl úspěšně rozšířen</string>
 	<string name="timestamp_new_level_label">Nová úroveň:</string>
 	<string name="timestamp_extend_button">Rozšířit</string>
