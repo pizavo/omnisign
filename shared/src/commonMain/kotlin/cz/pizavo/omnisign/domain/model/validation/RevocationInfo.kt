@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.domain.model.validation
 
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.text.MessageKey
+import cz.pizavo.omnisign.domain.model.value.DateFormat
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import kotlinx.serialization.Serializable
 import kotlin.time.Instant
@@ -67,15 +68,22 @@ fun List<RevocationInfo>.signingTimeRepresentative(): RevocationInfo? =
  * (best-signature-time), derived from the [signingTimeRepresentative]. Returns `null` when there is
  * no revocation data. The supporting details (method, source, responder, times) are presented as
  * structured fields per token, so this stays a bare statement of the outcome.
+ *
+ * @param dateFormat Date style for [asOf]. A caller rendering into a surface that lets the user pick
+ *   one — the desktop signature panel — must pass it, or this line disagrees with every other date
+ *   beside it; see [displayRows].
  */
-fun List<RevocationInfo>.revocationConclusion(asOf: Instant): LocalizableText? {
+fun List<RevocationInfo>.revocationConclusion(
+    asOf: Instant,
+    dateFormat: DateFormat = DateFormat.SYSTEM,
+): LocalizableText? {
     val representative = signingTimeRepresentative() ?: return null
     val key = when {
         representative.revoked -> MessageKey.REVOCATION_CONCLUSION_REVOKED
         representative.status == "GOOD" -> MessageKey.REVOCATION_CONCLUSION_NOT_REVOKED
         else -> MessageKey.REVOCATION_CONCLUSION_UNDETERMINED
     }
-    return LocalizableText.of(key, asOf.formatDateTime())
+    return LocalizableText.of(key, asOf.formatDateTime(dateFormat = dateFormat))
 }
 
 /**
@@ -83,15 +91,30 @@ fun List<RevocationInfo>.revocationConclusion(asOf: Instant): LocalizableText? {
  * panel and the plain-text report share this, so the two never drift. Times are method-aware (OCSP
  * separates "Response produced" from "Status as of"/"Fresh until"; CRL uses "CRL issued"/"Next CRL
  * by"), and redundant or absent values are omitted.
+ *
+ * Times are rendered here rather than handed back as instants, so [dateFormat] is how a caller says
+ * which style to use. It defaults to [DateFormat.SYSTEM] for the plain-text report, which has no
+ * user to ask; a surface that does let the user choose one — the desktop signature panel, through
+ * `LocalAppDateFormat` — must pass that choice, or these rows are the only dates in the panel
+ * ignoring it.
+ *
+ * @param dateFormat Date style for every time row.
  */
-fun RevocationInfo.displayRows(): List<Pair<LocalizableText, LocalizableText>> = buildList {
+fun RevocationInfo.displayRows(
+    dateFormat: DateFormat = DateFormat.SYSTEM,
+): List<Pair<LocalizableText, LocalizableText>> = buildList {
     add(LocalizableText.of(MessageKey.REVOCATION_LABEL_STATUS) to statusText())
     add(LocalizableText.of(MessageKey.REVOCATION_LABEL_METHOD) to LocalizableText.Literal(method))
     add(LocalizableText.of(MessageKey.REVOCATION_LABEL_SOURCE) to sourceLabel())
     sourceUrl?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_RESPONDER) to LocalizableText.Literal(it)) }
-    addAll(timeRows())
+    addAll(timeRows(dateFormat))
     if (revoked) {
-        revocationDate?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_REVOKED_ON) to LocalizableText.Literal(it.formatDateTime())) }
+        revocationDate?.let {
+            add(
+                LocalizableText.of(MessageKey.REVOCATION_LABEL_REVOKED_ON) to
+                    LocalizableText.Literal(it.formatDateTime(dateFormat = dateFormat)),
+            )
+        }
         reason?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_REASON) to LocalizableText.Literal(it)) }
     }
 }
@@ -119,20 +142,29 @@ private fun RevocationInfo.sourceLabel(): LocalizableText = when {
 /**
  * Method-aware time rows. OCSP and CRL carry different time semantics, and a value equal to an
  * already-shown one (OCSP `thisUpdate` == `producedAt`) or absent is dropped.
+ *
+ * @param dateFormat Date style for every row, passed down from [displayRows].
  */
-private fun RevocationInfo.timeRows(): List<Pair<LocalizableText, LocalizableText>> = when {
-    method.equals("OCSP", ignoreCase = true) -> buildList {
-        producedAt?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_RESPONSE_PRODUCED) to LocalizableText.Literal(it.formatDateTime())) }
-        thisUpdate?.takeIf { it != producedAt }?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_STATUS_AS_OF) to LocalizableText.Literal(it.formatDateTime())) }
-        nextUpdate?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_FRESH_UNTIL) to LocalizableText.Literal(it.formatDateTime())) }
-    }
-    method.equals("CRL", ignoreCase = true) -> buildList {
-        thisUpdate?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_CRL_ISSUED) to LocalizableText.Literal(it.formatDateTime())) }
-        nextUpdate?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_NEXT_CRL_BY) to LocalizableText.Literal(it.formatDateTime())) }
-    }
-    else -> buildList {
-        producedAt?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_PRODUCED_AT) to LocalizableText.Literal(it.formatDateTime())) }
-        thisUpdate?.takeIf { it != producedAt }?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_THIS_UPDATE) to LocalizableText.Literal(it.formatDateTime())) }
-        nextUpdate?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_NEXT_UPDATE) to LocalizableText.Literal(it.formatDateTime())) }
+private fun RevocationInfo.timeRows(
+    dateFormat: DateFormat,
+): List<Pair<LocalizableText, LocalizableText>> {
+    fun row(key: MessageKey, instant: Instant) =
+        LocalizableText.of(key) to LocalizableText.Literal(instant.formatDateTime(dateFormat = dateFormat))
+
+    return when {
+        method.equals("OCSP", ignoreCase = true) -> buildList {
+            producedAt?.let { add(row(MessageKey.REVOCATION_LABEL_RESPONSE_PRODUCED, it)) }
+            thisUpdate?.takeIf { it != producedAt }?.let { add(row(MessageKey.REVOCATION_LABEL_STATUS_AS_OF, it)) }
+            nextUpdate?.let { add(row(MessageKey.REVOCATION_LABEL_FRESH_UNTIL, it)) }
+        }
+        method.equals("CRL", ignoreCase = true) -> buildList {
+            thisUpdate?.let { add(row(MessageKey.REVOCATION_LABEL_CRL_ISSUED, it)) }
+            nextUpdate?.let { add(row(MessageKey.REVOCATION_LABEL_NEXT_CRL_BY, it)) }
+        }
+        else -> buildList {
+            producedAt?.let { add(row(MessageKey.REVOCATION_LABEL_PRODUCED_AT, it)) }
+            thisUpdate?.takeIf { it != producedAt }?.let { add(row(MessageKey.REVOCATION_LABEL_THIS_UPDATE, it)) }
+            nextUpdate?.let { add(row(MessageKey.REVOCATION_LABEL_NEXT_UPDATE, it)) }
+        }
     }
 }

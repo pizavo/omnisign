@@ -102,6 +102,9 @@ class CliSigningPipelineE2ETest : FunSpec({
 			},
 		)
 	}
+	every { dssServiceFactory.buildLevelInspectionVerifier(any(), any()) } answers {
+		CertificateVerifierResult(CommonCertificateVerifier())
+	}
 	every { dssServiceFactory.buildTspSource(any()) } returns
 		OnlineTSPSource(tsa.url).apply { setDataLoader(TimestampDataLoader()) }
 

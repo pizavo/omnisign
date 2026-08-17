@@ -178,6 +178,9 @@ class RenewalBatchE2ETest : FunSpec({
 	every { dssServiceFactory.buildExtendCertificateVerifier(any(), any(), any()) } answers {
 		CertificateVerifierResult(verifier(arg<() -> StatusAlert>(2)()))
 	}
+	every { dssServiceFactory.buildLevelInspectionVerifier(any(), any()) } answers {
+		CertificateVerifierResult(verifier(alert = null))
+	}
 	every { dssServiceFactory.buildTspSource(any()) } answers {
 		OnlineTSPSource(firstArg<TimestampServerConfig>().url).apply { setDataLoader(TimestampDataLoader()) }
 	}

@@ -4,6 +4,8 @@ import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.RenewalJob
+import cz.pizavo.omnisign.domain.model.config.SchedulerConfig
+import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldBeNull
@@ -11,8 +13,10 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.verify
 import kotlinx.coroutines.test.runTest
 
 /**
@@ -223,7 +227,134 @@ class RenewalJobAssignerTest : FunSpec({
 			result.isFailure shouldBe true
 		}
 	}
+
+	test("createNewJob installs the scheduler when none is registered") {
+		runTest {
+			val appConfig = emptyConfig(SchedulerConfig(runAtHour = 5, runAtMinute = 30, logFilePath = "/var/log/r.log"))
+			coEvery { configRepository.getCurrentConfig() } returns appConfig
+			coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+			val scheduler = mockk<SchedulerPort>(relaxed = true)
+			every { scheduler.isInstalled() } returns false
+
+			val assigner = RenewalJobAssigner(configRepository, scheduler, "/opt/omnisign/bin/OmniSign")
+			assigner.createNewJob(RenewalJob(name = "newjob", globs = listOf("/docs/file.pdf")))
+
+			verify(exactly = 1) {
+				scheduler.install("/opt/omnisign/bin/OmniSign", 5, 30, "/var/log/r.log")
+			}
+		}
+	}
+
+	test("assignToExistingJob installs the scheduler when none is registered") {
+		runTest {
+			val job = RenewalJob(name = "myjob", globs = listOf("/old/*.pdf"))
+			coEvery { configRepository.getCurrentConfig() } returns
+					emptyConfig().copy(renewalJobs = mapOf("myjob" to job))
+			coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+			val scheduler = mockk<SchedulerPort>(relaxed = true)
+			every { scheduler.isInstalled() } returns false
+
+			val assigner = RenewalJobAssigner(configRepository, scheduler, "/opt/omnisign/bin/OmniSign")
+			assigner.assignToExistingJob("myjob", "/new/doc.pdf")
+
+			verify(exactly = 1) { scheduler.install(any(), any(), any(), any()) }
+		}
+	}
+
+	test("an already-registered scheduler is left untouched") {
+		runTest {
+			coEvery { configRepository.getCurrentConfig() } returns emptyConfig()
+			coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+			val scheduler = mockk<SchedulerPort>(relaxed = true)
+			every { scheduler.isInstalled() } returns true
+
+			val assigner = RenewalJobAssigner(configRepository, scheduler, "/opt/omnisign/bin/OmniSign")
+			assigner.createNewJob(RenewalJob(name = "newjob", globs = listOf("/docs/file.pdf")))
+
+			verify(exactly = 0) { scheduler.install(any(), any(), any(), any()) }
+		}
+	}
+
+	test("assignment never uninstalls the scheduler") {
+		runTest {
+			coEvery { configRepository.getCurrentConfig() } returns emptyConfig()
+			coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+			val scheduler = mockk<SchedulerPort>(relaxed = true)
+			every { scheduler.isInstalled() } returns true
+
+			val assigner = RenewalJobAssigner(configRepository, scheduler, null)
+			assigner.createNewJob(RenewalJob(name = "newjob", globs = listOf("/docs/file.pdf")))
+
+			verify(exactly = 0) { scheduler.uninstall() }
+		}
+	}
+
+	test("the persisted executable path is used when auto-detection is unavailable") {
+		runTest {
+			coEvery { configRepository.getCurrentConfig() } returns
+					emptyConfig(SchedulerConfig(cliExecutablePath = "/usr/bin/omnisign-cli"))
+			coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+			val scheduler = mockk<SchedulerPort>(relaxed = true)
+			every { scheduler.isInstalled() } returns false
+
+			val assigner = RenewalJobAssigner(configRepository, scheduler, autoDetectedExecutablePath = null)
+			assigner.createNewJob(RenewalJob(name = "newjob", globs = listOf("/docs/file.pdf")))
+
+			verify(exactly = 1) { scheduler.install("/usr/bin/omnisign-cli", any(), any(), any()) }
+		}
+	}
+
+	test("no executable path at all leaves the scheduler alone") {
+		runTest {
+			coEvery { configRepository.getCurrentConfig() } returns emptyConfig()
+			coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+			val scheduler = mockk<SchedulerPort>(relaxed = true)
+
+			val assigner = RenewalJobAssigner(configRepository, scheduler, autoDetectedExecutablePath = null)
+			val result = assigner.createNewJob(RenewalJob(name = "newjob", globs = listOf("/docs/file.pdf")))
+
+			result.isSuccess shouldBe true
+			verify(exactly = 0) { scheduler.install(any(), any(), any(), any()) }
+		}
+	}
+
+	test("a scheduler install failure does not fail the assignment") {
+		runTest {
+			coEvery { configRepository.getCurrentConfig() } returns emptyConfig()
+			val saved = slot<AppConfig>()
+			coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+			val scheduler = mockk<SchedulerPort>(relaxed = true)
+			every { scheduler.isInstalled() } returns false
+			every { scheduler.install(any(), any(), any(), any()) } throws IllegalStateException("schtasks failed")
+
+			val assigner = RenewalJobAssigner(configRepository, scheduler, "/opt/omnisign/bin/OmniSign")
+			val result = assigner.createNewJob(RenewalJob(name = "newjob", globs = listOf("/docs/file.pdf")))
+
+			result.isSuccess shouldBe true
+			saved.captured.renewalJobs["newjob"].shouldNotBeNull()
+		}
+	}
+
+	test("assignment persists the job when no scheduler port is available") {
+		runTest {
+			coEvery { configRepository.getCurrentConfig() } returns emptyConfig()
+			val saved = slot<AppConfig>()
+			coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+
+			val assigner = RenewalJobAssigner(configRepository)
+			val result = assigner.createNewJob(RenewalJob(name = "newjob", globs = listOf("/docs/file.pdf")))
+
+			result.isSuccess shouldBe true
+			saved.captured.renewalJobs["newjob"].shouldNotBeNull()
+		}
+	}
 })
+
+/**
+ * An [AppConfig] with no renewal jobs and the given scheduler settings, for the assignment tests.
+ */
+private fun emptyConfig(schedulerConfig: SchedulerConfig = SchedulerConfig()): AppConfig =
+	AppConfig(global = GlobalConfig(), renewalJobs = emptyMap(), schedulerConfig = schedulerConfig)
 
 
 

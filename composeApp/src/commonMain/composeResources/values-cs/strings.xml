@@ -31,6 +31,7 @@
 	<string name="label_produces_b_lt">Vytváří PAdES BASELINE B-LT</string>
 	<string name="label_produces_b_lta">Vytváří PAdES BASELINE B-LTA</string>
 	<string name="label_profile_none">Žádný (pouze globální nastavení)</string>
+	<string name="label_revocation_not_refreshed">Novější data o zneplatnění nejsou k dispozici</string>
 	<string name="label_revocation_unavailable">Data o zneplatnění nedostupná</string>
 	<string name="label_settings">Nastavení</string>
 	<string name="label_signature_timestamp">Časové razítko podpisu</string>

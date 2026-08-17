@@ -91,6 +91,24 @@ sealed interface TimestampDialogState {
 	) : TimestampDialogState
 
 	/**
+	 * The extension succeeded and the document keeps its level, but the revocation data it was meant
+	 * to refresh could not be improved on: the issuer has published nothing newer than the signature,
+	 * so the operation embedded nothing the document did not already carry.
+	 *
+	 * Shown *before* the save prompt rather than as a warning after it, because it changes what the
+	 * user should do next rather than merely describing what happened. Repeating the extension now
+	 * will achieve exactly as little, and [warnings] carries the time after which it will not — the
+	 * issuer's own `nextUpdate` promise. Continuing saves the held bytes; aborting discards them and
+	 * returns to the form, having written nothing.
+	 *
+	 * @property warnings The extension's warnings, each resolved to display text by the UI. Includes
+	 *   the fresh-revocation warning naming the time newer data is guaranteed by.
+	 */
+	data class RevocationNotRefreshed(
+		val warnings: List<LocalizableText>,
+	) : TimestampDialogState
+
+	/**
 	 * Extension completed successfully.
 	 *
 	 * @property outputFile Path to the extended output file.

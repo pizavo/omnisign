@@ -488,5 +488,20 @@ data class SanitizedWarnings(
 	 */
 	val longTermMaterialMissing: Boolean
 		get() = categories.any { it.blocksLongTermMaterial && it !in suppressed }
+
+	/**
+	 * Whether the operation embedded revocation data that still does not cover the time it has to —
+	 * which, on an augmentation whose whole purpose was to refresh it, means nothing newer could be
+	 * obtained (see [DssWarningSanitizer.WarningCategory.FRESH_REVOCATION_MISSING]).
+	 *
+	 * Deliberately separate from [longTermMaterialMissing]: the output is not deficient, it is
+	 * unchanged in the respect the user asked about. The document keeps its level and is worth saving;
+	 * what the caller owes the user is the fact that repeating the operation now will achieve just as
+	 * little, and the time after which it will not. The warning itself carries that time.
+	 */
+	val revocationNotRefreshed: Boolean
+		get() = DssWarningSanitizer.WarningCategory.FRESH_REVOCATION_MISSING.let {
+			it in categories && it !in suppressed
+		}
 }
 

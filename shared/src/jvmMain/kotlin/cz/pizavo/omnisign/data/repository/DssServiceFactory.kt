@@ -329,6 +329,51 @@ class DssServiceFactory(
 	}
 	
 	/**
+	 * Build a [CommonCertificateVerifier] for **reading a document's PAdES level back out of its own
+	 * bytes**: trust anchors, and nothing that reaches the network.
+	 *
+	 * Exists for the inspections that run without an operation behind them — the extension dialog's
+	 * "what is this document?" pre-fetch and the renewal assessment — which have no signing or
+	 * augmenting verifier to borrow the anchors from. Where an operation *has* built one,
+	 * [readPadesLevel] takes an offline copy of that instead and this is not needed.
+	 *
+	 * The anchors are the whole point: DSS's baseline-LT check requires revocation data for every
+	 * certificate below the first self-signed *or trusted* one in each chain, so a verifier that
+	 * knows of no anchors demands revocation data for a trusted issuing CA — which is never embedded,
+	 * because a trust anchor needs none — and reports B-T for a conformant B-LT document. See
+	 * [readPadesLevel] for the full account.
+	 *
+	 * No [DefaultAIASource], [OnlineCRLSource] or [OnlineOCSPSource] is wired, so the inspection is
+	 * strictly offline: it must describe the document as it stands, and fetching fresh revocation
+	 * data would be both a side effect the caller did not ask for and a way to report a level the
+	 * bytes do not carry. Trusted-list sources still come from the shared [TrustedSourceRegistry],
+	 * which retains them across calls, so repeated inspections do not re-download or re-parse a list.
+	 *
+	 * Alerts that DSS defaults to [eu.europa.esig.dss.alert.ExceptionOnStatusAlert] are silenced: an
+	 * inspection reports a level or reports that it could not establish one, and must not abort.
+	 *
+	 * @param config Resolved configuration selecting the trusted-list sources; `null` yields a
+	 *   verifier with no anchors, which understates rather than overstates the level.
+	 * @param directAnchors Directly-trusted certificates (from the trust store) aggregated with the
+	 *   trusted-list sources.
+	 * @return A [CertificateVerifierResult] containing the verifier and any TL loading warnings.
+	 */
+	fun buildLevelInspectionVerifier(
+		config: ResolvedConfig?,
+		directAnchors: List<cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor> = emptyList(),
+	): CertificateVerifierResult {
+		val cv = CommonCertificateVerifier().apply {
+			silenceAlertsCoveredByTheReport()
+			alertOnUncoveredPOE = null
+			alertOnNoRevocationAfterBestSignatureTime = null
+		}
+		if (config == null) {
+			return CertificateVerifierResult(cv)
+		}
+		return CertificateVerifierResult(cv, trustedSources.composeInto(cv, config, directAnchors))
+	}
+
+	/**
 	 * Disable the verifier alerts whose conditions the validation report already states as ETSI
 	 * indications, so that enabling the alerter for validation adds no duplicate warnings.
 	 *

@@ -340,13 +340,17 @@ class TimestampViewModel(
 							addToRenewalJob = ready.addToRenewalJob,
 							isArchival = ready.timestampType == TimestampType.ARCHIVAL_TIMESTAMP,
 						)
-						_state.value = if (result.revocationDataMissing) {
-							TimestampDialogState.RevocationWarning(
+						_state.value = when {
+							result.revocationDataMissing -> TimestampDialogState.RevocationWarning(
 								warnings = result.annotatedWarnings.map { it.summary },
 								outputHeld = true,
 							)
-						} else {
-							awaitingSaveState()
+
+							result.revocationNotRefreshed -> TimestampDialogState.RevocationNotRefreshed(
+								warnings = result.annotatedWarnings.map { it.summary },
+							)
+
+							else -> awaitingSaveState()
 						}
 					},
 				)
@@ -367,10 +371,18 @@ class TimestampViewModel(
 	 * [SignatureLevel.PADES_BASELINE_T]. On success the bytes are held and the dialog advances to
 	 * [TimestampDialogState.AwaitingSave] to pick a save location.
 	 *
+	 * [TimestampDialogState.RevocationNotRefreshed] is the third caller and behaves like the held-bytes
+	 * case: the extension succeeded and only failed to improve on what was already embedded, so
+	 * continuing keeps the output and nothing is re-run.
+	 *
 	 * Either way nothing is written until the user picks a destination. Called when the user clicks
 	 * "Continue anyway" on the revocation warning.
 	 */
 	fun acceptRevocationWarning() {
+		if (_state.value is TimestampDialogState.RevocationNotRefreshed) {
+			_state.value = awaitingSaveState()
+			return
+		}
 		val warning = _state.value as? TimestampDialogState.RevocationWarning ?: return
 		if (warning.outputHeld) {
 			_state.value = awaitingSaveState()

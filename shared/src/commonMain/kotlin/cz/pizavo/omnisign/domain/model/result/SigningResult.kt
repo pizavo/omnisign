@@ -14,7 +14,11 @@ package cz.pizavo.omnisign.domain.model.result
  *   the CLI as the on-disk file name and by the desktop "Save As" dialog as the suggested
  *   name).
  * @property signatureId DSS-assigned identifier of the created signature.
- * @property signatureLevel Name of the PAdES level used (e.g. `PADES_BASELINE_B`).
+ * @property signatureLevel Name of the PAdES level the signed document **reached** (e.g.
+ *   `PADES_BASELINE_B`), read back out of the produced bytes rather than echoed from the request, so
+ *   that a B-LT request whose revocation data could not be embedded is reported as the B-T it is.
+ *   Falls back to the requested level only when the level could not be established at all — a
+ *   document that cannot be re-parsed — where naming the request is more useful than naming nothing.
  * @property annotatedWarnings Warnings enriched with affected entity IDs for tooltip display.
  * @property rawWarnings Original, unsanitized warning strings from DSS for verbose / JSON output.
  * @property hasRevocationWarnings Whether any warnings relate to missing or failed revocation data.

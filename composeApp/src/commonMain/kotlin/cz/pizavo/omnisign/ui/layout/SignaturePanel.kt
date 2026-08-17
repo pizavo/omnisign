@@ -27,6 +27,7 @@ import cz.pizavo.omnisign.ui.model.SignaturePanelState
 import cz.pizavo.omnisign.ui.model.localized
 import cz.pizavo.omnisign.ui.model.localizedMessage
 import cz.pizavo.omnisign.ui.model.localizedMessages
+import cz.pizavo.omnisign.ui.platform.LocalAppDateFormat
 import cz.pizavo.omnisign.ui.platform.formattedDate
 import cz.pizavo.omnisign.ui.platform.formattedDateTime
 import omnisign.composeapp.generated.resources.*
@@ -469,7 +470,7 @@ private fun RevocationAccordion(revocations: List<RevocationInfo>, asOf: Instant
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
             val revokedAtSigning = revocations.signingTimeRepresentative()?.revoked == true
-            revocations.revocationConclusion(asOf)?.let { conclusion ->
+            revocations.revocationConclusion(asOf, LocalAppDateFormat.current)?.let { conclusion ->
                 Text(
                     text = conclusion.localized(),
                     style = LumoTheme.typography.body2,
@@ -498,7 +499,7 @@ private fun RevocationAccordion(revocations: List<RevocationInfo>, asOf: Instant
  */
 @Composable
 private fun RevocationEntry(revocation: RevocationInfo) {
-    revocation.displayRows().forEach { (label, value) ->
+    revocation.displayRows(LocalAppDateFormat.current).forEach { (label, value) ->
         LabelValue(label = label.localized(), value = value.localized())
     }
 }

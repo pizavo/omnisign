@@ -177,6 +177,9 @@ class SigningPipelineE2ETest : FunSpec({
 	every { dssServiceFactory.buildExtendCertificateVerifier(any(), any(), any()) } answers {
 		CertificateVerifierResult(extendVerifier(arg<() -> StatusAlert>(2)()))
 	}
+	every { dssServiceFactory.buildLevelInspectionVerifier(any(), any()) } answers {
+		CertificateVerifierResult(trustAndRevocationVerifier())
+	}
 	every { dssServiceFactory.buildTspSource(any()) } returns
 		OnlineTSPSource(tsa.url).apply { setDataLoader(TimestampDataLoader()) }
 
