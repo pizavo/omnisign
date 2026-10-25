@@ -11,7 +11,7 @@ import cz.pizavo.omnisign.config.OidcProviderConfig
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.net.URL
+import java.net.URI
 import java.security.PublicKey
 import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPublicKey
@@ -187,7 +187,7 @@ class IdTokenVerifier(
          * the IdP's JWKS endpoint.
          */
         fun defaultJwkProvider(jwksUri: String): JwkProvider =
-            JwkProviderBuilder(URL(jwksUri))
+            JwkProviderBuilder(URI(jwksUri).toURL())
                 .cached(JWKS_CACHE_SIZE, JWKS_CACHE_TTL_HOURS, TimeUnit.HOURS)
                 .rateLimited(JWKS_RATE_LIMIT_BUCKET, JWKS_RATE_LIMIT_PER_MINUTE, TimeUnit.MINUTES)
                 .build()
