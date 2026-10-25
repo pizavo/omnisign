@@ -147,7 +147,7 @@ kotlin {
  * ./gradlew :shared:updateLotlKeystore
  * ```
  */
-val updateLotlKeystore by tasks.registering {
+val updateLotlKeystore = tasks.register("updateLotlKeystore") {
 	group = "verification"
 	description = "Downloads the latest OJ keystore from the DSS demonstrations repository."
 	val keystoreTarget = layout.projectDirectory.file("src/jvmMain/resources/lotl-keystore.p12")

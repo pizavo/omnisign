@@ -48,7 +48,7 @@ fun String.toNativeDistributionVersion(): String {
     ).joinToString(".")
 }
 
-val generateVersionProperties by tasks.registering {
+val generateVersionProperties = tasks.register("generateVersionProperties") {
 	group = "build"
 	description = "Generates a version.properties resource file containing the project version."
 	val versionValue = project.version.toString()
@@ -324,7 +324,7 @@ val iconsDir: File = rootProject.file("assets/icons")
  * package carries the licence of every bundled library as readable files and not only inside the
  * fat JAR. They are plain text and Markdown, so unlike a second JAR they never reach the classpath.
  */
-val prepareJpackageInput by tasks.registering(Copy::class) {
+val prepareJpackageInput = tasks.register<Copy>("prepareJpackageInput") {
 	group = "distribution"
 	description = "Stages the shadow JAR and the third-party legal files into build/jpackage/input."
 	dependsOn(shadowJarTask)

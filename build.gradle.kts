@@ -74,13 +74,13 @@ fun Configuration.asJvmRuntimeAggregate() {
 val HOST_VARIANT_CLASSIFIER = Regex("-(windows|linux|macos)-(x64|arm64)$")
 
 /** Everything the CLI ships on its runtime classpath. */
-val cliRuntimeClasspath: Configuration by configurations.creating { asJvmRuntimeAggregate() }
+val cliRuntimeClasspath: Configuration = configurations.create("cliRuntimeClasspath") { asJvmRuntimeAggregate() }
 
 /** Everything the server ships on its runtime classpath. */
-val serverRuntimeClasspath: Configuration by configurations.creating { asJvmRuntimeAggregate() }
+val serverRuntimeClasspath: Configuration = configurations.create("serverRuntimeClasspath") { asJvmRuntimeAggregate() }
 
 /** Everything the desktop application ships on its runtime classpath. */
-val desktopRuntimeClasspath: Configuration by configurations.creating { asJvmRuntimeAggregate() }
+val desktopRuntimeClasspath: Configuration = configurations.create("desktopRuntimeClasspath") { asJvmRuntimeAggregate() }
 
 dependencies {
     cliRuntimeClasspath(project(":cli"))
@@ -588,7 +588,7 @@ tasks.register("generateThirdPartyNotices") {
  * other's libraries. It reads only committed files, which keeps packaging independent of
  * dependency resolution.
  */
-val generateInstallerLicense by tasks.registering {
+val generateInstallerLicense = tasks.register("generateInstallerLicense") {
     group = "distribution"
     description = "Builds the per-surface installer licence texts: OmniSign's AGPL terms plus a third-party summary."
 

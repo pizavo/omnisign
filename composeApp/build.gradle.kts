@@ -83,7 +83,7 @@ configurations.findByName("commonTestApi")?.dependencies?.removeIf {
  * desktop and the Wasm web target can read them without a JVM-only manifest
  * lookup. Mirrors the CLI module's `generateVersionProperties` precedent.
  */
-val generateBuildConfig by tasks.registering {
+val generateBuildConfig = tasks.register("generateBuildConfig") {
 	group = "build"
 	description = "Generates BuildConfig.kt containing the project version and server URL."
 	val versionValue = project.version.toString()
@@ -698,7 +698,7 @@ if (org.gradle.internal.os.OperatingSystem.current().isLinux) {
 	val primaryFile = userAppsDir.resolve("omnisign-OmniSign.desktop")
 	val hiddenFile  = userAppsDir.resolve("omnisign.desktop")
 
-	val installLinuxDevDesktopEntry by tasks.registering {
+	val installLinuxDevDesktopEntry = tasks.register("installLinuxDevDesktopEntry") {
 		group = "compose desktop"
 		description =
 			"Installs two user-local .desktop entries so GNOME Shell matches the running " +
@@ -761,7 +761,7 @@ dokka {
  * LGPL and MPL components impose, and is where the in-app Credits dialog tells the
  * user to look.
  */
-val assembleAppResources by tasks.registering(Sync::class) {
+val assembleAppResources = tasks.register<Sync>("assembleAppResources") {
 	group = "distribution"
 	description = "Stages platform resources and the third-party legal files for jpackage."
 
@@ -803,7 +803,7 @@ tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJPackageT
  * Letting `:composeApp` resolve its own `wasmJsRuntimeClasspath` sidesteps that entirely,
  * and this task's output is an ordinary file input for the generator.
  */
-val collectWebRuntimeCoordinates by tasks.registering {
+val collectWebRuntimeCoordinates = tasks.register("collectWebRuntimeCoordinates") {
 	group = "documentation"
 	description = "Records the Wasm runtime classpath coordinates for the third-party notices."
 
@@ -832,7 +832,7 @@ val collectWebRuntimeCoordinates by tasks.registering {
  * users at a licences folder that does not exist, and the AGPL and MPL components the
  * bundle carries — MuPDF among them — would ship with no licence text at all.
  */
-val bundleWebLegalFiles by tasks.registering(Copy::class) {
+val bundleWebLegalFiles = tasks.register<Copy>("bundleWebLegalFiles") {
 	group = "distribution"
 	description = "Adds the third-party legal files to the web distribution."
 
