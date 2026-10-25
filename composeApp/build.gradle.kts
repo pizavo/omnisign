@@ -131,6 +131,10 @@ val generateBuildConfig = tasks.register("generateBuildConfig") {
 }
 
 kotlin {
+	compilerOptions {
+		freeCompilerArgs.add("-Xexpect-actual-classes")
+	}
+
 	jvm {
 		kotlin.jvmToolchain {
 			languageVersion.set(JavaLanguageVersion.of(25))
