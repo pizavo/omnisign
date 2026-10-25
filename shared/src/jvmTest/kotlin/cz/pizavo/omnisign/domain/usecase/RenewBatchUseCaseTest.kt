@@ -13,6 +13,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.error.TimestampFailureKind
+import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.RenewFileStatus
 import cz.pizavo.omnisign.domain.model.result.RenewalAssessment
@@ -984,6 +985,192 @@ class RenewBatchUseCaseTest : FunSpec({
         result.renewed shouldBe 0
         result.errors shouldBe 1
         file.readText() shouldBe "ORIGINAL"
+    }
+
+    test("a re-timestamp that does not move the deadline later is refused, naming the server and the cause") {
+        val dir = subDir("no-progress")
+        val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
+        val due = Clock.System.now() + 20.days
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+            RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, due).right()
+        coEvery {
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+        } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, due).right()
+        coEvery { archivingRepository.extendDocument(any()) } returns ArchivingResult(
+            outputBytes = "RENEWED".toByteArray(),
+            outputName = file.name,
+            newSignatureLevel = SignatureLevel.PADES_BASELINE_LTA.name,
+            achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
+        ).right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 3)
+        val result = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))()
+
+        result.shouldNotBeNull()
+        result.renewed shouldBe 0
+        result.errors shouldBe 1
+        file.readText() shouldBe "ORIGINAL"
+        dir.listFiles { f -> f.name.endsWith(".bak") }!!.toList().shouldBeEmpty()
+        val message = result.jobs.single().files.single().message.shouldNotBeNull()
+        message shouldContain "cannot extend the protection"
+        message shouldContain "https://tsa.example.com"
+        message shouldContain "certificate that expires within the 90-day renewal buffer"
+    }
+
+    test("a re-timestamp that moves the deadline later is kept, with a warning that its seal is already due") {
+        val dir = subDir("partial-progress")
+        val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
+        val now = Clock.System.now()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+            RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, now + 10.days).right()
+        coEvery {
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+        } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, now + 20.days).right()
+        coEvery { archivingRepository.extendDocument(any()) } returns ArchivingResult(
+            outputBytes = "RENEWED".toByteArray(),
+            outputName = file.name,
+            newSignatureLevel = SignatureLevel.PADES_BASELINE_LTA.name,
+            achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
+        ).right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val result = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))()
+
+        result.shouldNotBeNull()
+        result.renewed shouldBe 1
+        result.errors shouldBe 0
+        file.readText() shouldBe "RENEWED"
+        val status = result.jobs.single().files.single()
+        status.status shouldBe RenewFileStatus.Status.RENEWED
+        status.warnings.single() shouldContain "is itself due for renewal"
+    }
+
+    test("once a seal comes back already due, the job stops calling the server for documents it cannot help") {
+        val dir = subDir("born-due-breaker")
+        val sealDue = Clock.System.now() + 30.days
+        val dueAt = mapOf("a" to sealDue, "b" to sealDue + 1.days, "c" to sealDue - 5.days)
+        dueAt.forEach { (name, due) ->
+            val file = File(dir, "$name.pdf").also { it.writeText("ORIGINAL") }
+            coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+                RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, due).right()
+        }
+        coEvery {
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+        } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, sealDue).right()
+        coEvery { archivingRepository.extendDocument(any()) } answers {
+            ArchivingResult(
+                outputBytes = "RENEWED".toByteArray(),
+                outputName = firstArg<ArchivingParameters>().inputName,
+                newSignatureLevel = SignatureLevel.PADES_BASELINE_LTA.name,
+                achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
+            ).right()
+        }
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val result = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))()
+
+        result.shouldNotBeNull()
+        coVerify(exactly = 0) { archivingRepository.extendDocument(match { it.inputName == "b.pdf" }) }
+        coVerify(exactly = 2) { archivingRepository.extendDocument(any()) }
+        result.errors shouldBe 2
+        result.renewed shouldBe 1
+        val statuses = result.jobs.single().files.associateBy { File(it.path).nameWithoutExtension }
+        statuses.getValue("a").message.shouldNotBeNull() shouldContain "cannot extend the protection"
+        statuses.getValue("b").status shouldBe RenewFileStatus.Status.ERROR
+        statuses.getValue("b").message.shouldNotBeNull() shouldContain "did not call it again"
+        statuses.getValue("c").status shouldBe RenewFileStatus.Status.RENEWED
+        File(dir, "b.pdf").readText() shouldBe "ORIGINAL"
+    }
+
+    test("a promotion whose new seal is already due is kept, with a warning naming the cause") {
+        val dir = subDir("born-due-promotion")
+        val file = File(dir, "b-t.pdf").also { it.writeText("ORIGINAL") }
+        val now = Clock.System.now()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+            RenewalAssessment.needed(RenewalReason.BELOW_LT, now + 365.days, deadlineIsFinal = true).right()
+        coEvery {
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+        } returns RenewalAssessment.needed(RenewalReason.ALGORITHM_WEAKENING, now + 30.days).right()
+        coEvery { archivingRepository.extendDocument(any()) } returns ArchivingResult(
+            outputBytes = "PROMOTED".toByteArray(),
+            outputName = file.name,
+            newSignatureLevel = SignatureLevel.PADES_BASELINE_LTA.name,
+            achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
+        ).right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val result = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))()
+
+        result.shouldNotBeNull()
+        result.renewed shouldBe 1
+        result.errors shouldBe 0
+        file.readText() shouldBe "PROMOTED"
+        val status = result.jobs.single().files.single()
+        status.reason shouldBe RenewalReason.BELOW_LT
+        val warning = status.warnings.single()
+        warning shouldContain "is itself due for renewal"
+        warning shouldContain "rely on an algorithm or key size"
+    }
+
+    test("an already-due seal from a promotion also stops the job calling the server for aging documents") {
+        val dir = subDir("born-due-promotion-breaker")
+        val now = Clock.System.now()
+        val promoted = File(dir, "a.pdf").also { it.writeText("ORIGINAL") }
+        val aging = File(dir, "b.pdf").also { it.writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(promoted.absolutePath, any()) } returns
+            RenewalAssessment.needed(RenewalReason.BELOW_LT, now + 365.days, deadlineIsFinal = true).right()
+        coEvery { archivingRepository.needsArchivalRenewal(aging.absolutePath, any()) } returns
+            RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, now + 30.days).right()
+        coEvery {
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+        } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, now + 30.days).right()
+        coEvery { archivingRepository.extendDocument(any()) } returns ArchivingResult(
+            outputBytes = "PROMOTED".toByteArray(),
+            outputName = promoted.name,
+            newSignatureLevel = SignatureLevel.PADES_BASELINE_LTA.name,
+            achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
+        ).right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val result = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))()
+
+        result.shouldNotBeNull()
+        coVerify(exactly = 1) { archivingRepository.extendDocument(any()) }
+        result.renewed shouldBe 1
+        result.errors shouldBe 1
+        aging.readText() shouldBe "ORIGINAL"
+    }
+
+    test("a refresh adds no seal, so its aging verdict does not stop the job calling the server") {
+        val dir = subDir("refresh-not-a-seal")
+        val now = Clock.System.now()
+        val refreshed = File(dir, "a.pdf").also { it.writeText("ORIGINAL") }
+        val aging = File(dir, "b.pdf").also { it.writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(refreshed.absolutePath, any()) } returns
+            RenewalAssessment.needed(RenewalReason.LT_REFRESH_NEEDED).right()
+        coEvery { archivingRepository.needsArchivalRenewal(aging.absolutePath, any()) } returns
+            RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, now + 30.days).right()
+        coEvery {
+            archivingRepository.needsArchivalRenewal(match { it.contains(".a.pdf.verify.") }, any())
+        } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, now + 20.days).right()
+        coEvery { archivingRepository.extendDocument(any()) } answers {
+            val parameters = firstArg<ArchivingParameters>()
+            ArchivingResult(
+                outputBytes = "EXTENDED".toByteArray(),
+                outputName = parameters.inputName,
+                newSignatureLevel = parameters.targetLevel.name,
+                achievedLevel = parameters.targetLevel,
+            ).right()
+        }
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), backupRetention = 0)
+        val result = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))()
+
+        result.shouldNotBeNull()
+        coVerify(exactly = 2) { archivingRepository.extendDocument(any()) }
+        result.renewed shouldBe 2
+        result.errors shouldBe 0
+        result.jobs.single().files.forEach { it.warnings.shouldBeEmpty() }
     }
 
     test("records a successful run, resetting the failure counter") {
