@@ -49,7 +49,7 @@ projects linked below and from the same place this distribution was obtained.
 | Licence | Components | Artifacts |
 |---|---:|---:|
 | GNU Affero General Public License, version 3 or later | 1 | 1 |
-| Apache License, Version 2.0 | 38 | 291 |
+| Apache License, Version 2.0 | 38 | 288 |
 | BSD 2-Clause "Simplified" License | 2 | 2 |
 | BSD 3-Clause "New" License | 4 | 7 |
 | BSD License (upstream does not state which variant) | 1 | 1 |
@@ -58,13 +58,13 @@ projects linked below and from the same place this distribution was obtained.
 | GNU Lesser General Public License, version 2.1 or later | 2 | 44 |
 | MIT License | 9 | 16 |
 | Mozilla Public License, Version 2.0 | 2 | 7 |
-| **Total** | **61** | **379** |
+| **Total** | **61** | **376** |
 
 Per surface:
 
 | Surface | Components | Artifacts |
 |---|---:|---:|
-| cli | 37 | 146 |
+| cli | 37 | 144 |
 | server | 50 | 212 |
 | desktop | 40 | 191 |
 | web | 13 | 96 |
@@ -478,7 +478,7 @@ Copyright © Arrow-kt and Kotzilla.
 Homepage: <https://insert-koin.io/>.
 Ships in: cli, server, desktop, web.
 
-<details><summary>14 artifact(s)</summary>
+<details><summary>13 artifact(s)</summary>
 
 - `io.insert-koin:koin-annotations-jvm:4.2.2` — cli, desktop, server
 - `io.insert-koin:koin-annotations-wasm-js:4.2.2` — web
@@ -493,7 +493,6 @@ Ships in: cli, server, desktop, web.
 - `io.insert-koin:koin-core-viewmodel-wasm-js:4.2.2` — web
 - `io.insert-koin:koin-core-wasm-js:4.2.2` — web
 - `io.insert-koin:koin-ktor-jvm:4.2.2` — server
-- `io.insert-koin:koin-test-jvm:4.2.2` — cli
 
 </details>
 
@@ -503,16 +502,14 @@ Copyright © JetBrains s.r.o..
 Homepage: <https://kotlinlang.org/>.
 Ships in: cli, server, desktop, web.
 
-<details><summary>30 artifact(s)</summary>
+<details><summary>28 artifact(s)</summary>
 
-- `org.jetbrains.kotlin:kotlin-reflect:2.1.21` — desktop
-- `org.jetbrains.kotlin:kotlin-reflect:2.3.20` — cli
+- `org.jetbrains.kotlin:kotlin-reflect:2.1.21` — cli, desktop
 - `org.jetbrains.kotlin:kotlin-reflect:2.3.21` — server
 - `org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.0` — cli, desktop, server
 - `org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.0` — cli, desktop, server
 - `org.jetbrains.kotlin:kotlin-stdlib-wasm-js:2.4.21` — web
 - `org.jetbrains.kotlin:kotlin-stdlib:2.4.21` — cli, desktop, server
-- `org.jetbrains.kotlin:kotlin-test:2.3.20` — cli
 - `org.jetbrains.kotlinx:atomicfu-jvm:0.28.0` — desktop
 - `org.jetbrains.kotlinx:atomicfu-wasm-js:0.33.0` — web
 - `org.jetbrains.kotlinx:kotlinx-browser-wasm-js:0.5.0` — web

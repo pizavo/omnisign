@@ -78,6 +78,7 @@ dependencies {
 	testImplementation(libs.kotest.core)
 	testImplementation(libs.kotest.arrow)
 	testImplementation(libs.kotest.koin)
+	testImplementation(libs.koin.test)
 	testImplementation(libs.kotest.decoroutinator)
 
 	// CliSigningPipelineE2ETest drives the real signing/archiving pipeline through the CLI commands,
@@ -99,8 +100,7 @@ dependencies {
 	
 	implementation(project.dependencies.platform(libs.koin.bom))
 	implementation(libs.koin.core)
-	implementation(libs.koin.test)
-	
+
 	implementation(libs.kotlinx.coroutines.core)
 	implementation(libs.kotlinx.datetime)
 	implementation(libs.kotlinx.serialization.json)
