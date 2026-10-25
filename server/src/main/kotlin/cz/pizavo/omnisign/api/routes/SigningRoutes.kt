@@ -53,11 +53,14 @@ import org.koin.ktor.ext.inject
  * here with only these two fields populated, so a future expansion of the override pipeline
  * cannot accidentally widen the API surface.
  *
- * This operation is disabled by default and must be explicitly enabled in [OperationsConfig.allowed].
- * When [OperationsConfig.certificateAliases] is set, only those aliases may be used.
- * When [OperationsConfig.signingKeystorePath] is set, the server signs from that file PKCS#12
- * keystore (its password sourced from `OMNISIGN_SIGNING_KEYSTORE_PASSWORD`) instead of a discovered
- * PKCS#11 token; `certificateAlias` then selects the entry within it.
+ * This operation is disabled by default and must be explicitly enabled in
+ * [OperationsConfig.allowed][cz.pizavo.omnisign.config.OperationsConfig.allowed].
+ * When [OperationsConfig.certificateAliases][cz.pizavo.omnisign.config.OperationsConfig.certificateAliases]
+ * is set, only those aliases may be used.
+ * When [OperationsConfig.signingKeystorePath][cz.pizavo.omnisign.config.OperationsConfig.signingKeystorePath]
+ * is set, the server signs from that file PKCS#12 keystore (its password sourced from
+ * `OMNISIGN_SIGNING_KEYSTORE_PASSWORD`) instead of a discovered PKCS#11 token; `certificateAlias`
+ * then selects the entry within it.
  *
  * A request whose effective signature level embeds an RFC 3161 timestamp (any level above
  * `PADES_BASELINE_B`, or any request that does not opt out via `noTimestamp`) is rejected with

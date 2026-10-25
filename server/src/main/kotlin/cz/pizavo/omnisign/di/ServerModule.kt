@@ -93,8 +93,9 @@ import kotlin.coroutines.CoroutineContext
  * - [PkceVerifierStore] (concrete [ExposedPkceVerifierStore]) for persisting in-flight
  *   PKCE code verifiers across the redirect → IdP → callback hop. Shares the same
  *   sessions database file as [RefreshTokenStore]; schema is initialised on first
- *   injection. Binding is lazy so deployments without any [OidcProviderConfig] never
- *   touch SQLite for PKCE either.
+ *   injection. Binding is lazy so deployments without any
+ *   [OidcProviderConfig][cz.pizavo.omnisign.config.OidcProviderConfig] never touch SQLite for
+ *   PKCE either.
  * - [PkceService] (RFC 7636) — verifier generation, S256 challenge derivation, and the
  *   thin protocol layer over [PkceVerifierStore].
  * - [LoginRequestStore] (concrete [ExposedLoginRequestStore]) and [HandoffCodeStore]

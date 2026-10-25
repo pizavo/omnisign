@@ -9,14 +9,14 @@ import kotlinx.serialization.json.contentOrNull
  * Determines whether a set of IdP claims satisfies all entries in [requiredClaims].
  *
  * For each `(claimName, requiredValues)` pair in [requiredClaims], the user's actual claim
- * value must contain at least one string that appears in [requiredValues]. All entries must
+ * value must contain at least one string that appears in `requiredValues`. All entries must
  * be satisfied simultaneously (logical AND across claim names, logical OR within each claim's
  * value list).
  *
  * Both single-valued claims (e.g. `schac_home_organization: "osu.cz"`) and multivalued
  * claims (e.g. `eduperson_scoped_affiliation: ["staff@osu.cz", "member@osu.cz"]`) are
  * handled correctly. A JSON array claim matches when any of its elements is in
- * [requiredValues]; a JSON string claim matches when it equals one of [requiredValues].
+ * `requiredValues`; a JSON string claim matches when it equals one of `requiredValues`.
  *
  * JSON `null` values and non-primitive / non-array elements are treated as absent and never
  * match. When [requiredClaims] is `null` or empty, all users are accepted unconditionally.

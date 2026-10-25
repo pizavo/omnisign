@@ -336,9 +336,9 @@ private fun Application.attachPkcs11CacheInvalidatorIfNeeded(serverConfig: Serve
  * certificate discovery calls use the fast in-process path rather than spawning
  * unreliable subprocesses.
  *
- * When `SIGN` is not in [OperationsConfig.allowed], warmup is skipped entirely
- * because the certificate discovery route (`GET /api/v1/certificates`) is gated behind
- * `SIGN` and will never be invoked.
+ * When `SIGN` is not in [OperationsConfig.allowed][cz.pizavo.omnisign.config.OperationsConfig.allowed],
+ * warmup is skipped entirely because the certificate discovery route (`GET /api/v1/certificates`)
+ * is gated behind `SIGN` and will never be invoked.
  *
  * @param serverConfig Current server configuration.
  */
@@ -472,8 +472,8 @@ private fun loadKeyStore(path: String, password: String): KeyStore {
  * Derive the externally reachable base URL for the server.
  *
  * Used to build OAuth2 redirect URIs. Reads the `OMNISIGN_EXTERNAL_URL` environment
- * variable first, falling back to constructing a URL from [ListenConfig.host] and the
- * active port/scheme.
+ * variable first, falling back to constructing a URL from
+ * [ListenConfig.host][cz.pizavo.omnisign.config.ListenConfig.host] and the active port/scheme.
  *
  * @param serverConfig Current server configuration.
  * @return Base URL string (no trailing slash).

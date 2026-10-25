@@ -16,7 +16,7 @@ private val logger = KotlinLogging.logger {}
  * Loads [ServerConfig] from a YAML file.
  *
  * Resolution order:
- * 1. Explicit [path] argument (e.g. from a CLI flag).
+ * 1. Explicit `path` argument to [load] (e.g. from a CLI flag).
  * 2. `OMNISIGN_SERVER_CONFIG` environment variable.
  * 3. `server.yml` in the current working directory.
  * 4. Built-in defaults ([ServerConfig] no-arg constructor) — with a WARN telling the
