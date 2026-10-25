@@ -59,7 +59,8 @@ import androidx.compose.ui.window.Dialog as ComposeDialog
  *   which sets `usePlatformDefaultWidth = false` so the caller's [modifier] is the source
  *   of truth for sizing instead of the platform's narrow default.
  * @param showToast When `true` (default), the dialog embeds a bottom-right [ToastHost] and
- *   participates in the shared toast hand-off via [ToastService.incrementOpenDialogs].
+ *   participates in the shared toast hand-off via
+ *   [ToastService.incrementOpenDialogs][cz.pizavo.omnisign.ui.toast.ToastService.incrementOpenDialogs].
  *   Set to `false` for small focused dialogs (e.g. PIN prompts) where there is neither
  *   room nor purpose for a toast — the root host keeps rendering toasts unaffected.
  * @param content Dialog body, rendered inside the [Surface] above the toast slot.  Typical

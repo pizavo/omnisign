@@ -42,7 +42,7 @@ import omnisign.composeapp.generated.resources.signing_show_diagnostic_info
  * ViewModel driving the signing dialog.
  *
  * Orchestrates certificate discovery, form state, and the actual signing operation.
- * The dialog flow mirrors the CLI [cz.pizavo.omnisign.commands.Sign] command:
+ * The dialog flow mirrors the CLI `Sign` command:
  * resolve config → discover certificates → build [SigningParameters] → invoke
  * [SignDocumentUseCase] → show the result.
  *
@@ -123,9 +123,10 @@ class SigningViewModel(
 
 	/**
 	 * The signed bytes and metadata produced by [sign], held in memory until the user picks a save
-	 * location in [saveSignedDocument]. The save dialog is deliberately the *last* step — so a
-	 * [SigningDialogState.RevocationWarning] is answered before any file is written, and aborting or
-	 * cancelling ([abortAfterRevocationWarning] / [cancelSave]) discards this with nothing on disk.
+	 * location and [completeSave] receives the outcome. The save dialog is deliberately the *last*
+	 * step — so a [SigningDialogState.RevocationWarning] is answered before any file is written, and
+	 * aborting ([abortAfterRevocationWarning]) or cancelling the save ([SaveOutcome.Cancelled])
+	 * discards this with nothing on disk.
 	 */
 	private var pendingSignature: PendingSignature? = null
 
@@ -420,8 +421,9 @@ class SigningViewModel(
 	 * [SigningDialogState.RevocationWarning] (effective level ≥ B-LT with revocation warnings) or
 	 * [SigningDialogState.AwaitingSave], or to [SigningDialogState.Error] on failure. **No file is
 	 * written here** — the produced bytes are held in [pendingSignature] and persisted only once the
-	 * user picks a destination in [saveSignedDocument]. This ordering makes the save dialog the last
-	 * step, so a revocation warning is answered *before* it opens and aborting leaves nothing on disk.
+	 * user picks a destination, after which [completeSave] finishes the flow. This ordering makes the
+	 * save dialog the last step, so a revocation warning is answered *before* it opens and aborting
+	 * leaves nothing on disk.
 	 */
 	fun sign() {
 		val ready = _state.value as? SigningDialogState.Ready ?: return
@@ -792,9 +794,10 @@ class SigningViewModel(
 	}
 
 	/**
-	 * Signed bytes produced by [sign] plus the metadata needed to finish the operation once the user
-	 * picks a save destination in [saveSignedDocument]. Held in memory between the two steps and
-	 * discarded on [abortAfterRevocationWarning] / [cancelSave] so a cancelled flow writes nothing.
+	 * Signed bytes produced by [sign] plus the metadata [completeSave] needs to finish the operation
+	 * once the user picks a save destination. Held in memory between the two steps and discarded on
+	 * [abortAfterRevocationWarning] or a [SaveOutcome.Cancelled] save, so a cancelled flow writes
+	 * nothing.
 	 *
 	 * @property pageCount Source-document page count, reused for the web [signedDocument] reload
 	 *   because PAdES signing never changes the number of pages.

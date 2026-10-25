@@ -915,9 +915,9 @@ private fun trustTierIcon(tier: SignatureTrustTier): DrawableResource? = when (t
 /**
  * Map a [SignatureTrustTier] to the appropriate theme-aware tint color.
  *
- * Uses dedicated icon colors from [LumoTheme.colors.icons] so rosette hues
- * are independent of the semantic palette (success / error / warning) used by the
- * validation-indication shields.
+ * Uses dedicated icon colors from
+ * [LumoTheme.colors.icons][cz.pizavo.omnisign.lumo.Colors.icons] so rosette hues are independent
+ * of the semantic palette (success / error / warning) used by the validation-indication shields.
  */
 @Composable
 private fun trustTierColor(tier: SignatureTrustTier): Color = when (tier) {

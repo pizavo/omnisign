@@ -10,7 +10,7 @@ import kotlinx.coroutines.flow.StateFlow
  * `composeApp/build.gradle.kts`), so the shell can ask a freshly launched app to display one
  * specific file. Windows and Linux deliver that file as a command-line argument; macOS sends an
  * Apple event once the JVM is already running. The JVM implementation
- * ([OsDocumentOpenController]) normalises both into this single-slot surface, mirroring how
+ * (`OsDocumentOpenController`) normalises both into this single-slot surface, mirroring how
  * [PasswordDialogController] exposes a pending password prompt.
  *
  * The Compose UI observes [request], loads the file through [loadPdfFromPlatformFile], and then

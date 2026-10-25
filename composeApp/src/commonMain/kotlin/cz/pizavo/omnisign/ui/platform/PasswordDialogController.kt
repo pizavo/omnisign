@@ -20,7 +20,7 @@ data class PasswordDialogRequest(
  * when non-null. On confirmation or cancellation the UI calls [complete] to dismiss
  * the dialog and unblock the background thread that initiated the request.
  *
- * The JVM implementation ([ComposePasswordCallback][cz.pizavo.omnisign.ui.platform.ComposePasswordCallback])
+ * The JVM implementation (`ComposePasswordCallback`)
  * bridges this to the blocking [cz.pizavo.omnisign.platform.PasswordCallback] interface
  * expected by the DSS layer.
  */
