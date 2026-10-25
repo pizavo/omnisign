@@ -29,6 +29,7 @@ import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.plugins.*
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.github.oshai.kotlinlogging.KotlinLoggingConfiguration
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
@@ -46,7 +47,17 @@ import java.io.File
 import java.nio.file.Path
 import java.security.KeyStore
 
-private val logger = KotlinLogging.logger {}
+/**
+ * Logger of the server entry point.
+ *
+ * Creating it is the process's first use of [KotlinLogging], so the library's
+ * "kotlin-logging: initializing..." banner is switched off just before: the banner goes to
+ * standard output, the server's log stream, ahead of the first formatted log line.
+ */
+private val logger = run {
+	KotlinLoggingConfiguration.logStartupMessage = false
+	KotlinLogging.logger {}
+}
 
 /**
  * Server entry point.
