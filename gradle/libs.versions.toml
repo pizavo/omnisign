@@ -40,7 +40,6 @@ jwks-rsa = "0.24.1"
 kotest-engine = {module = "io.kotest:kotest-framework-engine", version.ref = "kotest" }
 kotest-core = {module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
 kotest-json = {module = "io.kotest:kotest-assertions-json", version.ref = "kotest" }
-kotest-ktor = {module = "io.kotest:kotest-assertions-ktor", version.ref = "kotest" }
 kotest-kotlinx-datetime = {module = "io.kotest:kotest-assertions-kotlinx-datetime", version.ref = "kotest" }
 kotest-arrow = {module = "io.kotest:kotest-assertions-arrow", version.ref = "kotest" }
 kotest-yaml = {module = "io.kotest:kotest-assertions-yaml", version.ref = "kotest" }
@@ -71,7 +70,6 @@ ktor-server-status-pages = { module = "io.ktor:ktor-server-status-pages-jvm", ve
 ktor-server-cors = { module = "io.ktor:ktor-server-cors-jvm", version.ref = "ktor" }
 ktor-server-call-logging = { module = "io.ktor:ktor-server-call-logging-jvm", version.ref = "ktor" }
 ktor-server-auth = { module = "io.ktor:ktor-server-auth-jvm", version.ref = "ktor" }
-ktor-server-sessions = { module = "io.ktor:ktor-server-sessions-jvm", version.ref = "ktor" }
 ktor-server-auto-head-response = { module = "io.ktor:ktor-server-auto-head-response-jvm", version.ref = "ktor" }
 ktor-server-https-redirect = { module = "io.ktor:ktor-server-http-redirect-jvm", version.ref = "ktor" }
 ktor-server-headers-default = { module = "io.ktor:ktor-server-default-headers-jvm", version.ref = "ktor" }
