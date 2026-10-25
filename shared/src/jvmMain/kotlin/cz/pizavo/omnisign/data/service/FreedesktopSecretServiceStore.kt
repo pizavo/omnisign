@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.domain.service.CredentialStore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.freedesktop.dbus.DBusPath
 import org.purejava.secret.api.Collection
+import org.purejava.secret.api.DBusMessageHandler.DBusResult
 import org.purejava.secret.api.EncryptedSession
 import org.purejava.secret.api.Item
 import org.purejava.secret.api.Service
@@ -97,22 +98,28 @@ class FreedesktopSecretServiceStore : CredentialStore {
 
     private fun defaultCollection(): Collection? {
         val svc = Service()
-        val aliasResult = svc.readAlias("default")
-        if (!aliasResult.isSuccess || aliasResult.value().path == "/") return null
+        val alias = svc.readAlias("default").valueOrNull()
+        if (alias == null || alias.path == "/") return null
 
-        val collection = Collection(aliasResult.value())
-        val lockedResult = collection.isLocked()
-        if (lockedResult.isSuccess && lockedResult.value() == true) {
-            svc.ensureUnlocked(aliasResult.value())
+        val collection = Collection(alias)
+        if (collection.isLocked().valueOrNull() == true) {
+            svc.ensureUnlocked(alias)
         }
         return collection
     }
 
     private fun findItemPath(collection: Collection, service: String, account: String): DBusPath? {
         val attributes = credentialAttributes(service, account)
-        val result = collection.searchItems(attributes)
-        if (!result.isSuccess || result.value().isEmpty()) return null
-        return result.value().first()
+        return collection.searchItems(attributes).valueOrNull()?.firstOrNull()
+    }
+
+    /**
+     * The value of a successful D-Bus call, or `null` when the call failed — every caller treats
+     * a failed call the same as a missing value.
+     */
+    private fun <T> DBusResult<T>.valueOrNull(): T? = when (this) {
+        is DBusResult.Success -> value()
+        is DBusResult.Failure -> null
     }
 
     private fun <T> withEncryptedSession(block: (EncryptedSession) -> T): T {

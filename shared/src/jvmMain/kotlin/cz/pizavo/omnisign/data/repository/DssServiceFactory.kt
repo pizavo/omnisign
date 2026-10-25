@@ -330,7 +330,7 @@ class DssServiceFactory(
 	
 	/**
 	 * Build a [CommonCertificateVerifier] for **reading a document's PAdES level back out of its own
-	 * bytes**: trust anchors, and nothing that reaches the network.
+	 * bytes**: trust anchors, and nothing that fetches revocation data.
 	 *
 	 * Exists for the inspections that run without an operation behind them — the extension dialog's
 	 * "what is this document?" pre-fetch and the renewal assessment — which have no signing or
@@ -343,11 +343,21 @@ class DssServiceFactory(
 	 * because a trust anchor needs none — and reports B-T for a conformant B-LT document. See
 	 * [readPadesLevel] for the full account.
 	 *
-	 * No [DefaultAIASource], [OnlineCRLSource] or [OnlineOCSPSource] is wired, so the inspection is
-	 * strictly offline: it must describe the document as it stands, and fetching fresh revocation
-	 * data would be both a side effect the caller did not ask for and a way to report a level the
-	 * bytes do not carry. Trusted-list sources still come from the shared [TrustedSourceRegistry],
-	 * which retains them across calls, so repeated inspections do not re-download or re-parse a list.
+	 * No [OnlineCRLSource] or [OnlineOCSPSource] is wired, so the inspection never fetches revocation
+	 * data: it must describe the document as it stands, and fetching fresh revocation data would be
+	 * both a side effect the caller did not ask for and a way to report a level the bytes do not carry.
+	 *
+	 * The verifier is not strictly offline, though. The no-argument [CommonCertificateVerifier]
+	 * constructor installs a [DefaultAIASource], and it is left in place: when DSS cannot find a
+	 * certificate's issuer in the document or among the trusted sources, it downloads the issuer from
+	 * the certificate's Authority Information Access URL. That adds certificates to a chain, never
+	 * revocation data, and a document that embeds each chain up to its self-signed root triggers no
+	 * request. [readPadesLevel] reduces the verifier to an offline copy, so the level itself is read
+	 * without it; the full validations of the renewal assessment and of the usable-revocation check
+	 * run with the verifier as built.
+	 *
+	 * Trusted-list sources still come from the shared [TrustedSourceRegistry], which retains them
+	 * across calls, so repeated inspections do not re-download or re-parse a list.
 	 *
 	 * Alerts that DSS defaults to [eu.europa.esig.dss.alert.ExceptionOnStatusAlert] are silenced: an
 	 * inspection reports a level or reports that it could not establish one, and must not abort.
@@ -402,8 +412,8 @@ class DssServiceFactory(
 	}
 	
 	/**
-	 * Build a lenient offline [CommonCertificateVerifier] with a configurable [timeout] for
-	 * the underlying HTTP data loaders, without requiring a full [ResolvedConfig].
+	 * Build a lenient [CommonCertificateVerifier] with online AIA, OCSP and CRL sources whose HTTP
+	 * data loaders use a configurable [timeout], without requiring a full [ResolvedConfig].
 	 */
 	fun buildCertificateVerifier(timeout: Int = DEFAULT_TIMEOUT): CommonCertificateVerifier {
 		val dataLoader = CommonsDataLoader().apply {

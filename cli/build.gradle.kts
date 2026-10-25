@@ -184,6 +184,9 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
 		attributes["Enable-Native-Access"] = "ALL-UNNAMED"
 	}
 	mergeServiceFiles()
+	filesMatching("META-INF/services/**") {
+		duplicatesStrategy = DuplicatesStrategy.INCLUDE
+	}
 
 	exclude(
 		"META-INF/LICENSE",

@@ -12,9 +12,9 @@
 [![CI — Server](https://github.com/pizavo/omnisign/actions/workflows/ci-server.yml/badge.svg)](https://github.com/pizavo/omnisign/actions/workflows/ci-server.yml)
 [![CI — Web](https://github.com/pizavo/omnisign/actions/workflows/ci-web.yml/badge.svg)](https://github.com/pizavo/omnisign/actions/workflows/ci-web.yml)
 
-[![Kotlin](https://img.shields.io/badge/Kotlin-2.3.21-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
-[![Compose Multiplatform](https://img.shields.io/badge/Compose_Multiplatform-1.10.1-4285F4?logo=jetpackcompose&logoColor=white)](https://github.com/JetBrains/compose-multiplatform)
-[![EU DSS](https://img.shields.io/badge/EU_DSS-6.3-003399?logo=europeanunion&logoColor=white)](https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/doc/dss-documentation.html)
+[![Kotlin](https://img.shields.io/badge/Kotlin-2.4.21-7F52FF?logo=kotlin&logoColor=white)](https://kotlinlang.org/)
+[![Compose Multiplatform](https://img.shields.io/badge/Compose_Multiplatform-1.12.2-4285F4?logo=jetpackcompose&logoColor=white)](https://github.com/JetBrains/compose-multiplatform)
+[![EU DSS](https://img.shields.io/badge/EU_DSS-6.5.1-003399?logo=europeanunion&logoColor=white)](https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/doc/dss-documentation.html)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL_v3-blue.svg)](LICENSE.md)
 [![Docs](https://img.shields.io/badge/Docs-GitHub_Pages-brightgreen?logo=docusaurus&logoColor=white)](https://pizavo.github.io/omnisign/)
 
@@ -230,21 +230,21 @@ The project uses **[Kotest 6](https://kotest.io/)** (FunSpec style),
 
 ### Key Libraries
 
-| Library                                                                                               | Purpose                                                        |
-|-------------------------------------------------------------------------------------------------------|----------------------------------------------------------------|
-| [EU DSS 6.3](https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/doc/dss-documentation.html) | PAdES signing, validation, timestamping, trusted list handling |
-| [Kotlin Multiplatform](https://kotlinlang.org/docs/multiplatform.html)                                | Shared business logic across JVM, Wasm, and future targets     |
-| [Compose Multiplatform](https://github.com/JetBrains/compose-multiplatform)                           | Shared declarative UI for desktop and web                      |
-| [Ktor](https://ktor.io/)                                                                              | HTTP server                                                    |
-| [Clikt](https://ajalt.github.io/clikt/)                                                               | CLI argument parsing                                           |
-| [Koin](https://insert-koin.io/)                                                                       | Dependency injection                                           |
-| [Arrow](https://arrow-kt.io/)                                                                         | Functional error handling (`Either`-based `OperationResult`)   |
-| [Kotest](https://kotest.io/) + [MockK](https://mockk.io/)                                             | Testing and mocking                                            |
-| [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization)                              | JSON configuration persistence                                 |
-| [Jackson](https://github.com/FasterXML/jackson)                                                       | YAML / XML config export & import                              |
-| [Apache PDFBox](https://pdfbox.apache.org/)                                                           | PDF page rendering (desktop)                                   |
-| [MuPDF](https://mupdf.com/)                                                                           | PDF page rendering (web / Wasm)                                |
-| [FileKit](https://github.com/vinceglb/FileKit)                                                        | Cross-platform file picker dialogs                             |
+| Library                                                                                                 | Purpose                                                        |
+|---------------------------------------------------------------------------------------------------------|----------------------------------------------------------------|
+| [EU DSS 6.5.1](https://ec.europa.eu/digital-building-blocks/DSS/webapp-demo/doc/dss-documentation.html) | PAdES signing, validation, timestamping, trusted list handling |
+| [Kotlin Multiplatform](https://kotlinlang.org/docs/multiplatform.html)                                  | Shared business logic across JVM, Wasm, and future targets     |
+| [Compose Multiplatform](https://github.com/JetBrains/compose-multiplatform)                             | Shared declarative UI for desktop and web                      |
+| [Ktor](https://ktor.io/)                                                                                | HTTP server                                                    |
+| [Clikt](https://ajalt.github.io/clikt/)                                                                 | CLI argument parsing                                           |
+| [Koin](https://insert-koin.io/)                                                                         | Dependency injection                                           |
+| [Arrow](https://arrow-kt.io/)                                                                           | Functional error handling (`Either`-based `OperationResult`)   |
+| [Kotest](https://kotest.io/) + [MockK](https://mockk.io/)                                               | Testing and mocking                                            |
+| [kotlinx.serialization](https://github.com/Kotlin/kotlinx.serialization)                                | JSON configuration persistence                                 |
+| [Jackson](https://github.com/FasterXML/jackson)                                                         | YAML / XML config export & import                              |
+| [Apache PDFBox](https://pdfbox.apache.org/)                                                             | PDF page rendering (desktop)                                   |
+| [MuPDF](https://mupdf.com/)                                                                             | PDF page rendering (web / Wasm)                                |
+| [FileKit](https://github.com/vinceglb/FileKit)                                                          | Cross-platform file picker dialogs                             |
 
 ## License
 

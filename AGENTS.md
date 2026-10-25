@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-OmniSign is a Kotlin Multiplatform digital signature app (PAdES BASELINE B/B-T/B-LT/B-LTA) built on the EU DSS 6.3 library. It is a diploma thesis project — treat documentation quality and SOLID principles seriously.
+OmniSign is a Kotlin Multiplatform digital signature app (PAdES BASELINE B/B-T/B-LT/B-LTA) built on the EU DSS 6.5.1 library. It is a diploma thesis project — treat documentation quality and SOLID principles seriously.
 
 ## Architecture
 

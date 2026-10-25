@@ -5,6 +5,7 @@ import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
+import cz.pizavo.omnisign.domain.service.AlgorithmExpirationChecker
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
 import kotlinx.coroutines.runBlocking
@@ -91,7 +92,12 @@ class ProfileShow : CliktCommand(name = "show"), KoinComponent {
 								?: "inherit (default: ${AlgorithmConstraintsConfig.DEFAULT.expirationLevelAfterUpdate})"
 						}"
 					)
-					echo("  Policy updated   : ${ac.policyUpdateDate ?: "inherit (DSS default: 2024-10-13)"}")
+					echo(
+						"  Policy updated   : ${
+							ac.policyUpdateDate
+								?: "inherit (DSS default: ${AlgorithmExpirationChecker.DEFAULT_UPDATE_DATE})"
+						}"
+					)
 					if (ac.expirationDateOverrides.isNotEmpty()) {
 						echo("  Expiry overrides :")
 						ac.expirationDateOverrides.forEach { (alg, date) -> echo("    $alg → $date") }

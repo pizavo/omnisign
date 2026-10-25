@@ -351,6 +351,13 @@ enum class MessageKey {
 	 */
 	WARNING_REVOCATION_AFTER_CERTIFICATE_EXPIRY,
 
+	/**
+	 * Sanitized warning: a certificate names no CRL distribution point or OCSP address, so the
+	 * timestamps and revocation data signed under it are disregarded while long-term validation data
+	 * is gathered (arg: affected-count phrase).
+	 */
+	WARNING_REVOCATION_ACCESS_POINT_MISSING,
+
 	/** Sanitized warning: revocation checks skipped for an untrusted chain (arg: affected-count phrase). */
 	WARNING_REVOCATION_UNTRUSTED_CHAIN,
 

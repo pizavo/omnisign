@@ -75,8 +75,12 @@ import java.util.*
  *
  * That is why the level alone is not a sufficient signal and
  * [cz.pizavo.omnisign.domain.model.result.ArchivingResult.revocationDataMissing] exists: only the
- * warning-derived flag tells this document apart from the one in the second test, which is genuinely
- * B-LT. The reviewer's original example — a DSS dictionary holding certificates and no revocation
+ * flag tells this document apart from the one in the second test, which is genuinely B-LT. Nor can
+ * the flag rest on DSS saying so. The TSA here shares the signer's CA, and DSS reuses a CRL fetched
+ * for one certificate for the other certificates of the same issuer without checking it again, so
+ * the extension logs nothing about the signer's; the repository finds the gap by judging the
+ * document it produced. The reviewer's
+ * original example — a DSS dictionary holding certificates and no revocation
  * data at all — is the *other* shape, the one that arises when the CRL cannot be fetched; there the
  * level does drop to B-T, as `SigningPipelineE2ETest` shows.
  */

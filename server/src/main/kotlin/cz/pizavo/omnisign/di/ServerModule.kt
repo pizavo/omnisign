@@ -38,7 +38,7 @@ import io.ktor.util.StatelessHmacNonceManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.Json
-import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.v1.jdbc.Database
 import org.koin.dsl.module
 import java.nio.file.Path
 import kotlin.coroutines.CoroutineContext

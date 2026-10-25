@@ -24,7 +24,7 @@ import eu.europa.esig.dss.diagnostic.RevocationWrapper
 import eu.europa.esig.dss.diagnostic.SignatureWrapper
 import eu.europa.esig.dss.diagnostic.TimestampWrapper
 import eu.europa.esig.dss.enumerations.DigestAlgorithm
-import eu.europa.esig.dss.enumerations.EncryptionAlgorithm
+import eu.europa.esig.dss.enumerations.SignatureAlgorithm
 import eu.europa.esig.dss.enumerations.TimestampType
 import eu.europa.esig.dss.model.FileDocument
 import eu.europa.esig.dss.model.InMemoryDocument
@@ -33,6 +33,7 @@ import eu.europa.esig.dss.pades.PAdESSignatureParameters
 import eu.europa.esig.dss.pades.signature.PAdESService
 import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.spi.validation.CertificateVerifier
+import eu.europa.esig.dss.spi.validation.CertificateVerifierBuilder
 import eu.europa.esig.dss.validation.policy.CryptographicSuiteUtils
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
@@ -60,7 +61,9 @@ private val logger = KotlinLogging.logger {}
  * verifier — reports revocation data it could not obtain. For a target of B-LT or higher that
  * condition means the output did not reach the requested level, and it is surfaced as
  * [ArchivingResult.revocationDataMissing]; a B-T target needs no revocation data, so it never sets
- * the flag.
+ * the flag. Revocation data that was obtained but cannot be used sets it too, and that is judged on
+ * the output itself rather than taken from DSS, which does not always report it (see
+ * [signingCertificatesWithUnusableRevocation]).
  */
 class DssArchivingRepository(
 	private val configRepository: ConfigRepository,
@@ -123,13 +126,28 @@ class DssArchivingRepository(
 				)
 
 				val warnings = tlWarnings + statusAlert.drain() + logCapture.stop()
-				val sanitized = warningSanitizer.sanitize(warnings)
 
 				val outputBytes = withContext(Dispatchers.IO) {
 					extendedDocument.openStream().use { it.readAllBytes() }
 				}
 
 				val achieved = readPadesLevel(outputBytes, verifier, dssServiceFactory.buildPdfObjectFactory())
+				val unusableRevocation = if (parameters.targetLevel >= SignatureLevel.PADES_BASELINE_LT) {
+					signingCertificatesWithUnusableRevocation(
+						outputBytes,
+						CertificateVerifierBuilder(verifier).buildOfflineAndSilentCopy(),
+					)
+				} else {
+					emptySet()
+				}
+				val sanitized = warningSanitizer.sanitize(
+					warnings,
+					findings = if (unusableRevocation.isEmpty()) {
+						emptyMap()
+					} else {
+						mapOf(DssWarningSanitizer.WarningCategory.REVOCATION_AFTER_CERTIFICATE_EXPIRY to unusableRevocation)
+					},
+				)
 
 				ArchivingResult(
 					outputBytes = outputBytes,
@@ -288,12 +306,12 @@ class DssArchivingRepository(
 	 * and still have nothing a validator will accept. Sealing it would freeze that.
 	 *
 	 * Reported as [RenewalReason.LT_REFRESH_NEEDED] rather than as terminal, even when the signing
-	 * certificate has long expired and no newer data can help. The extension attempt is the better
-	 * judge: it runs with trusted lists loaded and therefore sees the `expiredCertsRevocationInfo`
-	 * service metadata that this offline check cannot, so a document this check doubts may still be
-	 * promotable. If it is not, the attempt fails with
-	 * [ArchivingResult.revocationDataMissing] and the original is left alone — an honest failure
-	 * beats a premature "never".
+	 * certificate has long expired and no newer data can help. The extension attempt decides: it runs
+	 * with the configured revocation sources and may obtain a response carrying the
+	 * `expiredCertsOnCRL`, `archiveCutoff` or matching `certHash` the embedded data lacks, so a
+	 * document this check doubts may still be promotable. If what it embeds is still unusable, the
+	 * attempt reports [ArchivingResult.revocationDataMissing] and the original is left alone — an
+	 * honest failure beats a premature "never".
 	 */
 	private fun assessUnusableRevocation(
 		filePath: String,
@@ -315,9 +333,11 @@ class DssArchivingRepository(
 	 * issuer's explicit statement that it reports on certificates that expired that long ago.
 	 *
 	 * Deliberately does not consider the `expiredCertsRevocationInfo` extension a trusted list can
-	 * carry, which DSS consults when neither response extension is present: this check runs offline
-	 * with no trusted lists, by design. It can therefore be stricter than a full validation would be,
-	 * which is why [assessUnusableRevocation] treats its verdict as "refresh" rather than "hopeless".
+	 * carry, which DSS's validation consults when neither response extension is present — and neither
+	 * does DSS's own check of a response it fetches while augmenting, which this rule stands in for
+	 * after an extension (see [signingCertificatesWithUnusableRevocation]). It can therefore be
+	 * stricter than a full validation would be, which is why [assessUnusableRevocation] treats its
+	 * verdict as "refresh" rather than "hopeless".
 	 */
 	private fun hasUsableSigningCertificateRevocation(signature: SignatureWrapper): Boolean {
 		val certificate = signature.signingCertificate ?: return false
@@ -531,10 +551,12 @@ class DssArchivingRepository(
 	): Boolean {
 		if (suite == null) return false
 		val digests = listOfNotNull(timestamp.messageImprint?.digestMethod, timestamp.digestAlgorithm)
-		val encryption = timestamp.encryptionAlgorithm
+		val signatureAlgorithm = timestamp.signatureAlgorithm
 		return digests.any { digestExpiresBefore(suite, it, renewalThreshold) } ||
-			(encryption != null &&
-				encryptionExpiresBefore(suite, encryption, timestamp.keyLengthUsedToSignThisToken, renewalThreshold))
+			(signatureAlgorithm != null &&
+				signatureAlgorithmExpiresBefore(
+					suite, signatureAlgorithm, timestamp.keyLengthUsedToSignThisToken, renewalThreshold,
+				))
 	}
 
 	/**
@@ -551,19 +573,20 @@ class DssArchivingRepository(
 				?.let { it < renewalThreshold } == true)
 
 	/**
-	 * Whether [encryption] at [keyLength] bits is no longer acceptable under [suite], or its
-	 * expiration date precedes [renewalThreshold]. A missing or non-numeric [keyLength] cannot be
-	 * judged and is treated as not expiring.
+	 * Whether [signatureAlgorithm] at [keyLength] bits is no longer acceptable under [suite], or its
+	 * expiration date precedes [renewalThreshold]. DSS judges the encryption and digest algorithms
+	 * as one pair, so the pair's expiry is capped by its digest's. A missing or non-numeric
+	 * [keyLength] cannot be judged and is treated as not expiring.
 	 */
-	private fun encryptionExpiresBefore(
+	private fun signatureAlgorithmExpiresBefore(
 		suite: CryptographicSuite,
-		encryption: EncryptionAlgorithm,
+		signatureAlgorithm: SignatureAlgorithm,
 		keyLength: String?,
 		renewalThreshold: Instant,
 	): Boolean {
 		val keySize = keyLength?.toIntOrNull()?.takeIf { it > 0 } ?: return false
-		return !CryptographicSuiteUtils.isEncryptionAlgorithmWithKeySizeReliable(suite, encryption, keySize) ||
-			(CryptographicSuiteUtils.getExpirationDate(suite, encryption, keySize)?.toKotlinInstant()
+		return !CryptographicSuiteUtils.isSignatureAlgorithmWithKeySizeReliable(suite, signatureAlgorithm, keySize) ||
+			(CryptographicSuiteUtils.getExpirationDate(suite, signatureAlgorithm, keySize)?.toKotlinInstant()
 				?.let { it < renewalThreshold } == true)
 	}
 	
@@ -579,10 +602,11 @@ class DssArchivingRepository(
 		for (digest in listOfNotNull(timestamp.messageImprint?.digestMethod, timestamp.digestAlgorithm)) {
 			CryptographicSuiteUtils.getExpirationDate(suite, digest)?.toKotlinInstant()?.let { instants += it }
 		}
-		val encryption = timestamp.encryptionAlgorithm
+		val signatureAlgorithm = timestamp.signatureAlgorithm
 		val keySize = timestamp.keyLengthUsedToSignThisToken?.toIntOrNull()?.takeIf { it > 0 }
-		if (encryption != null && keySize != null) {
-			CryptographicSuiteUtils.getExpirationDate(suite, encryption, keySize)?.toKotlinInstant()?.let { instants += it }
+		if (signatureAlgorithm != null && keySize != null) {
+			CryptographicSuiteUtils.getExpirationDate(suite, signatureAlgorithm, keySize)?.toKotlinInstant()
+				?.let { instants += it }
 		}
 		return instants
 	}
@@ -656,8 +680,8 @@ class DssArchivingRepository(
 	 * accept needs that data refreshed, not sealed.
 	 *
 	 * Takes [verifier] from the caller so it judges under the same trust anchors as the level it
-	 * accompanies, and shares the parse cost of resolving them; the verifier carries no online
-	 * sources, so nothing here reaches the network.
+	 * accompanies, and shares the parse cost of resolving them; the verifier carries no revocation
+	 * sources, so what is judged is the revocation data the document embeds, never data fetched now.
 	 *
 	 * A document that cannot be parsed is reported as usable rather than not: this drives a caveat in
 	 * the UI, and inventing a warning out of a failed inspection would be worse than staying quiet —
@@ -666,24 +690,62 @@ class DssArchivingRepository(
 	@Suppress("TooGenericExceptionCaught")
 	private fun hasUsableLtMaterial(pdfBytes: ByteArray, verifier: CertificateVerifier): Boolean =
 		try {
-			PDFDocumentValidator(InMemoryDocument(pdfBytes))
-				.apply {
-					setCertificateVerifier(verifier)
-					setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
-				}
-				.validateDocument().diagnosticData.signatures
-				.all { hasUsableSigningCertificateRevocation(it) }
+			diagnosedSignatures(pdfBytes, verifier).all { hasUsableSigningCertificateRevocation(it) }
 		} catch (e: Exception) {
 			logger.warn(e) { "Could not judge whether the document's validation material is usable" }
 			true
 		}
 
 	/**
+	 * The DSS identifiers of the signing certificates in [pdfBytes] that have revocation data
+	 * embedded, none of which is usable by the rule in [hasUsableSigningCertificateRevocation].
+	 *
+	 * This is how an extension learns that it embedded revocation data no validator will accept,
+	 * without depending on DSS to say so. DSS checks a response when it fetches one, but reuses a CRL
+	 * fetched for one certificate for the other certificates of the same issuer without checking it
+	 * again. When two signatures share an issuing CA, or a signature shares one with its timestamp
+	 * authority, a CRL that postdates one signing certificate's expiry is therefore embedded without
+	 * a word; judging the output itself catches it whichever order DSS fetched in.
+	 *
+	 * A certificate with no revocation data at all is not named: DSS's missing-revocation alert
+	 * reports that, and it is not a case of data that is present but cannot be used.
+	 *
+	 * [verifier] must be offline, because the document is judged as it stands rather than by what
+	 * could be fetched now. A document that cannot be parsed names no certificate: this only adds a
+	 * finding, and the level read-back has already reported such a document as unknown.
+	 */
+	@Suppress("TooGenericExceptionCaught")
+	private fun signingCertificatesWithUnusableRevocation(pdfBytes: ByteArray, verifier: CertificateVerifier): Set<String> =
+		try {
+			diagnosedSignatures(pdfBytes, verifier)
+				.filterNot { hasUsableSigningCertificateRevocation(it) }
+				.mapNotNull { signature ->
+					signature.signingCertificate?.takeIf { it.certificateRevocationData.orEmpty().isNotEmpty() }?.id
+				}
+				.toSet()
+		} catch (e: Exception) {
+			logger.warn(e) { "Could not judge whether the produced document's revocation data is usable" }
+			emptySet()
+		}
+
+	/**
+	 * Validate [pdfBytes] under [verifier] and return its signatures as DSS's diagnostic data
+	 * describes them, which is where embedded revocation data is related to the certificate it covers.
+	 */
+	private fun diagnosedSignatures(pdfBytes: ByteArray, verifier: CertificateVerifier): List<SignatureWrapper> =
+		PDFDocumentValidator(InMemoryDocument(pdfBytes))
+			.apply {
+				setCertificateVerifier(verifier)
+				setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
+			}
+			.validateDocument().diagnosticData.signatures
+
+	/**
 	 * Whether any signature in [inputBytes] embeds a signature timestamp — the unsigned attribute
 	 * that marks PAdES BASELINE-T.
 	 *
-	 * Parses the signatures with DSS but runs no validation: [verifier] carries no online revocation
-	 * sources, so no network lookups occur. This is what lets the dialog tell a B-B document (no
+	 * Parses the signatures with DSS but runs no validation, so nothing is looked up over the network
+	 * whatever sources [verifier] carries. This is what lets the dialog tell a B-B document (no
 	 * timestamp) apart from a B-T one, which the PDF-structure flags in [getDocumentTimestampInfo]
 	 * cannot. A parse failure degrades to `false` — the dialog then offers the B-B options, which is
 	 * the safe direction — and is logged rather than swallowed, so the reason a document is
@@ -760,7 +822,8 @@ class DssArchivingRepository(
 	/**
 	 * A verifier for the inspections that run on their own, outside any signing or augmenting
 	 * operation — [getDocumentTimestampInfo] and [needsArchivalRenewal] — carrying the active
-	 * profile's trust anchors and no network sources.
+	 * profile's trust anchors and no revocation sources. It keeps DSS's default AIA source, which
+	 * [DssServiceFactory.buildLevelInspectionVerifier] explains.
 	 *
 	 * Both inspections judge a document's PAdES level, and that judgement depends on which
 	 * certificates count as trust anchors (see [readPadesLevel]). Resolving the anchors here keeps

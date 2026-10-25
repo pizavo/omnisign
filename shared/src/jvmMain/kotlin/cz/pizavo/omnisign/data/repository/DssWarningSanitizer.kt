@@ -43,17 +43,27 @@ class DssWarningSanitizer {
 	 *   to [AnnotatedWarning.idNames] so the UI can display friendly names alongside IDs.
 	 * @param suppressedCategories Categories whose warnings are classified but not emitted
 	 *   in the user-facing [SanitizedWarnings.annotatedSummaries].
+	 * @param findings Conditions the caller established itself rather than read from DSS, with the
+	 *   identifiers of the objects they concern. They are merged into the same buckets as the
+	 *   classified messages, so a condition DSS does not always report produces the same single
+	 *   summary whichever side noticed it. They add nothing to [SanitizedWarnings.raw], which stays
+	 *   what DSS said.
 	 */
 	fun sanitize(
 		rawWarnings: List<String>,
 		certIdNames: Map<String, String> = emptyMap(),
 		suppressedCategories: Set<WarningCategory> = emptySet(),
+		findings: Map<WarningCategory, Set<String>> = emptyMap(),
 	): SanitizedWarnings {
-		if (rawWarnings.isEmpty()) return SanitizedWarnings(emptyList(), emptyList())
-		
+		if (rawWarnings.isEmpty() && findings.isEmpty()) return SanitizedWarnings(emptyList(), emptyList())
+
 		val buckets = mutableMapOf<WarningCategory, MutableSet<String>>()
 		val dueDates = mutableMapOf<WarningCategory, Instant>()
 		val unmatched = mutableListOf<String>()
+
+		for ((category, ids) in findings) {
+			buckets.getOrPut(category) { mutableSetOf() } += ids.ifEmpty { setOf(PLACEHOLDER_ID) }
+		}
 
 		for (raw in rawWarnings) {
 			val match = classify(raw)
@@ -197,6 +207,10 @@ class DssWarningSanitizer {
 				Regex("""was not issued during the validity period of the certificate"""),
 			),
 
+			WarningCategory.REVOCATION_ACCESS_POINT_MISSING to listOf(
+				Regex("""certificate\s+'$CERT_ID'\s+requires a revocation data.*?no revocation access location points"""),
+			),
+
 			WarningCategory.REVOCATION_NOT_FOUND to listOf(
 				Regex("""No revocation found for the certificate $CERT_ID"""),
 				Regex("""No revocation data found"""),
@@ -260,6 +274,32 @@ class DssWarningSanitizer {
 					MessageKey.WARNING_REVOCATION_AFTER_CERTIFICATE_EXPIRY,
 					pluralCerts(ids.size),
 				)
+		},
+
+		/**
+		 * A certificate whose revocation status has to be checked names nowhere to check it — it
+		 * carries neither a CRL distribution point nor an OCSP address — so DSS disregards the
+		 * timestamp or revocation response signed under it while gathering validation data.
+		 *
+		 * DSS enforces this in `RevocationDataVerifier` for every certificate in the chain of a
+		 * timestamp or a revocation response that is neither a trust anchor nor self-signed, and it
+		 * does so *before* looking for revocation data: a certificate that announces no access point
+		 * is rejected for its configuration, even when its status could be established from data
+		 * obtained some other way. In practice it is raised for the certificate of a timestamp
+		 * authority that publishes no revocation information, whose timestamps then count as no proof
+		 * of existence when DSS decides which revocation data is fresh enough.
+		 *
+		 * Deliberately neither revocation-related nor blocking. The refusal belongs to that
+		 * bookkeeping; the validation process judges the same timestamp on its own terms, and a
+		 * document whose TSA certificate names no access point still validates when the certificate's
+		 * status is known from elsewhere. When it is not, the gap is reported by
+		 * [REVOCATION_NOT_FOUND] or [REVOCATION_STATUS_UNKNOWN], which carry the consequence — this
+		 * category names the cause, as [TIMESTAMP_UNTRUSTED] does for an untrusted authority. Retrying
+		 * cannot change it: only an authority whose certificate names an access point avoids it.
+		 */
+		REVOCATION_ACCESS_POINT_MISSING {
+			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) =
+				LocalizableText.of(MessageKey.WARNING_REVOCATION_ACCESS_POINT_MISSING, pluralCerts(ids.size))
 		},
 
 		/**

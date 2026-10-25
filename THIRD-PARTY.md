@@ -49,25 +49,25 @@ projects linked below and from the same place this distribution was obtained.
 | Licence | Components | Artifacts |
 |---|---:|---:|
 | GNU Affero General Public License, version 3 or later | 1 | 1 |
-| Apache License, Version 2.0 | 34 | 275 |
+| Apache License, Version 2.0 | 38 | 292 |
 | BSD 2-Clause "Simplified" License | 2 | 2 |
 | BSD 3-Clause "New" License | 4 | 7 |
 | BSD License (upstream does not state which variant) | 1 | 1 |
 | Bouncy Castle Licence (MIT-style) | 1 | 3 |
 | Eclipse Distribution License, Version 1.0 | 1 | 7 |
-| GNU Lesser General Public License, version 2.1 or later | 2 | 42 |
-| MIT License | 10 | 17 |
+| GNU Lesser General Public License, version 2.1 or later | 2 | 44 |
+| MIT License | 9 | 16 |
 | Mozilla Public License, Version 2.0 | 2 | 7 |
-| **Total** | **58** | **362** |
+| **Total** | **61** | **380** |
 
 Per surface:
 
 | Surface | Components | Artifacts |
 |---|---:|---:|
-| cli | 37 | 144 |
-| server | 46 | 196 |
-| desktop | 40 | 182 |
-| web | 13 | 92 |
+| cli | 37 | 146 |
+| server | 50 | 213 |
+| desktop | 40 | 191 |
+| web | 13 | 96 |
 
 ## Components by licence
 
@@ -99,33 +99,37 @@ Copyright © The Android Open Source Project.
 Homepage: <https://developer.android.com/jetpack/androidx>.
 Ships in: desktop, web.
 
-<details><summary>29 artifact(s)</summary>
+<details><summary>33 artifact(s)</summary>
 
-- `androidx.annotation:annotation-jvm:1.9.1` — desktop
-- `androidx.annotation:annotation-wasm-js:1.9.1` — web
+- `androidx.annotation:annotation-jvm:1.10.0` — desktop
+- `androidx.annotation:annotation-wasm-js:1.10.0` — web
 - `androidx.arch.core:core-common:2.2.0` — desktop
 - `androidx.collection:collection-jvm:1.5.0` — desktop
 - `androidx.collection:collection-wasm-js:1.5.0` — web
-- `androidx.compose.runtime:runtime-annotation-jvm:1.10.5` — desktop
-- `androidx.compose.runtime:runtime-annotation-wasm-js:1.10.5` — web
-- `androidx.compose.runtime:runtime-desktop:1.10.5` — desktop
-- `androidx.compose.runtime:runtime-retain-desktop:1.10.5` — desktop
-- `androidx.compose.runtime:runtime-retain-wasm-js:1.10.5` — web
-- `androidx.compose.runtime:runtime-saveable-desktop:1.10.5` — desktop
-- `androidx.compose.runtime:runtime-saveable-wasm-js:1.10.5` — web
-- `androidx.compose.runtime:runtime-wasm-js:1.10.5` — web
-- `androidx.lifecycle:lifecycle-common-jvm:2.10.0` — desktop
-- `androidx.lifecycle:lifecycle-common-wasm-js:2.10.0` — web
-- `androidx.lifecycle:lifecycle-runtime-compose-desktop:2.10.0` — desktop
-- `androidx.lifecycle:lifecycle-runtime-compose-wasm-js:2.10.0` — web
-- `androidx.lifecycle:lifecycle-runtime-desktop:2.10.0` — desktop
-- `androidx.lifecycle:lifecycle-runtime-wasm-js:2.10.0` — web
-- `androidx.lifecycle:lifecycle-viewmodel-desktop:2.10.0` — desktop
-- `androidx.lifecycle:lifecycle-viewmodel-savedstate-desktop:2.10.0` — desktop
-- `androidx.lifecycle:lifecycle-viewmodel-savedstate-wasm-js:2.10.0` — web
-- `androidx.lifecycle:lifecycle-viewmodel-wasm-js:2.10.0` — web
-- `androidx.navigationevent:navigationevent-desktop:1.0.2` — desktop
-- `androidx.navigationevent:navigationevent-wasm-js:1.0.2` — web
+- `androidx.compose.runtime:runtime-annotation-jvm:1.12.1` — desktop
+- `androidx.compose.runtime:runtime-annotation-wasm-js:1.12.1` — web
+- `androidx.compose.runtime:runtime-desktop:1.12.1` — desktop
+- `androidx.compose.runtime:runtime-retain-desktop:1.12.1` — desktop
+- `androidx.compose.runtime:runtime-retain-wasm-js:1.12.1` — web
+- `androidx.compose.runtime:runtime-saveable-desktop:1.12.1` — desktop
+- `androidx.compose.runtime:runtime-saveable-wasm-js:1.12.1` — web
+- `androidx.compose.runtime:runtime-wasm-js:1.12.1` — web
+- `androidx.lifecycle:lifecycle-common-jvm:2.11.0` — desktop
+- `androidx.lifecycle:lifecycle-common-wasm-js:2.11.0` — web
+- `androidx.lifecycle:lifecycle-runtime-compose-desktop:2.11.0` — desktop
+- `androidx.lifecycle:lifecycle-runtime-compose-wasm-js:2.11.0` — web
+- `androidx.lifecycle:lifecycle-runtime-desktop:2.11.0` — desktop
+- `androidx.lifecycle:lifecycle-runtime-wasm-js:2.11.0` — web
+- `androidx.lifecycle:lifecycle-viewmodel-compose-desktop:2.11.0` — desktop
+- `androidx.lifecycle:lifecycle-viewmodel-compose-wasm-js:2.11.0` — web
+- `androidx.lifecycle:lifecycle-viewmodel-desktop:2.11.0` — desktop
+- `androidx.lifecycle:lifecycle-viewmodel-savedstate-desktop:2.11.0` — desktop
+- `androidx.lifecycle:lifecycle-viewmodel-savedstate-wasm-js:2.11.0` — web
+- `androidx.lifecycle:lifecycle-viewmodel-wasm-js:2.11.0` — web
+- `androidx.navigationevent:navigationevent-compose-desktop:1.1.1` — desktop
+- `androidx.navigationevent:navigationevent-compose-wasm-js:1.1.1` — web
+- `androidx.navigationevent:navigationevent-desktop:1.1.1` — desktop
+- `androidx.navigationevent:navigationevent-wasm-js:1.1.1` — web
 - `androidx.savedstate:savedstate-compose-desktop:1.4.0` — desktop
 - `androidx.savedstate:savedstate-compose-wasm-js:1.4.0` — web
 - `androidx.savedstate:savedstate-desktop:1.4.0` — desktop
@@ -144,10 +148,10 @@ The published POMs inherit their licence from the Apache parent POM; the shipped
 <details><summary>5 artifact(s)</summary>
 
 - `commons-codec:commons-codec:1.18.0` — cli, desktop, server
-- `commons-io:commons-io:2.20.0` — cli, desktop, server
-- `commons-logging:commons-logging:1.3.5` — cli, desktop, server
-- `org.apache.commons:commons-collections4:4.5.0` — cli, desktop, server
-- `org.apache.commons:commons-lang3:3.18.0` — cli, desktop, server
+- `commons-io:commons-io:2.22.0` — cli, desktop, server
+- `commons-logging:commons-logging:1.4.0` — cli, desktop, server
+- `org.apache.commons:commons-collections4:4.6.0` — cli, desktop, server
+- `org.apache.commons:commons-lang3:3.21.0` — cli, desktop, server
 
 </details>
 
@@ -159,9 +163,9 @@ Ships in: cli, server, desktop.
 
 <details><summary>3 artifact(s)</summary>
 
-- `org.apache.httpcomponents.client5:httpclient5:5.5` — cli, desktop, server
-- `org.apache.httpcomponents.core5:httpcore5-h2:5.3.4` — cli, desktop, server
-- `org.apache.httpcomponents.core5:httpcore5:5.3.4` — cli, desktop, server
+- `org.apache.httpcomponents.client5:httpclient5:5.6.5` — cli, desktop, server
+- `org.apache.httpcomponents.core5:httpcore5-h2:5.4.4` — cli, desktop, server
+- `org.apache.httpcomponents.core5:httpcore5:5.4.4` — cli, desktop, server
 
 </details>
 
@@ -173,7 +177,7 @@ Ships in: server.
 
 <details><summary>1 artifact(s)</summary>
 
-- `org.fusesource.jansi:jansi:2.4.2` — server
+- `org.fusesource.jansi:jansi:2.4.3` — server
 
 </details>
 
@@ -183,14 +187,11 @@ Copyright © The Apache Software Foundation.
 Homepage: <https://pdfbox.apache.org/>.
 Ships in: cli, server, desktop.
 
-<details><summary>6 artifact(s)</summary>
+<details><summary>3 artifact(s)</summary>
 
-- `org.apache.pdfbox:fontbox:3.0.5` — cli, server
-- `org.apache.pdfbox:fontbox:3.0.7` — desktop
-- `org.apache.pdfbox:pdfbox-io:3.0.5` — cli, server
-- `org.apache.pdfbox:pdfbox-io:3.0.7` — desktop
-- `org.apache.pdfbox:pdfbox:3.0.5` — cli, server
-- `org.apache.pdfbox:pdfbox:3.0.7` — desktop
+- `org.apache.pdfbox:fontbox:3.0.8` — cli, desktop, server
+- `org.apache.pdfbox:pdfbox-io:3.0.8` — cli, desktop, server
+- `org.apache.pdfbox:pdfbox:3.0.8` — cli, desktop, server
 
 </details>
 
@@ -214,18 +215,18 @@ Ships in: cli, server, desktop, web.
 
 <details><summary>12 artifact(s)</summary>
 
-- `io.arrow-kt:arrow-annotations-jvm:2.2.1.1` — cli, desktop, server
-- `io.arrow-kt:arrow-annotations-wasm-js:2.2.1.1` — web
-- `io.arrow-kt:arrow-atomic-jvm:2.2.1.1` — cli, desktop, server
-- `io.arrow-kt:arrow-atomic-wasm-js:2.2.1.1` — web
-- `io.arrow-kt:arrow-autoclose-jvm:2.2.1.1` — cli, desktop, server
-- `io.arrow-kt:arrow-autoclose-wasm-js:2.2.1.1` — web
-- `io.arrow-kt:arrow-core-jvm:2.2.1.1` — cli, desktop, server
-- `io.arrow-kt:arrow-core-wasm-js:2.2.1.1` — web
-- `io.arrow-kt:arrow-exception-utils-jvm:2.2.1.1` — cli, desktop, server
-- `io.arrow-kt:arrow-exception-utils-wasm-js:2.2.1.1` — web
-- `io.arrow-kt:arrow-fx-coroutines-jvm:2.2.1.1` — cli, desktop, server
-- `io.arrow-kt:arrow-fx-coroutines-wasm-js:2.2.1.1` — web
+- `io.arrow-kt:arrow-annotations-jvm:2.2.3` — cli, desktop, server
+- `io.arrow-kt:arrow-annotations-wasm-js:2.2.3` — web
+- `io.arrow-kt:arrow-atomic-jvm:2.2.3` — cli, desktop, server
+- `io.arrow-kt:arrow-atomic-wasm-js:2.2.3` — web
+- `io.arrow-kt:arrow-autoclose-jvm:2.2.3` — cli, desktop, server
+- `io.arrow-kt:arrow-autoclose-wasm-js:2.2.3` — web
+- `io.arrow-kt:arrow-core-jvm:2.2.3` — cli, desktop, server
+- `io.arrow-kt:arrow-core-wasm-js:2.2.3` — web
+- `io.arrow-kt:arrow-exception-utils-jvm:2.2.3` — cli, desktop, server
+- `io.arrow-kt:arrow-exception-utils-wasm-js:2.2.3` — web
+- `io.arrow-kt:arrow-fx-coroutines-jvm:2.2.3` — cli, desktop, server
+- `io.arrow-kt:arrow-fx-coroutines-wasm-js:2.2.3` — web
 
 </details>
 
@@ -237,7 +238,7 @@ Ships in: cli, server, desktop.
 
 <details><summary>1 artifact(s)</summary>
 
-- `net.bytebuddy:byte-buddy-agent:1.18.3` — cli, desktop, server
+- `net.bytebuddy:byte-buddy-agent:1.18.13` — cli, desktop, server
 
 </details>
 
@@ -263,57 +264,63 @@ Ships in: desktop, web.
 
 The `*-internal` groups are JetBrains' WebAssembly ports of the AndroidX annotation and collection libraries, published under the Compose Multiplatform umbrella and reached only by the web build.
 
-<details><summary>49 artifact(s)</summary>
+<details><summary>55 artifact(s)</summary>
 
-- `org.jetbrains.androidx.lifecycle:lifecycle-common-wasm-js:2.10.0` — web
-- `org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose-desktop:2.10.0` — desktop
-- `org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose-wasm-js:2.10.0` — web
-- `org.jetbrains.androidx.lifecycle:lifecycle-runtime-wasm-js:2.10.0` — web
-- `org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose-desktop:2.10.0` — desktop
-- `org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose-wasm-js:2.10.0` — web
-- `org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-savedstate-wasm-js:2.10.0` — web
-- `org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-wasm-js:2.10.0` — web
+- `org.jetbrains.androidx.lifecycle:lifecycle-common-jvm:2.11.0` — desktop
+- `org.jetbrains.androidx.lifecycle:lifecycle-common-wasm-js:2.11.0` — web
+- `org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose-desktop:2.11.0` — desktop
+- `org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose-wasm-js:2.11.0` — web
+- `org.jetbrains.androidx.lifecycle:lifecycle-runtime-desktop:2.11.0` — desktop
+- `org.jetbrains.androidx.lifecycle:lifecycle-runtime-wasm-js:2.11.0` — web
+- `org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose-desktop:2.11.0` — desktop
+- `org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose-wasm-js:2.11.0` — web
+- `org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-desktop:2.11.0` — desktop
+- `org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-savedstate-desktop:2.11.0` — desktop
+- `org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-savedstate-wasm-js:2.11.0` — web
+- `org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-wasm-js:2.11.0` — web
+- `org.jetbrains.androidx.navigationevent:navigationevent-compose-desktop:1.1.0` — desktop
+- `org.jetbrains.androidx.navigationevent:navigationevent-compose-wasm-js:1.1.0` — web
 - `org.jetbrains.androidx.savedstate:savedstate-compose-desktop:1.3.6` — desktop
 - `org.jetbrains.androidx.savedstate:savedstate-compose-wasm-js:1.3.6` — web
 - `org.jetbrains.androidx.savedstate:savedstate-wasm-js:1.3.6` — web
-- `org.jetbrains.compose.animation:animation-core-desktop:1.10.3` — desktop
-- `org.jetbrains.compose.animation:animation-core-wasm-js:1.10.3` — web
-- `org.jetbrains.compose.animation:animation-desktop:1.10.3` — desktop
-- `org.jetbrains.compose.animation:animation-wasm-js:1.10.3` — web
-- `org.jetbrains.compose.annotation-internal:annotation-wasm-js:1.10.3` — web
-- `org.jetbrains.compose.collection-internal:collection-wasm-js:1.10.3` — web
-- `org.jetbrains.compose.components:components-resources-desktop:1.10.3` — desktop
-- `org.jetbrains.compose.components:components-resources-wasmJs:1.10.3` — web
-- `org.jetbrains.compose.desktop:desktop-jvm:1.10.1` — desktop
-- `org.jetbrains.compose.foundation:foundation-desktop:1.10.3` — desktop
-- `org.jetbrains.compose.foundation:foundation-layout-desktop:1.10.3` — desktop
-- `org.jetbrains.compose.foundation:foundation-layout-wasm-js:1.10.3` — web
-- `org.jetbrains.compose.foundation:foundation-wasm-js:1.10.3` — web
+- `org.jetbrains.compose.animation:animation-core-desktop:1.12.2` — desktop
+- `org.jetbrains.compose.animation:animation-core-wasm-js:1.12.2` — web
+- `org.jetbrains.compose.animation:animation-desktop:1.12.2` — desktop
+- `org.jetbrains.compose.animation:animation-wasm-js:1.12.2` — web
+- `org.jetbrains.compose.annotation-internal:annotation-wasm-js:1.10.0` — web
+- `org.jetbrains.compose.collection-internal:collection-wasm-js:1.10.0` — web
+- `org.jetbrains.compose.components:components-resources-desktop:1.12.2` — desktop
+- `org.jetbrains.compose.components:components-resources-wasmJs:1.12.2` — web
+- `org.jetbrains.compose.desktop:desktop-jvm:1.12.2` — desktop
+- `org.jetbrains.compose.foundation:foundation-desktop:1.12.2` — desktop
+- `org.jetbrains.compose.foundation:foundation-layout-desktop:1.12.2` — desktop
+- `org.jetbrains.compose.foundation:foundation-layout-wasm-js:1.12.2` — web
+- `org.jetbrains.compose.foundation:foundation-wasm-js:1.12.2` — web
 - `org.jetbrains.compose.material3:material3-desktop:1.9.0` — desktop
 - `org.jetbrains.compose.material3:material3-wasm-js:1.9.0` — web
-- `org.jetbrains.compose.material:material-desktop:1.10.1` — desktop
-- `org.jetbrains.compose.material:material-ripple-desktop:1.10.1` — desktop
+- `org.jetbrains.compose.material:material-desktop:1.12.2` — desktop
+- `org.jetbrains.compose.material:material-ripple-desktop:1.12.2` — desktop
 - `org.jetbrains.compose.material:material-ripple-wasm-js:1.9.1` — web
-- `org.jetbrains.compose.runtime:runtime-desktop:1.10.3` — desktop
-- `org.jetbrains.compose.runtime:runtime-saveable-desktop:1.10.3` — desktop
-- `org.jetbrains.compose.runtime:runtime-saveable-wasm-js:1.10.3` — web
-- `org.jetbrains.compose.runtime:runtime-wasm-js:1.10.3` — web
-- `org.jetbrains.compose.ui:ui-backhandler-desktop:1.10.3` — desktop
-- `org.jetbrains.compose.ui:ui-backhandler-wasm-js:1.10.3` — web
-- `org.jetbrains.compose.ui:ui-desktop:1.10.3` — desktop
-- `org.jetbrains.compose.ui:ui-geometry-desktop:1.10.3` — desktop
-- `org.jetbrains.compose.ui:ui-geometry-wasm-js:1.10.3` — web
-- `org.jetbrains.compose.ui:ui-graphics-desktop:1.10.3` — desktop
-- `org.jetbrains.compose.ui:ui-graphics-wasm-js:1.10.3` — web
-- `org.jetbrains.compose.ui:ui-text-desktop:1.10.3` — desktop
-- `org.jetbrains.compose.ui:ui-text-wasm-js:1.10.3` — web
-- `org.jetbrains.compose.ui:ui-tooling-preview-desktop:1.10.3` — desktop
-- `org.jetbrains.compose.ui:ui-tooling-preview-wasm-js:1.10.3` — web
-- `org.jetbrains.compose.ui:ui-unit-desktop:1.10.3` — desktop
-- `org.jetbrains.compose.ui:ui-unit-wasm-js:1.10.3` — web
-- `org.jetbrains.compose.ui:ui-util-desktop:1.10.3` — desktop
-- `org.jetbrains.compose.ui:ui-util-wasm-js:1.10.3` — web
-- `org.jetbrains.compose.ui:ui-wasm-js:1.10.3` — web
+- `org.jetbrains.compose.runtime:runtime-desktop:1.12.2` — desktop
+- `org.jetbrains.compose.runtime:runtime-saveable-desktop:1.12.2` — desktop
+- `org.jetbrains.compose.runtime:runtime-saveable-wasm-js:1.12.2` — web
+- `org.jetbrains.compose.runtime:runtime-wasm-js:1.12.2` — web
+- `org.jetbrains.compose.ui:ui-backhandler-desktop:1.12.2` — desktop
+- `org.jetbrains.compose.ui:ui-backhandler-wasm-js:1.12.2` — web
+- `org.jetbrains.compose.ui:ui-desktop:1.12.2` — desktop
+- `org.jetbrains.compose.ui:ui-geometry-desktop:1.12.2` — desktop
+- `org.jetbrains.compose.ui:ui-geometry-wasm-js:1.12.2` — web
+- `org.jetbrains.compose.ui:ui-graphics-desktop:1.12.2` — desktop
+- `org.jetbrains.compose.ui:ui-graphics-wasm-js:1.12.2` — web
+- `org.jetbrains.compose.ui:ui-text-desktop:1.12.2` — desktop
+- `org.jetbrains.compose.ui:ui-text-wasm-js:1.12.2` — web
+- `org.jetbrains.compose.ui:ui-tooling-preview-desktop:1.12.2` — desktop
+- `org.jetbrains.compose.ui:ui-tooling-preview-wasm-js:1.12.2` — web
+- `org.jetbrains.compose.ui:ui-unit-desktop:1.12.2` — desktop
+- `org.jetbrains.compose.ui:ui-unit-wasm-js:1.12.2` — web
+- `org.jetbrains.compose.ui:ui-util-desktop:1.12.2` — desktop
+- `org.jetbrains.compose.ui:ui-util-wasm-js:1.12.2` — web
+- `org.jetbrains.compose.ui:ui-wasm-js:1.12.2` — web
 
 </details>
 
@@ -325,7 +332,7 @@ Ships in: server.
 
 <details><summary>1 artifact(s)</summary>
 
-- `com.google.errorprone:error_prone_annotations:2.18.0` — server
+- `com.google.errorprone:error_prone_annotations:2.47.0` — server
 
 </details>
 
@@ -337,8 +344,8 @@ Ships in: server.
 
 <details><summary>2 artifact(s)</summary>
 
-- `org.jetbrains.exposed:exposed-core:0.61.0` — server
-- `org.jetbrains.exposed:exposed-jdbc:0.61.0` — server
+- `org.jetbrains.exposed:exposed-core:1.6.0` — server
+- `org.jetbrains.exposed:exposed-jdbc:1.6.0` — server
 
 </details>
 
@@ -352,8 +359,8 @@ The failureaccess and listenablefuture marker artifacts declare no licence of th
 
 <details><summary>3 artifact(s)</summary>
 
-- `com.google.guava:failureaccess:1.0.1` — server
-- `com.google.guava:guava:32.1.2-jre` — server
+- `com.google.guava:failureaccess:1.0.3` — server
+- `com.google.guava:guava:33.6.0-jre` — server
 - `com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava` — server
 
 </details>
@@ -370,25 +377,28 @@ Ships in: cli, server, desktop.
 
 </details>
 
-#### JSR 305 annotations
+#### J2ObjC annotations
 
-Homepage: <https://findbugs.sourceforge.net/>.
+Copyright © Google LLC.
+Homepage: <https://github.com/google/j2objc>.
 Ships in: server.
+
+Reached transitively through Guava, which the Auth0 JWKS client depends on.
 
 <details><summary>1 artifact(s)</summary>
 
-- `com.google.code.findbugs:jsr305:3.0.2` — server
+- `com.google.j2objc:j2objc-annotations:3.1` — server
 
 </details>
 
 #### JSpecify
 
 Homepage: <https://jspecify.org/>.
-Ships in: desktop.
+Ships in: server, desktop.
 
 <details><summary>1 artifact(s)</summary>
 
-- `org.jspecify:jspecify:1.0.0` — desktop
+- `org.jspecify:jspecify:1.0.0` — desktop, server
 
 </details>
 
@@ -400,12 +410,12 @@ Ships in: cli, server, desktop.
 
 <details><summary>6 artifact(s)</summary>
 
-- `com.fasterxml.jackson.core:jackson-annotations:2.18.3` — cli, desktop, server
-- `com.fasterxml.jackson.core:jackson-core:2.18.3` — cli, desktop, server
-- `com.fasterxml.jackson.core:jackson-databind:2.18.3` — cli, desktop, server
-- `com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.18.3` — cli, desktop, server
-- `com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.18.3` — cli, desktop, server
-- `com.fasterxml.jackson.module:jackson-module-kotlin:2.18.3` — cli, desktop, server
+- `com.fasterxml.jackson.core:jackson-annotations:2.22` — cli, desktop, server
+- `com.fasterxml.jackson.core:jackson-core:2.22.4` — cli, desktop, server
+- `com.fasterxml.jackson.core:jackson-databind:2.22.4` — cli, desktop, server
+- `com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.22.4` — cli, desktop, server
+- `com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.4` — cli, desktop, server
+- `com.fasterxml.jackson.module:jackson-module-kotlin:2.22.4` — cli, desktop, server
 
 </details>
 
@@ -418,8 +428,8 @@ Licence election: Dual-licensed LGPL-2.1-or-later or Apache-2.0. OmniSign takes 
 
 <details><summary>2 artifact(s)</summary>
 
-- `net.java.dev.jna:jna-platform:5.18.1` — cli, desktop, server
-- `net.java.dev.jna:jna:5.18.1` — cli, desktop, server
+- `net.java.dev.jna:jna-platform:5.19.1` — cli, desktop, server
+- `net.java.dev.jna:jna:5.19.1` — cli, desktop, server
 
 </details>
 
@@ -444,7 +454,7 @@ Ships in: desktop.
 
 <details><summary>1 artifact(s)</summary>
 
-- `org.jetbrains.runtime:jbr-api:1.10.1` — desktop
+- `org.jetbrains.runtime:jbr-api:1.12.0` — desktop
 
 </details>
 
@@ -470,20 +480,20 @@ Ships in: cli, server, desktop, web.
 
 <details><summary>14 artifact(s)</summary>
 
-- `io.insert-koin:koin-annotations-jvm:2.3.1` — cli, desktop, server
-- `io.insert-koin:koin-annotations-wasm-js:2.3.1` — web
-- `io.insert-koin:koin-compose-jvm:4.1.1` — desktop
-- `io.insert-koin:koin-compose-viewmodel-jvm:4.1.1` — desktop
-- `io.insert-koin:koin-compose-viewmodel-wasm-js:4.1.1` — web
-- `io.insert-koin:koin-compose-wasm-js:4.1.1` — web
-- `io.insert-koin:koin-core-annotations-jvm:4.1.1` — cli, desktop, server
-- `io.insert-koin:koin-core-annotations-wasm-js:4.1.1` — web
-- `io.insert-koin:koin-core-jvm:4.1.1` — cli, desktop, server
-- `io.insert-koin:koin-core-viewmodel-jvm:4.1.1` — desktop
-- `io.insert-koin:koin-core-viewmodel-wasm-js:4.1.1` — web
-- `io.insert-koin:koin-core-wasm-js:4.1.1` — web
-- `io.insert-koin:koin-ktor-jvm:4.1.1` — server
-- `io.insert-koin:koin-test-jvm:4.1.1` — cli
+- `io.insert-koin:koin-annotations-jvm:4.2.2` — cli, desktop, server
+- `io.insert-koin:koin-annotations-wasm-js:4.2.2` — web
+- `io.insert-koin:koin-compose-jvm:4.2.2` — desktop
+- `io.insert-koin:koin-compose-viewmodel-jvm:4.2.2` — desktop
+- `io.insert-koin:koin-compose-viewmodel-wasm-js:4.2.2` — web
+- `io.insert-koin:koin-compose-wasm-js:4.2.2` — web
+- `io.insert-koin:koin-core-annotations-jvm:4.2.2` — cli, desktop, server
+- `io.insert-koin:koin-core-annotations-wasm-js:4.2.2` — web
+- `io.insert-koin:koin-core-jvm:4.2.2` — cli, desktop, server
+- `io.insert-koin:koin-core-viewmodel-jvm:4.2.2` — desktop
+- `io.insert-koin:koin-core-viewmodel-wasm-js:4.2.2` — web
+- `io.insert-koin:koin-core-wasm-js:4.2.2` — web
+- `io.insert-koin:koin-ktor-jvm:4.2.2` — server
+- `io.insert-koin:koin-test-jvm:4.2.2` — cli
 
 </details>
 
@@ -493,44 +503,38 @@ Copyright © JetBrains s.r.o..
 Homepage: <https://kotlinlang.org/>.
 Ships in: cli, server, desktop, web.
 
-<details><summary>36 artifact(s)</summary>
+<details><summary>30 artifact(s)</summary>
 
-- `org.jetbrains.kotlin:kotlin-reflect:1.8.10` — desktop
-- `org.jetbrains.kotlin:kotlin-reflect:2.1.21` — cli
-- `org.jetbrains.kotlin:kotlin-reflect:2.3.0` — server
-- `org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.0` — cli, server
-- `org.jetbrains.kotlin:kotlin-stdlib-jdk7:2.2.20` — desktop
-- `org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.0` — cli, server
-- `org.jetbrains.kotlin:kotlin-stdlib-jdk8:2.2.20` — desktop
-- `org.jetbrains.kotlin:kotlin-stdlib-wasm-js:2.3.21` — web
-- `org.jetbrains.kotlin:kotlin-stdlib:2.3.21` — cli, desktop, server
-- `org.jetbrains.kotlin:kotlin-test:2.1.21` — cli
-- `org.jetbrains.kotlinx:atomicfu-jvm:0.23.2` — desktop
-- `org.jetbrains.kotlinx:atomicfu-wasm-js:0.29.0` — web
+- `org.jetbrains.kotlin:kotlin-reflect:2.1.21` — desktop
+- `org.jetbrains.kotlin:kotlin-reflect:2.3.20` — cli
+- `org.jetbrains.kotlin:kotlin-reflect:2.3.21` — server
+- `org.jetbrains.kotlin:kotlin-stdlib-jdk7:1.9.0` — cli, desktop, server
+- `org.jetbrains.kotlin:kotlin-stdlib-jdk8:1.9.0` — cli, desktop, server
+- `org.jetbrains.kotlin:kotlin-stdlib-wasm-js:2.4.21` — web
+- `org.jetbrains.kotlin:kotlin-stdlib:2.4.21` — cli, desktop, server
+- `org.jetbrains.kotlin:kotlin-test:2.3.20` — cli
+- `org.jetbrains.kotlinx:atomicfu-jvm:0.28.0` — desktop
+- `org.jetbrains.kotlinx:atomicfu-wasm-js:0.33.0` — web
 - `org.jetbrains.kotlinx:kotlinx-browser-wasm-js:0.5.0` — web
-- `org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.10.2` — cli, desktop, server
-- `org.jetbrains.kotlinx:kotlinx-coroutines-core-wasm-js:1.10.2` — web
-- `org.jetbrains.kotlinx:kotlinx-coroutines-slf4j:1.10.2` — server
-- `org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.10.2` — desktop
-- `org.jetbrains.kotlinx:kotlinx-datetime-jvm:0.7.1` — cli, desktop, server
-- `org.jetbrains.kotlinx:kotlinx-datetime-wasm-js:0.7.1` — web
-- `org.jetbrains.kotlinx:kotlinx-io-bytestring-jvm:0.8.2` — server
-- `org.jetbrains.kotlinx:kotlinx-io-bytestring-jvm:0.9.0` — desktop
-- `org.jetbrains.kotlinx:kotlinx-io-bytestring-wasm-js:0.9.0` — web
-- `org.jetbrains.kotlinx:kotlinx-io-core-jvm:0.8.2` — server
-- `org.jetbrains.kotlinx:kotlinx-io-core-jvm:0.9.0` — desktop
-- `org.jetbrains.kotlinx:kotlinx-io-core-wasm-js:0.9.0` — web
-- `org.jetbrains.kotlinx:kotlinx-serialization-cbor-jvm:1.10.0` — cli, server
-- `org.jetbrains.kotlinx:kotlinx-serialization-cbor-jvm:1.11.0` — desktop
-- `org.jetbrains.kotlinx:kotlinx-serialization-cbor-wasm-js:1.10.0` — web
-- `org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.10.0` — cli, server
-- `org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.11.0` — desktop
-- `org.jetbrains.kotlinx:kotlinx-serialization-core-wasm-js:1.11.0` — web
-- `org.jetbrains.kotlinx:kotlinx-serialization-json-io-jvm:1.10.0` — server
-- `org.jetbrains.kotlinx:kotlinx-serialization-json-io-wasm-js:1.9.0` — web
-- `org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.10.0` — cli, server
-- `org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.11.0` — desktop
-- `org.jetbrains.kotlinx:kotlinx-serialization-json-wasm-js:1.10.0` — web
+- `org.jetbrains.kotlinx:kotlinx-coroutines-core-jvm:1.11.0` — cli, desktop, server
+- `org.jetbrains.kotlinx:kotlinx-coroutines-core-wasm-js:1.11.0` — web
+- `org.jetbrains.kotlinx:kotlinx-coroutines-slf4j:1.11.0` — server
+- `org.jetbrains.kotlinx:kotlinx-coroutines-swing:1.11.0` — desktop
+- `org.jetbrains.kotlinx:kotlinx-datetime-jvm:0.8.0` — cli, desktop
+- `org.jetbrains.kotlinx:kotlinx-datetime-jvm:0.8.0-0.6.x-compat` — server
+- `org.jetbrains.kotlinx:kotlinx-datetime-wasm-js:0.8.0-0.6.x-compat` — web
+- `org.jetbrains.kotlinx:kotlinx-io-bytestring-jvm:0.9.1` — desktop, server
+- `org.jetbrains.kotlinx:kotlinx-io-bytestring-wasm-js:0.9.1` — web
+- `org.jetbrains.kotlinx:kotlinx-io-core-jvm:0.9.1` — desktop, server
+- `org.jetbrains.kotlinx:kotlinx-io-core-wasm-js:0.9.1` — web
+- `org.jetbrains.kotlinx:kotlinx-serialization-cbor-jvm:1.12.0` — cli, desktop, server
+- `org.jetbrains.kotlinx:kotlinx-serialization-cbor-wasm-js:1.12.0` — web
+- `org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.12.0` — cli, desktop, server
+- `org.jetbrains.kotlinx:kotlinx-serialization-core-wasm-js:1.12.0` — web
+- `org.jetbrains.kotlinx:kotlinx-serialization-json-io-jvm:1.12.0` — server
+- `org.jetbrains.kotlinx:kotlinx-serialization-json-io-wasm-js:1.11.0` — web
+- `org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.12.0` — cli, desktop, server
+- `org.jetbrains.kotlinx:kotlinx-serialization-json-wasm-js:1.12.0` — web
 
 </details>
 
@@ -540,56 +544,62 @@ Copyright © JetBrains s.r.o..
 Homepage: <https://ktor.io/>.
 Ships in: server, web.
 
-<details><summary>48 artifact(s)</summary>
+<details><summary>54 artifact(s)</summary>
 
-- `io.ktor:ktor-call-id-jvm:3.4.0` — server
-- `io.ktor:ktor-client-cio-jvm:3.4.0` — server
-- `io.ktor:ktor-client-cio-wasm-js:3.4.0` — web
-- `io.ktor:ktor-client-content-negotiation-jvm:3.4.0` — server
-- `io.ktor:ktor-client-content-negotiation-wasm-js:3.4.0` — web
-- `io.ktor:ktor-client-core-jvm:3.4.0` — server
-- `io.ktor:ktor-client-core-wasm-js:3.4.0` — web
-- `io.ktor:ktor-events-jvm:3.4.0` — server
-- `io.ktor:ktor-events-wasm-js:3.4.0` — web
-- `io.ktor:ktor-http-cio-jvm:3.4.0` — server
-- `io.ktor:ktor-http-cio-wasm-js:3.4.0` — web
-- `io.ktor:ktor-http-jvm:3.4.0` — server
-- `io.ktor:ktor-http-wasm-js:3.4.0` — web
-- `io.ktor:ktor-io-jvm:3.4.0` — server
-- `io.ktor:ktor-io-wasm-js:3.4.0` — web
-- `io.ktor:ktor-network-jvm:3.4.0` — server
-- `io.ktor:ktor-network-tls-jvm:3.4.0` — server
-- `io.ktor:ktor-network-tls-wasm-js:3.4.0` — web
-- `io.ktor:ktor-network-wasm-js:3.4.0` — web
-- `io.ktor:ktor-serialization-jvm:3.4.0` — server
-- `io.ktor:ktor-serialization-kotlinx-json-jvm:3.4.0` — server
-- `io.ktor:ktor-serialization-kotlinx-json-wasm-js:3.4.0` — web
-- `io.ktor:ktor-serialization-kotlinx-jvm:3.4.0` — server
-- `io.ktor:ktor-serialization-kotlinx-wasm-js:3.4.0` — web
-- `io.ktor:ktor-serialization-wasm-js:3.4.0` — web
-- `io.ktor:ktor-server-auth-jvm:3.4.0` — server
-- `io.ktor:ktor-server-auth-jwt-jvm:3.4.0` — server
-- `io.ktor:ktor-server-auto-head-response-jvm:3.4.0` — server
-- `io.ktor:ktor-server-call-id-jvm:3.4.0` — server
-- `io.ktor:ktor-server-call-logging-jvm:3.4.0` — server
-- `io.ktor:ktor-server-content-negotiation-jvm:3.4.0` — server
-- `io.ktor:ktor-server-core-jvm:3.4.0` — server
-- `io.ktor:ktor-server-cors-jvm:3.4.0` — server
-- `io.ktor:ktor-server-default-headers-jvm:3.4.0` — server
-- `io.ktor:ktor-server-forwarded-header-jvm:3.4.0` — server
-- `io.ktor:ktor-server-http-redirect-jvm:3.4.0` — server
-- `io.ktor:ktor-server-netty-jvm:3.4.0` — server
-- `io.ktor:ktor-server-rate-limit-jvm:3.4.0` — server
-- `io.ktor:ktor-server-sessions-jvm:3.4.0` — server
-- `io.ktor:ktor-server-status-pages-jvm:3.4.0` — server
-- `io.ktor:ktor-sse-jvm:3.4.0` — server
-- `io.ktor:ktor-sse-wasm-js:3.4.0` — web
-- `io.ktor:ktor-utils-jvm:3.4.0` — server
-- `io.ktor:ktor-utils-wasm-js:3.4.0` — web
-- `io.ktor:ktor-websocket-serialization-jvm:3.4.0` — server
-- `io.ktor:ktor-websocket-serialization-wasm-js:3.4.0` — web
-- `io.ktor:ktor-websockets-jvm:3.4.0` — server
-- `io.ktor:ktor-websockets-wasm-js:3.4.0` — web
+- `io.ktor:ktor-call-id-jvm:3.6.0` — server
+- `io.ktor:ktor-client-cio-jvm:3.6.0` — server
+- `io.ktor:ktor-client-cio-wasm-js:3.6.0` — web
+- `io.ktor:ktor-client-content-negotiation-jvm:3.6.0` — server
+- `io.ktor:ktor-client-content-negotiation-wasm-js:3.6.0` — web
+- `io.ktor:ktor-client-core-jvm:3.6.0` — server
+- `io.ktor:ktor-client-core-wasm-js:3.6.0` — web
+- `io.ktor:ktor-events-jvm:3.6.0` — server
+- `io.ktor:ktor-events-wasm-js:3.6.0` — web
+- `io.ktor:ktor-http-cio-jvm:3.6.0` — server
+- `io.ktor:ktor-http-cio-wasm-js:3.6.0` — web
+- `io.ktor:ktor-http-jvm:3.6.0` — server
+- `io.ktor:ktor-http-wasm-js:3.6.0` — web
+- `io.ktor:ktor-io-jvm:3.6.0` — server
+- `io.ktor:ktor-io-wasm-js:3.6.0` — web
+- `io.ktor:ktor-network-jvm:3.6.0` — server
+- `io.ktor:ktor-network-tls-jvm:3.6.0` — server
+- `io.ktor:ktor-network-tls-wasm-js:3.6.0` — web
+- `io.ktor:ktor-network-wasm-js:3.6.0` — web
+- `io.ktor:ktor-openapi-schema-jvm:3.6.0` — server
+- `io.ktor:ktor-openapi-schema-wasm-js:3.6.0` — web
+- `io.ktor:ktor-serialization-jvm:3.6.0` — server
+- `io.ktor:ktor-serialization-kotlinx-json-jvm:3.6.0` — server
+- `io.ktor:ktor-serialization-kotlinx-json-wasm-js:3.6.0` — web
+- `io.ktor:ktor-serialization-kotlinx-jvm:3.6.0` — server
+- `io.ktor:ktor-serialization-kotlinx-wasm-js:3.6.0` — web
+- `io.ktor:ktor-serialization-wasm-js:3.6.0` — web
+- `io.ktor:ktor-server-auth-api-key-jvm:3.6.0` — server
+- `io.ktor:ktor-server-auth-jvm:3.6.0` — server
+- `io.ktor:ktor-server-auth-jwt-jvm:3.6.0` — server
+- `io.ktor:ktor-server-auto-head-response-jvm:3.6.0` — server
+- `io.ktor:ktor-server-call-id-jvm:3.6.0` — server
+- `io.ktor:ktor-server-call-logging-jvm:3.6.0` — server
+- `io.ktor:ktor-server-content-negotiation-jvm:3.6.0` — server
+- `io.ktor:ktor-server-core-jvm:3.6.0` — server
+- `io.ktor:ktor-server-cors-jvm:3.6.0` — server
+- `io.ktor:ktor-server-csrf-jvm:3.6.0` — server
+- `io.ktor:ktor-server-default-headers-jvm:3.6.0` — server
+- `io.ktor:ktor-server-di-jvm:3.6.0` — server
+- `io.ktor:ktor-server-forwarded-header-jvm:3.6.0` — server
+- `io.ktor:ktor-server-http-redirect-jvm:3.6.0` — server
+- `io.ktor:ktor-server-netty-jvm:3.6.0` — server
+- `io.ktor:ktor-server-rate-limit-jvm:3.6.0` — server
+- `io.ktor:ktor-server-routing-openapi-jvm:3.6.0` — server
+- `io.ktor:ktor-server-sessions-jvm:3.6.0` — server
+- `io.ktor:ktor-server-status-pages-jvm:3.6.0` — server
+- `io.ktor:ktor-sse-jvm:3.6.0` — server
+- `io.ktor:ktor-sse-wasm-js:3.6.0` — web
+- `io.ktor:ktor-utils-jvm:3.6.0` — server
+- `io.ktor:ktor-utils-wasm-js:3.6.0` — web
+- `io.ktor:ktor-websocket-serialization-jvm:3.6.0` — server
+- `io.ktor:ktor-websocket-serialization-wasm-js:3.6.0` — web
+- `io.ktor:ktor-websockets-jvm:3.6.0` — server
+- `io.ktor:ktor-websockets-wasm-js:3.6.0` — web
 
 </details>
 
@@ -601,11 +611,11 @@ Ships in: cli.
 
 <details><summary>6 artifact(s)</summary>
 
-- `com.github.ajalt.mordant:mordant-core-jvm:3.0.2` — cli
-- `com.github.ajalt.mordant:mordant-jvm-ffm-jvm:3.0.2` — cli
-- `com.github.ajalt.mordant:mordant-jvm-graal-ffi-jvm:3.0.2` — cli
-- `com.github.ajalt.mordant:mordant-jvm-jna-jvm:3.0.2` — cli
-- `com.github.ajalt.mordant:mordant-jvm:3.0.2` — cli
+- `com.github.ajalt.mordant:mordant-core-jvm:3.1.0` — cli
+- `com.github.ajalt.mordant:mordant-jvm-ffm-jvm:3.1.0` — cli
+- `com.github.ajalt.mordant:mordant-jvm-graal-ffi-jvm:3.1.0` — cli
+- `com.github.ajalt.mordant:mordant-jvm-jna-jvm:3.1.0` — cli
+- `com.github.ajalt.mordant:mordant-jvm:3.1.0` — cli
 - `com.github.ajalt.mordant:mordant-markdown-jvm:3.0.2` — cli
 
 </details>
@@ -616,22 +626,42 @@ Copyright © The Netty Project.
 Homepage: <https://netty.io/>.
 Ships in: server.
 
-<details><summary>14 artifact(s)</summary>
+<details><summary>20 artifact(s)</summary>
 
-- `io.netty:netty-buffer:4.2.9.Final` — server
-- `io.netty:netty-codec-base:4.2.9.Final` — server
-- `io.netty:netty-codec-compression:4.2.9.Final` — server
-- `io.netty:netty-codec-http2:4.2.9.Final` — server
-- `io.netty:netty-codec-http:4.2.9.Final` — server
-- `io.netty:netty-common:4.2.9.Final` — server
-- `io.netty:netty-handler:4.2.9.Final` — server
-- `io.netty:netty-resolver:4.2.9.Final` — server
-- `io.netty:netty-transport-classes-epoll:4.2.9.Final` — server
-- `io.netty:netty-transport-classes-kqueue:4.2.9.Final` — server
-- `io.netty:netty-transport-native-epoll:4.2.9.Final` — server
-- `io.netty:netty-transport-native-kqueue:4.2.9.Final` — server
-- `io.netty:netty-transport-native-unix-common:4.2.9.Final` — server
-- `io.netty:netty-transport:4.2.9.Final` — server
+- `io.netty:netty-buffer:4.2.17.Final` — server
+- `io.netty:netty-codec-base:4.2.17.Final` — server
+- `io.netty:netty-codec-classes-quic:4.2.17.Final` — server
+- `io.netty:netty-codec-compression:4.2.17.Final` — server
+- `io.netty:netty-codec-http2:4.2.17.Final` — server
+- `io.netty:netty-codec-http3:4.2.17.Final` — server
+- `io.netty:netty-codec-http:4.2.17.Final` — server
+- `io.netty:netty-codec-marshalling:4.2.17.Final` — server
+- `io.netty:netty-codec-native-quic:4.2.17.Final` — server
+- `io.netty:netty-codec-protobuf:4.2.17.Final` — server
+- `io.netty:netty-codec:4.2.17.Final` — server
+- `io.netty:netty-common:4.2.17.Final` — server
+- `io.netty:netty-handler:4.2.17.Final` — server
+- `io.netty:netty-resolver:4.2.17.Final` — server
+- `io.netty:netty-transport-classes-epoll:4.2.17.Final` — server
+- `io.netty:netty-transport-classes-kqueue:4.2.17.Final` — server
+- `io.netty:netty-transport-native-epoll:4.2.17.Final` — server
+- `io.netty:netty-transport-native-kqueue:4.2.17.Final` — server
+- `io.netty:netty-transport-native-unix-common:4.2.17.Final` — server
+- `io.netty:netty-transport:4.2.17.Final` — server
+
+</details>
+
+#### Okio
+
+Copyright © Square, Inc..
+Homepage: <https://square.github.io/okio/>.
+Ships in: server.
+
+Reached transitively through SnakeYAML Engine KMP.
+
+<details><summary>1 artifact(s)</summary>
+
+- `com.squareup.okio:okio-jvm:3.12.0` — server
 
 </details>
 
@@ -643,7 +673,7 @@ Ships in: server.
 
 <details><summary>1 artifact(s)</summary>
 
-- `org.xerial:sqlite-jdbc:3.50.3.0` — server
+- `org.xerial:sqlite-jdbc:3.53.4.0` — server
 
 </details>
 
@@ -655,10 +685,10 @@ Ships in: desktop, web.
 
 <details><summary>4 artifact(s)</summary>
 
-- `org.jetbrains.skiko:skiko-awt-runtime-<os>-<arch>:0.9.37.4` — desktop
-- `org.jetbrains.skiko:skiko-awt:0.9.37.4` — desktop
-- `org.jetbrains.skiko:skiko-js-wasm-runtime:0.9.37.4` — web
-- `org.jetbrains.skiko:skiko-wasm-js:0.9.37.4` — web
+- `org.jetbrains.skiko:skiko-awt-runtime-<os>-<arch>:0.150.2` — desktop
+- `org.jetbrains.skiko:skiko-awt:0.150.2` — desktop
+- `org.jetbrains.skiko:skiko-js-wasm-runtime:0.150.2` — web
+- `org.jetbrains.skiko:skiko-wasm-js:0.150.2` — web
 
 </details>
 
@@ -669,7 +699,21 @@ Ships in: cli, server, desktop.
 
 <details><summary>1 artifact(s)</summary>
 
-- `org.yaml:snakeyaml:2.4` — cli, desktop, server
+- `org.yaml:snakeyaml:2.6` — cli, desktop, server
+
+</details>
+
+#### SnakeYAML Engine KMP
+
+Copyright © 2018 SnakeYAML; portions Copyright © 2023 cketti.
+Homepage: <https://github.com/krzema12/snakeyaml-engine-kmp>.
+Ships in: server.
+
+Reached transitively through kaml. Three of its internal source files are adapted from cketti's kotlin-codepoints and carry that project's MIT License rather than Apache-2.0.
+
+<details><summary>1 artifact(s)</summary>
+
+- `it.krzeminski:snakeyaml-engine-kmp-jvm:3.1.1` — server
 
 </details>
 
@@ -681,15 +725,15 @@ Ships in: cli, server, desktop.
 <details><summary>10 artifact(s)</summary>
 
 - `dev.reformator.kotlin-metadata-jvm-repack:kotlin-metadata-jvm-repack:0.9.0-3` — cli, desktop, server
-- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-class-transformer:2.6.1` — cli, desktop, server
-- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-common:2.6.1` — cli, desktop, server
-- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-generator-jvm:2.6.1` — cli, desktop, server
-- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm-agent-common:2.6.1` — cli, desktop, server
-- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm:2.6.1` — cli, desktop, server
-- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-mh-invoker:2.6.1` — cli, desktop, server
-- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-provider:2.6.1` — cli, desktop, server
-- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-runtime-settings:2.6.1` — cli, desktop, server
-- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-spec-method-builder:2.6.1` — cli, desktop, server
+- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-class-transformer:2.6.6` — cli, desktop, server
+- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-common:2.6.6` — cli, desktop, server
+- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-generator-jvm:2.6.6` — cli, desktop, server
+- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm-agent-common:2.6.6` — cli, desktop, server
+- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-jvm:2.6.6` — cli, desktop, server
+- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-mh-invoker:2.6.6` — cli, desktop, server
+- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-provider:2.6.6` — cli, desktop, server
+- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-runtime-settings:2.6.6` — cli, desktop, server
+- `dev.reformator.stacktracedecoroutinator:stacktrace-decoroutinator-spec-method-builder:2.6.6` — cli, desktop, server
 
 </details>
 
@@ -718,7 +762,21 @@ Ships in: server.
 
 <details><summary>1 artifact(s)</summary>
 
-- `com.typesafe:config:1.4.5` — server
+- `com.typesafe:config:1.4.9` — server
+
+</details>
+
+#### UrlEncoder
+
+Copyright © 2001-2024 the original author or authors.
+Homepage: <https://github.com/ethauvin/urlencoder>.
+Ships in: server.
+
+Reached transitively through SnakeYAML Engine KMP.
+
+<details><summary>1 artifact(s)</summary>
+
+- `net.thauvin.erik.urlencoder:urlencoder-lib-jvm:1.6.0` — server
 
 </details>
 
@@ -730,7 +788,21 @@ Ships in: cli, server, desktop.
 
 <details><summary>1 artifact(s)</summary>
 
-- `com.fasterxml.woodstox:woodstox-core:7.0.0` — cli, desktop, server
+- `com.fasterxml.woodstox:woodstox-core:7.2.0` — cli, desktop, server
+
+</details>
+
+#### kaml
+
+Copyright © Charles Korn.
+Homepage: <https://github.com/charleskorn/kaml>.
+Ships in: server.
+
+Reached transitively through Ktor's OpenAPI schema support, which ktor-server-content-negotiation depends on.
+
+<details><summary>1 artifact(s)</summary>
+
+- `com.charleskorn.kaml:kaml-jvm:0.79.0` — server
 
 </details>
 
@@ -741,8 +813,8 @@ Ships in: cli, server, desktop, web.
 
 <details><summary>2 artifact(s)</summary>
 
-- `io.github.oshai:kotlin-logging-jvm:8.0.01` — cli, desktop, server
-- `io.github.oshai:kotlin-logging-wasm-js:8.0.01` — web
+- `io.github.oshai:kotlin-logging-jvm:8.0.4` — cli, desktop, server
+- `io.github.oshai:kotlin-logging-wasm-js:8.0.4` — web
 
 </details>
 
@@ -758,7 +830,7 @@ Ships in: cli, server, desktop.
 
 <details><summary>1 artifact(s)</summary>
 
-- `org.codehaus.woodstox:stax2-api:4.2.2` — cli, desktop, server
+- `org.codehaus.woodstox:stax2-api:4.3.0` — cli, desktop, server
 
 </details>
 
@@ -786,10 +858,10 @@ Ships in: cli, server, desktop.
 
 <details><summary>4 artifact(s)</summary>
 
-- `org.ow2.asm:asm-analysis:9.9.1` — cli, desktop, server
-- `org.ow2.asm:asm-tree:9.9.1` — cli, desktop, server
-- `org.ow2.asm:asm-util:9.9.1` — cli, desktop, server
-- `org.ow2.asm:asm:9.9.1` — cli, desktop, server
+- `org.ow2.asm:asm-analysis:9.10.1` — cli, desktop, server
+- `org.ow2.asm:asm-tree:9.10.1` — cli, desktop, server
+- `org.ow2.asm:asm-util:9.10.1` — cli, desktop, server
+- `org.ow2.asm:asm:9.10.1` — cli, desktop, server
 
 </details>
 
@@ -828,7 +900,7 @@ Licensed separately from the rest of veraPDF: this module is an Adobe XMP deriva
 
 <details><summary>1 artifact(s)</summary>
 
-- `org.verapdf:verapdf-xmp-core-jakarta:1.28.2` — cli, desktop, server
+- `org.verapdf:verapdf-xmp-core-jakarta:1.30.3` — cli, desktop, server
 
 </details>
 
@@ -861,9 +933,9 @@ Ships in: cli, server, desktop.
 
 <details><summary>3 artifact(s)</summary>
 
-- `org.bouncycastle:bcpkix-jdk18on:1.81` — cli, desktop, server
-- `org.bouncycastle:bcprov-jdk18on:1.81.1` — cli, desktop, server
-- `org.bouncycastle:bcutil-jdk18on:1.81.1` — cli, desktop, server
+- `org.bouncycastle:bcpkix-jdk18on:1.86` — cli, desktop, server
+- `org.bouncycastle:bcprov-jdk18on:1.86` — cli, desktop, server
+- `org.bouncycastle:bcutil-jdk18on:1.86` — cli, desktop, server
 
 </details>
 
@@ -881,11 +953,11 @@ Ships in: cli, server, desktop.
 
 - `com.sun.istack:istack-commons-runtime:4.1.2` — cli, desktop, server
 - `jakarta.activation:jakarta.activation-api:2.1.4` — cli, desktop, server
-- `jakarta.xml.bind:jakarta.xml.bind-api:4.0.4` — cli, desktop, server
+- `jakarta.xml.bind:jakarta.xml.bind-api:4.0.5` — cli, desktop, server
 - `org.eclipse.angus:angus-activation:2.0.3` — cli, desktop, server
-- `org.glassfish.jaxb:jaxb-core:4.0.6` — cli, desktop, server
-- `org.glassfish.jaxb:jaxb-runtime:4.0.6` — cli, desktop, server
-- `org.glassfish.jaxb:txw2:4.0.6` — cli, desktop, server
+- `org.glassfish.jaxb:jaxb-core:4.0.9` — cli, desktop, server
+- `org.glassfish.jaxb:jaxb-runtime:4.0.9` — cli, desktop, server
+- `org.glassfish.jaxb:txw2:4.0.9` — cli, desktop, server
 
 </details>
 
@@ -901,48 +973,50 @@ Ships in: cli, server, desktop.
 
 The published POM names only "GNU Lesser General Public License"; the version and the "or later" grant are taken from the licence header carried in every DSS source file. The DSS artifacts themselves ship no licence text, which is why it is reproduced here.
 
-<details><summary>40 artifact(s)</summary>
+<details><summary>42 artifact(s)</summary>
 
-- `eu.europa.ec.joinup.sd-dss:dss-alert:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-cades:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-cms-object:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-cms:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-common-remote-dto:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-crl-parser-stream:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-crl-parser:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-detailed-report-jaxb:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-diagnostic-jaxb:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-document:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-enumerations:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-i18n:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-jaxb-common:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-jaxb-parsers:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-json-common:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-model:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-pades-pdfbox:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-pades:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-pdfa:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-policy-crypto-json:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-policy-crypto-xml:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-policy-jaxb:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-service:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-simple-certificate-report-jaxb:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-simple-report-jaxb:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-spi:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-timestamp-dto:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-timestamp-remote:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-token:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-tsl-validation:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-utils-apache-commons:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-utils:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-validation:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-xades:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-xml-common:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:dss-xml-utils:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:specs-trusted-list:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:specs-validation-report:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:specs-xades:6.3` — cli, desktop, server
-- `eu.europa.ec.joinup.sd-dss:specs-xmldsig:6.3` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-alert:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-cades:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-cms-object:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-cms:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-common-remote-dto:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-crl-parser-stream:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-crl-parser:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-detailed-report-jaxb:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-diagnostic-jaxb:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-document:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-enumerations:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-i18n:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-jaxb-common:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-jaxb-parsers:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-json-common:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-model:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-pades-pdfbox:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-pades:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-pdfa:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-policy-crypto-json:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-policy-crypto-xml:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-policy-jaxb:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-service:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-simple-certificate-report-jaxb:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-simple-report-jaxb:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-spi:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-timestamp-dto:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-timestamp-remote:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-token:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-tsl-validation:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-utils-apache-commons:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-utils:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-validation-job:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-validation:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-xades:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-xml-common:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:dss-xml-utils:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:specs-trusted-list-v211:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:specs-trusted-list:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:specs-validation-report:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:specs-xades:6.5.1` — cli, desktop, server
+- `eu.europa.ec.joinup.sd-dss:specs-xmldsig:6.5.1` — cli, desktop, server
 
 </details>
 
@@ -956,8 +1030,8 @@ Licence election: Dual-licensed EPL-1.0 or LGPL-2.1. OmniSign takes the LGPL-2.1
 
 <details><summary>2 artifact(s)</summary>
 
-- `ch.qos.logback:logback-classic:1.5.27` — cli, desktop, server
-- `ch.qos.logback:logback-core:1.5.27` — cli, desktop, server
+- `ch.qos.logback:logback-classic:1.6.5` — cli, desktop, server
+- `ch.qos.logback:logback-core:1.6.5` — cli, desktop, server
 
 </details>
 
@@ -973,20 +1047,8 @@ Ships in: server.
 
 <details><summary>2 artifact(s)</summary>
 
-- `com.auth0:java-jwt:4.5.0` — server
-- `com.auth0:jwks-rsa:0.23.0` — server
-
-</details>
-
-#### Checker Framework qualifiers
-
-Copyright © the Checker Framework developers.
-Homepage: <https://checkerframework.org/>.
-Ships in: server.
-
-<details><summary>1 artifact(s)</summary>
-
-- `org.checkerframework:checker-qual:3.33.0` — server
+- `com.auth0:java-jwt:4.6.0` — server
+- `com.auth0:jwks-rsa:0.24.1` — server
 
 </details>
 
@@ -998,7 +1060,7 @@ Ships in: cli.
 
 <details><summary>1 artifact(s)</summary>
 
-- `com.github.ajalt.colormath:colormath-jvm:3.6.0` — cli
+- `com.github.ajalt.colormath:colormath-jvm:3.7.0` — cli
 
 </details>
 
@@ -1010,12 +1072,12 @@ Ships in: desktop, web.
 
 <details><summary>6 artifact(s)</summary>
 
-- `io.github.vinceglb:filekit-core-jvm:0.14.1` — desktop
-- `io.github.vinceglb:filekit-core-wasm-js:0.14.1` — web
-- `io.github.vinceglb:filekit-dialogs-compose-jvm:0.14.1` — desktop
-- `io.github.vinceglb:filekit-dialogs-compose-wasm-js:0.14.1` — web
-- `io.github.vinceglb:filekit-dialogs-jvm:0.14.1` — desktop
-- `io.github.vinceglb:filekit-dialogs-wasm-js:0.14.1` — web
+- `io.github.vinceglb:filekit-core-jvm:0.16.0` — desktop
+- `io.github.vinceglb:filekit-core-wasm-js:0.16.0` — web
+- `io.github.vinceglb:filekit-dialogs-compose-jvm:0.16.0` — desktop
+- `io.github.vinceglb:filekit-dialogs-compose-wasm-js:0.16.0` — web
+- `io.github.vinceglb:filekit-dialogs-jvm:0.16.0` — desktop
+- `io.github.vinceglb:filekit-dialogs-wasm-js:0.16.0` — web
 
 </details>
 
@@ -1027,7 +1089,7 @@ Ships in: cli, server, desktop.
 
 <details><summary>1 artifact(s)</summary>
 
-- `org.slf4j:slf4j-api:2.0.17` — cli, desktop, server
+- `org.slf4j:slf4j-api:2.0.20` — cli, desktop, server
 
 </details>
 
@@ -1039,8 +1101,8 @@ Ships in: cli, server, desktop.
 
 <details><summary>2 artifact(s)</summary>
 
-- `com.github.hypfvieh:dbus-java-core:5.2.0` — cli, desktop, server
-- `com.github.hypfvieh:dbus-java-transport-native-unixsocket:5.2.0` — cli, desktop, server
+- `com.github.hypfvieh:dbus-java-core:5.2.2` — cli, desktop, server
+- `com.github.hypfvieh:dbus-java-transport-native-unixsocket:5.2.2` — cli, desktop, server
 
 </details>
 
@@ -1052,7 +1114,7 @@ Ships in: cli, server, desktop.
 
 <details><summary>1 artifact(s)</summary>
 
-- `com.sanctionco.jmail:jmail:2.0.1` — cli, desktop, server
+- `com.sanctionco.jmail:jmail:2.1.0` — cli, desktop, server
 
 </details>
 
@@ -1064,7 +1126,7 @@ Ships in: cli, server, desktop.
 
 <details><summary>1 artifact(s)</summary>
 
-- `com.github.erosb:json-sKema:0.24.0` — cli, desktop, server
+- `com.github.erosb:json-sKema:0.32.0` — cli, desktop, server
 
 </details>
 
@@ -1076,7 +1138,7 @@ Ships in: cli, server, desktop.
 
 <details><summary>1 artifact(s)</summary>
 
-- `org.purejava:secret-service:1.1.1` — cli, desktop, server
+- `org.purejava:secret-service:1.3.3` — cli, desktop, server
 
 </details>
 
@@ -1090,7 +1152,7 @@ Declared by the Kotlin/Wasm build of the Ktor client as its WebSocket implementa
 
 <details><summary>1 artifact(s)</summary>
 
-- `ws@8.18.3` — web
+- `ws@8.20.1` — web
 
 </details>
 
@@ -1106,7 +1168,7 @@ Ships in: cli, server, desktop.
 
 <details><summary>1 artifact(s)</summary>
 
-- `org.mozilla:rhino:1.7.13` — cli, desktop, server
+- `org.mozilla:rhino:1.7.15.1` — cli, desktop, server
 
 </details>
 
@@ -1122,12 +1184,12 @@ Reached transitively through dss-pdfa.
 
 <details><summary>6 artifact(s)</summary>
 
-- `org.verapdf:core-jakarta:1.28.2` — cli, desktop, server
-- `org.verapdf:feature-reporting-jakarta:1.28.2` — cli, desktop, server
-- `org.verapdf:metadata-fixer-jakarta:1.28.2` — cli, desktop, server
-- `org.verapdf:parser:1.28.2` — cli, desktop, server
-- `org.verapdf:pdf-model:1.28.2` — cli, desktop, server
-- `org.verapdf:validation-model-jakarta:1.28.2` — cli, desktop, server
+- `org.verapdf:core-jakarta:1.30.3` — cli, desktop, server
+- `org.verapdf:feature-reporting-jakarta:1.30.3` — cli, desktop, server
+- `org.verapdf:metadata-fixer-jakarta:1.30.3` — cli, desktop, server
+- `org.verapdf:parser:1.30.3` — cli, desktop, server
+- `org.verapdf:pdf-model:1.30.3` — cli, desktop, server
+- `org.verapdf:validation-model-jakarta:1.30.3` — cli, desktop, server
 
 </details>
 
@@ -1137,7 +1199,7 @@ The Apache License 2.0 requires the contents of a component's own `NOTICE` file 
 with any distribution that includes it. The following notices are reproduced verbatim from
 the shipped artifacts.
 
-### com.fasterxml.jackson.core:jackson-annotations:2.18.3
+### com.fasterxml.jackson.core:jackson-annotations:2.22
 
 ```text
 # Jackson JSON processor
@@ -1163,7 +1225,7 @@ in some artifacts (usually source distributions); but is always available
 from the source code management (SCM) system project uses.
 ```
 
-### com.fasterxml.jackson.core:jackson-core:2.18.3
+### com.fasterxml.jackson.core:jackson-core:2.22.4
 
 ```text
 # Jackson JSON processor
@@ -1196,11 +1258,21 @@ under the following copyright.
 
 Copyright © 2023 Werner Randelshofer, Switzerland. MIT License.
 
-See FastDoubleParser-NOTICE for details of other source code included in FastDoubleParser
-and the licenses and copyrights that apply to that code.
+See FastDoubleParser-LICENSE and also FastDoubleParser-ThirdParty-LICENSE for details of other source code
+included in FastDoubleParser and the licenses and copyrights that apply to that code.
+
+## Schubfach
+
+jackson-core bundles a copy of the Schubfach number writing code <https://github.com/c4f7fcce9cb06515/Schubfach>.
+That code is available under an MIT license <https://github.com/c4f7fcce9cb06515/Schubfach/blob/master/todec/LICENSE>
+under the following copyright.
+
+Copyright 2018-2020 Raffaello Giulietti
+
+See Schubfach-LICENSE.
 ```
 
-### com.fasterxml.jackson.core:jackson-databind:2.18.3
+### com.fasterxml.jackson.core:jackson-databind:2.22.4
 
 ```text
 # Jackson JSON processor
@@ -1226,7 +1298,7 @@ in some artifacts (usually source distributions); but is always available
 from the source code management (SCM) system project uses.
 ```
 
-### com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.18.3
+### com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.22.4
 
 ```text
 # Jackson JSON processor
@@ -1252,7 +1324,7 @@ in some artifacts (usually source distributions); but is always available
 from the source code management (SCM) system project uses.
 ```
 
-### com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.18.3
+### com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.4
 
 ```text
 # Jackson JSON processor
@@ -1278,7 +1350,7 @@ in some artifacts (usually source distributions); but is always available
 from the source code management (SCM) system project uses.
 ```
 
-### com.fasterxml.jackson.module:jackson-module-kotlin:2.18.3
+### com.fasterxml.jackson.module:jackson-module-kotlin:2.22.4
 
 ```text
 # Jackson JSON processor
@@ -1317,24 +1389,307 @@ This product includes software developed at
 The Apache Software Foundation (https://www.apache.org/).
 ```
 
-### commons-io:commons-io:2.20.0
+### commons-io:commons-io:2.22.0
 
 ```text
 Apache Commons IO
-Copyright 2002-2025 The Apache Software Foundation
+Copyright 2002-2026 The Apache Software Foundation
 
 This product includes software developed at
 The Apache Software Foundation (https://www.apache.org/).
 ```
 
-### commons-logging:commons-logging:1.3.5
+### commons-logging:commons-logging:1.4.0
 
 ```text
 Apache Commons Logging
-Copyright 2001-2025 The Apache Software Foundation
+Copyright 2001-2026 The Apache Software Foundation
 
 This product includes software developed at
 The Apache Software Foundation (https://www.apache.org/).
+```
+
+### io.netty:netty-codec-native-quic:4.2.17.Final
+
+```text
+The Netty Project
+                            =================
+
+Please visit the Netty web site for more information:
+
+  * https://netty.io/
+
+Copyright 2014 The Netty Project
+
+The Netty Project licenses this file to you under the Apache License,
+version 2.0 (the "License"); you may not use this file except in compliance
+with the License. You may obtain a copy of the License at:
+
+  https://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the
+License for the specific language governing permissions and limitations
+under the License.
+
+Also, please refer to each LICENSE.<component>.txt file, which is located in
+the 'license' directory of the distribution file, for the license terms of the
+components that this product depends on.
+
+-------------------------------------------------------------------------------
+This product contains the extensions to Java Collections Framework which has
+been derived from the works by JSR-166 EG, Doug Lea, and Jason T. Greene:
+
+  * LICENSE:
+    * license/LICENSE.jsr166y.txt (Public Domain)
+  * HOMEPAGE:
+    * http://gee.cs.oswego.edu/cgi-bin/viewcvs.cgi/jsr166/
+    * http://viewvc.jboss.org/cgi-bin/viewvc.cgi/jbosscache/experimental/jsr166/
+
+This product contains a modified version of Robert Harder's Public Domain
+Base64 Encoder and Decoder, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.base64.txt (Public Domain)
+  * HOMEPAGE:
+    * http://iharder.sourceforge.net/current/java/base64/
+
+This product contains a modified portion of 'Webbit', an event based
+WebSocket and HTTP server, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.webbit.txt (BSD License)
+  * HOMEPAGE:
+    * https://github.com/joewalnes/webbit
+
+This product contains a modified portion of 'SLF4J', a simple logging
+facade for Java, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.slf4j.txt (MIT License)
+  * HOMEPAGE:
+    * https://www.slf4j.org/
+
+This product contains a modified portion of 'Apache Harmony', an open source
+Java SE, which can be obtained at:
+
+  * NOTICE:
+    * license/NOTICE.harmony.txt
+  * LICENSE:
+    * license/LICENSE.harmony.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * https://archive.apache.org/dist/harmony/
+
+This product contains a modified portion of 'jbzip2', a Java bzip2 compression
+and decompression library written by Matthew J. Francis. It can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.jbzip2.txt (MIT License)
+  * HOMEPAGE:
+    * https://code.google.com/p/jbzip2/
+
+This product contains a modified portion of 'libdivsufsort', a C API library to construct
+the suffix array and the Burrows-Wheeler transformed string for any input string of
+a constant-size alphabet written by Yuta Mori. It can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.libdivsufsort.txt (MIT License)
+  * HOMEPAGE:
+    * https://github.com/y-256/libdivsufsort
+
+This product contains a modified portion of Nitsan Wakart's 'JCTools', Java Concurrency Tools for the JVM,
+ which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.jctools.txt (ASL2 License)
+  * HOMEPAGE:
+    * https://github.com/JCTools/JCTools
+
+This product optionally depends on 'JZlib', a re-implementation of zlib in
+pure Java, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.jzlib.txt (BSD style License)
+  * HOMEPAGE:
+    * http://www.jcraft.com/jzlib/
+
+This product optionally depends on 'Compress-LZF', a Java library for encoding and
+decoding data in LZF format, written by Tatu Saloranta. It can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.compress-lzf.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * https://github.com/ning/compress
+
+This product optionally depends on 'lz4', a LZ4 Java compression
+and decompression library written by Adrien Grand. It can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.lz4.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * https://github.com/jpountz/lz4-java
+
+This product optionally depends on 'lzma-java', a LZMA Java compression
+and decompression library, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.lzma-java.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * https://github.com/jponge/lzma-java
+
+This product optionally depends on 'zstd-jni', a zstd-jni Java compression
+and decompression library, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.zstd-jni.txt (BSD)
+  * HOMEPAGE:
+    * https://github.com/luben/zstd-jni
+
+This product contains a modified portion of 'jfastlz', a Java port of FastLZ compression
+and decompression library written by William Kinney. It can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.jfastlz.txt (MIT License)
+  * HOMEPAGE:
+    * https://code.google.com/p/jfastlz/
+
+This product contains a modified portion of and optionally depends on 'Protocol Buffers', Google's data
+interchange format, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.protobuf.txt (New BSD License)
+  * HOMEPAGE:
+    * https://github.com/google/protobuf
+
+This product optionally depends on 'Bouncy Castle Crypto APIs' to generate
+a temporary self-signed X.509 certificate when the JVM does not provide the
+equivalent functionality.  It can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.bouncycastle.txt (MIT License)
+  * HOMEPAGE:
+    * https://www.bouncycastle.org/
+
+This product optionally depends on 'Snappy', a compression library produced
+by Google Inc, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.snappy.txt (New BSD License)
+  * HOMEPAGE:
+    * https://github.com/google/snappy
+
+This product optionally depends on 'JBoss Marshalling', an alternative Java
+serialization API, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.jboss-marshalling.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * https://github.com/jboss-remoting/jboss-marshalling
+
+This product optionally depends on 'Caliper', Google's micro-
+benchmarking framework, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.caliper.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * https://github.com/google/caliper
+
+This product optionally depends on 'Apache Commons Logging', a logging
+framework, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.commons-logging.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * https://commons.apache.org/logging/
+
+This product optionally depends on 'Apache Log4J', a logging framework, which
+can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.log4j.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * https://logging.apache.org/log4j/
+
+This product optionally depends on 'Aalto XML', an ultra-high performance
+non-blocking XML processor, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.aalto-xml.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * https://wiki.fasterxml.com/AaltoHome
+
+This product contains a modified version of 'HPACK', a Java implementation of
+the HTTP/2 HPACK algorithm written by Twitter. It can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.hpack.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * https://github.com/twitter/hpack
+
+This product contains a modified version of 'HPACK', a Java implementation of
+the HTTP/2 HPACK algorithm written by Cory Benfield. It can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.hyper-hpack.txt (MIT License)
+  * HOMEPAGE:
+    * https://github.com/python-hyper/hpack/
+
+This product contains a modified version of 'HPACK', a Java implementation of
+the HTTP/2 HPACK algorithm written by Tatsuhiro Tsujikawa. It can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.nghttp2-hpack.txt (MIT License)
+  * HOMEPAGE:
+    * https://github.com/nghttp2/nghttp2/
+
+This product contains a modified portion of 'Apache Commons Lang', a Java library
+provides utilities for the java.lang API, which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.commons-lang.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * https://commons.apache.org/proper/commons-lang/
+
+
+This product contains the Maven wrapper scripts from 'Maven Wrapper', that provides an easy way to ensure a user has everything necessary to run the Maven build.
+
+  * LICENSE:
+    * license/LICENSE.mvn-wrapper.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * https://github.com/takari/maven-wrapper
+
+This product contains the dnsinfo.h header file, that provides a way to retrieve the system DNS configuration on MacOS.
+This private header is also used by Apple's open source
+ mDNSResponder (https://opensource.apple.com/tarballs/mDNSResponder/).
+
+ * LICENSE:
+    * license/LICENSE.dnsinfo.txt (Apple Public Source License 2.0)
+  * HOMEPAGE:
+    * https://www.opensource.apple.com/source/configd/configd-453.19/dnsinfo/dnsinfo.h
+
+This product optionally depends on 'Brotli4j', Brotli compression and
+decompression for Java., which can be obtained at:
+
+  * LICENSE:
+    * license/LICENSE.brotli4j.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * https://github.com/hyperxpro/Brotli4j
+
+This product is statically linked against Quiche.
+
+ * LICENSE:
+    * license/LICENSE.quiche.txt (BSD2)
+  * HOMEPAGE:
+    * https://github.com/cloudflare/quiche
+
+
+This product is statically linked against boringssl.
+
+  * LICENSE
+    * license/LICENSE.boringssl.txt (Apache License 2.0)
+  * HOMEPAGE:
+    * https://boringssl.googlesource.com/boringssl/
 ```
 
 ### jakarta.activation:jakarta.activation-api:2.1.4
@@ -1433,7 +1788,7 @@ possession, or use, and re-export of encryption software, to see if this is
 permitted.
 ```
 
-### jakarta.xml.bind:jakarta.xml.bind-api:4.0.4
+### jakarta.xml.bind:jakarta.xml.bind-api:4.0.5
 
 ```text
 [//]: # " Copyright (c) 2018, 2024 Oracle and/or its affiliates. All rights reserved. "
@@ -1485,7 +1840,7 @@ possession, or use, and re-export of encryption software, to see if this is
 permitted.
 ```
 
-### net.bytebuddy:byte-buddy-agent:1.18.3
+### net.bytebuddy:byte-buddy-agent:1.18.13
 
 ```text
 Copyright 2014 - Present Rafael Winterhalter
@@ -1503,27 +1858,27 @@ See the License for the specific language governing permissions and
 limitations under the License.
 ```
 
-### org.apache.commons:commons-collections4:4.5.0
+### org.apache.commons:commons-collections4:4.6.0
 
 ```text
 Apache Commons Collections
-Copyright 2001-2025 The Apache Software Foundation
+Copyright 2001-2026 The Apache Software Foundation
 
 This product includes software developed at
 The Apache Software Foundation (https://www.apache.org/).
 ```
 
-### org.apache.commons:commons-lang3:3.18.0
+### org.apache.commons:commons-lang3:3.21.0
 
 ```text
 Apache Commons Lang
-Copyright 2001-2025 The Apache Software Foundation
+Copyright 2001-2026 The Apache Software Foundation
 
 This product includes software developed at
 The Apache Software Foundation (https://www.apache.org/).
 ```
 
-### org.apache.httpcomponents.client5:httpclient5:5.5
+### org.apache.httpcomponents.client5:httpclient5:5.6.5
 
 ```text
 Apache HttpClient
@@ -1533,7 +1888,7 @@ This product includes software developed at
 The Apache Software Foundation (http://www.apache.org/).
 ```
 
-### org.apache.httpcomponents.core5:httpcore5-h2:5.3.4
+### org.apache.httpcomponents.core5:httpcore5-h2:5.4.4
 
 ```text
 Apache HttpComponents Core HTTP/2
@@ -1543,7 +1898,7 @@ This product includes software developed at
 The Apache Software Foundation (http://www.apache.org/).
 ```
 
-### org.apache.httpcomponents.core5:httpcore5:5.3.4
+### org.apache.httpcomponents.core5:httpcore5:5.4.4
 
 ```text
 Apache HttpComponents Core HTTP/1.1
@@ -1553,23 +1908,7 @@ This product includes software developed at
 The Apache Software Foundation (http://www.apache.org/).
 ```
 
-### org.apache.pdfbox:fontbox:3.0.5
-
-```text
-Apache FontBox
-Copyright 2008-2025 The Apache Software Foundation
-
-
-This product includes software developed at
-The Apache Software Foundation (http://www.apache.org/).
-Based on source code contributed to the original FontBox project.
-Copyright (c) 2006-2007, www.fontbox.org
-
-Includes the Script Property (Scripts-10.0.0.txt)
-Copyright 2017 Unicode, Inc.
-```
-
-### org.apache.pdfbox:fontbox:3.0.7
+### org.apache.pdfbox:fontbox:3.0.8
 
 ```text
 Apache FontBox
@@ -1585,18 +1924,7 @@ Includes the Script Property (Scripts-10.0.0.txt)
 Copyright 2017 Unicode, Inc.
 ```
 
-### org.apache.pdfbox:pdfbox-io:3.0.5
-
-```text
-Apache PDFBox io
-Copyright 2002-2025 The Apache Software Foundation
-
-
-This product includes software developed at
-The Apache Software Foundation (http://www.apache.org/).
-```
-
-### org.apache.pdfbox:pdfbox-io:3.0.7
+### org.apache.pdfbox:pdfbox-io:3.0.8
 
 ```text
 Apache PDFBox io
@@ -1607,36 +1935,7 @@ This product includes software developed at
 The Apache Software Foundation (http://www.apache.org/).
 ```
 
-### org.apache.pdfbox:pdfbox:3.0.5
-
-```text
-Apache PDFBox
-Copyright 2002-2025 The Apache Software Foundation
-
-
-This product includes software developed at
-The Apache Software Foundation (http://www.apache.org/).
-Based on source code contributed to the original PDFBox project.
-Copyright (c) 2002-2007, www.pdfbox.org
-
-Includes the Adobe Glyph List
-Copyright 1997, 1998, 2002, 2007, 2010 Adobe Systems Incorporated.
-
-Includes the Zapf Dingbats Glyph List
-Copyright 2002, 2010 Adobe Systems Incorporated.
-
-Includes the Bidi Mirroring Glyph Property (BidiMirroring-8.0.0.txt)
-Copyright 1991-2015 Unicode, Inc.
-
-Includes parts of TwelveMonkeys ImageIO
-Copyright 2008-2016 Harald Kuhr
-
-Includes the CMYK ICC-profile (CGATS001Compat-v2-micro.icc) 
-https://github.com/saucecontrol/Compact-ICC-Profiles
-Released to the public domain under the Creative Commons CC0 license by Clinton Ingram, saucecontrol
-```
-
-### org.apache.pdfbox:pdfbox:3.0.7
+### org.apache.pdfbox:pdfbox:3.0.8
 
 ```text
 Apache PDFBox
@@ -1726,7 +2025,7 @@ possession, or use, and re-export of encryption software, to see if this is
 permitted.
 ```
 
-### org.glassfish.jaxb:jaxb-core:4.0.6
+### org.glassfish.jaxb:jaxb-core:4.0.9
 
 ```text
 # Notices for Eclipse Implementation of JAXB
@@ -1921,7 +2220,7 @@ possession, or use, and re-export of encryption software, to see if this is
 permitted.
 ```
 
-### org.glassfish.jaxb:jaxb-runtime:4.0.6
+### org.glassfish.jaxb:jaxb-runtime:4.0.9
 
 ```text
 # Notices for Eclipse Implementation of JAXB
@@ -2116,7 +2415,7 @@ possession, or use, and re-export of encryption software, to see if this is
 permitted.
 ```
 
-### org.glassfish.jaxb:txw2:4.0.6
+### org.glassfish.jaxb:txw2:4.0.9
 
 ```text
 # Notices for Eclipse Implementation of JAXB
@@ -2309,4 +2608,68 @@ another country, of encryption software. BEFORE using any encryption software,
 please check the country's laws, regulations and policies concerning the import,
 possession, or use, and re-export of encryption software, to see if this is
 permitted.
+```
+
+### org.mozilla:rhino:1.7.15.1
+
+```text
+Rhino is licensed subject to the terms of the Mozilla Public License, v. 2.0.
+See "License.txt" for the text of the license.
+
+Rhino contains the following additional software:
+
+----
+
+Portions of the floating-point conversion code, and portions of the test suite
+come from the Google V8 JavaScript engine and are subject to the following:
+
+Copyright 2010-2015 the V8 project authors. All rights reserved.
+Redistribution and use in source and binary forms, with or without
+modification, are permitted provided that the following conditions are
+met:
+
+    * Redistributions of source code must retain the above copyright
+      notice, this list of conditions and the following disclaimer.
+    * Redistributions in binary form must reproduce the above
+      copyright notice, this list of conditions and the following
+      disclaimer in the documentation and/or other materials provided
+      with the distribution.
+    * Neither the name of Google Inc. nor the names of its
+      contributors may be used to endorse or promote products derived
+      from this software without specific prior written permission.
+THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS
+"AS IS" AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+A PARTICULAR PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT
+OWNER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+(INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+
+----
+
+Portions of the number-to-string code are subject to the following:
+
+ Copyright 2018-2020 Raffaello Giulietti
+ 
+ Permission is hereby granted, free of charge, to any person obtaining a copy
+ of this software and associated documentation files (the "Software"), to deal
+ in the Software without restriction, including without limitation the rights
+ to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+ copies of the Software, and to permit persons to whom the Software is
+ furnished to do so, subject to the following conditions:
+ 
+ The above copyright notice and this permission notice shall be included in
+ all copies or substantial portions of the Software.
+ 
+ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+ IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+ FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+ OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+ THE SOFTWARE.
 ```

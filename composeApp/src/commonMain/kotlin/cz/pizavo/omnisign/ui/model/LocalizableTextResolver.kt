@@ -124,6 +124,7 @@ private val MESSAGE_RES: Map<MessageKey, StringResource> = mapOf(
 	MessageKey.SIGNATURE_QSCD_RESIDENCE to Res.string.signature_qscd_residence,
 	MessageKey.WARNING_REVOCATION_NOT_FOUND to Res.string.warning_revocation_not_found,
 	MessageKey.WARNING_REVOCATION_AFTER_CERTIFICATE_EXPIRY to Res.string.warning_revocation_after_certificate_expiry,
+	MessageKey.WARNING_REVOCATION_ACCESS_POINT_MISSING to Res.string.warning_revocation_access_point_missing,
 	MessageKey.WARNING_REVOCATION_UNTRUSTED_CHAIN to Res.string.warning_revocation_untrusted_chain,
 	MessageKey.WARNING_REVOCATION_STATUS_UNKNOWN to Res.string.warning_revocation_status_unknown,
 	MessageKey.WARNING_REVOCATION_POE_MISSING to Res.string.warning_revocation_poe_missing,
@@ -150,6 +151,7 @@ private val MESSAGE_RES: Map<MessageKey, StringResource> = mapOf(
 private val WARNING_COUNT_PLURAL: Map<MessageKey, PluralStringResource> = mapOf(
 	MessageKey.WARNING_REVOCATION_NOT_FOUND to Res.plurals.warning_affected_certificates,
 	MessageKey.WARNING_REVOCATION_AFTER_CERTIFICATE_EXPIRY to Res.plurals.warning_affected_certificates,
+	MessageKey.WARNING_REVOCATION_ACCESS_POINT_MISSING to Res.plurals.warning_affected_certificates,
 	MessageKey.WARNING_REVOCATION_UNTRUSTED_CHAIN to Res.plurals.warning_affected_certificates,
 	MessageKey.WARNING_REVOCATION_STATUS_UNKNOWN to Res.plurals.warning_affected_certificates,
 	MessageKey.WARNING_REVOCATION_POE_MISSING to Res.plurals.warning_affected_certificates,

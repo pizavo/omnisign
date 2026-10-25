@@ -102,7 +102,9 @@ kotlin {
 			implementation(libs.dss.crl.parser)
 			implementation(libs.dss.crl.parser.stream)
 			implementation(libs.dss.token)
-			implementation(libs.dss.pdfa)
+			implementation("${libs.dss.pdfa.get().module}") {
+				exclude(group = "net.sf.saxon", module = "Saxon-HE")
+			}
 			
 			implementation(libs.dss.service) // handles TSP, OCSP, CRL requests, etc.
 			implementation(libs.dss.tsl.validation) // TLValidationJob, LOTLSource, TLSource

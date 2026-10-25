@@ -263,6 +263,11 @@ internal object EnglishMessages {
 			"Revocation data for %1\$s was issued after the certificate expired and cannot be used: " +
 				"the issuer no longer vouches for that period. Long-term validation material has to " +
 				"be added while the certificate is still valid."
+		MessageKey.WARNING_REVOCATION_ACCESS_POINT_MISSING ->
+			"Revocation status cannot be checked for %1\$s: no CRL distribution point or OCSP address " +
+				"is given, so timestamps and revocation data signed with such a certificate are disregarded " +
+				"while long-term validation data is gathered. Retrying will not change that; a timestamp " +
+				"server whose certificate names an address avoids it."
 		MessageKey.WARNING_REVOCATION_UNTRUSTED_CHAIN ->
 			"Revocation checks were skipped for %1\$s in untrusted chain(s). " +
 				"This is expected when no trusted list is configured."

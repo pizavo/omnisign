@@ -1820,7 +1820,7 @@ components:
             - type: 'null'
         policyUpdateDate:
           type: [string, 'null']
-          description: ISO-8601 date, e.g. `2024-10-13`.
+          description: ISO-8601 date, e.g. `2026-02-01`.
         expirationDateOverrides:
           type: object
           description: Algorithm name to ISO-8601 expiration date.

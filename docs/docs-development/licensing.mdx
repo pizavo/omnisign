@@ -136,6 +136,31 @@ at runtime — the library's copyright among them with a pointer to that licence
 `NOTICE.md`, `licenses/` and the four in-app credits surfaces exist for.
 :::
 
+## Excluded dependencies
+
+### Saxon-HE
+
+The veraPDF release that DSS 6.5.1's `dss-pdfa` depends on (1.30) declares Saxon-HE, an XSLT and
+XQuery processor, together with the xmlresolver library it needs. `shared/build.gradle.kts` excludes
+Saxon-HE, and xmlresolver goes with it, which leaves the dependency set as it was under DSS 6.3. There
+are three reasons:
+
+- **It cannot join an AGPL work.** Saxon-HE is MPL-2.0, like veraPDF, but every one of its source
+  files carries the MPL's Exhibit B notice, "Incompatible With Secondary Licenses". That notice
+  switches off §3.3, the permission the veraPDF election above relies on, and without §3.3 MPL-2.0 is
+  not compatible with the GNU GPL family. Shipping it would require OmniSign to grant an additional
+  permission for it under AGPLv3 §7, which the project has not done.
+- **It would change behaviour silently.** The jar registers itself as the JAXP `TransformerFactory`
+  provider through `META-INF/services`, so its presence on the classpath alone replaces the JDK's XSLT
+  engine for every `TransformerFactory.newInstance()` call in the application, DSS's own included.
+- **Nothing OmniSign runs uses it.** DSS uses only veraPDF's parser and validator. Within veraPDF,
+  Saxon is reached from the policy checker (`PolicyChecker`, `SchematronPipeline`) and the report
+  transformer (`XsltTransformer`), none of which DSS calls. `PdfaConformanceE2ETest` runs the PDF/A
+  checks without it.
+
+Saxon-HE has no entry in `third-party-licenses.json`. If a dependency change brings it back,
+`generateThirdPartyNotices` fails on it rather than shipping it unnoticed.
+
 ## Regenerating after a dependency change
 
 ```bash

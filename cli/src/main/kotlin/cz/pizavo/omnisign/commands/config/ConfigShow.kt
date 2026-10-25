@@ -7,6 +7,7 @@ import arrow.core.getOrElse
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.TrustStore
+import cz.pizavo.omnisign.domain.service.AlgorithmExpirationChecker
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import java.io.File
 import kotlinx.coroutines.runBlocking
@@ -50,7 +51,8 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 					?: "default (${AlgorithmConstraintsConfig.DEFAULT.expirationLevel})"}")
 				echo("  Algo expiry after upd. : ${ac.expirationLevelAfterUpdate?.toString()
 					?: "default (${AlgorithmConstraintsConfig.DEFAULT.expirationLevelAfterUpdate})"}")
-				echo("  Algo policy updated    : ${ac.policyUpdateDate ?: "DSS default (2024-10-13)"}")
+				echo("  Algo policy updated    : ${ac.policyUpdateDate
+					?: "DSS default (${AlgorithmExpirationChecker.DEFAULT_UPDATE_DATE})"}")
 				if (ac.expirationDateOverrides.isNotEmpty()) {
 					echo("  Algo expiry overrides  :")
 					ac.expirationDateOverrides.forEach { (alg, date) -> echo("    $alg → $date") }

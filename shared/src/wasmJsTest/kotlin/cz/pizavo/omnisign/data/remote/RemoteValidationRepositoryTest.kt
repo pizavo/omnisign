@@ -72,7 +72,7 @@ class RemoteValidationRepositoryTest : FunSpec({
 
 		method shouldBe HttpMethod.Post
 		url shouldContain "api/v1/validate"
-		body shouldContain "name=file"
+		body shouldContain "name=\"file\""
 		body shouldContain "filename=\"contract.pdf\""
 		body shouldContain "%PDF-1.7"
 		body shouldContain "qualified"
@@ -98,10 +98,10 @@ class RemoteValidationRepositoryTest : FunSpec({
 			ValidationParameters(inputBytes = byteArrayOf(1), inputName = "a.pdf"),
 		).shouldBeRight()
 
-		body shouldNotContain "name=profile"
-		body shouldNotContain "name=formats"
-		body shouldNotContain "name=disableHashAlgorithm"
-		body shouldNotContain "name=disableEncryptionAlgorithm"
+		body shouldNotContain "name=\"profile\""
+		body shouldNotContain "name=\"formats\""
+		body shouldNotContain "name=\"disableHashAlgorithm\""
+		body shouldNotContain "name=\"disableEncryptionAlgorithm\""
 	}
 
 	test("keys a recognized server rejection so the user reads an actionable message") {

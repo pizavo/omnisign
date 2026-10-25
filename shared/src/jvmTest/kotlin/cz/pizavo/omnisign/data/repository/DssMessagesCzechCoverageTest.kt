@@ -11,10 +11,13 @@ import java.util.ResourceBundle
 /**
  * Guards the bundled Czech DSS validation-message translation (`dss-messages_cs.properties`).
  *
- * DSS 6.3 ships only an English `dss-messages.properties`; our resource supplies the Czech variant
+ * DSS ships only an English `dss-messages.properties`; our resource supplies the Czech variant
  * that [DssValidationRepository] selects through the validator's locale. This test asserts the Czech
  * bundle covers **every** key in DSS's base bundle — so no English text can leak into a Czech report —
  * and therefore fails if a future DSS upgrade introduces message keys we have not yet translated.
+ * It equally fails on keys DSS has since dropped and on translations whose `{n}` placeholders differ
+ * from the English original, because DSS rewords messages between releases and sometimes changes the
+ * arguments they take; a stale placeholder would otherwise surface in reports as a literal `{1}`.
  */
 class DssMessagesCzechCoverageTest : FunSpec({
 
@@ -24,6 +27,9 @@ class DssMessagesCzechCoverageTest : FunSpec({
 		stream.reader(Charsets.UTF_8).use { load(it) }
 	}
 
+	fun placeholders(pattern: String): Set<String> =
+		Regex("""\{\d+}""").findAll(pattern).map { it.value }.toSet()
+
 	val base = loadProperties("/dss-messages.properties")
 	val czech = loadProperties("/dss-messages_cs.properties")
 
@@ -32,6 +38,21 @@ class DssMessagesCzechCoverageTest : FunSpec({
 		val untranslated = base.stringPropertyNames().filter { it !in czechKeys }.sorted()
 
 		untranslated.shouldBeEmpty()
+	}
+
+	test("the Czech bundle carries no keys that DSS no longer defines") {
+		val baseKeys = base.stringPropertyNames()
+		val obsolete = czech.stringPropertyNames().filter { it !in baseKeys }.sorted()
+
+		obsolete.shouldBeEmpty()
+	}
+
+	test("every Czech message uses exactly the placeholders of its English original") {
+		val mismatched = base.stringPropertyNames().filter { key ->
+			czech.getProperty(key)?.let { placeholders(it) != placeholders(base.getProperty(key)) } ?: false
+		}.sorted()
+
+		mismatched.shouldBeEmpty()
 	}
 
 	test("a Czech locale resolves DSS messages from the Czech bundle rather than English") {

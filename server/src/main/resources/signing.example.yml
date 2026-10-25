@@ -115,8 +115,8 @@ global:
     #   expirationLevel: FAIL
     #   # Severity when an algorithm expired AFTER policyUpdateDate.
     #   expirationLevelAfterUpdate: WARN
-    #   # ISO-8601 date; when omitted the DSS built-in applies (2024-10-13 in DSS 6.3).
-    #   policyUpdateDate: "2024-10-13"
+    #   # ISO-8601 date; when omitted the DSS built-in applies (2026-02-01 in DSS 6.5.1).
+    #   policyUpdateDate: "2026-02-01"
     #   # Per-algorithm expiration overrides (algorithm name -> ISO-8601 date).
     #   expirationDateOverrides:
     #     SHA512: "2035-01-01"

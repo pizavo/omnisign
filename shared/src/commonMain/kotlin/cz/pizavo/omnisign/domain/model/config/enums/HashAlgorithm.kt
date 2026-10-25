@@ -77,7 +77,8 @@ enum class HashAlgorithm {
 	 * A `null` value means the algorithm has no defined expiration date and is
 	 * considered valid indefinitely under current ETSI guidance.
 	 *
-	 * Source: `AlgoExpirationDate` block in `dss-policy-jaxb` `constraint.xml` (DSS 6.3).
+	 * Source: `AlgoExpirationDate` block in `dss-policy-jaxb` `constraint.xml` (DSS 6.5.1), which
+	 * `AlgorithmPolicySnapshotTest` compares these dates against on every build.
 	 */
 	val expirationDate: LocalDate?
 		get() = when (this) {

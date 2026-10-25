@@ -6,7 +6,7 @@ The authoritative agent-facing reference is **`AGENTS.md`** at the repo root —
 
 ## Project
 
-OmniSign — Kotlin Multiplatform digital signature app (PAdES BASELINE B/B-T/B-LT/B-LTA) on the EU DSS 6.3 library. Diploma thesis project; documentation quality matters.
+OmniSign — Kotlin Multiplatform digital signature app (PAdES BASELINE B/B-T/B-LT/B-LTA) on the EU DSS 6.5.1 library. Diploma thesis project; documentation quality matters.
 
 ## Modules
 

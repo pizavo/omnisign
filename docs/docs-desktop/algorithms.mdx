@@ -89,7 +89,7 @@ which combinations are valid for PAdES signing.
 
 :::caution[Whirlpool]
 Whirlpool cannot be combined with any encryption algorithm for PAdES signing. This is a
-limitation of the EU DSS library (version 6.3): while `DigestAlgorithm.WHIRLPOOL` exists
+limitation of the EU DSS library (version 6.5.1): while `DigestAlgorithm.WHIRLPOOL` exists
 for standalone hashing, there is no corresponding `SignatureAlgorithm` entry pairing
 Whirlpool with RSA, ECDSA, or any other key type. This restriction applies on **all
 platforms** — including Linux, macOS, and hardware QSCDs — not just Windows.
@@ -100,7 +100,7 @@ future use if DSS adds signing support.
 
 :::note[RIPEMD-160 key pairings]
 RIPEMD-160 signs with RSA (PKCS#1 v1.5), ECDSA, and Plain-ECDSA, but **not with RSA-PSS or
-DSA** — DSS 6.3 defines no `SignatureAlgorithm` pairing RIPEMD-160 with those. Choose plain
+DSA** — DSS 6.5.1 defines no `SignatureAlgorithm` pairing RIPEMD-160 with those. Choose plain
 RSA or ECDSA when signing with RIPEMD-160.
 :::
 

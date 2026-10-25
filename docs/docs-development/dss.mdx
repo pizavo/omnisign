@@ -10,7 +10,7 @@ import validationFlow from '@site/diagrams/07-validation-flow.mmd';
 
 Every signature OmniSign creates or checks is ultimately produced by
 **[DSS](https://github.com/esig/dss)** — *Digital Signature Services*, the European Commission's
-reference implementation of the eIDAS signature standards. OmniSign uses **DSS 6.3**.
+reference implementation of the eIDAS signature standards. OmniSign uses **DSS 6.5.1**.
 
 DSS is a large, stateful Java library with an API shaped by the ETSI specifications rather than by
 ergonomics. Most of the code in `shared/src/jvmMain/data/repository/` exists to keep that shape from
@@ -69,14 +69,23 @@ the document stays at B-T;
 expiry. DSS's baseline-LT check counts the embedded CRL, so the level reads **B-LT** even though
 `RevocationDataVerifier` discards that CRL at validation time.
 
-The second shape is why these alerts carry their weight: the level cannot tell it from a genuine
-promotion, and only the captured warnings can. Note also that suppressing
-`alertOnMissingRevocationData` removes the abort it would otherwise cause: DSS skips the check
-entirely when the alert is null rather than falling back to throwing, so nothing else stops an
-augmentation that embedded nothing. `DssArchivingRepository` turns the captured warnings into
-`ArchivingResult.revocationDataMissing` (only for targets ≥ B-LT, since B-T needs no revocation
-data); the desktop asks before saving such a document, the CLI refuses to write it, and the renewal
-scheduler leaves the original file untouched.
+The level cannot tell the second shape from a genuine promotion, and DSS does not reliably report
+it either. It checks a CRL when it fetches one, but reuses a CRL fetched for one certificate for the
+other certificates of the same issuer without checking it again — so when two signatures share an
+issuing CA, or a signature shares one with its TSA, an unusable CRL is embedded without a word.
+`DssArchivingRepository` therefore judges the produced document itself: for a target of B-LT or
+higher it validates the output offline and applies the same acceptance rule the renewal assessment
+uses (a matching `certHash`, or a `thisUpdate` — brought earlier by `expiredCertsOnCRL` or
+`archiveCutoff` — no later than the certificate's expiry). A signing certificate whose embedded data
+all fails it is reported under `REVOCATION_AFTER_CERTIFICATE_EXPIRY`, merged with whatever DSS said
+about the same certificate.
+
+The first shape is what the alerts are for. Note that suppressing `alertOnMissingRevocationData`
+removes the abort it would otherwise cause: DSS skips the check entirely when the alert is null
+rather than falling back to throwing, so nothing else stops an augmentation that embedded nothing.
+Both shapes end in `ArchivingResult.revocationDataMissing` (only for targets ≥ B-LT, since B-T needs
+no revocation data); the desktop asks before saving such a document, the CLI refuses to write it, and
+the renewal scheduler leaves the original file untouched.
 
 `ArchivingResult.newSignatureLevel` is the level the output **actually reached**, not the one that
 was requested: `DssArchivingRepository` reads it back out of the produced bytes with DSS's own
@@ -109,7 +118,12 @@ timestamp-related alerts but leaves the expired- and not-yet-valid-certificate a
 defaults, so an expired signing certificate still aborts unless `validation.allowExpiredCertificate`
 is set.
 
-Three more builders round it out. `buildCertificateVerifier(timeout)` returns a lenient verifier with
+Four more builders round it out. `buildLevelInspectionVerifier(config)` serves the inspections that
+have no operation behind them, the extension dialog's pre-fetch and the renewal assessment: it carries
+the configured trust anchors, without which a conformant B-LT document reads as B-T, and no CRL or
+OCSP source, so it never fetches revocation data. It keeps the AIA source DSS installs by default,
+which may download an issuer certificate a document does not embed; the level itself is read from an
+offline copy. `buildCertificateVerifier(timeout)` returns a lenient verifier with
 AIA/OCSP/CRL sources but no config and no alerts. `buildTspSource()` constructs an `OnlineTSPSource`
 per configured timestamp server, wiring in that server's timeout and credentials.
 `buildPdfObjectFactory()` returns a `PdfBoxNativeObjectFactory` that spills large documents to a
@@ -138,6 +152,7 @@ The categories, and roughly what each means:
 | --- | --- |
 | `REVOCATION_NOT_FOUND` | CRL/OCSP could not be downloaded |
 | `REVOCATION_AFTER_CERTIFICATE_EXPIRY` | Revocation data was retrieved but rejected: it was issued after the certificate expired, and the issuer asserts no knowledge of that period |
+| `REVOCATION_ACCESS_POINT_MISSING` | A certificate names no CRL distribution point or OCSP address, so DSS disregards the timestamps and revocation data it signed while gathering validation data. Informational: where that leaves a real gap, the gap surfaces as `REVOCATION_NOT_FOUND` or `REVOCATION_STATUS_UNKNOWN` |
 | `REVOCATION_UNTRUSTED_CHAIN` | Revocation was skipped — the chain has no trusted anchor |
 | `REVOCATION_STATUS_UNKNOWN` | Neither *good* nor *revoked* could be established |
 | `REVOCATION_POE_MISSING` | Revocation data needed for proof-of-existence is absent |

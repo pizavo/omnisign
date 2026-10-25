@@ -332,7 +332,8 @@ class DssArchivingRepositoryTest : FunSpec({
 		val timestamps = listOf(
 			timestamp(
 				"sig", TimestampType.SIGNATURE_TIMESTAMP, expiry = freshCert,
-				signatureEncryption = EncryptionAlgorithm.RSA, signatureKeyLength = "1024",
+				signatureDigest = DigestAlgorithm.SHA256, signatureEncryption = EncryptionAlgorithm.RSA,
+				signatureKeyLength = "1024",
 			),
 		)
 		repository.needsRenewal(timestamps, renewalThreshold, cryptographicSuite) shouldBe RenewalDecision.NEEDED

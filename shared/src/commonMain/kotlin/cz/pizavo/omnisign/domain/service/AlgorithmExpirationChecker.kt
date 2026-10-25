@@ -36,7 +36,7 @@ enum class AlgorithmStatus {
  *    [HashAlgorithm.expirationDate].  No expiry date → always [AlgorithmStatus.VALID].
  * 2. If today is on or before the effective expiry date → [AlgorithmStatus.VALID].
  * 3. The effective update date is [AlgorithmConstraintsConfig.policyUpdateDate] parsed
- *    as ISO-8601, or the DSS 6.3 default [DEFAULT_UPDATE_DATE] when null.
+ *    as ISO-8601, or the DSS default [DEFAULT_UPDATE_DATE] when null.
  * 4. If the algorithm's expiry date is **after** the effective update date, the algorithm was
  *    not yet known to be expired when the policy was last updated, so the more lenient
  *    [AlgorithmConstraintsConfig.expirationLevelAfterUpdate] determines the outcome.
@@ -51,10 +51,13 @@ class AlgorithmExpirationChecker {
 	
 	companion object {
 		/**
-		 * The DSS 6.3 default `UpdateDate` used when
+		 * The `UpdateDate` of the default ETSI validation policy bundled with DSS 6.5.1, used when
 		 * [AlgorithmConstraintsConfig.policyUpdateDate] is null.
+		 *
+		 * DSS moves this date when it revises its cryptographic schedule, so it is a snapshot that
+		 * `AlgorithmPolicySnapshotTest` compares against the DSS policy on every build.
 		 */
-		val DEFAULT_UPDATE_DATE: LocalDate = LocalDate(2024, 10, 13)
+		val DEFAULT_UPDATE_DATE: LocalDate = LocalDate(2026, 2, 1)
 	}
 	
 	/**

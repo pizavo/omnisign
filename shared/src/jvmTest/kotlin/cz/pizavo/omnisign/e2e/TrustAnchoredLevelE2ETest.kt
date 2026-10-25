@@ -373,5 +373,5 @@ class TrustAnchoredLevelE2ETest : FunSpec({
 
 private const val BC = "BC"
 private const val SIGNATURE_ALGORITHM = "SHA256withRSA"
-private const val RSA_KEY_SIZE = 2048
+private const val RSA_KEY_SIZE = 4096
 private const val HTTP_OK = 200
