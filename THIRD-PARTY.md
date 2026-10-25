@@ -1030,8 +1030,8 @@ Licence election: Dual-licensed EPL-1.0 or LGPL-2.1. OmniSign takes the LGPL-2.1
 
 <details><summary>2 artifact(s)</summary>
 
-- `ch.qos.logback:logback-classic:1.6.5` — cli, desktop, server
-- `ch.qos.logback:logback-core:1.6.5` — cli, desktop, server
+- `ch.qos.logback:logback-classic:1.6.6` — cli, desktop, server
+- `ch.qos.logback:logback-core:1.6.6` — cli, desktop, server
 
 </details>
 
