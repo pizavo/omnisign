@@ -234,6 +234,8 @@ paths:
                   value: { error: OPERATION_DISABLED, message: "The SIGN operation is disabled on this server", details: null }
                 certificateNotAllowed:
                   value: { error: CERTIFICATE_NOT_ALLOWED, message: "Certificate alias 'x' is not in the server's allowed list" }
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           description: Invalid resolved configuration, an encrypted document, or a timestamp is required but TIMESTAMP is disabled.
           content:
@@ -305,6 +307,8 @@ paths:
                 $ref: '#/components/schemas/ApiError'
         '403':
           $ref: '#/components/responses/OperationNotAllowed'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/InvalidConfiguration'
 
@@ -365,6 +369,8 @@ paths:
                 $ref: '#/components/schemas/ApiError'
         '403':
           $ref: '#/components/responses/OperationNotAllowed'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           description: Invalid resolved configuration, or an encrypted document.
           content:
@@ -410,6 +416,8 @@ paths:
                 $ref: '#/components/schemas/ApiError'
         '403':
           $ref: '#/components/responses/OperationNotAllowed'
+        '415':
+          $ref: '#/components/responses/UnsupportedMediaType'
 
   /api/v1/certificates:
     get:
@@ -854,6 +862,13 @@ components:
           schema:
             $ref: '#/components/schemas/ApiError'
           example: { error: FILE_TOO_LARGE, message: "Uploaded file exceeds the maximum allowed size", details: null }
+    UnsupportedMediaType:
+      description: The request body is not `multipart/form-data`, or the request carries no `Content-Type`.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ApiError'
+          example: { error: UNSUPPORTED_MEDIA_TYPE, message: "Content type application/json is not supported", details: null }
     RateLimited:
       description: >
         Rate limit exceeded, counted per remote address. Defaults are 20 requests / 60 s for

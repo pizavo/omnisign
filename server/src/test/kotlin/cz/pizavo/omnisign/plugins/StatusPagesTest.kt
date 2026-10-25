@@ -10,13 +10,16 @@ import io.kotest.matchers.shouldBe
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import io.ktor.server.plugins.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.testing.*
 import kotlinx.serialization.json.Json
+import kotlin.reflect.typeOf
 
 /**
- * Verifies [io.ktor.server.plugins.statuspages.StatusPages] error mapping for domain errors and generic exceptions.
+ * Verifies [io.ktor.server.plugins.statuspages.StatusPages] error mapping for domain errors, Ktor's
+ * own request exceptions, and generic exceptions.
  */
 class StatusPagesTest : FunSpec({
 
@@ -72,6 +75,70 @@ class StatusPagesTest : FunSpec({
 			response.status shouldBe HttpStatusCode.BadRequest
 			val body = Json.decodeFromString<ApiError>(response.bodyAsText())
 			body.error shouldBe "BAD_REQUEST"
+		}
+	}
+
+	test("BadRequestException returns 400") {
+		testApplication {
+			configureTestApp {
+				throw MissingRequestParameterException("profile")
+			}
+			val response = client.get("/test")
+			response.status shouldBe HttpStatusCode.BadRequest
+			val body = Json.decodeFromString<ApiError>(response.bodyAsText())
+			body.error shouldBe "BAD_REQUEST"
+			body.message shouldBe "Request parameter profile is missing"
+		}
+	}
+
+	test("NotFoundException returns 404") {
+		testApplication {
+			configureTestApp {
+				throw NotFoundException()
+			}
+			val response = client.get("/test")
+			response.status shouldBe HttpStatusCode.NotFound
+			val body = Json.decodeFromString<ApiError>(response.bodyAsText())
+			body.error shouldBe "NOT_FOUND"
+			body.message shouldBe "Resource not found"
+		}
+	}
+
+	test("UnsupportedMediaTypeException returns 415") {
+		testApplication {
+			configureTestApp {
+				throw UnsupportedMediaTypeException(ContentType.Text.Plain)
+			}
+			val response = client.get("/test")
+			response.status shouldBe HttpStatusCode.UnsupportedMediaType
+			val body = Json.decodeFromString<ApiError>(response.bodyAsText())
+			body.error shouldBe "UNSUPPORTED_MEDIA_TYPE"
+			body.message shouldBe "Content type text/plain is not supported"
+		}
+	}
+
+	test("CannotTransformContentToTypeException returns 415") {
+		testApplication {
+			configureTestApp {
+				throw CannotTransformContentToTypeException(typeOf<ApiError>())
+			}
+			val response = client.get("/test")
+			response.status shouldBe HttpStatusCode.UnsupportedMediaType
+			val body = Json.decodeFromString<ApiError>(response.bodyAsText())
+			body.error shouldBe "UNSUPPORTED_MEDIA_TYPE"
+		}
+	}
+
+	test("PayloadTooLargeException returns 413") {
+		testApplication {
+			configureTestApp {
+				throw PayloadTooLargeException(1024)
+			}
+			val response = client.get("/test")
+			response.status shouldBe HttpStatusCode.PayloadTooLarge
+			val body = Json.decodeFromString<ApiError>(response.bodyAsText())
+			body.error shouldBe "PAYLOAD_TOO_LARGE"
+			body.message shouldBe "Request is larger than the limit of 1024 bytes"
 		}
 	}
 
