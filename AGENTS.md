@@ -140,7 +140,7 @@ Framework: **Kotest 6** (FunSpec style) + **MockK** + **Arrow Kotest matchers** 
 
 `:shared:jvmTest`, `:cli:test`, and `:server:test` add `-XX:+EnableDynamicAgentLoading -Xshare:off --enable-native-access=ALL-UNNAMED` (plus smartcardio module/opens flags); `:composeApp:jvmTest` adds only `-XX:+EnableDynamicAgentLoading`. Decoroutinator (readable coroutine stack traces) is applied as a Gradle plugin in `shared` and `composeApp`, while `cli` and `server` pull the `stacktrace-decoroutinator-jvm` runtime artifact instead.
 
-**Gradle's `--tests` filter does not work with this Kotest setup** — it reports "No tests found". Run the whole module task and read `build/test-results/<task>/TEST-*.xml` for per-spec results.
+Gradle's `--tests` filter selects specs by fully qualified name (`--tests "cz.pizavo.omnisign.commands.SignTest"`) or by package with a trailing `.*`, subpackages included. **A leading wildcard such as `*SignTest` works only in `cli` and `server`**: in `shared` and `composeApp` the Kotest Gradle plugin also hands the pattern to Kotest, whose patterns allow `*` only as a whole package segment, so nothing matches and the task fails with "No tests found". Per-spec results land in `build/test-results/<task>/TEST-*.xml`.
 
 CLI command tests use the Kotest `KoinExtension` with `KoinLifecycleMode.Test` to supply mocked dependencies per spec (see `cli/src/test/.../commands/SignTest.kt` for the pattern).
 

@@ -46,8 +46,12 @@ Kotest 6 (FunSpec) + MockK + Arrow Kotest matchers (`shouldBeLeft()` / `shouldBe
 .\gradlew.bat :server:test
 .\gradlew.bat :composeApp:jvmTest
 
-# Gradle's --tests filter does NOT work with this Kotest setup (reports "No tests found").
-# Run the whole module task and read build/test-results/<task>/TEST-*.xml for per-spec results.
+# --tests selects a spec by fully qualified name, or a package with a trailing ".*":
+.\gradlew.bat :cli:test --tests "cz.pizavo.omnisign.commands.SignTest"
+.\gradlew.bat :shared:jvmTest --tests "cz.pizavo.omnisign.domain.model.config.*"
+# shared and composeApp also hand the pattern to Kotest, so a leading wildcard ("*SignTest")
+# matches nothing there and fails with "No tests found"; cli and server accept one.
+# Per-spec results land in build/test-results/<task>/TEST-*.xml.
 ```
 
 CLI tests use the Kotest `KoinExtension` with `KoinLifecycleMode.Test` (see `cli/src/test/.../commands/SignTest.kt`). composeApp ViewModel tests use `StandardTestDispatcher` + `runTest` with `Dispatchers.setMain`/`resetMain` and inject mocks directly without Koin (see `composeApp/src/jvmTest/.../ui/viewmodel/SigningViewModelTest.kt`).
