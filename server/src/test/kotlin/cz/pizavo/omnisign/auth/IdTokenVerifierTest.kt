@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.auth
 
 import com.auth0.jwk.Jwk
 import com.auth0.jwk.JwkProvider
+import com.auth0.jwk.NetworkException
 import com.auth0.jwk.SigningKeyNotFoundException
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
@@ -10,21 +11,27 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import java.net.InetAddress
+import java.net.ServerSocket
+import java.net.SocketTimeoutException
 import java.security.KeyPair
 import java.security.KeyPairGenerator
 import java.security.interfaces.RSAPrivateKey
 import java.security.interfaces.RSAPublicKey
 import java.util.Date
+import kotlin.concurrent.thread
 
 /**
  * Unit tests for [IdTokenVerifier].
  *
  * Uses an in-process RSA key pair for signing test tokens and a MockK-stubbed
  * [JwkProvider] that returns the public key for the expected `kid`. The
- * [OidcDiscoveryService] is mocked too so no network I/O happens.
+ * [OidcDiscoveryService] is mocked too so no network I/O happens, except in the test of
+ * [IdTokenVerifier.defaultJwkProvider], whose JWKS endpoint is a silent loopback socket.
  */
 class IdTokenVerifierTest : FunSpec({
 
@@ -152,5 +159,34 @@ class IdTokenVerifierTest : FunSpec({
             verifier.verify(provider, token)
         }
         ex.algorithm shouldBe "HS256"
+    }
+
+    /**
+     * Accept one connection on [server] and hold it for [holdMillis] without answering, then
+     * stop listening before dropping it. A client without a read timeout therefore fails once
+     * the hold ends instead of hanging on the retry `HttpURLConnection` makes after an empty
+     * response, which would otherwise wait in the listen backlog forever.
+     */
+    fun holdSilently(server: ServerSocket, holdMillis: Long): Thread = thread(isDaemon = true) {
+        runCatching {
+            server.accept().use {
+                Thread.sleep(holdMillis)
+                server.close()
+            }
+        }
+    }
+
+    test("the default JWKS provider gives up on an endpoint that accepts the connection but never answers") {
+        ServerSocket(0, 1, InetAddress.getLoopbackAddress()).use { server ->
+            val silentPeer = holdSilently(server, holdMillis = 5_000)
+            val jwkProvider = IdTokenVerifier.defaultJwkProvider(
+                jwksUri = "http://127.0.0.1:${server.localPort}/jwks",
+                readTimeoutMillis = 200,
+            )
+
+            val failure = shouldThrow<NetworkException> { jwkProvider.get(testKid) }
+            failure.cause.shouldBeInstanceOf<SocketTimeoutException>()
+            silentPeer.interrupt()
+        }
     }
 })
