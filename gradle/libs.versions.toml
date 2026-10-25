@@ -127,6 +127,7 @@ dss-policy-crypto-xml = { module = "eu.europa.ec.joinup.sd-dss:dss-policy-crypto
 dss-policy-crypto-json = { module = "eu.europa.ec.joinup.sd-dss:dss-policy-crypto-json" }
 
 jaxb-runtime = { module = "org.glassfish.jaxb:jaxb-runtime", version.ref = "jaxb" }
+java-keyring = { module = "com.github.javakeyring:java-keyring", version.ref = "keyring" }
 purejava-secret-service = { module = "org.purejava:secret-service", version.ref = "purejava-secret-service" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 
