@@ -206,7 +206,7 @@ private fun subjectKeyIdentifierText(certificate: X509Certificate): String =
 /** Hex key identifier of the Authority Key Identifier extension. */
 private fun authorityKeyIdentifierText(certificate: X509Certificate): String =
     runCatching {
-        AuthorityKeyIdentifier.getInstance(extensionValueAsn1(certificate, "2.5.29.35")).keyIdentifier?.toHexColon()
+        AuthorityKeyIdentifier.getInstance(extensionValueAsn1(certificate, "2.5.29.35")).keyIdentifierOctets?.toHexColon()
             ?: asn1DumpText(certificate.getExtensionValue("2.5.29.35"))
     }.getOrElse { asn1DumpText(certificate.getExtensionValue("2.5.29.35")) }
 
