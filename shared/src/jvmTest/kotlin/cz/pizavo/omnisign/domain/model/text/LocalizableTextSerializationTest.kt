@@ -11,13 +11,11 @@ import kotlinx.serialization.json.Json
  */
 class LocalizableTextSerializationTest : FunSpec({
 
-	val json = Json {}
-
 	test("Keyed round-trips through JSON and renders English from the decoded value") {
 		val original: LocalizableText =
 			LocalizableText.Keyed(MessageKey.ARCHIVING_FILE_NOT_FOUND, listOf("/x/y.pdf"))
 
-		val decoded = json.decodeFromString<LocalizableText>(json.encodeToString(original))
+		val decoded = Json.decodeFromString<LocalizableText>(Json.encodeToString(original))
 
 		decoded shouldBe original
 		decoded.english() shouldBe "File not found: /x/y.pdf"
@@ -26,7 +24,7 @@ class LocalizableTextSerializationTest : FunSpec({
 	test("Literal round-trips through JSON") {
 		val original: LocalizableText = LocalizableText.Literal("boom")
 
-		val decoded = json.decodeFromString<LocalizableText>(json.encodeToString(original))
+		val decoded = Json.decodeFromString<LocalizableText>(Json.encodeToString(original))
 
 		decoded shouldBe original
 	}
