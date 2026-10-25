@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalWasmJsInterop::class)
+
 package cz.pizavo.omnisign.web.auth
 
 import io.kotest.core.spec.style.FunSpec
@@ -70,7 +72,6 @@ private const val TRIALS = 16
  * digest — the base64url substitutions and the stripped padding — which is where a hand-off pair
  * would silently stop matching what the server recomputes.
  */
-@OptIn(ExperimentalWasmJsInterop::class)
 private fun independentSha256Base64Url(value: String): Promise<JsString> =
 	js(
 		"crypto.subtle.digest('SHA-256', new TextEncoder().encode(value))" +
