@@ -15,7 +15,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.ConfigFormat
 class XmlConfigSerializer : JacksonConfigSerializer(
 	mapper = XmlMapper.builder()
 		.enable(SerializationFeature.INDENT_OUTPUT)
-		.serializationInclusion(JsonInclude.Include.NON_NULL)
+		.defaultPropertyInclusion(JsonInclude.Value.construct(JsonInclude.Include.NON_NULL, JsonInclude.Include.NON_NULL))
 		.build()
 ) {
 	override val format: ConfigFormat = ConfigFormat.XML
