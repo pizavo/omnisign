@@ -9,6 +9,7 @@ import cz.pizavo.omnisign.config.ServerConfig
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.*
 import io.ktor.http.content.*
+import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.utils.io.*
@@ -17,6 +18,36 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 private val logger = KotlinLogging.logger {}
+
+/**
+ * Margin added to the file-size limit when [receiveParts] bounds each multipart part.
+ *
+ * Ktor's parser stops a part that outgrows its limit with a plain `IOException`, which ends up as
+ * HTTP 500, whereas [collectParts] answers an oversized file with [FileTooLargeException] and 413.
+ * The parser can only run ahead of the reader by what Ktor buffers in a part's channel, about
+ * 1 MiB, so a larger margin lets the check in [collectParts] trip first.
+ */
+private const val PART_LIMIT_HEADROOM: Long = 4L * 1024 * 1024
+
+/**
+ * Receive the request's multipart body and [collect its parts][collectParts], bounding the file
+ * part by [maxFileSize].
+ *
+ * Ktor's multipart parser caps every part, files included, at its `formFieldLimit`, which
+ * defaults to 50 MiB; with a [maxFileSize] above that, uploads between the two would be answered
+ * with HTTP 500. The cap is raised to [maxFileSize] plus [PART_LIMIT_HEADROOM] instead. Ktor
+ * buffers text fields in memory and holds them to the same cap.
+ *
+ * @receiver The call whose `multipart/form-data` body is received.
+ * @param maxFileSize Maximum allowed size in bytes for the file part.
+ * @return All parts in order of occurrence; see [collectParts].
+ * @throws FileTooLargeException If the file part exceeds [maxFileSize].
+ * @throws MultipleFilePartsException If more than one file part is present.
+ */
+suspend fun RoutingCall.receiveParts(maxFileSize: Long): List<Any> {
+	val partLimit = maxFileSize.coerceAtMost(Long.MAX_VALUE - PART_LIMIT_HEADROOM) + PART_LIMIT_HEADROOM
+	return receiveMultipart(formFieldLimit = partLimit).collectParts(maxFileSize)
+}
 
 /**
  * Collect all multipart parts into a list without using the deprecated `readAllParts()`.

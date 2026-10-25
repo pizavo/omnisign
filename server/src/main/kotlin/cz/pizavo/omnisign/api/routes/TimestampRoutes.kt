@@ -1,6 +1,5 @@
 package cz.pizavo.omnisign.api.routes
 
-import cz.pizavo.omnisign.api.collectParts
 import cz.pizavo.omnisign.api.deleteFileParts
 import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.extractTextField
@@ -8,6 +7,7 @@ import cz.pizavo.omnisign.api.model.FilePartData
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.api.model.responses.TimestampResultMeta
 import cz.pizavo.omnisign.api.parseEnumSetField
+import cz.pizavo.omnisign.api.receiveParts
 import cz.pizavo.omnisign.api.requireOperation
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
@@ -22,7 +22,6 @@ import cz.pizavo.omnisign.domain.usecase.ExtendDocumentUseCase
 import cz.pizavo.omnisign.domain.usecase.GetDocumentTimestampInfoUseCase
 import cz.pizavo.omnisign.plugins.serverJson
 import io.ktor.http.*
-import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import org.koin.ktor.ext.inject
@@ -74,8 +73,7 @@ fun Route.timestampRoutes() {
 	post("/api/v1/timestamp") {
 		if (!call.requireOperation(AllowedOperation.TIMESTAMP, serverConfig)) return@post
 
-		val multipart = call.receiveMultipart()
-		val parts = multipart.collectParts(serverConfig.maxFileSize)
+		val parts = call.receiveParts(serverConfig.maxFileSize)
 
 		try {
 			val filePart = parts.filterIsInstance<FilePartData>().firstOrNull { it.name == "file" }
@@ -148,8 +146,7 @@ fun Route.timestampRoutes() {
 	post("/api/v1/timestamp/inspect") {
 		if (!call.requireOperation(AllowedOperation.TIMESTAMP, serverConfig)) return@post
 
-		val multipart = call.receiveMultipart()
-		val parts = multipart.collectParts(serverConfig.maxFileSize)
+		val parts = call.receiveParts(serverConfig.maxFileSize)
 
 		try {
 			val filePart = parts.filterIsInstance<FilePartData>().firstOrNull { it.name == "file" }
