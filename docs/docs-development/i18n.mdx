@@ -166,6 +166,24 @@ diff the old and new base bundles on every upgrade as well. `RenewalNotification
 and its Slovak twin guard key coverage of the notification bundle.
 :::
 
+The DSS pair also rejects a message DSS cannot format as written. DSS passes every message through
+`MessageFormat`, which reads a lone apostrophe as the start of a quoted section, so an apostrophe
+meant as text must be doubled, as the English original does: `''signing-certificate''`.
+
+To apply new translations after an upgrade, write them as `KEY=translation` lines into a file and
+rebuild the bundle:
+
+```bash
+./gradlew :shared:regenerateDssMessages -Plocale=cs -Padditions=new-cs.properties
+```
+
+The task lays the bundle out in the order and under the section comments of the English base bundle
+of the DSS version on the classpath. It takes each message from the additions file, or else from the
+current bundle, drops keys DSS no longer defines, and moves the DSS version named in the header
+comment. It writes nothing while a key is untranslated, an addition is unknown to DSS, a placeholder
+set differs or an apostrophe is lone. Run it without `-Padditions` first: its failure lists every key
+that needs translating together with the English text, in the format the additions file expects.
+
 ## The CLI is deliberately monolingual
 
 `cli.kt` pins `Locale.ENGLISH` at startup, before anything else runs. The CLI is a scriptable tool:

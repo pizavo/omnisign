@@ -103,7 +103,9 @@ illustration:
 
 npm packages are the one place where published metadata is dependable: the Wasm lockfile records a
 `license` field per package. It is still not trusted as the source of truth, but the generator quotes
-it in the failure message so a newly added package is quick to classify.
+it in the failure message so a newly added package is quick to classify. Every installed copy is
+counted wherever npm put it, at the top level or nested under another package or a workspace, so a
+dependency bump that moves a package cannot drop it from the credits unnoticed.
 
 The curated facts therefore live in
 [`gradle/third-party-licenses.json`](https://github.com/pizavo/omnisign/blob/main/gradle/third-party-licenses.json),

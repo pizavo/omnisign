@@ -32,6 +32,8 @@ Requires **JDK 25+**; desktop target additionally requires **JBR 25**. `--enable
 .\gradlew.bat :composeApp:wasmJsBrowserDevelopmentRun  # Web (Wasm)
 .\gradlew.bat :dokkaGenerate                           # Aggregated KDoc → build/dokka/html/
 .\gradlew.bat :shared:updateLotlKeystore               # Refresh bundled EU LOTL keystore
+.\gradlew.bat :shared:regenerateDssMessages            # Rebuild a DSS message translation (-Plocale=cs|sk, -Padditions=<file>)
+.\gradlew.bat regenerateTestPki                        # Regenerate the RSA-4096 e2e PKI fixtures
 ```
 
 ## Tests

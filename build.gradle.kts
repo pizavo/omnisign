@@ -104,6 +104,11 @@ dependencies {
  * Without that split the web build would credit the whole JVM stack it cannot even load,
  * and would still miss its own npm dependencies.
  *
+ * An npm package counts wherever the lockfile installs it, not only at the top level. npm
+ * nests a copy under another package's or a workspace's `node_modules` when versions clash,
+ * and a dependency bump can move a package there without anyone touching it, so the name is
+ * taken from the last `node_modules/` segment of each path rather than from a top-level one.
+ *
  * Every artifact is described using the curated facts in
  * `gradle/third-party-licenses.json`. One that matches no entry there fails the build, so
  * a dependency bump cannot quietly ship a library whose licence nobody has looked at.
@@ -249,10 +254,10 @@ tasks.register("generateThirdPartyNotices") {
         val lockPackages = lock["packages"] as Map<String, Map<String, Any>>
         val npmLicenseHints = mutableMapOf<String, String>()
         lockPackages.forEach { (path, entry) ->
-            if (!path.startsWith("node_modules/")) return@forEach
+            if (!path.startsWith("node_modules/") && "/node_modules/" !in path) return@forEach
             if (entry["link"] == true || entry["dev"] == true) return@forEach
             val version = entry["version"] as? String ?: return@forEach
-            val name = path.removePrefix("node_modules/")
+            val name = path.substringAfterLast("node_modules/")
             (entry["license"] as? String)?.let { npmLicenseHints["npm:$name"] = it }
             record(
                 coordinate = "$name@$version",
@@ -734,3 +739,105 @@ tasks.register("generateIcons") {
     }
 }
 
+/**
+ * Regenerates the committed end-to-end PKI fixtures: `ca.test.p12`, `signer.test.p12` and
+ * `tsa.test.p12` in `shared/src/jvmTest/resources/e2e/`, and the copies of the signer and TSA key
+ * stores in `cli/src/test/resources/e2e/`.
+ *
+ * Every key is RSA-4096, signed with SHA-256. A smaller key would age out of DSS's validation policy
+ * long before the certificates expire (DSS 6.5.1 accepts 2048-bit RSA only until 2027-01-01), and from
+ * then on every test that validates, extends or renews a fixture-signed document would fail on the
+ * fixture rather than on the code. The CA is dated from 2016 and the leaves from the day before the
+ * run, and all three outlive the project, so only a change of algorithm policy should call for running
+ * this again. Certificates whose dates a test turns on are minted per test by `TestPki` instead, under
+ * the CA this task produces.
+ *
+ * Both leaves name a CRL distribution point under the reserved `.invalid` domain, because DSS refuses
+ * a timestamp or revocation response signed under a certificate that names none; the tests supply the
+ * CRL themselves. keytool has no option for that extension, so it is passed DER-encoded. Each key store
+ * holds its key under the alias `key` with the chain up to the CA, behind the password `test1234` the
+ * tests use.
+ *
+ * keytool is taken from the JDK running Gradle. Commit the five key stores afterwards:
+ * ```
+ * .\gradlew regenerateTestPki
+ * ```
+ */
+tasks.register("regenerateTestPki") {
+    group = "verification"
+    description = "Regenerates the RSA-4096 end-to-end test PKI key stores (CA, signer, TSA)."
+
+    val sharedFixtures = rootProject.file("shared/src/jvmTest/resources/e2e")
+    val cliFixtures = rootProject.file("cli/src/test/resources/e2e")
+    val workDir = layout.buildDirectory.dir("tmp/test-pki")
+
+    doLast {
+        val javaBin = File(System.getProperty("java.home"), "bin")
+        val keytoolBinary = listOf("keytool", "keytool.exe").map { File(javaBin, it) }.firstOrNull { it.isFile }
+            ?: throw GradleException("keytool not found in $javaBin")
+        val work = workDir.get().asFile.apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        val password = "test1234"
+
+        fun keytool(vararg args: String) {
+            val proc = ProcessBuilder(keytoolBinary.absolutePath, *args)
+                .directory(work)
+                .inheritIO()
+                .start()
+            val exit = proc.waitFor()
+            require(exit == 0) { "keytool ${args.first()} exited with code $exit" }
+        }
+
+        fun der(tag: Int, content: ByteArray): ByteArray {
+            require(content.size < 0x80) { "Only short-form DER lengths are encoded here." }
+            return byteArrayOf(tag.toByte(), content.size.toByte()) + content
+        }
+
+        val crlUrl = "http://crl.omnisign.invalid/test-root-ca.crl".toByteArray(Charsets.US_ASCII)
+        val crlDistributionPoints = der(0x30, der(0x30, der(0xA0, der(0xA0, der(0x86, crlUrl)))))
+            .joinToString("") { "%02x".format(it) }
+
+        keytool(
+            "-genkeypair", "-keystore", "ca.test.p12", "-storetype", "PKCS12",
+            "-storepass", password, "-keypass", password, "-alias", "key",
+            "-keyalg", "RSA", "-keysize", "4096", "-sigalg", "SHA256withRSA",
+            "-dname", "C=CZ, O=OmniSign Test, CN=OmniSign Test Root CA",
+            "-startdate", "2016/01/01 00:00:00", "-validity", "45000",
+            "-ext", "BC:c=ca:true", "-ext", "KU:c=keyCertSign,cRLSign",
+        )
+        keytool("-exportcert", "-keystore", "ca.test.p12", "-storepass", password, "-alias", "key", "-rfc", "-file", "ca.pem")
+
+        fun leaf(name: String, commonName: String, vararg extensions: String) {
+            val store = "$name.test.p12"
+            keytool(
+                "-genkeypair", "-keystore", store, "-storetype", "PKCS12",
+                "-storepass", password, "-keypass", password, "-alias", "key",
+                "-keyalg", "RSA", "-keysize", "4096", "-sigalg", "SHA256withRSA",
+                "-dname", "C=CZ, O=OmniSign Test, CN=$commonName",
+            )
+            keytool("-certreq", "-keystore", store, "-storepass", password, "-alias", "key", "-sigalg", "SHA256withRSA", "-file", "$name.csr")
+            keytool(
+                "-gencert", "-keystore", "ca.test.p12", "-storepass", password, "-alias", "key",
+                "-sigalg", "SHA256withRSA", "-infile", "$name.csr", "-outfile", "$name.pem", "-rfc",
+                "-startdate", "-1d", "-validity", "36500",
+                "-ext", "BC=ca:false", *extensions, "-ext", "2.5.29.31=$crlDistributionPoints",
+            )
+            keytool("-importcert", "-keystore", store, "-storepass", password, "-alias", "ca", "-file", "ca.pem", "-noprompt")
+            keytool("-importcert", "-keystore", store, "-storepass", password, "-alias", "key", "-file", "$name.pem", "-noprompt")
+            keytool("-delete", "-keystore", store, "-storepass", password, "-alias", "ca")
+        }
+
+        leaf("signer", "OmniSign Test Signer", "-ext", "KU:c=digitalSignature,nonRepudiation")
+        leaf("tsa", "OmniSign Test TSA", "-ext", "KU:c=digitalSignature", "-ext", "EKU:c=timeStamping")
+
+        listOf("ca", "signer", "tsa").forEach { name ->
+            File(work, "$name.test.p12").copyTo(File(sharedFixtures, "$name.test.p12"), overwrite = true)
+        }
+        listOf("signer", "tsa").forEach { name ->
+            File(work, "$name.test.p12").copyTo(File(cliFixtures, "$name.test.p12"), overwrite = true)
+        }
+        logger.lifecycle("Test PKI regenerated → $sharedFixtures and $cliFixtures")
+    }
+}

@@ -4,6 +4,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import java.text.MessageFormat
 import java.util.Locale
 import java.util.Properties
 import java.util.ResourceBundle
@@ -18,6 +19,11 @@ import java.util.ResourceBundle
  * It equally fails on keys DSS has since dropped and on translations whose `{n}` placeholders differ
  * from the English original, because DSS rewords messages between releases and sometimes changes the
  * arguments they take; a stale placeholder would otherwise surface in reports as a literal `{1}`.
+ *
+ * Finally, it fails on a message DSS cannot format as written. DSS passes every message through
+ * `MessageFormat`, which reads a lone apostrophe as the start of a quoted section, so the apostrophe
+ * vanishes and each placeholder after it is printed literally; an apostrophe meant as text has to be
+ * doubled, as the English original does.
  */
 class DssMessagesCzechCoverageTest : FunSpec({
 
@@ -53,6 +59,15 @@ class DssMessagesCzechCoverageTest : FunSpec({
 		}.sorted()
 
 		mismatched.shouldBeEmpty()
+	}
+
+	test("every Czech message is a pattern DSS can format, with no apostrophe it would swallow") {
+		val malformed = czech.stringPropertyNames().filter { key ->
+			val pattern = czech.getProperty(key)
+			'\'' in pattern.replace("''", "") || runCatching { MessageFormat(pattern, Locale.ROOT) }.isFailure
+		}.sorted()
+
+		malformed.shouldBeEmpty()
 	}
 
 	test("a Czech locale resolves DSS messages from the Czech bundle rather than English") {

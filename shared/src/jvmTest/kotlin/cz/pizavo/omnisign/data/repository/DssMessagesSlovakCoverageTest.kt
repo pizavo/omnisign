@@ -4,6 +4,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import java.text.MessageFormat
 import java.util.Locale
 import java.util.Properties
 import java.util.ResourceBundle
@@ -15,8 +16,9 @@ import java.util.ResourceBundle
  * our resource supplies the Slovak variant that [DssValidationRepository] selects through the
  * validator's locale. This test asserts the Slovak bundle covers **every** key in DSS's base bundle —
  * so no English text can leak into a Slovak report — and therefore fails if a future DSS upgrade
- * introduces message keys we have not yet translated. It equally fails on keys DSS has since dropped
- * and on translations whose `{n}` placeholders differ from the English original.
+ * introduces message keys we have not yet translated. It equally fails on keys DSS has since dropped,
+ * on translations whose `{n}` placeholders differ from the English original, and on messages DSS's
+ * `MessageFormat` cannot render as written, such as one with a lone apostrophe.
  */
 class DssMessagesSlovakCoverageTest : FunSpec({
 
@@ -52,6 +54,15 @@ class DssMessagesSlovakCoverageTest : FunSpec({
 		}.sorted()
 
 		mismatched.shouldBeEmpty()
+	}
+
+	test("every Slovak message is a pattern DSS can format, with no apostrophe it would swallow") {
+		val malformed = slovak.stringPropertyNames().filter { key ->
+			val pattern = slovak.getProperty(key)
+			'\'' in pattern.replace("''", "") || runCatching { MessageFormat(pattern, Locale.ROOT) }.isFailure
+		}.sorted()
+
+		malformed.shouldBeEmpty()
 	}
 
 	test("a Slovak locale resolves DSS messages from the Slovak bundle rather than English") {
