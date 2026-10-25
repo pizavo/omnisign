@@ -67,16 +67,6 @@ version = project.findProperty("releaseVersion")?.toString() ?: "1.0.0"
  */
 val wasmNpmPackageVersion = "1.0.0"
 
-afterEvaluate {
-	configurations.findByName("commonTestApi")?.dependencies?.removeIf {
-		it.group == "io.kotest" && it.name == "kotest-assertions-core"
-	}
-}
-
-configurations.findByName("commonTestApi")?.dependencies?.removeIf {
-	it.group == "io.kotest" && it.name == "kotest-assertions-core"
-}
-
 /**
  * Generates a `BuildConfig.kt` source file that exposes the Gradle project
  * version and the resolved server URL to common Compose code, so both the JVM

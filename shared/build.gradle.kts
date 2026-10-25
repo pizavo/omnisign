@@ -12,16 +12,6 @@ plugins {
 	alias(libs.plugins.dokka)
 }
 
-afterEvaluate {
-	configurations.findByName("commonTestApi")?.dependencies?.removeIf {
-		it.group == "io.kotest" && it.name == "kotest-assertions-core"
-	}
-}
-
-configurations.findByName("commonTestApi")?.dependencies?.removeIf {
-	it.group == "io.kotest" && it.name == "kotest-assertions-core"
-}
-
 kotlin {
 	jvm {
 		compilerOptions {
