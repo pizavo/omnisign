@@ -127,7 +127,7 @@ class Pkcs11WarmupService(
 	 * Probe a single library via subprocess and update [crashBlacklist] when it crashes.
 	 *
 	 * The subprocess is spawned via the injected [Pkcs11Prober] and monitored for completion
-	 * within [probeTimeoutSeconds].  Exit codes are analyzed to distinguish clean exits,
+	 * within the [probeTimeout] limit.  Exit codes are analyzed to distinguish clean exits,
 	 * crashes (SIGSEGV / SIGABRT), and timeouts:
 	 *
 	 * - **Exit 0** → the library is safe; nothing to record (it stays off the blacklist).

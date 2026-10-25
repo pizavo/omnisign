@@ -128,9 +128,9 @@ class Pkcs11CacheInvalidator(
 	 * background rediscovery cycle so the cache is repopulated before the next dialog open.
 	 *
 	 * Exposed at `internal` visibility so unit tests can drive the side effects
-	 * synchronously without going through the [PcscMonitorService.events] [SharedFlow]
-	 * buffer.  The launched rediscovery does not block this method — it returns as soon
-	 * as the cache invalidation is recorded.
+	 * synchronously without going through the [PcscMonitorService.events]
+	 * [SharedFlow][kotlinx.coroutines.flow.SharedFlow] buffer.  The launched rediscovery does not
+	 * block this method — it returns as soon as the cache invalidation is recorded.
 	 *
 	 * @param event The PC/SC event to handle.
 	 */

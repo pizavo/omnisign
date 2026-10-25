@@ -49,7 +49,7 @@ class TrustedListRefreshSignal {
 	 *
 	 * Independent of [lastRefreshAt]: a mixed cycle where one source loads and
 	 * another fails advances *both*. A fresh non-null value is the desktop's cue to
-	 * surface a failure toast — [TrustedListRefreshFailure.customListName] names the
+	 * surface a failure toast — the [TrustedListRefreshFailure] subtype names the
 	 * culprit, and each failure carries a distinct instant so a `StateFlow` observer
 	 * re-fires even on a repeated, otherwise-identical failure.
 	 */

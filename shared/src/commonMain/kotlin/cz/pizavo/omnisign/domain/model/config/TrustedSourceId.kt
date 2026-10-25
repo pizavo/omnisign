@@ -9,7 +9,7 @@ package cz.pizavo.omnisign.domain.model.config
  * actually needs (see [ResolvedConfig.requiredTrustedSourceIds]).
  *
  * Mirrors the identities the JVM trusted-source registry keys its retained
- * [eu.europa.esig.dss.tsl.job.TLValidationJob]s by, but lives in `commonMain`
+ * DSS `TLValidationJob`s by, but lives in `commonMain`
  * so multiplatform ViewModels can reason about it without depending on the DSS
  * layer.
  */

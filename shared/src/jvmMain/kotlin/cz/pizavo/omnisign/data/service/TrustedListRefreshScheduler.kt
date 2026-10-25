@@ -24,8 +24,9 @@ private val logger = KotlinLogging.logger {}
  * `GlobalConfig.trustedListRefreshIntervalHours`, so a lazily-acquired profile
  * list can never drift out of phase with the shared EU LOTL.
  *
- * @property factory The shared [DssServiceFactory] whose [TrustedSourceRegistry]
- *   is warmed and refreshed.
+ * @property factory The shared [DssServiceFactory] whose
+ *   [TrustedSourceRegistry][cz.pizavo.omnisign.data.repository.TrustedSourceRegistry] is warmed
+ *   and refreshed.
  * @property configRepository Source of the active configuration: the global
  *   refresh interval and the set of profiles to warm.
  */

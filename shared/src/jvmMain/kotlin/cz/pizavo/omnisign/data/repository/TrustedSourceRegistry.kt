@@ -334,9 +334,10 @@ class TrustedSourceRegistry(
 	 * once under the entry's own lock, bracketed with the refresh signal so the
 	 * first lazy load is visible to scoped waiters.
 	 *
-	 * The one-time warm records its outcome — [markRefreshed] on the signal when
-	 * usable trust was loaded, or [accumulateFailure] when it was not (a cold cache
-	 * while offline) so the session flush notifies the user — keeping the "Last
+	 * The one-time warm records its outcome —
+	 * [markRefreshed][TrustedListRefreshSignal.markRefreshed] on the signal when usable
+	 * trust was loaded, or [accumulateFailure] when it was not (a cold cache while
+	 * offline) so the session flush notifies the user — keeping the "Last
 	 * refreshed" indicator honest instead of silently degrading to an empty trust
 	 * store. The entry is still marked [initialized][RetainedTl.initialized] on
 	 * failure: re-attempting on every subsequent validation would stall each one up

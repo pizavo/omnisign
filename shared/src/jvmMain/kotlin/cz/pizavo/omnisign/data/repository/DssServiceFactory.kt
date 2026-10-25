@@ -594,7 +594,8 @@ class DssServiceFactory(
 		
 		/**
 		 * Build a [CommonTrustedCertificateSource] from a PEM or DER certificate file on disk.
-		 * Used to supply per-TL signing certificates for custom [TLSource] instances.
+		 * Used to supply per-TL signing certificates for custom
+		 * [TLSource][eu.europa.esig.dss.tsl.source.TLSource] instances.
 		 */
 		internal fun buildCertSourceFromFile(certPath: String): CommonTrustedCertificateSource {
 			val x509 = File(certPath).inputStream().use { stream ->

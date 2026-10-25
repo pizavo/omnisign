@@ -282,7 +282,8 @@ class Pkcs11SubprocessProber(
 	 * so waiting for exit (or for EOF) would discard a payload the child had already delivered
 	 * in full.  On the sentinel the child is killed and its output accepted; a child that
 	 * reaches EOF without one is classified from its exit code exactly as before, which keeps
-	 * output truncated by a native crash — a crash cannot print the sentinel — a [Crashed].
+	 * output truncated by a native crash — a crash cannot print the sentinel — a
+	 * [Pkcs11SubprocessResult.Crashed].
 	 *
 	 * Visible for testing so a fixture can exercise the never-exits and no-sentinel paths with
 	 * an arbitrary command.

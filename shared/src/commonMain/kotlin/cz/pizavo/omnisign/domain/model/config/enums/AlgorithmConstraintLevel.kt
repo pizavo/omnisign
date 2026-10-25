@@ -5,7 +5,7 @@ import kotlinx.serialization.Serializable
 /**
  * Severity level used when a cryptographic algorithm constraint is violated during validation.
  *
- * Maps 1:1 to [eu.europa.esig.dss.enumerations.Level] and is intentionally kept as a separate
+ * Maps 1:1 to the DSS `Level` enum and is intentionally kept as a separate
  * domain type so the common module remains free of JVM-only DSS classes.
  */
 @Serializable

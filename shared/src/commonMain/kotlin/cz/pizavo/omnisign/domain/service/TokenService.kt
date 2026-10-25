@@ -114,7 +114,7 @@ interface TokenService {
      * Check whether a token is physically accessible without supplying a PIN.
      *
      * For PKCS#11 tokens this probes the middleware library for slots that currently
-     * hold a token (CK_TRUE flag), which is safe because it never calls [C_Login] and
+     * hold a token (CK_TRUE flag), which is safe because it never calls `C_Login` and
      * therefore never risks incrementing a wrong-PIN counter.
      * For file-based tokens it checks whether the file exists.
      * For OS-native stores (Windows MY, macOS Keychain) it always returns true and

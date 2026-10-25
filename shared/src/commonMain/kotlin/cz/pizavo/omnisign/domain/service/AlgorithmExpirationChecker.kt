@@ -28,7 +28,7 @@ enum class AlgorithmStatus {
 
 /**
  * Evaluates whether a [HashAlgorithm] is acceptable for use in a new signing operation
- * on the given [today] date, according to [AlgorithmConstraintsConfig].
+ * on the given `today` date, according to [AlgorithmConstraintsConfig].
  *
  * Mirrors the DSS `AlgoExpirationDate` evaluation logic exactly:
  *

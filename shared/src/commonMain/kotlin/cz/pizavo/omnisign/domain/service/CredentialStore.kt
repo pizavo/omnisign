@@ -8,7 +8,7 @@ package cz.pizavo.omnisign.domain.service
  * - macOS: Keychain
  * - Linux: libsecret / GNOME Keyring
  *
- * All operations are keyed by a [service] name and an [account] identifier so
+ * All operations are keyed by a `service` name and an `account` identifier so
  * that multiple credentials for the same service can be stored independently.
  */
 interface CredentialStore {

@@ -243,13 +243,14 @@ class DssTokenService(
 	/**
 	 * Enumerate a PKCS#11 token's public certificate objects without `C_Login`.
 	 *
-	 * Runs the out-of-process `--certs` probe ([runCertProbeSubprocess]) so a misbehaving
+	 * Runs the out-of-process `--certs` probe ([Pkcs11Prober.runCertProbe]) so a misbehaving
 	 * module cannot crash this JVM, parses the returned DER, and builds [CertificateEntry]s
 	 * whose [CertificateEntry.alias] is the same deterministic, content-derived value the
 	 * PIN path ([loadCertificatesInternal]) produces, and whose [CertificateEntry.pkcs11SlotId]
 	 * records the exact slot each object was enumerated in — so a certificate listed here
-	 * resolves to the same key, in the same slot, when [DssSigningRepository] later signs with
-	 * the PIN, even on a card that presents more than one token-present slot.
+	 * resolves to the same key, in the same slot, when
+	 * [DssSigningRepository][cz.pizavo.omnisign.data.repository.DssSigningRepository] later signs
+	 * with the PIN, even on a card that presents more than one token-present slot.
 	 *
 	 * Returns an empty list (never an error) for non-PKCS#11 tokens, when the probe fails,
 	 * or when the token exposes no public certificates — callers then fall back to the
