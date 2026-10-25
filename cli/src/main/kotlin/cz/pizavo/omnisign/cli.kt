@@ -12,6 +12,7 @@ import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.MigrateTrustedCertificatesUseCase
 import cz.pizavo.omnisign.platform.PasswordCallback
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.github.oshai.kotlinlogging.KotlinLoggingConfiguration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +25,17 @@ import org.koin.mp.KoinPlatform.getKoin
 import java.util.Locale
 import kotlin.system.exitProcess
 
-private val logger = KotlinLogging.logger {}
+/**
+ * Logger of the CLI entry point.
+ *
+ * Creating it is the process's first use of [KotlinLogging], so the library's
+ * "kotlin-logging: initializing..." banner is switched off just before: the banner goes to
+ * standard output, where it would precede the output of every command, `--json` included.
+ */
+private val logger = run {
+	KotlinLoggingConfiguration.logStartupMessage = false
+	KotlinLogging.logger {}
+}
 
 /**
  * Subcommand names whose execution requires PKCS#11 token discovery and therefore
