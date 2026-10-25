@@ -61,9 +61,10 @@ private val WARMUP_SUBCOMMANDS = setOf("sign", "certificates")
  * When the invoked subcommand needs PKCS#11 token discovery (`sign` or `certificates`),
  * a background warmup cycle is launched immediately after Koin starts so that
  * [Pkcs11WarmupService] can probe and pre-initialize middleware libraries while Clikt
- * parses the remaining arguments.  [Pkcs11Discoverer.discoverTokens] suspends on the
- * shared warmup-ready flow until warmup completes, ensuring the fast in-process probing
- * path is always available.
+ * parses the remaining arguments.
+ * [Pkcs11Discoverer.discoverTokens][cz.pizavo.omnisign.data.service.Pkcs11Discoverer.discoverTokens]
+ * suspends on the shared warmup-ready flow until warmup completes, ensuring the fast in-process
+ * probing path is always available.
  *
  * When invoked with `probe <libraryPath>` (probe a single PKCS#11 library) or
  * `discover-modules` (enumerate the p11-kit-registered modules via libp11-kit), the app acts
