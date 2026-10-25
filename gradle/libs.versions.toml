@@ -34,6 +34,7 @@ kotlin-logging = "8.0.4"
 dokka = "2.2.0"
 exposed = "1.6.0"
 sqlite-jdbc = "3.53.4.0"
+java-jwt = "4.6.2"
 jwks-rsa = "0.24.1"
 
 [libraries]
@@ -71,7 +72,6 @@ ktor-server-status-pages = { module = "io.ktor:ktor-server-status-pages-jvm", ve
 ktor-server-cors = { module = "io.ktor:ktor-server-cors-jvm", version.ref = "ktor" }
 ktor-server-call-logging = { module = "io.ktor:ktor-server-call-logging-jvm", version.ref = "ktor" }
 ktor-server-auth = { module = "io.ktor:ktor-server-auth-jvm", version.ref = "ktor" }
-ktor-server-auth-jwt = { module = "io.ktor:ktor-server-auth-jwt-jvm", version.ref = "ktor" }
 ktor-server-sessions = { module = "io.ktor:ktor-server-sessions-jvm", version.ref = "ktor" }
 ktor-server-auto-head-response = { module = "io.ktor:ktor-server-auto-head-response-jvm", version.ref = "ktor" }
 ktor-server-https-redirect = { module = "io.ktor:ktor-server-http-redirect-jvm", version.ref = "ktor" }
@@ -161,6 +161,7 @@ kotlin-logging = { module = "io.github.oshai:kotlin-logging", version.ref = "kot
 exposed-core = { module = "org.jetbrains.exposed:exposed-core", version.ref = "exposed" }
 exposed-jdbc = { module = "org.jetbrains.exposed:exposed-jdbc", version.ref = "exposed" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
+java-jwt = { module = "com.auth0:java-jwt", version.ref = "java-jwt" }
 jwks-rsa = { module = "com.auth0:jwks-rsa", version.ref = "jwks-rsa" }
 
 [plugins]

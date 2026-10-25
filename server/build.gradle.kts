@@ -32,7 +32,6 @@ dependencies {
     implementation(libs.ktor.server.cors)
     implementation(libs.ktor.server.call.logging)
     implementation(libs.ktor.server.auth)
-    implementation(libs.ktor.server.auth.jwt)
     implementation(libs.ktor.server.sessions)
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
@@ -55,6 +54,7 @@ dependencies {
     implementation(libs.exposed.jdbc)
     implementation(libs.sqlite.jdbc)
 
+    implementation(libs.java.jwt)
     implementation(libs.jwks.rsa)
 
     testImplementation(libs.ktor.server.test)

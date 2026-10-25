@@ -9,6 +9,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldNotBeEmpty
+import kotlin.io.encoding.Base64
 
 /**
  * Unit tests for [JwtSessionService] covering token issuance, round-trip verification,
@@ -71,6 +72,15 @@ class JwtSessionServiceTest : FunSpec({
         val expiredService = JwtSessionService(config.copy(tokenExpirySeconds = -1), secret)
         val expiredToken = expiredService.issue(principal)
         expiredService.verify(expiredToken).shouldBeNull()
+    }
+
+    test("verify returns null for a forged token whose expiry lies beyond the representable time range") {
+        val encoder = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
+        val header = encoder.encode("""{"alg":"HS512","typ":"JWT"}""".encodeToByteArray())
+        val payload = encoder.encode("""{"sub":"user-123","exp":99999999999999999}""".encodeToByteArray())
+        val signature = encoder.encode("forged".encodeToByteArray())
+
+        service.verify("$header.$payload.$signature").shouldBeNull()
     }
 
     test("principal with null displayName round-trips correctly") {

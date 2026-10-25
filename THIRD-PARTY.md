@@ -49,7 +49,7 @@ projects linked below and from the same place this distribution was obtained.
 | Licence | Components | Artifacts |
 |---|---:|---:|
 | GNU Affero General Public License, version 3 or later | 1 | 1 |
-| Apache License, Version 2.0 | 38 | 292 |
+| Apache License, Version 2.0 | 38 | 291 |
 | BSD 2-Clause "Simplified" License | 2 | 2 |
 | BSD 3-Clause "New" License | 4 | 7 |
 | BSD License (upstream does not state which variant) | 1 | 1 |
@@ -58,14 +58,14 @@ projects linked below and from the same place this distribution was obtained.
 | GNU Lesser General Public License, version 2.1 or later | 2 | 44 |
 | MIT License | 9 | 16 |
 | Mozilla Public License, Version 2.0 | 2 | 7 |
-| **Total** | **61** | **380** |
+| **Total** | **61** | **379** |
 
 Per surface:
 
 | Surface | Components | Artifacts |
 |---|---:|---:|
 | cli | 37 | 146 |
-| server | 50 | 213 |
+| server | 50 | 212 |
 | desktop | 40 | 191 |
 | web | 13 | 96 |
 
@@ -544,7 +544,7 @@ Copyright © JetBrains s.r.o..
 Homepage: <https://ktor.io/>.
 Ships in: server, web.
 
-<details><summary>54 artifact(s)</summary>
+<details><summary>53 artifact(s)</summary>
 
 - `io.ktor:ktor-call-id-jvm:3.6.0` — server
 - `io.ktor:ktor-client-cio-jvm:3.6.0` — server
@@ -575,7 +575,6 @@ Ships in: server, web.
 - `io.ktor:ktor-serialization-wasm-js:3.6.0` — web
 - `io.ktor:ktor-server-auth-api-key-jvm:3.6.0` — server
 - `io.ktor:ktor-server-auth-jvm:3.6.0` — server
-- `io.ktor:ktor-server-auth-jwt-jvm:3.6.0` — server
 - `io.ktor:ktor-server-auto-head-response-jvm:3.6.0` — server
 - `io.ktor:ktor-server-call-id-jvm:3.6.0` — server
 - `io.ktor:ktor-server-call-logging-jvm:3.6.0` — server
@@ -1047,7 +1046,7 @@ Ships in: server.
 
 <details><summary>2 artifact(s)</summary>
 
-- `com.auth0:java-jwt:4.6.0` — server
+- `com.auth0:java-jwt:4.6.2` — server
 - `com.auth0:jwks-rsa:0.24.1` — server
 
 </details>
