@@ -39,10 +39,7 @@ jwks-rsa = "0.24.1"
 [libraries]
 kotest-engine = {module = "io.kotest:kotest-framework-engine", version.ref = "kotest" }
 kotest-core = {module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
-kotest-json = {module = "io.kotest:kotest-assertions-json", version.ref = "kotest" }
-kotest-kotlinx-datetime = {module = "io.kotest:kotest-assertions-kotlinx-datetime", version.ref = "kotest" }
 kotest-arrow = {module = "io.kotest:kotest-assertions-arrow", version.ref = "kotest" }
-kotest-yaml = {module = "io.kotest:kotest-assertions-yaml", version.ref = "kotest" }
 kotest-koin = {module = "io.kotest:kotest-extensions-koin", version.ref = "kotest" }
 kotest-decoroutinator = {module = "io.kotest:kotest-extensions-decoroutinator", version.ref = "kotest" }
 kotest-jvm-runner = {module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
