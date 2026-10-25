@@ -187,6 +187,9 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
 	filesMatching("META-INF/services/**") {
 		duplicatesStrategy = DuplicatesStrategy.INCLUDE
 	}
+	filesMatching("META-INF/*.kotlin_module") {
+		duplicatesStrategy = DuplicatesStrategy.INCLUDE
+	}
 
 	exclude(
 		"META-INF/LICENSE",

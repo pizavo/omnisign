@@ -123,6 +123,9 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
         "META-INF/LGPL2.1",
         "META-INF/AL2.0",
     )
+    filesMatching("META-INF/*.kotlin_module") {
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    }
 
     from(bundledLegalFiles) { into("META-INF/legal") }
     from(rootProject.file("licenses")) { into("META-INF/legal/licenses") }
