@@ -8,6 +8,17 @@ plugins {
 
 group = "cz.pizavo.omnisign"
 version = project.findProperty("releaseVersion")?.toString() ?: "1.0.0"
+
+/**
+ * Compiles, tests and runs the server on a JDK 25 toolchain, whichever JDK runs Gradle itself.
+ *
+ * Without it the Kotlin plugin takes the bytecode target from the Gradle JVM, so a fat JAR built on
+ * a newer JDK would not start in the `eclipse-temurin:25-jre-alpine` image the Dockerfile runs it in.
+ */
+kotlin {
+    jvmToolchain(25)
+}
+
 application {
     mainClass.set("cz.pizavo.omnisign.ApplicationKt")
     

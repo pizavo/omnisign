@@ -10,6 +10,16 @@ group = "cz.pizavo.omnisign"
 version = project.findProperty("releaseVersion")?.toString() ?: "1.9.0"
 
 /**
+ * Compiles, tests and runs the CLI on a JDK 25 toolchain, whichever JDK runs Gradle itself.
+ *
+ * Without it the Kotlin plugin takes the bytecode target from the Gradle JVM, so a build started on
+ * a newer JDK would emit class files that a Java 25 runtime refuses to load.
+ */
+kotlin {
+	jvmToolchain(25)
+}
+
+/**
  * Resolves the platform-native crash-dump directory at Gradle evaluation time.
  *
  * Mirrors the desktop `resolveLogDir()` logic so that `-XX:ErrorFile` points to a
