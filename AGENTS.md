@@ -138,7 +138,7 @@ Framework: **Kotest 6** (FunSpec style) + **MockK** + **Arrow Kotest matchers** 
 .\gradlew.bat :composeApp:jvmTest
 ```
 
-`:shared:jvmTest`, `:cli:test`, and `:server:test` add `-XX:+EnableDynamicAgentLoading -Xshare:off --enable-native-access=ALL-UNNAMED` (plus smartcardio module/opens flags); `:composeApp:jvmTest` sets only `useJUnitPlatform()`. Decoroutinator (readable coroutine stack traces) is applied as a Gradle plugin in `shared` and `composeApp`, while `cli` and `server` pull the `stacktrace-decoroutinator-jvm` runtime artifact instead.
+`:shared:jvmTest`, `:cli:test`, and `:server:test` add `-XX:+EnableDynamicAgentLoading -Xshare:off --enable-native-access=ALL-UNNAMED` (plus smartcardio module/opens flags); `:composeApp:jvmTest` adds only `-XX:+EnableDynamicAgentLoading`. Decoroutinator (readable coroutine stack traces) is applied as a Gradle plugin in `shared` and `composeApp`, while `cli` and `server` pull the `stacktrace-decoroutinator-jvm` runtime artifact instead.
 
 **Gradle's `--tests` filter does not work with this Kotest setup** — it reports "No tests found". Run the whole module task and read `build/test-results/<task>/TEST-*.xml` for per-spec results.
 

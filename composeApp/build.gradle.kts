@@ -141,7 +141,10 @@ kotlin {
 			vendor.set(JvmVendorSpec.JETBRAINS)
 		}
 		testRuns.configureEach {
-			executionTask.configure { useJUnitPlatform() }
+			executionTask.configure {
+				useJUnitPlatform()
+				jvmArgs("-XX:+EnableDynamicAgentLoading")
+			}
 		}
 	}
 	

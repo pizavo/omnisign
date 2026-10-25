@@ -44,9 +44,9 @@ filed under the other name compiles nothing and runs nothing, and the task repor
 
 `:shared:jvmTest`, `:cli:test`, and `:server:test` add
 `-XX:+EnableDynamicAgentLoading -Xshare:off --enable-native-access=ALL-UNNAMED` (plus `java.smartcardio`
-access flags), so MockK's inline agent loads without warnings; `:composeApp:jvmTest` configures only
-`useJUnitPlatform()`. **Decoroutinator**, which gives readable stack traces through suspend calls, is
-applied as a Gradle plugin in `shared` and `composeApp`, while `cli` and `server` pull the
+access flags) and `:composeApp:jvmTest` adds `-XX:+EnableDynamicAgentLoading` alone, so MockK's inline
+agent loads without warnings. **Decoroutinator**, which gives readable stack traces through suspend
+calls, is applied as a Gradle plugin in `shared` and `composeApp`, while `cli` and `server` pull the
 `stacktrace-decoroutinator-jvm` runtime artifact instead.
 
 :::warning[`--tests` does not filter reliably here]

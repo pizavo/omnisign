@@ -38,7 +38,7 @@ Requires **JDK 25+**; desktop target additionally requires **JBR 25**. `--enable
 
 ## Tests
 
-Kotest 6 (FunSpec) + MockK + Arrow Kotest matchers (`shouldBeLeft()` / `shouldBeRight()`). Tests live in `src/jvmTest` (shared, composeApp), `src/test` (cli, server), and `src/commonTest` (`shared`, run as part of `:shared:jvmTest`). `:shared:jvmTest`, `:cli:test`, and `:server:test` add `-XX:+EnableDynamicAgentLoading -Xshare:off --enable-native-access=ALL-UNNAMED` (plus smartcardio flags); `:composeApp:jvmTest` sets only `useJUnitPlatform()`. Decoroutinator (readable coroutine stack traces) is a Gradle plugin in `shared`/`composeApp` and a runtime artifact in `cli`/`server`.
+Kotest 6 (FunSpec) + MockK + Arrow Kotest matchers (`shouldBeLeft()` / `shouldBeRight()`). Tests live in `src/jvmTest` (shared, composeApp), `src/test` (cli, server), and `src/commonTest` (`shared`, run as part of `:shared:jvmTest`). `:shared:jvmTest`, `:cli:test`, and `:server:test` add `-XX:+EnableDynamicAgentLoading -Xshare:off --enable-native-access=ALL-UNNAMED` (plus smartcardio flags); `:composeApp:jvmTest` adds only `-XX:+EnableDynamicAgentLoading`. Decoroutinator (readable coroutine stack traces) is a Gradle plugin in `shared`/`composeApp` and a runtime artifact in `cli`/`server`.
 
 ```powershell
 .\gradlew.bat :shared:jvmTest
