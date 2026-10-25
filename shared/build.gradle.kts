@@ -51,14 +51,13 @@ kotlin {
 		commonMain.dependencies {
 			implementation(project.dependencies.platform(libs.koin.bom))
 			implementation(libs.koin.core)
-			implementation(libs.koin.annotations)
 			
 			implementation(libs.kotlinx.serialization.json)
 			implementation(libs.kotlinx.serialization.cbor)
 
 			api(libs.arrow.core)
 			api(libs.kotlin.logging)
-			implementation(libs.arrow.fx.coroutines)
+			api(libs.kotlinx.coroutines.core)
 			implementation(libs.kotlinx.datetime)
 		}
 		commonTest.dependencies {

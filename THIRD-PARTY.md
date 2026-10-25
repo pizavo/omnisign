@@ -49,7 +49,7 @@ projects linked below and from the same place this distribution was obtained.
 | Licence | Components | Artifacts |
 |---|---:|---:|
 | GNU Affero General Public License, version 3 or later | 1 | 1 |
-| Apache License, Version 2.0 | 38 | 288 |
+| Apache License, Version 2.0 | 38 | 280 |
 | BSD 2-Clause "Simplified" License | 2 | 2 |
 | BSD 3-Clause "New" License | 4 | 7 |
 | BSD License (upstream does not state which variant) | 1 | 1 |
@@ -58,16 +58,16 @@ projects linked below and from the same place this distribution was obtained.
 | GNU Lesser General Public License, version 2.1 or later | 2 | 44 |
 | MIT License | 9 | 16 |
 | Mozilla Public License, Version 2.0 | 2 | 7 |
-| **Total** | **61** | **376** |
+| **Total** | **61** | **368** |
 
 Per surface:
 
 | Surface | Components | Artifacts |
 |---|---:|---:|
-| cli | 37 | 144 |
-| server | 50 | 212 |
-| desktop | 40 | 191 |
-| web | 13 | 96 |
+| cli | 37 | 140 |
+| server | 50 | 208 |
+| desktop | 40 | 187 |
+| web | 13 | 92 |
 
 ## Components by licence
 
@@ -213,20 +213,16 @@ Copyright © The Arrow authors.
 Homepage: <https://arrow-kt.io/>.
 Ships in: cli, server, desktop, web.
 
-<details><summary>12 artifact(s)</summary>
+<details><summary>8 artifact(s)</summary>
 
 - `io.arrow-kt:arrow-annotations-jvm:2.2.3` — cli, desktop, server
 - `io.arrow-kt:arrow-annotations-wasm-js:2.2.3` — web
 - `io.arrow-kt:arrow-atomic-jvm:2.2.3` — cli, desktop, server
 - `io.arrow-kt:arrow-atomic-wasm-js:2.2.3` — web
-- `io.arrow-kt:arrow-autoclose-jvm:2.2.3` — cli, desktop, server
-- `io.arrow-kt:arrow-autoclose-wasm-js:2.2.3` — web
 - `io.arrow-kt:arrow-core-jvm:2.2.3` — cli, desktop, server
 - `io.arrow-kt:arrow-core-wasm-js:2.2.3` — web
 - `io.arrow-kt:arrow-exception-utils-jvm:2.2.3` — cli, desktop, server
 - `io.arrow-kt:arrow-exception-utils-wasm-js:2.2.3` — web
-- `io.arrow-kt:arrow-fx-coroutines-jvm:2.2.3` — cli, desktop, server
-- `io.arrow-kt:arrow-fx-coroutines-wasm-js:2.2.3` — web
 
 </details>
 
@@ -478,16 +474,12 @@ Copyright © Arrow-kt and Kotzilla.
 Homepage: <https://insert-koin.io/>.
 Ships in: cli, server, desktop, web.
 
-<details><summary>13 artifact(s)</summary>
+<details><summary>9 artifact(s)</summary>
 
-- `io.insert-koin:koin-annotations-jvm:4.2.2` — cli, desktop, server
-- `io.insert-koin:koin-annotations-wasm-js:4.2.2` — web
 - `io.insert-koin:koin-compose-jvm:4.2.2` — desktop
 - `io.insert-koin:koin-compose-viewmodel-jvm:4.2.2` — desktop
 - `io.insert-koin:koin-compose-viewmodel-wasm-js:4.2.2` — web
 - `io.insert-koin:koin-compose-wasm-js:4.2.2` — web
-- `io.insert-koin:koin-core-annotations-jvm:4.2.2` — cli, desktop, server
-- `io.insert-koin:koin-core-annotations-wasm-js:4.2.2` — web
 - `io.insert-koin:koin-core-jvm:4.2.2` — cli, desktop, server
 - `io.insert-koin:koin-core-viewmodel-jvm:4.2.2` — desktop
 - `io.insert-koin:koin-core-viewmodel-wasm-js:4.2.2` — web
