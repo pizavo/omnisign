@@ -19,6 +19,8 @@ import cz.pizavo.omnisign.ui.model.ProfileError
 import cz.pizavo.omnisign.ui.model.ProfileListState
 import cz.pizavo.omnisign.ui.model.ProfilePanelMode
 import cz.pizavo.omnisign.ui.model.TrustedCertAddError
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -27,6 +29,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * ViewModel managing the profile list panel state.
@@ -39,12 +42,15 @@ import kotlinx.coroutines.launch
  * @param credentialStore Optional OS credential store for persisting TSA passwords.
  * @param trustStore Optional app-managed trust store backing the profile's Trusted Certificates
  *   section. `null` on targets without a backend (web), where that section renders unavailable.
+ * @param ioDispatcher Dispatcher for the credential store calls, which can block until the user
+ *   answers the keyring's unlock prompt.
  */
 class ProfileViewModel(
     private val manageProfileUseCase: ManageProfileUseCase,
     private val getConfigUseCase: GetConfigUseCase,
     private val credentialStore: CredentialStore? = null,
     private val trustStore: TrustStore? = null,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ProfileListState())
@@ -216,7 +222,7 @@ class ProfileViewModel(
                     _state.update { it.copy(error = ProfileError.Domain(error.localizableText())) }
                 },
                 ifRight = { profile ->
-                    val hasStored = hasStoredTsaPassword(profile)
+                    val hasStored = withContext(ioDispatcher) { hasStoredTsaPassword(profile) }
                     val trustedCerts = trustStore?.list(TrustScope.Profile(name))
                         ?.fold(ifLeft = { emptyList() }, ifRight = { it }).orEmpty()
                     val editState = ProfileEditState.from(profile, hasStored, trustedCertificates = trustedCerts)
@@ -320,7 +326,8 @@ class ProfileViewModel(
         _state.update { it.copy(editState = editState.copy(saving = true, error = null)) }
         viewModelScope.launch {
             val profile = editState.toProfileConfig()
-            storeTsaPasswordIfNeeded(editState).flatMap { manageProfileUseCase.upsert(profile) }.fold(
+            val passwordStored = withContext(ioDispatcher) { storeTsaPasswordIfNeeded(editState) }
+            passwordStored.flatMap { manageProfileUseCase.upsert(profile) }.fold(
                 ifLeft = { error ->
                     _state.update {
                         it.copy(editState = editState.copy(saving = false, error = error.message))
@@ -357,6 +364,8 @@ class ProfileViewModel(
 
     /**
      * Check whether a TSA password is already persisted for the given [profile].
+     *
+     * Blocks while the keyring asks to be unlocked, so callers run it on [ioDispatcher].
      */
     private fun hasStoredTsaPassword(profile: ProfileConfig): Boolean {
         val key = profile.timestampServer?.credentialKey ?: return false
@@ -366,6 +375,8 @@ class ProfileViewModel(
     /**
      * Persist the TSA password from [editState] into the OS credential store
      * when a new password was entered and a username is present.
+     *
+     * Blocks while the keyring asks to be unlocked, so callers run it on [ioDispatcher].
      *
      * @return `Unit` when there was nothing to store or the store kept the password, otherwise the
      *   store's error.

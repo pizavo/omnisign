@@ -245,6 +245,54 @@ class SettingsViewModelTest : FunSpec({
         }
     }
 
+    test("save stores the TSA password on the IO dispatcher, and saves only after it") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+            val keyringDispatcher = StandardTestDispatcher(TestCoroutineScheduler())
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = keyringDispatcher)
+            vm.updateState { it.copy(timestampUsername = "user1", timestampPassword = "secret123") }
+
+            vm.save()
+            advanceUntilIdle()
+
+            verify(exactly = 0) { credentialStore.setPassword(any(), any(), any()) }
+            coVerify(exactly = 0) { configRepository.saveConfig(any()) }
+
+            keyringDispatcher.scheduler.advanceUntilIdle()
+            advanceUntilIdle()
+
+            verify { credentialStore.setPassword("omnisign-tsa", "user1", "secret123") }
+            coVerify { configRepository.saveConfig(any()) }
+        }
+    }
+
+    test("load reads the stored TSA password on the IO dispatcher") {
+        runTest(testDispatcher) {
+            val globalWithCreds = baseGlobal.copy(
+                timestampServer = TimestampServerConfig(
+                    url = "https://tsa.example.com",
+                    username = "admin",
+                    credentialKey = "admin",
+                ),
+            )
+            coEvery { configRepository.loadConfig() } returns AppConfig(global = globalWithCreds).right()
+            every { credentialStore.getPassword("omnisign-tsa", "admin") } returns "stored-secret"
+            val keyringDispatcher = StandardTestDispatcher(TestCoroutineScheduler())
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = keyringDispatcher)
+            vm.load()
+            advanceUntilIdle()
+
+            verify(exactly = 0) { credentialStore.getPassword(any(), any()) }
+
+            keyringDispatcher.scheduler.advanceUntilIdle()
+
+            verify { credentialStore.getPassword("omnisign-tsa", "admin") }
+        }
+    }
+
     test("save does not store password when username is blank") {
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()

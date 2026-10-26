@@ -38,6 +38,7 @@ import kotlin.time.Instant
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestCoroutineScheduler
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
 import kotlinx.coroutines.test.runTest
@@ -80,7 +81,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             val state = vm.state.value
@@ -97,7 +98,7 @@ class ProfileViewModelTest : FunSpec({
                     ConfigurationError.LoadFailed(LocalizableText.Literal("disk error")).left()
             coEvery { configRepository.getCurrentConfig() } returns AppConfig()
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             val state = vm.state.value
@@ -118,7 +119,7 @@ class ProfileViewModelTest : FunSpec({
             val captured = slot<String?>()
             coEvery { configRepository.setActiveProfile(captureNullable(captured)) } returns Unit.right()
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.state.value.activeProfile.shouldBeNull()
@@ -142,7 +143,7 @@ class ProfileViewModelTest : FunSpec({
             val captured = slot<String?>()
             coEvery { configRepository.setActiveProfile(captureNullable(captured)) } returns Unit.right()
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.state.value.activeProfile shouldBe "dev"
@@ -171,7 +172,7 @@ class ProfileViewModelTest : FunSpec({
                 Unit.right()
             }
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.state.value.profiles shouldHaveSize 2
@@ -191,7 +192,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.delete("ghost")
@@ -207,7 +208,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             val state = vm.state.value
@@ -223,7 +224,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.state.value.creatingNew shouldBe false
@@ -241,7 +242,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startCreate()
@@ -260,7 +261,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startCreate()
@@ -283,7 +284,7 @@ class ProfileViewModelTest : FunSpec({
                 Unit.right()
             }
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startCreate()
@@ -310,7 +311,7 @@ class ProfileViewModelTest : FunSpec({
                 Unit.right()
             }
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startCreate()
@@ -329,7 +330,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -350,7 +351,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("missing")
@@ -369,7 +370,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -392,7 +393,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -411,7 +412,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.updateEditState { it.copy(description = "should not apply") }
@@ -433,7 +434,7 @@ class ProfileViewModelTest : FunSpec({
                 Unit.right()
             }
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -465,7 +466,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
             coEvery { configRepository.saveConfig(any()) } returns Unit.right()
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -504,7 +505,7 @@ class ProfileViewModelTest : FunSpec({
             val credStore: CredentialStore = mockk()
             io.mockk.every { credStore.getPassword("omnisign-tsa", "user1") } returns "secret"
 
-            val vm = ProfileViewModel(manageProfile, getConfig, credStore)
+            val vm = ProfileViewModel(manageProfile, getConfig, credStore, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("tsa-profile")
@@ -533,7 +534,7 @@ class ProfileViewModelTest : FunSpec({
             io.mockk.every { credStore.getPassword(any(), any()) } returns null
             io.mockk.every { credStore.setPassword(any(), any(), any()) } returns Unit.right()
 
-            val vm = ProfileViewModel(manageProfile, getConfig, credStore)
+            val vm = ProfileViewModel(manageProfile, getConfig, credStore, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -567,7 +568,7 @@ class ProfileViewModelTest : FunSpec({
             io.mockk.every { credStore.setPassword(any(), any(), any()) } returns
                 ConfigurationError.passwordStoreFailed("The keyring is locked").left()
 
-            val vm = ProfileViewModel(manageProfile, getConfig, credStore)
+            val vm = ProfileViewModel(manageProfile, getConfig, credStore, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -592,6 +593,85 @@ class ProfileViewModelTest : FunSpec({
         }
     }
 
+    test("startEdit reads the stored TSA password on the IO dispatcher") {
+        runTest(testDispatcher) {
+            val tsaProfile = ProfileConfig(
+                name = "tsa-profile",
+                timestampServer = TimestampServerConfig(
+                    url = "https://tsa.example.com",
+                    username = "user1",
+                    credentialKey = "user1",
+                ),
+            )
+            val config = AppConfig(profiles = mapOf("tsa-profile" to tsaProfile))
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+
+            val credStore: CredentialStore = mockk()
+            io.mockk.every { credStore.getPassword("omnisign-tsa", "user1") } returns "secret"
+            val keyringDispatcher = StandardTestDispatcher(TestCoroutineScheduler())
+
+            val vm = ProfileViewModel(manageProfile, getConfig, credStore, ioDispatcher = keyringDispatcher)
+            advanceUntilIdle()
+
+            vm.startEdit("tsa-profile")
+            advanceUntilIdle()
+
+            io.mockk.verify(exactly = 0) { credStore.getPassword(any(), any()) }
+
+            keyringDispatcher.scheduler.advanceUntilIdle()
+            advanceUntilIdle()
+
+            io.mockk.verify { credStore.getPassword("omnisign-tsa", "user1") }
+            vm.state.value.editState.shouldNotBeNull().hasStoredPassword shouldBe true
+        }
+    }
+
+    test("saveEdit stores the TSA password on the IO dispatcher, and saves only after it") {
+        runTest(testDispatcher) {
+            var currentConfig = AppConfig(profiles = mapOf("dev" to profile("dev")))
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+
+            val credStore: CredentialStore = mockk()
+            io.mockk.every { credStore.setPassword(any(), any(), any()) } returns Unit.right()
+            val keyringDispatcher = StandardTestDispatcher(TestCoroutineScheduler())
+
+            val vm = ProfileViewModel(manageProfile, getConfig, credStore, ioDispatcher = keyringDispatcher)
+            advanceUntilIdle()
+            vm.startEdit("dev")
+            advanceUntilIdle()
+            keyringDispatcher.scheduler.advanceUntilIdle()
+            advanceUntilIdle()
+
+            vm.updateEditState {
+                it.copy(
+                    timestampEnabled = true,
+                    timestampUrl = "https://tsa.example.com",
+                    timestampUsername = "admin",
+                    timestampPassword = "s3cret",
+                )
+            }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            io.mockk.verify(exactly = 0) { credStore.setPassword(any(), any(), any()) }
+            coVerify(exactly = 0) { configRepository.saveConfig(any()) }
+
+            keyringDispatcher.scheduler.advanceUntilIdle()
+            advanceUntilIdle()
+
+            io.mockk.verify { credStore.setPassword("omnisign-tsa", "admin", "s3cret") }
+            saved.captured.profiles["dev"]?.timestampServer?.credentialKey shouldBe "admin"
+            vm.state.value.mode shouldBe ProfilePanelMode.Listing
+        }
+    }
+
     test("refresh propagates global disabled algorithms to state") {
         runTest(testDispatcher) {
             val config = AppConfig(
@@ -604,7 +684,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             val state = vm.state.value
@@ -625,7 +705,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             val state = vm.state.value
@@ -640,7 +720,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -656,7 +736,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -675,7 +755,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -697,7 +777,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -731,7 +811,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { configRepository.loadConfig() } returns config.right()
             coEvery { configRepository.getCurrentConfig() } returns config
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -761,7 +841,7 @@ class ProfileViewModelTest : FunSpec({
                 source = "https://example.com/new-tl.xml",
             )
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -801,7 +881,7 @@ class ProfileViewModelTest : FunSpec({
                 Unit.right()
             }
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -833,7 +913,7 @@ class ProfileViewModelTest : FunSpec({
                 Unit.right()
             }
 
-            val vm = ProfileViewModel(manageProfile, getConfig)
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -869,7 +949,7 @@ class ProfileViewModelTest : FunSpec({
             )
             coEvery { trustStore.list(TrustScope.Profile("dev")) } returns listOf(cert).right()
 
-            val vm = ProfileViewModel(manageProfile, getConfig, null, trustStore)
+            val vm = ProfileViewModel(manageProfile, getConfig, null, trustStore, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -905,7 +985,7 @@ class ProfileViewModelTest : FunSpec({
                 type = TrustedCertificateType.CA,
             ).right()
 
-            val vm = ProfileViewModel(manageProfile, getConfig, null, trustStore)
+            val vm = ProfileViewModel(manageProfile, getConfig, null, trustStore, ioDispatcher = testDispatcher)
             advanceUntilIdle()
 
             vm.startEdit("dev")
@@ -953,7 +1033,7 @@ class ProfileViewModelTest : FunSpec({
                 type = TrustedCertificateType.ANY,
             ).right()
 
-            val vm = ProfileViewModel(manageProfile, getConfig, null, trustStore)
+            val vm = ProfileViewModel(manageProfile, getConfig, null, trustStore, ioDispatcher = testDispatcher)
             advanceUntilIdle()
             vm.startEdit("dev")
             advanceUntilIdle()
@@ -985,7 +1065,7 @@ class ProfileViewModelTest : FunSpec({
             coEvery { trustStore.list(TrustScope.Profile("dev")) } returns listOf(existing).right()
             coEvery { trustStore.inspect(any()) } returns existing.copy(type = TrustedCertificateType.ANY).right()
 
-            val vm = ProfileViewModel(manageProfile, getConfig, null, trustStore)
+            val vm = ProfileViewModel(manageProfile, getConfig, null, trustStore, ioDispatcher = testDispatcher)
             advanceUntilIdle()
             vm.startEdit("dev")
             advanceUntilIdle()
