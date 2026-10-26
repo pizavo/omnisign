@@ -149,7 +149,15 @@ command that takes the option:
 | `OMNISIGN_TIMESTAMP_PASSWORD` | `--timestamp-password` on `sign`, `timestamp` and `validate` |
 | `OMNISIGN_KEYSTORE_PASSWORD`  | `--keystore-password` on `sign`                             |
 
-Explicit command-line options always take precedence over environment variables.
+Explicit command-line options always take precedence over environment variables. A secret from the
+environment is used exactly as it is set, so `-` prompts only on the command line.
+
+On Linux and macOS, a secret can be kept in a file instead, named by the variable with `_FILE` appended,
+such as `OMNISIGN_KEYSTORE_PASSWORD_FILE=/run/secrets/keystore-password`; under systemd, a credential
+named like the variable is read too. The file must be a regular file of at most 64 KiB, not on an overlay
+file system, and owned either by the user running `omnisign` with mode `0600` or stricter, or by `root`
+with mode `0640` or stricter. A secret set in more than one of these places is refused. Windows takes
+only the variable.
 
 ## Command Reference
 
@@ -323,7 +331,7 @@ omnisign sign -f <input> -o <output> [options]
 | `-o, --output <path>`         | **(Required)** Path for the signed output PDF                                                |
 | `-c, --certificate <alias>`   | Certificate alias to sign with (see `certificates list`); optional with `--keystore`         |
 | `-k, --keystore <path>`       | Sign with a PKCS#12 (`.p12`/`.pfx`) keystore file instead of a discovered token              |
-| `--keystore-password <pass>`  | Password for `--keystore` (in-memory only); `-` prompts, or set `OMNISIGN_KEYSTORE_PASSWORD` |
+| `--keystore-password <pass>`  | Password for `--keystore` (in-memory only); `-` prompts, or set `OMNISIGN_KEYSTORE_PASSWORD` or `OMNISIGN_KEYSTORE_PASSWORD_FILE` |
 | `-r, --reason <text>`         | Reason for signing (embedded in the signature)                                               |
 | `--location <text>`           | Location of signing (embedded in the signature)                                              |
 | `--contact <text>`            | Contact information of the signer (embedded in the signature)                                |
@@ -470,7 +478,7 @@ Configuration is stored in a plain-text file in the user's home directory.
 TSA passwords are stored exclusively in the OS-native credential store (keychain) and are never written to disk.
 Where there is no credential store (a container, a CI runner, a server without a desktop session), `config set`
 and `config profile create`/`edit` refuse `--timestamp-password`; pass the password on each run instead, with
-`--timestamp-password` or `OMNISIGN_TIMESTAMP_PASSWORD`.
+`--timestamp-password`, `OMNISIGN_TIMESTAMP_PASSWORD`, or a file named by `OMNISIGN_TIMESTAMP_PASSWORD_FILE`.
 
 #### `config show`
 
@@ -904,7 +912,7 @@ TSA credentials supplied here are held in memory only and are never written to d
 | `-L, --signature-level <level>`         | Signature level override                                                 |
 | `--timestamp-url <url>`                 | TSA URL override                                                         |
 | `--timestamp-username <user>`           | TSA HTTP Basic username override                                         |
-| `--timestamp-password <pass>`           | TSA HTTP Basic password override (in-memory only); `-` prompts, or set `OMNISIGN_TIMESTAMP_PASSWORD` |
+| `--timestamp-password <pass>`           | TSA HTTP Basic password override (in-memory only); `-` prompts, or set `OMNISIGN_TIMESTAMP_PASSWORD` or `OMNISIGN_TIMESTAMP_PASSWORD_FILE` |
 | `--timestamp-timeout <ms>`              | TSA request timeout override in milliseconds                             |
 | `--validation-policy <type>`            | Validation policy type override                                          |
 | `--no-global-tls`                       | Exclude global trusted lists; use only profile-level TLs                 |

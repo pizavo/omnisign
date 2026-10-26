@@ -4,6 +4,9 @@ import arrow.core.left
 import arrow.core.right
 import com.github.ajalt.clikt.testing.test
 import cz.pizavo.omnisign.Omnisign
+import cz.pizavo.omnisign.data.secret.EnvironmentSecretReader
+import cz.pizavo.omnisign.data.secret.SecretFileFacts
+import cz.pizavo.omnisign.data.secret.SecretFileReader
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
@@ -25,38 +28,68 @@ import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.mockk.CapturingSlot
 import io.mockk.coEvery
 import io.mockk.mockk
 import io.mockk.slot
 import org.koin.dsl.module
 import java.io.File
+import kotlin.io.path.fileSize
 
 /**
  * Behavioral tests for the [Sign] command verifying stdout/stderr output
  * and exit codes with mocked dependencies.
+ *
+ * The secret reader accepts every file and acts as it does on Linux, so the tests of a password
+ * kept in a file run on every operating system; the rules for such a file are tested with the
+ * reader itself.
  */
 class SignTest : FunSpec({
-	
+
 	val tmpDir = tempdir()
-	
+
 	val signingRepository: SigningRepository = mockk()
 	val configRepository: ConfigRepository = mockk()
-	
+	val secretReader = EnvironmentSecretReader(
+		SecretFileReader(
+			probe = { SecretFileFacts(isRegularFile = true, size = it.fileSize(), ownerUid = 1000, mode = 0b110_000_000, fileSystemType = "tmpfs") },
+			effectiveUid = { 1000 },
+		),
+		osName = "Linux",
+	)
+
 	val defaultConfig = AppConfig(
 		global = GlobalConfig(
 			defaultHashAlgorithm = HashAlgorithm.SHA256,
 			defaultSignatureLevel = SignatureLevel.PADES_BASELINE_B,
 		)
 	)
-	
+
 	fun tmpFile(name: String) = File(tmpDir, name).also { it.createNewFile() }
-	
+
+	/** Arguments that sign a new input with a new keystore file, both named after [name]. */
+	fun keystoreSigning(name: String) = listOf(
+		"sign", "-k", tmpFile("$name.p12").absolutePath,
+		"-f", tmpFile("$name-input.pdf").absolutePath, "-o", tmpFile("$name-output.pdf").absolutePath,
+	)
+
+	/** Make signing succeed, and return the slot that captures what it was asked to sign with. */
+	fun signsSuccessfully(): CapturingSlot<SigningParameters> = slot<SigningParameters>().also { captured ->
+		coEvery { signingRepository.signDocument(capture(captured)) } returns SigningResult(
+			outputBytes = ByteArray(0),
+			outputName = "signed.pdf",
+			signatureId = "sig-env",
+			signatureLevel = "PAdES-BASELINE-B",
+		).right()
+	}
+
 	extension(
 		KoinExtension(
 			module {
 				single { SignDocumentUseCase(signingRepository) }
 				single { configRepository }
 				single<PasswordCallback> { mockk() }
+				single { secretReader }
 			},
 			mode = KoinLifecycleMode.Test
 		)
@@ -273,6 +306,115 @@ class SignTest : FunSpec({
 
 		result.statusCode shouldBe 0
 		captured.captured.resolvedConfig?.timestampServer?.runtimePassword?.value shouldBe "tsa-secret"
+	}
+
+	test("sign reads the timestamp password from the file OMNISIGN_TIMESTAMP_PASSWORD_FILE names") {
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig.copy(
+			global = defaultConfig.global.copy(
+				timestampServer = TimestampServerConfig(url = "https://tsa.example.test", username = "tsa-user")
+			)
+		)
+		val captured = signsSuccessfully()
+		val passwordFile = tmpFile("timestamp-password").also { it.writeText("tsa-file-secret\n") }
+
+		val result = Omnisign().test(
+			listOf("sign", "-c", "my-cert", "-f", tmpFile("file-tsa-input.pdf").absolutePath, "-o", tmpFile("file-tsa-output.pdf").absolutePath),
+			envvars = mapOf("OMNISIGN_TIMESTAMP_PASSWORD_FILE" to passwordFile.absolutePath)
+		)
+
+		result.statusCode shouldBe 0
+		captured.captured.resolvedConfig?.timestampServer?.runtimePassword?.value shouldBe "tsa-file-secret"
+	}
+
+	test("sign reads the keystore password from the file OMNISIGN_KEYSTORE_PASSWORD_FILE names") {
+		val captured = signsSuccessfully()
+		val passwordFile = tmpFile("keystore-password").also { it.writeText("file-secret\n") }
+
+		val result = Omnisign().test(
+			keystoreSigning("file-ks"),
+			envvars = mapOf("OMNISIGN_KEYSTORE_PASSWORD_FILE" to passwordFile.absolutePath)
+		)
+
+		result.statusCode shouldBe 0
+		captured.captured.keystorePassword?.value shouldBe "file-secret"
+	}
+
+	test("sign refuses a keystore password set both in OMNISIGN_KEYSTORE_PASSWORD and in a file") {
+		signsSuccessfully()
+		val passwordFile = tmpFile("both-keystore-password").also { it.writeText("file-secret") }
+
+		val result = Omnisign().test(
+			keystoreSigning("both-ks"),
+			envvars = mapOf(
+				"OMNISIGN_KEYSTORE_PASSWORD" to "env-secret",
+				"OMNISIGN_KEYSTORE_PASSWORD_FILE" to passwordFile.absolutePath,
+			)
+		)
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "Configuration Error: Both OMNISIGN_KEYSTORE_PASSWORD and " +
+				"OMNISIGN_KEYSTORE_PASSWORD_FILE are set. Set only one of them."
+	}
+
+	test("a --keystore-password on the command line wins over a file in the environment, which is not read") {
+		val captured = signsSuccessfully()
+		val missing = File(tmpDir, "missing-keystore-password").absolutePath
+
+		val result = Omnisign().test(
+			keystoreSigning("cli-over-file-ks") + listOf("--keystore-password", "cli-secret"),
+			envvars = mapOf("OMNISIGN_KEYSTORE_PASSWORD_FILE" to missing)
+		)
+
+		result.statusCode shouldBe 0
+		captured.captured.keystorePassword?.value shouldBe "cli-secret"
+	}
+
+	test("sign takes '-' in OMNISIGN_KEYSTORE_PASSWORD as the password instead of prompting for one") {
+		val captured = signsSuccessfully()
+
+		val result = Omnisign().test(keystoreSigning("dash-ks"), envvars = mapOf("OMNISIGN_KEYSTORE_PASSWORD" to "-"))
+
+		result.statusCode shouldBe 0
+		captured.captured.keystorePassword?.value shouldBe "-"
+	}
+
+	test("sign reads no keystore password from the environment without --keystore") {
+		val captured = signsSuccessfully()
+		val missing = File(tmpDir, "unused-keystore-password").absolutePath
+
+		val result = Omnisign().test(
+			listOf("sign", "-c", "my-cert", "-f", tmpFile("token-input.pdf").absolutePath, "-o", tmpFile("token-output.pdf").absolutePath),
+			envvars = mapOf("OMNISIGN_KEYSTORE_PASSWORD_FILE" to missing)
+		)
+
+		result.statusCode shouldBe 0
+		captured.captured.keystorePassword shouldBe null
+	}
+
+	test("sign ignores a keystore password in the variable named after the command path") {
+		val captured = signsSuccessfully()
+
+		val result = Omnisign().test(
+			keystoreSigning("inferred-ks"),
+			envvars = mapOf("OMNISIGN_SIGN_KEYSTORE_PASSWORD" to "inferred-secret")
+		)
+
+		result.statusCode shouldBe 0
+		captured.captured.keystorePassword shouldBe null
+	}
+
+	test("sign with --json reports a refused keystore password file as JSON") {
+		signsSuccessfully()
+		val missing = File(tmpDir, "json-missing-keystore-password").absolutePath
+
+		val result = Omnisign().test(
+			listOf("--json") + keystoreSigning("json-ks"),
+			envvars = mapOf("OMNISIGN_KEYSTORE_PASSWORD_FILE" to missing)
+		)
+
+		result.statusCode shouldBe 1
+		result.stdout shouldContain "\"success\""
+		result.stdout shouldContain "named by OMNISIGN_KEYSTORE_PASSWORD_FILE does not exist."
 	}
 
 	test("sign infers the variable name of other options from the command path") {

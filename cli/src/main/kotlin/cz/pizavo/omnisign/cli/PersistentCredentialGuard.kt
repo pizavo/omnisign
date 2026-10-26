@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.cli
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.ProgramResult
+import cz.pizavo.omnisign.data.secret.SecretSource
 import cz.pizavo.omnisign.domain.service.CredentialStore
 
 /**
@@ -27,7 +28,8 @@ fun CliktCommand.requirePersistentCredentialStore(rawPassword: String?, credenti
 	)
 	echo(
 		"Save the other settings without --timestamp-password, and pass the password on each run " +
-				"instead: --timestamp-password or ${OperationConfigOptions.TIMESTAMP_PASSWORD_ENVVAR} on " +
+				"instead: --timestamp-password, ${OperationConfigOptions.TIMESTAMP_PASSWORD_ENVVAR}, or a file " +
+				"named by ${OperationConfigOptions.TIMESTAMP_PASSWORD_ENVVAR}${SecretSource.FILE_SUFFIX}, on " +
 				"sign, timestamp and validate.",
 		err = true
 	)

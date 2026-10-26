@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.commands
 
+import arrow.core.flatMap
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.ProgramResult
@@ -15,6 +16,7 @@ import cz.pizavo.omnisign.cli.OutputConfig
 import cz.pizavo.omnisign.cli.json.JsonExtensionResult
 import cz.pizavo.omnisign.cli.json.toJsonError
 import cz.pizavo.omnisign.cli.json.toJsonResult
+import cz.pizavo.omnisign.data.secret.EnvironmentSecretReader
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
@@ -47,6 +49,7 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
 	private val extendUseCase: ExtendDocumentUseCase by inject()
 	private val configRepository: ConfigRepository by inject()
 	private val passwordCallback: PasswordCallback by inject()
+	private val secretReader: EnvironmentSecretReader by inject()
 	private val output by requireObject<OutputConfig>()
 	
 	private val inputFile by option("-f", "--file", help = "Path to the signed PDF file to extend")
@@ -76,12 +79,15 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
 		val appConfig = configRepository.getCurrentConfig()
 		val activeProfile = profile ?: appConfig.activeProfile
 		val profileConfig = activeProfile?.let { appConfig.profiles[it] }
-		val operationConfig = configOverrides.toOperationConfig(passwordCallback)
-		val resolvedConfigResult = ResolvedConfig.resolve(
-			global = appConfig.global,
-			profile = profileConfig,
-			operationOverrides = operationConfig
-		)
+		val resolvedConfigResult = configOverrides
+			.toOperationConfig(passwordCallback, secretReader, currentContext.readEnvvar)
+			.flatMap { operationConfig ->
+				ResolvedConfig.resolve(
+					global = appConfig.global,
+					profile = profileConfig,
+					operationOverrides = operationConfig
+				)
+			}
 		if (resolvedConfigResult.isLeft()) {
 			val error = resolvedConfigResult.leftOrNull()!!
 			if (output.json) {

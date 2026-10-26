@@ -3,6 +3,8 @@ package cz.pizavo.omnisign.e2e
 import com.github.ajalt.clikt.testing.test
 import cz.pizavo.omnisign.Omnisign
 import cz.pizavo.omnisign.data.repository.*
+import cz.pizavo.omnisign.data.secret.EnvironmentSecretReader
+import cz.pizavo.omnisign.data.secret.SecretFileReader
 import cz.pizavo.omnisign.data.service.DssTokenService
 import cz.pizavo.omnisign.data.service.Pkcs11SessionCache
 import cz.pizavo.omnisign.data.trust.FileTrustStore
@@ -126,6 +128,7 @@ class CliSigningPipelineE2ETest : FunSpec({
 				single<ConfigRepository> { configRepository }
 				single { SignDocumentUseCase(signingRepository) }
 				single { ExtendDocumentUseCase(archivingRepository) }
+				single { EnvironmentSecretReader(SecretFileReader()) }
 			},
 			mode = KoinLifecycleMode.Test,
 		),

@@ -4,6 +4,8 @@ import arrow.core.left
 import arrow.core.right
 import com.github.ajalt.clikt.testing.test
 import cz.pizavo.omnisign.Omnisign
+import cz.pizavo.omnisign.data.secret.EnvironmentSecretReader
+import cz.pizavo.omnisign.data.secret.SecretFileReader
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
@@ -82,6 +84,7 @@ class ValidateTest : FunSpec({
 				single { ValidateDocumentUseCase(validationRepository) }
 				single { configRepository }
 				single<PasswordCallback> { mockk() }
+				single { EnvironmentSecretReader(SecretFileReader(), osName = "Linux") }
 			},
 			mode = KoinLifecycleMode.Test
 		)
@@ -308,6 +311,20 @@ class ValidateTest : FunSpec({
 
 		val detailed = Omnisign().test(listOf("validate", "-f", input.absolutePath, "--detailed"))
 		detailed.output shouldContain "Custom Extension"
+	}
+
+	test("validate reports a timestamp password file it refuses as a configuration error") {
+		val input = tmpFile("refused-password-file.pdf")
+		val missing = File(tmpDir, "missing-timestamp-password").absolutePath
+
+		val result = Omnisign().test(
+			listOf("validate", "-f", input.absolutePath),
+			envvars = mapOf("OMNISIGN_TIMESTAMP_PASSWORD_FILE" to missing)
+		)
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "Configuration Error: The file '$missing' named by " +
+				"OMNISIGN_TIMESTAMP_PASSWORD_FILE does not exist."
 	}
 })
 

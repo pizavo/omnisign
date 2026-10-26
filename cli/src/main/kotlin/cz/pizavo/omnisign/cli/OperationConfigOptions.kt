@@ -6,6 +6,8 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
+import cz.pizavo.omnisign.data.secret.EnvironmentSecretReader
+import cz.pizavo.omnisign.data.secret.SecretSource
 import cz.pizavo.omnisign.domain.model.config.OperationConfig
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
@@ -13,7 +15,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
-import cz.pizavo.omnisign.domain.model.value.sensitive
+import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.platform.PasswordCallback
 
 /**
@@ -60,22 +62,24 @@ class OperationConfigOptions : OptionGroup(
 	)
 	
 	/**
-	 * Override the timestamp server HTTP Basic password for this operation.
-	 * This value is used in-memory only and is never written to disk or the OS keychain.
+	 * Override the timestamp server HTTP Basic password for this operation, as given on the
+	 * command line. This value is used in-memory only and is never written to disk or the OS keychain.
 	 * To persist credentials permanently use `config set --timestamp-password`.
 	 *
-	 * The value can also come from [TIMESTAMP_PASSWORD_ENVVAR]. That name is fixed rather than
-	 * inferred from `autoEnvvarPrefix`, so it is the same on every command that takes this group.
+	 * Without it, [toOperationConfig] takes the password from the environment: from
+	 * [TIMESTAMP_PASSWORD_ENVVAR], from the file `OMNISIGN_TIMESTAMP_PASSWORD_FILE` names, or from
+	 * the systemd credential of that name. The variable's name is fixed rather than inferred from
+	 * `autoEnvvarPrefix`, so it is the same on every command that takes this group.
 	 *
-	 * **Security note:** A value in the environment is readable in `/proc/<pid>/environ` on Linux
-	 * by the same OS user. Prefer the OS credential store for long-lived credentials.
+	 * **Security note:** A value in the variable is readable in `/proc/<pid>/environ` on Linux
+	 * by the same OS user, and a file is not. Prefer the OS credential store for long-lived credentials.
 	 */
 	val timestampPassword by option(
 		"--timestamp-password",
 		help = "Timestamp server HTTP Basic password override (in-memory only, not persisted). " +
-				"Use '-' to prompt with hidden input. Also read from $TIMESTAMP_PASSWORD_ENVVAR.",
-		envvar = TIMESTAMP_PASSWORD_ENVVAR
-	)
+				"Use '-' to prompt with hidden input. Also read from $TIMESTAMP_PASSWORD_ENVVAR, " +
+				"or from the file ${TIMESTAMP_PASSWORD_ENVVAR}${SecretSource.FILE_SUFFIX} names."
+	).commandLineOnly()
 	
 	/** Override the timestamp server request timeout (milliseconds) for this operation. */
 	val timestampTimeout by option(
@@ -117,13 +121,28 @@ class OperationConfigOptions : OptionGroup(
 	 * When any timestamp option is supplied a [TimestampServerConfig] override is
 	 * constructed. A blank override URL falls back to the stored URL during
 	 * [cz.pizavo.omnisign.domain.model.config.ResolvedConfig.resolve].
-	 * The runtime [timestampPassword] is carried in the override object but
-	 * is never written to any persistent store.
+	 * The runtime password, from [timestampPassword] or else the environment (see
+	 * [resolveSecretOption]), is carried in the override object but is never written to any
+	 * persistent store.
 	 *
 	 * @param passwordCallback Used to prompt interactively when [timestampPassword] is [PASSWORD_PROMPT_SENTINEL].
+	 * @param secretReader Reads the password from the environment when [timestampPassword] is not given.
+	 * @param environment Returns the value of a variable: the command context's
+	 *   [readEnvvar][com.github.ajalt.clikt.core.Context.readEnvvar], which an option group cannot reach.
+	 * @return The overrides, or the error that refused the password set in the environment.
 	 */
-	fun toOperationConfig(passwordCallback: PasswordCallback): OperationConfig {
-		val resolvedPassword = resolvePasswordOption(timestampPassword, passwordCallback)
+	fun toOperationConfig(
+		passwordCallback: PasswordCallback,
+		secretReader: EnvironmentSecretReader,
+		environment: (String) -> String?,
+	): OperationResult<OperationConfig> = resolveSecretOption(
+		commandLineValue = timestampPassword,
+		variable = TIMESTAMP_PASSWORD_ENVVAR,
+		environment = environment,
+		secretReader = secretReader,
+		passwordCallback = passwordCallback,
+		prompt = "Timestamp server password",
+	).map { resolvedPassword ->
 		val hasTimestampOverride = timestampUrl != null || timestampUsername != null ||
 				resolvedPassword != null || timestampTimeout != null
 		
@@ -131,12 +150,12 @@ class OperationConfigOptions : OptionGroup(
 			TimestampServerConfig(
 				url = timestampUrl ?: "",
 				username = timestampUsername,
-				runtimePassword = resolvedPassword?.sensitive(),
+				runtimePassword = resolvedPassword,
 				timeout = timestampTimeout ?: 30000
 			)
 		} else null
 		
-		return OperationConfig(
+		OperationConfig(
 			hashAlgorithm = hashAlgorithm,
 			encryptionAlgorithm = encryptionAlgorithm,
 			signatureLevel = signatureLevel,
@@ -148,7 +167,7 @@ class OperationConfigOptions : OptionGroup(
 	}
 
 	companion object {
-		/** Environment variable that supplies [timestampPassword] on every command that takes this group. */
+		/** Variable that supplies the password when [timestampPassword] is not given, on every command that takes this group. */
 		const val TIMESTAMP_PASSWORD_ENVVAR = "OMNISIGN_TIMESTAMP_PASSWORD"
 	}
 }

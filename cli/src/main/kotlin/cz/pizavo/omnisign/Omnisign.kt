@@ -49,7 +49,10 @@ import org.slf4j.LoggerFactory
  * standard Clikt behavior and consistent with industry practice (Docker, AWS CLI, etc.), but
  * operators should be aware that secrets passed this way are not protected from local same-user
  * inspection. Prefer using `--timestamp-password -` (interactive hidden prompt) or the OS
- * credential store (`config set --timestamp-password -`) for sensitive values.
+ * credential store (`config set --timestamp-password -`) for sensitive values. Where neither
+ * fits, as in a container, each secret can be kept in a file whose path is in the variable's name
+ * followed by `_FILE`, or in a systemd credential; see
+ * [resolveSecretOption][cz.pizavo.omnisign.cli.resolveSecretOption].
  */
 class Omnisign : CliktCommand(name = "omnisign") {
 	init {
