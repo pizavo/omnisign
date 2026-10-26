@@ -10,6 +10,7 @@ import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
 import cz.pizavo.omnisign.cli.requirePersistentCredentialStore
 import cz.pizavo.omnisign.cli.resolvePasswordOption
+import cz.pizavo.omnisign.cli.storeTimestampPassword
 import cz.pizavo.omnisign.commands.config.ConfigSet
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
@@ -296,6 +297,7 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 	 * When [timestampPassword] is supplied it is persisted in the OS keychain under
 	 * [ConfigSet.TSA_CREDENTIAL_SERVICE] with the effective username as the account key.
 	 * Passing `"-"` as the password triggers an interactive hidden-input prompt via [passwordCallback].
+	 * A password the keychain does not keep stops the command before the profile is saved.
 	 */
 	private fun buildPatchedTimestampConfig(existing: TimestampServerConfig?): TimestampServerConfig? {
 		val resolvedPassword = resolvePasswordOption(timestampPassword, passwordCallback)
@@ -307,7 +309,7 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 		val baseUrl = timestampUrl ?: existing?.url ?: ""
 		val effectiveUsername = timestampUsername ?: existing?.username
 		val effectiveCredentialKey = if (resolvedPassword != null && effectiveUsername != null) {
-			credentialStore.setPassword(ConfigSet.TSA_CREDENTIAL_SERVICE, effectiveUsername, resolvedPassword)
+			storeTimestampPassword(credentialStore, effectiveUsername, resolvedPassword)
 			effectiveUsername
 		} else {
 			existing?.credentialKey

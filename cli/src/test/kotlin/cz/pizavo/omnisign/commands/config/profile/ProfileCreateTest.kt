@@ -35,8 +35,9 @@ import org.koin.dsl.module
  * acknowledged on stdout while never reaching the persisted [ProfileConfig].
  *
  * Also pins the TSA credential handling, where the interesting rule is conditional — the password
- * only reaches the OS keychain when a username exists to key it by, and the config file must never
- * carry the password itself.
+ * only reaches the OS keychain when a username exists to key it by, the config file must never
+ * carry the password itself, and no profile is saved to refer to a password the keychain did not
+ * keep.
  */
 class ProfileCreateTest : FunSpec({
 
@@ -58,6 +59,7 @@ class ProfileCreateTest : FunSpec({
 	beforeTest {
 		clearMocks(manageProfile, credentialStore, passwordCallback)
 		every { credentialStore.isPersistent } returns true
+		every { credentialStore.setPassword(any(), any(), any()) } returns Unit.right()
 	}
 
 	/**
@@ -156,6 +158,25 @@ class ProfileCreateTest : FunSpec({
 
 		verify(exactly = 0) { credentialStore.setPassword(any(), any(), any()) }
 		profile.timestampServer?.credentialKey shouldBe null
+	}
+
+	test("saves no profile when the keyring does not keep the TSA password") {
+		every { credentialStore.setPassword(any(), any(), any()) } returns
+			ConfigurationError.passwordStoreFailed("Error code 1312").left()
+		coEvery { manageProfile.upsert(any()) } returns Unit.right()
+
+		val result = Omnisign().test(
+			listOf(
+				"config", "profile", "create", "qualified",
+				"--timestamp-username", "tsa-user",
+				"--timestamp-password", "s3cret",
+			)
+		)
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "nothing was saved"
+		result.stderr shouldContain "Error code 1312"
+		coVerify(exactly = 0) { manageProfile.upsert(any()) }
 	}
 
 	test("refuses to store the TSA password, without prompting, when no keyring can keep it") {

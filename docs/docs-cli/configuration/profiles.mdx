@@ -43,7 +43,8 @@ different signature levels, or organization-specific validation policies.
 | `--disable-encryption-algorithm <alg>`         | Disable an encryption algorithm in this profile (repeatable) |
 
 The TSA password goes to the OS credential store, never into the profile. Where there is no
-credential store, `--timestamp-password` is refused — see the [Overview](overview).
+credential store, `--timestamp-password` is refused, and where the store does not keep the password,
+the command saves no profile — see the [Overview](overview).
 
 `edit` additionally supports `--enable-hash-algorithm`, `--enable-encryption-algorithm`,
 and the following `--clear-*` flags to unset individual fields:

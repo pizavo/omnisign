@@ -4,6 +4,7 @@ import arrow.core.left
 import arrow.core.right
 import com.github.ajalt.clikt.testing.test
 import cz.pizavo.omnisign.Omnisign
+import cz.pizavo.omnisign.commands.config.ConfigSet
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
@@ -42,7 +43,8 @@ import org.koin.dsl.module
  * leaves the user believing a setting took effect, and an over-eager patch wipes a neighbouring
  * field the user never mentioned — both report the same cheerful "updated" line either way. The
  * clear-versus-set precedence and the add/remove arithmetic on the disabled-algorithm sets are
- * pinned for the same reason.
+ * pinned for the same reason, and so is an edit stopping, with nothing saved, when the keychain does
+ * not keep a new TSA password.
  */
 class ProfileEditTest : FunSpec({
 
@@ -64,6 +66,7 @@ class ProfileEditTest : FunSpec({
 	beforeTest {
 		clearMocks(manageProfile, credentialStore, passwordCallback)
 		every { credentialStore.isPersistent } returns true
+		every { credentialStore.setPassword(any(), any(), any()) } returns Unit.right()
 	}
 
 	val existing = ProfileConfig(
@@ -121,6 +124,22 @@ class ProfileEditTest : FunSpec({
 		result.statusCode shouldBe 1
 		result.stderr shouldContain "no keyring is available"
 		verify(exactly = 0) { passwordCallback.requestPassword(any(), any()) }
+		coVerify(exactly = 0) { manageProfile.upsert(any()) }
+	}
+
+	test("saves nothing when the keyring does not keep the TSA password") {
+		every { credentialStore.setPassword(any(), any(), any()) } returns
+			ConfigurationError.passwordStoreFailed("Error code 1312").left()
+		coEvery { manageProfile.get(existing.name) } returns existing.right()
+		coEvery { manageProfile.upsert(any()) } returns Unit.right()
+
+		val result = Omnisign().test(
+			listOf("config", "profile", "edit", "qualified", "-H", "SHA512", "--timestamp-password", "s3cret")
+		)
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "nothing was saved"
+		result.stderr shouldContain "Error code 1312"
 		coVerify(exactly = 0) { manageProfile.upsert(any()) }
 	}
 
@@ -233,6 +252,13 @@ class ProfileEditTest : FunSpec({
 		updated.timestampServer?.timeout shouldBe 9000
 		updated.timestampServer?.url shouldBe "https://tsa.example.com"
 		updated.timestampServer?.username shouldBe "tsa-user"
+		updated.timestampServer?.credentialKey shouldBe "tsa-user"
+	}
+
+	test("stores a new TSA password under the profile's username") {
+		val updated = editProfile("--timestamp-password", "s3cret")
+
+		verify { credentialStore.setPassword(ConfigSet.TSA_CREDENTIAL_SERVICE, "tsa-user", "s3cret") }
 		updated.timestampServer?.credentialKey shouldBe "tsa-user"
 	}
 
