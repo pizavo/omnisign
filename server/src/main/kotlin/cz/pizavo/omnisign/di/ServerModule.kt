@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.di
 
+import cz.pizavo.omnisign.auth.EmptyCredentialStore
 import cz.pizavo.omnisign.auth.ExposedHandoffCodeStore
 import cz.pizavo.omnisign.auth.ExposedLoginRequestStore
 import cz.pizavo.omnisign.auth.ExposedPkceVerifierStore
@@ -26,6 +27,7 @@ import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
+import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.platform.PasswordCallback
 import io.ktor.client.*
 import io.ktor.client.engine.HttpClientEngine
@@ -58,6 +60,11 @@ import kotlin.coroutines.CoroutineContext
  *   `jvmRepositoryModule` binding so the server never touches a co-located desktop trust store.
  * - [TrustReconciler] that provisions that trust store from the signing.yml trust references at
  *   boot; invoked from `Application.moduleWith`.
+ * - [CredentialStore] ([EmptyCredentialStore]) when [AllowedOperation.SIGN] is not allowed,
+ *   overriding the keyring-backed store from `jvmRepositoryModule` so a server that only
+ *   validates or timestamps never opens the host's keychain. A signing server keeps the keyring
+ *   store, because the PIN of a PIN-protected PKCS#11 token can come from nowhere else:
+ *   [ServerPasswordCallback] cannot prompt.
  * - IO [CoroutineContext] for blocking work.
  * - [HttpClient] (CIO engine) with JSON content-negotiation and per-stage timeouts
  *   ([HttpTimeout]) for OIDC discovery and user-info requests. The timeouts close the
@@ -128,6 +135,8 @@ fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConf
 
 	if (AllowedOperation.SIGN in serverConfig.operations.allowed) {
 		single { MutableStateFlow(false) }
+	} else {
+		single<CredentialStore> { EmptyCredentialStore() }
 	}
 
 	single<HttpClient> {

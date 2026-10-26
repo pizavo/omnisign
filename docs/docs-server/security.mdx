@@ -82,6 +82,10 @@ Combine the allowlist with [authentication](authentication) for any internet-fac
   a defense (see [Configuration](configuration)).
 - **Secrets via environment only** — JWT secret, OIDC client secrets, TLS, TSA, and file
   signing-keystore passwords are never read from YAML.
+- **No keychain without `SIGN`** — a server that only validates or timestamps never opens the
+  operating system's keychain. A signing server does, because the server cannot prompt and that is
+  where it looks up the PIN of a PIN-protected PKCS#11 token: service `omnisign-token`, with the
+  token's id as the account (`omnisign diagnose pkcs11` lists the ids).
 - Uploads are streamed to disk and bounded by `maxFileSize`; multiple file parts are rejected.
 - Every response carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
   `Referrer-Policy: strict-origin-when-cross-origin`, and
