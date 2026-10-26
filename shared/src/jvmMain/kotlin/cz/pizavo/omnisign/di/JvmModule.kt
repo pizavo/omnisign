@@ -1,6 +1,8 @@
 package cz.pizavo.omnisign.di
 
 import cz.pizavo.omnisign.data.repository.*
+import cz.pizavo.omnisign.data.secret.EnvironmentSecretReader
+import cz.pizavo.omnisign.data.secret.SecretFileReader
 import cz.pizavo.omnisign.data.serializer.JsonConfigSerializer
 import cz.pizavo.omnisign.data.serializer.XmlConfigSerializer
 import cz.pizavo.omnisign.data.serializer.YamlConfigSerializer
@@ -98,6 +100,8 @@ val jvmRepositoryModule = module {
 		)
 	} bind TokenService::class
 	singleOf(::KeyringCredentialStore) bind CredentialStore::class
+	single { SecretFileReader() }
+	single { EnvironmentSecretReader(get()) }
 	
 	single<ConfigRepository> { FileConfigRepository() }
 	single<TrustStore> { FileTrustStore() }
