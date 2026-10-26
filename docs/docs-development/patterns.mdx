@@ -63,11 +63,15 @@ DSS-backed on the JVM, HTTP-backed on Wasm — realizing the same ports.
 ### MVVM
 
 `composeApp` ViewModels extend Lifecycle's `ViewModel` and expose immutable state as
-`StateFlow<UiState>`. They are **not** obtained with `koinViewModel()`: `IslandLayout.kt` constructs
-each one by hand inside a `remember { runCatching { … } }` block, pulling its dependencies from
-`KoinPlatform.getKoinOrNull()` and falling back to `null` when a definition is absent. That is what
-lets the same shell run on the web target, where the platform-only definitions are simply not
-registered. Composables observe; they never mutate state directly. Heavy work runs on a
+`StateFlow<UiState>`. They are **not** obtained with `koinViewModel()`: `IslandLayout.kt` asks for
+each one through `koinViewModelOrNull { koin -> … }`, which builds it from
+`KoinPlatform.getKoinOrNull()` on first use and yields `null` when Koin is not running or a
+definition the ViewModel requires is absent. That is what lets the same shell run on the web target,
+where the platform-only definitions are simply not registered. The instances live in a
+`ViewModelStore` that `App` remembers with `rememberViewModelStoreOwner()`, not in the window's
+own store, so `App` leaving the composition clears them and cancels their coroutines; on the web that
+happens at every sign-out, and the next session starts clean. Composables observe; they never mutate
+state directly. Heavy work runs on a
 constructor-parameter `CoroutineDispatcher` that defaults to `Dispatchers.Default`, which is also what
 makes the ViewModels testable — the test passes a `StandardTestDispatcher` and drives the clock itself.
 
