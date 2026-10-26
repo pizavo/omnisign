@@ -156,13 +156,14 @@ class ValidateTest : FunSpec({
 		result.statusCode shouldBe 3
 	}
 
-	test("a document without signatures exits with status 4 although its overall result is VALID") {
+	test("a document without signatures exits with status 4 after printing the report") {
 		val input = tmpFile("unsigned.pdf")
 		coEvery { validationRepository.validateDocument(any()) } returns
-			sampleReport.copy(signatures = emptyList()).right()
+			sampleReport.copy(overallResult = ValidationResult.NO_SIGNATURES, signatures = emptyList()).right()
 
 		val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
 
+		result.output shouldContain "Overall result:  NO_SIGNATURES"
 		result.output shouldContain "No signatures found in the document."
 		result.statusCode shouldBe 4
 	}

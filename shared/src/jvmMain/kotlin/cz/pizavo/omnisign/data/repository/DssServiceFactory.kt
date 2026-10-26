@@ -285,10 +285,11 @@ class DssServiceFactory(
 	 * signature-verification are repeated on every validation. [directAnchors] (the app-managed
 	 * trust store's certificates for the active scope) are aggregated alongside them.
 	 *
-	 * Verifier alerts only fire at all because [DssValidationRepository] installs DSS's
-	 * [eu.europa.esig.dss.spi.validation.executor.CompleteValidationContextExecutor]; the two
-	 * that are left active report the one condition the validation report itself stays silent
-	 * about — revocation data that predates the time it has to cover:
+	 * Verifier alerts only fire at all because [DssValidationRepository] runs DSS's
+	 * [eu.europa.esig.dss.spi.validation.executor.CompleteValidationContextExecutor] for every
+	 * document that has a certificate to validate; the two that are left active report the one
+	 * condition the validation report itself stays silent about — revocation data that predates
+	 * the time it has to cover:
 	 * - [CommonCertificateVerifier.setAlertOnUncoveredPOE] — for the timestamps' chains, revocation
 	 *   data older than the timestamp whose proof-of-existence it has to cover.
 	 * - [CommonCertificateVerifier.setAlertOnNoRevocationAfterBestSignatureTime] — the same for the

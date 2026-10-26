@@ -43,6 +43,8 @@ import eu.europa.esig.dss.model.x509.CertificateToken
 import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.simplereport.SimpleReport
 import eu.europa.esig.dss.spi.validation.executor.CompleteValidationContextExecutor
+import eu.europa.esig.dss.spi.validation.executor.DefaultValidationContextExecutor
+import eu.europa.esig.dss.spi.validation.executor.ValidationContextExecutor
 import eu.europa.esig.dss.validation.SignedDocumentValidator
 import eu.europa.esig.dss.validation.reports.Reports
 import java.io.File
@@ -112,6 +114,25 @@ class DssValidationRepository(
 	private val adeSPolicy = AdESPolicy()
 	
 	/**
+	 * Runs DSS's [CompleteValidationContextExecutor], which evaluates the verifier alerts that
+	 * [DssServiceFactory.buildValidationCertificateVerifier] leaves active, unless validation has
+	 * no certificate to work with, as for a document without signatures or timestamps. Then it
+	 * runs the [DefaultValidationContextExecutor], which validates without evaluating the alerts.
+	 *
+	 * DSS orders the certificates into chains before it evaluates the alerts, and throws "No
+	 * signing certificate found" when there are none, so an unsigned document would fail to
+	 * validate instead of being reported as [ValidationResult.NO_SIGNATURES]. Without a
+	 * certificate there is no revocation data for the alerts to judge.
+	 */
+	private val validationContextExecutor = ValidationContextExecutor { context ->
+		if (context.processedCertificates.isEmpty()) {
+			DefaultValidationContextExecutor.INSTANCE.validate(context)
+		} else {
+			CompleteValidationContextExecutor.INSTANCE.validate(context)
+		}
+	}
+	
+	/**
 	 * Validate [parameters]'s document and map DSS's reports into the domain [ValidationReport].
 	 *
 	 * Report messages are localized through the validator's [SignedDocumentValidator.setLocale] to
@@ -134,7 +155,7 @@ class DssValidationRepository(
 			val validator = SignedDocumentValidator.fromDocument(document)
 				.apply {
 					setCertificateVerifier(cv)
-					setValidationContextExecutor(CompleteValidationContextExecutor.INSTANCE)
+					setValidationContextExecutor(validationContextExecutor)
 					setTokenExtractionStrategy(TokenExtractionStrategy.EXTRACT_CERTIFICATES_ONLY)
 					setLocale(parameters.language?.let { Locale.forLanguageTag(it) } ?: Locale.getDefault())
 					if (this is PDFDocumentValidator) {
@@ -233,7 +254,9 @@ class DssValidationRepository(
 	 * Convert DSS [Reports] into our domain [ValidationReport].
 	 *
 	 * The overall result is VALID only when every signature passed *and* none was downgraded by the
-	 * per-reference trust policy ([SignatureValidationResult.policyUntrusted]).
+	 * per-reference trust policy ([SignatureValidationResult.policyUntrusted]). A document without
+	 * signatures is [ValidationResult.NO_SIGNATURES] rather than VALID, because "every signature
+	 * passed" holds for it without proving anything.
 	 *
 	 * @param anchorTypes DSS certificate id → per-reference trust type for the store-managed anchors,
 	 *   used to apply the post-validation downgrade.
@@ -276,6 +299,7 @@ class DssValidationRepository(
 			.values.toList()
 		
 		val overallResult = when {
+			signatures.isEmpty() -> ValidationResult.NO_SIGNATURES
 			signatures.all { it.indication == ValidationIndication.TOTAL_PASSED } &&
 				signatures.none { it.policyUntrusted } -> ValidationResult.VALID
 			signatures.any { it.indication == ValidationIndication.TOTAL_FAILED } -> ValidationResult.INVALID

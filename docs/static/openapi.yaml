@@ -1325,8 +1325,10 @@ components:
 
     ValidationResult:
       type: string
-      description: Overall validation conclusion.
-      enum: [VALID, INVALID, INDETERMINATE]
+      description: >
+        Overall validation conclusion. `NO_SIGNATURES` when the document has no signatures;
+        document timestamps alone do not count as signatures.
+      enum: [VALID, INVALID, INDETERMINATE, NO_SIGNATURES]
 
     ValidationIndication:
       type: string

@@ -183,7 +183,7 @@ is printed in full whatever the status, and `--json` uses the same codes.
 | `1`  | The document could not be validated, for example because it is not a PDF or an option is wrong. The error is printed instead of a report. |
 | `2`  | A signature is not valid (`INVALID`).                                                                                            |
 | `3`  | The result could not be determined (`INDETERMINATE`), for example because the signing certificate reaches no trust anchor or its revocation status is not yet known. |
-| `4`  | The document has no signatures. Document timestamps alone do not count as signatures.                                            |
+| `4`  | The document has no signatures (`NO_SIGNATURES`). Document timestamps alone do not count as signatures.                          |
 
 ```bash
 omnisign validate -f contract.pdf > report.txt

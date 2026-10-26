@@ -148,20 +148,14 @@ class Validate : CliktCommand(
 	}
 
 	/**
-	 * The exit status that gives the verdict on [report]. A document without signatures gets
-	 * [EXIT_NO_SIGNATURES] whatever its overall result says, because "every signature passed" holds
-	 * for it without proving anything; document timestamps alone do not count as signatures.
+	 * The exit status that gives the verdict on [report], its [ValidationReport.overallResult].
 	 */
-	private fun exitStatusOf(report: ValidationReport): Int =
-		if (report.signatures.isEmpty()) {
-			EXIT_NO_SIGNATURES
-		} else {
-			when (report.overallResult) {
-				ValidationResult.VALID -> 0
-				ValidationResult.INVALID -> EXIT_INVALID
-				ValidationResult.INDETERMINATE -> EXIT_INDETERMINATE
-			}
-		}
+	private fun exitStatusOf(report: ValidationReport): Int = when (report.overallResult) {
+		ValidationResult.VALID -> 0
+		ValidationResult.INVALID -> EXIT_INVALID
+		ValidationResult.INDETERMINATE -> EXIT_INDETERMINATE
+		ValidationResult.NO_SIGNATURES -> EXIT_NO_SIGNATURES
+	}
 
 	/**
 	 * Print the validation report as plain text via [toPlainText] — the same rendering the desktop
@@ -213,7 +207,7 @@ class Validate : CliktCommand(
 		/** Exit status for a document whose result could not be determined ([ValidationResult.INDETERMINATE]). */
 		const val EXIT_INDETERMINATE = 3
 
-		/** Exit status for a document that has no signatures. */
+		/** Exit status for a document that has no signatures ([ValidationResult.NO_SIGNATURES]). */
 		const val EXIT_NO_SIGNATURES = 4
 	}
 }
