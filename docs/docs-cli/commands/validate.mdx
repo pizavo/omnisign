@@ -145,7 +145,8 @@ omnisign --json validate -f contract.pdf
 ```
 
 The result is a thin envelope — `success`, an optional `error`, an optional `rawReportPath`, and the
-validation `report` (null when the operation could not run):
+validation `report` (null when the operation could not run). `success` only says that the validation
+ran; the verdict is the report's `overallResult`, and the [exit status](#exit-codes) gives it too:
 
 ```json
 {
@@ -169,5 +170,27 @@ operation fails, `report` is null and `error` holds `message`, `details`, and `c
 
 ```json
 { "success": false, "error": { "message": "Document is not a valid PDF" } }
+```
+
+## Exit codes
+
+The exit status gives the verdict, so a script can act on it without reading the report. The report
+is printed in full whatever the status, and `--json` uses the same codes.
+
+| Code | Meaning                                                                                                                          |
+|------|----------------------------------------------------------------------------------------------------------------------------------|
+| `0`  | Every signature is valid (`VALID`).                                                                                              |
+| `1`  | The document could not be validated, for example because it is not a PDF or an option is wrong. The error is printed instead of a report. |
+| `2`  | A signature is not valid (`INVALID`).                                                                                            |
+| `3`  | The result could not be determined (`INDETERMINATE`), for example because the signing certificate reaches no trust anchor or its revocation status is not yet known. |
+| `4`  | The document has no signatures. Document timestamps alone do not count as signatures.                                            |
+
+```bash
+omnisign validate -f contract.pdf > report.txt
+case $? in
+  0) echo "valid" ;;
+  4) echo "not signed" ;;
+  *) echo "not valid, or not validated" ;;
+esac
 ```
 

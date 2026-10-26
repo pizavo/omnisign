@@ -33,6 +33,10 @@ import org.koin.core.component.inject
 
 /**
  * CLI command for validating signed PDF documents.
+ *
+ * The exit status gives the verdict, so a script can act on it without reading the report: 0 when
+ * every signature is valid, 2 when one is not, 3 when the result could not be determined, and 4
+ * when the document has no signatures. Status 1 means the document could not be validated at all.
  */
 class Validate : CliktCommand(
 	name = "validate",
@@ -138,9 +142,26 @@ class Validate : CliktCommand(
 						echo("\n📄 Raw report (${reportFormat.name}) written to: ${it.toAbsolutePath()}")
 					}
 				}
+				exitStatusOf(report).takeIf { it != 0 }?.let { throw ProgramResult(it) }
 			}
 		)
 	}
+
+	/**
+	 * The exit status that gives the verdict on [report]. A document without signatures gets
+	 * [EXIT_NO_SIGNATURES] whatever its overall result says, because "every signature passed" holds
+	 * for it without proving anything; document timestamps alone do not count as signatures.
+	 */
+	private fun exitStatusOf(report: ValidationReport): Int =
+		if (report.signatures.isEmpty()) {
+			EXIT_NO_SIGNATURES
+		} else {
+			when (report.overallResult) {
+				ValidationResult.VALID -> 0
+				ValidationResult.INVALID -> EXIT_INVALID
+				ValidationResult.INDETERMINATE -> EXIT_INDETERMINATE
+			}
+		}
 
 	/**
 	 * Print the validation report as plain text via [toPlainText] — the same rendering the desktop
@@ -183,5 +204,16 @@ class Validate : CliktCommand(
 			echo("overall result above is authoritative; renew the archive timestamp periodically to keep")
 			echo("the chain cryptographically provable.")
 		}
+	}
+
+	private companion object {
+		/** Exit status for a document with a signature that is not valid ([ValidationResult.INVALID]). */
+		const val EXIT_INVALID = 2
+
+		/** Exit status for a document whose result could not be determined ([ValidationResult.INDETERMINATE]). */
+		const val EXIT_INDETERMINATE = 3
+
+		/** Exit status for a document that has no signatures. */
+		const val EXIT_NO_SIGNATURES = 4
 	}
 }

@@ -88,9 +88,9 @@ variable, because there the owner of a file and who may read it cannot be checke
 
 ## Exit codes
 
-| Code     | Meaning                                                                                 |
-|----------|-----------------------------------------------------------------------------------------|
-| `0`      | Success                                                                                 |
-| `1`      | Command error (invalid arguments, missing required options, etc.)                       |
-| non-zero | Operational failure (signing error, validation error, etc.) — details printed to stderr |
+| Code        | Meaning                                                                                                          |
+|-------------|------------------------------------------------------------------------------------------------------------------|
+| `0`         | Success                                                                                                          |
+| `1`         | Command error (invalid arguments, missing required options, etc.) or operational failure (signing error, validation error, etc.) — details printed to stderr, or in the JSON result with `--json` |
+| `2` to `4`  | `validate` only: the document was validated but is not validly signed — see [validate](../commands/validate#exit-codes) |
 
