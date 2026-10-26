@@ -7,6 +7,7 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
+import cz.pizavo.omnisign.cli.requirePersistentCredentialStore
 import cz.pizavo.omnisign.cli.resolvePasswordOption
 import cz.pizavo.omnisign.commands.config.ConfigSet.Companion.TSA_CREDENTIAL_SERVICE
 import cz.pizavo.omnisign.domain.model.config.enums.*
@@ -149,7 +150,8 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 			echo("No options provided. Run 'config set --help' for available options.")
 			return@runBlocking
 		}
-		
+		requirePersistentCredentialStore(timestampPassword, credentialStore)
+
 		val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
 		val result = setGlobalConfig {
 			val hasAlgoChange = algoExpirationLevel != null || algoExpirationLevelAfterUpdate != null ||

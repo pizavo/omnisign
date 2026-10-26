@@ -8,6 +8,7 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
+import cz.pizavo.omnisign.cli.requirePersistentCredentialStore
 import cz.pizavo.omnisign.cli.resolvePasswordOption
 import cz.pizavo.omnisign.commands.config.ConfigSet
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
@@ -164,6 +165,7 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 			)
 			return@runBlocking
 		}
+		requirePersistentCredentialStore(timestampPassword, credentialStore)
 		manageProfile.get(name).fold(
 			ifLeft = { error ->
 				echo("❌ ${error.message}", err = true)

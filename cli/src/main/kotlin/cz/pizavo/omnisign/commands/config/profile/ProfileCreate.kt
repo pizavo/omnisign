@@ -7,6 +7,7 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
+import cz.pizavo.omnisign.cli.requirePersistentCredentialStore
 import cz.pizavo.omnisign.cli.resolvePasswordOption
 import cz.pizavo.omnisign.commands.config.ConfigSet
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
@@ -113,6 +114,7 @@ class ProfileCreate : CliktCommand(name = "create"), KoinComponent {
 			)
 			return@runBlocking
 		}
+		requirePersistentCredentialStore(timestampPassword, credentialStore)
 		val tsConfig = buildTimestampConfig()
 		val profile = ProfileConfig(
 			name = name,

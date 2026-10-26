@@ -19,8 +19,14 @@ Configuration is stored as JSON at a platform-specific location:
 | Windows | `%APPDATA%\omnisign\config.json`                     |
 
 TSA passwords are **never** stored in the configuration file — they are persisted exclusively
-in the OS-native credential store (Windows Credential Manager, macOS Keychain,
-or Secret Service / KWallet on Linux).
+in the OS-native credential store (Windows Credential Manager, macOS Keychain, or on Linux a
+Secret Service provider such as GNOME Keyring, KWallet or KeePassXC).
+
+Where there is no credential store — typically a container, a CI runner, or a server without a
+desktop session — `config set` and `config profile create`/`edit` refuse `--timestamp-password`
+rather than save a reference to a password that would be gone when the command exits. Save the
+other TSA settings without it, and pass the password on each run with `--timestamp-password` or
+[`OMNISIGN_TIMESTAMP_PASSWORD`](config-overrides#environment-variables).
 
 ## `config show`
 

@@ -27,8 +27,10 @@ import io.kotest.matchers.string.shouldNotContain
 import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.verify
 import org.koin.dsl.module
 
 /**
@@ -59,7 +61,10 @@ class ProfileEditTest : FunSpec({
 		),
 	)
 
-	beforeTest { clearMocks(manageProfile, credentialStore, passwordCallback) }
+	beforeTest {
+		clearMocks(manageProfile, credentialStore, passwordCallback)
+		every { credentialStore.isPersistent } returns true
+	}
 
 	val existing = ProfileConfig(
 		name = "qualified",
@@ -103,6 +108,19 @@ class ProfileEditTest : FunSpec({
 
 		result.stderr shouldContain "No changes specified"
 		coVerify(exactly = 0) { manageProfile.get(any()) }
+		coVerify(exactly = 0) { manageProfile.upsert(any()) }
+	}
+
+	test("refuses to store the TSA password, without prompting, when no keyring can keep it") {
+		every { credentialStore.isPersistent } returns false
+		coEvery { manageProfile.get(existing.name) } returns existing.right()
+		coEvery { manageProfile.upsert(any()) } returns Unit.right()
+
+		val result = Omnisign().test(listOf("config", "profile", "edit", "qualified", "--timestamp-password", "-"))
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "no keyring is available"
+		verify(exactly = 0) { passwordCallback.requestPassword(any(), any()) }
 		coVerify(exactly = 0) { manageProfile.upsert(any()) }
 	}
 

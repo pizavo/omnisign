@@ -468,6 +468,9 @@ omnisign certificates list
 
 Configuration is stored in a plain-text file in the user's home directory.
 TSA passwords are stored exclusively in the OS-native credential store (keychain) and are never written to disk.
+Where there is no credential store (a container, a CI runner, a server without a desktop session), `config set`
+and `config profile create`/`edit` refuse `--timestamp-password`; pass the password on each run instead, with
+`--timestamp-password` or `OMNISIGN_TIMESTAMP_PASSWORD`.
 
 #### `config show`
 

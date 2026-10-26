@@ -23,6 +23,7 @@ import io.kotest.matchers.string.shouldContain
 import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
@@ -54,7 +55,10 @@ class ProfileCreateTest : FunSpec({
 		),
 	)
 
-	beforeTest { clearMocks(manageProfile, credentialStore, passwordCallback) }
+	beforeTest {
+		clearMocks(manageProfile, credentialStore, passwordCallback)
+		every { credentialStore.isPersistent } returns true
+	}
 
 	/**
 	 * Run `config profile create` with [args] and return the [ProfileConfig] it would persist.
@@ -152,6 +156,24 @@ class ProfileCreateTest : FunSpec({
 
 		verify(exactly = 0) { credentialStore.setPassword(any(), any(), any()) }
 		profile.timestampServer?.credentialKey shouldBe null
+	}
+
+	test("refuses to store the TSA password, without prompting, when no keyring can keep it") {
+		every { credentialStore.isPersistent } returns false
+		coEvery { manageProfile.upsert(any()) } returns Unit.right()
+
+		val result = Omnisign().test(
+			listOf(
+				"config", "profile", "create", "qualified",
+				"--timestamp-username", "tsa-user",
+				"--timestamp-password", "-",
+			)
+		)
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "no keyring is available"
+		verify(exactly = 0) { passwordCallback.requestPassword(any(), any()) }
+		coVerify(exactly = 0) { manageProfile.upsert(any()) }
 	}
 
 	test("leaves validation unset so the profile inherits the global settings") {
