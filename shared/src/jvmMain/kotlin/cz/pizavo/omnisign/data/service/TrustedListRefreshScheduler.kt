@@ -104,7 +104,9 @@ class TrustedListRefreshScheduler(
 	 * @return The sources the hard refresh could not load, or `null` when every
 	 *   one of them loaded. A source that failed only while priming but then
 	 *   loaded is not among them.
-	 * @throws Exception when the refresh cannot run at all, after logging it.
+	 * @throws Exception when the refresh cannot run at all, after logging it as one ERROR line. Its
+	 *   stack trace is logged at DEBUG, so a caller that reports the error itself, such as the CLI,
+	 *   does not print the trace under its own message by default.
 	 */
 	suspend fun refreshNow(): TrustedListRefreshFailure? {
 		logger.info { "Manual hard trusted-list refresh requested" }
@@ -114,7 +116,8 @@ class TrustedListRefreshScheduler(
 			logger.info { "Manual hard trusted-list refresh completed" }
 			return failure
 		} catch (e: Exception) {
-			logger.error(e) { "Manual hard trusted-list refresh failed" }
+			logger.error { "Manual hard trusted-list refresh failed: $e" }
+			logger.debug(e) { "Stack trace of the failed manual trusted-list refresh" }
 			throw e
 		}
 	}

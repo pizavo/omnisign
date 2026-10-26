@@ -1,5 +1,9 @@
 package cz.pizavo.omnisign.data.service
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import cz.pizavo.omnisign.data.repository.DssServiceFactory
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.trust.TrustedListRefreshFailure
@@ -7,10 +11,12 @@ import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
 import io.mockk.verifyOrder
+import org.slf4j.LoggerFactory
 import java.io.FileNotFoundException
 import kotlin.time.Clock
 
@@ -22,7 +28,7 @@ import kotlin.time.Clock
  *
  * Also verifies that [TrustedListRefreshScheduler.refreshNow] primes the sources before the hard
  * refresh, returns the sources the hard refresh could not load, and passes on an error that keeps
- * the refresh from running.
+ * the refresh from running, logging it in one line with its stack trace only at DEBUG.
  */
 class TrustedListRefreshSchedulerTest : FunSpec({
 
@@ -34,6 +40,25 @@ class TrustedListRefreshSchedulerTest : FunSpec({
 		val configRepository = mockk<ConfigRepository>()
 		coEvery { configRepository.getCurrentConfig() } returns AppConfig()
 		return TrustedListRefreshScheduler(factory, configRepository)
+	}
+
+	/** Run [block] and return every event the scheduler's logger emitted meanwhile, down to DEBUG. */
+	suspend fun eventsLoggedDuring(block: suspend () -> Unit): List<ILoggingEvent> {
+		val logbackLogger = LoggerFactory.getLogger("cz.pizavo.omnisign.data.service.TrustedListRefreshScheduler") as Logger
+		val previousLevel = logbackLogger.level
+		val appender = ListAppender<ILoggingEvent>().also {
+			it.start()
+			logbackLogger.addAppender(it)
+		}
+		logbackLogger.level = Level.DEBUG
+		try {
+			block()
+		} finally {
+			logbackLogger.level = previousLevel
+			logbackLogger.detachAppender(appender)
+			appender.stop()
+		}
+		return appender.list.toList()
 	}
 
 	test("healthy trust waits the full configured interval") {
@@ -79,5 +104,19 @@ class TrustedListRefreshSchedulerTest : FunSpec({
 		every { factory.warmUpTrustedSources(any(), any()) } throws FileNotFoundException("signer.cer")
 
 		shouldThrow<FileNotFoundException> { schedulerOver(factory).refreshNow() }
+	}
+
+	test("refreshNow logs that error in one line and keeps its stack trace for DEBUG") {
+		val factory = mockk<DssServiceFactory>(relaxed = true)
+		every { factory.warmUpTrustedSources(any(), any()) } throws FileNotFoundException("signer.cer")
+
+		val events = eventsLoggedDuring {
+			shouldThrow<FileNotFoundException> { schedulerOver(factory).refreshNow() }
+		}
+
+		val error = events.single { it.level == Level.ERROR }
+		error.formattedMessage shouldContain "java.io.FileNotFoundException: signer.cer"
+		error.throwableProxy shouldBe null
+		events.single { it.throwableProxy != null }.level shouldBe Level.DEBUG
 	}
 })
