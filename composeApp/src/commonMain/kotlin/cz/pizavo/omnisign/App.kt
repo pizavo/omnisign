@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.safeContentPadding
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreOwner
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.ui.branding.LocalOrganizationName
 import cz.pizavo.omnisign.ui.layout.IslandLayout
@@ -39,6 +41,11 @@ import cz.pizavo.omnisign.ui.platform.saveThemePreference
  * cancel — which is why the dialog drives them through separate apply and persist callbacks. A
  * `null` language tag follows the system/browser locale.
  *
+ * Every ViewModel beneath it lives in a store remembered here with [rememberViewModelStoreOwner],
+ * or in one nested inside it, rather than in the window's own store, so all of them are cleared,
+ * and their coroutines cancelled, when this composable leaves the composition. On the web, signing
+ * out does exactly that, so the next session starts without the previous one's document or state.
+ *
  * @param organizationName Deploy-time branding label of the party that deployed this frontend (web
  *   only; `null` on desktop), provided through [LocalOrganizationName]. It is combined with the server
  *   operator's label (from the capabilities) and the fixed OmniSign name to compose the title, so the
@@ -57,8 +64,10 @@ fun App(organizationName: String? = null, onLogout: (() -> Unit)? = null) {
 
     val updateDarkControls = LocalTitleBarDarkControls.current
     SideEffect { updateDarkControls?.invoke(isDarkTheme) }
+    val sessionViewModels = rememberViewModelStoreOwner()
 
     CompositionLocalProvider(
+        LocalViewModelStoreOwner provides sessionViewModels,
         LocalAppLocale provides languageTag,
         LocalAppDateFormat provides dateFormat,
         LocalOrganizationName provides organizationName,
