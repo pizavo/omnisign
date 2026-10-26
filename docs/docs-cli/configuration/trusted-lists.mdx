@@ -59,8 +59,8 @@ refreshing the others:
   • my-org-tl
 ```
 
-It also exits with status 1, saying why, when the refresh cannot run at all, for example because a
-custom list's signing certificate cannot be read.
+A list whose signing certificate cannot be read is reported the same way, after a warning that names
+the file. The command also exits with status 1, saying why, when the refresh cannot run at all.
 
 ## `config tl build` — Build custom trusted lists
 

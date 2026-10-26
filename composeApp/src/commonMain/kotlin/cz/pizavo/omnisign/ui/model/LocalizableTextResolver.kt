@@ -137,6 +137,7 @@ private val MESSAGE_RES: Map<MessageKey, StringResource> = mapOf(
 	MessageKey.WARNING_CERTIFICATE_PARSE_ERROR to Res.string.warning_certificate_parse_error,
 	MessageKey.WARNING_TSP_FAILURE to Res.string.warning_tsp_failure,
 	MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE to Res.string.warning_tl_refresh_incomplete,
+	MessageKey.WARNING_TRUSTED_LIST_SIGNING_CERTIFICATE_UNREADABLE to Res.string.warning_tl_signing_certificate_unreadable,
 	MessageKey.VALIDATION_SIGNATURE_POLICY_UNTRUSTED to Res.string.validation_signature_policy_untrusted,
 	MessageKey.VALIDATION_TIMESTAMP_POLICY_UNTRUSTED to Res.string.validation_timestamp_policy_untrusted,
 	MessageKey.VALIDATION_HASH_DISABLED to Res.string.validation_hash_disabled,

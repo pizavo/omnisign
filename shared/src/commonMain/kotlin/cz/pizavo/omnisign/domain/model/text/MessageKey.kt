@@ -400,6 +400,9 @@ enum class MessageKey {
 	/** Trusted-list loading: one or more trusted lists could not be refreshed (arg: count phrase; arg: failed hosts). */
 	WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE,
 
+	/** Trusted-list loading: a custom trusted list was not loaded because its signing certificate cannot be read (arg: list name; arg: certificate path). */
+	WARNING_TRUSTED_LIST_SIGNING_CERTIFICATE_UNREADABLE,
+
 	/** Validation: a signature's trust anchor is trusted for timestamping only, not for signing. */
 	VALIDATION_SIGNATURE_POLICY_UNTRUSTED,
 

@@ -144,7 +144,9 @@ resulting global and active-profile certificates.
 
 Register external ETSI TS 119612 Trusted List XML sources. Each entry may be an HTTPS URL
 or a local file path. An optional signing certificate verifies the TL's XML signature —
-strongly recommended for non-EU lists.
+strongly recommended for non-EU lists. If that certificate file cannot be read, the list is not
+loaded: validations go on without it and name it under their **Trusted List Warnings**, and
+refreshing the lists reports it as failed.
 
 A **Build Custom TL** button opens the [Trusted List builder](tl-builder.mdx) dialog for creating new
 TL documents from scratch.

@@ -307,6 +307,9 @@ internal object EnglishMessages {
 		MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE ->
 			"Could not refresh %1\$s (%2\$s). Qualification assessment for certificates from these " +
 				"sources may be incomplete."
+		MessageKey.WARNING_TRUSTED_LIST_SIGNING_CERTIFICATE_UNREADABLE ->
+			"Could not load trusted list %1\$s: its signing certificate %2\$s cannot be read. Trust " +
+				"and qualification assessment for certificates from this list may be incomplete."
 		MessageKey.VALIDATION_SIGNATURE_POLICY_UNTRUSTED ->
 			"Signature distrusted by policy: its trust anchor is trusted for timestamping only, " +
 				"not for signing"

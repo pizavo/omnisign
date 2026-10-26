@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedSourceId
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.text.MessageKey
 import cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor
 import cz.pizavo.omnisign.domain.model.trust.TrustedListRefreshFailure
 import eu.europa.esig.dss.service.http.commons.CommonsDataLoader
@@ -48,28 +49,40 @@ class TrustedSourceRegistry(
 ) {
 
 	/**
-	 * A retained trusted-list source: the long-lived [TLValidationJob] (whose
-	 * cache makes scheduled re-refreshes cheap), the stable
-	 * [TrustedListsCertificateSource] it populates, its own lock, the most recent
-	 * loading warnings, [buildJob] — the factory used to spin up a *fresh* job
-	 * (empty cache) for a user-initiated hard refresh that must genuinely
-	 * re-download and re-parse — and [displayName], the source's human-readable
-	 * name for user-facing failure notifications (`null` for the EU LOTL).
+	 * A retained trusted-list source: the stable [TrustedListsCertificateSource] its jobs
+	 * populate, its own lock, the most recent loading warnings, [buildJob] — the factory that
+	 * builds a job over the source, both the long-lived retained [job] (whose cache makes
+	 * scheduled re-refreshes cheap) and the *fresh* job (empty cache) of a user-initiated hard
+	 * refresh that must genuinely re-download and re-parse — [displayName], the source's
+	 * human-readable name for user-facing failure notifications (`null` for the EU LOTL), and
+	 * [signingCertPath], the file holding a custom list's signing certificate (`null` for the EU
+	 * LOTL, whose signing certificates are bundled, and for a custom list configured without one).
+	 *
+	 * The registry reads [signingCertPath] itself and hands the certificate to [buildJob] (see
+	 * [buildJobFor]), so [job] stays `null` while the file cannot be read, and
+	 * [signingCertificateFailure] holds the reason it last could not, so that reason is logged
+	 * once rather than on every attempt.
 	 */
 	private class RetainedTl(
 		val id: TrustedSourceId,
-		val job: TLValidationJob,
 		val source: TrustedListsCertificateSource,
-		val buildJob: (TrustedListsCertificateSource, FileCacheDataLoader) -> TLValidationJob,
+		val buildJob: (TrustedListsCertificateSource, FileCacheDataLoader, CertificateSource?) -> TLValidationJob,
 		val displayName: String?,
+		val signingCertPath: String?,
 	) {
 		val lock = ReentrantLock()
+
+		@Volatile
+		var job: TLValidationJob? = null
 
 		@Volatile
 		var initialized = false
 
 		@Volatile
 		var warnings: List<LocalizableText> = emptyList()
+
+		@Volatile
+		var signingCertificateFailure: String? = null
 	}
 
 	/**
@@ -165,6 +178,10 @@ class TrustedSourceRegistry(
 	 * [directAnchors] resolved from the app-managed trust store — into [cv] as a single aggregated
 	 * trusted-cert source.
 	 *
+	 * A source that could not be loaded, such as a custom list whose signing certificate cannot
+	 * be read, is wired in empty and adds the warning that says why, so the operation goes on
+	 * with the other sources.
+	 *
 	 * @param directAnchors Directly-trusted certificates (from the trust store) to aggregate
 	 *   alongside the trusted lists; empty when the active scope trusts no direct anchors.
 	 * @return the union of loading warnings for the sources this config uses, so a
@@ -219,6 +236,10 @@ class TrustedSourceRegistry(
 	 * one aggregate failure when the session ends, and a fresh "Last refreshed"
 	 * timestamp is stamped when at least one source refreshed — both when the cycle
 	 * is mixed.
+	 *
+	 * A source that has no retained job yet, because its signing certificate could not
+	 * be read, gets one built first, so a restored certificate file is picked up by the
+	 * next cycle; while the file still cannot be read, the source is accumulated as failed.
 	 */
 	fun refreshAll() = withProgressSession {
 		var loadedAny = false
@@ -226,7 +247,8 @@ class TrustedSourceRegistry(
 			entry.lock.withLock {
 				signal.begin(entry.id)
 				try {
-					if (refreshOnline(entry, entry.job)) loadedAny = true
+					val job = retainedJob(entry)
+					if (job != null && refreshOnline(entry, job)) loadedAny = true
 					else accumulateFailure(entry.displayName)
 				} finally {
 					signal.end(entry.id)
@@ -250,7 +272,9 @@ class TrustedSourceRegistry(
 	 *
 	 * The outcome is recorded on the signal as [refreshAll] records it, and also
 	 * returned, because the session flush may merge it with the failures of an
-	 * operation running at the same time.
+	 * operation running at the same time. A source whose signing certificate cannot
+	 * be read gets no fresh job and is among the failed ones; the others are still
+	 * refreshed, and a source that loaded earlier keeps serving its last good trust.
 	 *
 	 * @return The sources this refresh could not load, or `null` when every one
 	 *   of them loaded or none is retained.
@@ -264,11 +288,10 @@ class TrustedSourceRegistry(
 				signal.begin(entry.id)
 				try {
 					logger.info { "Hard-refreshing ${entry.id} (fresh job, forced network re-download)" }
-					val freshLoader = newOnlineLoader().apply {
-						setCacheExpirationTime(FORCE_REFRESH_EXPIRATION_MS)
+					val freshJob = buildJobFor(entry) {
+						newOnlineLoader().apply { setCacheExpirationTime(FORCE_REFRESH_EXPIRATION_MS) }
 					}
-					val freshJob = entry.buildJob(entry.source, freshLoader)
-					if (refreshOnline(entry, freshJob)) {
+					if (freshJob != null && refreshOnline(entry, freshJob)) {
 						loadedAny = true
 					} else {
 						accumulateFailure(entry.displayName)
@@ -290,10 +313,10 @@ class TrustedSourceRegistry(
 
 	/**
 	 * Whether any retained trusted source finished loading but holds no certificates —
-	 * i.e. it failed to obtain trust (a cold cache while offline, or an unreachable
-	 * source URL). The refresh scheduler polls this to retry soon after a failure
-	 * instead of waiting a full cycle. `false` when every retained source has trust,
-	 * or none is retained.
+	 * i.e. it failed to obtain trust (a cold cache while offline, an unreachable
+	 * source URL, or a signing certificate that cannot be read). The refresh scheduler
+	 * polls this to retry soon after a failure instead of waiting a full cycle.
+	 * `false` when every retained source has trust, or none is retained.
 	 */
 	fun hasIncompleteTrust(): Boolean =
 		entries.values.any { it.initialized && it.source.certificates.isEmpty() }
@@ -316,62 +339,61 @@ class TrustedSourceRegistry(
 	}
 
 	/** Acquire the shared EU LOTL entry, building + offline-first warming once. */
-	private fun acquireLotl(): RetainedTl = acquire(TrustedSourceId.EuLotl, displayName = null) { source, onlineLoader ->
-		newJob(source, onlineLoader, countingExecutor).apply {
-			setListOfTrustedListSources(
-				LOTLSource().apply {
-					url = DssServiceFactory.EU_LOTL_URL
-					certificateSource = DssServiceFactory.buildOjCertificateSource()
-					isPivotSupport = true
-				}
-			)
+	private fun acquireLotl(): RetainedTl =
+		acquire(TrustedSourceId.EuLotl, displayName = null, signingCertPath = null) { source, onlineLoader, _ ->
+			newJob(source, onlineLoader, countingExecutor).apply {
+				setListOfTrustedListSources(
+					LOTLSource().apply {
+						url = DssServiceFactory.EU_LOTL_URL
+						certificateSource = DssServiceFactory.buildOjCertificateSource()
+						isPivotSupport = true
+					}
+				)
+			}
 		}
-	}
 
 	/** Acquire the retained entry for a custom trusted list by its identity. */
 	private fun acquireCustom(config: CustomTrustedListConfig): RetainedTl =
 		acquire(
 			TrustedSourceId.CustomList(config.source, config.signingCertPath),
 			displayName = config.name.ifBlank { config.source },
-		) { source, onlineLoader ->
+			signingCertPath = config.signingCertPath,
+		) { source, onlineLoader, signingCertificate ->
 			newJob(source, onlineLoader, countingExecutor).apply {
 				setTrustedListSources(
 					TLSource().apply {
 						url = config.source
-						config.signingCertPath?.let {
-							certificateSource = DssServiceFactory.buildCertSourceFromFile(it)
-						}
+						signingCertificate?.let { certificateSource = it }
 					}
 				)
 			}
 		}
 
 	/**
-	 * Get-or-create the retained entry for [id]. The cheap shell (source + job,
-	 * no network) is created atomically per id; the slow offline-first warm runs
-	 * once under the entry's own lock, bracketed with the refresh signal so the
-	 * first lazy load is visible to scoped waiters.
+	 * Get-or-create the retained entry for [id]. The cheap shell (the source, with no
+	 * job and no I/O) is created atomically per id; building the job and the slow
+	 * offline-first warm run once under the entry's own lock, bracketed with the
+	 * refresh signal so the first lazy load is visible to scoped waiters.
 	 *
 	 * The one-time warm records its outcome —
 	 * [markRefreshed][TrustedListRefreshSignal.markRefreshed] on the signal when usable
 	 * trust was loaded, or [accumulateFailure] when it was not (a cold cache while
-	 * offline) so the session flush notifies the user — keeping the "Last
-	 * refreshed" indicator honest instead of silently degrading to an empty trust
-	 * store. The entry is still marked [initialized][RetainedTl.initialized] on
-	 * failure: re-attempting on every subsequent validation would stall each one up
-	 * to the fetch timeout while offline; recovery is via the scheduled cycle or a
-	 * manual refresh.
+	 * offline, or a signing certificate that cannot be read) so the session flush
+	 * notifies the user — keeping the "Last refreshed" indicator honest instead of
+	 * silently degrading to an empty trust store. The entry is still marked
+	 * [initialized][RetainedTl.initialized] on failure: re-attempting on every
+	 * subsequent validation would stall each one up to the fetch timeout while
+	 * offline; recovery is via the scheduled cycle or a manual refresh.
 	 */
 	private fun acquire(
 		id: TrustedSourceId,
 		displayName: String?,
-		buildJob: (TrustedListsCertificateSource, FileCacheDataLoader) -> TLValidationJob,
+		signingCertPath: String?,
+		buildJob: (TrustedListsCertificateSource, FileCacheDataLoader, CertificateSource?) -> TLValidationJob,
 	): RetainedTl {
 		entries[id]?.let { if (it.initialized) return it }
 		val entry = entries.computeIfAbsent(id) { key ->
-			val source = TrustedListsCertificateSource()
-			val onlineLoader = newOnlineLoader()
-			RetainedTl(key, buildJob(source, onlineLoader), source, buildJob, displayName)
+			RetainedTl(key, TrustedListsCertificateSource(), buildJob, displayName, signingCertPath)
 		}
 		entry.lock.withLock {
 			if (!entry.initialized) {
@@ -387,6 +409,69 @@ class TrustedSourceRegistry(
 			}
 		}
 		return entry
+	}
+
+	/**
+	 * The retained job of [entry], built on first use over a cache-gated online loader.
+	 * `null` while the entry's signing certificate cannot be read; each call tries again, so
+	 * a restored file is picked up by the next refresh.
+	 */
+	private fun retainedJob(entry: RetainedTl): TLValidationJob? =
+		entry.job ?: buildJobFor(entry, ::newOnlineLoader)?.also { entry.job = it }
+
+	/**
+	 * Build a job for [entry] over the loader [onlineLoader] creates, after reading the
+	 * entry's signing certificate from [RetainedTl.signingCertPath].
+	 *
+	 * No job is built when the certificate cannot be read — the file is missing or
+	 * unreadable, or holds no certificate — because a list must never be loaded without
+	 * the certificate configured to verify its signature; [recordUnreadableSigningCertificate]
+	 * says why instead. [onlineLoader] is only called once the certificate has been read, so a
+	 * list that cannot be loaded does not touch the cache directory.
+	 *
+	 * @return The new job, or `null` when the signing certificate cannot be read.
+	 */
+	private fun buildJobFor(entry: RetainedTl, onlineLoader: () -> FileCacheDataLoader): TLValidationJob? {
+		val signingCertificate = entry.signingCertPath?.let { path ->
+			try {
+				DssServiceFactory.buildCertSourceFromFile(path)
+			} catch (e: Exception) {
+				recordUnreadableSigningCertificate(entry, path, e)
+				return null
+			}
+		}
+		entry.signingCertificateFailure = null
+		return entry.buildJob(entry.source, onlineLoader(), signingCertificate)
+	}
+
+	/**
+	 * Record that the signing certificate of [entry] at [path] cannot be read, for the reason
+	 * [cause] gives. Only custom lists have a [RetainedTl.signingCertPath], and each of them
+	 * has a [RetainedTl.displayName].
+	 *
+	 * The reason is logged in one line, at WARN the first time and at DEBUG while it stays the
+	 * same, so neither the warm-up and hard refresh of one `config tl refresh` nor the
+	 * scheduler's retries repeat it. An entry without a retained job holds no trust from the
+	 * list, so its warnings become
+	 * [MessageKey.WARNING_TRUSTED_LIST_SIGNING_CERTIFICATE_UNREADABLE], which reaches the
+	 * report of every validation that uses the list. An entry with a retained job keeps
+	 * serving the trust it loaded before, and its warnings with it.
+	 */
+	private fun recordUnreadableSigningCertificate(entry: RetainedTl, path: String, cause: Exception) {
+		val reason = cause.toString()
+		val message = "Trusted list '${entry.displayName}' is not loaded because its signing certificate " +
+				"$path cannot be read: $reason"
+		if (reason == entry.signingCertificateFailure) logger.debug { message } else logger.warn { message }
+		entry.signingCertificateFailure = reason
+		if (entry.job == null) {
+			entry.warnings = listOf(
+				LocalizableText.of(
+					MessageKey.WARNING_TRUSTED_LIST_SIGNING_CERTIFICATE_UNREADABLE,
+					entry.displayName.orEmpty(),
+					path,
+				)
+			)
+		}
 	}
 
 	/**
@@ -447,16 +532,18 @@ class TrustedSourceRegistry(
 	 *
 	 * @return `true` when the source ended up with usable trust (a cache hit or a
 	 *   successful online fetch); `false` when both paths yielded nothing — e.g. a
-	 *   cold cache while offline — leaving the source empty.
+	 *   cold cache while offline — or no job could be built because the signing
+	 *   certificate cannot be read, leaving the source empty.
 	 */
 	private fun refreshOfflineFirst(entry: RetainedTl): Boolean {
-		runCatching { entry.job.offlineRefresh() }
+		val job = retainedJob(entry) ?: return false
+		runCatching { job.offlineRefresh() }
 			.onFailure { logger.debug(it) { "Offline TL refresh failed; trying online" } }
 		if (entry.source.certificates.isEmpty()) {
-			runCatching { entry.job.onlineRefresh() }
+			runCatching { job.onlineRefresh() }
 				.onFailure { logger.warn(it) { "Online TL refresh failed; trust may be incomplete" } }
 		}
-		entry.warnings = DssServiceFactory.collectTlWarnings(entry.job.summary)
+		entry.warnings = DssServiceFactory.collectTlWarnings(job.summary)
 		return entry.source.certificates.isNotEmpty()
 	}
 

@@ -119,6 +119,10 @@ report. This does not affect the
 cryptographic validity of the signature. Only the eIDAS qualification assessment for signing
 certificates issued by the affected member state may be unavailable.
 
+The section also names a custom trusted list whose signing certificate cannot be read. The
+validation goes on without that list, so a signature whose trust rests on it can come out
+`INDETERMINATE`.
+
 ### EU LOTL membership
 
 A signature or timestamp whose trust anchor is on the **EU List of Trusted Lists** (the LOTL, or a

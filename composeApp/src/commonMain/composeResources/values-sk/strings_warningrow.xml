@@ -15,6 +15,7 @@
 	<string name="warning_certificate_parse_error">Niektoré certifikáty v reťazci obsahujú poškodené rozšírenia, ktoré sa nepodarilo plne spracovať. To zvyčajne spôsobujú neštandardné certifikáty tretích strán (napr. TSA) a samotného podpisu sa to netýka.</string>
 	<string name="warning_tsp_failure">Server časových pečiatok nahlásil problém (PKIFailureInfo). Ak operácia prebehla úspešne, časová pečiatka sa mohla získať pri opakovanom pokuse.</string>
 	<string name="warning_tl_refresh_incomplete">Nepodarilo sa obnoviť %1$s (%2$s). Posúdenie kvalifikácie certifikátov z týchto zdrojov môže byť neúplné.</string>
+	<string name="warning_tl_signing_certificate_unreadable">Nepodarilo sa načítať dôveryhodný zoznam %1$s: jeho podpisový certifikát %2$s nemožno prečítať. Posúdenie dôveryhodnosti a kvalifikácie certifikátov z tohto zoznamu môže byť neúplné.</string>
 	<plurals name="warning_affected_certificates">
 		<item quantity="one">%1$s certifikát</item>
 		<item quantity="few">%1$s certifikáty</item>
