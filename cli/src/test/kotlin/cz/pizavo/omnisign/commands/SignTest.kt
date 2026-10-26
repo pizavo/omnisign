@@ -8,6 +8,7 @@ import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.result.SigningResult
@@ -202,6 +203,96 @@ class SignTest : FunSpec({
 		result.statusCode shouldBe 0
 		captured.captured.keystoreFile.shouldNotBeNull()
 		captured.captured.certificateAlias shouldBe null
+	}
+
+	test("sign reads the keystore password from OMNISIGN_KEYSTORE_PASSWORD") {
+		val input = tmpFile("env-ks-input.pdf")
+		val output = tmpFile("env-ks-output.pdf")
+		val keystore = tmpFile("env-ks-signer.p12")
+		val captured = slot<SigningParameters>()
+		coEvery { signingRepository.signDocument(capture(captured)) } returns SigningResult(
+			outputBytes = ByteArray(0),
+			outputName = output.name,
+			signatureId = "sig-env-ks",
+			signatureLevel = "PAdES-BASELINE-B",
+		).right()
+
+		val result = Omnisign().test(
+			listOf("sign", "-k", keystore.absolutePath, "-f", input.absolutePath, "-o", output.absolutePath),
+			envvars = mapOf("OMNISIGN_KEYSTORE_PASSWORD" to "env-secret")
+		)
+
+		result.statusCode shouldBe 0
+		captured.captured.keystorePassword?.value shouldBe "env-secret"
+	}
+
+	test("a --keystore-password on the command line wins over OMNISIGN_KEYSTORE_PASSWORD") {
+		val input = tmpFile("cli-ks-input.pdf")
+		val output = tmpFile("cli-ks-output.pdf")
+		val keystore = tmpFile("cli-ks-signer.p12")
+		val captured = slot<SigningParameters>()
+		coEvery { signingRepository.signDocument(capture(captured)) } returns SigningResult(
+			outputBytes = ByteArray(0),
+			outputName = output.name,
+			signatureId = "sig-cli-ks",
+			signatureLevel = "PAdES-BASELINE-B",
+		).right()
+
+		val result = Omnisign().test(
+			listOf(
+				"sign", "-k", keystore.absolutePath, "--keystore-password", "cli-secret",
+				"-f", input.absolutePath, "-o", output.absolutePath
+			),
+			envvars = mapOf("OMNISIGN_KEYSTORE_PASSWORD" to "env-secret")
+		)
+
+		result.statusCode shouldBe 0
+		captured.captured.keystorePassword?.value shouldBe "cli-secret"
+	}
+
+	test("sign reads the timestamp password from OMNISIGN_TIMESTAMP_PASSWORD") {
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig.copy(
+			global = defaultConfig.global.copy(
+				timestampServer = TimestampServerConfig(url = "https://tsa.example.test", username = "tsa-user")
+			)
+		)
+		val input = tmpFile("env-tsa-input.pdf")
+		val output = tmpFile("env-tsa-output.pdf")
+		val captured = slot<SigningParameters>()
+		coEvery { signingRepository.signDocument(capture(captured)) } returns SigningResult(
+			outputBytes = ByteArray(0),
+			outputName = output.name,
+			signatureId = "sig-env-tsa",
+			signatureLevel = "PAdES-BASELINE-B",
+		).right()
+
+		val result = Omnisign().test(
+			listOf("sign", "-c", "my-cert", "-f", input.absolutePath, "-o", output.absolutePath),
+			envvars = mapOf("OMNISIGN_TIMESTAMP_PASSWORD" to "tsa-secret")
+		)
+
+		result.statusCode shouldBe 0
+		captured.captured.resolvedConfig?.timestampServer?.runtimePassword?.value shouldBe "tsa-secret"
+	}
+
+	test("sign infers the variable name of other options from the command path") {
+		val input = tmpFile("env-url-input.pdf")
+		val output = tmpFile("env-url-output.pdf")
+		val captured = slot<SigningParameters>()
+		coEvery { signingRepository.signDocument(capture(captured)) } returns SigningResult(
+			outputBytes = ByteArray(0),
+			outputName = output.name,
+			signatureId = "sig-env-url",
+			signatureLevel = "PAdES-BASELINE-B",
+		).right()
+
+		val result = Omnisign().test(
+			listOf("sign", "-c", "my-cert", "-f", input.absolutePath, "-o", output.absolutePath),
+			envvars = mapOf("OMNISIGN_SIGN_TIMESTAMP_URL" to "https://tsa.example.test")
+		)
+
+		result.statusCode shouldBe 0
+		captured.captured.resolvedConfig?.timestampServer?.url shouldBe "https://tsa.example.test"
 	}
 })
 

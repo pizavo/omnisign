@@ -64,13 +64,17 @@ class OperationConfigOptions : OptionGroup(
 	 * This value is used in-memory only and is never written to disk or the OS keychain.
 	 * To persist credentials permanently use `config set --timestamp-password`.
 	 *
-	 * **Security note:** When supplied via the `OMNISIGN_TIMESTAMP_PASSWORD` environment variable
-	 * (enabled by `autoEnvvarPrefix`), the value is readable in `/proc/<pid>/environ` on Linux
+	 * The value can also come from [TIMESTAMP_PASSWORD_ENVVAR]. That name is fixed rather than
+	 * inferred from `autoEnvvarPrefix`, so it is the same on every command that takes this group.
+	 *
+	 * **Security note:** A value in the environment is readable in `/proc/<pid>/environ` on Linux
 	 * by the same OS user. Prefer the OS credential store for long-lived credentials.
 	 */
 	val timestampPassword by option(
 		"--timestamp-password",
-		help = "Timestamp server HTTP Basic password override (in-memory only, not persisted)"
+		help = "Timestamp server HTTP Basic password override (in-memory only, not persisted). " +
+				"Use '-' to prompt with hidden input. Also read from $TIMESTAMP_PASSWORD_ENVVAR.",
+		envvar = TIMESTAMP_PASSWORD_ENVVAR
 	)
 	
 	/** Override the timestamp server request timeout (milliseconds) for this operation. */
@@ -141,5 +145,10 @@ class OperationConfigOptions : OptionGroup(
 			disabledHashAlgorithms = disableHashAlgorithm.toSet(),
 			disabledEncryptionAlgorithms = disableEncryptionAlgorithm.toSet()
 		)
+	}
+
+	companion object {
+		/** Environment variable that supplies [timestampPassword] on every command that takes this group. */
+		const val TIMESTAMP_PASSWORD_ENVVAR = "OMNISIGN_TIMESTAMP_PASSWORD"
 	}
 }

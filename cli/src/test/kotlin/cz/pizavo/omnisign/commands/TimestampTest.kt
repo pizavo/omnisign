@@ -8,7 +8,9 @@ import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
+import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
@@ -25,6 +27,7 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.coEvery
 import io.mockk.mockk
+import io.mockk.slot
 import org.koin.dsl.module
 import java.io.File
 
@@ -146,6 +149,29 @@ class TimestampTest : FunSpec({
 		result.output shouldContain "\"success\""
 		result.output shouldContain "Extension not possible"
 		result.statusCode shouldBe 1
+	}
+
+	test("timestamp reads the timestamp password from OMNISIGN_TIMESTAMP_PASSWORD") {
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig.copy(
+			global = defaultConfig.global.copy(
+				timestampServer = TimestampServerConfig(url = "https://tsa.example.test", username = "tsa-user")
+			)
+		)
+		val input = tmpFile("env-input.pdf")
+		val output = tmpFile("env-output.pdf")
+		val captured = slot<ArchivingParameters>()
+		coEvery { archivingRepository.extendDocument(capture(captured)) } returns ArchivingResult(
+			outputBytes = ByteArray(0), outputName = output.name,
+			newSignatureLevel = "PAdES-BASELINE-T",
+		).right()
+
+		val result = Omnisign().test(
+			listOf("timestamp", "-f", input.absolutePath, "-o", output.absolutePath),
+			envvars = mapOf("OMNISIGN_TIMESTAMP_PASSWORD" to "tsa-secret")
+		)
+
+		result.statusCode shouldBe 0
+		captured.captured.resolvedConfig?.timestampServer?.runtimePassword?.value shouldBe "tsa-secret"
 	}
 })
 

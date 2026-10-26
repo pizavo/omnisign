@@ -136,8 +136,19 @@ rm -rf /Applications/omnisign-cli
 
 ## Environment Variables
 
-All options can also be set via environment variables using the `OMNISIGN_` prefix.
-For example, `--timestamp-url` becomes `OMNISIGN_TIMESTAMP_URL`.
+Every option can also be read from an environment variable. The name is `OMNISIGN_`, then the
+command path, then the option's long name, upper-cased with dashes turned into underscores:
+`--timestamp-url` on `sign` is `OMNISIGN_SIGN_TIMESTAMP_URL`, and the root `--json` flag is
+`OMNISIGN_JSON`.
+
+The two secret options are the exception. Their names are fixed, so one variable serves every
+command that takes the option:
+
+| Variable                      | Option                                                      |
+|-------------------------------|-------------------------------------------------------------|
+| `OMNISIGN_TIMESTAMP_PASSWORD` | `--timestamp-password` on `sign`, `timestamp` and `validate` |
+| `OMNISIGN_KEYSTORE_PASSWORD`  | `--keystore-password` on `sign`                             |
+
 Explicit command-line options always take precedence over environment variables.
 
 ## Command Reference
@@ -890,7 +901,7 @@ TSA credentials supplied here are held in memory only and are never written to d
 | `-L, --signature-level <level>`         | Signature level override                                                 |
 | `--timestamp-url <url>`                 | TSA URL override                                                         |
 | `--timestamp-username <user>`           | TSA HTTP Basic username override                                         |
-| `--timestamp-password <pass>`           | TSA HTTP Basic password override (in-memory only)                        |
+| `--timestamp-password <pass>`           | TSA HTTP Basic password override (in-memory only); `-` prompts, or set `OMNISIGN_TIMESTAMP_PASSWORD` |
 | `--timestamp-timeout <ms>`              | TSA request timeout override in milliseconds                             |
 | `--validation-policy <type>`            | Validation policy type override                                          |
 | `--no-global-tls`                       | Exclude global trusted lists; use only profile-level TLs                 |

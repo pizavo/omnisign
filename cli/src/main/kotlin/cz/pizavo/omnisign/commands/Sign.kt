@@ -68,7 +68,8 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 		"--keystore-password",
 		help = "Password for --keystore (in-memory only, never persisted). Use '-' to prompt with hidden input; " +
 				"omit to be prompted only when the keystore is password-protected. Also read from " +
-				"OMNISIGN_KEYSTORE_PASSWORD."
+				"$KEYSTORE_PASSWORD_ENVVAR.",
+		envvar = KEYSTORE_PASSWORD_ENVVAR
 	)
 
 	private val reason by option("-r", "--reason", help = "Reason for signing (embedded in the signature)")
@@ -278,6 +279,11 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 		echo("Signature ID   : $signatureId")
 		echo("Signature level: $signatureLevel")
 		echo("═══════════════════════════════════════════════════════════════")
+	}
+
+	private companion object {
+		/** Environment variable that supplies [keystorePassword], fixed rather than inferred from the command path. */
+		const val KEYSTORE_PASSWORD_ENVVAR = "OMNISIGN_KEYSTORE_PASSWORD"
 	}
 }
 
