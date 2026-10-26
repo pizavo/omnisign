@@ -2,9 +2,11 @@ package cz.pizavo.omnisign.commands.config.tl.build
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.core.terminal
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.option
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.data.service.TrustedListCompiler
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListDraft
@@ -35,6 +37,8 @@ import java.io.File
  * Progress is persisted after each completed TSP so the session can be
  * resumed via the non-interactive subcommands.  If the user presses Ctrl+C
  * at any point the in-progress draft is deleted and the process exits cleanly.
+ * A TSP that cannot be saved stops the wizard instead, with status 1, and the
+ * draft is kept with the TSPs saved before it.
  */
 class TrustedListBuildCreate : CliktCommand(name = "create"), KoinComponent {
 	private val manageTl: ManageTrustedListsUseCase by inject()
@@ -103,9 +107,7 @@ class TrustedListBuildCreate : CliktCommand(name = "create"), KoinComponent {
 			schemeName = schemeName,
 			schemeInformationUri = schemeInformationUri,
 		)
-		manageTl.upsertDraft(draft).onLeft { e ->
-			echo("❌ Failed to save draft: ${e.message}", err = true); return@runBlocking
-		}
+		manageTl.upsertDraft(draft).onLeft { failWith(it, "Failed to save draft") }
 		draftCreated.store(true)
 		
 		t.println("\n── Step 2: Trust Service Providers ──────────────────────────")
@@ -149,7 +151,10 @@ class TrustedListBuildCreate : CliktCommand(name = "create"), KoinComponent {
 				services = services,
 			)
 			manageTl.upsertTsp(name, tsp).fold(
-				ifLeft = { e -> echo("❌ Failed to save TSP: ${e.message}", err = true) },
+				ifLeft = { error ->
+					Runtime.getRuntime().removeShutdownHook(shutdownHook)
+					failWith(error, "Failed to save TSP '$tspName'")
+				},
 				ifRight = { t.println("\n  ✅ TSP '$tspName' saved (${services.size} service(s)).") }
 			)
 			
@@ -181,14 +186,14 @@ class TrustedListBuildCreate : CliktCommand(name = "create"), KoinComponent {
 		val outputFile = File(outPathRaw)
 		
 		runCatching { compiler.compileTo(draft, outputFile) }.fold(
-			onFailure = { e -> echo("❌ Compilation failed: ${e.message}", err = true); return@runBlocking },
+			onFailure = { e -> echo("❌ Compilation failed: ${e.message}", err = true); throw ProgramResult(1) },
 			onSuccess = { t.println("\n✅ Trusted list written to: ${outputFile.absolutePath}") }
 		)
 		
 		if (t.confirm("Register this file as a custom trusted list source?", default = true)) {
 			val scope = profile?.let { "profile '$it'" } ?: "global config"
 			manageTl.addTrustedList(CustomTrustedListConfig(name, outputFile.toURI().toString()), profile).fold(
-				ifLeft = { e -> echo("❌ Failed to register: ${e.message}", err = true) },
+				ifLeft = { failWith(it, "Failed to register") },
 				ifRight = {
 					t.println("✅ Registered as trusted list '$name' in $scope.")
 					t.println("⚠️ No signing certificate — TL signature will not be verified.")

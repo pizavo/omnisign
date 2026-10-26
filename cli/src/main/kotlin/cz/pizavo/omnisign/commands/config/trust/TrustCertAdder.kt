@@ -7,6 +7,7 @@ import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.path
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.TrustStore
@@ -45,11 +46,7 @@ class TrustCertAdder : CliktCommand(name = "add"), KoinComponent {
 
 	override fun run(): Unit = runBlocking {
 		trustStore.add(TrustScope.of(profile), cert.readBytes(), type, source = cert.toString()).fold(
-			ifLeft = { error ->
-				echo("❌ ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-			},
+			ifLeft = { failWith(it) },
 			ifRight = { trusted ->
 				val scope = profile?.let { "profile '$it'" } ?: "global scope"
 				echo("✅ Trusted ${type.name} certificate added to $scope.")

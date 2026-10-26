@@ -2,10 +2,12 @@ package cz.pizavo.omnisign.commands.config.tl.build
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.path
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.data.service.TrustedListCompiler
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.usecase.ManageTrustedListsUseCase
@@ -40,15 +42,11 @@ class TrustedListBuildCompile : CliktCommand(name = "compile"), KoinComponent {
 	
 	override fun run(): Unit = runBlocking {
 		manageTl.getDraft(draftName).fold(
-			ifLeft = { error ->
-				echo("❌ ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-			},
+			ifLeft = { failWith(it) },
 			ifRight = { draft ->
 				val outputFile = out?.toFile() ?: File("$draftName.xml")
 				runCatching { compiler.compileTo(draft, outputFile) }
-					.onFailure { e -> echo("❌ Compilation failed: ${e.message}", err = true); return@runBlocking }
+					.onFailure { e -> echo("❌ Compilation failed: ${e.message}", err = true); throw ProgramResult(1) }
 				echo("✅ Trusted list written to: ${outputFile.absolutePath}")
 				if (register) {
 					val scope = profile?.let { "profile '$it'" } ?: "global config"
@@ -56,11 +54,7 @@ class TrustedListBuildCompile : CliktCommand(name = "compile"), KoinComponent {
 						CustomTrustedListConfig(draftName, outputFile.toURI().toString()),
 						profile
 					).fold(
-						ifLeft = { error ->
-							echo("❌ Failed to register: ${error.message}", err = true)
-							error.details?.let { echo("Details: $it", err = true) }
-							error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-						},
+						ifLeft = { failWith(it, "Failed to register") },
 						ifRight = {
 							echo("✅ Registered as trusted list '$draftName' in $scope.")
 							echo("⚠️ No signing certificate — TL signature will not be verified.")

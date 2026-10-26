@@ -2,8 +2,10 @@ package cz.pizavo.omnisign.commands.config.trust
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.option
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import kotlinx.coroutines.runBlocking
@@ -35,21 +37,23 @@ class TrustCertRemover : CliktCommand(name = "remove"), KoinComponent {
 		val scope = TrustScope.of(profile)
 		val scopeLabel = profile?.let { "profile '$it'" } ?: "global scope"
 		val matches = trustStore.list(scope).fold(
-			ifLeft = { emptyList() },
+			ifLeft = { failWith(it) },
 			ifRight = { certs -> certs.filter { it.fingerprint.startsWith(fingerprint) } },
 		)
 		when (matches.size) {
-			0 -> echo("❌ No trusted certificate matching '$fingerprint' in $scopeLabel.", err = true)
+			0 -> {
+				echo("❌ No trusted certificate matching '$fingerprint' in $scopeLabel.", err = true)
+				throw ProgramResult(1)
+			}
 			1 -> trustStore.remove(scope, matches.first().fingerprint).fold(
-				ifLeft = { error ->
-					echo("❌ ${error.message}", err = true)
-					error.details?.let { echo("Details: $it", err = true) }
-					error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-				},
+				ifLeft = { failWith(it) },
 				ifRight = { echo("✅ Trusted certificate ${matches.first().fingerprint} removed from $scopeLabel.") },
 			)
 
-			else -> echo("❌ '$fingerprint' is ambiguous (${matches.size} matches); use a longer prefix.", err = true)
+			else -> {
+				echo("❌ '$fingerprint' is ambiguous (${matches.size} matches); use a longer prefix.", err = true)
+				throw ProgramResult(1)
+			}
 		}
 	}
 }

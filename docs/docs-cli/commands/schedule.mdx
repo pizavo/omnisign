@@ -76,6 +76,10 @@ with which settings (TSA profile, buffer window, notification behavior).
 | `schedule job list`          | List all configured renewal jobs |
 | `schedule job remove <name>` | Remove a renewal job             |
 
+A `schedule job` subcommand that fails says why on stderr and exits with status 1, whether `add`
+rejects a glob, no job has the given name, or the configuration could not be saved. A provisioning
+script can therefore stop instead of installing the scheduler for a job that was never stored.
+
 ### `schedule job add` options
 
 | Option                  | Description                                                                                                                                                                                                                    |

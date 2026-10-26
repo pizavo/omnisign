@@ -5,6 +5,7 @@ import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.model.config.TrustServiceProviderDraft
 import cz.pizavo.omnisign.domain.model.config.TrustedListAddress
 import cz.pizavo.omnisign.domain.usecase.ManageTrustedListsUseCase
@@ -62,11 +63,7 @@ class TrustedListBuildTspAdd : CliktCommand(name = "add"), KoinComponent {
 			infoUrl = infoUrl ?: "",
 		)
 		manageTl.upsertTsp(draftName, tsp).fold(
-			ifLeft = { error ->
-				echo("❌ ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-			},
+			ifLeft = { failWith(it) },
 			ifRight = {
 				echo("✅ TSP '$tspName' added to draft '$draftName'.")
 				echo("   Add services with: config tl build service add $draftName \"$tspName\" ...")

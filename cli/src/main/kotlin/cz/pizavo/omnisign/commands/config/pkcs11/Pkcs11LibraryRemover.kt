@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.commands.config.pkcs11
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.arguments.argument
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.usecase.ManagePkcs11LibrariesUseCase
 import kotlinx.coroutines.runBlocking
 import org.koin.core.component.KoinComponent
@@ -21,11 +22,7 @@ class Pkcs11LibraryRemover : CliktCommand(name = "remove"), KoinComponent {
 
     override fun run(): Unit = runBlocking {
         managePkcs11.removeLibrary(name).fold(
-            ifLeft = { error ->
-                echo("❌ ${error.message}", err = true)
-                error.details?.let { echo("Details: $it", err = true) }
-                error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-            },
+            ifLeft = { failWith(it) },
             ifRight = { echo("✅ PKCS#11 library '$name' removed.") }
         )
     }

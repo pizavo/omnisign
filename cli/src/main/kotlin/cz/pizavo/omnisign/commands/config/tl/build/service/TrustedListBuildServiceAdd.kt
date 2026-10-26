@@ -6,6 +6,7 @@ import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.path
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.model.config.TrustServiceDraft
 import cz.pizavo.omnisign.domain.usecase.ManageTrustedListsUseCase
 import kotlinx.coroutines.runBlocking
@@ -39,11 +40,7 @@ class TrustedListBuildServiceAdd : CliktCommand(name = "add"), KoinComponent {
 	override fun run(): Unit = runBlocking {
 		manageTl.upsertService(draftName, tspName, TrustServiceDraft(serviceName, typeId, status, cert.toString()))
 			.fold(
-				ifLeft = { error ->
-					echo("❌ ${error.message}", err = true)
-					error.details?.let { echo("Details: $it", err = true) }
-					error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-				},
+				ifLeft = { failWith(it) },
 				ifRight = { echo("✅ Service '$serviceName' added to TSP '$tspName' in draft '$draftName'.") }
 			)
 	}

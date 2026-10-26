@@ -8,6 +8,9 @@ Register custom PKCS#11 middleware library paths for hardware token discovery.
 Libraries registered here are merged into token discovery alongside the OS-native
 autodiscovery results and the built-in fallback candidate list.
 
+A subcommand that fails says why on stderr and exits with status 1, whether no library has the
+given name or the configuration could not be saved.
+
 ## `config pkcs11 add`
 
 | Option                 | Description                                                                            |
