@@ -67,6 +67,7 @@ private val MESSAGE_RES: Map<MessageKey, StringResource> = mapOf(
 	MessageKey.CONFIG_LOAD_FROM_SERVER_FAILED to Res.string.err_config_load_from_server_failed,
 	MessageKey.CONFIG_SAVE_NOT_SUPPORTED_WEB to Res.string.err_config_save_not_supported_web,
 	MessageKey.CONFIG_SERVER_READ_ONLY to Res.string.err_config_server_read_only,
+	MessageKey.CONFIG_PASSWORD_STORE_FAILED to Res.string.err_config_password_store_failed,
 	MessageKey.CONFIG_MISSING_CERTIFICATE_BYTES to Res.string.err_config_missing_certificate_bytes,
 	MessageKey.CONFIG_MISSING_DER_ENTRY to Res.string.err_config_missing_der_entry,
 	MessageKey.CONFIG_ARCHIVE_MISSING_CONFIG_ENTRY to Res.string.err_config_archive_missing_config_entry,

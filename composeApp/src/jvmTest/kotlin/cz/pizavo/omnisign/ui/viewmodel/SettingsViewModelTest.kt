@@ -58,6 +58,7 @@ class SettingsViewModelTest : FunSpec({
 
     beforeTest {
         clearMocks(configRepository, credentialStore, schedulerPort)
+        every { credentialStore.setPassword(any(), any(), any()) } returns Unit.right()
         Dispatchers.setMain(testDispatcher)
     }
 
@@ -208,6 +209,39 @@ class SettingsViewModelTest : FunSpec({
             advanceUntilIdle()
 
             verify { credentialStore.setPassword("omnisign-tsa", "user1", "secret123") }
+        }
+    }
+
+    test("save shows the error and saves nothing when the credential store does not keep the TSA password") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+            val failure = ConfigurationError.passwordStoreFailed("The keyring is locked")
+            every { credentialStore.setPassword(any(), any(), any()) } returns failure.left()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.updateState {
+                it.copy(
+                    timestampEnabled = true,
+                    timestampUrl = "https://tsa.example.com",
+                    timestampUsername = "user1",
+                    timestampPassword = "secret123",
+                    defaultHashAlgorithm = HashAlgorithm.SHA384,
+                )
+            }
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            advanceUntilIdle()
+
+            successCalled shouldBe false
+            coVerify(exactly = 0) { configRepository.saveConfig(any()) }
+            vm.state.value.saving shouldBe false
+            vm.state.value.error shouldBe SettingsError.Domain(failure.text)
         }
     }
 

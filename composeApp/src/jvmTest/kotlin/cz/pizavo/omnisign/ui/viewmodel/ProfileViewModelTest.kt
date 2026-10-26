@@ -531,6 +531,7 @@ class ProfileViewModelTest : FunSpec({
 
             val credStore: CredentialStore = mockk(relaxed = true)
             io.mockk.every { credStore.getPassword(any(), any()) } returns null
+            io.mockk.every { credStore.setPassword(any(), any(), any()) } returns Unit.right()
 
             val vm = ProfileViewModel(manageProfile, getConfig, credStore)
             advanceUntilIdle()
@@ -551,6 +552,43 @@ class ProfileViewModelTest : FunSpec({
 
             io.mockk.verify { credStore.setPassword("omnisign-tsa", "admin", "s3cret") }
             vm.state.value.mode shouldBe ProfilePanelMode.Listing
+        }
+    }
+
+    test("saveEdit keeps editing and saves nothing when the credential store does not keep the TSA password") {
+        runTest(testDispatcher) {
+            val config = AppConfig(profiles = mapOf("dev" to profile("dev")))
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+
+            val credStore: CredentialStore = mockk()
+            io.mockk.every { credStore.getPassword(any(), any()) } returns null
+            io.mockk.every { credStore.setPassword(any(), any(), any()) } returns
+                ConfigurationError.passwordStoreFailed("The keyring is locked").left()
+
+            val vm = ProfileViewModel(manageProfile, getConfig, credStore)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState {
+                it.copy(
+                    timestampEnabled = true,
+                    timestampUrl = "https://tsa.example.com",
+                    timestampUsername = "admin",
+                    timestampPassword = "s3cret",
+                )
+            }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            coVerify(exactly = 0) { configRepository.saveConfig(any()) }
+            vm.state.value.mode shouldBe ProfilePanelMode.Editing("dev")
+            val editState = vm.state.value.editState.shouldNotBeNull()
+            editState.error shouldBe "Failed to store the password in the system credential store"
+            editState.saving shouldBe false
         }
     }
 

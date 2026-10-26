@@ -86,6 +86,8 @@ Override the global TSA for operations using this profile:
 :::note
 The TSA password is stored in the operating system's native credential store — never in
 the configuration file. A stored-password indicator appears when a credential already exists.
+The password is stored before the profile is saved; if the credential store does not keep it,
+the editor shows an error and saves nothing.
 :::
 
 ### Disabled algorithms

@@ -2,9 +2,12 @@ package cz.pizavo.omnisign.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import arrow.core.flatMap
+import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.error.localizableText
+import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.service.CredentialStore
@@ -307,16 +310,17 @@ class ProfileViewModel(
     /**
      * Persist the current edit state as a profile and return to the listing view.
      *
-     * Converts [ProfileEditState] to a [ProfileConfig], calls [ManageProfileUseCase.upsert],
-     * and on success stores the TSA password in the OS credential store (if provided)
-     * then refreshes the profile list.
+     * Stores a newly entered TSA password in the OS credential store first, then converts
+     * [ProfileEditState] to a [ProfileConfig], calls [ManageProfileUseCase.upsert] and refreshes
+     * the profile list. A password the store does not keep becomes the error and nothing is saved,
+     * so the profile never names a password that is not there.
      */
     fun saveEdit() {
         val editState = _state.value.editState ?: return
         _state.update { it.copy(editState = editState.copy(saving = true, error = null)) }
         viewModelScope.launch {
             val profile = editState.toProfileConfig()
-            manageProfileUseCase.upsert(profile).fold(
+            storeTsaPasswordIfNeeded(editState).flatMap { manageProfileUseCase.upsert(profile) }.fold(
                 ifLeft = { error ->
                     _state.update {
                         it.copy(editState = editState.copy(saving = false, error = error.message))
@@ -337,7 +341,6 @@ class ProfileViewModel(
                     if (certError != null) {
                         _state.update { it.copy(editState = editState.copy(saving = false, error = certError)) }
                     } else {
-                        storeTsaPasswordIfNeeded(editState)
                         _initialEditState.value = null
                         _state.update {
                             it.copy(
@@ -363,11 +366,15 @@ class ProfileViewModel(
     /**
      * Persist the TSA password from [editState] into the OS credential store
      * when a new password was entered and a username is present.
+     *
+     * @return `Unit` when there was nothing to store or the store kept the password, otherwise the
+     *   store's error.
      */
-    private fun storeTsaPasswordIfNeeded(editState: ProfileEditState) {
-        if (editState.timestampPassword.isEmpty()) return
-        val username = editState.timestampUsername.ifBlank { return }
-        credentialStore?.setPassword(TSA_CREDENTIAL_SERVICE, username, editState.timestampPassword)
+    private fun storeTsaPasswordIfNeeded(editState: ProfileEditState): OperationResult<Unit> {
+        if (editState.timestampPassword.isEmpty()) return Unit.right()
+        val username = editState.timestampUsername.ifBlank { return Unit.right() }
+        return credentialStore?.setPassword(TSA_CREDENTIAL_SERVICE, username, editState.timestampPassword)
+            ?: Unit.right()
     }
 
     companion object {

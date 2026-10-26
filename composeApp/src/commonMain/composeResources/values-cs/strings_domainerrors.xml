@@ -54,6 +54,7 @@
 	<string name="err_config_load_from_server_failed">Nepodařilo se načíst konfiguraci ze serveru</string>
 	<string name="err_config_save_not_supported_web">Ukládání konfigurace není ve webové verzi podporováno</string>
 	<string name="err_config_server_read_only">Konfigurace podepisování serveru je pouze pro čtení</string>
+	<string name="err_config_password_store_failed">Nepodařilo se uložit heslo do systémového úložiště přihlašovacích údajů</string>
 	<string name="err_config_missing_certificate_bytes">V úložišti důvěryhodných certifikátů chybí data odkazovaného certifikátu %1$s</string>
 	<string name="err_config_missing_der_entry">Archiv odkazuje na certifikát %1$s, ale jeho položka DER chybí</string>
 	<string name="err_config_archive_missing_config_entry">V archivu konfigurace chybí položka config.*</string>
