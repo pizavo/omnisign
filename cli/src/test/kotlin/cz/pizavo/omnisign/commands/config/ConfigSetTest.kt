@@ -33,7 +33,8 @@ import org.koin.dsl.module
  * silently becoming no-ops: both `--validation-policy` and `--check-revocation` were once declared
  * and reported as saved while never reaching the persisted [ValidationConfig]. The TSA password
  * tests pin that it goes to the keyring, that it is refused rather than saved where no keyring
- * could keep it, and that nothing is saved when the keyring does not keep it.
+ * could keep it, and that nothing is saved when the keyring does not keep it. A configuration that
+ * cannot be saved ends the command with status 1.
  */
 class ConfigSetTest : FunSpec({
 
@@ -175,5 +176,15 @@ class ConfigSetTest : FunSpec({
 
 		updated.timestampServer?.url shouldBe "https://tsa.example.com"
 		updated.timestampServer?.username shouldBe "tsa-user"
+	}
+
+	test("reports a configuration it could not save and exits non-zero") {
+		coEvery { setGlobalConfig(any()) } returns ConfigurationError.saveFailed(details = "disk full").left()
+
+		val result = Omnisign().test(listOf("config", "set", "--check-revocation", "false"))
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "❌ Failed to save configuration: Failed to save configuration"
+		result.stderr shouldContain "Details: disk full"
 	}
 })

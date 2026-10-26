@@ -121,7 +121,7 @@ class ValidateTest : FunSpec({
 		val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
 		
 		result.statusCode shouldBe 1
-		result.stderr shouldContain "Document is corrupted"
+		result.stderr shouldContain "❌ Validation Error: Document is corrupted"
 	}
 	
 	test("validate --json outputs structured JSON on success") {

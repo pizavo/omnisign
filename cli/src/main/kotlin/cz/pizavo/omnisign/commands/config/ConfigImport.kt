@@ -7,6 +7,7 @@ import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.model.config.enums.ConfigFormat
 import cz.pizavo.omnisign.domain.usecase.ConfigArchiveUseCase
 import cz.pizavo.omnisign.domain.usecase.ExportImportConfigUseCase
@@ -67,12 +68,7 @@ class ConfigImport : CliktCommand(name = "import"), KoinComponent {
 		}
 
 		result.fold(
-			ifLeft = { error ->
-				echo("❌ Import failed: ${error.message}", err = true)
-				if (error.details != null) echo("Details: ${error.details}", err = true)
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-				throw ProgramResult(1)
-			},
+			ifLeft = { failWith(it, "Import failed") },
 			ifRight = {
 				val scope = if (all) "full application" else "global"
 				echo("✅ $scope configuration imported from $inputFile")

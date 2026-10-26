@@ -14,6 +14,7 @@ import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.path
 import cz.pizavo.omnisign.cli.OperationConfigOptions
 import cz.pizavo.omnisign.cli.OutputConfig
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.cli.json.JsonValidationResult
 import cz.pizavo.omnisign.cli.json.toJsonError
 import cz.pizavo.omnisign.cli.json.toJsonResult
@@ -101,12 +102,9 @@ class Validate : CliktCommand(
 					error = error.toJsonError()
 						.copy(message = "Configuration Error: ${error.message}")
 				)))
-			} else {
-				echo("❌ Configuration Error: ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+				throw ProgramResult(1)
 			}
-			throw ProgramResult(1)
+			failWith(error, "Configuration Error")
 		}
 		val resolvedConfig = resolvedConfigResult.getOrNull()!!
 
@@ -126,12 +124,9 @@ class Validate : CliktCommand(
 						success = false,
 						error = error.toJsonError()
 					)))
-				} else {
-					echo("❌ Validation Error: ${error.message}", err = true)
-					error.details?.let { echo("Details: $it", err = true) }
-					error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+					throw ProgramResult(1)
 				}
-				throw ProgramResult(1)
+				failWith(error, "Validation Error")
 			},
 			ifRight = { report ->
 				val rawPath = reportOut?.toAbsolutePath()?.toString()

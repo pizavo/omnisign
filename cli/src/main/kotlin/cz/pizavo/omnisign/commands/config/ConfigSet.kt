@@ -2,11 +2,11 @@ package cz.pizavo.omnisign.commands.config
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
-import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.cli.requirePersistentCredentialStore
 import cz.pizavo.omnisign.cli.resolvePasswordOption
 import cz.pizavo.omnisign.cli.storeTimestampPassword
@@ -186,12 +186,7 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 			)
 		}
 		result.fold(
-			ifLeft = { error ->
-				echo("❌ Failed to save configuration: ${error.message}", err = true)
-				if (error.details != null) echo("Details: ${error.details}", err = true)
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-				throw ProgramResult(1)
-			},
+			ifLeft = { failWith(it, "Failed to save configuration") },
 			ifRight = {
 				echo("✅ Global configuration updated.")
 			}

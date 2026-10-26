@@ -5,6 +5,7 @@ import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.service.AlgorithmExpirationChecker
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
@@ -36,12 +37,7 @@ class ProfileShow : CliktCommand(name = "show"), KoinComponent {
 		val activeProfile = getConfig().fold(ifLeft = { null }, ifRight = { it.activeProfile })
 		
 		manageProfile.get(resolvedName).fold(
-			ifLeft = { error ->
-				echo("❌ ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-				throw ProgramResult(1)
-			},
+			ifLeft = { failWith(it) },
 			ifRight = { profile ->
 				val isActive = activeProfile == profile.name
 				val activeLabel = if (isActive) " ◀ active" else ""

@@ -2,7 +2,7 @@ package cz.pizavo.omnisign.commands.config.profile
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
-import com.github.ajalt.clikt.core.ProgramResult
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
 import kotlinx.coroutines.runBlocking
 import org.koin.core.component.KoinComponent
@@ -18,12 +18,7 @@ class ProfileList : CliktCommand(name = "list"), KoinComponent {
 	
 	override fun run(): Unit = runBlocking {
 		manageProfile.list().fold(
-			ifLeft = { error ->
-				echo("❌ ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-				throw ProgramResult(1)
-			},
+			ifLeft = { failWith(it) },
 			ifRight = { profiles ->
 				if (profiles.isEmpty()) {
 					echo("No profiles defined. Create one with: config profile create <name>")

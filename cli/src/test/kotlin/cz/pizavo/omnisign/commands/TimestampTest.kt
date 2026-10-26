@@ -129,7 +129,8 @@ class TimestampTest : FunSpec({
 		val result = Omnisign().test(listOf("timestamp", "-f", input.absolutePath, "-o", output.absolutePath))
 
 		result.statusCode shouldBe 1
-		result.stderr shouldContain "TSA unreachable"
+		result.stderr shouldContain "❌ Extension Error: TSA unreachable"
+		result.stderr shouldContain "Details: Connection refused"
 	}
 
 	test("timestamp with --json outputs JSON on success") {

@@ -9,6 +9,7 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.cli.requirePersistentCredentialStore
 import cz.pizavo.omnisign.cli.resolvePasswordOption
 import cz.pizavo.omnisign.cli.storeTimestampPassword
@@ -169,21 +170,11 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 		}
 		requirePersistentCredentialStore(timestampPassword, credentialStore)
 		manageProfile.get(name).fold(
-			ifLeft = { error ->
-				echo("❌ ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-				throw ProgramResult(1)
-			},
+			ifLeft = { failWith(it) },
 			ifRight = { existing ->
 				val updated = buildPatchedProfile(existing)
 				manageProfile.upsert(updated).fold(
-					ifLeft = { error ->
-						echo("❌ Failed to save profile: ${error.message}", err = true)
-						error.details?.let { echo("Details: $it", err = true) }
-						error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-						throw ProgramResult(1)
-					},
+					ifLeft = { failWith(it, "Failed to save profile") },
 					ifRight = {
 						echo("✅ Profile '$name' updated.")
 					}

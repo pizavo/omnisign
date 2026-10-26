@@ -2,11 +2,11 @@ package cz.pizavo.omnisign.commands.config
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
-import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.model.config.enums.ConfigFormat
 import cz.pizavo.omnisign.domain.usecase.ConfigArchiveUseCase
 import kotlinx.coroutines.runBlocking
@@ -57,12 +57,7 @@ class ConfigExport : CliktCommand(name = "export"), KoinComponent {
 		val result = if (all) archive.exportApp(resolvedFormat) else archive.exportGlobal(resolvedFormat)
 
 		result.fold(
-			ifLeft = { error ->
-				echo("❌ Export failed: ${error.message}", err = true)
-				if (error.details != null) echo("Details: ${error.details}", err = true)
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-				throw ProgramResult(1)
-			},
+			ifLeft = { failWith(it, "Export failed") },
 			ifRight = { bytes ->
 				Path.of(outputFile).writeBytes(bytes)
 				val scope = if (all) "full application" else "global"

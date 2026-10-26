@@ -6,6 +6,7 @@ import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.model.config.enums.ConfigFormat
 import cz.pizavo.omnisign.domain.usecase.ConfigArchiveUseCase
 import cz.pizavo.omnisign.domain.usecase.ExportImportConfigUseCase
@@ -66,12 +67,7 @@ class ProfileImport : CliktCommand(name = "import"), KoinComponent {
 		}
 
 		result.fold(
-			ifLeft = { error ->
-				echo("❌ Import failed: ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-				throw ProgramResult(1)
-			},
+			ifLeft = { failWith(it, "Import failed") },
 			ifRight = { savedName ->
 				echo("✅ Profile '$savedName' imported from $inputFile")
 			}

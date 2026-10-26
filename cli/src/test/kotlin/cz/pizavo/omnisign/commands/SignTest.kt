@@ -173,7 +173,8 @@ class SignTest : FunSpec({
 		val result = Omnisign().test(listOf("sign", "-c", "my-cert", "-f", input.absolutePath, "-o", output.absolutePath))
 		
 		result.statusCode shouldBe 1
-		result.stderr shouldContain "Token not found"
+		result.stderr shouldContain "❌ Signing Error: Token not found"
+		result.stderr shouldContain "Details: No PKCS#11 token available"
 	}
 	
 	test("sign with --json outputs JSON on success") {

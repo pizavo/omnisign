@@ -2,8 +2,8 @@ package cz.pizavo.omnisign.commands.config
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
-import com.github.ajalt.clikt.core.ProgramResult
 import arrow.core.getOrElse
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.TrustStore
@@ -26,12 +26,7 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 	
 	override fun run(): Unit = runBlocking {
 		getConfig().fold(
-			ifLeft = { error ->
-				echo("❌ Failed to load configuration: ${error.message}", err = true)
-				if (error.details != null) echo("Details: ${error.details}", err = true)
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-				throw ProgramResult(1)
-			},
+			ifLeft = { failWith(it, "Failed to load configuration") },
 			ifRight = { config ->
 				echo("═══════════════════════════════════════════════════════════════")
 				echo("                    APPLICATION CONFIGURATION")
