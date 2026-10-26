@@ -9,7 +9,11 @@
 # dollar-brace syntax (for example ${...}), expanded at load, so a secret lives in the
 # environment rather than this file. The TSA password works this way (see
 # timestampServer.password below). A referenced-but-unset value fails startup, naming the
-# variable. Substitution applies only to values, not to keys or comments.
+# variable. Substitution applies only to values, not to keys or comments. On Linux and
+# macOS, the value of a variable whose name starts with OMNISIGN_ may instead be kept in a
+# file: set the variable's name followed by _FILE to its path (such as
+# OMNISIGN_TSA_PASSWORD_FILE), or pass a systemd credential of that name. The file must be
+# owned by the server's user with mode 0600, or by root with mode 0640 or stricter.
 #
 # Unknown keys fail startup (no silent typos). The desktop-only AppConfig fields
 # (activeProfile, tlDrafts, renewalJobs, schedulerConfig) are intentionally not part of

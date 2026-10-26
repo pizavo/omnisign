@@ -35,9 +35,10 @@ private val logger = KotlinLogging.logger {}
  * **Environment variable substitution.** The YAML is parsed to a tree, then any `${NAME}`
  * placeholder in a string value is replaced (keys and comments are never substituted). The
  * variable name must match `[A-Z_][A-Z0-9_]*` (uppercase, digits, underscores). This is
- * how a small number of non-secret config values (e.g. an external base URL) can come
- * from the environment. Operator secrets are not loaded this way — see [ServerSecrets].
- * Missing referenced env vars cause load to fail with a clear error.
+ * how a small number of config values (e.g. an external base URL, or `auth.oauthStateSecret`)
+ * can come from the environment; the dedicated operator secrets are read by [ServerSecrets]
+ * instead. An `OMNISIGN_` name may also come from a file or a systemd credential, see
+ * [placeholderResolver]. Missing referenced env vars cause load to fail with a clear error.
  *
  * **Strict unknown-key parsing.** Jackson is configured with
  * [DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES] enabled so any YAML key that does
@@ -50,7 +51,7 @@ private val logger = KotlinLogging.logger {}
  * every misconfiguration through an explicit fix instead of through unnoticed
  * fail-open behavior.
  */
-class ServerConfigLoader(private val env: (String) -> String? = System::getenv) {
+class ServerConfigLoader(private val env: (String) -> String? = placeholderResolver()) {
 
 	private val mapper: ObjectMapper = ObjectMapper(YAMLFactory())
 		.registerKotlinModule()

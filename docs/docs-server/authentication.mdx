@@ -38,10 +38,12 @@ auth:
 ```
 
 The JWT signing secret comes from **`OMNISIGN_JWT_SECRET`** (required when auth is enabled, and at
-least **64 bytes** — generate it with `openssl rand -base64 64`) — never from YAML.
-`oauthStateSecret` is generated the same way and supplied through `${VAR}` substitution. Entries in
-`allowedRedirectUris` must be absolute URLs (`http` only for loopback hosts) and are matched
-**exactly** — not by prefix or host. See [Configuration → Secrets](configuration#secrets).
+least **64 bytes** — generate it with `openssl rand -base64 64`) — never from YAML. Like every
+secret, it can also be kept in a [file](configuration#secrets-in-files) that
+`OMNISIGN_JWT_SECRET_FILE` names. `oauthStateSecret` is generated the same way and supplied through
+`${VAR}` substitution. Entries in `allowedRedirectUris` must be absolute URLs (`http` only for
+loopback hosts) and are matched **exactly** — not by prefix or host. See
+[Configuration → Secrets](configuration#secrets).
 
 ## OIDC providers
 

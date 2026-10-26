@@ -46,6 +46,7 @@ private abstract class TimestampServerConfigMixin {
  * unset variable referenced by a value fails fast. Any value can therefore come from the
  * environment, including the TSA password (`password: "${OMNISIGN_TSA_PASSWORD}"`, see
  * [TimestampServerConfigMixin]) — so a secret is referenced by the file but never stored in it.
+ * An `OMNISIGN_` name may also come from a file or a systemd credential, see [placeholderResolver].
  *
  * **Strict parsing.** [DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES] is enabled, so any
  * key that does not map to a property — including the `AppConfig` fields excluded from the
@@ -67,10 +68,10 @@ private abstract class TimestampServerConfigMixin {
  * `PADES_BASELINE_T` signature level all throw, so a misconfiguration stops the server at
  * startup instead of surfacing on the first request.
  *
- * @param env Environment-variable resolver, injectable for testing. Defaults to the process
- *   environment.
+ * @param env Environment-variable resolver, injectable for testing. Defaults to
+ *   [placeholderResolver] over the process environment.
  */
-class SigningConfigLoader(private val env: (String) -> String? = System::getenv) {
+class SigningConfigLoader(private val env: (String) -> String? = placeholderResolver()) {
 
 	/**
 	 * Load and resolve the signing configuration referenced by [path].

@@ -23,8 +23,8 @@ details to clients. Keep it `false` everywhere except local debugging on `127.0.
 
 A `tls:` block enables direct HTTPS with **TLS 1.2/1.3 and HTTP/2** (ALPN). To force TLS 1.3 only,
 launch with `-Djdk.tls.disabledAlgorithms=TLSv1,TLSv1.1,TLSv1.2`. Keystore and private-key passwords
-come from environment variables (see [Secrets](configuration#secrets)); a `.p12`/`.pfx` path is read
-as PKCS#12, anything else as JKS.
+come from the environment, never from YAML (see [Secrets](configuration#secrets)); a `.p12`/`.pfx`
+path is read as PKCS#12, anything else as JKS.
 
 Enable **HSTS** (`tls.hsts`) only when *all* traffic is HTTPS — sending it over plain HTTP can lock
 users out. Start with a short `maxAgeSeconds` (e.g., 300) and raise to a year once stable. Behind a
@@ -80,8 +80,10 @@ Combine the allowlist with [authentication](authentication) for any internet-fac
 
 - **Strict config parsing** — unknown `server.yml` keys fail startup so a typo can't silently disable
   a defense (see [Configuration](configuration)).
-- **Secrets via environment only** — JWT secret, OIDC client secrets, TLS, TSA, and file
-  signing-keystore passwords are never read from YAML.
+- **Secrets never in YAML** — the JWT secret, OIDC client secrets, and the TLS, TSA, and file
+  signing-keystore passwords come from environment variables, from files those variables name, or
+  from systemd credentials. A secret file is read only if its owner and mode keep it private (see
+  [Secrets in files](configuration#secrets-in-files)).
 - **No keychain without `SIGN`** — a server that only validates or timestamps never opens the
   operating system's keychain. A signing server does, because the server cannot prompt and that is
   where it looks up the PIN of a PIN-protected PKCS#11 token: service `omnisign-token`, with the
