@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.data.repository.DssServiceFactory
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.trust.TrustedListRefreshFailure
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.delay
@@ -99,13 +100,19 @@ class TrustedListRefreshScheduler(
 	 * regardless of cache freshness (the user explicitly asked for fresh data),
 	 * after priming so a freshly added profile's lists are picked up even if they
 	 * were never warmed.
+	 *
+	 * @return The sources the hard refresh could not load, or `null` when every
+	 *   one of them loaded. A source that failed only while priming but then
+	 *   loaded is not among them.
+	 * @throws Exception when the refresh cannot run at all, after logging it.
 	 */
-	suspend fun refreshNow() {
+	suspend fun refreshNow(): TrustedListRefreshFailure? {
 		logger.info { "Manual hard trusted-list refresh requested" }
 		try {
 			prime()
-			factory.forceRefreshTrustedSources()
+			val failure = factory.forceRefreshTrustedSources()
 			logger.info { "Manual hard trusted-list refresh completed" }
+			return failure
 		} catch (e: Exception) {
 			logger.error(e) { "Manual hard trusted-list refresh failed" }
 			throw e

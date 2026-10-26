@@ -97,13 +97,13 @@ class TrustedSourceRegistryTest : FunSpec({
 		registry.shutdown()
 	}
 
-	test("refreshAll and forceRefreshAll stamp neither success nor failure when no sources are retained") {
+	test("refreshAll and forceRefreshAll stamp and report neither success nor failure when no sources are retained") {
 		val signal = TrustedListRefreshSignal()
 		val emptyRegistry = TrustedSourceRegistry(signal)
 
 		emptyRegistry.warmUp(useEuLotl = false, customTls = emptyList())
 		emptyRegistry.refreshAll()
-		emptyRegistry.forceRefreshAll()
+		emptyRegistry.forceRefreshAll() shouldBe null
 
 		signal.lastRefreshAt.value shouldBe null
 		signal.lastFailure.value shouldBe null

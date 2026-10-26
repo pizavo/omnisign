@@ -10,7 +10,7 @@ not part of the eIDAS trust framework.
 
 `add`, `list` and `remove`, and every `build` subcommand, say why on stderr and exit with status 1
 when they fail, whether no profile, trusted list or draft has the given name or the configuration
-could not be saved.
+could not be saved. So does `refresh` when a trusted list cannot be refreshed.
 
 ## `config tl add`
 
@@ -49,6 +49,18 @@ refreshed cache instead of paying the download on a validation's critical path.
 ```bash
 omnisign config tl refresh
 ```
+
+When a list cannot be refreshed, the command names it on stderr and exits with status 1, after
+refreshing the others:
+
+```text
+❌ 2 trusted lists could not be refreshed:
+  • EU list of trusted lists (LOTL)
+  • my-org-tl
+```
+
+It also exits with status 1, saying why, when the refresh cannot run at all, for example because a
+custom list's signing certificate cannot be read.
 
 ## `config tl build` — Build custom trusted lists
 

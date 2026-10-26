@@ -42,9 +42,8 @@ interface TrustedListRefreshPort {
 	 * The most recent trusted-list refresh that failed to obtain usable trust (e.g.
 	 * the app was offline on a cold cache, or a source's download threw), or `null`
 	 * if none has failed this process. A fresh non-null value is the desktop's cue to
-	 * notify the user: the [TrustedListRefreshFailure] subtype picks the message, and
-	 * [TrustedListRefreshFailure.CustomList.name] names a lone failed custom list. Always
-	 * `null` on targets without a DSS backend (web).
+	 * notify the user: the [TrustedListRefreshFailure] subtype picks the message and names the
+	 * custom lists that failed. Always `null` on targets without a DSS backend (web).
 	 */
 	val lastFailure: StateFlow<TrustedListRefreshFailure?>
 
@@ -52,6 +51,13 @@ interface TrustedListRefreshPort {
 	 * Trigger an immediate online refresh of every retained trusted source and
 	 * suspend until it completes. Safe to call repeatedly; concurrent callers
 	 * coalesce on the registry's per-entry locks.
+	 *
+	 * The outcome is also published through [lastRefreshAt] and [lastFailure], which may combine it
+	 * with another refresh running at the same time; the returned value covers this refresh alone.
+	 *
+	 * @return The sources this refresh could not load, or `null` when every one of them loaded.
+	 * @throws Exception when the refresh cannot run at all, such as when a custom list's signing
+	 *   certificate cannot be read.
 	 */
-	suspend fun refreshNow()
+	suspend fun refreshNow(): TrustedListRefreshFailure?
 }

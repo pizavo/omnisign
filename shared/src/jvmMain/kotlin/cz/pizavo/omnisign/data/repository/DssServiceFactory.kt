@@ -10,6 +10,7 @@ import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.text.MessageKey
+import cz.pizavo.omnisign.domain.model.trust.TrustedListRefreshFailure
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import eu.europa.esig.dss.alert.LogOnStatusAlert
 import eu.europa.esig.dss.alert.StatusAlert
@@ -508,10 +509,11 @@ class DssServiceFactory(
 	 * re-download regardless of cache freshness. Backs the user-initiated
 	 * "Refresh now" (desktop) and `config tl refresh` (CLI); the scheduled cycle
 	 * uses the cache-gated [refreshTrustedSources] instead.
+	 *
+	 * @return The sources that could not be loaded, or `null` when every one of them loaded.
 	 */
-	fun forceRefreshTrustedSources() {
+	fun forceRefreshTrustedSources(): TrustedListRefreshFailure? =
 		trustedSources.forceRefreshAll()
-	}
 	
 	/**
 	 * Whether any retained trusted source failed to load its trust (see

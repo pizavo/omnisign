@@ -247,10 +247,18 @@ class TrustedSourceRegistry(
 	 * list, then synchronize the result into the entry's stable source. Genuinely
 	 * heavy by design; that is what the user asked for. The retained job and its
 	 * cheap cache are left untouched for the scheduled cycle.
+	 *
+	 * The outcome is recorded on the signal as [refreshAll] records it, and also
+	 * returned, because the session flush may merge it with the failures of an
+	 * operation running at the same time.
+	 *
+	 * @return The sources this refresh could not load, or `null` when every one
+	 *   of them loaded or none is retained.
 	 */
-	fun forceRefreshAll() = withProgressSession {
+	fun forceRefreshAll(): TrustedListRefreshFailure? = withProgressSession {
 		logger.info { "Hard refresh: ${entries.size} retained trusted source(s) to re-download" }
 		var loadedAny = false
+		val failed = mutableListOf<RetainedTl>()
 		entries.values.forEach { entry ->
 			entry.lock.withLock {
 				signal.begin(entry.id)
@@ -260,14 +268,24 @@ class TrustedSourceRegistry(
 						setCacheExpirationTime(FORCE_REFRESH_EXPIRATION_MS)
 					}
 					val freshJob = entry.buildJob(entry.source, freshLoader)
-					if (refreshOnline(entry, freshJob)) loadedAny = true
-					else accumulateFailure(entry.displayName)
+					if (refreshOnline(entry, freshJob)) {
+						loadedAny = true
+					} else {
+						accumulateFailure(entry.displayName)
+						failed += entry
+					}
 				} finally {
 					signal.end(entry.id)
 				}
 			}
 		}
-		if (loadedAny) signal.markRefreshed(Clock.System.now())
+		val now = Clock.System.now()
+		if (loadedAny) signal.markRefreshed(now)
+		TrustedListRefreshFailure.of(
+			lotlFailed = failed.any { it.displayName == null },
+			failedCustomNames = failed.mapNotNull { it.displayName },
+			at = now,
+		)
 	}
 
 	/**
