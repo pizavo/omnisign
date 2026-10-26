@@ -27,14 +27,18 @@ import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import eu.europa.esig.dss.spi.x509.CommonTrustedCertificateSource
 import eu.europa.esig.dss.spi.x509.KeyStoreCertificateSource
 import eu.europa.esig.dss.spi.x509.aia.DefaultAIASource
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.slf4j.event.Level
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.KeyStore
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
+import java.util.concurrent.ConcurrentHashMap
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
+
+private val logger = KotlinLogging.logger {}
 
 /**
  * Result of building a [CommonCertificateVerifier] with optional trusted-list wiring.
@@ -70,15 +74,15 @@ class DssServiceFactory(
 	private val trustedSources: TrustedSourceRegistry = TrustedSourceRegistry(),
 ) {
 	
+	private val missingTsaPasswordKeys: MutableSet<String> = ConcurrentHashMap.newKeySet()
+	
 	/**
 	 * Build an [OnlineTSPSource] for [tsConfig], resolving the HTTP Basic password from
 	 * the injected [CredentialStore] when a credential key is configured on the server.
 	 */
 	fun buildTspSource(tsConfig: TimestampServerConfig): OnlineTSPSource {
 		val password = tsConfig.runtimePassword?.value
-			?: tsConfig.credentialKey?.let { key ->
-				credentialStore.getPassword(TSA_CREDENTIAL_SERVICE, key)
-			}
+			?: tsConfig.credentialKey?.let { key -> storedTsaPassword(key) }
 		
 		val dataLoader = TimestampDataLoader().apply {
 			timeoutConnection = tsConfig.timeout
@@ -94,6 +98,23 @@ class DssServiceFactory(
 		}
 		
 		return OnlineTSPSource(tsConfig.url).apply { setDataLoader(dataLoader) }
+	}
+	
+	/**
+	 * Look up the TSA password saved under [key], warning the first time a key has none. The
+	 * request then goes out without credentials, and the TSA's refusal would come unexplained.
+	 */
+	private fun storedTsaPassword(key: String): String? {
+		val password = credentialStore.getPassword(TSA_CREDENTIAL_SERVICE, key)
+		if (password == null && missingTsaPasswordKeys.add(key)) {
+			val noKeyring = if (credentialStore.isPersistent) "" else
+				" No keyring service was found, so a password saved in an earlier session cannot be read."
+			logger.warn {
+				"No timestamp server password is saved for '$key' in the credential store, so the " +
+						"request is sent without one.$noKeyring"
+			}
+		}
+		return password
 	}
 	
 	/**

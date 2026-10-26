@@ -6,7 +6,7 @@ package cz.pizavo.omnisign.domain.service
  * Implementations are expected to delegate to the OS keychain:
  * - Windows: Credential Manager
  * - macOS: Keychain
- * - Linux: libsecret / GNOME Keyring
+ * - Linux: a freedesktop Secret Service provider over D-Bus (GNOME Keyring, KWallet, KeePassXC)
  *
  * All operations are keyed by a `service` name and an `account` identifier so
  * that multiple credentials for the same service can be stored independently.
