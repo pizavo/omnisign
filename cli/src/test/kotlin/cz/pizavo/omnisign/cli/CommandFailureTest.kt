@@ -12,8 +12,8 @@ import io.kotest.matchers.shouldBe
  * Behavioral tests for [failWith], through which CLI commands report an operation that failed.
  *
  * The exit status is what a script relies on, and the lines on stderr are what a reader relies on,
- * so both are pinned: the summary comes before the error's message, the details follow it, and a
- * cause that only repeats the details is left out.
+ * so both are pinned: the summary comes before the error's message unless it is that message, the
+ * details follow it, and a cause that only repeats the details is left out.
  */
 class CommandFailureTest : FunSpec({
 
@@ -45,6 +45,12 @@ class CommandFailureTest : FunSpec({
 		val result = failingWith(ConfigurationError.saveFailed(), summary = "Failed to save profile")
 
 		result.errorLines() shouldBe listOf("❌ Failed to save profile: Failed to save configuration")
+	}
+
+	test("prints a summary that is the message itself only once") {
+		val result = failingWith(ConfigurationError.saveFailed(), summary = "Failed to save configuration")
+
+		result.errorLines() shouldBe listOf("❌ Failed to save configuration")
 	}
 
 	test("follows the message with the details and a cause that adds to them") {

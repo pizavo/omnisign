@@ -184,7 +184,17 @@ class ConfigSetTest : FunSpec({
 		val result = Omnisign().test(listOf("config", "set", "--check-revocation", "false"))
 
 		result.statusCode shouldBe 1
-		result.stderr shouldContain "❌ Failed to save configuration: Failed to save configuration"
+		result.stderr.lines().first() shouldBe "❌ Failed to save configuration"
 		result.stderr shouldContain "Details: disk full"
+	}
+
+	test("says what it could not save when the update is refused") {
+		coEvery { setGlobalConfig(any()) } returns ConfigurationError.cannotDisableDefaultHash("SHA256").left()
+
+		val result = Omnisign().test(listOf("config", "set", "--check-revocation", "false"))
+
+		result.statusCode shouldBe 1
+		result.stderr.lines().first() shouldBe
+			"❌ Failed to save configuration: Cannot disable the default hash algorithm SHA256; change the default first"
 	}
 })
