@@ -68,7 +68,7 @@ class KeyringCredentialStore : CredentialStore {
      *
      * When `false` credentials are kept only in memory for the lifetime of the process.
      */
-    val isNativeBackendAvailable: Boolean get() = keyring != null || secretServiceFallback != null
+    override val isPersistent: Boolean get() = keyring != null || secretServiceFallback != null
 
     override fun setPassword(service: String, account: String, password: String) {
         when {

@@ -35,6 +35,9 @@ class FreedesktopSecretServiceStore : CredentialStore {
      */
     val isAvailable: Boolean = checkAvailable()
 
+    /** Passwords are kept by the Secret Service provider, so they persist whenever it is [isAvailable]. */
+    override val isPersistent: Boolean get() = isAvailable
+
     override fun setPassword(service: String, account: String, password: String) {
         if (!isAvailable) return
 

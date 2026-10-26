@@ -23,7 +23,7 @@ class KeyringCredentialStoreTest : FunSpec({
 
 	test("in-memory fallback round-trips setPassword and getPassword") {
 		val store = KeyringCredentialStore()
-		if (store.isNativeBackendAvailable) return@test
+		if (store.isPersistent) return@test
 
 		store.setPassword("svc", "acct", "secret")
 		store.getPassword("svc", "acct") shouldBe "secret"
@@ -31,14 +31,14 @@ class KeyringCredentialStoreTest : FunSpec({
 
 	test("in-memory fallback getPassword returns null for unknown entry") {
 		val store = KeyringCredentialStore()
-		if (store.isNativeBackendAvailable) return@test
+		if (store.isPersistent) return@test
 
 		store.getPassword("svc", "missing").shouldBeNull()
 	}
 
 	test("in-memory fallback deletePassword removes stored entry") {
 		val store = KeyringCredentialStore()
-		if (store.isNativeBackendAvailable) return@test
+		if (store.isPersistent) return@test
 
 		store.setPassword("svc", "acct", "secret")
 		store.deletePassword("svc", "acct")
@@ -47,7 +47,7 @@ class KeyringCredentialStoreTest : FunSpec({
 
 	test("in-memory fallback deletePassword is safe for non-existent entry") {
 		val store = KeyringCredentialStore()
-		if (store.isNativeBackendAvailable) return@test
+		if (store.isPersistent) return@test
 
 		store.deletePassword("svc", "ghost")
 	}
@@ -62,7 +62,7 @@ class KeyringCredentialStoreTest : FunSpec({
 
 		try {
 			val store = KeyringCredentialStore()
-			if (store.isNativeBackendAvailable) return@test
+			if (store.isPersistent) return@test
 
 			appender.list.filter {
 				it.level.toString() == "WARN"
@@ -76,9 +76,9 @@ class KeyringCredentialStoreTest : FunSpec({
 		}
 	}
 
-	test("isNativeBackendAvailable returns a boolean without throwing") {
+	test("isPersistent returns a boolean without throwing") {
 		val store = KeyringCredentialStore()
-		(store.isNativeBackendAvailable || !store.isNativeBackendAvailable).shouldBeTrue()
+		(store.isPersistent || !store.isPersistent).shouldBeTrue()
 	}
 })
 

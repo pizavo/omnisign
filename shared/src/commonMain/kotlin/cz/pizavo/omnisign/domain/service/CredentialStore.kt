@@ -13,6 +13,17 @@ package cz.pizavo.omnisign.domain.service
  */
 interface CredentialStore {
     /**
+     * Whether a password stored here outlives the current process.
+     *
+     * `false` means the store keeps passwords in memory only, so one saved now is gone when the
+     * process exits. A caller that records a reference to a stored password in the saved
+     * configuration — a
+     * [credentialKey][cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig.credentialKey] —
+     * must not rely on such a store.
+     */
+    val isPersistent: Boolean
+
+    /**
      * Store or update a password in the keychain.
      *
      * @param service Logical service name used as a namespace (e.g. "omnisign-tsa").
