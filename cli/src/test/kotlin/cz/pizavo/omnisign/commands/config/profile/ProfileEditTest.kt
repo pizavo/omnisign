@@ -45,6 +45,9 @@ import org.koin.dsl.module
  * clear-versus-set precedence and the add/remove arithmetic on the disabled-algorithm sets are
  * pinned for the same reason, and so is an edit stopping, with nothing saved, when the keychain does
  * not keep a new TSA password.
+ *
+ * Every refusal and failure exits with status 1, so a script never takes an edit that saved nothing
+ * for one that did.
  */
 class ProfileEditTest : FunSpec({
 
@@ -109,6 +112,7 @@ class ProfileEditTest : FunSpec({
 	test("refuses an edit that changes nothing") {
 		val result = Omnisign().test(listOf("config", "profile", "edit", "qualified"))
 
+		result.statusCode shouldBe 1
 		result.stderr shouldContain "No changes specified"
 		coVerify(exactly = 0) { manageProfile.get(any()) }
 		coVerify(exactly = 0) { manageProfile.upsert(any()) }
@@ -148,6 +152,7 @@ class ProfileEditTest : FunSpec({
 
 		val result = Omnisign().test(listOf("config", "profile", "edit", "ghost", "-H", "SHA512"))
 
+		result.statusCode shouldBe 1
 		result.stderr shouldContain "Profile 'ghost' does not exist"
 		coVerify(exactly = 0) { manageProfile.upsert(any()) }
 	}
@@ -311,13 +316,14 @@ class ProfileEditTest : FunSpec({
 		updated.validation?.algorithmConstraints?.expirationLevel shouldBe AlgorithmConstraintLevel.FAIL
 	}
 
-	test("reports a save failure on stderr") {
+	test("reports a save failure on stderr and exits non-zero") {
 		coEvery { manageProfile.get("qualified") } returns existing.right()
 		coEvery { manageProfile.upsert(any()) } returns
 			ConfigurationError.saveFailed(details = "disk full").left()
 
 		val result = Omnisign().test(listOf("config", "profile", "edit", "qualified", "-H", "SHA512"))
 
+		result.statusCode shouldBe 1
 		result.stderr shouldContain "Failed to save profile"
 		result.stderr shouldContain "disk full"
 	}

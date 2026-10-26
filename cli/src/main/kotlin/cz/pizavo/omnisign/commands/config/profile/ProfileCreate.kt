@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.commands.config.profile
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
@@ -113,7 +114,7 @@ class ProfileCreate : CliktCommand(name = "create"), KoinComponent {
 				"❌ No settings specified. Provide at least one option to create a meaningful profile. Use --help to see available options.",
 				err = true
 			)
-			return@runBlocking
+			throw ProgramResult(1)
 		}
 		requirePersistentCredentialStore(timestampPassword, credentialStore)
 		val tsConfig = buildTimestampConfig()
@@ -133,6 +134,7 @@ class ProfileCreate : CliktCommand(name = "create"), KoinComponent {
 				echo("❌ Failed to save profile: ${error.message}", err = true)
 				error.details?.let { echo("Details: $it", err = true) }
 				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+				throw ProgramResult(1)
 			},
 			ifRight = {
 				echo("✅ Profile '$name' saved.")

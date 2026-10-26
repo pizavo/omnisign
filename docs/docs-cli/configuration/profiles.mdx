@@ -21,6 +21,10 @@ different signature levels, or organization-specific validation policies.
 | `config profile export <name> <file>`    | Export a profile to a file                                      |
 | `config profile import <file> [options]` | Import a profile from a file                                    |
 
+A subcommand that fails says why on stderr and exits with status 1, whether the profile does not
+exist, `create` or `edit` was given no options, or the configuration could not be saved. A script
+can therefore stop instead of signing with settings that never took effect.
+
 ## Create and edit options
 
 `create` and `edit` accept the following options:

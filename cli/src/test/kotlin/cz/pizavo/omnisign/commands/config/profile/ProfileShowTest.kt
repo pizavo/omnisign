@@ -15,6 +15,7 @@ import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.koin.KoinExtension
 import io.kotest.koin.KoinLifecycleMode
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.mockk.clearMocks
@@ -31,6 +32,8 @@ import org.koin.dsl.module
  * the global configuration rather than as an absent or empty value, because the two mean very
  * different things at signing time. And a stored TSA password must be reported as living in the
  * keychain without the command ever reaching for the secret itself.
+ *
+ * When there is no profile to show, the command says why on stderr and exits with status 1.
  */
 class ProfileShowTest : FunSpec({
 
@@ -144,16 +147,18 @@ class ProfileShowTest : FunSpec({
 
 		val result = Omnisign().test(listOf("config", "profile", "show"))
 
+		result.statusCode shouldBe 1
 		result.stderr shouldContain "no active profile is set"
 		coVerify(exactly = 0) { manageProfile.get(any()) }
 	}
 
-	test("names the missing profile on stderr") {
+	test("names the missing profile on stderr and exits non-zero") {
 		coEvery { getConfig() } returns AppConfig(global = GlobalConfig()).right()
 		coEvery { manageProfile.get("ghost") } returns ConfigurationError.profileNotFound("ghost").left()
 
 		val result = Omnisign().test(listOf("config", "profile", "show", "ghost"))
 
+		result.statusCode shouldBe 1
 		result.stderr shouldContain "Profile 'ghost' does not exist"
 	}
 })

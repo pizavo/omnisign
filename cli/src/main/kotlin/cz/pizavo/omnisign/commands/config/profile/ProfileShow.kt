@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.commands.config.profile
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
@@ -28,7 +29,7 @@ class ProfileShow : CliktCommand(name = "show"), KoinComponent {
 			val activeProfile = getConfig().fold(ifLeft = { null }, ifRight = { it.activeProfile })
 			if (activeProfile == null) {
 				echo("❌ No profile name given and no active profile is set. Use: config profile use <name>", err = true)
-				return@runBlocking
+				throw ProgramResult(1)
 			}
 			activeProfile
 		}
@@ -39,6 +40,7 @@ class ProfileShow : CliktCommand(name = "show"), KoinComponent {
 				echo("❌ ${error.message}", err = true)
 				error.details?.let { echo("Details: $it", err = true) }
 				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+				throw ProgramResult(1)
 			},
 			ifRight = { profile ->
 				val isActive = activeProfile == profile.name

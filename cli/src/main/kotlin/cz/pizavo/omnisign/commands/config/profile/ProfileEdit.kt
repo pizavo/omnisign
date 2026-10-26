@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.commands.config.profile
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.multiple
@@ -164,7 +165,7 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 				"❌ No changes specified. Provide at least one option to modify. Use --help to see available options.",
 				err = true
 			)
-			return@runBlocking
+			throw ProgramResult(1)
 		}
 		requirePersistentCredentialStore(timestampPassword, credentialStore)
 		manageProfile.get(name).fold(
@@ -172,6 +173,7 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 				echo("❌ ${error.message}", err = true)
 				error.details?.let { echo("Details: $it", err = true) }
 				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+				throw ProgramResult(1)
 			},
 			ifRight = { existing ->
 				val updated = buildPatchedProfile(existing)
@@ -180,6 +182,7 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 						echo("❌ Failed to save profile: ${error.message}", err = true)
 						error.details?.let { echo("Details: $it", err = true) }
 						error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+						throw ProgramResult(1)
 					},
 					ifRight = {
 						echo("✅ Profile '$name' updated.")

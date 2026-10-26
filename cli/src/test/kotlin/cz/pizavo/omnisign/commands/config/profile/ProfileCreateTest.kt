@@ -38,6 +38,9 @@ import org.koin.dsl.module
  * only reaches the OS keychain when a username exists to key it by, the config file must never
  * carry the password itself, and no profile is saved to refer to a password the keychain did not
  * keep.
+ *
+ * Every refusal and failure exits with status 1, so a script that creates a profile and then signs
+ * with it stops instead of signing without the settings it asked for.
  */
 class ProfileCreateTest : FunSpec({
 
@@ -78,6 +81,7 @@ class ProfileCreateTest : FunSpec({
 	test("refuses to create a profile that carries no settings") {
 		val result = Omnisign().test(listOf("config", "profile", "create", "empty"))
 
+		result.statusCode shouldBe 1
 		result.stderr shouldContain "No settings specified"
 		coVerify(exactly = 0) { manageProfile.upsert(any()) }
 	}
@@ -223,12 +227,13 @@ class ProfileCreateTest : FunSpec({
 		constraints?.expirationDateOverrides shouldBe mapOf("RIPEMD160" to "2030-01-01")
 	}
 
-	test("reports a save failure on stderr") {
+	test("reports a save failure on stderr and exits non-zero") {
 		coEvery { manageProfile.upsert(any()) } returns
 			ConfigurationError.saveFailed(details = "disk full").left()
 
 		val result = Omnisign().test(listOf("config", "profile", "create", "qualified", "-H", "SHA512"))
 
+		result.statusCode shouldBe 1
 		result.stderr shouldContain "Failed to save profile"
 		result.stderr shouldContain "disk full"
 	}
