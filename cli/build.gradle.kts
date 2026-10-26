@@ -399,6 +399,14 @@ val installerOnlyArgsList: List<String> = listOf(
 	"--about-url", "https://pizavo.github.io/omnisign/cli/",
 )
 
+/**
+ * Arguments every Linux package type adds: the `jdk.security.auth` module, whose
+ * `com.sun.security.auth.module.UnixSystem` dbus-java needs to log in to the session bus with the
+ * user's id (D-Bus `EXTERNAL` authentication). Without it no Secret Service keyring is reachable,
+ * and the CLI behaves as if none were running. The desktop app adds the same module on Linux.
+ */
+val linuxJpackageArgsList: List<String> = listOf("--add-modules", "jdk.security.auth")
+
 
 /** Registers a [JPackageTask] with the given [name] and platform-specific [extraArgsList]. */
 fun registerJPackageTask(
@@ -488,7 +496,7 @@ registerJPackageTask(
 	type = "deb",
 	destSubdir = "linux-deb",
 	iconFile = File(iconsDir, "omnisign-logo-cli-512.png"),
-	extraArgsList = listOf(
+	extraArgsList = linuxJpackageArgsList + listOf(
 		"--resource-dir", "$jpackageResourcesDir/linux-deb",
 		"--linux-app-category", "utils",
 		"--linux-deb-maintainer", "pizavo@gmail.com",
@@ -503,7 +511,7 @@ registerJPackageTask(
 	type = "rpm",
 	destSubdir = "linux-rpm",
 	iconFile = File(iconsDir, "omnisign-logo-cli-512.png"),
-	extraArgsList = listOf(
+	extraArgsList = linuxJpackageArgsList + listOf(
 		"--resource-dir", "$jpackageResourcesDir/linux-rpm",
 		"--linux-app-category", "utils",
 		"--linux-rpm-license-type", "AGPLv3+",
@@ -519,7 +527,7 @@ registerJPackageTask(
 	type = "app-image",
 	destSubdir = "linux-image",
 	iconFile = File(iconsDir, "omnisign-logo-cli-512.png"),
-	extraArgsList = emptyList(),
+	extraArgsList = linuxJpackageArgsList,
 )
 
 registerJPackageTask(
