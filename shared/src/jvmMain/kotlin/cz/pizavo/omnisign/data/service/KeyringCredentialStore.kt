@@ -1,8 +1,12 @@
 package cz.pizavo.omnisign.data.service
 
+import arrow.core.left
+import arrow.core.right
 import com.github.javakeyring.BackendNotSupportedException
 import com.github.javakeyring.Keyring
 import com.github.javakeyring.PasswordAccessException
+import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.util.concurrent.atomic.AtomicBoolean
@@ -22,6 +26,9 @@ private val logger = KotlinLogging.logger {}
  *    [org.purejava:secret-service](https://github.com/purejava/secret-service) library,
  *    which is built against `dbus-java 5.x` (compatible with FileKit's transitive).
  * 3. **In-memory map** — last resort; credentials do not survive process restarts.
+ *
+ * A keychain that refuses to store a password makes [setPassword] return a
+ * [ConfigurationError.SaveFailed]; a failed read or delete is treated as a missing entry.
  *
  * Falling back to memory is logged at INFO when the store is built, and the first password kept
  * in memory logs a warning. A process that only reads passwords, or never touches the store at
@@ -74,16 +81,20 @@ class KeyringCredentialStore : CredentialStore {
      */
     override val isPersistent: Boolean get() = keyring != null || secretServiceFallback != null
 
-    override fun setPassword(service: String, account: String, password: String) {
+    override fun setPassword(service: String, account: String, password: String): OperationResult<Unit> =
         when {
-            keyring != null -> keyring.setPassword(service, account, password)
+            keyring != null -> try {
+                keyring.setPassword(service, account, password).right()
+            } catch (e: PasswordAccessException) {
+                ConfigurationError.passwordStoreFailed(e.message, e).left()
+            }
             secretServiceFallback != null -> secretServiceFallback.setPassword(service, account, password)
             else -> {
                 warnOnceAboutMemoryUse()
                 memoryFallback["$service/$account"] = password
+                Unit.right()
             }
         }
-    }
 
     override fun getPassword(service: String, account: String): String? {
         return when {

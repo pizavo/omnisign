@@ -75,6 +75,13 @@ sealed interface ConfigurationError : OperationError, LocalizableError {
 		fun serverReadOnly(details: String? = null): SaveFailed =
 			SaveFailed(LocalizableText.of(MessageKey.CONFIG_SERVER_READ_ONLY), details)
 
+		/**
+		 * The system credential store did not keep a password the configuration would refer to, so
+		 * the configuration must not be saved with a reference to it.
+		 */
+		fun passwordStoreFailed(details: String? = null, cause: Throwable? = null): SaveFailed =
+			SaveFailed(LocalizableText.of(MessageKey.CONFIG_PASSWORD_STORE_FAILED), details, cause)
+
 		/** The trust store lacks the bytes for certificate [fingerprint] referenced by the archive. */
 		fun missingCertificateBytes(fingerprint: String): InvalidConfiguration =
 			InvalidConfiguration(LocalizableText.of(MessageKey.CONFIG_MISSING_CERTIFICATE_BYTES, fingerprint))

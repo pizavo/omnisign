@@ -1,5 +1,9 @@
 package cz.pizavo.omnisign.data.service
 
+import arrow.core.left
+import arrow.core.right
+import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.CompletableDeferred
@@ -32,8 +36,10 @@ private val logger = KotlinLogging.logger {}
  * A locked default collection is unlocked before it is used. When the provider wants the user to
  * confirm an operation, such as typing the keyring's password to unlock it, it shows its own prompt,
  * and the store waits for the answer for at most [PROMPT_TIMEOUT]; a prompt still open then is
- * dismissed, so a session that cannot show it does not hang. A failed operation is logged as a
- * warning, and otherwise treated as a missing value.
+ * dismissed, so a session that cannot show it does not hang. A password that is not stored, whether
+ * the call fails or the prompt goes unanswered, makes [setPassword] return a
+ * [ConfigurationError.SaveFailed] saying why; a failed read or delete is logged as a warning and
+ * otherwise treated as a missing value.
  *
  * @see KeyringCredentialStore
  */
@@ -42,26 +48,27 @@ class FreedesktopSecretServiceStore : CredentialStore {
     /**
      * Whether the D-Bus Secret Service is reachable.
      *
-     * Checked once at construction time. When `false`, all operations silently
-     * no-op (the caller is expected to fall back to an in-memory store).
+     * Checked once at construction time. When `false`, reads find nothing, deletes do nothing, and
+     * [setPassword] reports that it stored nothing; the caller is expected to fall back to an
+     * in-memory store.
      */
     val isAvailable: Boolean = checkAvailable()
 
     /** Passwords are kept by the Secret Service provider, so they persist whenever it is [isAvailable]. */
     override val isPersistent: Boolean get() = isAvailable
 
-    override fun setPassword(service: String, account: String, password: String) {
-        if (!isAvailable) return
+    override fun setPassword(service: String, account: String, password: String): OperationResult<Unit> {
+        if (!isAvailable) {
+            return ConfigurationError.passwordStoreFailed("No Secret Service provider is reachable on the session bus")
+                .left()
+        }
 
-        try {
+        return try {
             withEncryptedSession { session ->
-                val defaultCollection = defaultCollection() ?: run {
-                    logger.warn {
-                        "Did not store credential via Secret Service for service=$service account=$account: " +
-                                "there is no unlocked default collection"
-                    }
-                    return@withEncryptedSession
-                }
+                val defaultCollection = defaultCollection()
+                    ?: return@withEncryptedSession ConfigurationError.passwordStoreFailed(
+                        "The default Secret Service collection is missing, or locked and was not unlocked"
+                    ).left()
                 val properties = Item.createProperties("$service/$account", credentialAttributes(service, account))
                 val secret = session.encrypt(password)
                 val result = try {
@@ -76,21 +83,21 @@ class FreedesktopSecretServiceStore : CredentialStore {
                         val prompt = result.value().b
                         val stored = item.path != NO_OBJECT ||
                                 (prompt.path != NO_OBJECT && !completePrompt(prompt).isNullOrEmpty())
-                        if (!stored) {
-                            logger.warn {
-                                "Did not store credential via Secret Service for service=$service account=$account: " +
-                                        "the provider did not create the item"
-                            }
+                        if (stored) {
+                            Unit.right()
+                        } else {
+                            ConfigurationError.passwordStoreFailed(
+                                "The Secret Service provider did not create the item holding the password"
+                            ).left()
                         }
                     }
 
-                    is DBusResult.Failure -> logger.warn(result.error()) {
-                        "Failed to store credential via Secret Service for service=$service account=$account"
-                    }
+                    is DBusResult.Failure ->
+                        ConfigurationError.passwordStoreFailed(result.error().message, result.error()).left()
                 }
             }
         } catch (e: Exception) {
-            logger.warn(e) { "Failed to store credential via Secret Service for service=$service account=$account" }
+            ConfigurationError.passwordStoreFailed(e.message, e).left()
         }
     }
 

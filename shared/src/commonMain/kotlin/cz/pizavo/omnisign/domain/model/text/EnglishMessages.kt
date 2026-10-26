@@ -144,6 +144,8 @@ internal object EnglishMessages {
 			"Saving configuration is not supported on the web target"
 		MessageKey.CONFIG_SERVER_READ_ONLY ->
 			"Server signing configuration is read-only"
+		MessageKey.CONFIG_PASSWORD_STORE_FAILED ->
+			"Failed to store the password in the system credential store"
 		MessageKey.CONFIG_MISSING_CERTIFICATE_BYTES ->
 			"Trust store is missing the bytes for referenced certificate %1\$s"
 		MessageKey.CONFIG_MISSING_DER_ENTRY ->

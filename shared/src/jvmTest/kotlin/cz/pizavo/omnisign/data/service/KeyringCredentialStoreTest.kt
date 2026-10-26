@@ -6,6 +6,10 @@ import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
 import com.github.javakeyring.BackendNotSupportedException
 import com.github.javakeyring.Keyring
+import com.github.javakeyring.PasswordAccessException
+import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import io.kotest.assertions.arrow.core.shouldBeLeft
+import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.assertions.throwables.shouldNotThrowAny
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.booleans.shouldBeFalse
@@ -14,7 +18,9 @@ import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
+import io.mockk.mockk
 import io.mockk.mockkConstructor
 import io.mockk.mockkStatic
 import io.mockk.unmockkConstructor
@@ -22,12 +28,14 @@ import io.mockk.unmockkStatic
 import org.slf4j.LoggerFactory
 
 /**
- * Verifies [KeyringCredentialStore]'s in-memory fallback and what it logs about it.
+ * Verifies [KeyringCredentialStore]'s in-memory fallback and what it logs about it, and that a
+ * password the OS keychain refuses comes back as an error.
  *
  * `memoryOnlyStore` makes both keychain backends unavailable, so these tests run the fallback on
- * every OS and never touch the keychain of the machine running them. The keychain paths
- * themselves (java-keyring on Windows/macOS, purejava/secret-service on Linux) depend on the host
- * and its desktop session and are not unit-testable in isolation.
+ * every OS and never touch the keychain of the machine running them; the refused write is played
+ * by a mock standing in for java-keyring. The keychain paths themselves (java-keyring on
+ * Windows/macOS, purejava/secret-service on Linux) depend on the host and its desktop session and
+ * are not unit-testable in isolation.
  */
 class KeyringCredentialStoreTest : FunSpec({
 
@@ -72,10 +80,29 @@ class KeyringCredentialStoreTest : FunSpec({
 	test("keeps a password in memory, and says it does not persist, when no keychain is available") {
 		val store = memoryOnlyStore()
 
-		store.setPassword("svc", "acct", "secret")
+		store.setPassword("svc", "acct", "secret").shouldBeRight()
 
 		store.getPassword("svc", "acct") shouldBe "secret"
 		store.isPersistent.shouldBeFalse()
+	}
+
+	test("reports a password the OS keychain refuses to store, rather than throwing") {
+		val keyring = mockk<Keyring> {
+			every { setPassword(any(), any(), any()) } throws PasswordAccessException("Error code 1312")
+		}
+		mockkStatic(Keyring::class)
+		val store = try {
+			every { Keyring.create() } returns keyring
+			KeyringCredentialStore()
+		} finally {
+			unmockkStatic(Keyring::class)
+		}
+
+		val error = store.setPassword("svc", "acct", "secret").shouldBeLeft()
+			.shouldBeInstanceOf<ConfigurationError.SaveFailed>()
+
+		error.details shouldBe "Error code 1312"
+		error.cause.shouldBeInstanceOf<PasswordAccessException>()
 	}
 
 	test("returns null for a password it never stored") {

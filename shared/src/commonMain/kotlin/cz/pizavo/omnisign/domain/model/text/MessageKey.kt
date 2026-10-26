@@ -177,6 +177,9 @@ enum class MessageKey {
 	/** The server's signing configuration is fixed at startup and cannot be mutated at runtime. */
 	CONFIG_SERVER_READ_ONLY,
 
+	/** The system credential store did not keep a password the configuration would refer to. */
+	CONFIG_PASSWORD_STORE_FAILED,
+
 	/** The trust store lacks the bytes for a certificate the archive references (arg: fingerprint). */
 	CONFIG_MISSING_CERTIFICATE_BYTES,
 

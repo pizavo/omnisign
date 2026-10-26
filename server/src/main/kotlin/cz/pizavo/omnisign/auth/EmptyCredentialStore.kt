@@ -1,5 +1,8 @@
 package cz.pizavo.omnisign.auth
 
+import arrow.core.left
+import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.service.CredentialStore
 
 /**
@@ -17,13 +20,15 @@ class EmptyCredentialStore : CredentialStore {
 	override val isPersistent: Boolean = false
 
 	/**
-	 * Discards the password; this store keeps none.
+	 * Discards the password and says so; this store keeps none.
 	 *
 	 * @param service Ignored.
 	 * @param account Ignored.
 	 * @param password Ignored.
+	 * @return Always a [ConfigurationError.SaveFailed], because the password was not stored.
 	 */
-	override fun setPassword(service: String, account: String, password: String) = Unit
+	override fun setPassword(service: String, account: String, password: String): OperationResult<Unit> =
+		ConfigurationError.passwordStoreFailed("This server keeps no passwords").left()
 
 	/**
 	 * Always returns `null`, because this store holds no passwords.

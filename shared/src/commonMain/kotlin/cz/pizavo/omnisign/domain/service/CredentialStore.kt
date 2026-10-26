@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.domain.service
 
+import cz.pizavo.omnisign.domain.model.result.OperationResult
+
 /**
  * Abstraction over a platform-native secure credential store (OS keychain).
  *
@@ -26,11 +28,18 @@ interface CredentialStore {
     /**
      * Store or update a password in the keychain.
      *
+     * A caller that records a reference to the password in the saved configuration must do so only
+     * once this has succeeded; a failure leaves any password stored before under the same
+     * [service] and [account] in place.
+     *
      * @param service Logical service name used as a namespace (e.g. "omnisign-tsa").
      * @param account Account / username to associate with the password.
      * @param password The secret to store.
+     * @return `Unit` once the store keeps the password, or a
+     *   [ConfigurationError.SaveFailed][cz.pizavo.omnisign.domain.model.error.ConfigurationError.SaveFailed]
+     *   saying why it could not, such as a keychain that stays locked or refuses the write.
      */
-    fun setPassword(service: String, account: String, password: String)
+    fun setPassword(service: String, account: String, password: String): OperationResult<Unit>
 
     /**
      * Retrieve a previously stored password.
