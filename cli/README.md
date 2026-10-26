@@ -923,5 +923,10 @@ TSA credentials supplied here are held in memory only and are never written to d
 
 | Code | Meaning                                                                                                          |
 |------|------------------------------------------------------------------------------------------------------------------|
-| `0`  | Success                                                                                                          |
+| `0`  | Success; for `validate`, every signature is valid (`VALID`)                                                      |
 | `1`  | Any failure — usage or argument error, configuration error, or an operational failure (signing, validation, extension). Details are printed to stderr |
+| `2`  | `validate` only: a signature is not valid (`INVALID`)                                                            |
+| `3`  | `validate` only: the result could not be determined (`INDETERMINATE`)                                            |
+| `4`  | `validate` only: the document has no signatures (`NO_SIGNATURES`); document timestamps alone do not count        |
+
+`validate` prints its report in full whatever the status, and `--json` uses the same codes.
