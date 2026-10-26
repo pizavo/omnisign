@@ -87,6 +87,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/HealthResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/v1/capabilities:
     get:
@@ -107,6 +109,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CapabilitiesResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/v1/credits:
     get:
@@ -135,6 +139,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CreditsResponse'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/v1/sign:
     post:
@@ -223,6 +229,8 @@ paths:
                   value: { error: MISSING_FILE, message: "Multipart field 'file' is required" }
                 malformed:
                   value: { error: MALFORMED_DOCUMENT, message: "The upload is not a valid PDF" }
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '403':
           description: The SIGN operation is disabled, or the certificate alias is not allowed.
           content:
@@ -234,6 +242,8 @@ paths:
                   value: { error: OPERATION_DISABLED, message: "The SIGN operation is disabled on this server", details: null }
                 certificateNotAllowed:
                   value: { error: CERTIFICATE_NOT_ALLOWED, message: "Certificate alias 'x' is not in the server's allowed list" }
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
@@ -247,6 +257,10 @@ paths:
                   value: { error: TIMESTAMP_NOT_ALLOWED, message: "Signing at PADES_BASELINE_T embeds a timestamp, but TIMESTAMP is not enabled" }
                 encrypted:
                   value: { error: ENCRYPTED_DOCUMENT, message: "The PDF is encrypted or password-protected and cannot be signed" }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/v1/validate:
     post:
@@ -305,12 +319,20 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/OperationNotAllowed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
           $ref: '#/components/responses/InvalidConfiguration'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/v1/timestamp:
     post:
@@ -367,8 +389,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/OperationNotAllowed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
@@ -377,6 +403,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/v1/timestamp/inspect:
     post:
@@ -414,10 +444,18 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/OperationNotAllowed'
+        '413':
+          $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/v1/certificates:
     get:
@@ -438,8 +476,14 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CertificateDiscoveryResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '403':
           $ref: '#/components/responses/OperationNotAllowed'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/v1/config/global:
     get:
@@ -456,6 +500,12 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/GlobalConfigResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/v1/config/profiles:
     get:
@@ -474,6 +524,12 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/ProfileConfigResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/v1/config/profiles/{name}:
     get:
@@ -497,6 +553,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ProfileConfigResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           description: No such profile.
           content:
@@ -504,6 +562,10 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
               example: { error: PROFILE_NOT_FOUND, message: "Profile 'x' does not exist" }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/v1/config/resolved:
     get:
@@ -523,6 +585,8 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ResolvedConfigResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
         '404':
           description: The named profile does not exist.
           content:
@@ -531,6 +595,10 @@ paths:
                 $ref: '#/components/schemas/ApiError'
         '422':
           $ref: '#/components/responses/InvalidConfiguration'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/v1/config/trusted-certificates:
     get:
@@ -552,6 +620,12 @@ paths:
                 type: array
                 items:
                   $ref: '#/components/schemas/TrustedCertificateResponse'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /api/v1/config/export:
     get:
@@ -577,6 +651,12 @@ paths:
               schema:
                 type: string
                 format: binary
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /auth/login:
     get:
@@ -592,6 +672,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/LoginOptionsResponse'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
         '503':
           description: Authentication is not configured on this server.
           content:
@@ -627,6 +711,10 @@ paths:
       responses:
         '302':
           description: Redirect to the identity provider.
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /auth/callback/{provider}:
     get:
@@ -667,6 +755,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /auth/session:
     get:
@@ -684,12 +776,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/SessionResponse'
         '401':
-          description: No valid session token.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/ApiError'
-              example: { error: UNAUTHENTICATED, message: "No valid session token" }
+          $ref: '#/components/responses/Unauthenticated'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
   /auth/refresh:
     post:
@@ -731,6 +822,10 @@ paths:
                   value: { error: INVALID_REFRESH_TOKEN, message: "Refresh token is unknown, expired, or already used" }
                 expired:
                   value: { error: SESSION_EXPIRED, message: "Session exceeded the maximum lifetime" }
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
         '503':
           description: Authentication is not configured.
           content:
@@ -770,6 +865,10 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
         '503':
           description: Authentication is not configured.
           content:
@@ -793,6 +892,10 @@ paths:
       responses:
         '204':
           description: Logged out (always, whether or not a valid token was supplied).
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '500':
+          $ref: '#/components/responses/InternalError'
 
 components:
   securitySchemes:
@@ -848,13 +951,14 @@ components:
           example: { error: INVALID_CONFIGURATION, message: "..." }
     Unauthenticated:
       description: >
-        No valid Bearer JWT, on a server running with `auth.enabled: true`. This is emitted by Ktor's
-        bearer challenge before the handler runs, so the body is **empty** — it is not an `ApiError`.
+        No valid Bearer JWT. The operational and config routes require one only on a server running
+        with `auth.enabled: true`; `GET /auth/session` always does. Ktor's bearer challenge answers
+        before the handler runs, so the body is **empty** — it is not an `ApiError`.
       headers:
         WWW-Authenticate:
           schema:
             type: string
-          example: Bearer realm="Ktor Server"
+          example: Bearer
     PayloadTooLarge:
       description: The uploaded file exceeds `maxFileSize` (advertised by `GET /api/v1/capabilities`; 100 MiB by default).
       content:
@@ -871,9 +975,10 @@ components:
           example: { error: UNSUPPORTED_MEDIA_TYPE, message: "Content type application/json is not supported", details: null }
     RateLimited:
       description: >
-        Rate limit exceeded, counted per remote address. Defaults are 20 requests / 60 s for
-        `/auth/*` and 200 requests / 60 s for the operational and config routes. `GET /api/v1/health`
-        and `GET /api/v1/capabilities` are deliberately not rate-limited.
+        Rate limit exceeded, counted per remote address. Sent only when the server config has a
+        `rateLimiting` block, which is absent by default; its zones default to 20 requests / 60 s for
+        `/auth/*` and 200 requests / 60 s for the operational and config routes. The system routes
+        (`GET /api/v1/health`, `/api/v1/capabilities` and `/api/v1/credits`) are never rate-limited.
       headers:
         Retry-After:
           schema:
