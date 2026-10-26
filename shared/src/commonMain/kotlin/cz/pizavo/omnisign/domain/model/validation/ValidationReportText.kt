@@ -13,7 +13,8 @@ import cz.pizavo.omnisign.domain.model.value.formatDateTime
  * The format mirrors what desktop users see when they export a validation report as `.txt`:
  * a header, per-signature blocks (indication, signer, level, certificate details, the certificate chain, revocation evidence, errors,
  * warnings, and any embedded signature/archive timestamps), a document-level timestamps block,
- * and finally any trusted-list warnings. The result is a pure
+ * and finally any trusted-list warnings. Every section header follows a blank line, even when it
+ * comes straight after the notice that the document has no signatures. The result is a pure
  * projection of the domain model — no DSS interaction, no I/O — so it is safe to call on any
  * Kotlin target and is the natural pairing of [cz.pizavo.omnisign.domain.model.validation.json.toJsonReport]
  * for callers that want a text equivalent.
@@ -21,8 +22,8 @@ import cz.pizavo.omnisign.domain.model.value.formatDateTime
  * @param detailed When `true`, every certificate in a chain is followed by its full parsed dump —
  *   each [cz.pizavo.omnisign.domain.model.signature.CertificateDetailSection] and field; when
  *   `false`, the chain is a one-line-per-certificate summary (role, common name, trust source).
- * @return Multi-line text representation of the report. Lines are separated with
- *   `appendLine`'s platform default line separator.
+ * @return Multi-line text representation of the report. Every line ends with `\n`, on every
+ *   platform.
  */
 fun ValidationReport.toPlainText(detailed: Boolean = false): String = buildString {
 	fun StringBuilder.appendTimestampDetails(ts: TimestampValidationResult, pad: String) {
@@ -65,6 +66,7 @@ fun ValidationReport.toPlainText(detailed: Boolean = false): String = buildStrin
 
 	if (signatures.isEmpty()) {
 		appendLine("No signatures found in the document.")
+		appendLine()
 	} else {
 		signatures.forEachIndexed { index, sig ->
 			appendLine("── Signature ${index + 1} of ${signatures.size} ──")
