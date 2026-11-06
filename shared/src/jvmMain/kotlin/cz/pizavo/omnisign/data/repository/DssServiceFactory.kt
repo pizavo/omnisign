@@ -490,8 +490,14 @@ class DssServiceFactory(
 	/**
 	 * Eagerly build and warm the trusted sources for [useEuLotl] and [customTls] so
 	 * the first validation/signing operation hits already-parsed sources instead of
-	 * paying the LOTL parse on its critical path. Intended for the startup warmup of
-	 * long-running hosts (desktop, server); the one-shot CLI does not call this.
+	 * paying the LOTL parse on its critical path.
+	 *
+	 * [TrustedListRefreshScheduler][cz.pizavo.omnisign.data.service.TrustedListRefreshScheduler]
+	 * calls this when a long-running host (desktop, server) starts its refresh cycle, and
+	 * before every manual hard refresh, the desktop's "Refresh now" and the CLI's
+	 * `config tl refresh`, so that refresh also covers lists no operation has acquired yet.
+	 * The CLI's other commands never call it: each acquires the lists it needs lazily,
+	 * offline-first.
 	 */
 	fun warmUpTrustedSources(useEuLotl: Boolean, customTls: List<CustomTrustedListConfig>) {
 		trustedSources.warmUp(useEuLotl, customTls)

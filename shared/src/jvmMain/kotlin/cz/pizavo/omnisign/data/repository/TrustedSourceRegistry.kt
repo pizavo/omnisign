@@ -219,7 +219,8 @@ class TrustedSourceRegistry(
 
 	/**
 	 * Ensure the entries for [useEuLotl] and [customTls] exist and are loaded.
-	 * Used by the startup warmup so the first validation hits warm sources.
+	 * Used by the startup warmup so the first validation hits warm sources, and
+	 * before every manual hard refresh so that refresh covers every configured list.
 	 */
 	fun warmUp(useEuLotl: Boolean, customTls: List<CustomTrustedListConfig>) = withProgressSession {
 		if (useEuLotl) acquireLotl()
