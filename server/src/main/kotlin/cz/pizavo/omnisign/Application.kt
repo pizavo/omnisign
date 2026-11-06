@@ -75,7 +75,7 @@ private val logger = run {
  */
 fun main(args: Array<String>) {
 	cz.pizavo.omnisign.data.repository.DssServiceFactory.enableAiaCaIssuerFetching()
-	cz.pizavo.omnisign.data.util.JulToSlf4jHandler.install()
+	cz.pizavo.omnisign.data.util.routeJavaUtilLoggingToSlf4j()
 
 	val configPath = args.indexOf("--config").takeIf { it >= 0 }?.let { args.getOrNull(it + 1) }
 	val serverConfig = ServerConfigLoader().load(configPath)

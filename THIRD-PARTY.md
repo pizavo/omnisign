@@ -56,17 +56,17 @@ projects linked below and from the same place this distribution was obtained.
 | Bouncy Castle Licence (MIT-style) | 1 | 3 |
 | Eclipse Distribution License, Version 1.0 | 1 | 7 |
 | GNU Lesser General Public License, version 2.1 or later | 2 | 44 |
-| MIT License | 9 | 16 |
+| MIT License | 9 | 17 |
 | Mozilla Public License, Version 2.0 | 2 | 7 |
-| **Total** | **61** | **368** |
+| **Total** | **61** | **369** |
 
 Per surface:
 
 | Surface | Components | Artifacts |
 |---|---:|---:|
-| cli | 37 | 140 |
-| server | 50 | 208 |
-| desktop | 40 | 187 |
+| cli | 37 | 141 |
+| server | 50 | 209 |
+| desktop | 40 | 188 |
 | web | 13 | 92 |
 
 ## Components by licence
@@ -1075,8 +1075,9 @@ Copyright © 2004-2024 QOS.ch Sarl.
 Homepage: <https://www.slf4j.org>.
 Ships in: cli, server, desktop.
 
-<details><summary>1 artifact(s)</summary>
+<details><summary>2 artifact(s)</summary>
 
+- `org.slf4j:jul-to-slf4j:2.0.20` — cli, desktop, server
 - `org.slf4j:slf4j-api:2.0.20` — cli, desktop, server
 
 </details>

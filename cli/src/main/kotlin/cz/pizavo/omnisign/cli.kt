@@ -91,7 +91,7 @@ fun main(args: Array<String>) {
 	}
 
 	cz.pizavo.omnisign.data.repository.DssServiceFactory.enableAiaCaIssuerFetching()
-	cz.pizavo.omnisign.data.util.JulToSlf4jHandler.install()
+	cz.pizavo.omnisign.data.util.routeJavaUtilLoggingToSlf4j()
 
 	val terminal = Terminal()
 	val needsWarmup = args.firstOrNull { !it.startsWith("-") } in WARMUP_SUBCOMMANDS

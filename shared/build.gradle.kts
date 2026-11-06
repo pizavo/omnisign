@@ -120,6 +120,8 @@ kotlin {
 
 			implementation(libs.jna)
 			implementation(libs.jna.platform)
+
+			implementation(libs.jul.to.slf4j)
 		}
 	}
 }

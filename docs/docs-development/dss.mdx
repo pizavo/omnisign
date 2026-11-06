@@ -182,14 +182,15 @@ outside it: that data *was* embedded, it just does not yet cover the time it has
 
 One library logs past all of this. veraPDF, which `dss-pdfa` runs to check PDF/A conformance,
 writes to `java.util.logging`, and JUL's console handler would print each of its warnings to stderr
-in a two-line format of its own. Each JVM entry point therefore calls `JulToSlf4jHandler.install()`
-at startup, which replaces that handler with one that passes every record to the SLF4J logger of
-the same name. Every Logback configuration keeps `org.verapdf` at ERROR, as it keeps PDFBox's
-parser, since both warn about each structural fault they tolerate in a document, which says nothing
-about its signatures. JUL still applies its own threshold first, INFO by default, so the CLI's
-`--debug` leaves out the debug output of JAXB, JNA and the JDK, which log through JUL as well.
-Logback's `LevelChangePropagator` would lower that threshold along with the root logger, which is
-why the configurations do without it.
+in a two-line format of its own. Each JVM entry point therefore calls `routeJavaUtilLoggingToSlf4j()`
+at startup, which replaces that handler with the SLF4J project's `jul-to-slf4j` bridge, so every
+record goes to the SLF4J logger of the same name. Every Logback configuration keeps `org.verapdf` at
+ERROR, as it keeps PDFBox's parser, since both warn about each structural fault they tolerate in a
+document, which says nothing about its signatures. JUL still applies its own threshold first, INFO
+by default, so the CLI's `--debug` leaves out the debug output of JAXB, JNA and the JDK, which log
+through JUL as well. The bridge's documentation suggests Logback's `LevelChangePropagator`, to save
+translating records that Logback then discards, but it would lower JUL's threshold along with the
+root logger, which is why the configurations do without it.
 
 ## Timestamp failures
 
