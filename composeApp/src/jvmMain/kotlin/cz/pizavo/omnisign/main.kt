@@ -230,6 +230,7 @@ fun main(args: Array<String> = emptyArray()) {
 	}
 
 	cz.pizavo.omnisign.data.repository.DssServiceFactory.enableAiaCaIssuerFetching()
+	cz.pizavo.omnisign.data.util.JulToSlf4jHandler.install()
 
 	System.setProperty("sun.awt.wmclass", "OmniSign")
 

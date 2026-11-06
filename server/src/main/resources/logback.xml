@@ -20,4 +20,8 @@
     <logger name="eu.europa.esig.dss.tsl.function.converter" level="ERROR"/>
     <logger name="eu.europa.esig.dss.tsl.sync" level="ERROR"/>
     <logger name="org.apache.pdfbox.pdfparser" level="ERROR"/>
+    <!-- veraPDF, which DSS runs to check PDF/A conformance, logs through java.util.logging,
+         which JulToSlf4jHandler routes here. Like PDFBox's parser, it warns about every
+         structural fault it tolerates. -->
+    <logger name="org.verapdf" level="ERROR"/>
 </configuration>
