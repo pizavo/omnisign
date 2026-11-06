@@ -166,15 +166,18 @@ class Validate : CliktCommand(
 	 * Two CLI-only additions wrap that shared body: in [detailed] mode the resolved configuration that
 	 * was actually applied, and — for a [ValidationResult.VALID] signature whose timestamps report
 	 * [ValidationIndication.INDETERMINATE] — a note explaining why that is expected and not a problem.
+	 * The body's trailing line breaks are trimmed, because `echo` ends the line itself: the output ends
+	 * with one line break, and each addition prints the blank line that sets it apart.
 	 */
 	private fun printValidationReport(
 		report: ValidationReport,
 		parameters: ValidationParameters,
 		resolvedConfig: ResolvedConfig?,
 	) {
-		echo(report.toPlainText(detailed = detailed))
+		echo(report.toPlainText(detailed = detailed).trimEnd())
 
 		if (detailed) {
+			echo("")
 			echo("── Configuration ──")
 			val policyType = resolvedConfig?.validation?.policyType?.name ?: "DEFAULT_ETSI"
 			val effectivePolicyPath = parameters.customPolicyPath ?: resolvedConfig?.validation?.customPolicyPath

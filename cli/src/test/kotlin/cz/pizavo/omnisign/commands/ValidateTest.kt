@@ -368,6 +368,45 @@ class ValidateTest : FunSpec({
 		detailed.output shouldContain "Custom Extension"
 	}
 
+	test("the report ends with one line break, whichever block comes last") {
+		val input = tmpFile("endings.pdf")
+		val reports = listOf(
+			sampleReport,
+			sampleReport.copy(overallResult = ValidationResult.NO_SIGNATURES, signatures = emptyList()),
+			sampleReport.copy(tlWarnings = listOf(LocalizableText.Literal("Could not refresh 1 trusted list."))),
+		)
+
+		reports.forEach { report ->
+			coEvery { validationRepository.validateDocument(any()) } returns report.right()
+
+			val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
+
+			result.stdout.lines().takeLast(2).map { it.isBlank() } shouldBe listOf(false, true)
+		}
+	}
+
+	test("one blank line sets apart each block printed after the report") {
+		val input = tmpFile("additions.pdf")
+		val reportOut = File(tmpDir, "additions-report.xml").absolutePath
+		val indeterminateTimestamp = TimestampValidationResult(
+			timestampId = "ts-1",
+			type = "Archive timestamp",
+			indication = ValidationIndication.INDETERMINATE,
+			productionTime = Instant.parse("2026-03-14T09:00:00Z"),
+		)
+		coEvery { validationRepository.validateDocument(any()) } returns
+			sampleReport.copy(timestamps = listOf(indeterminateTimestamp)).right()
+
+		val lines = Omnisign().test(
+			listOf("validate", "-f", input.absolutePath, "--detailed", "--report-out", reportOut)
+		).stdout.lines()
+
+		listOf("── Configuration ──", "Note: timestamps", "📄 Raw report").forEach { block ->
+			val start = lines.indexOfFirst { it.startsWith(block) }
+			lines.subList(start - 2, start).map { it.isBlank() } shouldBe listOf(false, true)
+		}
+	}
+
 	test("validate reports a timestamp password file it refuses as a configuration error") {
 		val input = tmpFile("refused-password-file.pdf")
 		val missing = File(tmpDir, "missing-timestamp-password").absolutePath
