@@ -467,19 +467,6 @@
 			"notes": "Reached transitively through Guava, which the Auth0 JWKS client depends on."
 		},
 		{
-			"name": "JSR 305 annotations",
-			"groups": ["com.google.code.findbugs"],
-			"license": "Apache-2.0",
-			"homepage": "https://findbugs.sourceforge.net/"
-		},
-		{
-			"name": "Checker Framework qualifiers",
-			"groups": ["org.checkerframework"],
-			"license": "MIT",
-			"copyright": "Copyright © the Checker Framework developers",
-			"homepage": "https://checkerframework.org/"
-		},
-		{
 			"name": "JSpecify",
 			"groups": ["org.jspecify"],
 			"license": "Apache-2.0",
