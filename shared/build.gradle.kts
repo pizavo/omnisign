@@ -12,7 +12,18 @@ plugins {
 	alias(libs.plugins.dokka)
 }
 
+/**
+ * Builds `shared` for the JVM and for Wasm in the browser, compiling and testing the JVM target on a
+ * JDK 25 toolchain, whichever JDK runs Gradle itself.
+ *
+ * `jvmTarget` sets only the bytecode version. Without the toolchain the compiler reads the class
+ * library of the JDK that runs Gradle, so a build started on an older one, such as the JDK 17 that
+ * CodeQL's autobuild uses, cannot resolve the foreign function API that `SecretFileReader` calls.
+ * Dokka takes the JDK version of its links from the toolchain as well.
+ */
 kotlin {
+	jvmToolchain(25)
+
 	jvm {
 		compilerOptions {
 			jvmTarget = JvmTarget.JVM_25
