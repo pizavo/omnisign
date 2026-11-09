@@ -14,6 +14,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
+import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.value.sensitive
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
@@ -340,6 +341,28 @@ class ConfigSerializerTest : FunSpec({
 		JsonConfigSerializer().deserializeApp("{}{}").shouldBeLeft()
 		YamlConfigSerializer().deserializeApp("activeProfile: a\n---\nactiveProfile: b").shouldBeLeft()
 		XmlConfigSerializer().deserializeApp("<AppConfig/><AppConfig/>").shouldBeLeft()
+	}
+
+	test("every format refuses a document that holds nothing but null") {
+		val documents = listOf(
+			JsonConfigSerializer() to "null",
+			YamlConfigSerializer() to "~",
+			YamlConfigSerializer() to "null",
+			YamlConfigSerializer() to "---",
+			XmlConfigSerializer() to """<AppConfig xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:nil="true"/>""",
+		)
+		for ((serializer, document) in documents) {
+			val results = listOf(
+				serializer.deserializeApp(document),
+				serializer.deserializeGlobal(document),
+				serializer.deserializeProfile(document),
+			)
+			for (result in results) {
+				val error = result.shouldBeLeft().shouldBeInstanceOf<ConfigurationError.LoadFailed>()
+				error.message shouldBe "Failed to deserialize configuration from ${serializer.format.name}"
+				error.details shouldBe "The document holds no configuration, only null"
+			}
+		}
 	}
 })
 
