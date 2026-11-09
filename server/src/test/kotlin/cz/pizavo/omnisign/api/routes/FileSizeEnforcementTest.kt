@@ -17,11 +17,71 @@ import io.ktor.server.testing.*
 import kotlinx.serialization.json.Json
 
 /**
- * Verifies that uploads exceeding [ServerConfig.maxFileSize] are rejected with HTTP 413.
+ * Verifies that uploads exceeding [ServerConfig.maxFileSize] are rejected with HTTP 413, and
+ * that [ServerConfig.maxFileSize] rather than Ktor's own multipart part limit decides which
+ * uploads are accepted.
  */
 class FileSizeEnforcementTest : FunSpec({
 
 	val json = Json { ignoreUnknownKeys = true }
+
+	val ktorPartLimitProperty = "io.ktor.server.request.formFieldLimit"
+
+	/**
+	 * Run [block] with Ktor's default multipart part limit lowered to [bytes], standing in for
+	 * its 50 MiB default without uploading that much.
+	 */
+	suspend fun withKtorDefaultPartLimit(bytes: Long, block: suspend () -> Unit) {
+		System.setProperty(ktorPartLimitProperty, bytes.toString())
+		try {
+			block()
+		} finally {
+			System.clearProperty(ktorPartLimitProperty)
+		}
+	}
+
+	/**
+	 * Headers of a PDF file part named [fileName].
+	 */
+	fun pdfPartHeaders(fileName: String): Headers = Headers.build {
+		append(HttpHeaders.ContentDisposition, "filename=\"$fileName\"")
+		append(HttpHeaders.ContentType, ContentType.Application.Pdf.toString())
+	}
+
+	test("a file above Ktor's default part limit but within maxFileSize gets past the multipart parser") {
+		withKtorDefaultPartLimit(1024) {
+			testApplication {
+				application {
+					module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), maxFileSize = 64L * 1024, cors = CorsConfig(allowedOrigins = listOf("*"))))
+				}
+				val response = client.post("/api/v1/validate") {
+					setBody(MultiPartFormDataContent(formData {
+						append("file", ByteArray(8 * 1024), pdfPartHeaders("first.pdf"))
+						append("second", ByteArray(8 * 1024), pdfPartHeaders("second.pdf"))
+					}))
+				}
+				response.status shouldBe HttpStatusCode.BadRequest
+				json.decodeFromString<ApiError>(response.bodyAsText()).error shouldBe "TOO_MANY_FILES"
+			}
+		}
+	}
+
+	test("a file above maxFileSize is answered with 413 when maxFileSize exceeds Ktor's default part limit") {
+		withKtorDefaultPartLimit(1024) {
+			testApplication {
+				application {
+					module(ServerConfig(listen = ListenConfig(host = "127.0.0.1"), maxFileSize = 4L * 1024, cors = CorsConfig(allowedOrigins = listOf("*"))))
+				}
+				val response = client.post("/api/v1/validate") {
+					setBody(MultiPartFormDataContent(formData {
+						append("file", ByteArray(8 * 1024), pdfPartHeaders("big.pdf"))
+					}))
+				}
+				response.status shouldBe HttpStatusCode.PayloadTooLarge
+				json.decodeFromString<ApiError>(response.bodyAsText()).error shouldBe "FILE_TOO_LARGE"
+			}
+		}
+	}
 
 	test("validation route returns 413 when file exceeds maxFileSize") {
 		testApplication {

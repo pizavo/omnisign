@@ -57,9 +57,14 @@ Configure the RFC 3161 timestamp server (TSA) used for B-T, B-LT, and B-LTA sign
 
 :::note
 The TSA password is stored in the operating system's native credential store
-(Windows Credential Manager, macOS Keychain, or libsecret on Linux) — it is never
-written to the configuration file. When a password has been previously stored, the
-field shows a placeholder indicator.
+(Windows Credential Manager, macOS Keychain, or on Linux a Secret Service provider such as
+GNOME Keyring, KWallet or KeePassXC) — it is never written to the configuration file. When a
+password has been previously stored, the field shows a placeholder indicator.
+
+The password is stored before the settings are saved. If the credential store does not keep it —
+a keyring left locked because its unlock prompt was dismissed, or a keychain that refuses the
+write — the dialog shows an error and saves nothing, so that the configuration never refers to a
+password that is not there.
 :::
 
 #### OCSP & CRL
@@ -139,7 +144,9 @@ resulting global and active-profile certificates.
 
 Register external ETSI TS 119612 Trusted List XML sources. Each entry may be an HTTPS URL
 or a local file path. An optional signing certificate verifies the TL's XML signature —
-strongly recommended for non-EU lists.
+strongly recommended for non-EU lists. If that certificate file cannot be read, the list is not
+loaded: validations go on without it and name it under their **Trusted List Warnings**, and
+refreshing the lists reports it as failed.
 
 A **Build Custom TL** button opens the [Trusted List builder](tl-builder.mdx) dialog for creating new
 TL documents from scratch.

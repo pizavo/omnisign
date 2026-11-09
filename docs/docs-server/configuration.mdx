@@ -23,23 +23,31 @@ The server resolves its config file from the first source that exists, in order:
    `proxy:`. There is **no classpath fallback** — the bundled `server.example.yml` is documentation
    only and is never auto-loaded.
 
-Two parsing rules protect you from silent misconfiguration:
+Three parsing rules protect you from silent misconfiguration:
 
 - **Unknown keys fail startup.** A typo like `auth: { enable: true }` (missing `d`) or
   `tls: { keystorePat: … }` would otherwise silently disable a defense; instead the server refuses
   to start and names the offending key.
+- **Values must say what they mean.** The file is read as YAML 1.2, so `true` and `false` are the
+  booleans, and `yes`, `no`, `on`, or `off` on a boolean key fails startup. `~` and an empty value mean
+  null, which a number or boolean key refuses rather than reading as `0` or `false`: a blank `port:`
+  cannot bind a random port. A second document after `---` also fails startup rather than being
+  ignored.
 - **`${VAR}` substitution** — any string *value* may reference an environment variable as `${NAME}`
   (`[A-Z_][A-Z0-9_]*`), expanded at load. Keys and comments are never substituted; a referenced-but-
   unset variable fails startup. Use this for non-secret values like an external URL — and for
   `auth.oauthStateSecret`, the one secret the schema expects as a `${VAR}` reference rather than a
-  direct environment read.
+  direct environment read. A name that starts with `OMNISIGN_` can also be set in a file, like the
+  secrets below (see [Secrets in files](#secrets-in-files)).
 
 ## Secrets {/* #secrets */}
 
-Secrets are **environment variables only** — never YAML literals. Setting any of them in YAML fails
-startup with an error naming the variable to use instead (YAML ends up in backups, logs, images, and
-screen-shares; env vars stay in process memory). The one exception is `auth.oauthStateSecret`, which
-is a real YAML field that must carry a `${VAR}` reference rather than a literal.
+Secrets never come from YAML. Setting any of them there fails startup with an error naming the
+variable to use instead, because a YAML file ends up in backups, logs, images, and screen-shares.
+Each secret `<NAME>` in the table below is read from the environment variable `<NAME>`, from the file
+that `<NAME>_FILE` names, or from the systemd credential `<NAME>` (see
+[Secrets in files](#secrets-in-files)). The one exception is `auth.oauthStateSecret`, which is a real
+YAML field that must carry a `${VAR}` reference rather than a literal.
 
 | Environment variable                | Purpose                                                            |
 |-------------------------------------|--------------------------------------------------------------------|
@@ -55,6 +63,56 @@ to build OAuth2 redirect URIs, and is recommended in production.
 
 The TSA password used by [`signing.yml`](signing-policy) is also supplied from the environment, via a
 `${VAR}` reference in that file.
+
+### Secrets in files {/* #secrets-in-files */}
+
+On Linux and macOS, a secret can be kept in a file instead: set the variable's name followed by
+`_FILE` to the file's path. This suits the secrets Docker and Kubernetes mount into a container as
+files, and it keeps the secret out of the process environment, which `docker inspect` shows and every
+child process inherits.
+
+```bash
+export OMNISIGN_JWT_SECRET_FILE=/run/secrets/jwt-secret
+```
+
+Under systemd, a credential named like the variable is read as well, such as one the unit loads with
+`LoadCredential=OMNISIGN_JWT_SECRET:/etc/omnisign/credentials/jwt-secret` (see
+[Deployment → Bare-metal service](deployment#bare-metal-service)).
+
+A `${NAME}` placeholder whose name starts with `OMNISIGN_` is read the same way, so
+`auth.oauthStateSecret` and the TSA password in `signing.yml` can come from files too. Any other name
+is read from its variable only, so a variable that another program reads, such as `SSL_CERT_FILE`,
+keeps its meaning.
+
+A secret file is read only when all of these hold:
+
+- It is a regular file of at most 64 KiB. A link is followed, and the file it leads to is checked.
+- It is owned by the user the server runs as and has mode `0600` or stricter, or it is owned by
+  `root` and has mode `0640` or stricter, which lets one group read it.
+- It is not on an overlay file system, where a container keeps the files of its image and those
+  written into it. Mount the secret when the container starts instead.
+
+Otherwise the server does not start and says what to change, such as `chmod 600 <file>`. One line
+break at the end of the file is dropped, and an empty file is refused.
+
+Set each secret in one place only. When more than one of the variable, the `_FILE` variable and the
+systemd credential is set, the server does not start instead of choosing one; an empty variable does
+not count. Windows takes only the variable, because there the owner of a file and who may read it
+cannot be checked this way.
+
+Kubernetes and Docker swarm let every user read a mounted secret unless told otherwise, and the
+server refuses such a file. Set the owner and mode a mounted secret gets:
+
+- **Kubernetes** mounts the files of a secret volume as owned by `root` with mode `0644`. Set the
+  volume's `defaultMode: 0440`, and set the pod's `securityContext.fsGroup`: the files then belong to
+  that group, and the server runs as a member of it.
+- **Docker swarm** mounts a secret with mode `0444`. Give it `mode: 0400` with `uid` set to the user
+  the server runs as, or `mode: 0440` with `gid` set to its group.
+- **Docker Compose** without swarm mounts the secret's file from the host as it is, and ignores
+  `uid`, `gid` and `mode`. Make the user the server runs as the file's owner on the host, and give the
+  file mode `0600`.
+
+[Deployment → Docker](deployment#docker) shows how to find the user and group the image runs as.
 
 ## File reference
 

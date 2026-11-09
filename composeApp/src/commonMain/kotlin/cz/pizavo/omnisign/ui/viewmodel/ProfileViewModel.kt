@@ -2,9 +2,12 @@ package cz.pizavo.omnisign.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import arrow.core.flatMap
+import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.error.localizableText
+import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.service.CredentialStore
@@ -16,6 +19,8 @@ import cz.pizavo.omnisign.ui.model.ProfileError
 import cz.pizavo.omnisign.ui.model.ProfileListState
 import cz.pizavo.omnisign.ui.model.ProfilePanelMode
 import cz.pizavo.omnisign.ui.model.TrustedCertAddError
+import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +29,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /**
  * ViewModel managing the profile list panel state.
@@ -36,12 +42,15 @@ import kotlinx.coroutines.launch
  * @param credentialStore Optional OS credential store for persisting TSA passwords.
  * @param trustStore Optional app-managed trust store backing the profile's Trusted Certificates
  *   section. `null` on targets without a backend (web), where that section renders unavailable.
+ * @param ioDispatcher Dispatcher for the credential store calls, which can block until the user
+ *   answers the keyring's unlock prompt.
  */
 class ProfileViewModel(
     private val manageProfileUseCase: ManageProfileUseCase,
     private val getConfigUseCase: GetConfigUseCase,
     private val credentialStore: CredentialStore? = null,
     private val trustStore: TrustStore? = null,
+    private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(ProfileListState())
@@ -213,7 +222,7 @@ class ProfileViewModel(
                     _state.update { it.copy(error = ProfileError.Domain(error.localizableText())) }
                 },
                 ifRight = { profile ->
-                    val hasStored = hasStoredTsaPassword(profile)
+                    val hasStored = withContext(ioDispatcher) { hasStoredTsaPassword(profile) }
                     val trustedCerts = trustStore?.list(TrustScope.Profile(name))
                         ?.fold(ifLeft = { emptyList() }, ifRight = { it }).orEmpty()
                     val editState = ProfileEditState.from(profile, hasStored, trustedCertificates = trustedCerts)
@@ -307,16 +316,18 @@ class ProfileViewModel(
     /**
      * Persist the current edit state as a profile and return to the listing view.
      *
-     * Converts [ProfileEditState] to a [ProfileConfig], calls [ManageProfileUseCase.upsert],
-     * and on success stores the TSA password in the OS credential store (if provided)
-     * then refreshes the profile list.
+     * Stores a newly entered TSA password in the OS credential store first, then converts
+     * [ProfileEditState] to a [ProfileConfig], calls [ManageProfileUseCase.upsert] and refreshes
+     * the profile list. A password the store does not keep becomes the error and nothing is saved,
+     * so the profile never names a password that is not there.
      */
     fun saveEdit() {
         val editState = _state.value.editState ?: return
         _state.update { it.copy(editState = editState.copy(saving = true, error = null)) }
         viewModelScope.launch {
             val profile = editState.toProfileConfig()
-            manageProfileUseCase.upsert(profile).fold(
+            val passwordStored = withContext(ioDispatcher) { storeTsaPasswordIfNeeded(editState) }
+            passwordStored.flatMap { manageProfileUseCase.upsert(profile) }.fold(
                 ifLeft = { error ->
                     _state.update {
                         it.copy(editState = editState.copy(saving = false, error = error.message))
@@ -337,7 +348,6 @@ class ProfileViewModel(
                     if (certError != null) {
                         _state.update { it.copy(editState = editState.copy(saving = false, error = certError)) }
                     } else {
-                        storeTsaPasswordIfNeeded(editState)
                         _initialEditState.value = null
                         _state.update {
                             it.copy(
@@ -354,6 +364,8 @@ class ProfileViewModel(
 
     /**
      * Check whether a TSA password is already persisted for the given [profile].
+     *
+     * Blocks while the keyring asks to be unlocked, so callers run it on [ioDispatcher].
      */
     private fun hasStoredTsaPassword(profile: ProfileConfig): Boolean {
         val key = profile.timestampServer?.credentialKey ?: return false
@@ -363,11 +375,17 @@ class ProfileViewModel(
     /**
      * Persist the TSA password from [editState] into the OS credential store
      * when a new password was entered and a username is present.
+     *
+     * Blocks while the keyring asks to be unlocked, so callers run it on [ioDispatcher].
+     *
+     * @return `Unit` when there was nothing to store or the store kept the password, otherwise the
+     *   store's error.
      */
-    private fun storeTsaPasswordIfNeeded(editState: ProfileEditState) {
-        if (editState.timestampPassword.isEmpty()) return
-        val username = editState.timestampUsername.ifBlank { return }
-        credentialStore?.setPassword(TSA_CREDENTIAL_SERVICE, username, editState.timestampPassword)
+    private fun storeTsaPasswordIfNeeded(editState: ProfileEditState): OperationResult<Unit> {
+        if (editState.timestampPassword.isEmpty()) return Unit.right()
+        val username = editState.timestampUsername.ifBlank { return Unit.right() }
+        return credentialStore?.setPassword(TSA_CREDENTIAL_SERVICE, username, editState.timestampPassword)
+            ?: Unit.right()
     }
 
     companion object {

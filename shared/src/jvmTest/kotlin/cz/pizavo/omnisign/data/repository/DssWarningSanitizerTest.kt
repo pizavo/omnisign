@@ -26,6 +26,10 @@ class DssWarningSanitizerTest : FunSpec({
 			"[2026-07-09T09:21:41Z]! The nextUpdate available after : [2026-07-23T02:36:55Z]"
 	val undatedStalePoeDetail = "No revocation data found after the best signature time [2026-07-09T09:21:41Z]!"
 	val absentPoeDetail = "No revocation data found for certificate!"
+	val accessPointMissing = "The certificate 'C-ABCD1234' requires a revocation data, which is not " +
+			"acceptable due its configuration (no revocation access location points)!"
+	val afterExpiry = "The revocation 'R-1234ABCD' was not issued during the validity period of the certificate! " +
+			"Certificate: C-ABCD1234"
 
 	val signingSuppressed = setOf(
 		WarningCategory.REVOCATION_NOT_FOUND,
@@ -386,6 +390,47 @@ class DssWarningSanitizerTest : FunSpec({
 		result.annotatedSummaries[0].affectedIds shouldContainExactly listOf("C-ABCD1234")
 	}
 
+	test("classify recognises a certificate that names no revocation access point") {
+		sanitizer.classify(accessPointMissing) shouldBe
+			(WarningCategory.REVOCATION_ACCESS_POINT_MISSING to setOf("C-ABCD1234"))
+	}
+
+	test("a missing revocation access point summarises with its own key and the affected certificate") {
+		val result = sanitizer.sanitize(listOf(accessPointMissing))
+		val keyed = result.annotatedSummaries[0].summary.shouldBeInstanceOf<LocalizableText.Keyed>()
+		keyed.key shouldBe MessageKey.WARNING_REVOCATION_ACCESS_POINT_MISSING
+		keyed.args shouldContainExactly listOf("1 certificate")
+		result.annotatedSummaries[0].affectedIds shouldContainExactly listOf("C-ABCD1234")
+	}
+
+	test("a missing revocation access point is reported without blocking long-term material or prompting") {
+		val result = sanitizer.sanitize(listOf(accessPointMissing), suppressedCategories = signingSuppressed)
+		result.annotatedSummaries shouldHaveSize 1
+		result.longTermMaterialMissing shouldBe false
+		result.hasRevocationWarnings shouldBe false
+	}
+
+	test("a finding the caller established is summarised like the DSS message it stands for") {
+		val result = sanitizer.sanitize(
+			emptyList(),
+			findings = mapOf(WarningCategory.REVOCATION_AFTER_CERTIFICATE_EXPIRY to setOf("C-ABCD1234")),
+		)
+		val keyed = result.annotatedSummaries.single().summary.shouldBeInstanceOf<LocalizableText.Keyed>()
+		keyed.key shouldBe MessageKey.WARNING_REVOCATION_AFTER_CERTIFICATE_EXPIRY
+		result.annotatedSummaries.single().affectedIds shouldContainExactly listOf("C-ABCD1234")
+		result.longTermMaterialMissing shouldBe true
+		result.raw.shouldBeEmpty()
+	}
+
+	test("a finding merges with the DSS message for the same category into one summary") {
+		val result = sanitizer.sanitize(
+			listOf(afterExpiry),
+			findings = mapOf(WarningCategory.REVOCATION_AFTER_CERTIFICATE_EXPIRY to setOf("C-ABCD1234", "C-EEEE5678")),
+		)
+		result.annotatedSummaries.single().affectedIds shouldContainExactly listOf("C-ABCD1234", "C-EEEE5678")
+		result.raw shouldContainExactly listOf(afterExpiry)
+	}
+
 	test("categories that leave the output below its target level block long-term material") {
 		WarningCategory.REVOCATION_NOT_FOUND.blocksLongTermMaterial shouldBe true
 		WarningCategory.REVOCATION_AFTER_CERTIFICATE_EXPIRY.blocksLongTermMaterial shouldBe true
@@ -397,6 +442,11 @@ class DssWarningSanitizerTest : FunSpec({
 		WarningCategory.REVOCATION_POE_STALE.blocksLongTermMaterial shouldBe false
 		WarningCategory.FRESH_REVOCATION_MISSING.blocksLongTermMaterial shouldBe false
 		WarningCategory.TSP_FAILURE.blocksLongTermMaterial shouldBe false
+	}
+
+	test("a certificate that names no revocation access point explains a cause and blocks nothing itself") {
+		WarningCategory.REVOCATION_ACCESS_POINT_MISSING.blocksLongTermMaterial shouldBe false
+		WarningCategory.REVOCATION_ACCESS_POINT_MISSING.isRevocationRelated shouldBe false
 	}
 
 	test("sanitize reports longTermMaterialMissing for revocation that postdates the certificate") {

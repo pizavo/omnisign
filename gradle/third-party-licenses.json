@@ -194,8 +194,16 @@
 			"homepage": "https://bitbucket.org/snakeyaml/snakeyaml"
 		},
 		{
+			"name": "SnakeYAML Engine",
+			"groups": ["org.snakeyaml"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © 2018 SnakeYAML",
+			"homepage": "https://bitbucket.org/snakeyaml/snakeyaml-engine",
+			"notes": "Reached transitively through Jackson's YAML data format."
+		},
+		{
 			"name": "Jackson",
-			"groups": ["com.fasterxml.jackson.core", "com.fasterxml.jackson.dataformat", "com.fasterxml.jackson.module"],
+			"groups": ["com.fasterxml.jackson.core", "com.fasterxml.jackson.dataformat", "com.fasterxml.jackson.module", "tools.jackson.core", "tools.jackson.dataformat", "tools.jackson.module"],
 			"license": "Apache-2.0",
 			"copyright": "Copyright © FasterXML, LLC",
 			"homepage": "https://github.com/FasterXML/jackson"
@@ -249,6 +257,7 @@
 				"org.jetbrains.compose.annotation-internal",
 				"org.jetbrains.compose.collection-internal",
 				"org.jetbrains.androidx.lifecycle",
+				"org.jetbrains.androidx.navigationevent",
 				"org.jetbrains.androidx.savedstate"
 			],
 			"license": "Apache-2.0",
@@ -305,6 +314,38 @@
 			"license": "Apache-2.0",
 			"copyright": "Copyright © JetBrains s.r.o.",
 			"homepage": "https://ktor.io/"
+		},
+		{
+			"name": "kaml",
+			"groups": ["com.charleskorn.kaml"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © Charles Korn",
+			"homepage": "https://github.com/charleskorn/kaml",
+			"notes": "Reached transitively through Ktor's OpenAPI schema support, which ktor-server-content-negotiation depends on."
+		},
+		{
+			"name": "SnakeYAML Engine KMP",
+			"groups": ["it.krzeminski"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © 2018 SnakeYAML; portions Copyright © 2023 cketti",
+			"homepage": "https://github.com/krzema12/snakeyaml-engine-kmp",
+			"notes": "Reached transitively through kaml. Three of its internal source files are adapted from cketti's kotlin-codepoints and carry that project's MIT License rather than Apache-2.0."
+		},
+		{
+			"name": "Okio",
+			"groups": ["com.squareup.okio"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © Square, Inc.",
+			"homepage": "https://square.github.io/okio/",
+			"notes": "Reached transitively through SnakeYAML Engine KMP."
+		},
+		{
+			"name": "UrlEncoder",
+			"groups": ["net.thauvin.erik.urlencoder"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © 2001-2024 the original author or authors",
+			"homepage": "https://github.com/ethauvin/urlencoder",
+			"notes": "Reached transitively through SnakeYAML Engine KMP."
 		},
 		{
 			"name": "Koin",
@@ -416,6 +457,14 @@
 			"license": "Apache-2.0",
 			"copyright": "Copyright © Google LLC",
 			"homepage": "https://errorprone.info"
+		},
+		{
+			"name": "J2ObjC annotations",
+			"groups": ["com.google.j2objc"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © Google LLC",
+			"homepage": "https://github.com/google/j2objc",
+			"notes": "Reached transitively through Guava, which the Auth0 JWKS client depends on."
 		},
 		{
 			"name": "JSR 305 annotations",

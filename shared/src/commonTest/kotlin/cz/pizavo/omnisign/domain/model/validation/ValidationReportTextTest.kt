@@ -5,13 +5,15 @@ import cz.pizavo.omnisign.domain.model.signature.CertificateDetailSection
 import cz.pizavo.omnisign.domain.model.signature.CertificateField
 import cz.pizavo.omnisign.domain.model.signature.CertificateInfo
 import cz.pizavo.omnisign.domain.model.signature.CertificateTrustSource
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import kotlin.time.Instant
 
 /**
- * Verifies that [toPlainText] renders both per-signature and document-level timestamps.
+ * Verifies that [toPlainText] renders both per-signature and document-level timestamps, and that a
+ * blank line separates the notice of a document without signatures from the section after it.
  */
 class ValidationReportTextTest : FunSpec({
 
@@ -102,6 +104,17 @@ class ValidationReportTextTest : FunSpec({
 		text shouldContain "The signing certificate was not revoked as of"
 		text shouldContain "Embedded in document, sealed by document timestamp"
 		text shouldContain "Response produced:"
+	}
+
+	test("keeps a blank line between the notice of no signatures and the section after it") {
+		val unsigned = report.copy(overallResult = ValidationResult.NO_SIGNATURES, signatures = emptyList())
+		val tlWarningsOnly = unsigned.copy(
+			timestamps = emptyList(),
+			tlWarnings = listOf(LocalizableText.Literal("Could not refresh 1 trusted list (eidas.gov.ie).")),
+		)
+
+		unsigned.toPlainText() shouldContain "No signatures found in the document.\n\n── Document Timestamps ──"
+		tlWarningsOnly.toPlainText() shouldContain "No signatures found in the document.\n\n── Trusted List Warnings ──"
 	}
 
 	test("renders qualification and informational messages") {

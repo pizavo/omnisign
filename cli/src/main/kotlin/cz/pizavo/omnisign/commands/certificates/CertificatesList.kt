@@ -7,6 +7,7 @@ import com.github.ajalt.clikt.core.requireObject
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import cz.pizavo.omnisign.cli.OutputConfig
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.cli.json.JsonCertificateList
 import cz.pizavo.omnisign.cli.json.toJsonCertificateList
 import cz.pizavo.omnisign.cli.json.toJsonError
@@ -50,12 +51,9 @@ class CertificatesList : CliktCommand(name = "list"), KoinComponent {
 						success = false,
 						error = error.toJsonError()
 					)))
-				} else {
-					echo("❌ Failed to list certificates: ${error.message}", err = true)
-					error.details?.let { echo("Details: $it", err = true) }
-					error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+					throw ProgramResult(1)
 				}
-				throw ProgramResult(1)
+				failWith(error, "Failed to list certificates")
 			},
 			ifRight = { result ->
 				if (output.json) {

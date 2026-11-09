@@ -8,7 +8,7 @@ import kotlin.time.Clock
  * Verifies how [TrustedListRefreshFailure.of] collapses a refresh session's failures into
  * one aggregate: the EU LOTL is prioritised over any custom-list failures, and the
  * custom-only cases split by count into [TrustedListRefreshFailure.CustomList] and
- * [TrustedListRefreshFailure.Multiple].
+ * [TrustedListRefreshFailure.Multiple]. Every case names the custom lists that failed.
  */
 class TrustedListRefreshFailureTest : FunSpec({
 
@@ -23,14 +23,14 @@ class TrustedListRefreshFailureTest : FunSpec({
 			TrustedListRefreshFailure.EuLotl(at)
 	}
 
-	test("the EU LOTL failing alongside custom lists resolves to EuLotlAndOthers") {
+	test("the EU LOTL failing alongside custom lists resolves to EuLotlAndOthers naming them") {
 		TrustedListRefreshFailure.of(lotlFailed = true, failedCustomNames = listOf("A", "B"), at = at) shouldBe
-			TrustedListRefreshFailure.EuLotlAndOthers(at)
+			TrustedListRefreshFailure.EuLotlAndOthers(listOf("A", "B"), at)
 	}
 
 	test("the EU LOTL failing with a single custom list still resolves to EuLotlAndOthers") {
 		TrustedListRefreshFailure.of(lotlFailed = true, failedCustomNames = listOf("A"), at = at) shouldBe
-			TrustedListRefreshFailure.EuLotlAndOthers(at)
+			TrustedListRefreshFailure.EuLotlAndOthers(listOf("A"), at)
 	}
 
 	test("a single custom failure names the list") {
@@ -38,8 +38,8 @@ class TrustedListRefreshFailureTest : FunSpec({
 			TrustedListRefreshFailure.CustomList("My List", at)
 	}
 
-	test("multiple custom failures without the LOTL resolve to Multiple") {
+	test("multiple custom failures without the LOTL resolve to Multiple naming them") {
 		TrustedListRefreshFailure.of(lotlFailed = false, failedCustomNames = listOf("A", "B"), at = at) shouldBe
-			TrustedListRefreshFailure.Multiple(at)
+			TrustedListRefreshFailure.Multiple(listOf("A", "B"), at)
 	}
 })

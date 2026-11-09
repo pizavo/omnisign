@@ -16,8 +16,8 @@ import kotlinx.serialization.Serializable
  *
  * **Defaults**
  *
- * [DEFAULT] holds the canonical built-in values matching the DSS ETSI 6.3 policy.
- * It is the terminal fallback in [ResolvedConfig] resolution and the reference for
+ * [DEFAULT] holds the canonical built-in values matching the default ETSI validation policy of
+ * DSS 6.5.1. It is the terminal fallback in [ResolvedConfig] resolution and the reference for
  * displaying "default" vs "overridden" in the UI.
  *
  * **Signing pre-check vs. validation**
@@ -33,7 +33,8 @@ import kotlinx.serialization.Serializable
  *
  * [policyUpdateDate] is managed automatically — stamped with the current date whenever
  * any constraint is changed via [stampedToday].  When null the DSS built-in default
- * (`2024-10-13` in DSS 6.3) is used.
+ * ([cz.pizavo.omnisign.domain.service.AlgorithmExpirationChecker.DEFAULT_UPDATE_DATE],
+ * `2026-02-01` in DSS 6.5.1) is used.
  *
  * @property expirationLevel Severity when an algorithm expired **before or on**
  *   [policyUpdateDate].  Null means inherit from the layer below.
@@ -63,7 +64,7 @@ data class AlgorithmConstraintsConfig(
 	
 	companion object {
 		/**
-		 * Canonical built-in defaults matching the DSS ETSI 6.3 policy behaviour.
+		 * Canonical built-in defaults matching the behaviour of the DSS 6.5.1 default ETSI policy.
 		 *
 		 * Used as the terminal fallback during config layer resolution and as the
 		 * reference for displaying "default" vs "overridden" in the UI.

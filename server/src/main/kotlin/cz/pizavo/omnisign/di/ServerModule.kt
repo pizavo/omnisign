@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.di
 
+import cz.pizavo.omnisign.auth.EmptyCredentialStore
 import cz.pizavo.omnisign.auth.ExposedHandoffCodeStore
 import cz.pizavo.omnisign.auth.ExposedLoginRequestStore
 import cz.pizavo.omnisign.auth.ExposedPkceVerifierStore
@@ -26,6 +27,7 @@ import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
+import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.platform.PasswordCallback
 import io.ktor.client.*
 import io.ktor.client.engine.HttpClientEngine
@@ -38,7 +40,7 @@ import io.ktor.util.StatelessHmacNonceManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.Json
-import org.jetbrains.exposed.sql.Database
+import org.jetbrains.exposed.v1.jdbc.Database
 import org.koin.dsl.module
 import java.nio.file.Path
 import kotlin.coroutines.CoroutineContext
@@ -58,6 +60,11 @@ import kotlin.coroutines.CoroutineContext
  *   `jvmRepositoryModule` binding so the server never touches a co-located desktop trust store.
  * - [TrustReconciler] that provisions that trust store from the signing.yml trust references at
  *   boot; invoked from `Application.moduleWith`.
+ * - [CredentialStore] ([EmptyCredentialStore]) when [AllowedOperation.SIGN] is not allowed,
+ *   overriding the keyring-backed store from `jvmRepositoryModule` so a server that only
+ *   validates or timestamps never opens the host's keychain. A signing server keeps the keyring
+ *   store, because the PIN of a PIN-protected PKCS#11 token can come from nowhere else:
+ *   [ServerPasswordCallback] cannot prompt.
  * - IO [CoroutineContext] for blocking work.
  * - [HttpClient] (CIO engine) with JSON content-negotiation and per-stage timeouts
  *   ([HttpTimeout]) for OIDC discovery and user-info requests. The timeouts close the
@@ -93,8 +100,9 @@ import kotlin.coroutines.CoroutineContext
  * - [PkceVerifierStore] (concrete [ExposedPkceVerifierStore]) for persisting in-flight
  *   PKCE code verifiers across the redirect → IdP → callback hop. Shares the same
  *   sessions database file as [RefreshTokenStore]; schema is initialised on first
- *   injection. Binding is lazy so deployments without any [OidcProviderConfig] never
- *   touch SQLite for PKCE either.
+ *   injection. Binding is lazy so deployments without any
+ *   [OidcProviderConfig][cz.pizavo.omnisign.config.OidcProviderConfig] never touch SQLite for
+ *   PKCE either.
  * - [PkceService] (RFC 7636) — verifier generation, S256 challenge derivation, and the
  *   thin protocol layer over [PkceVerifierStore].
  * - [LoginRequestStore] (concrete [ExposedLoginRequestStore]) and [HandoffCodeStore]
@@ -127,6 +135,8 @@ fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConf
 
 	if (AllowedOperation.SIGN in serverConfig.operations.allowed) {
 		single { MutableStateFlow(false) }
+	} else {
+		single<CredentialStore> { EmptyCredentialStore() }
 	}
 
 	single<HttpClient> {

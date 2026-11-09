@@ -29,6 +29,7 @@ import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.plugins.*
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.github.oshai.kotlinlogging.KotlinLoggingConfiguration
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.server.application.*
 import io.ktor.server.engine.*
@@ -46,7 +47,17 @@ import java.io.File
 import java.nio.file.Path
 import java.security.KeyStore
 
-private val logger = KotlinLogging.logger {}
+/**
+ * Logger of the server entry point.
+ *
+ * Creating it is the process's first use of [KotlinLogging], so the library's
+ * "kotlin-logging: initializing..." banner is switched off just before: the banner goes to
+ * standard output, the server's log stream, ahead of the first formatted log line.
+ */
+private val logger = run {
+	KotlinLoggingConfiguration.logStartupMessage = false
+	KotlinLogging.logger {}
+}
 
 /**
  * Server entry point.
@@ -64,6 +75,7 @@ private val logger = KotlinLogging.logger {}
  */
 fun main(args: Array<String>) {
 	cz.pizavo.omnisign.data.repository.DssServiceFactory.enableAiaCaIssuerFetching()
+	cz.pizavo.omnisign.data.util.routeJavaUtilLoggingToSlf4j()
 
 	val configPath = args.indexOf("--config").takeIf { it >= 0 }?.let { args.getOrNull(it + 1) }
 	val serverConfig = ServerConfigLoader().load(configPath)
@@ -325,9 +337,9 @@ private fun Application.attachPkcs11CacheInvalidatorIfNeeded(serverConfig: Serve
  * certificate discovery calls use the fast in-process path rather than spawning
  * unreliable subprocesses.
  *
- * When `SIGN` is not in [OperationsConfig.allowed], warmup is skipped entirely
- * because the certificate discovery route (`GET /api/v1/certificates`) is gated behind
- * `SIGN` and will never be invoked.
+ * When `SIGN` is not in [OperationsConfig.allowed][cz.pizavo.omnisign.config.OperationsConfig.allowed],
+ * warmup is skipped entirely because the certificate discovery route (`GET /api/v1/certificates`)
+ * is gated behind `SIGN` and will never be invoked.
  *
  * @param serverConfig Current server configuration.
  */
@@ -461,8 +473,8 @@ private fun loadKeyStore(path: String, password: String): KeyStore {
  * Derive the externally reachable base URL for the server.
  *
  * Used to build OAuth2 redirect URIs. Reads the `OMNISIGN_EXTERNAL_URL` environment
- * variable first, falling back to constructing a URL from [ListenConfig.host] and the
- * active port/scheme.
+ * variable first, falling back to constructing a URL from
+ * [ListenConfig.host][cz.pizavo.omnisign.config.ListenConfig.host] and the active port/scheme.
  *
  * @param serverConfig Current server configuration.
  * @return Base URL string (no trailing slash).

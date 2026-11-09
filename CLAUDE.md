@@ -6,7 +6,7 @@ The authoritative agent-facing reference is **`AGENTS.md`** at the repo root —
 
 ## Project
 
-OmniSign — Kotlin Multiplatform digital signature app (PAdES BASELINE B/B-T/B-LT/B-LTA) on the EU DSS 6.3 library. Diploma thesis project; documentation quality matters.
+OmniSign — Kotlin Multiplatform digital signature app (PAdES BASELINE B/B-T/B-LT/B-LTA) on the EU DSS 6.5.1 library. Diploma thesis project; documentation quality matters.
 
 ## Modules
 
@@ -14,7 +14,7 @@ Four Gradle modules with strict dependency direction `cli` / `composeApp` / `ser
 
 - `shared` — multiplatform domain + JVM data layer (clean architecture). `commonMain` is platform-agnostic and **must not import DSS**; DSS-backed implementations live in `jvmMain` (`Dss*Repository`, serializers, OS schedulers, PKCS#11, etc.). Domain↔DSS bridging is via Kotlin extension functions in `jvmMain/.../enums/*Extension.kt`.
 - `cli` — Clikt CLI, fat JAR via Shadow. Entry: `cz.pizavo.omnisign.CliKt`.
-- `composeApp` — Compose Multiplatform desktop (JVM) + web (Wasm) from one codebase. MVVM with Koin-Compose ViewModels exposing `StateFlow`. `expect`/`actual` split for platform concerns. The web target is a **client of the OmniSign server**: `webDataModule` binds HTTP-backed `Remote*Repository` implementations (in `shared/wasmJsMain`) behind the same ports the JVM satisfies with DSS, so the shared use cases run unchanged; browser-impossible operations (local-keystore signing, PKCS#11, config edits) return a `Left`. Entry (desktop): `cz.pizavo.omnisign.MainKt`.
+- `composeApp` — Compose Multiplatform desktop (JVM) + web (Wasm) from one codebase. MVVM with Lifecycle ViewModels exposing `StateFlow`, built from Koin through `koinViewModelOrNull` and held in a store scoped to `App`, so signing out on the web clears them. `expect`/`actual` split for platform concerns. The web target is a **client of the OmniSign server**: `webDataModule` binds HTTP-backed `Remote*Repository` implementations (in `shared/wasmJsMain`) behind the same ports the JVM satisfies with DSS, so the shared use cases run unchanged; browser-impossible operations (local-keystore signing, PKCS#11, config edits) return a `Left`. Entry (desktop): `cz.pizavo.omnisign.MainKt`.
 - `server` — Ktor/Netty HTTP server. Routes mounted under `/api/v1`. SSO via **OIDC only** (with provider presets); JWT (HS*) sessions. Allowed operations gated by `AllowedOperation` — only `VALIDATE` is enabled by default, `SIGN` and `TIMESTAMP` are both opt-in. Entry: `cz.pizavo.omnisign.ApplicationKt`.
 
 `docs/` is a Docusaurus site on pnpm, requiring Node 26+ (`pnpm start` inside `docs/`). Five doc sections: `docs-cli`, `docs-desktop`, `docs-server`, `docs-web`, `docs-development`.
@@ -32,11 +32,13 @@ Requires **JDK 25+**; desktop target additionally requires **JBR 25**. `--enable
 .\gradlew.bat :composeApp:wasmJsBrowserDevelopmentRun  # Web (Wasm)
 .\gradlew.bat :dokkaGenerate                           # Aggregated KDoc → build/dokka/html/
 .\gradlew.bat :shared:updateLotlKeystore               # Refresh bundled EU LOTL keystore
+.\gradlew.bat :shared:regenerateDssMessages            # Rebuild a DSS message translation (-Plocale=cs|sk, -Padditions=<file>)
+.\gradlew.bat regenerateTestPki                        # Regenerate the RSA-4096 e2e PKI fixtures
 ```
 
 ## Tests
 
-Kotest 6 (FunSpec) + MockK + Arrow Kotest matchers (`shouldBeLeft()` / `shouldBeRight()`). Tests live in `src/jvmTest` (shared, composeApp), `src/test` (cli, server), and `src/commonTest` (`shared`, run as part of `:shared:jvmTest`). `:shared:jvmTest`, `:cli:test`, and `:server:test` add `-XX:+EnableDynamicAgentLoading -Xshare:off --enable-native-access=ALL-UNNAMED` (plus smartcardio flags); `:composeApp:jvmTest` sets only `useJUnitPlatform()`. Decoroutinator (readable coroutine stack traces) is a Gradle plugin in `shared`/`composeApp` and a runtime artifact in `cli`/`server`.
+Kotest 6 (FunSpec) + MockK + Arrow Kotest matchers (`shouldBeLeft()` / `shouldBeRight()`). Tests live in `src/jvmTest` (shared, composeApp), `src/test` (cli, server), and `src/commonTest` (`shared`, run as part of `:shared:jvmTest`). `:shared:jvmTest`, `:cli:test`, and `:server:test` add `-XX:+EnableDynamicAgentLoading -Xshare:off --enable-native-access=ALL-UNNAMED` (plus smartcardio flags); `:composeApp:jvmTest` adds only `-XX:+EnableDynamicAgentLoading`. Decoroutinator (readable coroutine stack traces) is a Gradle plugin in `shared`/`composeApp` and a runtime artifact in `cli`/`server`.
 
 ```powershell
 .\gradlew.bat :shared:jvmTest
@@ -44,8 +46,12 @@ Kotest 6 (FunSpec) + MockK + Arrow Kotest matchers (`shouldBeLeft()` / `shouldBe
 .\gradlew.bat :server:test
 .\gradlew.bat :composeApp:jvmTest
 
-# Gradle's --tests filter does NOT work with this Kotest setup (reports "No tests found").
-# Run the whole module task and read build/test-results/<task>/TEST-*.xml for per-spec results.
+# --tests selects a spec by fully qualified name, or a package with a trailing ".*":
+.\gradlew.bat :cli:test --tests "cz.pizavo.omnisign.commands.SignTest"
+.\gradlew.bat :shared:jvmTest --tests "cz.pizavo.omnisign.domain.model.config.*"
+# shared and composeApp also hand the pattern to Kotest, so a leading wildcard ("*SignTest")
+# matches nothing there and fails with "No tests found"; cli and server accept one.
+# Per-spec results land in build/test-results/<task>/TEST-*.xml.
 ```
 
 CLI tests use the Kotest `KoinExtension` with `KoinLifecycleMode.Test` (see `cli/src/test/.../commands/SignTest.kt`). composeApp ViewModel tests use `StandardTestDispatcher` + `runTest` with `Dispatchers.setMain`/`resetMain` and inject mocks directly without Koin (see `composeApp/src/jvmTest/.../ui/viewmodel/SigningViewModelTest.kt`).

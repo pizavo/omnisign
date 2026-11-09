@@ -177,6 +177,9 @@ enum class MessageKey {
 	/** The server's signing configuration is fixed at startup and cannot be mutated at runtime. */
 	CONFIG_SERVER_READ_ONLY,
 
+	/** The system credential store did not keep a password the configuration would refer to. */
+	CONFIG_PASSWORD_STORE_FAILED,
+
 	/** The trust store lacks the bytes for a certificate the archive references (arg: fingerprint). */
 	CONFIG_MISSING_CERTIFICATE_BYTES,
 
@@ -351,6 +354,13 @@ enum class MessageKey {
 	 */
 	WARNING_REVOCATION_AFTER_CERTIFICATE_EXPIRY,
 
+	/**
+	 * Sanitized warning: a certificate names no CRL distribution point or OCSP address, so the
+	 * timestamps and revocation data signed under it are disregarded while long-term validation data
+	 * is gathered (arg: affected-count phrase).
+	 */
+	WARNING_REVOCATION_ACCESS_POINT_MISSING,
+
 	/** Sanitized warning: revocation checks skipped for an untrusted chain (arg: affected-count phrase). */
 	WARNING_REVOCATION_UNTRUSTED_CHAIN,
 
@@ -389,6 +399,9 @@ enum class MessageKey {
 
 	/** Trusted-list loading: one or more trusted lists could not be refreshed (arg: count phrase; arg: failed hosts). */
 	WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE,
+
+	/** Trusted-list loading: a custom trusted list was not loaded because its signing certificate cannot be read (arg: list name; arg: certificate path). */
+	WARNING_TRUSTED_LIST_SIGNING_CERTIFICATE_UNREADABLE,
 
 	/** Validation: a signature's trust anchor is trusted for timestamping only, not for signing. */
 	VALIDATION_SIGNATURE_POLICY_UNTRUSTED,

@@ -33,7 +33,7 @@ import kotlinx.coroutines.launch
  *
  * @param scope The scope on which auto-dismiss coroutines are launched.  Defaults to a fresh
  *   [SupervisorJob] on [Dispatchers.Default] (long-lived UI singleton).  Tests inject a
- *   [kotlinx.coroutines.test.TestScope]'s `backgroundScope` for deterministic timing.
+ *   `TestScope`'s `backgroundScope` for deterministic timing.
  */
 class ToastService(
 	private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),

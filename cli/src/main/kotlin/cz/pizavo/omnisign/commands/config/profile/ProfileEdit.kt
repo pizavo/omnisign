@@ -2,13 +2,17 @@ package cz.pizavo.omnisign.commands.config.profile
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
+import cz.pizavo.omnisign.cli.failWith
+import cz.pizavo.omnisign.cli.requirePersistentCredentialStore
 import cz.pizavo.omnisign.cli.resolvePasswordOption
+import cz.pizavo.omnisign.cli.storeTimestampPassword
 import cz.pizavo.omnisign.commands.config.ConfigSet
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
@@ -162,22 +166,15 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 				"❌ No changes specified. Provide at least one option to modify. Use --help to see available options.",
 				err = true
 			)
-			return@runBlocking
+			throw ProgramResult(1)
 		}
+		requirePersistentCredentialStore(timestampPassword, credentialStore)
 		manageProfile.get(name).fold(
-			ifLeft = { error ->
-				echo("❌ ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-			},
+			ifLeft = { failWith(it) },
 			ifRight = { existing ->
 				val updated = buildPatchedProfile(existing)
 				manageProfile.upsert(updated).fold(
-					ifLeft = { error ->
-						echo("❌ Failed to save profile: ${error.message}", err = true)
-						error.details?.let { echo("Details: $it", err = true) }
-						error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-					},
+					ifLeft = { failWith(it, "Failed to save profile") },
 					ifRight = {
 						echo("✅ Profile '$name' updated.")
 					}
@@ -294,6 +291,7 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 	 * When [timestampPassword] is supplied it is persisted in the OS keychain under
 	 * [ConfigSet.TSA_CREDENTIAL_SERVICE] with the effective username as the account key.
 	 * Passing `"-"` as the password triggers an interactive hidden-input prompt via [passwordCallback].
+	 * A password the keychain does not keep stops the command before the profile is saved.
 	 */
 	private fun buildPatchedTimestampConfig(existing: TimestampServerConfig?): TimestampServerConfig? {
 		val resolvedPassword = resolvePasswordOption(timestampPassword, passwordCallback)
@@ -305,7 +303,7 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 		val baseUrl = timestampUrl ?: existing?.url ?: ""
 		val effectiveUsername = timestampUsername ?: existing?.username
 		val effectiveCredentialKey = if (resolvedPassword != null && effectiveUsername != null) {
-			credentialStore.setPassword(ConfigSet.TSA_CREDENTIAL_SERVICE, effectiveUsername, resolvedPassword)
+			storeTimestampPassword(credentialStore, effectiveUsername, resolvedPassword)
 			effectiveUsername
 		} else {
 			existing?.credentialKey

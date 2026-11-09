@@ -144,7 +144,7 @@ class ConfigShowTest : FunSpec({
 		val result = Omnisign().test(listOf("config", "show"))
 
 		result.statusCode shouldBe 1
-		result.stderr shouldContain "Failed to load configuration"
-		result.stderr shouldContain "config file is not valid JSON"
+		result.stderr.lines().first() shouldBe "❌ Failed to load configuration"
+		result.stderr shouldContain "Details: config file is not valid JSON"
 	}
 })

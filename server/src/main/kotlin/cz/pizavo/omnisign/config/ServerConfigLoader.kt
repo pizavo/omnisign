@@ -1,13 +1,13 @@
 package cz.pizavo.omnisign.config
 
-import com.fasterxml.jackson.databind.DeserializationFeature
-import com.fasterxml.jackson.databind.JsonDeserializer
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.module.SimpleModule
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
+import cz.pizavo.omnisign.data.serializer.configYamlMapperBuilder
 import cz.pizavo.omnisign.domain.model.value.Sensitive
 import io.github.oshai.kotlinlogging.KotlinLogging
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.ValueDeserializer
+import tools.jackson.databind.module.SimpleModule
+import tools.jackson.module.kotlin.KotlinModule
 import java.io.File
 
 private val logger = KotlinLogging.logger {}
@@ -16,7 +16,7 @@ private val logger = KotlinLogging.logger {}
  * Loads [ServerConfig] from a YAML file.
  *
  * Resolution order:
- * 1. Explicit [path] argument (e.g. from a CLI flag).
+ * 1. Explicit `path` argument to [load] (e.g. from a CLI flag).
  * 2. `OMNISIGN_SERVER_CONFIG` environment variable.
  * 3. `server.yml` in the current working directory.
  * 4. Built-in defaults ([ServerConfig] no-arg constructor) — with a WARN telling the
@@ -35,9 +35,10 @@ private val logger = KotlinLogging.logger {}
  * **Environment variable substitution.** The YAML is parsed to a tree, then any `${NAME}`
  * placeholder in a string value is replaced (keys and comments are never substituted). The
  * variable name must match `[A-Z_][A-Z0-9_]*` (uppercase, digits, underscores). This is
- * how a small number of non-secret config values (e.g. an external base URL) can come
- * from the environment. Operator secrets are not loaded this way — see [ServerSecrets].
- * Missing referenced env vars cause load to fail with a clear error.
+ * how a small number of config values (e.g. an external base URL, or `auth.oauthStateSecret`)
+ * can come from the environment; the dedicated operator secrets are read by [ServerSecrets]
+ * instead. An `OMNISIGN_` name may also come from a file or a systemd credential, see
+ * [placeholderResolver]. Missing referenced env vars cause load to fail with a clear error.
  *
  * **Strict unknown-key parsing.** Jackson is configured with
  * [DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES] enabled so any YAML key that does
@@ -50,21 +51,22 @@ private val logger = KotlinLogging.logger {}
  * every misconfiguration through an explicit fix instead of through unnoticed
  * fail-open behavior.
  */
-class ServerConfigLoader(private val env: (String) -> String? = System::getenv) {
+class ServerConfigLoader(private val env: (String) -> String? = placeholderResolver()) {
 
-	private val mapper: ObjectMapper = ObjectMapper(YAMLFactory())
-		.registerKotlinModule()
-		.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true)
-		.registerModule(
+	private val mapper: ObjectMapper = configYamlMapperBuilder()
+		.addModule(KotlinModule.Builder().build())
+		.enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+		.addModule(
 			SimpleModule()
 				.addDeserializer(SsoProviderConfig::class.java, SsoProviderConfigDeserializer())
 				.addDeserializer(
 					Sensitive::class.java,
 					@Suppress("UNCHECKED_CAST")
-					(SensitiveStringJacksonDeserializer() as JsonDeserializer<Sensitive<*>>),
+					(SensitiveStringJacksonDeserializer() as ValueDeserializer<Sensitive<*>>),
 				),
 		)
 		.addHandler(RemovedSecretFieldHandler())
+		.build()
 
 	/**
 	 * Load the server configuration from the first available source.

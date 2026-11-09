@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.commands.config.tl.build
 
+import arrow.core.left
 import arrow.core.right
 import com.github.ajalt.clikt.testing.test
 import cz.pizavo.omnisign.Omnisign
@@ -7,10 +8,12 @@ import cz.pizavo.omnisign.domain.model.config.CustomTrustedListDraft
 import cz.pizavo.omnisign.domain.model.config.TrustServiceDraft
 import cz.pizavo.omnisign.domain.model.config.TrustServiceProviderDraft
 import cz.pizavo.omnisign.domain.model.config.TrustedListAddress
+import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.usecase.ManageTrustedListsUseCase
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.koin.KoinExtension
 import io.kotest.koin.KoinLifecycleMode
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.clearMocks
 import io.mockk.coEvery
@@ -118,5 +121,14 @@ class TrustedListBuildShowTest : FunSpec({
 		)
 
 		output shouldContain "Operator addr. : Praha"
+	}
+
+	test("names a draft that does not exist and exits non-zero") {
+		coEvery { manageTl.getDraft("ghost") } returns ConfigurationError.draftNotFound("ghost").left()
+
+		val result = Omnisign().test(listOf("config", "tl", "build", "show", "ghost"))
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "No TL draft named 'ghost' found"
 	}
 })

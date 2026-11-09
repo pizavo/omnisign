@@ -4,13 +4,16 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import java.security.KeyStore
 import java.util.Base64
 
 /**
  * Verifies [extractCertificateDetails] against a self-signed certificate carrying
  * `CN=Test Signer, OU=Unit, O=Org, C=CZ`, a Subject Alternative Name (email + DNS), a critical
- * Key Usage, and Basic Constraints — covering the DN enumeration and the decoded extensions — and
- * against a second certificate whose common name contains a comma, covering RFC 4514 unescaping.
+ * Key Usage, and Basic Constraints — covering the DN enumeration and the decoded extensions —
+ * against a second certificate whose common name contains a comma, covering RFC 4514 unescaping,
+ * and against the e2e test PKI's CA-issued signer certificate, covering the Authority Key
+ * Identifier.
  */
 class CertificateDetailsExtractorTest : FunSpec({
 
@@ -92,5 +95,26 @@ class CertificateDetailsExtractorTest : FunSpec({
         val extensions = extractCertificateDetails(commaDer).first { it.title == "Extensions" }
         val keyId = extensions.fields.first { it.label == "Subject Key Identifier" }.value
         keyId shouldBe "EB:F4:81:44:2B:85:29:A0:31:19:A2:12:F1:DC:1B:1C:3E:B2:89:25"
+    }
+
+    /**
+     * DER encoding of the certificate in the e2e test PKI key store [store], which is protected by
+     * the fixtures' shared password.
+     */
+    fun e2eCertificateDer(store: String): ByteArray {
+        val stream = CertificateDetailsExtractorTest::class.java.getResourceAsStream("/e2e/$store")
+            ?: error("Missing test fixture /e2e/$store")
+        val keyStore = KeyStore.getInstance("PKCS12")
+        stream.use { keyStore.load(it, "test1234".toCharArray()) }
+        return keyStore.getCertificate(keyStore.aliases().nextElement()).encoded
+    }
+
+    /** Value of the [label] field in the Extensions section of the certificate [der]. */
+    fun extensionValue(der: ByteArray, label: String): String =
+        extractCertificateDetails(der).first { it.title == "Extensions" }.fields.first { it.label == label }.value
+
+    test("decodes the authority key identifier to the issuer's subject key identifier") {
+        val authorityKeyId = extensionValue(e2eCertificateDer("signer.test.p12"), "Authority Key Identifier")
+        authorityKeyId shouldBe extensionValue(e2eCertificateDer("ca.test.p12"), "Subject Key Identifier")
     }
 })

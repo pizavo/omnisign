@@ -32,9 +32,10 @@ The server is configured by **two** files, deliberately separated:
   equivalent of the desktop "global settings + profiles", loaded read-only.
 
 Secrets (the JWT signing key, OIDC client secrets, TLS keystore passwords) are **never** written to
-either file — they are supplied through [environment variables](configuration#secrets). Two more are
-referenced in the files but resolved from the environment at load: `auth.oauthStateSecret` in
-`server.yml` and the TSA password in `signing.yml`, both written as `"${VAR}"` placeholders.
+either file — they are supplied through [environment variables, or files the variables
+name](configuration#secrets). Two more are referenced in the files but resolved from the environment
+at load: `auth.oauthStateSecret` in `server.yml` and the TSA password in `signing.yml`, both written
+as `"${VAR}"` placeholders.
 
 ## Quick start
 

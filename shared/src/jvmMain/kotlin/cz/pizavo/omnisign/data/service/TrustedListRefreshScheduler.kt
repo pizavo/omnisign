@@ -4,6 +4,7 @@ import cz.pizavo.omnisign.data.repository.DssServiceFactory
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.trust.TrustedListRefreshFailure
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.delay
@@ -24,8 +25,9 @@ private val logger = KotlinLogging.logger {}
  * `GlobalConfig.trustedListRefreshIntervalHours`, so a lazily-acquired profile
  * list can never drift out of phase with the shared EU LOTL.
  *
- * @property factory The shared [DssServiceFactory] whose [TrustedSourceRegistry]
- *   is warmed and refreshed.
+ * @property factory The shared [DssServiceFactory] whose
+ *   [TrustedSourceRegistry][cz.pizavo.omnisign.data.repository.TrustedSourceRegistry] is warmed
+ *   and refreshed.
  * @property configRepository Source of the active configuration: the global
  *   refresh interval and the set of profiles to warm.
  */
@@ -98,15 +100,24 @@ class TrustedListRefreshScheduler(
 	 * regardless of cache freshness (the user explicitly asked for fresh data),
 	 * after priming so a freshly added profile's lists are picked up even if they
 	 * were never warmed.
+	 *
+	 * @return The sources the hard refresh could not load, or `null` when every
+	 *   one of them loaded. A source that failed only while priming but then
+	 *   loaded is not among them.
+	 * @throws Exception when the refresh cannot run at all, after logging it as one ERROR line. Its
+	 *   stack trace is logged at DEBUG, so a caller that reports the error itself, such as the CLI,
+	 *   does not print the trace under its own message by default.
 	 */
-	suspend fun refreshNow() {
+	suspend fun refreshNow(): TrustedListRefreshFailure? {
 		logger.info { "Manual hard trusted-list refresh requested" }
 		try {
 			prime()
-			factory.forceRefreshTrustedSources()
+			val failure = factory.forceRefreshTrustedSources()
 			logger.info { "Manual hard trusted-list refresh completed" }
+			return failure
 		} catch (e: Exception) {
-			logger.error(e) { "Manual hard trusted-list refresh failed" }
+			logger.error { "Manual hard trusted-list refresh failed: $e" }
+			logger.debug(e) { "Stack trace of the failed manual trusted-list refresh" }
 			throw e
 		}
 	}

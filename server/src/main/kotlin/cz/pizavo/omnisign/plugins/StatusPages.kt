@@ -8,6 +8,7 @@ import cz.pizavo.omnisign.domain.model.error.*
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.*
 import io.ktor.server.application.*
+import io.ktor.server.plugins.*
 import io.ktor.server.plugins.statuspages.*
 import io.ktor.server.response.*
 
@@ -21,6 +22,13 @@ private val logger = KotlinLogging.logger {}
  * ensures that responses produced by the [io.ktor.server.plugins.ratelimit.RateLimit] plugin
  * also carry a JSON [ApiError] body consistent with the rest of the API. The standard
  * `Retry-After` and `X-RateLimit-*` headers set by the rate limiter are preserved.
+ *
+ * Ktor's own request exceptions — [BadRequestException], [NotFoundException],
+ * [UnsupportedMediaTypeException], [CannotTransformContentToTypeException], and
+ * [PayloadTooLargeException] — are answered with the 4xx status Ktor's engine gives them when
+ * no handler claims them (see [io.ktor.server.engine.defaultExceptionStatusCode]). Without
+ * handlers of their own, the catch-all [Throwable] handler would answer them with 500, for
+ * instance a request to an upload route whose body is not `multipart/form-data`.
  *
  * @param development When `true` the catch-all [Throwable] handler echoes `cause.message`
  *   into the response body's `details` field, easing local debugging. When `false`
@@ -40,7 +48,6 @@ fun Application.configureStatusPages(development: Boolean = false) {
 				),
 			)
 		}
-		// ...existing exception handlers...
 		exception<OperationException> { call, cause ->
 			call.respondOperationError(cause.operationError)
 		}
@@ -74,6 +81,21 @@ fun Application.configureStatusPages(development: Boolean = false) {
 				),
 			)
 		}
+		exception<BadRequestException> { call, cause ->
+			call.respondRequestError(HttpStatusCode.BadRequest, "BAD_REQUEST", cause)
+		}
+		exception<NotFoundException> { call, cause ->
+			call.respondRequestError(HttpStatusCode.NotFound, "NOT_FOUND", cause)
+		}
+		exception<UnsupportedMediaTypeException> { call, cause ->
+			call.respondRequestError(HttpStatusCode.UnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", cause)
+		}
+		exception<CannotTransformContentToTypeException> { call, cause ->
+			call.respondRequestError(HttpStatusCode.UnsupportedMediaType, "UNSUPPORTED_MEDIA_TYPE", cause)
+		}
+		exception<PayloadTooLargeException> { call, cause ->
+			call.respondRequestError(HttpStatusCode.PayloadTooLarge, "PAYLOAD_TOO_LARGE", cause)
+		}
 		exception<Throwable> { call, cause ->
 			logger.error(cause) { "Unhandled exception" }
 			call.respond(
@@ -86,6 +108,15 @@ fun Application.configureStatusPages(development: Boolean = false) {
 			)
 		}
 	}
+}
+
+/**
+ * Answer a request that Ktor rejected with [cause] with [status] and an [ApiError] carrying
+ * [errorCode] and the cause's message, which Ktor itself would send as the response body.
+ */
+private suspend fun ApplicationCall.respondRequestError(status: HttpStatusCode, errorCode: String, cause: Throwable) {
+	logger.warn { "$errorCode: ${cause.message}" }
+	respond(status, ApiError(error = errorCode, message = cause.message ?: status.description))
 }
 
 /**

@@ -68,8 +68,8 @@ enum class SsoProviderPreset(
      *
      * GitHub does not expose a standard OIDC discovery document. The authorization,
      * token, and user-info endpoints are hard-coded and set automatically when this
-     * preset is selected. Requires [OidcProviderConfig.clientId] and
-     * [OidcProviderConfig.clientSecret] only.
+     * preset is selected. Requires only [OidcProviderConfig.clientId] and the client
+     * secret, read from the environment variable that [oidcClientSecretEnvVar] names.
      */
     GITHUB(
         discoveryUrl = null,

@@ -102,6 +102,17 @@ private val logger = KotlinLogging.logger {}
  * skips, because a run of skips would report success, reset the last-success timestamp, and hold off
  * the staleness alert over documents nothing renewed.
  *
+ * Renewing an aging document has to move its deadline later, not merely add a timestamp. A timestamp
+ * server whose certificate expires inside the renewal buffer, or whose key or algorithms stop being
+ * acceptable within it, issues seals that are due for renewal the moment they are made, and since it
+ * normally signs with the same certificate and key, all of them fall due at the same instant.
+ * Renewing a document through the server that sealed it would then change nothing but the file, on
+ * every run, so a renewal whose new deadline is no later than the old one is refused, naming the
+ * server and the cause. One that does reach further is kept, with a warning that its own seal is
+ * already due. Once a job has seen such a seal, the rest of its run fails the aging documents the
+ * server cannot help without calling it again, recording them as errors like the documents the
+ * failure breaker passes over.
+ *
  * No single document can end the run. Expected failures are already values rather than throws, and
  * the per-document step adds a `Throwable` guard on top, because the blanket `catch (e: Exception)`
  * blocks in the DSS layer do not cover a JVM `Error`; DSS holds whole documents in memory, so an
@@ -493,6 +504,28 @@ class RenewBatchUseCase(
             val fileStatuses = mutableListOf<RenewFileStatus>()
 
             /**
+             * The latest deadline among the seals this job's timestamp server issued in this run that
+             * were due for renewal on arrival, because its certificate or key does not outlast the
+             * renewal buffer. A server normally signs every request with the same certificate and key,
+             * so its next seal would fall due no later; an aging document whose own deadline is no
+             * earlier cannot gain from it and is failed without calling the server. `null` until the
+             * job has seen such a seal.
+             */
+            var tsaSealsDueAt: Instant? = null
+
+            /**
+             * Note the deadline of a seal the job's timestamp server has just issued, assessed as
+             * [seal], when that seal was already due for renewal on arrival. Only the latest such
+             * deadline is kept, so a document is passed over only when no seal seen so far would have
+             * extended its protection.
+             */
+            fun learnSealDeadline(seal: RenewalAssessment) {
+                val dueAt = seal.dueAt ?: return
+                if (seal.need != RenewalNeed.NEEDED || !ages(seal.reason)) return
+                tsaSealsDueAt = tsaSealsDueAt?.let { maxOf(it, dueAt) } ?: dueAt
+            }
+
+            /**
              * Record [path] as past its preservation deadline: counted apart from errors, logged and
              * announced only the first time, and never retried into a permanent run failure.
              */
@@ -589,6 +622,26 @@ class RenewBatchUseCase(
                                 "${tsaFailureDescription(tsaFailureKinds[tsaUrl])} on the last " +
                                 "$TSA_FAILURE_LIMIT attempts, so this run stopped calling it; " +
                                 "the original was left unchanged and the next run will try again"
+                            logFileError(job.logFile, path, reason)
+                            fileStatuses.add(
+                                RenewFileStatus(
+                                    path = path,
+                                    status = RenewFileStatus.Status.ERROR,
+                                    message = reason,
+                                )
+                            )
+                            return@fold
+                        }
+
+                        val sealsDueAt = tsaSealsDueAt
+                        val dueAt = assessment.dueAt
+                        if (ages(assessment.reason) && sealsDueAt != null && dueAt != null && dueAt >= sealsDueAt) {
+                            totalErrors++
+                            jobErrors++
+                            val reason = "renewing through ${timestampServer(tsaUrl)} cannot extend this " +
+                                "document's protection, which lasts until $dueAt: the timestamps it issued " +
+                                "earlier in this run fall due for renewal by $sealsDueAt, so this run did not " +
+                                "call it again; the original was left unchanged"
                             logFileError(job.logFile, path, reason)
                             fileStatuses.add(
                                 RenewFileStatus(
@@ -706,38 +759,47 @@ class RenewBatchUseCase(
                                     )
                                     return@fold
                                 }
-                                val verified = verifyRenewedOutput(
-                                    file, result.outputBytes, job.renewalBufferDays, assessment.reason,
+                                val renewed = assessRenewedOutput(file, result.outputBytes, job.renewalBufferDays)
+                                    .onRight { if (targetLevel == SignatureLevel.PADES_BASELINE_LTA) learnSealDeadline(it) }
+                                val shortfall = renewed.fold(
+                                    ifLeft = { it },
+                                    ifRight = { renewalShortfall(assessment, it, tsaUrl, job.renewalBufferDays) },
                                 )
-                                if (verified.isLeft()) {
-                                    val validationError = verified.leftOrNull()!!
+                                if (shortfall != null) {
                                     totalErrors++
                                     jobErrors++
-                                    logFileError(job.logFile, path, validationError)
+                                    logFileError(job.logFile, path, shortfall)
                                     fileStatuses.add(
                                         RenewFileStatus(
                                             path = path,
                                             status = RenewFileStatus.Status.ERROR,
-                                            message = validationError,
+                                            message = shortfall,
                                         )
                                     )
                                     return@fold
                                 }
+                                val renewedAssessment = renewed.getOrNull()!!
 
-                                val sealedBytes = if (
+                                val sealed = if (
                                     assessment.reason == RenewalReason.LT_REFRESH_NEEDED &&
-                                    verified.getOrNull()?.reason == RenewalReason.LT_NOT_SEALED
+                                    renewedAssessment.reason == RenewalReason.LT_NOT_SEALED
                                 ) {
-                                    sealAfterRefresh(file, result.outputBytes, resolvedConfig, job.renewalBufferDays)
+                                    sealAfterRefresh(
+                                        file, renewedAssessment, result.outputBytes, resolvedConfig, job.renewalBufferDays,
+                                    )
                                 } else {
                                     null
                                 }
-                                val finalBytes = sealedBytes ?: result.outputBytes
-                                val completedReason = if (sealedBytes != null) {
+                                sealed?.let { learnSealDeadline(it.assessment) }
+                                val finalBytes = sealed?.bytes ?: result.outputBytes
+                                val completedReason = if (sealed != null) {
                                     RenewalReason.LT_NOT_SEALED
                                 } else {
                                     assessment.reason
                                 }
+                                val newSeal = sealed?.assessment
+                                    ?: renewedAssessment.takeIf { targetLevel == SignatureLevel.PADES_BASELINE_LTA }
+                                val bornDue = newSeal?.let { bornDueWarning(it, tsaUrl, job.renewalBufferDays) }
                                 if (job.backupRetention > 0) {
                                     val backupError = runCatching { writeBackup(file, inputBytes) }.exceptionOrNull()
                                     if (backupError != null) {
@@ -774,7 +836,7 @@ class RenewBatchUseCase(
                                 }
                                 totalRenewed++
                                 jobRenewed++
-                                val reachedLevel = if (sealedBytes != null) {
+                                val reachedLevel = if (sealed != null) {
                                     SignatureLevel.PADES_BASELINE_LTA
                                 } else {
                                     achieved
@@ -783,11 +845,15 @@ class RenewBatchUseCase(
                                 result.rawWarnings.forEach { w ->
                                     appendLog(job.logFile, "[WARN] $path — $w")
                                 }
+                                if (bornDue != null) {
+                                    logger.warn { "[WARN] $path — $bornDue" }
+                                    appendLog(job.logFile, "[WARN] $path — $bornDue")
+                                }
                                 fileStatuses.add(
                                     RenewFileStatus(
                                         path = path,
                                         status = RenewFileStatus.Status.RENEWED,
-                                        warnings = result.warnings,
+                                        warnings = result.warnings + listOfNotNull(bornDue),
                                         reason = completedReason,
                                     )
                                 )
@@ -879,15 +945,6 @@ class RenewBatchUseCase(
         )
 
     /**
-     * The level a document has to be extended to in order to close the gap [reason] names.
-     *
-     * [RenewalReason.LT_REFRESH_NEEDED] deliberately targets B-LT rather than B-LTA: its revocation
-     * data does not cover the signature, and an archival timestamp would seal that gap rather than
-     * close it. Refreshing first leaves the document at B-LT with data that does cover it, and the
-     * next run seals it as [RenewalReason.LT_NOT_SEALED]. Every other reason is closed by reaching
-     * B-LTA, which embeds revocation data and anchors it in one operation.
-     */
-    /**
      * Whether the step [reason] calls for is one whose *purpose* is to obtain revocation data, so
      * that failing to obtain any means the step achieved nothing.
      *
@@ -901,6 +958,27 @@ class RenewBatchUseCase(
     private fun obtainsMaterial(reason: RenewalReason?): Boolean =
         reason == RenewalReason.BELOW_LT || reason == RenewalReason.LT_REFRESH_NEEDED
 
+    /**
+     * Whether [reason] is one of the two aging reasons, for which the protection is complete and a
+     * renewal achieves something only by moving the document's deadline later.
+     *
+     * Every other step adds something the document lacked — revocation data, or a seal over it — and
+     * counts as progress even when its new timestamp is itself close to its own deadline. An aging
+     * document already has all of that, so a fresh timestamp that ages out no later than the one it
+     * covers changes nothing but the file.
+     */
+    private fun ages(reason: RenewalReason?): Boolean =
+        reason == RenewalReason.TIMESTAMP_EXPIRING || reason == RenewalReason.ALGORITHM_WEAKENING
+
+    /**
+     * The level a document has to be extended to in order to close the gap [reason] names.
+     *
+     * [RenewalReason.LT_REFRESH_NEEDED] deliberately targets B-LT rather than B-LTA: its revocation
+     * data does not cover the signature, and an archival timestamp would seal that gap rather than
+     * close it. Refreshing first leaves the document at B-LT with data that does cover it, and the
+     * next run seals it as [RenewalReason.LT_NOT_SEALED]. Every other reason is closed by reaching
+     * B-LTA, which embeds revocation data and anchors it in one operation.
+     */
     private fun targetLevelFor(reason: RenewalReason?): SignatureLevel =
         if (reason == RenewalReason.LT_REFRESH_NEEDED) {
             SignatureLevel.PADES_BASELINE_LT
@@ -1161,13 +1239,8 @@ class RenewBatchUseCase(
 
     /**
      * Re-run the coverage-aware renewal check on the just-produced [outputBytes] before they
-     * overwrite [file]. A sound step must parse and must have *moved the document on*: the check is
-     * that it no longer reports the same [actedOn] reason, not that it reports nothing at all.
-     *
-     * The distinction matters once a step can be partial. Refreshing stale revocation data leaves a
-     * document at B-LT that legitimately still needs sealing, and demanding "needs nothing" would
-     * reject that progress and preserve the weaker original for ever. Re-reporting the very same
-     * reason, on the other hand, means the extension changed nothing that mattered.
+     * overwrite [file]. A sound step must parse, and its assessment is what [renewalShortfall] judges
+     * to decide whether the step moved the document on.
      *
      * The bytes are checked through a short-lived verify file in [file]'s own directory — the same
      * path that decides renewal in the first place — which is always deleted afterwards. That
@@ -1183,14 +1256,12 @@ class RenewBatchUseCase(
      * around it and be picked up as a document of the job: counted, re-validated, and possibly
      * re-timestamped on every run from then on.
      *
-     * @param actedOn The reason the renewal set out to address.
-     * @return `null` when the renewed document is sound, or a human-readable reason it is not.
+     * @return the renewed document's assessment, or a human-readable reason it could not be assessed.
      */
-    private suspend fun verifyRenewedOutput(
+    private suspend fun assessRenewedOutput(
         file: File,
         outputBytes: ByteArray,
         bufferDays: Int,
-        actedOn: RenewalReason?,
     ): Either<String, RenewalAssessment> {
         val directory = file.absoluteFile.toPath().parent
             ?: return "could not resolve a directory to validate the renewed document".left()
@@ -1201,22 +1272,97 @@ class RenewBatchUseCase(
         }
         return try {
             verifyFile.writeBytes(outputBytes)
-            checkRenewalUseCase(verifyFile.absolutePathString(), bufferDays).fold(
-                ifLeft = { "the renewed document failed validation: ${it.message}".left() },
-                ifRight = { assessment ->
-                    if (assessment.need == RenewalNeed.NEEDED && assessment.reason == actedOn) {
-                        "the renewed document still reports the same need (${actedOn?.name})".left()
-                    } else {
-                        assessment.right()
-                    }
-                },
-            )
+            checkRenewalUseCase(verifyFile.absolutePathString(), bufferDays)
+                .mapLeft { "the renewed document failed validation: ${it.message}" }
         } catch (e: Exception) {
             "could not validate the renewed document: ${e.message}".left()
         } finally {
             verifyFile.deleteIfExists()
         }
     }
+
+    /**
+     * Why a step that took a document assessed as [before] to one assessed as [after] did not move it
+     * on, or `null` when it did. The test is progress, not that nothing is due any more.
+     *
+     * The distinction matters once a step can be partial. Refreshing stale revocation data leaves a
+     * document at B-LT that legitimately still needs sealing, and demanding "needs nothing" would
+     * reject that progress and preserve the weaker original for ever. Re-reporting the very same
+     * reason, on the other hand, means the extension changed nothing that mattered.
+     *
+     * For the two aging reasons the reason alone cannot tell, because a fresh timestamp from a server
+     * whose certificate or key does not outlast the renewal buffer reports the very reason of the
+     * timestamp it covers. The deadlines decide instead: the step counts only when it moves the
+     * deadline later. Judged by reason, a document such a server sealed would be renewed through it
+     * on every run, growing each time and gaining nothing; and a step that does reach further, but
+     * not past the buffer, would be thrown away although it extends the protection.
+     *
+     * @param tsaUrl The timestamp server the step used, named in the explanation.
+     * @param bufferDays The job's renewal buffer, named in the explanation.
+     */
+    private fun renewalShortfall(
+        before: RenewalAssessment,
+        after: RenewalAssessment,
+        tsaUrl: String?,
+        bufferDays: Int,
+    ): String? {
+        if (after.need != RenewalNeed.NEEDED) return null
+        val beforeDue = before.dueAt
+        val afterDue = after.dueAt
+        return when {
+            ages(before.reason) && ages(after.reason) && beforeDue != null && afterDue != null ->
+                if (afterDue > beforeDue) {
+                    null
+                } else {
+                    "the new timestamp would be due for renewal by $afterDue, no later than the document's " +
+                        "current deadline ($beforeDue): ${bornDueCause(after.reason, tsaUrl, bufferDays)}, " +
+                        "so renewing through it cannot extend the protection; the original was left unchanged"
+                }
+
+            after.reason == before.reason ->
+                "the renewed document still reports the same need (${before.reason?.name})"
+
+            else -> null
+        }
+    }
+
+    /**
+     * The warning for a kept step whose new timestamp, assessed as [seal], is itself already due for
+     * renewal, or `null` when it is not.
+     *
+     * Such a step was kept because it moved the document on, but the next run will find the document
+     * due again and unable to gain through the same server, and that renewal will be refused. Nothing
+     * the scheduler does can change that; the configuration has to, so the operator is told now rather
+     * than when the refusals start.
+     */
+    private fun bornDueWarning(seal: RenewalAssessment, tsaUrl: String?, bufferDays: Int): String? {
+        val dueAt = seal.dueAt
+        if (seal.need != RenewalNeed.NEEDED || !ages(seal.reason) || dueAt == null) return null
+        return "the new timestamp is itself due for renewal by $dueAt: " +
+            "${bornDueCause(seal.reason, tsaUrl, bufferDays)}, so the next run cannot extend the protection " +
+            "through it; use a timestamp server whose certificate and signing key outlast the renewal buffer"
+    }
+
+    /**
+     * Why a timestamp from [tsaUrl] is due for renewal as soon as it is issued, given the aging
+     * [reason] its assessment reports.
+     *
+     * [RenewalReason.ALGORITHM_WEAKENING] is worded without blaming the server alone: besides the
+     * server's signature algorithm and key size it covers the message-imprint digest, which the
+     * requester chooses.
+     */
+    private fun bornDueCause(reason: RenewalReason?, tsaUrl: String?, bufferDays: Int): String =
+        if (reason == RenewalReason.ALGORITHM_WEAKENING) {
+            "the timestamps from ${timestampServer(tsaUrl)} rely on an algorithm or key size that stops " +
+                "being acceptable within the $bufferDays-day renewal buffer"
+        } else {
+            "${timestampServer(tsaUrl)} signs with a certificate that expires within the " +
+                "$bufferDays-day renewal buffer"
+        }
+
+    /** How a message names the timestamp server at [tsaUrl], which is unknown when `null`. */
+    private fun timestampServer(tsaUrl: String?): String =
+        tsaUrl?.let { "the timestamp server $it" } ?: "the timestamp server"
 
     /**
      * Seal a document that has just been refreshed, in the same run.
@@ -1232,14 +1378,17 @@ class RenewBatchUseCase(
      * the refreshed document and the next run seals it, which is precisely the behaviour this
      * optimisation shortcuts.
      *
-     * @return the sealed bytes, or `null` when sealing did not happen and the refreshed bytes stand.
+     * @param refreshed The assessment of [refreshedBytes], which the seal has to move on from.
+     * @return the sealed document with its assessment, or `null` when sealing did not happen and the
+     *   refreshed bytes stand.
      */
     private suspend fun sealAfterRefresh(
         file: File,
+        refreshed: RenewalAssessment,
         refreshedBytes: ByteArray,
         resolvedConfig: ResolvedConfig,
         bufferDays: Int,
-    ): ByteArray? {
+    ): RenewedOutput? {
         val sealed = extendDocumentUseCase(
             ArchivingParameters(
                 inputBytes = refreshedBytes,
@@ -1250,9 +1399,22 @@ class RenewBatchUseCase(
         ).getOrNull() ?: return null
 
         if (sealed.achievedLevel != SignatureLevel.PADES_BASELINE_LTA) return null
-        return verifyRenewedOutput(file, sealed.outputBytes, bufferDays, RenewalReason.LT_NOT_SEALED)
-            .fold(ifLeft = { null }, ifRight = { sealed.outputBytes })
+        val assessment = assessRenewedOutput(file, sealed.outputBytes, bufferDays).getOrNull() ?: return null
+        if (renewalShortfall(refreshed, assessment, resolvedConfig.timestampServer?.url, bufferDays) != null) {
+            return null
+        }
+        return RenewedOutput(sealed.outputBytes, assessment)
     }
+
+    /**
+     * A document produced by a step that has been checked to move the original on, together with
+     * the assessment that check made of it — which the caller still needs, to learn when the new seal
+     * falls due.
+     *
+     * @property bytes The produced document.
+     * @property assessment The renewal assessment of [bytes].
+     */
+    private class RenewedOutput(val bytes: ByteArray, val assessment: RenewalAssessment)
 
     /**
      * Build a [ResolvedConfig] for a renewal job, honoring the job's optional

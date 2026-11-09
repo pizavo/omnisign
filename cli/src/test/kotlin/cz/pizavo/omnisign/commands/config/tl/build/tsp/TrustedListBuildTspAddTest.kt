@@ -113,7 +113,7 @@ class TrustedListBuildTspAddTest : FunSpec({
 		address.postalCode shouldBe null
 	}
 
-	test("reports a failure on stderr") {
+	test("reports a failure on stderr and exits non-zero") {
 		coEvery { manageTl.upsertTsp(any(), any()) } returns
 			ConfigurationError.loadFailed(details = "no draft 'draft'").left()
 
@@ -121,6 +121,7 @@ class TrustedListBuildTspAddTest : FunSpec({
 			listOf("config", "tl", "build", "tsp", "add", "draft", "--name", "TSP"),
 		)
 
+		result.statusCode shouldBe 1
 		result.stderr shouldContain "Details: no draft 'draft'"
 	}
 })

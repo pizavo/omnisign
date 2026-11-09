@@ -6,7 +6,7 @@ import cz.pizavo.omnisign.domain.model.result.OperationResult
  * Port for exporting and importing the full application configuration as a portable archive — the
  * configuration plus the trusted certificates it depends on.
  *
- * Implemented on the JVM by [cz.pizavo.omnisign.domain.usecase.ConfigArchiveUseCase]; absent on
+ * Implemented on the JVM by `ConfigArchiveUseCase`; absent on
  * targets without a file backend (web), where the desktop Backup controls are disabled.
  */
 interface ConfigArchivePort {

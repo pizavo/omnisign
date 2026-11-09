@@ -37,6 +37,8 @@ import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
 import io.mockk.every
@@ -102,10 +104,17 @@ class RenewalBatchE2ETest : FunSpec({
 	)
 	val expiringTsa = LocalTestTsa.start(expiringTsaLeaf.p12, pass)
 
+	/** A TSA whose certificate outlives [expiringTsa]'s by a month, but still expires inside the buffer. */
+	val laterExpiringTsaLeaf = pki.issueLeaf(
+		"Batch Later Expiring TSA", Date(now - 365 * day), Date(now + 60 * day), timeStamping = true,
+	)
+	val laterExpiringTsa = LocalTestTsa.start(laterExpiringTsaLeaf.p12, pass)
+
 	afterSpec {
 		tsa.close()
 		backdatedTsa.close()
 		expiringTsa.close()
+		laterExpiringTsa.close()
 	}
 
 	var crl: X509CRL = pki.buildCrl(thisUpdate = Date(now - 2 * 3_600_000L), nextUpdate = Date(now + 3650 * day))
@@ -234,19 +243,30 @@ class RenewalBatchE2ETest : FunSpec({
 			)
 		).shouldBeRight().outputBytes
 
-	/** Runs one batch over [dir], with the job's TSA pointing at the long-lived local authority. */
-	suspend fun runBatchOver(dir: File, jobName: String = "j") = run {
+	/** Runs one batch over [dir], with the job's TSA at [tsaUrl] — the long-lived local authority by default. */
+	suspend fun runBatchOver(dir: File, jobName: String = "j", tsaUrl: String = tsa.url) = run {
 		val job = RenewalJob(
 			name = jobName,
 			globs = listOf(dir.absolutePath.replace('\\', '/') + "/*.pdf"),
 			backupRetention = 3,
 		)
 		coEvery { configRepository.getCurrentConfig() } returns AppConfig(
-			global = configWith(tsa.url, allowExpired = true),
+			global = configWith(tsaUrl, allowExpired = true),
 			renewalJobs = mapOf(jobName to job),
 		)
 		batch()
 	}
+
+	/** A B-LTA document whose every timestamp, the archival seal included, comes from [tsaUrl]. */
+	suspend fun sealedBy(tsaUrl: String): ByteArray =
+		archivingRepository.extendDocument(
+			ArchivingParameters(
+				inputBytes = signBaselineT(validEntry, configWith(tsaUrl)),
+				inputName = "input.pdf",
+				targetLevel = SignatureLevel.PADES_BASELINE_LTA,
+				resolvedConfig = resolved(configWith(tsaUrl)),
+			)
+		).shouldBeRight().outputBytes
 
 	fun levelOf(file: File): SignatureLevel? =
 		archivingRepository.let { repo ->
@@ -329,21 +349,54 @@ class RenewalBatchE2ETest : FunSpec({
 		val target = File(dir, "aging-lta.pdf")
 
 		crl = pki.buildCrl(thisUpdate = Date(System.currentTimeMillis()), nextUpdate = Date(now + 3650 * day))
-		val sealed = archivingRepository.extendDocument(
-			ArchivingParameters(
-				inputBytes = signBaselineT(validEntry, configWith(expiringTsa.url)),
-				inputName = "input.pdf",
-				targetLevel = SignatureLevel.PADES_BASELINE_LTA,
-				resolvedConfig = resolved(configWith(expiringTsa.url)),
-			)
-		).shouldBeRight().outputBytes
-		target.writeBytes(sealed)
+		target.writeBytes(sealedBy(expiringTsa.url))
 
 		val assessment = archivingRepository.needsArchivalRenewal(target.absolutePath).shouldBeRight()
 
 		assessment.need shouldBe RenewalNeed.NEEDED
 		assessment.reason shouldBe RenewalReason.TIMESTAMP_EXPIRING
 		assessment.deadlineIsFinal shouldBe false
+	}
+
+	test("renewing through the server whose seals are already due is refused, and not attempted twice") {
+		val dir = File(tmp, "due-on-issue").also { it.mkdirs() }
+		crl = pki.buildCrl(thisUpdate = Date(System.currentTimeMillis()), nextUpdate = Date(now + 3650 * day))
+		val documents = listOf("a.pdf", "b.pdf").map { name ->
+			File(dir, name).also { it.writeBytes(sealedBy(expiringTsa.url)) }
+		}
+		val originals = documents.map { it.readBytes() }
+
+		val result = runBatchOver(dir, jobName = "due-on-issue", tsaUrl = expiringTsa.url).shouldNotBeNull()
+
+		result.renewed shouldBe 0
+		result.errors shouldBe 2
+		val messages = result.jobs.single().files.map { it.message.orEmpty() }
+		messages[0] shouldContain "cannot extend the protection"
+		messages[1] shouldContain "did not call it again"
+		documents.zip(originals).forEach { (document, original) ->
+			document.readBytes() shouldBe original
+			backupsBeside(document) shouldHaveSize 0
+		}
+	}
+
+	test("a renewal that extends the protection is kept although its own seal is already due") {
+		val dir = File(tmp, "reaches-further").also { it.mkdirs() }
+		val target = File(dir, "aging-lta.pdf")
+		crl = pki.buildCrl(thisUpdate = Date(System.currentTimeMillis()), nextUpdate = Date(now + 3650 * day))
+		val original = sealedBy(expiringTsa.url)
+		target.writeBytes(original)
+
+		val result = runBatchOver(dir, jobName = "reaches-further", tsaUrl = laterExpiringTsa.url).shouldNotBeNull()
+
+		result.renewed shouldBe 1
+		result.errors shouldBe 0
+		val status = result.jobs.single().files.single()
+		status.reason shouldBe RenewalReason.TIMESTAMP_EXPIRING
+		status.warnings.single { it.contains("is itself due for renewal") } shouldContain laterExpiringTsa.url
+		target.readBytes() shouldNotBe original
+		levelOf(target) shouldBe SignatureLevel.PADES_BASELINE_LTA
+		archivingRepository.needsArchivalRenewal(target.absolutePath).shouldBeRight()
+			.dueAt shouldBe laterExpiringTsaLeaf.certificate.notAfter.toKotlinInstant()
 	}
 
 	test("a timestamp server that refuses connections is classified as unreachable, not as a generic failure") {

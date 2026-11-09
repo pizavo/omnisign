@@ -14,11 +14,12 @@ import io.ktor.server.routing.*
  * When [authConfig] is non-null and [AuthConfig.enabled] is `true`, all operational routes
  * (sign, validate, timestamp, certificates, config) are wrapped in an
  * `authenticate(jwt-api)` block that requires a valid JWT Bearer token.
- * The health check and all `/auth/\**` routes remain publicly accessible regardless.
+ * The system routes (health, capabilities, credits) and the `/auth/\**` routes stay reachable
+ * without a token regardless, except `GET /auth/session`, which always requires one.
  *
  * When [rateLimitConfig] is non-null (i.e. [configureRateLimiting] has been installed),
  * auth routes are wrapped in [AUTH_RATE_LIMIT_NAME] and operational routes in
- * [API_RATE_LIMIT_NAME]. System routes (health; capabilities) are not rate-limited.
+ * [API_RATE_LIMIT_NAME]. System routes are not rate-limited.
  *
  * @param authConfig Root authentication configuration, or `null` when auth is disabled.
  * @param rateLimitConfig Rate limit configuration, or `null` when rate limiting is disabled.

@@ -2,10 +2,13 @@ package cz.pizavo.omnisign.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import arrow.core.flatMap
+import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.SchedulerConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.error.localizableText
+import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
@@ -56,7 +59,8 @@ import kotlin.time.Instant
  * @param isLinuxDesktop Whether the application is running on JVM Linux desktop. When `true`,
  *   the Appearance > Window section is shown in the settings dialog and the native title bar
  *   preference is loaded/saved via [loadUseNativeTitleBar]/[saveUseNativeTitleBar].
- * @param ioDispatcher Dispatcher for blocking scheduler process calls.
+ * @param ioDispatcher Dispatcher for blocking calls: scheduler processes, and the credential store,
+ *   which can block until the user answers the keyring's unlock prompt.
  * @param trustedListRefreshPort Optional trusted-list refresh backend. Drives the
  *   "Refresh now" control and the last-refreshed indicator. `null` on targets
  *   without a DSS backend (web).
@@ -149,7 +153,7 @@ class SettingsViewModel(
                     _state.update { it.copy(error = SettingsError.Domain(error.localizableText())) }
                 },
                 ifRight = { appConfig ->
-                    val hasStored = hasStoredTsaPassword(appConfig.global)
+                    val hasStored = withContext(ioDispatcher) { hasStoredTsaPassword(appConfig.global) }
                     val installed = withContext(ioDispatcher) {
                         try { schedulerPort?.isInstalled() == true } catch (_: Exception) { false }
                     }
@@ -245,10 +249,11 @@ class SettingsViewModel(
     /**
      * Persist the current edit state as the global configuration.
      *
-     * Converts [GlobalConfigEditState] to a [GlobalConfig], calls [SetGlobalConfigUseCase],
-     * and on success stores the TSA password in the OS credential store (if provided).
-     * The [onSuccess] callback is invoked after a successful save so the caller can
-     * dismiss the dialog.
+     * Stores a newly entered TSA password in the OS credential store first, then converts
+     * [GlobalConfigEditState] to a [GlobalConfig] and calls [SetGlobalConfigUseCase]. A password
+     * the store does not keep becomes the error and nothing is saved, so the configuration never
+     * names a password that is not there. The [onSuccess] callback is invoked after a successful
+     * save so the caller can dismiss the dialog.
      *
      * @param onSuccess Callback invoked after the global config is successfully persisted.
      */
@@ -260,7 +265,8 @@ class SettingsViewModel(
         }
         _state.update { it.copy(saving = true, error = null) }
         viewModelScope.launch {
-            setGlobalConfigUseCase { current.toGlobalConfig() }.fold(
+            val passwordStored = withContext(ioDispatcher) { storeTsaPasswordIfNeeded(current) }
+            passwordStored.flatMap { setGlobalConfigUseCase { current.toGlobalConfig() } }.fold(
                 ifLeft = { error ->
                     _state.update { it.copy(saving = false, error = SettingsError.Domain(error.localizableText())) }
                 },
@@ -271,7 +277,6 @@ class SettingsViewModel(
                         val inst = try { schedulerPort?.isInstalled() == true } catch (_: Exception) { false }
                         err to inst
                     }
-                    storeTsaPasswordIfNeeded(current)
                     if (isLinuxDesktop) saveUseNativeTitleBar(current.useNativeTitleBar)
 
                     val store = trustStore
@@ -315,6 +320,8 @@ class SettingsViewModel(
 
     /**
      * Check whether a TSA password is already persisted for the given global config.
+     *
+     * Blocks while the keyring asks to be unlocked, so callers run it on [ioDispatcher].
      */
     private fun hasStoredTsaPassword(config: GlobalConfig): Boolean {
         val key = config.timestampServer?.credentialKey ?: return false
@@ -324,11 +331,17 @@ class SettingsViewModel(
     /**
      * Persist the TSA password from [editState] into the OS credential store
      * when a new password was entered and a username is present.
+     *
+     * Blocks while the keyring asks to be unlocked, so callers run it on [ioDispatcher].
+     *
+     * @return `Unit` when there was nothing to store or the store kept the password, otherwise the
+     *   store's error.
      */
-    private fun storeTsaPasswordIfNeeded(editState: GlobalConfigEditState) {
-        if (editState.timestampPassword.isEmpty()) return
-        val username = editState.timestampUsername.ifBlank { return }
-        credentialStore?.setPassword(TSA_CREDENTIAL_SERVICE, username, editState.timestampPassword)
+    private fun storeTsaPasswordIfNeeded(editState: GlobalConfigEditState): OperationResult<Unit> {
+        if (editState.timestampPassword.isEmpty()) return Unit.right()
+        val username = editState.timestampUsername.ifBlank { return Unit.right() }
+        return credentialStore?.setPassword(TSA_CREDENTIAL_SERVICE, username, editState.timestampPassword)
+            ?: Unit.right()
     }
 
     /**

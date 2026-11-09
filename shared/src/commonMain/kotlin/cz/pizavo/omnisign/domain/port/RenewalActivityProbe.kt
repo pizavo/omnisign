@@ -9,7 +9,7 @@ package cz.pizavo.omnisign.domain.port
  * first hides a stalled scheduler, while reporting the first as the second raises a false alarm
  * whenever someone checks the status during the nightly batch.
  *
- * On JVM the implementation is [cz.pizavo.omnisign.data.service.LockBackedRenewalActivityProbe].
+ * On JVM the implementation is `LockBackedRenewalActivityProbe`.
  * Platforms that never run batch renewal may leave this port unregistered, in which case callers
  * should present the marker without a verdict.
  */

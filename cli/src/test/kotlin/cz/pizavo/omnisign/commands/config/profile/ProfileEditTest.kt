@@ -4,6 +4,7 @@ import arrow.core.left
 import arrow.core.right
 import com.github.ajalt.clikt.testing.test
 import cz.pizavo.omnisign.Omnisign
+import cz.pizavo.omnisign.commands.config.ConfigSet
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
@@ -27,8 +28,10 @@ import io.kotest.matchers.string.shouldNotContain
 import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import io.mockk.verify
 import org.koin.dsl.module
 
 /**
@@ -40,7 +43,11 @@ import org.koin.dsl.module
  * leaves the user believing a setting took effect, and an over-eager patch wipes a neighbouring
  * field the user never mentioned — both report the same cheerful "updated" line either way. The
  * clear-versus-set precedence and the add/remove arithmetic on the disabled-algorithm sets are
- * pinned for the same reason.
+ * pinned for the same reason, and so is an edit stopping, with nothing saved, when the keychain does
+ * not keep a new TSA password.
+ *
+ * Every refusal and failure exits with status 1, so a script never takes an edit that saved nothing
+ * for one that did.
  */
 class ProfileEditTest : FunSpec({
 
@@ -59,7 +66,11 @@ class ProfileEditTest : FunSpec({
 		),
 	)
 
-	beforeTest { clearMocks(manageProfile, credentialStore, passwordCallback) }
+	beforeTest {
+		clearMocks(manageProfile, credentialStore, passwordCallback)
+		every { credentialStore.isPersistent } returns true
+		every { credentialStore.setPassword(any(), any(), any()) } returns Unit.right()
+	}
 
 	val existing = ProfileConfig(
 		name = "qualified",
@@ -101,8 +112,38 @@ class ProfileEditTest : FunSpec({
 	test("refuses an edit that changes nothing") {
 		val result = Omnisign().test(listOf("config", "profile", "edit", "qualified"))
 
+		result.statusCode shouldBe 1
 		result.stderr shouldContain "No changes specified"
 		coVerify(exactly = 0) { manageProfile.get(any()) }
+		coVerify(exactly = 0) { manageProfile.upsert(any()) }
+	}
+
+	test("refuses to store the TSA password, without prompting, when no keyring can keep it") {
+		every { credentialStore.isPersistent } returns false
+		coEvery { manageProfile.get(existing.name) } returns existing.right()
+		coEvery { manageProfile.upsert(any()) } returns Unit.right()
+
+		val result = Omnisign().test(listOf("config", "profile", "edit", "qualified", "--timestamp-password", "-"))
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "no keyring is available"
+		verify(exactly = 0) { passwordCallback.requestPassword(any(), any()) }
+		coVerify(exactly = 0) { manageProfile.upsert(any()) }
+	}
+
+	test("saves nothing when the keyring does not keep the TSA password") {
+		every { credentialStore.setPassword(any(), any(), any()) } returns
+			ConfigurationError.passwordStoreFailed("Error code 1312").left()
+		coEvery { manageProfile.get(existing.name) } returns existing.right()
+		coEvery { manageProfile.upsert(any()) } returns Unit.right()
+
+		val result = Omnisign().test(
+			listOf("config", "profile", "edit", "qualified", "-H", "SHA512", "--timestamp-password", "s3cret")
+		)
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "nothing was saved"
+		result.stderr shouldContain "Error code 1312"
 		coVerify(exactly = 0) { manageProfile.upsert(any()) }
 	}
 
@@ -111,6 +152,7 @@ class ProfileEditTest : FunSpec({
 
 		val result = Omnisign().test(listOf("config", "profile", "edit", "ghost", "-H", "SHA512"))
 
+		result.statusCode shouldBe 1
 		result.stderr shouldContain "Profile 'ghost' does not exist"
 		coVerify(exactly = 0) { manageProfile.upsert(any()) }
 	}
@@ -218,6 +260,13 @@ class ProfileEditTest : FunSpec({
 		updated.timestampServer?.credentialKey shouldBe "tsa-user"
 	}
 
+	test("stores a new TSA password under the profile's username") {
+		val updated = editProfile("--timestamp-password", "s3cret")
+
+		verify { credentialStore.setPassword(ConfigSet.TSA_CREDENTIAL_SERVICE, "tsa-user", "s3cret") }
+		updated.timestampServer?.credentialKey shouldBe "tsa-user"
+	}
+
 	test("removes the whole timestamp block on request") {
 		val updated = editProfile("--clear-timestamp")
 
@@ -267,13 +316,14 @@ class ProfileEditTest : FunSpec({
 		updated.validation?.algorithmConstraints?.expirationLevel shouldBe AlgorithmConstraintLevel.FAIL
 	}
 
-	test("reports a save failure on stderr") {
+	test("reports a save failure on stderr and exits non-zero") {
 		coEvery { manageProfile.get("qualified") } returns existing.right()
 		coEvery { manageProfile.upsert(any()) } returns
 			ConfigurationError.saveFailed(details = "disk full").left()
 
 		val result = Omnisign().test(listOf("config", "profile", "edit", "qualified", "-H", "SHA512"))
 
+		result.statusCode shouldBe 1
 		result.stderr shouldContain "Failed to save profile"
 		result.stderr shouldContain "disk full"
 	}

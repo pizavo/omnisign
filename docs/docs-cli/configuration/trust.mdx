@@ -13,6 +13,9 @@ certificate is imported once and stored under its SHA-256 **fingerprint**, which
 there is no separate name. Trust is partitioned into a **global** scope plus one scope per profile;
 the resolved trust set for a profile is the union of the global scope and that profile's scope.
 
+A subcommand that fails says why on stderr and exits with status 1, whether the file is not a
+certificate or the trust store cannot be read or written.
+
 ## `config trust add`
 
 Import a PEM or DER certificate into the trust store.
@@ -41,7 +44,8 @@ omnisign config trust list --profile university
 ## `config trust remove <fingerprint>`
 
 Remove a trusted certificate from a scope by its fingerprint. A unique **prefix** is accepted, so
-you can paste just the first few characters shown by `config trust list`.
+you can paste just the first few characters shown by `config trust list`. A prefix that matches no
+certificate, or more than one, removes nothing and also exits with status 1.
 
 ```bash
 omnisign config trust remove sha256-1a2b3c

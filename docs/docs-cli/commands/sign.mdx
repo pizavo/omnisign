@@ -18,7 +18,7 @@ omnisign sign -f <input> -o <output> (-c <alias> | --keystore <file>) [options]
 | `-o, --output <path>`       | **(Required)** Path for the signed output PDF                       |
 | `-c, --certificate <alias>` | Certificate alias to use (see `certificates list`). Required unless `--keystore` is given                  |
 | `-k, --keystore <path>` | Sign with a PKCS#12 (`.p12`/`.pfx`) keystore file instead of a discovered token |
-| `--keystore-password <pw>` | Password for `--keystore` (in-memory, never persisted). `-` prompts with hidden input; omit to be prompted only if the keystore is protected. Env: `OMNISIGN_KEYSTORE_PASSWORD` |
+| `--keystore-password <pw>` | Password for `--keystore` (in-memory, never persisted). `-` prompts with hidden input; omit to be prompted only if the keystore is protected. Env: `OMNISIGN_KEYSTORE_PASSWORD` or `OMNISIGN_KEYSTORE_PASSWORD_FILE` |
 | `-r, --reason <text>`       | Reason for signing (embedded in the signature)                      |
 | `--location <text>`         | Location of signing (embedded in the signature)                     |
 | `--contact <text>`          | Contact information of the signer (embedded in the signature)       |
@@ -53,14 +53,15 @@ Running `sign` with neither `--certificate` nor `--keystore` is an error.
 
 When you use `--keystore`, the password is resolved in this order:
 
-1. `--keystore-password <value>`, or the `OMNISIGN_KEYSTORE_PASSWORD` environment variable.
-2. `--keystore-password -` prompts immediately with hidden input.
+1. `--keystore-password <value>`; `--keystore-password -` prompts immediately with hidden input.
+2. Otherwise the `OMNISIGN_KEYSTORE_PASSWORD` environment variable, or on Linux and macOS a file
+   named by `OMNISIGN_KEYSTORE_PASSWORD_FILE` — see [secrets in files](../configuration/config-overrides#secrets-in-files).
 3. Otherwise, if the keystore turns out to be password-protected, you are prompted with hidden input
    automatically; an unprotected keystore is opened without a prompt.
 
 The password is kept in memory only for the run — never written to disk or the OS keychain. Prefer the
-prompt or the environment variable over passing it on the command line, where it can be visible in
-process listings.
+prompt, the environment variable or a file over passing it on the command line, where it can be visible
+in process listings.
 
 ## Expired certificates
 

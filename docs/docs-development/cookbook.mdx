@@ -184,7 +184,9 @@ leave memory. Export and import run through the Jackson-based serializers in
 `shared/src/jvmMain/.../data/serializer/` for all three formats — JSON, XML, and YAML. Jackson
 reflects over constructors and ignores kotlinx annotations, so a property that must stay out of an
 exported file needs an explicit mixin in `JacksonConfigSerializer.kt`;
-`@kotlinx.serialization.Transient` alone will not hide it.
+`@kotlinx.serialization.Transient` alone will not hide it. A mapper that reads YAML starts from
+`configYamlMapperBuilder()`, which selects the YAML 1.2 core schema; Jackson's default schema reads `~`
+as text.
 
 If the value is a password, PIN, or secret, its type is `Sensitive<T>` and it can never be serialized.
 

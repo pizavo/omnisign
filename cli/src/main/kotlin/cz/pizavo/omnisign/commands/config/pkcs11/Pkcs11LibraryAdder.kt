@@ -6,6 +6,7 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.required
 import com.github.ajalt.clikt.parameters.types.path
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.model.config.CustomPkcs11Library
 import cz.pizavo.omnisign.domain.usecase.ManagePkcs11LibrariesUseCase
 import kotlinx.coroutines.runBlocking
@@ -48,11 +49,7 @@ class Pkcs11LibraryAdder : CliktCommand(name = "add"), KoinComponent {
             protectedAuthenticationPath = protectedPinPad,
         )
         managePkcs11.addLibrary(library).fold(
-            ifLeft = { error ->
-                echo("❌ ${error.message}", err = true)
-                error.details?.let { echo("Details: $it", err = true) }
-                error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-            },
+            ifLeft = { failWith(it) },
             ifRight = {
                 echo("✅ PKCS#11 library '$name' registered.")
                 echo("   Path: $path")

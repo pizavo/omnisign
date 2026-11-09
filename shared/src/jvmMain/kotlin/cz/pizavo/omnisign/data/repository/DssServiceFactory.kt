@@ -10,6 +10,7 @@ import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.text.MessageKey
+import cz.pizavo.omnisign.domain.model.trust.TrustedListRefreshFailure
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import eu.europa.esig.dss.alert.LogOnStatusAlert
 import eu.europa.esig.dss.alert.StatusAlert
@@ -27,14 +28,18 @@ import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import eu.europa.esig.dss.spi.x509.CommonTrustedCertificateSource
 import eu.europa.esig.dss.spi.x509.KeyStoreCertificateSource
 import eu.europa.esig.dss.spi.x509.aia.DefaultAIASource
+import io.github.oshai.kotlinlogging.KotlinLogging
 import org.slf4j.event.Level
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.KeyStore
 import java.security.cert.CertificateFactory
 import java.security.cert.X509Certificate
+import java.util.concurrent.ConcurrentHashMap
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
+
+private val logger = KotlinLogging.logger {}
 
 /**
  * Result of building a [CommonCertificateVerifier] with optional trusted-list wiring.
@@ -70,15 +75,15 @@ class DssServiceFactory(
 	private val trustedSources: TrustedSourceRegistry = TrustedSourceRegistry(),
 ) {
 	
+	private val missingTsaPasswordKeys: MutableSet<String> = ConcurrentHashMap.newKeySet()
+	
 	/**
 	 * Build an [OnlineTSPSource] for [tsConfig], resolving the HTTP Basic password from
 	 * the injected [CredentialStore] when a credential key is configured on the server.
 	 */
 	fun buildTspSource(tsConfig: TimestampServerConfig): OnlineTSPSource {
 		val password = tsConfig.runtimePassword?.value
-			?: tsConfig.credentialKey?.let { key ->
-				credentialStore.getPassword(TSA_CREDENTIAL_SERVICE, key)
-			}
+			?: tsConfig.credentialKey?.let { key -> storedTsaPassword(key) }
 		
 		val dataLoader = TimestampDataLoader().apply {
 			timeoutConnection = tsConfig.timeout
@@ -94,6 +99,23 @@ class DssServiceFactory(
 		}
 		
 		return OnlineTSPSource(tsConfig.url).apply { setDataLoader(dataLoader) }
+	}
+	
+	/**
+	 * Look up the TSA password saved under [key], warning the first time a key has none. The
+	 * request then goes out without credentials, and the TSA's refusal would come unexplained.
+	 */
+	private fun storedTsaPassword(key: String): String? {
+		val password = credentialStore.getPassword(TSA_CREDENTIAL_SERVICE, key)
+		if (password == null && missingTsaPasswordKeys.add(key)) {
+			val noKeyring = if (credentialStore.isPersistent) "" else
+				" No keyring service was found, so a password saved in an earlier session cannot be read."
+			logger.warn {
+				"No timestamp server password is saved for '$key' in the credential store, so the " +
+						"request is sent without one.$noKeyring"
+			}
+		}
+		return password
 	}
 	
 	/**
@@ -263,10 +285,11 @@ class DssServiceFactory(
 	 * signature-verification are repeated on every validation. [directAnchors] (the app-managed
 	 * trust store's certificates for the active scope) are aggregated alongside them.
 	 *
-	 * Verifier alerts only fire at all because [DssValidationRepository] installs DSS's
-	 * [eu.europa.esig.dss.spi.validation.executor.CompleteValidationContextExecutor]; the two
-	 * that are left active report the one condition the validation report itself stays silent
-	 * about — revocation data that predates the time it has to cover:
+	 * Verifier alerts only fire at all because [DssValidationRepository] runs DSS's
+	 * [eu.europa.esig.dss.spi.validation.executor.CompleteValidationContextExecutor] for every
+	 * document that has a certificate to validate; the two that are left active report the one
+	 * condition the validation report itself stays silent about — revocation data that predates
+	 * the time it has to cover:
 	 * - [CommonCertificateVerifier.setAlertOnUncoveredPOE] — for the timestamps' chains, revocation
 	 *   data older than the timestamp whose proof-of-existence it has to cover.
 	 * - [CommonCertificateVerifier.setAlertOnNoRevocationAfterBestSignatureTime] — the same for the
@@ -330,7 +353,7 @@ class DssServiceFactory(
 	
 	/**
 	 * Build a [CommonCertificateVerifier] for **reading a document's PAdES level back out of its own
-	 * bytes**: trust anchors, and nothing that reaches the network.
+	 * bytes**: trust anchors, and nothing that fetches revocation data.
 	 *
 	 * Exists for the inspections that run without an operation behind them — the extension dialog's
 	 * "what is this document?" pre-fetch and the renewal assessment — which have no signing or
@@ -343,11 +366,21 @@ class DssServiceFactory(
 	 * because a trust anchor needs none — and reports B-T for a conformant B-LT document. See
 	 * [readPadesLevel] for the full account.
 	 *
-	 * No [DefaultAIASource], [OnlineCRLSource] or [OnlineOCSPSource] is wired, so the inspection is
-	 * strictly offline: it must describe the document as it stands, and fetching fresh revocation
-	 * data would be both a side effect the caller did not ask for and a way to report a level the
-	 * bytes do not carry. Trusted-list sources still come from the shared [TrustedSourceRegistry],
-	 * which retains them across calls, so repeated inspections do not re-download or re-parse a list.
+	 * No [OnlineCRLSource] or [OnlineOCSPSource] is wired, so the inspection never fetches revocation
+	 * data: it must describe the document as it stands, and fetching fresh revocation data would be
+	 * both a side effect the caller did not ask for and a way to report a level the bytes do not carry.
+	 *
+	 * The verifier is not strictly offline, though. The no-argument [CommonCertificateVerifier]
+	 * constructor installs a [DefaultAIASource], and it is left in place: when DSS cannot find a
+	 * certificate's issuer in the document or among the trusted sources, it downloads the issuer from
+	 * the certificate's Authority Information Access URL. That adds certificates to a chain, never
+	 * revocation data, and a document that embeds each chain up to its self-signed root triggers no
+	 * request. [readPadesLevel] reduces the verifier to an offline copy, so the level itself is read
+	 * without it; the full validations of the renewal assessment and of the usable-revocation check
+	 * run with the verifier as built.
+	 *
+	 * Trusted-list sources still come from the shared [TrustedSourceRegistry], which retains them
+	 * across calls, so repeated inspections do not re-download or re-parse a list.
 	 *
 	 * Alerts that DSS defaults to [eu.europa.esig.dss.alert.ExceptionOnStatusAlert] are silenced: an
 	 * inspection reports a level or reports that it could not establish one, and must not abort.
@@ -402,8 +435,8 @@ class DssServiceFactory(
 	}
 	
 	/**
-	 * Build a lenient offline [CommonCertificateVerifier] with a configurable [timeout] for
-	 * the underlying HTTP data loaders, without requiring a full [ResolvedConfig].
+	 * Build a lenient [CommonCertificateVerifier] with online AIA, OCSP and CRL sources whose HTTP
+	 * data loaders use a configurable [timeout], without requiring a full [ResolvedConfig].
 	 */
 	fun buildCertificateVerifier(timeout: Int = DEFAULT_TIMEOUT): CommonCertificateVerifier {
 		val dataLoader = CommonsDataLoader().apply {
@@ -457,8 +490,14 @@ class DssServiceFactory(
 	/**
 	 * Eagerly build and warm the trusted sources for [useEuLotl] and [customTls] so
 	 * the first validation/signing operation hits already-parsed sources instead of
-	 * paying the LOTL parse on its critical path. Intended for the startup warmup of
-	 * long-running hosts (desktop, server); the one-shot CLI does not call this.
+	 * paying the LOTL parse on its critical path.
+	 *
+	 * [TrustedListRefreshScheduler][cz.pizavo.omnisign.data.service.TrustedListRefreshScheduler]
+	 * calls this when a long-running host (desktop, server) starts its refresh cycle, and
+	 * before every manual hard refresh, the desktop's "Refresh now" and the CLI's
+	 * `config tl refresh`, so that refresh also covers lists no operation has acquired yet.
+	 * The CLI's other commands never call it: each acquires the lists it needs lazily,
+	 * offline-first.
 	 */
 	fun warmUpTrustedSources(useEuLotl: Boolean, customTls: List<CustomTrustedListConfig>) {
 		trustedSources.warmUp(useEuLotl, customTls)
@@ -477,10 +516,11 @@ class DssServiceFactory(
 	 * re-download regardless of cache freshness. Backs the user-initiated
 	 * "Refresh now" (desktop) and `config tl refresh` (CLI); the scheduled cycle
 	 * uses the cache-gated [refreshTrustedSources] instead.
+	 *
+	 * @return The sources that could not be loaded, or `null` when every one of them loaded.
 	 */
-	fun forceRefreshTrustedSources() {
+	fun forceRefreshTrustedSources(): TrustedListRefreshFailure? =
 		trustedSources.forceRefreshAll()
-	}
 	
 	/**
 	 * Whether any retained trusted source failed to load its trust (see
@@ -584,7 +624,8 @@ class DssServiceFactory(
 		
 		/**
 		 * Build a [CommonTrustedCertificateSource] from a PEM or DER certificate file on disk.
-		 * Used to supply per-TL signing certificates for custom [TLSource] instances.
+		 * Used to supply per-TL signing certificates for custom
+		 * [TLSource][eu.europa.esig.dss.tsl.source.TLSource] instances.
 		 */
 		internal fun buildCertSourceFromFile(certPath: String): CommonTrustedCertificateSource {
 			val x509 = File(certPath).inputStream().use { stream ->

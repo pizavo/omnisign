@@ -16,10 +16,13 @@ import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.result.RenewalNeed
 import cz.pizavo.omnisign.domain.model.result.RenewalReason
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.text.MessageKey
 import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.*
 import eu.europa.esig.dss.alert.StatusAlert
+import eu.europa.esig.dss.enumerations.Indication
 import eu.europa.esig.dss.model.InMemoryDocument
 import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.pdf.pdfbox.PdfBoxNativeObjectFactory
@@ -35,6 +38,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.mockk.coEvery
@@ -61,6 +65,10 @@ import java.util.*
  * revocation data and adds an archival timestamp with no network. The bare PAdES-B and B-T tiers are
  * covered end-to-end through the CLI in `:cli`'s `CliSigningPipelineE2ETest`; here, signing B-T is
  * only the setup that produces the document the long-term tests extend.
+ *
+ * One more TSA is minted off the committed CA at test time (see [TestPki]): one whose certificate
+ * names no revocation address, whose timestamps DSS refuses as proofs of existence while it gathers
+ * validation data however sound the rest of the chain is — and whose documents it still validates.
  */
 class SigningPipelineE2ETest : FunSpec({
 
@@ -104,9 +112,20 @@ class SigningPipelineE2ETest : FunSpec({
 	val caKey = caKeyStore.getKey(caAlias, pass.toCharArray()) as PrivateKey
 	val caCert = caKeyStore.getCertificate(caAlias) as X509Certificate
 
+	/** A TSA whose certificate names no CRL distribution point, so DSS counts none of its timestamps as proof. */
+	val addresslessTsa = TestPki(caCert, caKey).issueLeaf(
+		commonName = "OmniSign Test TSA Without Revocation Address",
+		notBefore = Date(System.currentTimeMillis() - 86_400_000L),
+		notAfter = Date(System.currentTimeMillis() + 3650 * 86_400_000L),
+		timeStamping = true,
+		crlDistributionPoint = null,
+	).let { LocalTestTsa.start(it.p12, pass) }
+	afterSpec { addresslessTsa.close() }
+
 	// A CA-signed CRL with no revoked entries, generated fresh (so it never fails a freshness check),
 	// supplied to DSS as an offline source so B-LT/B-LTA extension can embed revocation data without
-	// any network: the test certificates carry no CRL-DP/AIA, so DSS cannot fetch it otherwise.
+	// any network: the distribution point the test certificates name lies under the reserved
+	// `.invalid` domain, so DSS could not fetch it otherwise.
 	val crl: X509CRL = run {
 		val now = Date()
 		val builder = X509v2CRLBuilder(JcaX509CertificateHolder(caCert).subject, Date(now.time - 86_400_000L))
@@ -180,8 +199,9 @@ class SigningPipelineE2ETest : FunSpec({
 	every { dssServiceFactory.buildLevelInspectionVerifier(any(), any()) } answers {
 		CertificateVerifierResult(trustAndRevocationVerifier())
 	}
-	every { dssServiceFactory.buildTspSource(any()) } returns
-		OnlineTSPSource(tsa.url).apply { setDataLoader(TimestampDataLoader()) }
+	every { dssServiceFactory.buildTspSource(any()) } answers {
+		OnlineTSPSource(firstArg<TimestampServerConfig>().url).apply { setDataLoader(TimestampDataLoader()) }
+	}
 
 	val signingRepository = DssSigningRepository(
 		tokenService, configRepository, mockk<CredentialStore>(relaxed = true), dssServiceFactory,
@@ -206,7 +226,7 @@ class SigningPipelineE2ETest : FunSpec({
 	fun resolvedConfig(global: GlobalConfig): ResolvedConfig =
 		ResolvedConfig.resolve(global = global, profile = null, operationOverrides = null).getOrNull()!!
 
-	suspend fun signBaselineT(): ByteArray =
+	suspend fun signBaselineT(tsaUrl: String = tsa.url): ByteArray =
 		signingRepository.signDocument(
 			SigningParameters(
 				inputBytes = plainPdf(),
@@ -217,7 +237,7 @@ class SigningPipelineE2ETest : FunSpec({
 				resolvedConfig = resolvedConfig(
 					GlobalConfig(
 						defaultSignatureLevel = SignatureLevel.PADES_BASELINE_T,
-						timestampServer = TimestampServerConfig(url = tsa.url),
+						timestampServer = TimestampServerConfig(url = tsaUrl),
 					),
 				),
 			)
@@ -260,6 +280,27 @@ class SigningPipelineE2ETest : FunSpec({
 		embeddedRevocationCount(extended.outputBytes) shouldBeGreaterThan 0
 		extended.revocationDataMissing.shouldBeFalse()
 		extended.achievedLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+	}
+
+	test("a TSA that names no revocation address is reported, and the document still validates as B-LT") {
+		val extended = archivingRepository.extendDocument(
+			ArchivingParameters(
+				inputBytes = signBaselineT(addresslessTsa.url),
+				inputName = "input.pdf",
+				targetLevel = SignatureLevel.PADES_BASELINE_LT,
+				resolvedConfig = resolvedConfig(GlobalConfig(timestampServer = TimestampServerConfig(url = tsa.url))),
+			)
+		).shouldBeRight()
+
+		extended.annotatedWarnings.map { (it.summary as? LocalizableText.Keyed)?.key } shouldContain
+			MessageKey.WARNING_REVOCATION_ACCESS_POINT_MISSING
+		extended.revocationDataMissing.shouldBeFalse()
+		extended.achievedLevel shouldBe SignatureLevel.PADES_BASELINE_LT
+
+		val report = PDFDocumentValidator(InMemoryDocument(extended.outputBytes))
+			.apply { setCertificateVerifier(trustAndRevocationVerifier()) }
+			.validateDocument().simpleReport
+		report.getIndication(report.firstSignatureId) shouldBe Indication.TOTAL_PASSED
 	}
 
 	test("a B-T document is due for preservation now, on the signing certificate's clock") {

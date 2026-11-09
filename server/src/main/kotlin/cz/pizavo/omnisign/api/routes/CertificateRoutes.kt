@@ -17,21 +17,25 @@ import org.koin.ktor.ext.inject
  *
  * `GET /api/v1/certificates` is gated behind [AllowedOperation.SIGN] because it reveals
  * which signing certificates are installed on the server. The response includes signing-capable
- * certificates filtered by [OperationsConfig.certificateAliases] (when set), plus any
- * per-token warnings and locked-token entries from the discovery process.
+ * certificates filtered by
+ * [OperationsConfig.certificateAliases][cz.pizavo.omnisign.config.OperationsConfig.certificateAliases]
+ * (when set), plus any per-token warnings and locked-token entries from the discovery process.
  *
  * Two certificate sources are merged:
  * - **Token discovery** — PKCS#11 and OS-store certificates via [ListCertificatesUseCase]. This is
  *   empty on a headless server with no hardware tokens.
- * - **File keystore** — when [OperationsConfig.signingKeystorePath] is configured, the certificate(s)
- *   in that PKCS#12 keystore (the server's own signing identity) are enumerated via
- *   [ListKeystoreCertificatesUseCase], using the password from `OMNISIGN_SIGNING_KEYSTORE_PASSWORD`.
- *   Without this, a file-keystore server would sign fine through `/api/v1/sign` yet expose no
- *   selectable certificate here, leaving remote clients (the web app) with an empty picker.
+ * - **File keystore** — when
+ *   [OperationsConfig.signingKeystorePath][cz.pizavo.omnisign.config.OperationsConfig.signingKeystorePath]
+ *   is configured, the certificate(s) in that PKCS#12 keystore (the server's own signing identity)
+ *   are enumerated via [ListKeystoreCertificatesUseCase], using the password from
+ *   `OMNISIGN_SIGNING_KEYSTORE_PASSWORD`. Without this, a file-keystore server would sign fine
+ *   through `/api/v1/sign` yet expose no selectable certificate here, leaving remote clients (the
+ *   web app) with an empty picker.
  *
  * Certificate discovery is not profile-scoped — available certificates depend only on the
  * server's hardware, software token, and file-keystore configuration, not on the active profile.
- * The [OperationsConfig.certificateAliases] allow-list is applied uniformly to the merged result.
+ * The [OperationsConfig.certificateAliases][cz.pizavo.omnisign.config.OperationsConfig.certificateAliases]
+ * allow-list is applied uniformly to the merged result.
  */
 fun Route.certificateRoutes() {
 	val listCertificatesUseCase by inject<ListCertificatesUseCase>()

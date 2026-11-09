@@ -1,15 +1,17 @@
 package cz.pizavo.omnisign.config
 
-import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.maps.shouldBeEmpty
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import tools.jackson.databind.exc.MismatchedInputException
+import tools.jackson.databind.exc.UnrecognizedPropertyException
 import java.io.File
 import kotlin.io.path.createTempDirectory
 
@@ -245,5 +247,69 @@ global:
 		val config = loader.load(file.absolutePath)
 		config.global.defaultHashAlgorithm shouldBe HashAlgorithm.SHA256
 		config.profiles.keys shouldContainExactlyInAnyOrder setOf("fast", "archival")
+	}
+
+	test("load reads a tilde TSA password as no password rather than the password ~") {
+		val file = newDir().put("signing.yml", """
+global:
+  timestampServer:
+    url: "http://tsa.example.org/tsr"
+    password: ~
+""")
+		val ts = loader.load(file.absolutePath).global.timestampServer
+		ts.shouldNotBeNull()
+		ts.runtimePassword.shouldBeNull()
+	}
+
+	test("load keeps a quoted tilde TSA password as text") {
+		val file = newDir().put("signing.yml", """
+global:
+  timestampServer:
+    url: "http://tsa.example.org/tsr"
+    password: "~"
+""")
+		val ts = loader.load(file.absolutePath).global.timestampServer
+		ts.shouldNotBeNull()
+		ts.runtimePassword?.value shouldBe "~"
+	}
+
+	test("load refuses a tilde for the required TSA url") {
+		val file = newDir().put("signing.yml", """
+global:
+  timestampServer:
+    url: ~
+""")
+		shouldThrow<MismatchedInputException> { loader.load(file.absolutePath) }
+	}
+
+	test("load refuses a null timeout instead of reading it as zero") {
+		val file = newDir().put("signing.yml", """
+global:
+  ocsp:
+    timeout: ~
+""")
+		shouldThrow<MismatchedInputException> { loader.load(file.absolutePath) }
+	}
+
+	test("load refuses a null among the disabled algorithms") {
+		val file = newDir().put("signing.yml", """
+global:
+  disabledHashAlgorithms: [SHA256, ~]
+""")
+		shouldThrow<MismatchedInputException> { loader.load(file.absolutePath) }
+	}
+
+	test("load refuses a second YAML document instead of ignoring it") {
+		val file = newDir().put("signing.yml", """
+global: {}
+---
+profiles: {}
+""")
+		shouldThrow<MismatchedInputException> { loader.load(file.absolutePath) }
+	}
+
+	test("load refuses content after a JSON document instead of ignoring it") {
+		val file = newDir().put("signing.json", "{}{}")
+		shouldThrow<MismatchedInputException> { loader.load(file.absolutePath) }
 	}
 })

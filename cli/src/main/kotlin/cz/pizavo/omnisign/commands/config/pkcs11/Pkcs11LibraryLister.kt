@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.commands.config.pkcs11
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.usecase.ManagePkcs11LibrariesUseCase
 import kotlinx.coroutines.runBlocking
 import org.koin.core.component.KoinComponent
@@ -23,11 +24,7 @@ class Pkcs11LibraryLister : CliktCommand(name = "list"), KoinComponent {
 
     override fun run(): Unit = runBlocking {
         managePkcs11.listLibraries().fold(
-            ifLeft = { error ->
-                echo("❌ ${error.message}", err = true)
-                error.details?.let { echo("Details: $it", err = true) }
-                error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-            },
+            ifLeft = { failWith(it) },
             ifRight = { libraries ->
                 if (libraries.isEmpty()) {
                     echo("No custom PKCS#11 libraries registered.")

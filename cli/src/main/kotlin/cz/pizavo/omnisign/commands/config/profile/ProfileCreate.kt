@@ -2,12 +2,16 @@ package cz.pizavo.omnisign.commands.config.profile
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
+import cz.pizavo.omnisign.cli.failWith
+import cz.pizavo.omnisign.cli.requirePersistentCredentialStore
 import cz.pizavo.omnisign.cli.resolvePasswordOption
+import cz.pizavo.omnisign.cli.storeTimestampPassword
 import cz.pizavo.omnisign.commands.config.ConfigSet
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
@@ -111,8 +115,9 @@ class ProfileCreate : CliktCommand(name = "create"), KoinComponent {
 				"❌ No settings specified. Provide at least one option to create a meaningful profile. Use --help to see available options.",
 				err = true
 			)
-			return@runBlocking
+			throw ProgramResult(1)
 		}
+		requirePersistentCredentialStore(timestampPassword, credentialStore)
 		val tsConfig = buildTimestampConfig()
 		val profile = ProfileConfig(
 			name = name,
@@ -126,11 +131,7 @@ class ProfileCreate : CliktCommand(name = "create"), KoinComponent {
 			validation = buildValidation()
 		)
 		manageProfile.upsert(profile).fold(
-			ifLeft = { error ->
-				echo("❌ Failed to save profile: ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-			},
+			ifLeft = { failWith(it, "Failed to save profile") },
 			ifRight = {
 				echo("✅ Profile '$name' saved.")
 			}
@@ -163,6 +164,7 @@ class ProfileCreate : CliktCommand(name = "create"), KoinComponent {
 	 * [ConfigSet.TSA_CREDENTIAL_SERVICE] with the effective username as the account key.
 	 * The password itself is never written to the config file.
 	 * Passing `"-"` as the password triggers an interactive hidden-input prompt via [passwordCallback].
+	 * A password the keychain does not keep stops the command before the profile is saved.
 	 */
 	private fun buildTimestampConfig(): TimestampServerConfig? {
 		val resolvedPassword = resolvePasswordOption(timestampPassword, passwordCallback)
@@ -172,7 +174,7 @@ class ProfileCreate : CliktCommand(name = "create"), KoinComponent {
 		
 		val effectiveUsername = timestampUsername
 		val effectiveCredentialKey = if (resolvedPassword != null && effectiveUsername != null) {
-			credentialStore.setPassword(ConfigSet.TSA_CREDENTIAL_SERVICE, effectiveUsername, resolvedPassword)
+			storeTimestampPassword(credentialStore, effectiveUsername, resolvedPassword)
 			effectiveUsername
 		} else null
 		

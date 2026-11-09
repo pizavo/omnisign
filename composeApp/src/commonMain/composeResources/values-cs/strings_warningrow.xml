@@ -3,6 +3,7 @@
 	<string name="warningrow_affected_certificates">Dotčené certifikáty</string>
 	<string name="warning_revocation_not_found">Data o zneplatnění (CRL/OCSP) se nepodařilo získat pro %1$s. Může to ovlivnit dlouhodobou platnost podpisu.</string>
 	<string name="warning_revocation_after_certificate_expiry">Data o zneplatnění pro %1$s byla vydána až po vypršení certifikátu, a nelze je proto použít – vydavatel se ke stavu certifikátu po jeho vypršení již nevyjadřuje. Materiál pro dlouhodobé ověření je nutné doplnit ještě v době platnosti certifikátu.</string>
+	<string name="warning_revocation_access_point_missing">Stav zneplatnění nelze ověřit pro %1$s: není uveden žádný distribuční bod CRL ani adresa OCSP, a proto se časová razítka a data o zneplatnění podepsaná takovým certifikátem při shromažďování dat pro dlouhodobé ověření nezohledňují. Opakovaný pokus na tom nic nezmění; předejít tomu lze použitím serveru časových razítek, jehož certifikát adresu uvádí.</string>
 	<string name="warning_revocation_untrusted_chain">Kontroly zneplatnění byly přeskočeny pro %1$s v nedůvěryhodných řetězcích. To je očekávané, pokud není nakonfigurován žádný důvěryhodný seznam.</string>
 	<string name="warning_revocation_status_unknown">Stav zneplatnění se nepodařilo potvrdit pro %1$s. Certifikační řetězec nemusí být plně důvěryhodný pro všechny ověřovatele.</string>
 	<string name="warning_revocation_poe_missing">Data o zneplatnění potřebná pro důkaz existence (POE) chybí pro %1$s.</string>
@@ -14,6 +15,7 @@
 	<string name="warning_certificate_parse_error">Některé certifikáty v řetězci obsahují poškozená rozšíření, která se nepodařilo plně zpracovat. To obvykle způsobují nestandardní certifikáty třetích stran (např. TSA) a samotného podpisu se to netýká.</string>
 	<string name="warning_tsp_failure">Server časových razítek nahlásil problém (PKIFailureInfo). Pokud operace proběhla úspěšně, časové razítko se mohlo získat při opakovaném pokusu.</string>
 	<string name="warning_tl_refresh_incomplete">Nepodařilo se obnovit %1$s (%2$s). Posouzení kvalifikace certifikátů z těchto zdrojů může být neúplné.</string>
+	<string name="warning_tl_signing_certificate_unreadable">Nepodařilo se načíst důvěryhodný seznam %1$s: jeho podpisový certifikát %2$s nelze přečíst. Posouzení důvěryhodnosti a kvalifikace certifikátů z tohoto seznamu může být neúplné.</string>
 	<plurals name="warning_affected_certificates">
 		<item quantity="one">%1$s certifikát</item>
 		<item quantity="few">%1$s certifikáty</item>

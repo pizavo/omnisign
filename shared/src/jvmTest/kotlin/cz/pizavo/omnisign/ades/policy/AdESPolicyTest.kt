@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import eu.europa.esig.dss.enumerations.Context
 import eu.europa.esig.dss.enumerations.DigestAlgorithm
 import eu.europa.esig.dss.enumerations.Level
+import eu.europa.esig.dss.model.policy.CryptographicSuite
 import eu.europa.esig.dss.policy.EtsiValidationPolicy
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
@@ -26,7 +27,15 @@ class AdESPolicyTest : FunSpec({
 	
 	fun signatureSuite(loaded: EtsiValidationPolicy) =
 		loaded.getSignatureCryptographicConstraint(Context.SIGNATURE)
-	
+
+	/**
+	 * The encryption algorithms [suite] still accepts. DSS no longer lists them directly: it
+	 * pairs every acceptable encryption algorithm with every acceptable digest into signature
+	 * algorithms, so an encryption algorithm is accepted exactly when some pair uses it.
+	 */
+	fun encryptionAlgorithms(suite: CryptographicSuite) =
+		suite.acceptableSignatureAlgorithms.keys.mapTo(mutableSetOf()) { it.encryptionAlgorithm }
+
 	test("load returns non-null policy with no file and no constraints") {
 		policy.load(null, null).shouldNotBeNull()
 	}
@@ -130,7 +139,7 @@ class AdESPolicyTest : FunSpec({
 			disabledHashAlgorithms = setOf(HashAlgorithm.SHA256),
 		) as EtsiValidationPolicy
 		val suite = signatureSuite(loaded).shouldNotBeNull()
-		suite.acceptableDigestAlgorithms shouldNotContain DigestAlgorithm.SHA256
+		suite.acceptableDigestAlgorithms.keys shouldNotContain DigestAlgorithm.SHA256
 	}
 	
 	test("non-disabled hash algorithms remain in acceptable digest algorithms") {
@@ -139,8 +148,8 @@ class AdESPolicyTest : FunSpec({
 			disabledHashAlgorithms = setOf(HashAlgorithm.RIPEMD160),
 		) as EtsiValidationPolicy
 		val suite = signatureSuite(loaded).shouldNotBeNull()
-		suite.acceptableDigestAlgorithms shouldContain DigestAlgorithm.SHA256
-		suite.acceptableDigestAlgorithms shouldContain DigestAlgorithm.SHA384
+		suite.acceptableDigestAlgorithms.keys shouldContain DigestAlgorithm.SHA256
+		suite.acceptableDigestAlgorithms.keys shouldContain DigestAlgorithm.SHA384
 	}
 	
 	test("multiple disabled hash algorithms are all removed") {
@@ -149,9 +158,9 @@ class AdESPolicyTest : FunSpec({
 			disabledHashAlgorithms = setOf(HashAlgorithm.SHA256, HashAlgorithm.SHA384),
 		) as EtsiValidationPolicy
 		val suite = signatureSuite(loaded).shouldNotBeNull()
-		suite.acceptableDigestAlgorithms shouldNotContain DigestAlgorithm.SHA256
-		suite.acceptableDigestAlgorithms shouldNotContain DigestAlgorithm.SHA384
-		suite.acceptableDigestAlgorithms shouldContain DigestAlgorithm.SHA512
+		suite.acceptableDigestAlgorithms.keys shouldNotContain DigestAlgorithm.SHA256
+		suite.acceptableDigestAlgorithms.keys shouldNotContain DigestAlgorithm.SHA384
+		suite.acceptableDigestAlgorithms.keys shouldContain DigestAlgorithm.SHA512
 	}
 	
 	test("disabled encryption algorithm is removed from acceptable encryption algorithms") {
@@ -160,7 +169,7 @@ class AdESPolicyTest : FunSpec({
 			disabledEncryptionAlgorithms = setOf(EncryptionAlgorithm.DSA),
 		) as EtsiValidationPolicy
 		val suite = signatureSuite(loaded).shouldNotBeNull()
-		suite.acceptableEncryptionAlgorithms shouldNotContain
+		encryptionAlgorithms(suite) shouldNotContain
 				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.DSA
 	}
 	
@@ -170,9 +179,9 @@ class AdESPolicyTest : FunSpec({
 			disabledEncryptionAlgorithms = setOf(EncryptionAlgorithm.DSA),
 		) as EtsiValidationPolicy
 		val suite = signatureSuite(loaded).shouldNotBeNull()
-		suite.acceptableEncryptionAlgorithms shouldContain
+		encryptionAlgorithms(suite) shouldContain
 				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.RSA
-		suite.acceptableEncryptionAlgorithms shouldContain
+		encryptionAlgorithms(suite) shouldContain
 				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.ECDSA
 	}
 	
@@ -182,11 +191,11 @@ class AdESPolicyTest : FunSpec({
 			disabledEncryptionAlgorithms = setOf(EncryptionAlgorithm.DSA, EncryptionAlgorithm.RSA),
 		) as EtsiValidationPolicy
 		val suite = signatureSuite(loaded).shouldNotBeNull()
-		suite.acceptableEncryptionAlgorithms shouldNotContain
+		encryptionAlgorithms(suite) shouldNotContain
 				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.DSA
-		suite.acceptableEncryptionAlgorithms shouldNotContain
+		encryptionAlgorithms(suite) shouldNotContain
 				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.RSA
-		suite.acceptableEncryptionAlgorithms shouldContain
+		encryptionAlgorithms(suite) shouldContain
 				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.ECDSA
 	}
 	
@@ -212,7 +221,7 @@ class AdESPolicyTest : FunSpec({
 		) as EtsiValidationPolicy
 		val suite = signatureSuite(loaded).shouldNotBeNull()
 		suite.algorithmsExpirationDateLevel shouldBe Level.WARN
-		suite.acceptableEncryptionAlgorithms shouldNotContain
+		encryptionAlgorithms(suite) shouldNotContain
 				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.DSA
 	}
 	
@@ -238,7 +247,7 @@ class AdESPolicyTest : FunSpec({
 		) as EtsiValidationPolicy
 		val suite = signatureSuite(loaded).shouldNotBeNull()
 		suite.algorithmsExpirationDateLevel shouldBe Level.WARN
-		suite.acceptableDigestAlgorithms shouldNotContain DigestAlgorithm.SHA256
+		suite.acceptableDigestAlgorithms.keys shouldNotContain DigestAlgorithm.SHA256
 	}
 	
 	test("disabled hash and encryption algorithms can be applied simultaneously") {
@@ -248,11 +257,11 @@ class AdESPolicyTest : FunSpec({
 			disabledEncryptionAlgorithms = setOf(EncryptionAlgorithm.DSA),
 		) as EtsiValidationPolicy
 		val suite = signatureSuite(loaded).shouldNotBeNull()
-		suite.acceptableDigestAlgorithms shouldNotContain DigestAlgorithm.SHA256
-		suite.acceptableEncryptionAlgorithms shouldNotContain
+		suite.acceptableDigestAlgorithms.keys shouldNotContain DigestAlgorithm.SHA256
+		encryptionAlgorithms(suite) shouldNotContain
 				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.DSA
-		suite.acceptableDigestAlgorithms shouldContain DigestAlgorithm.SHA512
-		suite.acceptableEncryptionAlgorithms shouldContain
+		suite.acceptableDigestAlgorithms.keys shouldContain DigestAlgorithm.SHA512
+		encryptionAlgorithms(suite) shouldContain
 				eu.europa.esig.dss.enumerations.EncryptionAlgorithm.RSA
 	}
 	
@@ -266,7 +275,7 @@ class AdESPolicyTest : FunSpec({
 		val baselineSuite = signatureSuite(baseline).shouldNotBeNull()
 		val loadedSuite = signatureSuite(loaded).shouldNotBeNull()
 		loadedSuite.acceptableDigestAlgorithms shouldBe baselineSuite.acceptableDigestAlgorithms
-		loadedSuite.acceptableEncryptionAlgorithms shouldBe baselineSuite.acceptableEncryptionAlgorithms
+		loadedSuite.acceptableSignatureAlgorithms shouldBe baselineSuite.acceptableSignatureAlgorithms
 	}
 })
 

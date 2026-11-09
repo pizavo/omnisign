@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.commands.config.trust
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.parameters.options.option
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import kotlinx.coroutines.runBlocking
@@ -27,11 +28,7 @@ class TrustCertLister : CliktCommand(name = "list"), KoinComponent {
 		val scope = TrustScope.of(profile)
 		val scopeLabel = profile?.let { "profile '$it'" } ?: "global scope"
 		trustStore.list(scope).fold(
-			ifLeft = { error ->
-				echo("❌ ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-			},
+			ifLeft = { failWith(it) },
 			ifRight = { certs ->
 				if (certs.isEmpty()) {
 					echo("No trusted certificates in $scopeLabel. Add one with: config trust add --cert <file>")

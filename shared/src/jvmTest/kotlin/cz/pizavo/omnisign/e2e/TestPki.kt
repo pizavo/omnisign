@@ -4,8 +4,13 @@ import org.bouncycastle.asn1.ASN1GeneralizedTime
 import org.bouncycastle.asn1.ASN1ObjectIdentifier
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.asn1.x509.BasicConstraints
+import org.bouncycastle.asn1.x509.CRLDistPoint
+import org.bouncycastle.asn1.x509.DistributionPoint
+import org.bouncycastle.asn1.x509.DistributionPointName
 import org.bouncycastle.asn1.x509.ExtendedKeyUsage
 import org.bouncycastle.asn1.x509.Extension
+import org.bouncycastle.asn1.x509.GeneralName
+import org.bouncycastle.asn1.x509.GeneralNames
 import org.bouncycastle.asn1.x509.KeyPurposeId
 import org.bouncycastle.asn1.x509.KeyUsage
 import org.bouncycastle.cert.X509v2CRLBuilder
@@ -59,14 +64,21 @@ class TestPki(
 	/**
 	 * Issue a leaf certificate valid from [notBefore] to [notAfter].
 	 *
-	 * Deliberately carries no CRL distribution point or AIA, matching the committed fixtures: the
-	 * tests inject revocation data directly, so nothing here can reach the network.
+	 * By default the certificate names a CRL distribution point, as the committed fixtures do. DSS
+	 * refuses to accept a timestamp or a revocation response signed under a certificate that names
+	 * nowhere to check its revocation status, even when the status could be established by other
+	 * means, so a leaf without one cannot serve as a TSA in any test about long-term material. The
+	 * address is never dereferenced: the tests hand DSS the CA's CRL through an offline source, and
+	 * nothing here can reach the network.
 	 *
 	 * @param commonName The subject common name, which also becomes the PKCS#12 alias.
 	 * @param notBefore Start of validity.
 	 * @param notAfter End of validity — may be in the past, which is the point.
 	 * @param timeStamping When true the certificate carries the critical time-stamping extended key
 	 *   usage DSS requires of a TSA, instead of a signing key usage.
+	 * @param crlDistributionPoint The address the certificate names as its CRL distribution point, or
+	 *   null for a certificate that names none — the shape DSS rejects as a timestamp or revocation
+	 *   signer.
 	 * @param password Password protecting the returned PKCS#12.
 	 */
 	fun issueLeaf(
@@ -74,6 +86,7 @@ class TestPki(
 		notBefore: Date,
 		notAfter: Date,
 		timeStamping: Boolean = false,
+		crlDistributionPoint: String? = CRL_DISTRIBUTION_POINT,
 		password: String = "test1234",
 	): Leaf {
 		val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(RSA_KEY_SIZE) }.generateKeyPair()
@@ -98,6 +111,14 @@ class TestPki(
 					Extension.keyUsage,
 					true,
 					KeyUsage(KeyUsage.digitalSignature or KeyUsage.nonRepudiation),
+				)
+			}
+			crlDistributionPoint?.let {
+				val fullName = GeneralNames(GeneralName(GeneralName.uniformResourceIdentifier, it))
+				addExtension(
+					Extension.cRLDistributionPoints,
+					false,
+					CRLDistPoint(arrayOf(DistributionPoint(DistributionPointName(fullName), null, null))),
 				)
 			}
 		}
@@ -141,7 +162,14 @@ class TestPki(
 	private companion object {
 		const val BC = "BC"
 		const val SIGNATURE_ALGORITHM = "SHA256withRSA"
-		const val RSA_KEY_SIZE = 2048
+		const val RSA_KEY_SIZE = 4096
+
+		/**
+		 * The CRL distribution point a leaf names unless told otherwise — the same address the
+		 * committed fixtures carry. It lies under `.invalid`, which RFC 6761 reserves for names that
+		 * must never resolve, so even a verifier wired to an online CRL source could not reach it.
+		 */
+		const val CRL_DISTRIBUTION_POINT = "http://crl.omnisign.invalid/test-root-ca.crl"
 
 		/**
 		 * `expiredCertsOnCRL` (RFC 5280 / ETSI), referenced by OID rather than through a Bouncy Castle

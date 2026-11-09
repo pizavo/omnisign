@@ -23,6 +23,7 @@ import io.kotest.matchers.string.shouldContain
 import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import io.mockk.verify
@@ -34,8 +35,12 @@ import org.koin.dsl.module
  * acknowledged on stdout while never reaching the persisted [ProfileConfig].
  *
  * Also pins the TSA credential handling, where the interesting rule is conditional — the password
- * only reaches the OS keychain when a username exists to key it by, and the config file must never
- * carry the password itself.
+ * only reaches the OS keychain when a username exists to key it by, the config file must never
+ * carry the password itself, and no profile is saved to refer to a password the keychain did not
+ * keep.
+ *
+ * Every refusal and failure exits with status 1, so a script that creates a profile and then signs
+ * with it stops instead of signing without the settings it asked for.
  */
 class ProfileCreateTest : FunSpec({
 
@@ -54,7 +59,11 @@ class ProfileCreateTest : FunSpec({
 		),
 	)
 
-	beforeTest { clearMocks(manageProfile, credentialStore, passwordCallback) }
+	beforeTest {
+		clearMocks(manageProfile, credentialStore, passwordCallback)
+		every { credentialStore.isPersistent } returns true
+		every { credentialStore.setPassword(any(), any(), any()) } returns Unit.right()
+	}
 
 	/**
 	 * Run `config profile create` with [args] and return the [ProfileConfig] it would persist.
@@ -72,6 +81,7 @@ class ProfileCreateTest : FunSpec({
 	test("refuses to create a profile that carries no settings") {
 		val result = Omnisign().test(listOf("config", "profile", "create", "empty"))
 
+		result.statusCode shouldBe 1
 		result.stderr shouldContain "No settings specified"
 		coVerify(exactly = 0) { manageProfile.upsert(any()) }
 	}
@@ -154,6 +164,43 @@ class ProfileCreateTest : FunSpec({
 		profile.timestampServer?.credentialKey shouldBe null
 	}
 
+	test("saves no profile when the keyring does not keep the TSA password") {
+		every { credentialStore.setPassword(any(), any(), any()) } returns
+			ConfigurationError.passwordStoreFailed("Error code 1312").left()
+		coEvery { manageProfile.upsert(any()) } returns Unit.right()
+
+		val result = Omnisign().test(
+			listOf(
+				"config", "profile", "create", "qualified",
+				"--timestamp-username", "tsa-user",
+				"--timestamp-password", "s3cret",
+			)
+		)
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "nothing was saved"
+		result.stderr shouldContain "Error code 1312"
+		coVerify(exactly = 0) { manageProfile.upsert(any()) }
+	}
+
+	test("refuses to store the TSA password, without prompting, when no keyring can keep it") {
+		every { credentialStore.isPersistent } returns false
+		coEvery { manageProfile.upsert(any()) } returns Unit.right()
+
+		val result = Omnisign().test(
+			listOf(
+				"config", "profile", "create", "qualified",
+				"--timestamp-username", "tsa-user",
+				"--timestamp-password", "-",
+			)
+		)
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "no keyring is available"
+		verify(exactly = 0) { passwordCallback.requestPassword(any(), any()) }
+		coVerify(exactly = 0) { manageProfile.upsert(any()) }
+	}
+
 	test("leaves validation unset so the profile inherits the global settings") {
 		val profile = createProfile("qualified", "--hash-algorithm", "SHA512")
 
@@ -180,12 +227,13 @@ class ProfileCreateTest : FunSpec({
 		constraints?.expirationDateOverrides shouldBe mapOf("RIPEMD160" to "2030-01-01")
 	}
 
-	test("reports a save failure on stderr") {
+	test("reports a save failure on stderr and exits non-zero") {
 		coEvery { manageProfile.upsert(any()) } returns
 			ConfigurationError.saveFailed(details = "disk full").left()
 
 		val result = Omnisign().test(listOf("config", "profile", "create", "qualified", "-H", "SHA512"))
 
+		result.statusCode shouldBe 1
 		result.stderr shouldContain "Failed to save profile"
 		result.stderr shouldContain "disk full"
 	}

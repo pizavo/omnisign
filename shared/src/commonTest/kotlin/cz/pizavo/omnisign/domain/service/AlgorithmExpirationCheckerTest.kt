@@ -8,7 +8,9 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import kotlinx.datetime.DatePeriod
 import kotlinx.datetime.LocalDate
+import kotlinx.datetime.plus
 
 /**
  * Verifies [AlgorithmExpirationChecker] behaviour including DSS `UpdateDate` semantics.
@@ -39,7 +41,9 @@ class AlgorithmExpirationCheckerTest : FunSpec({
 	)
 	
 	val today = LocalDate(2026, 3, 1)
-	
+
+	val dayAfterDefaultUpdate = AlgorithmExpirationChecker.DEFAULT_UPDATE_DATE + DatePeriod(days = 1)
+
 	test("non-expiring algorithms are always VALID") {
 		listOf(
 			HashAlgorithm.SHA256, HashAlgorithm.SHA384, HashAlgorithm.SHA512,
@@ -93,18 +97,20 @@ class AlgorithmExpirationCheckerTest : FunSpec({
 	}
 	
 	test("algorithm expired after updateDate uses expirationLevelAfterUpdate WARN") {
-		val config = defaultConfig.copy(expirationDateOverrides = mapOf("RIPEMD160" to "2025-01-01"))
-		checker.check(HashAlgorithm.RIPEMD160, config, today) shouldBe
+		val config = defaultConfig.copy(
+			expirationDateOverrides = mapOf("RIPEMD160" to dayAfterDefaultUpdate.toString())
+		)
+		checker.check(HashAlgorithm.RIPEMD160, config, dayAfterDefaultUpdate + DatePeriod(days = 1)) shouldBe
 			AlgorithmStatus.EXPIRED_WARN
 	}
-	
+
 	test("algorithm expired after updateDate uses expirationLevelAfterUpdate FAIL when set") {
 		val config = AlgorithmConstraintsConfig(
 			expirationLevel = AlgorithmConstraintLevel.WARN,
 			expirationLevelAfterUpdate = AlgorithmConstraintLevel.FAIL,
-			expirationDateOverrides = mapOf("RIPEMD160" to "2025-01-01")
+			expirationDateOverrides = mapOf("RIPEMD160" to dayAfterDefaultUpdate.toString())
 		)
-		checker.check(HashAlgorithm.RIPEMD160, config, today) shouldBe
+		checker.check(HashAlgorithm.RIPEMD160, config, dayAfterDefaultUpdate + DatePeriod(days = 1)) shouldBe
 			AlgorithmStatus.EXPIRED_FAIL
 	}
 	

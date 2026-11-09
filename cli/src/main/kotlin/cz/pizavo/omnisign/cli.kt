@@ -12,6 +12,7 @@ import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.MigrateTrustedCertificatesUseCase
 import cz.pizavo.omnisign.platform.PasswordCallback
 import io.github.oshai.kotlinlogging.KotlinLogging
+import io.github.oshai.kotlinlogging.KotlinLoggingConfiguration
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,7 +25,17 @@ import org.koin.mp.KoinPlatform.getKoin
 import java.util.Locale
 import kotlin.system.exitProcess
 
-private val logger = KotlinLogging.logger {}
+/**
+ * Logger of the CLI entry point.
+ *
+ * Creating it is the process's first use of [KotlinLogging], so the library's
+ * "kotlin-logging: initializing..." banner is switched off just before: the banner goes to
+ * standard output, where it would precede the output of every command, `--json` included.
+ */
+private val logger = run {
+	KotlinLoggingConfiguration.logStartupMessage = false
+	KotlinLogging.logger {}
+}
 
 /**
  * Subcommand names whose execution requires PKCS#11 token discovery and therefore
@@ -50,9 +61,10 @@ private val WARMUP_SUBCOMMANDS = setOf("sign", "certificates")
  * When the invoked subcommand needs PKCS#11 token discovery (`sign` or `certificates`),
  * a background warmup cycle is launched immediately after Koin starts so that
  * [Pkcs11WarmupService] can probe and pre-initialize middleware libraries while Clikt
- * parses the remaining arguments.  [Pkcs11Discoverer.discoverTokens] suspends on the
- * shared warmup-ready flow until warmup completes, ensuring the fast in-process probing
- * path is always available.
+ * parses the remaining arguments.
+ * [Pkcs11Discoverer.discoverTokens][cz.pizavo.omnisign.data.service.Pkcs11Discoverer.discoverTokens]
+ * suspends on the shared warmup-ready flow until warmup completes, ensuring the fast in-process
+ * probing path is always available.
  *
  * When invoked with `probe <libraryPath>` (probe a single PKCS#11 library) or
  * `discover-modules` (enumerate the p11-kit-registered modules via libp11-kit), the app acts
@@ -79,6 +91,7 @@ fun main(args: Array<String>) {
 	}
 
 	cz.pizavo.omnisign.data.repository.DssServiceFactory.enableAiaCaIssuerFetching()
+	cz.pizavo.omnisign.data.util.routeJavaUtilLoggingToSlf4j()
 
 	val terminal = Terminal()
 	val needsWarmup = args.firstOrNull { !it.startsWith("-") } in WARMUP_SUBCOMMANDS

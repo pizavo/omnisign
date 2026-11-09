@@ -11,7 +11,7 @@ import cz.pizavo.omnisign.config.OidcProviderConfig
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import java.net.URL
+import java.net.URI
 import java.security.PublicKey
 import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPublicKey
@@ -47,8 +47,9 @@ private val logger = KotlinLogging.logger {}
  *    against the UserInfo `sub` so any tampering of the UserInfo response is detected.
  *
  * JWKS fetches are cached and rate-limited per provider via [JwkProviderBuilder]:
- * up to 10 keys held in memory for 1 hour, fetched at most 10 times per minute. Keys
- * roll naturally as IdPs rotate signing keys without operator intervention.
+ * up to 10 keys held in memory for 1 hour, fetched at most 10 times per minute, each
+ * fetch bounded by a 5-second connect and a 10-second read timeout. Keys roll naturally
+ * as IdPs rotate signing keys without operator intervention.
  *
  * @param discoveryService Used to resolve [OidcDiscoveryDocument.jwksUri] and
  *   [OidcDiscoveryDocument.issuer] for each provider on first verification.
@@ -178,6 +179,20 @@ class IdTokenVerifier(
         private const val JWKS_RATE_LIMIT_PER_MINUTE = 1L
 
         /**
+         * Default connect timeout, in milliseconds, of a JWKS fetch. Matches the connect
+         * timeout of the HTTP client that serves the other IdP calls (see
+         * [cz.pizavo.omnisign.di.serverModule]).
+         */
+        private const val JWKS_CONNECT_TIMEOUT_MS = 5_000
+
+        /**
+         * Default read timeout, in milliseconds, of a JWKS fetch: how long the response may
+         * stall before the fetch gives up. Matches the socket timeout of the HTTP client that
+         * serves the other IdP calls (see [cz.pizavo.omnisign.di.serverModule]).
+         */
+        private const val JWKS_READ_TIMEOUT_MS = 10_000
+
+        /**
          * Construct the default cached + rate-limited [JwkProvider] for a given JWKS URL.
          *
          * Up to [JWKS_CACHE_SIZE] keys are held in memory for [JWKS_CACHE_TTL_HOURS]
@@ -185,11 +200,27 @@ class IdTokenVerifier(
          * [JWKS_RATE_LIMIT_BUCKET] per [JWKS_RATE_LIMIT_PER_MINUTE] minute(s) so a
          * malformed token referencing an unknown `kid` cannot trigger a DoS against
          * the IdP's JWKS endpoint.
+         *
+         * A fetch that cannot connect within [connectTimeoutMillis], or whose response
+         * stalls for [readTimeoutMillis], fails with a [JwkException], which
+         * [IdTokenVerifier.verify] reports as [IdTokenVerificationException.KeyNotFound].
+         * Without these bounds `URLConnection` waits indefinitely, so an IdP that accepts
+         * the connection but never answers would hold the login request, and the thread
+         * verifying it, forever.
+         *
+         * @param jwksUri The discovery document's `jwks_uri`.
+         * @param connectTimeoutMillis Connect timeout of a JWKS fetch, in milliseconds.
+         * @param readTimeoutMillis Read timeout of a JWKS fetch, in milliseconds.
          */
-        fun defaultJwkProvider(jwksUri: String): JwkProvider =
-            JwkProviderBuilder(URL(jwksUri))
+        fun defaultJwkProvider(
+            jwksUri: String,
+            connectTimeoutMillis: Int = JWKS_CONNECT_TIMEOUT_MS,
+            readTimeoutMillis: Int = JWKS_READ_TIMEOUT_MS,
+        ): JwkProvider =
+            JwkProviderBuilder(URI(jwksUri).toURL())
                 .cached(JWKS_CACHE_SIZE, JWKS_CACHE_TTL_HOURS, TimeUnit.HOURS)
                 .rateLimited(JWKS_RATE_LIMIT_BUCKET, JWKS_RATE_LIMIT_PER_MINUTE, TimeUnit.MINUTES)
+                .timeouts(connectTimeoutMillis, readTimeoutMillis)
                 .build()
     }
 }

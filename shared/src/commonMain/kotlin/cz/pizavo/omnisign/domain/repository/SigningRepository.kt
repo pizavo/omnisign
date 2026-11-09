@@ -31,9 +31,10 @@ interface SigningRepository {
      *    a PIN.  Tokens whose prompt is satisfied yield certificates; tokens whose prompt is
      *    cancelled (callback returns `null`) remain in [CertificateDiscoveryResult.lockedTokens].
      *
-     * @param promptForLocked When `true` (default), invoke the platform [PasswordCallback] for any
-     *   token that survives the silent pass.  Set to `false` for non-interactive contexts (server,
-     *   scripted CLI) — locked tokens then remain in `lockedTokens` without any prompt.
+     * @param promptForLocked When `true` (default), invoke the platform
+     *   [PasswordCallback][cz.pizavo.omnisign.platform.PasswordCallback] for any token that
+     *   survives the silent pass.  Set to `false` for non-interactive contexts (server, scripted
+     *   CLI) — locked tokens then remain in `lockedTokens` without any prompt.
      * @return Discovery result containing signing-capable certificates and any per-token warnings,
      *         or a hard error when token discovery itself fails.
      */

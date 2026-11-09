@@ -3,6 +3,7 @@
 	<string name="warningrow_affected_certificates">Affected Certificates</string>
 	<string name="warning_revocation_not_found">Revocation data (CRL/OCSP) could not be retrieved for %1$s. Long-term signature validity may be affected.</string>
 	<string name="warning_revocation_after_certificate_expiry">Revocation data for %1$s was issued after the certificate expired and cannot be used: the issuer no longer vouches for that period. Long-term validation material has to be added while the certificate is still valid.</string>
+	<string name="warning_revocation_access_point_missing">Revocation status cannot be checked for %1$s: no CRL distribution point or OCSP address is given, so timestamps and revocation data signed with such a certificate are disregarded while long-term validation data is gathered. Retrying will not change that; a timestamp server whose certificate names an address avoids it.</string>
 	<string name="warning_revocation_untrusted_chain">Revocation checks were skipped for %1$s in untrusted chain(s). This is expected when no trusted list is configured.</string>
 	<string name="warning_revocation_status_unknown">Revocation status could not be confirmed for %1$s. The certificate chain may not be fully trusted by all validators.</string>
 	<string name="warning_revocation_poe_missing">Revocation data required for proof-of-existence is missing for %1$s.</string>
@@ -14,6 +15,7 @@
 	<string name="warning_certificate_parse_error">Some certificates in the chain contain malformed extensions that could not be fully parsed. This is typically caused by non-standard third-party certificates (e.g. TSA) and does not affect the signature itself.</string>
 	<string name="warning_tsp_failure">The timestamp server reported a problem (PKIFailureInfo). If the operation succeeded, the timestamp may have been obtained on a retry.</string>
 	<string name="warning_tl_refresh_incomplete">Could not refresh %1$s (%2$s). Qualification assessment for certificates from these sources may be incomplete.</string>
+	<string name="warning_tl_signing_certificate_unreadable">Could not load trusted list %1$s: its signing certificate %2$s cannot be read. Trust and qualification assessment for certificates from this list may be incomplete.</string>
 	<plurals name="warning_affected_certificates">
 		<item quantity="one">%1$s certificate</item>
 		<item quantity="other">%1$s certificates</item>

@@ -62,7 +62,8 @@ fun ProfileConfig.toResponse() = ProfileConfigResponse(
 /**
  * Reverse-map a [ProfileConfigResponse] back into a [ProfileConfig].
  *
- * Mirrors the sanitization: the rebuilt profile carries a [TimestampServerConfig]
+ * Mirrors the sanitization: the rebuilt profile carries a
+ * [TimestampServerConfig][cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig]
  * with no credential material (server keeps that on its side). Suitable for read-only
  * consumption by the web client.
  */

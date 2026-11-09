@@ -18,7 +18,7 @@ TSA credentials supplied here are held in memory only and are never written to d
 | `-L, --signature-level <level>`         | Signature level override                                                 |
 | `--timestamp-url <url>`                 | TSA URL override                                                         |
 | `--timestamp-username <user>`           | TSA HTTP Basic username override                                         |
-| `--timestamp-password <pass>`           | TSA HTTP Basic password override (in-memory only)                        |
+| `--timestamp-password <pass>`           | TSA HTTP Basic password override (in-memory only); `-` prompts, or set `OMNISIGN_TIMESTAMP_PASSWORD` or [`OMNISIGN_TIMESTAMP_PASSWORD_FILE`](#secrets-in-files) |
 | `--timestamp-timeout <ms>`              | TSA request timeout override in milliseconds                             |
 | `--validation-policy <type>`            | Validation policy type override                                          |
 | `--no-global-tls`                       | Exclude global trusted lists; use only profile-level TLs                 |
@@ -38,15 +38,59 @@ credential override does not discard the stored server URL, and vice versa.
 
 ## Environment variables
 
-All options can also be set via environment variables using the `OMNISIGN_` prefix.
-For example, `--timestamp-url` becomes `OMNISIGN_TIMESTAMP_URL`.
-Explicit command-line options always take precedence over environment variables.
+Every option can also be read from an environment variable. The name is `OMNISIGN_`, then the
+command path, then the option's long name, upper-cased with dashes turned into underscores:
+`--timestamp-url` on `sign` is `OMNISIGN_SIGN_TIMESTAMP_URL`, the same option on `validate` is
+`OMNISIGN_VALIDATE_TIMESTAMP_URL`, and the root `--json` flag is `OMNISIGN_JSON`.
+
+The two secret options are the exception. Their names are fixed, so one variable serves every
+command that takes the option:
+
+| Variable                      | Option                                                      |
+|-------------------------------|-------------------------------------------------------------|
+| `OMNISIGN_TIMESTAMP_PASSWORD` | `--timestamp-password` on `sign`, `timestamp` and `validate` |
+| `OMNISIGN_KEYSTORE_PASSWORD`  | `--keystore-password` on `sign`                             |
+
+Unlike a value on the command line, a variable does not show up in process listings. Other
+processes of the same user can still read it — on Linux through `/proc/<pid>/environ`.
+
+Explicit command-line options always take precedence over environment variables. A secret from the
+environment is used exactly as it is set, so `-` prompts only on the command line.
+
+### Secrets in files
+
+On Linux and macOS, a secret can be kept in a file instead: set the variable's name followed by
+`_FILE` to the file's path. Many container images follow this convention, and it suits the secrets
+Docker and Kubernetes mount into a container as files.
+
+```bash
+export OMNISIGN_KEYSTORE_PASSWORD_FILE=/run/secrets/keystore-password
+omnisign sign -k signer.p12 -f doc.pdf -o doc-signed.pdf
+```
+
+Under systemd, a credential named like the variable is read as well, such as one the unit loads
+with `LoadCredential=OMNISIGN_TIMESTAMP_PASSWORD:/etc/omnisign/tsa-password`.
+
+A secret file is read only when no one but its owner can get at the secret:
+
+- It is a regular file of at most 64 KiB. A link is followed, and the file it leads to is checked.
+- It is owned by the user that runs `omnisign` and has mode `0600` or stricter, or it is owned by
+  `root` and has mode `0640` or stricter, which lets one group read it.
+- It is not on an overlay file system, where a container keeps the files of its image and those
+  written into it. Mount the secret when the container starts instead.
+
+Otherwise the command stops and says what to change, such as `chmod 600 <file>`. One line break at
+the end of the file is dropped, and an empty file is refused.
+
+Set each secret in one place only. When more than one of the variable, the `_FILE` variable and the
+systemd credential is set, the command stops instead of choosing one. Windows takes only the
+variable, because there the owner of a file and who may read it cannot be checked this way.
 
 ## Exit codes
 
-| Code     | Meaning                                                                                 |
-|----------|-----------------------------------------------------------------------------------------|
-| `0`      | Success                                                                                 |
-| `1`      | Command error (invalid arguments, missing required options, etc.)                       |
-| non-zero | Operational failure (signing error, validation error, etc.) — details printed to stderr |
+| Code        | Meaning                                                                                                          |
+|-------------|------------------------------------------------------------------------------------------------------------------|
+| `0`         | Success                                                                                                          |
+| `1`         | Command error (invalid arguments, missing required options, etc.) or operational failure (signing error, validation error, etc.) — details printed to stderr, or in the JSON result with `--json` |
+| `2` to `4`  | `validate` only: the document was validated but is not validly signed — see [validate](../commands/validate#exit-codes) |
 

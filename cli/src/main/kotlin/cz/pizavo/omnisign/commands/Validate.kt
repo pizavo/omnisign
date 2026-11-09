@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.commands
 
+import arrow.core.flatMap
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.ProgramResult
@@ -13,9 +14,11 @@ import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.path
 import cz.pizavo.omnisign.cli.OperationConfigOptions
 import cz.pizavo.omnisign.cli.OutputConfig
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.cli.json.JsonValidationResult
 import cz.pizavo.omnisign.cli.json.toJsonError
 import cz.pizavo.omnisign.cli.json.toJsonResult
+import cz.pizavo.omnisign.data.secret.EnvironmentSecretReader
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
@@ -30,6 +33,10 @@ import org.koin.core.component.inject
 
 /**
  * CLI command for validating signed PDF documents.
+ *
+ * The exit status gives the verdict, so a script can act on it without reading the report: 0 when
+ * every signature is valid, 2 when one is not, 3 when the result could not be determined, and 4
+ * when the document has no signatures. Status 1 means the document could not be validated at all.
  */
 class Validate : CliktCommand(
 	name = "validate",
@@ -37,6 +44,7 @@ class Validate : CliktCommand(
 	private val validateUseCase: ValidateDocumentUseCase by inject()
 	private val configRepository: ConfigRepository by inject()
 	private val passwordCallback: PasswordCallback by inject()
+	private val secretReader: EnvironmentSecretReader by inject()
 	private val output by requireObject<OutputConfig>()
 
 	private val file by option("-f", "--file", help = "Path to the PDF file to validate")
@@ -80,13 +88,16 @@ class Validate : CliktCommand(
 		val activeProfile = profile
 			?: appConfig.activeProfile
 		val profileConfig = activeProfile?.let { appConfig.profiles[it] }
-		val operationConfig = configOverrides.toOperationConfig(passwordCallback)
-		val resolvedConfigResult = ResolvedConfig.resolve(
-			global = appConfig.global,
-			profile = profileConfig,
-			operationOverrides = operationConfig,
-			excludeGlobalTls = configOverrides.noGlobalTls
-		)
+		val resolvedConfigResult = configOverrides
+			.toOperationConfig(passwordCallback, secretReader, currentContext.readEnvvar)
+			.flatMap { operationConfig ->
+				ResolvedConfig.resolve(
+					global = appConfig.global,
+					profile = profileConfig,
+					operationOverrides = operationConfig,
+					excludeGlobalTls = configOverrides.noGlobalTls
+				)
+			}
 		if (resolvedConfigResult.isLeft()) {
 			val error = resolvedConfigResult.leftOrNull()!!
 			if (output.json) {
@@ -95,12 +106,9 @@ class Validate : CliktCommand(
 					error = error.toJsonError()
 						.copy(message = "Configuration Error: ${error.message}")
 				)))
-			} else {
-				echo("❌ Configuration Error: ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+				throw ProgramResult(1)
 			}
-			throw ProgramResult(1)
+			failWith(error, "Configuration Error")
 		}
 		val resolvedConfig = resolvedConfigResult.getOrNull()!!
 
@@ -120,12 +128,9 @@ class Validate : CliktCommand(
 						success = false,
 						error = error.toJsonError()
 					)))
-				} else {
-					echo("❌ Validation Error: ${error.message}", err = true)
-					error.details?.let { echo("Details: $it", err = true) }
-					error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+					throw ProgramResult(1)
 				}
-				throw ProgramResult(1)
+				failWith(error, "Validation Error")
 			},
 			ifRight = { report ->
 				val rawPath = reportOut?.toAbsolutePath()?.toString()
@@ -137,8 +142,19 @@ class Validate : CliktCommand(
 						echo("\n📄 Raw report (${reportFormat.name}) written to: ${it.toAbsolutePath()}")
 					}
 				}
+				exitStatusOf(report).takeIf { it != 0 }?.let { throw ProgramResult(it) }
 			}
 		)
+	}
+
+	/**
+	 * The exit status that gives the verdict on [report], its [ValidationReport.overallResult].
+	 */
+	private fun exitStatusOf(report: ValidationReport): Int = when (report.overallResult) {
+		ValidationResult.VALID -> 0
+		ValidationResult.INVALID -> EXIT_INVALID
+		ValidationResult.INDETERMINATE -> EXIT_INDETERMINATE
+		ValidationResult.NO_SIGNATURES -> EXIT_NO_SIGNATURES
 	}
 
 	/**
@@ -150,15 +166,18 @@ class Validate : CliktCommand(
 	 * Two CLI-only additions wrap that shared body: in [detailed] mode the resolved configuration that
 	 * was actually applied, and — for a [ValidationResult.VALID] signature whose timestamps report
 	 * [ValidationIndication.INDETERMINATE] — a note explaining why that is expected and not a problem.
+	 * The body's trailing line breaks are trimmed, because `echo` ends the line itself: the output ends
+	 * with one line break, and each addition prints the blank line that sets it apart.
 	 */
 	private fun printValidationReport(
 		report: ValidationReport,
 		parameters: ValidationParameters,
 		resolvedConfig: ResolvedConfig?,
 	) {
-		echo(report.toPlainText(detailed = detailed))
+		echo(report.toPlainText(detailed = detailed).trimEnd())
 
 		if (detailed) {
+			echo("")
 			echo("── Configuration ──")
 			val policyType = resolvedConfig?.validation?.policyType?.name ?: "DEFAULT_ETSI"
 			val effectivePolicyPath = parameters.customPolicyPath ?: resolvedConfig?.validation?.customPolicyPath
@@ -182,5 +201,16 @@ class Validate : CliktCommand(
 			echo("overall result above is authoritative; renew the archive timestamp periodically to keep")
 			echo("the chain cryptographically provable.")
 		}
+	}
+
+	private companion object {
+		/** Exit status for a document with a signature that is not valid ([ValidationResult.INVALID]). */
+		const val EXIT_INVALID = 2
+
+		/** Exit status for a document whose result could not be determined ([ValidationResult.INDETERMINATE]). */
+		const val EXIT_INDETERMINATE = 3
+
+		/** Exit status for a document that has no signatures ([ValidationResult.NO_SIGNATURES]). */
+		const val EXIT_NO_SIGNATURES = 4
 	}
 }

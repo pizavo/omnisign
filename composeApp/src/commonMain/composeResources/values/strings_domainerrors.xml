@@ -54,6 +54,7 @@
 	<string name="err_config_load_from_server_failed">Failed to load configuration from server</string>
 	<string name="err_config_save_not_supported_web">Saving configuration is not supported on the web target</string>
 	<string name="err_config_server_read_only">Server signing configuration is read-only</string>
+	<string name="err_config_password_store_failed">Failed to store the password in the system credential store</string>
 	<string name="err_config_missing_certificate_bytes">Trust store is missing the bytes for referenced certificate %1$s</string>
 	<string name="err_config_missing_der_entry">Archive references certificate %1$s but its DER entry is missing</string>
 	<string name="err_config_archive_missing_config_entry">Configuration archive is missing a config.* entry</string>

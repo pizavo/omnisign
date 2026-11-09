@@ -110,10 +110,11 @@ same interfaces, the ViewModels above them are identical on desktop and web.
 
 :::tip[Where the two platforms genuinely diverge]
 A handful of features have no browser equivalent — the Trusted List builder, hardware tokens, OS
-scheduling. Rather than fork the UI, `composeApp` degrades gracefully: platform-only ViewModels are
-built by hand in `ui/layout/IslandLayout.kt` from `KoinPlatform.getKoinOrNull()`, resolving their
-dependencies with `getOrNull<…>()`; when the web container has no such definition the ViewModel stays
-`null` and the affordance is simply not rendered. Server-gated operations are hidden by a second,
+scheduling. Rather than fork the UI, `composeApp` degrades gracefully: `ui/layout/IslandLayout.kt`
+takes its ViewModels from Koin through `koinViewModelOrNull`, and they resolve the platform-only ports
+with `getOrNull<…>()`; the web container has no such definitions, so there they get `null` instead and
+leave the affordance out. The Trusted List builder's ViewModel is not built on the web at all, so the
+**Build Custom TL** button is not shown. Server-gated operations are hidden by a second,
 independent mechanism — `CapabilitiesViewModel` reads `GET /api/v1/capabilities` at startup and fails
 **closed**. See [Web → Features](/web/features) for what that looks like to a user.
 :::

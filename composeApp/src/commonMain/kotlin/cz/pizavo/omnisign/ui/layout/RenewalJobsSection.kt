@@ -205,8 +205,9 @@ private fun RenewalJobRow(
 /**
  * Blue "info" badge showing a renewal job's profile name.
  *
- * Rendered as a tinted, outlined pill in the theme's info accent ([LumoTheme.colors.tertiary]) so
- * the profile reads as an intentional label rather than a disabled chip.
+ * Rendered as a tinted, outlined pill in the theme's info accent
+ * ([LumoTheme.colors.tertiary][cz.pizavo.omnisign.lumo.Colors.tertiary]) so the profile reads as
+ * an intentional label rather than a disabled chip.
  *
  * @param name The profile name to display.
  */

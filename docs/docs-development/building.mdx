@@ -176,6 +176,9 @@ different problem, explained in [Releases and CI](releases.mdx#building-the-arti
 ```bash
 ./gradlew build                        # compile everything and run all tests
 ./gradlew :shared:updateLotlKeystore   # refresh the bundled EU LOTL keystore
+./gradlew :shared:regenerateDssMessages -Plocale=cs -Padditions=new-cs.properties
+                                       # rebuild a DSS message translation after a DSS upgrade
+./gradlew regenerateTestPki            # regenerate the end-to-end test PKI key stores
 ./gradlew generateIcons                # regenerate .ico/.icns/PNG icons from the masters
 ```
 
@@ -186,6 +189,18 @@ if you do not have one; see [Testing](testing.mdx#the-browser-suites).
 `updateLotlKeystore` downloads the current Official Journal keystore from the DSS demonstrations
 repository into `shared/src/jvmMain/resources/lotl-keystore.p12`. Run it when the European Commission
 rotates the LOTL signing keys, and commit the result.
+
+`regenerateDssMessages` rebuilds the Czech or Slovak DSS message bundle against the DSS version on
+the classpath, merging the translations in the additions file; see
+[The DSS validation report](i18n.mdx#the-dss-validation-report) for when and how.
+
+`regenerateTestPki` replaces the CA, signer and TSA key stores the end-to-end tests sign with, in
+`shared/src/jvmTest/resources/e2e/` and, for the signer and the TSA, `cli/src/test/resources/e2e/`.
+Every key is RSA-4096 because a smaller one would age out of DSS's validation policy long before the
+certificates do: DSS 6.5.1 accepts 2048-bit RSA only until 1 January 2027, after which every test
+signing with such a fixture would fail on the fixture rather than on the code. The certificates
+themselves last until the 2120s, so run it only when the algorithm policy moves again, and commit the
+five key stores. It uses the `keytool` of the JDK running Gradle.
 
 `generateIcons` needs ImageMagick 7 (`magick`) and `icnsify` on the `PATH`. It rewrites the icons in
 `assets/icons/` and copies them into the places that consume them, including this documentation site's

@@ -67,7 +67,7 @@ sealed interface SigningError : OperationError, LocalizableError {
 	/**
 	 * The input is not a PDF: it carries no `%PDF-` header, so it is rejected before DSS is invoked.
 	 *
-	 * A structural pre-check ([cz.pizavo.omnisign.data.repository.DocumentInputErrorDetector.looksLikePdf])
+	 * A structural pre-check (`DocumentInputErrorDetector.looksLikePdf`)
 	 * rejects headerless input; a header-bearing but otherwise unsignable document surfaces as the
 	 * generic [SigningFailed] instead.
 	 */

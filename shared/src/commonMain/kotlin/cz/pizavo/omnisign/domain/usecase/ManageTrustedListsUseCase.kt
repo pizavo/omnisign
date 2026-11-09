@@ -12,7 +12,7 @@ import cz.pizavo.omnisign.domain.repository.ConfigRepository
  * Use case for managing custom trusted list sources and in-progress TL builder drafts.
  *
  * Trusted list sources are scoped either to a named profile or to the global
- * [ValidationConfig], controlled by the optional [profileName] parameter on each
+ * [ValidationConfig], controlled by the optional `profileName` parameter on each
  * source-management method.  Builder drafts are stored at the top-level
  * [cz.pizavo.omnisign.domain.model.config.AppConfig.tlDrafts] map and are always global.
  */

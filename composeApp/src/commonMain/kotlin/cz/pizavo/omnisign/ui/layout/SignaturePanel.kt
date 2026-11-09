@@ -228,8 +228,8 @@ private fun ReportDetails(report: ValidationReport, alertIfNotEuLotl: Boolean) {
 /**
  * Colored badge indicating the overall validation result.
  *
- * When the report contains no signatures at all, a neutral "NO SIGNATURES" badge
- * with [Res.drawable.icon_shield_x] is shown instead of the normal result badge.
+ * A report whose result is [ValidationResult.NO_SIGNATURES] gets a neutral "NO SIGNATURES"
+ * badge with [Res.drawable.icon_shield_x].
  *
  * When [ValidationReport.overallTrustTier] is qualified, an additional rosette icon
  * is rendered to the right of the label — the same rosette/color logic used for
@@ -237,32 +237,11 @@ private fun ReportDetails(report: ValidationReport, alertIfNotEuLotl: Boolean) {
  */
 @Composable
 private fun OverallResultBadge(report: ValidationReport, alertIfNotEuLotl: Boolean) {
-    if (report.signatures.isEmpty()) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.Center,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Icon(
-                painter = painterResource(Res.drawable.icon_shield_x),
-                contentDescription = null,
-                modifier = Modifier.size(24.dp),
-                tint = LumoTheme.colors.textSecondary,
-            )
-            Spacer(modifier = Modifier.size(8.dp))
-            Text(
-                text = stringResource(Res.string.signature_badge_no_signatures),
-                style = LumoTheme.typography.h3,
-                color = LumoTheme.colors.textSecondary,
-            )
-        }
-        return
-    }
-
     val (label, color, icon) = when (report.overallResult) {
         ValidationResult.VALID -> Triple(stringResource(Res.string.signature_result_valid), LumoTheme.colors.success, Res.drawable.icon_shield_check)
         ValidationResult.INVALID -> Triple(stringResource(Res.string.signature_result_invalid), LumoTheme.colors.error, Res.drawable.icon_shield_exclamation)
         ValidationResult.INDETERMINATE -> Triple(stringResource(Res.string.signature_result_indeterminate), LumoTheme.colors.warning, Res.drawable.icon_shield_question)
+        ValidationResult.NO_SIGNATURES -> Triple(stringResource(Res.string.signature_badge_no_signatures), LumoTheme.colors.textSecondary, Res.drawable.icon_shield_x)
     }
     val rosette = trustTierIcon(report.overallTrustTier)
 
@@ -915,9 +894,9 @@ private fun trustTierIcon(tier: SignatureTrustTier): DrawableResource? = when (t
 /**
  * Map a [SignatureTrustTier] to the appropriate theme-aware tint color.
  *
- * Uses dedicated icon colors from [LumoTheme.colors.icons] so rosette hues
- * are independent of the semantic palette (success / error / warning) used by the
- * validation-indication shields.
+ * Uses dedicated icon colors from
+ * [LumoTheme.colors.icons][cz.pizavo.omnisign.lumo.Colors.icons] so rosette hues are independent
+ * of the semantic palette (success / error / warning) used by the validation-indication shields.
  */
 @Composable
 private fun trustTierColor(tier: SignatureTrustTier): Color = when (tier) {

@@ -1,6 +1,5 @@
 package cz.pizavo.omnisign.config
 
-import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.booleans.shouldBeFalse
@@ -11,6 +10,9 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import tools.jackson.databind.DatabindException
+import tools.jackson.databind.exc.MismatchedInputException
+import tools.jackson.databind.exc.UnrecognizedPropertyException
 import java.io.File
 
 /**
@@ -351,6 +353,66 @@ class ServerConfigLoaderTest : FunSpec({
 		val config = loader.load(tmpFile.absolutePath)
 		config.tls.shouldNotBeNull()
 		config.tls.hsts.shouldBeNull()
+	}
+
+	test("load reads a tilde as no secret rather than as the one-character secret ~") {
+		val config = loader.loadFromString("auth:\n  oauthStateSecret: ~")
+		config.auth.shouldNotBeNull().oauthStateSecret.shouldBeNull()
+	}
+
+	test("load reads a tilde as no value in a string field") {
+		loader.loadFromString("organizationName: ~").organizationName.shouldBeNull()
+	}
+
+	test("load keeps a YAML 1.1 boolean word as text in a string field") {
+		loader.loadFromString("organizationName: no").organizationName shouldBe "no"
+	}
+
+	test("load refuses a null port instead of binding a random one") {
+		for (value in listOf("~", "null", "")) {
+			shouldThrow<MismatchedInputException> { loader.loadFromString("listen:\n  port: $value") }
+		}
+	}
+
+	test("load refuses a null for a boolean instead of reading it as false") {
+		shouldThrow<MismatchedInputException> { loader.loadFromString("development: ~") }
+	}
+
+	test("load refuses the YAML 1.1 words for a boolean") {
+		for (word in listOf("yes", "no", "on", "off")) {
+			shouldThrow<MismatchedInputException> { loader.loadFromString("development: $word") }
+		}
+	}
+
+	test("load refuses a null among the allowed operations") {
+		shouldThrow<MismatchedInputException> { loader.loadFromString("operations:\n  allowed: [SIGN, ~]") }
+	}
+
+	test("load refuses a second YAML document instead of ignoring it") {
+		shouldThrow<MismatchedInputException> { loader.loadFromString("development: true\n---\ndevelopment: false") }
+	}
+
+	test("load names the supported SSO provider types for an unknown type") {
+		val ex = shouldThrow<DatabindException> {
+			loader.loadFromString("auth:\n  providers:\n    - type: saml\n      name: g")
+		}
+		ex.message.shouldNotBeNull() shouldContain "Unknown SSO provider type 'saml'. Supported values: oidc"
+	}
+
+	test("load names the supported SSO provider types when the type is not a scalar") {
+		for (type in listOf("{a: 1}", "[a]", "~")) {
+			val ex = shouldThrow<DatabindException> {
+				loader.loadFromString("auth:\n  providers:\n    - type: $type\n      name: g")
+			}
+			ex.message.shouldNotBeNull() shouldContain "Supported values: oidc"
+		}
+	}
+
+	test("load reports a provider without a type") {
+		val ex = shouldThrow<DatabindException> {
+			loader.loadFromString("auth:\n  providers:\n    - name: g")
+		}
+		ex.message.shouldNotBeNull() shouldContain "missing the required 'type' field"
 	}
 })
 

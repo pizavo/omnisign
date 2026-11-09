@@ -19,6 +19,7 @@ import kotlinx.serialization.json.Json
 /**
  * Verifies the multipart single-file contract enforced by `collectParts`: a request with
  * more than one file part is rejected with `400 TOO_MANY_FILES` before any operation runs.
+ * A request whose body is not multipart at all is rejected with `415 UNSUPPORTED_MEDIA_TYPE`.
  */
 class MultipartHandlingTest : FunSpec({
 
@@ -77,6 +78,31 @@ class MultipartHandlingTest : FunSpec({
             response.status shouldBe HttpStatusCode.BadRequest
             val body = json.decodeFromString<ApiError>(response.bodyAsText())
             body.error shouldBe "TOO_MANY_FILES"
+        }
+    }
+
+    test("validation route answers a body that is not multipart with 415 UNSUPPORTED_MEDIA_TYPE") {
+        testApplication {
+            application { module(testConfig()) }
+            val response = client.post("/api/v1/validate") {
+                contentType(ContentType.Application.Json)
+                setBody("""{"file":"document.pdf"}""")
+            }
+            response.status shouldBe HttpStatusCode.UnsupportedMediaType
+            val body = json.decodeFromString<ApiError>(response.bodyAsText())
+            body.error shouldBe "UNSUPPORTED_MEDIA_TYPE"
+            body.message shouldBe "Content type application/json is not supported"
+        }
+    }
+
+    test("validation route answers a request without a Content-Type with 415 UNSUPPORTED_MEDIA_TYPE") {
+        testApplication {
+            application { module(testConfig()) }
+            val response = client.post("/api/v1/validate")
+            response.status shouldBe HttpStatusCode.UnsupportedMediaType
+            val body = json.decodeFromString<ApiError>(response.bodyAsText())
+            body.error shouldBe "UNSUPPORTED_MEDIA_TYPE"
+            body.message shouldBe "Content-Type header is required"
         }
     }
 })

@@ -1,10 +1,10 @@
 package cz.pizavo.omnisign.config
 
-import com.fasterxml.jackson.core.JsonParser
-import com.fasterxml.jackson.databind.DeserializationContext
-import com.fasterxml.jackson.databind.JsonDeserializer
 import cz.pizavo.omnisign.domain.model.value.Sensitive
 import cz.pizavo.omnisign.domain.model.value.sensitive
+import tools.jackson.core.JsonParser
+import tools.jackson.databind.DeserializationContext
+import tools.jackson.databind.ValueDeserializer
 
 /**
  * Jackson deserializer that lifts a bare YAML/JSON string into a [Sensitive] wrapper of
@@ -24,7 +24,7 @@ import cz.pizavo.omnisign.domain.model.value.sensitive
  * decides how a string token becomes a wrapper instance; what `toString` returns is the
  * value class's own concern, and it always returns `***`.
  */
-class SensitiveStringJacksonDeserializer : JsonDeserializer<Sensitive<String>>() {
+class SensitiveStringJacksonDeserializer : ValueDeserializer<Sensitive<String>>() {
     override fun deserialize(parser: JsonParser, context: DeserializationContext): Sensitive<String> =
         parser.valueAsString.sensitive()
 }

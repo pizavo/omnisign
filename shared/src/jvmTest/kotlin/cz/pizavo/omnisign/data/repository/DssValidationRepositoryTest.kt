@@ -1,14 +1,23 @@
 package cz.pizavo.omnisign.data.repository
 
 import cz.pizavo.omnisign.data.trust.FileTrustStore
+import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.config.ValidationConfig
+import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
+import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.config.service.CrlConfig
+import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
 import cz.pizavo.omnisign.domain.model.error.ValidationError
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
+import cz.pizavo.omnisign.domain.model.validation.ValidationResult
 import eu.europa.esig.dss.enumerations.Indication
 import eu.europa.esig.dss.spi.x509.KeyStoreCertificateSource
 import io.kotest.assertions.arrow.core.shouldBeLeft
+import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.comparables.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
@@ -17,6 +26,8 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.mockk
+import org.apache.pdfbox.pdmodel.PDDocument
+import org.apache.pdfbox.pdmodel.PDPage
 import java.io.File
 
 /**
@@ -29,6 +40,9 @@ import java.io.File
  * 2. **Ephemeral TL cache** — the TL cache directory must be a persistent, user-specific
  *    location (not the system temp directory) and the online-loader expiration must be
  *    strictly positive so DSS can reuse cached responses between validation calls.
+ *
+ * It also checks the result for a document that cannot be validated and for one without
+ * signatures.
  */
 class DssValidationRepositoryTest : FunSpec({
 
@@ -119,6 +133,48 @@ class DssValidationRepositoryTest : FunSpec({
 				inputName = notAPdf.name,
 			)
 		).shouldBeLeft().shouldBeInstanceOf<ValidationError.ValidationFailed>()
+	}
+
+	fun unsignedPdf(name: String): File = tmpFile(name).also { file ->
+		PDDocument().use { document ->
+			document.addPage(PDPage())
+			document.save(file)
+		}
+	}
+
+	test("validateDocument reports NO_SIGNATURES, not VALID, for a PDF without signatures") {
+		val unsigned = unsignedPdf("unsigned.pdf")
+
+		val report = repository.validateDocument(
+			ValidationParameters(
+				inputBytes = unsigned.readBytes(),
+				inputName = unsigned.name,
+			)
+		).shouldBeRight()
+
+		report.signatures.shouldBeEmpty()
+		report.overallResult shouldBe ValidationResult.NO_SIGNATURES
+	}
+
+	test("validateDocument reports NO_SIGNATURES for a PDF without signatures when revocation is checked") {
+		val unsigned = unsignedPdf("unsigned-revocation-checked.pdf")
+		val config = ResolvedConfig(
+			hashAlgorithm = HashAlgorithm.SHA256,
+			encryptionAlgorithm = null,
+			signatureLevel = SignatureLevel.PADES_BASELINE_B,
+			timestampServer = null,
+			ocsp = OcspConfig(),
+			crl = CrlConfig(),
+			validation = ValidationConfig(checkRevocation = true, useEuLotl = false),
+		)
+
+		repository.validateDocument(
+			ValidationParameters(
+				inputBytes = unsigned.readBytes(),
+				inputName = unsigned.name,
+				resolvedConfig = config,
+			)
+		).shouldBeRight().overallResult shouldBe ValidationResult.NO_SIGNATURES
 	}
 
 	// ── DSS Indication mapping ──────────────────────────────────────────────

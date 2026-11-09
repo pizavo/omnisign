@@ -40,13 +40,19 @@ import org.slf4j.LoggerFactory
  * under `--debug-extended`.
  *
  * **Security note — environment variable prefix:** The [Context.autoEnvvarPrefix] is set to
- * `OMNISIGN`, meaning every CLI option can be supplied via an `OMNISIGN_`-prefixed environment
- * variable (e.g. `OMNISIGN_TIMESTAMP_PASSWORD`). On Linux, environment variables of a running
- * process are readable via `/proc/<pid>/environ` by the same user. This is standard Clikt
- * behavior and consistent with industry practice (Docker, AWS CLI, etc.), but operators should
- * be aware that secrets passed this way are not protected from local same-user inspection.
- * Prefer using `--timestamp-password -` (interactive hidden prompt) or the OS credential store
- * (`config set --timestamp-password -`) for sensitive values.
+ * `OMNISIGN`, meaning every CLI option can be supplied via an environment variable whose name
+ * Clikt infers from the command path and the option name (e.g. `--timestamp-url` on `sign` is
+ * `OMNISIGN_SIGN_TIMESTAMP_URL`). `--keystore-password` and the per-execution
+ * `--timestamp-password` name their variable explicitly instead, so it does not depend on the
+ * command: `OMNISIGN_KEYSTORE_PASSWORD` and `OMNISIGN_TIMESTAMP_PASSWORD`. On Linux, environment
+ * variables of a running process are readable via `/proc/<pid>/environ` by the same user. This is
+ * standard Clikt behavior and consistent with industry practice (Docker, AWS CLI, etc.), but
+ * operators should be aware that secrets passed this way are not protected from local same-user
+ * inspection. Prefer using `--timestamp-password -` (interactive hidden prompt) or the OS
+ * credential store (`config set --timestamp-password -`) for sensitive values. Where neither
+ * fits, as in a container, each secret can be kept in a file whose path is in the variable's name
+ * followed by `_FILE`, or in a systemd credential; see
+ * [resolveSecretOption][cz.pizavo.omnisign.cli.resolveSecretOption].
  */
 class Omnisign : CliktCommand(name = "omnisign") {
 	init {

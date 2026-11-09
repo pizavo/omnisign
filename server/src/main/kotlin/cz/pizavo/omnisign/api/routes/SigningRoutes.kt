@@ -1,6 +1,5 @@
 package cz.pizavo.omnisign.api.routes
 
-import cz.pizavo.omnisign.api.collectParts
 import cz.pizavo.omnisign.api.deleteFileParts
 import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.extractTextField
@@ -8,6 +7,7 @@ import cz.pizavo.omnisign.api.model.FilePartData
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.api.model.responses.SigningResultMeta
 import cz.pizavo.omnisign.api.parseEnumSetField
+import cz.pizavo.omnisign.api.receiveParts
 import cz.pizavo.omnisign.api.requireOperation
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
@@ -22,7 +22,6 @@ import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
 import cz.pizavo.omnisign.plugins.serverJson
 import io.ktor.http.*
-import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import org.koin.ktor.ext.inject
@@ -54,11 +53,14 @@ import org.koin.ktor.ext.inject
  * here with only these two fields populated, so a future expansion of the override pipeline
  * cannot accidentally widen the API surface.
  *
- * This operation is disabled by default and must be explicitly enabled in [OperationsConfig.allowed].
- * When [OperationsConfig.certificateAliases] is set, only those aliases may be used.
- * When [OperationsConfig.signingKeystorePath] is set, the server signs from that file PKCS#12
- * keystore (its password sourced from `OMNISIGN_SIGNING_KEYSTORE_PASSWORD`) instead of a discovered
- * PKCS#11 token; `certificateAlias` then selects the entry within it.
+ * This operation is disabled by default and must be explicitly enabled in
+ * [OperationsConfig.allowed][cz.pizavo.omnisign.config.OperationsConfig.allowed].
+ * When [OperationsConfig.certificateAliases][cz.pizavo.omnisign.config.OperationsConfig.certificateAliases]
+ * is set, only those aliases may be used.
+ * When [OperationsConfig.signingKeystorePath][cz.pizavo.omnisign.config.OperationsConfig.signingKeystorePath]
+ * is set, the server signs from that file PKCS#12 keystore (its password sourced from
+ * `OMNISIGN_SIGNING_KEYSTORE_PASSWORD`) instead of a discovered PKCS#11 token; `certificateAlias`
+ * then selects the entry within it.
  *
  * A request whose effective signature level embeds an RFC 3161 timestamp (any level above
  * `PADES_BASELINE_B`, or any request that does not opt out via `noTimestamp`) is rejected with
@@ -78,8 +80,7 @@ fun Route.signingRoutes() {
 	post("/api/v1/sign") {
 		if (!call.requireOperation(AllowedOperation.SIGN, serverConfig)) return@post
 
-		val multipart = call.receiveMultipart()
-		val parts = multipart.collectParts(serverConfig.maxFileSize)
+		val parts = call.receiveParts(serverConfig.maxFileSize)
 
 		try {
 			val filePart = parts.filterIsInstance<FilePartData>().firstOrNull { it.name == "file" }

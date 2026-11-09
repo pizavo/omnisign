@@ -2,9 +2,11 @@ package cz.pizavo.omnisign.commands.config.profile
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.model.config.enums.ConfigFormat
 import cz.pizavo.omnisign.domain.usecase.ConfigArchiveUseCase
 import cz.pizavo.omnisign.domain.usecase.ExportImportConfigUseCase
@@ -54,22 +56,18 @@ class ProfileImport : CliktCommand(name = "import"), KoinComponent {
 	override fun run(): Unit = runBlocking {
 		val bytes = runCatching { Path.of(inputFile).readBytes() }.getOrElse { e ->
 			echo("❌ Cannot read file '$inputFile': ${e.message}", err = true)
-			return@runBlocking
+			throw ProgramResult(1)
 		}
 
 		val result = if (ConfigArchiveUseCase.isArchive(bytes)) {
 			archive.importProfile(bytes, name)
 		} else {
-			val resolvedFormat = resolveFormat(inputFile, format) ?: return@runBlocking
+			val resolvedFormat = resolveFormat(inputFile, format) ?: throw ProgramResult(1)
 			exportImport.importProfile(bytes.decodeToString(), resolvedFormat, name)
 		}
 
 		result.fold(
-			ifLeft = { error ->
-				echo("❌ Import failed: ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-			},
+			ifLeft = { failWith(it, "Import failed") },
 			ifRight = { savedName ->
 				echo("✅ Profile '$savedName' imported from $inputFile")
 			}

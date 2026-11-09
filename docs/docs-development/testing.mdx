@@ -44,16 +44,29 @@ filed under the other name compiles nothing and runs nothing, and the task repor
 
 `:shared:jvmTest`, `:cli:test`, and `:server:test` add
 `-XX:+EnableDynamicAgentLoading -Xshare:off --enable-native-access=ALL-UNNAMED` (plus `java.smartcardio`
-access flags), so MockK's inline agent loads without warnings; `:composeApp:jvmTest` configures only
-`useJUnitPlatform()`. **Decoroutinator**, which gives readable stack traces through suspend calls, is
-applied as a Gradle plugin in `shared` and `composeApp`, while `cli` and `server` pull the
+access flags) and `:composeApp:jvmTest` adds `-XX:+EnableDynamicAgentLoading` alone, so MockK's inline
+agent loads without warnings. **Decoroutinator**, which gives readable stack traces through suspend
+calls, is applied as a Gradle plugin in `shared` and `composeApp`, while `cli` and `server` pull the
 `stacktrace-decoroutinator-jvm` runtime artifact instead.
 
-:::warning[`--tests` does not filter reliably here]
-Gradle's `--tests "cz.pizavo.omnisign.SomeTest"` filter reports *"No tests found"* against this Kotest
-setup even when the spec exists. Run the whole module task and read the per-spec results from
-`build/test-results/<task>/TEST-*.xml` instead.
+### Running a single spec
+
+On the four JVM test tasks, Gradle's `--tests` filter selects specs by fully qualified class name,
+or by package with a trailing `.*`, subpackages included:
+
+```bash
+./gradlew :cli:test --tests "cz.pizavo.omnisign.commands.SignTest"
+./gradlew :shared:jvmTest --tests "cz.pizavo.omnisign.domain.model.config.*"
+```
+
+:::warning[No leading wildcard in `shared` and `composeApp`]
+In the two multiplatform modules, the Kotest Gradle plugin also hands the filter to Kotest, whose
+patterns allow `*` only as a whole package segment. A pattern such as `--tests "*SignTest"`
+therefore matches no spec there, and the task fails with *"No tests found for given includes"*.
+`cli` and `server` filter through Gradle alone and accept it.
 :::
+
+Per-spec results are written to `build/test-results/<task>/TEST-*.xml`.
 
 ## Asserting on results
 

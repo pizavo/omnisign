@@ -1,11 +1,10 @@
 package cz.pizavo.omnisign.config
 
-import com.fasterxml.jackson.core.JsonParser
-import com.fasterxml.jackson.databind.DeserializationContext
-import com.fasterxml.jackson.databind.JsonDeserializer
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.ObjectNode
+import tools.jackson.core.JsonParser
+import tools.jackson.databind.DeserializationContext
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ValueDeserializer
+import tools.jackson.databind.node.ObjectNode
 
 /**
  * Jackson deserializer for [SsoProviderConfig] that dispatches on the `type` field.
@@ -18,7 +17,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode
  * `FAIL_ON_UNKNOWN_PROPERTIES` setting does not flag the discriminator as an unknown
  * field on the chosen subtype.
  */
-class SsoProviderConfigDeserializer : JsonDeserializer<SsoProviderConfig>() {
+class SsoProviderConfigDeserializer : ValueDeserializer<SsoProviderConfig>() {
 
     /**
      * Deserialize a JSON/YAML node into the appropriate [SsoProviderConfig] subtype
@@ -27,15 +26,14 @@ class SsoProviderConfigDeserializer : JsonDeserializer<SsoProviderConfig>() {
      * @throws IllegalArgumentException when the `type` value is unknown or missing.
      */
     override fun deserialize(parser: JsonParser, context: DeserializationContext): SsoProviderConfig {
-        val mapper = parser.codec as ObjectMapper
-        val node: JsonNode = mapper.readTree(parser)
-        val type = node.get("type")?.asText()
+        val node: JsonNode = context.readTree(parser)
+        val type = node.get("type")?.asString("")
             ?: throw IllegalArgumentException("SSO provider config is missing the required 'type' field")
 
         val withoutType: JsonNode = (node as? ObjectNode)?.also { it.remove("type") } ?: node
 
         return when (type.lowercase()) {
-            "oidc" -> mapper.treeToValue(withoutType, OidcProviderConfig::class.java)
+            "oidc" -> context.readTreeAsValue(withoutType, OidcProviderConfig::class.java)
             else -> throw IllegalArgumentException(
                 "Unknown SSO provider type '$type'. Supported values: oidc",
             )

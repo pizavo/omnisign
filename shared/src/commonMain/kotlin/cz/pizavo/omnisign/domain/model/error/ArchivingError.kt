@@ -79,7 +79,7 @@ sealed interface ArchivingError : OperationError, LocalizableError {
 	/**
 	 * The input is not a PDF: it carries no `%PDF-` header, so it is rejected before DSS is invoked.
 	 *
-	 * This is a structural pre-check ([cz.pizavo.omnisign.data.repository.DocumentInputErrorDetector.looksLikePdf]),
+	 * This is a structural pre-check (`DocumentInputErrorDetector.looksLikePdf`),
 	 * not a guarantee the body is well-formed; a header-bearing but otherwise unextendable document
 	 * surfaces as the generic [ExtensionFailed] instead.
 	 */

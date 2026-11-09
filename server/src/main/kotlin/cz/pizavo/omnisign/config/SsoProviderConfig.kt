@@ -48,7 +48,8 @@ sealed interface SsoProviderConfig {
  *     callback, once the email claim is available.
  *
  *   Empty list and missing field are both rejected at server startup with a message naming
- *   the offending provider. See [EmailDomainFilter][isEmailDomainAllowed] for the runtime check.
+ *   the offending provider. See
+ *   [isEmailDomainAllowed][cz.pizavo.omnisign.auth.isEmailDomainAllowed] for the runtime check.
  * @property requiredClaims When non-null and non-empty, the user's raw IdP claims must satisfy
  *   every entry: for each `(claimName, values)` pair, the claim must contain at least one of
  *   the listed values. Both single-valued string claims (e.g. `schac_home_organization`) and

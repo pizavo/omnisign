@@ -8,6 +8,17 @@ plugins {
 
 group = "cz.pizavo.omnisign"
 version = project.findProperty("releaseVersion")?.toString() ?: "1.0.0"
+
+/**
+ * Compiles, tests and runs the server on a JDK 25 toolchain, whichever JDK runs Gradle itself.
+ *
+ * Without it the Kotlin plugin takes the bytecode target from the Gradle JVM, so a fat JAR built on
+ * a newer JDK would not start in the `eclipse-temurin:25-jre-alpine` image the Dockerfile runs it in.
+ */
+kotlin {
+    jvmToolchain(25)
+}
+
 application {
     mainClass.set("cz.pizavo.omnisign.ApplicationKt")
     
@@ -32,8 +43,6 @@ dependencies {
     implementation(libs.ktor.server.cors)
     implementation(libs.ktor.server.call.logging)
     implementation(libs.ktor.server.auth)
-    implementation(libs.ktor.server.auth.jwt)
-    implementation(libs.ktor.server.sessions)
     implementation(libs.ktor.client.core)
     implementation(libs.ktor.client.cio)
     implementation(libs.ktor.client.content.negotiation)
@@ -55,6 +64,7 @@ dependencies {
     implementation(libs.exposed.jdbc)
     implementation(libs.sqlite.jdbc)
 
+    implementation(libs.java.jwt)
     implementation(libs.jwks.rsa)
 
     testImplementation(libs.ktor.server.test)
@@ -62,7 +72,6 @@ dependencies {
     testImplementation(libs.kotest.engine)
     testImplementation(libs.kotest.jvm.runner)
     testImplementation(libs.kotest.core)
-    testImplementation(libs.kotest.ktor)
     testImplementation(libs.kotest.decoroutinator)
     testImplementation(libs.mockk)
     testImplementation(libs.koin.test)
@@ -123,6 +132,9 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
         "META-INF/LGPL2.1",
         "META-INF/AL2.0",
     )
+    filesMatching("META-INF/*.kotlin_module") {
+        duplicatesStrategy = DuplicatesStrategy.INCLUDE
+    }
 
     from(bundledLegalFiles) { into("META-INF/legal") }
     from(rootProject.file("licenses")) { into("META-INF/legal/licenses") }

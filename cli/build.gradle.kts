@@ -10,6 +10,16 @@ group = "cz.pizavo.omnisign"
 version = project.findProperty("releaseVersion")?.toString() ?: "1.9.0"
 
 /**
+ * Compiles, tests and runs the CLI on a JDK 25 toolchain, whichever JDK runs Gradle itself.
+ *
+ * Without it the Kotlin plugin takes the bytecode target from the Gradle JVM, so a build started on
+ * a newer JDK would emit class files that a Java 25 runtime refuses to load.
+ */
+kotlin {
+	jvmToolchain(25)
+}
+
+/**
  * Resolves the platform-native crash-dump directory at Gradle evaluation time.
  *
  * Mirrors the desktop `resolveLogDir()` logic so that `-XX:ErrorFile` points to a
@@ -48,7 +58,7 @@ fun String.toNativeDistributionVersion(): String {
     ).joinToString(".")
 }
 
-val generateVersionProperties by tasks.registering {
+val generateVersionProperties = tasks.register("generateVersionProperties") {
 	group = "build"
 	description = "Generates a version.properties resource file containing the project version."
 	val versionValue = project.version.toString()
@@ -78,6 +88,7 @@ dependencies {
 	testImplementation(libs.kotest.core)
 	testImplementation(libs.kotest.arrow)
 	testImplementation(libs.kotest.koin)
+	testImplementation(libs.koin.test)
 	testImplementation(libs.kotest.decoroutinator)
 
 	// CliSigningPipelineE2ETest drives the real signing/archiving pipeline through the CLI commands,
@@ -99,8 +110,7 @@ dependencies {
 	
 	implementation(project.dependencies.platform(libs.koin.bom))
 	implementation(libs.koin.core)
-	implementation(libs.koin.test)
-	
+
 	implementation(libs.kotlinx.coroutines.core)
 	implementation(libs.kotlinx.datetime)
 	implementation(libs.kotlinx.serialization.json)
@@ -184,6 +194,12 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
 		attributes["Enable-Native-Access"] = "ALL-UNNAMED"
 	}
 	mergeServiceFiles()
+	filesMatching("META-INF/services/**") {
+		duplicatesStrategy = DuplicatesStrategy.INCLUDE
+	}
+	filesMatching("META-INF/*.kotlin_module") {
+		duplicatesStrategy = DuplicatesStrategy.INCLUDE
+	}
 
 	exclude(
 		"META-INF/LICENSE",
@@ -321,7 +337,7 @@ val iconsDir: File = rootProject.file("assets/icons")
  * package carries the licence of every bundled library as readable files and not only inside the
  * fat JAR. They are plain text and Markdown, so unlike a second JAR they never reach the classpath.
  */
-val prepareJpackageInput by tasks.registering(Copy::class) {
+val prepareJpackageInput = tasks.register<Copy>("prepareJpackageInput") {
 	group = "distribution"
 	description = "Stages the shadow JAR and the third-party legal files into build/jpackage/input."
 	dependsOn(shadowJarTask)
@@ -382,6 +398,14 @@ val installerOnlyArgsList: List<String> = listOf(
 	"--license-file", installerLicenseFile.absolutePath,
 	"--about-url", "https://pizavo.github.io/omnisign/cli/",
 )
+
+/**
+ * Arguments every Linux package type adds: the `jdk.security.auth` module, whose
+ * `com.sun.security.auth.module.UnixSystem` dbus-java needs to log in to the session bus with the
+ * user's id (D-Bus `EXTERNAL` authentication). Without it no Secret Service keyring is reachable,
+ * and the CLI behaves as if none were running. The desktop app adds the same module on Linux.
+ */
+val linuxJpackageArgsList: List<String> = listOf("--add-modules", "jdk.security.auth")
 
 
 /** Registers a [JPackageTask] with the given [name] and platform-specific [extraArgsList]. */
@@ -472,7 +496,7 @@ registerJPackageTask(
 	type = "deb",
 	destSubdir = "linux-deb",
 	iconFile = File(iconsDir, "omnisign-logo-cli-512.png"),
-	extraArgsList = listOf(
+	extraArgsList = linuxJpackageArgsList + listOf(
 		"--resource-dir", "$jpackageResourcesDir/linux-deb",
 		"--linux-app-category", "utils",
 		"--linux-deb-maintainer", "pizavo@gmail.com",
@@ -487,7 +511,7 @@ registerJPackageTask(
 	type = "rpm",
 	destSubdir = "linux-rpm",
 	iconFile = File(iconsDir, "omnisign-logo-cli-512.png"),
-	extraArgsList = listOf(
+	extraArgsList = linuxJpackageArgsList + listOf(
 		"--resource-dir", "$jpackageResourcesDir/linux-rpm",
 		"--linux-app-category", "utils",
 		"--linux-rpm-license-type", "AGPLv3+",
@@ -503,7 +527,7 @@ registerJPackageTask(
 	type = "app-image",
 	destSubdir = "linux-image",
 	iconFile = File(iconsDir, "omnisign-logo-cli-512.png"),
-	extraArgsList = emptyList(),
+	extraArgsList = linuxJpackageArgsList,
 )
 
 registerJPackageTask(

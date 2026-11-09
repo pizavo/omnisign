@@ -45,8 +45,12 @@ Commented templates ship as
 Both files are parsed strictly — **unknown keys fail startup** — and support `${VAR}` substitution.
 
 **Secrets are supplied through the environment only**, never in YAML: `OMNISIGN_JWT_SECRET`,
-`OMNISIGN_OIDC_<NAME>_CLIENT_SECRET`, `OMNISIGN_TLS_KEYSTORE_PASSWORD` /
-`OMNISIGN_TLS_PRIVATE_KEY_PASSWORD`, the TSA password, and `OMNISIGN_EXTERNAL_URL`.
+`OMNISIGN_OAUTH_NONCE_SECRET`, `OMNISIGN_OIDC_<NAME>_CLIENT_SECRET`,
+`OMNISIGN_TLS_KEYSTORE_PASSWORD` / `OMNISIGN_TLS_PRIVATE_KEY_PASSWORD`,
+`OMNISIGN_SIGNING_KEYSTORE_PASSWORD`, and the TSA password. On Linux and macOS, each can instead be
+kept in a file: set the variable's name followed by `_FILE`, such as `OMNISIGN_JWT_SECRET_FILE`, to
+the file's path, or pass a systemd credential named like the variable. The public base URL,
+`OMNISIGN_EXTERNAL_URL`, comes from the environment as well.
 
 → [Configuration reference](https://pizavo.github.io/omnisign/server/configuration) ·
 [Signing policy](https://pizavo.github.io/omnisign/server/signing-policy)

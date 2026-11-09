@@ -49,7 +49,7 @@ enum class EncryptionAlgorithm {
 	EDDSA;
 	
 	/**
-	 * The DSS [eu.europa.esig.dss.enumerations.EncryptionAlgorithm] name used when
+	 * The DSS `EncryptionAlgorithm` name used when
 	 * constructing DSS signing parameters.
 	 */
 	val dssName: String
@@ -99,7 +99,7 @@ enum class EncryptionAlgorithm {
 	 * Returns an empty set for [EDDSA] because the hash algorithm is intrinsic and
 	 * cannot be configured externally.
 	 *
-	 * The matrix is derived from [eu.europa.esig.dss.enumerations.SignatureAlgorithm]:
+	 * The matrix is derived from the DSS `SignatureAlgorithm` enum:
 	 * - RSA/ECDSA/PLAIN_ECDSA: SHA-2, SHA-3 families, RIPEMD-160 (but not Whirlpool)
 	 * - RSA_SSA_PSS: SHA-2 and SHA-3 families only (DSS defines no RSASSA-PSS + RIPEMD-160 pairing)
 	 * - DSA: SHA-2 and SHA-3 families only (no RIPEMD-160, no Whirlpool)

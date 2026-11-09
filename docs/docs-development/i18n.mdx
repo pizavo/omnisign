@@ -136,7 +136,7 @@ is what makes it testable.
 
 ## The DSS validation report
 
-DSS renders its own report messages from its own bundle, and DSS 6.3 ships **only English**. OmniSign
+DSS renders its own report messages from its own bundle, and DSS ships **only English**. OmniSign
 supplies the Czech and Slovak variants as `dss-messages_cs.properties` and `dss-messages_sk.properties`
 in `shared/jvmMain/resources/`, and selects them through the validator:
 
@@ -148,14 +148,41 @@ On the server, `ValidationParameters.language` is populated from the request's *
 header by `api/RequestLanguage.kt`, which takes the caller's highest-priority tag. So report
 localization is per-request, not per-process. Sign and timestamp responses are not localized.
 
+The wording follows the official Czech and Slovak texts of eIDAS — Regulation (EU) No 910/2014 as
+amended by Regulation (EU) 2024/1183 — and, for the wallet-era terms, Implementing Regulations
+(EU) 2024/2977 and 2024/2980. The two languages do not translate the same English term the same way.
+An *electronic attestation of attributes* is `elektronické potvrzení atributů` in Czech but
+`elektronické osvedčenie atribútov` in Slovak, and *revocation* is `zneplatnění` against `zrušenie`.
+Take a new term from the official text of the matching language, never from the sibling bundle.
+
 :::warning[Two coverage tests guard these bundles, and they will fail on a DSS upgrade]
 `DssMessagesCzechCoverageTest` and `DssMessagesSlovakCoverageTest` assert that our bundles cover
-**every** key in DSS's base bundle, so no English text can leak into a Czech report.
+**every** key in DSS's base bundle, so no English text can leak into a Czech report. They also reject
+keys DSS has dropped, and translations whose `{n}` placeholders differ from the English original.
 
 When DSS introduces new message keys, these tests fail by design. That is the signal to translate
-them, not to relax the test. `RenewalNotificationsCzechCoverageTest` and its Slovak twin do the same
-for the notification bundle.
+them, not to relax the test. Reworded English messages fail only when their placeholders change, so
+diff the old and new base bundles on every upgrade as well. `RenewalNotificationsCzechCoverageTest`
+and its Slovak twin guard key coverage of the notification bundle.
 :::
+
+The DSS pair also rejects a message DSS cannot format as written. DSS passes every message through
+`MessageFormat`, which reads a lone apostrophe as the start of a quoted section, so an apostrophe
+meant as text must be doubled, as the English original does: `''signing-certificate''`.
+
+To apply new translations after an upgrade, write them as `KEY=translation` lines into a file and
+rebuild the bundle:
+
+```bash
+./gradlew :shared:regenerateDssMessages -Plocale=cs -Padditions=new-cs.properties
+```
+
+The task lays the bundle out in the order and under the section comments of the English base bundle
+of the DSS version on the classpath. It takes each message from the additions file, or else from the
+current bundle, drops keys DSS no longer defines, and moves the DSS version named in the header
+comment. It writes nothing while a key is untranslated, an addition is unknown to DSS, a placeholder
+set differs or an apostrophe is lone. Run it without `-Padditions` first: its failure lists every key
+that needs translating together with the English text, in the format the additions file expects.
 
 ## The CLI is deliberately monolingual
 
@@ -174,8 +201,8 @@ and the `ResourceBundle` lookups all resolve the new tag automatically.
 2. Add a branch to `languageEndonym(tag)` in the same file. Endonyms are hardcoded and deliberately
 not translated — Czech is always `Čeština`, never `Tschechisch`.
 3. Create `composeApp/src/commonMain/composeResources/values-<tag>/` by mirroring `values-cs/`.
-4. Add `dss-messages_<tag>.properties` (all **761** keys) and `renewal-notifications_<tag>.properties`
-under `shared/src/jvmMain/resources/`.
+4. Add `dss-messages_<tag>.properties` (all **1,038** keys of the DSS 6.5.1 base bundle) and
+`renewal-notifications_<tag>.properties` under `shared/src/jvmMain/resources/`.
 5. Add two coverage tests mirroring the Czech and Slovak pairs.
 
 :::note[Mirror `values-cs/`, not `values/`]
@@ -207,7 +234,8 @@ compile and does not fail any test — the user just sees English in the middle 
 
 Only the `.properties` bundles are protected. `DssMessagesCzechCoverageTest`,
 `DssMessagesSlovakCoverageTest`, `RenewalNotificationsCzechCoverageTest`, and
-`RenewalNotificationsSlovakCoverageTest` assert full key coverage and will fail loudly.
+`RenewalNotificationsSlovakCoverageTest` assert full key coverage and will fail loudly; the DSS pair
+additionally checks placeholders.
 
 For the XML catalogs, diff the key sets and the placeholder counts per file yourself before you commit.
 :::

@@ -118,6 +118,38 @@ without producing a timestamp is usually a URL that does not point at an RFC 316
 
 The skipped documents are reported as errors, not as skips. They are retried in full on the next run.
 
+## When a new timestamp would not last
+
+At B-LTA, a re-timestamp is only worth keeping if it moves the document's deadline later. A timestamp
+server whose certificate expires within the renewal buffer, or whose signing key or algorithms stop
+being acceptable within it, issues timestamps that are due for renewal the moment they are made. Under
+the default policy of DSS 6.5.1 this includes any server that signs with a 2048-bit RSA key: such keys
+are accepted until 1 January 2027, so with the default 90-day buffer their timestamps have been due on
+issue since 3 October 2026.
+
+Renewing a document through such a server again would add a timestamp that ages out no later than the
+one it covers, so every run would grow the file and gain nothing. Each renewed document is therefore
+assessed again before it replaces the original, and a re-timestamp whose new deadline is no later than
+the document's current one is refused:
+
+```
+[ERROR] /archive/a.pdf — the new timestamp would be due for renewal by 2027-01-01T00:00:00Z, no later
+        than the document's current deadline (2027-01-01T00:00:00Z): the timestamps from the timestamp
+        server https://tsa.example.com rely on an algorithm or key size that stops being acceptable
+        within the 90-day renewal buffer, so renewing through it cannot extend the protection; the
+        original was left unchanged
+```
+
+Once a job has received such a timestamp, it stops calling the server for the rest of the run for the
+documents it cannot help, those whose deadline is no earlier, and reports them as errors straight
+away, like the documents passed over when a server is down.
+
+A re-timestamp that does reach further is kept, and so is a promotion, since it adds revocation data
+or a seal the document lacked. When the new timestamp is itself already due, though, the result
+carries a warning saying so, because the next run will not be able to extend it through the same
+server. The remedy is the same in every case: point the job at a timestamp server whose certificate
+and signing key outlast the renewal buffer.
+
 ## OS notifications
 
 When a renewal job has notifications enabled (the default), OmniSign fires an OS desktop

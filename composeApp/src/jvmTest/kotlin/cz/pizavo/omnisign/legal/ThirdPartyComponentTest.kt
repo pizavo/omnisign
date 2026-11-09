@@ -28,12 +28,14 @@ class ThirdPartyComponentTest : FunSpec({
 
     val resourcePath = "composeResources/omnisign.composeapp.generated.resources/files/third-party-credits.json"
 
+    val json = Json { ignoreUnknownKeys = true }
+
     fun loadComponents(): List<ThirdPartyComponent> {
         val stream = checkNotNull(
             ThirdPartyComponentTest::class.java.classLoader.getResourceAsStream(resourcePath),
         ) { "Generated credits resource is missing: $resourcePath" }
-        val json = stream.use { it.readBytes().decodeToString() }
-        return Json { ignoreUnknownKeys = true }.decodeFromString(json)
+        val text = stream.use { it.readBytes().decodeToString() }
+        return json.decodeFromString(text)
     }
 
     test("the packaged credits resource deserializes") {

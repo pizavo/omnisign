@@ -64,6 +64,12 @@ development: false
 #   OMNISIGN_OIDC_<NAME>_CLIENT_SECRET        — per-OIDC-provider client_secret
 #                                                (<NAME> = the provider's `name` field uppercased
 #                                                with non-alphanumerics → `_`)
+# On Linux and macOS, any secret — these, the TLS and signing keystore passwords below,
+# and an OMNISIGN_ name referenced as ${...} — may instead be kept in a file: set the
+# variable's name followed by _FILE to its path (OMNISIGN_JWT_SECRET_FILE=/run/secrets/jwt),
+# or pass a systemd credential named like the variable. The file must be owned by the
+# server's user with mode 0600, or by root with mode 0640 or stricter. Set each secret in
+# one place only.
 # Reason: YAML files end up in backups, log uploads, support bundles, container images,
 # CI artifacts, and screen-shares; env vars stay in process memory. The previous shipped
 # placeholders ("changeit", "YOUR_CLIENT_SECRET") were a documented copy-paste trap.

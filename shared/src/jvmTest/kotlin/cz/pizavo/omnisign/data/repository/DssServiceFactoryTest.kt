@@ -1,5 +1,9 @@
 package cz.pizavo.omnisign.data.repository
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
@@ -11,12 +15,14 @@ import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
+import org.slf4j.LoggerFactory
 import java.util.*
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
@@ -30,6 +36,22 @@ class DssServiceFactoryTest : FunSpec({
 	
 	val credentialStore: CredentialStore = mockk(relaxed = true)
 	val factory = DssServiceFactory(credentialStore)
+	
+	/** Run [block] and return the warnings [DssServiceFactory] logged meanwhile. */
+	fun warningsLoggedDuring(block: () -> Unit): List<String> {
+		val logbackLogger = LoggerFactory.getLogger(DssServiceFactory::class.java) as Logger
+		val appender = ListAppender<ILoggingEvent>().also {
+			it.start()
+			logbackLogger.addAppender(it)
+		}
+		try {
+			block()
+		} finally {
+			logbackLogger.detachAppender(appender)
+			appender.stop()
+		}
+		return appender.list.filter { it.level == Level.WARN }.map { it.formattedMessage }
+	}
 	
 	fun minimalConfig(checkRevocation: Boolean = true) = ResolvedConfig(
 		hashAlgorithm = HashAlgorithm.SHA256,
@@ -72,6 +94,42 @@ class DssServiceFactoryTest : FunSpec({
 			)
 		)
 		tsp.shouldNotBeNull()
+	}
+	
+	test("buildTspSource warns once per key when the saved TSA password cannot be found") {
+		val store: CredentialStore = mockk {
+			every { getPassword("omnisign-tsa", "tsa-user") } returns null
+			every { isPersistent } returns false
+		}
+		val freshFactory = DssServiceFactory(store)
+		val tsConfig = TimestampServerConfig(
+			url = "http://tsa.example.com",
+			username = "tsa-user",
+			credentialKey = "tsa-user",
+		)
+		
+		val warnings = warningsLoggedDuring {
+			freshFactory.buildTspSource(tsConfig)
+			freshFactory.buildTspSource(tsConfig)
+		}
+		
+		warnings.shouldHaveSize(1)
+		warnings.single() shouldContain "'tsa-user'"
+		warnings.single() shouldContain "No keyring service was found"
+	}
+	
+	test("buildTspSource does not warn when the saved TSA password is found") {
+		val store: CredentialStore = mockk {
+			every { getPassword("omnisign-tsa", "tsa-user") } returns "stored-pw"
+		}
+		
+		val warnings = warningsLoggedDuring {
+			DssServiceFactory(store).buildTspSource(
+				TimestampServerConfig(url = "http://tsa.example.com", username = "tsa-user", credentialKey = "tsa-user")
+			)
+		}
+		
+		warnings.shouldBeEmpty()
 	}
 	
 	// ── buildSigningCertificateVerifier ───────────────────────────────────────

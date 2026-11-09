@@ -190,8 +190,9 @@ composeApp/src/
 │           └── viewmodel/           MVVM ViewModels (PdfViewerViewModel, SignatureViewModel,
 │                                    SigningViewModel, TimestampViewModel, ProfileViewModel,
 │                                    SettingsViewModel, TlBuilderViewModel, TrustedCertsViewModel,
-│                                    CapabilitiesViewModel) plus plain helpers RenewalJobAssigner,
-│                                    TrustedCertStaging
+│                                    RenewalStatusViewModel, CapabilitiesViewModel, CreditsViewModel),
+│                                    the koinViewModelOrNull helper, and plain helpers
+│                                    RenewalJobAssigner, TrustedCertStaging
 │
 ├── jvmMain/             Desktop-specific implementations
 │   └── kotlin/cz/pizavo/omnisign/
@@ -223,11 +224,15 @@ composeApp/src/
   the window **decorated** (native shadows, snap assist, resize borders). Compose renders its own
   toolbar in the freed space; native window-control buttons (minimize, maximize, close) are
   provided by JBR and accounted for via `LocalTitleBarRightInset`.
-- **MVVM** — Nine ViewModels expose `StateFlow`-based state consumed by composables via
-  `collectAsState()`. `IslandLayout` constructs each one inside `remember { … }`, resolving its
-  dependencies from Koin via `KoinPlatform.getKoinOrNull()` and falling back to a `null` ViewModel
-  when a definition is absent — which is how the web target copes with ports it cannot bind
-  (`koinViewModel()` is not used). Shared cross-ViewModel logic
+- **MVVM** — Eleven ViewModels expose `StateFlow`-based state consumed by composables via
+  `collectAsState()`. They live in a `ViewModelStore` that `App` remembers with
+  `rememberViewModelStoreOwner()` and provides as `LocalViewModelStoreOwner`, so all of them are
+  cleared, and their coroutines cancelled, when `App` leaves the composition — on the web, at
+  sign-out. `IslandLayout` takes the Koin-backed ones through `koinViewModelOrNull { koin -> … }`,
+  which builds the ViewModel from `KoinPlatform.getKoinOrNull()` on first use and yields `null`
+  when Koin is not running or a required definition is absent — which is how the web target copes
+  with ports it cannot bind (`koinViewModel()` is not used). `CreditsDialog` gives its ViewModel a
+  store of its own, so each opening asks the server afresh. Shared cross-ViewModel logic
   (e.g., renewal job offers) is factored into plain classes like `RenewalJobAssigner`.
 - **Sealed UI states** — Dialogs use sealed interfaces (`SigningDialogState`,
   `TimestampDialogState`, `TlBuilderDialogState`) so that the Compose layer can pattern-match on

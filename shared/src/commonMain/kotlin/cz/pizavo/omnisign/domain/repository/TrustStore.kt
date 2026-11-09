@@ -103,10 +103,10 @@ interface TrustStore {
 	/**
 	 * Resolve the full trust set for [scope]: the union of the global scope and [scope].
 	 *
-	 * Every referenced certificate is returned at full trust; the per-reference [type] travels on
-	 * each [ResolvedTrustAnchor] for post-validation policy enforcement rather than filtering the
-	 * trust input. When a certificate is referenced by both the global scope and [scope] with
-	 * different types, the [scope] type takes precedence.
+	 * Every referenced certificate is returned at full trust; the per-reference
+	 * [type][ResolvedTrustAnchor.type] travels on each [ResolvedTrustAnchor] for post-validation
+	 * policy enforcement rather than filtering the trust input. When a certificate is referenced by
+	 * both the global scope and [scope] with different types, the [scope] type takes precedence.
 	 *
 	 * @param scope Scope to resolve.
 	 * @return The resolved anchors, or an error.

@@ -8,6 +8,10 @@ Register custom ETSI Trusted List sources for signature validation. These are us
 alongside (or instead of) the EU LOTL when validating signatures from CAs that are
 not part of the eIDAS trust framework.
 
+`add`, `list` and `remove`, and every `build` subcommand, say why on stderr and exit with status 1
+when they fail, whether no profile, trusted list or draft has the given name or the configuration
+could not be saved. So does `refresh` when a trusted list cannot be refreshed.
+
 ## `config tl add`
 
 Register a custom trusted list source.
@@ -46,6 +50,18 @@ refreshed cache instead of paying the download on a validation's critical path.
 omnisign config tl refresh
 ```
 
+When a list cannot be refreshed, the command names it on stderr and exits with status 1, after
+refreshing the others:
+
+```text
+❌ 2 trusted lists could not be refreshed:
+  • EU list of trusted lists (LOTL)
+  • my-org-tl
+```
+
+A list whose signing certificate cannot be read is reported the same way, after a warning that names
+the file. The command also exits with status 1, saying why, when the refresh cannot run at all.
+
 ## `config tl build` — Build custom trusted lists
 
 The TL builder lets you create your own ETSI TS 119612-compliant Trusted List XML,
@@ -65,6 +81,9 @@ useful for organisations that need to trust internal CAs.
 
 Both `create` and `compile` accept `-p, --profile <name>` to register the compiled list into a
 profile's validation config instead of the global config.
+
+If the wizard cannot save a provider, `create` stops there with status 1 and keeps the draft with
+the providers saved before it; finish it with `tsp add` and `service add`.
 
 ### What the standard requires
 

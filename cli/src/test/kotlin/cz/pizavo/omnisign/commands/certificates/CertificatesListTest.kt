@@ -93,7 +93,7 @@ class CertificatesListTest : FunSpec({
 		val result = Omnisign().test(listOf("certificates", "list"))
 
 		result.statusCode shouldBe 1
-		result.stderr shouldContain "Discovery failed"
+		result.stderr shouldContain "❌ Failed to list certificates: Discovery failed"
 	}
 
 	test("--json outputs structured JSON on success") {

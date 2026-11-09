@@ -1,49 +1,46 @@
 [versions]
-androidx-lifecycle = "2.10.0"
-composeMultiplatform = "1.10.1"
-kotlin = "2.3.21"
-kotlinx-coroutines = "1.10.2"
-mockk = "1.14.9"
-ktor = "3.4.0"
-logback = "1.5.27"
+androidx-lifecycle = "2.11.0"
+composeMultiplatform = "1.12.2"
+kotlin = "2.4.21"
+kotlinx-coroutines = "1.11.0"
+mockk = "1.14.11"
+ktor = "3.6.1"
+logback = "1.6.6"
+slf4j = "2.0.20"
 clikt = "5.1.0"
-mordant = "3.0.2"
-koin-bom = "4.1.1"
-koin-annotations = "2.3.1"
-dss-bom = "6.3"
-jaxb = "4.0.6"
+mordant = "3.1.1"
+koin-bom = "4.2.2"
+dss-bom = "6.5.1"
+jaxb = "4.0.9"
 keyring = "1.0.4"
-purejava-secret-service = "1.1.1"
-shadow = "8.3.6"
-arrow = "2.2.1.1"
-kotlinx-serialization = "1.10.0"
-kotlinx-datetime = "0.7.1"
-jackson = "2.18.3"
-jna = "5.18.1"
-kotest = "6.1.6"
-ksp = "2.3.6"
-decoroutinator = "2.6.1"
-compose = "1.10.3"
+purejava-secret-service = "1.3.3"
+shadow = "9.6.1"
+arrow = "2.3.0.1"
+kotlinx-serialization = "1.12.0"
+kotlinx-datetime = "0.8.0"
+jackson = "3.2.4"
+jna = "5.19.1"
+kotest = "6.2.6"
+ksp = "2.3.13"
+decoroutinator = "2.6.6"
+compose = "1.12.2"
 compose-material = "1.9.0"
 lumo = "1.2.5"
-pdfbox = "3.0.7"
+pdfbox = "3.0.8"
 mupdf = "1.27.0"
-filekit = "0.14.1"
-jbr-api = "1.10.1"
-kotlin-logging = "8.0.01"
-dokka = "2.2.0"
-exposed = "0.61.0"
-sqlite-jdbc = "3.50.3.0"
-jwks-rsa = "0.23.0"
+filekit = "0.17.0"
+jbr-api = "1.12.0"
+kotlin-logging = "8.0.4"
+dokka = "2.3.0"
+exposed = "1.6.1"
+sqlite-jdbc = "3.54.1.0"
+java-jwt = "4.6.2"
+jwks-rsa = "0.24.2"
 
 [libraries]
 kotest-engine = {module = "io.kotest:kotest-framework-engine", version.ref = "kotest" }
 kotest-core = {module = "io.kotest:kotest-assertions-core", version.ref = "kotest" }
-kotest-json = {module = "io.kotest:kotest-assertions-json", version.ref = "kotest" }
-kotest-ktor = {module = "io.kotest:kotest-assertions-ktor", version.ref = "kotest" }
-kotest-kotlinx-datetime = {module = "io.kotest:kotest-assertions-kotlinx-datetime", version.ref = "kotest" }
 kotest-arrow = {module = "io.kotest:kotest-assertions-arrow", version.ref = "kotest" }
-kotest-yaml = {module = "io.kotest:kotest-assertions-yaml", version.ref = "kotest" }
 kotest-koin = {module = "io.kotest:kotest-extensions-koin", version.ref = "kotest" }
 kotest-decoroutinator = {module = "io.kotest:kotest-extensions-decoroutinator", version.ref = "kotest" }
 kotest-jvm-runner = {module = "io.kotest:kotest-runner-junit5", version.ref = "kotest" }
@@ -71,8 +68,6 @@ ktor-server-status-pages = { module = "io.ktor:ktor-server-status-pages-jvm", ve
 ktor-server-cors = { module = "io.ktor:ktor-server-cors-jvm", version.ref = "ktor" }
 ktor-server-call-logging = { module = "io.ktor:ktor-server-call-logging-jvm", version.ref = "ktor" }
 ktor-server-auth = { module = "io.ktor:ktor-server-auth-jvm", version.ref = "ktor" }
-ktor-server-auth-jwt = { module = "io.ktor:ktor-server-auth-jwt-jvm", version.ref = "ktor" }
-ktor-server-sessions = { module = "io.ktor:ktor-server-sessions-jvm", version.ref = "ktor" }
 ktor-server-auto-head-response = { module = "io.ktor:ktor-server-auto-head-response-jvm", version.ref = "ktor" }
 ktor-server-https-redirect = { module = "io.ktor:ktor-server-http-redirect-jvm", version.ref = "ktor" }
 ktor-server-headers-default = { module = "io.ktor:ktor-server-default-headers-jvm", version.ref = "ktor" }
@@ -93,10 +88,8 @@ koin-compose = { module = "io.insert-koin:koin-compose" }
 koin-compose-viewmodel = { module = "io.insert-koin:koin-compose-viewmodel" }
 koin-ktor = { module = "io.insert-koin:koin-ktor" }
 koin-test = { module = "io.insert-koin:koin-test" }
-koin-annotations = { module = "io.insert-koin:koin-annotations", version.ref = "koin-annotations" }
 
 arrow-core = { module = "io.arrow-kt:arrow-core", version.ref = "arrow" }
-arrow-fx-coroutines = { module = "io.arrow-kt:arrow-fx-coroutines", version.ref = "arrow" }
 
 kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "kotlinx-serialization" }
 kotlinx-serialization-cbor = { module = "org.jetbrains.kotlinx:kotlinx-serialization-cbor", version.ref = "kotlinx-serialization" }
@@ -135,13 +128,14 @@ dss-policy-crypto-xml = { module = "eu.europa.ec.joinup.sd-dss:dss-policy-crypto
 dss-policy-crypto-json = { module = "eu.europa.ec.joinup.sd-dss:dss-policy-crypto-json" }
 
 jaxb-runtime = { module = "org.glassfish.jaxb:jaxb-runtime", version.ref = "jaxb" }
+java-keyring = { module = "com.github.javakeyring:java-keyring", version.ref = "keyring" }
 purejava-secret-service = { module = "org.purejava:secret-service", version.ref = "purejava-secret-service" }
 kotlinx-datetime = { module = "org.jetbrains.kotlinx:kotlinx-datetime", version.ref = "kotlinx-datetime" }
 
-jackson-databind = { module = "com.fasterxml.jackson.core:jackson-databind", version.ref = "jackson" }
-jackson-kotlin = { module = "com.fasterxml.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
-jackson-yaml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-yaml", version.ref = "jackson" }
-jackson-xml = { module = "com.fasterxml.jackson.dataformat:jackson-dataformat-xml", version.ref = "jackson" }
+jackson-databind = { module = "tools.jackson.core:jackson-databind", version.ref = "jackson" }
+jackson-kotlin = { module = "tools.jackson.module:jackson-module-kotlin", version.ref = "jackson" }
+jackson-yaml = { module = "tools.jackson.dataformat:jackson-dataformat-yaml", version.ref = "jackson" }
+jackson-xml = { module = "tools.jackson.dataformat:jackson-dataformat-xml", version.ref = "jackson" }
 
 jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
 jna-platform = { module = "net.java.dev.jna:jna-platform", version.ref = "jna" }
@@ -157,10 +151,12 @@ filekit-dialogs-compose = { module = "io.github.vinceglb:filekit-dialogs-compose
 jbr-api = { module = "org.jetbrains.runtime:jbr-api", version.ref = "jbr-api" }
 
 kotlin-logging = { module = "io.github.oshai:kotlin-logging", version.ref = "kotlin-logging" }
+jul-to-slf4j = { module = "org.slf4j:jul-to-slf4j", version.ref = "slf4j" }
 
 exposed-core = { module = "org.jetbrains.exposed:exposed-core", version.ref = "exposed" }
 exposed-jdbc = { module = "org.jetbrains.exposed:exposed-jdbc", version.ref = "exposed" }
 sqlite-jdbc = { module = "org.xerial:sqlite-jdbc", version.ref = "sqlite-jdbc" }
+java-jwt = { module = "com.auth0:java-jwt", version.ref = "java-jwt" }
 jwks-rsa = { module = "com.auth0:jwks-rsa", version.ref = "jwks-rsa" }
 
 [plugins]

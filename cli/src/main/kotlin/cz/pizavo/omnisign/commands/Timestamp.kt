@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.commands
 
+import arrow.core.flatMap
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.ProgramResult
@@ -12,9 +13,11 @@ import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.path
 import cz.pizavo.omnisign.cli.OperationConfigOptions
 import cz.pizavo.omnisign.cli.OutputConfig
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.cli.json.JsonExtensionResult
 import cz.pizavo.omnisign.cli.json.toJsonError
 import cz.pizavo.omnisign.cli.json.toJsonResult
+import cz.pizavo.omnisign.data.secret.EnvironmentSecretReader
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
@@ -47,6 +50,7 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
 	private val extendUseCase: ExtendDocumentUseCase by inject()
 	private val configRepository: ConfigRepository by inject()
 	private val passwordCallback: PasswordCallback by inject()
+	private val secretReader: EnvironmentSecretReader by inject()
 	private val output by requireObject<OutputConfig>()
 	
 	private val inputFile by option("-f", "--file", help = "Path to the signed PDF file to extend")
@@ -76,12 +80,15 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
 		val appConfig = configRepository.getCurrentConfig()
 		val activeProfile = profile ?: appConfig.activeProfile
 		val profileConfig = activeProfile?.let { appConfig.profiles[it] }
-		val operationConfig = configOverrides.toOperationConfig(passwordCallback)
-		val resolvedConfigResult = ResolvedConfig.resolve(
-			global = appConfig.global,
-			profile = profileConfig,
-			operationOverrides = operationConfig
-		)
+		val resolvedConfigResult = configOverrides
+			.toOperationConfig(passwordCallback, secretReader, currentContext.readEnvvar)
+			.flatMap { operationConfig ->
+				ResolvedConfig.resolve(
+					global = appConfig.global,
+					profile = profileConfig,
+					operationOverrides = operationConfig
+				)
+			}
 		if (resolvedConfigResult.isLeft()) {
 			val error = resolvedConfigResult.leftOrNull()!!
 			if (output.json) {
@@ -94,12 +101,9 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
 						)
 					)
 				)
-			} else {
-				echo("❌ Configuration Error: ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+				throw ProgramResult(1)
 			}
-			throw ProgramResult(1)
+			failWith(error, "Configuration Error")
 		}
 		val resolvedConfig = resolvedConfigResult.getOrNull()!!
 		
@@ -121,12 +125,9 @@ class Timestamp : CliktCommand(name = "timestamp"), KoinComponent {
 							)
 						)
 					)
-				} else {
-					echo("❌ Extension Error: ${error.message}", err = true)
-					error.details?.let { echo("Details: $it", err = true) }
-					error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+					throw ProgramResult(1)
 				}
-				throw ProgramResult(1)
+				failWith(error, "Extension Error")
 			},
 			ifRight = { result ->
 				if (result.revocationDataMissing) {

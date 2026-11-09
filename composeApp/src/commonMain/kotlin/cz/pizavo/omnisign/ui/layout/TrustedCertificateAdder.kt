@@ -14,8 +14,8 @@ import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
  *
  * @property activeProfileName Name of the currently selected profile, or `null` when none is
  *   selected — in which case only the global scope is offered.
- * @property add Adds [der] to the trust store with the given trust [type]: to the active profile's
- *   scope when [toActiveProfile] is `true` (and a profile is selected), otherwise to the global
+ * @property add Adds `der` to the trust store with the given trust `type`: to the active profile's
+ *   scope when `toActiveProfile` is `true` (and a profile is selected), otherwise to the global
  *   scope. Returns `null` on success or a human-readable error message on failure. Commits directly
  *   — there is no staging.
  */

@@ -115,8 +115,9 @@ class TspErrorDetector {
 	 * Classify how a timestamp request failed.
 	 *
 	 * The three kinds answer two different questions about one exception. A batch asks whether calling
-	 * the server again is worth anything, which [TimestampFailureKind.isServerWide] answers. An
-	 * operator asks which problem it was, since [TimestampFailureKind.UNREACHABLE] is an outage to
+	 * the server again is worth anything, which
+	 * [TimestampFailureKind.isServerWide][cz.pizavo.omnisign.domain.model.error.isServerWide] answers.
+	 * An operator asks which problem it was, since [TimestampFailureKind.UNREACHABLE] is an outage to
 	 * wait out while [TimestampFailureKind.MALFORMED_RESPONSE] is usually a URL that does not point at
 	 * an RFC 3161 endpoint.
 	 *

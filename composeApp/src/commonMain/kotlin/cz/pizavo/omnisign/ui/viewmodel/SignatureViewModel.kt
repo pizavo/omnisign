@@ -41,11 +41,10 @@ import kotlinx.coroutines.withContext
  * @param validateDocumentUseCase Use case for validating a signed PDF.
  * @param configRepository Repository for retrieving the current application configuration
  *   so that EU LOTL and custom trusted lists are applied during validation. On the JVM
- *   it loads from the local config store; on the web target the
- *   [cz.pizavo.omnisign.data.remote.RemoteConfigRepository] returns a sanitized view
- *   of the server's `signing.yml`.
+ *   it loads from the local config store; on the web target the `RemoteConfigRepository`
+ *   returns a sanitized view of the server's `signing.yml`.
  * @param ioDispatcher Dispatcher used for the heavy validation work. Defaults to
- *   [Dispatchers.Default]; tests should substitute a [kotlinx.coroutines.test.StandardTestDispatcher].
+ *   [Dispatchers.Default]; tests should substitute a `StandardTestDispatcher`.
  * @param trustedListRefreshPort Optional refresh signal. When a refresh of a trusted
  *   source this document's active configuration needs is in flight, validation is
  *   blocked until it completes. `null` on targets without a DSS backend (web), where

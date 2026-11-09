@@ -2,15 +2,17 @@ package cz.pizavo.omnisign.commands.config
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
-import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
+import cz.pizavo.omnisign.cli.failWith
+import cz.pizavo.omnisign.cli.requirePersistentCredentialStore
 import cz.pizavo.omnisign.cli.resolvePasswordOption
-import cz.pizavo.omnisign.commands.config.ConfigSet.Companion.TSA_CREDENTIAL_SERVICE
+import cz.pizavo.omnisign.cli.storeTimestampPassword
 import cz.pizavo.omnisign.domain.model.config.enums.*
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
+import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.SetGlobalConfigUseCase
 import cz.pizavo.omnisign.platform.PasswordCallback
@@ -26,9 +28,11 @@ import kotlin.time.Clock
  * Only the provided options will be changed; omitted options remain unchanged.
  *
  * The TSA password is stored in the OS-native credential store (keychain) and
- * never written to the plain-text config file.
+ * never written to the plain-text config file. It is stored before the configuration is saved, and a
+ * password the store does not keep stops the command with nothing saved.
  */
 class ConfigSet : CliktCommand(name = "set"), KoinComponent {
+	private val configRepository: ConfigRepository by inject()
 	private val setGlobalConfig: SetGlobalConfigUseCase by inject()
 	private val credentialStore: CredentialStore by inject()
 	private val passwordCallback: PasswordCallback by inject()
@@ -149,7 +153,9 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 			echo("No options provided. Run 'config set --help' for available options.")
 			return@runBlocking
 		}
-		
+		requirePersistentCredentialStore(timestampPassword, credentialStore)
+		val updatedTimestampServer = buildTimestampConfig(configRepository.getCurrentConfig().global.timestampServer)
+
 		val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
 		val result = setGlobalConfig {
 			val hasAlgoChange = algoExpirationLevel != null || algoExpirationLevelAfterUpdate != null ||
@@ -158,7 +164,7 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 				defaultHashAlgorithm = hashAlgorithm ?: defaultHashAlgorithm,
 				defaultEncryptionAlgorithm = encryptionAlgorithm ?: defaultEncryptionAlgorithm,
 				defaultSignatureLevel = signatureLevel ?: defaultSignatureLevel,
-				timestampServer = buildTimestampConfig(this.timestampServer),
+				timestampServer = updatedTimestampServer,
 				disabledHashAlgorithms = (disabledHashAlgorithms + disableHashAlgorithm) - enableHashAlgorithm.toSet(),
 				disabledEncryptionAlgorithms = (disabledEncryptionAlgorithms + disableEncryptionAlgorithm) - enableEncryptionAlgorithm.toSet(),
 				pkcs11ProbeTimeoutSeconds = pkcs11ProbeTimeout?.toLong()?.coerceIn(1, 120)
@@ -180,12 +186,7 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 			)
 		}
 		result.fold(
-			ifLeft = { error ->
-				echo("❌ Failed to save configuration: ${error.message}", err = true)
-				if (error.details != null) echo("Details: ${error.details}", err = true)
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-				throw ProgramResult(1)
-			},
+			ifLeft = { failWith(it, "Failed to save configuration") },
 			ifRight = {
 				echo("✅ Global configuration updated.")
 			}
@@ -198,17 +199,20 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 	 * the service name [TSA_CREDENTIAL_SERVICE] and the effective username as account.
 	 * The password itself is never written to the config file.
 	 * Passing `"-"` as the password triggers an interactive hidden-input prompt via [passwordCallback].
+	 *
+	 * [run] builds it before the update, from the same current configuration the update is applied to,
+	 * so that a password the keychain does not keep stops the command before anything is saved.
 	 */
 	private fun buildTimestampConfig(existing: TimestampServerConfig?): TimestampServerConfig? {
 		val resolvedPassword = resolvePasswordOption(timestampPassword, passwordCallback)
 		val hasUpdate = timestampUrl != null || timestampUsername != null ||
 				resolvedPassword != null || timestampTimeout != null
 		if (!hasUpdate) return existing
-		
+
 		val base = existing ?: TimestampServerConfig(url = "")
 		val effectiveUsername = timestampUsername ?: base.username
 		val effectiveCredentialKey = if (resolvedPassword != null && effectiveUsername != null) {
-			credentialStore.setPassword(TSA_CREDENTIAL_SERVICE, effectiveUsername, resolvedPassword)
+			storeTimestampPassword(credentialStore, effectiveUsername, resolvedPassword)
 			effectiveUsername
 		} else {
 			base.credentialKey

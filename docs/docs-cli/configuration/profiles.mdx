@@ -21,6 +21,10 @@ different signature levels, or organization-specific validation policies.
 | `config profile export <name> <file>`    | Export a profile to a file                                      |
 | `config profile import <file> [options]` | Import a profile from a file                                    |
 
+A subcommand that fails says why on stderr and exits with status 1, whether the profile does not
+exist, `create` or `edit` was given no options, or the configuration could not be saved. A script
+can therefore stop instead of signing with settings that never took effect.
+
 ## Create and edit options
 
 `create` and `edit` accept the following options:
@@ -41,6 +45,10 @@ different signature levels, or organization-specific validation policies.
 | `--algo-expiry-override <ALG=DATE>`            | Per-algorithm expiration override (repeatable)               |
 | `--disable-hash-algorithm <alg>`               | Disable a hash algorithm in this profile (repeatable)        |
 | `--disable-encryption-algorithm <alg>`         | Disable an encryption algorithm in this profile (repeatable) |
+
+The TSA password goes to the OS credential store, never into the profile. Where there is no
+credential store, `--timestamp-password` is refused, and where the store does not keep the password,
+the command saves no profile — see the [Overview](overview).
 
 `edit` additionally supports `--enable-hash-algorithm`, `--enable-encryption-algorithm`,
 and the following `--clear-*` flags to unset individual fields:

@@ -45,11 +45,11 @@ fun SignatureTrustTier.label(): LocalizableText = when (this) {
 
 /**
  * A one-line confirmation — for the qualification-info surface — that the signing key resides in a
- * qualified signature creation device. Returned only for [QUALIFIED_QSCD], the tier DSS assigns when
- * the QSCD condition holds at both the certificate's issuance time and the best-signature time; it is
- * the positive inverse of DSS's two "private key does not reside in a QSCD …" qualification warnings,
- * and (since either failing check drops the `_QSCD` qualification) cannot coexist with them. `null`
- * for the other tiers, where no such confirmation applies.
+ * qualified signature creation device. Returned only for [SignatureTrustTier.QUALIFIED_QSCD], the
+ * tier DSS assigns when the QSCD condition holds at both the certificate's issuance time and the
+ * best-signature time; it is the positive inverse of DSS's two "private key does not reside in a
+ * QSCD …" qualification warnings, and (since either failing check drops the `_QSCD` qualification)
+ * cannot coexist with them. `null` for the other tiers, where no such confirmation applies.
  */
 fun SignatureTrustTier.qscdResidenceInfo(): LocalizableText? = when (this) {
 	SignatureTrustTier.QUALIFIED_QSCD -> LocalizableText.of(MessageKey.SIGNATURE_QSCD_RESIDENCE)

@@ -2,12 +2,14 @@ package cz.pizavo.omnisign.commands.schedule.job
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.options.default
 import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.int
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.data.util.absoluteGlobExample
 import cz.pizavo.omnisign.data.util.absolutizeGlob
 import cz.pizavo.omnisign.data.util.isAbsoluteGlobRoot
@@ -68,15 +70,15 @@ class ScheduleJobAdd : CliktCommand(name = "add"), KoinComponent {
 		val resolvedGlobs = globs.map { absolutizeGlob(it) }
 		val nonAbsolute = resolvedGlobs.filterNot { isAbsoluteGlobRoot(it) }
 		if (nonAbsolute.isNotEmpty()) {
-			echo("Renewal globs must be absolute paths; rejected: ${nonAbsolute.joinToString()}", err = true)
+			echo("❌ Renewal globs must be absolute paths; rejected: ${nonAbsolute.joinToString()}", err = true)
 			echo("Example: ${absoluteGlobExample()}", err = true)
-			return@runBlocking
+			throw ProgramResult(1)
 		}
 		val malformed = resolvedGlobs.filterNot { isParseableGlob(it) }
 		if (malformed.isNotEmpty()) {
-			echo("Renewal globs must be valid glob patterns; rejected: ${malformed.joinToString()}", err = true)
+			echo("❌ Renewal globs must be valid glob patterns; rejected: ${malformed.joinToString()}", err = true)
 			echo("Check that every '[' and '{' is closed. Example: ${absoluteGlobExample()}", err = true)
-			return@runBlocking
+			throw ProgramResult(1)
 		}
 		globs.zip(resolvedGlobs)
 			.filter { (original, resolved) -> original != resolved }
@@ -92,11 +94,7 @@ class ScheduleJobAdd : CliktCommand(name = "add"), KoinComponent {
 			promoteBelowLt = !noPromote,
 		)
 		manageJobs.upsert(job).fold(
-			ifLeft = { error ->
-				echo("Failed to save job: ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-			},
+			ifLeft = { failWith(it, "Failed to save job") },
 			ifRight = {
 				echo("Renewal job '$name' saved.")
 				echo("   Globs        : ${resolvedGlobs.joinToString()}")

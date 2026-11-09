@@ -2,7 +2,7 @@
 .kotlin
 .gradle
 **/build/**/*
-!/cli/src/main/kotlin/cz/pizavo/omnisign/commands/config/tl/build/**/*
+!**/src/**/build/**/*
 xcuserdata
 local.properties
 .idea

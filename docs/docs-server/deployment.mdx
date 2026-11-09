@@ -59,7 +59,7 @@ source certificate files), `/app/trusted-certs` (the trust store reconciled at b
 (`$HOME`, holding the `sessions.db` refresh-token / PKCE database) — and sets
 `OMNISIGN_SERVER_CONFIG=/app/config/server.yml`. It runs as the non-root user `omnisign`, so every
 mounted directory must be readable by that user, and `/app/trusted-certs` and `/app/data` must be
-writable by it. Mount all three, and pass every secret with `-e`:
+writable by it. Mount all three, and pass every secret with `-e`, or in a file as shown below:
 
 ```bash
 docker run -d --name omnisign-server \
@@ -78,6 +78,32 @@ Omitting `/app/data` sends the session database to an anonymous volume, so every
 lost on `docker rm`. Omitting `OMNISIGN_OAUTH_NONCE_SECRET` while `server.yml` references it fails
 config load at startup.
 
+`docker inspect` shows every value passed with `-e`, so a secret is safer in a
+[file](configuration#secrets-in-files). Keep one file per secret in a directory owned by the user the
+image runs as, private to that user, mount the directory read-only, and pass each file's path in the
+variable's `_FILE` form:
+
+```bash
+docker run --rm --entrypoint id omnisign-server   # the uid and gid the server runs as
+sudo chown -R <uid> /etc/omnisign/secrets
+sudo chmod -R u=rwX,go= /etc/omnisign/secrets     # directory 700, files 600
+
+docker run -d --name omnisign-server \
+  -p 18080:18080 \
+  -v "$(pwd)/config:/app/config" \
+  -v omnisign-trusted-certs:/app/trusted-certs \
+  -v omnisign-data:/app/data \
+  -v /etc/omnisign/secrets:/run/secrets:ro \
+  -e OMNISIGN_EXTERNAL_URL="https://sign.example.org" \
+  -e OMNISIGN_JWT_SECRET_FILE=/run/secrets/jwt-secret \
+  -e OMNISIGN_OAUTH_NONCE_SECRET_FILE=/run/secrets/oauth-nonce-secret \
+  -e OMNISIGN_OIDC_GOOGLE_CLIENT_SECRET_FILE=/run/secrets/google-client-secret \
+  omnisign-server
+```
+
+A secret that Docker swarm, Docker Compose or Kubernetes mounts needs its owner and mode set as
+[Secrets in files](configuration#secrets-in-files) describes.
+
 Inside `server.yml`, point `signingConfigFile` at `/app/config/signing.yml`. Leave `trustStoreDir`
 unset — the default relative `trusted-certs` resolves to the image's `/app/trusted-certs` volume, so
 the reconciled store persists with no config change. Add `-p 18443:18443` when terminating TLS
@@ -85,7 +111,8 @@ in-process. The image declares a `HEALTHCHECK` against `/api/v1/health`.
 
 If the server signs from a [file keystore](configuration#operations) rather than a PKCS#11 token,
 place the `.p12` on the mounted volume, point `operations.signingKeystorePath` at it, and pass its
-password with `-e OMNISIGN_SIGNING_KEYSTORE_PASSWORD="…"`.
+password with `-e OMNISIGN_SIGNING_KEYSTORE_PASSWORD="…"`, or in the file that
+`OMNISIGN_SIGNING_KEYSTORE_PASSWORD_FILE` names.
 
 ## Bare-metal service
 
@@ -151,6 +178,22 @@ it the first refresh-token write fails. `trustStoreDir` likewise resolves relati
 `WorkingDirectory` when left unset. The `EnvironmentFile` must carry `OMNISIGN_JWT_SECRET` and
 `OMNISIGN_OAUTH_NONCE_SECRET` when auth is enabled; systemd reads it as root before dropping to
 `User=omnisign`, so root-owned mode `600` is correct.
+
+Instead of the `EnvironmentFile`, systemd can hand each secret to the server as a
+[credential](configuration#secrets-in-files), which keeps it out of the server's environment. Name
+each credential like the secret's variable:
+
+```ini
+[Service]
+LoadCredential=OMNISIGN_JWT_SECRET:/etc/omnisign/credentials/jwt-secret
+LoadCredential=OMNISIGN_OAUTH_NONCE_SECRET:/etc/omnisign/credentials/oauth-nonce-secret
+```
+
+systemd reads each file as root, so it can stay root-owned with mode `600`, and gives the server a
+copy in a read-only directory that only `User=omnisign` can read, held in memory. Remove a secret
+from the `EnvironmentFile` when it becomes a credential: the server does not start with a secret set
+in both. `LoadCredential=` needs systemd 247 or newer. `LoadCredentialEncrypted=` takes a file
+encrypted with `systemd-creds encrypt` instead, so the stored file is of no use on another machine.
 
 ```bash
 sudo systemctl daemon-reload

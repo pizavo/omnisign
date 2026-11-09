@@ -22,6 +22,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.viewmodel.compose.rememberViewModelStoreOwner
+import androidx.lifecycle.viewmodel.compose.viewModel
 import cz.pizavo.omnisign.domain.repository.ServerCreditsRepository
 import cz.pizavo.omnisign.legal.THIRD_PARTY_NOTICES_URL
 import cz.pizavo.omnisign.legal.ThirdPartyComponent
@@ -68,6 +70,9 @@ private val currentSurface: String
  * merged, since merging would claim the browser received libraries it never did. The section is
  * absent on desktop, which signs in-process and already credits those components in the first list.
  *
+ * The [CreditsViewModel] lives in a store scoped to the dialog with [rememberViewModelStoreOwner],
+ * so each opening asks the server afresh and closing the dialog cancels a request still in flight.
+ *
  * Beyond crediting the authors, this dialog is what discharges the runtime-notice duty of the
  * weak-copyleft licences OmniSign depends on: the GNU LGPL v2.1 requires a program that displays
  * copyright notices — which the Help panel does — to name the library, show its copyright among
@@ -81,7 +86,7 @@ private val currentSurface: String
 @Composable
 fun CreditsDialog(onDismiss: () -> Unit) {
     var components by remember { mutableStateOf<List<ThirdPartyComponent>?>(null) }
-    val creditsViewModel = remember {
+    val creditsViewModel = viewModel(viewModelStoreOwner = rememberViewModelStoreOwner()) {
         CreditsViewModel(KoinPlatform.getKoinOrNull()?.getOrNull<ServerCreditsRepository>())
     }
     val serverCredits by creditsViewModel.serverCredits.collectAsState()

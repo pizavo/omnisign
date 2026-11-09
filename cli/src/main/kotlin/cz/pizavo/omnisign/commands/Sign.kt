@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.commands
 
+import arrow.core.flatMap
+import arrow.core.getOrElse
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
 import com.github.ajalt.clikt.core.ProgramResult
@@ -14,15 +16,19 @@ import com.github.ajalt.clikt.parameters.types.int
 import com.github.ajalt.clikt.parameters.types.path
 import cz.pizavo.omnisign.cli.OperationConfigOptions
 import cz.pizavo.omnisign.cli.OutputConfig
-import cz.pizavo.omnisign.cli.resolvePasswordOption
+import cz.pizavo.omnisign.cli.commandLineOnly
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.cli.json.JsonError
 import cz.pizavo.omnisign.cli.json.JsonSigningResult
 import cz.pizavo.omnisign.cli.json.toJsonError
 import cz.pizavo.omnisign.cli.json.toJsonResult
+import cz.pizavo.omnisign.cli.resolveSecretOption
+import cz.pizavo.omnisign.data.secret.EnvironmentSecretReader
+import cz.pizavo.omnisign.data.secret.SecretSource
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.error.OperationError
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.parameters.VisibleSignatureParameters
-import cz.pizavo.omnisign.domain.model.value.sensitive
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.usecase.SignDocumentUseCase
 import cz.pizavo.omnisign.platform.PasswordCallback
@@ -42,6 +48,7 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 	private val signUseCase: SignDocumentUseCase by inject()
 	private val configRepository: ConfigRepository by inject()
 	private val passwordCallback: PasswordCallback by inject()
+	private val secretReader: EnvironmentSecretReader by inject()
 	private val output by requireObject<OutputConfig>()
 	
 	private val inputFile by option("-f", "--file", help = "Path to the PDF file to sign")
@@ -64,12 +71,16 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 				"--certificate selects a certificate within the keystore (optional for a single-key keystore)."
 	).path(mustExist = true, canBeDir = false, mustBeReadable = true)
 
+	/**
+	 * The keystore password as given on the command line; without it, [run] takes the password
+	 * from the environment, as [resolveSecretOption] describes.
+	 */
 	private val keystorePassword by option(
 		"--keystore-password",
 		help = "Password for --keystore (in-memory only, never persisted). Use '-' to prompt with hidden input; " +
 				"omit to be prompted only when the keystore is password-protected. Also read from " +
-				"OMNISIGN_KEYSTORE_PASSWORD."
-	)
+				"$KEYSTORE_PASSWORD_ENVVAR, or from the file ${KEYSTORE_PASSWORD_ENVVAR}${SecretSource.FILE_SUFFIX} names."
+	).commandLineOnly()
 
 	private val reason by option("-r", "--reason", help = "Reason for signing (embedded in the signature)")
 	
@@ -139,42 +150,34 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 		val appConfig = configRepository.getCurrentConfig()
 		val activeProfile = profile ?: appConfig.activeProfile
 		val profileConfig = activeProfile?.let { appConfig.profiles[it] }
-		val operationConfig = configOverrides.toOperationConfig(passwordCallback)
-		val resolvedConfigResult = ResolvedConfig.resolve(
-			global = appConfig.global,
-			profile = profileConfig,
-			operationOverrides = operationConfig
-		)
-		if (resolvedConfigResult.isLeft()) {
-			val error = resolvedConfigResult.leftOrNull()!!
-			if (output.json) {
-				echo(
-					Json.encodeToString(
-						JsonSigningResult(
-							success = false,
-							error = error.toJsonError()
-								.copy(message = "Configuration Error: ${error.message}")
-						)
-					)
+		val resolvedConfig = configOverrides
+			.toOperationConfig(passwordCallback, secretReader, currentContext.readEnvvar)
+			.flatMap { operationConfig ->
+				ResolvedConfig.resolve(
+					global = appConfig.global,
+					profile = profileConfig,
+					operationOverrides = operationConfig
 				)
-			} else {
-				echo("❌ Configuration Error: ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
 			}
-			throw ProgramResult(1)
-		}
-		val resolvedConfig = resolvedConfigResult.getOrNull()!!.let {
-			if (allowExpiredCertificate) {
-				it.copy(validation = it.validation.copy(allowExpiredCertificate = true))
-			} else {
-				it
+			.getOrElse { failWithConfigurationError(it) }
+			.let {
+				if (allowExpiredCertificate) {
+					it.copy(validation = it.validation.copy(allowExpiredCertificate = true))
+				} else {
+					it
+				}
 			}
-		}
 
 		val outputPath = outputFile.toAbsolutePath().toString()
 		val resolvedKeystorePassword = keystore?.let {
-			resolvePasswordOption(keystorePassword, passwordCallback, prompt = "Keystore password")?.sensitive()
+			resolveSecretOption(
+				commandLineValue = keystorePassword,
+				variable = KEYSTORE_PASSWORD_ENVVAR,
+				environment = currentContext.readEnvvar,
+				secretReader = secretReader,
+				passwordCallback = passwordCallback,
+				prompt = "Keystore password",
+			).getOrElse { failWithConfigurationError(it) }
 		}
 		val parameters = SigningParameters(
 			inputBytes = inputFile.toFile().readBytes(),
@@ -203,12 +206,9 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 							)
 						)
 					)
-				} else {
-					echo("❌ Signing Error: ${error.message}", err = true)
-					error.details?.let { echo("Details: $it", err = true) }
-					error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
+					throw ProgramResult(1)
 				}
-				throw ProgramResult(1)
+				failWith(error, "Signing Error")
 			},
 			ifRight = { result ->
 				outputFile.toFile().also { it.parentFile?.mkdirs() }.writeBytes(result.outputBytes)
@@ -278,6 +278,34 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 		echo("Signature ID   : $signatureId")
 		echo("Signature level: $signatureLevel")
 		echo("═══════════════════════════════════════════════════════════════")
+	}
+
+	/**
+	 * Report [error], which keeps the configuration of this run from being resolved, and end the
+	 * command with exit code 1.
+	 */
+	private fun failWithConfigurationError(error: OperationError): Nothing {
+		if (output.json) {
+			echo(
+				Json.encodeToString(
+					JsonSigningResult(
+						success = false,
+						error = error.toJsonError()
+							.copy(message = "Configuration Error: ${error.message}")
+					)
+				)
+			)
+			throw ProgramResult(1)
+		}
+		failWith(error, "Configuration Error")
+	}
+
+	private companion object {
+		/**
+		 * Variable that supplies the keystore password when [keystorePassword] is not given, fixed
+		 * rather than inferred from the command path.
+		 */
+		const val KEYSTORE_PASSWORD_ENVVAR = "OMNISIGN_KEYSTORE_PASSWORD"
 	}
 }
 

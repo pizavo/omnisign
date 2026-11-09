@@ -1,9 +1,12 @@
+@file:OptIn(ExperimentalWasmJsInterop::class)
+
 package cz.pizavo.omnisign.web.auth
 
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import kotlinx.browser.localStorage
 import kotlinx.browser.window
+import kotlin.js.ExperimentalWasmJsInterop
 
 /**
  * Verifies the browser-side halves of the login round trip against real `sessionStorage` and a real

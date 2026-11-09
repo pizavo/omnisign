@@ -23,8 +23,9 @@ import java.util.ResourceBundle
  * A job that found documents past their preservation deadline raises a second notification on top of
  * its outcome one, in the same way the staleness alert does — the two say different things and one
  * must not hide the other. It counts only the *newly* terminal documents
- * ([RenewJobResult.newlyUnrecoverable]): the condition cannot be acted on and cannot change, so
- * repeating it every night would train the user to ignore it.
+ * ([RenewJobResult.newlyUnrecoverable][cz.pizavo.omnisign.domain.model.result.RenewJobResult.newlyUnrecoverable]):
+ * the condition cannot be acted on and cannot change, so repeating it every night would train the
+ * user to ignore it.
  *
  * Titles and bodies are resolved from the `renewal-notifications` resource bundle in the locale
  * supplied by [localeProvider], so a Czech-configured run shows Czech text while any other locale

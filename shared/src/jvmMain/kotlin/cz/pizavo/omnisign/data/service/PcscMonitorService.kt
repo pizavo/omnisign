@@ -67,7 +67,7 @@ class PcscMonitorService(
 	private var watcher: Job? = null
 
 	/**
-	 * Cancel the background watcher coroutine and any pending [waitForChange] iteration.
+	 * Cancel the background watcher coroutine and any pending [CardTerminals.waitForChange] iteration.
 	 *
 	 * Used by hosts with a bounded lifecycle (notably the Ktor server's `testApplication`
 	 * teardown) to stop the watcher when the application stops, instead of leaking the

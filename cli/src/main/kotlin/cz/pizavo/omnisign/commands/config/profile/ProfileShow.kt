@@ -2,9 +2,12 @@ package cz.pizavo.omnisign.commands.config.profile
 
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
+import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.parameters.arguments.argument
 import com.github.ajalt.clikt.parameters.arguments.optional
+import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
+import cz.pizavo.omnisign.domain.service.AlgorithmExpirationChecker
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
 import kotlinx.coroutines.runBlocking
@@ -27,18 +30,14 @@ class ProfileShow : CliktCommand(name = "show"), KoinComponent {
 			val activeProfile = getConfig().fold(ifLeft = { null }, ifRight = { it.activeProfile })
 			if (activeProfile == null) {
 				echo("❌ No profile name given and no active profile is set. Use: config profile use <name>", err = true)
-				return@runBlocking
+				throw ProgramResult(1)
 			}
 			activeProfile
 		}
 		val activeProfile = getConfig().fold(ifLeft = { null }, ifRight = { it.activeProfile })
 		
 		manageProfile.get(resolvedName).fold(
-			ifLeft = { error ->
-				echo("❌ ${error.message}", err = true)
-				error.details?.let { echo("Details: $it", err = true) }
-				error.cause?.message?.takeIf { it != error.details }?.let { echo("Cause: $it", err = true) }
-			},
+			ifLeft = { failWith(it) },
 			ifRight = { profile ->
 				val isActive = activeProfile == profile.name
 				val activeLabel = if (isActive) " ◀ active" else ""
@@ -91,7 +90,12 @@ class ProfileShow : CliktCommand(name = "show"), KoinComponent {
 								?: "inherit (default: ${AlgorithmConstraintsConfig.DEFAULT.expirationLevelAfterUpdate})"
 						}"
 					)
-					echo("  Policy updated   : ${ac.policyUpdateDate ?: "inherit (DSS default: 2024-10-13)"}")
+					echo(
+						"  Policy updated   : ${
+							ac.policyUpdateDate
+								?: "inherit (DSS default: ${AlgorithmExpirationChecker.DEFAULT_UPDATE_DATE})"
+						}"
+					)
 					if (ac.expirationDateOverrides.isNotEmpty()) {
 						echo("  Expiry overrides :")
 						ac.expirationDateOverrides.forEach { (alg, date) -> echo("    $alg → $date") }

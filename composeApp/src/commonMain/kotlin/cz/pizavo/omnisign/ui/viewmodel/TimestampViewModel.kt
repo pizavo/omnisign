@@ -32,7 +32,7 @@ import kotlinx.coroutines.flow.update
  * ViewModel driving the timestamp / extension dialog.
  *
  * Orchestrates the extension of an already-signed PDF to a higher PAdES level.
- * The flow mirrors the CLI [cz.pizavo.omnisign.commands.Timestamp] command:
+ * The flow mirrors the CLI `Timestamp` command:
  * resolve config → build [ArchivingParameters] → invoke [ExtendDocumentUseCase]
  * → show the result.
  *
@@ -89,8 +89,9 @@ class TimestampViewModel(
 
 	/**
 	 * The extended bytes and metadata produced by [extend] / [acceptRevocationWarning], held until
-	 * the user picks a save location in [saveExtendedDocument]. The save dialog is the last step, so
-	 * aborting or cancelling ([abortAfterRevocationWarning] / [cancelSave]) writes nothing.
+	 * the user picks a save location and [completeSave] receives the outcome. The save dialog is the
+	 * last step, so aborting ([abortAfterRevocationWarning]) or cancelling the save
+	 * ([SaveOutcome.Cancelled]) writes nothing.
 	 */
 	private var pendingExtension: PendingExtension? = null
 
@@ -288,8 +289,9 @@ class TimestampViewModel(
 	 * either [TimestampDialogState.AwaitingSave] (success), [TimestampDialogState.RevocationWarning]
 	 * (a B-LT extension that failed to obtain revocation data, when the document has no LT data yet),
 	 * or [TimestampDialogState.Error]. **No file is written here** — the produced bytes are held in
-	 * [pendingExtension] and persisted only once the user picks a destination in
-	 * [saveExtendedDocument], so the save dialog is the last step and aborting writes nothing.
+	 * [pendingExtension] and persisted only once the user picks a destination, after which
+	 * [completeSave] finishes the flow, so the save dialog is the last step and aborting writes
+	 * nothing.
 	 */
 	fun extend() {
 		val ready = _state.value as? TimestampDialogState.Ready ?: return
@@ -609,10 +611,10 @@ class TimestampViewModel(
 	}
 
 	/**
-	 * Extended bytes produced by [extend] / [acceptRevocationWarning] plus the metadata needed to
-	 * finish once the user picks a save destination in [saveExtendedDocument]. Held in memory between
-	 * the steps and discarded on [abortAfterRevocationWarning] / [cancelSave] so a cancelled flow
-	 * writes nothing.
+	 * Extended bytes produced by [extend] / [acceptRevocationWarning] plus the metadata
+	 * [completeSave] needs to finish once the user picks a save destination. Held in memory between
+	 * the steps and discarded on [abortAfterRevocationWarning] or a [SaveOutcome.Cancelled] save, so
+	 * a cancelled flow writes nothing.
 	 *
 	 * @property isArchival Whether the extension is archival (B-LTA). Kept for the offer's wording,
 	 *   not to gate it: an output that stops short of B-LTA still owes a step, on a deadline that

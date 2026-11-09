@@ -4,6 +4,8 @@ import arrow.core.left
 import arrow.core.right
 import com.github.ajalt.clikt.testing.test
 import cz.pizavo.omnisign.Omnisign
+import cz.pizavo.omnisign.data.secret.EnvironmentSecretReader
+import cz.pizavo.omnisign.data.secret.SecretFileReader
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
@@ -74,6 +76,11 @@ class ValidateTest : FunSpec({
 		),
 	)
 	
+	val invalidReport = sampleReport.copy(
+		overallResult = ValidationResult.INVALID,
+		signatures = listOf(sampleReport.signatures.first().copy(indication = ValidationIndication.TOTAL_FAILED)),
+	)
+
 	fun tmpFile(name: String) = File(tmpDir, name).also { it.createNewFile() }
 	
 	extension(
@@ -82,6 +89,7 @@ class ValidateTest : FunSpec({
 				single { ValidateDocumentUseCase(validationRepository) }
 				single { configRepository }
 				single<PasswordCallback> { mockk() }
+				single { EnvironmentSecretReader(SecretFileReader(), osName = "Linux") }
 			},
 			mode = KoinLifecycleMode.Test
 		)
@@ -118,9 +126,48 @@ class ValidateTest : FunSpec({
 		val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
 		
 		result.statusCode shouldBe 1
-		result.stderr shouldContain "Document is corrupted"
+		result.stderr shouldContain "❌ Validation Error: Document is corrupted"
 	}
-	
+
+	test("an invalid signature exits with status 2 after printing the report") {
+		val input = tmpFile("invalid.pdf")
+		coEvery { validationRepository.validateDocument(any()) } returns invalidReport.right()
+
+		val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
+
+		result.output shouldContain "Overall result:  INVALID"
+		result.output shouldContain "Test Signer"
+		result.statusCode shouldBe 2
+	}
+
+	test("an indeterminate result exits with status 3 after printing the report") {
+		val input = tmpFile("indeterminate.pdf")
+		val indeterminateReport = sampleReport.copy(
+			overallResult = ValidationResult.INDETERMINATE,
+			signatures = listOf(
+				sampleReport.signatures.first().copy(indication = ValidationIndication.INDETERMINATE)
+			),
+		)
+		coEvery { validationRepository.validateDocument(any()) } returns indeterminateReport.right()
+
+		val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
+
+		result.output shouldContain "Overall result:  INDETERMINATE"
+		result.statusCode shouldBe 3
+	}
+
+	test("a document without signatures exits with status 4 after printing the report") {
+		val input = tmpFile("unsigned.pdf")
+		coEvery { validationRepository.validateDocument(any()) } returns
+			sampleReport.copy(overallResult = ValidationResult.NO_SIGNATURES, signatures = emptyList()).right()
+
+		val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
+
+		result.output shouldContain "Overall result:  NO_SIGNATURES"
+		result.output shouldContain "No signatures found in the document."
+		result.statusCode shouldBe 4
+	}
+
 	test("validate --json outputs structured JSON on success") {
 		val input = tmpFile("signed2.pdf")
 		coEvery { validationRepository.validateDocument(any()) } returns sampleReport.right()
@@ -144,6 +191,17 @@ class ValidateTest : FunSpec({
 		result.output shouldContain "\"success\""
 		result.output shouldContain "File not a PDF"
 		result.statusCode shouldBe 1
+	}
+
+	test("validate --json gives the verdict in the exit status too") {
+		val input = tmpFile("invalid2.pdf")
+		coEvery { validationRepository.validateDocument(any()) } returns invalidReport.right()
+
+		val result = Omnisign().test(listOf("--json", "validate", "-f", input.absolutePath))
+
+		result.output shouldContain "\"success\":true"
+		result.output shouldContain "\"overallResult\":\"INVALID\""
+		result.statusCode shouldBe 2
 	}
 	
 	test("qualification errors are shown under Qualification section, not under Errors") {
@@ -249,7 +307,7 @@ class ValidateTest : FunSpec({
 		
 		val header = result.output.substringBefore("── Signature")
 		header shouldNotContain "Trust tier:"
-		result.statusCode shouldBe 0
+		result.statusCode shouldBe 3
 	}
 	
 	test("overall trust tier appears in JSON output for valid qualified document") {
@@ -308,6 +366,59 @@ class ValidateTest : FunSpec({
 
 		val detailed = Omnisign().test(listOf("validate", "-f", input.absolutePath, "--detailed"))
 		detailed.output shouldContain "Custom Extension"
+	}
+
+	test("the report ends with one line break, whichever block comes last") {
+		val input = tmpFile("endings.pdf")
+		val reports = listOf(
+			sampleReport,
+			sampleReport.copy(overallResult = ValidationResult.NO_SIGNATURES, signatures = emptyList()),
+			sampleReport.copy(tlWarnings = listOf(LocalizableText.Literal("Could not refresh 1 trusted list."))),
+		)
+
+		reports.forEach { report ->
+			coEvery { validationRepository.validateDocument(any()) } returns report.right()
+
+			val result = Omnisign().test(listOf("validate", "-f", input.absolutePath))
+
+			result.stdout.lines().takeLast(2).map { it.isBlank() } shouldBe listOf(false, true)
+		}
+	}
+
+	test("one blank line sets apart each block printed after the report") {
+		val input = tmpFile("additions.pdf")
+		val reportOut = File(tmpDir, "additions-report.xml").absolutePath
+		val indeterminateTimestamp = TimestampValidationResult(
+			timestampId = "ts-1",
+			type = "Archive timestamp",
+			indication = ValidationIndication.INDETERMINATE,
+			productionTime = Instant.parse("2026-03-14T09:00:00Z"),
+		)
+		coEvery { validationRepository.validateDocument(any()) } returns
+			sampleReport.copy(timestamps = listOf(indeterminateTimestamp)).right()
+
+		val lines = Omnisign().test(
+			listOf("validate", "-f", input.absolutePath, "--detailed", "--report-out", reportOut)
+		).stdout.lines()
+
+		listOf("── Configuration ──", "Note: timestamps", "📄 Raw report").forEach { block ->
+			val start = lines.indexOfFirst { it.startsWith(block) }
+			lines.subList(start - 2, start).map { it.isBlank() } shouldBe listOf(false, true)
+		}
+	}
+
+	test("validate reports a timestamp password file it refuses as a configuration error") {
+		val input = tmpFile("refused-password-file.pdf")
+		val missing = File(tmpDir, "missing-timestamp-password").absolutePath
+
+		val result = Omnisign().test(
+			listOf("validate", "-f", input.absolutePath),
+			envvars = mapOf("OMNISIGN_TIMESTAMP_PASSWORD_FILE" to missing)
+		)
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "Configuration Error: The file '$missing' named by " +
+				"OMNISIGN_TIMESTAMP_PASSWORD_FILE does not exist."
 	}
 })
 
