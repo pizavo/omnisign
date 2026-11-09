@@ -23,11 +23,16 @@ The server resolves its config file from the first source that exists, in order:
    `proxy:`. There is **no classpath fallback** — the bundled `server.example.yml` is documentation
    only and is never auto-loaded.
 
-Two parsing rules protect you from silent misconfiguration:
+Three parsing rules protect you from silent misconfiguration:
 
 - **Unknown keys fail startup.** A typo like `auth: { enable: true }` (missing `d`) or
   `tls: { keystorePat: … }` would otherwise silently disable a defense; instead the server refuses
   to start and names the offending key.
+- **Values must say what they mean.** The file is read as YAML 1.2, so `true` and `false` are the
+  booleans, and `yes`, `no`, `on`, or `off` on a boolean key fails startup. `~` and an empty value mean
+  null, which a number or boolean key refuses rather than reading as `0` or `false`: a blank `port:`
+  cannot bind a random port. A second document after `---` also fails startup rather than being
+  ignored.
 - **`${VAR}` substitution** — any string *value* may reference an environment variable as `${NAME}`
   (`[A-Z_][A-Z0-9_]*`), expanded at load. Keys and comments are never substituted; a referenced-but-
   unset variable fails startup. Use this for non-secret values like an external URL — and for

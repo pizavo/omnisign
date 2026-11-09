@@ -20,6 +20,9 @@ A fully-commented template ships as **`signing.example.yml`** (in `server/src/ma
   [Secrets in files](configuration#secrets-in-files)).
 - **Unknown keys fail startup.** The desktop-only `AppConfig` fields (`activeProfile`, `tlDrafts`,
   `renewalJobs`, `schedulerConfig`) are not part of this schema and are rejected if present.
+- **Values must say what they mean**, under the [same rules as `server.yml`](configuration#resolution-order):
+  a boolean key takes only `true` or `false`, a null for a number or boolean fails startup, and so does
+  a second document in the file.
 
 ## `global`
 

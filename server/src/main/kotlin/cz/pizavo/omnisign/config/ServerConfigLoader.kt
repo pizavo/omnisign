@@ -1,12 +1,12 @@
 package cz.pizavo.omnisign.config
 
+import cz.pizavo.omnisign.data.serializer.configYamlMapperBuilder
 import cz.pizavo.omnisign.domain.model.value.Sensitive
 import io.github.oshai.kotlinlogging.KotlinLogging
 import tools.jackson.databind.DeserializationFeature
 import tools.jackson.databind.ObjectMapper
 import tools.jackson.databind.ValueDeserializer
 import tools.jackson.databind.module.SimpleModule
-import tools.jackson.dataformat.yaml.YAMLMapper
 import tools.jackson.module.kotlin.KotlinModule
 import java.io.File
 
@@ -53,7 +53,7 @@ private val logger = KotlinLogging.logger {}
  */
 class ServerConfigLoader(private val env: (String) -> String? = placeholderResolver()) {
 
-	private val mapper: ObjectMapper = YAMLMapper.builder()
+	private val mapper: ObjectMapper = configYamlMapperBuilder()
 		.addModule(KotlinModule.Builder().build())
 		.enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
 		.addModule(

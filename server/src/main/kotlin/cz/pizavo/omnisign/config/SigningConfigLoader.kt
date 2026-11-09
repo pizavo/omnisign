@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.config
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import cz.pizavo.omnisign.data.serializer.configYamlMapperBuilder
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
@@ -14,7 +15,6 @@ import tools.jackson.databind.ValueDeserializer
 import tools.jackson.databind.cfg.MapperBuilder
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.databind.module.SimpleModule
-import tools.jackson.dataformat.yaml.YAMLMapper
 import tools.jackson.module.kotlin.KotlinModule
 import java.io.File
 
@@ -253,7 +253,7 @@ class SigningConfigLoader(private val env: (String) -> String? = placeholderReso
 		 * single instance is reused across every [SigningConfigLoader] (one is built per app boot)
 		 * rather than rebuilding the module stack each time.
 		 */
-		private val yamlMapper: ObjectMapper = strictMapper(YAMLMapper.builder())
+		private val yamlMapper: ObjectMapper = strictMapper(configYamlMapperBuilder())
 
 		/**
 		 * Shared strict JSON mapper, used for `.json` profile/policy files. See [yamlMapper].
