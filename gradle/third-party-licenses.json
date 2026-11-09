@@ -205,7 +205,7 @@
 			"name": "Jackson",
 			"groups": ["com.fasterxml.jackson.core", "com.fasterxml.jackson.dataformat", "com.fasterxml.jackson.module", "tools.jackson.core", "tools.jackson.dataformat", "tools.jackson.module"],
 			"license": "Apache-2.0",
-			"copyright": "Copyright © FasterXML, LLC",
+			"copyright": "Copyright © 2007-present Tatu Saloranta",
 			"homepage": "https://github.com/FasterXML/jackson"
 		},
 		{

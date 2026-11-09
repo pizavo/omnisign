@@ -401,7 +401,7 @@ Ships in: server, desktop.
 
 #### Jackson
 
-Copyright © FasterXML, LLC.
+Copyright © 2007-present Tatu Saloranta.
 Homepage: <https://github.com/FasterXML/jackson>.
 Ships in: cli, server, desktop.
 
