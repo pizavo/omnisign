@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.data.service
 import cz.pizavo.omnisign.domain.model.result.RenewalCheckCacheEntry
 import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import io.github.oshai.kotlinlogging.KotlinLogging
+import kotlinx.serialization.KSerializer
 import kotlinx.serialization.builtins.MapSerializer
 import kotlinx.serialization.builtins.serializer
 import kotlinx.serialization.json.Json
@@ -71,7 +72,8 @@ class FileRenewalCheckCache(
 
 	companion object {
 		/** Serializer for the `path` → entry map. */
-		private val SERIALIZER = MapSerializer(String.serializer(), RenewalCheckCacheEntry.serializer())
+		private val SERIALIZER: KSerializer<Map<String, RenewalCheckCacheEntry>> =
+			MapSerializer(String.serializer(), RenewalCheckCacheEntry.serializer())
 
 		/** JSON format for the cache file: pretty-printed and tolerant of unknown keys. */
 		private val JSON = Json {
