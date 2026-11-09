@@ -56,25 +56,46 @@ abstract class JacksonConfigSerializer(
 			.fold(onSuccess = { it.right() }, onFailure = { serializeError(it).left() })
 	
 	override fun deserializeApp(text: String): OperationResult<AppConfig> =
-		runCatching { mapper.readValue(text, AppConfig::class.java) }
-			.fold(onSuccess = { it.right() }, onFailure = { deserializeError(it).left() })
+		deserialize(text, AppConfig::class.java)
 	
 	override fun serializeGlobal(config: GlobalConfig): OperationResult<String> =
 		runCatching { mapper.writeValueAsString(config) }
 			.fold(onSuccess = { it.right() }, onFailure = { serializeError(it).left() })
 	
 	override fun deserializeGlobal(text: String): OperationResult<GlobalConfig> =
-		runCatching { mapper.readValue(text, GlobalConfig::class.java) }
-			.fold(onSuccess = { it.right() }, onFailure = { deserializeError(it).left() })
+		deserialize(text, GlobalConfig::class.java)
 	
 	override fun serializeProfile(profile: ProfileConfig): OperationResult<String> =
 		runCatching { mapper.writeValueAsString(profile) }
 			.fold(onSuccess = { it.right() }, onFailure = { serializeError(it).left() })
 	
 	override fun deserializeProfile(text: String): OperationResult<ProfileConfig> =
-		runCatching { mapper.readValue(text, ProfileConfig::class.java) }
-			.fold(onSuccess = { it.right() }, onFailure = { deserializeError(it).left() })
+		deserialize(text, ProfileConfig::class.java)
 	
+	/**
+	 * Bind [text] to [type], refusing a document that holds nothing but null.
+	 *
+	 * Jackson reads such a document, a JSON `null`, a YAML `~` or a bare `---`, or an XML root marked
+	 * `xsi:nil`, as a null value rather than failing. Returned as a success, the null would break the
+	 * import later, when it saved the configuration or merged the section into it, so it fails here
+	 * like any other document that cannot be read.
+	 *
+	 * @param text The serialized configuration.
+	 * @param type The class to bind [text] to.
+	 * @return The bound value, or [ConfigurationError.LoadFailed] when [text] cannot be read or holds only null.
+	 */
+	private fun <T : Any> deserialize(text: String, type: Class<T>): OperationResult<T> =
+		runCatching { mapper.readValue(text, type) }
+			.fold(
+				onSuccess = { value ->
+					value?.right() ?: ConfigurationError.deserializeFailed(
+						format.name,
+						details = "The document holds no configuration, only null",
+					).left()
+				},
+				onFailure = { deserializeError(it).left() },
+			)
+
 	private fun serializeError(cause: Throwable): ConfigurationError.SaveFailed =
 		ConfigurationError.serializeFailed(format.name, details = cause.message, cause = cause)
 

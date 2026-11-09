@@ -205,7 +205,7 @@
 			"name": "Jackson",
 			"groups": ["com.fasterxml.jackson.core", "com.fasterxml.jackson.dataformat", "com.fasterxml.jackson.module", "tools.jackson.core", "tools.jackson.dataformat", "tools.jackson.module"],
 			"license": "Apache-2.0",
-			"copyright": "Copyright © FasterXML, LLC",
+			"copyright": "Copyright © 2007-present Tatu Saloranta",
 			"homepage": "https://github.com/FasterXML/jackson"
 		},
 		{
@@ -465,19 +465,6 @@
 			"copyright": "Copyright © Google LLC",
 			"homepage": "https://github.com/google/j2objc",
 			"notes": "Reached transitively through Guava, which the Auth0 JWKS client depends on."
-		},
-		{
-			"name": "JSR 305 annotations",
-			"groups": ["com.google.code.findbugs"],
-			"license": "Apache-2.0",
-			"homepage": "https://findbugs.sourceforge.net/"
-		},
-		{
-			"name": "Checker Framework qualifiers",
-			"groups": ["org.checkerframework"],
-			"license": "MIT",
-			"copyright": "Copyright © the Checker Framework developers",
-			"homepage": "https://checkerframework.org/"
 		},
 		{
 			"name": "JSpecify",
