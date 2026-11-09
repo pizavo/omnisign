@@ -1,8 +1,9 @@
 package cz.pizavo.omnisign.config
 
-import com.fasterxml.jackson.core.JsonParser
-import com.fasterxml.jackson.databind.DeserializationContext
-import com.fasterxml.jackson.databind.deser.DeserializationProblemHandler
+import tools.jackson.core.JsonParser
+import tools.jackson.databind.DeserializationContext
+import tools.jackson.databind.ValueDeserializer
+import tools.jackson.databind.deser.DeserializationProblemHandler
 
 /**
  * Jackson [DeserializationProblemHandler] that translates a YAML attempt to set one of
@@ -31,7 +32,7 @@ class RemovedSecretFieldHandler : DeserializationProblemHandler() {
     override fun handleUnknownProperty(
         ctxt: DeserializationContext,
         p: JsonParser,
-        deserializer: com.fasterxml.jackson.databind.JsonDeserializer<*>?,
+        deserializer: ValueDeserializer<*>?,
         beanOrClass: Any?,
         propertyName: String,
     ): Boolean {

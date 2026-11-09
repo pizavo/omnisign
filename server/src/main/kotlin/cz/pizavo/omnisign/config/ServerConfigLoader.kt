@@ -1,13 +1,13 @@
 package cz.pizavo.omnisign.config
 
-import com.fasterxml.jackson.databind.DeserializationFeature
-import com.fasterxml.jackson.databind.JsonDeserializer
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.module.SimpleModule
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import cz.pizavo.omnisign.domain.model.value.Sensitive
 import io.github.oshai.kotlinlogging.KotlinLogging
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.ValueDeserializer
+import tools.jackson.databind.module.SimpleModule
+import tools.jackson.dataformat.yaml.YAMLMapper
+import tools.jackson.module.kotlin.KotlinModule
 import java.io.File
 
 private val logger = KotlinLogging.logger {}
@@ -53,19 +53,20 @@ private val logger = KotlinLogging.logger {}
  */
 class ServerConfigLoader(private val env: (String) -> String? = placeholderResolver()) {
 
-	private val mapper: ObjectMapper = ObjectMapper(YAMLFactory())
-		.registerKotlinModule()
-		.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true)
-		.registerModule(
+	private val mapper: ObjectMapper = YAMLMapper.builder()
+		.addModule(KotlinModule.Builder().build())
+		.enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+		.addModule(
 			SimpleModule()
 				.addDeserializer(SsoProviderConfig::class.java, SsoProviderConfigDeserializer())
 				.addDeserializer(
 					Sensitive::class.java,
 					@Suppress("UNCHECKED_CAST")
-					(SensitiveStringJacksonDeserializer() as JsonDeserializer<Sensitive<*>>),
+					(SensitiveStringJacksonDeserializer() as ValueDeserializer<Sensitive<*>>),
 				),
 		)
 		.addHandler(RemovedSecretFieldHandler())
+		.build()
 
 	/**
 	 * Load the server configuration from the first available source.

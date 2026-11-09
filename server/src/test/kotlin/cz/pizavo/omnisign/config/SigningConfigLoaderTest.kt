@@ -1,6 +1,5 @@
 package cz.pizavo.omnisign.config
 
-import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import io.kotest.assertions.throwables.shouldThrow
@@ -10,6 +9,7 @@ import io.kotest.matchers.maps.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import tools.jackson.databind.exc.UnrecognizedPropertyException
 import java.io.File
 import kotlin.io.path.createTempDirectory
 

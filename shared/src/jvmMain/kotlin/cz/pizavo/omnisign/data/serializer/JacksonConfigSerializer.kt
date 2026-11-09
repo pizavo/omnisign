@@ -3,9 +3,6 @@ package cz.pizavo.omnisign.data.serializer
 import arrow.core.left
 import arrow.core.right
 import com.fasterxml.jackson.annotation.JsonIgnore
-import com.fasterxml.jackson.databind.DeserializationFeature
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
@@ -14,6 +11,10 @@ import cz.pizavo.omnisign.domain.model.value.Sensitive
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.port.ConfigSerializer
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.cfg.MapperBuilder
+import tools.jackson.module.kotlin.KotlinModule
 
 /**
  * Jackson mixin that instructs Jackson to skip the runtime-only [TimestampServerConfig.runtimePassword]
@@ -27,19 +28,22 @@ private abstract class TimestampServerConfigMixin {
 /**
  * Base JVM serializer that delegates reading and writing to a Jackson [ObjectMapper].
  *
- * Subclasses provide the configured mapper and the format label used in error messages.
+ * Subclasses provide a mapper builder configured for their format and the format label used in
+ * error messages. A Jackson mapper cannot change once built, so this class takes the builder and adds
+ * what every format shares: the Kotlin module, tolerance of unknown properties, and the mixin that
+ * keeps the runtime-only password out of an exported file.
  *
- * @property mapper The Jackson [ObjectMapper] configured for the target format.
+ * @param mapperBuilder Builder of the Jackson [ObjectMapper], configured for the target format.
  */
 abstract class JacksonConfigSerializer(
-	protected val mapper: ObjectMapper
+	mapperBuilder: MapperBuilder<*, *>
 ) : ConfigSerializer {
-	init {
-		mapper.registerModule(KotlinModule.Builder().build())
-		mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-		mapper.addMixIn(TimestampServerConfig::class.java, TimestampServerConfigMixin::class.java)
-	}
-	
+	private val mapper: ObjectMapper = mapperBuilder
+		.addModule(KotlinModule.Builder().build())
+		.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+		.addMixIn(TimestampServerConfig::class.java, TimestampServerConfigMixin::class.java)
+		.build()
+
 	override fun serializeApp(config: AppConfig): OperationResult<String> =
 		runCatching { mapper.writeValueAsString(config) }
 			.fold(onSuccess = { it.right() }, onFailure = { serializeError(it).left() })

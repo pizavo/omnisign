@@ -1,12 +1,6 @@
 package cz.pizavo.omnisign.config
 
 import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.databind.DeserializationFeature
-import com.fasterxml.jackson.databind.JsonDeserializer
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.module.SimpleModule
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.registerKotlinModule
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
@@ -14,6 +8,14 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.value.Sensitive
 import io.github.oshai.kotlinlogging.KotlinLogging
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.ValueDeserializer
+import tools.jackson.databind.cfg.MapperBuilder
+import tools.jackson.databind.json.JsonMapper
+import tools.jackson.databind.module.SimpleModule
+import tools.jackson.dataformat.yaml.YAMLMapper
+import tools.jackson.module.kotlin.KotlinModule
 import java.io.File
 
 private val logger = KotlinLogging.logger {}
@@ -251,27 +253,30 @@ class SigningConfigLoader(private val env: (String) -> String? = placeholderReso
 		 * single instance is reused across every [SigningConfigLoader] (one is built per app boot)
 		 * rather than rebuilding the module stack each time.
 		 */
-		private val yamlMapper: ObjectMapper = configure(ObjectMapper(YAMLFactory()))
+		private val yamlMapper: ObjectMapper = strictMapper(YAMLMapper.builder())
 
 		/**
 		 * Shared strict JSON mapper, used for `.json` profile/policy files. See [yamlMapper].
 		 */
-		private val jsonMapper: ObjectMapper = configure(ObjectMapper())
+		private val jsonMapper: ObjectMapper = strictMapper(JsonMapper.builder())
 
 		/**
-		 * Apply the shared strict configuration to [mapper]: the Kotlin module, fail-on-unknown
-		 * keys, the [TimestampServerConfigMixin], and the [Sensitive] string deserializer.
+		 * Build a mapper from [builder] with the shared strict configuration: the Kotlin module,
+		 * fail-on-unknown keys, the [TimestampServerConfigMixin], and the [Sensitive] string
+		 * deserializer.
 		 */
-		private fun configure(mapper: ObjectMapper): ObjectMapper =
-			mapper.registerKotlinModule()
-				.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, true)
+		private fun strictMapper(builder: MapperBuilder<*, *>): ObjectMapper =
+			builder
+				.addModule(KotlinModule.Builder().build())
+				.enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
 				.addMixIn(TimestampServerConfig::class.java, TimestampServerConfigMixin::class.java)
-				.registerModule(
+				.addModule(
 					SimpleModule().addDeserializer(
 						Sensitive::class.java,
 						@Suppress("UNCHECKED_CAST")
-						(SensitiveStringJacksonDeserializer() as JsonDeserializer<Sensitive<*>>),
+						(SensitiveStringJacksonDeserializer() as ValueDeserializer<Sensitive<*>>),
 					),
 				)
+				.build()
 	}
 }

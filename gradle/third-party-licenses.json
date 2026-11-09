@@ -194,8 +194,16 @@
 			"homepage": "https://bitbucket.org/snakeyaml/snakeyaml"
 		},
 		{
+			"name": "SnakeYAML Engine",
+			"groups": ["org.snakeyaml"],
+			"license": "Apache-2.0",
+			"copyright": "Copyright © 2018 SnakeYAML",
+			"homepage": "https://bitbucket.org/snakeyaml/snakeyaml-engine",
+			"notes": "Reached transitively through Jackson's YAML data format."
+		},
+		{
 			"name": "Jackson",
-			"groups": ["com.fasterxml.jackson.core", "com.fasterxml.jackson.dataformat", "com.fasterxml.jackson.module"],
+			"groups": ["com.fasterxml.jackson.core", "com.fasterxml.jackson.dataformat", "com.fasterxml.jackson.module", "tools.jackson.core", "tools.jackson.dataformat", "tools.jackson.module"],
 			"license": "Apache-2.0",
 			"copyright": "Copyright © FasterXML, LLC",
 			"homepage": "https://github.com/FasterXML/jackson"

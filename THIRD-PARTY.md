@@ -49,7 +49,7 @@ projects linked below and from the same place this distribution was obtained.
 | Licence | Components | Artifacts |
 |---|---:|---:|
 | GNU Affero General Public License, version 3 or later | 1 | 1 |
-| Apache License, Version 2.0 | 38 | 280 |
+| Apache License, Version 2.0 | 39 | 284 |
 | BSD 2-Clause "Simplified" License | 2 | 2 |
 | BSD 3-Clause "New" License | 4 | 7 |
 | BSD License (upstream does not state which variant) | 1 | 1 |
@@ -58,15 +58,15 @@ projects linked below and from the same place this distribution was obtained.
 | GNU Lesser General Public License, version 2.1 or later | 2 | 44 |
 | MIT License | 9 | 17 |
 | Mozilla Public License, Version 2.0 | 2 | 7 |
-| **Total** | **61** | **369** |
+| **Total** | **62** | **373** |
 
 Per surface:
 
 | Surface | Components | Artifacts |
 |---|---:|---:|
-| cli | 37 | 141 |
-| server | 50 | 209 |
-| desktop | 40 | 188 |
+| cli | 38 | 142 |
+| server | 51 | 212 |
+| desktop | 41 | 189 |
 | web | 13 | 92 |
 
 ## Components by licence
@@ -101,8 +101,8 @@ Ships in: desktop, web.
 
 <details><summary>33 artifact(s)</summary>
 
-- `androidx.annotation:annotation-jvm:1.10.0` — desktop
-- `androidx.annotation:annotation-wasm-js:1.10.0` — web
+- `androidx.annotation:annotation-jvm:1.11.0` — desktop
+- `androidx.annotation:annotation-wasm-js:1.11.0` — web
 - `androidx.arch.core:core-common:2.2.0` — desktop
 - `androidx.collection:collection-jvm:1.5.0` — desktop
 - `androidx.collection:collection-wasm-js:1.5.0` — web
@@ -215,14 +215,14 @@ Ships in: cli, server, desktop, web.
 
 <details><summary>8 artifact(s)</summary>
 
-- `io.arrow-kt:arrow-annotations-jvm:2.2.3` — cli, desktop, server
-- `io.arrow-kt:arrow-annotations-wasm-js:2.2.3` — web
-- `io.arrow-kt:arrow-atomic-jvm:2.2.3` — cli, desktop, server
-- `io.arrow-kt:arrow-atomic-wasm-js:2.2.3` — web
-- `io.arrow-kt:arrow-core-jvm:2.2.3` — cli, desktop, server
-- `io.arrow-kt:arrow-core-wasm-js:2.2.3` — web
-- `io.arrow-kt:arrow-exception-utils-jvm:2.2.3` — cli, desktop, server
-- `io.arrow-kt:arrow-exception-utils-wasm-js:2.2.3` — web
+- `io.arrow-kt:arrow-annotations-jvm:2.3.0.1` — cli, desktop, server
+- `io.arrow-kt:arrow-annotations-wasm-js:2.3.0.1` — web
+- `io.arrow-kt:arrow-atomic-jvm:2.3.0.1` — cli, desktop, server
+- `io.arrow-kt:arrow-atomic-wasm-js:2.3.0.1` — web
+- `io.arrow-kt:arrow-core-jvm:2.3.0.1` — cli, desktop, server
+- `io.arrow-kt:arrow-core-wasm-js:2.3.0.1` — web
+- `io.arrow-kt:arrow-exception-utils-jvm:2.3.0.1` — cli, desktop, server
+- `io.arrow-kt:arrow-exception-utils-wasm-js:2.3.0.1` — web
 
 </details>
 
@@ -328,7 +328,7 @@ Ships in: server.
 
 <details><summary>1 artifact(s)</summary>
 
-- `com.google.errorprone:error_prone_annotations:2.47.0` — server
+- `com.google.errorprone:error_prone_annotations:2.50.0` — server
 
 </details>
 
@@ -340,8 +340,8 @@ Ships in: server.
 
 <details><summary>2 artifact(s)</summary>
 
-- `org.jetbrains.exposed:exposed-core:1.6.0` — server
-- `org.jetbrains.exposed:exposed-jdbc:1.6.0` — server
+- `org.jetbrains.exposed:exposed-core:1.6.1` — server
+- `org.jetbrains.exposed:exposed-jdbc:1.6.1` — server
 
 </details>
 
@@ -356,7 +356,7 @@ The failureaccess and listenablefuture marker artifacts declare no licence of th
 <details><summary>3 artifact(s)</summary>
 
 - `com.google.guava:failureaccess:1.0.3` — server
-- `com.google.guava:guava:33.6.0-jre` — server
+- `com.google.guava:guava:33.7.2-jre` — server
 - `com.google.guava:listenablefuture:9999.0-empty-to-avoid-conflict-with-guava` — server
 
 </details>
@@ -392,9 +392,10 @@ Reached transitively through Guava, which the Auth0 JWKS client depends on.
 Homepage: <https://jspecify.org/>.
 Ships in: server, desktop.
 
-<details><summary>1 artifact(s)</summary>
+<details><summary>2 artifact(s)</summary>
 
-- `org.jspecify:jspecify:1.0.0` — desktop, server
+- `org.jspecify:jspecify:1.0.0` — desktop
+- `org.jspecify:jspecify:1.0.1` — server
 
 </details>
 
@@ -404,14 +405,16 @@ Copyright © FasterXML, LLC.
 Homepage: <https://github.com/FasterXML/jackson>.
 Ships in: cli, server, desktop.
 
-<details><summary>6 artifact(s)</summary>
+<details><summary>8 artifact(s)</summary>
 
 - `com.fasterxml.jackson.core:jackson-annotations:2.22` — cli, desktop, server
-- `com.fasterxml.jackson.core:jackson-core:2.22.4` — cli, desktop, server
-- `com.fasterxml.jackson.core:jackson-databind:2.22.4` — cli, desktop, server
-- `com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.22.4` — cli, desktop, server
-- `com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.4` — cli, desktop, server
-- `com.fasterxml.jackson.module:jackson-module-kotlin:2.22.4` — cli, desktop, server
+- `com.fasterxml.jackson.core:jackson-core:2.22.4` — server
+- `com.fasterxml.jackson.core:jackson-databind:2.22.4` — server
+- `tools.jackson.core:jackson-core:3.2.4` — cli, desktop, server
+- `tools.jackson.core:jackson-databind:3.2.4` — cli, desktop, server
+- `tools.jackson.dataformat:jackson-dataformat-xml:3.2.4` — cli, desktop, server
+- `tools.jackson.dataformat:jackson-dataformat-yaml:3.2.4` — cli, desktop, server
+- `tools.jackson.module:jackson-module-kotlin:3.2.4` — cli, desktop, server
 
 </details>
 
@@ -535,59 +538,59 @@ Ships in: server, web.
 
 <details><summary>53 artifact(s)</summary>
 
-- `io.ktor:ktor-call-id-jvm:3.6.0` — server
-- `io.ktor:ktor-client-cio-jvm:3.6.0` — server
-- `io.ktor:ktor-client-cio-wasm-js:3.6.0` — web
-- `io.ktor:ktor-client-content-negotiation-jvm:3.6.0` — server
-- `io.ktor:ktor-client-content-negotiation-wasm-js:3.6.0` — web
-- `io.ktor:ktor-client-core-jvm:3.6.0` — server
-- `io.ktor:ktor-client-core-wasm-js:3.6.0` — web
-- `io.ktor:ktor-events-jvm:3.6.0` — server
-- `io.ktor:ktor-events-wasm-js:3.6.0` — web
-- `io.ktor:ktor-http-cio-jvm:3.6.0` — server
-- `io.ktor:ktor-http-cio-wasm-js:3.6.0` — web
-- `io.ktor:ktor-http-jvm:3.6.0` — server
-- `io.ktor:ktor-http-wasm-js:3.6.0` — web
-- `io.ktor:ktor-io-jvm:3.6.0` — server
-- `io.ktor:ktor-io-wasm-js:3.6.0` — web
-- `io.ktor:ktor-network-jvm:3.6.0` — server
-- `io.ktor:ktor-network-tls-jvm:3.6.0` — server
-- `io.ktor:ktor-network-tls-wasm-js:3.6.0` — web
-- `io.ktor:ktor-network-wasm-js:3.6.0` — web
-- `io.ktor:ktor-openapi-schema-jvm:3.6.0` — server
-- `io.ktor:ktor-openapi-schema-wasm-js:3.6.0` — web
-- `io.ktor:ktor-serialization-jvm:3.6.0` — server
-- `io.ktor:ktor-serialization-kotlinx-json-jvm:3.6.0` — server
-- `io.ktor:ktor-serialization-kotlinx-json-wasm-js:3.6.0` — web
-- `io.ktor:ktor-serialization-kotlinx-jvm:3.6.0` — server
-- `io.ktor:ktor-serialization-kotlinx-wasm-js:3.6.0` — web
-- `io.ktor:ktor-serialization-wasm-js:3.6.0` — web
-- `io.ktor:ktor-server-auth-api-key-jvm:3.6.0` — server
-- `io.ktor:ktor-server-auth-jvm:3.6.0` — server
-- `io.ktor:ktor-server-auto-head-response-jvm:3.6.0` — server
-- `io.ktor:ktor-server-call-id-jvm:3.6.0` — server
-- `io.ktor:ktor-server-call-logging-jvm:3.6.0` — server
-- `io.ktor:ktor-server-content-negotiation-jvm:3.6.0` — server
-- `io.ktor:ktor-server-core-jvm:3.6.0` — server
-- `io.ktor:ktor-server-cors-jvm:3.6.0` — server
-- `io.ktor:ktor-server-csrf-jvm:3.6.0` — server
-- `io.ktor:ktor-server-default-headers-jvm:3.6.0` — server
-- `io.ktor:ktor-server-di-jvm:3.6.0` — server
-- `io.ktor:ktor-server-forwarded-header-jvm:3.6.0` — server
-- `io.ktor:ktor-server-http-redirect-jvm:3.6.0` — server
-- `io.ktor:ktor-server-netty-jvm:3.6.0` — server
-- `io.ktor:ktor-server-rate-limit-jvm:3.6.0` — server
-- `io.ktor:ktor-server-routing-openapi-jvm:3.6.0` — server
-- `io.ktor:ktor-server-sessions-jvm:3.6.0` — server
-- `io.ktor:ktor-server-status-pages-jvm:3.6.0` — server
-- `io.ktor:ktor-sse-jvm:3.6.0` — server
-- `io.ktor:ktor-sse-wasm-js:3.6.0` — web
-- `io.ktor:ktor-utils-jvm:3.6.0` — server
-- `io.ktor:ktor-utils-wasm-js:3.6.0` — web
-- `io.ktor:ktor-websocket-serialization-jvm:3.6.0` — server
-- `io.ktor:ktor-websocket-serialization-wasm-js:3.6.0` — web
-- `io.ktor:ktor-websockets-jvm:3.6.0` — server
-- `io.ktor:ktor-websockets-wasm-js:3.6.0` — web
+- `io.ktor:ktor-call-id-jvm:3.6.1` — server
+- `io.ktor:ktor-client-cio-jvm:3.6.1` — server
+- `io.ktor:ktor-client-cio-wasm-js:3.6.1` — web
+- `io.ktor:ktor-client-content-negotiation-jvm:3.6.1` — server
+- `io.ktor:ktor-client-content-negotiation-wasm-js:3.6.1` — web
+- `io.ktor:ktor-client-core-jvm:3.6.1` — server
+- `io.ktor:ktor-client-core-wasm-js:3.6.1` — web
+- `io.ktor:ktor-events-jvm:3.6.1` — server
+- `io.ktor:ktor-events-wasm-js:3.6.1` — web
+- `io.ktor:ktor-http-cio-jvm:3.6.1` — server
+- `io.ktor:ktor-http-cio-wasm-js:3.6.1` — web
+- `io.ktor:ktor-http-jvm:3.6.1` — server
+- `io.ktor:ktor-http-wasm-js:3.6.1` — web
+- `io.ktor:ktor-io-jvm:3.6.1` — server
+- `io.ktor:ktor-io-wasm-js:3.6.1` — web
+- `io.ktor:ktor-network-jvm:3.6.1` — server
+- `io.ktor:ktor-network-tls-jvm:3.6.1` — server
+- `io.ktor:ktor-network-tls-wasm-js:3.6.1` — web
+- `io.ktor:ktor-network-wasm-js:3.6.1` — web
+- `io.ktor:ktor-openapi-schema-jvm:3.6.1` — server
+- `io.ktor:ktor-openapi-schema-wasm-js:3.6.1` — web
+- `io.ktor:ktor-serialization-jvm:3.6.1` — server
+- `io.ktor:ktor-serialization-kotlinx-json-jvm:3.6.1` — server
+- `io.ktor:ktor-serialization-kotlinx-json-wasm-js:3.6.1` — web
+- `io.ktor:ktor-serialization-kotlinx-jvm:3.6.1` — server
+- `io.ktor:ktor-serialization-kotlinx-wasm-js:3.6.1` — web
+- `io.ktor:ktor-serialization-wasm-js:3.6.1` — web
+- `io.ktor:ktor-server-auth-api-key-jvm:3.6.1` — server
+- `io.ktor:ktor-server-auth-jvm:3.6.1` — server
+- `io.ktor:ktor-server-auto-head-response-jvm:3.6.1` — server
+- `io.ktor:ktor-server-call-id-jvm:3.6.1` — server
+- `io.ktor:ktor-server-call-logging-jvm:3.6.1` — server
+- `io.ktor:ktor-server-content-negotiation-jvm:3.6.1` — server
+- `io.ktor:ktor-server-core-jvm:3.6.1` — server
+- `io.ktor:ktor-server-cors-jvm:3.6.1` — server
+- `io.ktor:ktor-server-csrf-jvm:3.6.1` — server
+- `io.ktor:ktor-server-default-headers-jvm:3.6.1` — server
+- `io.ktor:ktor-server-di-jvm:3.6.1` — server
+- `io.ktor:ktor-server-forwarded-header-jvm:3.6.1` — server
+- `io.ktor:ktor-server-http-redirect-jvm:3.6.1` — server
+- `io.ktor:ktor-server-netty-jvm:3.6.1` — server
+- `io.ktor:ktor-server-rate-limit-jvm:3.6.1` — server
+- `io.ktor:ktor-server-routing-openapi-jvm:3.6.1` — server
+- `io.ktor:ktor-server-sessions-jvm:3.6.1` — server
+- `io.ktor:ktor-server-status-pages-jvm:3.6.1` — server
+- `io.ktor:ktor-sse-jvm:3.6.1` — server
+- `io.ktor:ktor-sse-wasm-js:3.6.1` — web
+- `io.ktor:ktor-utils-jvm:3.6.1` — server
+- `io.ktor:ktor-utils-wasm-js:3.6.1` — web
+- `io.ktor:ktor-websocket-serialization-jvm:3.6.1` — server
+- `io.ktor:ktor-websocket-serialization-wasm-js:3.6.1` — web
+- `io.ktor:ktor-websockets-jvm:3.6.1` — server
+- `io.ktor:ktor-websockets-wasm-js:3.6.1` — web
 
 </details>
 
@@ -599,11 +602,11 @@ Ships in: cli.
 
 <details><summary>6 artifact(s)</summary>
 
-- `com.github.ajalt.mordant:mordant-core-jvm:3.1.0` — cli
-- `com.github.ajalt.mordant:mordant-jvm-ffm-jvm:3.1.0` — cli
-- `com.github.ajalt.mordant:mordant-jvm-graal-ffi-jvm:3.1.0` — cli
-- `com.github.ajalt.mordant:mordant-jvm-jna-jvm:3.1.0` — cli
-- `com.github.ajalt.mordant:mordant-jvm:3.1.0` — cli
+- `com.github.ajalt.mordant:mordant-core-jvm:3.1.1` — cli
+- `com.github.ajalt.mordant:mordant-jvm-ffm-jvm:3.1.1` — cli
+- `com.github.ajalt.mordant:mordant-jvm-graal-ffi-jvm:3.1.1` — cli
+- `com.github.ajalt.mordant:mordant-jvm-jna-jvm:3.1.1` — cli
+- `com.github.ajalt.mordant:mordant-jvm:3.1.1` — cli
 - `com.github.ajalt.mordant:mordant-markdown-jvm:3.0.2` — cli
 
 </details>
@@ -661,7 +664,7 @@ Ships in: server.
 
 <details><summary>1 artifact(s)</summary>
 
-- `org.xerial:sqlite-jdbc:3.53.4.0` — server
+- `org.xerial:sqlite-jdbc:3.54.1.0` — server
 
 </details>
 
@@ -688,6 +691,20 @@ Ships in: cli, server, desktop.
 <details><summary>1 artifact(s)</summary>
 
 - `org.yaml:snakeyaml:2.6` — cli, desktop, server
+
+</details>
+
+#### SnakeYAML Engine
+
+Copyright © 2018 SnakeYAML.
+Homepage: <https://bitbucket.org/snakeyaml/snakeyaml-engine>.
+Ships in: cli, server, desktop.
+
+Reached transitively through Jackson's YAML data format.
+
+<details><summary>1 artifact(s)</summary>
+
+- `org.snakeyaml:snakeyaml-engine:3.0.1` — cli, desktop, server
 
 </details>
 
@@ -776,7 +793,7 @@ Ships in: cli, server, desktop.
 
 <details><summary>1 artifact(s)</summary>
 
-- `com.fasterxml.woodstox:woodstox-core:7.2.0` — cli, desktop, server
+- `com.fasterxml.woodstox:woodstox-core:7.2.1` — cli, desktop, server
 
 </details>
 
@@ -1036,7 +1053,7 @@ Ships in: server.
 <details><summary>2 artifact(s)</summary>
 
 - `com.auth0:java-jwt:4.6.2` — server
-- `com.auth0:jwks-rsa:0.24.1` — server
+- `com.auth0:jwks-rsa:0.24.2` — server
 
 </details>
 
@@ -1060,12 +1077,12 @@ Ships in: desktop, web.
 
 <details><summary>6 artifact(s)</summary>
 
-- `io.github.vinceglb:filekit-core-jvm:0.16.0` — desktop
-- `io.github.vinceglb:filekit-core-wasm-js:0.16.0` — web
-- `io.github.vinceglb:filekit-dialogs-compose-jvm:0.16.0` — desktop
-- `io.github.vinceglb:filekit-dialogs-compose-wasm-js:0.16.0` — web
-- `io.github.vinceglb:filekit-dialogs-jvm:0.16.0` — desktop
-- `io.github.vinceglb:filekit-dialogs-wasm-js:0.16.0` — web
+- `io.github.vinceglb:filekit-core-jvm:0.17.0` — desktop
+- `io.github.vinceglb:filekit-core-wasm-js:0.17.0` — web
+- `io.github.vinceglb:filekit-dialogs-compose-jvm:0.17.0` — desktop
+- `io.github.vinceglb:filekit-dialogs-compose-wasm-js:0.17.0` — web
+- `io.github.vinceglb:filekit-dialogs-jvm:0.17.0` — desktop
+- `io.github.vinceglb:filekit-dialogs-wasm-js:0.17.0` — web
 
 </details>
 
@@ -1283,87 +1300,6 @@ To find the details that apply to this artifact see the accompanying LICENSE fil
 ## Credits
 
 A list of contributors may be found from CREDITS(-2.x) file, which is included
-in some artifacts (usually source distributions); but is always available
-from the source code management (SCM) system project uses.
-```
-
-### com.fasterxml.jackson.dataformat:jackson-dataformat-xml:2.22.4
-
-```text
-# Jackson JSON processor
-
-Jackson is a high-performance, Free/Open Source JSON processing library.
-It was originally written by Tatu Saloranta (tatu.saloranta@iki.fi), and has
-been in development since 2007.
-It is currently developed by a community of developers.
-
-## Copyright
-
-Copyright 2007-, Tatu Saloranta (tatu.saloranta@iki.fi)
-
-## Licensing
-
-Jackson components are licensed under Apache (Software) License, version 2.0,
-as per accompanying LICENSE file.
-
-## Credits
-
-A list of contributors may be found from CREDITS file, which is included
-in some artifacts (usually source distributions); but is always available
-from the source code management (SCM) system project uses.
-```
-
-### com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.22.4
-
-```text
-# Jackson JSON processor
-
-Jackson is a high-performance, Free/Open Source JSON processing library.
-It was originally written by Tatu Saloranta (tatu.saloranta@iki.fi), and has
-been in development since 2007.
-It is currently developed by a community of developers.
-
-## Copyright
-
-Copyright 2007-, Tatu Saloranta (tatu.saloranta@iki.fi)
-
-## Licensing
-
-Jackson components are licensed under Apache (Software) License, version 2.0,
-as per accompanying LICENSE file.
-
-## Credits
-
-A list of contributors may be found from CREDITS file, which is included
-in some artifacts (usually source distributions); but is always available
-from the source code management (SCM) system project uses.
-```
-
-### com.fasterxml.jackson.module:jackson-module-kotlin:2.22.4
-
-```text
-# Jackson JSON processor
-
-Jackson is a high-performance, Free/Open Source JSON processing library.
-It was originally written by Tatu Saloranta (tatu.saloranta@iki.fi), and has
-been in development since 2007.
-It is currently developed by a community of developers, as well as supported
-commercially by FasterXML.com.
-
-## Copyright
-
-Copyright 2007-, Tatu Saloranta (tatu.saloranta@iki.fi)
-
-## Licensing
-
-Jackson core and extension components may be licensed under different licenses.
-To find the details that apply to this artifact see the accompanying LICENSE file.
-For more information, including possible other licensing options, contact
-FasterXML.com (http://fasterxml.com).
-
-## Credits
-
-A list of contributors may be found from CREDITS file, which is included
 in some artifacts (usually source distributions); but is always available
 from the source code management (SCM) system project uses.
 ```
@@ -2661,4 +2597,158 @@ Portions of the number-to-string code are subject to the following:
  LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
  OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
  THE SOFTWARE.
+```
+
+### tools.jackson.core:jackson-core:3.2.4
+
+```text
+# Jackson JSON processor
+
+Jackson is a high-performance, Free/Open Source JSON processing library.
+It was originally written by Tatu Saloranta (tatu.saloranta@iki.fi), and has
+been in development since 2007.
+It is currently developed by a community of developers.
+
+## Copyright
+
+Copyright 2007-, Tatu Saloranta (tatu.saloranta@iki.fi)
+
+## Licensing
+
+Jackson 3.x core and extension components are licensed under Apache License 2.0
+To find the details that apply to this artifact see the accompanying LICENSE file.
+
+## Credits
+
+A list of contributors may be found from CREDITS file, which is included
+in some artifacts (usually source distributions); but is always available
+from the source code management (SCM) system project uses.
+
+## FastDoubleParser
+
+jackson-core bundles a shaded copy of FastDoubleParser <https://github.com/wrandelshofer/FastDoubleParser>.
+That code is available under an MIT license <https://github.com/wrandelshofer/FastDoubleParser/blob/main/LICENSE>
+under the following copyright.
+
+Copyright © 2023 Werner Randelshofer, Switzerland. MIT License.
+
+See FastDoubleParser-LICENSE and also FastDoubleParser-ThirdParty-LICENSE for details of other source code
+included in FastDoubleParser and the licenses and copyrights that apply to that code.
+
+## Schubfach
+
+jackson-core bundles a copy of the Schubfach number writing code <https://github.com/c4f7fcce9cb06515/Schubfach>.
+That code is available under an MIT license <https://github.com/c4f7fcce9cb06515/Schubfach/blob/master/todec/LICENSE>
+under the following copyright.
+
+Copyright 2018-2020 Raffaello Giulietti
+
+See Schubfach-LICENSE.
+```
+
+### tools.jackson.core:jackson-databind:3.2.4
+
+```text
+# Jackson JSON processor
+
+Jackson is a high-performance, Free/Open Source JSON processing library.
+It was originally written by Tatu Saloranta (tatu.saloranta@iki.fi), and has
+been in development since 2007.
+It is currently developed by a community of developers.
+
+## Copyright
+
+Copyright 2007-, Tatu Saloranta (tatu.saloranta@iki.fi)
+
+## Licensing
+
+Jackson 3.x core and extension components are licensed under Apache License 2.0
+To find the details that apply to this artifact see the accompanying LICENSE file.
+
+## Credits
+
+A list of contributors may be found from CREDITS file, which is included
+in some artifacts (usually source distributions); but is always available
+from the source code management (SCM) system project uses.
+```
+
+### tools.jackson.dataformat:jackson-dataformat-xml:3.2.4
+
+```text
+# Jackson JSON processor
+
+Jackson is a high-performance, Free/Open Source JSON processing library.
+It was originally written by Tatu Saloranta (tatu.saloranta@iki.fi), and has
+been in development since 2007.
+It is currently developed by a community of developers.
+
+## Copyright
+
+Copyright 2007-, Tatu Saloranta (tatu.saloranta@iki.fi)
+
+## Licensing
+
+Jackson components are licensed under Apache (Software) License, version 2.0,
+as per accompanying LICENSE file.
+
+## Credits
+
+A list of contributors may be found from CREDITS file, which is included
+in some artifacts (usually source distributions); but is always available
+from the source code management (SCM) system project uses.
+```
+
+### tools.jackson.dataformat:jackson-dataformat-yaml:3.2.4
+
+```text
+# Jackson JSON processor
+
+Jackson is a high-performance, Free/Open Source JSON processing library.
+It was originally written by Tatu Saloranta (tatu.saloranta@iki.fi), and has
+been in development since 2007.
+It is currently developed by a community of developers.
+
+## Copyright
+
+Copyright 2007-, Tatu Saloranta (tatu.saloranta@iki.fi)
+
+## Licensing
+
+Jackson components are licensed under Apache (Software) License, version 2.0,
+as per accompanying LICENSE file.
+
+## Credits
+
+A list of contributors may be found from CREDITS file, which is included
+in some artifacts (usually source distributions); but is always available
+from the source code management (SCM) system project uses.
+```
+
+### tools.jackson.module:jackson-module-kotlin:3.2.4
+
+```text
+# Jackson JSON processor
+
+Jackson is a high-performance, Free/Open Source JSON processing library.
+It was originally written by Tatu Saloranta (tatu.saloranta@iki.fi), and has
+been in development since 2007.
+It is currently developed by a community of developers, as well as supported
+commercially by FasterXML.com.
+
+## Copyright
+
+Copyright 2007-, Tatu Saloranta (tatu.saloranta@iki.fi)
+
+## Licensing
+
+Jackson core and extension components may be licensed under different licenses.
+To find the details that apply to this artifact see the accompanying LICENSE file.
+For more information, including possible other licensing options, contact
+FasterXML.com (http://fasterxml.com).
+
+## Credits
+
+A list of contributors may be found from CREDITS file, which is included
+in some artifacts (usually source distributions); but is always available
+from the source code management (SCM) system project uses.
 ```

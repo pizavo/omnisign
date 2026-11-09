@@ -1,6 +1,5 @@
 package cz.pizavo.omnisign.config
 
-import com.fasterxml.jackson.databind.ObjectMapper
 import cz.pizavo.omnisign.data.secret.EnvironmentSecretReader
 import cz.pizavo.omnisign.data.secret.SecretFileFacts
 import cz.pizavo.omnisign.data.secret.SecretFileReader
@@ -11,6 +10,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
+import tools.jackson.databind.ObjectMapper
 import kotlin.io.path.createTempFile
 import kotlin.io.path.fileSize
 import kotlin.io.path.writeText
@@ -64,7 +64,7 @@ class EnvVarSubstitutionTest : FunSpec({
 		root.put("\${KEY}", "\${VAL}")
 		substituteTreeValues(root) { if (it == "VAL") "resolved" else null }
 		root.has("\${KEY}") shouldBe true
-		root.get("\${KEY}").asText() shouldBe "resolved"
+		root.get("\${KEY}").asString() shouldBe "resolved"
 	}
 
 	test("substituteTreeValues recurses into nested objects and arrays, leaving non-strings") {
@@ -73,9 +73,9 @@ class EnvVarSubstitutionTest : FunSpec({
 		root.putArray("arr").add("\${B}").add("plain")
 		root.put("n", 5)
 		substituteTreeValues(root) { mapOf("A" to "av", "B" to "bv")[it] }
-		root.get("obj").get("c").asText() shouldBe "av"
-		root.get("arr").get(0).asText() shouldBe "bv"
-		root.get("arr").get(1).asText() shouldBe "plain"
+		root.get("obj").get("c").asString() shouldBe "av"
+		root.get("arr").get(0).asString() shouldBe "bv"
+		root.get("arr").get(1).asString() shouldBe "plain"
 		root.get("n").asInt() shouldBe 5
 	}
 

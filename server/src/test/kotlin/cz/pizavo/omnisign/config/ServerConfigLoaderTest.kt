@@ -1,6 +1,5 @@
 package cz.pizavo.omnisign.config
 
-import com.fasterxml.jackson.databind.exc.UnrecognizedPropertyException
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.booleans.shouldBeFalse
@@ -11,6 +10,8 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import tools.jackson.databind.DatabindException
+import tools.jackson.databind.exc.UnrecognizedPropertyException
 import java.io.File
 
 /**
@@ -351,6 +352,29 @@ class ServerConfigLoaderTest : FunSpec({
 		val config = loader.load(tmpFile.absolutePath)
 		config.tls.shouldNotBeNull()
 		config.tls.hsts.shouldBeNull()
+	}
+
+	test("load names the supported SSO provider types for an unknown type") {
+		val ex = shouldThrow<DatabindException> {
+			loader.loadFromString("auth:\n  providers:\n    - type: saml\n      name: g")
+		}
+		ex.message.shouldNotBeNull() shouldContain "Unknown SSO provider type 'saml'. Supported values: oidc"
+	}
+
+	test("load names the supported SSO provider types when the type is not a scalar") {
+		for (type in listOf("{a: 1}", "[a]", "~")) {
+			val ex = shouldThrow<DatabindException> {
+				loader.loadFromString("auth:\n  providers:\n    - type: $type\n      name: g")
+			}
+			ex.message.shouldNotBeNull() shouldContain "Supported values: oidc"
+		}
+	}
+
+	test("load reports a provider without a type") {
+		val ex = shouldThrow<DatabindException> {
+			loader.loadFromString("auth:\n  providers:\n    - name: g")
+		}
+		ex.message.shouldNotBeNull() shouldContain "missing the required 'type' field"
 	}
 })
 

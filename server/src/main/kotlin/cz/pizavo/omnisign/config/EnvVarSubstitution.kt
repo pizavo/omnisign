@@ -1,13 +1,13 @@
 package cz.pizavo.omnisign.config
 
 import arrow.core.getOrElse
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.ArrayNode
-import com.fasterxml.jackson.databind.node.ObjectNode
-import com.fasterxml.jackson.databind.node.TextNode
 import cz.pizavo.omnisign.data.secret.EnvironmentSecretReader
 import cz.pizavo.omnisign.data.secret.SecretFileReader
 import cz.pizavo.omnisign.data.secret.SecretSource
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.node.ArrayNode
+import tools.jackson.databind.node.ObjectNode
+import tools.jackson.databind.node.StringNode
 
 /**
  * Matches `${NAME}` placeholders where `NAME` is an uppercase/digit/underscore identifier.
@@ -90,9 +90,9 @@ fun substituteEnvVars(text: String, resolve: (String) -> String? = System::geten
  */
 fun substituteTreeValues(node: JsonNode, resolve: (String) -> String? = System::getenv) {
 	when (node) {
-		is ObjectNode -> node.fieldNames().asSequence().toList().forEach { name ->
+		is ObjectNode -> node.propertyNames().toList().forEach { name ->
 			when (val child = node.get(name)) {
-				is TextNode -> node.put(name, substituteEnvVars(child.asText(), resolve))
+				is StringNode -> node.put(name, substituteEnvVars(child.asString(), resolve))
 				is ObjectNode -> substituteTreeValues(child, resolve)
 				is ArrayNode -> substituteTreeValues(child, resolve)
 				else -> {}
@@ -101,7 +101,7 @@ fun substituteTreeValues(node: JsonNode, resolve: (String) -> String? = System::
 
 		is ArrayNode -> for (i in 0 until node.size()) {
 			when (val child = node.get(i)) {
-				is TextNode -> node.set(i, TextNode.valueOf(substituteEnvVars(child.asText(), resolve)))
+				is StringNode -> node.set(i, StringNode.valueOf(substituteEnvVars(child.asString(), resolve)))
 				is ObjectNode -> substituteTreeValues(child, resolve)
 				is ArrayNode -> substituteTreeValues(child, resolve)
 				else -> {}
