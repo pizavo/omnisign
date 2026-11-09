@@ -10,6 +10,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import tools.jackson.databind.DatabindException
 import tools.jackson.databind.exc.MismatchedInputException
 import tools.jackson.databind.exc.UnrecognizedPropertyException
@@ -358,6 +359,14 @@ class ServerConfigLoaderTest : FunSpec({
 	test("load reads a tilde as no secret rather than as the one-character secret ~") {
 		val config = loader.loadFromString("auth:\n  oauthStateSecret: ~")
 		config.auth.shouldNotBeNull().oauthStateSecret.shouldBeNull()
+	}
+
+	test("the loader's mapper refuses to write a loaded secret back out") {
+		val config = loader.loadFromString("auth:\n  oauthStateSecret: hunter2")
+		val ex = shouldThrow<DatabindException> { loader.mapper.writeValueAsString(config) }
+		ex.message.shouldNotBeNull() shouldContain "Sensitive<T> must not be serialized"
+		ex.message.shouldNotBeNull() shouldContain "[\"oauthStateSecret\"]"
+		ex.message.shouldNotBeNull() shouldNotContain "hunter2"
 	}
 
 	test("load reads a tilde as no value in a string field") {

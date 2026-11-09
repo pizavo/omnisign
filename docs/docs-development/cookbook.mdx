@@ -188,7 +188,9 @@ exported file needs an explicit mixin in `JacksonConfigSerializer.kt`;
 `configYamlMapperBuilder()`, which selects the YAML 1.2 core schema; Jackson's default schema reads `~`
 as text.
 
-If the value is a password, PIN, or secret, its type is `Sensitive<T>` and it can never be serialized.
+If the value is a password, PIN, or secret, its type is `Sensitive<T>` and it needs that mixin:
+`JacksonConfigSerializer` registers `SensitiveJacksonSerializer`, so an export that reaches a
+`Sensitive` fails rather than writing the secret.
 
 ## A new npm dependency for the web target
 

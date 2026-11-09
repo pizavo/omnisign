@@ -14,8 +14,10 @@ import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
+import cz.pizavo.omnisign.domain.model.value.sensitive
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -28,6 +30,7 @@ import io.kotest.matchers.string.shouldNotBeBlank
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.string.shouldNotStartWith
 import io.kotest.matchers.types.shouldBeInstanceOf
+import tools.jackson.databind.DatabindException
 import kotlin.io.path.createTempFile
 import kotlin.io.path.writeText
 
@@ -139,7 +142,28 @@ class ConfigSerializerTest : FunSpec({
 			result.description shouldBe sampleProfile.description
 		}
 	}
-	
+
+	test("all serializers export a config holding a TSA password without the password") {
+		val withPassword = sampleApp.copy(
+			global = sampleGlobal.copy(
+				timestampServer = TimestampServerConfig(url = "https://tsa.example", runtimePassword = "hunter2".sensitive()),
+			),
+		)
+		for (serializer in serializers) {
+			serializer.serializeApp(withPassword).shouldBeRight() shouldNotContain "hunter2"
+		}
+	}
+
+	test("all serializers refuse to write a Sensitive their mixin does not hide") {
+		for (serializer in serializers) {
+			val ex = shouldThrow<DatabindException> {
+				serializer.mapper.writeValueAsString(mapOf("secret" to "hunter2".sensitive()))
+			}
+			ex.message.shouldNotBeNull() shouldContain "Sensitive<T> must not be serialized"
+			ex.message.shouldNotBeNull() shouldNotContain "hunter2"
+		}
+	}
+
 	test("JSON serializer returns error for invalid input") {
 		val error = JsonConfigSerializer().deserializeApp("not valid json {{{")
 			.shouldBeLeft()

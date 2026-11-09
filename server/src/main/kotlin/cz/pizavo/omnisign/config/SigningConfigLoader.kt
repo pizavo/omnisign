@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.config
 
 import com.fasterxml.jackson.annotation.JsonProperty
+import cz.pizavo.omnisign.data.serializer.SensitiveJacksonSerializer
 import cz.pizavo.omnisign.data.serializer.configYamlMapperBuilder
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
@@ -251,19 +252,22 @@ class SigningConfigLoader(private val env: (String) -> String? = placeholderReso
 		/**
 		 * Shared strict YAML mapper. Jackson `ObjectMapper`s are thread-safe once configured, so a
 		 * single instance is reused across every [SigningConfigLoader] (one is built per app boot)
-		 * rather than rebuilding the module stack each time.
+		 * rather than rebuilding the module stack each time. Internal so the specs can check that it
+		 * refuses to write the TSA password back out.
 		 */
-		private val yamlMapper: ObjectMapper = strictMapper(configYamlMapperBuilder())
+		internal val yamlMapper: ObjectMapper = strictMapper(configYamlMapperBuilder())
 
 		/**
 		 * Shared strict JSON mapper, used for `.json` profile/policy files. See [yamlMapper].
 		 */
-		private val jsonMapper: ObjectMapper = strictMapper(JsonMapper.builder())
+		internal val jsonMapper: ObjectMapper = strictMapper(JsonMapper.builder())
 
 		/**
 		 * Build a mapper from [builder] with the shared strict configuration: the Kotlin module,
-		 * fail-on-unknown keys, the [TimestampServerConfigMixin], and the [Sensitive] string
-		 * deserializer.
+		 * fail-on-unknown keys, the [TimestampServerConfigMixin], the [Sensitive] string
+		 * deserializer, and [SensitiveJacksonSerializer], which refuses to write one back out. The
+		 * mixin exposes the TSA password as `password` for reading, so without that serializer a
+		 * write through either mapper would carry it.
 		 */
 		private fun strictMapper(builder: MapperBuilder<*, *>): ObjectMapper =
 			builder
@@ -271,11 +275,13 @@ class SigningConfigLoader(private val env: (String) -> String? = placeholderReso
 				.enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
 				.addMixIn(TimestampServerConfig::class.java, TimestampServerConfigMixin::class.java)
 				.addModule(
-					SimpleModule().addDeserializer(
-						Sensitive::class.java,
-						@Suppress("UNCHECKED_CAST")
-						(SensitiveStringJacksonDeserializer() as ValueDeserializer<Sensitive<*>>),
-					),
+					SimpleModule()
+						.addDeserializer(
+							Sensitive::class.java,
+							@Suppress("UNCHECKED_CAST")
+							(SensitiveStringJacksonDeserializer() as ValueDeserializer<Sensitive<*>>),
+						)
+						.addSerializer(Sensitive::class.java, SensitiveJacksonSerializer()),
 				)
 				.build()
 	}
