@@ -93,17 +93,26 @@ private fun authTestConfig(auth: AuthConfig?): ServerConfig =
  * `httpClientEngine` seam, so the callback's token-exchange -> UserInfo hop runs end-to-end with no
  * live IdP. GitHub is deliberate: its hard-coded endpoints skip OIDC discovery and its non-OIDC
  * nature skips id_token verification, so the mock only serves these two endpoints.
+ *
+ * @param userInfoJson The user API's answer.
+ * @param tokenRequests Receives the form parameters of each token-exchange POST, so a spec can see
+ *   what a real IdP would have been sent.
  */
-private fun githubIdpMockEngine(userInfoJson: String): MockEngine =
+private fun githubIdpMockEngine(
+    userInfoJson: String,
+    tokenRequests: MutableList<Parameters> = mutableListOf(),
+): MockEngine =
     MockEngine { request ->
         val url = request.url.toString()
         when {
-            url.startsWith(OidcDiscoveryService.GITHUB_TOKEN_URL) ->
+            url.startsWith(OidcDiscoveryService.GITHUB_TOKEN_URL) -> {
+                tokenRequests += parseQueryString(request.body.toByteArray().decodeToString())
                 respond(
                     "access_token=gh-access-token&token_type=bearer",
                     HttpStatusCode.OK,
                     headersOf(HttpHeaders.ContentType, ContentType.Application.FormUrlEncoded.toString()),
                 )
+            }
             url.startsWith(OidcDiscoveryService.GITHUB_USER_API_URL) ->
                 respond(
                     userInfoJson,
@@ -492,6 +501,108 @@ class AuthRoutesTest : FunSpec({
 				val locUrl = Url(location)
 				locUrl.parameters["code_challenge"].shouldBeNull()
 				locUrl.parameters["code_challenge_method"].shouldBeNull()
+			}
+		}
+	}
+
+	/**
+	 * Regression test: within one call, Ktor looks the OAuth settings up for its OAuth1a branch and
+	 * again for its OAuth2 branch, and the verifier is single-use. When every lookup took it, the
+	 * OAuth1a branch spent it and the token exchange went out with no `code_verifier`, which an IdP
+	 * enforcing PKCE refuses. Only the outgoing POST shows this: the authorize URL and the verifier
+	 * store, which the specs above check, were right all along.
+	 */
+	test("OIDC callback sends the token endpoint the verifier behind the authorize URL's code_challenge") {
+		withTempSessionsDb {
+			testApplication {
+				val tokenRequests = mutableListOf<Parameters>()
+				application {
+					module(
+						authTestConfig(oidcAuthConfig(pkceEnabled = true)),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(OCTOCAT_USER_INFO, tokenRequests),
+					)
+				}
+				val noRedirect = createClient { followRedirects = false }
+
+				val authorizeUrl = Url(noRedirect.get("/auth/redirect/github").headers["Location"]!!)
+				val state = authorizeUrl.parameters["state"]
+				state.shouldNotBeNull()
+
+				val callback = noRedirect.get("/auth/callback/github") {
+					url {
+						parameters.append("code", "authorization-code-from-idp")
+						parameters.append("state", state)
+					}
+				}
+				callback.status shouldBe HttpStatusCode.OK
+
+				val verifier = tokenRequests.single()["code_verifier"]
+				verifier.shouldNotBeNull()
+				val expectedChallenge = Base64.getUrlEncoder().withoutPadding().encodeToString(
+					MessageDigest.getInstance("SHA-256")
+						.digest(verifier.toByteArray(Charsets.US_ASCII)),
+				)
+				authorizeUrl.parameters["code_challenge"] shouldBe expectedChallenge
+			}
+		}
+	}
+
+	test("OIDC callback replayed with the same state sends the token endpoint no verifier") {
+		withTempSessionsDb {
+			testApplication {
+				val tokenRequests = mutableListOf<Parameters>()
+				application {
+					module(
+						authTestConfig(oidcAuthConfig(pkceEnabled = true)),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(OCTOCAT_USER_INFO, tokenRequests),
+					)
+				}
+				val noRedirect = createClient { followRedirects = false }
+
+				val state = Url(noRedirect.get("/auth/redirect/github").headers["Location"]!!).parameters["state"]
+				state.shouldNotBeNull()
+
+				repeat(2) {
+					noRedirect.get("/auth/callback/github") {
+						url {
+							parameters.append("code", "authorization-code-from-idp")
+							parameters.append("state", state)
+						}
+					}
+				}
+
+				tokenRequests.map { it["code_verifier"] != null } shouldBe listOf(true, false)
+			}
+		}
+	}
+
+	test("OIDC callback sends the token endpoint no verifier when provider.pkce is false") {
+		withTempSessionsDb {
+			testApplication {
+				val tokenRequests = mutableListOf<Parameters>()
+				application {
+					module(
+						authTestConfig(oidcAuthConfig(pkceEnabled = false)),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(OCTOCAT_USER_INFO, tokenRequests),
+					)
+				}
+				val noRedirect = createClient { followRedirects = false }
+
+				val state = Url(noRedirect.get("/auth/redirect/github").headers["Location"]!!).parameters["state"]
+				state.shouldNotBeNull()
+
+				val callback = noRedirect.get("/auth/callback/github") {
+					url {
+						parameters.append("code", "authorization-code-from-idp")
+						parameters.append("state", state)
+					}
+				}
+				callback.status shouldBe HttpStatusCode.OK
+
+				tokenRequests.single()["code_verifier"].shouldBeNull()
 			}
 		}
 	}

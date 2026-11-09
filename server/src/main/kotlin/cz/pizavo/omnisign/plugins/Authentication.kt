@@ -14,6 +14,7 @@ import io.ktor.client.HttpClient
 import io.ktor.server.application.*
 import io.ktor.server.auth.*
 import io.ktor.server.request.*
+import io.ktor.util.AttributeKey
 import io.ktor.util.NonceManager
 import kotlinx.coroutines.runBlocking
 import org.koin.ktor.ext.inject
@@ -67,7 +68,9 @@ private val logger = KotlinLogging.logger {}
  *    appends `code_challenge` + `code_challenge_method=S256` to the authorize URL,
  *    keyed on the OAuth `state` parameter Ktor has just generated. `providerLookup`
  *    consumes the matching verifier from [PkceService] on the callback hop and
- *    injects it into the token-exchange POST via `extraTokenParameters`. PKCE binds
+ *    injects it into the token-exchange POST via `extraTokenParameters`. Ktor looks
+ *    the settings up more than once per call, so the verifier is taken on the first
+ *    lookup and kept for the rest of the call (see `pkceTokenParameters`). PKCE binds
  *    the authorization code to the entity that originated the flow, defending against
  *    code-injection attacks even if the client secret is leaked (RFC 9700 / OAuth 2.1
  *    requires this for all clients).
@@ -114,17 +117,8 @@ fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String
             oauth(authName) {
                 urlProvider = { redirectUrl }
                 providerLookup = {
-                    val verifier: String? = if (provider.pkce) {
-                        parameters["state"]?.let { state ->
-                            runBlocking { pkceService.consume(state) }
-                        }
-                    } else {
-                        null
-                    }
-
-                    val extraTokenParams: List<Pair<String, String>> = listOfNotNull(
-                        verifier?.let { "code_verifier" to it },
-                    )
+                    val extraTokenParams: List<Pair<String, String>> =
+                        if (provider.pkce) pkceTokenParameters(pkceService) else emptyList()
 
                     val requestedHandoff = requestedLoginHandoff()
 
@@ -195,6 +189,31 @@ private fun ApplicationCall.requestedLoginHandoff(): LoginRequest? {
     }
     return LoginRequest(returnTo = returnTo, handoffChallenge = challenge)
 }
+
+/**
+ * Take the `code_verifier` for this call's OAuth `state` from [pkceService], once per call.
+ *
+ * Ktor looks the OAuth settings up more than once for a single call: on the JVM its OAuth procedure
+ * gives the OAuth1a branch a turn before the OAuth2 branch, and each branch calls `providerLookup`
+ * itself. [PkceService.consume] is single-use, so consuming on every lookup would spend the verifier
+ * on the OAuth1a branch, which has no use for it, and send the token exchange without one, which an
+ * identity provider enforcing PKCE refuses. The first lookup of a call therefore consumes, and the
+ * lookups after it read the result back from the call's attributes. Another call with the same
+ * `state` finds nothing stored, so the verifier stays single-use.
+ *
+ * @return The `code_verifier` token parameter, or an empty list when the call carries no `state`
+ *   with a stored verifier, as on the redirect leg.
+ */
+private suspend fun ApplicationCall.pkceTokenParameters(pkceService: PkceService): List<Pair<String, String>> =
+    attributes.getOrNull(PKCE_TOKEN_PARAMETERS)
+        ?: listOfNotNull(
+            parameters["state"]?.let { state -> pkceService.consume(state) }?.let { "code_verifier" to it },
+        ).also { attributes.put(PKCE_TOKEN_PARAMETERS, it) }
+
+/**
+ * Call attribute in which [pkceTokenParameters] keeps what the call's first lookup consumed.
+ */
+private val PKCE_TOKEN_PARAMETERS = AttributeKey<List<Pair<String, String>>>("OmniSignPkceTokenParameters")
 
 /**
  * Query parameter naming the page a single-page app wants the finished login returned to.
