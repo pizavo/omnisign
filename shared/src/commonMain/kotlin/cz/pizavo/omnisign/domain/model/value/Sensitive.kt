@@ -19,9 +19,11 @@ import kotlinx.serialization.encoding.Encoder
  *
  * Serialization is intentionally blocked via [SensitiveSerializer]: both
  * [SensitiveSerializer.serialize] and [SensitiveSerializer.deserialize] throw
- * [SerializationException], so a field of this type can never reach a
- * serialized form even if the containing class omits
- * [@Transient][kotlinx.serialization.Transient].
+ * [SerializationException], so kotlinx.serialization never puts a field of this
+ * type into a serialized form, even if the containing class omits
+ * [@Transient][kotlinx.serialization.Transient]. Jackson never consults that
+ * serializer, so on the JVM every Jackson mapper over the configuration
+ * registers `SensitiveJacksonSerializer`, which refuses the write as well.
  *
  * Use the [sensitive] extension on [String] to construct instances concisely.
  *

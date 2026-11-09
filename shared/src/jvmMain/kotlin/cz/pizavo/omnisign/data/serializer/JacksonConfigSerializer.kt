@@ -14,6 +14,7 @@ import cz.pizavo.omnisign.domain.port.ConfigSerializer
 import tools.jackson.databind.DeserializationFeature
 import tools.jackson.databind.ObjectMapper
 import tools.jackson.databind.cfg.MapperBuilder
+import tools.jackson.databind.module.SimpleModule
 import tools.jackson.module.kotlin.KotlinModule
 
 /**
@@ -30,16 +31,22 @@ private abstract class TimestampServerConfigMixin {
  *
  * Subclasses provide a mapper builder configured for their format and the format label used in
  * error messages. A Jackson mapper cannot change once built, so this class takes the builder and adds
- * what every format shares: the Kotlin module, tolerance of unknown properties, and the mixin that
- * keeps the runtime-only password out of an exported file.
+ * what every format shares: the Kotlin module, tolerance of unknown properties, the mixin that
+ * keeps the runtime-only password out of an exported file, and [SensitiveJacksonSerializer], so that
+ * a secret no mixin hides fails the export instead of landing in the file.
  *
  * @param mapperBuilder Builder of the Jackson [ObjectMapper], configured for the target format.
  */
 abstract class JacksonConfigSerializer(
 	mapperBuilder: MapperBuilder<*, *>
 ) : ConfigSerializer {
-	private val mapper: ObjectMapper = mapperBuilder
+	/**
+	 * The mapper every method here reads and writes with. Internal so the specs can check that it
+	 * refuses to write a [Sensitive], which no configuration they can hand these methods carries visibly.
+	 */
+	internal val mapper: ObjectMapper = mapperBuilder
 		.addModule(KotlinModule.Builder().build())
+		.addModule(SimpleModule().addSerializer(Sensitive::class.java, SensitiveJacksonSerializer()))
 		.disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
 		.addMixIn(TimestampServerConfig::class.java, TimestampServerConfigMixin::class.java)
 		.build()

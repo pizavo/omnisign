@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.config
 
+import cz.pizavo.omnisign.data.serializer.SensitiveJacksonSerializer
 import cz.pizavo.omnisign.data.serializer.configYamlMapperBuilder
 import cz.pizavo.omnisign.domain.model.value.Sensitive
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -53,7 +54,12 @@ private val logger = KotlinLogging.logger {}
  */
 class ServerConfigLoader(private val env: (String) -> String? = placeholderResolver()) {
 
-	private val mapper: ObjectMapper = configYamlMapperBuilder()
+	/**
+	 * The strict mapper behind [load] and [loadFromString]. It refuses to write a [Sensitive], so the
+	 * secrets in a loaded [ServerConfig] cannot be written back out through it. Internal so the specs
+	 * can check that.
+	 */
+	internal val mapper: ObjectMapper = configYamlMapperBuilder()
 		.addModule(KotlinModule.Builder().build())
 		.enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
 		.addModule(
@@ -63,7 +69,8 @@ class ServerConfigLoader(private val env: (String) -> String? = placeholderResol
 					Sensitive::class.java,
 					@Suppress("UNCHECKED_CAST")
 					(SensitiveStringJacksonDeserializer() as ValueDeserializer<Sensitive<*>>),
-				),
+				)
+				.addSerializer(Sensitive::class.java, SensitiveJacksonSerializer()),
 		)
 		.addHandler(RemovedSecretFieldHandler())
 		.build()

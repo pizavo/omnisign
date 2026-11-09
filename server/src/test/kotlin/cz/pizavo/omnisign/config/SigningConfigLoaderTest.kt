@@ -2,6 +2,8 @@ package cz.pizavo.omnisign.config
 
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
+import cz.pizavo.omnisign.domain.model.value.sensitive
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -10,6 +12,8 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
+import tools.jackson.databind.DatabindException
 import tools.jackson.databind.exc.MismatchedInputException
 import tools.jackson.databind.exc.UnrecognizedPropertyException
 import java.io.File
@@ -311,5 +315,15 @@ profiles: {}
 	test("load refuses content after a JSON document instead of ignoring it") {
 		val file = newDir().put("signing.json", "{}{}")
 		shouldThrow<MismatchedInputException> { loader.load(file.absolutePath) }
+	}
+
+	test("neither mapper writes a TSA password back out") {
+		val timestampServer = TimestampServerConfig(url = "https://tsa.example", runtimePassword = "hunter2".sensitive())
+		for (mapper in listOf(SigningConfigLoader.yamlMapper, SigningConfigLoader.jsonMapper)) {
+			val ex = shouldThrow<DatabindException> { mapper.writeValueAsString(timestampServer) }
+			ex.message.shouldNotBeNull() shouldContain "Sensitive<T> must not be serialized"
+			ex.message.shouldNotBeNull() shouldContain "[\"password\"]"
+			ex.message.shouldNotBeNull() shouldNotContain "hunter2"
+		}
 	}
 })

@@ -139,10 +139,13 @@ platform, so it cannot leak through a log line, string interpolation, or a data 
 `deserialize`, so such a field can never reach a serialized form even if the containing class forgets
 `@Transient`.
 
-That is the kotlinx-serialization path. Jackson does not route through `SensitiveSerializer`, so the
-server registers `SensitiveStringJacksonDeserializer` to lift a YAML literal into `Sensitive<String>`
-at config load. No matching Jackson *serializer* is registered, so the write direction still fails
-loudly.
+That is the kotlinx-serialization path. Jackson never consults `SensitiveSerializer`, and left to
+itself it writes a `Sensitive` as `{"value": …}`, the secret in plain text. So every mapper that
+handles OmniSign's configuration registers `SensitiveJacksonSerializer`, which throws instead: the
+export serializers built on `JacksonConfigSerializer`, and the server's `ServerConfigLoader` and
+`SigningConfigLoader`. The two loaders also register `SensitiveStringJacksonDeserializer`, which lifts
+a YAML literal into `Sensitive<String>` at config load. A new mapper needs the serializer as well; one
+built without it writes the secret.
 
 ```kotlin
 val pin: Sensitive<String> = "1234".sensitive()
