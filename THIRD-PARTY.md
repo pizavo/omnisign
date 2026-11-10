@@ -1158,7 +1158,7 @@ Declared by the Kotlin/Wasm build of the Ktor client as its WebSocket implementa
 
 <details><summary>1 artifact(s)</summary>
 
-- `ws@8.20.1` — web
+- `ws@8.22.1` — web
 
 </details>
 

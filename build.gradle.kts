@@ -2,6 +2,8 @@ import java.util.zip.ZipFile
 import org.gradle.api.artifacts.result.ResolvedArtifactResult
 import org.gradle.api.attributes.Usage
 import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
+import org.jetbrains.kotlin.gradle.targets.wasm.nodejs.WasmNodeJsRootPlugin
+import org.jetbrains.kotlin.gradle.targets.wasm.npm.WasmNpmExtension
 
 /**
  * Raises two libraries that plugins put on the build's own classpath to releases without their
@@ -66,6 +68,18 @@ dependencies {
         dokkaHtmlGeneratorRuntime(libs.jackson2.bom)
         dokkaHtmlPublicationPlugin(libs.jackson2.bom)
     }
+}
+
+/**
+ * Overrides `ws` in the npm install behind the Wasm targets, where Ktor's client asks for
+ * exactly 8.20.1, a release with an open advisory.
+ *
+ * npm keeps a locked version when only an override changes, so after changing this one delete
+ * `kotlin-js-store/wasm/package-lock.json` and `build/wasm`, then run
+ * `kotlinWasmUpgradePackageLock` and `generateThirdPartyNotices`.
+ */
+plugins.withType<WasmNodeJsRootPlugin> {
+    the<WasmNpmExtension>().override("ws", libs.versions.ws.get())
 }
 
 /**
