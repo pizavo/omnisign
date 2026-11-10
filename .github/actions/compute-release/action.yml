@@ -106,7 +106,8 @@ runs:
         # Paths alone cannot separate desktop from web (one module, shared
         # commonMain), nor tell a shared-touching desktop feature from a real
         # cross-cutting one. Resolve the config's __FOREIGN_SCOPES__ placeholder
-        # with the other three components' scopes so those commits are skipped.
+        # with the other three components' scopes so those commits are folded
+        # into the collapsed Other Changes section.
         case "$TAG_PREFIX" in
           cli)     foreign='desktop|web|server' ;;
           server)  foreign='desktop|web|cli' ;;
