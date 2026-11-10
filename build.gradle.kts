@@ -662,9 +662,10 @@ val generateInstallerLicense = tasks.register("generateInstallerLicense") {
  * Produced artefacts per master PNG (`omnisign-logo`, `omnisign-logo-cli`):
  *  - `.ico` — Windows multi-resolution (256 down to 16 px)
  *  - `.icns` — macOS icon bundle (via `icnsify`)
- *  - `-512.png` — 512×512 raster for Linux jpackage
  *
- * The desktop master (`omnisign-logo.png`) is additionally copied to:
+ * The desktop master (`omnisign-logo.png`) also yields `omnisign-logo-512.png`, the 512×512 raster
+ * the desktop app's Linux packages use; the CLI's Linux packages carry no icon. The desktop master
+ * is additionally copied to:
  *  - `composeApp/src/commonMain/composeResources/drawable/` (in-app toolbar icon)
  *  - `composeApp/src/jvmMain/resources/` (runtime window / taskbar icon)
  *  - `composeApp/src/webMain/resources/` (Wasm favicon)
@@ -717,15 +718,14 @@ tasks.register("generateIcons") {
                 "-i", input.absolutePath,
                 "-o", File(iconsDir, "$baseName.icns").absolutePath,
             )
-
-            magick(
-                input.absolutePath,
-                "-resize", "512x512",
-                File(iconsDir, "$baseName-512.png").absolutePath,
-            )
         }
 
         val desktopIcon = File(iconsDir, "omnisign-logo.png")
+        magick(
+            desktopIcon.absolutePath,
+            "-resize", "512x512",
+            File(iconsDir, "omnisign-logo-512.png").absolutePath,
+        )
         desktopIcon.copyTo(composeDrawableIcon, overwrite = true)
         desktopIcon.copyTo(jvmResourcesIcon, overwrite = true)
         desktopIcon.copyTo(webResourcesIcon, overwrite = true)

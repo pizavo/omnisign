@@ -67,17 +67,17 @@ During installation a dialog lets you choose between a system-wide installation
 
 ### Linux — DEB / RPM
 
-Both packages install the application to `/opt/omnisign-cli/` and create a
-`/usr/local/bin/omnisign` symlink so the command is available immediately.
+Both packages install the application to `/opt/omnisign-cli/` and put the
+`omnisign` command on the `PATH` as `/usr/bin/omnisign`.
 The distinct `omnisign-cli` package name lets the CLI coexist with the desktop
 application (package `omnisign`, installed under `/opt/omnisign/`).
 
 ```shell
 # Debian / Ubuntu
-sudo dpkg -i omnisign-cli-<version>.deb
+sudo apt install ./omnisign-cli_<version>_amd64.deb
 
 # Fedora / RHEL
-sudo rpm -i omnisign-cli-<version>.rpm
+sudo dnf install ./omnisign-cli-<version>-1.x86_64.rpm
 ```
 
 ### macOS — PKG installer (recommended)
@@ -112,7 +112,9 @@ The macOS packages are currently unsigned. On first launch macOS may show an
 xattr -cr /Applications/omnisign-cli/omnisign.app
 ```
 
-Or by right-clicking the application and choosing **Open**.
+Or allow it under **System Settings → Privacy & Security → Open Anyway**; since
+macOS 15, right-clicking the application and choosing **Open** no longer offers
+that bypass.
 Code signing requires an Apple Developer ID certificate
 (separate from PGP/X.509, obtained through the
 [Apple Developer Program](https://developer.apple.com/programs/)).

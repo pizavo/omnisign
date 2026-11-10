@@ -65,10 +65,10 @@ private const val HelpIssueUrl =
 /** Canonical text of the license under which OmniSign is distributed. */
 private const val HelpLicenseUrl = "https://www.gnu.org/licenses/agpl-3.0.html"
 
-/** Human-readable name of the project license, mirrored from `LICENSE.md`. */
+/** Human-readable name of the project license, as granted by the notice in `NOTICE.md`. */
 private const val HelpLicenseName = "GNU AGPL v3.0 or later"
 
-/** Copyright/author line, kept in sync with `LICENSE.md` and the packaging metadata. */
+/** Copyright/author line, kept in sync with `NOTICE.md` and the packaging metadata. */
 private const val HelpAuthorLine = "© 2026 Pizavo"
 
 /**

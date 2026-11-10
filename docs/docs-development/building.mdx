@@ -131,9 +131,51 @@ jpackage directly on the app-image that `:composeApp:createDistributable` produc
 its own `--resource-dir` after any argument the build adds, and jpackage keeps only the last
 occurrence of a repeated option, so the desktop-entry and packaging-script overrides in
 `composeApp/packaging/linux/` can only be applied by invoking jpackage ourselves. Those overrides
-are what give the launcher its `%U` field code (without which the shell cannot hand a PDF to the
+are what give the launcher its `%f` field code (without which the shell cannot hand a PDF to the
 app), its `StartupWMClass`, and the AppStream metainfo and hicolor icon the maintainer scripts
-install.
+install. The field code is `%f` rather than `%U` because GIO expands `%U` to `file://` URIs, and
+the app accepts only a path.
+
+jpackage builds the Linux packages on an Ubuntu runner, and that leaves gaps that the build closes
+around each jpackage run:
+
+- **DEB dependencies.** jpackage names each dependency after the package that owns the library on the
+  build host. The release runners are past Debian's 64-bit `time_t` transition, so some of those
+  names carry its `t64` suffix (`libasound2t64`), which Ubuntu 22.04 and Debian 12 never had. Both
+  modules rewrite the DEB's `Depends` field so that each such entry becomes an alternative with its
+  old name (`libasound2t64 | libasound2`), and one DEB installs on both generations.
+- **RPM dependencies.** jpackage looks up which package provides each library only for the host's
+  own package format, so on Ubuntu it skips the lookup for the RPM, and the RPMs required nothing but
+  `xdg-utils`. The build instead reads the `DT_NEEDED` entries of every ELF object in the app-image,
+  drops the libraries the image bundles, and passes the rest to `--linux-package-deps` as soname
+  capabilities such as `libasound.so.2()(64bit)`. Every RPM distribution provides those under the
+  same name, whereas package names differ (`alsa-lib` on Fedora, `libasound2` on openSUSE). The CLI
+  reads them from the image `:cli:jpackageLinuxImage` builds, which holds the same native code as
+  its RPM. Libraries loaded with `dlopen`, such as the PC/SC library smart-card access uses, leave no
+  such entry and are not declared.
+- **RPM directory ownership.** The spec templates work out which directories the package owns by
+  subtracting the `filesystem` package's, falling back to a built-in list where
+  `rpm -ql filesystem` fails, as it does on Ubuntu. jpackage's own template prints that list on a
+  single line, so nothing was subtracted, and the RPMs claimed `/opt`, `/usr`, `/usr/share` and
+  `/usr/share/licenses` as their own. The templates print one directory per line instead. This
+  matters once a package ships a file in `/usr/bin`: Fedora's `filesystem` gives that directory
+  mode 0555, and a package claiming it with another mode is refused as a file conflict.
+- **The CLI's command.** Both CLI packages ship `/usr/bin/omnisign`, a symlink to the launcher in
+  `/opt/omnisign-cli`, as a file of the package: the DEB gets it when it is rebuilt with `dpkg-deb`,
+  and the RPM spec creates it in `%install`. Up to 1.21.1 the maintainer scripts created
+  `/usr/local/bin/omnisign` instead, which Debian Policy §9.1.2 forbids, since `/usr/local` belongs
+  to the administrator. On upgrade, the old DEB's `prerm` removes that link, and the new RPM's `%post`
+  removes it if it still points at the CLI.
+
+The CLI's installers create no shortcuts and no menu or desktop entries. Its launcher is a console
+program, so a shortcut would open it in a console window that closes again as soon as it exits. The
+MSI puts the command on `PATH` instead, and the Linux packages ship `/usr/bin/omnisign`. The Linux
+packages are also built without `--icon`, because jpackage turns a custom icon into a desktop entry.
+The entry brings an `xdg-utils` dependency and install scripts that register it with
+`xdg-desktop-menu`, a command that fails on hosts with no applications directory, such as servers
+and containers. Up to 1.21.1 both Linux packages carried such an entry, hidden from menus. The DEB
+never registered it, and the old RPM's `%preun` unregisters it during the upgrade, just as an MSI
+upgrade removes the shortcuts older versions created.
 
 Native installers are built by [`jpackage`](https://docs.oracle.com/en/java/javase/25/docs/specs/man/jpackage.html)
 and can only target the OS they run on — there is no cross-packaging. Producing all of them means

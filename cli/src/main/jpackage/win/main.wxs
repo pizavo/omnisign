@@ -13,7 +13,7 @@
          IMPORTANT: jpackage must be invoked with the win-per-user-install flag so
          that the generated registry entries in files.wxf use HKCU/HKMU rather than
          a hard-coded HKLM root.  Without that flag jpackage emits Root="HKLM" for
-         the app-tracking key (\Software\OmniSign\omnisign\{version}), which causes
+         the app-tracking key (\Software\Pizavo\omnisign\{version}), which causes
          a "Could not write value RM_RF..." error during WriteRegistryValues for
          non-elevated (per-user) install sessions.
       3. Upgrades from older versions are always allowed and fully rollback-safe.

@@ -70,7 +70,7 @@ side by side in either order.
 **Option B — Fat JAR**
 
 ```powershell
-java -jar omnisign-cli.jar --help
+java -jar omnisign-x.y.z.jar --help
 ```
 
 </TabItem>
@@ -79,19 +79,23 @@ java -jar omnisign-cli.jar --help
 **Option A — DEB package**
 
 ```bash
-sudo dpkg -i omnisign-cli_x.y.z_amd64.deb
+sudo apt install ./omnisign-cli_x.y.z_amd64.deb
 ```
 
 **Option B — RPM package**
 
 ```bash
-sudo rpm -i omnisign-cli-x.y.z.x86_64.rpm
+sudo dnf install ./omnisign-cli-x.y.z-1.x86_64.rpm
 ```
+
+Both install the CLI to `/opt/omnisign-cli` and put the `omnisign` command on your `PATH` as
+`/usr/bin/omnisign`. Installing through `apt` or `dnf`, rather than `dpkg -i` or `rpm -i`, also
+installs the libraries the package needs.
 
 **Option C — Fat JAR**
 
 ```bash
-java -jar omnisign-cli.jar --help
+java -jar omnisign-x.y.z.jar --help
 ```
 
 </TabItem>
@@ -118,10 +122,14 @@ sudo ln -sf /Applications/omnisign-cli/omnisign.app/Contents/MacOS/omnisign /usr
 Both installers keep the CLI in its own `/Applications/omnisign-cli/` folder rather than beside the
 desktop app's `/Applications/OmniSign.app`, so the two can be installed side by side.
 
+Neither installer is signed or notarized, so macOS blocks the first attempt to open the PKG, or to
+run the launcher copied from the DMG. Allow it under **System Settings → Privacy & Security → Open
+Anyway**; since macOS 15, right-clicking and choosing **Open** no longer offers that bypass.
+
 **Option C — Fat JAR**
 
 ```bash
-java -jar omnisign-cli.jar --help
+java -jar omnisign-x.y.z.jar --help
 ```
 
 </TabItem>

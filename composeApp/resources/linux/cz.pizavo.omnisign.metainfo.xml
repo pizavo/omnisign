@@ -50,13 +50,12 @@
   <url type="vcs-browser">https://github.com/pizavo/omnisign</url>
 
   <provides>
-    <binary>OmniSign</binary>
     <mediatype>application/pdf</mediatype>
   </provides>
 
   <content_rating type="oars-1.1"/>
 
   <releases>
-    <release version="1.4.1" date="2026-05-05"/>
+    <release version="@VERSION@" date="@DATE@"/>
   </releases>
 </component>
