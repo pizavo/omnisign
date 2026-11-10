@@ -32,6 +32,10 @@ footer = ""
 # sorts alphabetically otherwise); striptags removes them at render time.
 # PR number + author come from the GitHub integration ([remote.github] below)
 # and fall back to the short commit hash when a commit has no associated PR.
+# A breaking commit's `BREAKING CHANGE:` footer is quoted under its entry, its
+# wrapped lines joined into one. Without a footer, git-cliff's breaking
+# description is the subject itself, which the entry already shows, so a
+# commit marked only by `!` gets no quote.
 body = """
 {% if version %}## [{{ version | split(pat="/") | last }}] - {{ timestamp | date(format="%Y-%m-%d") }}{% else %}## [Unreleased]{% endif %}
 {% for group, commits in commits | group_by(attribute="group") %}
@@ -44,6 +48,9 @@ body = """
 {% endif %}
 {%- for commit in commits %}
 - {% if commit.scope %}**{{ commit.scope }}:** {% endif %}{% if commit.breaking %}[**breaking**] {% endif %}{{ commit.message | upper_first }}{% if commit.remote.pr_number %} (#{{ commit.remote.pr_number }}){% else %} ({{ commit.id | truncate(length=7, end="") }}){% endif %}{% if commit.remote.username %} by @{{ commit.remote.username }}{% endif %}
+{%- if commit.breaking and commit.breaking_description and commit.breaking_description != commit.message %}
+  > {{ commit.breaking_description | replace(from="\n", to=" ") | trim }}
+{%- endif %}
 {%- endfor %}
 {% if folded %}
 </details>

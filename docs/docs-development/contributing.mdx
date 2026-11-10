@@ -49,7 +49,8 @@ The `type` decides whether the commit is published:
 
 A `BREAKING CHANGE:` footer marks the commit as breaking and protects it from being filtered out, but
 only `!` in the subject moves it into the always-first *Breaking Changes* section — git-cliff's parsers
-read the subject line, not the body. Use `!`; add the footer only as extra prose.
+read the subject line, not the body. Use `!`. Add the footer too when the subject alone does not say
+what breaks: the release notes quote the footer's text under the commit's entry.
 
 `scope` is optional, lowercase, and names the area you touched. The ones in use: `server`, `web`,
 `desktop`, `cli`, `i18n`, `auth`, `renewal`, `validation`, `signing`, `pkcs11`, `tl`.
