@@ -1,4 +1,4 @@
-Summary: APPLICATION_SUMMARY
+Summary: APPLICATION_DESCRIPTION
 Name: APPLICATION_PACKAGE
 Version: APPLICATION_VERSION
 Release: APPLICATION_RELEASE
@@ -14,10 +14,6 @@ Prefix: APPLICATION_PREFIX
 %endif
 
 Provides: APPLICATION_PACKAGE
-
-%if "xAPPLICATION_GROUP" != "x"
-Group: APPLICATION_GROUP
-%endif
 
 Autoprov: 0
 Autoreq: 0
@@ -37,7 +33,7 @@ Requires: PACKAGE_DEFAULT_DEPENDENCIES PACKAGE_CUSTOM_DEPENDENCIES
 %define app_filelist %{_builddir}/%{name}.app.files
 %define filesystem_filelist %{_builddir}/%{name}.filesystem.files
 
-%define default_filesystem / /opt /usr /usr/bin /usr/lib /usr/local /usr/local/bin /usr/local/lib
+%define default_filesystem / /opt /usr /usr/bin /usr/lib /usr/local /usr/local/bin /usr/local/lib /usr/share /usr/share/licenses
 
 %description
 APPLICATION_DESCRIPTION
@@ -52,6 +48,8 @@ APPLICATION_DESCRIPTION
 rm -rf %{buildroot}
 install -d -m 755 %{buildroot}APPLICATION_DIRECTORY
 cp -r %{_sourcedir}APPLICATION_DIRECTORY/* %{buildroot}APPLICATION_DIRECTORY
+install -d -m 755 %{buildroot}%{_bindir}
+ln -s APPLICATION_DIRECTORY/bin/omnisign %{buildroot}%{_bindir}/omnisign
 if [ "$(echo %{_sourcedir}/lib/systemd/system/*.service)" != '%{_sourcedir}/lib/systemd/system/*.service' ]; then
   install -d -m 755 %{buildroot}/lib/systemd/system
   cp %{_sourcedir}/lib/systemd/system/*.service %{buildroot}/lib/systemd/system
@@ -62,7 +60,7 @@ fi
   install -m 644 "APPLICATION_LICENSE_FILE" "%{buildroot}%{license_install_file}"
 %endif
 (cd %{buildroot} && find . -path ./lib/systemd -prune -o -type d -print) | sed -e 's/^\.//' -e '/^$/d' | sort > %{app_filelist}
-{ rpm -ql filesystem || echo %{default_filesystem}; } | sort > %{filesystem_filelist}
+{ rpm -ql filesystem || printf '%%s\n' %{default_filesystem}; } | sort > %{filesystem_filelist}
 comm -23 %{app_filelist} %{filesystem_filelist} > %{package_filelist}
 sed -i -e 's/.*/%dir "&"/' %{package_filelist}
 (cd %{buildroot} && find . -not -type d) | sed -e 's/^\.//' -e 's/.*/"&"/' >> %{package_filelist}
@@ -80,7 +78,9 @@ package_type=rpm
 LAUNCHER_AS_SERVICE_SCRIPTS
 DESKTOP_COMMANDS_INSTALL
 LAUNCHER_AS_SERVICE_COMMANDS_INSTALL
-ln -sf /opt/omnisign-cli/bin/omnisign /usr/local/bin/omnisign
+if [ "$(readlink /usr/local/bin/omnisign)" = /opt/omnisign-cli/bin/omnisign ]; then
+    rm -f /usr/local/bin/omnisign
+fi
 
 %pre
 package_type=rpm
@@ -97,8 +97,5 @@ DESKTOP_SCRIPTS
 LAUNCHER_AS_SERVICE_SCRIPTS
 DESKTOP_COMMANDS_UNINSTALL
 LAUNCHER_AS_SERVICE_COMMANDS_UNINSTALL
-if [ "$1" = "0" ]; then
-    rm -f /usr/local/bin/omnisign
-fi
 
 %clean

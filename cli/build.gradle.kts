@@ -1,3 +1,9 @@
+import java.nio.ByteOrder
+import java.nio.channels.FileChannel
+import kotlin.io.path.Path
+import kotlin.io.path.createDirectories
+import kotlin.io.path.createSymbolicLinkPointingTo
+
 plugins {
 	alias(libs.plugins.kotlin.jvm)
 	alias(libs.plugins.kotlin.serialization)
@@ -185,6 +191,14 @@ val bundledLicenseTexts: File = rootProject.file("licenses")
 val installerLicenseFile: File = rootProject.layout.buildDirectory
 	.file("legal/installer-license-cli.md").get().asFile
 
+/**
+ * Builds the fat JAR that is both published on its own and handed to jpackage.
+ *
+ * The manifest carries the two JVM flags `java -jar` cannot be given any other way, so running the
+ * published JAR directly behaves like the native launchers, which pass the same flags as
+ * `--java-options`: `Enable-Native-Access` for the native libraries, and `Add-Opens` for the
+ * JDK-internal `sun.security.smartcardio` package that PC/SC stale-context recovery reflects into.
+ */
 tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJar") {
 	archiveBaseName.set("omnisign")
 	archiveClassifier.set("")
@@ -192,6 +206,7 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
 	manifest {
 		attributes["Main-Class"] = "cz.pizavo.omnisign.CliKt"
 		attributes["Enable-Native-Access"] = "ALL-UNNAMED"
+		attributes["Add-Opens"] = "java.smartcardio/sun.security.smartcardio"
 	}
 	mergeServiceFiles()
 	filesMatching("META-INF/services/**") {
@@ -273,8 +288,16 @@ abstract class JPackageTask @Inject constructor(private val execOps: ExecOperati
 	@get:OutputDirectory
 	abstract val destDir: DirectoryProperty
 	
-	/** Icon file passed via --icon. */
+	/**
+	 * Icon file passed via `--icon`; the Linux packages set none.
+	 *
+	 * On Linux, jpackage turns a custom icon into a desktop entry, and the entry into an `xdg-utils`
+	 * dependency and install scripts that register it with `xdg-desktop-menu`. That command fails on
+	 * hosts with no applications directory, such as servers and containers, and a command-line tool
+	 * has no use for a desktop entry anyway.
+	 */
 	@get:InputFile
+	@get:Optional
 	abstract val iconFile: RegularFileProperty
 	
 	/** Arguments appended after the common ones (platform flags, etc.). */
@@ -293,7 +316,19 @@ abstract class JPackageTask @Inject constructor(private val execOps: ExecOperati
 	@get:InputDirectory
 	@get:Optional
 	abstract val resourceDir: DirectoryProperty
-	
+
+	/**
+	 * App-image the package's shared-library requirements are read from; see
+	 * [sharedLibraryRequirements].
+	 *
+	 * Only the RPM sets it, to the image `jpackageLinuxImage` builds. jpackage assembles the RPM from
+	 * the same jar, modules and launcher options, so that image holds exactly the native code the
+	 * package installs.
+	 */
+	@get:InputDirectory
+	@get:Optional
+	abstract val libraryScanImage: DirectoryProperty
+
 	@TaskAction
 	fun pack() {
 		val jar = shadowJar.get().asFile
@@ -307,6 +342,12 @@ abstract class JPackageTask @Inject constructor(private val execOps: ExecOperati
 			}
 		}
 		dest.mkdirs()
+		val libraryRequirements = libraryScanImage.orNull?.asFile?.let(::sharedLibraryRequirements).orEmpty()
+		val requirementArgs = if (libraryRequirements.isEmpty()) emptyList() else {
+			logger.lifecycle("Requiring ${libraryRequirements.size} shared libraries: ${libraryRequirements.joinToString()}")
+			listOf("--linux-package-deps", libraryRequirements.joinToString(", "))
+		}
+		val iconArgs = iconFile.orNull?.let { listOf("--icon", it.asFile.absolutePath) }.orEmpty()
 		execOps.exec {
 			executable(jpackageBin.get())
 			args(
@@ -315,11 +356,131 @@ abstract class JPackageTask @Inject constructor(private val execOps: ExecOperati
 					"--main-jar", jar.name,
 					"--type", packageType.get(),
 					"--dest", dest.absolutePath,
-					"--icon", iconFile.get().asFile.absolutePath,
-				) + extraArgs.get()
+				) + iconArgs + extraArgs.get() + requirementArgs
 			)
 		}
+		if (packageType.get() == "deb") {
+			dest.listFiles { f -> f.extension == "deb" }?.forEach(::amendDeb)
+		}
 	}
+
+	/**
+	 * Adds to a [deb] jpackage produced what jpackage has no option for, rebuilding it in place.
+	 *
+	 * - **`/usr/bin/omnisign`**, a symlink to the launcher, which puts the command on every user's
+	 *   `PATH`. Shipped inside the archive rather than created by a maintainer script, it is dpkg's to
+	 *   track: `dpkg -S` names its owner, it goes away with the package, and a clash with another
+	 *   package's file stops the installation instead of overwriting that file. Up to 1.21.1 the
+	 *   `postinst` created `/usr/local/bin/omnisign` instead, which Debian Policy §9.1.2 forbids,
+	 *   because `/usr/local` belongs to the administrator. Those versions' `prerm` deletes that link
+	 *   on upgrade, so nothing is left behind.
+	 * - **Alternatives in `Depends` across Debian's 64-bit `time_t` transition.** jpackage maps every
+	 *   library the bundled runtime links against to the package that owns it on the build host. The
+	 *   release runners are past the transition, where several of those packages carry a `t64`
+	 *   suffix (`libasound2t64`) that Ubuntu 22.04 and Debian 12 never had, so `apt` refused the
+	 *   package there. Each such entry becomes an alternative with its pre-transition name
+	 *   (`libasound2t64 | libasound2`), which both generations satisfy.
+	 *
+	 * The archive is unpacked and rebuilt with `dpkg-deb`, which jpackage itself needs to build a DEB,
+	 * so it is always on the host; file contents and modes are carried over unchanged. The desktop
+	 * app's `LinuxInstallerTask` applies the same `Depends` rewrite to its own DEB.
+	 */
+	private fun amendDeb(deb: File) {
+		val root = temporaryDir.resolve("deb-root").apply { deleteRecursively() }
+		execOps.exec { commandLine("dpkg-deb", "--raw-extract", deb.absolutePath, root.absolutePath) }
+		val launcher = Path("/opt/omnisign-cli/bin/omnisign")
+		check(root.resolve(launcher.toString().removePrefix("/")).isFile) { "$deb has no launcher at $launcher" }
+		root.toPath().resolve("usr/bin").createDirectories().resolve("omnisign").createSymbolicLinkPointingTo(launcher)
+		val control = root.resolve("DEBIAN/control")
+		control.writeText(
+			control.readLines().joinToString(separator = "\n", postfix = "\n") { line ->
+				if (!line.startsWith("Depends:")) return@joinToString line
+				line.removePrefix("Depends:").split(",").map(String::trim).filter(String::isNotEmpty)
+					.joinToString(separator = ", ", prefix = "Depends: ") {
+						if (it.endsWith("t64")) "$it | ${it.removeSuffix("t64")}" else it
+					}
+			}
+		)
+		execOps.exec {
+			commandLine("dpkg-deb", "--root-owner-group", "--build", root.absolutePath, deb.absolutePath)
+		}
+	}
+
+	/**
+	 * Lists the shared libraries the native code under [image] links against without bundling them,
+	 * as the RPM capabilities that provide them, such as `libasound.so.2()(64bit)`.
+	 *
+	 * jpackage looks up which package provides each library only for the host's own package format.
+	 * The release runners are Debian-based, so it skips the lookup for the RPM, logging nothing but a
+	 * misleading `app-image dir not generated by jpackage`, and the package required only
+	 * `xdg-utils`. An RPM host would not fix that either, as it would yield package names, which
+	 * differ between distributions (`alsa-lib` on Fedora, `libasound2` on openSUSE). A soname
+	 * capability does not: every RPM distribution provides one for each library it packages, and it
+	 * is what `rpmbuild` itself records when it scans a package.
+	 *
+	 * The names come from the `DT_NEEDED` entries of every ELF object in the image, minus the
+	 * libraries the image ships itself, matched by file name and by `DT_SONAME`. Libraries opened
+	 * with `dlopen`, such as the PC/SC library behind `java.smartcardio`, have no such entry, so
+	 * neither this scan nor jpackage's own lookup can see them.
+	 *
+	 * The desktop app's `LinuxInstallerTask` declares its own RPM's requirements the same way.
+	 */
+	private fun sharedLibraryRequirements(image: File): List<String> {
+		val objects = image.walkTopDown().filter(File::isFile)
+			.mapNotNull { file -> readDynamicLinkage(file)?.let { file.name to it } }
+			.toList()
+		check(objects.isNotEmpty()) { "$image contains no 64-bit ELF objects" }
+		val bundled = objects.flatMap { (name, linkage) -> listOfNotNull(name, linkage.soname) }.toSet()
+		return objects.flatMap { (_, linkage) -> linkage.needed }
+			.filterNot(bundled::contains)
+			.distinct()
+			.sorted()
+			.map { "$it()(64bit)" }
+	}
+
+	/**
+	 * Reads the dynamic-linking entries of [file], or returns `null` unless it is a little-endian
+	 * 64-bit ELF object, the only kind an x86-64 or AArch64 runtime can load.
+	 *
+	 * The dynamic section is located through the program headers, the way the dynamic loader finds
+	 * it, and the address of its string table is translated to a file offset through the `PT_LOAD`
+	 * segment that maps it.
+	 */
+	private fun readDynamicLinkage(file: File): DynamicLinkage? = FileChannel.open(file.toPath()).use { channel ->
+		val elf = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size()).order(ByteOrder.LITTLE_ENDIAN)
+		if (elf.limit() < 64 || elf.getInt(0) != 0x464C457F || elf.get(4).toInt() != 2 || elf.get(5).toInt() != 1) {
+			return@use null
+		}
+		val headers = List(elf.getShort(0x38).toInt() and 0xFFFF) {
+			elf.getLong(0x20).toInt() + it * (elf.getShort(0x36).toInt() and 0xFFFF)
+		}
+		val dynamic = headers.firstOrNull { elf.getInt(it) == 2 } ?: return@use DynamicLinkage(emptyList(), null)
+		val entries = generateSequence(elf.getLong(dynamic + 8).toInt()) { it + 16 }
+			.map { elf.getLong(it) to elf.getLong(it + 8) }
+			.takeWhile { (tag, _) -> tag != 0L }
+			.toList()
+		val stringTable = entries.firstOrNull { it.first == 5L }?.second
+			?: return@use DynamicLinkage(emptyList(), null)
+		val segment = headers.first { header ->
+			elf.getInt(header) == 1 && stringTable - elf.getLong(header + 16) in 0L until elf.getLong(header + 32)
+		}
+		val base = stringTable - elf.getLong(segment + 16) + elf.getLong(segment + 8)
+		fun string(offset: Long) = generateSequence((base + offset).toInt()) { it + 1 }
+			.map { elf.get(it) }
+			.takeWhile { it != 0.toByte() }
+			.map { it.toInt().toChar() }
+			.joinToString("")
+		DynamicLinkage(
+			needed = entries.filter { it.first == 1L }.map { string(it.second) },
+			soname = entries.firstOrNull { it.first == 14L }?.let { string(it.second) },
+		)
+	}
+
+	/**
+	 * The dynamic-linking entries of one ELF object: the [needed] libraries (`DT_NEEDED`) and its
+	 * own [soname] (`DT_SONAME`), if it declares one.
+	 */
+	private data class DynamicLinkage(val needed: List<String>, val soname: String?)
 }
 
 val jpackageBinPath: String = "${System.getProperty("java.home")}/bin/jpackage"
@@ -380,11 +541,17 @@ val windowsUpgradeUuid = "8dd0e055-1fb3-4664-90a4-d39e502930f3"
  */
 val macosInstallDir = "/Applications/omnisign-cli"
 
-/** Common jpackage arguments shared by every package type. */
+/**
+ * Common jpackage arguments shared by every package type.
+ *
+ * `--vendor` matches the desktop app's, since every package format surfaces it as the publisher: the
+ * Windows MSI's `Manufacturer` (the Publisher column of Installed apps, which a winget manifest's
+ * `AppsAndFeaturesEntries` records), the DEB `Maintainer` name and the RPM `Vendor` tag.
+ */
 val commonJpackageArgsList: List<String> = listOf(
 	"--name", "omnisign",
 	"--app-version", project.version.toString().toNativeDistributionVersion(),
-	"--vendor", "OmniSign",
+	"--vendor", "Pizavo",
 	"--description", "Multiplatform digital signature verification, signing and re-timestamping tool",
 	"--copyright", "Copyright (C) 2026 Pizavo",
 	"--main-class", "cz.pizavo.omnisign.CliKt",
@@ -408,15 +575,22 @@ val installerOnlyArgsList: List<String> = listOf(
 val linuxJpackageArgsList: List<String> = listOf("--add-modules", "jdk.security.auth")
 
 
-/** Registers a [JPackageTask] with the given [name] and platform-specific [extraArgsList]. */
+/**
+ * Registers a [JPackageTask] with the given [name] and platform-specific [extraArgsList].
+ *
+ * [iconFile] is left out for the Linux packages, which carry no icon; see [JPackageTask.iconFile].
+ * [libraryScanTask] names the app-image task whose output the package's shared-library
+ * requirements are read from, wired through [JPackageTask.libraryScanImage].
+ */
 fun registerJPackageTask(
 	name: String,
 	description: String,
 	type: String,
 	destSubdir: String,
-	iconFile: File,
+	iconFile: File? = null,
 	extraArgsList: List<String>,
 	resourceDirPath: String? = null,
+	libraryScanTask: String? = null,
 ) {
 	tasks.register<JPackageTask>(name) {
 		this.group = "distribution"
@@ -430,9 +604,10 @@ fun registerJPackageTask(
 		destDir.set(layout.buildDirectory.dir("jpackage/$destSubdir"))
 		val effectiveCommon = if (type != "app-image") commonJpackageArgsList + installerOnlyArgsList else commonJpackageArgsList
 		commonArgs.set(effectiveCommon)
-		this.iconFile.set(iconFile)
+		if (iconFile != null) this.iconFile.set(iconFile)
 		extraArgs.set(extraArgsList)
 		if (resourceDirPath != null) resourceDir.set(file(resourceDirPath))
+		if (libraryScanTask != null) libraryScanImage.set(tasks.named<JPackageTask>(libraryScanTask).flatMap { it.destDir })
 	}
 }
 
@@ -467,7 +642,7 @@ registerJPackageTask(
 
 registerJPackageTask(
 	name = "jpackageWinMsi",
-	description = "Packages the CLI as a Windows MSI installer with start-menu entry and dir chooser.",
+	description = "Packages the CLI as a Windows MSI installer that puts it on the PATH, with a directory chooser.",
 	type = "msi",
 	destSubdir = "win-msi",
 	iconFile = File(iconsDir, "omnisign-logo-cli.ico"),
@@ -475,9 +650,6 @@ registerJPackageTask(
 		"--resource-dir", "$jpackageResourcesDir/win",
 		"--win-per-user-install",
 		"--win-dir-chooser",
-		"--win-menu",
-		"--win-menu-group", "omnisign",
-		"--win-shortcut",
 		"--win-console",
 		"--win-help-url", "https://pizavo.github.io/omnisign/cli/",
 		"--win-update-url", "https://github.com/pizavo/omnisign/releases",
@@ -492,32 +664,29 @@ renamePackageOutput("jpackageWinMsi", "msi")
 
 registerJPackageTask(
 	name = "jpackageDeb",
-	description = "Packages the CLI as a Debian/Ubuntu .deb package with /usr/local/bin symlink.",
+	description = "Packages the CLI as a Debian/Ubuntu .deb package with a /usr/bin/omnisign symlink.",
 	type = "deb",
 	destSubdir = "linux-deb",
-	iconFile = File(iconsDir, "omnisign-logo-cli-512.png"),
 	extraArgsList = linuxJpackageArgsList + listOf(
-		"--resource-dir", "$jpackageResourcesDir/linux-deb",
 		"--linux-app-category", "utils",
 		"--linux-deb-maintainer", "pizavo@gmail.com",
 		"--linux-package-name", "omnisign-cli",
 	),
-	resourceDirPath = "$jpackageResourcesDir/linux-deb",
 )
 
 registerJPackageTask(
 	name = "jpackageRpm",
-	description = "Packages the CLI as a Red Hat/Fedora .rpm package with /usr/local/bin symlink.",
+	description = "Packages the CLI as a Red Hat/Fedora .rpm package with a /usr/bin/omnisign symlink.",
 	type = "rpm",
 	destSubdir = "linux-rpm",
-	iconFile = File(iconsDir, "omnisign-logo-cli-512.png"),
 	extraArgsList = linuxJpackageArgsList + listOf(
 		"--resource-dir", "$jpackageResourcesDir/linux-rpm",
 		"--linux-app-category", "utils",
-		"--linux-rpm-license-type", "AGPLv3+",
+		"--linux-rpm-license-type", "AGPL-3.0-or-later",
 		"--linux-package-name", "omnisign-cli",
 	),
 	resourceDirPath = "$jpackageResourcesDir/linux-rpm",
+	libraryScanTask = "jpackageLinuxImage",
 )
 
 registerJPackageTask(
@@ -526,7 +695,6 @@ registerJPackageTask(
 		"Packages the CLI as a portable Linux app-image directory (for Arch and other non-DEB/RPM distributions).",
 	type = "app-image",
 	destSubdir = "linux-image",
-	iconFile = File(iconsDir, "omnisign-logo-cli-512.png"),
 	extraArgsList = linuxJpackageArgsList,
 )
 
