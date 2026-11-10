@@ -1,0 +1,40 @@
+name: CI — Docs
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: Docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        uses: ./.github/actions/detect-changes
+        with:
+          paths: |
+            docs/
+            composeApp/src/commonMain/composeResources/drawable/
+            .github/workflows/ci-docs.yml
+            .github/actions/setup-docs/
+
+      - uses: ./.github/actions/setup-docs
+        if: steps.detect.outputs.relevant == 'true'
+
+      - name: Type-check
+        if: steps.detect.outputs.relevant == 'true'
+        working-directory: docs
+        run: pnpm run typecheck
+
+      - name: Build Docusaurus site
+        if: steps.detect.outputs.relevant == 'true'
+        working-directory: docs
+        run: pnpm run build

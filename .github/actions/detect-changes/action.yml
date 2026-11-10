@@ -1,10 +1,13 @@
 name: 'Detect relevant changes'
-description: 'Outputs relevant=true when a PR or push touched the component, the shared core, or build infra; workflow_dispatch is always relevant.'
+description: 'Outputs relevant=true when a PR or push touched the component, the shared core, or build infra (or the given paths instead); workflow_dispatch is always relevant.'
 
 inputs:
   module-path:
-    description: 'Primary module directory for this component (cli, server, composeApp).'
-    required: true
+    description: 'Primary module directory for this component (cli, server, composeApp). Ignored when paths is set.'
+    required: false
+  paths:
+    description: 'Git pathspecs, one per line, to check instead of the module, the shared core and build infra, for a component outside the Gradle build such as the docs.'
+    required: false
 
 outputs:
   relevant:
@@ -18,6 +21,7 @@ runs:
       shell: bash
       env:
         MODULE_PATH: ${{ inputs.module-path }}
+        PATHS: ${{ inputs.paths }}
         EVENT: ${{ github.event_name }}
         PR_BASE: ${{ github.event.pull_request.base.sha }}
         PR_HEAD: ${{ github.event.pull_request.head.sha }}
@@ -33,12 +37,20 @@ runs:
         if [ -z "$base" ] || [ "$base" = "0000000000000000000000000000000000000000" ]; then
           echo "relevant=true" >> "$GITHUB_OUTPUT"; exit 0
         fi
-        # `:(glob)` keeps the *.gradle.kts match root-only (mirrors the on.push paths filter);
+        specs=()
+        if [ -n "$PATHS" ]; then
+          while IFS= read -r spec; do
+            if [ -n "$spec" ]; then specs+=("$spec"); fi
+          done <<< "$PATHS"
+        else
+          # `:(glob)` keeps the *.gradle.kts match root-only (mirrors the on.push paths filter).
+          specs=("${MODULE_PATH}/" 'shared/' 'gradle/' ':(glob)*.gradle.kts' 'gradle.properties')
+        fi
         # `|| true` so an empty diff doesn't trip the action's set -eo pipefail.
-        changed=$(git diff --name-only "$base" "$head" -- "${MODULE_PATH}/" 'shared/' 'gradle/' ':(glob)*.gradle.kts' 'gradle.properties' || true)
+        changed=$(git diff --name-only "$base" "$head" -- "${specs[@]}" || true)
         if [ -n "$changed" ]; then
           echo "relevant=true" >> "$GITHUB_OUTPUT"
         else
           echo "relevant=false" >> "$GITHUB_OUTPUT"
         fi
-        echo "module=$MODULE_PATH event=$EVENT base=${base:0:7} head=${head:0:7} -> relevant=$([ -n "$changed" ] && echo true || echo false)"
+        echo "checked=${specs[*]} event=$EVENT base=${base:0:7} head=${head:0:7} -> relevant=$([ -n "$changed" ] && echo true || echo false)"
