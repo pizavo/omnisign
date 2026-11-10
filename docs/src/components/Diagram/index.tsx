@@ -52,8 +52,9 @@ export default function Diagram({source}: DiagramProps): ReactNode {
     const enlargedSource = useMemo(() => withNaturalSize(inlineSource), [inlineSource]);
 
     const open = useCallback(() => {
-        const box = triggerRef.current?.querySelector('.docusaurus-mermaid-container svg')?.viewBox
-            ?.baseVal;
+        const box = triggerRef.current
+            ?.querySelector<SVGSVGElement>('.docusaurus-mermaid-container svg')
+            ?.viewBox?.baseVal;
         if (box?.width && box.height) {
             setNatural({width: box.width, height: box.height});
         }

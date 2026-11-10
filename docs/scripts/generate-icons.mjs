@@ -17,12 +17,20 @@ const here = dirname(fileURLToPath(import.meta.url));
 const SOURCE_DIR = join(here, '..', '..', 'composeApp', 'src', 'commonMain', 'composeResources', 'drawable');
 const OUT_DIR = join(here, '..', 'src', 'icons');
 
-/** Replace the app's hard-coded black fills/strokes with `currentColor` so CSS can theme them. */
+/**
+ * Replace the app's hard-coded black fills/strokes with `currentColor` so CSS can theme them.
+ *
+ * @param {string} svg Source text of one drawable SVG.
+ */
 function themeable(svg) {
   return svg.replace(/(fill|stroke)="(?:black|#000000|#000)"/gi, '$1="currentColor"');
 }
 
-/** `icon_eu_crossed` -> `IconEuCrossed`. */
+/**
+ * `icon_eu_crossed` -> `IconEuCrossed`.
+ *
+ * @param {string} stem Drawable file name without the `.svg` extension.
+ */
 function toPascalCase(stem) {
   return stem
     .split(/[_-]/)
