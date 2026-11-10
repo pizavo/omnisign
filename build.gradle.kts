@@ -805,7 +805,7 @@ tasks.register("regenerateTestPki") {
             "-keyalg", "RSA", "-keysize", "4096", "-sigalg", "SHA256withRSA",
             "-dname", "C=CZ, O=OmniSign Test, CN=OmniSign Test Root CA",
             "-startdate", "2016/01/01 00:00:00", "-validity", "45000",
-            "-ext", "BC:c=ca:true", "-ext", "KU:c=keyCertSign,cRLSign",
+            "-ext", "BC:c", "-ext", "KU:c=keyCertSign,cRLSign",
         )
         keytool("-exportcert", "-keystore", "ca.test.p12", "-storepass", password, "-alias", "key", "-rfc", "-file", "ca.pem")
 
