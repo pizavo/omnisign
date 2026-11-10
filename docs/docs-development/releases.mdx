@@ -10,7 +10,7 @@ commit history rather than from a file anyone edits.
 
 ## Which CI runs on your change
 
-Each component has a workflow that triggers on its own paths:
+Each component has a workflow that triggers on its own paths, and the docs have two:
 
 | Workflow          | Runs when you touch                                                            |
 |-------------------|--------------------------------------------------------------------------------|
@@ -18,6 +18,7 @@ Each component has a workflow that triggers on its own paths:
 | `ci-desktop.yml`  | `composeApp/**`, `shared/**`, `gradle/**`, `*.gradle.kts`, `gradle.properties` |
 | `ci-server.yml`   | `server/**`, `shared/**`, `gradle/**`, `*.gradle.kts`, `gradle.properties`     |
 | `ci-web.yml`      | `composeApp/**`, `shared/**`, `gradle/**`, `*.gradle.kts`, `gradle.properties` |
+| `ci-docs.yml`     | `docs/**`, the app's drawables, `ci-docs.yml`, `setup-docs`, in pull requests  |
 | `deploy-docs.yml` | `docs/**` and any module's `src/**`, on `main`                                 |
 
 Two facts fall out of that table, and they explain most of the surprises:
@@ -26,12 +27,19 @@ Two facts fall out of that table, and they explain most of the surprises:
 `shared` builds and tests all four.
 - The `composeApp` directory appears in *two* of them. Desktop and web are built from the same module.
 
-Those path filters apply to **pushes to `main`** only. All four `ci-*.yml` workflows also declare
-`pull_request: branches: [main]` with *no* path filter, plus `workflow_dispatch` — so every pull
-request starts all four. `deploy-docs.yml` has no pull-request trigger at all.
+For the four component workflows, those paths filter **pushes to `main`** only. The pull-request
+trigger has *no* path filter: all five `ci-*.yml` workflows declare `pull_request: branches: [main]`
+without one, plus `workflow_dispatch`, so every pull request starts all five. `ci-docs.yml` has no
+push trigger, since `deploy-docs.yml` builds the site on `main`, and `deploy-docs.yml` in turn has
+no pull-request trigger.
 
-A composite action, `detect-changes`, encodes the same rule for the job level, so a workflow that is
+A composite action, `detect-changes`, checks the same paths at the job level, so a workflow that is
 triggered can still skip its build when nothing relevant moved. `workflow_dispatch` is always relevant.
+A component workflow gives the action its module, and the action adds `shared`, `gradle`, the root
+build scripts, and `gradle.properties`. `ci-docs.yml` passes its own list through the action's
+`paths` input instead, because the site is not part of the Gradle build. That list includes
+`composeApp/src/commonMain/composeResources/drawable/`, whose SVGs `docs/scripts/generate-icons.mjs`
+turns into the site's icon components.
 
 On their Ubuntu runner, `ci-cli.yml` and `ci-desktop.yml` also build the Linux packages and install
 them in `ubuntu:22.04` and `fedora:latest` containers. The CLI's are installed for real and then
@@ -70,26 +78,61 @@ Tags are namespaced per component, in the form `<prefix>/v<semver>`:
 The `compute-release` composite action runs [git-cliff](https://git-cliff.org/) over the commits since
 the component's latest tag, and outputs `version`, `tag`, `should_release`, and `prerelease`.
 
-The commit types that drive a version bump, and which appear in the notes, are listed in
+`cliff.toml` has no `[bump]` section, so git-cliff's defaults pick the next version: a breaking change
+bumps the major version, a `feat` the minor version, and any other commit in the notes the patch
+version. Which commit types reach the notes is listed in
 [Contributing](contributing.mdx#commit-messages-are-the-release-notes). What matters here is **how the
-commits are scoped to a component**:
+commits are scoped to a component**. A commit belongs to a component when it changes at least one
+file that matches one of the component's include paths and none of its exclude paths. The include
+paths are the component's module, the shared core, and the build infrastructure:
 
 ```bash
 --include-path "${MODULE_PATH}/**" \
 --include-path 'shared/**' \
 --include-path 'gradle/**' \
---include-path '*.gradle.kts' \
+--include-path 'build.gradle.kts' \
+--include-path 'settings.gradle.kts' \
 --include-path 'gradle.properties'
 ```
+
+The root build scripts are named one by one because git-cliff's globs let `*` cross `/`, so
+`*.gradle.kts` would also match `cli/build.gradle.kts` and put one module's build change into all four
+components' notes. GitHub's path filters and `detect-changes` keep `*` inside the root directory,
+which is why the table above can say `*.gradle.kts`. A module's own build script is covered by its
+module's include path.
+
+Tests never ship, so every component excludes `shared`'s test source sets (`commonTest`, `jvmTest`,
+`wasmJsTest`) and its own module's tests (`src/test`, or `commonTest`, `jvmTest`, and `webTest` in
+`composeApp`). And since no component compiles every source set, each also excludes those it does
+not:
+
+| Component      | Also excluded                                           |
+|----------------|---------------------------------------------------------|
+| CLI and server | `shared/src/wasmJsMain/**`                              |
+| Desktop        | `shared/src/wasmJsMain/**`, `composeApp/src/webMain/**` |
+| Web            | `shared/src/jvmMain/**`, `composeApp/src/jvmMain/**`    |
 
 :::warning[The scope in your commit message filters nothing]
 A commit is attributed to a component by the paths it touches, not by `feat(cli):`. Concretely:
 
-- A commit touching `shared/`, `gradle/`, a root Gradle script, or `gradle.properties` appears in
-**all four** components' release notes.
-- A commit touching `composeApp/` appears in **both** the desktop and web notes.
+- A commit touching `shared/`, `gradle/`, a root build script, or `gradle.properties` appears in
+**all four** components' release notes. The exceptions are `shared`'s platform source sets:
+`shared/src/jvmMain/` reaches all but the web client's notes, and `shared/src/wasmJsMain/` only the
+web client's.
+- A commit touching `composeApp/` appears in **both** the desktop and web notes, except that
+`composeApp/src/jvmMain/` reaches only the desktop's and `composeApp/src/webMain/` only the web
+client's.
+- A commit that touches nothing but tests, the docs, or the workflows appears in **none**.
 
-There is no way to suppress this from the commit message. The only lever is keeping each commit
+Of the commits the paths let through, the type decides which are listed, whatever their scope. The
+scope only decides where: one whose scope names another component, such as a `fix(server):` that
+reaches the CLI through `shared/`, goes into a collapsed *Other Changes* section, and one whose scope
+names a maintenance area, such as `fix(build):`, into a collapsed *Maintenance* section. Both still
+count towards the version bump, so a `feat(server):` that reaches the CLI raises the CLI's minor
+version. A `!` commit is listed under *Breaking Changes* in every component it reaches, whatever its
+type, and bumps the major version of each.
+
+The scope cannot keep a commit out of a component's notes. The only lever is keeping each commit
 confined to the module it belongs to — which is why
 [Contributing](contributing.mdx#releases-are-per-component) asks for it.
 :::
@@ -194,8 +237,15 @@ version into the committed lockfile.
 ## Documentation
 
 `deploy-docs.yml` builds the Dokka API reference, copies it into `docs/static/api/`, builds the
-Docusaurus site with **pnpm 11** on Node 26 (`docs/package.json` pins `packageManager: pnpm@11.10.0`
-and `engines.node: >=26.0`; CI installs via `pnpm/action-setup` and runs
-`pnpm install --frozen-lockfile`), and publishes to GitHub Pages. It runs on pushes to `main` and
-can be triggered manually with `workflow_dispatch` — which is the only way to test a change to the
-docs toolchain before merging it.
+Docusaurus site, and publishes it to GitHub Pages. It runs on the pushes to `main` that
+[the table above](#which-ci-runs-on-your-change) lists, and on `workflow_dispatch`.
+
+`ci-docs.yml` checks a pull request instead. It type-checks the site with `pnpm run typecheck` and
+builds it with `pnpm run build`, which fails on a broken link or anchor, so a change to the pages or
+to the docs toolchain is tested before it merges. It leaves out the Dokka step, so the API reference
+is built only by `deploy-docs.yml`.
+
+Both set the toolchain up through the `setup-docs` composite action: `pnpm/action-setup` installs the
+pnpm that `docs/package.json` pins (`packageManager: pnpm@12.18.0`), `actions/setup-node` installs
+Node 26, which `engines.node: >=26.0` requires, and `pnpm install --frozen-lockfile` installs the
+dependencies.
