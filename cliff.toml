@@ -79,10 +79,15 @@ protect_breaking_commits = true
 # traffic: 13 type-skipped commits against 12 real ones over the last two
 # release rounds — demoting them too would bury the notes).
 #
-# First match wins, so the reclassifying parsers come *before* the visible
-# groups: `fix(build):` has type `fix` and would otherwise be claimed by the
-# `^fix` group, since the type-only skips match `build:` but never `(build)`.
-# Breaking changes escape every rule via protect_breaking_commits.
+# First match wins, which sets the order. The breaking parser comes first, so
+# a `!` commit is never demoted or skipped. The type-only skips come next, so
+# an unpublished type stays out whatever its scope: behind the scope parsers,
+# a `build(server):` that touched shared code would reach the other components'
+# Other Changes while the server's own notes skipped it. The reclassifying
+# parsers then come *before* the visible groups: `fix(build):` has type `fix`
+# and would otherwise be claimed by the `^fix` group, since the type-only skips
+# match `build:` but never `(build)`. A breaking change marked only by a footer
+# escapes the skips via protect_breaking_commits.
 #
 # Groups 5 and 6 render inside a collapsed <details> block (see the body
 # template), so they are one click away rather than absent.
@@ -96,8 +101,6 @@ protect_breaking_commits = true
 # it is an inert literal matching no real scope.
 commit_parsers = [
   { message = '^[a-z]+(\(.+\))?!:', group = "<!-- 0 -->Breaking Changes" },
-  { message = '^[a-z]+\((__FOREIGN_SCOPES__)\)', group = "<!-- 5 -->Other Changes" },
-  { message = '^[a-z]+\((build|ci|docs|test|chore|style|refactor|workflows|actions)\)', group = "<!-- 6 -->Maintenance" },
   { message = "^docs", skip = true },
   { message = "^test", skip = true },
   { message = "^refactor", skip = true },
@@ -105,6 +108,8 @@ commit_parsers = [
   { message = "^chore", skip = true },
   { message = "^build", skip = true },
   { message = "^ci", skip = true },
+  { message = '^[a-z]+\((__FOREIGN_SCOPES__)\)', group = "<!-- 5 -->Other Changes" },
+  { message = '^[a-z]+\((build|ci|docs|test|chore|style|refactor|workflows|actions)\)', group = "<!-- 6 -->Maintenance" },
   { message = "^feat", group = "<!-- 1 -->Features" },
   { message = "^fix", group = "<!-- 2 -->Bug Fixes" },
   { message = "^perf", group = "<!-- 3 -->Performance" },
