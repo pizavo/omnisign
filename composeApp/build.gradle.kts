@@ -1,5 +1,9 @@
 import org.jetbrains.compose.desktop.application.dsl.TargetFormat
 import org.jetbrains.kotlin.gradle.ExperimentalWasmDsl
+import java.nio.ByteOrder
+import java.nio.channels.FileChannel
+import java.time.LocalDate
+import java.time.ZoneOffset
 
 /**
  * Resolves the platform-native crash-dump directory at Gradle evaluation time.
@@ -408,9 +412,12 @@ afterEvaluate {
  * two formats also frees the `packageDeb` and `packageRpm` task names, which the tasks registered
  * below take over. jpackage needs
  * `--resource-dir packaging/linux` to pick up the desktop-entry and packaging-script overrides —
- * `OmniSign.desktop` supplies `Exec=APPLICATION_LAUNCHER %U` (without a field code the shell
- * cannot hand a PDF to the launcher at all), `StartupWMClass=OmniSign` to match the WM_CLASS
- * `main.kt` forces, and `StartupNotify=true`; `omnisign.spec` and `postinst` / `prerm` install the
+ * `OmniSign.desktop` supplies `Exec=APPLICATION_LAUNCHER %f` (without a field code the shell
+ * cannot hand a PDF to the launcher at all; `%f` rather than `%U`, because GIO expands `%U` to
+ * `file://` URIs and `OsDocumentOpenController.fromArgs` accepts only a path),
+ * `StartupWMClass=OmniSign` to match the WM_CLASS `main.kt` forces, `StartupNotify=true`, and
+ * `Categories` / `MimeType` lists closed with the `;` the Desktop Entry Specification requires and
+ * jpackage's own placeholders leave off; `omnisign.spec` and `postinst` / `prerm` install the
  * AppStream metainfo and the hicolor icon. The plugin emits its own `--resource-dir` pointing at
  * `build/compose/tmp/resources`, and it emits it *after* [AbstractJPackageTask.freeArgs]; since
  * jpackage resolves a repeated option to its last occurrence, anything passed through `freeArgs`
@@ -422,6 +429,10 @@ afterEvaluate {
  * Building from a finished app-image sidesteps all of it and keeps the arguments small, since
  * everything application-level is already baked into the image. This mirrors how `:cli` packages
  * itself, which passes `--resource-dir` exactly once and is unaffected by the same defect.
+ *
+ * The task also finishes what jpackage leaves undone on a Debian host: it widens the DEB's
+ * `Depends` across the `time_t` transition ([widenTimeT64Dependencies]) and gives the RPM the
+ * shared-library requirements jpackage never looked up ([sharedLibraryRequirements]).
  */
 abstract class LinuxInstallerTask @Inject constructor(private val execOps: ExecOperations) : DefaultTask() {
 
@@ -482,6 +493,11 @@ abstract class LinuxInstallerTask @Inject constructor(private val execOps: ExecO
 		dest.deleteRecursively()
 		dest.mkdirs()
 
+		val libraryRequirements = if (packageType.get() == "rpm") sharedLibraryRequirements(appImage) else emptyList()
+		val requirementArgs = if (libraryRequirements.isEmpty()) emptyList() else {
+			logger.lifecycle("Requiring ${libraryRequirements.size} shared libraries: ${libraryRequirements.joinToString()}")
+			listOf("--linux-package-deps", libraryRequirements.joinToString(", "))
+		}
 		execOps.exec {
 			executable(jpackageBin.get())
 			args(
@@ -493,10 +509,122 @@ abstract class LinuxInstallerTask @Inject constructor(private val execOps: ExecO
 					"--license-file", licenseFile.get().asFile.absolutePath,
 					"--file-associations", fileAssociations.get().asFile.absolutePath,
 					"--resource-dir", resourceDir.get().asFile.absolutePath,
-				) + commonArgs.get() + extraArgs.get()
+				) + commonArgs.get() + extraArgs.get() + requirementArgs
 			)
 		}
+		if (packageType.get() == "deb") {
+			dest.listFiles { f -> f.extension == "deb" }?.forEach(::widenTimeT64Dependencies)
+		}
 	}
+
+	/**
+	 * Rewrites the `Depends` field of a [deb] jpackage produced so the package also installs on
+	 * releases that predate Debian's 64-bit `time_t` transition.
+	 *
+	 * jpackage maps every library the bundled runtime and Skiko link against to the package that
+	 * owns it on the build host. The release runners are past the transition, where several of those
+	 * packages carry a `t64` suffix (`libasound2t64`, `libpng16-16t64`) that Ubuntu 22.04 and
+	 * Debian 12 never had, so `apt` refused the package there. Each such entry becomes an
+	 * alternative with its pre-transition name (`libasound2t64 | libasound2`), which both
+	 * generations satisfy. The archive is unpacked and rebuilt with `dpkg-deb`, which jpackage itself
+	 * needs to build a DEB, so it is always on the host; file contents and modes are carried over
+	 * unchanged.
+	 *
+	 * `:cli`'s `JPackageTask` applies the same rewrite to the CLI's DEB.
+	 */
+	private fun widenTimeT64Dependencies(deb: File) {
+		val root = temporaryDir.resolve("deb-root").apply { deleteRecursively() }
+		execOps.exec { commandLine("dpkg-deb", "--raw-extract", deb.absolutePath, root.absolutePath) }
+		val control = root.resolve("DEBIAN/control")
+		control.writeText(
+			control.readLines().joinToString(separator = "\n", postfix = "\n") { line ->
+				if (!line.startsWith("Depends:")) return@joinToString line
+				line.removePrefix("Depends:").split(",").map(String::trim).filter(String::isNotEmpty)
+					.joinToString(separator = ", ", prefix = "Depends: ") {
+						if (it.endsWith("t64")) "$it | ${it.removeSuffix("t64")}" else it
+					}
+			}
+		)
+		execOps.exec {
+			commandLine("dpkg-deb", "--root-owner-group", "--build", root.absolutePath, deb.absolutePath)
+		}
+	}
+
+	/**
+	 * Lists the shared libraries the native code under [image] links against without bundling them,
+	 * as the RPM capabilities that provide them, such as `libasound.so.2()(64bit)`.
+	 *
+	 * jpackage looks up which package provides each library only for the host's own package format.
+	 * The release runners are Debian-based, so it skips the lookup for the RPM, logging nothing but a
+	 * misleading `app-image dir not generated by jpackage`, and the package required only
+	 * `xdg-utils`. An RPM host would not fix that either, as it would yield package names, which
+	 * differ between distributions (`alsa-lib` on Fedora, `libasound2` on openSUSE). A soname
+	 * capability does not: every RPM distribution provides one for each library it packages, and it
+	 * is what `rpmbuild` itself records when it scans a package.
+	 *
+	 * The names come from the `DT_NEEDED` entries of every ELF object in the image — the runtime's
+	 * libraries, the launcher and Skiko's `libskiko-linux-x64.so` — minus the libraries the image
+	 * ships itself, matched by file name and by `DT_SONAME`. Libraries opened with `dlopen` have no
+	 * such entry, so neither this scan nor jpackage's own lookup can see them.
+	 *
+	 * `:cli`'s `JPackageTask` declares the CLI's RPM requirements the same way.
+	 */
+	private fun sharedLibraryRequirements(image: File): List<String> {
+		val objects = image.walkTopDown().filter(File::isFile)
+			.mapNotNull { file -> readDynamicLinkage(file)?.let { file.name to it } }
+			.toList()
+		check(objects.isNotEmpty()) { "$image contains no 64-bit ELF objects" }
+		val bundled = objects.flatMap { (name, linkage) -> listOfNotNull(name, linkage.soname) }.toSet()
+		return objects.flatMap { (_, linkage) -> linkage.needed }
+			.filterNot(bundled::contains)
+			.distinct()
+			.sorted()
+			.map { "$it()(64bit)" }
+	}
+
+	/**
+	 * Reads the dynamic-linking entries of [file], or returns `null` unless it is a little-endian
+	 * 64-bit ELF object, the only kind an x86-64 or AArch64 runtime can load.
+	 *
+	 * The dynamic section is located through the program headers, the way the dynamic loader finds
+	 * it, and the address of its string table is translated to a file offset through the `PT_LOAD`
+	 * segment that maps it.
+	 */
+	private fun readDynamicLinkage(file: File): DynamicLinkage? = FileChannel.open(file.toPath()).use { channel ->
+		val elf = channel.map(FileChannel.MapMode.READ_ONLY, 0, channel.size()).order(ByteOrder.LITTLE_ENDIAN)
+		if (elf.limit() < 64 || elf.getInt(0) != 0x464C457F || elf.get(4).toInt() != 2 || elf.get(5).toInt() != 1) {
+			return@use null
+		}
+		val headers = List(elf.getShort(0x38).toInt() and 0xFFFF) {
+			elf.getLong(0x20).toInt() + it * (elf.getShort(0x36).toInt() and 0xFFFF)
+		}
+		val dynamic = headers.firstOrNull { elf.getInt(it) == 2 } ?: return@use DynamicLinkage(emptyList(), null)
+		val entries = generateSequence(elf.getLong(dynamic + 8).toInt()) { it + 16 }
+			.map { elf.getLong(it) to elf.getLong(it + 8) }
+			.takeWhile { (tag, _) -> tag != 0L }
+			.toList()
+		val stringTable = entries.firstOrNull { it.first == 5L }?.second
+			?: return@use DynamicLinkage(emptyList(), null)
+		val segment = headers.first { header ->
+			elf.getInt(header) == 1 && stringTable - elf.getLong(header + 16) in 0L until elf.getLong(header + 32)
+		}
+		val base = stringTable - elf.getLong(segment + 16) + elf.getLong(segment + 8)
+		fun string(offset: Long) = generateSequence((base + offset).toInt()) { it + 1 }
+			.map { elf.get(it) }
+			.takeWhile { it != 0.toByte() }
+			.map { it.toInt().toChar() }
+			.joinToString("")
+		DynamicLinkage(
+			needed = entries.filter { it.first == 1L }.map { string(it.second) },
+			soname = entries.firstOrNull { it.first == 14L }?.let { string(it.second) },
+		)
+	}
+
+	/**
+	 * The dynamic-linking entries of one ELF object: the [needed] libraries (`DT_NEEDED`) and its
+	 * own [soname] (`DT_SONAME`), if it declares one.
+	 */
+	private data class DynamicLinkage(val needed: List<String>, val soname: String?)
 }
 
 /** jpackage arguments both Linux package types share. */
@@ -531,17 +659,18 @@ val linuxCommonJpackageArgs: List<String> = listOf(
  * counterpart is deliberately left alone, as it packages the minified `createReleaseDistributable`
  * image these tasks do not build from.
  *
- * `--linux-package-deps xdg-utils` is deliberately **not** passed, even though the generated
+ * `xdg-utils` is deliberately left out of `--linux-package-deps`, even though the generated
  * maintainer scripts call `xdg-desktop-menu` and `xdg-mime`. Because these tasks request desktop
- * integration, jpackage already derives that dependency for both formats on its own; passing it
- * again lists `xdg-utils` twice in the DEB's `Depends` field and adds nothing to the RPM's
- * `Requires`. Both tasks are disabled off Linux, where jpackage cannot build a DEB or RPM at all,
- * mirroring how the Compose plugin gates its own packaging tasks.
+ * integration, jpackage already derives that dependency for both formats on its own; listing it
+ * again names `xdg-utils` twice in the DEB's `Depends` field and adds nothing to the RPM's
+ * `Requires`. The option carries the RPM's shared-library requirements alone. Both tasks are
+ * disabled off Linux, where jpackage cannot build a DEB or RPM at all, mirroring how the Compose
+ * plugin gates its own packaging tasks.
  *
  * The RPM build logs `Warning: app-image dir not generated by jpackage.` even for an image
- * jpackage itself produced. It comes from the RPM bundler alone — the DEB build of the same image
- * is silent, and it is not order-dependent — and the package is correct regardless, since the name
- * and version come from the arguments above rather than from the image's own metadata.
+ * jpackage itself produced. The message is misleading: jpackage prints it whenever it skips looking
+ * up which packages provide the image's libraries, which it does for every package type except the
+ * host's own — on the Debian-based runners, the RPM. The task supplies those requirements itself.
  */
 afterEvaluate {
 	val createDistributableTask =
@@ -757,10 +886,18 @@ dokka {
  * application is what satisfies the "supply a copy of this License" duty that the
  * LGPL and MPL components impose, and is where the in-app Credits dialog tells the
  * user to look.
+ *
+ * The AppStream metainfo is stamped on the way through: its `@VERSION@` and `@DATE@` tokens become
+ * the version being built and the UTC date of the build, so the newest release software centres
+ * list always matches the installed package. The release workflows build on the day they publish,
+ * so that date is the release date.
  */
 val assembleAppResources = tasks.register<Sync>("assembleAppResources") {
 	group = "distribution"
 	description = "Stages platform resources and the third-party legal files for jpackage."
+
+	val releaseVersion = project.version.toString()
+	inputs.property("releaseVersion", releaseVersion)
 
 	into(layout.buildDirectory.dir("appResources"))
 	from(layout.projectDirectory.dir("resources"))
@@ -768,6 +905,13 @@ val assembleAppResources = tasks.register<Sync>("assembleAppResources") {
 	from(rootProject.file("NOTICE.md")) { into("common") }
 	from(rootProject.file("THIRD-PARTY.md")) { into("common") }
 	from(rootProject.file("licenses")) { into("common/licenses") }
+
+	filesMatching("linux/cz.pizavo.omnisign.metainfo.xml") {
+		filter { line ->
+			line.replace("@VERSION@", releaseVersion)
+				.replace("@DATE@", LocalDate.now(ZoneOffset.UTC).toString())
+		}
+	}
 }
 
 tasks.matching { it.name == "prepareAppResources" }.configureEach {

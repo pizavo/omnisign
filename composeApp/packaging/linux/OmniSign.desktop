@@ -1,11 +1,11 @@
 [Desktop Entry]
 Name=APPLICATION_NAME
 Comment=APPLICATION_DESCRIPTION
-Exec=APPLICATION_LAUNCHER %U
+Exec=APPLICATION_LAUNCHER %f
 Icon=omnisign
 Terminal=false
 Type=Application
-Categories=DEPLOY_BUNDLE_CATEGORY
+Categories=DEPLOY_BUNDLE_CATEGORY;
 StartupWMClass=OmniSign
 StartupNotify=true
-DESKTOP_MIMES
+MimeType=application/pdf;
