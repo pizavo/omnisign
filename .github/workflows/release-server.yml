@@ -90,6 +90,14 @@ jobs:
           tags: |
             type=raw,value=${{ needs.prepare.outputs.version }}
             type=raw,value=latest,enable=${{ needs.prepare.outputs.prerelease != 'true' }}
+          # The defaults come from the repository, which names the whole project rather than the
+          # server, and whose licence GitHub reports as AGPL-3.0, without the "or later" grant.
+          labels: |
+            org.opencontainers.image.title=OmniSign Server
+            org.opencontainers.image.description=HTTP server for PAdES signing, validation and re-timestamping of PDF documents
+            org.opencontainers.image.vendor=Pizavo
+            org.opencontainers.image.licenses=AGPL-3.0-or-later
+            org.opencontainers.image.documentation=https://pizavo.github.io/omnisign/server/
 
       - name: Build and push Docker image
         uses: docker/build-push-action@v7
