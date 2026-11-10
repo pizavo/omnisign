@@ -41,6 +41,10 @@ const LAUNCHER_PREFIX = onWindows ? ['/c', 'npx'] : [];
  * Windows reaches npx through `cmd /c` rather than `shell: true`, because Node refuses to
  * execute a `.cmd` outside a shell (EINVAL) and passing an argument array with `shell: true`
  * is deprecated — the arguments are concatenated rather than escaped (DEP0190).
+ *
+ * @param {string} input Path to the `.mmd` source.
+ * @param {string} output Path of the `.svg` or `.png` to write.
+ * @param {string[]} [extraArgs] Extra `mmdc` arguments, such as the PNG's scale and background.
  */
 function mmdc(input, output, extraArgs = []) {
   execFileSync(
@@ -50,7 +54,11 @@ function mmdc(input, output, extraArgs = []) {
   );
 }
 
-/** Fail loudly if a rendered SVG kept its `foreignObject` labels. */
+/**
+ * Fail loudly if a rendered SVG kept its `foreignObject` labels.
+ *
+ * @param {string} svgPath Path to the rendered SVG.
+ */
 function assertNativeText(svgPath) {
   const svg = readFileSync(svgPath, 'utf8');
   if (svg.includes('foreignObject')) {
