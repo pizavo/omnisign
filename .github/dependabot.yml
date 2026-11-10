@@ -19,6 +19,8 @@ updates:
         patterns:
           - 'eu.europa.ec.joinup.sd-dss*'
       minor-and-patch:
+        patterns:
+          - '*'
         update-types:
           - minor
           - patch
@@ -45,6 +47,8 @@ updates:
           - react-dom
           - '@types/react'
       minor-and-patch:
+        patterns:
+          - '*'
         update-types:
           - minor
           - patch
