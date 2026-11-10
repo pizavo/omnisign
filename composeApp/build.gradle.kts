@@ -876,6 +876,16 @@ dokka {
 }
 
 /**
+ * Raises the Jackson 2 that Dokka 2.3.0 brings onto its generator classpath, 2.22.2, to a
+ * release without its advisories. Only documentation generation runs it.
+ */
+dependencies {
+	constraints {
+		dokkaHtmlGeneratorRuntime(libs.jackson2.bom)
+	}
+}
+
+/**
  * Stages everything jpackage should place under the installed app's `resources/`
  * directory: the module's own platform resources plus the legal files that must
  * accompany the distribution.

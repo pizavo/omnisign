@@ -3,6 +3,21 @@ import org.gradle.api.artifacts.result.ResolvedArtifactResult
 import org.gradle.api.attributes.Usage
 import org.jetbrains.kotlin.gradle.plugin.KotlinPlatformType
 
+/**
+ * Raises two libraries that plugins put on the build's own classpath to releases without their
+ * advisories: Jackson 2, which Dokka and the Jib plugin inside Ktor's both bring and which
+ * resolved to 2.22.2, and Guava, which Jib brings at 32.1.2. Neither reaches a shipped
+ * artifact; the server resolves its own, newer copies.
+ */
+buildscript {
+    dependencies {
+        constraints {
+            add("classpath", libs.jackson2.bom)
+            add("classpath", libs.guava)
+        }
+    }
+}
+
 plugins {
     id("java-base")
     // this is necessary to avoid the plugins to be loaded multiple times
@@ -39,6 +54,18 @@ dependencies {
     dokka(project(":cli"))
     dokka(project(":server"))
     dokka(project(":composeApp"))
+}
+
+/**
+ * Raises the Jackson 2 that Dokka 2.3.0 brings, 2.22.2, to a release without its advisories, on
+ * the classpaths of the Dokka generator and of the aggregated publication's plugins. Only
+ * documentation generation runs it.
+ */
+dependencies {
+    constraints {
+        dokkaHtmlGeneratorRuntime(libs.jackson2.bom)
+        dokkaHtmlPublicationPlugin(libs.jackson2.bom)
+    }
 }
 
 /**
