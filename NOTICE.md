@@ -1,15 +1,34 @@
-# Third-party notices
+# Notices
 
-OmniSign is distributed under the GNU Affero General Public License v3.0 or later; see
-[LICENSE.md](LICENSE.md).
+## OmniSign
 
-This file records third-party material **copied into this repository**. Libraries resolved at build
-time and shipped inside the installers are listed in [THIRD-PARTY.md](THIRD-PARTY.md), together with
-their licences and copyright notices; the full text of every licence involved is in
+OmniSign – Multiplatform digital signature verification, signing and re-timestamping app  
+Copyright (C) 2026 Pizavo <[pizavo@gmail.com](mailto:pizavo@gmail.com)>
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU Affero General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+GNU Affero General Public License for more details.
+
+You should have received a copy of the GNU Affero General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+The licence's full text is in [LICENSE.md](LICENSE.md).
+
+## Third-party material
+
+The sections below record third-party material **copied into this repository**. Libraries resolved
+at build time and shipped inside the installers are listed in [THIRD-PARTY.md](THIRD-PARTY.md),
+together with their licences and copyright notices; the full text of every licence involved is in
 [`licenses/`](licenses/). Both files are installed alongside the application and are reachable from
 the desktop app under Help → Credits.
 
-## EU DSS
+### EU DSS
 
 OmniSign is built on [EU DSS (Digital Signature Services)](https://github.com/esig/dss), which the
 CLI, server and desktop packages include. DSS is used under the **GNU Lesser General Public License,
@@ -27,7 +46,7 @@ This notice is given because the DSS artifacts published to Maven Central carry 
 their own — the licence is declared only in their POM metadata, which is not distributed with the
 application.
 
-## Tabler Icons
+### Tabler Icons
 
 The icons under `composeApp/src/commonMain/composeResources/drawable/` are
 [Tabler Icons](https://tabler.io/icons) by Paweł Kuna, used under the MIT License.

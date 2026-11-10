@@ -38,10 +38,14 @@ Rather than fight that, `:composeApp:collectWebRuntimeCoordinates` resolves its 
 
 | File | Contents |
 |---|---|
-| [`LICENSE.md`](https://github.com/pizavo/omnisign/blob/main/LICENSE.md) | OmniSign's own AGPL terms. |
-| [`NOTICE.md`](https://github.com/pizavo/omnisign/blob/main/NOTICE.md) | Material copied *into* the repository — the Tabler icon set — plus the prominent notice EU DSS requires. |
+| [`LICENSE.md`](https://github.com/pizavo/omnisign/blob/main/LICENSE.md) | The GNU AGPL v3 text, exactly as the FSF publishes it and nothing else. |
+| [`NOTICE.md`](https://github.com/pizavo/omnisign/blob/main/NOTICE.md) | OmniSign's copyright notice, which is also where the *or any later version* grant is made; material copied *into* the repository — the Tabler icon set; and the prominent notice EU DSS requires. |
 | [`THIRD-PARTY.md`](https://github.com/pizavo/omnisign/blob/main/THIRD-PARTY.md) | Every bundled component, grouped by licence, with copyright, homepage and the verbatim `NOTICE` text each artifact ships. Generated. |
 | `licenses/` | Full text of each licence named above. |
+
+Keep `LICENSE.md` verbatim. GitHub, and the package-manager tooling that takes a project's licence
+from GitHub, identify the licence by comparing that file with the canonical text. While the
+copyright notice opened the file, that comparison failed and they reported no licence at all.
 
 All four are installed with the application: next to the binary in the desktop and CLI packages,
 inside the CLI and server fat JARs under `META-INF/legal/`, and beside `index.html` in the web
