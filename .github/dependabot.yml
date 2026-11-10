@@ -1,11 +1,66 @@
-# To get started with Dependabot version updates, you'll need to specify which
-# package ecosystems to update and where the package manifests are located.
-# Please see the documentation for all configuration options:
-# https://docs.github.com/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file
-
 version: 2
 updates:
-  - package-ecosystem: "" # See documentation for possible values
-    directory: "/" # Location of package manifests
+  - package-ecosystem: gradle
+    directory: /
     schedule:
-      interval: "daily"
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      kotlin:
+        patterns:
+          - 'org.jetbrains.kotlin*'
+          - 'org.jetbrains.compose*'
+          - 'com.google.devtools.ksp*'
+      dss:
+        patterns:
+          - 'eu.europa.ec.joinup.sd-dss*'
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: npm
+    directory: /docs
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      docusaurus:
+        patterns:
+          - '@docusaurus/*'
+      openapi-docs:
+        patterns:
+          - 'docusaurus-*-openapi-docs'
+      react:
+        patterns:
+          - react
+          - react-dom
+          - '@types/react'
+      minor-and-patch:
+        update-types:
+          - minor
+          - patch
+
+  - package-ecosystem: github-actions
+    directories:
+      - /
+      - '/.github/actions/*'
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 7
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      actions:
+        patterns:
+          - '*'
