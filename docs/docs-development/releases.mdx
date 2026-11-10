@@ -33,6 +33,13 @@ request starts all four. `deploy-docs.yml` has no pull-request trigger at all.
 A composite action, `detect-changes`, encodes the same rule for the job level, so a workflow that is
 triggered can still skip its build when nothing relevant moved. `workflow_dispatch` is always relevant.
 
+On their Ubuntu runner, `ci-cli.yml` and `ci-desktop.yml` also build the Linux packages and install
+them in `ubuntu:22.04` and `fedora:latest` containers. The CLI's are installed for real and then
+run with `omnisign --version`. The desktop's are only simulated on Ubuntu and installed without
+their scripts on Fedora, since those scripts register the app with a desktop menu a bare container
+lacks. A dependency that does not resolve, or a directory an RPM claims from Fedora's `filesystem`
+package, therefore fails the pull request instead of the release.
+
 ## Versions come from tags, not from files
 
 Each releasable module reads its version from a Gradle property, falling back to a hardcoded default

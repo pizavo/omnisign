@@ -41,6 +41,31 @@ jobs:
         if: steps.detect.outputs.relevant == 'true'
         run: ./gradlew :shared:jvmTest :cli:test :cli:shadowJar
 
+      - name: Install tooling
+        if: steps.detect.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y rpm
+
+      - name: Build Linux packages
+        if: steps.detect.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest'
+        run: ./gradlew :cli:jpackageDeb :cli:jpackageRpm
+
+      # The DEB goes onto the oldest Ubuntu it targets, which predates the t64 package names, and
+      # the RPM onto Fedora, whose filesystem package any wrongly claimed directory conflicts with.
+      - name: Install the Linux packages
+        if: steps.detect.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest'
+        run: |
+          docker run --rm -v "$PWD/cli/build/jpackage/linux-deb:/pkg:ro" ubuntu:22.04 sh -ec '
+            apt-get update -q
+            DEBIAN_FRONTEND=noninteractive apt-get install -y -q --no-install-recommends /pkg/*.deb
+            omnisign --version
+          '
+          docker run --rm -v "$PWD/cli/build/jpackage/linux-rpm:/pkg:ro" fedora:latest sh -ec '
+            dnf install -y -q --setopt=install_weak_deps=False /pkg/*.rpm
+            omnisign --version
+          '
+
       - name: Verify third-party notices
         if: steps.detect.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest'
         run: ./gradlew generateThirdPartyNotices -PnoticesCheck=true

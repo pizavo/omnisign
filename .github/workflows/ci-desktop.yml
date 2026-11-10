@@ -51,6 +51,20 @@ jobs:
         if: steps.detect.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest'
         run: ./gradlew :composeApp:packageDeb :composeApp:packageRpm
 
+      # Checks that the dependencies resolve on the oldest Ubuntu the DEB targets and on Fedora,
+      # and that the RPM claims no directory Fedora's filesystem package owns. The maintainer
+      # scripts are left out: they register the app with a desktop menu a bare container lacks.
+      - name: Check the Linux packages install
+        if: steps.detect.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest'
+        run: |
+          docker run --rm -v "$PWD/composeApp/build/compose/binaries/main/deb:/pkg:ro" ubuntu:22.04 sh -ec '
+            apt-get update -q
+            apt-get install -s -q --no-install-recommends /pkg/*.deb
+          '
+          docker run --rm -v "$PWD/composeApp/build/compose/binaries/main/rpm:/pkg:ro" fedora:latest sh -ec '
+            dnf install -y -q --setopt=install_weak_deps=False --setopt=tsflags=noscripts /pkg/*.rpm
+          '
+
       - name: Verify third-party notices
         if: steps.detect.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest'
         run: ./gradlew generateThirdPartyNotices -PnoticesCheck=true
