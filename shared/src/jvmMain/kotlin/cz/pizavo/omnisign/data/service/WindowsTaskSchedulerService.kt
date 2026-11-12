@@ -17,10 +17,16 @@ package cz.pizavo.omnisign.data.service
  * because their arguments are simple strings with no quoting ambiguity, and
  * `schtasks` starts significantly faster than PowerShell (no .NET runtime init).
  *
- * The task is identified by the name [OsSchedulerService.JOB_TAG]. Each `install` call
- * replaces any existing task with that name via `-Force`, making the operation idempotent.
+ * The task is identified by [taskName], which is [OsSchedulerService.JOB_TAG] unless the caller
+ * names another; tests do, so that they never replace or remove a renewal task the user installed.
+ * Each `install` call replaces any existing task with that name via `-Force`, making the operation
+ * idempotent.
+ *
+ * @param taskName Name of the scheduled task this service registers, queries and removes.
  */
-class WindowsTaskSchedulerService : OsSchedulerService {
+class WindowsTaskSchedulerService(
+	private val taskName: String = OsSchedulerService.JOB_TAG,
+) : OsSchedulerService {
 
 	override fun install(
 		cliExecutablePath: String,
@@ -54,16 +60,16 @@ class WindowsTaskSchedulerService : OsSchedulerService {
 			append("; \$trigger = New-ScheduledTaskTrigger -Daily -At '${startTime}'")
 			append("; \$settings = New-ScheduledTaskSettingsSet -StartWhenAvailable")
 			append("; Register-ScheduledTask")
-			append(" -TaskName '${OsSchedulerService.JOB_TAG}'")
+			append(" -TaskName '${taskName.escapeSingleQuote()}'")
 			append(" -Action \$action -Trigger \$trigger -Settings \$settings -Force | Out-Null")
 		}
 
 	override fun uninstall() {
-		runQuietly("schtasks", "/delete", "/tn", OsSchedulerService.JOB_TAG, "/f")
+		runQuietly("schtasks", "/delete", "/tn", taskName, "/f")
 	}
 
 	override fun isInstalled(): Boolean {
-		val process = ProcessBuilder("schtasks", "/query", "/tn", OsSchedulerService.JOB_TAG)
+		val process = ProcessBuilder("schtasks", "/query", "/tn", taskName)
 			.redirectErrorStream(true)
 			.start()
 		process.inputStream.readAllBytes()
