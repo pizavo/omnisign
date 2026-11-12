@@ -87,7 +87,9 @@ Combine the allowlist with [authentication](authentication) for any internet-fac
 - **No keychain without `SIGN`** — a server that only validates or timestamps never opens the
   operating system's keychain. A signing server does, because the server cannot prompt and that is
   where it looks up the PIN of a PIN-protected PKCS#11 token: service `omnisign-token`, with the
-  token's id as the account (`omnisign diagnose pkcs11` lists the ids).
+  token's id as the account (`omnisign diagnose pkcs11` lists the ids). If the token refuses that
+  PIN, the server logs a warning and doesn't send the same PIN to that slot again until the entry
+  changes or the server restarts, so a stale entry can't use up the token's PIN retries.
 - Uploads are streamed to disk and bounded by `maxFileSize`; multiple file parts are rejected.
 - Every response carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
   `Referrer-Policy: strict-origin-when-cross-origin`, and
