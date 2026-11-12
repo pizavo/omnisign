@@ -31,10 +31,14 @@ import eu.europa.esig.dss.pades.signature.PAdESService
 import eu.europa.esig.dss.spi.validation.CertificateVerifier
 import eu.europa.esig.dss.token.AbstractSignatureTokenConnection
 import eu.europa.esig.dss.token.DSSPrivateKeyEntry
+import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.datetime.TimeZone
 import kotlinx.datetime.todayIn
 import java.io.File
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Clock
 import eu.europa.esig.dss.enumerations.EncryptionAlgorithm as DssEncryptionAlgorithm
 import eu.europa.esig.dss.enumerations.SignatureLevel as DssSignatureLevel
@@ -70,6 +74,17 @@ class DssSigningRepository(
 ) : SigningRepository {
 	
 	private var discoveredTokens: List<TokenInfo> = emptyList()
+	
+	/**
+	 * Stored PINs that a token slot has refused, kept so that they are not submitted to it again;
+	 * see [loginWithStoredPin].
+	 */
+	private val refusedStoredPins = ConcurrentHashMap<StoredPinSlot, Sensitive<String>>()
+
+	/**
+	 * One lock per token slot, held while a stored PIN is submitted to it; see [loginWithStoredPin].
+	 */
+	private val storedPinLocks = ConcurrentHashMap<StoredPinSlot, Mutex>()
 	
 	@Suppress("TooGenericExceptionCaught", "CyclomaticComplexMethod", "LongMethod", "ReturnCount")
 	override suspend fun signDocument(parameters: SigningParameters): OperationResult<SigningResult> {
@@ -269,15 +284,14 @@ class DssSigningRepository(
 	 * all parallel probes complete; the optional prompted pass then re-attempts any
 	 * `lockedTokens` it produced.
 	 *
-	 * PIN-protected tokens without a stored credential first attempt an unauthenticated
-	 * listing via [TokenService.listCertificatesNoLogin]: when the token exposes public
-	 * certificate objects (verified for Czech qualified tokens) those are returned so the
-	 * certificate is selectable immediately and the PIN is deferred to signing, where the
-	 * shared deterministic alias resolves the same key.  When that yields nothing — certs
-	 * are private, or the probe failed — the token falls back to being reported as locked,
-	 * so behaviour only ever improves over the previous always-locked path.  Tokens that
-	 * are physically absent are silently skipped. Load errors for PINless tokens (e.g.,
-	 * OS key stores) are reported as warnings so the user can diagnose the issue.
+	 * A PIN-protected token with a PIN stored for it is logged in to with that PIN through
+	 * [loginWithStoredPin] and reported as locked when the login fails. A stored PIN that the
+	 * token's slot refuses, now or before, is not submitted to it again; the token is then listed
+	 * as though no PIN were stored.
+	 *
+	 * PIN-protected tokens without a usable stored credential are listed by [discoverWithoutLogin].
+	 * Tokens that are physically absent are silently skipped. Load errors for PINless tokens
+	 * (e.g., OS key stores) are reported as warnings so the user can diagnose the issue.
 	 */
 	@Suppress("TooGenericExceptionCaught")
 	private suspend fun discoverTokenCertificatesSilent(token: TokenInfo): CertificateDiscoveryResult {
@@ -285,20 +299,13 @@ class DssSigningRepository(
 			return CertificateDiscoveryResult(certificates = emptyList())
 		}
 		if (token.requiresPin) {
-			val storedPassword = credentialStore.getPassword(TOKEN_CREDENTIAL_SERVICE, token.id)
-			if (storedPassword == null) {
-				val noLoginCerts = tokenService.listCertificatesNoLogin(token)
-					.fold(ifLeft = { emptyList() }, ifRight = { it })
-				return if (noLoginCerts.isNotEmpty()) {
-					CertificateDiscoveryResult(certificates = noLoginCerts.toAvailableCertificateInfoList(token))
-				} else {
-					CertificateDiscoveryResult(
-						certificates = emptyList(),
-						lockedTokens = listOf(LockedTokenInfo(token.id, token.name, token.type.name)),
-					)
+			val storedPin = credentialStore.getPassword(TOKEN_CREDENTIAL_SERVICE, token.id)
+			val loaded = storedPin?.let { pin ->
+				loginWithStoredPin(token, pin, refusalIn = { it.leftOrNull()?.cause }) {
+					tokenService.loadCertificatesSilent(token, pin)
 				}
-			}
-			return tokenService.loadCertificatesSilent(token, storedPassword).fold(
+			} ?: return discoverWithoutLogin(token)
+			return loaded.fold(
 				ifLeft = {
 					CertificateDiscoveryResult(
 						certificates = emptyList(),
@@ -334,6 +341,93 @@ class DssSigningRepository(
 		)
 	}
 	
+	/**
+	 * List the certificates of a PIN-protected [token] that has no usable stored PIN, without
+	 * logging in to it.
+	 *
+	 * Tries an unauthenticated listing via [TokenService.listCertificatesNoLogin]: when the token
+	 * exposes public certificate objects (verified for Czech qualified tokens) those are returned
+	 * so the certificate is selectable immediately and the PIN is deferred to signing, where the
+	 * shared deterministic alias resolves the same key.  When that yields nothing — certs are
+	 * private, or the probe failed — the token is reported as locked instead.
+	 */
+	private suspend fun discoverWithoutLogin(token: TokenInfo): CertificateDiscoveryResult {
+		val noLoginCerts = tokenService.listCertificatesNoLogin(token)
+			.fold(ifLeft = { emptyList() }, ifRight = { it })
+		return if (noLoginCerts.isNotEmpty()) {
+			CertificateDiscoveryResult(certificates = noLoginCerts.toAvailableCertificateInfoList(token))
+		} else {
+			CertificateDiscoveryResult(
+				certificates = emptyList(),
+				lockedTokens = listOf(LockedTokenInfo(token.id, token.name, token.type.name)),
+			)
+		}
+	}
+
+	/**
+	 * Submit [pin], the PIN stored for [token], through [login], unless the slot [token] is pinned
+	 * to has refused that very PIN before.
+	 *
+	 * Nobody watches a stored PIN being submitted, so a wrong one would otherwise be sent again on
+	 * every listing and every signature until the token blocks its PIN. A refusal — recognised by
+	 * [isPinRejection] in an exception [login] throws, or in the failure [refusalIn] finds in its
+	 * result — is therefore remembered for the slot, PIN retries being counted per slot, and that
+	 * PIN is not submitted to the slot again until the stored value changes or the process
+	 * restarts. Logins with a stored PIN hold one lock per slot, so that concurrent requests cannot
+	 * each spend a retry on a PIN before the first refusal is known.
+	 *
+	 * @param token Token, pinned to the slot that [login] logs in to.
+	 * @param pin The PIN stored for [token].
+	 * @param refusalIn Picks the failure to inspect out of a result of [login], if it holds one.
+	 * @param login Logs in to [token] with [pin] and returns what it read.
+	 * @return The result of [login], or `null` when the slot refused [pin], before or now.
+	 */
+	@Suppress("TooGenericExceptionCaught")
+	private suspend fun <T> loginWithStoredPin(
+		token: TokenInfo,
+		pin: String,
+		refusalIn: (T) -> Throwable? = { null },
+		login: suspend () -> T,
+	): T? {
+		val slot = StoredPinSlot(token.id, token.pkcs11SlotId)
+		return storedPinLocks.computeIfAbsent(slot) { Mutex() }.withLock {
+			if (refusedStoredPins[slot]?.value == pin) return@withLock null
+			val result = try {
+				login()
+			} catch (e: Exception) {
+				if (!e.isPinRejection()) throw e
+				refuseStoredPin(token, slot, pin)
+				return@withLock null
+			}
+			if (refusalIn(result)?.isPinRejection() == true) {
+				refuseStoredPin(token, slot, pin)
+				return@withLock null
+			}
+			refusedStoredPins.remove(slot)
+			result
+		}
+	}
+
+	/**
+	 * Remember that [slot] of [token] refused [pin], the PIN stored for [token], and say so in the
+	 * log, the only place an operator of a signing server learns that the stored PIN has stopped
+	 * working.
+	 */
+	private fun refuseStoredPin(token: TokenInfo, slot: StoredPinSlot, pin: String) {
+		refusedStoredPins[slot] = Sensitive(pin)
+		logger.warn {
+			"Token '${token.name}'${slot.slotId?.let { " (slot $it)" } ?: ""} refused the PIN stored " +
+				"for it in the keychain under service '$TOKEN_CREDENTIAL_SERVICE', account '${token.id}'. " +
+				"OmniSign will not submit that PIN to it again until the stored PIN changes or OmniSign restarts."
+		}
+	}
+
+	/**
+	 * Whether any slot of [token] has refused [pin], the PIN stored for [token].
+	 */
+	private fun hasRefusedStoredPin(token: TokenInfo, pin: String): Boolean =
+		refusedStoredPins.any { (slot, refused) -> slot.tokenId == token.id && refused.value == pin }
+
 	@Suppress("TooGenericExceptionCaught")
 	override suspend fun unlockToken(tokenId: String): OperationResult<List<AvailableCertificateInfo>> {
 		return try {
@@ -477,7 +571,9 @@ class DssSigningRepository(
 	 * 1. **Silent pass** — tries every token that does not require interactive input:
 	 *    tokens without a PIN requirement and PIN-protected tokens whose credential is
 	 *    already stored in the [CredentialStore].  If the requested certificate is found
-	 *     here, the method returns immediately and no PIN dialog is ever shown.
+	 *     here, the method returns immediately and no PIN dialog is ever shown.  A token
+	 *    that refuses its stored PIN, now or on an earlier listing or signature, is left
+	 *    for the interactive pass as though no PIN were stored; see [loginWithStoredPin].
 	 * 2. **Interactive pass** — reached only when the silent pass did not produce a match.
 	 *    Iterates over the PIN-protected tokens that were skipped and prompts the user
 	 *    via [TokenService.requestPin].
@@ -502,21 +598,22 @@ class DssSigningRepository(
 		
 		for (tokenInfo in presentTokens) {
 			val alreadyUnlocked = tokenInfo.type == TokenType.PKCS11 && sessionCache.get(tokenInfo.id) != null
-			val password = if (tokenInfo.requiresPin && !alreadyUnlocked) {
+			val storedPin = if (tokenInfo.requiresPin && !alreadyUnlocked) {
 				credentialStore.getPassword(TOKEN_CREDENTIAL_SERVICE, tokenInfo.id)
 					?: run { deferredPinTokens.add(tokenInfo); continue }
 			} else {
-				""
+				null
 			}
 
-			val result = tryResolveFromToken(tokenInfo, password, parameters)
+			val result = tryResolveFromToken(tokenInfo, storedPin ?: "", parameters, passwordIsStored = storedPin != null)
 			if (result != null) return result
+			if (storedPin != null && hasRefusedStoredPin(tokenInfo, storedPin)) deferredPinTokens.add(tokenInfo)
 		}
 		
 		for (tokenInfo in deferredPinTokens) {
 			val password = tokenService.requestPin(tokenInfo) ?: continue
 			
-			val result = tryResolveFromToken(tokenInfo, password, parameters)
+			val result = tryResolveFromToken(tokenInfo, password, parameters, passwordIsStored = false)
 			if (result != null) return result
 		}
 		
@@ -540,18 +637,21 @@ class DssSigningRepository(
 	 *
 	 * Slot overriding applies to PKCS#11 tokens only; other token types resolve unchanged.
 	 *
+	 * @param passwordIsStored Whether [password] was read from the [CredentialStore] rather than
+	 *   entered by the user; see [resolveKeyFromSlot].
 	 * @return A [ResolvedKey] when a matching certificate and key are found, null otherwise.
 	 */
 	private suspend fun tryResolveFromToken(
 		tokenInfo: TokenInfo,
 		password: String,
 		parameters: SigningParameters,
+		passwordIsStored: Boolean,
 	): ResolvedKey? {
 		val primaryToken = parameters.certificateSlotId
 			?.takeIf { tokenInfo.type == TokenType.PKCS11 }
 			?.let { tokenInfo.copy(pkcs11SlotId = it) }
 			?: tokenInfo
-		resolveKeyFromSlot(primaryToken, password, parameters)?.let { return it }
+		resolveKeyFromSlot(primaryToken, password, parameters, passwordIsStored)?.let { return it }
 		
 		if (tokenInfo.type != TokenType.PKCS11 ||
 			parameters.certificateSlotId != null ||
@@ -565,7 +665,7 @@ class DssSigningRepository(
 			?.pkcs11SlotId
 		if (aliasSlot == null || aliasSlot == tokenInfo.pkcs11SlotId) return null
 		
-		return resolveKeyFromSlot(tokenInfo.copy(pkcs11SlotId = aliasSlot), password, parameters)
+		return resolveKeyFromSlot(tokenInfo.copy(pkcs11SlotId = aliasSlot), password, parameters, passwordIsStored)
 	}
 	
 	/**
@@ -573,10 +673,10 @@ class DssSigningRepository(
 	 *
 	 * For a PKCS#11 token already **unlocked** in [sessionCache], the held session's keys are
 	 * reused with no further `C_Login` (no secure-pad prompt) and the returned [ResolvedKey] is
-	 * marked `cached` so the cache keeps owning the token.  Otherwise the token is opened **once**
-	 * via [TokenService.openSigningToken] and its keys read **once** — both the certificate
-	 * selection and the subsequent signature run off that single enumeration — and the result is
-	 * marked transient (closed right after signing).
+	 * marked `cached` so the cache keeps owning the token.  Otherwise the token is opened by
+	 * [openAndSelectKey], and a [password] read from the [CredentialStore] is submitted through
+	 * [loginWithStoredPin], so a slot that has refused it is not sent it again and `null` is
+	 * returned instead.
 	 *
 	 * The key is matched to [SigningParameters.certificateAlias] by [selectSigningKeyByAlias],
 	 * whose alias embeds the serial number, so a slot holding several certificates with the same
@@ -585,12 +685,15 @@ class DssSigningRepository(
 	 * freshly-opened one — the method falls through past the cache (or closes the transient token)
 	 * and returns `null`, so [tryResolveFromToken] can retry on the certificate's real slot.
 	 *
+	 * @param passwordIsStored Whether [password] was read from the [CredentialStore] rather than
+	 *   entered by the user.
 	 * @return A [ResolvedKey] when a matching certificate and key are present, null otherwise.
 	 */
 	private suspend fun resolveKeyFromSlot(
 		tokenInfo: TokenInfo,
 		password: String,
 		parameters: SigningParameters,
+		passwordIsStored: Boolean,
 	): ResolvedKey? {
 		if (tokenInfo.type == TokenType.PKCS11) {
 			val unlocked = sessionCache.get(tokenInfo.id)
@@ -600,10 +703,41 @@ class DssSigningRepository(
 			}
 		}
 
+		return if (passwordIsStored) {
+			loginWithStoredPin(tokenInfo, password) { openAndSelectKey(tokenInfo, password, parameters) }
+		} else {
+			openAndSelectKey(tokenInfo, password, parameters)
+		}
+	}
+
+	/**
+	 * Open [tokenInfo] at the slot it is pinned to with [password] and pick the key [parameters]
+	 * asks for.
+	 *
+	 * The token is opened **once** via [TokenService.openSigningToken] and its keys read **once** —
+	 * both the certificate selection and the subsequent signature run off that single enumeration —
+	 * and the result is marked transient (closed right after signing). The token is closed at once
+	 * when it holds no matching key, or when reading its keys fails, as it does when the token
+	 * refuses [password].
+	 *
+	 * @return A transient [ResolvedKey], or null when the token cannot be opened or holds no
+	 *   matching key.
+	 */
+	@Suppress("TooGenericExceptionCaught")
+	private suspend fun openAndSelectKey(
+		tokenInfo: TokenInfo,
+		password: String,
+		parameters: SigningParameters,
+	): ResolvedKey? {
 		val dssToken = tokenService.openSigningToken(tokenInfo, password).getOrNull()
 			?.getDssToken() as? AbstractSignatureTokenConnection ?: return null
 
-		val key = selectSigningKeyByAlias(dssToken.keys, parameters.certificateAlias, tokenInfo)
+		val key = try {
+			selectSigningKeyByAlias(dssToken.keys, parameters.certificateAlias, tokenInfo)
+		} catch (e: Exception) {
+			dssToken.close()
+			throw e
+		}
 		if (key == null) {
 			dssToken.close()
 			return null
@@ -688,7 +822,20 @@ class DssSigningRepository(
 		val cached: Boolean,
 	)
 	
+	/**
+	 * A token slot that a stored PIN is submitted to.
+	 *
+	 * PIN retries are counted per slot, and a card that presents several slots may protect each
+	 * with a PIN of its own, so a slot refusing the stored PIN says nothing about the others.
+	 *
+	 * @property tokenId The token's [TokenInfo.id], which is also the stored PIN's account.
+	 * @property slotId The PKCS#11 slot, or null when the token is not pinned to one.
+	 */
+	private data class StoredPinSlot(val tokenId: String, val slotId: Long?)
+
 	private companion object {
+		val logger = KotlinLogging.logger {}
+
 		const val TOKEN_CREDENTIAL_SERVICE = "omnisign-token"
 
 		/**
