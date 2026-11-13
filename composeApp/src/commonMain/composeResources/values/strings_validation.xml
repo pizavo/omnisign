@@ -20,6 +20,7 @@
 	<string name="revocation_status_revoked">REVOKED</string>
 	<string name="revocation_status_unknown">UNKNOWN</string>
 	<string name="revocation_conclusion_revoked">The signing certificate was revoked as of %1$s.</string>
+	<string name="revocation_conclusion_revoked_later">The signing certificate was not revoked as of %1$s; it was revoked later, on %2$s.</string>
 	<string name="revocation_conclusion_not_revoked">The signing certificate was not revoked as of %1$s.</string>
 	<string name="revocation_conclusion_undetermined">The signing certificate had an undetermined revocation status as of %1$s.</string>
 	<string name="validation_indication_passed">PASSED</string>

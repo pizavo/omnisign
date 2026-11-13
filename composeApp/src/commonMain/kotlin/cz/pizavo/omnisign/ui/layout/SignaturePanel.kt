@@ -438,6 +438,10 @@ private fun CertificateAccordion(signature: SignatureValidationResult) {
  * performed — each shown in full, so an embedded token and a live online check both appear rather
  * than one being chosen.
  *
+ * The conclusion is shown in the error colour when the certificate had been revoked by then, in
+ * the warning colour when it was revoked only later (see [revocationOutcome]), and as secondary
+ * text otherwise.
+ *
  * @param asOf The point in time the conclusion is stated against (best-signature-time).
  */
 @Composable
@@ -448,12 +452,16 @@ private fun RevocationAccordion(revocations: List<RevocationInfo>, asOf: Instant
             modifier = Modifier.padding(start = 4.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp),
         ) {
-            val revokedAtSigning = revocations.signingTimeRepresentative()?.revoked == true
+            val outcome = revocations.revocationOutcome(asOf)
             revocations.revocationConclusion(asOf, LocalAppDateFormat.current)?.let { conclusion ->
                 Text(
                     text = conclusion.localized(),
                     style = LumoTheme.typography.body2,
-                    color = if (revokedAtSigning) LumoTheme.colors.error else LumoTheme.colors.textSecondary,
+                    color = when (outcome) {
+                        RevocationOutcome.Revoked -> LumoTheme.colors.error
+                        is RevocationOutcome.RevokedLater -> LumoTheme.colors.warning
+                        else -> LumoTheme.colors.textSecondary
+                    },
                 )
                 Spacer(modifier = Modifier.height(2.dp))
                 HorizontalDivider()

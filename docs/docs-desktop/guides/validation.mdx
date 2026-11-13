@@ -83,9 +83,22 @@ EU LOTL without being qualified, and vice versa.
 
 When DSS found or performed revocation checks for the signing certificate, the **Certificate**
 section is followed by a **Revocation check** section (**Revocation checks (N)** for more than one).
-It opens with a one-line conclusion as of the **best-signature-time** — *"The signing certificate was
-not revoked as of …"*, shown in red when the certificate was revoked at that time — then lists every
-check in full. Each shows its **Status** (`GOOD` / `REVOKED` / `UNKNOWN`), **Method**
+It opens with a one-line conclusion as of the **best-signature-time**, judged from the dates the
+checks give rather than from any one check's status:
+
+- *"The signing certificate was revoked as of …"*, in red, when a check dates the revocation at or
+  before that time, however late the check itself was made, or reports a revocation without a date.
+- *"The signing certificate was not revoked as of …; it was revoked later, on …"*, in yellow, when
+  every revocation a check reports came after that time, so the signature was made while the
+  certificate was still valid.
+- *"The signing certificate was not revoked as of …"* when a `GOOD` check was made at or after that
+  time, or was still current then, before its next update. Both comparisons allow five minutes for
+  responders' clocks, whose times are kept to the second.
+- *"The signing certificate had an undetermined revocation status as of …"* otherwise: no check
+  says `GOOD`, or every `GOOD` check was made before that time and either its next update had
+  passed by then or it names none.
+
+It then lists every check in full. Each shows its **Status** (`GOOD` / `REVOKED` / `UNKNOWN`), **Method**
 (`OCSP` / `CRL`), **Source** (embedded in the document — and whether a document timestamp seals it —
 or retrieved online during validation), the responder or CRL distribution-point URL when known,
 method-aware times (OCSP: *Response produced* / *Status as of* / *Fresh until*; CRL: *CRL issued* /

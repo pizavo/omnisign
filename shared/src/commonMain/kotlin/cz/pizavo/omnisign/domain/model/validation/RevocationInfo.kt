@@ -5,6 +5,8 @@ import cz.pizavo.omnisign.domain.model.text.MessageKey
 import cz.pizavo.omnisign.domain.model.value.DateFormat
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import kotlinx.serialization.Serializable
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
 /**
@@ -48,42 +50,96 @@ data class RevocationInfo(
     val nextUpdate: Instant? = null,
     val revocationDate: Instant? = null,
     val reason: String? = null,
-)
+) {
+    companion object {
+        /**
+         * The leeway [revocationOutcome] gives a good check's times against the best-signature-time.
+         * Responders' clocks drift, and OCSP and CRL times are kept to the second, so a check DSS
+         * fetches moments after a validation began can carry a time just before that moment. Five
+         * minutes is the clock-skew leeway OpenSSL allows an OCSP response by default
+         * (`openssl ocsp -validity_period`).
+         */
+        val CLOCK_SKEW_LEEWAY: Duration = 5.minutes
+    }
+}
 
 /**
- * The token that best represents the certificate's status *at signing time*: a timestamp-sealed
- * token first (it carries a proof-of-existence at signing), then any embedded token, then the
- * earliest-produced. Used only to phrase the per-signature [revocationConclusion]; the full list is
- * always rendered, so this picks a spokesperson without hiding any of the others.
+ * The signing certificate's revocation status as of [asOf] (best-signature-time), judged from the
+ * dates every check gives rather than from any one check's status, or `null` when there is no
+ * revocation data:
+ *
+ * - [RevocationOutcome.Revoked] when a check says the certificate was revoked at or before [asOf].
+ *   A revoked check without a revocation date counts too, since nothing shows the revocation came
+ *   later.
+ * - [RevocationOutcome.RevokedLater] when every revocation a check reports came after [asOf]: the
+ *   certificate was still valid when the signature was made.
+ * - [RevocationOutcome.NotRevoked] when a check whose status is good covers [asOf]: its status time,
+ *   [RevocationInfo.thisUpdate] or [RevocationInfo.producedAt] without one, is not before [asOf], or
+ *   [asOf] falls before its [RevocationInfo.nextUpdate], so the check was still the current word on
+ *   the certificate then. That second case is the revocation freshness rule of ETSI EN 319 102-1
+ *   (5.2.5) when the policy sets no maximum freshness, and it is what lets a signature without a
+ *   timestamp, whose best-signature-time is the validation time itself, rest on a CRL issued shortly
+ *   before it. Both comparisons allow [RevocationInfo.CLOCK_SKEW_LEEWAY], so an OCSP response that
+ *   names no next update, fetched as the validation began, is not undone by a responder's clock or
+ *   by its time being kept to the second.
+ * - [RevocationOutcome.Undetermined] otherwise. A good check whose next update had already passed
+ *   by [asOf], or one issued before [asOf] that names no next update, leaves the certificate free to
+ *   have been revoked between that check and [asOf].
+ *
+ * Where a check comes from, embedded and sealed by a timestamp or fetched online, does not change
+ * the outcome: a revocation dated before [asOf] means the certificate was revoked by then, however
+ * late the check that reports it, and an embedded good check says nothing about a time after it
+ * stopped being current.
  */
-fun List<RevocationInfo>.signingTimeRepresentative(): RevocationInfo? =
-    sortedWith(
-        compareByDescending<RevocationInfo> { it.sealedByTimestamp }
-            .thenByDescending { it.embedded }
-            .thenBy { it.producedAt?.toEpochMilliseconds() ?: Long.MAX_VALUE }
-    ).firstOrNull()
+fun List<RevocationInfo>.revocationOutcome(asOf: Instant): RevocationOutcome? {
+    if (isEmpty()) return null
+    val revocationDates = filter { it.revoked }.map { it.revocationDate }
+    return when {
+        revocationDates.any { it == null || it <= asOf } -> RevocationOutcome.Revoked
+        revocationDates.isNotEmpty() -> RevocationOutcome.RevokedLater(revocationDates.filterNotNull().min())
+        any { it.vouchesForGoodStatusAt(asOf) } -> RevocationOutcome.NotRevoked
+        else -> RevocationOutcome.Undetermined
+    }
+}
+
+/**
+ * Whether this check says the certificate was good as of [asOf]: its status is good, and either its
+ * status time is not before [asOf] or [asOf] falls before its next update, both within
+ * [RevocationInfo.CLOCK_SKEW_LEEWAY]. A check without a status time covers no time at all.
+ */
+private fun RevocationInfo.vouchesForGoodStatusAt(asOf: Instant): Boolean {
+    if (!status.equals("GOOD", ignoreCase = true)) return false
+    val statusTime = thisUpdate ?: producedAt ?: return false
+    val leeway = RevocationInfo.CLOCK_SKEW_LEEWAY
+    return statusTime >= asOf - leeway || nextUpdate?.let { asOf < it + leeway } == true
+}
 
 /**
  * One-line conclusion about the signing certificate's revocation status as of [asOf]
- * (best-signature-time), derived from the [signingTimeRepresentative]. Returns `null` when there is
- * no revocation data. The supporting details (method, source, responder, times) are presented as
- * structured fields per token, so this stays a bare statement of the outcome.
+ * (best-signature-time), stating its [revocationOutcome]. Returns `null` when there is no
+ * revocation data. The supporting details (method, source, responder, times) are presented as
+ * structured fields per check, so this stays a bare statement of the outcome.
  *
- * @param dateFormat Date style for [asOf]. A caller rendering into a surface that lets the user pick
- *   one — the desktop signature panel — must pass it, or this line disagrees with every other date
- *   beside it; see [displayRows].
+ * @param dateFormat Date style for [asOf] and for a later revocation date. A caller rendering into
+ *   a surface that lets the user pick one — the desktop signature panel — must pass it, or this line
+ *   disagrees with every other date beside it; see [displayRows].
  */
 fun List<RevocationInfo>.revocationConclusion(
     asOf: Instant,
     dateFormat: DateFormat = DateFormat.SYSTEM,
 ): LocalizableText? {
-    val representative = signingTimeRepresentative() ?: return null
-    val key = when {
-        representative.revoked -> MessageKey.REVOCATION_CONCLUSION_REVOKED
-        representative.status == "GOOD" -> MessageKey.REVOCATION_CONCLUSION_NOT_REVOKED
-        else -> MessageKey.REVOCATION_CONCLUSION_UNDETERMINED
+    val outcome = revocationOutcome(asOf) ?: return null
+    val time = asOf.formatDateTime(dateFormat = dateFormat)
+    return when (outcome) {
+        RevocationOutcome.Revoked -> LocalizableText.of(MessageKey.REVOCATION_CONCLUSION_REVOKED, time)
+        is RevocationOutcome.RevokedLater -> LocalizableText.of(
+            MessageKey.REVOCATION_CONCLUSION_REVOKED_LATER,
+            time,
+            outcome.on.formatDateTime(dateFormat = dateFormat),
+        )
+        RevocationOutcome.NotRevoked -> LocalizableText.of(MessageKey.REVOCATION_CONCLUSION_NOT_REVOKED, time)
+        RevocationOutcome.Undetermined -> LocalizableText.of(MessageKey.REVOCATION_CONCLUSION_UNDETERMINED, time)
     }
-    return LocalizableText.of(key, asOf.formatDateTime(dateFormat = dateFormat))
 }
 
 /**

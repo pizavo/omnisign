@@ -20,6 +20,7 @@
 	<string name="revocation_status_revoked">Zneplatněno</string>
 	<string name="revocation_status_unknown">Neznámý</string>
 	<string name="revocation_conclusion_revoked">Podpisový certifikát byl ke dni %1$s zneplatněn.</string>
+	<string name="revocation_conclusion_revoked_later">Podpisový certifikát nebyl ke dni %1$s zneplatněn; zneplatněn byl až později, dne %2$s.</string>
 	<string name="revocation_conclusion_not_revoked">Podpisový certifikát nebyl ke dni %1$s zneplatněn.</string>
 	<string name="revocation_conclusion_undetermined">Stav zneplatnění podpisového certifikátu nebyl ke dni %1$s určen.</string>
 	<string name="validation_indication_passed">PROŠLO</string>
