@@ -15,7 +15,9 @@ import eu.europa.esig.dss.spi.x509.CertificateSource
 import eu.europa.esig.dss.tsl.job.TLValidationJob
 import eu.europa.esig.dss.tsl.source.LOTLSource
 import eu.europa.esig.dss.tsl.source.TLSource
+import eu.europa.esig.dss.tsl.sync.ExpirationAndSignatureCheckStrategy
 import io.github.oshai.kotlinlogging.KotlinLogging
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
@@ -43,9 +45,19 @@ private val logger = KotlinLogging.logger {}
  *
  * Every acquire/refresh is bracketed with [TrustedListRefreshSignal] begin/end
  * for its id so consumers can scope their wait precisely.
+ *
+ * A list supplies trust only while its signature verifies against the certificates that vouch
+ * for it (see [RetainedTl.synchronizationStrategy]). One that does not, for instance because it
+ * was changed after it was signed, is left out and named in the warnings of the operations that
+ * use its source.
+ *
+ * @param signal Where acquisitions and refreshes are reported.
+ * @param cacheDirectory The directory downloaded lists are cached in, [DssServiceFactory.tlCacheDir]
+ *   unless a test needs a cache of its own.
  */
 class TrustedSourceRegistry(
 	private val signal: TrustedListRefreshSignal = TrustedListRefreshSignal(),
+	private val cacheDirectory: () -> File = { DssServiceFactory.tlCacheDir() },
 ) {
 
 	/**
@@ -61,7 +73,8 @@ class TrustedSourceRegistry(
 	 * The registry reads [signingCertPath] itself and hands the certificate to [buildJob] (see
 	 * [buildJobFor]), so [job] stays `null` while the file cannot be read, and
 	 * [signingCertificateFailure] holds the reason it last could not, so that reason is logged
-	 * once rather than on every attempt.
+	 * once rather than on every attempt. [unverifiedWarning] does the same for the warning about
+	 * lists whose signature could not be verified (see [recordWarnings]).
 	 */
 	private class RetainedTl(
 		val id: TrustedSourceId,
@@ -71,6 +84,24 @@ class TrustedSourceRegistry(
 		val signingCertPath: String?,
 	) {
 		val lock = ReentrantLock()
+
+		/**
+		 * Decides which of this source's lists supply trust, for every job built for it.
+		 *
+		 * A list whose signature could not be verified is left out: the EU LOTL, verified against
+		 * the bundled Official Journal certificates, the member-state lists it points to, verified
+		 * against the certificates it gives for each, and a custom list configured with a signing
+		 * certificate. Such a list supplies no trust even when an earlier version of it did. A
+		 * custom list configured without a signing certificate cannot be verified, so it is used
+		 * whatever its signature. Expired lists are used either way, so that a list its operator is
+		 * late to reissue still vouches for the services it names.
+		 */
+		val synchronizationStrategy = ExpirationAndSignatureCheckStrategy().apply {
+			setAcceptInvalidTrustedList(id is TrustedSourceId.CustomList && signingCertPath == null)
+			setAcceptInvalidListOfTrustedLists(false)
+			setAcceptExpiredTrustedList(true)
+			setAcceptExpiredListOfTrustedLists(true)
+		}
 
 		@Volatile
 		var job: TLValidationJob? = null
@@ -83,6 +114,9 @@ class TrustedSourceRegistry(
 
 		@Volatile
 		var signingCertificateFailure: String? = null
+
+		@Volatile
+		var unverifiedWarning: LocalizableText? = null
 	}
 
 	/**
@@ -233,10 +267,11 @@ class TrustedSourceRegistry(
 	 * signal, so a validation needing a different source is not blocked.
 	 *
 	 * The cycle's outcome is recorded on the signal: each source whose download
-	 * throws is accumulated (its last good trust keeps being served) and flushed as
-	 * one aggregate failure when the session ends, and a fresh "Last refreshed"
-	 * timestamp is stamped when at least one source refreshed — both when the cycle
-	 * is mixed.
+	 * throws is accumulated (its last good trust keeps being served), and so is each
+	 * source left without trust, such as a custom list whose new version cannot be
+	 * verified; they are flushed as one aggregate failure when the session ends, and a
+	 * fresh "Last refreshed" timestamp is stamped when at least one source refreshed —
+	 * both when the cycle is mixed.
 	 *
 	 * A source that has no retained job yet, because its signing certificate could not
 	 * be read, gets one built first, so a restored certificate file is picked up by the
@@ -275,7 +310,8 @@ class TrustedSourceRegistry(
 	 * returned, because the session flush may merge it with the failures of an
 	 * operation running at the same time. A source whose signing certificate cannot
 	 * be read gets no fresh job and is among the failed ones; the others are still
-	 * refreshed, and a source that loaded earlier keeps serving its last good trust.
+	 * refreshed. A source that loaded earlier keeps serving its last good trust when
+	 * its download fails, but not when the list it downloads cannot be verified.
 	 *
 	 * @return The sources this refresh could not load, or `null` when every one
 	 *   of them loaded or none is retained.
@@ -315,7 +351,8 @@ class TrustedSourceRegistry(
 	/**
 	 * Whether any retained trusted source finished loading but holds no certificates —
 	 * i.e. it failed to obtain trust (a cold cache while offline, an unreachable
-	 * source URL, or a signing certificate that cannot be read). The refresh scheduler
+	 * source URL, a signing certificate that cannot be read, or a list whose signature
+	 * could not be verified). The refresh scheduler
 	 * polls this to retry soon after a failure instead of waiting a full cycle.
 	 * `false` when every retained source has trust, or none is retained.
 	 */
@@ -379,7 +416,8 @@ class TrustedSourceRegistry(
 	 * The one-time warm records its outcome —
 	 * [markRefreshed][TrustedListRefreshSignal.markRefreshed] on the signal when usable
 	 * trust was loaded, or [accumulateFailure] when it was not (a cold cache while
-	 * offline, or a signing certificate that cannot be read) so the session flush
+	 * offline, a signing certificate that cannot be read, or a list whose signature
+	 * could not be verified) so the session flush
 	 * notifies the user — keeping the "Last refreshed" indicator honest instead of
 	 * silently degrading to an empty trust store. The entry is still marked
 	 * [initialized][RetainedTl.initialized] on failure: re-attempting on every
@@ -422,7 +460,8 @@ class TrustedSourceRegistry(
 
 	/**
 	 * Build a job for [entry] over the loader [onlineLoader] creates, after reading the
-	 * entry's signing certificate from [RetainedTl.signingCertPath].
+	 * entry's signing certificate from [RetainedTl.signingCertPath]. The job leaves out a list
+	 * whose signature could not be verified, as [RetainedTl.synchronizationStrategy] decides.
 	 *
 	 * No job is built when the certificate cannot be read — the file is missing or
 	 * unreadable, or holds no certificate — because a list must never be loaded without
@@ -442,7 +481,9 @@ class TrustedSourceRegistry(
 			}
 		}
 		entry.signingCertificateFailure = null
-		return entry.buildJob(entry.source, onlineLoader(), signingCertificate)
+		return entry.buildJob(entry.source, onlineLoader(), signingCertificate).apply {
+			setSynchronizationStrategy(entry.synchronizationStrategy)
+		}
 	}
 
 	/**
@@ -476,7 +517,7 @@ class TrustedSourceRegistry(
 	}
 
 	/**
-	 * Build an online [FileCacheDataLoader] over the persistent cache directory.
+	 * Build an online [FileCacheDataLoader] over the persistent [cacheDirectory].
 	 *
 	 * The underlying [CommonsDataLoader] is given the augmented TL-transport trust
 	 * ([DssServiceFactory.configureTlTransportTrust]) so member-state lists whose
@@ -488,7 +529,7 @@ class TrustedSourceRegistry(
 	 * to zero) for the throwaway loader of a [forceRefreshAll] hard refresh.
 	 */
 	private fun newOnlineLoader(): FileCacheDataLoader {
-		val cacheDir = DssServiceFactory.tlCacheDir().also { it.mkdirs() }
+		val cacheDir = cacheDirectory().also { it.mkdirs() }
 		return FileCacheDataLoader().apply {
 			setCacheExpirationTime(cacheExpirationMillis)
 			setDataLoader(
@@ -504,14 +545,15 @@ class TrustedSourceRegistry(
 
 	/**
 	 * Build a retained [TLValidationJob] bound to [source] with the shared
-	 * executor, a never-expiring offline cache, and the supplied [onlineLoader].
+	 * executor, a never-expiring offline cache over [cacheDirectory], and the supplied
+	 * [onlineLoader].
 	 */
 	private fun newJob(
 		source: TrustedListsCertificateSource,
 		onlineLoader: FileCacheDataLoader,
 		executorService: ExecutorService,
 	): TLValidationJob {
-		val cacheDir = DssServiceFactory.tlCacheDir().also { it.mkdirs() }
+		val cacheDir = cacheDirectory().also { it.mkdirs() }
 		return TLValidationJob().apply {
 			setExecutorService(executorService)
 			setTrustedListCertificateSource(source)
@@ -544,7 +586,7 @@ class TrustedSourceRegistry(
 			runCatching { job.onlineRefresh() }
 				.onFailure { logger.warn(it) { "Online TL refresh failed; trust may be incomplete" } }
 		}
-		entry.warnings = DssServiceFactory.collectTlWarnings(job.summary)
+		recordWarnings(entry, job)
 		return entry.source.certificates.isNotEmpty()
 	}
 
@@ -554,7 +596,8 @@ class TrustedSourceRegistry(
 	 *
 	 * @return `true` when the online fetch completed and left the source with
 	 *   usable trust; `false` when the download threw — the last good trust is
-	 *   still served — or completed but yielded no certificates.
+	 *   still served — or completed but yielded no certificates, for instance because
+	 *   the list it downloaded could not be verified.
 	 */
 	private fun refreshOnline(entry: RetainedTl, job: TLValidationJob): Boolean {
 		var fetched = false
@@ -564,8 +607,29 @@ class TrustedSourceRegistry(
 				.onFailure { logger.warn(it) { "Online TL refresh of ${entry.id} failed; serving last good trust" } }
 		}
 		logger.info { "onlineRefresh(${entry.id}) took ${elapsed}ms" }
-		entry.warnings = DssServiceFactory.collectTlWarnings(job.summary)
+		recordWarnings(entry, job)
 		return fetched && entry.source.certificates.isNotEmpty()
+	}
+
+	/**
+	 * Replace the warnings of [entry] with those of [job]'s last refresh.
+	 *
+	 * A warning about lists left out because their signature could not be verified is logged
+	 * too, so that `config tl refresh`, which reports such a list only as not refreshed, says
+	 * why. Like [recordUnreadableSigningCertificate], it is logged at WARN when it is new and at
+	 * DEBUG while it stays the same.
+	 */
+	private fun recordWarnings(entry: RetainedTl, job: TLValidationJob) {
+		val warnings = DssServiceFactory.collectTlWarnings(job.summary, entry.synchronizationStrategy)
+		val unverified = warnings.firstOrNull {
+			(it as? LocalizableText.Keyed)?.key == MessageKey.WARNING_TRUSTED_LIST_SIGNATURE_UNVERIFIED
+		}
+		if (unverified != null) {
+			if (unverified == entry.unverifiedWarning) logger.debug { unverified.english() }
+			else logger.warn { unverified.english() }
+		}
+		entry.unverifiedWarning = unverified
+		entry.warnings = warnings
 	}
 
 	/** Registry constants. */

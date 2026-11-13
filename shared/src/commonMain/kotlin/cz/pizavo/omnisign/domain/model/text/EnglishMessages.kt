@@ -310,6 +310,9 @@ internal object EnglishMessages {
 		MessageKey.WARNING_TRUSTED_LIST_SIGNING_CERTIFICATE_UNREADABLE ->
 			"Could not load trusted list %1\$s: its signing certificate %2\$s cannot be read. Trust " +
 				"and qualification assessment for certificates from this list may be incomplete."
+		MessageKey.WARNING_TRUSTED_LIST_SIGNATURE_UNVERIFIED ->
+			"Could not use %1\$s (%2\$s): the signature could not be verified, so none of the " +
+				"certificates listed there is trusted."
 		MessageKey.VALIDATION_SIGNATURE_POLICY_UNTRUSTED ->
 			"Signature distrusted by policy: its trust anchor is trusted for timestamping only, " +
 				"not for signing"

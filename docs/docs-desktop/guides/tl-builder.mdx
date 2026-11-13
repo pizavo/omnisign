@@ -85,6 +85,11 @@ Registration always targets the **global** scope, even when the builder was open
 editor, and is committed when you save the Settings dialog. When unchecked, the XML is written to
 disk but not registered.
 
+The compiled list is not signed, so it is registered without a signing certificate and used
+whatever it says. To have it verified, sign the file with an enveloped XAdES signature and register
+the signed file with its signing certificate under
+[Trusted Lists](settings.mdx#trusted-lists) instead.
+
 ## 4. Compile
 
 Click **Compile & Save** and choose where to write the Trusted List XML in the **Save As**

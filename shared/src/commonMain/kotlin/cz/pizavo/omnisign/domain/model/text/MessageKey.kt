@@ -403,6 +403,9 @@ enum class MessageKey {
 	/** Trusted-list loading: a custom trusted list was not loaded because its signing certificate cannot be read (arg: list name; arg: certificate path). */
 	WARNING_TRUSTED_LIST_SIGNING_CERTIFICATE_UNREADABLE,
 
+	/** Trusted-list loading: one or more trusted lists were not used because their signature could not be verified (arg: count phrase; arg: their hosts). */
+	WARNING_TRUSTED_LIST_SIGNATURE_UNVERIFIED,
+
 	/** Validation: a signature's trust anchor is trusted for timestamping only, not for signing. */
 	VALIDATION_SIGNATURE_POLICY_UNTRUSTED,
 

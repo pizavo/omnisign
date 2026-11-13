@@ -13,9 +13,16 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.CrlConfig
 import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.text.MessageKey
 import cz.pizavo.omnisign.domain.service.CredentialStore
+import eu.europa.esig.dss.model.job.DownloadInfoRecord
+import eu.europa.esig.dss.model.tsl.LOTLInfo
+import eu.europa.esig.dss.model.tsl.TLInfo
+import eu.europa.esig.dss.model.tsl.TLValidationJobSummary
 import eu.europa.esig.dss.model.x509.CertificateToken
 import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
+import eu.europa.esig.dss.validation.job.sync.SynchronizationStrategy
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempfile
@@ -46,6 +53,9 @@ import kotlin.time.toJavaInstant
  *
  * The AIA tests ask each verifier's AIA source for the issuer of a certificate that points to a file
  * or to an HTTP server on the loopback interface, which stands in for any internal address.
+ *
+ * The trusted-list warning tests hand [DssServiceFactory.collectTlWarnings] a mocked job summary and
+ * a strategy that keeps out the lists they name, as one does whose signature could not be verified.
  */
 class DssServiceFactoryTest : FunSpec({
 	
@@ -389,6 +399,100 @@ class DssServiceFactoryTest : FunSpec({
 			.forEach { (name, verifier) ->
 				withClue(name) { verifier.aiaSource.getCertificatesByAIA(leaf) shouldHaveSize 1 }
 			}
+	}
+
+	/** A download record of a list that was [downloaded], or that could not be. */
+	fun downloadRecord(downloaded: Boolean): DownloadInfoRecord = mockk {
+		every { isError } returns !downloaded
+		every { isResultExist } returns downloaded
+	}
+
+	/** A trusted list at [address] that was [downloaded], or that could not be. */
+	fun trustedList(address: String, downloaded: Boolean = true): TLInfo {
+		val record = downloadRecord(downloaded)
+		return mockk {
+			every { url } returns address
+			every { downloadCacheInfo } returns record
+		}
+	}
+
+	/** A list of trusted lists at [address] that was downloaded and points to [members]. */
+	fun listOfTrustedLists(address: String, vararg members: TLInfo): LOTLInfo {
+		val record = downloadRecord(true)
+		return mockk {
+			every { url } returns address
+			every { downloadCacheInfo } returns record
+			every { tlInfos } returns members.toList()
+		}
+	}
+
+	/** A job summary of [lotls] and of the standalone lists [others]. */
+	fun summaryOf(lotls: List<LOTLInfo>, others: List<TLInfo>): TLValidationJobSummary = mockk {
+		every { lotlInfos } returns lotls
+		every { otherTLInfos } returns others
+	}
+
+	/** A strategy that keeps out the lists at [rejected], as it keeps out one whose signature could not be verified. */
+	fun rejecting(vararg rejected: String) = object : SynchronizationStrategy<TLInfo, LOTLInfo> {
+		override fun canBeSynchronized(document: TLInfo): Boolean = document.url !in rejected
+
+		override fun canBeSynchronized(documentList: LOTLInfo): Boolean = documentList.url !in rejected
+	}
+
+	test("collectTlWarnings tells the lists that could not be downloaded from those whose signature could not be verified") {
+		val summary = summaryOf(
+			lotls = emptyList(),
+			others = listOf(
+				trustedList("https://offline.omnisign.test/tl.xml", downloaded = false),
+				trustedList("https://forged.omnisign.test/tl.xml"),
+				trustedList("https://sound.omnisign.test/tl.xml"),
+			),
+		)
+
+		DssServiceFactory.collectTlWarnings(summary, rejecting("https://forged.omnisign.test/tl.xml")) shouldBe listOf(
+			LocalizableText.of(MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE, "1 trusted list", "offline.omnisign.test"),
+			LocalizableText.of(MessageKey.WARNING_TRUSTED_LIST_SIGNATURE_UNVERIFIED, "1 trusted list", "forged.omnisign.test"),
+		)
+	}
+
+	test("collectTlWarnings names a list of trusted lists that is kept out alone, not the lists it points to") {
+		val summary = summaryOf(
+			lotls = listOf(
+				listOfTrustedLists(
+					"https://lotl.omnisign.test/lotl.xml",
+					trustedList("https://member.omnisign.test/tl.xml"),
+					trustedList("https://unreachable.omnisign.test/tl.xml", downloaded = false),
+				),
+			),
+			others = emptyList(),
+		)
+
+		DssServiceFactory.collectTlWarnings(summary, rejecting("https://lotl.omnisign.test/lotl.xml")) shouldBe listOf(
+			LocalizableText.of(MessageKey.WARNING_TRUSTED_LIST_SIGNATURE_UNVERIFIED, "1 trusted list", "lotl.omnisign.test"),
+		)
+	}
+
+	test("collectTlWarnings names the lists a list of trusted lists in use points to that are kept out") {
+		val summary = summaryOf(
+			lotls = listOf(
+				listOfTrustedLists(
+					"https://lotl.omnisign.test/lotl.xml",
+					trustedList("https://forged-a.omnisign.test/tl.xml"),
+					trustedList("https://forged-b.omnisign.test/tl.xml"),
+					trustedList("https://sound.omnisign.test/tl.xml"),
+				),
+			),
+			others = emptyList(),
+		)
+
+		val rejected = rejecting("https://forged-a.omnisign.test/tl.xml", "https://forged-b.omnisign.test/tl.xml")
+		DssServiceFactory.collectTlWarnings(summary, rejected) shouldBe listOf(
+			LocalizableText.of(
+				MessageKey.WARNING_TRUSTED_LIST_SIGNATURE_UNVERIFIED,
+				"2 trusted lists",
+				"forged-a.omnisign.test, forged-b.omnisign.test",
+			),
+		)
 	}
 }) {
 	companion object {

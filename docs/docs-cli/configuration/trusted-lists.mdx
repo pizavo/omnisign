@@ -16,12 +16,20 @@ could not be saved. So does `refresh` when a trusted list cannot be refreshed.
 
 Register a custom trusted list source.
 
-| Option                    | Description                                                                 |
-|---------------------------|-----------------------------------------------------------------------------|
-| `-n, --name <name>`       | **(Required)** Unique label for this trusted list                           |
-| `-s, --source <url/path>` | **(Required)** HTTPS URL or file path to the TL XML                         |
-| `--signing-cert <path>`   | PEM/DER certificate to verify the TL's XML signature (strongly recommended) |
-| `-p, --profile <name>`    | Store in the given profile instead of the global config                     |
+| Option                    | Description                                                                           |
+|---------------------------|---------------------------------------------------------------------------------------|
+| `-n, --name <name>`       | **(Required)** Unique label for this trusted list                                     |
+| `-s, --source <url/path>` | **(Required)** HTTPS URL or file path to the TL XML                                   |
+| `--signing-cert <path>`   | PEM/DER certificate the TL's XML signature must verify against (strongly recommended) |
+| `-p, --profile <name>`    | Store in the given profile instead of the global config                               |
+
+With `--signing-cert`, the list supplies trust only while its signature verifies against that
+certificate. A list that is unsigned, signed with another key or changed after it was signed is not
+used, even when an earlier version of it was: validations name it among their
+[trusted list notices](../commands/validate#trusted-list-notices), and `refresh` reports it as not
+refreshed. Without `--signing-cert` the list is used whatever its signature, so `add` warns that
+it will not be verified, and, for an `http://` source, that anyone on the network path can change
+the certificates it lists.
 
 ## `config tl list`
 
@@ -60,7 +68,8 @@ refreshing the others:
 ```
 
 A list whose signing certificate cannot be read is reported the same way, after a warning that names
-the file. The command also exits with status 1, saying why, when the refresh cannot run at all.
+the file, and so is a list whose signature could not be verified, after a warning that names its
+address. The command also exits with status 1, saying why, when the refresh cannot run at all.
 
 ## `config tl build` — Build custom trusted lists
 
@@ -81,6 +90,10 @@ useful for organisations that need to trust internal CAs.
 
 Both `create` and `compile` accept `-p, --profile <name>` to register the compiled list into a
 profile's validation config instead of the global config.
+
+The compiled list is not signed, so `create` and `compile` register it without a signing
+certificate, and it is used whatever it says. To have it verified, sign the file with an enveloped
+XAdES signature and register the signed file with `config tl add --signing-cert`.
 
 If the wizard cannot save a provider, `create` stops there with status 1 and keeps the draft with
 the providers saved before it; finish it with `tsp add` and `service add`.

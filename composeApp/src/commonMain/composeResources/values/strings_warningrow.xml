@@ -16,6 +16,7 @@
 	<string name="warning_tsp_failure">The timestamp server reported a problem (PKIFailureInfo). If the operation succeeded, the timestamp may have been obtained on a retry.</string>
 	<string name="warning_tl_refresh_incomplete">Could not refresh %1$s (%2$s). Qualification assessment for certificates from these sources may be incomplete.</string>
 	<string name="warning_tl_signing_certificate_unreadable">Could not load trusted list %1$s: its signing certificate %2$s cannot be read. Trust and qualification assessment for certificates from this list may be incomplete.</string>
+	<string name="warning_tl_signature_unverified">Could not use %1$s (%2$s): the signature could not be verified, so none of the certificates listed there is trusted.</string>
 	<plurals name="warning_affected_certificates">
 		<item quantity="one">%1$s certificate</item>
 		<item quantity="other">%1$s certificates</item>

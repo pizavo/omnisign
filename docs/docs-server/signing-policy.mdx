@@ -56,7 +56,7 @@ global:
     # customTrustedLists:               # extra ETSI TS 119612 lists, by reference
     #   - name: "national-tl"
     #     source: "https://tl.example.gov/tl.xml"     # https:// or file://
-    #     signingCertPath: "/etc/omnisign/tl-signing.crt"
+    #     signingCertPath: "/etc/omnisign/tl-signing.crt"  # used only while its signature verifies
     # trustedCertificates:              # directly-trusted anchors, by reference
     #   - path: certs/internal-root.pem # exactly one of path | inline
     #     type: ANY                     # ANY | CA | TSA

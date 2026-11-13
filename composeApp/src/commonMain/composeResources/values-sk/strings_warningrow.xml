@@ -16,6 +16,7 @@
 	<string name="warning_tsp_failure">Server časových pečiatok nahlásil problém (PKIFailureInfo). Ak operácia prebehla úspešne, časová pečiatka sa mohla získať pri opakovanom pokuse.</string>
 	<string name="warning_tl_refresh_incomplete">Nepodarilo sa obnoviť %1$s (%2$s). Posúdenie kvalifikácie certifikátov z týchto zdrojov môže byť neúplné.</string>
 	<string name="warning_tl_signing_certificate_unreadable">Nepodarilo sa načítať dôveryhodný zoznam %1$s: jeho podpisový certifikát %2$s nemožno prečítať. Posúdenie dôveryhodnosti a kvalifikácie certifikátov z tohto zoznamu môže byť neúplné.</string>
+	<string name="warning_tl_signature_unverified">Nemožno použiť %1$s (%2$s): podpis sa nepodarilo overiť, preto sa žiadnemu z uvedených certifikátov nedôveruje.</string>
 	<plurals name="warning_affected_certificates">
 		<item quantity="one">%1$s certifikát</item>
 		<item quantity="few">%1$s certifikáty</item>
