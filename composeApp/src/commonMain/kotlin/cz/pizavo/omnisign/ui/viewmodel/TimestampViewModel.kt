@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
@@ -111,8 +112,8 @@ class TimestampViewModel(
 	 */
 	val pendingOutputBytes: ByteArray? get() = pendingExtension?.outputBytes
 
-	/** Pre-fetched timestamp info, populated by [onDocumentChanged]. */
-	private var cachedTimestampInfo: DocumentTimestampInfo? = null
+	/** Pre-fetched timestamp info and the configuration it was judged under, populated by [onDocumentChanged]. */
+	private var cachedInspection: Inspection? = null
 
 	/** In-flight pre-fetch coroutine, cancelled when the document changes. */
 	private var prefetchJob: Job? = null
@@ -124,33 +125,58 @@ class TimestampViewModel(
 	 * timestamp state is triggered so that [open] can skip the heavyweight DSS
 	 * inspection and transition to [TimestampDialogState.Ready] instantly.
 	 *
+	 * The document is inspected under the active profile's configuration, the one the dialog
+	 * would extend with now. A configuration that does not resolve skips the pre-fetch, since
+	 * [open] would report that error rather than use the result.
+	 *
 	 * @param document The newly loaded document, or `null` when no document is open.
 	 */
 	fun onDocumentChanged(document: PdfDocumentInfo?) {
 		prefetchJob?.cancel()
-		cachedTimestampInfo = null
+		cachedInspection = null
 		currentDocument = document
 		if (document != null) {
 			prefetchJob = viewModelScope.launch {
 				withContext(ioDispatcher) {
-					val tsInfo = getDocumentTimestampInfoUseCase(document.data).getOrNull()
-						?: DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = false)
-					cachedTimestampInfo = tsInfo
+					val config = resolveActiveConfig(configRepository.getCurrentConfig()).getOrNull()
+						?: return@withContext
+					cachedInspection = Inspection(config, inspect(document, config))
 				}
 			}
 		}
 	}
 
 	/**
+	 * Inspect [document]'s timestamp and level state under [config]'s trust anchors, which judge
+	 * the level the extension will find. A failed inspection reads as a document with no
+	 * timestamps.
+	 */
+	private suspend fun inspect(document: PdfDocumentInfo, config: ResolvedConfig): DocumentTimestampInfo =
+		getDocumentTimestampInfoUseCase(document.data, config).getOrNull()
+			?: DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = false)
+
+	/**
+	 * Resolve the configuration of [appConfig]'s active profile, the one the dialog extends with.
+	 */
+	private fun resolveActiveConfig(appConfig: AppConfig) = ResolvedConfig.resolve(
+		global = appConfig.global,
+		profile = appConfig.activeProfile?.let { appConfig.profiles[it] },
+		operationOverrides = null,
+	)
+
+	/**
 	 * Open the timestamp dialog for the given document.
 	 *
 	 * Uses the pre-fetched [DocumentTimestampInfo] when available (populated by
 	 * [onDocumentChanged]). If the pre-fetch is still running, the method awaits
-	 * its completion without blocking the UI thread. Falls back to a fresh fetch
-	 * only when no prior [onDocumentChanged] call was made for this file.
+	 * its completion without blocking the UI thread.
 	 *
 	 * Configuration is always resolved freshly because the user may have changed
-	 * profiles or settings since the document was loaded.
+	 * profiles or settings since the document was loaded. The pre-fetched result is
+	 * used only when it was judged under the configuration resolved now; otherwise, or
+	 * when no prior [onDocumentChanged] call was made for this file, the document is
+	 * inspected afresh, because another profile's trust anchors can read it at another
+	 * level.
 	 *
 	 * @param document The signed PDF document to extend; its bytes are forwarded to the
 	 *   extension use case and its `filePath` (when present) seeds the suggested output path
@@ -165,27 +191,12 @@ class TimestampViewModel(
 		viewModelScope.launch {
 			prefetchJob?.join()
 
-			val tsInfo = cachedTimestampInfo
-				?: withContext(ioDispatcher) {
-					getDocumentTimestampInfoUseCase(document.data).getOrNull()
-						?: DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = false)
-				}
-			documentAlreadyContainsLtData = tsInfo.containsLtData
-
 			withContext(ioDispatcher) {
 				val appConfig = configRepository.getCurrentConfig()
 				cachedRenewalJobs = appConfig.renewalJobs.values.toList()
-				val activeProfile = appConfig.activeProfile
-				activeProfileName = activeProfile
-				val profileConfig = activeProfile?.let { appConfig.profiles[it] }
+				activeProfileName = appConfig.activeProfile
 
-				val configResult = ResolvedConfig.resolve(
-					global = appConfig.global,
-					profile = profileConfig,
-					operationOverrides = null,
-				)
-
-				configResult.fold(
+				resolveActiveConfig(appConfig).fold(
 					ifLeft = { error ->
 						_state.value = TimestampDialogState.Error(
 							content = ErrorMessage.ConfigResolution(error.localizableText()),
@@ -193,6 +204,9 @@ class TimestampViewModel(
 					},
 					ifRight = { config ->
 						resolvedConfig = config
+						val tsInfo = cachedInspection?.takeIf { it.config == config }?.info
+							?: inspect(document, config)
+						documentAlreadyContainsLtData = tsInfo.containsLtData
 						val sourceName = document.filePath ?: document.name
 						val currentLevel = currentLevelOf(tsInfo)
 						val unavailableTypes = if (tsInfo.hasDocumentTimestamp) {
@@ -629,4 +643,13 @@ class TimestampViewModel(
 		val isArchival: Boolean,
 		val pageCount: Int,
 	)
+
+	/**
+	 * A pre-fetched inspection of the current document, kept with the configuration that judged
+	 * it so that [open] can tell whether it still applies.
+	 *
+	 * @property config The configuration whose trust anchors judged the document's level.
+	 * @property info The inspection's result.
+	 */
+	private class Inspection(val config: ResolvedConfig, val info: DocumentTimestampInfo)
 }

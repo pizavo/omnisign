@@ -61,9 +61,11 @@ import org.koin.ktor.ext.inject
  * Clients use it to decide
  * which target PAdES levels are valid extensions for the document (e.g. disabling B-T when
  * the document is already at B-LTA, avoiding a no-op B-LT extension when LT-data is present)
- * without running a full validation. Accepts the same `file` multipart field as the main
- * route. Gated by the same [AllowedOperation.TIMESTAMP] permission since it only exists to
- * inform timestamping decisions.
+ * without running a full validation. Accepts the same `file` and `profile` multipart fields as
+ * the main route and resolves the profile the same way, because the level depends on which
+ * certificates count as trust anchors: judged under any other profile's anchors, a document the
+ * extension will find at B-LT can read as B-T. Gated by the same [AllowedOperation.TIMESTAMP]
+ * permission since it only exists to inform timestamping decisions.
  *
  * Both routes read and process the file through the [DocumentOperationLimiter], off the engine's
  * call threads.
@@ -167,7 +169,23 @@ fun Route.timestampRoutes() {
 				return@post
 			}
 
-			val outcome = operationLimiter.execute { inspectUseCase(filePart.file.readBytes()) }
+			val profileName = extractTextField(parts, "profile")
+			val appConfig = configRepository.getCurrentConfig()
+			val profileConfig = profileName?.let { appConfig.profiles[it] }
+
+			val resolvedConfig = ResolvedConfig.resolve(appConfig.global, profileConfig, operationOverrides = null)
+				.fold(
+					ifLeft = { error ->
+						call.respond(
+							HttpStatusCode.UnprocessableEntity,
+							ApiError(error = "INVALID_CONFIGURATION", message = error.message),
+						)
+						return@post
+					},
+					ifRight = { it },
+				)
+
+			val outcome = operationLimiter.execute { inspectUseCase(filePart.file.readBytes(), resolvedConfig) }
 
 			outcome.fold(
 				ifLeft = { error ->

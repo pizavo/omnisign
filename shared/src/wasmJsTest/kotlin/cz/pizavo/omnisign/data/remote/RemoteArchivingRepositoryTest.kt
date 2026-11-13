@@ -1,5 +1,8 @@
 package cz.pizavo.omnisign.data.remote
 
+import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
@@ -13,6 +16,7 @@ import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.ktor.client.engine.mock.respond
 import io.ktor.http.ContentType
@@ -125,6 +129,43 @@ class RemoteArchivingRepositoryTest : FunSpec({
 		info.hasDocumentTimestamp shouldBe true
 		info.containsLtData shouldBe true
 		info.hasSignatureTimestamp shouldBe true
+	}
+
+	test("names the profile the extension runs with, so the server judges the level under its anchors") {
+		var body = ""
+		val repository = RemoteArchivingRepository(
+			mockApiClient { request ->
+				body = request.body.bodyText()
+				respond(
+					content = Json.encodeToString(DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = false)),
+					headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+				)
+			},
+		)
+		val config = ResolvedConfig.resolve(GlobalConfig(), ProfileConfig(name = "qualified"), null).getOrNull()!!
+
+		repository.getDocumentTimestampInfo(byteArrayOf(1), config).shouldBeRight()
+
+		body shouldContain "profile"
+		body shouldContain "qualified"
+	}
+
+	test("names no profile when the extension runs with the global configuration") {
+		var body = ""
+		val repository = RemoteArchivingRepository(
+			mockApiClient { request ->
+				body = request.body.bodyText()
+				respond(
+					content = Json.encodeToString(DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = false)),
+					headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+				)
+			},
+		)
+		val config = ResolvedConfig.resolve(GlobalConfig(), null, null).getOrNull()!!
+
+		repository.getDocumentTimestampInfo(byteArrayOf(1), config).shouldBeRight()
+
+		body shouldNotContain "profile"
 	}
 
 	test("maps a failed inspection to an archiving error") {

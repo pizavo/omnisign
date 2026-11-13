@@ -1,18 +1,32 @@
 package cz.pizavo.omnisign.data.repository
 
+import arrow.core.left
+import arrow.core.right
 import cz.pizavo.omnisign.ades.policy.AdESPolicy
+import cz.pizavo.omnisign.data.service.FileRenewalCheckCache
 import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
+import cz.pizavo.omnisign.domain.model.error.TrustStoreError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
+import cz.pizavo.omnisign.domain.model.result.RenewalCheckCacheEntry
+import cz.pizavo.omnisign.domain.model.result.RenewalNeed
+import cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor
+import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.domain.repository.TrustStore
 import eu.europa.esig.dss.diagnostic.TimestampWrapper
 import eu.europa.esig.dss.diagnostic.jaxb.*
 import eu.europa.esig.dss.enumerations.*
+import eu.europa.esig.dss.pdf.pdfbox.PdfBoxNativeObjectFactory
+import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
@@ -23,8 +37,10 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.every
 import io.mockk.mockk
+import io.mockk.verify
 import org.apache.pdfbox.cos.COSDictionary
 import org.apache.pdfbox.cos.COSName
 import org.apache.pdfbox.pdmodel.PDDocument
@@ -182,6 +198,123 @@ class DssArchivingRepositoryTest : FunSpec({
 		repository.getDocumentTimestampInfo("not a PDF".toByteArray())
 			.shouldBeLeft()
 			.shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
+	}
+
+	/**
+	 * A repository over [trustStore] and [cache] whose level inspection runs on a plain verifier,
+	 * for checking which configuration and anchors it is given and which cached verdicts it
+	 * replays. A plain PDF it validates reads as [RenewalNeed.NO_SIGNATURE], so any other verdict
+	 * for one can only have come from the cache.
+	 */
+	fun inspectingRepository(
+		trustStore: TrustStore,
+		cache: RenewalCheckCache = FileRenewalCheckCache(tempdir().toPath().resolve("cache.json")),
+	): Pair<DssArchivingRepository, DssServiceFactory> {
+		val factory = mockk<DssServiceFactory>(relaxed = true)
+		every { factory.buildPdfObjectFactory() } returns PdfBoxNativeObjectFactory()
+		every { factory.buildLevelInspectionVerifier(any(), any()) } answers {
+			CertificateVerifierResult(CommonCertificateVerifier())
+		}
+		val repo = DssArchivingRepository(
+			configRepository, factory, DssWarningSanitizer(), TspErrorDetector(), RevocationErrorDetector(),
+			DocumentInputErrorDetector(), trustStore, cache, SignatureSpaceErrorDetector(),
+		)
+		return repo to factory
+	}
+
+	val corpProfile = ProfileConfig(name = "corp")
+
+	fun resolved(profile: ProfileConfig?): ResolvedConfig =
+		ResolvedConfig.resolve(global = GlobalConfig(), profile = profile, operationOverrides = null).getOrNull()!!
+
+	fun cachedNotNeeded(file: File, profile: String?) = RenewalCheckCacheEntry(
+		sizeBytes = file.length(),
+		lastModifiedMillis = file.lastModified(),
+		earliestRenewalAt = Instant.parse("2099-01-01T00:00:00Z"),
+		profile = profile,
+	)
+
+	test("the level inspection takes its anchors from the configuration it is given, not the active profile") {
+		coEvery { configRepository.getCurrentConfig() } returns AppConfig(
+			global = GlobalConfig(),
+			profiles = mapOf("corp" to corpProfile),
+		)
+		val corpAnchors = listOf(ResolvedTrustAnchor("ab", TrustedCertificateType.ANY, byteArrayOf(1)))
+		val trustStore = mockk<TrustStore>()
+		coEvery { trustStore.resolve(TrustScope.of("corp")) } returns corpAnchors.right()
+		coEvery { trustStore.resolve(TrustScope.Global) } returns emptyList<ResolvedTrustAnchor>().right()
+		val (repo, factory) = inspectingRepository(trustStore)
+		val pdf = createPlainPdf("anchors-from-config.pdf")
+
+		repo.getDocumentTimestampInfo(pdf.readBytes(), resolved(corpProfile)).shouldBeRight()
+		repo.needsArchivalRenewal(pdf.absolutePath, resolvedConfig = resolved(corpProfile)).shouldBeRight()
+
+		verify(exactly = 2) {
+			factory.buildLevelInspectionVerifier(match { it.profileName == "corp" }, corpAnchors)
+		}
+		verify(exactly = 0) { factory.buildLevelInspectionVerifier(matchNullable { it?.profileName != "corp" }, any()) }
+	}
+
+	test("without a configuration, the level inspection falls back to the active profile's anchors") {
+		coEvery { configRepository.getCurrentConfig() } returns AppConfig(
+			global = GlobalConfig(),
+			profiles = mapOf("corp" to corpProfile),
+			activeProfile = "corp",
+		)
+		val trustStore = mockk<TrustStore>()
+		coEvery { trustStore.resolve(any()) } returns emptyList<ResolvedTrustAnchor>().right()
+		val (repo, factory) = inspectingRepository(trustStore)
+
+		repo.getDocumentTimestampInfo(createPlainPdf("active-fallback.pdf").readBytes()).shouldBeRight()
+
+		coVerify(exactly = 1) { trustStore.resolve(TrustScope.of("corp")) }
+		verify(exactly = 1) { factory.buildLevelInspectionVerifier(match { it.profileName == "corp" }, any()) }
+	}
+
+	test("a cached verdict is replayed only for the profile that reached it") {
+		coEvery { configRepository.getCurrentConfig() } returns AppConfig(global = GlobalConfig())
+		val trustStore = mockk<TrustStore>()
+		coEvery { trustStore.resolve(any()) } returns emptyList<ResolvedTrustAnchor>().right()
+		val cache = FileRenewalCheckCache(tempdir().toPath().resolve("cache.json"))
+		val (repo, _) = inspectingRepository(trustStore, cache)
+		val pdf = createPlainPdf("cached-under-corp.pdf")
+		cache.put(pdf.absolutePath, cachedNotNeeded(pdf, profile = "corp"))
+
+		repo.needsArchivalRenewal(pdf.absolutePath, resolvedConfig = resolved(corpProfile)).shouldBeRight()
+			.need shouldBe RenewalNeed.NOT_NEEDED
+		repo.needsArchivalRenewal(pdf.absolutePath, resolvedConfig = resolved(null)).shouldBeRight()
+			.need shouldBe RenewalNeed.NO_SIGNATURE
+	}
+
+	test("a cached verdict is not replayed when the configuration does not resolve") {
+		coEvery { configRepository.getCurrentConfig() } returns AppConfig(
+			global = GlobalConfig(
+				defaultHashAlgorithm = HashAlgorithm.SHA256,
+				disabledHashAlgorithms = setOf(HashAlgorithm.SHA256),
+			),
+		)
+		val trustStore = mockk<TrustStore>()
+		coEvery { trustStore.resolve(any()) } returns emptyList<ResolvedTrustAnchor>().right()
+		val cache = FileRenewalCheckCache(tempdir().toPath().resolve("cache.json"))
+		val (repo, _) = inspectingRepository(trustStore, cache)
+		val pdf = createPlainPdf("cached-unresolvable.pdf")
+		cache.put(pdf.absolutePath, cachedNotNeeded(pdf, profile = null))
+
+		repo.needsArchivalRenewal(pdf.absolutePath).shouldBeRight().need shouldBe RenewalNeed.NO_SIGNATURE
+	}
+
+	test("a cached verdict replays without reading the trust store, so an unreadable one cannot spoil it") {
+		coEvery { configRepository.getCurrentConfig() } returns AppConfig(global = GlobalConfig())
+		val trustStore = mockk<TrustStore>()
+		coEvery { trustStore.resolve(any()) } returns TrustStoreError.storageFailed("unreadable").left()
+		val cache = FileRenewalCheckCache(tempdir().toPath().resolve("cache.json"))
+		val (repo, _) = inspectingRepository(trustStore, cache)
+		val pdf = createPlainPdf("cached-no-anchors.pdf")
+		cache.put(pdf.absolutePath, cachedNotNeeded(pdf, profile = "corp"))
+
+		repo.needsArchivalRenewal(pdf.absolutePath, resolvedConfig = resolved(corpProfile)).shouldBeRight()
+			.need shouldBe RenewalNeed.NOT_NEEDED
+		coVerify(exactly = 0) { trustStore.resolve(any()) }
 	}
 
 	val renewalThreshold = Instant.parse("2026-09-11T00:00:00Z")

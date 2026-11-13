@@ -439,6 +439,10 @@ paths:
       description: |
         Lightweight inspection of a signed PDF to learn which target levels are valid extensions,
         without running a full validation. Requires **TIMESTAMP**.
+
+        The level depends on which certificates count as trust anchors, so pass the same `profile`
+        the extension will use. Under another profile's anchors, a document the extension finds at
+        B-LT can read as B-T.
       operationId: inspectTimestamp
       requestBody:
         required: true
@@ -452,6 +456,11 @@ paths:
                   type: string
                   format: binary
                   description: The signed PDF to inspect.
+                profile:
+                  type: string
+                  description: >
+                    Named configuration profile whose trust anchors judge the level, resolved as
+                    for `POST /api/v1/timestamp`. When omitted, global defaults apply.
       security:
         - bearerAuth: []
         - {}
@@ -480,6 +489,12 @@ paths:
           $ref: '#/components/responses/PayloadTooLarge'
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
+        '422':
+          description: The requested profile's configuration does not resolve (`INVALID_CONFIGURATION`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':

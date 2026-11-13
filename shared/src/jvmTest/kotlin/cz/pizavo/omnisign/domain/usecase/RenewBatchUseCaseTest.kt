@@ -72,7 +72,7 @@ class RenewBatchUseCaseTest : FunSpec({
     beforeTest {
         clearMocks(archivingRepository, configRepository, runRecordStore)
         coEvery {
-            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any(), any())
         } returns RenewalAssessment.notNeeded().right()
     }
 
@@ -109,7 +109,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("skips files not needing renewal") {
         val dir = subDir("skip")
         val file = File(dir, "skip-ok.pdf").also { it.createNewFile() }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.notNeeded().right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.notNeeded().right()
 
         val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
         val config = baseConfig.copy(renewalJobs = mapOf("j" to job))
@@ -126,7 +126,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("skips signature-less documents as an informational skip, not an error") {
         val dir = subDir("no-signature")
         val file = File(dir, "doc-timestamp-only.pdf").also { it.createNewFile() }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.noSignature().right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.noSignature().right()
 
         val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
         val config = baseConfig.copy(renewalJobs = mapOf("j" to job))
@@ -146,7 +146,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("renews files needing renewal in-place") {
         val dir = subDir("renew")
         val file = File(dir, "renew-expiring.pdf").also { it.createNewFile() }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery {
             archivingRepository.extendDocument(
                 match { it.inputName == file.name }
@@ -174,7 +174,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("a document below B-LT is promoted by default") {
         val dir = subDir("promote")
         val file = File(dir, "b-t.pdf").also { it.createNewFile() }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
             RenewalAssessment.needed(RenewalReason.BELOW_LT, Clock.System.now() + 365.days).right()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName == file.name })
@@ -201,7 +201,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("a job that opts out of promotion reports the file rather than ignoring it") {
         val dir = subDir("no-promote")
         val file = File(dir, "b-t-left.pdf").also { it.createNewFile() }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
             RenewalAssessment.needed(RenewalReason.BELOW_LT, Clock.System.now() + 365.days).right()
 
         val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), promoteBelowLt = false)
@@ -222,10 +222,10 @@ class RenewBatchUseCaseTest : FunSpec({
         val file = File(dir, "chained.pdf").also { it.writeBytes("original".toByteArray()) }
         val refreshed = "refreshed".toByteArray()
         val sealed = "sealed".toByteArray()
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
             RenewalAssessment.needed(RenewalReason.LT_REFRESH_NEEDED).right()
         coEvery {
-            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any(), any())
         } returns RenewalAssessment.needed(RenewalReason.LT_NOT_SEALED).right() andThen
             RenewalAssessment.notNeeded().right()
         coEvery {
@@ -263,10 +263,10 @@ class RenewBatchUseCaseTest : FunSpec({
         val dir = subDir("chain-degrade")
         val file = File(dir, "degraded.pdf").also { it.writeBytes("original".toByteArray()) }
         val refreshed = "refreshed".toByteArray()
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
             RenewalAssessment.needed(RenewalReason.LT_REFRESH_NEEDED).right()
         coEvery {
-            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any(), any())
         } returns RenewalAssessment.needed(RenewalReason.LT_NOT_SEALED).right()
         coEvery {
             archivingRepository.extendDocument(
@@ -297,7 +297,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("stale LT material is refreshed to B-LT rather than sealed at B-LTA") {
         val dir = subDir("refresh")
         val file = File(dir, "stale-lt.pdf").also { it.createNewFile() }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
             RenewalAssessment.needed(RenewalReason.LT_REFRESH_NEEDED).right()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName == file.name })
@@ -324,7 +324,7 @@ class RenewBatchUseCaseTest : FunSpec({
         val dir = subDir("terminal")
         val original = "original".toByteArray()
         val file = File(dir, "expired-signer.pdf").also { it.writeBytes(original) }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
             RenewalAssessment.unrecoverable(RenewalReason.BELOW_LT, Clock.System.now() - 30.days).right()
 
         val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
@@ -345,7 +345,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("a terminal file keeps the run record successful so staleness can still clear") {
         val dir = subDir("terminal-record")
         File(dir, "expired.pdf").also { it.createNewFile() }
-        coEvery { archivingRepository.needsArchivalRenewal(any(), any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(any(), any(), any()) } returns
             RenewalAssessment.unrecoverable(RenewalReason.BELOW_LT, Clock.System.now() - 1.days).right()
         coEvery { runRecordStore.load() } returns null
         val saved = slot<RenewalRunRecord>()
@@ -363,7 +363,7 @@ class RenewBatchUseCaseTest : FunSpec({
         val dir = subDir("confirmed-terminal")
         val original = "original".toByteArray()
         val file = File(dir, "confirmed.pdf").also { it.writeBytes(original) }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
             RenewalAssessment.needed(
                 RenewalReason.LT_REFRESH_NEEDED,
                 Clock.System.now() - 30.days,
@@ -393,7 +393,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("a stale revocation horizon in the past is not mistaken for a closed window") {
         val dir = subDir("stale-horizon")
         val file = File(dir, "old-crl.pdf").also { it.writeBytes("original".toByteArray()) }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
             RenewalAssessment.needed(
                 RenewalReason.LT_REFRESH_NEEDED,
                 Clock.System.now() - 30.days,
@@ -422,7 +422,7 @@ class RenewBatchUseCaseTest : FunSpec({
         val dir = subDir("seal-anyway")
         val file = File(dir, "sound-lt.pdf").also { it.writeBytes("original".toByteArray()) }
         val sealed = "sealed archive".toByteArray()
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
             RenewalAssessment.needed(RenewalReason.LT_NOT_SEALED, Clock.System.now() - 7.days).right()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName == file.name })
@@ -447,7 +447,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("an extension that fails while the deadline is still ahead stays an error") {
         val dir = subDir("still-recoverable")
         val file = File(dir, "recoverable.pdf").also { it.writeBytes("original".toByteArray()) }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
             RenewalAssessment.needed(RenewalReason.LT_REFRESH_NEEDED, Clock.System.now() + 30.days).right()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName == file.name })
@@ -472,7 +472,7 @@ class RenewBatchUseCaseTest : FunSpec({
         val dir = subDir("terminal-repeat")
         val file = File(dir, "already-reported.pdf").also { it.createNewFile() }
         val log = File(dir, "job.log")
-        coEvery { archivingRepository.needsArchivalRenewal(any(), any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(any(), any(), any()) } returns
             RenewalAssessment.unrecoverable(RenewalReason.BELOW_LT, Clock.System.now() - 1.days).right()
         coEvery { runRecordStore.load() } returns RenewalRunRecord(
             lastRunAt = Clock.System.now() - 1.days,
@@ -493,7 +493,7 @@ class RenewBatchUseCaseTest : FunSpec({
         val dir = subDir("no-revocation")
         val original = "original archive".toByteArray()
         val file = File(dir, "no-revocation.pdf").also { it.writeBytes(original) }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName == file.name })
         } returns ArchivingResult(
@@ -520,7 +520,7 @@ class RenewBatchUseCaseTest : FunSpec({
         val dir = subDir("below-lta")
         val original = "original archive".toByteArray()
         val file = File(dir, "below-lta.pdf").also { it.writeBytes(original) }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName == file.name })
         } returns ArchivingResult(
@@ -547,7 +547,7 @@ class RenewBatchUseCaseTest : FunSpec({
         val dir = subDir("unknown-level")
         val original = "original archive".toByteArray()
         val file = File(dir, "unknown-level.pdf").also { it.writeBytes(original) }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName == file.name })
         } returns ArchivingResult(
@@ -574,7 +574,7 @@ class RenewBatchUseCaseTest : FunSpec({
         val dir = subDir("reached-lta")
         val file = File(dir, "reached-lta.pdf").also { it.writeBytes("original".toByteArray()) }
         val renewed = "renewed archive".toByteArray()
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName == file.name })
         } returns ArchivingResult(
@@ -597,7 +597,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("dry-run mode does not modify files") {
         val dir = subDir("dry-run")
         val file = File(dir, "dry-run.pdf").also { it.createNewFile() }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
 
         val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
         val config = baseConfig.copy(renewalJobs = mapOf("j" to job))
@@ -616,8 +616,8 @@ class RenewBatchUseCaseTest : FunSpec({
         val bad = File(dir, "iso-bad.pdf").also { it.createNewFile() }
         val good = File(dir, "iso-good.pdf").also { it.createNewFile() }
 
-        coEvery { archivingRepository.needsArchivalRenewal(bad.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
-        coEvery { archivingRepository.needsArchivalRenewal(good.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(bad.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(good.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName == bad.name })
         } returns ArchivingError.ExtensionFailed(LocalizableText.Literal("boom")).left()
@@ -647,10 +647,10 @@ class RenewBatchUseCaseTest : FunSpec({
         val good = File(dir, "chk-good.pdf").also { it.createNewFile() }
 
         coEvery {
-            archivingRepository.needsArchivalRenewal(bad.absolutePath, any())
+            archivingRepository.needsArchivalRenewal(bad.absolutePath, any(), any())
         } returns ArchivingError.ExtensionFailed(LocalizableText.Literal("check failed")).left()
         coEvery {
-            archivingRepository.needsArchivalRenewal(good.absolutePath, any())
+            archivingRepository.needsArchivalRenewal(good.absolutePath, any(), any())
         } returns RenewalAssessment.notNeeded().right()
 
         val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
@@ -667,14 +667,63 @@ class RenewBatchUseCaseTest : FunSpec({
     test("renewal buffer from job is forwarded to check use case") {
         val dir = subDir("buf-fwd")
         val file = File(dir, "buf-fwd.pdf").also { it.createNewFile() }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, 14) } returns RenewalAssessment.notNeeded().right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, 14, any()) } returns RenewalAssessment.notNeeded().right()
 
         val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), renewalBufferDays = 14)
         val config = baseConfig.copy(renewalJobs = mapOf("j" to job))
         val uc = useCaseWith(config)
         uc()
 
-        coVerify(exactly = 1) { archivingRepository.needsArchivalRenewal(file.absolutePath, 14) }
+        coVerify(exactly = 1) { archivingRepository.needsArchivalRenewal(file.absolutePath, 14, any()) }
+    }
+
+    test("every renewal check of a job judges the level under the job's profile, not the active one") {
+        val dir = subDir("job-profile")
+        val file = File(dir, "job-profile.pdf").also { it.writeBytes("original".toByteArray()) }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
+            RenewalAssessment.needed(RenewalReason.LT_REFRESH_NEEDED).right()
+        coEvery {
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any(), any())
+        } returns RenewalAssessment.needed(RenewalReason.LT_NOT_SEALED).right() andThen
+            RenewalAssessment.notNeeded().right()
+        coEvery {
+            archivingRepository.extendDocument(match { it.targetLevel == SignatureLevel.PADES_BASELINE_LT })
+        } returns ArchivingResult(
+            outputBytes = "refreshed".toByteArray(),
+            outputName = file.name,
+            newSignatureLevel = SignatureLevel.PADES_BASELINE_LT.name,
+            achievedLevel = SignatureLevel.PADES_BASELINE_LT,
+        ).right()
+        coEvery {
+            archivingRepository.extendDocument(match { it.targetLevel == SignatureLevel.PADES_BASELINE_LTA })
+        } returns ArchivingResult(
+            outputBytes = "sealed".toByteArray(),
+            outputName = file.name,
+            newSignatureLevel = SignatureLevel.PADES_BASELINE_LTA.name,
+            achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
+        ).right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), profile = "archive")
+        val config = baseConfig.copy(
+            profiles = mapOf("archive" to ProfileConfig(name = "archive"), "desk" to ProfileConfig(name = "desk")),
+            activeProfile = "desk",
+            renewalJobs = mapOf("j" to job),
+        )
+        val result = useCaseWith(config)()
+
+        result.shouldNotBeNull()
+        result.renewed shouldBe 1
+        coVerify(exactly = 1) {
+            archivingRepository.needsArchivalRenewal(file.absolutePath, any(), match { it.profileName == "archive" })
+        }
+        coVerify(exactly = 2) {
+            archivingRepository.needsArchivalRenewal(
+                match { it.contains(".verify.") }, any(), match { it.profileName == "archive" },
+            )
+        }
+        coVerify(exactly = 0) {
+            archivingRepository.needsArchivalRenewal(any(), any(), matchNullable { it?.profileName != "archive" })
+        }
     }
 
     test("runs only the specified job when jobName is provided") {
@@ -682,7 +731,7 @@ class RenewBatchUseCaseTest : FunSpec({
         val sub2 = File(tmpDir, "sub2").also { it.mkdirs() }
         File(sub1, "job1.pdf").createNewFile()
         val file2 = File(sub2, "job2.pdf").also { it.createNewFile() }
-        coEvery { archivingRepository.needsArchivalRenewal(any(), any()) } returns RenewalAssessment.notNeeded().right()
+        coEvery { archivingRepository.needsArchivalRenewal(any(), any(), any()) } returns RenewalAssessment.notNeeded().right()
 
         val glob1 = sub1.absolutePath.replace('\\', '/') + "/*.pdf"
         val glob2 = sub2.absolutePath.replace('\\', '/') + "/*.pdf"
@@ -697,7 +746,7 @@ class RenewBatchUseCaseTest : FunSpec({
         result.shouldNotBeNull()
         result.jobs shouldHaveSize 1
         result.jobs.first().name shouldBe "first"
-        coVerify(exactly = 0) { archivingRepository.needsArchivalRenewal(file2.absolutePath, any()) }
+        coVerify(exactly = 0) { archivingRepository.needsArchivalRenewal(file2.absolutePath, any(), any()) }
     }
 
     test("job with invalid config produces a CONFIG_ERROR status, a job-level error, and preserves notify") {
@@ -867,7 +916,7 @@ class RenewBatchUseCaseTest : FunSpec({
         result.shouldNotBeNull()
         result.alreadyRunning shouldBe true
         result.checked shouldBe 0
-        coVerify(exactly = 0) { archivingRepository.needsArchivalRenewal(any(), any()) }
+        coVerify(exactly = 0) { archivingRepository.needsArchivalRenewal(any(), any(), any()) }
     }
 
     test("releases the renewal lock after the batch completes") {
@@ -890,13 +939,13 @@ class RenewBatchUseCaseTest : FunSpec({
         result.shouldNotBeNull()
         result.lockError shouldBe "disk on fire"
         result.success shouldBe false
-        coVerify(exactly = 0) { archivingRepository.needsArchivalRenewal(any(), any()) }
+        coVerify(exactly = 0) { archivingRepository.needsArchivalRenewal(any(), any(), any()) }
     }
 
     test("writes a timestamped backup of the original before renewing in place") {
         val dir = subDir("backup-write")
         val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
             ArchivingResult(outputBytes = "RENEWED".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA", achievedLevel = SignatureLevel.PADES_BASELINE_LTA).right()
 
@@ -915,7 +964,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("writes no backup when backupRetention is zero") {
         val dir = subDir("backup-off")
         val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
             ArchivingResult(outputBytes = "RENEWED".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA", achievedLevel = SignatureLevel.PADES_BASELINE_LTA).right()
 
@@ -949,9 +998,9 @@ class RenewBatchUseCaseTest : FunSpec({
     test("keeps the original and errors when the renewed output still needs renewal") {
         val dir = subDir("verify-loop")
         val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery {
-            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any(), any())
         } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
             ArchivingResult(outputBytes = "RENEWED".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA", achievedLevel = SignatureLevel.PADES_BASELINE_LTA).right()
@@ -970,9 +1019,9 @@ class RenewBatchUseCaseTest : FunSpec({
     test("keeps the original and errors when the renewed output fails validation") {
         val dir = subDir("verify-bad")
         val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery {
-            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any(), any())
         } returns ArchivingError.ExtensionFailed(LocalizableText.Literal("not a valid PDF")).left()
         coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
             ArchivingResult(outputBytes = "GARBAGE".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA", achievedLevel = SignatureLevel.PADES_BASELINE_LTA).right()
@@ -991,10 +1040,10 @@ class RenewBatchUseCaseTest : FunSpec({
         val dir = subDir("no-progress")
         val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
         val due = Clock.System.now() + 20.days
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
             RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, due).right()
         coEvery {
-            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any(), any())
         } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, due).right()
         coEvery { archivingRepository.extendDocument(any()) } returns ArchivingResult(
             outputBytes = "RENEWED".toByteArray(),
@@ -1021,10 +1070,10 @@ class RenewBatchUseCaseTest : FunSpec({
         val dir = subDir("partial-progress")
         val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
         val now = Clock.System.now()
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
             RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, now + 10.days).right()
         coEvery {
-            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any(), any())
         } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, now + 20.days).right()
         coEvery { archivingRepository.extendDocument(any()) } returns ArchivingResult(
             outputBytes = "RENEWED".toByteArray(),
@@ -1051,11 +1100,11 @@ class RenewBatchUseCaseTest : FunSpec({
         val dueAt = mapOf("a" to sealDue, "b" to sealDue + 1.days, "c" to sealDue - 5.days)
         dueAt.forEach { (name, due) ->
             val file = File(dir, "$name.pdf").also { it.writeText("ORIGINAL") }
-            coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+            coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
                 RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, due).right()
         }
         coEvery {
-            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any(), any())
         } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, sealDue).right()
         coEvery { archivingRepository.extendDocument(any()) } answers {
             ArchivingResult(
@@ -1086,10 +1135,10 @@ class RenewBatchUseCaseTest : FunSpec({
         val dir = subDir("born-due-promotion")
         val file = File(dir, "b-t.pdf").also { it.writeText("ORIGINAL") }
         val now = Clock.System.now()
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
             RenewalAssessment.needed(RenewalReason.BELOW_LT, now + 365.days, deadlineIsFinal = true).right()
         coEvery {
-            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any(), any())
         } returns RenewalAssessment.needed(RenewalReason.ALGORITHM_WEAKENING, now + 30.days).right()
         coEvery { archivingRepository.extendDocument(any()) } returns ArchivingResult(
             outputBytes = "PROMOTED".toByteArray(),
@@ -1117,12 +1166,12 @@ class RenewBatchUseCaseTest : FunSpec({
         val now = Clock.System.now()
         val promoted = File(dir, "a.pdf").also { it.writeText("ORIGINAL") }
         val aging = File(dir, "b.pdf").also { it.writeText("ORIGINAL") }
-        coEvery { archivingRepository.needsArchivalRenewal(promoted.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(promoted.absolutePath, any(), any()) } returns
             RenewalAssessment.needed(RenewalReason.BELOW_LT, now + 365.days, deadlineIsFinal = true).right()
-        coEvery { archivingRepository.needsArchivalRenewal(aging.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(aging.absolutePath, any(), any()) } returns
             RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, now + 30.days).right()
         coEvery {
-            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any())
+            archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any(), any())
         } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, now + 30.days).right()
         coEvery { archivingRepository.extendDocument(any()) } returns ArchivingResult(
             outputBytes = "PROMOTED".toByteArray(),
@@ -1146,12 +1195,12 @@ class RenewBatchUseCaseTest : FunSpec({
         val now = Clock.System.now()
         val refreshed = File(dir, "a.pdf").also { it.writeText("ORIGINAL") }
         val aging = File(dir, "b.pdf").also { it.writeText("ORIGINAL") }
-        coEvery { archivingRepository.needsArchivalRenewal(refreshed.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(refreshed.absolutePath, any(), any()) } returns
             RenewalAssessment.needed(RenewalReason.LT_REFRESH_NEEDED).right()
-        coEvery { archivingRepository.needsArchivalRenewal(aging.absolutePath, any()) } returns
+        coEvery { archivingRepository.needsArchivalRenewal(aging.absolutePath, any(), any()) } returns
             RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, now + 30.days).right()
         coEvery {
-            archivingRepository.needsArchivalRenewal(match { it.contains(".a.pdf.verify.") }, any())
+            archivingRepository.needsArchivalRenewal(match { it.contains(".a.pdf.verify.") }, any(), any())
         } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING, now + 20.days).right()
         coEvery { archivingRepository.extendDocument(any()) } answers {
             val parameters = firstArg<ArchivingParameters>()
@@ -1176,7 +1225,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("records a successful run, resetting the failure counter") {
         val dir = subDir("rec-success")
         val file = File(dir, "ok.pdf").also { it.writeText("ORIGINAL") }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
             ArchivingResult(outputBytes = "RENEWED".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA", achievedLevel = SignatureLevel.PADES_BASELINE_LTA).right()
         every { runRecordStore.load() } returns null
@@ -1200,7 +1249,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("records a partial run, incrementing failures and carrying last success forward") {
         val dir = subDir("rec-partial")
         val file = File(dir, "bad.pdf").also { it.writeText("ORIGINAL") }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
             ArchivingError.ExtensionFailed(LocalizableText.Literal("tsa down")).left()
         val previousSuccess = Instant.fromEpochSeconds(1_000_000)
@@ -1250,7 +1299,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("does not record a dry-run") {
         val dir = subDir("rec-dry")
         val file = File(dir, "dry.pdf").also { it.writeText("ORIGINAL") }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
 
         val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
         val uc = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))
@@ -1274,7 +1323,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("raises a staleness alert when failures persist past the threshold") {
         val dir = subDir("stale-fire")
         val file = File(dir, "bad.pdf").also { it.writeText("ORIGINAL") }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
             ArchivingError.ExtensionFailed(LocalizableText.Literal("tsa down")).left()
         val longAgo = Instant.fromEpochSeconds(1_000_000)
@@ -1297,7 +1346,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("warns on the first failed run after a long idle period, counting the idle time") {
         val dir = subDir("stale-idle")
         val file = File(dir, "bad.pdf").also { it.writeText("ORIGINAL") }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
             ArchivingError.ExtensionFailed(LocalizableText.Literal("tsa down")).left()
         val longAgo = Instant.fromEpochSeconds(1_000_000)
@@ -1319,7 +1368,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("suppresses a repeat staleness alert within the threshold window") {
         val dir = subDir("stale-dedup")
         val file = File(dir, "bad.pdf").also { it.writeText("ORIGINAL") }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
             ArchivingError.ExtensionFailed(LocalizableText.Literal("tsa down")).left()
         val longAgo = Instant.fromEpochSeconds(1_000_000)
@@ -1341,7 +1390,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("does not raise a staleness alert when the option is disabled") {
         val dir = subDir("stale-off")
         val file = File(dir, "bad.pdf").also { it.writeText("ORIGINAL") }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
             ArchivingError.ExtensionFailed(LocalizableText.Literal("tsa down")).left()
         val longAgo = Instant.fromEpochSeconds(1_000_000)
@@ -1366,7 +1415,7 @@ class RenewBatchUseCaseTest : FunSpec({
     test("a successful run clears the staleness notification marker") {
         val dir = subDir("stale-reset")
         val file = File(dir, "ok.pdf").also { it.writeText("ORIGINAL") }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery { archivingRepository.extendDocument(match { it.inputName == file.name }) } returns
             ArchivingResult(outputBytes = "RENEWED".toByteArray(), outputName = file.name, newSignatureLevel = "PAdES-BASELINE-LTA", achievedLevel = SignatureLevel.PADES_BASELINE_LTA).right()
         val longAgo = Instant.fromEpochSeconds(1_000_000)
@@ -1509,7 +1558,7 @@ class RenewBatchUseCaseTest : FunSpec({
         val badDir = subDir("glob-bad")
         val file = File(goodDir, "doc.pdf").also { it.createNewFile() }
         coEvery {
-            archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+            archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any())
         } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName == file.name })
@@ -1539,10 +1588,10 @@ class RenewBatchUseCaseTest : FunSpec({
         val boom = File(dir, "boom.pdf").also { it.createNewFile() }
         val fine = File(dir, "fine.pdf").also { it.createNewFile() }
         coEvery {
-            archivingRepository.needsArchivalRenewal(boom.absolutePath, any())
+            archivingRepository.needsArchivalRenewal(boom.absolutePath, any(), any())
         } throws OutOfMemoryError("simulated heap exhaustion")
         coEvery {
-            archivingRepository.needsArchivalRenewal(fine.absolutePath, any())
+            archivingRepository.needsArchivalRenewal(fine.absolutePath, any(), any())
         } returns RenewalAssessment.notNeeded().right()
 
         val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
@@ -1562,7 +1611,7 @@ class RenewBatchUseCaseTest : FunSpec({
         names.forEach { name ->
             val file = File(dir, "$name.pdf").also { it.createNewFile() }
             coEvery {
-                archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+                archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any())
             } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         }
         coEvery { archivingRepository.extendDocument(any()) } returns ArchivingError.TimestampFailed(
@@ -1589,7 +1638,7 @@ class RenewBatchUseCaseTest : FunSpec({
         listOf("a", "b", "c", "d").forEach { name ->
             val file = File(dir, "$name.pdf").also { it.createNewFile() }
             coEvery {
-                archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+                archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any())
             } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         }
         coEvery { archivingRepository.extendDocument(any()) } returns ArchivingError.TimestampFailed(
@@ -1610,7 +1659,7 @@ class RenewBatchUseCaseTest : FunSpec({
         listOf("a", "b", "c", "d", "e").forEach { name ->
             val file = File(dir, "$name.pdf").also { it.createNewFile() }
             coEvery {
-                archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+                archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any())
             } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         }
         coEvery {
@@ -1643,7 +1692,7 @@ class RenewBatchUseCaseTest : FunSpec({
         listOf("a", "b", "c", "d", "e").forEach { name ->
             val file = File(dir, "$name.pdf").also { it.createNewFile() }
             coEvery {
-                archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+                archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any())
             } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         }
         coEvery { archivingRepository.extendDocument(any()) } returns ArchivingError.TimestampFailed(
@@ -1666,7 +1715,7 @@ class RenewBatchUseCaseTest : FunSpec({
         listOf("a", "b", "c", "d").forEach { name ->
             val file = File(dir, "$name.pdf").also { it.createNewFile() }
             coEvery {
-                archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+                archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any())
             } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         }
         coEvery { archivingRepository.extendDocument(any()) } returns ArchivingError.TimestampFailed(
@@ -1687,7 +1736,7 @@ class RenewBatchUseCaseTest : FunSpec({
         listOf("a", "b", "c", "d", "e").forEach { name ->
             val file = File(dir, "$name.pdf").also { it.createNewFile() }
             coEvery {
-                archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+                archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any())
             } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         }
         coEvery { archivingRepository.extendDocument(any()) } returns ArchivingError.TimestampFailed(
@@ -1710,12 +1759,12 @@ class RenewBatchUseCaseTest : FunSpec({
         listOf("a", "b", "c", "d").forEach { name ->
             val file = File(deadDir, "$name.pdf").also { it.createNewFile() }
             coEvery {
-                archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+                archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any())
             } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         }
         val healthy = File(liveDir, "live.pdf").also { it.createNewFile() }
         coEvery {
-            archivingRepository.needsArchivalRenewal(healthy.absolutePath, any())
+            archivingRepository.needsArchivalRenewal(healthy.absolutePath, any(), any())
         } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName != "live.pdf" })
@@ -1757,10 +1806,10 @@ class RenewBatchUseCaseTest : FunSpec({
         val boom = File(dir, "boom.pdf").also { it.createNewFile() }
         val fine = File(dir, "fine.pdf").also { it.createNewFile() }
         coEvery {
-            archivingRepository.needsArchivalRenewal(boom.absolutePath, any())
+            archivingRepository.needsArchivalRenewal(boom.absolutePath, any(), any())
         } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
         coEvery {
-            archivingRepository.needsArchivalRenewal(fine.absolutePath, any())
+            archivingRepository.needsArchivalRenewal(fine.absolutePath, any(), any())
         } returns RenewalAssessment.notNeeded().right()
         coEvery {
             archivingRepository.extendDocument(any())
@@ -1780,7 +1829,7 @@ class RenewBatchUseCaseTest : FunSpec({
         val dir = subDir("cancelled")
         val file = File(dir, "doc.pdf").also { it.createNewFile() }
         coEvery {
-            archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+            archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any())
         } throws CancellationException("run cancelled")
 
         val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
@@ -1799,14 +1848,14 @@ class RenewBatchUseCaseTest : FunSpec({
         val uc = RenewBatchUseCase(checkRenewal, extend, configRepository, grantingLock, store)
 
         coEvery {
-            archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+            archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any())
         } throws CancellationException("run cancelled")
         shouldThrow<CancellationException> { uc() }
 
         store.load().shouldNotBeNull().runStartedAt.shouldNotBeNull()
 
         coEvery {
-            archivingRepository.needsArchivalRenewal(file.absolutePath, any())
+            archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any())
         } returns ArchivingError.renewalCheckFailed(details = "still broken").left()
         uc()
 
@@ -1897,7 +1946,7 @@ class RenewBatchUseCaseTest : FunSpec({
         val dir = subDir("verify-invisible")
         val file = File(dir, "doc.pdf").also { it.writeText("ORIGINAL") }
         val inspected = mutableListOf<String>()
-        coEvery { archivingRepository.needsArchivalRenewal(any(), any()) } answers {
+        coEvery { archivingRepository.needsArchivalRenewal(any(), any(), any()) } answers {
             val inspectedPath = firstArg<String>()
             inspected += inspectedPath
             if (inspectedPath == file.absolutePath) {

@@ -15,6 +15,7 @@ import cz.pizavo.omnisign.domain.model.error.isServerWide
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.*
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
@@ -198,10 +199,23 @@ class DssArchivingRepository(
 		}
 	}
 	
+	/**
+	 * Assess [filePath] under [resolvedConfig]'s trust anchors, or the active profile's when it is
+	 * `null` (see [ArchivingRepository.needsArchivalRenewal]).
+	 *
+	 * A cached verdict is replayed only when the profile that reached it is the one judging now,
+	 * since other anchors can read the same file at another level, and never when the
+	 * configuration could not be resolved, which leaves the profile unknown. A cache hit costs no
+	 * trust-store read: the anchors are resolved only when the file is validated.
+	 *
+	 * When the configuration or its trust anchors could not be resolved, the file is judged without
+	 * anchors, and that verdict is not cached, so it cannot outlive the problem.
+	 */
 	@Suppress("TooGenericExceptionCaught", "ReturnCount")
 	override suspend fun needsArchivalRenewal(
 		filePath: String,
 		renewalBufferDays: Int,
+		resolvedConfig: ResolvedConfig?,
 	): OperationResult<RenewalAssessment> {
 		return try {
 			val file = File(filePath)
@@ -211,9 +225,13 @@ class DssArchivingRepository(
 
 			val now = Clock.System.now()
 			val renewalThreshold = now + renewalBufferDays.days
+			val resolved = resolvedConfig ?: activeResolvedConfig()
+			val profile = resolved?.profileName
 
 			val cached = renewalCheckCache.get(filePath)
 			if (cached != null &&
+				resolved != null &&
+				cached.profile == profile &&
 				cached.sizeBytes == file.length() &&
 				cached.lastModifiedMillis == file.lastModified()
 			) {
@@ -225,9 +243,11 @@ class DssArchivingRepository(
 				}
 			}
 
+			val anchors = inspectionAnchors(resolved)
+			val cacheable = anchors != null
 			val document = FileDocument(file)
 			val validator = PDFDocumentValidator(document).apply {
-				setCertificateVerifier(levelInspectionVerifier())
+				setCertificateVerifier(levelInspectionVerifier(resolved, anchors.orEmpty()))
 				setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 			}
 			val diagnosticData = validator.validateDocument().diagnosticData
@@ -241,7 +261,7 @@ class DssArchivingRepository(
 			val level = signatures.mapNotNull { it.signatureFormat?.toDomainOrNull() }.minOrNull()
 			when {
 				level == null || level < SignatureLevel.PADES_BASELINE_LT ->
-					assessBelowLt(filePath, file, signatures, now)
+					assessBelowLt(filePath, file, signatures, now, profile, cacheable)
 
 				!signatures.all { hasUsableSigningCertificateRevocation(it) } ->
 					assessUnusableRevocation(filePath, signatures)
@@ -249,7 +269,9 @@ class DssArchivingRepository(
 				level == SignatureLevel.PADES_BASELINE_LT ->
 					assessLt(filePath, signatures)
 
-				else -> assessArchival(filePath, file, diagnosticData.getTimestampList(), renewalThreshold)
+				else -> assessArchival(
+					filePath, file, diagnosticData.getTimestampList(), renewalThreshold, profile, cacheable,
+				)
 			}
 		} catch (e: Exception) {
 			ArchivingError.renewalCheckFailed(details = e.message, cause = e).left()
@@ -268,12 +290,19 @@ class DssArchivingRepository(
 	 * A signing certificate DSS could not resolve leaves the deadline unknown; that is reported as
 	 * undeterminable rather than guessed either way, matching how an unresolvable TSA certificate is
 	 * treated in [assessArchival].
+	 *
+	 * @param profile The profile whose trust anchors judged the level, recorded with a cached
+	 *   terminal verdict.
+	 * @param cacheable Whether the level was judged under resolved trust anchors, without which a
+	 *   terminal verdict is not cached.
 	 */
 	private fun assessBelowLt(
 		filePath: String,
 		file: File,
 		signatures: List<SignatureWrapper>,
 		now: Instant,
+		profile: String?,
+		cacheable: Boolean,
 	): OperationResult<RenewalAssessment> {
 		renewalCheckCache.remove(filePath)
 		val expiries = signatures.map { it.signingCertificate?.notAfter?.toKotlinInstant() }
@@ -285,10 +314,12 @@ class DssArchivingRepository(
 		}
 		val deadline = expiries.filterNotNull().min()
 		return if (deadline <= now) {
-			renewalCheckCache.put(
-				filePath,
-				RenewalCheckCacheEntry(file.length(), file.lastModified(), deadline, terminal = true),
-			)
+			if (cacheable) {
+				renewalCheckCache.put(
+					filePath,
+					RenewalCheckCacheEntry(file.length(), file.lastModified(), deadline, terminal = true, profile = profile),
+				)
+			}
 			RenewalAssessment.unrecoverable(RenewalReason.BELOW_LT, deadline).right()
 		} else {
 			RenewalAssessment.needed(RenewalReason.BELOW_LT, deadline, deadlineIsFinal = true).right()
@@ -410,12 +441,19 @@ class DssArchivingRepository(
 	 * Assess a B-LTA document with the coverage-aware timestamp rule — the aging case, and the only
 	 * one where waiting until a deadline approaches is correct, because the protection is complete
 	 * and merely needs renewing before it ages out.
+	 *
+	 * @param profile The profile whose trust anchors judged the level, recorded with a cached
+	 *   verdict.
+	 * @param cacheable Whether the level was judged under resolved trust anchors, without which the
+	 *   verdict is not cached.
 	 */
 	private fun assessArchival(
 		filePath: String,
 		file: File,
 		timestamps: List<TimestampWrapper>,
 		renewalThreshold: Instant,
+		profile: String?,
+		cacheable: Boolean,
 	): OperationResult<RenewalAssessment> =
 		when (needsRenewal(timestamps, renewalThreshold, renewalCryptographicSuite)) {
 			RenewalDecision.NEEDED -> {
@@ -430,10 +468,10 @@ class DssArchivingRepository(
 			}
 			RenewalDecision.NOT_NEEDED -> {
 				val due = earliestRenewalAt(timestamps, renewalCryptographicSuite)
-				if (due != null) {
+				if (due != null && cacheable) {
 					renewalCheckCache.put(
 						filePath,
-						RenewalCheckCacheEntry(file.length(), file.lastModified(), due),
+						RenewalCheckCacheEntry(file.length(), file.lastModified(), due, profile = profile),
 					)
 				} else {
 					renewalCheckCache.remove(filePath)
@@ -635,8 +673,9 @@ class DssArchivingRepository(
 	 * [DocumentTimestampInfo.hasDocumentTimestamp] is a structural fact read with PDFBox, but the
 	 * level — and with it [DocumentTimestampInfo.containsLtData] — comes from [readPadesLevel], so
 	 * that the dialog reports what the document *is* rather than what its structure hints at. It is
-	 * read under [levelInspectionVerifier]'s anchors, without which a conformant B-LT document reads
-	 * as B-T and the dialog offers to add validation material the document already carries.
+	 * read under the trust anchors of [resolvedConfig], or of the active profile when it is `null`,
+	 * without which a conformant B-LT document reads as B-T and the dialog offers to add validation
+	 * material the document already carries.
 	 *
 	 * The presence of a `/DSS` dictionary is deliberately **not** consulted, not even as a fallback.
 	 * That dictionary can be present and hold nothing usable — certificates but no revocation data,
@@ -647,9 +686,13 @@ class DssArchivingRepository(
 	 * protection rather than less.
 	 */
 	@Suppress("TooGenericExceptionCaught")
-	override suspend fun getDocumentTimestampInfo(inputBytes: ByteArray): OperationResult<DocumentTimestampInfo> {
+	override suspend fun getDocumentTimestampInfo(
+		inputBytes: ByteArray,
+		resolvedConfig: ResolvedConfig?,
+	): OperationResult<DocumentTimestampInfo> {
 		return try {
-			val verifier = levelInspectionVerifier()
+			val resolved = resolvedConfig ?: activeResolvedConfig()
+			val verifier = levelInspectionVerifier(resolved, inspectionAnchors(resolved).orEmpty())
 			Loader.loadPDF(inputBytes).use { pdf ->
 				val hasDocumentTimestamp = pdf.signatureDictionaries.any { sig ->
 					sig.subFilter == PADES_TIMESTAMP_SUBFILTER
@@ -820,34 +863,46 @@ class DssArchivingRepository(
 	)
 
 	/**
+	 * The active profile's configuration, for an inspection whose caller named none, or `null` when
+	 * the configuration cannot be read or resolved.
+	 */
+	private suspend fun activeResolvedConfig(): ResolvedConfig? = runCatching {
+		val config = configRepository.getCurrentConfig()
+		ResolvedConfig.resolve(
+			global = config.global,
+			profile = config.activeProfile?.let { config.profiles[it] },
+			operationOverrides = null,
+		).getOrNull()
+	}.getOrNull()
+
+	/**
+	 * The trust anchors the trust store holds for [resolved]'s profile, or `null` when there is no
+	 * configuration or the trust store could not resolve them.
+	 */
+	private suspend fun inspectionAnchors(resolved: ResolvedConfig?): List<ResolvedTrustAnchor>? =
+		resolved?.let { trustStore.resolve(TrustScope.of(it.profileName)).getOrNull() }
+
+	/**
 	 * A verifier for the inspections that run on their own, outside any signing or augmenting
-	 * operation — [getDocumentTimestampInfo] and [needsArchivalRenewal] — carrying the active
-	 * profile's trust anchors and no revocation sources. It keeps an AIA source, under the limits
-	 * that [DssServiceFactory.buildLevelInspectionVerifier] explains.
+	 * operation — [getDocumentTimestampInfo] and [needsArchivalRenewal] — carrying [anchors], the
+	 * trusted lists [resolved] selects, and no revocation sources. It keeps an AIA source, under the
+	 * limits that [DssServiceFactory.buildLevelInspectionVerifier] explains.
 	 *
 	 * Both inspections judge a document's PAdES level, and that judgement depends on which
-	 * certificates count as trust anchors (see [readPadesLevel]). Resolving the anchors here keeps
-	 * them agreeing with the validation report and with the extension that produced the document.
+	 * certificates count as trust anchors (see [readPadesLevel]). Taking the anchors from the
+	 * configuration of the extension the inspection decides on keeps them agreeing with that
+	 * extension, which validates the document under the same anchors.
 	 *
-	 * A configuration that cannot be read or resolved yields an anchorless verifier rather than an
-	 * error. That understates the level — a document may be reported as B-T when it is B-LT — which
-	 * errs toward offering the user more protection and toward attempting a renewal that turns out
-	 * to be unnecessary, rather than toward sealing or skipping something on a level it does not have.
+	 * A `null` [resolved], for a configuration that could not be read or resolved, or anchors the
+	 * trust store could not resolve, yield a verifier short of anchors rather than an error. That
+	 * understates the level — a document may be reported as B-T when it is B-LT — which errs toward
+	 * offering the user more protection and toward attempting a renewal that turns out to be
+	 * unnecessary, rather than toward sealing or skipping something on a level it does not have.
 	 */
-	private suspend fun levelInspectionVerifier(): CertificateVerifier {
-		val resolved = runCatching {
-			val config = configRepository.getCurrentConfig()
-			ResolvedConfig.resolve(
-				global = config.global,
-				profile = config.activeProfile?.let { config.profiles[it] },
-				operationOverrides = null,
-			).getOrNull()
-		}.getOrNull()
-		val anchors = resolved
-			?.let { trustStore.resolve(TrustScope.of(it.profileName)).getOrElse { emptyList() } }
-			?: emptyList()
-		return dssServiceFactory.buildLevelInspectionVerifier(resolved, anchors).verifier
-	}
+	private fun levelInspectionVerifier(
+		resolved: ResolvedConfig?,
+		anchors: List<ResolvedTrustAnchor>,
+	): CertificateVerifier = dssServiceFactory.buildLevelInspectionVerifier(resolved, anchors).verifier
 
 	companion object {
 		/**

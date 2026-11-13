@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.domain.usecase
 
+import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.result.RenewalAssessment
 import cz.pizavo.omnisign.domain.repository.ArchivingRepository
@@ -22,13 +23,16 @@ class CheckArchivalRenewalUseCase(
 	 * @param filePath Path to the PAdES document to inspect.
 	 * @param renewalBufferDays Days before timestamp certificate expiry at which renewal is
 	 *   triggered, for the B-LTA aging case. Defaults to [DEFAULT_RENEWAL_BUFFER_DAYS].
+	 * @param resolvedConfig The configuration of the extension the assessment decides on, whose
+	 *   trust anchors judge the document's level, or `null` to use the active profile's.
 	 * @return The [RenewalAssessment] — what the document needs, why, and by when — or an error.
 	 */
 	suspend operator fun invoke(
 		filePath: String,
 		renewalBufferDays: Int = DEFAULT_RENEWAL_BUFFER_DAYS,
+		resolvedConfig: ResolvedConfig? = null,
 	): OperationResult<RenewalAssessment> =
-		archivingRepository.needsArchivalRenewal(filePath, renewalBufferDays)
+		archivingRepository.needsArchivalRenewal(filePath, renewalBufferDays, resolvedConfig)
 }
 
 
