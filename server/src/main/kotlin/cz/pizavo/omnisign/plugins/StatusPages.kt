@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.plugins
 import cz.pizavo.omnisign.api.exception.FileTooLargeException
 import cz.pizavo.omnisign.api.exception.MultipleFilePartsException
 import cz.pizavo.omnisign.api.exception.OperationException
+import cz.pizavo.omnisign.api.exception.TooManyPartsException
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.domain.model.error.*
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -68,6 +69,16 @@ fun Application.configureStatusPages(development: Boolean = false) {
 				ApiError(
 					error = "TOO_MANY_FILES",
 					message = cause.message ?: "Exactly one file part is expected",
+				),
+			)
+		}
+		exception<TooManyPartsException> { call, cause ->
+			logger.warn { "Rejected multipart request with more than ${cause.maxParts} parts" }
+			call.respond(
+				HttpStatusCode.BadRequest,
+				ApiError(
+					error = "TOO_MANY_PARTS",
+					message = cause.message ?: "The request carries too many multipart parts",
 				),
 			)
 		}

@@ -353,5 +353,6 @@ cors:
   # site the user visits read authenticated responses. List your app's origin explicitly.
   # allowCredentials: true
 
-# Maximum upload file size in bytes (default: 100 MB).
+# Maximum upload file size in bytes (default: 100 MB). A request body may be up to 1 MiB
+# larger, for the form fields that come with the file.
 maxFileSize: 104857600

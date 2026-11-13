@@ -226,7 +226,8 @@ paths:
         '400':
           description: >
             Missing file, no certificate alias although the server allows several, malformed
-            (non-PDF) document, or an invalid algorithm name.
+            (non-PDF) document, an invalid algorithm name, more than one file part
+            (`TOO_MANY_FILES`), or more than 32 parts (`TOO_MANY_PARTS`).
           content:
             application/json:
               schema:
@@ -327,7 +328,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/ValidationReport'
         '400':
-          description: Missing file, or an invalid `formats`/algorithm name.
+          description: >
+            Missing file, an invalid `formats`/algorithm name, more than one file part
+            (`TOO_MANY_FILES`), or more than 32 parts (`TOO_MANY_PARTS`).
           content:
             application/json:
               schema:
@@ -397,7 +400,9 @@ paths:
                 type: string
                 format: binary
         '400':
-          description: Missing file, malformed (non-PDF) document, or an invalid algorithm name.
+          description: >
+            Missing file, malformed (non-PDF) document, an invalid algorithm name, more than one
+            file part (`TOO_MANY_FILES`), or more than 32 parts (`TOO_MANY_PARTS`).
           content:
             application/json:
               schema:
@@ -452,7 +457,9 @@ paths:
               schema:
                 $ref: '#/components/schemas/DocumentTimestampInfo'
         '400':
-          description: Missing file.
+          description: >
+            Missing file, more than one file part (`TOO_MANY_FILES`), or more than 32 parts
+            (`TOO_MANY_PARTS`).
           content:
             application/json:
               schema:
@@ -973,12 +980,20 @@ components:
             type: string
           example: Bearer
     PayloadTooLarge:
-      description: The uploaded file exceeds `maxFileSize` (advertised by `GET /api/v1/capabilities`; 100 MiB by default).
+      description: >
+        The uploaded file exceeds `maxFileSize` (advertised by `GET /api/v1/capabilities`; 100 MiB by
+        default), answered with `FILE_TOO_LARGE`, or the request body exceeds `maxFileSize` plus 1 MiB
+        for the form fields, answered with `PAYLOAD_TOO_LARGE`. A request whose `Content-Length`
+        declares a larger body gets the latter before any of the body is read.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ApiError'
-          example: { error: FILE_TOO_LARGE, message: "Uploaded file exceeds the maximum allowed size", details: null }
+          examples:
+            fileTooLarge:
+              value: { error: FILE_TOO_LARGE, message: "Uploaded file size (104857700 bytes) exceeds the maximum allowed size (104857600 bytes)", details: null }
+            requestTooLarge:
+              value: { error: PAYLOAD_TOO_LARGE, message: "Request is larger than the limit of 105906176 bytes", details: null }
     UnsupportedMediaType:
       description: The request body is not `multipart/form-data`, or the request carries no `Content-Type`.
       content:

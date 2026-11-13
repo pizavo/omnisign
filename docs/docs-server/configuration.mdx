@@ -262,7 +262,9 @@ aia:
 
 ### `maxFileSize`
 
-Maximum upload size in bytes. Defaults to `104857600` (100 MB).
+Maximum upload size in bytes. Defaults to `104857600` (100 MB). The request that carries the file
+may be up to 1 MiB larger, for its form fields; a larger request body is answered with
+`413 Payload Too Large`.
 
 ### `organizationName`
 

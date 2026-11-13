@@ -215,7 +215,7 @@ server {
     ssl_certificate     /etc/ssl/certs/sign.example.org.pem;
     ssl_certificate_key /etc/ssl/private/sign.example.org.key;
 
-    client_max_body_size 100m;  # matches the default maxFileSize (104857600 bytes)
+    client_max_body_size 101m;  # the default maxFileSize (100 MiB) plus the 1 MiB the server allows for form fields
 
     location / {
         proxy_pass http://127.0.0.1:18080;

@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.api
 
 import cz.pizavo.omnisign.api.exception.FileTooLargeException
 import cz.pizavo.omnisign.api.exception.MultipleFilePartsException
+import cz.pizavo.omnisign.api.exception.TooManyPartsException
 import cz.pizavo.omnisign.api.model.FilePartData
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.config.AllowedOperation
@@ -9,6 +10,7 @@ import cz.pizavo.omnisign.config.ServerConfig
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.*
 import io.ktor.http.content.*
+import io.ktor.server.plugins.PayloadTooLargeException
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
@@ -20,14 +22,27 @@ import java.io.File
 private val logger = KotlinLogging.logger {}
 
 /**
- * Margin added to the file-size limit when [receiveParts] bounds each multipart part.
- *
- * Ktor's parser stops a part that outgrows its limit with a plain `IOException`, which ends up as
- * HTTP 500, whereas [collectParts] answers an oversized file with [FileTooLargeException] and 413.
- * The parser can only run ahead of the reader by what Ktor buffers in a part's channel, about
- * 1 MiB, so a larger margin lets the check in [collectParts] trip first.
+ * Room a request body has beyond the file-size limit, for the form fields, part headers and
+ * boundaries that come with the file. See [requestBodyLimit].
  */
-private const val PART_LIMIT_HEADROOM: Long = 4L * 1024 * 1024
+private const val FORM_FIELDS_ALLOWANCE: Long = 1024L * 1024
+
+/**
+ * The most parts a multipart request may carry, the file included. The largest request the API
+ * takes, a signing request, has eleven: the file and ten form fields.
+ */
+const val MAX_MULTIPART_PARTS = 32
+
+/**
+ * The largest request body the server accepts when a file may be up to [maxFileSize] bytes:
+ * [maxFileSize] plus [FORM_FIELDS_ALLOWANCE] for the form fields that come with the file.
+ *
+ * The server holds every request body to it (see
+ * [configureRequestBodyLimit][cz.pizavo.omnisign.plugins.configureRequestBodyLimit]), which also
+ * bounds the form fields that Ktor's multipart parser reads into memory.
+ */
+fun requestBodyLimit(maxFileSize: Long): Long =
+	maxFileSize.coerceAtMost(Long.MAX_VALUE - FORM_FIELDS_ALLOWANCE) + FORM_FIELDS_ALLOWANCE
 
 /**
  * Receive the request's multipart body and [collect its parts][collectParts], bounding the file
@@ -35,26 +50,27 @@ private const val PART_LIMIT_HEADROOM: Long = 4L * 1024 * 1024
  *
  * Ktor's multipart parser caps every part, files included, at its `formFieldLimit`, which
  * defaults to 50 MiB; with a [maxFileSize] above that, uploads between the two would be answered
- * with HTTP 500. The cap is raised to [maxFileSize] plus [PART_LIMIT_HEADROOM] instead. Ktor
- * buffers text fields in memory and holds them to the same cap.
+ * with HTTP 500. The cap is raised to the [request body limit][requestBodyLimit] instead. No part
+ * can reach it, because the body that holds the part is held to the same limit and stops first,
+ * with [PayloadTooLargeException].
  *
  * @receiver The call whose `multipart/form-data` body is received.
  * @param maxFileSize Maximum allowed size in bytes for the file part.
  * @return All parts in order of occurrence; see [collectParts].
  * @throws FileTooLargeException If the file part exceeds [maxFileSize].
  * @throws MultipleFilePartsException If more than one file part is present.
+ * @throws TooManyPartsException If the request carries more than [MAX_MULTIPART_PARTS] parts.
+ * @throws PayloadTooLargeException If the request body exceeds [requestBodyLimit].
  */
-suspend fun RoutingCall.receiveParts(maxFileSize: Long): List<Any> {
-	val partLimit = maxFileSize.coerceAtMost(Long.MAX_VALUE - PART_LIMIT_HEADROOM) + PART_LIMIT_HEADROOM
-	return receiveMultipart(formFieldLimit = partLimit).collectParts(maxFileSize)
-}
+suspend fun RoutingCall.receiveParts(maxFileSize: Long): List<Any> =
+	receiveMultipart(formFieldLimit = requestBodyLimit(maxFileSize)).collectParts(maxFileSize)
 
 /**
  * Collect all multipart parts into a list without using the deprecated `readAllParts()`.
  *
  * File parts are streamed chunk-by-chunk **directly to a temporary file** as they arrive,
- * never accumulating the full content in heap — peak memory per request is one
- * [DEFAULT_BUFFER_SIZE] buffer regardless of file size. Each file part's content lands in
+ * never accumulating the full content in heap: a file part takes one [DEFAULT_BUFFER_SIZE]
+ * buffer regardless of its size. Each file part's content lands in
  * its own temp file in the OS temp directory; the resulting [FilePartData] holds the
  * [File] path handle. The caller owns the temp-file lifecycle and must delete them once
  * the request completes (see [deleteFileParts]).
@@ -67,26 +83,38 @@ suspend fun RoutingCall.receiveParts(maxFileSize: Long): List<Any> {
  * each operate on exactly one document, and rejecting extra file parts bounds the
  * per-request disk footprint to one file.
  *
- * **Self-cleaning on failure**: if any exception is raised mid-collection (size violation,
- * second file part, I/O error), every temp file created so far is deleted before the
- * exception propagates, so a failed collection leaves nothing behind. On success the
- * caller takes ownership.
+ * **Bounded form fields**: Ktor's parser reads each non-file part into memory before handing it
+ * over, and they are kept until the request completes. The [request body limit][requestBodyLimit]
+ * bounds their total size, and [maxParts] bounds their number, which a body of tiny parts would
+ * otherwise turn into millions of objects: the part after the [maxParts]th raises
+ * [TooManyPartsException].
  *
- * Non-file parts (form fields) are collected as-is.
+ * **Self-cleaning on failure**: if any exception is raised mid-collection (size violation,
+ * second file part, too many parts, I/O error), every temp file created so far is deleted before
+ * the exception propagates, so a failed collection leaves nothing behind. On success the
+ * caller takes ownership.
  *
  * @receiver The multipart data from the request.
  * @param maxFileSize Maximum allowed size in bytes for the file part. Defaults to
  *   [Long.MAX_VALUE] (unlimited).
+ * @param maxParts Maximum number of parts, the file included. Defaults to [MAX_MULTIPART_PARTS].
  * @return All parts in order of occurrence. [PartData.FileItem] parts are wrapped as
  *   [FilePartData] backed by a temp file.
  * @throws FileTooLargeException If the file part exceeds [maxFileSize].
  * @throws MultipleFilePartsException If more than one file part is present.
+ * @throws TooManyPartsException If more than [maxParts] parts are present.
  */
-suspend fun MultiPartData.collectParts(maxFileSize: Long = Long.MAX_VALUE): List<Any> {
+suspend fun MultiPartData.collectParts(
+	maxFileSize: Long = Long.MAX_VALUE,
+	maxParts: Int = MAX_MULTIPART_PARTS,
+): List<Any> {
 	val result = mutableListOf<Any>()
 	val createdFiles = mutableListOf<File>()
 	try {
 		forEachPart { part ->
+			if (result.size == maxParts) {
+				throw TooManyPartsException(maxParts)
+			}
 			if (part is PartData.FileItem) {
 				if (createdFiles.isNotEmpty()) {
 					throw MultipleFilePartsException()
