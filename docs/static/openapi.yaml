@@ -177,7 +177,9 @@ paths:
                     - $ref: '#/components/schemas/HashAlgorithm'
                   description: >
                     Digest algorithm (e.g. `SHA256`). Matched case-insensitively; an unrecognized
-                    value is ignored and the profile/global default applies.
+                    value is ignored and the profile/global default applies. Rejected with
+                    `422 INVALID_CONFIGURATION` when `signing.yml`, the profile or
+                    `disableHashAlgorithm` disables it.
                 signatureLevel:
                   allOf:
                     - $ref: '#/components/schemas/SignatureLevel'
@@ -254,12 +256,16 @@ paths:
         '415':
           $ref: '#/components/responses/UnsupportedMediaType'
         '422':
-          description: Invalid resolved configuration, an encrypted document, or a timestamp is required but TIMESTAMP is disabled.
+          description: >
+            Invalid resolved configuration (including a requested hashAlgorithm that is disabled),
+            an encrypted document, or a timestamp is required but TIMESTAMP is disabled.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiError'
               examples:
+                disabledHashAlgorithm:
+                  value: { error: INVALID_CONFIGURATION, message: "Hash algorithm SHA3_256 is selected in operation overrides but disabled in global config" }
                 timestampNotAllowed:
                   value: { error: TIMESTAMP_NOT_ALLOWED, message: "Signing at PADES_BASELINE_T embeds a timestamp, but TIMESTAMP is not enabled" }
                 encrypted:
