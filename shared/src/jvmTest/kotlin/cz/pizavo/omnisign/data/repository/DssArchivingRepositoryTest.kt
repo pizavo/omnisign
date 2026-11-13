@@ -232,6 +232,7 @@ class DssArchivingRepositoryTest : FunSpec({
 		lastModifiedMillis = file.lastModified(),
 		earliestRenewalAt = Instant.parse("2099-01-01T00:00:00Z"),
 		profile = profile,
+		profileRecorded = true,
 	)
 
 	test("the level inspection takes its anchors from the configuration it is given, not the active profile") {
@@ -301,6 +302,19 @@ class DssArchivingRepositoryTest : FunSpec({
 		cache.put(pdf.absolutePath, cachedNotNeeded(pdf, profile = null))
 
 		repo.needsArchivalRenewal(pdf.absolutePath).shouldBeRight().need shouldBe RenewalNeed.NO_SIGNATURE
+	}
+
+	test("a verdict cached before profiles were recorded is not replayed, not even under the global configuration") {
+		coEvery { configRepository.getCurrentConfig() } returns AppConfig(global = GlobalConfig())
+		val trustStore = mockk<TrustStore>()
+		coEvery { trustStore.resolve(any()) } returns emptyList<ResolvedTrustAnchor>().right()
+		val cache = FileRenewalCheckCache(tempdir().toPath().resolve("cache.json"))
+		val (repo, _) = inspectingRepository(trustStore, cache)
+		val pdf = createPlainPdf("cached-before-profiles.pdf")
+		cache.put(pdf.absolutePath, cachedNotNeeded(pdf, profile = null).copy(profileRecorded = false))
+
+		repo.needsArchivalRenewal(pdf.absolutePath, resolvedConfig = resolved(null)).shouldBeRight()
+			.need shouldBe RenewalNeed.NO_SIGNATURE
 	}
 
 	test("a cached verdict replays without reading the trust store, so an unreadable one cannot spoil it") {

@@ -379,7 +379,9 @@ class SigningPipelineE2ETest : FunSpec({
 		cachingRepository(cache).needsArchivalRenewal(file.absolutePath, resolvedConfig = archive)
 			.shouldBeRight().need shouldBe RenewalNeed.NOT_NEEDED
 
-		cache.get(file.absolutePath).shouldNotBeNull().profile shouldBe "archive"
+		val entry = cache.get(file.absolutePath).shouldNotBeNull()
+		entry.profile shouldBe "archive"
+		entry.profileRecorded.shouldBeTrue()
 	}
 
 	test("a B-LTA verdict reached without a resolved configuration is not cached") {

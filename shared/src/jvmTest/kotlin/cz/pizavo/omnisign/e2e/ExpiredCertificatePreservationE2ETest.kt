@@ -22,6 +22,7 @@ import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.result.RenewalNeed
 import cz.pizavo.omnisign.domain.model.result.RenewalReason
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
@@ -340,14 +341,15 @@ class ExpiredCertificatePreservationE2ETest : FunSpec({
 
 	/**
 	 * An [archivingRepository] that keeps its verdicts in [cache], reads its configuration from
-	 * [config] and its trust anchors from [trustStore].
+	 * [config] and its trust anchors from [trustStore], and builds its verifiers with [factory].
 	 */
 	fun cachingRepository(
 		cache: RenewalCheckCache,
 		config: ConfigRepository = configRepository,
 		trustStore: TrustStore = FileTrustStore(tempdir().toPath()),
+		factory: DssServiceFactory = dssServiceFactory,
 	) = DssArchivingRepository(
-		config, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(),
+		config, factory, DssWarningSanitizer(), TspErrorDetector(),
 		RevocationErrorDetector(), DocumentInputErrorDetector(), trustStore,
 		cache, SignatureSpaceErrorDetector(),
 	)
@@ -364,6 +366,26 @@ class ExpiredCertificatePreservationE2ETest : FunSpec({
 		val entry = cache.get(file.absolutePath).shouldNotBeNull()
 		entry.terminal.shouldBeTrue()
 		entry.profile shouldBe "archive"
+		entry.profileRecorded.shouldBeTrue()
+	}
+
+	test("a terminal verdict reached while a trusted list failed to load is not cached") {
+		crl = pki.buildCrl(thisUpdate = Date(now - day), nextUpdate = Date(now + 3650 * day))
+		val file = File(tmp, "terminal-list-down.pdf").also { it.writeBytes(signBaselineT()) }
+		val cache = FileRenewalCheckCache(tempdir().toPath().resolve("cache.json"))
+		val listDown = mockk<DssServiceFactory>(relaxed = true)
+		every { listDown.buildPdfObjectFactory() } returns PdfBoxNativeObjectFactory()
+		every { listDown.buildLevelInspectionVerifier(any(), any()) } answers {
+			CertificateVerifierResult(
+				verifier(alert = null),
+				tlWarnings = listOf(LocalizableText.Literal("A trusted list could not be downloaded")),
+			)
+		}
+
+		cachingRepository(cache, factory = listDown).needsArchivalRenewal(file.absolutePath)
+			.shouldBeRight().need shouldBe RenewalNeed.UNRECOVERABLE
+
+		cache.get(file.absolutePath).shouldBeNull()
 	}
 
 	test("a terminal verdict reached without a resolved configuration is not cached, so it cannot outlive the problem") {

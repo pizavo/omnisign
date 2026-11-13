@@ -20,8 +20,9 @@ import kotlin.time.Instant
  *   replayed from here until the file itself changes.
  * @property profile The profile whose trust anchors judged the file's level, or `null` for the
  *   global configuration. The level, and with it the verdict, depends on those anchors, so the
- *   entry is replayed only for an assessment under the same profile. An entry written before this
- *   was recorded reads as `null`.
+ *   entry is replayed only for an assessment under the same profile.
+ * @property profileRecorded Whether the entry records [profile]. An entry written before profiles
+ *   were recorded reads as `false` and is never replayed, since nothing says which anchors judged it.
  */
 @Serializable
 data class RenewalCheckCacheEntry(
@@ -30,4 +31,5 @@ data class RenewalCheckCacheEntry(
     val earliestRenewalAt: Instant,
     val terminal: Boolean = false,
     val profile: String? = null,
+    val profileRecorded: Boolean = false,
 )
