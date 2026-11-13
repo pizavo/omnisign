@@ -1,29 +1,29 @@
 package cz.pizavo.omnisign.api
 
 import cz.pizavo.omnisign.api.exception.FileTooLargeException
+import cz.pizavo.omnisign.api.exception.FormFieldsTooLargeException
+import cz.pizavo.omnisign.api.exception.MalformedMultipartException
 import cz.pizavo.omnisign.api.exception.MultipleFilePartsException
 import cz.pizavo.omnisign.api.exception.TooManyPartsException
 import cz.pizavo.omnisign.api.model.FilePartData
+import cz.pizavo.omnisign.api.model.FormFieldData
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
-import io.github.oshai.kotlinlogging.KotlinLogging
 import io.ktor.http.*
-import io.ktor.http.content.*
+import io.ktor.server.plugins.BadRequestException
 import io.ktor.server.plugins.PayloadTooLargeException
+import io.ktor.server.plugins.UnsupportedMediaTypeException
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import io.ktor.utils.io.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
-import java.io.File
-
-private val logger = KotlinLogging.logger {}
 
 /**
  * Room a request body has beyond the file-size limit, for the form fields, part headers and
  * boundaries that come with the file. See [requestBodyLimit].
+ *
+ * It is also the most that the form fields and the headers of all parts of one request may take
+ * together, since the server holds them in memory (see [MultipartFormReader]).
  */
 private const val FORM_FIELDS_ALLOWANCE: Long = 1024L * 1024
 
@@ -38,135 +38,70 @@ const val MAX_MULTIPART_PARTS = 32
  * [maxFileSize] plus [FORM_FIELDS_ALLOWANCE] for the form fields that come with the file.
  *
  * The server holds every request body to it (see
- * [configureRequestBodyLimit][cz.pizavo.omnisign.plugins.configureRequestBodyLimit]), which also
- * bounds the form fields that Ktor's multipart parser reads into memory.
+ * [configureRequestBodyLimit][cz.pizavo.omnisign.plugins.configureRequestBodyLimit]).
  */
 fun requestBodyLimit(maxFileSize: Long): Long =
 	maxFileSize.coerceAtMost(Long.MAX_VALUE - FORM_FIELDS_ALLOWANCE) + FORM_FIELDS_ALLOWANCE
 
 /**
- * Receive the request's multipart body and [collect its parts][collectParts], bounding the file
- * part by [maxFileSize].
+ * Read the request's multipart body with a [MultipartFormReader], which streams the file part to a
+ * temporary file and keeps the form fields in memory.
  *
- * Ktor's multipart parser caps every part, files included, at its `formFieldLimit`, which
- * defaults to 50 MiB. It fails a part that grows past the cap, or whose own `Content-Length` header
- * declares more, with an `IOException` that the server would answer with HTTP 500. The cap is lifted
- * instead, because the [request body limit][requestBodyLimit] already bounds every part by the bytes
- * that actually arrive, and fails a larger body with [PayloadTooLargeException].
+ * The file part may have up to [maxFileSize] bytes, and only one part may be a file. The form
+ * fields, together with the headers of all parts, may take up to [FORM_FIELDS_ALLOWANCE], and the
+ * request may have up to [MAX_MULTIPART_PARTS] parts. If anything fails, the temporary file is
+ * deleted before the exception propagates; otherwise the caller deletes it once the request is done
+ * (see [deleteFileParts]).
  *
- * @receiver The call whose `multipart/form-data` body is received.
+ * @receiver The call whose `multipart/form-data` body is read.
  * @param maxFileSize Maximum allowed size in bytes for the file part.
- * @return All parts in order of occurrence; see [collectParts].
+ * @return All parts in order: a [FormFieldData] for each form field and a [FilePartData] for the
+ *   file.
+ * @throws UnsupportedMediaTypeException If the request has no `Content-Type`, or one that is not
+ *   `multipart`.
+ * @throws BadRequestException If the `Content-Type` header is malformed.
+ * @throws MalformedMultipartException If the `Content-Type` names no usable boundary, or the body
+ *   is not well-formed multipart or has a part header line longer than 8192 bytes.
+ * @throws FormFieldsTooLargeException If the form fields and part headers exceed
+ *   [FORM_FIELDS_ALLOWANCE].
  * @throws FileTooLargeException If the file part exceeds [maxFileSize].
  * @throws MultipleFilePartsException If more than one file part is present.
  * @throws TooManyPartsException If the request carries more than [MAX_MULTIPART_PARTS] parts.
  * @throws PayloadTooLargeException If the request body exceeds [requestBodyLimit].
  */
-suspend fun RoutingCall.receiveParts(maxFileSize: Long): List<Any> =
-	receiveMultipart(formFieldLimit = Long.MAX_VALUE).collectParts(maxFileSize)
-
-/**
- * Collect all multipart parts into a list without using the deprecated `readAllParts()`.
- *
- * File parts are streamed chunk-by-chunk **directly to a temporary file** as they arrive,
- * never accumulating the full content in heap: a file part takes one [DEFAULT_BUFFER_SIZE]
- * buffer regardless of its size. Each file part's content lands in
- * its own temp file in the OS temp directory; the resulting [FilePartData] holds the
- * [File] path handle. The caller owns the temp-file lifecycle and must delete them once
- * the request completes (see [deleteFileParts]).
- *
- * Size is enforced during the stream: when a part's accumulated size exceeds [maxFileSize]
- * a [FileTooLargeException] is thrown mid-stream, before the whole file reaches disk.
- *
- * **Single-file contract**: at most one file part is accepted. A second [PartData.FileItem]
- * raises [MultipleFilePartsException] — the signing / validation / timestamping endpoints
- * each operate on exactly one document, and rejecting extra file parts bounds the
- * per-request disk footprint to one file.
- *
- * **Bounded form fields**: Ktor's parser reads each non-file part into memory before handing it
- * over, and they are kept until the request completes. The [request body limit][requestBodyLimit]
- * bounds their total size, and [maxParts] bounds their number, which a body of tiny parts would
- * otherwise turn into millions of objects: the part after the [maxParts]th raises
- * [TooManyPartsException].
- *
- * **Self-cleaning on failure**: if any exception is raised mid-collection (size violation,
- * second file part, too many parts, I/O error), every temp file created so far is deleted before
- * the exception propagates, so a failed collection leaves nothing behind. On success the
- * caller takes ownership.
- *
- * @receiver The multipart data from the request.
- * @param maxFileSize Maximum allowed size in bytes for the file part. Defaults to
- *   [Long.MAX_VALUE] (unlimited).
- * @param maxParts Maximum number of parts, the file included. Defaults to [MAX_MULTIPART_PARTS].
- * @return All parts in order of occurrence. [PartData.FileItem] parts are wrapped as
- *   [FilePartData] backed by a temp file.
- * @throws FileTooLargeException If the file part exceeds [maxFileSize].
- * @throws MultipleFilePartsException If more than one file part is present.
- * @throws TooManyPartsException If more than [maxParts] parts are present.
- */
-suspend fun MultiPartData.collectParts(
-	maxFileSize: Long = Long.MAX_VALUE,
-	maxParts: Int = MAX_MULTIPART_PARTS,
-): List<Any> {
-	val result = mutableListOf<Any>()
-	val createdFiles = mutableListOf<File>()
-	try {
-		forEachPart { part ->
-			if (result.size == maxParts) {
-				throw TooManyPartsException(maxParts)
-			}
-			if (part is PartData.FileItem) {
-				if (createdFiles.isNotEmpty()) {
-					throw MultipleFilePartsException()
-				}
-				val tempFile = withContext(Dispatchers.IO) {
-					File.createTempFile("omnisign-upload-", ".pdf")
-				}
-				createdFiles.add(tempFile)
-				streamPartToFile(part, tempFile, maxFileSize)
-				result.add(FilePartData(part.name, tempFile, part.originalFileName))
-			} else {
-				result.add(part)
-			}
-		}
-	} catch (e: Throwable) {
-		createdFiles.forEach { runCatching { it.delete() } }
-		throw e
-	}
-	return result
+suspend fun RoutingCall.receiveParts(maxFileSize: Long): List<Any> {
+	val boundary = multipartBoundary()
+	return MultipartFormReader(receiveChannel(), boundary, maxFileSize, MAX_MULTIPART_PARTS, FORM_FIELDS_ALLOWANCE)
+		.readParts()
 }
 
 /**
- * Stream a single [PartData.FileItem]'s channel into [target], enforcing [maxFileSize]
- * as the running total grows. Uses a fixed [DEFAULT_BUFFER_SIZE] buffer so heap usage is
- * constant regardless of file size.
+ * The `boundary` parameter of the request's `multipart` `Content-Type`.
  *
- * @throws FileTooLargeException when the accumulated byte count exceeds [maxFileSize].
+ * @throws UnsupportedMediaTypeException If the request has no `Content-Type`, or one that is not
+ *   `multipart`.
+ * @throws BadRequestException If the `Content-Type` header is malformed.
+ * @throws MalformedMultipartException If the `Content-Type` names no boundary.
  */
-private suspend fun streamPartToFile(part: PartData.FileItem, target: File, maxFileSize: Long) {
-	val channel = part.provider()
-	withContext(Dispatchers.IO) {
-		target.outputStream().use { out ->
-			val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
-			var totalRead = 0L
-			while (true) {
-				val n = channel.readAvailable(buffer)
-				if (n <= 0) break
-				totalRead += n
-				if (totalRead > maxFileSize) {
-					throw FileTooLargeException(actualSize = totalRead, maxSize = maxFileSize)
-				}
-				out.write(buffer, 0, n)
-			}
-		}
+private fun RoutingCall.multipartBoundary(): String {
+	val header = request.header(HttpHeaders.ContentType) ?: throw UnsupportedMediaTypeException(null)
+	val contentType = try {
+		ContentType.parse(header)
+	} catch (e: BadContentTypeFormatException) {
+		throw BadRequestException(e.message ?: "Malformed Content-Type header", e)
 	}
+	if (!contentType.match(ContentType.MultiPart.Any)) {
+		throw UnsupportedMediaTypeException(contentType)
+	}
+	return contentType.parameter("boundary")
+		?: throw MalformedMultipartException("The multipart Content-Type names no boundary.")
 }
 
 /**
  * Delete the temp files backing every [FilePartData] in [this] list, ignoring individual
  * deletion failures.
  *
- * Call this in a `finally` block after [collectParts] so the streamed upload temp files
+ * Call this in a `finally` block after [receiveParts] so the streamed upload temp files
  * are removed promptly on every path — success, handled error, or early return. The OS
  * temp-directory reaper is only a backstop for the rare crash-before-finally case; this
  * is the primary, prompt cleanup that keeps the temp directory bounded under load.
@@ -202,12 +137,17 @@ suspend fun RoutingCall.requireOperation(
 /**
  * Extract a text form field value from collected multipart parts.
  *
- * @param parts Collected multipart parts from [collectParts].
+ * @param parts Collected multipart parts from [receiveParts].
  * @param name Form field name.
  * @return The field value, or `null` if not present.
  */
 fun extractTextField(parts: List<Any>, name: String): String? =
-	parts.filterIsInstance<PartData.FormItem>().firstOrNull { it.name == name }?.value
+	parts.filterIsInstance<FormFieldData>().firstOrNull { it.name == name }?.value
+
+/**
+ * The most unknown values that [parseEnumSetField] names in its error.
+ */
+private const val MAX_REPORTED_UNKNOWN_VALUES = 10
 
 /**
  * Parse a comma-separated multipart field into a [Set] of [E] enum entries.
@@ -217,9 +157,13 @@ fun extractTextField(parts: List<Any>, name: String): String? =
  * rejected eagerly so a typo never silently yields a partial set: a `400 BadRequest` with
  * the supplied [errorCode] is sent and `null` is returned, signalling to the caller that
  * a response has already been written and it must return immediately (mirroring the
- * [requireOperation] convention).
+ * [requireOperation] convention). The error names at most [MAX_REPORTED_UNKNOWN_VALUES] of
+ * them.
  *
- * @param parts Collected multipart parts from [collectParts].
+ * The value is read one token at a time, and only the set and the named unknown tokens are
+ * kept, so a field of many short tokens takes no more memory than its own text.
+ *
+ * @param parts Collected multipart parts from [receiveParts].
  * @param fieldName Form field name to read.
  * @param entries Allowed enum values, typically `MyEnum.entries`.
  * @param errorCode [ApiError.error] code to use when an unknown token is encountered.
@@ -232,9 +176,9 @@ suspend fun <E : Enum<E>> RoutingCall.parseEnumSetField(
 	errorCode: String,
 ): Set<E>? {
 	val raw = extractTextField(parts, fieldName) ?: return emptySet()
-	val tokens = raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+	val tokens = raw.splitToSequence(",").map { it.trim() }.filter { it.isNotEmpty() }
 	val byLowerName = entries.associateBy { it.name.lowercase() }
-	val unknown = tokens.filter { it.lowercase() !in byLowerName }
+	val unknown = tokens.filter { it.lowercase() !in byLowerName }.take(MAX_REPORTED_UNKNOWN_VALUES).toList()
 	if (unknown.isNotEmpty()) {
 		respond(
 			HttpStatusCode.BadRequest,
@@ -248,6 +192,3 @@ suspend fun <E : Enum<E>> RoutingCall.parseEnumSetField(
 	}
 	return tokens.mapNotNullTo(mutableSetOf()) { byLowerName[it.lowercase()] }
 }
-
-
-

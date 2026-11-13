@@ -1,6 +1,8 @@
 package cz.pizavo.omnisign.plugins
 
 import cz.pizavo.omnisign.api.exception.FileTooLargeException
+import cz.pizavo.omnisign.api.exception.FormFieldsTooLargeException
+import cz.pizavo.omnisign.api.exception.MalformedMultipartException
 import cz.pizavo.omnisign.api.exception.MultipleFilePartsException
 import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.exception.TooManyPartsException
@@ -79,6 +81,26 @@ fun Application.configureStatusPages(development: Boolean = false) {
 				ApiError(
 					error = "TOO_MANY_PARTS",
 					message = cause.message ?: "The request carries too many multipart parts",
+				),
+			)
+		}
+		exception<FormFieldsTooLargeException> { call, cause ->
+			logger.warn { "Rejected multipart request whose form fields exceed ${cause.maxBytes} bytes" }
+			call.respond(
+				HttpStatusCode.PayloadTooLarge,
+				ApiError(
+					error = "FORM_FIELDS_TOO_LARGE",
+					message = cause.message ?: "The form fields of the request are too large",
+				),
+			)
+		}
+		exception<MalformedMultipartException> { call, cause ->
+			logger.warn { "Rejected malformed multipart request: ${cause.message}" }
+			call.respond(
+				HttpStatusCode.BadRequest,
+				ApiError(
+					error = "MALFORMED_MULTIPART",
+					message = cause.message ?: "The multipart body is malformed",
 				),
 			)
 		}

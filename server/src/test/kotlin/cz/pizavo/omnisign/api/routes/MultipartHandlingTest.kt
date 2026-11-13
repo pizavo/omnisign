@@ -13,13 +13,18 @@ import io.ktor.client.request.*
 import io.ktor.client.request.forms.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
+import io.ktor.http.content.*
 import io.ktor.server.testing.*
 import kotlinx.serialization.json.Json
 
 /**
- * Verifies the multipart single-file contract enforced by `collectParts`: a request with
+ * Verifies the multipart single-file contract enforced by `MultipartFormReader`: a request with
  * more than one file part is rejected with `400 TOO_MANY_FILES` before any operation runs.
- * A request whose body is not multipart at all is rejected with `415 UNSUPPORTED_MEDIA_TYPE`.
+ * A request whose body is not multipart at all is rejected with `415 UNSUPPORTED_MEDIA_TYPE`,
+ * one whose multipart `Content-Type` names no boundary with `400 MALFORMED_MULTIPART`, and one
+ * whose `Content-Type` cannot be parsed with `400 BAD_REQUEST`. A part whose `Content-Disposition`
+ * is empty is answered with `400 MALFORMED_MULTIPART` rather than `500`, and the error for a list
+ * field of unknown values names at most ten of them.
  */
 class MultipartHandlingTest : FunSpec({
 
@@ -103,6 +108,71 @@ class MultipartHandlingTest : FunSpec({
             val body = json.decodeFromString<ApiError>(response.bodyAsText())
             body.error shouldBe "UNSUPPORTED_MEDIA_TYPE"
             body.message shouldBe "Content-Type header is required"
+        }
+    }
+
+    test("validation route answers a multipart request without a boundary with 400 MALFORMED_MULTIPART") {
+        testApplication {
+            application { module(testConfig()) }
+            val response = client.post("/api/v1/validate") {
+                contentType(ContentType.MultiPart.FormData)
+                setBody("--x\r\n\r\n--x--\r\n")
+            }
+            response.status shouldBe HttpStatusCode.BadRequest
+            val body = json.decodeFromString<ApiError>(response.bodyAsText())
+            body.error shouldBe "MALFORMED_MULTIPART"
+        }
+    }
+
+    test("validation route answers a Content-Type it cannot parse with 400 BAD_REQUEST") {
+        testApplication {
+            application { module(testConfig()) }
+            val response = client.post("/api/v1/validate") {
+                setBody(object : OutgoingContent.ByteArrayContent() {
+                    override val headers = headersOf(HttpHeaders.ContentType, "multipart/")
+
+                    override fun bytes() = "--x--\r\n".encodeToByteArray()
+                })
+            }
+            response.status shouldBe HttpStatusCode.BadRequest
+            val body = json.decodeFromString<ApiError>(response.bodyAsText())
+            body.error shouldBe "BAD_REQUEST"
+        }
+    }
+
+    test("validation route answers a part whose Content-Disposition is empty with 400 MALFORMED_MULTIPART") {
+        testApplication {
+            application { module(testConfig()) }
+            val response = client.post("/api/v1/validate") {
+                contentType(ContentType.MultiPart.FormData.withParameter("boundary", "x"))
+                setBody("--x\r\nContent-Disposition:\r\n\r\nvalue\r\n--x--\r\n")
+            }
+            response.status shouldBe HttpStatusCode.BadRequest
+            val body = json.decodeFromString<ApiError>(response.bodyAsText())
+            body.error shouldBe "MALFORMED_MULTIPART"
+        }
+    }
+
+    test("validation route names at most ten of the unknown values a list field carries") {
+        testApplication {
+            application { module(testConfig()) }
+            val response = client.post("/api/v1/validate") {
+                setBody(
+                    MultiPartFormDataContent(
+                        formData {
+                            append("formats", "nope,".repeat(100_000))
+                            append("file", ByteArray(64), Headers.build {
+                                append(HttpHeaders.ContentDisposition, "filename=\"a.pdf\"")
+                                append(HttpHeaders.ContentType, ContentType.Application.Pdf.toString())
+                            })
+                        },
+                    ),
+                )
+            }
+            response.status shouldBe HttpStatusCode.BadRequest
+            val body = json.decodeFromString<ApiError>(response.bodyAsText())
+            body.error shouldBe "INVALID_FORMAT"
+            Regex("nope").findAll(body.message).count() shouldBe 10
         }
     }
 })

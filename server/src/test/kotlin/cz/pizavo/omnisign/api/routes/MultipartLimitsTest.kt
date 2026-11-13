@@ -30,11 +30,12 @@ import java.net.http.HttpResponse as JdkHttpResponse
 import java.time.Duration
 
 /**
- * Verifies the limits that keep a multipart request's form fields from filling the heap: a request
- * body may exceed `maxFileSize` by at most a megabyte, whether it declares its length or arrives
- * chunked, and a request may carry at most [MAX_MULTIPART_PARTS] parts. A part whose own
- * `Content-Length` declares more than that is read like any other, instead of failing the request
- * with 500.
+ * Verifies the limits that keep a multipart request from filling the heap: a request body may exceed
+ * `maxFileSize` by at most a megabyte, whether it declares its length or arrives chunked; the form
+ * fields, together with the headers of all parts, may take at most that megabyte; and a request may
+ * carry at most [MAX_MULTIPART_PARTS] parts. A part whose own `Content-Length` declares more than
+ * the limit is read like any other, and a body that ends before its closing boundary is refused as
+ * malformed.
  *
  * The last test drives a real Netty server, where a chunked body comes with no length the server
  * could check before reading it.
@@ -68,11 +69,44 @@ class MultipartLimitsTest : FunSpec({
 		}
 	}
 
-	test("text fields sent chunked are refused with 413 once they pass the request body limit") {
+	test("a body sent chunked is refused with 413 once it passes the request body limit") {
 		testApplication {
 			application { module(config(SMALL_MAX_FILE_SIZE)) }
-			client.post("/api/v1/validate") { setBody(chunked(oversizedFields())) }
+			client.post("/api/v1/validate") { setBody(chunked(oversizedPreambleBody())) }
 				.shouldBeRejectedAs(HttpStatusCode.PayloadTooLarge, "PAYLOAD_TOO_LARGE")
+		}
+	}
+
+	test("text fields within the request body limit but over the form-field allowance are refused with 413") {
+		testApplication {
+			application { module(config(LARGE_MAX_FILE_SIZE)) }
+			client.post("/api/v1/validate") { setBody(oversizedFields()) }
+				.shouldBeRejectedAs(HttpStatusCode.PayloadTooLarge, "FORM_FIELDS_TOO_LARGE")
+		}
+	}
+
+	test("a part with more header lines than the form-field allowance holds is refused with 413") {
+		testApplication {
+			application { module(config(LARGE_MAX_FILE_SIZE)) }
+			val body = multipartBytes(
+				listOf("profile" to "strict"),
+				partHeaders = "X-Filler: y\r\n".repeat(FILLER_HEADER_LINES),
+			)
+			val response = client.post("/api/v1/validate") {
+				setBody(ByteArrayContent(body, ContentType.MultiPart.FormData.withParameter("boundary", BOUNDARY)))
+			}
+			response.shouldBeRejectedAs(HttpStatusCode.PayloadTooLarge, "FORM_FIELDS_TOO_LARGE")
+		}
+	}
+
+	test("a body that ends before its closing boundary is refused with 400 MALFORMED_MULTIPART") {
+		testApplication {
+			application { module(config(SMALL_MAX_FILE_SIZE)) }
+			val body = multipartBytes(listOf("profile" to "strict")).dropLast(CLOSING_BOUNDARY_LINE_BYTES).toByteArray()
+			val response = client.post("/api/v1/validate") {
+				setBody(ByteArrayContent(body, ContentType.MultiPart.FormData.withParameter("boundary", BOUNDARY)))
+			}
+			response.shouldBeRejectedAs(HttpStatusCode.BadRequest, "MALFORMED_MULTIPART")
 		}
 	}
 
@@ -122,7 +156,7 @@ class MultipartLimitsTest : FunSpec({
 		}.start(wait = false)
 		try {
 			val port = server.engine.resolvedConnectors().first().port
-			val body = multipartBytes(List(OVERSIZED_FIELD_COUNT) { "field$it" to "b".repeat(LARGE_FIELD_CHARS) })
+			val body = oversizedPreambleBody()
 			val request = JdkHttpRequest.newBuilder(URI("http://127.0.0.1:$port/api/v1/validate"))
 				.version(JdkHttpClient.Version.HTTP_1_1)
 				.timeout(Duration.ofSeconds(30))
@@ -144,6 +178,12 @@ class MultipartLimitsTest : FunSpec({
 		/** A `maxFileSize` small enough that the request body limit is about one mebibyte. */
 		private const val SMALL_MAX_FILE_SIZE = 1024L
 
+		/**
+		 * A `maxFileSize` large enough that the request body limit is far above the form-field
+		 * allowance, so the allowance is what a request of large form fields or part headers hits.
+		 */
+		private const val LARGE_MAX_FILE_SIZE = 8L * 1024 * 1024
+
 		/** A `maxFileSize` that the file part in the part-count tests exceeds. */
 		private const val TINY_MAX_FILE_SIZE = 10L
 
@@ -156,8 +196,21 @@ class MultipartLimitsTest : FunSpec({
 		/** Characters in each large form field: half a mebibyte, so three exceed the request limit. */
 		private const val LARGE_FIELD_CHARS = 512 * 1024
 
+		/**
+		 * Characters of the preamble in [oversizedPreambleBody]: two mebibytes, past the request body
+		 * limit with [SMALL_MAX_FILE_SIZE]. The server discards a preamble without counting it against
+		 * the form-field allowance, so only the body limit stops it.
+		 */
+		private const val OVERSIZED_PREAMBLE_CHARS = 2 * 1024 * 1024
+
+		/** Header lines of thirteen bytes each in the part-header test: about 1.2 MiB of them. */
+		private const val FILLER_HEADER_LINES = 100_000
+
 		/** Boundary of the multipart body the Netty test builds by hand. */
 		private const val BOUNDARY = "omnisign-limits-test"
+
+		/** Bytes of the closing boundary line that [multipartBytes] ends with: `--`, [BOUNDARY], `--` and CRLF. */
+		private const val CLOSING_BOUNDARY_LINE_BYTES = BOUNDARY.length + 6
 
 		/** Headers of a PDF file part. */
 		fun pdfPartHeaders(): Headers = Headers.build {
@@ -166,21 +219,37 @@ class MultipartLimitsTest : FunSpec({
 		}
 
 		/**
-		 * [content] without its length, so the client sends it chunked and the server learns its size
-		 * only by reading it.
+		 * A multipart body with [BOUNDARY] whose one small form field follows a preamble of
+		 * [OVERSIZED_PREAMBLE_CHARS] characters.
 		 */
-		fun chunked(content: MultiPartFormDataContent): OutgoingContent =
-			object : OutgoingContent.WriteChannelContent() {
-				override val contentType = content.contentType
+		fun oversizedPreambleBody(): ByteArray =
+			multipartBytes(listOf("profile" to "strict"), preamble = "p".repeat(OVERSIZED_PREAMBLE_CHARS))
 
-				override suspend fun writeTo(channel: ByteWriteChannel) = content.writeTo(channel)
+		/**
+		 * The multipart [body] with [BOUNDARY], without its length, so the client sends it chunked and
+		 * the server learns its size only by reading it.
+		 */
+		fun chunked(body: ByteArray): OutgoingContent =
+			object : OutgoingContent.WriteChannelContent() {
+				override val contentType = ContentType.MultiPart.FormData.withParameter("boundary", BOUNDARY)
+
+				override suspend fun writeTo(channel: ByteWriteChannel) = channel.writeFully(body)
 			}
 
 		/**
 		 * A `multipart/form-data` body with [BOUNDARY] that carries [fields] as text parts, each with
-		 * [partHeaders], whole CRLF-terminated header lines, after its `Content-Disposition`.
+		 * [partHeaders], whole CRLF-terminated header lines, after its `Content-Disposition`, and
+		 * starts with [preamble].
 		 */
-		fun multipartBytes(fields: List<Pair<String, String>>, partHeaders: String = ""): ByteArray = buildString {
+		fun multipartBytes(
+			fields: List<Pair<String, String>>,
+			partHeaders: String = "",
+			preamble: String = "",
+		): ByteArray = buildString {
+			if (preamble.isNotEmpty()) {
+				append(preamble)
+				append("\r\n")
+			}
 			fields.forEach { (name, value) ->
 				append("--$BOUNDARY\r\n")
 				append("Content-Disposition: form-data; name=\"$name\"\r\n")
