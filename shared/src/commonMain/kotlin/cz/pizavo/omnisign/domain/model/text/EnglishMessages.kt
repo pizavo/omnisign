@@ -246,6 +246,8 @@ internal object EnglishMessages {
 			"UNKNOWN"
 		MessageKey.REVOCATION_CONCLUSION_REVOKED ->
 			"The signing certificate was revoked as of %1\$s."
+		MessageKey.REVOCATION_CONCLUSION_REVOKED_LATER ->
+			"The signing certificate was not revoked as of %1\$s; it was revoked later, on %2\$s."
 		MessageKey.REVOCATION_CONCLUSION_NOT_REVOKED ->
 			"The signing certificate was not revoked as of %1\$s."
 		MessageKey.REVOCATION_CONCLUSION_UNDETERMINED ->

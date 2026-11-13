@@ -117,6 +117,7 @@ private val MESSAGE_RES: Map<MessageKey, StringResource> = mapOf(
 	MessageKey.REVOCATION_STATUS_REVOKED to Res.string.revocation_status_revoked,
 	MessageKey.REVOCATION_STATUS_UNKNOWN to Res.string.revocation_status_unknown,
 	MessageKey.REVOCATION_CONCLUSION_REVOKED to Res.string.revocation_conclusion_revoked,
+	MessageKey.REVOCATION_CONCLUSION_REVOKED_LATER to Res.string.revocation_conclusion_revoked_later,
 	MessageKey.REVOCATION_CONCLUSION_NOT_REVOKED to Res.string.revocation_conclusion_not_revoked,
 	MessageKey.REVOCATION_CONCLUSION_UNDETERMINED to Res.string.revocation_conclusion_undetermined,
 	MessageKey.TRUST_TIER_QUALIFIED to Res.string.trust_tier_qualified,

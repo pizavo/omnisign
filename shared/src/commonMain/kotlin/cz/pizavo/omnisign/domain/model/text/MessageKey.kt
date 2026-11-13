@@ -327,6 +327,12 @@ enum class MessageKey {
 	/** Revocation conclusion: the certificate was revoked as of a time (arg: time). */
 	REVOCATION_CONCLUSION_REVOKED,
 
+	/**
+	 * Revocation conclusion: the certificate was not revoked as of a time but was revoked later
+	 * (args: time, revocation date).
+	 */
+	REVOCATION_CONCLUSION_REVOKED_LATER,
+
 	/** Revocation conclusion: the certificate was not revoked as of a time (arg: time). */
 	REVOCATION_CONCLUSION_NOT_REVOKED,
 
