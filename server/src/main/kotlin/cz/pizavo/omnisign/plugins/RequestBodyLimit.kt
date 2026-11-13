@@ -18,8 +18,10 @@ import io.ktor.server.request.contentLength
  *
  * Nothing else bounds a body as a whole. Ktor's multipart parser reads each form field into
  * memory, so without this one request could hold many file-sized fields in the heap at once.
- * The channel runs no coroutine and reads only what the route asks for; the engine reads and
- * discards the rest of a refused or partly read HTTP/1.1 body, so that the connection can be reused.
+ * The channel runs no coroutine and reads only what the route asks for. The engine reads and
+ * discards the rest of a refused or partly read HTTP/1.1 body, so that the connection can be reused,
+ * unless the body was cancelled, as the multipart parser does with some parts (see
+ * [SizeLimitedByteReadChannel]).
  *
  * @param maxBytes The largest body, in bytes, that a request may carry.
  */

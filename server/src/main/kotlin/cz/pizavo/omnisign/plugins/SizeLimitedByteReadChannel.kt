@@ -14,6 +14,12 @@ import kotlinx.io.Buffer
  * The engine reads and discards that rest after the call, to reuse the connection, which is also why
  * exceeding the limit fails only this channel and leaves [delegate] open.
  *
+ * Cancelling this channel cancels [delegate] too, as cancelling the engine's channel would without
+ * the limit, and the engine then reads none of the rest. Ktor's `copyTo` cancels the channel it reads
+ * from when a copy fails, and the multipart parser copies a part that declares its own length with
+ * it, so the rest of a body that exceeds the limit inside such a part, or whose route stops reading
+ * one, is left unread.
+ *
  * It follows ktor-io's [io.ktor.utils.io.CountedByteReadChannel], which counts bytes the same way,
  * and fails the way ktor-io's own channels do once closed with a cause: [readBuffer] and
  * [awaitContent] throw the failure, and [isClosedForRead] and [closedCause] report it.
