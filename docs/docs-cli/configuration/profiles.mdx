@@ -42,13 +42,16 @@ can therefore stop instead of signing with settings that never took effect.
 | `--validation-policy <type>`                   | Validation policy type                                       |
 | `--algo-expiration-level <level>`              | Algorithm expiration severity                                |
 | `--algo-expiration-level-after-update <level>` | Algorithm expiration severity after policy update date       |
-| `--algo-expiry-override <ALG=DATE>`            | Per-algorithm expiration override (repeatable)               |
+| `--algo-expiry-override <ALG[:SIZE]=DATE>`     | Per-algorithm expiration override (repeatable)               |
 | `--disable-hash-algorithm <alg>`               | Disable a hash algorithm in this profile (repeatable)        |
 | `--disable-encryption-algorithm <alg>`         | Disable an encryption algorithm in this profile (repeatable) |
 
 The TSA password goes to the OS credential store, never into the profile. Where there is no
 credential store, `--timestamp-password` is refused, and where the store does not keep the password,
 the command saves no profile — see the [Overview](overview).
+
+`--algo-expiry-override` takes the same forms as in `config set`, including `ALGORITHM:KEY_SIZE=DATE`
+for one key-size entry — see [Expiration date overrides](overview#expiration-date-overrides).
 
 `edit` additionally supports `--enable-hash-algorithm`, `--enable-encryption-algorithm`,
 and the following `--clear-*` flags to unset individual fields:

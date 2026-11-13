@@ -42,8 +42,12 @@ import kotlinx.serialization.Serializable
  *   [policyUpdateDate].  Null means inherit from the layer below.
  * @property policyUpdateDate ISO-8601 date string stamped automatically on every change.
  *   Null defers to the DSS built-in default.
- * @property expirationDateOverrides Per-algorithm expiration date overrides
- *   (algorithm name → ISO-8601 date).  Merged additively across layers during resolution.
+ * @property expirationDateOverrides Per-algorithm expiration date overrides, from a key to an
+ *   ISO-8601 date. The key is an algorithm name, or `NAME:SIZE` for one key-size entry of an
+ *   algorithm the validation policy dates by key size, such as `RSA:1900`. A bare name of such an
+ *   algorithm only brings its dates forward; `AdESPolicy` describes how the entries combine. Only
+ *   hash algorithm dates reach the pre-signing check. Merged additively across layers during
+ *   resolution.
  */
 @Serializable
 data class AlgorithmConstraintsConfig(

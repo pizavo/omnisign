@@ -1985,6 +1985,6 @@ components:
           description: ISO-8601 date, e.g. `2026-02-01`.
         expirationDateOverrides:
           type: object
-          description: Algorithm name to ISO-8601 expiration date.
+          description: Algorithm name, or `NAME:KEY_SIZE` for one key-size entry of an algorithm the validation policy dates by key size (such as `RSA:1900`), to an ISO-8601 expiration date. A bare name of such an algorithm only brings its dates forward.
           additionalProperties:
             type: string

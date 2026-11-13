@@ -531,7 +531,7 @@ omnisign config set [options]
 | `--use-eu-lotl <bool>`                         | Enable/disable the EU List of Trusted Lists                                       |
 | `--algo-expiration-level <level>`              | Severity when an algorithm's expiration date has passed                           |
 | `--algo-expiration-level-after-update <level>` | Severity after the policy update date                                             |
-| `--algo-expiry-override <ALG=DATE>`            | Per-algorithm expiration date override (e.g. `RIPEMD160=2030-01-01`). Repeatable. |
+| `--algo-expiry-override <ALG[:SIZE]=DATE>`     | Per-algorithm expiration date override (e.g. `RIPEMD160=2030-01-01`). Repeatable. |
 | `--disable-hash-algorithm <alg>`               | Globally disable a hash algorithm so it cannot be selected. Repeatable.           |
 | `--enable-hash-algorithm <alg>`                | Re-enable a globally disabled hash algorithm. Repeatable.                         |
 | `--disable-encryption-algorithm <alg>`         | Globally disable an encryption algorithm. Repeatable.                             |
@@ -548,6 +548,11 @@ omnisign config set \
   --timestamp-url https://tsa.example.com/tsr \
   --use-eu-lotl true
 ```
+
+`--algo-expiry-override` also takes `ALGORITHM:KEY_SIZE=DATE` to change one key-size entry of an
+algorithm the validation policy dates by key size, such as `RSA:1900=2030-12-31` for the 1900-bit
+RSA entry. Without a key size, such an algorithm's dates can only be brought forward, so a weak
+key never becomes acceptable again.
 
 #### `config profile` — Manage named profiles
 

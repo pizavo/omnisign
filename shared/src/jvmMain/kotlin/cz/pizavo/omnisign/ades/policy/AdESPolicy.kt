@@ -12,8 +12,12 @@ import eu.europa.esig.dss.policy.EtsiValidationPolicy
 import eu.europa.esig.dss.policy.EtsiValidationPolicyFactory
 import eu.europa.esig.dss.policy.ValidationPolicyFacade
 import eu.europa.esig.dss.policy.jaxb.Algo
+import eu.europa.esig.dss.policy.jaxb.AlgoExpirationDate
 import eu.europa.esig.dss.policy.jaxb.CryptographicConstraint
 import java.io.File
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.TimeZone
 
 /**
  * Loads and optionally customizes a DSS [ValidationPolicy].
@@ -79,9 +83,8 @@ open class AdESPolicy {
 	 * Also applies [AlgorithmConstraintsConfig.policyUpdateDate] and
 	 * [AlgorithmConstraintsConfig.expirationDateOverrides] directly on the JAXB
 	 * `AlgoExpirationDate` object so that DSS validation honors the same dates as the
-	 * pre-signing check.  For each override entry:
-	 * - If a matching `Algo` element already exists in the list its `Date` attribute is updated.
-	 * - If no matching element exists, a new one is added, so DSS tracks the algorithm completely.
+	 * pre-signing check. How each override reaches the `Algo` entries is described at
+	 * [applyPerAlgorithmDateOverrides].
 	 */
 	private fun applyAlgorithmConstraints(
 		policy: ValidationPolicy,
@@ -103,29 +106,93 @@ open class AdESPolicy {
 		config.policyUpdateDate?.let { algoExpirationDate.updateDate = it }
 		
 		if (config.expirationDateOverrides.isNotEmpty()) {
-			applyPerAlgorithmDateOverrides(algoExpirationDate.algos, config.expirationDateOverrides)
+			applyPerAlgorithmDateOverrides(algoExpirationDate, config.expirationDateOverrides)
 		}
 	}
 	
 	/**
-	 * Update or insert per-algorithm `Date` attributes in the live JAXB [algos] list.
+	 * Apply [overrides] to the `Algo` entries of [expirations]. Their list is the live JAXB one,
+	 * backed by JAXB's lazy-init `ArrayList`, so the changes reach the DSS policy evaluation.
 	 *
-	 * The [algos] list is mutable (backed by JAXB's lazy-init `ArrayList`) so modifications
-	 * propagate immediately to the DSS policy evaluation.
+	 * DSS grades an encryption algorithm by key size: an entry with a `Size` applies to every key
+	 * of at least that size, and a key stays acceptable until the latest date among the entries
+	 * that apply to it. An override key therefore takes one of two forms:
+	 * - `NAME:SIZE`, such as `RSA:1900`, sets the date of that size tier, adding the tier when
+	 *   the policy has none.
+	 * - `NAME` sets the date of an algorithm the policy does not grade by size, such as a hash
+	 *   algorithm, adding the algorithm when the policy lacks it. For an algorithm graded by size
+	 *   it only caps every tier: a tier dated later, or not dated at all, takes the date, and no
+	 *   tier moves later. Setting one tier instead would carry its date to every larger key,
+	 *   accepting weak keys again or leaving strong ones untouched.
+	 *
+	 * The `NAME:SIZE` keys are applied first, so a cap also bounds the tiers they set or add,
+	 * whatever order [overrides] lists them in.
+	 *
+	 * A `NAME:SIZE` key whose size is not a positive number is skipped, and so is a cap whose date
+	 * the policy's date format cannot read, since DSS would read such a date as no expiry at all.
 	 */
 	private fun applyPerAlgorithmDateOverrides(
-		algos: MutableList<Algo>,
-		overrides: Map<String, String>
+		expirations: AlgoExpirationDate,
+		overrides: Map<String, String>,
 	) {
-		overrides.forEach { (algoName, dateString) ->
-			val existing = algos.find { it.value == algoName }
-			if (existing != null) {
-				existing.date = dateString
+		val algos = expirations.algos
+		val (sized, named) = overrides.entries.partition { ':' in it.key }
+		sized.forEach { (key, date) ->
+			key.substringAfter(':').toIntOrNull()?.takeIf { it > 0 }?.let { size ->
+				setExpirationDate(algos, key.substringBefore(':'), size, date)
+			}
+		}
+		named.forEach { (name, date) ->
+			if (algos.any { it.value == name && it.size != null }) {
+				capExpirationDates(algos.filter { it.value == name }, date, dssDateFormat(expirations))
 			} else {
-				algos += Algo().also { it.value = algoName; it.date = dateString }
+				setExpirationDate(algos, name, null, date)
 			}
 		}
 	}
+	
+	/**
+	 * Set the date of the entry in [algos] named [name] with key size [size], `null` for an entry
+	 * without one, adding the entry when the list has none.
+	 */
+	private fun setExpirationDate(algos: MutableList<Algo>, name: String, size: Int?, date: String) {
+		val existing = algos.find { it.value == name && it.size == size }
+		if (existing != null) {
+			existing.date = date
+		} else {
+			algos += Algo().also { it.value = name; it.size = size; it.date = date }
+		}
+	}
+	
+	/**
+	 * Bring the date of every entry in [entries] that ends after [date], or never ends, forward to
+	 * [date]. Dates are compared as DSS reads them, through [format]; nothing changes when [format]
+	 * cannot read [date].
+	 */
+	private fun capExpirationDates(entries: List<Algo>, date: String, format: SimpleDateFormat) {
+		val cap = format.parseOrNull(date) ?: return
+		entries.forEach { algo ->
+			val current = format.parseOrNull(algo.date)
+			if (current == null || current.after(cap)) algo.date = date
+		}
+	}
+	
+	/**
+	 * The date format DSS reads the dates of [expirations] with: the policy's own `Format`, or
+	 * [DSS_DEFAULT_DATE_FORMAT] without one, in UTC, as in DSS's `CryptographicConstraintWrapper`.
+	 * It is a [SimpleDateFormat] because that is what DSS parses these dates with.
+	 */
+	private fun dssDateFormat(expirations: AlgoExpirationDate): SimpleDateFormat =
+		SimpleDateFormat(expirations.format ?: DSS_DEFAULT_DATE_FORMAT).apply {
+			timeZone = TimeZone.getTimeZone("UTC")
+		}
+	
+	/**
+	 * Parse [value] the way DSS does, or return `null` when it is absent or unreadable, which DSS
+	 * treats as no expiry.
+	 */
+	private fun SimpleDateFormat.parseOrNull(value: String?): Date? =
+		value?.let { runCatching { parse(it) }.getOrNull() }
 	
 	/**
 	 * Collect all non-null [CryptographicSuite] instances from the standard DSS
@@ -202,5 +269,10 @@ open class AdESPolicy {
 		policy.evidenceRecordConstraints?.cryptographic?.let { result += it }
 		
 		return result
+	}
+	
+	private companion object {
+		/** The date format DSS reads an `AlgoExpirationDate` with when the policy names none. */
+		const val DSS_DEFAULT_DATE_FORMAT = "yyyy-MM-dd"
 	}
 }
