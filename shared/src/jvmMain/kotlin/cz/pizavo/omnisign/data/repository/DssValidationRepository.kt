@@ -467,7 +467,11 @@ class DssValidationRepository(
 		val sigWrapper = diagnosticData.getSignatureById(signatureId)
 		val signingCert = sigWrapper?.signingCertificate
 		val revocations = signingCert?.let {
-			extractRevocations(it, sealedRevocationIds, detailedReport.acceptedRevocationIds(signatureId, it.id))
+			extractRevocations(
+				it,
+				sealedRevocationIds,
+				detailedReport.acceptedRevocationIds(diagnosticData, signatureId, it.id),
+			)
 		} ?: emptyList()
 		val policyUntrusted = isDowngradedByPolicy(
 			managedAnchorTypes(sigWrapper?.certificateChain ?: emptyList(), anchorTypes),

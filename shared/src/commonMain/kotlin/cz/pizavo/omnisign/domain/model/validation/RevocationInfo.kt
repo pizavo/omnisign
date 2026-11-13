@@ -36,12 +36,15 @@ import kotlin.time.Instant
  * @property revocationDate When the certificate was revoked; only meaningful when [revoked].
  * @property reason Revocation reason code (e.g. `"KEY_COMPROMISE"`); only meaningful when [revoked].
  * @property accepted Whether the validation accepted this check as evidence about the certificate:
- *   `true` when DSS's revocation acceptance checks passed for it, `false` when they failed or did
- *   not run. They fail when, among other things, the check's signature does not verify, its issuer
- *   is unknown or does not chain to a trust anchor, its status is unknown, or it says nothing about
- *   the certificate, as a CRL issued after the certificate expired may not. They do not run when
- *   the certificate's chain reaches no trust anchor or the certificate needs no revocation data.
- *   `null` when the report does not say, as one from a server that predates this property does.
+ *   `true` when it passed DSS's revocation acceptance checks and its own validation went well enough
+ *   for DSS's long-term validation to use it, `false` when either failed or they did not run. The
+ *   acceptance checks fail when, among other things, the check's signature does not verify, its
+ *   issuer is unknown or does not chain to a trust anchor, its status is unknown, or it says nothing
+ *   about the certificate, as a CRL issued after the certificate expired may not. Its own validation
+ *   also fails when a certificate that issued the check breaks the policy's constraints, for example
+ *   by not being a CA. Neither runs when the certificate's chain reaches no trust anchor or the
+ *   certificate needs no revocation data, as when it is trusted directly. `null` when the report
+ *   does not say, as one from a server that predates this property does.
  */
 @Serializable
 data class RevocationInfo(
