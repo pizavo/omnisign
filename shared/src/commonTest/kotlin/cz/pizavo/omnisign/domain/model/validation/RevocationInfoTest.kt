@@ -8,6 +8,7 @@ import io.kotest.matchers.string.shouldContain
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.hours
 import kotlin.time.Duration.Companion.minutes
+import kotlin.time.Duration.Companion.seconds
 import kotlin.time.Instant
 
 /**
@@ -15,8 +16,8 @@ import kotlin.time.Instant
  * judged as of the best-signature-time from the dates the checks give: a revocation dated by then
  * means the certificate was revoked, one dated later means it was revoked only afterwards, and a
  * good check settles the status only when it was issued at or after that time or was still current
- * then, before its next update. The full check list (rendered elsewhere) is what carries method,
- * source and time detail.
+ * then, before its next update, both with a few minutes' leeway for responders' clocks. The full
+ * check list (rendered elsewhere) is what carries method, source and time detail.
  */
 class RevocationInfoTest : FunSpec({
 
@@ -79,8 +80,21 @@ class RevocationInfoTest : FunSpec({
 		tokens.revocationConclusion(asOf)!!.english() shouldContain "undetermined"
 	}
 
-	test("a good check whose next update falls exactly at the best-signature-time no longer covers it") {
-		listOf(revocation(status = "GOOD", thisUpdate = asOf - 7.days, nextUpdate = asOf)).revocationOutcome(asOf) shouldBe
+	test("a good check whose next update passed just within the clock-skew leeway still covers the best-signature-time") {
+		val leeway = RevocationInfo.CLOCK_SKEW_LEEWAY
+
+		listOf(revocation(status = "GOOD", thisUpdate = asOf - 7.days, nextUpdate = asOf - leeway + 1.seconds))
+			.revocationOutcome(asOf) shouldBe RevocationOutcome.NotRevoked
+		listOf(revocation(status = "GOOD", thisUpdate = asOf - 7.days, nextUpdate = asOf - leeway))
+			.revocationOutcome(asOf) shouldBe RevocationOutcome.Undetermined
+	}
+
+	test("a good check made moments before the best-signature-time, with no next update, still settles the status") {
+		val leeway = RevocationInfo.CLOCK_SKEW_LEEWAY
+
+		listOf(revocation(status = "GOOD", thisUpdate = asOf - 2.seconds)).revocationOutcome(asOf) shouldBe RevocationOutcome.NotRevoked
+		listOf(revocation(status = "GOOD", thisUpdate = asOf - leeway)).revocationOutcome(asOf) shouldBe RevocationOutcome.NotRevoked
+		listOf(revocation(status = "GOOD", thisUpdate = asOf - leeway - 1.seconds)).revocationOutcome(asOf) shouldBe
 			RevocationOutcome.Undetermined
 	}
 

@@ -5,6 +5,8 @@ import cz.pizavo.omnisign.domain.model.text.MessageKey
 import cz.pizavo.omnisign.domain.model.value.DateFormat
 import cz.pizavo.omnisign.domain.model.value.formatDateTime
 import kotlinx.serialization.Serializable
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Instant
 
 /**
@@ -48,7 +50,18 @@ data class RevocationInfo(
     val nextUpdate: Instant? = null,
     val revocationDate: Instant? = null,
     val reason: String? = null,
-)
+) {
+    companion object {
+        /**
+         * The leeway [revocationOutcome] gives a good check's times against the best-signature-time.
+         * Responders' clocks drift, and OCSP and CRL times are kept to the second, so a check DSS
+         * fetches moments after a validation began can carry a time just before that moment. Five
+         * minutes is the clock-skew leeway OpenSSL allows an OCSP response by default
+         * (`openssl ocsp -validity_period`).
+         */
+        val CLOCK_SKEW_LEEWAY: Duration = 5.minutes
+    }
+}
 
 /**
  * The signing certificate's revocation status as of [asOf] (best-signature-time), judged from the
@@ -66,7 +79,9 @@ data class RevocationInfo(
  *   the certificate then. That second case is the revocation freshness rule of ETSI EN 319 102-1
  *   (5.2.5) when the policy sets no maximum freshness, and it is what lets a signature without a
  *   timestamp, whose best-signature-time is the validation time itself, rest on a CRL issued shortly
- *   before it.
+ *   before it. Both comparisons allow [RevocationInfo.CLOCK_SKEW_LEEWAY], so an OCSP response that
+ *   names no next update, fetched as the validation began, is not undone by a responder's clock or
+ *   by its time being kept to the second.
  * - [RevocationOutcome.Undetermined] otherwise. A good check whose next update had already passed
  *   by [asOf], or one issued before [asOf] that names no next update, leaves the certificate free to
  *   have been revoked between that check and [asOf].
@@ -89,13 +104,14 @@ fun List<RevocationInfo>.revocationOutcome(asOf: Instant): RevocationOutcome? {
 
 /**
  * Whether this check says the certificate was good as of [asOf]: its status is good, and either its
- * status time is not before [asOf] or [asOf] falls before its next update. A check without a status
- * time covers no time at all.
+ * status time is not before [asOf] or [asOf] falls before its next update, both within
+ * [RevocationInfo.CLOCK_SKEW_LEEWAY]. A check without a status time covers no time at all.
  */
 private fun RevocationInfo.vouchesForGoodStatusAt(asOf: Instant): Boolean {
     if (!status.equals("GOOD", ignoreCase = true)) return false
     val statusTime = thisUpdate ?: producedAt ?: return false
-    return statusTime >= asOf || nextUpdate?.let { asOf < it } == true
+    val leeway = RevocationInfo.CLOCK_SKEW_LEEWAY
+    return statusTime >= asOf - leeway || nextUpdate?.let { asOf < it + leeway } == true
 }
 
 /**
