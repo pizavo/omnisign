@@ -26,8 +26,9 @@ import kotlinx.serialization.json.Json
  * server.
  *
  * The server holds the signing identity (its own PKCS#11 or PKCS#12 keystore configured
- * in `signing.yml`); the web client uploads the document and optionally names a
- * certificate alias. This means three of the four `SigningRepository` methods that exist
+ * in `signing.yml`); the web client uploads the document and names the certificate alias
+ * picked from the server's listing. A request without an alias is rejected when the server
+ * allows several. This means three of the four `SigningRepository` methods that exist
  * to drive client-side hardware tokens have no equivalent on the web: [unlockToken] and
  * [loadCertificatesFromFile] return [SigningError.TokenAccessError] with a "not supported
  * on web" message, and the [listAvailableCertificates] `promptForLocked` flag is ignored

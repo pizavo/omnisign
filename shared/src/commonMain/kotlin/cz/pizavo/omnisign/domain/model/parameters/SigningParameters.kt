@@ -22,14 +22,16 @@ import cz.pizavo.omnisign.domain.model.value.Sensitive
  * @property inputName File name attached to the document (used as the DSS document name on
  *   JVM and as the multipart `filename=` on web).
  * @property certificateAlias Alias identifying which certificate to use; null selects the first
- *   available on JVM, or the server default on web.
+ *   available on JVM. On web, null leaves the choice to the server, which signs with its only
+ *   allowed alias (or its first key when it has no allowlist) and rejects the request when it
+ *   allows several.
  * @property certificateSlotId For a PKCS#11 selection, the slot the chosen certificate lives in,
  *   so signing pins to the slot holding its private key on cards that present several
  *   token-present slots; null lets sign-time resolution locate the slot by [certificateAlias].
  *   JVM-only; the web target ignores this field.
  * @property keystoreFile Absolute path to a PKCS#12 (`.p12`/`.pfx`) keystore to sign with, instead
  *   of a discovered token. When set, [certificateAlias] selects *within* the keystore (omit to use
- *   its sole key). JVM/CLI only; the web target rejects it.
+ *   its first key). JVM/CLI only; the web target rejects it.
  * @property keystorePassword In-memory password for [keystoreFile] when supplied non-interactively;
  *   null lets the JVM signer prompt interactively when the keystore is password-protected. A
  *   [Sensitive], so it is never persisted or serialized.

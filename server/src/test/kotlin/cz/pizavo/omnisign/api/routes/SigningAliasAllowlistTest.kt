@@ -126,6 +126,23 @@ class SigningAliasAllowlistTest : FunSpec({
 		error.error shouldBe "CERTIFICATE_NOT_ALLOWED"
 	}
 
+	test("an empty certificateAlias is rejected rather than treated as a missing one") {
+		val (status, error) = signingError(certificateAliases = listOf("university-seal"), alias = "")
+
+		status shouldBe HttpStatusCode.Forbidden
+		error.error shouldBe "CERTIFICATE_NOT_ALLOWED"
+	}
+
+	test("an allowed list that repeats its one alias still serves a request without an alias") {
+		val (status, error) = signingError(
+			certificateAliases = listOf("university-seal", "university-seal"),
+			alias = null,
+		)
+
+		status shouldBe HttpStatusCode.ServiceUnavailable
+		error.message shouldContain "'university-seal'"
+	}
+
 	test("without an allowed list a request may leave certificateAlias out") {
 		val (status, error) = signingError(certificateAliases = null, alias = null)
 

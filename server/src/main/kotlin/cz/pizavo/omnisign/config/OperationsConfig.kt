@@ -18,8 +18,10 @@ package cz.pizavo.omnisign.config
  *   certificate or runs an institutional TSA proxy.
  * @property certificateAliases When non-null, only these certificate aliases may be used
  *   for signing via the API. Provides defense-in-depth so that personal certificates
- *   installed on the server are never accidentally exposed. A sign request that names no alias
- *   signs with the only listed alias, and is rejected when the list holds several. When `null` and
+ *   installed on the server are never accidentally exposed. Aliases match exactly, in the form
+ *   `GET /api/v1/certificates` lists them (`<CN>-<serialHex>@<source id>`), not a label given to
+ *   the key. A sign request that names no alias signs with the only listed alias, and is rejected
+ *   when the list holds several. When `null` and
  *   [AllowedOperation.SIGN] is in [allowed], all discovered signing certificates are
  *   available. An explicitly empty list while SIGN is enabled is rejected at startup by
  *   [validateOperationsConfig] — it would permit no certificate at all. Meaningless when
@@ -28,7 +30,7 @@ package cz.pizavo.omnisign.config
  *   signs from, for deployments that hold their signing key as a file rather than in a PKCS#11
  *   token/HSM. When set (and [AllowedOperation.SIGN] is enabled) every sign request signs with
  *   this keystore; [certificateAliases] then selects the entry within it (a request omitting the
- *   alias uses the only allowed alias, or the keystore's sole key when [certificateAliases] is
+ *   alias uses the only allowed alias, or the keystore's first key when [certificateAliases] is
  *   `null`). The keystore password is supplied from the environment
  *   via `OMNISIGN_SIGNING_KEYSTORE_PASSWORD` (never in YAML), mirroring the TLS keystore. When
  *   `null`, signing falls back to PKCS#11 token discovery, so an HSM-backed deployment leaves this

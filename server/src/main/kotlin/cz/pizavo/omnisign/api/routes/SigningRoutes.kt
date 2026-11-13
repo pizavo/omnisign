@@ -137,7 +137,7 @@ fun Route.signingRoutes() {
 			val allowedAliases = serverConfig.operations.certificateAliases
 			val certificateAlias = when {
 				allowedAliases == null -> requestedAlias
-				requestedAlias == null -> allowedAliases.singleOrNull() ?: run {
+				requestedAlias == null -> allowedAliases.distinct().singleOrNull() ?: run {
 					call.respond(
 						HttpStatusCode.BadRequest,
 						ApiError(
