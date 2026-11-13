@@ -56,6 +56,7 @@ class JsonReportSerializationTest : FunSpec({
                         sealedByTimestamp = true,
                         origin = "DSS_DICTIONARY",
                         producedAt = Instant.parse("2026-03-28T11:00:00Z"),
+                        accepted = true,
                     ),
                 ),
                 hashAlgorithm = "SHA256",
@@ -136,6 +137,7 @@ class JsonReportSerializationTest : FunSpec({
         revocation.sealedByTimestamp shouldBe true
         revocation.origin shouldBe "DSS_DICTIONARY"
         revocation.producedAt shouldBe "2026-03-28T11:00:00Z"
+        revocation.accepted shouldBe true
     }
 
     test("toJsonReport maps summary counters") {

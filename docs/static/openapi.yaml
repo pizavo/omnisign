@@ -1538,6 +1538,9 @@ components:
           format: date-time
         reason:
           type: [string, 'null']
+        accepted:
+          type: [boolean, 'null']
+          description: Whether the validation accepted this check as evidence about the signing certificate. A `GOOD` check it did not accept does not count towards the revocation conclusion.
 
     CertificateInfo:
       type: object

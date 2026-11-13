@@ -140,6 +140,7 @@ fun RevocationInfo.toJsonReport(): JsonRevocationReport =
         nextUpdate = nextUpdate?.toString(),
         revocationDate = revocationDate?.toString(),
         reason = reason,
+        accepted = accepted,
     )
 
 /**

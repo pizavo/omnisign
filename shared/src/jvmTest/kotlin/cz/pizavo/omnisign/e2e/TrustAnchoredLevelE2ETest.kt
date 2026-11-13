@@ -15,7 +15,10 @@ import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
+import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.result.RenewalReason
+import cz.pizavo.omnisign.domain.model.validation.RevocationOutcome
+import cz.pizavo.omnisign.domain.model.validation.revocationOutcome
 import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.*
@@ -34,6 +37,7 @@ import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -89,6 +93,10 @@ import java.util.*
  * repositories, under anchors that pin the intermediate and nothing above it. The root exists only
  * to issue the intermediate: it is neither trusted nor shipped in the PKCS#12, exactly as a relying
  * party would meet this chain.
+ *
+ * The same documents show which revocation checks validation accepts. Under the anchor DSS accepts
+ * the CRL embedded at signing, and it settles that the signer was not revoked. Without the anchor DSS
+ * accepts none, so the same good CRL settles nothing.
  */
 class TrustAnchoredLevelE2ETest : FunSpec({
 
@@ -234,11 +242,16 @@ class TrustAnchoredLevelE2ETest : FunSpec({
 		tokenInfo = fileToken,
 	)
 
-	/** Pins the issuing CA, standing in for the trusted-list entry or trust-store anchor. */
-	fun verifier(): CommonCertificateVerifier = CommonCertificateVerifier().apply {
-		setTrustedCertSources(
-			CommonTrustedCertificateSource().apply { addCertificate(DSSUtils.loadCertificate(interCert.encoded)) },
-		)
+	/**
+	 * Pins the issuing CA, standing in for the trusted-list entry or trust-store anchor, unless
+	 * [anchored] is false, which leaves the verifier with no trust anchor at all.
+	 */
+	fun verifier(anchored: Boolean = true): CommonCertificateVerifier = CommonCertificateVerifier().apply {
+		if (anchored) {
+			setTrustedCertSources(
+				CommonTrustedCertificateSource().apply { addCertificate(DSSUtils.loadCertificate(interCert.encoded)) },
+			)
+		}
 		crlSource = OnlineCRLSource().apply { setDataLoader(CommonsDataLoader()) }
 		isCheckRevocationForUntrustedChains = false
 		alertOnUncoveredPOE = null
@@ -298,6 +311,19 @@ class TrustAnchoredLevelE2ETest : FunSpec({
 		mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(),
 	)
 
+	/** A [DssValidationRepository] that validates with [verifier], pinning the issuing CA only when [anchored]. */
+	fun validationRepository(anchored: Boolean): DssValidationRepository {
+		val factory = mockk<DssServiceFactory>(relaxed = true)
+		every { factory.buildPdfObjectFactory() } returns PdfBoxNativeObjectFactory()
+		every { factory.buildValidationCertificateVerifier(any(), any(), any()) } answers {
+			CertificateVerifierResult(verifier(anchored))
+		}
+		return DssValidationRepository(factory, FileTrustStore(tempdir().toPath()), DssWarningSanitizer())
+	}
+
+	val anchoredValidation = validationRepository(anchored = true)
+	val anchorlessValidation = validationRepository(anchored = false)
+
 	fun plainPdf(): ByteArray {
 		val out = ByteArrayOutputStream()
 		org.apache.pdfbox.pdmodel.PDDocument().use { doc ->
@@ -327,6 +353,16 @@ class TrustAnchoredLevelE2ETest : FunSpec({
 				resolvedConfig = config(level),
 			)
 		).shouldBeRight()
+
+	/** Validate [pdf] with [repository] and return the document's one signature. */
+	suspend fun validatedSignature(repository: DssValidationRepository, pdf: ByteArray) =
+		repository.validateDocument(
+			ValidationParameters(
+				inputBytes = pdf,
+				inputName = "signed.pdf",
+				resolvedConfig = config(SignatureLevel.PADES_BASELINE_LT),
+			)
+		).shouldBeRight().signatures.single()
 
 	test("signing at B-LT reports the level it reached, not the level it was asked for") {
 		val signed = signAt(SignatureLevel.PADES_BASELINE_LT)
@@ -368,6 +404,23 @@ class TrustAnchoredLevelE2ETest : FunSpec({
 		val assessment = archivingRepository.needsArchivalRenewal(file.absolutePath).shouldBeRight()
 
 		assessment.reason shouldNotBe RenewalReason.BELOW_LT
+	}
+
+	test("validation accepts the embedded CRL under the anchor, so it settles that the signer was not revoked") {
+		val signature = validatedSignature(anchoredValidation, signAt(SignatureLevel.PADES_BASELINE_LT).outputBytes)
+
+		signature.revocations.shouldNotBeEmpty()
+		signature.revocations.map { it.accepted }.toSet() shouldBe setOf(true)
+		signature.revocations.revocationOutcome(signature.signatureTime) shouldBe RevocationOutcome.NotRevoked
+	}
+
+	test("validation without an anchor accepts no CRL, so a good one leaves the signer's status undetermined") {
+		val signature = validatedSignature(anchorlessValidation, signAt(SignatureLevel.PADES_BASELINE_LT).outputBytes)
+
+		signature.revocations.shouldNotBeEmpty()
+		signature.revocations.map { it.status }.toSet() shouldBe setOf("GOOD")
+		signature.revocations.map { it.accepted }.toSet() shouldBe setOf(false)
+		signature.revocations.revocationOutcome(signature.signatureTime) shouldBe RevocationOutcome.Undetermined
 	}
 })
 

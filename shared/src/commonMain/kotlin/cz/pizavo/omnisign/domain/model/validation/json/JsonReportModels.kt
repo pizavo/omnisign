@@ -179,6 +179,8 @@ data class JsonCertificateField(
  * @property nextUpdate ISO-8601 end of the validity window.
  * @property revocationDate ISO-8601 revocation date; only meaningful when [revoked].
  * @property reason Revocation reason code; only meaningful when [revoked].
+ * @property accepted Whether the validation accepted the check as evidence about the certificate;
+ *   `null` when the report does not say. See [cz.pizavo.omnisign.domain.model.validation.RevocationInfo.accepted].
  */
 @Serializable
 data class JsonRevocationReport(
@@ -194,6 +196,7 @@ data class JsonRevocationReport(
     val nextUpdate: String? = null,
     val revocationDate: String? = null,
     val reason: String? = null,
+    val accepted: Boolean? = null,
 )
 
 /**

@@ -110,6 +110,8 @@ private val MESSAGE_RES: Map<MessageKey, StringResource> = mapOf(
 	MessageKey.REVOCATION_LABEL_NEXT_UPDATE to Res.string.revocation_label_next_update,
 	MessageKey.REVOCATION_LABEL_REVOKED_ON to Res.string.revocation_label_revoked_on,
 	MessageKey.REVOCATION_LABEL_REASON to Res.string.revocation_label_reason,
+	MessageKey.REVOCATION_LABEL_ACCEPTED to Res.string.revocation_label_accepted,
+	MessageKey.REVOCATION_NOT_ACCEPTED to Res.string.revocation_not_accepted,
 	MessageKey.REVOCATION_SOURCE_EMBEDDED_SEALED to Res.string.revocation_source_embedded_sealed,
 	MessageKey.REVOCATION_SOURCE_EMBEDDED to Res.string.revocation_source_embedded,
 	MessageKey.REVOCATION_SOURCE_ONLINE to Res.string.revocation_source_online,

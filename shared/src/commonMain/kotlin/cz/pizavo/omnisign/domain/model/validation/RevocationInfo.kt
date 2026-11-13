@@ -35,6 +35,13 @@ import kotlin.time.Instant
  * @property nextUpdate End of the validity window, after which fresher revocation data is expected.
  * @property revocationDate When the certificate was revoked; only meaningful when [revoked].
  * @property reason Revocation reason code (e.g. `"KEY_COMPROMISE"`); only meaningful when [revoked].
+ * @property accepted Whether the validation accepted this check as evidence about the certificate:
+ *   `true` when DSS's revocation acceptance checks passed for it, `false` when they failed or did
+ *   not run. They fail when, among other things, the check's signature does not verify, its issuer
+ *   is unknown or does not chain to a trust anchor, its status is unknown, or it says nothing about
+ *   the certificate, as a CRL issued after the certificate expired may not. They do not run when
+ *   the certificate's chain reaches no trust anchor or the certificate needs no revocation data.
+ *   `null` when the report does not say, as one from a server that predates this property does.
  */
 @Serializable
 data class RevocationInfo(
@@ -50,6 +57,7 @@ data class RevocationInfo(
     val nextUpdate: Instant? = null,
     val revocationDate: Instant? = null,
     val reason: String? = null,
+    val accepted: Boolean? = null,
 ) {
     companion object {
         /**
@@ -86,6 +94,10 @@ data class RevocationInfo(
  *   by [asOf], or one issued before [asOf] that names no next update, leaves the certificate free to
  *   have been revoked between that check and [asOf].
  *
+ * A good check counts only when the validation did not reject it ([RevocationInfo.accepted] is not
+ * `false`), so a forged or inconsistent check embedded in the document cannot vouch for the
+ * certificate. A revoked check counts either way, so a doubtful revocation is never hidden.
+ *
  * Where a check comes from, embedded and sealed by a timestamp or fetched online, does not change
  * the outcome: a revocation dated before [asOf] means the certificate was revoked by then, however
  * late the check that reports it, and an embedded good check says nothing about a time after it
@@ -103,11 +115,13 @@ fun List<RevocationInfo>.revocationOutcome(asOf: Instant): RevocationOutcome? {
 }
 
 /**
- * Whether this check says the certificate was good as of [asOf]: its status is good, and either its
- * status time is not before [asOf] or [asOf] falls before its next update, both within
- * [RevocationInfo.CLOCK_SKEW_LEEWAY]. A check without a status time covers no time at all.
+ * Whether this check says the certificate was good as of [asOf]: the validation did not reject it,
+ * its status is good, and either its status time is not before [asOf] or [asOf] falls before its
+ * next update, both within [RevocationInfo.CLOCK_SKEW_LEEWAY]. A check without a status time covers
+ * no time at all.
  */
 private fun RevocationInfo.vouchesForGoodStatusAt(asOf: Instant): Boolean {
+    if (accepted == false) return false
     if (!status.equals("GOOD", ignoreCase = true)) return false
     val statusTime = thisUpdate ?: producedAt ?: return false
     val leeway = RevocationInfo.CLOCK_SKEW_LEEWAY
@@ -146,7 +160,8 @@ fun List<RevocationInfo>.revocationConclusion(
  * Ordered label/value rows describing a single token for human-readable rendering. The signature
  * panel and the plain-text report share this, so the two never drift. Times are method-aware (OCSP
  * separates "Response produced" from "Status as of"/"Fresh until"; CRL uses "CRL issued"/"Next CRL
- * by"), and redundant or absent values are omitted.
+ * by"), and redundant or absent values are omitted. A check the validation did not accept says so
+ * right after its status, since that is why a good one does not settle the conclusion.
  *
  * Times are rendered here rather than handed back as instants, so [dateFormat] is how a caller says
  * which style to use. It defaults to [DateFormat.SYSTEM] for the plain-text report, which has no
@@ -160,6 +175,9 @@ fun RevocationInfo.displayRows(
     dateFormat: DateFormat = DateFormat.SYSTEM,
 ): List<Pair<LocalizableText, LocalizableText>> = buildList {
     add(LocalizableText.of(MessageKey.REVOCATION_LABEL_STATUS) to statusText())
+    if (accepted == false) {
+        add(LocalizableText.of(MessageKey.REVOCATION_LABEL_ACCEPTED) to LocalizableText.of(MessageKey.REVOCATION_NOT_ACCEPTED))
+    }
     add(LocalizableText.of(MessageKey.REVOCATION_LABEL_METHOD) to LocalizableText.Literal(method))
     add(LocalizableText.of(MessageKey.REVOCATION_LABEL_SOURCE) to sourceLabel())
     sourceUrl?.let { add(LocalizableText.of(MessageKey.REVOCATION_LABEL_RESPONDER) to LocalizableText.Literal(it)) }

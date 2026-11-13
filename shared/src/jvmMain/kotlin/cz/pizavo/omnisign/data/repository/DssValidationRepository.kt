@@ -289,7 +289,9 @@ class DssValidationRepository(
 			
 			val sigTimestamps = sigTsIds.mapNotNull { tsId -> allTimestampResults[tsId] }
 			
-			convertSignature(simpleReport, diagnosticData, sigId, anchorTypes, sealedRevocationIds, trustSourcesOf).copy(
+			convertSignature(
+				simpleReport, detailedReport, diagnosticData, sigId, anchorTypes, sealedRevocationIds, trustSourcesOf,
+			).copy(
 				timestamps = sigTimestamps
 			)
 		}
@@ -427,12 +429,15 @@ class DssValidationRepository(
 	 * Convert a single DSS signature entry into a [SignatureValidationResult],
 	 * pulling rich certificate details from the [DiagnosticData].
 	 *
+	 * @param detailedReport Where DSS records which revocation tokens it accepted for the signing
+	 *   certificate (see [acceptedRevocationIds]).
 	 * @param sealedRevocationIds Ids of revocation tokens protected by a document/archive timestamp
 	 *   (see [timestampSealedRevocationIds]), used to mark the signing certificate's revocation
 	 *   evidence as timestamp-sealed.
 	 */
 	private fun convertSignature(
 		simpleReport: SimpleReport,
+		detailedReport: DetailedReport,
 		diagnosticData: DiagnosticData,
 		signatureId: String,
 		anchorTypes: Map<String, TrustedCertificateType>,
@@ -461,7 +466,9 @@ class DssValidationRepository(
 		
 		val sigWrapper = diagnosticData.getSignatureById(signatureId)
 		val signingCert = sigWrapper?.signingCertificate
-		val revocations = signingCert?.let { extractRevocations(it, sealedRevocationIds) } ?: emptyList()
+		val revocations = signingCert?.let {
+			extractRevocations(it, sealedRevocationIds, detailedReport.acceptedRevocationIds(signatureId, it.id))
+		} ?: emptyList()
 		val policyUntrusted = isDowngradedByPolicy(
 			managedAnchorTypes(sigWrapper?.certificateChain ?: emptyList(), anchorTypes),
 			TrustedCertificateType.CA,
@@ -612,11 +619,14 @@ class DssValidationRepository(
 	 * newest first, so the caller can present all of them — typically an embedded token sealed at
 	 * signing time and a fresh one fetched online during validation — without choosing between them.
 	 * [sealedRevocationIds] marks tokens a document/archive timestamp protects (see
-	 * [timestampSealedRevocationIds]).
+	 * [timestampSealedRevocationIds]), and [acceptedRevocationIds] the tokens DSS accepted as
+	 * evidence about the signing certificate, as `DetailedReport.acceptedRevocationIds` finds them;
+	 * every other token is marked as not accepted.
 	 */
 	private fun extractRevocations(
 		signingCert: CertificateWrapper,
 		sealedRevocationIds: Set<String>,
+		acceptedRevocationIds: Set<String>,
 	): List<RevocationInfo> =
 		signingCert.certificateRevocationData
 			.sortedByDescending { it.productionDate?.time ?: Long.MIN_VALUE }
@@ -634,6 +644,7 @@ class DssValidationRepository(
 					nextUpdate = revocation.nextUpdate?.toKotlinInstant(),
 					revocationDate = revocation.revocationDate?.toKotlinInstant(),
 					reason = revocation.reason?.name,
+					accepted = revocation.id in acceptedRevocationIds,
 				)
 			}
 	

@@ -13,6 +13,8 @@
 	<string name="revocation_label_next_update">Další aktualizace</string>
 	<string name="revocation_label_revoked_on">Zneplatněno dne</string>
 	<string name="revocation_label_reason">Důvod</string>
+	<string name="revocation_label_accepted">Přijato při ověřování platnosti</string>
+	<string name="revocation_not_accepted">Ne</string>
 	<string name="revocation_source_embedded_sealed">Vloženo v dokumentu, zapečetěno časovým razítkem dokumentu</string>
 	<string name="revocation_source_embedded">Vloženo v dokumentu (nechráněno časovým razítkem)</string>
 	<string name="revocation_source_online">Získáno online během ověřování platnosti</string>

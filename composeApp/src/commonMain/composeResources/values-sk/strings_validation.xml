@@ -13,6 +13,8 @@
 	<string name="revocation_label_next_update">Ďalšia aktualizácia</string>
 	<string name="revocation_label_revoked_on">Zrušený dňa</string>
 	<string name="revocation_label_reason">Dôvod</string>
+	<string name="revocation_label_accepted">Prijaté pri validácii</string>
+	<string name="revocation_not_accepted">Nie</string>
 	<string name="revocation_source_embedded_sealed">Vložené v dokumente, zapečatené časovou pečiatkou dokumentu</string>
 	<string name="revocation_source_embedded">Vložené v dokumente (nechránené časovou pečiatkou)</string>
 	<string name="revocation_source_online">Získané online počas validácie</string>
