@@ -35,8 +35,8 @@ private val logger = KotlinLogging.logger {}
  * keys its parse/validation cache by URL inside the job, so a re-refresh skips
  * re-parsing and re-verifying any list whose downloaded bytes are unchanged.
  * For the same reason, a job that leaves its source without certificates is not
- * kept, and the job of a hard refresh replaces the retained one (see
- * [retainUnlessEmpty] and [forceRefreshAll]).
+ * kept, and the job of a hard refresh that downloaded a list replaces the
+ * retained one (see [retainUnlessEmpty] and [forceRefreshAll]).
  *
  * Locking is **per entry**, not registry-wide: each [RetainedTl] has its own
  * lock, and acquisition/refresh of one source never blocks a validation that
@@ -68,11 +68,11 @@ class TrustedSourceRegistry(
 	 * populate, its own lock, the most recent loading warnings, [buildJob] — the factory that
 	 * builds a job over the source, both the long-lived retained [job] (whose cache makes
 	 * scheduled re-refreshes cheap) and the *fresh* job (empty cache) of a user-initiated hard
-	 * refresh, which must genuinely re-download and re-parse and is retained after it —
-	 * [displayName], the source's human-readable name for user-facing failure notifications
-	 * (`null` for the EU LOTL), and [signingCertPath], the file holding a custom list's signing
-	 * certificate (`null` for the EU LOTL, whose signing certificates are bundled, and for a
-	 * custom list configured without one).
+	 * refresh, which must genuinely re-download and re-parse and is retained after it if it
+	 * downloaded a list — [displayName], the source's human-readable name for user-facing
+	 * failure notifications (`null` for the EU LOTL), and [signingCertPath], the file holding a
+	 * custom list's signing certificate (`null` for the EU LOTL, whose signing certificates are
+	 * bundled, and for a custom list configured without one).
 	 *
 	 * The registry reads [signingCertPath] itself and hands the certificate to [buildJob] (see
 	 * [buildJobFor]), so [job] stays `null` while the file cannot be read, and
@@ -289,7 +289,9 @@ class TrustedSourceRegistry(
 				signal.begin(entry.id)
 				try {
 					val job = retainedJob(entry)
-					if (job != null && refreshOnline(entry, job)) loadedAny = true
+					val completed = job != null && refreshOnline(entry, job)
+					job?.let { retainUnlessEmpty(entry, it) }
+					if (completed && entry.source.certificates.isNotEmpty()) loadedAny = true
 					else accumulateFailure(entry.displayName)
 				} finally {
 					signal.end(entry.id)
@@ -310,14 +312,21 @@ class TrustedSourceRegistry(
 	 * list, then synchronize the result into the entry's stable source. Genuinely
 	 * heavy by design; that is what the user asked for.
 	 *
-	 * The fresh job then becomes the retained one, with a cache-gated loader again,
-	 * because the source now holds what it loaded. The old job never saw the copies
-	 * this refresh downloaded, and DSS updates the source only when a job parses a
-	 * list again, so under the old job a list this refresh could not download or
-	 * verify would stay out of the source even after its URL served the copy the
-	 * old job had loaded, until its operator published a new version. Like any
-	 * other, the fresh job is not kept when it left the source without
-	 * certificates (see [retainUnlessEmpty]).
+	 * When its refresh completed and downloaded a list, the fresh job then becomes
+	 * the retained one, with a cache-gated loader again, because the source now
+	 * holds what it loaded. The old job never saw the copies this refresh
+	 * downloaded, and DSS updates the source only when a job parses a list again,
+	 * so under the old job a list this refresh could not download or verify would
+	 * stay out of the source even after its URL served the copy the old job had
+	 * loaded, until its operator published a new version. Like any other, the
+	 * fresh job is not kept when it left the source without certificates (see
+	 * [retainUnlessEmpty]).
+	 *
+	 * A fresh job that downloaded no list parsed none, so it left the source as it
+	 * was, and the old job is kept. Its cache still holds every list it loaded, so
+	 * it goes on serving a list whose download fails in a later cycle, which the
+	 * fresh job, having parsed none, would drop as soon as another list made it
+	 * update the source. The old job is kept, too, when the refresh threw.
 	 *
 	 * The outcome is recorded on the signal as [refreshAll] records it, and also
 	 * returned, because the session flush may merge it with the failures of an
@@ -341,9 +350,12 @@ class TrustedSourceRegistry(
 					val freshJob = buildJobFor(entry) {
 						newOnlineLoader().apply { setCacheExpirationTime(FORCE_REFRESH_EXPIRATION_MS) }
 					}
-					val loaded = freshJob != null && refreshOnline(entry, freshJob)
-					freshJob?.setOnlineDataLoader(newOnlineLoader())
-					if (loaded) {
+					val completed = freshJob != null && refreshOnline(entry, freshJob)
+					if (completed && freshJob != null && DssServiceFactory.downloadedAnyList(freshJob.summary)) {
+						freshJob.setOnlineDataLoader(newOnlineLoader())
+						retainUnlessEmpty(entry, freshJob)
+					}
+					if (completed && entry.source.certificates.isNotEmpty()) {
 						loadedAny = true
 					} else {
 						accumulateFailure(entry.displayName)
@@ -611,26 +623,23 @@ class TrustedSourceRegistry(
 
 	/**
 	 * Online-refresh [job] (the retained job for the scheduled cycle, or a fresh
-	 * job for a forced hard refresh), then refresh [entry]'s warnings from it and
-	 * keep it as the entry's retained job unless it left the source without
-	 * certificates (see [retainUnlessEmpty]).
+	 * job for a forced hard refresh), then refresh [entry]'s warnings from it.
+	 * The caller decides whether to keep the job (see [retainUnlessEmpty]).
 	 *
-	 * @return `true` when the online fetch completed and left the source with
-	 *   usable trust; `false` when the download threw — the last good trust is
-	 *   still served — or completed but yielded no certificates, for instance because
-	 *   the list it downloaded could not be verified.
+	 * @return `true` when the refresh completed, including when a download failed,
+	 *   which DSS records in the job's summary instead of throwing; `false` when it
+	 *   threw, in which case the last good trust is still served.
 	 */
 	private fun refreshOnline(entry: RetainedTl, job: TLValidationJob): Boolean {
-		var fetched = false
+		var completed = false
 		val elapsed = kotlin.system.measureTimeMillis {
 			runCatching { job.onlineRefresh() }
-				.onSuccess { fetched = true }
+				.onSuccess { completed = true }
 				.onFailure { logger.warn(it) { "Online TL refresh of ${entry.id} failed; serving last good trust" } }
 		}
 		logger.info { "onlineRefresh(${entry.id}) took ${elapsed}ms" }
 		recordWarnings(entry, job)
-		retainUnlessEmpty(entry, job)
-		return fetched && entry.source.certificates.isNotEmpty()
+		return completed
 	}
 
 	/**

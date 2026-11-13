@@ -895,6 +895,14 @@ class DssServiceFactory(
 			)
 		}
 
+		/**
+		 * Whether the refresh that produced [summary] downloaded any list of trusted lists or
+		 * trusted list, from its source or the cache.
+		 */
+		internal fun downloadedAnyList(summary: TLValidationJobSummary): Boolean =
+			summary.lotlInfos.any { lotlInfo -> lotlInfo.isDownloaded() || lotlInfo.tlInfos.any { it.isDownloaded() } } ||
+					summary.otherTLInfos.any { it.isDownloaded() }
+
 		/** Whether the trusted list this describes was downloaded, from its source or the cache. */
 		private fun TLInfo.isDownloaded(): Boolean =
 			!downloadCacheInfo.isError && downloadCacheInfo.isResultExist

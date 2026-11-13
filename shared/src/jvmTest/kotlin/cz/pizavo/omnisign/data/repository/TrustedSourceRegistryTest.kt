@@ -75,9 +75,11 @@ import eu.europa.esig.dss.enumerations.SignatureLevel as DssSignatureLevel
  * it does not, and that a list configured without one is used whatever its signature. A list left
  * out supplies trust again once the reason is gone, even when its copy has not changed, and after a
  * hard refresh the scheduled refresh carries on from the copies the hard refresh loaded, reading
- * them from the cache again. These lists are compiled by [TrustedListCompiler], signed or left
- * unsigned by the test, read from `file:` URLs and cached in a directory of the spec's own, so they
- * reach no network either.
+ * them from the cache again. A hard refresh that downloads no list keeps the job that loaded the
+ * list; the test tells that job from the hard refresh's own by the signing certificate each read
+ * when it was built. These lists are compiled by [TrustedListCompiler], signed or left unsigned by
+ * the test, read from `file:` URLs and cached in a directory of the spec's own, so they reach no
+ * network either.
  */
 class TrustedSourceRegistryTest : FunSpec({
 
@@ -479,6 +481,43 @@ class TrustedSourceRegistryTest : FunSpec({
 		val cv = CommonCertificateVerifier()
 		registry.composeInto(cv, config).shouldBeEmpty()
 		cv.trustedCertSources.certificates shouldBe listOf(CertificateToken(listed))
+	}
+
+	test("a list a scheduled refresh still left out supplies trust once its certificate file is corrected") {
+		val signer = generateKeyPair()
+		val signerCertificate = selfSignedCertificate(signer, "TL Signer")
+		val listed = generateSelfSignedCert()
+		val url = listUrl("corrected-later.xml", signed(compiledList(listed), signer, signerCertificate))
+		val certificatePath = derFile("corrected-later-signer.der", generateSelfSignedCert())
+		val config = customListConfig("corrected-later-tl", url, certificatePath)
+		val registry = isolatedRegistry()
+		registry.composeInto(CommonCertificateVerifier(), config) shouldBe listOf(unverifiedSignatureWarning(url))
+		registry.refreshAll()
+
+		File(certificatePath).writeBytes(signerCertificate.encoded)
+		registry.refreshAll()
+
+		certificatesUsed(registry, config) shouldBe listOf(CertificateToken(listed))
+	}
+
+	test("a hard refresh that downloads no list keeps the job that loaded it") {
+		val signer = generateKeyPair()
+		val signerCertificate = selfSignedCertificate(signer, "TL Signer")
+		val listed = generateSelfSignedCert()
+		val signedXml = signed(compiledList(listed), signer, signerCertificate)
+		val file = File(listDir, "unreachable-hard.xml").apply { writeText(signedXml) }
+		val certificatePath = derFile("unreachable-hard-signer.der", signerCertificate)
+		val config = customListConfig("unreachable-hard-tl", file.toURI().toString(), certificatePath)
+		val registry = isolatedRegistry().apply { cacheExpirationMillis = 0 }
+		certificatesUsed(registry, config) shouldBe listOf(CertificateToken(listed))
+
+		file.delete()
+		File(certificatePath).writeBytes(generateSelfSignedCert().encoded)
+		registry.forceRefreshAll()
+		file.writeText(signedXml)
+		registry.refreshAll()
+
+		certificatesUsed(registry, config) shouldBe listOf(CertificateToken(listed))
 	}
 
 	test("a list a hard refresh could not verify supplies trust again from the next refresh that can") {

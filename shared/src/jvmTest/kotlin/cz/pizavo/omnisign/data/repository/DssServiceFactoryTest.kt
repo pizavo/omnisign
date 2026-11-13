@@ -416,9 +416,9 @@ class DssServiceFactoryTest : FunSpec({
 		}
 	}
 
-	/** A list of trusted lists at [address] that was downloaded and points to [members]. */
-	fun listOfTrustedLists(address: String, vararg members: TLInfo): LOTLInfo {
-		val record = downloadRecord(true)
+	/** A list of trusted lists at [address] that points to [members] and was [downloaded], or that could not be. */
+	fun listOfTrustedLists(address: String, vararg members: TLInfo, downloaded: Boolean = true): LOTLInfo {
+		val record = downloadRecord(downloaded)
 		return mockk {
 			every { url } returns address
 			every { downloadCacheInfo } returns record
@@ -437,6 +437,22 @@ class DssServiceFactoryTest : FunSpec({
 		override fun canBeSynchronized(document: TLInfo): Boolean = document.url !in rejected
 
 		override fun canBeSynchronized(documentList: LOTLInfo): Boolean = documentList.url !in rejected
+	}
+
+	test("downloadedAnyList tells a refresh that downloaded a list from one that downloaded none") {
+		val offline = trustedList("https://offline.omnisign.test/tl.xml", downloaded = false)
+		val lotlWithUnreachableMember = listOfTrustedLists(
+			"https://lotl.omnisign.test/lotl.xml",
+			trustedList("https://unreachable.omnisign.test/tl.xml", downloaded = false),
+		)
+
+		DssServiceFactory.downloadedAnyList(
+			summaryOf(listOf(listOfTrustedLists("https://lotl.omnisign.test/lotl.xml", downloaded = false)), listOf(offline))
+		) shouldBe false
+		DssServiceFactory.downloadedAnyList(summaryOf(listOf(lotlWithUnreachableMember), listOf(offline))) shouldBe true
+		DssServiceFactory.downloadedAnyList(
+			summaryOf(emptyList(), listOf(offline, trustedList("https://sound.omnisign.test/tl.xml")))
+		) shouldBe true
 	}
 
 	test("collectTlWarnings tells the lists that could not be downloaded from those whose signature could not be verified") {
