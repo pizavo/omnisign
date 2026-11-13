@@ -227,7 +227,8 @@ paths:
           description: >
             Missing file, no certificate alias although the server allows several, malformed
             (non-PDF) document, an invalid algorithm name, more than one file part
-            (`TOO_MANY_FILES`), or more than 32 parts (`TOO_MANY_PARTS`).
+            (`TOO_MANY_FILES`), more than 32 parts (`TOO_MANY_PARTS`), or a body that is not
+            well-formed multipart (`MALFORMED_MULTIPART`).
           content:
             application/json:
               schema:
@@ -330,7 +331,8 @@ paths:
         '400':
           description: >
             Missing file, an invalid `formats`/algorithm name, more than one file part
-            (`TOO_MANY_FILES`), or more than 32 parts (`TOO_MANY_PARTS`).
+            (`TOO_MANY_FILES`), more than 32 parts (`TOO_MANY_PARTS`), or a body that is not
+            well-formed multipart (`MALFORMED_MULTIPART`).
           content:
             application/json:
               schema:
@@ -402,7 +404,8 @@ paths:
         '400':
           description: >
             Missing file, malformed (non-PDF) document, an invalid algorithm name, more than one
-            file part (`TOO_MANY_FILES`), or more than 32 parts (`TOO_MANY_PARTS`).
+            file part (`TOO_MANY_FILES`), more than 32 parts (`TOO_MANY_PARTS`), or a body that
+            is not well-formed multipart (`MALFORMED_MULTIPART`).
           content:
             application/json:
               schema:
@@ -458,8 +461,8 @@ paths:
                 $ref: '#/components/schemas/DocumentTimestampInfo'
         '400':
           description: >
-            Missing file, more than one file part (`TOO_MANY_FILES`), or more than 32 parts
-            (`TOO_MANY_PARTS`).
+            Missing file, more than one file part (`TOO_MANY_FILES`), more than 32 parts
+            (`TOO_MANY_PARTS`), or a body that is not well-formed multipart (`MALFORMED_MULTIPART`).
           content:
             application/json:
               schema:
@@ -984,7 +987,9 @@ components:
         The uploaded file exceeds `maxFileSize` (advertised by `GET /api/v1/capabilities`; 100 MiB by
         default), answered with `FILE_TOO_LARGE`, or the request body exceeds `maxFileSize` plus 1 MiB
         for the form fields, answered with `PAYLOAD_TOO_LARGE`. A request whose `Content-Length`
-        declares a larger body gets the latter before any of the body is read.
+        declares a larger body gets the latter before any of the body is read. The form fields,
+        together with the headers of all parts, may take at most 1 MiB whatever `maxFileSize` is;
+        more is answered with `FORM_FIELDS_TOO_LARGE`.
       content:
         application/json:
           schema:
@@ -994,6 +999,8 @@ components:
               value: { error: FILE_TOO_LARGE, message: "Uploaded file size (104857700 bytes) exceeds the maximum allowed size (104857600 bytes)", details: null }
             requestTooLarge:
               value: { error: PAYLOAD_TOO_LARGE, message: "Request is larger than the limit of 105906176 bytes", details: null }
+            formFieldsTooLarge:
+              value: { error: FORM_FIELDS_TOO_LARGE, message: "The form fields and part headers of the multipart request exceed 1048576 bytes.", details: null }
     UnsupportedMediaType:
       description: The request body is not `multipart/form-data`, or the request carries no `Content-Type`.
       content:

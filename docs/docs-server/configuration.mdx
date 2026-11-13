@@ -264,7 +264,8 @@ aia:
 
 Maximum upload size in bytes. Defaults to `104857600` (100 MB). The request that carries the file
 may be up to 1 MiB larger, for its form fields; a larger request body is answered with
-`413 Payload Too Large`.
+`413 Payload Too Large`. The form fields, together with the headers of all parts, may take at most
+that 1 MiB whatever `maxFileSize` is, because the server keeps them in memory.
 
 The server holds a document in memory while it validates, signs or timestamps it, and works on at
 most as many documents at once as it has processors. Further requests wait their turn, with their

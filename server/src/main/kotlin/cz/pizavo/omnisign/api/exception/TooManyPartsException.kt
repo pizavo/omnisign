@@ -3,10 +3,9 @@ package cz.pizavo.omnisign.api.exception
 /**
  * Thrown when a multipart request carries more than [maxParts] parts.
  *
- * Every part besides the file is a form field, which Ktor's multipart parser reads into memory and
- * [cz.pizavo.omnisign.api.collectParts] keeps, with its headers, until the request completes. The
- * request body limit bounds the fields' total size but not their number, and a body of tiny parts
- * would otherwise become millions of objects on the heap.
+ * Every part besides the file is a form field, which [cz.pizavo.omnisign.api.MultipartFormReader]
+ * keeps in memory until the request completes. The reader bounds the fields' total size but not
+ * their number, and a body of tiny parts would otherwise become millions of objects on the heap.
  *
  * Caught by the StatusPages plugin and mapped to HTTP 400 Bad Request.
  *

@@ -6,7 +6,7 @@ package cz.pizavo.omnisign.api.exception
  * OmniSign's signing / validation / timestamping endpoints each operate on exactly one
  * document. Accepting multiple file parts would (a) be semantically ambiguous (which one
  * gets signed?) and (b) be a disk-amplification vector now that
- * [cz.pizavo.omnisign.api.collectParts] streams every file part to its own temp file —
+ * [cz.pizavo.omnisign.api.MultipartFormReader] streams every file part to its own temp file —
  * a single request with N file parts would materialise N up-to-`maxFileSize` files on
  * disk. Rejecting the second file part keeps the contract explicit and bounds the
  * per-request disk footprint to one file.
