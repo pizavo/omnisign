@@ -284,6 +284,16 @@ operations:
 # Set it only to relocate the store onto a specific mount.
 # trustStoreDir: "/var/lib/omnisign/trusted-certs"
 
+# Issuer downloads (AIA). When a certificate's issuer is neither in the document nor among the
+# trusted certificates, the server downloads it from the URL in the certificate's Authority
+# Information Access extension. That URL comes from whoever made the document, so the download
+# uses only http/https, has a time limit and a 1 MiB cap, and by default never reaches loopback,
+# private-network, link-local or other non-public addresses (such as 169.254.169.254). Set
+# allowPrivateAddresses to true only if an internal CA publishes its issuer certificates on an
+# internal address; the server then logs a warning at startup.
+# aia:
+#   allowPrivateAddresses: false
+
 # TLS / SSL configuration.
 # Uncomment and fill in to enable direct HTTPS with TLS 1.2/1.3 and HTTP/2. When `host`
 # is set to anything other than a loopback address (127.0.0.1, ::1, localhost), the

@@ -423,6 +423,21 @@ class ServerConfigLoaderTest : FunSpec({
 		}
 		ex.message.shouldNotBeNull() shouldContain "missing the required 'type' field"
 	}
+
+	test("load parses aia.allowPrivateAddresses") {
+		loader.loadFromString("aia:\n  allowPrivateAddresses: true").aia.allowPrivateAddresses.shouldBeTrue()
+	}
+
+	test("aia.allowPrivateAddresses defaults to false, with an empty aia block or none") {
+		loader.loadFromString("aia: {}").aia.allowPrivateAddresses.shouldBeFalse()
+		loader.loadFromString("development: false").aia.allowPrivateAddresses.shouldBeFalse()
+	}
+
+	test("load fails fast on a typo in the aia block") {
+		shouldThrow<UnrecognizedPropertyException> {
+			loader.loadFromString("aia:\n  allowPrivateAddress: true")
+		}
+	}
 })
 
 

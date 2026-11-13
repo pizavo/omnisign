@@ -32,10 +32,11 @@ import org.koin.test.verify.Verification
  * The whitelist covers the parameters Koin's reflection-based verifier cannot tell apart from
  * injection points. It inspects each definition's constructor and assumes every parameter comes from
  * the graph, but [serverModule] hands several of them literal values closed over from its own
- * arguments — [Sensitive] and [Map] reach `ServerSecrets`, [SessionConfig] reaches `JwtSessionService`,
- * and [HttpClientEngine] reaches the outbound `HttpClient` — so each would otherwise be reported
- * missing. Whitelisting them is safe precisely because nothing declares them: no definition could
- * resolve one from the graph even if it asked.
+ * arguments: [Sensitive] and [Map] reach `ServerSecrets`, [SessionConfig] reaches `JwtSessionService`,
+ * and [HttpClientEngine] reaches the outbound `HttpClient`. [Boolean] reaches `AiaFetchPolicy`, which
+ * `jvmRepositoryModule` and the server's override both build from a literal. Each would otherwise be
+ * reported missing. Whitelisting them is safe precisely because nothing declares them: no definition
+ * could resolve one from the graph even if it asked.
  *
  * Note what this therefore does *not* reach. A definition written as `single<SomeInterface> { Impl() }`
  * has the interface as its primary type, and an interface has no constructor to reflect over, so the
@@ -73,6 +74,7 @@ class ServerKoinGraphTest : FunSpec({
 		Map::class,
 		HttpClientEngine::class,
 		SessionConfig::class,
+		Boolean::class,
 	)
 
 	test("the server graph resolves every dependency it declares") {

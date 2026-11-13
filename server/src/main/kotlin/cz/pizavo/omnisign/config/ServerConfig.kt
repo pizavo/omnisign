@@ -5,7 +5,7 @@ package cz.pizavo.omnisign.config
  *
  * Every config concept lives under a named block — `listen:` for the network bind,
  * `operations:` for the operation allowlist, plus `tls:` / `proxy:` / `cors:` / `auth:`
- * / `rateLimiting:` — so the schema is consistent and future field additions land in
+ * / `rateLimiting:` / `aia:` — so the schema is consistent and future field additions land in
  * the right block without reshaping the root.
  *
  * @property listen Network listener: bind host and plain-HTTP port. See [ListenConfig].
@@ -43,6 +43,8 @@ package cz.pizavo.omnisign.config
  *   reconciled at boot from the `signing.yml` `trustedCertificates` references. Should be a volume
  *   separate from the read-only policy and source cert files. When `null`, a `trusted-certs`
  *   directory in the server's working directory is used.
+ * @property aia Where the server may download missing issuer certificates from. By default it
+ *   blocks internal addresses. See [AiaConfig].
  */
 data class ServerConfig(
 	val listen: ListenConfig = ListenConfig(),
@@ -57,4 +59,5 @@ data class ServerConfig(
 	val auth: AuthConfig? = null,
 	val signingConfigFile: String? = null,
 	val trustStoreDir: String? = null,
+	val aia: AiaConfig = AiaConfig(),
 )

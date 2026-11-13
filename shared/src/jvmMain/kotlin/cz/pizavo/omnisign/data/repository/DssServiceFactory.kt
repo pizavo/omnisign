@@ -24,6 +24,7 @@ import eu.europa.esig.dss.service.crl.OnlineCRLSource
 import eu.europa.esig.dss.service.http.commons.*
 import eu.europa.esig.dss.service.ocsp.OnlineOCSPSource
 import eu.europa.esig.dss.service.tsp.OnlineTSPSource
+import eu.europa.esig.dss.spi.client.http.Protocol
 import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import eu.europa.esig.dss.spi.x509.CommonTrustedCertificateSource
 import eu.europa.esig.dss.spi.x509.KeyStoreCertificateSource
@@ -67,12 +68,19 @@ data class CertificateVerifierResult(
  * expensive parse + signature-verification of a trusted list is paid once and
  * skipped on subsequent unchanged refreshes.
  *
+ * Every verifier it builds downloads missing issuer certificates through the same restricted AIA
+ * source (see [buildAiaSource]), whose reach [aiaFetchPolicy] sets.
+ *
  * Managed by Koin so that [credentialStore] is injected once and the registry is
  * shared across all callers.
+ *
+ * @property aiaFetchPolicy Whether AIA downloads may reach internal addresses. The default blocks
+ *   them; the Koin bindings decide for each host.
  */
 class DssServiceFactory(
 	private val credentialStore: CredentialStore,
 	private val trustedSources: TrustedSourceRegistry = TrustedSourceRegistry(),
+	private val aiaFetchPolicy: AiaFetchPolicy = AiaFetchPolicy(allowPrivateAddresses = false),
 ) {
 	
 	private val missingTsaPasswordKeys: MutableSet<String> = ConcurrentHashMap.newKeySet()
@@ -237,6 +245,8 @@ class DssServiceFactory(
 			cv.alertOnExpiredCertificate = null
 		}
 		
+		cv.aiaSource = buildAiaSource(aiaTimeout(config))
+
 		if (config == null || !config.validation.checkRevocation) {
 			return CertificateVerifierResult(
 				verifier = cv.apply {
@@ -248,7 +258,7 @@ class DssServiceFactory(
 				}
 			)
 		}
-		
+
 		val timeout = minOf(config.ocsp.timeout, config.crl.timeout)
 		val dataLoader = CommonsDataLoader().apply {
 			timeoutConnection = timeout
@@ -258,10 +268,9 @@ class DssServiceFactory(
 			timeoutConnection = timeout
 			timeoutSocket = timeout
 		}
-		
+
 		val alert = alertFactory()
 		cv.apply {
-			aiaSource = DefaultAIASource(dataLoader)
 			ocspSource = OnlineOCSPSource().apply { setDataLoader(ocspLoader) }
 			crlSource = OnlineCRLSource().apply { setDataLoader(dataLoader) }
 			isCheckRevocationForUntrustedChains = false
@@ -318,7 +327,8 @@ class DssServiceFactory(
 	): CertificateVerifierResult {
 		val cv = CommonCertificateVerifier()
 		cv.silenceAlertsCoveredByTheReport()
-		
+		cv.aiaSource = buildAiaSource(aiaTimeout(config))
+
 		if (config == null || !config.validation.checkRevocation) {
 			return CertificateVerifierResult(
 				verifier = cv.apply {
@@ -327,7 +337,7 @@ class DssServiceFactory(
 				}
 			)
 		}
-		
+
 		val timeout = minOf(config.ocsp.timeout, config.crl.timeout)
 		val dataLoader = CommonsDataLoader().apply {
 			timeoutConnection = timeout
@@ -337,10 +347,9 @@ class DssServiceFactory(
 			timeoutConnection = timeout
 			timeoutSocket = timeout
 		}
-		
+
 		val alert = alertFactory()
 		cv.apply {
-			aiaSource = DefaultAIASource(dataLoader)
 			ocspSource = OnlineOCSPSource().apply { setDataLoader(ocspLoader) }
 			crlSource = OnlineCRLSource().apply { setDataLoader(dataLoader) }
 			alertOnUncoveredPOE = alert
@@ -370,14 +379,13 @@ class DssServiceFactory(
 	 * data: it must describe the document as it stands, and fetching fresh revocation data would be
 	 * both a side effect the caller did not ask for and a way to report a level the bytes do not carry.
 	 *
-	 * The verifier is not strictly offline, though. The no-argument [CommonCertificateVerifier]
-	 * constructor installs a [DefaultAIASource], and it is left in place: when DSS cannot find a
-	 * certificate's issuer in the document or among the trusted sources, it downloads the issuer from
-	 * the certificate's Authority Information Access URL. That adds certificates to a chain, never
-	 * revocation data, and a document that embeds each chain up to its self-signed root triggers no
-	 * request. [readPadesLevel] reduces the verifier to an offline copy, so the level itself is read
-	 * without it; the full validations of the renewal assessment and of the usable-revocation check
-	 * run with the verifier as built.
+	 * The verifier is not strictly offline, though. Like every verifier built here it carries the AIA
+	 * source from [buildAiaSource]: when DSS cannot find a certificate's issuer in the document or
+	 * among the trusted sources, it downloads the issuer from the certificate's Authority Information
+	 * Access URL. That adds certificates to a chain, never revocation data, and a document that embeds
+	 * each chain up to its self-signed root triggers no request. [readPadesLevel] reduces the verifier
+	 * to an offline copy, so the level itself is read without it; the full validations of the renewal
+	 * assessment and of the usable-revocation check run with the verifier as built.
 	 *
 	 * Trusted-list sources still come from the shared [TrustedSourceRegistry], which retains them
 	 * across calls, so repeated inspections do not re-download or re-parse a list.
@@ -399,6 +407,7 @@ class DssServiceFactory(
 			silenceAlertsCoveredByTheReport()
 			alertOnUncoveredPOE = null
 			alertOnNoRevocationAfterBestSignatureTime = null
+			aiaSource = buildAiaSource(aiaTimeout(config))
 		}
 		if (config == null) {
 			return CertificateVerifierResult(cv)
@@ -448,11 +457,35 @@ class DssServiceFactory(
 			timeoutSocket = timeout
 		}
 		return CommonCertificateVerifier().apply {
-			aiaSource = DefaultAIASource(dataLoader)
+			aiaSource = buildAiaSource(timeout)
 			ocspSource = OnlineOCSPSource().apply { setDataLoader(ocspLoader) }
 			crlSource = OnlineCRLSource().apply { setDataLoader(dataLoader) }
 		}
 	}
+
+	/**
+	 * Build the AIA source every verifier here carries: DSS's [DefaultAIASource], accepting only
+	 * `http` and `https` URLs, over an [AiaDataLoader] that downloads within [timeoutMillis] and a
+	 * size cap, and reaches internal addresses only when [aiaFetchPolicy] allows it.
+	 *
+	 * It replaces the source the no-argument [CommonCertificateVerifier] constructor installs, which
+	 * also follows `file`, `ftp` and `ldap` URLs and waits on a server without any time limit. The
+	 * URLs it follows come from the certificates in the document, so from whoever made it, and DSS
+	 * follows them before it knows whether a chain is trusted. Restricting [DefaultAIASource] to
+	 * `http` and `https` skips the other URLs quietly; [AiaDataLoader] refuses them as well.
+	 */
+	private fun buildAiaSource(timeoutMillis: Int): DefaultAIASource =
+		DefaultAIASource(AiaDataLoader(timeoutMillis, aiaFetchPolicy.allowPrivateAddresses)).apply {
+			setAcceptedProtocols(listOf(Protocol.HTTP, Protocol.HTTPS))
+		}
+
+	/**
+	 * Time limit for the AIA downloads of a verifier built for [config]: the shorter of its OCSP and
+	 * CRL timeouts, which also bound the verifier's other downloads, or [DEFAULT_TIMEOUT] without a
+	 * config.
+	 */
+	private fun aiaTimeout(config: ResolvedConfig?): Int =
+		config?.let { minOf(it.ocsp.timeout, it.crl.timeout) } ?: DEFAULT_TIMEOUT
 	
 	/**
 	 * Size the `/Contents` reservation of every timestamp dictionary [parameters] may produce —

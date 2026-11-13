@@ -21,7 +21,9 @@ import org.koin.test.verify.Verification
  * [PasswordCallback] is declared as an extra type rather than a definition because it is the
  * documented platform boundary each entry point fills in itself (terminal prompt, Compose dialog, or
  * the server's non-interactive null), and `MutableStateFlow` because the PKCS#11 warm-up signal is
- * resolved with `getOrNull` and supplied only by the interactive front ends.
+ * resolved with `getOrNull` and supplied only by the interactive front ends. [Boolean] joins the
+ * primitives Koin already whitelists (`String`, `Int`, `Long`, `Double`) because `AiaFetchPolicy`
+ * takes its switch as a literal that each entry point sets, not as a value from the graph.
  *
  * The [Verification] objects are merged before verifying rather than run through Koin's `verifyAll`,
  * which is a plain `forEach { module.verify() }` and so checks each module against its own
@@ -38,6 +40,7 @@ class JvmKoinGraphTest : FunSpec({
 		File::class,
 		Path::class,
 		List::class,
+		Boolean::class,
 	)
 
 	test("the shared JVM graph resolves every dependency it declares") {

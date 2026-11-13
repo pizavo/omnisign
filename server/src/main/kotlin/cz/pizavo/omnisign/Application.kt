@@ -228,6 +228,13 @@ fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets, h
 			"Certificate alias allowlist: ${serverConfig.operations.certificateAliases.joinToString()}"
 		}
 	}
+
+	if (serverConfig.aia.allowPrivateAddresses) {
+		logger.warn {
+			"⚠️  aia.allowPrivateAddresses is true — the certificates in a document sent to this server " +
+					"can make it download from loopback, private-network and link-local addresses."
+		}
+	}
 }
 
 /**

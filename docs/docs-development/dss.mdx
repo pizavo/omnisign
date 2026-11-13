@@ -121,10 +121,25 @@ is set.
 Four more builders round it out. `buildLevelInspectionVerifier(config)` serves the inspections that
 have no operation behind them, the extension dialog's pre-fetch and the renewal assessment: it carries
 the configured trust anchors, without which a conformant B-LT document reads as B-T, and no CRL or
-OCSP source, so it never fetches revocation data. It keeps the AIA source DSS installs by default,
-which may download an issuer certificate a document does not embed; the level itself is read from an
-offline copy. `buildCertificateVerifier(timeout)` returns a lenient verifier with
-AIA/OCSP/CRL sources but no config and no alerts. `buildTspSource()` constructs an `OnlineTSPSource`
+OCSP source, so it never fetches revocation data. Its AIA source may still download an issuer
+certificate a document does not embed; the level itself is read from an offline copy.
+`buildCertificateVerifier(timeout)` returns a lenient verifier with AIA/OCSP/CRL sources but no config
+and no alerts.
+
+Every verifier, whichever builder made it and whether or not revocation checking is on, gets its AIA
+source from `buildAiaSource`. The `CommonCertificateVerifier` constructor installs one of its own that
+would follow `file`, `ftp` and `ldap` URLs too and wait on a server without any time limit, so it is
+always replaced. DSS follows a certificate's AIA URL whenever it cannot find the issuer, before it
+knows whether the chain is trusted, so the URL comes from whoever made the document. The replacement
+is a `DefaultAIASource` limited to `http` and `https`, over an `AiaDataLoader` that also refuses
+other schemes, cancels a download that outlasts the verifier's timeout (connecting, each read and the
+whole download), and aborts a body over 1 MiB without reading the rest. When the Koin-bound
+`AiaFetchPolicy` says so, it connects only to public addresses through `PublicAddressDnsResolver`.
+Apache HttpClient asks that resolver for every connection, IP literals and redirects included.
+`jvmRepositoryModule` allows internal addresses for the desktop app and the CLI. The server's module
+overrides the binding from `aia.allowPrivateAddresses` in `server.yml`, which is off by default.
+Revocation sources are left alone: DSS fetches revocation data only for chains that end at a trust
+anchor, so those URLs come from trusted CAs. `buildTspSource()` constructs an `OnlineTSPSource`
 per configured timestamp server, wiring in that server's timeout and credentials.
 `buildPdfObjectFactory()` returns a `PdfBoxNativeObjectFactory` that spills large documents to a
 temporary file once the in-heap limit is exceeded, so signing a large PDF does not scale with its size
