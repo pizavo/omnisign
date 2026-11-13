@@ -123,7 +123,7 @@ global:
     #   policyUpdateDate: "2026-02-01"
     #   # Per-algorithm expiration overrides (algorithm name -> ISO-8601 date). For an algorithm
     #   # dated by key size, such as RSA or ECDSA, "NAME:KEY_SIZE" sets one key-size entry; a bare
-    #   # name only brings its dates forward.
+    #   # name only moves its dates earlier.
     #   expirationDateOverrides:
     #     SHA512: "2035-01-01"
     #     "RSA:1900": "2030-12-31"

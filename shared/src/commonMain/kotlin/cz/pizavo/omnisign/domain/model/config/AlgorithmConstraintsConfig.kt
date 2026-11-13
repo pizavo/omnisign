@@ -45,7 +45,7 @@ import kotlinx.serialization.Serializable
  * @property expirationDateOverrides Per-algorithm expiration date overrides, from a key to an
  *   ISO-8601 date. The key is an algorithm name, or `NAME:SIZE` for one key-size entry of an
  *   algorithm the validation policy dates by key size, such as `RSA:1900`. A bare name of such an
- *   algorithm only brings its dates forward; `AdESPolicy` describes how the entries combine. Only
+ *   algorithm only moves its dates earlier; `AdESPolicy` describes how the entries combine. Only
  *   hash algorithm dates reach the pre-signing check. Merged additively across layers during
  *   resolution.
  */

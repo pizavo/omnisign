@@ -5,6 +5,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.toDss
 import eu.europa.esig.dss.enumerations.Context
+import eu.europa.esig.dss.enumerations.EncryptionAlgorithm as DssEncryptionAlgorithm
 import eu.europa.esig.dss.enumerations.SubContext
 import eu.europa.esig.dss.model.policy.CryptographicSuite
 import eu.europa.esig.dss.model.policy.ValidationPolicy
@@ -122,11 +123,16 @@ open class AdESPolicy {
 	 * - `NAME` sets the date of an algorithm the policy does not grade by size, such as a hash
 	 *   algorithm, adding the algorithm when the policy lacks it. For an algorithm graded by size
 	 *   it only caps every tier: a tier dated later, or not dated at all, takes the date, and no
-	 *   tier moves later. Setting one tier instead would carry its date to every larger key,
+	 *   tier's date moves later. Setting one tier instead would carry its date to every larger key,
 	 *   accepting weak keys again or leaving strong ones untouched.
 	 *
 	 * The `NAME:SIZE` keys are applied first, so a cap also bounds the tiers they set or add,
 	 * whatever order [overrides] lists them in.
+	 *
+	 * A name finds the entries DSS reads as the same algorithm ([isFor]), so `PLAIN_ECDSA` and `EC`
+	 * find the `PLAIN-ECDSA` and `ECDSA` tiers, and an added entry takes DSS's own spelling
+	 * ([policySpelling]). Matching the spelling alone would add an entry without a `Size` for such a
+	 * name, and DSS applies that entry to keys of every size.
 	 *
 	 * A `NAME:SIZE` key whose size is not a positive number is skipped, and so is a cap whose date
 	 * the policy's date format cannot read, since DSS would read such a date as no expiry at all.
@@ -143,8 +149,9 @@ open class AdESPolicy {
 			}
 		}
 		named.forEach { (name, date) ->
-			if (algos.any { it.value == name && it.size != null }) {
-				capExpirationDates(algos.filter { it.value == name }, date, dssDateFormat(expirations))
+			val entries = algos.filter { it.isFor(name) }
+			if (entries.any { it.size != null }) {
+				capExpirationDates(entries, date, dssDateFormat(expirations))
 			} else {
 				setExpirationDate(algos, name, null, date)
 			}
@@ -152,22 +159,43 @@ open class AdESPolicy {
 	}
 	
 	/**
-	 * Set the date of the entry in [algos] named [name] with key size [size], `null` for an entry
-	 * without one, adding the entry when the list has none.
+	 * Set the date of the entry in [algos] for the algorithm [name] with key size [size], `null` for
+	 * an entry without one, adding the entry when the list has none.
 	 */
 	private fun setExpirationDate(algos: MutableList<Algo>, name: String, size: Int?, date: String) {
-		val existing = algos.find { it.value == name && it.size == size }
+		val existing = algos.find { it.isFor(name) && it.size == size }
 		if (existing != null) {
 			existing.date = date
 		} else {
-			algos += Algo().also { it.value = name; it.size = size; it.date = date }
+			algos += Algo().also { it.value = policySpelling(name); it.size = size; it.date = date }
 		}
 	}
 	
 	/**
-	 * Bring the date of every entry in [entries] that ends after [date], or never ends, forward to
-	 * [date]. Dates are compared as DSS reads them, through [format]; nothing changes when [format]
-	 * cannot read [date].
+	 * Whether this entry is for the algorithm [name] stands for, as DSS reads both. An encryption
+	 * algorithm matches under every spelling DSS reads as that algorithm, such as `PLAIN-ECDSA` and
+	 * `PLAIN_ECDSA`, or `ECDSA` and `EC`. Any other name, a digest algorithm's included, matches only
+	 * as spelled, which is the one spelling DSS reads it by.
+	 */
+	private fun Algo.isFor(name: String): Boolean {
+		val algorithm = dssEncryptionAlgorithm(name) ?: return value == name
+		return value?.let { dssEncryptionAlgorithm(it) } == algorithm
+	}
+	
+	/**
+	 * The spelling an entry added for [name] takes: DSS's own name for the encryption algorithm
+	 * [name] stands for, the one the bundled policy writes, or [name] itself for any other name.
+	 */
+	private fun policySpelling(name: String): String = dssEncryptionAlgorithm(name)?.getName() ?: name
+	
+	/** The encryption algorithm DSS reads [name] as, or `null` when DSS reads it as none. */
+	private fun dssEncryptionAlgorithm(name: String): DssEncryptionAlgorithm? =
+		runCatching { DssEncryptionAlgorithm.forName(name) }.getOrNull()
+	
+	/**
+	 * Give [date] to every entry in [entries] that ends after it or never ends, so no entry ends
+	 * later than [date]. Dates are compared as DSS reads them, through [format]; nothing changes
+	 * when [format] cannot read [date].
 	 */
 	private fun capExpirationDates(entries: List<Algo>, date: String, format: SimpleDateFormat) {
 		val cap = format.parseOrNull(date) ?: return

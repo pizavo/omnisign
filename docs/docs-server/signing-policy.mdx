@@ -85,8 +85,8 @@ a list was last loaded, so it does not flag such a copy; the report's notice doe
 
 A key in `algorithmConstraints.expirationDateOverrides` is an algorithm name, or `NAME:KEY_SIZE`
 for one key-size entry of an algorithm the validation policy dates by key size, such as
-`"RSA:1900"` (quoted, because of the colon). A bare name of such an algorithm only brings its
-dates forward, so it never makes a weak key acceptable again. The CLI's
+`"RSA:1900"` (quoted, because of the colon). A bare name of such an algorithm only moves its
+dates earlier, so it never makes a weak key acceptable again. The CLI's
 [expiration date overrides](/cli/configuration/overview#expiration-date-overrides) section explains
 how the entries combine.
 

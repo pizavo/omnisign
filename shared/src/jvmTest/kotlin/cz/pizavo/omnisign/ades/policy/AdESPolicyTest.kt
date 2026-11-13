@@ -8,15 +8,18 @@ import eu.europa.esig.dss.enumerations.Context
 import eu.europa.esig.dss.enumerations.DigestAlgorithm
 import eu.europa.esig.dss.enumerations.Level
 import eu.europa.esig.dss.enumerations.SignatureAlgorithm
+import eu.europa.esig.dss.enumerations.SubContext
 import eu.europa.esig.dss.model.policy.CryptographicSuite
 import eu.europa.esig.dss.policy.EtsiValidationPolicy
 import eu.europa.esig.dss.validation.policy.CryptographicSuiteUtils
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.engine.spec.tempfile
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
 import kotlinx.datetime.LocalDate
 import java.util.*
 import kotlin.time.Instant
@@ -47,12 +50,24 @@ class AdESPolicyTest : FunSpec({
 		policy.cryptographicSuite(AlgorithmConstraintsConfig(expirationDateOverrides = overrides)).shouldNotBeNull()
 	
 	/**
+	 * The day, in UTC, a [keySize]-bit key of [algorithm] stops being acceptable in [suite], as DSS
+	 * itself decides it from every key-size tier, or `null` when it never does.
+	 */
+	fun expiryIn(suite: CryptographicSuite, algorithm: SignatureAlgorithm, keySize: Int): String? =
+		CryptographicSuiteUtils.getExpirationDate(suite, algorithm, keySize)
+			?.let { Instant.fromEpochMilliseconds(it.time).toString().take(10) }
+	
+	/**
 	 * The day, in UTC, a [keySize]-bit key of [algorithm] stops being acceptable under [overrides],
 	 * as DSS itself decides it from every key-size tier, or `null` when it never does.
 	 */
 	fun expiry(algorithm: SignatureAlgorithm, keySize: Int, overrides: Map<String, String> = emptyMap()): String? =
-		CryptographicSuiteUtils.getExpirationDate(suiteWith(overrides), algorithm, keySize)
-			?.let { Instant.fromEpochMilliseconds(it.time).toString().take(10) }
+		expiryIn(suiteWith(overrides), algorithm, keySize)
+	
+	/** The `Algo` entries of the default policy's expiry list once [overrides] are applied. */
+	fun expiryEntries(overrides: Map<String, String>) =
+		(policy.load(null, AlgorithmConstraintsConfig(expirationDateOverrides = overrides)) as EtsiValidationPolicy)
+			.cryptographic?.algoExpirationDate?.algos.orEmpty()
 	
 	/**
 	 * The day, in UTC, [algorithm] stops being acceptable under [overrides], as DSS decides it, or
@@ -182,7 +197,7 @@ class AdESPolicyTest : FunSpec({
 		expiry(SignatureAlgorithm.RSA_SHA256, 3072, overrides) shouldBe "2035-01-01"
 	}
 	
-	test("an override with a key size can bring its tier forward") {
+	test("an override with a key size can move its tier's date earlier") {
 		val overrides = mapOf("RSA:1900" to "2026-06-01")
 		
 		expiry(SignatureAlgorithm.RSA_SHA256, 2048, overrides) shouldBe "2026-06-01"
@@ -205,7 +220,7 @@ class AdESPolicyTest : FunSpec({
 		expiry(SignatureAlgorithm.RSA_SHA256, 3072, overrides) shouldBe "2030-12-31"
 	}
 	
-	test("an override without a key size brings every later tier forward to its date") {
+	test("an override without a key size gives its date to every tier that ends later") {
 		val overrides = mapOf("RSA" to "2026-06-01")
 		
 		expiry(SignatureAlgorithm.RSA_SHA256, 1024, overrides) shouldBe "2019-10-01"
@@ -231,13 +246,16 @@ class AdESPolicyTest : FunSpec({
 	}
 	
 	test("an override whose key size is not a positive number changes nothing") {
-		val overrides = mapOf("RSA:abc" to "2040-01-01", "RSA:0" to "2040-01-01", "RSA:" to "2040-01-01")
+		val overrides = mapOf(
+			"RSA:abc" to "2040-01-01",
+			"RSA:0" to "2040-01-01",
+			"RSA:-1" to "2040-01-01",
+			"RSA:" to "2040-01-01",
+		)
 		
 		expiry(SignatureAlgorithm.RSA_SHA256, 1024, overrides) shouldBe "2019-10-01"
 		expiry(SignatureAlgorithm.RSA_SHA256, 2048, overrides) shouldBe "2027-01-01"
-		val loaded = policy.load(null, AlgorithmConstraintsConfig(expirationDateOverrides = overrides)) as EtsiValidationPolicy
-		loaded.cryptographic?.algoExpirationDate?.algos.orEmpty()
-			.none { it.value?.contains(':') == true || it.size == 0 } shouldBe true
+		expiryEntries(overrides).none { it.value?.contains(':') == true || (it.size ?: 1) < 1 } shouldBe true
 	}
 	
 	test("an override without a key size whose date the policy cannot read caps nothing") {
@@ -245,6 +263,63 @@ class AdESPolicyTest : FunSpec({
 		
 		expiry(SignatureAlgorithm.RSA_SHA256, 2048, overrides) shouldBe "2027-01-01"
 		expiry(SignatureAlgorithm.RSA_SHA256, 3072, overrides) shouldBe "2035-01-01"
+	}
+	
+	test("an override without a key size caps an algorithm under any spelling DSS reads it by") {
+		val plain = mapOf("PLAIN_ECDSA" to "2026-06-01")
+		val ec = mapOf("EC" to "2026-06-01")
+		
+		expiry(SignatureAlgorithm.PLAIN_ECDSA_SHA256, 160, plain) shouldBe "2012-08-01"
+		expiry(SignatureAlgorithm.PLAIN_ECDSA_SHA256, 224, plain) shouldBe "2021-10-01"
+		expiry(SignatureAlgorithm.PLAIN_ECDSA_SHA256, 256, plain) shouldBe "2026-06-01"
+		expiry(SignatureAlgorithm.ECDSA_SHA256, 224, ec) shouldBe "2021-10-01"
+		expiry(SignatureAlgorithm.ECDSA_SHA256, 256, ec) shouldBe "2026-06-01"
+		expiryEntries(plain).none { it.value == "PLAIN_ECDSA" } shouldBe true
+		expiryEntries(ec).none { it.value == "EC" } shouldBe true
+	}
+	
+	test("an override with a key size finds its tier under any spelling DSS reads the algorithm by") {
+		val overrides = mapOf("RSASSA_PSS:1900" to "2026-06-01")
+		
+		expiry(SignatureAlgorithm.RSA_SSA_PSS_SHA256_MGF1, 2048, overrides) shouldBe "2026-06-01"
+		expiryEntries(overrides).none { it.value == "RSASSA_PSS" } shouldBe true
+	}
+	
+	test("a tier an override adds is spelled the way the policy spells the algorithm") {
+		expiryEntries(mapOf("RSASSA_PSS:4096" to "2040-01-01")).single { it.size == 4096 }.value shouldBe "RSASSA-PSS"
+	}
+	
+	test("an override for RSA leaves RSASSA-PSS keys alone") {
+		expiry(SignatureAlgorithm.RSA_SSA_PSS_SHA256_MGF1, 2048, mapOf("RSA" to "2026-06-01")) shouldBe "2027-01-01"
+	}
+	
+	test("an override's date is read in the date format the policy names") {
+		val xml = AdESPolicy::class.java.getResource("/policy/constraint.xml").shouldNotBeNull().readText()
+		val slashed = xml.replace("Format=\"yyyy-MM-dd\"", "Format=\"yyyy/MM/dd\"")
+			.replace(Regex("""Date="(\d{4})-(\d{2})-(\d{2})""""), "Date=\"\$1/\$2/\$3\"")
+		slashed shouldNotBe xml
+		val file = tempfile(suffix = ".xml").apply { writeText(slashed) }
+		
+		fun slashedExpiry(overrides: Map<String, String>): String? {
+			val loaded = policy.load(file, AlgorithmConstraintsConfig(expirationDateOverrides = overrides)) as EtsiValidationPolicy
+			return expiryIn(signatureSuite(loaded).shouldNotBeNull(), SignatureAlgorithm.RSA_SHA256, 2048)
+		}
+		
+		slashedExpiry(emptyMap()) shouldBe "2027-01-01"
+		slashedExpiry(mapOf("RSA" to "2026/06/01")) shouldBe "2026-06-01"
+		slashedExpiry(mapOf("RSA" to "2026-06-01")) shouldBe "2027-01-01"
+	}
+	
+	test("an override reaches the suites of the other validation contexts") {
+		val config = AlgorithmConstraintsConfig(expirationDateOverrides = mapOf("RSA:1900" to "2030-12-31"))
+		val loaded = policy.load(null, config) as EtsiValidationPolicy
+		
+		listOf(
+			loaded.getCertificateCryptographicConstraint(Context.SIGNATURE, SubContext.SIGNING_CERT),
+			loaded.getSignatureCryptographicConstraint(Context.TIMESTAMP),
+		).forEach { suite ->
+			expiryIn(suite.shouldNotBeNull(), SignatureAlgorithm.RSA_SHA256, 2048) shouldBe "2030-12-31"
+		}
 	}
 	
 	test("disabled hash algorithm is removed from acceptable digest algorithms") {

@@ -104,9 +104,13 @@ algorithm. Dates are written as `YYYY-MM-DD`.
   2027-01-01, the date of the 1900-bit entry, and a 3072-bit key until 2035-01-01, that of the
   3000-bit entry. `ALGORITHM:KEY_SIZE=DATE`, such as `RSA:1900=2030-12-31`, changes the entry for
   that key size, or adds one when the policy has none.
-- `ALGORITHM=DATE` for an algorithm dated by key size, such as `RSA=2030-12-31`, brings every entry
-  dated later, or not dated at all, forward to that date, so it can never make a weak key
-  acceptable again. It applies after any `ALGORITHM:KEY_SIZE` overrides, so it bounds them too.
+- `ALGORITHM=DATE` for an algorithm dated by key size, such as `RSA=2030-12-31`, gives its date to
+  every entry dated later, or not dated at all. It only ever moves dates earlier, so it can never
+  make a weak key acceptable again. It applies after any `ALGORITHM:KEY_SIZE` overrides, so it
+  bounds them too.
+- An algorithm dated by key size can be named in any spelling DSS reads it by, such as
+  `PLAIN_ECDSA` for `PLAIN-ECDSA` or `EC` for `ECDSA`. A hash algorithm is named the way the policy
+  names it, such as `SHA3-256`.
 
 ```bash
 omnisign config set \

@@ -104,7 +104,7 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 		help = "Per-algorithm expiration date override in ALGORITHM=DATE format, or " +
 				"ALGORITHM:KEY_SIZE=DATE for one key-size entry of an algorithm the policy dates by " +
 				"key size, such as RSA (e.g. RIPEMD160=2030-01-01, RSA:1900=2030-12-31). Without " +
-				"KEY_SIZE, such an algorithm's dates can only be brought forward. Repeatable. " +
+				"KEY_SIZE, such an algorithm's dates can only be moved earlier. Repeatable. " +
 				"Hash algorithm dates apply to both pre-signing checks and DSS validation."
 	).multiple()
 	

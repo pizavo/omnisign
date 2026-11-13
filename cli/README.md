@@ -551,7 +551,7 @@ omnisign config set \
 
 `--algo-expiry-override` also takes `ALGORITHM:KEY_SIZE=DATE` to change one key-size entry of an
 algorithm the validation policy dates by key size, such as `RSA:1900=2030-12-31` for the 1900-bit
-RSA entry. Without a key size, such an algorithm's dates can only be brought forward, so a weak
+RSA entry. Without a key size, such an algorithm's dates can only be moved earlier, so a weak
 key never becomes acceptable again.
 
 #### `config profile` — Manage named profiles
