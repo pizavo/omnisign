@@ -12,10 +12,12 @@ package cz.pizavo.omnisign.config
  * a static [discoveryUrl].
  *
  * @property discoveryUrl Static OIDC discovery document URL, `null` when a template is used.
- * @property discoveryUrlTemplate Discovery URL template with `{tenant}`, `{region}`,
- *   `{poolId}`, or `{realm}` placeholders; `null` when a static URL is used.
- * @property requiresManualUrls `true` for providers (GitHub) that do not expose a standard
- *   OIDC discovery document and require all endpoints to be configured manually.
+ * @property discoveryUrlTemplate Discovery URL template with `{tenant}`, `{region}` and
+ *   `{poolId}`, `{host}` and `{realm}`, or `{domain}` placeholders, filled from
+ *   [OidcProviderConfig.tenantId]; `null` when a static URL is used.
+ * @property requiresManualUrls `true` for a provider (GitHub) without an OIDC discovery
+ *   document, whose endpoints OmniSign has hard-coded. Such a provider issues no id_token,
+ *   so its verification is skipped.
  */
 enum class SsoProviderPreset(
     val discoveryUrl: String?,
@@ -35,6 +37,12 @@ enum class SsoProviderPreset(
      * Discovery URL requires a `{tenant}` placeholder — set via [OidcProviderConfig.tenantId].
      * Use `common` for multi-tenant, `organizations` for work/school accounts only, or
      * a specific tenant GUID/domain.
+     *
+     * Entra sends no `email_verified` claim. Under a concrete
+     * [OidcProviderConfig.allowedEmailDomains] list, add the optional claim `xms_edov` to the
+     * app registration's ID token and keep [OidcProviderConfig.verifyIdToken] on: the claim
+     * says whether the address's domain is verified in the user's tenant, and without it no
+     * user is admitted.
      */
     MICROSOFT(
         discoveryUrl = null,
@@ -68,8 +76,11 @@ enum class SsoProviderPreset(
      *
      * GitHub does not expose a standard OIDC discovery document. The authorization,
      * token, and user-info endpoints are hard-coded and set automatically when this
-     * preset is selected. Requires only [OidcProviderConfig.clientId] and the client
-     * secret, read from the environment variable that [oidcClientSecretEnvVar] names.
+     * preset is selected. Besides [OidcProviderConfig.clientId] and the client secret, read
+     * from the environment variable that [oidcClientSecretEnvVar] names, it needs
+     * `scopes: [read:user, user:email]` in place of the OIDC defaults. `user:email` lets the
+     * account's email list say whether the address is verified, which a concrete
+     * [OidcProviderConfig.allowedEmailDomains] list requires.
      */
     GITHUB(
         discoveryUrl = null,
@@ -116,8 +127,11 @@ enum class SsoProviderPreset(
      * re-scopes affiliation: `eduperson_scoped_affiliation` is fixed to `@einfra.cesnet.cz`
      * (E-INFRA membership, not the home university) and `organization` is a display name
      * rather than a domain, so gate by the home institution with
-     * [OidcProviderConfig.allowedEmailDomains]. Register an OIDC client (self-service) at
-     * https://spadmin.e-infra.cz/.
+     * [OidcProviderConfig.allowedEmailDomains]. The hub's discovery document lists the
+     * `email_verified` claim, but its claim documentation describes only `email`; should
+     * its tokens carry no flag, such a list admits nobody until
+     * [OidcProviderConfig.assumeEmailVerified] is set. Register an OIDC client (self-service)
+     * at https://spadmin.e-infra.cz/.
      */
     EDUID_CZ(discoveryUrl = "https://login.e-infra.cz/oidc/.well-known/openid-configuration"),
 }

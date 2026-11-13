@@ -55,10 +55,10 @@ non-alphanumerics → `_`; e.g. `name: google` → `OMNISIGN_OIDC_GOOGLE_CLIENT_
 | Preset          | `tenantId`                        | Notes                                              |
 |-----------------|-----------------------------------|----------------------------------------------------|
 | `GOOGLE`        | —                                 |                                                    |
-| `MICROSOFT`     | `common` / `organizations` / GUID | Entra ID (Azure AD)                                |
+| `MICROSOFT`     | `common` / `organizations` / GUID | Entra ID (Azure AD); a domain list needs the `xms_edov` claim ([below](#verified-addresses)) |
 | `AMAZON_COGNITO`| `{region}/{userPoolId}`           |                                                    |
 | `KEYCLOAK`      | `{host}/{realm}`                  | self-hosted                                        |
-| `GITHUB`        | —                                 | OAuth2 (not full OIDC); needs `scopes: [read:user, user:email]`. No discovery document — endpoints are hard-coded and `id_token` verification is skipped automatically |
+| `GITHUB`        | —                                 | OAuth2 (not full OIDC); needs `scopes: [read:user, user:email]` (`user:email` also lets OmniSign check the address is verified). No discovery document — endpoints are hard-coded and `id_token` verification is skipped automatically |
 | `GITLAB`        | —                                 | GitLab.com; for a self-hosted instance set `discoveryUrl` explicitly |
 | `AUTH0`         | your Auth0 domain                 |                                                    |
 | `APPLE`         | —                                 | public IdP — domain-restrict                       |
@@ -70,6 +70,32 @@ is rejected at startup. `requiredClaims` (a map of claim → allowed values) add
 **every** listed claim must be present and match **at least one** of its listed values. Single-valued
 and array-valued claims both work. A key with an empty value list is rejected at startup — it would
 reject every login.
+
+### Verified addresses
+
+A concrete `allowedEmailDomains` list is only as strong as the identity provider's hold on the
+addresses it hands out. A provider that lets users claim an address without proving they own it
+would admit anyone as `someone@yourcompany.com`. So under a concrete list OmniSign also requires
+the provider to mark the address **verified**, and refuses the login with `403 EMAIL_NOT_VERIFIED`
+otherwise. `["*"]` checks neither the domain nor this.
+
+- Google, GitLab, Keycloak, Auth0, Amazon Cognito and Apple send the standard `email_verified`
+  claim (Cognito and Apple may send it as the string `"true"`, which counts too).
+- **Microsoft Entra ID** sends no such claim. Add the optional claim `xms_edov` to the app
+  registration's ID token (**Token configuration → Add optional claim → ID → `xms_edov`**) and keep
+  `verifyIdToken` on. The claim says whether the address's domain is verified in the user's tenant;
+  without it, a domain list admits nobody.
+- **GitHub** has no claim either: OmniSign looks the address up in the account's email list, which
+  the `user:email` scope opens.
+
+When the provider's signed id_token names an address, OmniSign judges that address and its flag
+rather than the UserInfo ones, and the session carries it.
+
+For a provider that sends no flag although you trust every address it hands out, such as a
+self-hosted identity provider without the claim, set `assumeEmailVerified: true` on it. An address
+the provider marks unverified is still refused. The server refuses to start with
+`assumeEmailVerified` on a multi-tenant Microsoft provider (`tenantId: common` or `organizations`),
+since any tenant's administrator can assign any address there.
 
 ### eduID.cz (Czech academic federation)
 
@@ -86,6 +112,11 @@ than a domain, so `"staff@osu.cz"` / `"osu.cz"` never match. Finer affiliation o
 the proxy's `voperson_external_affiliation` / `eduperson_entitlement` claims — request the matching
 scope, then confirm the exact values against a real token
 ([scope/claim reference](https://aai.cesnet.cz/en/index/documentation/sp/proxy/attributes_and_scopes)).
+
+The hub lists `email_verified` among its claims, but its documentation describes only `email`. If
+its users are refused with `403 EMAIL_NOT_VERIFIED`, it sends no flag; set
+`assumeEmailVerified: true` only if you trust every address it hands out (see
+[Verified addresses](#verified-addresses)).
 
 ```yaml
     - type: oidc
@@ -105,8 +136,9 @@ scope, then confirm the exact values against a real token
    `state`.
 3. On the callback, OmniSign verifies the **id_token** signature against the IdP's JWKS plus its
    `iss`/`aud`/`exp`, and rejects the login with `401 ID_TOKEN_SUB_MISMATCH` if its `sub` differs from
-   the UserInfo `sub`; it then enforces `allowedEmailDomains` and `requiredClaims`. (Verification is
-   skipped for OAuth2-only providers such as `GITHUB`.)
+   the UserInfo `sub`; it then enforces `allowedEmailDomains` (on the id_token's address when it
+   names one, and with the [verified-address](#verified-addresses) requirement) and `requiredClaims`.
+   (Verification is skipped for OAuth2-only providers such as `GITHUB`.)
 4. It issues a short-lived **access JWT** plus a single-use **refresh token** (rotated on every
    `POST /auth/refresh`, bounded by `maxSessionSeconds`). The refresh token also goes out as an
    `HttpOnly` cookie scoped to `/auth/refresh`.

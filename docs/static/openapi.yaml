@@ -793,7 +793,11 @@ paths:
               schema:
                 $ref: '#/components/schemas/ApiError'
         '403':
-          description: The account's email domain or claims are not permitted.
+          description: |
+            The account is not permitted: its email domain is not allowed (`DOMAIN_NOT_ALLOWED`),
+            the identity provider has not verified its address while the provider's
+            `allowedEmailDomains` list is concrete (`EMAIL_NOT_VERIFIED`), or its claims do not
+            satisfy `requiredClaims` (`CLAIMS_NOT_SATISFIED`).
           content:
             application/json:
               schema:

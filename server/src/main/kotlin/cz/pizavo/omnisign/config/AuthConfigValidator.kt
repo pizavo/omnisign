@@ -29,6 +29,12 @@ import java.net.URI
  *    network. Neither is something [cz.pizavo.omnisign.auth.isRedirectUriAllowed] can
  *    reasonably second-guess at request time — by then the operator is not watching.
  *
+ * 4. **`assumeEmailVerified` on a multi-tenant Microsoft provider.** With `tenantId` `common`
+ *    or `organizations`, any Entra tenant can sign in, and each tenant's administrator can
+ *    give a user any address, the operator's own domain included. Entra sends no
+ *    `email_verified` claim, so assuming its addresses verified would let a stranger's tenant
+ *    pass the domain list; the optional `xms_edov` claim is the way to admit these users.
+ *
  * Called from [cz.pizavo.omnisign.moduleWith] before any provider-dependent component
  * is wired into the application module, so a misconfiguration aborts the server boot
  * with a clear `IllegalArgumentException` rather than producing an undefined runtime
@@ -36,9 +42,10 @@ import java.net.URI
  *
  * @param authConfig Root authentication configuration, or `null` when auth is disabled.
  * @throws IllegalArgumentException with a provider-named message when any OIDC provider
- *   has an empty `allowedEmailDomains` list or any `requiredClaims` entry has an empty
- *   accepted-values list, and with the offending entry when an `allowedRedirectUris` entry
- *   is not an absolute `https` URL (or an `http` one on a loopback host).
+ *   has an empty `allowedEmailDomains` list, any `requiredClaims` entry has an empty
+ *   accepted-values list, or a multi-tenant Microsoft provider sets `assumeEmailVerified`,
+ *   and with the offending entry when an `allowedRedirectUris` entry is not an absolute
+ *   `https` URL (or an `http` one on a loopback host).
  */
 fun validateAuthConfig(authConfig: AuthConfig?) {
 	val config = authConfig ?: return
@@ -46,6 +53,14 @@ fun validateAuthConfig(authConfig: AuthConfig?) {
 		require(provider.allowedEmailDomains.isNotEmpty()) {
 			"provider '${provider.name}' must set allowedEmailDomains. " +
 				"Use [\"*\"] to allow any domain, or list specific ones."
+		}
+		val multiTenantMicrosoft = provider.preset == SsoProviderPreset.MICROSOFT &&
+			provider.tenantId?.lowercase() in MULTI_TENANT_MICROSOFT_TENANTS
+		require(!(provider.assumeEmailVerified && multiTenantMicrosoft)) {
+			"provider '${provider.name}' sets assumeEmailVerified on the multi-tenant Microsoft " +
+				"tenant '${provider.tenantId}', where any tenant's administrator can give a user any " +
+				"address. Remove it and add the optional claim xms_edov to the app registration's " +
+				"ID token, which says whether the address's domain is verified in the user's tenant."
 		}
 		provider.requiredClaims?.forEach { (key, values) ->
 			require(values.isNotEmpty()) {
@@ -58,7 +73,16 @@ fun validateAuthConfig(authConfig: AuthConfig?) {
 }
 
 /**
+ * The `tenantId` values with which a [SsoProviderPreset.MICROSOFT] provider admits users of any
+ * Entra tenant, in lower case.
+ */
+private val MULTI_TENANT_MICROSOFT_TENANTS = setOf("common", "organizations")
+
+/**
  * Check a single `auth.allowedRedirectUris` entry.
+ *
+ * The host is compared as [isLoopbackHost] expects it: [URI.getHost] keeps an IPv6 literal's
+ * brackets and the case it was written in, so both are normalised first.
  *
  * @param entry The configured value.
  * @throws IllegalArgumentException naming [entry] and what is wrong with it.
@@ -76,7 +100,7 @@ private fun validateRedirectUri(entry: String) {
 		"auth.allowedRedirectUris entry '$entry' uses the scheme '$scheme'. Only https (or " +
 			"http on a loopback host, for development) can receive a hand-off code."
 	}
-	require(scheme == "https" || isLoopbackHost(url.host)) {
+	require(scheme == "https" || isLoopbackHost(url.host.removeSurrounding("[", "]").lowercase())) {
 		"auth.allowedRedirectUris entry '$entry' is plain http on the non-loopback host " +
 			"'${url.host}'. The callback delivers a single-use hand-off code to this URL, so " +
 			"over cleartext it is delivered to the network as well. Use https, or a loopback " +

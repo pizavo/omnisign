@@ -62,5 +62,25 @@ class EmailDomainFilterTest : FunSpec({
         isEmailDomainAllowed(null, listOf("contoso.com")) shouldBe false
         isEmailDomainAllowed(null, listOf("contoso.com", "fabrikam.com")) shouldBe false
     }
+
+    test("a lookalike domain with a dotless i does not match the ASCII entry") {
+        isEmailDomainAllowed("user@fabrıkam.com", listOf("fabrikam.com")) shouldBe false
+    }
+
+    test("a lookalike domain with a dotted capital I does not match the ASCII entry") {
+        isEmailDomainAllowed("user@fabrİkam.com", listOf("fabrikam.com")) shouldBe false
+    }
+
+    test("an internationalised entry matches the address's xn-- spelling of the same domain") {
+        isEmailDomainAllowed("user@xn--bcher-kva.de", listOf("bücher.de")) shouldBe true
+    }
+
+    test("an xn-- entry matches the address's internationalised spelling of the same domain") {
+        isEmailDomainAllowed("user@BÜCHER.de", listOf("xn--bcher-kva.de")) shouldBe true
+    }
+
+    test("an entry that is no valid host name matches nothing") {
+        isEmailDomainAllowed("user@contoso.com", listOf("@contoso.com")) shouldBe false
+    }
 })
 

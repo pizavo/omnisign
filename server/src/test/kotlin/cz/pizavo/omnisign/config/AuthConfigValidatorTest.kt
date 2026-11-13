@@ -133,4 +133,49 @@ class AuthConfigValidatorTest : FunSpec({
             )
         }
     }
+
+    test("accepts an http allowedRedirectUris entry on the IPv6 loopback or an upper-case localhost") {
+        validateAuthConfig(
+            AuthConfig(
+                providers = listOf(oidc("g", listOf("*"))),
+                allowedRedirectUris = listOf("http://[::1]:8080/", "http://LOCALHOST:3000/app"),
+            ),
+        )
+    }
+
+    fun microsoft(tenantId: String, assumeEmailVerified: Boolean) = OidcProviderConfig(
+        name = "microsoft",
+        preset = SsoProviderPreset.MICROSOFT,
+        tenantId = tenantId,
+        clientId = "id",
+        allowedEmailDomains = listOf("contoso.com"),
+        assumeEmailVerified = assumeEmailVerified,
+    )
+
+    test("rejects assumeEmailVerified on a multi-tenant Microsoft provider and names it and the remedy") {
+        listOf("common", "Organizations").forEach { tenant ->
+            val ex = shouldThrow<IllegalArgumentException> {
+                validateAuthConfig(AuthConfig(providers = listOf(microsoft(tenant, assumeEmailVerified = true))))
+            }
+            ex.message!! shouldContain "'microsoft'"
+            ex.message!! shouldContain tenant
+            ex.message!! shouldContain "xms_edov"
+        }
+    }
+
+    test("accepts assumeEmailVerified on a single-tenant or consumer Microsoft provider") {
+        listOf("contoso.onmicrosoft.com", "00000000-0000-0000-0000-000000000001", "consumers").forEach { tenant ->
+            validateAuthConfig(AuthConfig(providers = listOf(microsoft(tenant, assumeEmailVerified = true))))
+        }
+    }
+
+    test("accepts a multi-tenant Microsoft provider that does not assume verification") {
+        validateAuthConfig(AuthConfig(providers = listOf(microsoft("common", assumeEmailVerified = false))))
+    }
+
+    test("accepts assumeEmailVerified on a provider that is not Microsoft") {
+        validateAuthConfig(
+            AuthConfig(providers = listOf(oidc("keycloak", listOf("contoso.com")).copy(assumeEmailVerified = true))),
+        )
+    }
 })

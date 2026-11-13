@@ -7,6 +7,7 @@ import com.auth0.jwk.SigningKeyNotFoundException
 import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import cz.pizavo.omnisign.config.OidcProviderConfig
+import cz.pizavo.omnisign.config.SsoProviderPreset
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
@@ -79,6 +80,7 @@ class IdTokenVerifierTest : FunSpec({
         email: String? = "user@example.com",
         algorithm: Algorithm = signingAlgorithm,
         expiresAt: Date = Date(System.currentTimeMillis() + 60_000),
+        flags: Map<String, Any> = emptyMap(),
     ): String {
         val builder = JWT.create()
             .withIssuer(issuer)
@@ -88,7 +90,58 @@ class IdTokenVerifierTest : FunSpec({
             .withIssuedAt(Date())
         if (kid != null) builder.withKeyId(kid)
         if (email != null) builder.withClaim("email", email)
+        flags.forEach { (name, value) ->
+            when (value) {
+                is Boolean -> builder.withClaim(name, value)
+                is String -> builder.withClaim(name, value)
+                is Int -> builder.withClaim(name, value)
+                else -> error("unsupported test claim type for '$name'")
+            }
+        }
         return builder.sign(algorithm)
+    }
+
+    val microsoftProvider = provider.copy(
+        name = "microsoft",
+        preset = SsoProviderPreset.MICROSOFT,
+        tenantId = "contoso.onmicrosoft.com",
+    )
+
+    test("verify reads a boolean email_verified claim") {
+        verifier.verify(provider, signValid(flags = mapOf("email_verified" to true))).emailVerified shouldBe true
+        verifier.verify(provider, signValid(flags = mapOf("email_verified" to false))).emailVerified shouldBe false
+    }
+
+    test("verify reads a string email_verified claim in any case, as Cognito and Apple send it") {
+        verifier.verify(provider, signValid(flags = mapOf("email_verified" to "TRUE"))).emailVerified shouldBe true
+        verifier.verify(provider, signValid(flags = mapOf("email_verified" to "false"))).emailVerified shouldBe false
+    }
+
+    test("verify reports no flag when email_verified is absent or holds anything else") {
+        verifier.verify(provider, signValid()).emailVerified shouldBe null
+        verifier.verify(provider, signValid(flags = mapOf("email_verified" to "yes"))).emailVerified shouldBe null
+        verifier.verify(provider, signValid(flags = mapOf("email_verified" to 1))).emailVerified shouldBe null
+    }
+
+    test("verify reads xms_edov as the verification flag of a Microsoft token") {
+        verifier.verify(microsoftProvider, signValid(flags = mapOf("xms_edov" to true))).emailVerified shouldBe true
+        verifier.verify(microsoftProvider, signValid(flags = mapOf("xms_edov" to false))).emailVerified shouldBe false
+    }
+
+    test("verify ignores xms_edov in a token of a provider that is not Microsoft") {
+        verifier.verify(provider, signValid(flags = mapOf("xms_edov" to true))).emailVerified shouldBe null
+    }
+
+    test("verify lets a Microsoft token's xms_edov saying no outweigh email_verified saying yes") {
+        val token = signValid(flags = mapOf("email_verified" to true, "xms_edov" to false))
+
+        verifier.verify(microsoftProvider, token).emailVerified shouldBe false
+    }
+
+    test("verify lets a Microsoft token's email_verified saying no outweigh xms_edov saying yes") {
+        val token = signValid(flags = mapOf("email_verified" to false, "xms_edov" to true))
+
+        verifier.verify(microsoftProvider, token).emailVerified shouldBe false
     }
 
     test("verify accepts a well-formed id_token and returns subject + email") {

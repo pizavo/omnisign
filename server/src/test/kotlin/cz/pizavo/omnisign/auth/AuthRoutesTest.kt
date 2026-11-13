@@ -1,5 +1,8 @@
 package cz.pizavo.omnisign.auth
 
+import com.auth0.jwt.JWT
+import com.auth0.jwt.algorithms.Algorithm
+import com.sun.net.httpserver.HttpServer
 import cz.pizavo.omnisign.config.AuthConfig
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.CorsConfig
@@ -15,6 +18,8 @@ import cz.pizavo.omnisign.domain.model.value.Sensitive
 import cz.pizavo.omnisign.domain.model.value.sensitive
 import cz.pizavo.omnisign.module
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldContain
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -33,8 +38,15 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.exposed.v1.jdbc.Database
 import java.io.File
+import java.math.BigInteger
+import java.net.InetAddress
+import java.net.InetSocketAddress
+import java.security.KeyPairGenerator
 import java.security.MessageDigest
+import java.security.interfaces.RSAPrivateKey
+import java.security.interfaces.RSAPublicKey
 import java.util.Base64
+import java.util.Date
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
@@ -88,22 +100,31 @@ private fun authTestConfig(auth: AuthConfig?): ServerConfig =
 
 /**
  * A [MockEngine] standing in for the GitHub IdP: it answers the OAuth2 token exchange with a canned
- * bearer token (form-encoded, as GitHub does) and the user API with [userInfoJson]. Substituted for
- * the CIO engine of the server's outbound [io.ktor.client.HttpClient] via the [module]
- * `httpClientEngine` seam, so the callback's token-exchange -> UserInfo hop runs end-to-end with no
- * live IdP. GitHub is deliberate: its hard-coded endpoints skip OIDC discovery and its non-OIDC
- * nature skips id_token verification, so the mock only serves these two endpoints.
+ * bearer token (form-encoded, as GitHub does), the user API with [userInfoJson], and the account's
+ * email list with [emailsJson]. Substituted for the CIO engine of the server's outbound
+ * [io.ktor.client.HttpClient] via the [module] `httpClientEngine` seam, so the callback's
+ * token-exchange -> UserInfo hop runs end-to-end with no live IdP. GitHub is deliberate: its
+ * hard-coded endpoints skip OIDC discovery and its non-OIDC nature skips id_token verification, so
+ * the mock only serves these three endpoints.
  *
  * @param userInfoJson The user API's answer.
  * @param tokenRequests Receives the form parameters of each token-exchange POST, so a spec can see
  *   what a real IdP would have been sent.
+ * @param emailsJson The email list's answer.
+ * @param emailsStatus The email list's status, e.g. `404` as GitHub answers without the
+ *   `user:email` scope.
+ * @param requestedUrls Receives the URL of every request the server makes.
  */
 private fun githubIdpMockEngine(
     userInfoJson: String,
     tokenRequests: MutableList<Parameters> = mutableListOf(),
+    emailsJson: String = "[]",
+    emailsStatus: HttpStatusCode = HttpStatusCode.OK,
+    requestedUrls: MutableList<String> = mutableListOf(),
 ): MockEngine =
     MockEngine { request ->
         val url = request.url.toString()
+        requestedUrls += url
         when {
             url.startsWith(OidcDiscoveryService.GITHUB_TOKEN_URL) -> {
                 tokenRequests += parseQueryString(request.body.toByteArray().decodeToString())
@@ -113,6 +134,12 @@ private fun githubIdpMockEngine(
                     headersOf(HttpHeaders.ContentType, ContentType.Application.FormUrlEncoded.toString()),
                 )
             }
+            url == OidcUserInfoService.GITHUB_USER_EMAILS_API_URL ->
+                respond(
+                    emailsJson,
+                    emailsStatus,
+                    headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+                )
             url.startsWith(OidcDiscoveryService.GITHUB_USER_API_URL) ->
                 respond(
                     userInfoJson,
@@ -126,6 +153,123 @@ private fun githubIdpMockEngine(
 /** UserInfo JSON for a GitHub user in the `example.com` email domain. */
 private const val OCTOCAT_USER_INFO =
     """{"id":12345,"login":"octocat","email":"octocat@example.com","name":"The Octocat"}"""
+
+/**
+ * The GitHub email list of [OCTOCAT_USER_INFO]'s account, marking its public address [verified].
+ *
+ * @param verified The `verified` flag of `octocat@example.com`.
+ */
+private fun octocatEmails(verified: Boolean) =
+    """[{"email":"octocat@example.com","verified":$verified,"primary":true,"visibility":"public"}]"""
+
+/** Where [oidcIdpMockEngine]'s IdP publishes its discovery document. */
+private const val TEST_IDP_DISCOVERY_URL = "https://idp.example/.well-known/openid-configuration"
+
+/**
+ * A [MockEngine] standing in for a standard OIDC IdP: it serves the discovery document at
+ * [discoveryUrl], answers the token exchange with a canned bearer token and [idToken], and
+ * UserInfo with [userInfoJson]. The IdP's signing keys are fetched outside the server's HTTP
+ * client, so a spec that has the id_token verified serves them with [withJwksServer] and passes
+ * that server's [jwksUri].
+ *
+ * @param userInfoJson UserInfo's answer.
+ * @param idToken The id_token the token exchange returns, or `null` for none.
+ * @param discoveryUrl Where the discovery document is served.
+ * @param issuer The `issuer` the discovery document declares.
+ * @param jwksUri The `jwks_uri` the discovery document declares.
+ */
+private fun oidcIdpMockEngine(
+    userInfoJson: String,
+    idToken: String? = null,
+    discoveryUrl: String = TEST_IDP_DISCOVERY_URL,
+    issuer: String = "https://idp.example",
+    jwksUri: String = "https://idp.example/jwks",
+): MockEngine =
+    MockEngine { request ->
+        val json = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString())
+        when (request.url.toString()) {
+            discoveryUrl -> respond(
+                """
+                {"issuer":"$issuer","authorization_endpoint":"https://idp.example/authorize",
+                 "token_endpoint":"https://idp.example/token","userinfo_endpoint":"https://idp.example/userinfo",
+                 "jwks_uri":"$jwksUri"}
+                """.trimIndent(),
+                HttpStatusCode.OK,
+                json,
+            )
+            "https://idp.example/token" -> respond(
+                if (idToken == null) {
+                    """{"access_token":"idp-access-token","token_type":"Bearer"}"""
+                } else {
+                    """{"access_token":"idp-access-token","token_type":"Bearer","id_token":"$idToken"}"""
+                },
+                HttpStatusCode.OK,
+                json,
+            )
+            "https://idp.example/userinfo" -> respond(userInfoJson, HttpStatusCode.OK, json)
+            else -> respond("unexpected IdP request: ${request.url}", HttpStatusCode.InternalServerError)
+        }
+    }
+
+/** The `kid` under which [withJwksServer] publishes the test signing key. */
+private const val TEST_SIGNING_KID = "test-signing-key"
+
+/** The RSA key pair the test IdP signs its id_tokens with. */
+private val testSigningKeys = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+
+/**
+ * Sign an id_token for the client `test-client-id` with [testSigningKeys], valid for a minute.
+ *
+ * @param issuer The `iss` claim, which must equal the discovery document's issuer.
+ * @param claims Further claims: `email`, `email_verified`, `xms_edov` and the like.
+ */
+private fun signTestIdToken(issuer: String, claims: Map<String, Any>): String {
+    val builder = JWT.create()
+        .withKeyId(TEST_SIGNING_KID)
+        .withIssuer(issuer)
+        .withAudience("test-client-id")
+        .withSubject("u1")
+        .withIssuedAt(Date())
+        .withExpiresAt(Date(System.currentTimeMillis() + 60_000))
+    claims.forEach { (name, value) ->
+        when (value) {
+            is Boolean -> builder.withClaim(name, value)
+            is String -> builder.withClaim(name, value)
+            else -> error("unsupported test claim type for '$name'")
+        }
+    }
+    return builder.sign(
+        Algorithm.RSA256(testSigningKeys.public as RSAPublicKey, testSigningKeys.private as RSAPrivateKey),
+    )
+}
+
+/**
+ * Serve [testSigningKeys]' public key as a JWKS on a loopback port for the duration of [block],
+ * since the server fetches signing keys through `URLConnection` rather than its mockable HTTP
+ * client.
+ *
+ * @param block Receives the JWKS URL.
+ */
+private fun <R> withJwksServer(block: (jwksUri: String) -> R): R {
+    val publicKey = testSigningKeys.public as RSAPublicKey
+    fun base64Url(value: BigInteger): String =
+        Base64.getUrlEncoder().withoutPadding().encodeToString(value.toByteArray().dropWhile { it == 0.toByte() }.toByteArray())
+    val jwks = """{"keys":[{"kty":"RSA","kid":"$TEST_SIGNING_KID","use":"sig","alg":"RS256",""" +
+        """"n":"${base64Url(publicKey.modulus)}","e":"${base64Url(publicKey.publicExponent)}"}]}"""
+    val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0)
+    server.createContext("/jwks") { exchange ->
+        val bytes = jwks.toByteArray()
+        exchange.responseHeaders.add("Content-Type", "application/json")
+        exchange.sendResponseHeaders(200, bytes.size.toLong())
+        exchange.responseBody.use { it.write(bytes) }
+    }
+    server.start()
+    try {
+        return block("http://127.0.0.1:${server.address.port}/jwks")
+    } finally {
+        server.stop(0)
+    }
+}
 
 /**
  * Integration tests for the `/auth` route group, verifying login discovery, JWT
@@ -646,6 +790,7 @@ class AuthRoutesTest : FunSpec({
 	fun callbackAuthConfig(
 		allowedRedirectUris: List<String> = emptyList(),
 		allowedEmailDomains: List<String> = listOf("*"),
+		assumeEmailVerified: Boolean = false,
 	) = authConfig.copy(
 		providers = listOf(
 			OidcProviderConfig(
@@ -653,6 +798,7 @@ class AuthRoutesTest : FunSpec({
 				preset = SsoProviderPreset.GITHUB,
 				clientId = "test-client-id",
 				allowedEmailDomains = allowedEmailDomains,
+				assumeEmailVerified = assumeEmailVerified,
 			),
 		),
 		oauthStateSecret = oauthStateSecret,
@@ -753,6 +899,465 @@ class AuthRoutesTest : FunSpec({
 				callback.status shouldBe HttpStatusCode.Forbidden
 				val body = Json.parseToJsonElement(callback.bodyAsText()).jsonObject
 				body["error"]?.jsonPrimitive?.content shouldBe "DOMAIN_NOT_ALLOWED"
+			}
+		}
+	}
+
+	/**
+	 * Walk a login through [provider]: start it at `/auth/redirect`, then hit the callback with
+	 * the `state` the redirect issued and a code the mocked IdP accepts.
+	 *
+	 * @return The callback's response.
+	 */
+	suspend fun ApplicationTestBuilder.completeLogin(provider: String): HttpResponse {
+		val noRedirect = createClient { followRedirects = false }
+		val redirect = noRedirect.get("/auth/redirect/$provider")
+		val state = Url(redirect.headers["Location"]!!).parameters["state"]
+		state.shouldNotBeNull()
+		return noRedirect.get("/auth/callback/$provider") {
+			url {
+				parameters.append("code", "authorization-code-from-idp")
+				parameters.append("state", state)
+			}
+		}
+	}
+
+	/** The `error` code of an [ApiError][cz.pizavo.omnisign.api.model.responses.ApiError] body. */
+	suspend fun HttpResponse.errorCode(): String? =
+		Json.parseToJsonElement(bodyAsText()).jsonObject["error"]?.jsonPrimitive?.content
+
+	test("OIDC callback admits a GitHub user whose address the account's email list marks verified") {
+		withTempSessionsDb {
+			testApplication {
+				val requestedUrls = mutableListOf<String>()
+				application {
+					module(
+						authTestConfig(callbackAuthConfig(allowedEmailDomains = listOf("example.com"))),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(
+							OCTOCAT_USER_INFO,
+							emailsJson = octocatEmails(verified = true),
+							requestedUrls = requestedUrls,
+						),
+					)
+				}
+
+				val callback = completeLogin("github")
+
+				callback.status shouldBe HttpStatusCode.OK
+				requestedUrls shouldContain OidcUserInfoService.GITHUB_USER_EMAILS_API_URL
+			}
+		}
+	}
+
+	test("OIDC callback refuses a GitHub user whose address the email list marks unverified, even when assumed verified") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(
+							callbackAuthConfig(allowedEmailDomains = listOf("example.com"), assumeEmailVerified = true),
+						),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(OCTOCAT_USER_INFO, emailsJson = octocatEmails(verified = false)),
+					)
+				}
+
+				val callback = completeLogin("github")
+
+				callback.status shouldBe HttpStatusCode.Forbidden
+				callback.errorCode() shouldBe "EMAIL_NOT_VERIFIED"
+			}
+		}
+	}
+
+	test("OIDC callback refuses a GitHub user whose email list cannot be read, as without the user:email scope") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(callbackAuthConfig(allowedEmailDomains = listOf("example.com"))),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(
+							OCTOCAT_USER_INFO,
+							emailsJson = """{"message":"Not Found"}""",
+							emailsStatus = HttpStatusCode.NotFound,
+						),
+					)
+				}
+
+				val callback = completeLogin("github")
+
+				callback.status shouldBe HttpStatusCode.Forbidden
+				callback.errorCode() shouldBe "EMAIL_NOT_VERIFIED"
+			}
+		}
+	}
+
+	test("OIDC callback admits a GitHub user whose email list cannot be read when the provider assumes verification") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(
+							callbackAuthConfig(allowedEmailDomains = listOf("example.com"), assumeEmailVerified = true),
+						),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(
+							OCTOCAT_USER_INFO,
+							emailsJson = """{"message":"Not Found"}""",
+							emailsStatus = HttpStatusCode.NotFound,
+						),
+					)
+				}
+
+				completeLogin("github").status shouldBe HttpStatusCode.OK
+			}
+		}
+	}
+
+	test("OIDC callback does not read GitHub's email list under the wildcard") {
+		withTempSessionsDb {
+			testApplication {
+				val requestedUrls = mutableListOf<String>()
+				application {
+					module(
+						authTestConfig(callbackAuthConfig()),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(
+							OCTOCAT_USER_INFO,
+							emailsJson = octocatEmails(verified = false),
+							requestedUrls = requestedUrls,
+						),
+					)
+				}
+
+				completeLogin("github").status shouldBe HttpStatusCode.OK
+				requestedUrls shouldNotContain OidcUserInfoService.GITHUB_USER_EMAILS_API_URL
+			}
+		}
+	}
+
+	fun idpAuthConfig(
+		allowedEmailDomains: List<String>,
+		assumeEmailVerified: Boolean = false,
+		verifyIdToken: Boolean = false,
+	) = authConfig.copy(
+		providers = listOf(
+			OidcProviderConfig(
+				name = "idp",
+				clientId = "test-client-id",
+				discoveryUrl = TEST_IDP_DISCOVERY_URL,
+				allowedEmailDomains = allowedEmailDomains,
+				verifyIdToken = verifyIdToken,
+				assumeEmailVerified = assumeEmailVerified,
+			),
+		),
+		oauthStateSecret = oauthStateSecret,
+	)
+
+	val idpSecrets = mapOf("idp" to "idp-client-secret".sensitive())
+
+	test("OIDC callback refuses an address UserInfo marks unverified under a concrete list") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(idpAuthConfig(listOf("contoso.com"))),
+						authTestSecrets(idpSecrets),
+						oidcIdpMockEngine("""{"sub":"u1","email":"alice@contoso.com","email_verified":false}"""),
+					)
+				}
+
+				val callback = completeLogin("idp")
+
+				callback.status shouldBe HttpStatusCode.Forbidden
+				callback.errorCode() shouldBe "EMAIL_NOT_VERIFIED"
+			}
+		}
+	}
+
+	test("OIDC callback admits an address UserInfo marks verified in Cognito's string form") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(idpAuthConfig(listOf("contoso.com"))),
+						authTestSecrets(idpSecrets),
+						oidcIdpMockEngine("""{"sub":"u1","email":"alice@contoso.com","email_verified":"true"}"""),
+					)
+				}
+
+				val callback = completeLogin("idp")
+
+				callback.status shouldBe HttpStatusCode.OK
+				val user = Json.parseToJsonElement(callback.bodyAsText()).jsonObject["user"]?.jsonObject
+				user?.get("email")?.jsonPrimitive?.content shouldBe "alice@contoso.com"
+			}
+		}
+	}
+
+	test("OIDC callback refuses an address UserInfo says nothing about under a concrete list") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(idpAuthConfig(listOf("contoso.com"))),
+						authTestSecrets(idpSecrets),
+						oidcIdpMockEngine("""{"sub":"u1","email":"alice@contoso.com"}"""),
+					)
+				}
+
+				val callback = completeLogin("idp")
+
+				callback.status shouldBe HttpStatusCode.Forbidden
+				callback.errorCode() shouldBe "EMAIL_NOT_VERIFIED"
+			}
+		}
+	}
+
+	test("OIDC callback admits an address UserInfo says nothing about when the provider assumes verification") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(idpAuthConfig(listOf("contoso.com"), assumeEmailVerified = true)),
+						authTestSecrets(idpSecrets),
+						oidcIdpMockEngine("""{"sub":"u1","email":"alice@contoso.com"}"""),
+					)
+				}
+
+				completeLogin("idp").status shouldBe HttpStatusCode.OK
+			}
+		}
+	}
+
+	test("OIDC callback admits an address UserInfo marks unverified under the wildcard") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(idpAuthConfig(listOf("*"))),
+						authTestSecrets(idpSecrets),
+						oidcIdpMockEngine("""{"sub":"u1","email":"alice@contoso.com","email_verified":false}"""),
+					)
+				}
+
+				completeLogin("idp").status shouldBe HttpStatusCode.OK
+			}
+		}
+	}
+
+	test("OIDC callback judges the address the verified id_token signed, and puts it in the session") {
+		withTempSessionsDb {
+			withJwksServer { jwksUri ->
+				testApplication {
+					val idToken = signTestIdToken(
+						"https://idp.example",
+						mapOf("email" to "alice@contoso.com", "email_verified" to true),
+					)
+					application {
+						module(
+							authTestConfig(idpAuthConfig(listOf("contoso.com"), verifyIdToken = true)),
+							authTestSecrets(idpSecrets),
+							oidcIdpMockEngine(
+								"""{"sub":"u1","email":"mallory@fabrikam.com","email_verified":true}""",
+								idToken = idToken,
+								jwksUri = jwksUri,
+							),
+						)
+					}
+
+					val callback = completeLogin("idp")
+
+					callback.status shouldBe HttpStatusCode.OK
+					val user = Json.parseToJsonElement(callback.bodyAsText()).jsonObject["user"]?.jsonObject
+					user?.get("email")?.jsonPrimitive?.content shouldBe "alice@contoso.com"
+				}
+			}
+		}
+	}
+
+	test("OIDC callback hands a browser login the address the verified id_token signed") {
+		withTempSessionsDb {
+			withJwksServer { jwksUri ->
+				testApplication {
+					val idToken = signTestIdToken(
+						"https://idp.example",
+						mapOf("email" to "alice@contoso.com", "email_verified" to true),
+					)
+					application {
+						module(
+							authTestConfig(
+								idpAuthConfig(listOf("contoso.com"), verifyIdToken = true)
+									.copy(allowedRedirectUris = listOf("https://app.example.com/")),
+							),
+							authTestSecrets(idpSecrets),
+							oidcIdpMockEngine(
+								"""{"sub":"u1","email":"mallory@fabrikam.com","email_verified":true}""",
+								idToken = idToken,
+								jwksUri = jwksUri,
+							),
+						)
+					}
+					val verifier = "handoff-verifier-string-kept-by-the-client"
+					val challenge = Base64.getUrlEncoder().withoutPadding().encodeToString(
+						MessageDigest.getInstance("SHA-256").digest(verifier.toByteArray(Charsets.US_ASCII)),
+					)
+					val noRedirect = createClient { followRedirects = false }
+
+					val redirect = noRedirect.get("/auth/redirect/idp") {
+						url {
+							parameters.append("returnTo", "https://app.example.com/")
+							parameters.append("handoffChallenge", challenge)
+						}
+					}
+					val state = Url(redirect.headers["Location"]!!).parameters["state"]
+					state.shouldNotBeNull()
+					val callback = noRedirect.get("/auth/callback/idp") {
+						url {
+							parameters.append("code", "authorization-code-from-idp")
+							parameters.append("state", state)
+						}
+					}
+					callback.status shouldBe HttpStatusCode.Found
+					val code = Url(callback.headers["Location"]!!).parameters["code"]
+					code.shouldNotBeNull()
+
+					val exchange = client.post("/auth/exchange") {
+						contentType(ContentType.Application.Json)
+						setBody("""{"code":"$code","codeVerifier":"$verifier"}""")
+					}
+
+					exchange.status shouldBe HttpStatusCode.OK
+					val user = Json.parseToJsonElement(exchange.bodyAsText()).jsonObject["user"]?.jsonObject
+					user?.get("email")?.jsonPrimitive?.content shouldBe "alice@contoso.com"
+				}
+			}
+		}
+	}
+
+	test("OIDC callback refuses an address the verified id_token marks unverified although UserInfo vouches for it") {
+		withTempSessionsDb {
+			withJwksServer { jwksUri ->
+				testApplication {
+					val idToken = signTestIdToken(
+						"https://idp.example",
+						mapOf("email" to "alice@contoso.com", "email_verified" to false),
+					)
+					application {
+						module(
+							authTestConfig(idpAuthConfig(listOf("contoso.com"), verifyIdToken = true)),
+							authTestSecrets(idpSecrets),
+							oidcIdpMockEngine(
+								"""{"sub":"u1","email":"alice@contoso.com","email_verified":true}""",
+								idToken = idToken,
+								jwksUri = jwksUri,
+							),
+						)
+					}
+
+					val callback = completeLogin("idp")
+
+					callback.status shouldBe HttpStatusCode.Forbidden
+					callback.errorCode() shouldBe "EMAIL_NOT_VERIFIED"
+				}
+			}
+		}
+	}
+
+	/**
+	 * Auth config with one Microsoft provider for the single tenant `contoso.onmicrosoft.com`,
+	 * restricted to `contoso.com`, verifying its id_tokens.
+	 */
+	fun microsoftAuthConfig() = authConfig.copy(
+		providers = listOf(
+			OidcProviderConfig(
+				name = "microsoft",
+				preset = SsoProviderPreset.MICROSOFT,
+				tenantId = "contoso.onmicrosoft.com",
+				clientId = "test-client-id",
+				allowedEmailDomains = listOf("contoso.com"),
+			),
+		),
+		oauthStateSecret = oauthStateSecret,
+	)
+
+	val microsoftDiscoveryUrl =
+		"https://login.microsoftonline.com/contoso.onmicrosoft.com/v2.0/.well-known/openid-configuration"
+	val microsoftIssuer = "https://login.microsoftonline.com/00000000-0000-0000-0000-00000000c0de/v2.0"
+
+	test("OIDC callback admits a Microsoft user whose id_token carries xms_edov") {
+		withTempSessionsDb {
+			withJwksServer { jwksUri ->
+				testApplication {
+					val idToken = signTestIdToken(
+						microsoftIssuer,
+						mapOf("email" to "alice@contoso.com", "xms_edov" to true),
+					)
+					application {
+						module(
+							authTestConfig(microsoftAuthConfig()),
+							authTestSecrets(mapOf("microsoft" to "ms-client-secret".sensitive())),
+							oidcIdpMockEngine(
+								"""{"sub":"u1","email":"alice@contoso.com"}""",
+								idToken = idToken,
+								discoveryUrl = microsoftDiscoveryUrl,
+								issuer = microsoftIssuer,
+								jwksUri = jwksUri,
+							),
+						)
+					}
+
+					completeLogin("microsoft").status shouldBe HttpStatusCode.OK
+				}
+			}
+		}
+	}
+
+	test("OIDC callback refuses a Microsoft user whose id_token lacks xms_edov") {
+		withTempSessionsDb {
+			withJwksServer { jwksUri ->
+				testApplication {
+					val idToken = signTestIdToken(microsoftIssuer, mapOf("email" to "alice@contoso.com"))
+					application {
+						module(
+							authTestConfig(microsoftAuthConfig()),
+							authTestSecrets(mapOf("microsoft" to "ms-client-secret".sensitive())),
+							oidcIdpMockEngine(
+								"""{"sub":"u1","email":"alice@contoso.com"}""",
+								idToken = idToken,
+								discoveryUrl = microsoftDiscoveryUrl,
+								issuer = microsoftIssuer,
+								jwksUri = jwksUri,
+							),
+						)
+					}
+
+					val callback = completeLogin("microsoft")
+
+					callback.status shouldBe HttpStatusCode.Forbidden
+					callback.errorCode() shouldBe "EMAIL_NOT_VERIFIED"
+				}
+			}
+		}
+	}
+
+	test("OIDC callback judges the domain before verification, so an unverified outsider learns only the domain refusal") {
+		withTempSessionsDb {
+			testApplication {
+				application {
+					module(
+						authTestConfig(idpAuthConfig(listOf("contoso.com"))),
+						authTestSecrets(idpSecrets),
+						oidcIdpMockEngine("""{"sub":"u1","email":"eve@fabrikam.com","email_verified":false}"""),
+					)
+				}
+
+				val callback = completeLogin("idp")
+
+				callback.status shouldBe HttpStatusCode.Forbidden
+				callback.errorCode() shouldBe "DOMAIN_NOT_ALLOWED"
 			}
 		}
 	}
