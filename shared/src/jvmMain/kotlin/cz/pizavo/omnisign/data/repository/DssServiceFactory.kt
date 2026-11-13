@@ -377,8 +377,8 @@ class DssServiceFactory(
 	 *
 	 * The signing, extension and validation verifiers need them whether or not they check
 	 * revocation: without an anchor DSS trusts no chain, and a correctly signed document comes back
-	 * `NO_CERTIFICATE_CHAIN_FOUND`. Turning revocation checking off leaves out only the OCSP and CRL
-	 * sources and the alerts about revocation data.
+	 * `NO_CERTIFICATE_CHAIN_FOUND`. Turning revocation checking off removes the OCSP and CRL sources
+	 * and silences the alerts each builder names, but it keeps the anchors.
 	 *
 	 * @return The loading warnings of the trusted lists [config] uses; none without a config.
 	 */

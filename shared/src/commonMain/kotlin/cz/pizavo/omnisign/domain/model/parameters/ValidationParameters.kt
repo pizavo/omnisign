@@ -46,8 +46,9 @@ enum class RawReportFormat {
  *   configuration names a trusted list to use. The web target ignores this field and resolves
  *   server-side from [profileName] and the per-request override sets below.
  * @property profileName Optional name of a server-side configuration profile to apply. Used by
- *   the web target's `RemoteValidationRepository` to drive server-side resolution; JVM impls
- *   ignore it when [resolvedConfig] is already populated.
+ *   the web target's `RemoteValidationRepository` to drive server-side resolution. The JVM
+ *   repository never reads it: it takes the profile from [resolvedConfig], and without one it uses
+ *   no profile at all.
  * @property disabledHashAlgorithms Per-request strictly-tightening overrides for the hash
  *   algorithms the operation refuses. Sent as the `disableHashAlgorithm` multipart field by the
  *   web target; merged into the resolved config server-side.
