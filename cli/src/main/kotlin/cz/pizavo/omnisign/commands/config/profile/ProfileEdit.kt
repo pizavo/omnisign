@@ -114,7 +114,10 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 	).flag(default = false)
 	private val algoExpiryOverride by option(
 		"--algo-expiry-override",
-		help = "Per-algorithm expiration date override: ALGORITHM=DATE (e.g. RIPEMD160=2030-01-01). Repeatable."
+		help = "Per-algorithm expiration date override: ALGORITHM=DATE, or ALGORITHM:KEY_SIZE=DATE " +
+				"for one key-size entry of an algorithm the policy dates by key size, such as RSA " +
+				"(e.g. RIPEMD160=2030-01-01, RSA:1900=2030-12-31). Without KEY_SIZE, such an " +
+				"algorithm's dates can only be moved earlier. Repeatable."
 	).multiple()
 	private val clearAlgoExpiryOverrides by option(
 		"--clear-algo-expiry-overrides",

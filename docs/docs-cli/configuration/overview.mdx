@@ -73,7 +73,7 @@ omnisign config set [options]
 | `--use-eu-lotl <bool>`                         | Enable/disable the EU List of Trusted Lists                     |
 | `--algo-expiration-level <level>`              | Severity when an algorithm's expiration date has passed         |
 | `--algo-expiration-level-after-update <level>` | Severity after the policy update date                           |
-| `--algo-expiry-override <ALG=DATE>`            | Per-algorithm expiration date override (repeatable)             |
+| `--algo-expiry-override <ALG[:SIZE]=DATE>`     | Per-algorithm expiration date override (repeatable)             |
 | `--disable-hash-algorithm <alg>`               | Globally disable a hash algorithm. Repeatable.                  |
 | `--enable-hash-algorithm <alg>`                | Re-enable a globally disabled hash algorithm. Repeatable.       |
 | `--disable-encryption-algorithm <alg>`         | Globally disable an encryption algorithm. Repeatable.           |
@@ -89,6 +89,33 @@ omnisign config set \
   --signature-level PADES_BASELINE_LTA \
   --timestamp-url https://tsa.example.com/tsr \
   --use-eu-lotl true
+```
+
+### Expiration date overrides
+
+`--algo-expiry-override` changes the date after which the validation policy no longer accepts an
+algorithm. Dates are written as `YYYY-MM-DD`.
+
+- A hash algorithm takes `ALGORITHM=DATE`, such as `RIPEMD160=2030-01-01`. The date may be earlier
+  or later than the policy's, and it also applies to the check made before signing.
+- The policy dates RSA, RSASSA-PSS, DSA, ECDSA and PLAIN-ECDSA by key size. Each of its entries
+  covers keys of at least that size, and a key stays acceptable until the latest date among the
+  entries that cover it. In the default policy of DSS 6.5.1, a 2048-bit RSA key is acceptable until
+  2027-01-01, the date of the 1900-bit entry, and a 3072-bit key until 2035-01-01, that of the
+  3000-bit entry. `ALGORITHM:KEY_SIZE=DATE`, such as `RSA:1900=2030-12-31`, changes the entry for
+  that key size, or adds one when the policy has none.
+- `ALGORITHM=DATE` for an algorithm dated by key size, such as `RSA=2030-12-31`, gives its date to
+  every entry dated later, or not dated at all. It only ever moves dates earlier, so it can never
+  make a weak key acceptable again. It applies after any `ALGORITHM:KEY_SIZE` overrides, so it
+  bounds them too.
+- An algorithm dated by key size can be named in any spelling DSS reads it by, such as
+  `PLAIN_ECDSA` for `PLAIN-ECDSA` or `EC` for `ECDSA`. A hash algorithm is named the way the policy
+  names it, such as `SHA3-256`.
+
+```bash
+omnisign config set \
+  --algo-expiry-override RSA:1900=2030-12-31 \
+  --algo-expiry-override RIPEMD160=2030-01-01
 ```
 
 ## `config export`

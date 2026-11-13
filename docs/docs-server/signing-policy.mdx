@@ -65,7 +65,7 @@ global:
     #   expirationLevel: FAIL           # FAIL | WARN | INFORM | IGNORE
     #   expirationLevelAfterUpdate: WARN
     #   policyUpdateDate: "2026-02-01"
-    #   expirationDateOverrides: { SHA512: "2035-01-01" }
+    #   expirationDateOverrides: { SHA512: "2035-01-01", "RSA:1900": "2030-12-31" }
 
   # customPkcs11Libraries:              # only when the server signs with a PKCS#11 token
   #   - { name: "vendor-token", path: "/usr/lib/vendor-pkcs11.so" }
@@ -82,6 +82,13 @@ downloaded is still served from the copy in the server's trusted-list cache, how
 validation reports name it as not refreshed. The server then tries to download it again every
 5 minutes, up to 6 times, before going back to the interval. The freshness check counts from when
 a list was last loaded, so it does not flag such a copy; the report's notice does.
+
+A key in `algorithmConstraints.expirationDateOverrides` is an algorithm name, or `NAME:KEY_SIZE`
+for one key-size entry of an algorithm the validation policy dates by key size, such as
+`"RSA:1900"` (quoted, because of the colon). A bare name of such an algorithm only moves its
+dates earlier, so it never makes a weak key acceptable again. The CLI's
+[expiration date overrides](/cli/configuration/overview#expiration-date-overrides) section explains
+how the entries combine.
 
 **`PADES_BASELINE_T` cannot be configured** — neither as `global.defaultSignatureLevel` nor as a
 profile's `signatureLevel`. The server rejects it at startup and points you to `PADES_BASELINE_LT`.

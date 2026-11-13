@@ -121,9 +121,12 @@ global:
     #   expirationLevelAfterUpdate: WARN
     #   # ISO-8601 date; when omitted the DSS built-in applies (2026-02-01 in DSS 6.5.1).
     #   policyUpdateDate: "2026-02-01"
-    #   # Per-algorithm expiration overrides (algorithm name -> ISO-8601 date).
+    #   # Per-algorithm expiration overrides (algorithm name -> ISO-8601 date). For an algorithm
+    #   # dated by key size, such as RSA or ECDSA, "NAME:KEY_SIZE" sets one key-size entry; a bare
+    #   # name only moves its dates earlier.
     #   expirationDateOverrides:
     #     SHA512: "2035-01-01"
+    #     "RSA:1900": "2030-12-31"
 
   # Extra PKCS#11 middleware libraries the OS autodiscovery cannot find. Relevant only when
   # the server signs with a PKCS#11 token.
