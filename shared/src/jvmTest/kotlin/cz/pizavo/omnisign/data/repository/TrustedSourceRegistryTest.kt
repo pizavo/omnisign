@@ -72,9 +72,12 @@ import eu.europa.esig.dss.enumerations.SignatureLevel as DssSignatureLevel
  *
  * Last, it verifies that a custom list configured with a signing certificate supplies trust only
  * while its signature verifies against that certificate, that the warning and the log say so when
- * it does not, and that a list configured without one is used whatever its signature. These lists
- * are compiled by [TrustedListCompiler], signed or left unsigned by the test, read from `file:`
- * URLs and cached in a directory of the spec's own, so they reach no network either.
+ * it does not, and that a list configured without one is used whatever its signature. A list left
+ * out supplies trust again once the reason is gone, even when its copy has not changed, and after a
+ * hard refresh the scheduled refresh carries on from the copies the hard refresh loaded, reading
+ * them from the cache again. These lists are compiled by [TrustedListCompiler], signed or left
+ * unsigned by the test, read from `file:` URLs and cached in a directory of the spec's own, so they
+ * reach no network either.
  */
 class TrustedSourceRegistryTest : FunSpec({
 
@@ -454,6 +457,88 @@ class TrustedSourceRegistryTest : FunSpec({
 		val aboutSignature = events.filter { it.formattedMessage.contains("signature could not be verified") }
 		aboutSignature.map { it.level } shouldBe listOf(Level.WARN, Level.DEBUG, Level.DEBUG)
 		aboutSignature.first().formattedMessage shouldContain url
+	}
+
+	/** The certificates [registry] supplies to an operation that uses [config]. */
+	fun certificatesUsed(registry: TrustedSourceRegistry, config: ResolvedConfig): List<CertificateToken> =
+		CommonCertificateVerifier().also { registry.composeInto(it, config) }.trustedCertSources.certificates
+
+	test("a list left out for its signing certificate supplies trust once that certificate file is corrected") {
+		val signer = generateKeyPair()
+		val signerCertificate = selfSignedCertificate(signer, "TL Signer")
+		val listed = generateSelfSignedCert()
+		val url = listUrl("corrected.xml", signed(compiledList(listed), signer, signerCertificate))
+		val certificatePath = derFile("corrected-signer.der", generateSelfSignedCert())
+		val config = customListConfig("corrected-tl", url, certificatePath)
+		val registry = isolatedRegistry()
+		registry.composeInto(CommonCertificateVerifier(), config) shouldBe listOf(unverifiedSignatureWarning(url))
+
+		File(certificatePath).writeBytes(signerCertificate.encoded)
+		registry.refreshAll()
+
+		val cv = CommonCertificateVerifier()
+		registry.composeInto(cv, config).shouldBeEmpty()
+		cv.trustedCertSources.certificates shouldBe listOf(CertificateToken(listed))
+	}
+
+	test("a list a hard refresh could not verify supplies trust again from the next refresh that can") {
+		val signer = generateKeyPair()
+		val signerCertificate = selfSignedCertificate(signer, "TL Signer")
+		val listed = generateSelfSignedCert()
+		val signedXml = signed(compiledList(listed), signer, signerCertificate)
+		val listedBase64 = Base64.getEncoder().encodeToString(listed.encoded)
+		val file = File(listDir, "restored.xml").apply { writeText(signedXml) }
+		val config = customListConfig("restored-tl", file.toURI().toString(), derFile("restored-signer.der", signerCertificate))
+		val registry = isolatedRegistry().apply { cacheExpirationMillis = 0 }
+		certificatesUsed(registry, config) shouldBe listOf(CertificateToken(listed))
+
+		file.writeText(signedXml.replace(listedBase64, Base64.getEncoder().encodeToString(generateSelfSignedCert().encoded)))
+		registry.forceRefreshAll().shouldBeInstanceOf<TrustedListRefreshFailure.CustomList>()
+		file.writeText(signedXml)
+		registry.refreshAll()
+
+		val cv = CommonCertificateVerifier()
+		registry.composeInto(cv, config).shouldBeEmpty()
+		cv.trustedCertSources.certificates shouldBe listOf(CertificateToken(listed))
+	}
+
+	test("after a hard refresh, the scheduled refresh notices the list going back to the copy loaded before it") {
+		val signer = generateKeyPair()
+		val signerCertificate = selfSignedCertificate(signer, "TL Signer")
+		val first = generateSelfSignedCert()
+		val second = generateSelfSignedCert()
+		val firstXml = signed(compiledList(first), signer, signerCertificate)
+		val file = File(listDir, "reverted.xml").apply { writeText(firstXml) }
+		val config = customListConfig("reverted-tl", file.toURI().toString(), derFile("reverted-signer.der", signerCertificate))
+		val registry = isolatedRegistry().apply { cacheExpirationMillis = 0 }
+		certificatesUsed(registry, config) shouldBe listOf(CertificateToken(first))
+
+		file.writeText(signed(compiledList(second), signer, signerCertificate))
+		registry.forceRefreshAll() shouldBe null
+		certificatesUsed(registry, config) shouldBe listOf(CertificateToken(second))
+		file.writeText(firstXml)
+		registry.refreshAll()
+
+		certificatesUsed(registry, config) shouldBe listOf(CertificateToken(first))
+	}
+
+	test("after a hard refresh, the scheduled refresh reads the lists from the cache again") {
+		val signer = generateKeyPair()
+		val signerCertificate = selfSignedCertificate(signer, "TL Signer")
+		val hardRefreshed = generateSelfSignedCert()
+		val file = File(listDir, "recached.xml").apply {
+			writeText(signed(compiledList(generateSelfSignedCert()), signer, signerCertificate))
+		}
+		val config = customListConfig("recached-tl", file.toURI().toString(), derFile("recached-signer.der", signerCertificate))
+		val registry = isolatedRegistry()
+		registry.composeInto(CommonCertificateVerifier(), config).shouldBeEmpty()
+
+		file.writeText(signed(compiledList(hardRefreshed), signer, signerCertificate))
+		registry.forceRefreshAll() shouldBe null
+		file.writeText(signed(compiledList(generateSelfSignedCert()), signer, signerCertificate))
+		registry.refreshAll()
+
+		certificatesUsed(registry, config) shouldBe listOf(CertificateToken(hardRefreshed))
 	}
 }) {
 	companion object {
