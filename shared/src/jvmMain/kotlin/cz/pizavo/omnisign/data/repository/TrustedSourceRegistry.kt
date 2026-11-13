@@ -246,7 +246,7 @@ class TrustedSourceRegistry(
 		val sources = mutableListOf<CertificateSource>()
 		val warnings = mutableListOf<LocalizableText>()
 
-		if (validation.useEuLotl) {
+		if (validation.useEuLotl != false) {
 			val entry = acquireLotl()
 			sources += entry.source
 			warnings += entry.warnings

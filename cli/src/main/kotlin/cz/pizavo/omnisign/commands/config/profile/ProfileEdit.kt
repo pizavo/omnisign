@@ -239,29 +239,27 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 	}
 	
 	/**
-	 * Resolve the patched validation config field, merging any algo constraint options
-	 * onto the existing value.
+	 * Resolve the patched validation config field. [validationPolicy] sets the policy type, and
+	 * [clearValidationPolicy] unsets it together with the profile's custom policy file, so the
+	 * profile inherits the global policy again. The algorithm constraint options are merged onto
+	 * the existing value, which is re-stamped only when one of them is given. Everything else in the
+	 * profile's validation section, such as its trusted lists, is kept, and a section left with
+	 * nothing set is dropped.
 	 */
-	@Suppress("CyclomaticComplexMethod", "ReturnCount")
 	private fun patchValidation(existing: ProfileConfig): ValidationConfig? {
-		val hasAlgoConstraints = algoExpirationLevel != null ||
+		val changesAlgoConstraints = algoExpirationLevel != null ||
 				algoExpirationLevelAfterUpdate != null ||
-				algoExpiryOverride.isNotEmpty() || clearAlgoExpiryOverrides
-		
-		if (clearValidationPolicy && !hasAlgoConstraints && !clearAlgoConstraints) return null
-		if (validationPolicy == null && !hasAlgoConstraints && !clearAlgoConstraints) {
+				algoExpiryOverride.isNotEmpty() || clearAlgoExpiryOverrides || clearAlgoConstraints
+		if (validationPolicy == null && !clearValidationPolicy && !changesAlgoConstraints) {
 			return existing.validation
 		}
 		
 		val base = existing.validation ?: ValidationConfig()
 		return base.copy(
-			policyType = when {
-				clearValidationPolicy -> ValidationConfig().policyType
-				validationPolicy != null -> validationPolicy!!
-				else -> base.policyType
-			},
-			algorithmConstraints = patchAlgorithmConstraints(base)
-		)
+			policyType = if (clearValidationPolicy) null else validationPolicy ?: base.policyType,
+			customPolicyPath = if (clearValidationPolicy) null else base.customPolicyPath,
+			algorithmConstraints = if (changesAlgoConstraints) patchAlgorithmConstraints(base) else base.algorithmConstraints,
+		).takeUnless { it == ValidationConfig() }
 	}
 	
 	/**

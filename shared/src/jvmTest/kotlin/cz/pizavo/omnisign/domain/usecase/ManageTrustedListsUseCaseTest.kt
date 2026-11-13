@@ -88,6 +88,19 @@ class ManageTrustedListsUseCaseTest : FunSpec({
 		saved.captured.profiles["p1"]?.validation?.customTrustedLists?.shouldHaveSize(1)
 	}
 
+	test("addTrustedList gives a profile without validation settings only the list, so it inherits the rest") {
+		val config = baseConfig.copy(
+			profiles = mapOf("p1" to ProfileConfig(name = "p1"))
+		)
+		coEvery { configRepository.getCurrentConfig() } returns config
+		val saved = slot<AppConfig>()
+		coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+
+		useCase.addTrustedList(tl("profile-tl"), profileName = "p1").shouldBeRight()
+
+		saved.captured.profiles["p1"]?.validation shouldBe ValidationConfig(customTrustedLists = listOf(tl("profile-tl")))
+	}
+
 	test("addTrustedList returns error for unknown profile") {
 		coEvery { configRepository.getCurrentConfig() } returns baseConfig
 
@@ -140,6 +153,39 @@ class ManageTrustedListsUseCaseTest : FunSpec({
 		useCase.removeTrustedList("nonexistent", profileName = "p1")
 			.shouldBeLeft()
 			.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+	}
+
+	test("removeTrustedList drops a profile's validation section once its last list is removed") {
+		val config = baseConfig.copy(
+			profiles = mapOf(
+				"p1" to ProfileConfig(name = "p1", validation = ValidationConfig(customTrustedLists = listOf(tl("only")))),
+			)
+		)
+		coEvery { configRepository.getCurrentConfig() } returns config
+		val saved = slot<AppConfig>()
+		coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+
+		useCase.removeTrustedList("only", profileName = "p1").shouldBeRight()
+
+		saved.captured.profiles.getValue("p1").validation shouldBe null
+	}
+
+	test("removeTrustedList keeps a profile's other validation settings after its last list is removed") {
+		val config = baseConfig.copy(
+			profiles = mapOf(
+				"p1" to ProfileConfig(
+					name = "p1",
+					validation = ValidationConfig(useEuLotl = false, customTrustedLists = listOf(tl("only"))),
+				),
+			)
+		)
+		coEvery { configRepository.getCurrentConfig() } returns config
+		val saved = slot<AppConfig>()
+		coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+
+		useCase.removeTrustedList("only", profileName = "p1").shouldBeRight()
+
+		saved.captured.profiles.getValue("p1").validation shouldBe ValidationConfig(useEuLotl = false)
 	}
 
 	test("listTrustedLists returns global list") {

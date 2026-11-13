@@ -1,18 +1,25 @@
 package cz.pizavo.omnisign.ui.model
 
+import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
+import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
+import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import cz.pizavo.omnisign.lumo.components.TriToggleState
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import kotlin.time.Instant
 
 /**
- * Unit tests for [ProfileEditState] computed properties and TriToggleState mapping.
+ * Unit tests for [ProfileEditState] computed properties, TriToggleState mapping, and how the
+ * profile it saves resolves against the global configuration.
  */
 class ProfileEditStateTest : FunSpec({
 
@@ -126,6 +133,28 @@ class ProfileEditStateTest : FunSpec({
 		val original = ProfileConfig(name = "p", signatureLevel = null)
 		val state = ProfileEditState.from(original)
 		state.toProfileConfig().signatureLevel.shouldBeNull()
+	}
+
+	test("a profile saved with its own trusted list keeps the global policy, revocation and EU LOTL settings") {
+		val state = ProfileEditState(
+			profileName = "internal",
+			customTrustedLists = listOf(CustomTrustedListConfig(name = "corp", source = "https://example.com/corp.xml")),
+		)
+		val global = GlobalConfig(
+			validation = ValidationConfig(
+				policyType = ValidationPolicyType.CUSTOM_FILE,
+				checkRevocation = false,
+				useEuLotl = false,
+			),
+		)
+
+		val resolved = ResolvedConfig.resolve(global, state.toProfileConfig(), operationOverrides = null)
+			.getOrNull().shouldNotBeNull().validation
+
+		resolved.policyType shouldBe ValidationPolicyType.CUSTOM_FILE
+		resolved.checkRevocation shouldBe false
+		resolved.useEuLotl shouldBe false
+		resolved.customTrustedLists.map { it.name } shouldBe listOf("corp")
 	}
 
 	test("contentEquals detects change in signatureTimestampOverride") {

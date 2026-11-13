@@ -13,6 +13,7 @@ import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.value.sensitive
@@ -208,6 +209,17 @@ class ConfigSerializerTest : FunSpec({
 		}
 	}
 
+	test("every format leaves unset settings out instead of writing null, so an older build reads its own defaults") {
+		for (serializer in serializers) {
+			val text = serializer.serializeApp(AppConfig()).shouldBeRight()
+
+			text shouldNotContain "policyType"
+			text shouldNotContain "checkRevocation"
+			text shouldNotContain "useEuLotl"
+			text shouldNotContain "null"
+		}
+	}
+
 	test("every format round-trips a populated AppConfig unchanged") {
 		for (serializer in serializers) {
 			val text = serializer.serializeApp(populatedApp).shouldBeRight()
@@ -215,7 +227,7 @@ class ConfigSerializerTest : FunSpec({
 		}
 	}
 
-	test("XML reads a default AppConfig as exported before the move to Jackson 3") {
+	test("XML reads a default AppConfig as exported before the move to Jackson 3, keeping the validation values it spells out") {
 		val exported = """
 			<AppConfig>
 			  <global>
@@ -255,7 +267,15 @@ class ConfigSerializerTest : FunSpec({
 			</AppConfig>
 		""".trimIndent()
 
-		XmlConfigSerializer().deserializeApp(exported).shouldBeRight() shouldBe AppConfig()
+		XmlConfigSerializer().deserializeApp(exported).shouldBeRight() shouldBe AppConfig(
+			global = GlobalConfig(
+				validation = ValidationConfig(
+					policyType = ValidationPolicyType.DEFAULT_ETSI,
+					checkRevocation = true,
+					useEuLotl = true,
+				),
+			),
+		)
 	}
 
 	test("XML reads an empty set element as an empty set, however it is written") {

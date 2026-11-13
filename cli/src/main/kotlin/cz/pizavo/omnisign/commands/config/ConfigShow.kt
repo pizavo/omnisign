@@ -5,6 +5,7 @@ import com.github.ajalt.clikt.core.Context
 import arrow.core.getOrElse
 import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
+import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.service.AlgorithmExpirationChecker
@@ -37,9 +38,9 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 				echo("  Default signature level     : ${config.global.defaultSignatureLevel}")
 				val tsp = config.global.timestampServer
 				echo("  Timestamp server       : ${tsp?.url ?: "not set"}")
-				echo("  Check revocation       : ${config.global.validation.checkRevocation}")
-				echo("  Validation policy      : ${config.global.validation.policyType}")
-				echo("  Use EU LOTL            : ${config.global.validation.useEuLotl}")
+				echo("  Check revocation       : ${config.global.validation.checkRevocation ?: "default (true)"}")
+				echo("  Validation policy      : ${config.global.validation.policyType ?: "default (${ValidationPolicyType.DEFAULT_ETSI})"}")
+				echo("  Use EU LOTL            : ${config.global.validation.useEuLotl ?: "default (true)"}")
 				echo("  TL refresh interval    : ${config.global.trustedListRefreshIntervalHours}h")
 				val ac = config.global.validation.algorithmConstraints
 				echo("  Algo expiry level      : ${ac.expirationLevel?.toString()
@@ -76,7 +77,7 @@ class ConfigShow : CliktCommand(name = "show"), KoinComponent {
 						profile.signatureLevel?.let { echo("    Sig level      : $it") }
 						profile.timestampServer?.let { echo("    Timestamp    : ${it.url}") }
 						profile.validation?.let {
-							echo("    Val policy     : ${it.policyType}")
+							echo("    Val policy     : ${it.policyType ?: "inherit"}")
 							val ac = it.algorithmConstraints
 							echo("    Algo expiry    : ${ac.expirationLevel?.toString() ?: "inherit"}")
 							echo("    After update   : ${ac.expirationLevelAfterUpdate?.toString() ?: "inherit"}")

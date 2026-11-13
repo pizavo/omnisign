@@ -6,6 +6,7 @@ import com.github.ajalt.clikt.testing.test
 import cz.pizavo.omnisign.Omnisign
 import cz.pizavo.omnisign.commands.config.ConfigSet
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
+import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
@@ -279,10 +280,59 @@ class ProfileEditTest : FunSpec({
 		updated.validation shouldBe existing.validation
 	}
 
-	test("drops the whole validation block when the policy alone is cleared") {
+	test("clears the policy alone and keeps the rest of the validation block") {
 		val updated = editProfile("--clear-validation-policy")
 
+		val validation = updated.validation.shouldNotBeNull()
+		validation.policyType shouldBe null
+		validation.algorithmConstraints shouldBe existing.validation?.algorithmConstraints
+	}
+
+	test("keeps the profile's trusted lists when the policy is cleared") {
+		val trustedLists = listOf(CustomTrustedListConfig(name = "corp", source = "file:///corp.xml"))
+		val base = existing.copy(
+			validation = ValidationConfig(policyType = ValidationPolicyType.CUSTOM_FILE, customTrustedLists = trustedLists),
+		)
+
+		val updated = editProfile("--clear-validation-policy", base = base)
+
+		updated.validation shouldBe ValidationConfig(customTrustedLists = trustedLists)
+	}
+
+	test("clears the profile's custom policy file together with its policy") {
+		val trustedLists = listOf(CustomTrustedListConfig(name = "corp", source = "file:///corp.xml"))
+		val base = existing.copy(
+			validation = ValidationConfig(
+				policyType = ValidationPolicyType.CUSTOM_FILE,
+				customPolicyPath = "/policies/profile-policy.xml",
+				customTrustedLists = trustedLists,
+			),
+		)
+
+		val updated = editProfile("--clear-validation-policy", base = base)
+
+		updated.validation shouldBe ValidationConfig(customTrustedLists = trustedLists)
+	}
+
+	test("drops a validation block that clearing the policy leaves empty") {
+		val base = existing.copy(validation = ValidationConfig(policyType = ValidationPolicyType.CUSTOM_FILE))
+
+		val updated = editProfile("--clear-validation-policy", base = base)
+
 		updated.validation shouldBe null
+	}
+
+	test("sets the policy alone without touching the algorithm constraints") {
+		val updated = editProfile("--validation-policy", "DEFAULT_ETSI")
+
+		updated.validation?.policyType shouldBe ValidationPolicyType.DEFAULT_ETSI
+		updated.validation?.algorithmConstraints shouldBe existing.validation?.algorithmConstraints
+	}
+
+	test("gives a profile without a validation block only the policy, inheriting every other setting") {
+		val updated = editProfile("--validation-policy", "DEFAULT_ETSI", base = existing.copy(validation = null))
+
+		updated.validation shouldBe ValidationConfig(policyType = ValidationPolicyType.DEFAULT_ETSI)
 	}
 
 	test("merges a new expiry override onto the existing ones") {

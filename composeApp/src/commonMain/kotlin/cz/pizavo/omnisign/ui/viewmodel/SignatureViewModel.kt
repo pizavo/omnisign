@@ -187,7 +187,7 @@ class SignatureViewModel(
                     operationOverrides = null,
                 ).getOrNull()
                 _requiredIds.value = resolvedConfig?.requiredTrustedSourceIds() ?: emptySet()
-                alertIfNotEuLotl = resolvedConfig?.validation?.let { it.useEuLotl && it.alertIfNotEuLotl == true } == true
+                alertIfNotEuLotl = resolvedConfig?.validation?.let { it.useEuLotl != false && it.alertIfNotEuLotl == true } == true
                 validateDocumentUseCase(
                     ValidationParameters(
                         inputBytes = document.data,
