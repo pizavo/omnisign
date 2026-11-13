@@ -70,7 +70,9 @@ operations:
 - **`SIGN`** exposes the server's signing certificates (and gates `GET /api/v1/certificates`). When
   enabled, the server logs a warning unless authentication is on, because every network-reachable
   client could otherwise sign. Restrict the usable certificates with `certificateAliases` for
-  defense-in-depth.
+  defense-in-depth. The server then signs only with a listed certificate: a request without a
+  `certificateAlias` uses the only listed alias, and when the list holds several, the request has
+  to name one.
 - **`TIMESTAMP`** exposes the server's pre-configured TSA via `POST /api/v1/timestamp` and
   `POST /api/v1/timestamp/inspect`.
 

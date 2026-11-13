@@ -146,10 +146,15 @@ operations:
   # signingKeystorePath: "/etc/omnisign/signing.p12"   # sign from a PKCS#12 file (see below)
 ```
 
+With `certificateAliases` set, a sign request that names no certificate signs with the only listed
+alias. When the list holds several, the request has to name one, and is otherwise rejected with
+`400 MISSING_CERTIFICATE_ALIAS`.
+
 `signingKeystorePath` lets the server sign from a PKCS#12 (`.p12`/`.pfx`) **file** instead of a
 PKCS#11 token/HSM. When set (with `SIGN` enabled), every sign request signs from this keystore, and
-`certificateAliases` selects the entry within it — a request omitting the alias uses the keystore's
-sole key. Its password comes from `OMNISIGN_SIGNING_KEYSTORE_PASSWORD` (see [Secrets](#secrets)).
+`certificateAliases` selects the entry within it — a request omitting the alias uses the only allowed
+alias, or the keystore's sole key when `certificateAliases` isn't set. Its password comes from
+`OMNISIGN_SIGNING_KEYSTORE_PASSWORD` (see [Secrets](#secrets)).
 Setting the path without `SIGN` in `allowed`, or pointing it at a missing file, is rejected at
 startup. Leave it unset for a PKCS#11/HSM-backed deployment. The keystore's certificate(s) are also
 surfaced through [`GET /api/v1/certificates`](/server/api/list-certificates) so remote clients can pick the
