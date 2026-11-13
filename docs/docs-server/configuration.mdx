@@ -266,6 +266,10 @@ Maximum upload size in bytes. Defaults to `104857600` (100 MB). The request that
 may be up to 1 MiB larger, for its form fields; a larger request body is answered with
 `413 Payload Too Large`.
 
+The server holds a document in memory while it validates, signs or timestamps it, and works on at
+most as many documents at once as it has processors. Further requests wait their turn, with their
+uploads on disk.
+
 ### `organizationName`
 
 Optional deploy-time branding label for the operator running this server (e.g.

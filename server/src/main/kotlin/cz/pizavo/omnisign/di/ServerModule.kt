@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.di
 
+import cz.pizavo.omnisign.api.DocumentOperationLimiter
 import cz.pizavo.omnisign.auth.EmptyCredentialStore
 import cz.pizavo.omnisign.auth.ExposedHandoffCodeStore
 import cz.pizavo.omnisign.auth.ExposedLoginRequestStore
@@ -38,13 +39,11 @@ import io.ktor.client.plugins.contentnegotiation.*
 import io.ktor.serialization.kotlinx.json.*
 import io.ktor.util.NonceManager
 import io.ktor.util.StatelessHmacNonceManager
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.serialization.json.Json
 import org.jetbrains.exposed.v1.jdbc.Database
 import org.koin.dsl.module
 import java.nio.file.Path
-import kotlin.coroutines.CoroutineContext
 
 /**
  * Server-specific Koin module.
@@ -70,7 +69,8 @@ import kotlin.coroutines.CoroutineContext
  *   validates or timestamps never opens the host's keychain. A signing server keeps the keyring
  *   store, because the PIN of a PIN-protected PKCS#11 token can come from nowhere else:
  *   [ServerPasswordCallback] cannot prompt.
- * - IO [CoroutineContext] for blocking work.
+ * - [DocumentOperationLimiter], which runs the document operations of the validation, signing and
+ *   timestamp routes off the engine's call threads, at most one per processor at a time.
  * - [HttpClient] (CIO engine) with JSON content-negotiation and per-stage timeouts
  *   ([HttpTimeout]) for OIDC discovery and user-info requests. The timeouts close the
  *   availability hit where a slow or hung IdP would otherwise pin a request thread
@@ -133,7 +133,7 @@ fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConf
 	single<ServerConfigLoader> { ServerConfigLoader() }
 	single<PasswordCallback> { ServerPasswordCallback() }
 	single<ConfigRepository> { ReadOnlyConfigRepository(signingConfig) }
-	single<CoroutineContext> { Dispatchers.IO }
+	single { DocumentOperationLimiter(Runtime.getRuntime().availableProcessors()) }
 
 	single<TrustStore> { FileTrustStore(serverTrustDir(serverConfig)) }
 	single { TrustReconciler(get()) }

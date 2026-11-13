@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.api.routes
 
+import cz.pizavo.omnisign.api.DocumentOperationLimiter
 import cz.pizavo.omnisign.api.deleteFileParts
 import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.extractTextField
@@ -77,6 +78,8 @@ import org.koin.ktor.ext.inject
  * timestamping-disabled provider from handing callers the opaque "no timestamp server configured"
  * failure deeper in the signing pipeline when no TSA was set up alongside the disabled operation.
  *
+ * The file is read and signed through the [DocumentOperationLimiter], off the engine's call threads.
+ *
  * On success the response is the signed PDF with `application/pdf` content type.
  * A `X-OmniSign-Result` header carries [SigningResultMeta] as JSON.
  */
@@ -85,6 +88,7 @@ fun Route.signingRoutes() {
 	val configRepository by inject<ConfigRepository>()
 	val serverConfig by inject<ServerConfig>()
 	val secrets by inject<ServerSecrets>()
+	val operationLimiter by inject<DocumentOperationLimiter>()
 
 	post("/api/v1/sign") {
 		if (!call.requireOperation(AllowedOperation.SIGN, serverConfig)) return@post
@@ -184,22 +188,26 @@ fun Route.signingRoutes() {
 			}
 
 			val signingKeystorePath = serverConfig.operations.signingKeystorePath
-			val parameters = SigningParameters(
-				inputBytes = filePart.file.readBytes(),
-				inputName = filePart.originalFileName ?: filePart.file.name,
-				certificateAlias = certificateAlias,
-				keystoreFile = signingKeystorePath,
-				keystorePassword = signingKeystorePath?.let { secrets.signingKeystorePassword },
-				hashAlgorithm = resolvedConfig.hashAlgorithm,
-				signatureLevel = signatureLevel,
-				reason = extractTextField(parts, "reason"),
-				location = extractTextField(parts, "location"),
-				contactInfo = extractTextField(parts, "contactInfo"),
-				addTimestamp = !noTimestamp,
-				resolvedConfig = resolvedConfig,
-			)
+			val outcome = operationLimiter.execute {
+				signUseCase(
+					SigningParameters(
+						inputBytes = filePart.file.readBytes(),
+						inputName = filePart.originalFileName ?: filePart.file.name,
+						certificateAlias = certificateAlias,
+						keystoreFile = signingKeystorePath,
+						keystorePassword = signingKeystorePath?.let { secrets.signingKeystorePassword },
+						hashAlgorithm = resolvedConfig.hashAlgorithm,
+						signatureLevel = signatureLevel,
+						reason = extractTextField(parts, "reason"),
+						location = extractTextField(parts, "location"),
+						contactInfo = extractTextField(parts, "contactInfo"),
+						addTimestamp = !noTimestamp,
+						resolvedConfig = resolvedConfig,
+					),
+				)
+			}
 
-			signUseCase(parameters).fold(
+			outcome.fold(
 				ifLeft = { error ->
 					throw OperationException(error)
 				},
