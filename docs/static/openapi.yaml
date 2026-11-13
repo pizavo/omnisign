@@ -227,8 +227,9 @@ paths:
           description: >
             Missing file, no certificate alias although the server allows several, malformed
             (non-PDF) document, an invalid algorithm name, more than one file part
-            (`TOO_MANY_FILES`), more than 32 parts (`TOO_MANY_PARTS`), or a body that is not
-            well-formed multipart (`MALFORMED_MULTIPART`).
+            (`TOO_MANY_FILES`), more than 32 parts (`TOO_MANY_PARTS`), a body that is not
+            well-formed multipart or has a part header line longer than 8 KiB
+            (`MALFORMED_MULTIPART`), or a `Content-Type` that cannot be parsed (`BAD_REQUEST`).
           content:
             application/json:
               schema:
@@ -331,8 +332,9 @@ paths:
         '400':
           description: >
             Missing file, an invalid `formats`/algorithm name, more than one file part
-            (`TOO_MANY_FILES`), more than 32 parts (`TOO_MANY_PARTS`), or a body that is not
-            well-formed multipart (`MALFORMED_MULTIPART`).
+            (`TOO_MANY_FILES`), more than 32 parts (`TOO_MANY_PARTS`), a body that is not
+            well-formed multipart or has a part header line longer than 8 KiB
+            (`MALFORMED_MULTIPART`), or a `Content-Type` that cannot be parsed (`BAD_REQUEST`).
           content:
             application/json:
               schema:
@@ -404,8 +406,9 @@ paths:
         '400':
           description: >
             Missing file, malformed (non-PDF) document, an invalid algorithm name, more than one
-            file part (`TOO_MANY_FILES`), more than 32 parts (`TOO_MANY_PARTS`), or a body that
-            is not well-formed multipart (`MALFORMED_MULTIPART`).
+            file part (`TOO_MANY_FILES`), more than 32 parts (`TOO_MANY_PARTS`), a body that is
+            not well-formed multipart or has a part header line longer than 8 KiB
+            (`MALFORMED_MULTIPART`), or a `Content-Type` that cannot be parsed (`BAD_REQUEST`).
           content:
             application/json:
               schema:
@@ -462,7 +465,9 @@ paths:
         '400':
           description: >
             Missing file, more than one file part (`TOO_MANY_FILES`), more than 32 parts
-            (`TOO_MANY_PARTS`), or a body that is not well-formed multipart (`MALFORMED_MULTIPART`).
+            (`TOO_MANY_PARTS`), a body that is not well-formed multipart or has a part header line
+            longer than 8 KiB (`MALFORMED_MULTIPART`), or a `Content-Type` that cannot be parsed
+            (`BAD_REQUEST`).
           content:
             application/json:
               schema:

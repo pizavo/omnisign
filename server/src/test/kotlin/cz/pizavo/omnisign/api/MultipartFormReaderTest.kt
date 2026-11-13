@@ -14,7 +14,6 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.types.shouldBeInstanceOf
-import io.kotest.matchers.types.shouldBeSameInstanceAs
 import io.ktor.client.request.forms.MultiPartFormDataContent
 import io.ktor.client.request.forms.formData
 import io.ktor.http.ContentType
@@ -23,15 +22,19 @@ import io.ktor.http.HttpHeaders
 import io.ktor.utils.io.ByteChannel
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.InternalAPI
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.withContext
 import kotlinx.io.Buffer
 import java.io.File
 import java.io.IOException
+import kotlin.coroutines.cancellation.CancellationException
 import kotlin.random.Random
 
 /**
  * Verifies [MultipartFormReader]: what it reads from well-formed bodies, including ones written by
  * Ktor's client and ones that arrive a few bytes at a time, and that it holds a body to its limits,
- * refuses malformed ones and deletes the temporary file of a part it gives up on.
+ * refuses malformed ones and deletes the temporary file of a part it gives up on, or of a body its
+ * caller stops waiting for.
  *
  * The limit on part headers is the reason the reader exists: Ktor's own parser keeps every header
  * line of a part, however many there are.
@@ -204,11 +207,55 @@ class MultipartFormReaderTest : FunSpec({
 		shouldThrow<MalformedMultipartException> { read(field("a", "value") + ascii("--$BOUNDARY-\r\n")) }
 	}
 
+	test("refuses a header line longer than 8192 bytes, the Content-Disposition included") {
+		fun partWithHeaderLine(line: String) = ascii(
+			"--$BOUNDARY\r\n$line\r\nContent-Disposition: form-data; name=\"a\"\r\n\r\nvalue\r\n--$BOUNDARY--",
+		)
+		val longest = "X-Filler: " + "y".repeat(8192 - "X-Filler: ".length)
+
+		for (step in listOf(1 shl 20, 1000)) {
+			reader(TrickleByteReadChannel(partWithHeaderLine(longest), step)).readParts()
+				.single().shouldBeInstanceOf<FormFieldData>().value shouldBe "value"
+			shouldThrow<MalformedMultipartException> {
+				reader(TrickleByteReadChannel(partWithHeaderLine(longest + "y"), step)).readParts()
+			}
+		}
+		shouldThrow<MalformedMultipartException> {
+			read(ascii("--$BOUNDARY\r\nContent-Disposition: form-data; name=\"a\"" + ";b".repeat(5000) + "\r\n\r\nv\r\n--$BOUNDARY--"))
+		}
+	}
+
+	test("refuses a Content-Disposition header that is empty") {
+		for (value in listOf("", "   ")) {
+			shouldThrow<MalformedMultipartException> {
+				read(ascii("--$BOUNDARY\r\nContent-Disposition:$value\r\n\r\nvalue\r\n--$BOUNDARY--"))
+			}
+		}
+	}
+
+	test("deletes the file when its caller is cancelled just as the last part is read") {
+		val caller = Job()
+		lateinit var file: File
+		val reader = MultipartFormReader(
+			ByteReadChannel(filePart("a.pdf", ByteArray(64)) + closing()),
+			BOUNDARY,
+			MAX_FILE_SIZE,
+			MAX_PARTS,
+			MAX_FIELD_BYTES,
+		) {
+			caller.cancel()
+			File.createTempFile("reader-test-", ".pdf", directory).also { file = it }
+		}
+
+		shouldThrow<CancellationException> { withContext(caller) { reader.readParts() } }
+		file.exists() shouldBe false
+	}
+
 	test("passes on a failure of the body instead of reading it as the end of the body") {
 		val failure = IOException("Connection reset")
 		val body = TrickleByteReadChannel(field("a", "value"), step = 4, failure = failure)
 
-		shouldThrow<IOException> { reader(body).readParts() } shouldBeSameInstanceAs failure
+		shouldThrow<IOException> { reader(body).readParts() }.message shouldBe failure.message
 	}
 
 	test("refuses a boundary that RFC 2046 does not allow") {

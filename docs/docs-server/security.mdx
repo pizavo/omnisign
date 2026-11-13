@@ -130,8 +130,8 @@ internal addresses, because they process their own user's documents.
   carry at most 32 parts, and only one of them a file. The file is streamed to disk and bounded by
   `maxFileSize`. The server keeps the form fields in memory and reads each part's headers to find
   its name, so the form fields and the headers of all parts may take at most 1 MiB together; more
-  is answered with `413` and `FORM_FIELDS_TOO_LARGE`, and a body that is not well-formed multipart
-  with `400` and `MALFORMED_MULTIPART`.
+  is answered with `413` and `FORM_FIELDS_TOO_LARGE`. A body that is not well-formed multipart, or
+  that has a part header line longer than 8 KiB, is answered with `400` and `MALFORMED_MULTIPART`.
 - Validation, signing and timestamping run off the threads that answer requests, on at most as
   many documents at once as the server has processors. A document whose revocation or timestamp
   servers answer slowly can delay only the documents queued behind it, not the health check,

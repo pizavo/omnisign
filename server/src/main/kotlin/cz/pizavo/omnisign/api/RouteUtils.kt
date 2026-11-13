@@ -17,8 +17,6 @@ import io.ktor.server.plugins.UnsupportedMediaTypeException
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 
 /**
  * Room a request body has beyond the file-size limit, for the form fields, part headers and
@@ -63,7 +61,7 @@ fun requestBodyLimit(maxFileSize: Long): Long =
  *   `multipart`.
  * @throws BadRequestException If the `Content-Type` header is malformed.
  * @throws MalformedMultipartException If the `Content-Type` names no usable boundary, or the body
- *   is not well-formed multipart.
+ *   is not well-formed multipart or has a part header line longer than 8192 bytes.
  * @throws FormFieldsTooLargeException If the form fields and part headers exceed
  *   [FORM_FIELDS_ALLOWANCE].
  * @throws FileTooLargeException If the file part exceeds [maxFileSize].
@@ -73,10 +71,8 @@ fun requestBodyLimit(maxFileSize: Long): Long =
  */
 suspend fun RoutingCall.receiveParts(maxFileSize: Long): List<Any> {
 	val boundary = multipartBoundary()
-	val body = receiveChannel()
-	return withContext(Dispatchers.IO) {
-		MultipartFormReader(body, boundary, maxFileSize, MAX_MULTIPART_PARTS, FORM_FIELDS_ALLOWANCE).readParts()
-	}
+	return MultipartFormReader(receiveChannel(), boundary, maxFileSize, MAX_MULTIPART_PARTS, FORM_FIELDS_ALLOWANCE)
+		.readParts()
 }
 
 /**
@@ -149,6 +145,11 @@ fun extractTextField(parts: List<Any>, name: String): String? =
 	parts.filterIsInstance<FormFieldData>().firstOrNull { it.name == name }?.value
 
 /**
+ * The most unknown values that [parseEnumSetField] names in its error.
+ */
+private const val MAX_REPORTED_UNKNOWN_VALUES = 10
+
+/**
  * Parse a comma-separated multipart field into a [Set] of [E] enum entries.
  *
  * The field value is split on `,`, trimmed, and matched against [entries] case-insensitively
@@ -156,7 +157,11 @@ fun extractTextField(parts: List<Any>, name: String): String? =
  * rejected eagerly so a typo never silently yields a partial set: a `400 BadRequest` with
  * the supplied [errorCode] is sent and `null` is returned, signalling to the caller that
  * a response has already been written and it must return immediately (mirroring the
- * [requireOperation] convention).
+ * [requireOperation] convention). The error names at most [MAX_REPORTED_UNKNOWN_VALUES] of
+ * them.
+ *
+ * The value is read one token at a time, and only the set and the named unknown tokens are
+ * kept, so a field of many short tokens takes no more memory than its own text.
  *
  * @param parts Collected multipart parts from [receiveParts].
  * @param fieldName Form field name to read.
@@ -171,9 +176,9 @@ suspend fun <E : Enum<E>> RoutingCall.parseEnumSetField(
 	errorCode: String,
 ): Set<E>? {
 	val raw = extractTextField(parts, fieldName) ?: return emptySet()
-	val tokens = raw.split(",").map { it.trim() }.filter { it.isNotEmpty() }
+	val tokens = raw.splitToSequence(",").map { it.trim() }.filter { it.isNotEmpty() }
 	val byLowerName = entries.associateBy { it.name.lowercase() }
-	val unknown = tokens.filter { it.lowercase() !in byLowerName }
+	val unknown = tokens.filter { it.lowercase() !in byLowerName }.take(MAX_REPORTED_UNKNOWN_VALUES).toList()
 	if (unknown.isNotEmpty()) {
 		respond(
 			HttpStatusCode.BadRequest,

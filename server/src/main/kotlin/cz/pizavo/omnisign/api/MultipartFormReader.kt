@@ -8,24 +8,30 @@ import cz.pizavo.omnisign.api.exception.TooManyPartsException
 import cz.pizavo.omnisign.api.model.FilePartData
 import cz.pizavo.omnisign.api.model.FormFieldData
 import io.ktor.http.ContentDisposition
+import io.ktor.http.parseHeaderValue
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.readAvailable
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.io.Buffer
 import kotlinx.io.readByteArray
 import kotlinx.io.readString
 import java.io.File
+import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * Reads the parts of a `multipart/form-data` body from [body], keeping at most [maxFieldBytes] of
- * it in memory.
+ * Reads the parts of a `multipart/form-data` body from [body], holding at most [maxFieldBytes] of
+ * form fields and part headers in memory.
  *
  * Ktor's multipart parser reads every header line of a part into memory and has no limit on how
  * many lines a part may have, so a body of a hundred megabytes of short header lines could make the
  * server hold gigabytes. This reader counts each part's header block, as well as the value of each
- * form field, against [maxFieldBytes], and keeps only a part's `Content-Disposition`. It discards
- * the preamble and the spaces after a boundary as it reads them, streams the one file part to a
- * temporary file bounded by [maxFileSize], and stops reading at the closing boundary; the engine
- * discards whatever it has not read of the epilogue.
+ * form field, against [maxFieldBytes], and keeps only a part's `Content-Disposition`. Parsing that
+ * header takes several times the memory of its text, so the reader also refuses a header line
+ * longer than 8192 bytes, much as Ktor refuses one of 8192 bytes or more. It discards the preamble
+ * and the spaces after a boundary as it reads them, streams the one file part to a temporary file
+ * bounded by [maxFileSize], and stops reading at the closing boundary; the engine discards whatever
+ * it has not read of the epilogue.
  *
  * It reads bodies as browsers, curl and Ktor's client write them, following RFC 2046 and RFC 7578:
  * - A part ends at the next CRLF followed by `--` and the boundary. A client picks a boundary that
@@ -35,7 +41,7 @@ import java.io.File
  * - A body with no boundary line has no parts, but once a part has begun, the body must reach the
  *   closing boundary.
  *
- * Call [readParts] once, on a dispatcher that may block: the file part is written with blocking I/O.
+ * Call [readParts] once.
  *
  * @param body The request body.
  * @param boundary The `boundary` parameter of the request's `Content-Type`.
@@ -101,16 +107,20 @@ internal class MultipartFormReader(
 	}
 
 	/**
-	 * Read every part up to the closing boundary.
+	 * Read every part up to the closing boundary, on [Dispatchers.IO], since the file part is written
+	 * with blocking I/O.
 	 *
 	 * If anything fails, every temporary file created so far is deleted before the exception
-	 * propagates. On success, the caller owns them and deletes them once the request is done (see
+	 * propagates. That includes the caller being cancelled just after the last part is read: the
+	 * switch back from [Dispatchers.IO] then throws [CancellationException] instead of returning the
+	 * parts. On success, the caller owns the files and deletes them once the request is done (see
 	 * [deleteFileParts]).
 	 *
 	 * @return The parts in order: a [FormFieldData] for each form field and a [FilePartData] for the
 	 *   file.
-	 * @throws MalformedMultipartException If a boundary line carries more than the boundary, or the
-	 *   body ends inside a part.
+	 * @throws MalformedMultipartException If a boundary line carries more than the boundary, a header
+	 *   line is longer than 8192 bytes, a `Content-Disposition` header is empty, or the body ends
+	 *   inside a part.
 	 * @throws FormFieldsTooLargeException If the form fields and part headers take more than
 	 *   [maxFieldBytes].
 	 * @throws TooManyPartsException If the body has more than [maxParts] parts.
@@ -118,6 +128,20 @@ internal class MultipartFormReader(
 	 * @throws FileTooLargeException If the file part has more than [maxFileSize] bytes.
 	 */
 	suspend fun readParts(): List<Any> {
+		var parts: List<Any> = emptyList()
+		try {
+			return withContext(Dispatchers.IO) { readAllParts().also { parts = it } }
+		} catch (e: CancellationException) {
+			parts.deleteFileParts()
+			throw e
+		}
+	}
+
+	/**
+	 * Read every part up to the closing boundary, deleting every temporary file created so far if
+	 * anything fails. See [readParts].
+	 */
+	private suspend fun readAllParts(): List<Any> {
 		val parts = mutableListOf<Any>()
 		try {
 			if (!transferUntilDelimiter(sink = null)) {
@@ -143,7 +167,7 @@ internal class MultipartFormReader(
 	 * @return A [FilePartData] if the part's `Content-Disposition` names a file, else a [FormFieldData].
 	 */
 	private suspend fun readPart(fileSeen: Boolean): Any {
-		val disposition = readHeaderBlock()?.let { ContentDisposition.parse(it) }
+		val disposition = readHeaderBlock()?.let(::parseContentDisposition)
 		val name = disposition?.parameter(ContentDisposition.Parameters.Name)
 		val fileName = disposition?.parameter(ContentDisposition.Parameters.FileName)
 		return when {
@@ -154,10 +178,24 @@ internal class MultipartFormReader(
 	}
 
 	/**
+	 * Parse a part's `Content-Disposition` header [value] as [ContentDisposition.parse] does, which
+	 * throws [NoSuchElementException] for a value that holds nothing to parse, such as an empty one.
+	 *
+	 * @throws MalformedMultipartException If [value] holds nothing to parse.
+	 */
+	private fun parseContentDisposition(value: String): ContentDisposition {
+		val parsed = parseHeaderValue(value).lastOrNull()
+			?: throw MalformedMultipartException(EMPTY_CONTENT_DISPOSITION)
+		return ContentDisposition(parsed.value, parsed.params)
+	}
+
+	/**
 	 * Read a part's header block, up to and including the empty line that ends it, counting every
 	 * byte against [maxFieldBytes].
 	 *
 	 * @return The value of the block's first `Content-Disposition` header, or `null` if it has none.
+	 * @throws MalformedMultipartException If a line of the block is longer than
+	 *   [MAX_HEADER_LINE_LENGTH] bytes, or the body ends inside it.
 	 */
 	private suspend fun readHeaderBlock(): String? {
 		val block = Buffer()
@@ -175,7 +213,9 @@ internal class MultipartFormReader(
 				when (buffer[end++]) {
 					LF -> if (lineLength == 0) complete = true else lineLength = 0
 					CR -> Unit
-					else -> lineLength++
+					else -> if (++lineLength > MAX_HEADER_LINE_LENGTH) {
+						throw MalformedMultipartException(HEADER_LINE_TOO_LONG)
+					}
 				}
 			}
 			countFieldBytes(end - start)
@@ -413,6 +453,11 @@ internal class MultipartFormReader(
 		private const val MAX_BOUNDARY_LENGTH = 70
 
 		/**
+		 * The most bytes a header line of a part may have, its line break left out.
+		 */
+		private const val MAX_HEADER_LINE_LENGTH = 8192
+
+		/**
 		 * The characters RFC 2046 allows in a boundary.
 		 */
 		private const val BOUNDARY_CHARACTERS =
@@ -443,6 +488,16 @@ internal class MultipartFormReader(
 		 * The message for a boundary line that carries more than the boundary.
 		 */
 		private const val MALFORMED_BOUNDARY_LINE = "A multipart boundary line carries more than the boundary."
+
+		/**
+		 * The message for a header line longer than [MAX_HEADER_LINE_LENGTH].
+		 */
+		private const val HEADER_LINE_TOO_LONG = "A header line of a multipart part is longer than 8192 bytes."
+
+		/**
+		 * The message for a `Content-Disposition` header that holds nothing to parse.
+		 */
+		private const val EMPTY_CONTENT_DISPOSITION = "The Content-Disposition header of a multipart part is empty."
 
 		/**
 		 * The message for a body that ends inside a part.
