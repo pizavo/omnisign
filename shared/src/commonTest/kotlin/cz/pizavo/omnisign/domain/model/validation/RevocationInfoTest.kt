@@ -31,6 +31,7 @@ class RevocationInfoTest : FunSpec({
 		thisUpdate: Instant? = null,
 		nextUpdate: Instant? = null,
 		revocationDate: Instant? = null,
+		accepted: Boolean? = null,
 	) = RevocationInfo(
 		method = "OCSP",
 		status = status,
@@ -42,6 +43,7 @@ class RevocationInfoTest : FunSpec({
 		thisUpdate = thisUpdate,
 		nextUpdate = nextUpdate,
 		revocationDate = revocationDate,
+		accepted = accepted,
 	)
 
 	test("no revocation data yields no outcome and no conclusion") {
@@ -161,6 +163,51 @@ class RevocationInfoTest : FunSpec({
 		val onlineRevoked = revocation(status = "REVOKED", thisUpdate = asOf + 300.days, revocationDate = revokedOn)
 
 		listOf(onlineRevoked, embeddedGood).revocationOutcome(asOf) shouldBe RevocationOutcome.RevokedLater(revokedOn)
+	}
+
+	test("a good check the validation did not accept leaves the status undetermined") {
+		val rejected = revocation(status = "GOOD", embedded = true, sealed = true, thisUpdate = asOf + 5.minutes, accepted = false)
+
+		listOf(rejected).revocationOutcome(asOf) shouldBe RevocationOutcome.Undetermined
+		listOf(rejected.copy(nextUpdate = asOf + 1.days)).revocationOutcome(asOf) shouldBe RevocationOutcome.Undetermined
+	}
+
+	test("a good check the validation accepted settles the status, and one from a report that does not say still does") {
+		listOf(revocation(status = "GOOD", thisUpdate = asOf + 5.minutes, accepted = true)).revocationOutcome(asOf) shouldBe
+			RevocationOutcome.NotRevoked
+		listOf(revocation(status = "GOOD", thisUpdate = asOf + 5.minutes, accepted = null)).revocationOutcome(asOf) shouldBe
+			RevocationOutcome.NotRevoked
+	}
+
+	test("a rejected good check neither settles the status nor stops an accepted one from settling it") {
+		val rejected = revocation(status = "GOOD", embedded = true, thisUpdate = asOf + 5.minutes, accepted = false)
+		val acceptedFresh = revocation(status = "GOOD", thisUpdate = asOf + 1.days, accepted = true)
+		val acceptedStale = revocation(status = "GOOD", thisUpdate = asOf - 8.days, nextUpdate = asOf - 1.days, accepted = true)
+
+		listOf(rejected, acceptedFresh).revocationOutcome(asOf) shouldBe RevocationOutcome.NotRevoked
+		listOf(rejected, acceptedStale).revocationOutcome(asOf) shouldBe RevocationOutcome.Undetermined
+	}
+
+	test("a revoked check counts even when the validation did not accept it") {
+		val revokedOn = asOf + 100.days
+
+		listOf(revocation(status = "REVOKED", revocationDate = asOf - 1.days, accepted = false)).revocationOutcome(asOf) shouldBe
+			RevocationOutcome.Revoked
+		listOf(
+			revocation(status = "GOOD", thisUpdate = asOf + 5.minutes, accepted = true),
+			revocation(status = "REVOKED", revocationDate = revokedOn, accepted = false),
+		).revocationOutcome(asOf) shouldBe RevocationOutcome.RevokedLater(revokedOn)
+	}
+
+	test("a check the validation did not accept says so right after its status, and no other check does") {
+		val rejected = revocation(status = "GOOD", thisUpdate = asOf, accepted = false).displayRows()
+			.map { (label, value) -> label.english() to value.english() }
+
+		rejected[1] shouldBe ("Accepted by validation" to "No")
+		listOf(true, null).forEach { accepted ->
+			revocation(status = "GOOD", thisUpdate = asOf, accepted = accepted).displayRows()
+				.none { (label, _) -> label.english() == "Accepted by validation" } shouldBe true
+		}
 	}
 
 	test("displayRows render their times in the requested date format") {

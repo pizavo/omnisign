@@ -306,6 +306,12 @@ enum class MessageKey {
 	/** Revocation row label: revocation reason code. */
 	REVOCATION_LABEL_REASON,
 
+	/** Revocation row label: whether the validation accepted the check as evidence. */
+	REVOCATION_LABEL_ACCEPTED,
+
+	/** Revocation acceptance value: the validation did not accept the check. */
+	REVOCATION_NOT_ACCEPTED,
+
 	/** Revocation source: embedded in the document and sealed by a document timestamp. */
 	REVOCATION_SOURCE_EMBEDDED_SEALED,
 

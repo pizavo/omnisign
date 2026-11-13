@@ -91,18 +91,28 @@ checks give rather than from any one check's status:
 - *"The signing certificate was not revoked as of …; it was revoked later, on …"*, in yellow, when
   every revocation a check reports came after that time, so the signature was made while the
   certificate was still valid.
-- *"The signing certificate was not revoked as of …"* when a `GOOD` check was made at or after that
-  time, or was still current then, before its next update. Both comparisons allow five minutes for
-  responders' clocks, whose times are kept to the second.
-- *"The signing certificate had an undetermined revocation status as of …"* otherwise: no check
-  says `GOOD`, or every `GOOD` check was made before that time and either its next update had
-  passed by then or it names none.
+- *"The signing certificate was not revoked as of …"* when a `GOOD` check that the validation
+  accepted was made at or after that time, or was still current then, before its next update. Both
+  comparisons allow five minutes for responders' clocks, whose times are kept to the second.
+- *"The signing certificate had an undetermined revocation status as of …"* otherwise: no accepted
+  check says `GOOD`, or every accepted `GOOD` check was made before that time and either its next
+  update had passed by then or it names none.
 
-It then lists every check in full. Each shows its **Status** (`GOOD` / `REVOKED` / `UNKNOWN`), **Method**
-(`OCSP` / `CRL`), **Source** (embedded in the document — and whether a document timestamp seals it —
-or retrieved online during validation), the responder or CRL distribution-point URL when known,
-method-aware times (OCSP: *Response produced* / *Status as of* / *Fresh until*; CRL: *CRL issued* /
-*Next CRL by*), and the revocation date and reason when revoked.
+The validation accepts a check when its signature verifies, its issuer is known and leads to a
+trusted certificate, it gives a known status, it covers the signing certificate, and the
+certificates that issued it meet the validation policy, for example by being CA certificates. A
+`GOOD` check it does not accept, such as one forged into the document or a CRL issued after the
+certificate expired that may no longer list it, never makes the conclusion say *not revoked*. A
+`REVOKED` check counts whether or not it was accepted, so a doubtful revocation is never hidden. No
+check is accepted when the signing certificate's chain leads to no trusted certificate, or when the
+signing certificate is trusted directly, since the validation then needs none.
+
+It then lists every check in full. Each shows its **Status** (`GOOD` / `REVOKED` / `UNKNOWN`),
+**Accepted by validation: No** when the validation did not accept it, **Method** (`OCSP` / `CRL`),
+**Source** (embedded in the document — and whether a document timestamp seals it — or retrieved
+online during validation), the responder or CRL distribution-point URL when known, method-aware times
+(OCSP: *Response produced* / *Status as of* / *Fresh until*; CRL: *CRL issued* / *Next CRL by*), and
+the revocation date and reason when revoked.
 
 Every check is listed rather than one being chosen, so an embedded token sealed at signing and a
 fresh one fetched during validation both appear — a stale embedded result never masks a fresh one,

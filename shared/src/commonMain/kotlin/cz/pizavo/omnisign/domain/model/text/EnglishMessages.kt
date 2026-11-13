@@ -232,6 +232,10 @@ internal object EnglishMessages {
 			"Revoked on"
 		MessageKey.REVOCATION_LABEL_REASON ->
 			"Reason"
+		MessageKey.REVOCATION_LABEL_ACCEPTED ->
+			"Accepted by validation"
+		MessageKey.REVOCATION_NOT_ACCEPTED ->
+			"No"
 		MessageKey.REVOCATION_SOURCE_EMBEDDED_SEALED ->
 			"Embedded in document, sealed by document timestamp"
 		MessageKey.REVOCATION_SOURCE_EMBEDDED ->

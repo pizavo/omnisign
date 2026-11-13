@@ -13,6 +13,8 @@
 	<string name="revocation_label_next_update">Next update</string>
 	<string name="revocation_label_revoked_on">Revoked on</string>
 	<string name="revocation_label_reason">Reason</string>
+	<string name="revocation_label_accepted">Accepted by validation</string>
+	<string name="revocation_not_accepted">No</string>
 	<string name="revocation_source_embedded_sealed">Embedded in document, sealed by document timestamp</string>
 	<string name="revocation_source_embedded">Embedded in document (not timestamp-protected)</string>
 	<string name="revocation_source_online">Retrieved online during validation</string>

@@ -20,14 +20,15 @@ sealed interface RevocationOutcome {
     data class RevokedLater(val on: Instant) : RevocationOutcome
 
     /**
-     * A check that says the certificate is good covers that time, being issued then or later or
-     * still current then, and no check says it was revoked.
+     * A check that says the certificate is good, and that the validation did not reject, covers
+     * that time, being issued then or later or still current then, and no check says it was
+     * revoked.
      */
     data object NotRevoked : RevocationOutcome
 
     /**
      * No check settles the status at that time: every good one had stopped being current before
-     * it, or none gives a status.
+     * it or was rejected by the validation, or none gives a status.
      */
     data object Undetermined : RevocationOutcome
 }
