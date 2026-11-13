@@ -42,6 +42,7 @@ class TlBuilderViewModelTest : FunSpec({
 
 	// Destination the save dialog would return; compilation writes the XML here.
 	val outPath = "/output/test.xml"
+	val writtenUri = "file:///output/test.xml"
 
 	beforeTest {
 		clearMocks(compilerPort)
@@ -190,7 +191,7 @@ class TlBuilderViewModelTest : FunSpec({
 	test("the compiled draft carries the scheme fields and both addresses") {
 		runTest(testDispatcher) {
 			val draft = slot<CustomTrustedListDraft>()
-			every { compilerPort.compileTo(capture(draft), any()) } returns Unit.right()
+			every { compilerPort.compileTo(capture(draft), any()) } returns writtenUri.right()
 			val vm = TlBuilderViewModel(compilerPort, testDispatcher)
 			vm.open()
 			vm.updateState { validEditingState() }
@@ -256,7 +257,7 @@ class TlBuilderViewModelTest : FunSpec({
 
 	test("compile with valid data and successful compilation transitions to Success") {
 		runTest(testDispatcher) {
-			every { compilerPort.compileTo(any(), any()) } returns Unit.right()
+			every { compilerPort.compileTo(any(), any()) } returns writtenUri.right()
 
 			val vm = TlBuilderViewModel(compilerPort, testDispatcher)
 			vm.open()
@@ -270,14 +271,34 @@ class TlBuilderViewModelTest : FunSpec({
 			val tlConfig = success.tlConfig
 			tlConfig.shouldNotBeNull()
 			tlConfig.name shouldBe "test"
+			tlConfig.source shouldBe writtenUri
 
 			verify(exactly = 1) { compilerPort.compileTo(any<CustomTrustedListDraft>(), eq("/output/test.xml")) }
 		}
 	}
 
+	test("a list saved under a Windows path with spaces is registered under the URI the compiler returns") {
+		runTest(testDispatcher) {
+			val windowsPath = "C:\\Users\\Tester\\Trusted lists\\corp.xml"
+			val compiledUri = "file:///C:/Users/Tester/Trusted%20lists/corp.xml"
+			every { compilerPort.compileTo(any(), windowsPath) } returns compiledUri.right()
+
+			val vm = TlBuilderViewModel(compilerPort, testDispatcher)
+			vm.open()
+			vm.updateState { validEditingState() }
+			vm.compile(windowsPath)
+
+			advanceUntilIdle()
+
+			val success = vm.state.value.shouldBeInstanceOf<TlBuilderDialogState.Success>()
+			success.outputFile shouldBe windowsPath
+			success.tlConfig.shouldNotBeNull().source shouldBe compiledUri
+		}
+	}
+
 	test("compile with registerAfterCompile=false returns null tlConfig") {
 		runTest(testDispatcher) {
-			every { compilerPort.compileTo(any(), any()) } returns Unit.right()
+			every { compilerPort.compileTo(any(), any()) } returns writtenUri.right()
 
 			val vm = TlBuilderViewModel(compilerPort, testDispatcher)
 			vm.open()
@@ -319,7 +340,7 @@ class TlBuilderViewModelTest : FunSpec({
 		error.content shouldBe ErrorMessage.CompilerUnavailable
 	}
 
-	test("updateState clears error when field changes") {
+	test("updateState applies the transform to the editing state") {
 		val vm = TlBuilderViewModel(compilerPort, testDispatcher)
 		vm.open()
 		vm.compile(outPath)

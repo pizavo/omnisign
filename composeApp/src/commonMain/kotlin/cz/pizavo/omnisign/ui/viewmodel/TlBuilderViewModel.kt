@@ -51,7 +51,7 @@ class TlBuilderViewModel(
 	/**
 	 * Open the builder dialog with an empty editing form.
 	 *
-	 * @param defaultOutputDir Optional directory prefix for the default output path.
+	 * @param defaultOutputDir Optional initial directory for the save dialog.
 	 */
 	fun open(defaultOutputDir: String = "") {
 		_state.value = TlBuilderDialogState.Editing(
@@ -121,6 +121,9 @@ class TlBuilderViewModel(
 	 * the native save dialog), and transition to [TlBuilderDialogState.Success] or
 	 * [TlBuilderDialogState.Error].
 	 *
+	 * A list to be registered takes as its source the URI the compiler returns for the written
+	 * file, which DSS can load whatever the platform's path syntax.
+	 *
 	 * @param outputPath Absolute destination path for the compiled trusted-list XML.
 	 */
 	fun compile(outputPath: String) {
@@ -150,11 +153,11 @@ class TlBuilderViewModel(
 						content = ErrorMessage.Domain(opError.localizableText(), opError.details),
 					)
 				},
-				ifRight = {
+				ifRight = { sourceUri ->
 					val tlConfig = if (editing.registerAfterCompile) {
 						CustomTrustedListConfig(
 							name = editing.name.trim(),
-							source = "file:///$outputPath",
+							source = sourceUri,
 						)
 					} else {
 						null
@@ -176,7 +179,7 @@ class TlBuilderViewModel(
 	}
 
 	/**
-	 * Validate the editing state and return an error message, or `null` if valid.
+	 * Validate the editing state and return the first [TlValidationError], or `null` if valid.
 	 */
 	private fun validate(editing: TlBuilderDialogState.Editing): TlValidationError? {
 		if (editing.name.isBlank()) return TlValidationError.NameRequired

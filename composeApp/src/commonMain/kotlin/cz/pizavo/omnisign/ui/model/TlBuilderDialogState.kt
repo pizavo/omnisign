@@ -25,7 +25,7 @@ sealed interface TlBuilderDialogState {
 	 *   ETSI TS 119612 clause 5.3.5.
 	 * @property schemeName Name of the scheme this list represents (clause 5.3.6).
 	 * @property schemeInformationUri Where information about the scheme is published (clause 5.3.7).
-	 * @property tsps Mutable list of Trust Service Provider drafts.
+	 * @property tsps Edit states of the Trust Service Providers the list will carry.
 	 * @property outputDirectory Initial directory for the save dialog; the file name defaults to [name].
 	 * @property registerAfterCompile Whether to register the compiled file as a custom TL source.
 	 * @property error The current form validation error, or `null` when the form is valid.
@@ -66,39 +66,4 @@ sealed interface TlBuilderDialogState {
 	 */
 	data class Error(val content: ErrorMessage) : TlBuilderDialogState
 }
-
-/**
- * Editable state for a single Trust Service Provider within the builder dialog.
- *
- * @property name Official name of the TSP.
- * @property tradeName Optional trade/brand name.
- * @property address Postal and electronic address of this provider, required by ETSI TS 119612
- *   clause 5.4.4.
- * @property infoUrl URL pointing to the TSP's information page. Required by clause 5.4.5.
- * @property services Services provided by this TSP.
- * @property expanded Whether the TSP card is currently expanded in the UI.
- */
-data class TspEditState(
-	val name: String = "",
-	val tradeName: String = "",
-	val address: AddressEditState = AddressEditState(),
-	val infoUrl: String = "",
-	val services: List<ServiceEditState> = emptyList(),
-	val expanded: Boolean = true,
-)
-
-/**
- * Editable state for a single trust service within a [TspEditState].
- *
- * @property name Human-readable name of the service.
- * @property typeIdentifier ETSI service type identifier URI.
- * @property status ETSI service status URI.
- * @property certificatePath Path to the PEM or DER certificate file.
- */
-data class ServiceEditState(
-	val name: String = "",
-	val typeIdentifier: String = "",
-	val status: String = "",
-	val certificatePath: String = "",
-)
 
