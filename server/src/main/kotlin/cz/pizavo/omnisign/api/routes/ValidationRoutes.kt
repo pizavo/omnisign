@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.api.routes
 
+import cz.pizavo.omnisign.api.DocumentOperationLimiter
 import cz.pizavo.omnisign.api.deleteFileParts
 import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.extractTextField
@@ -53,12 +54,16 @@ import org.koin.ktor.ext.inject
  * [ResolvedConfig.resolve] is assembled here with only these two fields populated, so a
  * future expansion of the override pipeline cannot accidentally widen the API surface.
  *
+ * The file is read and validated through the [DocumentOperationLimiter], off the engine's call
+ * threads.
+ *
  * On success the response is a JSON validation report.
  */
 fun Route.validationRoutes() {
 	val validateUseCase by inject<ValidateDocumentUseCase>()
 	val configRepository by inject<ConfigRepository>()
 	val serverConfig by inject<ServerConfig>()
+	val operationLimiter by inject<DocumentOperationLimiter>()
 
 	post("/api/v1/validate") {
 		if (!call.requireOperation(AllowedOperation.VALIDATE, serverConfig)) return@post
@@ -106,15 +111,20 @@ fun Route.validationRoutes() {
 					ifRight = { it },
 				)
 
-			val parameters = ValidationParameters(
-				inputBytes = filePart.file.readBytes(),
-				inputName = filePart.originalFileName ?: filePart.file.name,
-				resolvedConfig = resolvedConfig,
-				rawReportFormats = rawReportFormats,
-				language = call.preferredLanguageTag(),
-			)
+			val language = call.preferredLanguageTag()
+			val outcome = operationLimiter.execute {
+				validateUseCase(
+					ValidationParameters(
+						inputBytes = filePart.file.readBytes(),
+						inputName = filePart.originalFileName ?: filePart.file.name,
+						resolvedConfig = resolvedConfig,
+						rawReportFormats = rawReportFormats,
+						language = language,
+					),
+				)
+			}
 
-			validateUseCase(parameters).fold(
+			outcome.fold(
 				ifLeft = { error ->
 					throw OperationException(error)
 				},

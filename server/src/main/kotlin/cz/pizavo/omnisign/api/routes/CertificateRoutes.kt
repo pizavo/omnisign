@@ -10,6 +10,8 @@ import cz.pizavo.omnisign.domain.usecase.ListCertificatesUseCase
 import cz.pizavo.omnisign.domain.usecase.ListKeystoreCertificatesUseCase
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import org.koin.ktor.ext.inject
 
 /**
@@ -36,6 +38,9 @@ import org.koin.ktor.ext.inject
  * server's hardware, software token, and file-keystore configuration, not on the active profile.
  * The [OperationsConfig.certificateAliases][cz.pizavo.omnisign.config.OperationsConfig.certificateAliases]
  * allow-list is applied uniformly to the merged result.
+ *
+ * Both sources block while the server talks to its tokens and reads the keystore, so discovery runs
+ * on [Dispatchers.IO], off the engine's call threads.
  */
 fun Route.certificateRoutes() {
 	val listCertificatesUseCase by inject<ListCertificatesUseCase>()
@@ -46,12 +51,12 @@ fun Route.certificateRoutes() {
 	get("/api/v1/certificates") {
 		if (!call.requireOperation(AllowedOperation.SIGN, serverConfig)) return@get
 
-		val discovery = listCertificatesUseCase(promptForLocked = false)
+		val discovery = withContext(Dispatchers.IO) { listCertificatesUseCase(promptForLocked = false) }
 			.getOrElse { throw OperationException(it) }
 
 		val keystorePath = serverConfig.operations.signingKeystorePath
 		val keystoreCertificates = if (keystorePath != null) {
-			listKeystoreCertificatesUseCase(keystorePath, secrets.signingKeystorePassword)
+			withContext(Dispatchers.IO) { listKeystoreCertificatesUseCase(keystorePath, secrets.signingKeystorePassword) }
 				.getOrElse { throw OperationException(it) }
 		} else {
 			emptyList()

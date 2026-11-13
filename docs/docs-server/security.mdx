@@ -129,6 +129,10 @@ internal addresses, because they process their own user's documents.
   endpoints, which take a small JSON body or none, treat it as missing. A multipart request may
   carry at most 32 parts, and only one of them a file. The file is streamed to disk and bounded by
   `maxFileSize`.
+- Validation, signing and timestamping run off the threads that answer requests, on at most as
+  many documents at once as the server has processors. A document whose revocation or timestamp
+  servers answer slowly can delay only the documents queued behind it, not the health check,
+  sign-in or other requests.
 - Every response carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
   `Referrer-Policy: strict-origin-when-cross-origin`, and
   `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`. No `X-Powered-By` is sent.

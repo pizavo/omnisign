@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.api.routes
 
+import cz.pizavo.omnisign.api.DocumentOperationLimiter
 import cz.pizavo.omnisign.api.deleteFileParts
 import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.extractTextField
@@ -63,12 +64,16 @@ import org.koin.ktor.ext.inject
  * without running a full validation. Accepts the same `file` multipart field as the main
  * route. Gated by the same [AllowedOperation.TIMESTAMP] permission since it only exists to
  * inform timestamping decisions.
+ *
+ * Both routes read and process the file through the [DocumentOperationLimiter], off the engine's
+ * call threads.
  */
 fun Route.timestampRoutes() {
 	val extendUseCase by inject<ExtendDocumentUseCase>()
 	val inspectUseCase by inject<GetDocumentTimestampInfoUseCase>()
 	val configRepository by inject<ConfigRepository>()
 	val serverConfig by inject<ServerConfig>()
+	val operationLimiter by inject<DocumentOperationLimiter>()
 
 	post("/api/v1/timestamp") {
 		if (!call.requireOperation(AllowedOperation.TIMESTAMP, serverConfig)) return@post
@@ -117,14 +122,18 @@ fun Route.timestampRoutes() {
 				?.let { name -> SignatureLevel.entries.firstOrNull { it.name.equals(name, ignoreCase = true) } }
 				?: SignatureLevel.PADES_BASELINE_LTA
 
-			val parameters = ArchivingParameters(
-				inputBytes = filePart.file.readBytes(),
-				inputName = filePart.originalFileName ?: filePart.file.name,
-				targetLevel = targetLevel,
-				resolvedConfig = resolvedConfig,
-			)
+			val outcome = operationLimiter.execute {
+				extendUseCase(
+					ArchivingParameters(
+						inputBytes = filePart.file.readBytes(),
+						inputName = filePart.originalFileName ?: filePart.file.name,
+						targetLevel = targetLevel,
+						resolvedConfig = resolvedConfig,
+					),
+				)
+			}
 
-			extendUseCase(parameters).fold(
+			outcome.fold(
 				ifLeft = { error ->
 					throw OperationException(error)
 				},
@@ -158,7 +167,9 @@ fun Route.timestampRoutes() {
 				return@post
 			}
 
-			inspectUseCase(filePart.file.readBytes()).fold(
+			val outcome = operationLimiter.execute { inspectUseCase(filePart.file.readBytes()) }
+
+			outcome.fold(
 				ifLeft = { error ->
 					throw OperationException(error)
 				},
