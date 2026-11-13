@@ -112,11 +112,13 @@ so leaving them active would turn a readable INDETERMINATE / `OUT_OF_BOUNDS_NO_P
 failed *operation* with no report at all. Collapsing the two verifiers into one is the obvious-looking
 refactor, and it is wrong.
 
-Both paths short-circuit when `config` is `null` or `validation.checkRevocation` is off. Validation
-returns a fully lenient verifier, every alert cleared; signing clears the five revocation- and
-timestamp-related alerts but leaves the expired- and not-yet-valid-certificate alerts at their DSS
-defaults, so an expired signing certificate still aborts unless `validation.allowExpiredCertificate`
-is set.
+Both paths wire no OCSP or CRL source when `config` is `null` or `validation.checkRevocation` is
+off. Validation then clears every alert; signing clears the five revocation- and timestamp-related
+alerts but leaves the expired- and not-yet-valid-certificate alerts at their DSS defaults, so an
+expired signing certificate still aborts unless `validation.allowExpiredCertificate` is set. The
+trust anchors are composed either way, since without them DSS trusts no chain and every signature
+comes back `NO_CERTIFICATE_CHAIN_FOUND`. Without a `config` they are the directly-trusted
+certificates alone, as no configuration names a trusted list.
 
 Four more builders round it out. `buildLevelInspectionVerifier(config)` serves the inspections that
 have no operation behind them, the extension dialog's pre-fetch and the renewal assessment: it carries
