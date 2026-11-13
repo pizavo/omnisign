@@ -117,6 +117,17 @@ class TrustedSourceRegistry(
 		@Volatile
 		var warnings: List<LocalizableText> = emptyList()
 
+		/**
+		 * Whether this source's last refresh could not download one of its lists, so whatever
+		 * trust that list gives comes from an older copy, the cached one or an earlier
+		 * refresh's: [warnings] then hold [MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE],
+		 * which names such lists.
+		 */
+		val refreshIncomplete: Boolean
+			get() = warnings.any {
+				(it as? LocalizableText.Keyed)?.key == MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE
+			}
+
 		@Volatile
 		var signingCertificateFailure: String? = null
 
@@ -380,12 +391,15 @@ class TrustedSourceRegistry(
 	 * Whether any retained trusted source finished loading but holds no certificates —
 	 * i.e. it failed to obtain trust (a cold cache while offline, an unreachable
 	 * source URL, a signing certificate that cannot be read, or a list whose signature
-	 * could not be verified). The refresh scheduler
+	 * could not be verified) — or its last refresh could not download one of its lists,
+	 * so it goes on with an older copy (see [RetainedTl.refreshIncomplete]), as after a
+	 * start offline on a cache older than the refresh interval. The refresh scheduler
 	 * polls this to retry soon after a failure instead of waiting a full cycle.
-	 * `false` when every retained source has trust, or none is retained.
+	 * `false` when every retained source has trust and downloaded each of its lists, or
+	 * none is retained.
 	 */
 	fun hasIncompleteTrust(): Boolean =
-		entries.values.any { it.initialized && it.source.certificates.isEmpty() }
+		entries.values.any { it.initialized && (it.source.certificates.isEmpty() || it.refreshIncomplete) }
 
 	/**
 	 * Whether the shared EU LOTL source is retained and currently holds trust. `false` when the

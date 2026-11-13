@@ -57,7 +57,9 @@ refreshed cache instead of paying the download on a validation's critical path.
 Other commands read the lists from that cache and download again only the copies older than four
 hours. A list that cannot be downloaded, for instance offline, is still used from the cache however
 old the copy is, and validations name it among their
-[trusted list notices](../commands/validate#trusted-list-notices).
+[trusted list notices](../commands/validate#trusted-list-notices). The validation report's own
+freshness check counts from when a list was loaded, and each command loads it anew, so only that
+notice tells an old copy apart.
 
 ```bash
 omnisign config tl refresh

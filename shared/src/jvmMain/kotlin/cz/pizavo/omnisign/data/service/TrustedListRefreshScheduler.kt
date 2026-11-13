@@ -46,8 +46,9 @@ class TrustedListRefreshScheduler(
 	 * (re-canonicalize/re-digest) data we already have, adding a redundant CPU
 	 * pass at the worst moment — startup.
 	 *
-	 * The exception is failure: when a source did not load (offline at startup, or a
-	 * temporarily unreachable source), the next refresh is retried after a short
+	 * The exception is failure: when a source did not load, or could not download one of
+	 * its lists and goes on with an older copy (offline at startup, or a temporarily
+	 * unreachable source), the next refresh is retried after a short
 	 * [RETRY_INTERVAL_MS] for up to [MAX_FAST_RETRIES] attempts,
 	 * so a reconnected host recovers within minutes instead of a full interval. A
 	 * source that stays unreachable then falls back to the normal cadence rather than
@@ -80,7 +81,8 @@ class TrustedListRefreshScheduler(
 	 * minutes — otherwise the full [configuredInterval], so a persistently unreachable source is
 	 * not hammered.
 	 *
-	 * @param incompleteTrust Whether a retained source currently holds no trust (failed to load).
+	 * @param incompleteTrust Whether a retained source currently holds no trust (failed to load), or
+	 *   goes on with an older copy of a list it could not download.
 	 * @param fastRetries How many consecutive fast retries have already run without recovering.
 	 * @param configuredInterval The normal refresh interval, in milliseconds.
 	 */

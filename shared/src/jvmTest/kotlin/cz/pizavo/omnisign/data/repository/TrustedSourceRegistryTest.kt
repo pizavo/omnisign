@@ -81,7 +81,9 @@ import eu.europa.esig.dss.enumerations.SignatureLevel as DssSignatureLevel
  * the test tells that job from the hard refresh's own by the signing certificate each read when it
  * was built. Last, it verifies how a list is loaded from the cache: a copy older than the refresh
  * interval is replaced when its source can be read and still served, with a warning, when it
- * cannot, and a younger copy is served without reading the source. These lists are compiled by
+ * cannot, and a younger copy is served without reading the source. Trust served from a copy that
+ * could not be refreshed, at a start or by a scheduled refresh, counts as incomplete until a
+ * refresh downloads the list, so the refresh scheduler tries again soon. These lists are compiled by
  * [TrustedListCompiler], signed or left unsigned by the test, read from `file:` URLs and cached in
  * directories of the spec's own, so they reach no network either.
  */
@@ -644,6 +646,48 @@ class TrustedSourceRegistryTest : FunSpec({
 
 		warnings.shouldBeEmpty()
 		cv.trustedCertSources.certificates shouldBe listOf(CertificateToken(listed))
+	}
+
+	test("trust served from a cached copy a start could not refresh is incomplete until a refresh downloads the list") {
+		val cacheDir = cacheDirNamed("stale-start")
+		val compiled = compiledList(generateSelfSignedCert())
+		val source = File(listDir, "cached-stale-start.xml").apply { writeText(compiled) }
+		val config = customListConfig("stale-start-tl", source.toURI().toString(), null)
+		TrustedSourceRegistry(cacheDirectory = { cacheDir }).composeInto(CommonCertificateVerifier(), config)
+		source.delete()
+		ageCachedCopies(cacheDir, 5.hours)
+		val registry = TrustedSourceRegistry(cacheDirectory = { cacheDir })
+
+		registry.composeInto(CommonCertificateVerifier(), config)
+		registry.hasIncompleteTrust() shouldBe true
+
+		source.writeText(compiled)
+		registry.refreshAll()
+		registry.hasIncompleteTrust() shouldBe false
+	}
+
+	test("a scheduled refresh that cannot download a list leaves trust incomplete, though the list still supplies it") {
+		val cacheDir = cacheDirNamed("stale-refresh")
+		val listed = generateSelfSignedCert()
+		val compiled = compiledList(listed)
+		val source = File(listDir, "cached-stale-refresh.xml").apply { writeText(compiled) }
+		val config = customListConfig("stale-refresh-tl", source.toURI().toString(), null)
+		val registry = TrustedSourceRegistry(cacheDirectory = { cacheDir })
+		registry.composeInto(CommonCertificateVerifier(), config)
+		registry.hasIncompleteTrust() shouldBe false
+		source.delete()
+		ageCachedCopies(cacheDir, 5.hours)
+
+		registry.refreshAll()
+
+		registry.hasIncompleteTrust() shouldBe true
+		val cv = CommonCertificateVerifier()
+		registry.composeInto(cv, config)
+		cv.trustedCertSources.certificates shouldBe listOf(CertificateToken(listed))
+
+		source.writeText(compiled)
+		registry.refreshAll()
+		registry.hasIncompleteTrust() shouldBe false
 	}
 }) {
 	companion object {

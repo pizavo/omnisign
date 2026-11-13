@@ -559,9 +559,10 @@ class DssServiceFactory(
 		trustedSources.forceRefreshAll()
 	
 	/**
-	 * Whether any retained trusted source failed to load its trust (see
-	 * [TrustedSourceRegistry.hasIncompleteTrust]). Polled by the refresh scheduler to
-	 * retry soon after a failure rather than waiting a full interval.
+	 * Whether any retained trusted source failed to load its trust, or goes on with an older
+	 * copy of a list it could not download (see [TrustedSourceRegistry.hasIncompleteTrust]).
+	 * Polled by the refresh scheduler to retry soon after a failure rather than waiting a
+	 * full interval.
 	 */
 	fun hasIncompleteTrustedSources(): Boolean = trustedSources.hasIncompleteTrust()
 	
