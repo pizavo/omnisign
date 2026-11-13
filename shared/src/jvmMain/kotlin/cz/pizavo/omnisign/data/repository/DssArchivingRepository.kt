@@ -822,8 +822,8 @@ class DssArchivingRepository(
 	/**
 	 * A verifier for the inspections that run on their own, outside any signing or augmenting
 	 * operation — [getDocumentTimestampInfo] and [needsArchivalRenewal] — carrying the active
-	 * profile's trust anchors and no revocation sources. It keeps DSS's default AIA source, which
-	 * [DssServiceFactory.buildLevelInspectionVerifier] explains.
+	 * profile's trust anchors and no revocation sources. It keeps an AIA source, under the limits
+	 * that [DssServiceFactory.buildLevelInspectionVerifier] explains.
 	 *
 	 * Both inspections judge a document's PAdES level, and that judgement depends on which
 	 * certificates count as trust anchors (see [readPadesLevel]). Resolving the anchors here keeps

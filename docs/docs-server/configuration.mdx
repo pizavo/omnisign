@@ -247,6 +247,19 @@ server's **working directory** — in the Docker image that resolves to `/app/tr
 volume, so leave it unset there. Set it only to relocate the store onto a specific mount.
 Use a volume separate from the read-only policy and certificate files.
 
+### `aia`
+
+Where the server may download a missing issuer certificate from. When a certificate's issuer is
+neither in the document nor among the trusted certificates, the server downloads it from the URL in
+the certificate's Authority Information Access (AIA) extension. That URL comes from whoever made the
+document, so by default the server refuses to download from loopback, private-network, link-local and
+other non-public addresses. See [Security → Issuer downloads](security#aia).
+
+```yaml
+aia:
+  allowPrivateAddresses: false   # true only if an internal CA publishes its issuers on an internal address
+```
+
 ### `maxFileSize`
 
 Maximum upload size in bytes. Defaults to `104857600` (100 MB).

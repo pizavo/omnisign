@@ -25,6 +25,9 @@ import org.koin.dsl.module
 /**
  * JVM-specific DI module for repository implementations.
  *
+ * Its [AiaFetchPolicy] lets AIA downloads reach internal addresses, which suits the desktop app and
+ * the CLI; the server overrides it.
+ *
  * Note: PasswordCallback must be provided by the UI layer (Compose Desktop/CLI).
  * Register it in your application's Koin configuration:
  * ```
@@ -107,7 +110,8 @@ val jvmRepositoryModule = module {
 	single<TrustStore> { FileTrustStore() }
 	singleOf(::TrustedListRefreshSignal)
 	single { TrustedSourceRegistry(get()) }
-	single { DssServiceFactory(get(), get()) }
+	single { AiaFetchPolicy(allowPrivateAddresses = true) }
+	single { DssServiceFactory(get(), get(), get()) }
 	singleOf(::TrustedListRefreshScheduler)
 	single { DssTrustedListRefreshAdapter(get(), get()) } bind TrustedListRefreshPort::class
 	singleOf(::DssWarningSanitizer)

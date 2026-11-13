@@ -79,6 +79,37 @@ operations:
 
 Combine the allowlist with [authentication](authentication) for any internet-facing `SIGN` deployment.
 
+## Issuer downloads (AIA) {/* #aia */}
+
+When a certificate's issuer is neither in the document nor among the trusted certificates, the server
+downloads it from the URL in the certificate's Authority Information Access (AIA) extension. It does
+so while it builds the chain, before it knows whether the chain is trusted, so the URL is whatever the
+maker of the document put there, and `VALIDATE` is enabled by default. Every such download:
+
+- uses only `http` or `https`; `file`, `ftp` and `ldap` URLs are skipped;
+- must finish within the shorter of the OCSP and CRL timeouts in `signing.yml` (30 seconds each by
+  default), so a server that answers a byte at a time is cut off;
+- reads at most 1 MiB of response.
+
+The server also refuses to connect to loopback, private-network (RFC 1918 and IPv6 unique-local),
+carrier-grade NAT, link-local and other non-public addresses, which include the cloud metadata
+endpoint `169.254.169.254` and Azure's host endpoint `168.63.129.16`. An IPv6 address that carries an
+IPv4 one, such as `::ffff:10.0.0.1` or the 6to4 address `2002:a00:1::`, is judged by the IPv4
+address. The check applies to the address the server actually connects to, so it also covers
+redirects and host names that resolve to an internal address. If an internal CA publishes
+its issuer certificates on an internal address and your documents don't embed them, allow internal
+addresses in `server.yml`:
+
+```yaml
+aia:
+  allowPrivateAddresses: true
+```
+
+The server logs a warning at startup while this is on. Revocation data (CRL and OCSP) is fetched only
+for chains that end at a trusted certificate, so its URLs come from trusted CAs and are not
+restricted this way. The desktop app and the CLI apply the same scheme, time and size limits but allow
+internal addresses, because they process their own user's documents.
+
 ## Other hardening
 
 - **Strict config parsing** — unknown `server.yml` keys fail startup so a typo can't silently disable

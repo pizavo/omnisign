@@ -23,6 +23,7 @@ import cz.pizavo.omnisign.config.ServerConfigLoader
 import cz.pizavo.omnisign.config.ServerSecrets
 import cz.pizavo.omnisign.config.SessionConfig
 import cz.pizavo.omnisign.config.TrustReconciler
+import cz.pizavo.omnisign.data.repository.AiaFetchPolicy
 import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -60,6 +61,10 @@ import kotlin.coroutines.CoroutineContext
  *   `jvmRepositoryModule` binding so the server never touches a co-located desktop trust store.
  * - [TrustReconciler] that provisions that trust store from the signing.yml trust references at
  *   boot; invoked from `Application.moduleWith`.
+ * - [AiaFetchPolicy] from the `aia` block of `server.yml`, overriding the `jvmRepositoryModule`
+ *   binding, which lets AIA downloads reach internal addresses. The server blocks them unless
+ *   [cz.pizavo.omnisign.config.AiaConfig.allowPrivateAddresses] is set, because the URLs come from
+ *   the documents anyone can send it.
  * - [CredentialStore] ([EmptyCredentialStore]) when [AllowedOperation.SIGN] is not allowed,
  *   overriding the keyring-backed store from `jvmRepositoryModule` so a server that only
  *   validates or timestamps never opens the host's keychain. A signing server keeps the keyring
@@ -132,6 +137,7 @@ fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConf
 
 	single<TrustStore> { FileTrustStore(serverTrustDir(serverConfig)) }
 	single { TrustReconciler(get()) }
+	single { AiaFetchPolicy(allowPrivateAddresses = serverConfig.aia.allowPrivateAddresses) }
 
 	if (AllowedOperation.SIGN in serverConfig.operations.allowed) {
 		single { MutableStateFlow(false) }

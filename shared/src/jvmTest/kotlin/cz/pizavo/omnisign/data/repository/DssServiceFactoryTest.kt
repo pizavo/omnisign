@@ -4,6 +4,7 @@ import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
+import com.sun.net.httpserver.HttpServer
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
@@ -13,7 +14,11 @@ import cz.pizavo.omnisign.domain.model.config.service.CrlConfig
 import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.service.CredentialStore
+import eu.europa.esig.dss.model.x509.CertificateToken
+import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.engine.spec.tempfile
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -22,8 +27,15 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.mockk.every
 import io.mockk.mockk
+import org.bouncycastle.asn1.x500.X500Name
+import org.bouncycastle.asn1.x509.AccessDescription
+import org.bouncycastle.asn1.x509.AuthorityInformationAccess
+import org.bouncycastle.asn1.x509.Extension
+import org.bouncycastle.asn1.x509.GeneralName
 import org.slf4j.LoggerFactory
+import java.net.InetSocketAddress
 import java.util.*
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.toJavaInstant
@@ -31,6 +43,9 @@ import kotlin.time.toJavaInstant
 /**
  * Verifies [DssServiceFactory] builds TSP sources, certificate verifiers,
  * and PDF object factories with expected configuration wiring.
+ *
+ * The AIA tests ask each verifier's AIA source for the issuer of a certificate that points to a file
+ * or to an HTTP server on the loopback interface, which stands in for any internal address.
  */
 class DssServiceFactoryTest : FunSpec({
 	
@@ -316,6 +331,65 @@ class DssServiceFactoryTest : FunSpec({
 		result.verifier.trustedCertSources.shouldNotBeNull()
 		result.verifier.trustedCertSources.numberOfCertificates shouldBe 1
 	}
+
+	// ── AIA downloads ────────────────────────────────────────────────────────
+
+	val issuerDer = generateSelfSignedCert().encoded
+	val issuerRequests = AtomicInteger()
+	val issuerServer = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0).apply {
+		createContext("/issuer.cer") { exchange ->
+			issuerRequests.incrementAndGet()
+			exchange.sendResponseHeaders(200, issuerDer.size.toLong())
+			exchange.responseBody.use { it.write(issuerDer) }
+		}
+		start()
+	}
+	val loopbackIssuerUrl = "http://127.0.0.1:${issuerServer.address.port}/issuer.cer"
+	afterSpec { issuerServer.stop(0) }
+
+	/** Every kind of verifier [factory] builds, by a name for the test titles. */
+	fun everyVerifier(factory: DssServiceFactory): Map<String, CommonCertificateVerifier> = mapOf(
+		"signing" to factory.buildSigningCertificateVerifier(minimalConfig()).verifier,
+		"signing without a config" to factory.buildSigningCertificateVerifier(null).verifier,
+		"extension without revocation" to
+			factory.buildExtendCertificateVerifier(minimalConfig(checkRevocation = false)).verifier,
+		"validation" to factory.buildValidationCertificateVerifier(minimalConfig()).verifier,
+		"validation without revocation" to
+			factory.buildValidationCertificateVerifier(minimalConfig(checkRevocation = false)).verifier,
+		"validation without a config" to factory.buildValidationCertificateVerifier(null).verifier,
+		"level inspection" to factory.buildLevelInspectionVerifier(minimalConfig()).verifier,
+		"level inspection without a config" to factory.buildLevelInspectionVerifier(null).verifier,
+		"lenient" to factory.buildCertificateVerifier(),
+	)
+
+	test("no verifier follows a file URL to an issuer") {
+		val issuerFile = tempfile(suffix = ".cer").apply { writeBytes(issuerDer) }
+		val leaf = certificateWithCaIssuers(issuerFile.toURI().toString())
+
+		everyVerifier(DssServiceFactory(credentialStore, aiaFetchPolicy = AiaFetchPolicy(allowPrivateAddresses = true)))
+			.forEach { (name, verifier) ->
+				withClue(name) { verifier.aiaSource.getCertificatesByAIA(leaf).shouldBeEmpty() }
+			}
+	}
+
+	test("no verifier downloads an issuer from an internal address by default") {
+		val leaf = certificateWithCaIssuers(loopbackIssuerUrl)
+		val before = issuerRequests.get()
+
+		everyVerifier(DssServiceFactory(credentialStore)).forEach { (name, verifier) ->
+			withClue(name) { verifier.aiaSource.getCertificatesByAIA(leaf).shouldBeEmpty() }
+		}
+		issuerRequests.get() shouldBe before
+	}
+
+	test("every verifier downloads an issuer from an internal address when the policy allows it") {
+		val leaf = certificateWithCaIssuers(loopbackIssuerUrl)
+
+		everyVerifier(DssServiceFactory(credentialStore, aiaFetchPolicy = AiaFetchPolicy(allowPrivateAddresses = true)))
+			.forEach { (name, verifier) ->
+				withClue(name) { verifier.aiaSource.getCertificatesByAIA(leaf) shouldHaveSize 1 }
+			}
+	}
 }) {
 	companion object {
 		/**
@@ -341,6 +415,39 @@ class DssServiceFactoryTest : FunSpec({
 			
 			return org.bouncycastle.cert.jcajce.JcaX509CertificateConverter()
 				.getCertificate(holder)
+		}
+
+		/**
+		 * A certificate whose issuer is nowhere to be found, with an Authority Information Access
+		 * extension pointing DSS to [caIssuerUrls] for it.
+		 */
+		fun certificateWithCaIssuers(vararg caIssuerUrls: String): CertificateToken {
+			val keyPair = java.security.KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+			val now = Clock.System.now()
+			val builder = org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder(
+				X500Name("CN=Missing Issuer"),
+				java.math.BigInteger.valueOf(System.nanoTime()),
+				Date.from(now.toJavaInstant()),
+				Date.from((now + 365.days).toJavaInstant()),
+				X500Name("CN=Leaf"),
+				keyPair.public,
+			).addExtension(
+				Extension.authorityInfoAccess,
+				false,
+				AuthorityInformationAccess(
+					caIssuerUrls.map { url ->
+						AccessDescription(
+							AccessDescription.id_ad_caIssuers,
+							GeneralName(GeneralName.uniformResourceIdentifier, url),
+						)
+					}.toTypedArray()
+				),
+			)
+			val signer = org.bouncycastle.operator.jcajce.JcaContentSignerBuilder("SHA256WithRSA")
+				.build(keyPair.private)
+			return CertificateToken(
+				org.bouncycastle.cert.jcajce.JcaX509CertificateConverter().getCertificate(builder.build(signer))
+			)
 		}
 	}
 }
