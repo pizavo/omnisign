@@ -25,10 +25,16 @@ interface TrustedListCompilerPort {
 	 * Compile [draft] and write the resulting XML to the file at [outputPath],
 	 * creating parent directories if necessary.
 	 *
+	 * A caller registering the written list should use the returned URI as its
+	 * [cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig.source] rather than build one
+	 * from [outputPath]: prefixing a path with `file:///` gives no valid URI for a Windows path or
+	 * one with a space, and DSS cannot load the list from such a source.
+	 *
 	 * @param draft The trusted list definition to compile.
 	 * @param outputPath Absolute path to the destination file.
-	 * @return Unit on success, or an [cz.pizavo.omnisign.domain.model.error.OperationError] on failure.
+	 * @return The written file's `file:` URI, or an
+	 *   [cz.pizavo.omnisign.domain.model.error.OperationError] on failure.
 	 */
-	fun compileTo(draft: CustomTrustedListDraft, outputPath: String): OperationResult<Unit>
+	fun compileTo(draft: CustomTrustedListDraft, outputPath: String): OperationResult<String>
 }
 
