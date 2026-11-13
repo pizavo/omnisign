@@ -299,6 +299,21 @@ class ProfileEditTest : FunSpec({
 		updated.validation shouldBe ValidationConfig(customTrustedLists = trustedLists)
 	}
 
+	test("clears the profile's custom policy file together with its policy") {
+		val trustedLists = listOf(CustomTrustedListConfig(name = "corp", source = "file:///corp.xml"))
+		val base = existing.copy(
+			validation = ValidationConfig(
+				policyType = ValidationPolicyType.CUSTOM_FILE,
+				customPolicyPath = "/policies/profile-policy.xml",
+				customTrustedLists = trustedLists,
+			),
+		)
+
+		val updated = editProfile("--clear-validation-policy", base = base)
+
+		updated.validation shouldBe ValidationConfig(customTrustedLists = trustedLists)
+	}
+
 	test("drops a validation block that clearing the policy leaves empty") {
 		val base = existing.copy(validation = ValidationConfig(policyType = ValidationPolicyType.CUSTOM_FILE))
 

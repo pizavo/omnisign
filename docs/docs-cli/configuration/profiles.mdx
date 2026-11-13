@@ -70,7 +70,8 @@ and the following `--clear-*` flags to unset individual fields:
 A profile overrides only the settings it sets. A validation setting it leaves out, such as the
 validation policy, revocation checking or the EU LOTL, follows the global configuration, even when
 the profile has trusted lists or algorithm settings of its own. `--clear-validation-policy` hands
-the policy back to the global configuration and keeps those.
+the policy, with any custom policy file the profile names, back to the global configuration and
+keeps those.
 
 ## Export and import
 

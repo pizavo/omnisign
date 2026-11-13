@@ -240,10 +240,11 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 	
 	/**
 	 * Resolve the patched validation config field. [validationPolicy] sets the policy type, and
-	 * [clearValidationPolicy] unsets it, so the profile inherits the global one again. The algorithm
-	 * constraint options are merged onto the existing value, which is re-stamped only when one of
-	 * them is given. Everything else in the profile's validation section, such as its trusted lists,
-	 * is kept, and a section left with nothing set is dropped.
+	 * [clearValidationPolicy] unsets it together with the profile's custom policy file, so the
+	 * profile inherits the global policy again. The algorithm constraint options are merged onto
+	 * the existing value, which is re-stamped only when one of them is given. Everything else in the
+	 * profile's validation section, such as its trusted lists, is kept, and a section left with
+	 * nothing set is dropped.
 	 */
 	private fun patchValidation(existing: ProfileConfig): ValidationConfig? {
 		val changesAlgoConstraints = algoExpirationLevel != null ||
@@ -256,6 +257,7 @@ class ProfileEdit : CliktCommand(name = "edit"), KoinComponent {
 		val base = existing.validation ?: ValidationConfig()
 		return base.copy(
 			policyType = if (clearValidationPolicy) null else validationPolicy ?: base.policyType,
+			customPolicyPath = if (clearValidationPolicy) null else base.customPolicyPath,
 			algorithmConstraints = if (changesAlgoConstraints) patchAlgorithmConstraints(base) else base.algorithmConstraints,
 		).takeUnless { it == ValidationConfig() }
 	}

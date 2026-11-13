@@ -209,6 +209,17 @@ class ConfigSerializerTest : FunSpec({
 		}
 	}
 
+	test("every format leaves unset settings out instead of writing null, so an older build reads its own defaults") {
+		for (serializer in serializers) {
+			val text = serializer.serializeApp(AppConfig()).shouldBeRight()
+
+			text shouldNotContain "policyType"
+			text shouldNotContain "checkRevocation"
+			text shouldNotContain "useEuLotl"
+			text shouldNotContain "null"
+		}
+	}
+
 	test("every format round-trips a populated AppConfig unchanged") {
 		for (serializer in serializers) {
 			val text = serializer.serializeApp(populatedApp).shouldBeRight()
