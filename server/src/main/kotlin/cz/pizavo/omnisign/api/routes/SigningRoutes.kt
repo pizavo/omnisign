@@ -33,7 +33,10 @@ import org.koin.ktor.ext.inject
  * - `file` — the PDF to sign (required).
  * - `certificateAlias` — alias of the certificate to use (optional, except when the server allows
  *   several aliases; see below).
- * - `hashAlgorithm` — hash algorithm name (optional, e.g. `SHA256`).
+ * - `hashAlgorithm` — hash algorithm name (optional, e.g. `SHA256`). Resolved through
+ *   [OperationConfig] like the CLI's `--hash`, so the request is rejected with
+ *   `422 INVALID_CONFIGURATION` when `signing.yml`, the profile or `disableHashAlgorithm`
+ *   disables it.
  * - `signatureLevel` — PAdES level (optional, e.g. `PADES_BASELINE_T`).
  * - `reason`, `location`, `contactInfo` — optional signature metadata.
  * - `noTimestamp` — set to `true` to omit the RFC 3161 timestamp.
@@ -48,11 +51,12 @@ import org.koin.ktor.ext.inject
  *   additionally disable for this request (optional). Same semantics as `disableHashAlgorithm`.
  *
  * The per-request override surface is intentionally limited to these two strictly-tightening
- * fields: the institution stands the service up to enforce *its* rules, so loosening fields
- * (alternate TSAs, custom validation policies) are not exposed even though they exist in
- * [OperationConfig]. The [OperationConfig] passed to [ResolvedConfig.resolve] is assembled
- * here with only these two fields populated, so a future expansion of the override pipeline
- * cannot accidentally widen the API surface.
+ * fields plus `hashAlgorithm`, which [ResolvedConfig.resolve] checks against every disabled set:
+ * the institution stands the service up to enforce *its* rules, so loosening fields (alternate
+ * TSAs, custom validation policies) are not exposed even though they exist in [OperationConfig].
+ * The [OperationConfig] passed to [ResolvedConfig.resolve] is assembled here with only these three
+ * fields populated, so a future expansion of the override pipeline cannot accidentally widen the
+ * API surface.
  *
  * This operation is disabled by default and must be explicitly enabled in
  * [OperationsConfig.allowed][cz.pizavo.omnisign.config.OperationsConfig.allowed].
@@ -108,10 +112,16 @@ fun Route.signingRoutes() {
 			val appConfig = configRepository.getCurrentConfig()
 			val profileConfig = profileName?.let { appConfig.profiles[it] }
 
+			val hashAlgorithm = extractTextField(parts, "hashAlgorithm")
+				?.let { name -> HashAlgorithm.entries.firstOrNull { it.name.equals(name, ignoreCase = true) } }
+
 			val operationOverrides = OperationConfig(
+				hashAlgorithm = hashAlgorithm,
 				disabledHashAlgorithms = disabledHashAlgorithms,
 				disabledEncryptionAlgorithms = disabledEncryptionAlgorithms,
-			).takeIf { disabledHashAlgorithms.isNotEmpty() || disabledEncryptionAlgorithms.isNotEmpty() }
+			).takeIf {
+				hashAlgorithm != null || disabledHashAlgorithms.isNotEmpty() || disabledEncryptionAlgorithms.isNotEmpty()
+			}
 
 			val resolvedConfig = ResolvedConfig.resolve(appConfig.global, profileConfig, operationOverrides)
 				.fold(
@@ -124,9 +134,6 @@ fun Route.signingRoutes() {
 					},
 					ifRight = { it },
 				)
-
-			val hashAlgorithm = extractTextField(parts, "hashAlgorithm")
-				?.let { name -> HashAlgorithm.entries.firstOrNull { it.name.equals(name, ignoreCase = true) } }
 
 			val signatureLevel = extractTextField(parts, "signatureLevel")
 				?.let { name -> SignatureLevel.entries.firstOrNull { it.name.equals(name, ignoreCase = true) } }
@@ -183,7 +190,7 @@ fun Route.signingRoutes() {
 				certificateAlias = certificateAlias,
 				keystoreFile = signingKeystorePath,
 				keystorePassword = signingKeystorePath?.let { secrets.signingKeystorePassword },
-				hashAlgorithm = hashAlgorithm,
+				hashAlgorithm = resolvedConfig.hashAlgorithm,
 				signatureLevel = signatureLevel,
 				reason = extractTextField(parts, "reason"),
 				location = extractTextField(parts, "location"),

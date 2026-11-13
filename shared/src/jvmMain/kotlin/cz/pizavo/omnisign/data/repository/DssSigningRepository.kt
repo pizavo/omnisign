@@ -8,6 +8,7 @@ import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.config.enums.toDss
+import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.error.localizableText
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
@@ -86,6 +87,14 @@ class DssSigningRepository(
 	 */
 	private val storedPinLocks = ConcurrentHashMap<StoredPinSlot, Mutex>()
 	
+	/**
+	 * Sign the document in [parameters] with the key they select, at the level and with the hash and
+	 * encryption algorithms that they or the resolved configuration choose.
+	 *
+	 * Fails with [ConfigurationError.InvalidConfiguration] before any key is looked up when that hash
+	 * or encryption algorithm is disabled in the resolved configuration, so no caller can pass a
+	 * disabled algorithm in through [SigningParameters].
+	 */
 	@Suppress("TooGenericExceptionCaught", "CyclomaticComplexMethod", "LongMethod", "ReturnCount")
 	override suspend fun signDocument(parameters: SigningParameters): OperationResult<SigningResult> {
 		return try {
@@ -97,6 +106,16 @@ class DssSigningRepository(
 			val effectiveLevel = parameters.signatureLevel ?: resolvedConfig.signatureLevel
 			val effectiveHash = parameters.hashAlgorithm ?: resolvedConfig.hashAlgorithm
 			val effectiveEncryption = parameters.encryptionAlgorithm ?: resolvedConfig.encryptionAlgorithm
+			if (effectiveHash in resolvedConfig.disabledHashAlgorithms) {
+				return ConfigurationError.InvalidConfiguration(
+					LocalizableText.Literal("Hash algorithm ${effectiveHash.name} is disabled in the configuration")
+				).left()
+			}
+			if (effectiveEncryption != null && effectiveEncryption in resolvedConfig.disabledEncryptionAlgorithms) {
+				return ConfigurationError.InvalidConfiguration(
+					LocalizableText.Literal("Encryption algorithm ${effectiveEncryption.name} is disabled in the configuration")
+				).left()
+			}
 			val digestAlgorithm = DigestAlgorithm.forName(effectiveHash.dssName)
 			val dssSignatureLevel = effectiveLevel.toDss()
 			
