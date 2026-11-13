@@ -25,7 +25,8 @@ import kotlin.io.path.writeText
 
 /**
  * Verifies that `POST /api/v1/sign` holds the `hashAlgorithm` a request asks for to the hash
- * algorithms that `signing.yml` or the request itself disables, as the CLI does for `--hash`.
+ * algorithms that `signing.yml`, the requested profile or the request itself disables, as the CLI
+ * does for `--hash`.
  *
  * The server signs from an empty PKCS#12 keystore, so a request whose algorithm is accepted fails
  * later, at key resolution. No test signs anything or touches a real token.
@@ -45,16 +46,25 @@ class SigningHashAlgorithmTest : FunSpec({
 			"""
 			global:
 			  disabledHashAlgorithms: [SHA3_256]
+			profiles:
+			  inline:
+			    - name: strict
+			      disabledHashAlgorithms: [SHA384]
 			""".trimIndent(),
 		)
 	}
 
 	/**
-	 * Start a server whose `signing.yml` disables SHA3-256, send it one sign request asking for
-	 * [hashAlgorithm] and additionally disabling [disableHashAlgorithm] (nothing when `null`), and
-	 * return the status and error it answers with.
+	 * Start a server whose `signing.yml` disables SHA3-256 globally and SHA-384 in its `strict`
+	 * profile, send it one sign request asking for [hashAlgorithm] under [profile] (none when `null`)
+	 * and additionally disabling [disableHashAlgorithm] (nothing when `null`), and return the status
+	 * and error it answers with.
 	 */
-	fun signingError(hashAlgorithm: String, disableHashAlgorithm: String? = null): Pair<HttpStatusCode, ApiError> {
+	fun signingError(
+		hashAlgorithm: String,
+		disableHashAlgorithm: String? = null,
+		profile: String? = null,
+	): Pair<HttpStatusCode, ApiError> {
 		lateinit var answer: Pair<HttpStatusCode, ApiError>
 		testApplication {
 			application {
@@ -89,6 +99,7 @@ class SigningHashAlgorithmTest : FunSpec({
 							append("noTimestamp", "true")
 							append("hashAlgorithm", hashAlgorithm)
 							disableHashAlgorithm?.let { append("disableHashAlgorithm", it) }
+							profile?.let { append("profile", it) }
 						},
 					),
 				)
@@ -112,6 +123,22 @@ class SigningHashAlgorithmTest : FunSpec({
 		status shouldBe HttpStatusCode.UnprocessableEntity
 		error.error shouldBe "INVALID_CONFIGURATION"
 		error.message shouldContain "SHA512"
+	}
+
+	test("a hashAlgorithm that the requested profile disables is rejected") {
+		val (status, error) = signingError(hashAlgorithm = "SHA384", profile = "strict")
+
+		status shouldBe HttpStatusCode.UnprocessableEntity
+		error.error shouldBe "INVALID_CONFIGURATION"
+		error.message shouldContain "SHA384"
+	}
+
+	test("a hashAlgorithm named in lower case is held to the same rules") {
+		val (status, error) = signingError(hashAlgorithm = "sha3_256")
+
+		status shouldBe HttpStatusCode.UnprocessableEntity
+		error.error shouldBe "INVALID_CONFIGURATION"
+		error.message shouldContain "SHA3_256"
 	}
 
 	test("a hashAlgorithm that nothing disables gets past the check") {

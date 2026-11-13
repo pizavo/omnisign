@@ -91,9 +91,11 @@ class DssSigningRepository(
 	 * Sign the document in [parameters] with the key they select, at the level and with the hash and
 	 * encryption algorithms that they or the resolved configuration choose.
 	 *
-	 * Fails with [ConfigurationError.InvalidConfiguration] before any key is looked up when that hash
-	 * or encryption algorithm is disabled in the resolved configuration, so no caller can pass a
-	 * disabled algorithm in through [SigningParameters].
+	 * Fails with [ConfigurationError.InvalidConfiguration] before any key is looked up when the hash
+	 * algorithm, or an encryption algorithm that [parameters] or the configuration names, is disabled
+	 * in the resolved configuration. Only the resolved configuration's disabled sets count: the
+	 * per-request sets on [SigningParameters] are for the web target, which sends them to the server.
+	 * When neither names an encryption algorithm, the one the key implies is not checked.
 	 */
 	@Suppress("TooGenericExceptionCaught", "CyclomaticComplexMethod", "LongMethod", "ReturnCount")
 	override suspend fun signDocument(parameters: SigningParameters): OperationResult<SigningResult> {
