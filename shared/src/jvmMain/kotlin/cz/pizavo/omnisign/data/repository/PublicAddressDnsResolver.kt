@@ -47,8 +47,17 @@ class PublicAddressDnsResolver(
 
 	companion object {
 
-		/** Offset of the IPv4 address that an IPv4-mapped, IPv4-compatible or NAT64 IPv6 address carries. */
-		private const val IPV4_EMBEDDED_OFFSET = 12
+		/** Length in bytes of an IPv4 address. */
+		private const val IPV4_LENGTH = 4
+
+		/**
+		 * Offset of the IPv4 address that an IPv4-compatible, IPv4-mapped, IPv4-translated or NAT64
+		 * IPv6 address carries in its last four bytes.
+		 */
+		private const val IPV4_SUFFIX_OFFSET = 12
+
+		/** Offset of the IPv4 address that a 6to4 address, `2002:aabb:ccdd::/48`, carries. */
+		private const val SIX_TO_FOUR_IPV4_OFFSET = 2
 
 		/**
 		 * The IPv4 ranges that are not publicly routable, from the IANA special-purpose address
@@ -56,12 +65,16 @@ class PublicAddressDnsResolver(
 		 * (`100.64.0.0/10`), loopback, link-local (which holds the cloud metadata endpoint
 		 * `169.254.169.254`), the IETF protocol and documentation blocks, the benchmarking block,
 		 * multicast, and the reserved block up to and including the broadcast address.
+		 *
+		 * It also holds `168.63.129.16`, a public address that every Azure virtual machine reaches its
+		 * host through, for the platform's DNS, health probes and agent configuration.
 		 */
 		private val NON_PUBLIC_IPV4_RANGES = listOf(
 			"0.0.0.0/8",
 			"10.0.0.0/8",
 			"100.64.0.0/10",
 			"127.0.0.0/8",
+			"168.63.129.16/32",
 			"169.254.0.0/16",
 			"172.16.0.0/12",
 			"192.0.0.0/24",
@@ -76,13 +89,16 @@ class PublicAddressDnsResolver(
 
 		/**
 		 * The IPv6 ranges that are not publicly routable: the discard-only block, the local-use
-		 * NAT64 prefix, the documentation prefix, unique-local addresses (`fc00::/7`), link-local and
-		 * the deprecated site-local prefix, and multicast. Loopback and the unspecified address are
-		 * caught as IPv4-compatible forms of `0.0.0.1` and `0.0.0.0`; see [embeddedIpv4].
+		 * NAT64 prefix, the IETF protocol assignments block (`2001::/23`, which holds the Teredo
+		 * tunnelling prefix and anycast addresses that reach a local router), the documentation
+		 * prefix, unique-local addresses (`fc00::/7`), link-local and the deprecated site-local
+		 * prefix, and multicast. Loopback and the unspecified address are caught as IPv4-compatible
+		 * forms of `0.0.0.1` and `0.0.0.0`; see [embeddedIpv4].
 		 */
 		private val NON_PUBLIC_IPV6_RANGES = listOf(
 			"100::/64",
 			"64:ff9b:1::/48",
+			"2001::/23",
 			"2001:db8::/32",
 			"fc00::/7",
 			"fe80::/10",
@@ -90,17 +106,27 @@ class PublicAddressDnsResolver(
 			"ff00::/8",
 		).map(AddressRange::parse)
 
-		/** First twelve bytes of an IPv4-mapped IPv6 address, `::ffff:a.b.c.d`. */
-		private val IPV4_MAPPED_PREFIX = ByteArray(IPV4_EMBEDDED_OFFSET - 2) + byteArrayOf(-1, -1)
+		/**
+		 * The first twelve bytes of the IPv6 forms that carry an IPv4 address in their last four:
+		 * IPv4-compatible (`::a.b.c.d`), IPv4-mapped (`::ffff:a.b.c.d`), IPv4-translated
+		 * (`::ffff:0:a.b.c.d`) and the well-known NAT64 prefix (`64:ff9b::/96`).
+		 */
+		private val IPV4_SUFFIX_PREFIXES = listOf(
+			ByteArray(IPV4_SUFFIX_OFFSET),
+			ByteArray(IPV4_SUFFIX_OFFSET - 2) + byteArrayOf(-1, -1),
+			ByteArray(IPV4_SUFFIX_OFFSET - IPV4_LENGTH) + byteArrayOf(-1, -1, 0, 0),
+			InetAddress.getByName("64:ff9b::").address.copyOf(IPV4_SUFFIX_OFFSET),
+		)
 
-		/** First twelve bytes of the well-known NAT64 prefix `64:ff9b::/96`, which carries an IPv4 address. */
-		private val NAT64_PREFIX = InetAddress.getByName("64:ff9b::").address.copyOf(IPV4_EMBEDDED_OFFSET)
+		/** The 6to4 prefix, whose addresses carry an IPv4 address right after it. */
+		private val SIX_TO_FOUR_RANGE = AddressRange.parse("2002::/16")
 
 		/**
 		 * Whether [address] is a public unicast address that a download may connect to.
 		 *
-		 * An IPv6 address that carries an IPv4 address (IPv4-mapped, IPv4-compatible or behind the
-		 * well-known NAT64 prefix) is judged by the IPv4 address it reaches.
+		 * An IPv6 address that carries an IPv4 address (IPv4-compatible, IPv4-mapped,
+		 * IPv4-translated, 6to4 or behind the well-known NAT64 prefix) is judged by the IPv4 address
+		 * it reaches.
 		 */
 		fun isPublic(address: InetAddress): Boolean {
 			embeddedIpv4(address)?.let { return isPublic(it) }
@@ -110,18 +136,19 @@ class PublicAddressDnsResolver(
 
 		/**
 		 * The IPv4 address that the IPv6 [address] stands for, or `null` when it is not one of the
-		 * forms that carry one in their last four bytes. An address whose first twelve bytes are zero
-		 * counts as IPv4-compatible, which also puts `::1` and `::` in `0.0.0.0/8`.
+		 * forms that carry one. An address whose first twelve bytes are zero counts as
+		 * IPv4-compatible, which also puts `::1` and `::` in `0.0.0.0/8`.
 		 */
 		private fun embeddedIpv4(address: InetAddress): Inet4Address? {
 			if (address !is Inet6Address) return null
 			val bytes = address.address
-			val prefix = bytes.copyOf(IPV4_EMBEDDED_OFFSET)
-			val carriesIpv4 = prefix.all { it == 0.toByte() } ||
-				prefix.contentEquals(IPV4_MAPPED_PREFIX) ||
-				prefix.contentEquals(NAT64_PREFIX)
-			if (!carriesIpv4) return null
-			return InetAddress.getByAddress(bytes.copyOfRange(IPV4_EMBEDDED_OFFSET, bytes.size)) as Inet4Address
+			val prefix = bytes.copyOf(IPV4_SUFFIX_OFFSET)
+			val offset = when {
+				IPV4_SUFFIX_PREFIXES.any { prefix.contentEquals(it) } -> IPV4_SUFFIX_OFFSET
+				SIX_TO_FOUR_RANGE.contains(address) -> SIX_TO_FOUR_IPV4_OFFSET
+				else -> return null
+			}
+			return InetAddress.getByAddress(bytes.copyOfRange(offset, offset + IPV4_LENGTH)) as Inet4Address
 		}
 	}
 

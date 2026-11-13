@@ -93,8 +93,10 @@ maker of the document put there, and `VALIDATE` is enabled by default. Every suc
 
 The server also refuses to connect to loopback, private-network (RFC 1918 and IPv6 unique-local),
 carrier-grade NAT, link-local and other non-public addresses, which include the cloud metadata
-endpoint `169.254.169.254`. The check applies to the address the server actually connects to, so it
-also covers redirects and host names that resolve to an internal address. If an internal CA publishes
+endpoint `169.254.169.254` and Azure's host endpoint `168.63.129.16`. An IPv6 address that carries an
+IPv4 one, such as `::ffff:10.0.0.1` or the 6to4 address `2002:a00:1::`, is judged by the IPv4
+address. The check applies to the address the server actually connects to, so it also covers
+redirects and host names that resolve to an internal address. If an internal CA publishes
 its issuer certificates on an internal address and your documents don't embed them, allow internal
 addresses in `server.yml`:
 
