@@ -6,6 +6,7 @@ import com.github.ajalt.clikt.testing.test
 import cz.pizavo.omnisign.Omnisign
 import cz.pizavo.omnisign.commands.config.ConfigSet
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
@@ -207,10 +208,10 @@ class ProfileCreateTest : FunSpec({
 		profile.validation shouldBe null
 	}
 
-	test("carries the validation policy onto the persisted profile") {
+	test("carries the validation policy onto the persisted profile, inheriting every other validation setting") {
 		val profile = createProfile("qualified", "--validation-policy", "CUSTOM_FILE")
 
-		profile.validation?.policyType shouldBe ValidationPolicyType.CUSTOM_FILE
+		profile.validation shouldBe ValidationConfig(policyType = ValidationPolicyType.CUSTOM_FILE)
 	}
 
 	test("carries the algorithm constraint overrides onto the persisted profile") {
@@ -221,6 +222,9 @@ class ProfileCreateTest : FunSpec({
 			"--algo-expiry-override", "RIPEMD160=2030-01-01",
 		)
 
+		profile.validation?.policyType shouldBe null
+		profile.validation?.checkRevocation shouldBe null
+		profile.validation?.useEuLotl shouldBe null
 		val constraints = profile.validation?.algorithmConstraints
 		constraints?.expirationLevel shouldBe AlgorithmConstraintLevel.WARN
 		constraints?.expirationLevelAfterUpdate shouldBe AlgorithmConstraintLevel.FAIL

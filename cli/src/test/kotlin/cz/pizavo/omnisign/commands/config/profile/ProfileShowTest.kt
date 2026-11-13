@@ -5,9 +5,12 @@ import arrow.core.right
 import com.github.ajalt.clikt.testing.test
 import cz.pizavo.omnisign.Omnisign
 import cz.pizavo.omnisign.domain.model.config.AppConfig
+import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
+import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
@@ -68,6 +71,38 @@ class ProfileShowTest : FunSpec({
 		output shouldContain "Encryption alg.  : inherit from global"
 		output shouldContain "Signature level  : inherit from global"
 		output shouldContain "Description      : (none)"
+	}
+
+	test("reports the validation settings a profile leaves unset as inherited from the global configuration") {
+		val output = show(
+			ProfileConfig(
+				name = "corp",
+				validation = ValidationConfig(
+					customTrustedLists = listOf(CustomTrustedListConfig(name = "corp", source = "file:///corp.xml")),
+				),
+			),
+		)
+
+		output shouldContain "Policy type      : inherit from global"
+		output shouldContain "Check revocation : inherit from global"
+		output shouldContain "Use EU LOTL      : inherit from global"
+	}
+
+	test("prints the validation settings a profile does set") {
+		val output = show(
+			ProfileConfig(
+				name = "offline",
+				validation = ValidationConfig(
+					policyType = ValidationPolicyType.CUSTOM_FILE,
+					checkRevocation = false,
+					useEuLotl = false,
+				),
+			),
+		)
+
+		output shouldContain "Policy type      : CUSTOM_FILE"
+		output shouldContain "Check revocation : false"
+		output shouldContain "Use EU LOTL      : false"
 	}
 
 	test("prints the overrides a profile does carry") {

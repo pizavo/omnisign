@@ -255,7 +255,7 @@ class DssServiceFactory(
 		cv.aiaSource = buildAiaSource(aiaTimeout(config))
 		val tlWarnings = composeTrust(cv, config, directAnchors)
 
-		if (config == null || !config.validation.checkRevocation) {
+		if (config == null || config.validation.checkRevocation == false) {
 			return CertificateVerifierResult(
 				verifier = cv.apply {
 					alertOnMissingRevocationData = null
@@ -339,7 +339,7 @@ class DssServiceFactory(
 		cv.aiaSource = buildAiaSource(aiaTimeout(config))
 		val tlWarnings = composeTrust(cv, config, directAnchors)
 
-		if (config == null || !config.validation.checkRevocation) {
+		if (config == null || config.validation.checkRevocation == false) {
 			return CertificateVerifierResult(
 				verifier = cv.apply {
 					alertOnUncoveredPOE = null

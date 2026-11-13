@@ -112,7 +112,9 @@ scope, and a profile removed from the policy has its scope cleared at the next b
 Named overrides selected per request via the `profile` **multipart form field** — a `profile=archival`
 part sent alongside `file`. There is no query-string form. A profile's identity is its inner `name`; a
 name appearing in more than one source fails startup. Every per-profile field is optional and
-overrides the matching `global` value.
+overrides the matching `global` value. That holds inside `validation` too: a profile that sets only some
+of its keys, such as `trustedCertificates`, keeps the global `policyType`, `checkRevocation` and
+`useEuLotl`.
 
 Profiles come from any combination of three sources:
 

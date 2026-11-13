@@ -1921,7 +1921,11 @@ components:
 
     ValidationConfig:
       type: object
-      required: [policyType, checkRevocation, useEuLotl, customTrustedLists, trustedCertificates, algorithmConstraints]
+      description: >
+        Validation settings. `policyType`, `checkRevocation` and `useEuLotl` are left out while
+        unset: a profile's unset setting inherits the global one, and an unset global one means
+        `DEFAULT_ETSI`, `true` and `true`. A resolved configuration always carries all three.
+      required: [customTrustedLists, trustedCertificates, algorithmConstraints]
       properties:
         policyType:
           $ref: '#/components/schemas/ValidationPolicyType'

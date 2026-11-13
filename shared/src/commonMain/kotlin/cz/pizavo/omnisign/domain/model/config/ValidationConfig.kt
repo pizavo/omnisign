@@ -1,17 +1,28 @@
 package cz.pizavo.omnisign.domain.model.config
 
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import kotlinx.serialization.Serializable
 
 /**
  * Validation-specific configuration.
+ *
+ * A `null` setting inherits the layer below: an operation override inherits the profile, and a
+ * profile inherits the global configuration. [policyType], [checkRevocation] and [useEuLotl] fall
+ * back to [ValidationPolicyType.DEFAULT_ETSI], `true` and `true` when the global configuration
+ * leaves them unset too, so a [ResolvedConfig] always carries them. They are left out of the JSON
+ * while unset, even by an encoder that writes defaults, so a client built before they could be
+ * unset reads its own defaults instead of failing on a `null`.
  */
+@OptIn(ExperimentalSerializationApi::class)
 @Serializable
 data class ValidationConfig(
 	/**
-	 * Validation policy type.
+	 * Validation policy type, or `null` to inherit it (see [ValidationConfig]).
 	 */
-	val policyType: ValidationPolicyType = ValidationPolicyType.DEFAULT_ETSI,
+	@EncodeDefault(EncodeDefault.Mode.NEVER)
+	val policyType: ValidationPolicyType? = null,
 	
 	/**
 	 * Path to custom validation policy file (when policyType is CUSTOM_FILE).
@@ -19,14 +30,18 @@ data class ValidationConfig(
 	val customPolicyPath: String? = null,
 	
 	/**
-	 * Whether to check certificate revocation status.
+	 * Whether to check certificate revocation status, or `null` to inherit it (see
+	 * [ValidationConfig]).
 	 */
-	val checkRevocation: Boolean = true,
+	@EncodeDefault(EncodeDefault.Mode.NEVER)
+	val checkRevocation: Boolean? = null,
 	
 	/**
-	 * Whether to use EU LOTL (List of Trusted Lists).
+	 * Whether to use EU LOTL (List of Trusted Lists), or `null` to inherit it (see
+	 * [ValidationConfig]).
 	 */
-	val useEuLotl: Boolean = true,
+	@EncodeDefault(EncodeDefault.Mode.NEVER)
+	val useEuLotl: Boolean? = null,
 
 	/**
 	 * Whether to flag signatures whose trust anchor is not on the EU LOTL. When set, the

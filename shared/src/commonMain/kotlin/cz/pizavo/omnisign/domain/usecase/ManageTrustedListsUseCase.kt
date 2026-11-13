@@ -63,6 +63,8 @@ class ManageTrustedListsUseCase(
 	 *
 	 * When [profileName] is given the entry is removed from that profile's
 	 * [ValidationConfig]; otherwise it is removed from the global [ValidationConfig].
+	 * A profile's validation section left with nothing set is dropped, so the profile
+	 * shows as inheriting every validation setting again.
 	 *
 	 * @param name Name of the trusted list to remove.
 	 * @param profileName Target profile name, or null for global scope.
@@ -83,7 +85,7 @@ class ManageTrustedListsUseCase(
 			
 			val updatedValidation = existingValidation.copy(
 				customTrustedLists = existingValidation.customTrustedLists.filter { it.name != name }
-			)
+			).takeUnless { it == ValidationConfig() }
 			val newConfig = current.copy(
 				profiles = current.profiles + (profileName to profile.copy(validation = updatedValidation))
 			)

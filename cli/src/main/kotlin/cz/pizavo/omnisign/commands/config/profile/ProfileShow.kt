@@ -67,10 +67,10 @@ class ProfileShow : CliktCommand(name = "show"), KoinComponent {
 				if (validation == null) {
 					echo("  (inherit from global)")
 				} else {
-					echo("  Policy type      : ${validation.policyType}")
+					echo("  Policy type      : ${validation.policyType ?: "inherit from global"}")
 					echo("  Custom policy    : ${validation.customPolicyPath ?: "(none)"}")
-					echo("  Check revocation : ${validation.checkRevocation}")
-					echo("  Use EU LOTL      : ${validation.useEuLotl}")
+					echo("  Check revocation : ${validation.checkRevocation ?: "inherit from global"}")
+					echo("  Use EU LOTL      : ${validation.useEuLotl ?: "inherit from global"}")
 					if (validation.customTrustedLists.isNotEmpty()) {
 						echo("  Custom TLs       :")
 						validation.customTrustedLists.forEach { tl ->

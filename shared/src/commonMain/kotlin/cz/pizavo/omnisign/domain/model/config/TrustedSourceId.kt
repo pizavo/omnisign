@@ -38,7 +38,7 @@ sealed interface TrustedSourceId {
  * cheaply per call and never retained, so they are never "refreshing".
  */
 fun ResolvedConfig.requiredTrustedSourceIds(): Set<TrustedSourceId> = buildSet {
-	if (validation.useEuLotl) add(TrustedSourceId.EuLotl)
+	if (validation.useEuLotl != false) add(TrustedSourceId.EuLotl)
 	validation.customTrustedLists.forEach {
 		add(TrustedSourceId.CustomList(it.source, it.signingCertPath))
 	}

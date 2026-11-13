@@ -7,10 +7,12 @@ import cz.pizavo.omnisign.Omnisign
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
+import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
@@ -27,12 +29,14 @@ import io.mockk.mockk
 import org.koin.dsl.module
 
 /**
- * Behavioral tests for the [ConfigShow] command's rendering of the global configuration.
+ * Behavioral tests for the [ConfigShow] command's rendering of the global configuration and its profiles.
  *
  * The distinction under test is between a value that is genuinely set and one that is merely
  * defaulted: an unset encryption algorithm reads as inferred from the key, an unset constraint level
- * names the DSS default it will fall back to. Collapsing the two would let a user believe they had
- * configured something they had not — and this command is where they would go to check.
+ * names the DSS default it will fall back to, an unset validation setting names the built-in value it
+ * falls back to, and a profile's unset validation policy reads as inherited. Collapsing the two would
+ * let a user believe they had configured something they had not — and this command is where they
+ * would go to check.
  */
 class ConfigShowTest : FunSpec({
 
@@ -135,6 +139,48 @@ class ConfigShowTest : FunSpec({
 
 		output shouldContain "RIPEMD160"
 		output shouldContain "2030-01-01"
+	}
+
+	test("names the built-in fallback for each validation setting the global configuration leaves unset") {
+		val output = show(GlobalConfig(validation = ValidationConfig()))
+
+		output shouldContain "Check revocation       : default (true)"
+		output shouldContain "Validation policy      : default (${ValidationPolicyType.DEFAULT_ETSI})"
+		output shouldContain "Use EU LOTL            : default (true)"
+	}
+
+	test("prints the validation settings the global configuration sets without the default marker") {
+		val output = show(
+			GlobalConfig(
+				validation = ValidationConfig(
+					policyType = ValidationPolicyType.CUSTOM_FILE,
+					checkRevocation = false,
+					useEuLotl = false,
+				),
+			),
+		)
+
+		output shouldContain "Check revocation       : false"
+		output shouldContain "Validation policy      : CUSTOM_FILE"
+		output shouldContain "Use EU LOTL            : false"
+	}
+
+	test("reports a profile's unset validation policy as inherited") {
+		coEvery { getConfig() } returns AppConfig(
+			profiles = mapOf(
+				"strict" to ProfileConfig(
+					name = "strict",
+					validation = ValidationConfig(
+						algorithmConstraints = AlgorithmConstraintsConfig(expirationLevel = AlgorithmConstraintLevel.FAIL),
+					),
+				),
+			),
+		).right()
+
+		val output = Omnisign().test(listOf("config", "show")).stdout
+
+		output shouldContain "Val policy     : inherit"
+		output shouldContain "Algo expiry    : FAIL"
 	}
 
 	test("reports a load failure and exits non-zero") {

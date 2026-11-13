@@ -34,7 +34,9 @@ Configuration values are resolved in this order (highest priority first):
 3. **Global defaults** — values set with `config set`
 
 For timestamp server settings, fields are merged at the field level: a per-execution
-credential override does not discard the stored server URL, and vice versa.
+credential override does not discard the stored server URL, and vice versa. Validation settings
+resolve one by one too: `--validation-policy` replaces only the policy, while revocation checking
+and the EU LOTL still come from the profile or the global configuration.
 
 ## Environment variables
 

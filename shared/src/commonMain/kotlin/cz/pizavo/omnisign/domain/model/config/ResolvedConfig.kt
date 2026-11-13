@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.domain.model.config
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.config.service.CrlConfig
 import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
@@ -155,7 +156,10 @@ data class ResolvedConfig(
 		 * Merge [ValidationConfig] layers in priority order: operation > profile > global.
 		 *
 		 * Scalar fields (policy type, revocation flags, LOTL toggle) are resolved with
-		 * the standard higher-priority-wins rule.  [ValidationConfig.customTrustedLists]
+		 * the standard higher-priority-wins rule: a layer that leaves one unset (`null`)
+		 * inherits it from the layer below. The policy type, the revocation check and the
+		 * EU LOTL toggle fall back to [ValidationPolicyType.DEFAULT_ETSI], `true` and `true`
+		 * when every layer leaves them unset.  [ValidationConfig.customTrustedLists]
 		 * is the **union** of all three layers so that global, profile-scoped, and
 		 * per-operation TLs are all active simultaneously.  When two entries share the
 		 * same name, the higher-priority layer's entry is kept.
@@ -183,13 +187,15 @@ data class ResolvedConfig(
 			}.values.toList()
 
 			return ValidationConfig(
-				policyType = operation?.policyType ?: profile?.policyType ?: global.policyType,
+				policyType = operation?.policyType ?: profile?.policyType ?: global.policyType
+					?: ValidationPolicyType.DEFAULT_ETSI,
 				customPolicyPath = operation?.customPolicyPath ?: profile?.customPolicyPath ?: global.customPolicyPath,
-				checkRevocation = operation?.checkRevocation ?: profile?.checkRevocation ?: global.checkRevocation,
+				checkRevocation = operation?.checkRevocation ?: profile?.checkRevocation ?: global.checkRevocation
+					?: true,
 				allowExpiredCertificate = operation?.allowExpiredCertificate
 					?: profile?.allowExpiredCertificate
 					?: global.allowExpiredCertificate,
-				useEuLotl = operation?.useEuLotl ?: profile?.useEuLotl ?: global.useEuLotl,
+				useEuLotl = operation?.useEuLotl ?: profile?.useEuLotl ?: global.useEuLotl ?: true,
 				alertIfNotEuLotl = operation?.alertIfNotEuLotl ?: profile?.alertIfNotEuLotl ?: global.alertIfNotEuLotl,
 				customTrustedLists = mergedTls,
 				algorithmConstraints = mergeAlgorithmConstraints(

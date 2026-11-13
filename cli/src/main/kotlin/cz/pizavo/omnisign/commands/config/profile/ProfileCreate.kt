@@ -152,7 +152,7 @@ class ProfileCreate : CliktCommand(name = "create"), KoinComponent {
 		val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
 		val base = AlgorithmConstraintsConfig()
 		return ValidationConfig(
-			policyType = validationPolicy ?: ValidationConfig().policyType,
+			policyType = validationPolicy,
 			algorithmConstraints = if (hasAlgoConstraints) base.copy(
 				expirationLevel = algoExpirationLevel,
 				expirationLevelAfterUpdate = algoExpirationLevelAfterUpdate,

@@ -67,6 +67,11 @@ and the following `--clear-*` flags to unset individual fields:
 | `--clear-algo-constraints`      | Reset all algorithm constraint overrides to defaults        |
 | `--clear-algo-expiry-overrides` | Remove all per-algorithm expiration date overrides          |
 
+A profile overrides only the settings it sets. A validation setting it leaves out, such as the
+validation policy, revocation checking or the EU LOTL, follows the global configuration, even when
+the profile has trusted lists or algorithm settings of its own. `--clear-validation-policy` hands
+the policy back to the global configuration and keeps those.
+
 ## Export and import
 
 A profile is exported to a **ZIP archive** that also bundles the profile's trusted certificates;

@@ -168,6 +168,7 @@ profiles:
       #   username: "omnisign"
       #   password: "${OMNISIGN_TSA_PASSWORD}"
       # validation:
+      #   # Each setting left out inherits the global one, as do the profile's other fields.
       #   policyType: DEFAULT_ETSI
       #   checkRevocation: true
       #   useEuLotl: true

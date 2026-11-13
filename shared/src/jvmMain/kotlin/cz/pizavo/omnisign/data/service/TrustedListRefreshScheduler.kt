@@ -166,7 +166,7 @@ class TrustedListRefreshScheduler(
 		for (profile in contexts) {
 			val resolved = ResolvedConfig.resolve(appConfig.global, profile, operationOverrides = null)
 				.getOrNull() ?: continue
-			if (resolved.validation.useEuLotl) useEuLotl = true
+			if (resolved.validation.useEuLotl != false) useEuLotl = true
 			customTls += resolved.validation.customTrustedLists
 		}
 		return useEuLotl to customTls

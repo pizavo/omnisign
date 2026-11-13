@@ -3,13 +3,15 @@ package cz.pizavo.omnisign.domain.model.config
 import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import arrow.core.getOrElse
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 
 /**
- * Verifies [AlgorithmConstraintsConfig] merging across global, profile, and operation layers.
+ * Verifies how [ValidationConfig] settings, [AlgorithmConstraintsConfig] among them, merge across the
+ * global, profile, and operation layers.
  */
 class ResolvedConfigTest : FunSpec({
 	
@@ -196,5 +198,117 @@ class ResolvedConfigTest : FunSpec({
 		resolved(global = false, profile = false, operation = true) shouldBe true
 		resolved(global = null, profile = null, operation = null).shouldBeNull()
 	}
-})
 
+	/**
+	 * Resolves the validation sections [global], [profile] and [operation] into the effective one; a
+	 * `null` section is left out of its layer.
+	 */
+	fun resolvedValidation(
+		global: ValidationConfig,
+		profile: ValidationConfig? = null,
+		operation: ValidationConfig? = null,
+	): ValidationConfig = ResolvedConfig.resolve(
+		global = GlobalConfig(
+			defaultHashAlgorithm = HashAlgorithm.SHA256,
+			defaultSignatureLevel = SignatureLevel.PADES_BASELINE_B,
+			validation = global,
+		),
+		profile = ProfileConfig(name = "p", validation = profile),
+		operationOverrides = operation?.let { OperationConfig(validation = it) },
+	).getOrElse { error -> throw AssertionError(error.message) }.validation
+
+	test("policyType resolves operation over profile over global, null inherits, DEFAULT_ETSI last") {
+		fun resolved(global: ValidationPolicyType?, profile: ValidationPolicyType?, operation: ValidationPolicyType?) =
+			resolvedValidation(
+				global = ValidationConfig(policyType = global),
+				profile = profile?.let { ValidationConfig(policyType = it) },
+				operation = operation?.let { ValidationConfig(policyType = it) },
+			).policyType
+
+		resolved(ValidationPolicyType.CUSTOM_FILE, null, null) shouldBe ValidationPolicyType.CUSTOM_FILE
+		resolved(ValidationPolicyType.CUSTOM_FILE, ValidationPolicyType.DEFAULT_ETSI, null) shouldBe
+				ValidationPolicyType.DEFAULT_ETSI
+		resolved(ValidationPolicyType.DEFAULT_ETSI, ValidationPolicyType.CUSTOM_FILE, null) shouldBe
+				ValidationPolicyType.CUSTOM_FILE
+		resolved(ValidationPolicyType.DEFAULT_ETSI, ValidationPolicyType.DEFAULT_ETSI, ValidationPolicyType.CUSTOM_FILE) shouldBe
+				ValidationPolicyType.CUSTOM_FILE
+		resolved(null, null, null) shouldBe ValidationPolicyType.DEFAULT_ETSI
+	}
+
+	test("checkRevocation resolves operation over profile over global, null inherits, true last") {
+		fun resolved(global: Boolean?, profile: Boolean?, operation: Boolean?) =
+			resolvedValidation(
+				global = ValidationConfig(checkRevocation = global),
+				profile = profile?.let { ValidationConfig(checkRevocation = it) },
+				operation = operation?.let { ValidationConfig(checkRevocation = it) },
+			).checkRevocation
+
+		resolved(global = false, profile = null, operation = null) shouldBe false
+		resolved(global = false, profile = true, operation = null) shouldBe true
+		resolved(global = true, profile = false, operation = null) shouldBe false
+		resolved(global = true, profile = true, operation = false) shouldBe false
+		resolved(global = null, profile = null, operation = null) shouldBe true
+	}
+
+	test("useEuLotl resolves operation over profile over global, null inherits, true last") {
+		fun resolved(global: Boolean?, profile: Boolean?, operation: Boolean?) =
+			resolvedValidation(
+				global = ValidationConfig(useEuLotl = global),
+				profile = profile?.let { ValidationConfig(useEuLotl = it) },
+				operation = operation?.let { ValidationConfig(useEuLotl = it) },
+			).useEuLotl
+
+		resolved(global = false, profile = null, operation = null) shouldBe false
+		resolved(global = false, profile = true, operation = null) shouldBe true
+		resolved(global = true, profile = false, operation = null) shouldBe false
+		resolved(global = true, profile = true, operation = false) shouldBe false
+		resolved(global = null, profile = null, operation = null) shouldBe true
+	}
+
+	test("a profile section holding only trusted lists keeps the global policy, revocation checking and EU LOTL") {
+		val resolved = resolvedValidation(
+			global = ValidationConfig(
+				policyType = ValidationPolicyType.CUSTOM_FILE,
+				checkRevocation = false,
+				useEuLotl = false,
+			),
+			profile = ValidationConfig(
+				customTrustedLists = listOf(CustomTrustedListConfig(name = "corp", source = "file:///corp.xml")),
+			),
+		)
+
+		resolved.policyType shouldBe ValidationPolicyType.CUSTOM_FILE
+		resolved.checkRevocation shouldBe false
+		resolved.useEuLotl shouldBe false
+		resolved.customTrustedLists.map { it.name } shouldBe listOf("corp")
+	}
+
+	test("a profile section holding only algorithm constraints keeps the global policy, revocation checking and EU LOTL") {
+		val resolved = resolvedValidation(
+			global = ValidationConfig(
+				policyType = ValidationPolicyType.CUSTOM_FILE,
+				checkRevocation = false,
+				useEuLotl = false,
+			),
+			profile = ValidationConfig(
+				algorithmConstraints = AlgorithmConstraintsConfig(expirationLevel = AlgorithmConstraintLevel.WARN),
+			),
+		)
+
+		resolved.policyType shouldBe ValidationPolicyType.CUSTOM_FILE
+		resolved.checkRevocation shouldBe false
+		resolved.useEuLotl shouldBe false
+	}
+
+	test("an operation override of the policy alone keeps revocation checking and the EU LOTL of the layers below") {
+		val resolved = resolvedValidation(
+			global = ValidationConfig(checkRevocation = false, useEuLotl = false),
+			profile = ValidationConfig(useEuLotl = true),
+			operation = ValidationConfig(policyType = ValidationPolicyType.DEFAULT_ETSI),
+		)
+
+		resolved.policyType shouldBe ValidationPolicyType.DEFAULT_ETSI
+		resolved.checkRevocation shouldBe false
+		resolved.useEuLotl shouldBe true
+	}
+})

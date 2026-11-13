@@ -2,7 +2,9 @@ package cz.pizavo.omnisign.ui.model
 
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
+import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import io.kotest.core.spec.style.FunSpec
@@ -105,6 +107,30 @@ class GlobalConfigEditStateTest : FunSpec({
 		val state = GlobalConfigEditState.from(original)
 		state.trustedListRefreshInterval shouldBe "48"
 		state.toGlobalConfig().trustedListRefreshIntervalHours shouldBe 48L
+	}
+
+	test("from shows the built-in validation defaults for settings the global configuration leaves unset") {
+		val state = GlobalConfigEditState.from(GlobalConfig(validation = ValidationConfig()))
+
+		state.validationPolicyType shouldBe ValidationPolicyType.DEFAULT_ETSI
+		state.checkRevocation shouldBe true
+		state.useEuLotl shouldBe true
+	}
+
+	test("round-trip from and toGlobalConfig preserves validation settings that differ from the defaults") {
+		val original = GlobalConfig(
+			validation = ValidationConfig(
+				policyType = ValidationPolicyType.CUSTOM_FILE,
+				checkRevocation = false,
+				useEuLotl = false,
+			),
+		)
+
+		val validation = GlobalConfigEditState.from(original).toGlobalConfig().validation
+
+		validation.policyType shouldBe ValidationPolicyType.CUSTOM_FILE
+		validation.checkRevocation shouldBe false
+		validation.useEuLotl shouldBe false
 	}
 
 	test("toGlobalConfig clamps a sub-hour trusted-list interval up to 1") {
