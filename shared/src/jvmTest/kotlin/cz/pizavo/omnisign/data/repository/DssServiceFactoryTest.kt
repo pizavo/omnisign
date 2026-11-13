@@ -5,6 +5,7 @@ import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.spi.ILoggingEvent
 import ch.qos.logback.core.read.ListAppender
 import com.sun.net.httpserver.HttpServer
+import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
@@ -15,6 +16,7 @@ import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.text.MessageKey
+import cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import eu.europa.esig.dss.model.job.DownloadInfoRecord
 import eu.europa.esig.dss.model.tsl.LOTLInfo
@@ -25,6 +27,7 @@ import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import eu.europa.esig.dss.validation.job.sync.SynchronizationStrategy
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.engine.spec.tempdir
 import io.kotest.engine.spec.tempfile
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
@@ -40,6 +43,7 @@ import org.bouncycastle.asn1.x509.AuthorityInformationAccess
 import org.bouncycastle.asn1.x509.Extension
 import org.bouncycastle.asn1.x509.GeneralName
 import org.slf4j.LoggerFactory
+import java.io.File
 import java.net.InetSocketAddress
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
@@ -56,6 +60,11 @@ import kotlin.time.toJavaInstant
  *
  * The trusted-list warning tests hand [DssServiceFactory.collectTlWarnings] a mocked job summary and
  * a strategy that keeps out the lists they name, as one does whose signature could not be verified.
+ *
+ * The trust anchor tests check that turning revocation checking off, or building without a config,
+ * leaves out only the revocation sources. A custom list whose signing certificate cannot be read
+ * stands for a configured list: its warning shows the list was composed, without reaching the
+ * network or the trusted-list cache.
  */
 class DssServiceFactoryTest : FunSpec({
 	
@@ -340,6 +349,71 @@ class DssServiceFactoryTest : FunSpec({
 		val result = factory.buildSigningCertificateVerifier(config, directAnchors = listOf(anchor))
 		result.verifier.trustedCertSources.shouldNotBeNull()
 		result.verifier.trustedCertSources.numberOfCertificates shouldBe 1
+	}
+
+	// ── trust anchors without revocation checking ────────────────────────────
+
+	/** A directly-trusted certificate, as the trust store resolves one. */
+	fun directAnchor() = ResolvedTrustAnchor(
+		fingerprint = "sha256-direct",
+		type = TrustedCertificateType.ANY,
+		der = generateSelfSignedCert().encoded,
+	)
+
+	/** The signing, extension and validation verifiers built for [config] and [anchors], by name. */
+	fun chainVerifiers(
+		config: ResolvedConfig?,
+		anchors: List<ResolvedTrustAnchor> = emptyList(),
+	): Map<String, CertificateVerifierResult> = mapOf(
+		"signing" to factory.buildSigningCertificateVerifier(config, anchors),
+		"extension" to factory.buildExtendCertificateVerifier(config, anchors),
+		"validation" to factory.buildValidationCertificateVerifier(config, anchors),
+	)
+
+	test("with revocation checking off, the verifiers keep the directly-trusted certificates and fetch no revocation data") {
+		chainVerifiers(minimalConfig(checkRevocation = false), listOf(directAnchor())).forEach { (name, result) ->
+			withClue(name) {
+				result.verifier.trustedCertSources.numberOfCertificates shouldBe 1
+				result.verifier.ocspSource shouldBe null
+				result.verifier.crlSource shouldBe null
+			}
+		}
+	}
+
+	test("without a config, the verifiers keep the directly-trusted certificates and fetch no revocation data") {
+		chainVerifiers(null, listOf(directAnchor())).forEach { (name, result) ->
+			withClue(name) {
+				result.verifier.trustedCertSources.numberOfCertificates shouldBe 1
+				result.verifier.ocspSource shouldBe null
+				result.verifier.crlSource shouldBe null
+				result.tlWarnings.shouldBeEmpty()
+			}
+		}
+	}
+
+	test("with revocation checking off, the verifiers still load the configured trusted lists") {
+		val missing = File(tempdir(), "missing.cer").path
+		val config = minimalConfig(checkRevocation = false).copy(
+			validation = ValidationConfig(
+				checkRevocation = false,
+				useEuLotl = false,
+				customTrustedLists = listOf(
+					CustomTrustedListConfig(
+						name = "broken-tl",
+						source = "https://tl.omnisign.test/tl.xml",
+						signingCertPath = missing,
+					),
+				),
+			),
+		)
+
+		chainVerifiers(config).forEach { (name, result) ->
+			withClue(name) {
+				result.tlWarnings shouldBe listOf(
+					LocalizableText.of(MessageKey.WARNING_TRUSTED_LIST_SIGNING_CERTIFICATE_UNREADABLE, "broken-tl", missing)
+				)
+			}
+		}
 	}
 
 	// ── AIA downloads ────────────────────────────────────────────────────────

@@ -171,8 +171,10 @@ class DssServiceFactory(
 	 * on the background cycle rather than on this call. [directAnchors] (the app-managed
 	 * trust store's certificates for the active scope) are aggregated alongside them.
 	 *
-	 * @param config Resolved configuration driving revocation and trusted-list selection; a `null`
-	 *   config or one with revocation disabled yields a lenient verifier with alerts suppressed.
+	 * @param config Resolved configuration driving revocation and trusted-list selection. A `null`
+	 *   config or one with revocation disabled yields a verifier that fetches no revocation data and
+	 *   suppresses its revocation and timestamp alerts, but keeps the trust anchors (see
+	 *   [composeTrust]).
 	 * @param directAnchors Directly-trusted certificates (from the trust store) aggregated with the
 	 *   trusted-list sources.
 	 * @param alertFactory Optional factory for the [StatusAlert] wired to the verifier
@@ -215,8 +217,10 @@ class DssServiceFactory(
 	 * discard the partially augmented document, and the caller — the desktop dialog or the renewal
 	 * scheduler — is better placed to decide whether to keep it.
 	 *
-	 * @param config Resolved configuration driving revocation and trusted-list selection; a `null`
-	 *   config or one with revocation disabled yields a lenient verifier with alerts suppressed.
+	 * @param config Resolved configuration driving revocation and trusted-list selection. A `null`
+	 *   config or one with revocation disabled yields a verifier that fetches no revocation data and
+	 *   suppresses its revocation and timestamp alerts, but keeps the trust anchors (see
+	 *   [composeTrust]).
 	 * @param directAnchors Directly-trusted certificates (from the trust store) aggregated with the
 	 *   trusted-list sources.
 	 * @param alertFactory Factory for the [StatusAlert] wired to the active verifier alerts. Pass a
@@ -249,6 +253,7 @@ class DssServiceFactory(
 		}
 		
 		cv.aiaSource = buildAiaSource(aiaTimeout(config))
+		val tlWarnings = composeTrust(cv, config, directAnchors)
 
 		if (config == null || !config.validation.checkRevocation) {
 			return CertificateVerifierResult(
@@ -258,7 +263,8 @@ class DssServiceFactory(
 					alertOnInvalidTimestamp = null
 					alertOnNoRevocationAfterBestSignatureTime = null
 					alertOnRevokedCertificate = null
-				}
+				},
+				tlWarnings = tlWarnings,
 			)
 		}
 
@@ -283,8 +289,7 @@ class DssServiceFactory(
 			alertOnNoRevocationAfterBestSignatureTime = alert.takeIf { reportMissingRevocationData }
 			alertOnRevokedCertificate = alert
 		}
-		
-		val tlWarnings = trustedSources.composeInto(cv, config, directAnchors)
+
 		return CertificateVerifierResult(cv, tlWarnings)
 	}
 	
@@ -314,8 +319,9 @@ class DssServiceFactory(
 	 * Every other alert is [silenceAlertsCoveredByTheReport]; see there for why leaving them in
 	 * place would be actively harmful.
 	 *
-	 * @param config Resolved configuration driving revocation and trusted-list selection; a `null`
-	 *   config or one with revocation disabled yields a lenient verifier with alerts suppressed.
+	 * @param config Resolved configuration driving revocation and trusted-list selection. A `null`
+	 *   config or one with revocation disabled yields a verifier that fetches no revocation data and
+	 *   suppresses every alert, but keeps the trust anchors (see [composeTrust]).
 	 * @param directAnchors Directly-trusted certificates (from the trust store) aggregated with the
 	 *   trusted-list sources.
 	 * @param alertFactory Optional factory for the [StatusAlert] wired to the two verifier alert
@@ -331,13 +337,15 @@ class DssServiceFactory(
 		val cv = CommonCertificateVerifier()
 		cv.silenceAlertsCoveredByTheReport()
 		cv.aiaSource = buildAiaSource(aiaTimeout(config))
+		val tlWarnings = composeTrust(cv, config, directAnchors)
 
 		if (config == null || !config.validation.checkRevocation) {
 			return CertificateVerifierResult(
 				verifier = cv.apply {
 					alertOnUncoveredPOE = null
 					alertOnNoRevocationAfterBestSignatureTime = null
-				}
+				},
+				tlWarnings = tlWarnings,
 			)
 		}
 
@@ -358,9 +366,30 @@ class DssServiceFactory(
 			alertOnUncoveredPOE = alert
 			alertOnNoRevocationAfterBestSignatureTime = alert
 		}
-		
-		val tlWarnings = trustedSources.composeInto(cv, config, directAnchors)
+
 		return CertificateVerifierResult(cv, tlWarnings)
+	}
+
+	/**
+	 * Wire the trust anchors into [cv]: the trusted lists [config] selects, from [trustedSources],
+	 * together with the directly-trusted [directAnchors], or the direct anchors alone without a
+	 * config, which names no list.
+	 *
+	 * The signing, extension and validation verifiers need them whether or not they check
+	 * revocation: without an anchor DSS trusts no chain, and a correctly signed document comes back
+	 * `NO_CERTIFICATE_CHAIN_FOUND`. Turning revocation checking off leaves out only the OCSP and CRL
+	 * sources and the alerts about revocation data.
+	 *
+	 * @return The loading warnings of the trusted lists [config] uses; none without a config.
+	 */
+	private fun composeTrust(
+		cv: CommonCertificateVerifier,
+		config: ResolvedConfig?,
+		directAnchors: List<cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor>,
+	): List<LocalizableText> {
+		if (config != null) return trustedSources.composeInto(cv, config, directAnchors)
+		buildTrustedCertSource(directAnchors)?.let { cv.setTrustedCertSources(it) }
+		return emptyList()
 	}
 	
 	/**

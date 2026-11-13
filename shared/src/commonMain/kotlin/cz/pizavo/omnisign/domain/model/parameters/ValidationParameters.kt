@@ -40,8 +40,10 @@ enum class RawReportFormat {
  *   JVM and as the multipart `filename=` on web).
  * @property customPolicyPath Optional path to a custom ETSI validation policy XML file. JVM-only;
  *   ignored by the web target.
- * @property resolvedConfig Pre-resolved configuration for the JVM in-process flow; repository
- *   falls back to the active config when null. The web target ignores this field and resolves
+ * @property resolvedConfig Pre-resolved configuration for the JVM in-process flow. When it is
+ *   null, the JVM repository validates under [customPolicyPath], or DSS's default policy without
+ *   one, and its only trust anchors are the certificates of the global trust store, since no
+ *   configuration names a trusted list to use. The web target ignores this field and resolves
  *   server-side from [profileName] and the per-request override sets below.
  * @property profileName Optional name of a server-side configuration profile to apply. Used by
  *   the web target's `RemoteValidationRepository` to drive server-side resolution; JVM impls
