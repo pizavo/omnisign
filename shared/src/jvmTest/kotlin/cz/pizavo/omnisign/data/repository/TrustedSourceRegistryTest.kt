@@ -51,7 +51,9 @@ import java.security.cert.X509Certificate
 import java.util.Base64
 import java.util.Date
 import kotlin.time.Clock
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
+import kotlin.time.Duration.Companion.hours
 import kotlin.time.toJavaInstant
 import eu.europa.esig.dss.enumerations.SignatureLevel as DssSignatureLevel
 
@@ -70,16 +72,20 @@ import eu.europa.esig.dss.enumerations.SignatureLevel as DssSignatureLevel
  * is new. No job is built for such a list, so these tests reach neither the network nor the
  * trusted-list cache.
  *
- * Last, it verifies that a custom list configured with a signing certificate supplies trust only
- * while its signature verifies against that certificate, that the warning and the log say so when
- * it does not, and that a list configured without one is used whatever its signature. A list left
- * out supplies trust again once the reason is gone, even when its copy has not changed, and after a
- * hard refresh the scheduled refresh carries on from the copies the hard refresh loaded, reading
- * them from the cache again. A hard refresh that downloads no list keeps the job that loaded the
- * list; the test tells that job from the hard refresh's own by the signing certificate each read
- * when it was built. These lists are compiled by [TrustedListCompiler], signed or left unsigned by
- * the test, read from `file:` URLs and cached in a directory of the spec's own, so they reach no
- * network either.
+ * It verifies that a custom list configured with a signing certificate supplies trust only while
+ * its signature verifies against that certificate, that the warning and the log say so when it
+ * does not, and that a list configured without one is used whatever its signature. A list left out
+ * supplies trust again once the reason is gone, even when its copy has not changed, and after a hard
+ * refresh the scheduled refresh carries on from the copies the hard refresh loaded, reading them
+ * from the cache again. A hard refresh that downloads no list keeps the job that loaded the list;
+ * the test tells that job from the hard refresh's own by the signing certificate each read when it
+ * was built. Last, it verifies how a list is loaded from the cache: a copy older than the refresh
+ * interval is replaced when its source can be read and still served, with a warning, when it
+ * cannot, and a younger copy is served without reading the source. Trust served from a copy that
+ * could not be refreshed, at a start or by a scheduled refresh, counts as incomplete until a
+ * refresh downloads the list, so the refresh scheduler tries again soon. These lists are compiled by
+ * [TrustedListCompiler], signed or left unsigned by the test, read from `file:` URLs and cached in
+ * directories of the spec's own, so they reach no network either.
  */
 class TrustedSourceRegistryTest : FunSpec({
 
@@ -578,6 +584,110 @@ class TrustedSourceRegistryTest : FunSpec({
 		registry.refreshAll()
 
 		certificatesUsed(registry, config) shouldBe listOf(CertificateToken(hardRefreshed))
+	}
+
+	val cacheRoot = tempdir()
+
+	/** An empty cache directory named [name], for a test that needs a cache of its own. */
+	fun cacheDirNamed(name: String): File = File(cacheRoot, name).apply { mkdirs() }
+
+	/** Make every copy cached in [cacheDir] [age] old, as if it had been downloaded that long ago. */
+	fun ageCachedCopies(cacheDir: File, age: Duration) {
+		val modified = (Clock.System.now() - age).toEpochMilliseconds()
+		cacheDir.listFiles().orEmpty().forEach { it.setLastModified(modified) }
+	}
+
+	test("a list whose source cannot be reached is served from a cached copy older than the refresh interval") {
+		val cacheDir = cacheDirNamed("unreachable")
+		val listed = generateSelfSignedCert()
+		val source = File(listDir, "cached-unreachable.xml").apply { writeText(compiledList(listed)) }
+		val url = source.toURI().toString()
+		val config = customListConfig("unreachable-tl", url, null)
+		TrustedSourceRegistry(cacheDirectory = { cacheDir }).composeInto(CommonCertificateVerifier(), config)
+		source.delete()
+		ageCachedCopies(cacheDir, 5.hours)
+		val cv = CommonCertificateVerifier()
+
+		val warnings = TrustedSourceRegistry(cacheDirectory = { cacheDir }).composeInto(cv, config)
+
+		cv.trustedCertSources.certificates shouldBe listOf(CertificateToken(listed))
+		warnings shouldBe listOf(
+			LocalizableText.of(MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE, "1 trusted list", url)
+		)
+	}
+
+	test("a cached copy older than the refresh interval is replaced by the list its source now holds") {
+		val cacheDir = cacheDirNamed("changed")
+		val before = generateSelfSignedCert()
+		val after = generateSelfSignedCert()
+		val source = File(listDir, "cached-changed.xml").apply { writeText(compiledList(before)) }
+		val config = customListConfig("changed-tl", source.toURI().toString(), null)
+		TrustedSourceRegistry(cacheDirectory = { cacheDir }).composeInto(CommonCertificateVerifier(), config)
+		source.writeText(compiledList(after))
+		ageCachedCopies(cacheDir, 5.hours)
+		val cv = CommonCertificateVerifier()
+
+		val warnings = TrustedSourceRegistry(cacheDirectory = { cacheDir }).composeInto(cv, config)
+
+		warnings.shouldBeEmpty()
+		cv.trustedCertSources.certificates shouldBe listOf(CertificateToken(after))
+	}
+
+	test("a cached copy younger than the refresh interval is served without reading the source") {
+		val cacheDir = cacheDirNamed("fresh")
+		val listed = generateSelfSignedCert()
+		val source = File(listDir, "cached-fresh.xml").apply { writeText(compiledList(listed)) }
+		val config = customListConfig("fresh-tl", source.toURI().toString(), null)
+		TrustedSourceRegistry(cacheDirectory = { cacheDir }).composeInto(CommonCertificateVerifier(), config)
+		source.delete()
+		val cv = CommonCertificateVerifier()
+
+		val warnings = TrustedSourceRegistry(cacheDirectory = { cacheDir }).composeInto(cv, config)
+
+		warnings.shouldBeEmpty()
+		cv.trustedCertSources.certificates shouldBe listOf(CertificateToken(listed))
+	}
+
+	test("trust served from a cached copy a start could not refresh is incomplete until a refresh downloads the list") {
+		val cacheDir = cacheDirNamed("stale-start")
+		val compiled = compiledList(generateSelfSignedCert())
+		val source = File(listDir, "cached-stale-start.xml").apply { writeText(compiled) }
+		val config = customListConfig("stale-start-tl", source.toURI().toString(), null)
+		TrustedSourceRegistry(cacheDirectory = { cacheDir }).composeInto(CommonCertificateVerifier(), config)
+		source.delete()
+		ageCachedCopies(cacheDir, 5.hours)
+		val registry = TrustedSourceRegistry(cacheDirectory = { cacheDir })
+
+		registry.composeInto(CommonCertificateVerifier(), config)
+		registry.hasIncompleteTrust() shouldBe true
+
+		source.writeText(compiled)
+		registry.refreshAll()
+		registry.hasIncompleteTrust() shouldBe false
+	}
+
+	test("a scheduled refresh that cannot download a list leaves trust incomplete, though the list still supplies it") {
+		val cacheDir = cacheDirNamed("stale-refresh")
+		val listed = generateSelfSignedCert()
+		val compiled = compiledList(listed)
+		val source = File(listDir, "cached-stale-refresh.xml").apply { writeText(compiled) }
+		val config = customListConfig("stale-refresh-tl", source.toURI().toString(), null)
+		val registry = TrustedSourceRegistry(cacheDirectory = { cacheDir })
+		registry.composeInto(CommonCertificateVerifier(), config)
+		registry.hasIncompleteTrust() shouldBe false
+		source.delete()
+		ageCachedCopies(cacheDir, 5.hours)
+
+		registry.refreshAll()
+
+		registry.hasIncompleteTrust() shouldBe true
+		val cv = CommonCertificateVerifier()
+		registry.composeInto(cv, config)
+		cv.trustedCertSources.certificates shouldBe listOf(CertificateToken(listed))
+
+		source.writeText(compiled)
+		registry.refreshAll()
+		registry.hasIncompleteTrust() shouldBe false
 	}
 }) {
 	companion object {

@@ -96,7 +96,11 @@ Revocation List requests used during validation and B-LT/B-LTA signing.
   refreshed automatically in the background (minimum 1 hour, 4 by default). Keep this at or
   below **6**: the ETSI validation policy considers a trusted list fresh only for 6 hours after
   its last successful synchronization, so a longer interval leaves qualified validations
-  reporting *"the trusted list is not considered as fresh"* for the rest of each cycle.
+  reporting *"the trusted list is not considered as fresh"* for the rest of each cycle. A list
+  that cannot be downloaded is still used from the copy cached on disk, however old, and
+  validations name it under their **Trusted List Warnings**. OmniSign then tries to download it
+  again every 5 minutes, up to 6 times, before going back to the interval. The freshness check
+  counts from when a list was last loaded, so it does not flag such a copy; the warning does.
 - **Refresh now** — a refresh button, with a "Last refreshed" indicator, forces an immediate
   online refresh of the EU LOTL and every custom list into the shared cache. While the refresh
   runs, a **Loading trusted lists…** progress bar appears below the row — indeterminate until the

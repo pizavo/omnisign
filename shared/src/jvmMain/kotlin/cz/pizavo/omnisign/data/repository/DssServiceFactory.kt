@@ -532,8 +532,8 @@ class DssServiceFactory(
 	 * calls this when a long-running host (desktop, server) starts its refresh cycle, and
 	 * before every manual hard refresh, the desktop's "Refresh now" and the CLI's
 	 * `config tl refresh`, so that refresh also covers lists no operation has acquired yet.
-	 * The CLI's other commands never call it: each acquires the lists it needs lazily,
-	 * offline-first.
+	 * The CLI's other commands never call it: each acquires the lists it needs lazily, from
+	 * the on-disk cache, and downloads again only the copies older than [TL_CACHE_EXPIRATION_MS].
 	 */
 	fun warmUpTrustedSources(useEuLotl: Boolean, customTls: List<CustomTrustedListConfig>) {
 		trustedSources.warmUp(useEuLotl, customTls)
@@ -559,9 +559,10 @@ class DssServiceFactory(
 		trustedSources.forceRefreshAll()
 	
 	/**
-	 * Whether any retained trusted source failed to load its trust (see
-	 * [TrustedSourceRegistry.hasIncompleteTrust]). Polled by the refresh scheduler to
-	 * retry soon after a failure rather than waiting a full interval.
+	 * Whether any retained trusted source failed to load its trust, or goes on with an older
+	 * copy of a list it could not download (see [TrustedSourceRegistry.hasIncompleteTrust]).
+	 * Polled by the refresh scheduler to retry soon after a failure rather than waiting a
+	 * full interval.
 	 */
 	fun hasIncompleteTrustedSources(): Boolean = trustedSources.hasIncompleteTrust()
 	
