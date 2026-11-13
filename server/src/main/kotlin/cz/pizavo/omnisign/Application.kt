@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign
 
+import cz.pizavo.omnisign.api.requestBodyLimit
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
@@ -176,6 +177,7 @@ fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets, h
 	}
 	configureDefaultHeaders(hstsConfig = serverConfig.tls?.hsts)
 	configureSerialization()
+	configureRequestBodyLimit(requestBodyLimit(serverConfig.maxFileSize))
 	configureStatusPages(development = serverConfig.development)
 	configureCallId()
 	configureCallLogging()

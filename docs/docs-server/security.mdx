@@ -124,7 +124,11 @@ internal addresses, because they process their own user's documents.
   token's id as the account (`omnisign diagnose pkcs11` lists the ids). If the token refuses that
   PIN, the server logs a warning and doesn't send the same PIN to that slot again until the entry
   changes or the server restarts, so a stale entry can't use up the token's PIN retries.
-- Uploads are streamed to disk and bounded by `maxFileSize`; multiple file parts are rejected.
+- A request body may be at most `maxFileSize` plus 1 MiB for the form fields, whether it declares
+  its length or arrives chunked. The upload endpoints answer a larger one with `413`; the session
+  endpoints, which take a small JSON body or none, treat it as missing. A multipart request may
+  carry at most 32 parts, and only one of them a file. The file is streamed to disk and bounded by
+  `maxFileSize`.
 - Every response carries `X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`,
   `Referrer-Policy: strict-origin-when-cross-origin`, and
   `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`. No `X-Powered-By` is sent.
