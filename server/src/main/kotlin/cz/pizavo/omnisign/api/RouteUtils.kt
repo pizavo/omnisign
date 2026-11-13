@@ -49,10 +49,10 @@ fun requestBodyLimit(maxFileSize: Long): Long =
  * part by [maxFileSize].
  *
  * Ktor's multipart parser caps every part, files included, at its `formFieldLimit`, which
- * defaults to 50 MiB; with a [maxFileSize] above that, uploads between the two would be answered
- * with HTTP 500. The cap is raised to the [request body limit][requestBodyLimit] instead. No part
- * can reach it, because the body that holds the part is held to the same limit and stops first,
- * with [PayloadTooLargeException].
+ * defaults to 50 MiB. It fails a part that grows past the cap, or whose own `Content-Length` header
+ * declares more, with an `IOException` that the server would answer with HTTP 500. The cap is lifted
+ * instead, because the [request body limit][requestBodyLimit] already bounds every part by the bytes
+ * that actually arrive, and fails a larger body with [PayloadTooLargeException].
  *
  * @receiver The call whose `multipart/form-data` body is received.
  * @param maxFileSize Maximum allowed size in bytes for the file part.
@@ -63,7 +63,7 @@ fun requestBodyLimit(maxFileSize: Long): Long =
  * @throws PayloadTooLargeException If the request body exceeds [requestBodyLimit].
  */
 suspend fun RoutingCall.receiveParts(maxFileSize: Long): List<Any> =
-	receiveMultipart(formFieldLimit = requestBodyLimit(maxFileSize)).collectParts(maxFileSize)
+	receiveMultipart(formFieldLimit = Long.MAX_VALUE).collectParts(maxFileSize)
 
 /**
  * Collect all multipart parts into a list without using the deprecated `readAllParts()`.

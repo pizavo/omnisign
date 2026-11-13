@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.api.routes
 
 import cz.pizavo.omnisign.api.MAX_MULTIPART_PARTS
+import cz.pizavo.omnisign.api.requestBodyLimit
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.config.AllowedOperation
 import cz.pizavo.omnisign.config.CorsConfig
@@ -31,7 +32,9 @@ import java.time.Duration
 /**
  * Verifies the limits that keep a multipart request's form fields from filling the heap: a request
  * body may exceed `maxFileSize` by at most a megabyte, whether it declares its length or arrives
- * chunked, and a request may carry at most [MAX_MULTIPART_PARTS] parts.
+ * chunked, and a request may carry at most [MAX_MULTIPART_PARTS] parts. A part whose own
+ * `Content-Length` declares more than that is read like any other, instead of failing the request
+ * with 500.
  *
  * The last test drives a real Netty server, where a chunked body comes with no length the server
  * could check before reading it.
@@ -99,6 +102,20 @@ class MultipartLimitsTest : FunSpec({
 		}
 	}
 
+	test("a part that declares more than the request body limit in its own Content-Length is read") {
+		testApplication {
+			application { module(config(SMALL_MAX_FILE_SIZE)) }
+			val body = multipartBytes(
+				listOf("profile" to "strict"),
+				partHeaders = "Content-Length: ${requestBodyLimit(SMALL_MAX_FILE_SIZE) + 1}\r\n",
+			)
+			val response = client.post("/api/v1/validate") {
+				setBody(ByteArrayContent(body, ContentType.MultiPart.FormData.withParameter("boundary", BOUNDARY)))
+			}
+			response.shouldBeRejectedAs(HttpStatusCode.BadRequest, "MISSING_FILE")
+		}
+	}
+
 	test("on Netty, a chunked multipart body over the request body limit is refused with 413") {
 		val server = embeddedServer(Netty, port = 0, host = "127.0.0.1") {
 			module(config(SMALL_MAX_FILE_SIZE))
@@ -159,11 +176,16 @@ class MultipartLimitsTest : FunSpec({
 				override suspend fun writeTo(channel: ByteWriteChannel) = content.writeTo(channel)
 			}
 
-		/** A `multipart/form-data` body with [BOUNDARY] that carries [fields] as text parts. */
-		fun multipartBytes(fields: List<Pair<String, String>>): ByteArray = buildString {
+		/**
+		 * A `multipart/form-data` body with [BOUNDARY] that carries [fields] as text parts, each with
+		 * [partHeaders], whole CRLF-terminated header lines, after its `Content-Disposition`.
+		 */
+		fun multipartBytes(fields: List<Pair<String, String>>, partHeaders: String = ""): ByteArray = buildString {
 			fields.forEach { (name, value) ->
 				append("--$BOUNDARY\r\n")
-				append("Content-Disposition: form-data; name=\"$name\"\r\n\r\n")
+				append("Content-Disposition: form-data; name=\"$name\"\r\n")
+				append(partHeaders)
+				append("\r\n")
 				append(value)
 				append("\r\n")
 			}
