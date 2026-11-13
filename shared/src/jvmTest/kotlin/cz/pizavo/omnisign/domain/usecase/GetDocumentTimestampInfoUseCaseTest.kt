@@ -2,6 +2,9 @@ package cz.pizavo.omnisign.domain.usecase
 
 import arrow.core.left
 import arrow.core.right
+import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
@@ -60,5 +63,15 @@ class GetDocumentTimestampInfoUseCaseTest : FunSpec({
 
 		useCase(inputBytes)
 		coVerify(exactly = 1) { repo.getDocumentTimestampInfo(inputBytes) }
+	}
+
+	test("forwards the configuration whose trust anchors judge the level") {
+		val config = ResolvedConfig.resolve(GlobalConfig(), ProfileConfig(name = "corp"), null).getOrNull()!!
+		coEvery { repo.getDocumentTimestampInfo(any(), any()) } returns
+			DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = false).right()
+
+		useCase(inputBytes, config)
+
+		coVerify(exactly = 1) { repo.getDocumentTimestampInfo(inputBytes, config) }
 	}
 })

@@ -18,6 +18,11 @@ import kotlin.time.Instant
  * @property terminal Whether the file was found past its preservation deadline. Such a file can
  *   never change state on its own, so re-validating it on every run is pure waste; the verdict is
  *   replayed from here until the file itself changes.
+ * @property profile The profile whose trust anchors judged the file's level, or `null` for the
+ *   global configuration. The level, and with it the verdict, depends on those anchors, so the
+ *   entry is replayed only for an assessment under the same profile.
+ * @property profileRecorded Whether the entry records [profile]. An entry written before profiles
+ *   were recorded reads as `false` and is never replayed, since nothing says which anchors judged it.
  */
 @Serializable
 data class RenewalCheckCacheEntry(
@@ -25,4 +30,6 @@ data class RenewalCheckCacheEntry(
     val lastModifiedMillis: Long,
     val earliestRenewalAt: Instant,
     val terminal: Boolean = false,
+    val profile: String? = null,
+    val profileRecorded: Boolean = false,
 )

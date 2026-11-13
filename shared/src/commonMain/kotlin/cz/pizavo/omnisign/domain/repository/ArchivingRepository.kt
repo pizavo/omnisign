@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.domain.repository
 
+import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
@@ -58,29 +59,49 @@ interface ArchivingRepository {
 	 * [cz.pizavo.omnisign.domain.model.error.ArchivingError.RenewalStatusUndeterminable] is returned
 	 * rather than silently treating the document as not needing renewal.
 	 *
+	 * The level depends on which certificates count as trust anchors, so it is judged under
+	 * [resolvedConfig]: the configuration of the extension the assessment decides on, such as a
+	 * renewal job's profile. Judged under other anchors, a conformant B-LT document can read as B-T
+	 * and be assessed against the wrong deadline.
+	 *
 	 * @param filePath Absolute path to the PAdES document to inspect.
 	 * @param renewalBufferDays Number of days before a timestamp certificate's expiry at which
 	 *   renewal is considered necessary. Defaults to [DEFAULT_RENEWAL_BUFFER_DAYS]. It applies to the
 	 *   B-LTA aging case only: the lower levels are missing material that is available now and will
 	 *   not be later, so there is nothing to wait for.
+	 * @param resolvedConfig The configuration whose trust anchors judge the document's level, or
+	 *   `null` to use the active profile's.
 	 * @return The [RenewalAssessment] — what the document needs, why, and by when — or an
 	 *   [cz.pizavo.omnisign.domain.model.error.ArchivingError].
 	 */
 	suspend fun needsArchivalRenewal(
 		filePath: String,
 		renewalBufferDays: Int = DEFAULT_RENEWAL_BUFFER_DAYS,
+		resolvedConfig: ResolvedConfig? = null,
 	): OperationResult<RenewalAssessment>
 	
 	/**
 	 * Perform a lightweight check of the document to determine its current timestamp
 	 * and signature level state.
 	 *
-	 * This is a fast operation that does not fetch CRL/OCSP data or load trusted lists.
+	 * It fetches no CRL or OCSP data, but it is not offline: it uses the trusted lists
+	 * [resolvedConfig] selects, which a cold cache has to download first, and a certificate whose
+	 * issuer the document does not carry may have that issuer downloaded through its Authority
+	 * Information Access URL. Callers on an interactive path should run it in the background.
+	 *
+	 * The level is judged under [resolvedConfig]'s trust anchors, which should be those of the
+	 * extension the check informs, so that the options it offers fit the level the extension will
+	 * find.
 	 *
 	 * @param inputBytes Raw bytes of the PDF document to inspect.
+	 * @param resolvedConfig The configuration whose trust anchors judge the document's level, or
+	 *   `null` to use the active profile's.
 	 * @return A [DocumentTimestampInfo] summarising the document state, or an error.
 	 */
-	suspend fun getDocumentTimestampInfo(inputBytes: ByteArray): OperationResult<DocumentTimestampInfo>
+	suspend fun getDocumentTimestampInfo(
+		inputBytes: ByteArray,
+		resolvedConfig: ResolvedConfig? = null,
+	): OperationResult<DocumentTimestampInfo>
 	
 	companion object {
 		/** Default number of days before expiry at which archival renewal is triggered. */

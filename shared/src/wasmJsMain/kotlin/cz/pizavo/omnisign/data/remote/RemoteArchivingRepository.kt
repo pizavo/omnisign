@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.data.remote
 import arrow.core.Either
 import arrow.core.left
 import cz.pizavo.omnisign.api.model.responses.TimestampResultMeta
+import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
@@ -92,12 +93,21 @@ class RemoteArchivingRepository(
     override suspend fun needsArchivalRenewal(
         filePath: String,
         renewalBufferDays: Int,
+        resolvedConfig: ResolvedConfig?,
     ): OperationResult<RenewalAssessment> =
         ArchivingError.webRenewalUnsupported(
             details = "Renewal jobs scan the local filesystem; the web client has no filesystem access",
         ).left()
 
-    override suspend fun getDocumentTimestampInfo(inputBytes: ByteArray): OperationResult<DocumentTimestampInfo> =
+    /**
+     * Ask the server to inspect [inputBytes], naming [resolvedConfig]'s profile so that the server
+     * judges the level under the trust anchors the extension will run with. Only the name is sent:
+     * the server resolves the profile from its own configuration, as it does for [extendDocument].
+     */
+    override suspend fun getDocumentTimestampInfo(
+        inputBytes: ByteArray,
+        resolvedConfig: ResolvedConfig?,
+    ): OperationResult<DocumentTimestampInfo> =
         Either.catch {
             client.submitFormWithBinaryData(
                 url = "api/v1/timestamp/inspect",
@@ -110,6 +120,7 @@ class RemoteArchivingRepository(
                             append(HttpHeaders.ContentDisposition, "filename=\"document.pdf\"")
                         },
                     )
+                    resolvedConfig?.profileName?.let { append("profile", it) }
                 },
             ).body<DocumentTimestampInfo>()
         }.mapLeft { exception ->

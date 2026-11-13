@@ -2,13 +2,16 @@ package cz.pizavo.omnisign.e2e
 
 import arrow.core.right
 import cz.pizavo.omnisign.data.repository.*
+import cz.pizavo.omnisign.data.service.FileRenewalCheckCache
 import cz.pizavo.omnisign.data.service.Pkcs11SessionCache
 import cz.pizavo.omnisign.data.service.pkcs11CertAlias
 import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.data.util.toKotlinInstant
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
@@ -40,6 +43,8 @@ import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.ints.shouldBeGreaterThan
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.coEvery
 import io.mockk.every
@@ -343,6 +348,57 @@ class SigningPipelineE2ETest : FunSpec({
 
 		archivingRepository.needsArchivalRenewal(file.absolutePath).shouldBeRight()
 			.need shouldBe RenewalNeed.NOT_NEEDED
+	}
+
+	/** An [archivingRepository] that keeps its verdicts in [cache] and reads its configuration from [config]. */
+	fun cachingRepository(cache: RenewalCheckCache, config: ConfigRepository = configRepository) =
+		DssArchivingRepository(
+			config, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(),
+			RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()),
+			cache, SignatureSpaceErrorDetector(),
+		)
+
+	/** A freshly sealed B-LTA document, written to [name] under the spec's directory. */
+	suspend fun sealedFile(name: String): File {
+		val extended = archivingRepository.extendDocument(
+			ArchivingParameters(
+				inputBytes = signBaselineT(),
+				inputName = "input.pdf",
+				targetLevel = SignatureLevel.PADES_BASELINE_LTA,
+				resolvedConfig = resolvedConfig(GlobalConfig(timestampServer = TimestampServerConfig(url = tsa.url))),
+			)
+		).shouldBeRight()
+		return File(tmp, name).also { it.writeBytes(extended.outputBytes) }
+	}
+
+	test("a B-LTA verdict is cached with the profile that reached it") {
+		val file = sealedFile("b-lta-cached.pdf")
+		val cache = FileRenewalCheckCache(tempdir().toPath().resolve("cache.json"))
+		val archive = ResolvedConfig.resolve(GlobalConfig(), ProfileConfig(name = "archive"), null).getOrNull()!!
+
+		cachingRepository(cache).needsArchivalRenewal(file.absolutePath, resolvedConfig = archive)
+			.shouldBeRight().need shouldBe RenewalNeed.NOT_NEEDED
+
+		val entry = cache.get(file.absolutePath).shouldNotBeNull()
+		entry.profile shouldBe "archive"
+		entry.profileRecorded.shouldBeTrue()
+	}
+
+	test("a B-LTA verdict reached without a resolved configuration is not cached") {
+		val file = sealedFile("b-lta-unresolved.pdf")
+		val cache = FileRenewalCheckCache(tempdir().toPath().resolve("cache.json"))
+		val unresolvable = mockk<ConfigRepository>()
+		coEvery { unresolvable.getCurrentConfig() } returns AppConfig(
+			global = GlobalConfig(
+				defaultHashAlgorithm = HashAlgorithm.SHA256,
+				disabledHashAlgorithms = setOf(HashAlgorithm.SHA256),
+			),
+		)
+
+		cachingRepository(cache, unresolvable).needsArchivalRenewal(file.absolutePath)
+			.shouldBeRight().need shouldBe RenewalNeed.NOT_NEEDED
+
+		cache.get(file.absolutePath).shouldBeNull()
 	}
 
 	test("a document timestamp over no validation data is reported as B-T, not B-LTA") {

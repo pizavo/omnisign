@@ -1,24 +1,31 @@
 package cz.pizavo.omnisign.e2e
 
+import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.data.repository.*
+import cz.pizavo.omnisign.data.service.FileRenewalCheckCache
 import cz.pizavo.omnisign.data.service.Pkcs11SessionCache
 import cz.pizavo.omnisign.data.service.pkcs11CertAlias
 import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.data.util.toKotlinInstant
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
+import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
+import cz.pizavo.omnisign.domain.model.error.TrustStoreError
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.result.RenewalNeed
 import cz.pizavo.omnisign.domain.model.result.RenewalReason
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.service.*
 import eu.europa.esig.dss.alert.StatusAlert
 import eu.europa.esig.dss.model.InMemoryDocument
@@ -37,6 +44,8 @@ import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.ints.shouldBeGreaterThan
+import io.kotest.matchers.nulls.shouldBeNull
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.coEvery
@@ -328,5 +337,85 @@ class ExpiredCertificatePreservationE2ETest : FunSpec({
 		assessment.need shouldBe RenewalNeed.UNRECOVERABLE
 		assessment.reason shouldBe RenewalReason.BELOW_LT
 		assessment.dueAt shouldBe signerCert.notAfter.toKotlinInstant()
+	}
+
+	/**
+	 * An [archivingRepository] that keeps its verdicts in [cache], reads its configuration from
+	 * [config] and its trust anchors from [trustStore], and builds its verifiers with [factory].
+	 */
+	fun cachingRepository(
+		cache: RenewalCheckCache,
+		config: ConfigRepository = configRepository,
+		trustStore: TrustStore = FileTrustStore(tempdir().toPath()),
+		factory: DssServiceFactory = dssServiceFactory,
+	) = DssArchivingRepository(
+		config, factory, DssWarningSanitizer(), TspErrorDetector(),
+		RevocationErrorDetector(), DocumentInputErrorDetector(), trustStore,
+		cache, SignatureSpaceErrorDetector(),
+	)
+
+	test("a terminal verdict is cached with the profile that reached it") {
+		crl = pki.buildCrl(thisUpdate = Date(now - day), nextUpdate = Date(now + 3650 * day))
+		val file = File(tmp, "terminal-cached.pdf").also { it.writeBytes(signBaselineT()) }
+		val cache = FileRenewalCheckCache(tempdir().toPath().resolve("cache.json"))
+		val archive = ResolvedConfig.resolve(GlobalConfig(), ProfileConfig(name = "archive"), null).getOrNull()!!
+
+		cachingRepository(cache).needsArchivalRenewal(file.absolutePath, resolvedConfig = archive)
+			.shouldBeRight().need shouldBe RenewalNeed.UNRECOVERABLE
+
+		val entry = cache.get(file.absolutePath).shouldNotBeNull()
+		entry.terminal.shouldBeTrue()
+		entry.profile shouldBe "archive"
+		entry.profileRecorded.shouldBeTrue()
+	}
+
+	test("a terminal verdict reached while a trusted list failed to load is not cached") {
+		crl = pki.buildCrl(thisUpdate = Date(now - day), nextUpdate = Date(now + 3650 * day))
+		val file = File(tmp, "terminal-list-down.pdf").also { it.writeBytes(signBaselineT()) }
+		val cache = FileRenewalCheckCache(tempdir().toPath().resolve("cache.json"))
+		val listDown = mockk<DssServiceFactory>(relaxed = true)
+		every { listDown.buildPdfObjectFactory() } returns PdfBoxNativeObjectFactory()
+		every { listDown.buildLevelInspectionVerifier(any(), any()) } answers {
+			CertificateVerifierResult(
+				verifier(alert = null),
+				tlWarnings = listOf(LocalizableText.Literal("A trusted list could not be downloaded")),
+			)
+		}
+
+		cachingRepository(cache, factory = listDown).needsArchivalRenewal(file.absolutePath)
+			.shouldBeRight().need shouldBe RenewalNeed.UNRECOVERABLE
+
+		cache.get(file.absolutePath).shouldBeNull()
+	}
+
+	test("a terminal verdict reached without a resolved configuration is not cached, so it cannot outlive the problem") {
+		crl = pki.buildCrl(thisUpdate = Date(now - day), nextUpdate = Date(now + 3650 * day))
+		val file = File(tmp, "terminal-unresolved.pdf").also { it.writeBytes(signBaselineT()) }
+		val cache = FileRenewalCheckCache(tempdir().toPath().resolve("cache.json"))
+		val unresolvable = mockk<ConfigRepository>()
+		coEvery { unresolvable.getCurrentConfig() } returns AppConfig(
+			global = GlobalConfig(
+				defaultHashAlgorithm = HashAlgorithm.SHA256,
+				disabledHashAlgorithms = setOf(HashAlgorithm.SHA256),
+			),
+		)
+
+		cachingRepository(cache, unresolvable).needsArchivalRenewal(file.absolutePath)
+			.shouldBeRight().need shouldBe RenewalNeed.UNRECOVERABLE
+
+		cache.get(file.absolutePath).shouldBeNull()
+	}
+
+	test("a terminal verdict reached when the profile's trust anchors cannot be read is not cached") {
+		crl = pki.buildCrl(thisUpdate = Date(now - day), nextUpdate = Date(now + 3650 * day))
+		val file = File(tmp, "terminal-no-anchors.pdf").also { it.writeBytes(signBaselineT()) }
+		val cache = FileRenewalCheckCache(tempdir().toPath().resolve("cache.json"))
+		val unreadable = mockk<TrustStore>()
+		coEvery { unreadable.resolve(any()) } returns TrustStoreError.storageFailed("unreadable").left()
+
+		cachingRepository(cache, trustStore = unreadable).needsArchivalRenewal(file.absolutePath)
+			.shouldBeRight().need shouldBe RenewalNeed.UNRECOVERABLE
+
+		cache.get(file.absolutePath).shouldBeNull()
 	}
 })

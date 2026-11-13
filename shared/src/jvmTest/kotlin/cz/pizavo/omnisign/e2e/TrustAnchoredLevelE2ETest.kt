@@ -9,6 +9,7 @@ import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.data.util.toKotlinInstant
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
@@ -404,6 +405,45 @@ class TrustAnchoredLevelE2ETest : FunSpec({
 		val assessment = archivingRepository.needsArchivalRenewal(file.absolutePath).shouldBeRight()
 
 		assessment.reason shouldNotBe RenewalReason.BELOW_LT
+	}
+
+	/**
+	 * A repository whose level inspection pins the issuing CA for the `corp` profile alone, standing
+	 * in for a trust store that holds the anchor in that profile's scope. The active configuration
+	 * is the global one, which pins nothing.
+	 */
+	val corpScopedArchiving = run {
+		val factory = mockk<DssServiceFactory>(relaxed = true)
+		every { factory.buildPdfObjectFactory() } returns PdfBoxNativeObjectFactory()
+		every { factory.buildLevelInspectionVerifier(any(), any()) } answers {
+			CertificateVerifierResult(verifier(anchored = firstArg<ResolvedConfig?>()?.profileName == "corp"))
+		}
+		DssArchivingRepository(
+			configRepository, factory, DssWarningSanitizer(), TspErrorDetector(),
+			RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()),
+			mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(),
+		)
+	}
+
+	val corp = ResolvedConfig.resolve(GlobalConfig(), ProfileConfig(name = "corp"), null).getOrNull()!!
+
+	test("the extension dialog judges the level under the profile it extends with, not the active one") {
+		val signed = signAt(SignatureLevel.PADES_BASELINE_LT)
+
+		corpScopedArchiving.getDocumentTimestampInfo(signed.outputBytes, corp).shouldBeRight()
+			.level shouldBe SignatureLevel.PADES_BASELINE_LT
+		corpScopedArchiving.getDocumentTimestampInfo(signed.outputBytes).shouldBeRight()
+			.level shouldBe SignatureLevel.PADES_BASELINE_T
+	}
+
+	test("renewal judges the level under the job's profile, not the active one") {
+		val signed = signAt(SignatureLevel.PADES_BASELINE_LT)
+		val file = File(tmp, "corp-lt.pdf").also { it.writeBytes(signed.outputBytes) }
+
+		corpScopedArchiving.needsArchivalRenewal(file.absolutePath, resolvedConfig = corp).shouldBeRight()
+			.reason shouldNotBe RenewalReason.BELOW_LT
+		corpScopedArchiving.needsArchivalRenewal(file.absolutePath).shouldBeRight()
+			.reason shouldBe RenewalReason.BELOW_LT
 	}
 
 	test("validation accepts the embedded CRL under the anchor, so it settles that the signer was not revoked") {

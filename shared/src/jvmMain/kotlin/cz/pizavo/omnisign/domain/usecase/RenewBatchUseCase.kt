@@ -557,7 +557,7 @@ class RenewBatchUseCase(
              *   report a failure of this function itself.
              */
             suspend fun processFile(file: File, path: String) {
-                checkRenewalUseCase(path, job.renewalBufferDays).fold(
+                checkRenewalUseCase(path, job.renewalBufferDays, resolvedConfig).fold(
                     ifLeft = { error ->
                         totalErrors++
                         jobErrors++
@@ -759,7 +759,9 @@ class RenewBatchUseCase(
                                     )
                                     return@fold
                                 }
-                                val renewed = assessRenewedOutput(file, result.outputBytes, job.renewalBufferDays)
+                                val renewed = assessRenewedOutput(
+                                    file, result.outputBytes, resolvedConfig, job.renewalBufferDays,
+                                )
                                     .onRight { if (targetLevel == SignatureLevel.PADES_BASELINE_LTA) learnSealDeadline(it) }
                                 val shortfall = renewed.fold(
                                     ifLeft = { it },
@@ -1249,6 +1251,10 @@ class RenewBatchUseCase(
      * are about to be written there anyway. Neither holds for a shared temp location that may be small
      * or memory-backed.
      *
+     * The check judges the level under [resolvedConfig]'s trust anchors, the ones the job's
+     * extension validated under, so that a step is not mistaken for one that moved nothing on
+     * merely because other anchors read the result at a lower level.
+     *
      * The suffix is deliberately not `.pdf`. A run killed before the `finally` below — a crash, a
      * reboot, power loss — leaves the verify file behind, and [resolveGlobs] admits a wildcard match
      * only when it ends in `.pdf` (see its `nonPdfCount` branch). That check is what keeps every other
@@ -1261,6 +1267,7 @@ class RenewBatchUseCase(
     private suspend fun assessRenewedOutput(
         file: File,
         outputBytes: ByteArray,
+        resolvedConfig: ResolvedConfig,
         bufferDays: Int,
     ): Either<String, RenewalAssessment> {
         val directory = file.absoluteFile.toPath().parent
@@ -1272,7 +1279,7 @@ class RenewBatchUseCase(
         }
         return try {
             verifyFile.writeBytes(outputBytes)
-            checkRenewalUseCase(verifyFile.absolutePathString(), bufferDays)
+            checkRenewalUseCase(verifyFile.absolutePathString(), bufferDays, resolvedConfig)
                 .mapLeft { "the renewed document failed validation: ${it.message}" }
         } catch (e: Exception) {
             "could not validate the renewed document: ${e.message}".left()
@@ -1399,7 +1406,8 @@ class RenewBatchUseCase(
         ).getOrNull() ?: return null
 
         if (sealed.achievedLevel != SignatureLevel.PADES_BASELINE_LTA) return null
-        val assessment = assessRenewedOutput(file, sealed.outputBytes, bufferDays).getOrNull() ?: return null
+        val assessment = assessRenewedOutput(file, sealed.outputBytes, resolvedConfig, bufferDays).getOrNull()
+            ?: return null
         if (renewalShortfall(refreshed, assessment, resolvedConfig.timestampServer?.url, bufferDays) != null) {
             return null
         }

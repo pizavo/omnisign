@@ -2,6 +2,9 @@ package cz.pizavo.omnisign.domain.usecase
 
 import arrow.core.left
 import arrow.core.right
+import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
 import cz.pizavo.omnisign.domain.model.result.RenewalAssessment
 import cz.pizavo.omnisign.domain.model.result.RenewalNeed
@@ -64,5 +67,14 @@ class CheckArchivalRenewalUseCaseTest : FunSpec({
 
 		useCase(filePath)
 		coVerify(exactly = 1) { repo.needsArchivalRenewal(filePath, DEFAULT_RENEWAL_BUFFER_DAYS) }
+	}
+
+	test("forwards the configuration whose trust anchors judge the level") {
+		val config = ResolvedConfig.resolve(GlobalConfig(), ProfileConfig(name = "archive"), null).getOrNull()!!
+		coEvery { repo.needsArchivalRenewal(any(), any(), any()) } returns RenewalAssessment.notNeeded().right()
+
+		useCase(filePath, resolvedConfig = config)
+
+		coVerify(exactly = 1) { repo.needsArchivalRenewal(filePath, DEFAULT_RENEWAL_BUFFER_DAYS, config) }
 	}
 })

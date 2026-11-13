@@ -68,7 +68,7 @@ class TimestampViewModelTest : FunSpec({
 	beforeEach {
 		io.mockk.clearMocks(archivingRepository, configRepository)
 		coEvery { configRepository.getCurrentConfig() } returns appConfig
-		coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns noTimestamps.right()
+		coEvery { archivingRepository.getDocumentTimestampInfo(any(), any()) } returns noTimestamps.right()
 		Dispatchers.setMain(testDispatcher)
 	}
 
@@ -107,7 +107,7 @@ class TimestampViewModelTest : FunSpec({
 
 	test("open marks Signature Timestamp unavailable when document has a document timestamp") {
 		runTest(testDispatcher) {
-			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns hasDocTs.right()
+			coEvery { archivingRepository.getDocumentTimestampInfo(any(), any()) } returns hasDocTs.right()
 
 			val vm = buildVm()
 			vm.onDocumentChanged(sampleDoc())
@@ -125,7 +125,7 @@ class TimestampViewModelTest : FunSpec({
 
 	test("open defaults to the revocation option at B-T level for a timestamped document") {
 		runTest(testDispatcher) {
-			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns hasSigTsOnly.right()
+			coEvery { archivingRepository.getDocumentTimestampInfo(any(), any()) } returns hasSigTsOnly.right()
 
 			val vm = buildVm()
 			vm.onDocumentChanged(sampleDoc())
@@ -148,13 +148,27 @@ class TimestampViewModelTest : FunSpec({
 			vm.onDocumentChanged(doc)
 			advanceUntilIdle()
 
-			coVerify(exactly = 1) { archivingRepository.getDocumentTimestampInfo(doc.data) }
+			coVerify(exactly = 1) { archivingRepository.getDocumentTimestampInfo(doc.data, any()) }
 		}
 	}
 
 	test("open falls back to fresh fetch when no prior onDocumentChanged was called") {
 		runTest(testDispatcher) {
-			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns
+			coEvery { archivingRepository.getDocumentTimestampInfo(any(), any()) } returns hasDocTs.right()
+
+			val vm = buildVm()
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
+			state.unavailableTypes shouldBe setOf(TimestampType.SIGNATURE_TIMESTAMP)
+			coVerify(exactly = 1) { archivingRepository.getDocumentTimestampInfo(any(), any()) }
+		}
+	}
+
+	test("a failed inspection reads as a document with no timestamps") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.getDocumentTimestampInfo(any(), any()) } returns
 					ArchivingError.ExtensionFailed(text = LocalizableText.Literal("corrupt file")).left()
 
 			val vm = buildVm()
@@ -163,6 +177,65 @@ class TimestampViewModelTest : FunSpec({
 
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
 			state.unavailableTypes shouldBe emptySet()
+			state.currentLevel shouldBe SignatureLevel.PADES_BASELINE_B
+		}
+	}
+
+	val corpActive = AppConfig(
+		global = GlobalConfig(),
+		profiles = mapOf("corp" to ProfileConfig(name = "corp")),
+		activeProfile = "corp",
+	)
+
+	test("the pre-fetch inspects the document under the active profile's configuration") {
+		runTest(testDispatcher) {
+			coEvery { configRepository.getCurrentConfig() } returns corpActive
+			val doc = sampleDoc()
+
+			val vm = buildVm()
+			vm.onDocumentChanged(doc)
+			advanceUntilIdle()
+
+			coVerify(exactly = 1) {
+				archivingRepository.getDocumentTimestampInfo(doc.data, match { it.profileName == "corp" })
+			}
+		}
+	}
+
+	test("open reuses the pre-fetched inspection while the configuration is unchanged") {
+		runTest(testDispatcher) {
+			val vm = buildVm()
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
+			coVerify(exactly = 1) { archivingRepository.getDocumentTimestampInfo(any(), any()) }
+		}
+	}
+
+	test("open inspects the document again when the profile changed since the pre-fetch") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.getDocumentTimestampInfo(any(), matchNullable { it?.profileName == null }) } returns
+					hasSigTsOnly.right()
+			coEvery { archivingRepository.getDocumentTimestampInfo(any(), match { it.profileName == "corp" }) } returns
+					hasLtOnly.right()
+
+			val vm = buildVm()
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			coEvery { configRepository.getCurrentConfig() } returns corpActive
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
+			state.currentLevel shouldBe SignatureLevel.PADES_BASELINE_LT
+			coVerify(exactly = 1) {
+				archivingRepository.getDocumentTimestampInfo(any(), match { it.profileName == "corp" })
+			}
 		}
 	}
 
@@ -184,7 +257,7 @@ class TimestampViewModelTest : FunSpec({
 
 	test("open reports the level DSS determined, not the one the structure suggests") {
 		runTest(testDispatcher) {
-			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns DocumentTimestampInfo(
+			coEvery { archivingRepository.getDocumentTimestampInfo(any(), any()) } returns DocumentTimestampInfo(
 				hasDocumentTimestamp = true,
 				containsLtData = false,
 				hasSignatureTimestamp = true,
@@ -206,7 +279,7 @@ class TimestampViewModelTest : FunSpec({
 
 	test("open reports unusable validation data without proposing a replacement that cannot exist") {
 		runTest(testDispatcher) {
-			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns DocumentTimestampInfo(
+			coEvery { archivingRepository.getDocumentTimestampInfo(any(), any()) } returns DocumentTimestampInfo(
 				hasDocumentTimestamp = false,
 				containsLtData = true,
 				hasSignatureTimestamp = true,
@@ -231,7 +304,7 @@ class TimestampViewModelTest : FunSpec({
 
 	test("open falls back to the structural guess when no level could be established") {
 		runTest(testDispatcher) {
-			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns hasSigTsOnly.right()
+			coEvery { archivingRepository.getDocumentTimestampInfo(any(), any()) } returns hasSigTsOnly.right()
 
 			val vm = buildVm()
 			vm.onDocumentChanged(sampleDoc())
@@ -247,7 +320,7 @@ class TimestampViewModelTest : FunSpec({
 
 	test("the structural fallback agrees with the options the dialog offers") {
 		runTest(testDispatcher) {
-			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns DocumentTimestampInfo(
+			coEvery { archivingRepository.getDocumentTimestampInfo(any(), any()) } returns DocumentTimestampInfo(
 				hasDocumentTimestamp = true,
 				containsLtData = false,
 				hasSignatureTimestamp = false,
@@ -515,7 +588,7 @@ class TimestampViewModelTest : FunSpec({
 
 	test("extend to LT with revocation error shows Error when document already contains LT data") {
 		runTest(testDispatcher) {
-			coEvery { archivingRepository.getDocumentTimestampInfo(any()) } returns hasLtOnly.right()
+			coEvery { archivingRepository.getDocumentTimestampInfo(any(), any()) } returns hasLtOnly.right()
 			coEvery { archivingRepository.extendDocument(any()) } returns
 					ArchivingError.RevocationInfoError(
 						text = LocalizableText.Literal("Failed to obtain revocation information"),

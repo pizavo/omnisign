@@ -34,7 +34,8 @@ There is no **Add profile** button, and no delete action.
 The active profile's name is sent with **every** sign, timestamp, and validate request, and the server
 resolves that profile's settings over its global configuration before doing the work. Selecting a
 profile therefore changes which TSA is used, which signature level is produced, and which certificates
-are trusted during validation.
+are trusted during validation. The check that tells the timestamp dialog a document's current level
+sends it too, because the level depends on which certificates are trusted.
 
 Your choice is remembered in the browser, not on the server — so it is per-browser, per-device, and
 does not affect anyone else using the same deployment. See
