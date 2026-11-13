@@ -161,7 +161,10 @@ inspected and, if you choose, trusted as a **TSA**.
 ### Trusted list warnings
 
 If validation surfaces any trusted-list issues, a **Trusted List Warnings** section appears at the
-bottom of the report.
+bottom of the report. It names the trusted lists that could not be downloaded, a custom list whose
+signing certificate cannot be read, and any list whose signature could not be verified — the EU
+LOTL, a member-state list, or a custom list registered with a signing certificate. The validation
+goes on without such a list, so a signature whose trust rests on it can come out `INDETERMINATE`.
 
 ## 4. Export a validation report
 

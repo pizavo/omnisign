@@ -16,6 +16,8 @@ import eu.europa.esig.dss.alert.LogOnStatusAlert
 import eu.europa.esig.dss.alert.StatusAlert
 import eu.europa.esig.dss.model.DSSDocument
 import eu.europa.esig.dss.model.InMemoryDocument
+import eu.europa.esig.dss.model.tsl.LOTLInfo
+import eu.europa.esig.dss.model.tsl.TLInfo
 import eu.europa.esig.dss.model.tsl.TLValidationJobSummary
 import eu.europa.esig.dss.pades.PAdESSignatureParameters
 import eu.europa.esig.dss.pdf.PdfMemoryUsageSetting
@@ -29,6 +31,7 @@ import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import eu.europa.esig.dss.spi.x509.CommonTrustedCertificateSource
 import eu.europa.esig.dss.spi.x509.KeyStoreCertificateSource
 import eu.europa.esig.dss.spi.x509.aia.DefaultAIASource
+import eu.europa.esig.dss.validation.job.sync.SynchronizationStrategy
 import io.github.oshai.kotlinlogging.KotlinLogging
 import org.slf4j.event.Level
 import java.io.ByteArrayOutputStream
@@ -847,45 +850,67 @@ class DssServiceFactory(
 		}
 		
 		/**
-		 * Inspect a post-refresh [TLValidationJobSummary] and return a localizable warning for the
-		 * member-state and standalone trusted lists that could not be downloaded or parsed, or an
-		 * empty list when all loaded. The single [MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE]
-		 * entry names the failed hosts; its first argument is the English count phrase so a localizing
-		 * frontend can re-render it in the target language's plural.
+		 * Inspect a post-refresh [TLValidationJobSummary] and return localizable warnings for the
+		 * trusted lists that supply no trust, or an empty list when every list does.
 		 *
-		 * Only download failures are reported; partial parse failures (e.g., old certificate
-		 * entries inside an otherwise intact TL) are treated as non-actionable noise and
-		 * omitted intentionally.
+		 * [MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE] names the hosts of the member-state
+		 * and standalone lists that could not be downloaded, and
+		 * [MessageKey.WARNING_TRUSTED_LIST_SIGNATURE_UNVERIFIED] those of the downloaded lists that
+		 * [strategy] keeps out of the trust because their signature could not be verified. A list of
+		 * trusted lists kept out is named alone, since none of the lists it points to is used then.
+		 * The first argument of each warning is the English count phrase so a localizing frontend
+		 * can re-render it in the target language's plural.
+		 *
+		 * Partial parse failures (e.g., old certificate entries inside an otherwise intact TL) are
+		 * treated as non-actionable noise and omitted intentionally.
+		 *
+		 * @param strategy The synchronization strategy of the job that produced [summary].
 		 */
-		internal fun collectTlWarnings(summary: TLValidationJobSummary): List<LocalizableText> {
+		internal fun collectTlWarnings(
+			summary: TLValidationJobSummary,
+			strategy: SynchronizationStrategy<TLInfo, LOTLInfo>,
+		): List<LocalizableText> {
 			val failedHosts = mutableListOf<String>()
-			
-			for (lotlInfo in summary.lotlInfos) {
-				for (tlInfo in lotlInfo.tlInfos) {
-					val dl = tlInfo.downloadCacheInfo
-					if (dl.isError || !dl.isResultExist) {
-						failedHosts += extractTlHost(tlInfo.url)
-					}
+			val unverifiedHosts = mutableListOf<String>()
+
+			val tlInfos = summary.lotlInfos.flatMap { lotlInfo ->
+				if (lotlInfo.isDownloaded() && !strategy.canBeSynchronized(lotlInfo)) {
+					unverifiedHosts += extractTlHost(lotlInfo.url)
+					emptyList()
+				} else {
+					lotlInfo.tlInfos
+				}
+			} + summary.otherTLInfos
+
+			for (tlInfo in tlInfos) {
+				when {
+					!tlInfo.isDownloaded() -> failedHosts += extractTlHost(tlInfo.url)
+					!strategy.canBeSynchronized(tlInfo) -> unverifiedHosts += extractTlHost(tlInfo.url)
 				}
 			}
-			
-			for (tlInfo in summary.otherTLInfos) {
-				val dl = tlInfo.downloadCacheInfo
-				if (dl.isError || !dl.isResultExist) {
-					failedHosts += extractTlHost(tlInfo.url)
-				}
-			}
-			
-			if (failedHosts.isEmpty()) return emptyList()
-			
-			return listOf(
-				LocalizableText.of(
-					MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE,
-					pluralLists(failedHosts.size),
-					failedHosts.joinToString(", "),
-				)
+
+			return listOfNotNull(
+				trustedListWarning(MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE, failedHosts),
+				trustedListWarning(MessageKey.WARNING_TRUSTED_LIST_SIGNATURE_UNVERIFIED, unverifiedHosts),
 			)
 		}
+
+		/**
+		 * Whether the refresh that produced [summary] downloaded any list of trusted lists or
+		 * trusted list, from its source or the cache.
+		 */
+		internal fun downloadedAnyList(summary: TLValidationJobSummary): Boolean =
+			summary.lotlInfos.any { lotlInfo -> lotlInfo.isDownloaded() || lotlInfo.tlInfos.any { it.isDownloaded() } } ||
+					summary.otherTLInfos.any { it.isDownloaded() }
+
+		/** Whether the trusted list this describes was downloaded, from its source or the cache. */
+		private fun TLInfo.isDownloaded(): Boolean =
+			!downloadCacheInfo.isError && downloadCacheInfo.isResultExist
+
+		/** A warning under [key] that names [hosts], or `null` when there are none. */
+		private fun trustedListWarning(key: MessageKey, hosts: List<String>): LocalizableText? =
+			if (hosts.isEmpty()) null
+			else LocalizableText.of(key, pluralLists(hosts.size), hosts.joinToString(", "))
 		
 		/** English count phrase for [count] trusted lists, baked as a warning argument for locale re-pluralization. */
 		private fun pluralLists(count: Int): String =

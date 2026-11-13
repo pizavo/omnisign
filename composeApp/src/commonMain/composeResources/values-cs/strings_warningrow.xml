@@ -16,6 +16,7 @@
 	<string name="warning_tsp_failure">Server časových razítek nahlásil problém (PKIFailureInfo). Pokud operace proběhla úspěšně, časové razítko se mohlo získat při opakovaném pokusu.</string>
 	<string name="warning_tl_refresh_incomplete">Nepodařilo se obnovit %1$s (%2$s). Posouzení kvalifikace certifikátů z těchto zdrojů může být neúplné.</string>
 	<string name="warning_tl_signing_certificate_unreadable">Nepodařilo se načíst důvěryhodný seznam %1$s: jeho podpisový certifikát %2$s nelze přečíst. Posouzení důvěryhodnosti a kvalifikace certifikátů z tohoto seznamu může být neúplné.</string>
+	<string name="warning_tl_signature_unverified">Nelze použít %1$s (%2$s): podpis se nepodařilo ověřit, proto se žádnému z uvedených certifikátů nedůvěřuje.</string>
 	<plurals name="warning_affected_certificates">
 		<item quantity="one">%1$s certifikát</item>
 		<item quantity="few">%1$s certifikáty</item>

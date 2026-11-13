@@ -17,9 +17,12 @@ import java.io.File
  * CLI subcommand for registering a custom trusted list source.
  *
  * The source may be an HTTPS URL or a `file://`-prefixed path to a locally compiled
- * TL XML.  An optional PEM/DER certificate can be supplied to verify the TL's own
- * XML signature.  When [profile] is specified the entry is stored inside that profile's
- * validation config; otherwise it is stored in the global config.
+ * TL XML.  An optional PEM/DER certificate can be supplied that the TL's own XML
+ * signature must verify against; a TL that does not verify supplies no trust.  Without
+ * one, the command warns that the signature will not be verified, and also that a
+ * plain `http://` source can be changed on the way.  When [profile] is specified the
+ * entry is stored inside that profile's validation config; otherwise it is stored in
+ * the global config.
  */
 class TrustedListAdder : CliktCommand(name = "add"), KoinComponent {
 	private val manageTl: ManageTrustedListsUseCase by inject()
@@ -37,8 +40,8 @@ class TrustedListAdder : CliktCommand(name = "add"), KoinComponent {
 	
 	private val signingCert by option(
 		"--signing-cert",
-		help = "Path to the PEM or DER certificate used to verify the TL's XML signature " +
-				"(strongly recommended for non-EU trusted lists)"
+		help = "Path to the PEM or DER certificate the TL's XML signature must verify against; " +
+				"a TL that does not verify is not used (strongly recommended for non-EU trusted lists)"
 	).path(mustExist = true, canBeDir = false, mustBeReadable = true)
 	
 	private val profile by option(
@@ -63,6 +66,12 @@ class TrustedListAdder : CliktCommand(name = "add"), KoinComponent {
 				echo("✅ Trusted list '$name' registered in $scope.")
 				if (tl.signingCertPath == null) {
 					echo("⚠️  No signing certificate provided — TL signature will not be verified.")
+					if (effectiveSource.startsWith("http://")) {
+						echo(
+							"⚠️  The TL is fetched over plain HTTP, so anyone on the network path can change " +
+									"the certificates it lists. Use HTTPS or --signing-cert."
+						)
+					}
 				}
 			}
 		)

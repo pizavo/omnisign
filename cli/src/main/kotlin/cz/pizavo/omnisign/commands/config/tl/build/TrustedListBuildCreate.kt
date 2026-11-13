@@ -197,7 +197,8 @@ class TrustedListBuildCreate : CliktCommand(name = "create"), KoinComponent {
 				ifRight = {
 					t.println("✅ Registered as trusted list '$name' in $scope.")
 					t.println("⚠️ No signing certificate — TL signature will not be verified.")
-					t.println("   To add one later: config tl add --name $name --source ${outputFile.absolutePath} --signing-cert <cert>")
+					t.println("   The compiled list is unsigned. To have it verified, sign it with an enveloped XAdES signature,")
+					t.println("   then: config tl add --name $name --source <signed file> --signing-cert <cert>")
 				}
 			)
 		} else {

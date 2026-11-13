@@ -8,9 +8,11 @@ import kotlinx.serialization.Serializable
  * The [source] field accepts either an HTTPS URL pointing to a remote TL XML document,
  * or a `file://`-prefixed absolute path to a locally stored XML file.
  *
- * When [signingCertPath] is provided, DSS will verify the TL's own XML signature
- * against that certificate instead of trusting the TL unconditionally — strongly
- * recommended for non-EU TLs that are not reachable through the LOTL chain.
+ * When [signingCertPath] is provided, the TL is used only while its own XML signature
+ * verifies against that certificate: a TL that is unsigned, signed with another key or
+ * changed after it was signed supplies no trust — strongly recommended for non-EU TLs
+ * that are not reachable through the LOTL chain. Without it, the TL is trusted
+ * unconditionally.
  */
 @Serializable
 data class CustomTrustedListConfig(
@@ -28,7 +30,7 @@ data class CustomTrustedListConfig(
     val source: String,
 
     /**
-     * Optional path to the PEM or DER certificate used to verify the TL's XML signature.
+     * Optional path to the PEM or DER certificate the TL's XML signature must verify against.
      * When null the TL signature is not verified (use only for internal/development TLs).
      */
     val signingCertPath: String? = null

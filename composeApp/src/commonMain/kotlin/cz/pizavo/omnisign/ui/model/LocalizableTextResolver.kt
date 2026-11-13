@@ -138,6 +138,7 @@ private val MESSAGE_RES: Map<MessageKey, StringResource> = mapOf(
 	MessageKey.WARNING_TSP_FAILURE to Res.string.warning_tsp_failure,
 	MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE to Res.string.warning_tl_refresh_incomplete,
 	MessageKey.WARNING_TRUSTED_LIST_SIGNING_CERTIFICATE_UNREADABLE to Res.string.warning_tl_signing_certificate_unreadable,
+	MessageKey.WARNING_TRUSTED_LIST_SIGNATURE_UNVERIFIED to Res.string.warning_tl_signature_unverified,
 	MessageKey.VALIDATION_SIGNATURE_POLICY_UNTRUSTED to Res.string.validation_signature_policy_untrusted,
 	MessageKey.VALIDATION_TIMESTAMP_POLICY_UNTRUSTED to Res.string.validation_timestamp_policy_untrusted,
 	MessageKey.VALIDATION_HASH_DISABLED to Res.string.validation_hash_disabled,
@@ -163,6 +164,7 @@ private val WARNING_COUNT_PLURAL: Map<MessageKey, PluralStringResource> = mapOf(
 	MessageKey.WARNING_FRESH_REVOCATION_MISSING_GENERIC to Res.plurals.warning_affected_certificates,
 	MessageKey.WARNING_TIMESTAMP_UNTRUSTED to Res.plurals.warning_affected_timestamps,
 	MessageKey.WARNING_TRUSTED_LIST_REFRESH_INCOMPLETE to Res.plurals.warning_affected_trusted_lists,
+	MessageKey.WARNING_TRUSTED_LIST_SIGNATURE_UNVERIFIED to Res.plurals.warning_affected_trusted_lists,
 )
 
 /** Resolve this text to the active locale: translated Compose Resource if present, else bundled English. */
