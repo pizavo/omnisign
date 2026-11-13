@@ -8,9 +8,12 @@ import cz.pizavo.omnisign.data.secret.EnvironmentSecretReader
 import cz.pizavo.omnisign.data.secret.SecretFileReader
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
+import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.error.ValidationError
+import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.signature.CertificateChainLink
 import cz.pizavo.omnisign.domain.model.signature.CertificateDetailSection
 import cz.pizavo.omnisign.domain.model.signature.CertificateField
@@ -32,6 +35,7 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.mockk.coEvery
 import io.mockk.mockk
+import io.mockk.slot
 import org.koin.dsl.module
 import java.io.File
 import kotlin.time.Instant
@@ -419,6 +423,33 @@ class ValidateTest : FunSpec({
 		result.statusCode shouldBe 1
 		result.stderr shouldContain "Configuration Error: The file '$missing' named by " +
 				"OMNISIGN_TIMESTAMP_PASSWORD_FILE does not exist."
+	}
+
+	test("a per-run validation policy keeps the global revocation and EU LOTL settings") {
+		val input = tmpFile("policy-override.pdf")
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig.copy(
+			global = defaultConfig.global.copy(
+				validation = ValidationConfig(
+					policyType = ValidationPolicyType.CUSTOM_FILE,
+					checkRevocation = false,
+					useEuLotl = false,
+				),
+			),
+		)
+		val parameters = slot<ValidationParameters>()
+		coEvery { validationRepository.validateDocument(capture(parameters)) } returns sampleReport.right()
+
+		val result = Omnisign().test(
+			listOf("validate", "-f", input.absolutePath, "--validation-policy", "DEFAULT_ETSI", "--detailed")
+		)
+
+		result.statusCode shouldBe 0
+		val validation = parameters.captured.resolvedConfig.shouldNotBeNull().validation
+		validation.policyType shouldBe ValidationPolicyType.DEFAULT_ETSI
+		validation.checkRevocation shouldBe false
+		validation.useEuLotl shouldBe false
+		result.stdout shouldContain "Revocation: Disabled"
+		result.stdout shouldContain "EU LOTL: Disabled"
 	}
 })
 
