@@ -64,13 +64,16 @@ the one operation that exposes no signing material or timestamping endpoint. **`
 ```yaml
 operations:
   allowed: [VALIDATE, SIGN]
-  certificateAliases: ["university-seal"]   # optional allowlist; only meaningful with SIGN
+  certificateAliases: ["University Seal-1f3a@pkcs11-5A3C0F12"]   # optional allowlist; only meaningful with SIGN
 ```
 
 - **`SIGN`** exposes the server's signing certificates (and gates `GET /api/v1/certificates`). When
   enabled, the server logs a warning unless authentication is on, because every network-reachable
   client could otherwise sign. Restrict the usable certificates with `certificateAliases` for
-  defense-in-depth.
+  defense-in-depth, listing the aliases exactly as `GET /api/v1/certificates` returns them. The
+  server then signs only with a listed certificate: a request without a
+  `certificateAlias` uses the only listed alias, and when the list holds several, the request has
+  to name one.
 - **`TIMESTAMP`** exposes the server's pre-configured TSA via `POST /api/v1/timestamp` and
   `POST /api/v1/timestamp/inspect`.
 

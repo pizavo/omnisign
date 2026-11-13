@@ -168,7 +168,10 @@ paths:
                   description: The PDF to sign.
                 certificateAlias:
                   type: string
-                  description: Signing certificate alias; must pass the `certificateAliases` allow-list when set.
+                  description: >
+                    Signing certificate alias. When the server has a `certificateAliases` allow-list,
+                    the alias must be on it. Leaving it out signs with the only listed alias, and is
+                    rejected with `MISSING_CERTIFICATE_ALIAS` when the list holds several.
                 hashAlgorithm:
                   allOf:
                     - $ref: '#/components/schemas/HashAlgorithm'
@@ -219,7 +222,9 @@ paths:
                 type: string
                 format: binary
         '400':
-          description: Missing file, malformed (non-PDF) document, or an invalid algorithm name.
+          description: >
+            Missing file, no certificate alias although the server allows several, malformed
+            (non-PDF) document, or an invalid algorithm name.
           content:
             application/json:
               schema:
@@ -227,6 +232,8 @@ paths:
               examples:
                 missingFile:
                   value: { error: MISSING_FILE, message: "Multipart field 'file' is required" }
+                missingCertificateAlias:
+                  value: { error: MISSING_CERTIFICATE_ALIAS, message: "Multipart field 'certificateAlias' is required: this server signs only with the certificates on its allowed list, which GET /api/v1/certificates returns" }
                 malformed:
                   value: { error: MALFORMED_DOCUMENT, message: "The upload is not a valid PDF" }
         '401':

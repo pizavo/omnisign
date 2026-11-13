@@ -31,7 +31,8 @@ import org.koin.ktor.ext.inject
  *
  * `POST /api/v1/sign` accepts a `multipart/form-data` request with:
  * - `file` — the PDF to sign (required).
- * - `certificateAlias` — alias of the certificate to use (optional).
+ * - `certificateAlias` — alias of the certificate to use (optional, except when the server allows
+ *   several aliases; see below).
  * - `hashAlgorithm` — hash algorithm name (optional, e.g. `SHA256`).
  * - `signatureLevel` — PAdES level (optional, e.g. `PADES_BASELINE_T`).
  * - `reason`, `location`, `contactInfo` — optional signature metadata.
@@ -56,7 +57,11 @@ import org.koin.ktor.ext.inject
  * This operation is disabled by default and must be explicitly enabled in
  * [OperationsConfig.allowed][cz.pizavo.omnisign.config.OperationsConfig.allowed].
  * When [OperationsConfig.certificateAliases][cz.pizavo.omnisign.config.OperationsConfig.certificateAliases]
- * is set, only those aliases may be used.
+ * is set, only those aliases may be used. A request naming any other alias is rejected with
+ * `403 CERTIFICATE_NOT_ALLOWED`. A request naming none signs with the only allowed alias, or is
+ * rejected with `400 MISSING_CERTIFICATE_ALIAS` when several are allowed, so the server never falls
+ * back to whichever key it happens to find first. Without the list, a request naming no alias signs
+ * with the first key found.
  * When [OperationsConfig.signingKeystorePath][cz.pizavo.omnisign.config.OperationsConfig.signingKeystorePath]
  * is set, the server signs from that file PKCS#12 keystore (its password sourced from
  * `OMNISIGN_SIGNING_KEYSTORE_PASSWORD`) instead of a discovered PKCS#11 token; `certificateAlias`
@@ -130,15 +135,30 @@ fun Route.signingRoutes() {
 
 			val requestedAlias = extractTextField(parts, "certificateAlias")
 			val allowedAliases = serverConfig.operations.certificateAliases
-			if (allowedAliases != null && requestedAlias != null && requestedAlias !in allowedAliases) {
-				call.respond(
-					HttpStatusCode.Forbidden,
-					ApiError(
-						error = "CERTIFICATE_NOT_ALLOWED",
-						message = "Certificate alias '$requestedAlias' is not in the server's allowed list",
-					),
-				)
-				return@post
+			val certificateAlias = when {
+				allowedAliases == null -> requestedAlias
+				requestedAlias == null -> allowedAliases.distinct().singleOrNull() ?: run {
+					call.respond(
+						HttpStatusCode.BadRequest,
+						ApiError(
+							error = "MISSING_CERTIFICATE_ALIAS",
+							message = "Multipart field 'certificateAlias' is required: this server signs only with " +
+								"the certificates on its allowed list, which GET /api/v1/certificates returns",
+						),
+					)
+					return@post
+				}
+				requestedAlias in allowedAliases -> requestedAlias
+				else -> {
+					call.respond(
+						HttpStatusCode.Forbidden,
+						ApiError(
+							error = "CERTIFICATE_NOT_ALLOWED",
+							message = "Certificate alias '$requestedAlias' is not in the server's allowed list",
+						),
+					)
+					return@post
+				}
 			}
 
 			val effectiveLevel = signatureLevel ?: resolvedConfig.signatureLevel
@@ -160,7 +180,7 @@ fun Route.signingRoutes() {
 			val parameters = SigningParameters(
 				inputBytes = filePart.file.readBytes(),
 				inputName = filePart.originalFileName ?: filePart.file.name,
-				certificateAlias = requestedAlias,
+				certificateAlias = certificateAlias,
 				keystoreFile = signingKeystorePath,
 				keystorePassword = signingKeystorePath?.let { secrets.signingKeystorePassword },
 				hashAlgorithm = hashAlgorithm,

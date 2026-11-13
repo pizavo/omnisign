@@ -247,19 +247,24 @@ operations:
   #  - TIMESTAMP
   #
   # When SIGN is enabled, restrict which certificate aliases may be used via the API.
+  # Give the aliases exactly as GET /api/v1/certificates lists them
+  # (<common name>-<serial number in hex>@<source id>); a label you gave the key never matches.
+  # With the list set, a sign request that names no alias signs with the only listed alias; when
+  # the list holds several, the request must name one (400 MISSING_CERTIFICATE_ALIAS otherwise).
   # If omitted (null), all discovered signing certificates are available. An explicit empty
   # list ([]) while SIGN is enabled is rejected at startup — it would permit no certificate
   # at all, making SIGN useless.
   # certificateAliases:
-  #   - "university-seal"
-  #   - "department-stamp"
+  #   - "University Seal-1f3a@pkcs11-5A3C0F12"
+  #   - "Department Stamp-2b4c@pkcs11-5A3C0F12"
   #
   # File signing keystore. Set this when the server signs with a PKCS#12 (.p12/.pfx) file rather
   # than a PKCS#11 token/HSM. When set (and SIGN enabled), every sign request signs from this
   # keystore, and certificateAliases selects the entry within it (a request omitting the alias uses
-  # the keystore's sole key). The password is env-var ONLY — OMNISIGN_SIGNING_KEYSTORE_PASSWORD,
-  # required when this is set — never in YAML, mirroring the TLS keystore. Setting a path while SIGN
-  # is not enabled is rejected at startup. Leave unset for a PKCS#11/HSM-backed deployment.
+  # the only allowed alias, or the keystore's first key when certificateAliases is not set). The
+  # password is env-var ONLY — OMNISIGN_SIGNING_KEYSTORE_PASSWORD, required when this is set —
+  # never in YAML, mirroring the TLS keystore. Setting a path while SIGN is not enabled is rejected
+  # at startup. Leave unset for a PKCS#11/HSM-backed deployment.
   # signingKeystorePath: "/etc/omnisign/signing.p12"
 
 # Signing / validation policy file - the server's equivalent of the desktop "global
