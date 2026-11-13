@@ -532,8 +532,8 @@ class DssServiceFactory(
 	 * calls this when a long-running host (desktop, server) starts its refresh cycle, and
 	 * before every manual hard refresh, the desktop's "Refresh now" and the CLI's
 	 * `config tl refresh`, so that refresh also covers lists no operation has acquired yet.
-	 * The CLI's other commands never call it: each acquires the lists it needs lazily,
-	 * offline-first.
+	 * The CLI's other commands never call it: each acquires the lists it needs lazily, from
+	 * the on-disk cache, and downloads again only the copies older than [TL_CACHE_EXPIRATION_MS].
 	 */
 	fun warmUpTrustedSources(useEuLotl: Boolean, customTls: List<CustomTrustedListConfig>) {
 		trustedSources.warmUp(useEuLotl, customTls)

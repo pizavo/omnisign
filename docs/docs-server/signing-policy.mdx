@@ -77,7 +77,9 @@ Keep `trustedListRefreshIntervalHours` at or below **6**. The ETSI validation po
 trusted list as fresh only for 6 hours after its last successful synchronization, so a longer
 interval leaves every qualified validation reporting *"the trusted list is not considered as
 fresh"* for the rest of each cycle. Re-synchronizing an unchanged list is cheap — it is
-re-stamped on a matching digest, without being re-parsed or re-verified.
+re-stamped on a matching digest, without being re-parsed or re-verified. A list that cannot be
+downloaded is still served from the copy in the server's trusted-list cache, however old, and
+validation reports name it as not refreshed.
 
 **`PADES_BASELINE_T` cannot be configured** — neither as `global.defaultSignatureLevel` nor as a
 profile's `signatureLevel`. The server rejects it at startup and points you to `PADES_BASELINE_LT`.

@@ -9,6 +9,7 @@ import cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor
 import cz.pizavo.omnisign.domain.model.trust.TrustedListRefreshFailure
 import eu.europa.esig.dss.service.http.commons.CommonsDataLoader
 import eu.europa.esig.dss.service.http.commons.FileCacheDataLoader
+import eu.europa.esig.dss.spi.client.http.IgnoreDataLoader
 import eu.europa.esig.dss.spi.tsl.TrustedListsCertificateSource
 import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import eu.europa.esig.dss.spi.x509.CertificateSource
@@ -574,8 +575,11 @@ class TrustedSourceRegistry(
 
 	/**
 	 * Build a retained [TLValidationJob] bound to [source] with the shared
-	 * executor, a never-expiring offline cache over [cacheDirectory], and the supplied
-	 * [onlineLoader].
+	 * executor, an offline loader over [cacheDirectory], and the supplied [onlineLoader].
+	 *
+	 * The offline loader serves a cached copy however old it is and never downloads. It is
+	 * given an [IgnoreDataLoader] because [FileCacheDataLoader] refuses to read even its own
+	 * cache without a data loader, which would leave every offline refresh empty.
 	 */
 	private fun newJob(
 		source: TrustedListsCertificateSource,
@@ -587,7 +591,7 @@ class TrustedSourceRegistry(
 			setExecutorService(executorService)
 			setTrustedListCertificateSource(source)
 			setOfflineDataLoader(
-				FileCacheDataLoader().apply {
+				FileCacheDataLoader(IgnoreDataLoader()).apply {
 					setCacheExpirationTime(DssServiceFactory.CACHE_NEVER_EXPIRE)
 					setFileCacheDirectory(cacheDir)
 				}
@@ -597,25 +601,29 @@ class TrustedSourceRegistry(
 	}
 
 	/**
-	 * Offline-first warm: serve instantly from the on-disk cache (no network, no
-	 * unreachable-host stalls); fall back to a synchronous online refresh only
-	 * when the cache is genuinely cold (first ever run). The scheduled
-	 * [refreshAll] keeps the retained source fresh afterwards. The job is kept
-	 * for it unless it left the source without certificates (see [retainUnlessEmpty]).
+	 * Offline-first warm: load the copies in the on-disk cache, however old, then
+	 * refresh online those older than [cacheExpirationMillis]. The online loader serves
+	 * younger copies from the cache, so a fresh cache needs no network. A list whose
+	 * download fails keeps the copy the offline pass loaded, so its trust survives an
+	 * outage and its warning says it could not be refreshed; a cold cache is filled by
+	 * the online pass.
 	 *
-	 * @return `true` when the source ended up with usable trust (a cache hit or a
-	 *   successful online fetch); `false` when both paths yielded nothing — e.g. a
-	 *   cold cache while offline — or no job could be built because the signing
-	 *   certificate cannot be read, leaving the source empty.
+	 * The online pass is what keeps a one-shot CLI command, which has no refresh cycle,
+	 * from going on with stale lists. A long-running host's scheduled [refreshAll]
+	 * refreshes them afterwards, with this job unless it left the source without
+	 * certificates (see [retainUnlessEmpty]).
+	 *
+	 * @return `true` when the source ended up with usable trust, from the cache or a
+	 *   download; `false` when neither yielded any — e.g. a cold cache while offline —
+	 *   or no job could be built because the signing certificate cannot be read,
+	 *   leaving the source empty.
 	 */
 	private fun refreshOfflineFirst(entry: RetainedTl): Boolean {
 		val job = retainedJob(entry) ?: return false
 		runCatching { job.offlineRefresh() }
 			.onFailure { logger.debug(it) { "Offline TL refresh failed; trying online" } }
-		if (entry.source.certificates.isEmpty()) {
-			runCatching { job.onlineRefresh() }
-				.onFailure { logger.warn(it) { "Online TL refresh failed; trust may be incomplete" } }
-		}
+		runCatching { job.onlineRefresh() }
+			.onFailure { logger.warn(it) { "Online TL refresh failed; trust may be incomplete" } }
 		recordWarnings(entry, job)
 		retainUnlessEmpty(entry, job)
 		return entry.source.certificates.isNotEmpty()

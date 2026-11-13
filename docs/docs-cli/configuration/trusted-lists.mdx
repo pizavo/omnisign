@@ -54,6 +54,11 @@ Force an immediate online refresh of the EU LOTL and every custom trusted list i
 on-disk cache. Useful as a maintenance step so subsequent validations start from a freshly
 refreshed cache instead of paying the download on a validation's critical path.
 
+Other commands read the lists from that cache and download again only the copies older than four
+hours. A list that cannot be downloaded, for instance offline, is still used from the cache however
+old the copy is, and validations name it among their
+[trusted list notices](../commands/validate#trusted-list-notices).
+
 ```bash
 omnisign config tl refresh
 ```
