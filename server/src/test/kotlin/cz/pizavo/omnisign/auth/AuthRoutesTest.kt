@@ -249,14 +249,16 @@ private fun signTestIdToken(issuer: String, claims: Map<String, Any>): String {
  * since the server fetches signing keys through `URLConnection` rather than its mockable HTTP
  * client.
  *
+ * @param keyIssuer The issuer the key's entry names, as Entra ID's do, or `null` for none.
  * @param block Receives the JWKS URL.
  */
-private fun <R> withJwksServer(block: (jwksUri: String) -> R): R {
+private fun <R> withJwksServer(keyIssuer: String? = null, block: (jwksUri: String) -> R): R {
     val publicKey = testSigningKeys.public as RSAPublicKey
     fun base64Url(value: BigInteger): String =
         Base64.getUrlEncoder().withoutPadding().encodeToString(value.toByteArray().dropWhile { it == 0.toByte() }.toByteArray())
+    val issuerMember = if (keyIssuer == null) "" else ",\"issuer\":\"$keyIssuer\""
     val jwks = """{"keys":[{"kty":"RSA","kid":"$TEST_SIGNING_KID","use":"sig","alg":"RS256",""" +
-        """"n":"${base64Url(publicKey.modulus)}","e":"${base64Url(publicKey.publicExponent)}"}]}"""
+        """"n":"${base64Url(publicKey.modulus)}","e":"${base64Url(publicKey.publicExponent)}"$issuerMember}]}"""
     val server = HttpServer.create(InetSocketAddress(InetAddress.getLoopbackAddress(), 0), 0)
     server.createContext("/jwks") { exchange ->
         val bytes = jwks.toByteArray()
@@ -1315,15 +1317,15 @@ class AuthRoutesTest : FunSpec({
 	}
 
 	/**
-	 * Auth config with one Microsoft provider for the single tenant `contoso.onmicrosoft.com`,
-	 * restricted to `contoso.com`, verifying its id_tokens.
+	 * Auth config with one Microsoft provider for [tenantId], by default the single tenant
+	 * `contoso.onmicrosoft.com`, restricted to `contoso.com`, verifying its id_tokens.
 	 */
-	fun microsoftAuthConfig() = authConfig.copy(
+	fun microsoftAuthConfig(tenantId: String = "contoso.onmicrosoft.com") = authConfig.copy(
 		providers = listOf(
 			OidcProviderConfig(
 				name = "microsoft",
 				preset = SsoProviderPreset.MICROSOFT,
-				tenantId = "contoso.onmicrosoft.com",
+				tenantId = tenantId,
 				clientId = "test-client-id",
 				allowedEmailDomains = listOf("contoso.com"),
 			),
@@ -1388,6 +1390,69 @@ class AuthRoutesTest : FunSpec({
 					callback.errorCode() shouldBe "EMAIL_NOT_VERIFIED"
 				}
 			}
+		}
+	}
+
+	val tenantTemplate = "https://login.microsoftonline.com/{tenantid}/v2.0"
+	val organizationsDiscoveryUrl =
+		"https://login.microsoftonline.com/organizations/v2.0/.well-known/openid-configuration"
+	val contosoTenant = "aaaabbbb-0000-cccc-1111-dddd2222eeee"
+
+	/**
+	 * Walk a login through Microsoft's multi-tenant `organizations` endpoint, whose discovery
+	 * document and signing key name Entra ID's `{tenantid}` issuer template, with an id_token
+	 * that names [issuer] and carries the tenant [tid].
+	 *
+	 * @return The callback's status and the `error` code of its body, if any.
+	 */
+	fun organizationsLogin(issuer: String, tid: String): Pair<HttpStatusCode, String?> =
+		withJwksServer(keyIssuer = tenantTemplate) { jwksUri ->
+			lateinit var outcome: Pair<HttpStatusCode, String?>
+			testApplication {
+				val idToken = signTestIdToken(
+					issuer,
+					mapOf("tid" to tid, "email" to "alice@contoso.com", "xms_edov" to true),
+				)
+				application {
+					module(
+						authTestConfig(microsoftAuthConfig(tenantId = "organizations")),
+						authTestSecrets(mapOf("microsoft" to "ms-client-secret".sensitive())),
+						oidcIdpMockEngine(
+							"""{"sub":"u1","email":"alice@contoso.com"}""",
+							idToken = idToken,
+							discoveryUrl = organizationsDiscoveryUrl,
+							issuer = tenantTemplate,
+							jwksUri = jwksUri,
+						),
+					)
+				}
+				val callback = completeLogin("microsoft")
+				outcome = callback.status to callback.errorCode()
+			}
+			outcome
+		}
+
+	test("OIDC callback admits a user of any tenant through Microsoft's multi-tenant endpoint") {
+		withTempSessionsDb {
+			val (status, error) = organizationsLogin(
+				issuer = "https://login.microsoftonline.com/$contosoTenant/v2.0",
+				tid = contosoTenant,
+			)
+
+			status shouldBe HttpStatusCode.OK
+			error shouldBe null
+		}
+	}
+
+	test("OIDC callback refuses a multi-tenant id_token whose issuer names another tenant than its tid") {
+		withTempSessionsDb {
+			val (status, error) = organizationsLogin(
+				issuer = "https://login.microsoftonline.com/bbbbcccc-1111-dddd-2222-eeee3333ffff/v2.0",
+				tid = contosoTenant,
+			)
+
+			status shouldBe HttpStatusCode.Unauthorized
+			error shouldBe "ID_TOKEN_INVALID"
 		}
 	}
 

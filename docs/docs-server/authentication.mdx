@@ -140,7 +140,9 @@ its users are refused with `403 EMAIL_NOT_VERIFIED`, it sends no flag; set
    `auth.oauthStateSecret`, verifying it on the callback — Ktor's default nonce manager accepts any
    `state`.
 3. On the callback, OmniSign verifies the **id_token** signature against the IdP's JWKS plus its
-   `iss`/`aud`/`exp`, and rejects the login with `401 ID_TOKEN_SUB_MISMATCH` if its `sub` differs from
+   `iss`, `aud`, `azp`, `exp` and `iat` (through Microsoft's multi-tenant endpoints, `common` and
+   `organizations`, the issuer must name the user's own tenant, the token's `tid`), and rejects
+   the login with `401 ID_TOKEN_SUB_MISMATCH` if its `sub` differs from
    the UserInfo `sub`; it then enforces `allowedEmailDomains` (on the id_token's address when it
    names one, and with the [verified-address](#verified-addresses) requirement) and `requiredClaims`.
    (Verification is skipped for OAuth2-only providers such as `GITHUB`.)

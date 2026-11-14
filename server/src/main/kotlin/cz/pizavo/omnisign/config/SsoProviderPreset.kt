@@ -35,8 +35,11 @@ enum class SsoProviderPreset(
      * Microsoft Entra ID (Azure AD).
      *
      * Discovery URL requires a `{tenant}` placeholder — set via [OidcProviderConfig.tenantId].
-     * Use `common` for multi-tenant, `organizations` for work/school accounts only, or
-     * a specific tenant GUID/domain.
+     * Use `common` for work or school accounts of any tenant and personal Microsoft accounts,
+     * `organizations` for work or school accounts of any tenant, `consumers` for personal
+     * accounts only, or a tenant's GUID or domain for that tenant alone. Through `common` and
+     * `organizations` an id_token names the user's own tenant as its issuer, which
+     * [cz.pizavo.omnisign.auth.IdTokenVerifier] checks against the token's `tid` claim.
      *
      * Entra sends no `email_verified` claim. Under a concrete
      * [OidcProviderConfig.allowedEmailDomains] list, add the optional claim `xms_edov` to the
