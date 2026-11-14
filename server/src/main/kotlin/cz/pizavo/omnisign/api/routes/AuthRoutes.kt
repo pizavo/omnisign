@@ -16,6 +16,7 @@ import io.ktor.server.auth.*
 import io.ktor.server.request.*
 import io.ktor.server.response.*
 import io.ktor.server.routing.*
+import kotlinx.coroutines.CancellationException
 import org.koin.ktor.ext.inject
 import kotlin.time.Clock
 import kotlin.time.Duration
@@ -41,8 +42,13 @@ private val logger = KotlinLogging.logger {}
  *   against this flow's `state`.
  *
  * - `GET /auth/callback/{provider}` — OAuth2 authorization-code callback for OIDC providers.
- *   Resolves the user identity, then mints **both** a short-lived JWT access token and a
- *   long-lived opaque refresh token (persisted in the [RefreshTokenStore]).
+ *   Resolves the user identity, preferring the address the verified id_token names (see
+ *   [withIdToken]), and checks it against the provider's policy: `403 DOMAIN_NOT_ALLOWED`
+ *   for an address outside `allowedEmailDomains`, `403 EMAIL_NOT_VERIFIED` under a concrete
+ *   list for one the IdP does not vouch for (see [isEmailVerificationAccepted]), and
+ *   `403 CLAIMS_NOT_SATISFIED` for unmet `requiredClaims`. It then mints **both** a
+ *   short-lived JWT access token and a long-lived opaque refresh token (persisted in the
+ *   [RefreshTokenStore]).
  *
  *   How it answers depends on who asked. A plain hit — an API client or an operator testing
  *   the flow by hand — gets [TokenResponse] as JSON. A hit that
@@ -217,7 +223,9 @@ fun Route.authRoutes(config: AuthConfig?, secureCookies: Boolean = false) {
                         return@get
                     }
 
-                    if (!isEmailDomainAllowed(result.principal.email, provider.allowedEmailDomains)) {
+                    val identity = result.withIdToken(verifiedIdToken)
+
+                    if (!isEmailDomainAllowed(identity.principal.email, provider.allowedEmailDomains)) {
                         call.respond(
                             HttpStatusCode.Forbidden,
                             ApiError(
@@ -228,7 +236,25 @@ fun Route.authRoutes(config: AuthConfig?, secureCookies: Boolean = false) {
                         return@get
                     }
 
-                    if (!areRequiredClaimsSatisfied(result.claims, provider.requiredClaims)) {
+                    if (!isEmailVerificationAccepted(
+                            identity.emailVerified,
+                            provider.allowedEmailDomains,
+                            provider.assumeEmailVerified,
+                        )
+                    ) {
+                        logger.warn { unverifiedEmailHint(provider, identity.emailVerified) }
+                        call.respond(
+                            HttpStatusCode.Forbidden,
+                            ApiError(
+                                error = "EMAIL_NOT_VERIFIED",
+                                message = "Your identity provider has not verified your email address, " +
+                                    "which this server requires.",
+                            ),
+                        )
+                        return@get
+                    }
+
+                    if (!areRequiredClaimsSatisfied(identity.claims, provider.requiredClaims)) {
                         call.respond(
                             HttpStatusCode.Forbidden,
                             ApiError(
@@ -243,7 +269,7 @@ fun Route.authRoutes(config: AuthConfig?, secureCookies: Boolean = false) {
                         ?.let { loginRequestStore.consume(it) }
                     if (loginRequest == null) {
                         respondWithTokens(
-                            call, result.principal, jwtService, refreshTokenStore,
+                            call, identity.principal, jwtService, refreshTokenStore,
                             config.session, secureCookies,
                         )
                         return@get
@@ -268,7 +294,7 @@ fun Route.authRoutes(config: AuthConfig?, secureCookies: Boolean = false) {
                     }
 
                     val handoffCode = handoffCodeStore.issue(
-                        principal = result.principal,
+                        principal = identity.principal,
                         handoffChallenge = loginRequest.handoffChallenge,
                         ttl = HANDOFF_CODE_TTL,
                     )
@@ -421,6 +447,12 @@ fun Route.authRoutes(config: AuthConfig?, secureCookies: Boolean = false) {
  * preserved in [OidcAuthResult] so that post-login filters such as
  * [areRequiredClaimsSatisfied] can inspect provider-specific attributes.
  *
+ * The result also says whether the IdP vouches for the address: the UserInfo
+ * `email_verified` claim, or for GitHub the account's email list, read only when a concrete
+ * `allowedEmailDomains` list will ask (see [isEmailVerificationAccepted]).
+ *
+ * A cancelled call is rethrown rather than reported as an IdP failure.
+ *
  * @return The resolved [OidcAuthResult], or `null` on failure.
  */
 private suspend fun resolvePrincipalFromOidc(
@@ -442,11 +474,48 @@ private suspend fun resolvePrincipalFromOidc(
 
         val rawClaims = userInfoService.fetchRawClaims(userInfoUrl, oauthToken.accessToken)
         val principal = userInfoService.toPrincipal(rawClaims, provider.name)
-        OidcAuthResult(principal, rawClaims)
+        val emailVerified = when {
+            provider.preset != SsoProviderPreset.GITHUB -> userInfoService.emailVerified(rawClaims)
+            principal.email == null || "*" in provider.allowedEmailDomains -> null
+            else -> userInfoService.fetchGitHubEmailVerified(oauthToken.accessToken, principal.email)
+        }
+        OidcAuthResult(principal, rawClaims, emailVerified)
+    } catch (ex: CancellationException) {
+        throw ex
     } catch (ex: Exception) {
         logger.error(ex) { "Failed to resolve user info for provider '${provider.name}'" }
         null
     }
+}
+
+/**
+ * Explain to the operator why a login through [provider] was refused for want of a verified
+ * address, and what would admit such users.
+ *
+ * The address itself is left out of the log.
+ *
+ * @param emailVerified What the IdP said about the address: `false`, or `null` for nothing.
+ * @return The log line.
+ */
+private fun unverifiedEmailHint(provider: OidcProviderConfig, emailVerified: Boolean?): String {
+    val refusal = "Refused a login through provider '${provider.name}': "
+    if (emailVerified == false) {
+        return refusal + "the identity provider marks the address unverified. The user has to " +
+            "verify it with the identity provider first."
+    }
+    val remedy = when (provider.preset) {
+        SsoProviderPreset.MICROSOFT ->
+            "Add the optional claim xms_edov to the app registration's ID token, and keep " +
+                "verifyIdToken on."
+        SsoProviderPreset.GITHUB ->
+            "Request the user:email scope, so the account's email list can say whether the " +
+                "address is verified."
+        else ->
+            "If every address this provider hands out is trustworthy although it sends no " +
+                "email_verified claim, set assumeEmailVerified: true on it."
+    }
+    return refusal + "the identity provider says nothing about whether the address is " +
+        "verified, which allowedEmailDomains requires. " + remedy
 }
 
 /**

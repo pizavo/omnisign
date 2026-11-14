@@ -63,11 +63,12 @@ fun validateTransportSecurity(serverConfig: ServerConfig) {
  * `localhost` is treated as a loopback alias because that is the universal convention
  * even though it is technically a hostname; the resolver almost always maps it to
  * `127.0.0.1` or `::1` and an operator who writes `host: "localhost"` does mean
- * loopback. The two callers ([validateTransportSecurity] and the development-mode
- * check in `Application.kt`) need the same set, so the predicate lives here as a
- * single source of truth.
+ * loopback. Its callers ([validateTransportSecurity], the development-mode check in
+ * `Application.kt`, and the `allowedRedirectUris` check of [validateAuthConfig]) need the
+ * same set, so the predicate lives here as a single source of truth.
  *
- * @param host The value of [ListenConfig.host].
+ * @param host The value of [ListenConfig.host], or a redirect URI's host with an IPv6
+ *   literal's brackets removed and in lower case.
  * @return `true` when [host] is `127.0.0.1`, `::1`, or `localhost`.
  */
 fun isLoopbackHost(host: String): Boolean =

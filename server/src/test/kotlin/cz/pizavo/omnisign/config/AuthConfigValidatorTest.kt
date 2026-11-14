@@ -133,4 +133,13 @@ class AuthConfigValidatorTest : FunSpec({
             )
         }
     }
+
+    test("accepts an http allowedRedirectUris entry on the IPv6 loopback or an upper-case localhost") {
+        validateAuthConfig(
+            AuthConfig(
+                providers = listOf(oidc("g", listOf("*"))),
+                allowedRedirectUris = listOf("http://[::1]:8080/", "http://LOCALHOST:3000/app"),
+            ),
+        )
+    }
 })

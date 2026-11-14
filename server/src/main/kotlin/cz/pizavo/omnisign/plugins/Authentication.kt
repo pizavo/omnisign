@@ -5,6 +5,7 @@ import cz.pizavo.omnisign.auth.LoginRequest
 import cz.pizavo.omnisign.auth.LoginRequestStore
 import cz.pizavo.omnisign.auth.OidcDiscoveryService
 import cz.pizavo.omnisign.auth.PkceService
+import cz.pizavo.omnisign.auth.requireAssumableEmailVerification
 import cz.pizavo.omnisign.config.AuthConfig
 import cz.pizavo.omnisign.config.OidcProviderConfig
 import cz.pizavo.omnisign.config.ServerSecrets
@@ -255,6 +256,10 @@ private val LOGIN_REQUEST_TTL: Duration = 5.minutes
  *
  * The OIDC discovery fetch is performed synchronously during application startup so that
  * any unreachable IdP surfaces as an immediate startup failure rather than a runtime error.
+ * The fetched document is also where [requireAssumableEmailVerification] refuses a provider
+ * that assumes its addresses verified on one of Entra ID's multi-tenant endpoints.
+ *
+ * @throws IllegalArgumentException when [provider] assumes verification on such an endpoint.
  */
 private fun resolveEndpoints(
     provider: OidcProviderConfig,
@@ -265,6 +270,7 @@ private fun resolveEndpoints(
     }
 
     val doc = runBlocking { discoveryService.discover(provider) }
+    requireAssumableEmailVerification(provider, doc)
     return doc.authorizationEndpoint to doc.tokenEndpoint
 }
 

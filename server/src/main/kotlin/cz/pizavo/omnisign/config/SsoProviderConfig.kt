@@ -14,8 +14,9 @@ sealed interface SsoProviderConfig {
 /**
  * OIDC / OAuth2 authorization-code-flow provider.
  *
- * If [preset] is set, sensible defaults for [discoveryUrl] and [scopes] are applied
- * automatically; any explicitly provided value still takes precedence.
+ * If [preset] is set, the discovery document's URL is derived from it unless [discoveryUrl]
+ * is given. No preset supplies scopes: [scopes] is `openid email profile` unless listed, so a
+ * provider that needs others lists them (GitHub needs `read:user` and `user:email`).
  *
  * For providers that require tenant / realm scoping ([SsoProviderPreset.MICROSOFT],
  * [SsoProviderPreset.AMAZON_COGNITO], [SsoProviderPreset.KEYCLOAK], [SsoProviderPreset.AUTH0])
@@ -29,11 +30,12 @@ sealed interface SsoProviderConfig {
  * derived env var.
  *
  * @property name Unique provider identifier used in callback URLs and UI (e.g. `microsoft`).
- * @property preset Optional well-known preset that fills in default URLs and scopes.
+ * @property preset Optional well-known preset that supplies the discovery document's URL, or
+ *   for [SsoProviderPreset.GITHUB] the hard-coded endpoints.
  * @property clientId OAuth2 / OIDC `client_id`.
  * @property discoveryUrl Full OIDC discovery document URL. Overrides the preset default.
  * @property tenantId Tenant, realm, or domain string for presets with templated discovery URLs.
- * @property scopes OAuth2 scope list. Overrides the preset default.
+ * @property scopes OAuth2 scope list; `openid email profile` unless listed, whatever the preset.
  * @property displayName Human-readable provider label shown in the login UI.
  * @property allowedEmailDomains Required, non-empty list controlling which authenticated users
  *   are granted a session token. Operators must always make a deliberate, explicit choice — there
@@ -44,8 +46,9 @@ sealed interface SsoProviderConfig {
  *     authenticated user regardless of email domain. Use this when the IdP itself is the
  *     identity boundary (e.g., a private Entra ID tenant the operator controls).
  *   - `["contoso.com", "fabrikam.com"]` — accept only users whose resolved email domain
- *     case-insensitively matches one of the listed entries. The check runs after the IdP
- *     callback, once the email claim is available.
+ *     case-insensitively matches one of the listed entries, and whose address the IdP marks
+ *     verified (see [assumeEmailVerified]). The check runs after the IdP callback, once the
+ *     email claim is available.
  *
  *   Empty list and missing field are both rejected at server startup with a message naming
  *   the offending provider. See
@@ -69,9 +72,23 @@ sealed interface SsoProviderConfig {
  *   provider serving the `openid` scope returns a signed id_token, and verifying its
  *   signature against the IdP's `jwks_uri` plus its `iss` / `aud` / `exp` claims gives
  *   defense in depth against UserInfo tampering and against trusting any IdP-shaped
- *   endpoint that simply returns a plausible identity. Set to `false` for OAuth2-only
- *   providers that do not issue id_tokens (e.g., GitHub via [SsoProviderPreset.GITHUB]);
- *   the callback then falls back to UserInfo alone.
+ *   endpoint that simply returns a plausible identity. Set to `false` for an OAuth2-only
+ *   provider that issues no id_token; the callback then relies on UserInfo alone. The
+ *   [SsoProviderPreset.GITHUB] preset skips verification without being told. Without a
+ *   verified id_token a [SsoProviderPreset.MICROSOFT] provider has no `xms_edov` claim to
+ *   offer, so a concrete [allowedEmailDomains] list admits none of its users.
+ * @property assumeEmailVerified Whether an address this provider sends no verification flag
+ *   for counts as verified under a concrete [allowedEmailDomains] list. Defaults to `false`,
+ *   and the list then admits only an address the IdP marks verified: through the
+ *   `email_verified` claim, the optional `xms_edov` claim for [SsoProviderPreset.MICROSOFT],
+ *   or the account's email list for [SsoProviderPreset.GITHUB]. Set it to `true` only for an
+ *   IdP that sends no flag although every address it hands out is assigned or checked by its
+ *   operator, such as a self-hosted IdP without the claim. An address the IdP marks
+ *   unverified, or flags with anything but a recognisable yes, is refused either way.
+ *   Rejected at startup on a multi-tenant Microsoft provider, one whose discovery document
+ *   names Entra ID's `{tenantid}` issuer template, as `tenantId` `common` and
+ *   `organizations` give in every cloud. There any tenant's administrator can assign any
+ *   address; add the `xms_edov` claim instead. Has no effect under `["*"]`.
  */
 data class OidcProviderConfig(
     override val name: String,
@@ -85,4 +102,5 @@ data class OidcProviderConfig(
     val requiredClaims: Map<String, List<String>>? = null,
     val pkce: Boolean = true,
     val verifyIdToken: Boolean = true,
+    val assumeEmailVerified: Boolean = false,
 ) : SsoProviderConfig

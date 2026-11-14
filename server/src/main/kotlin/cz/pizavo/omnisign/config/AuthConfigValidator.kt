@@ -60,6 +60,9 @@ fun validateAuthConfig(authConfig: AuthConfig?) {
 /**
  * Check a single `auth.allowedRedirectUris` entry.
  *
+ * The host is compared as [isLoopbackHost] expects it: [URI.getHost] keeps an IPv6 literal's
+ * brackets and the case it was written in, so both are normalised first.
+ *
  * @param entry The configured value.
  * @throws IllegalArgumentException naming [entry] and what is wrong with it.
  */
@@ -76,7 +79,7 @@ private fun validateRedirectUri(entry: String) {
 		"auth.allowedRedirectUris entry '$entry' uses the scheme '$scheme'. Only https (or " +
 			"http on a loopback host, for development) can receive a hand-off code."
 	}
-	require(scheme == "https" || isLoopbackHost(url.host)) {
+	require(scheme == "https" || isLoopbackHost(url.host.removeSurrounding("[", "]").lowercase())) {
 		"auth.allowedRedirectUris entry '$entry' is plain http on the non-loopback host " +
 			"'${url.host}'. The callback delivers a single-use hand-off code to this URL, so " +
 			"over cleartext it is delivered to the network as well. Use https, or a loopback " +

@@ -133,6 +133,27 @@ class SsoProviderConfigDeserializerTest : FunSpec({
         )
     }
 
+    test("deserializes assumeEmailVerified on an oidc provider, false unless set") {
+        val yaml = """
+            auth:
+              providers:
+                - type: oidc
+                  name: eduid
+                  preset: EDUID_CZ
+                  clientId: "eduid-id"
+                  allowedEmailDomains: ["osu.cz"]
+                  assumeEmailVerified: true
+                - type: oidc
+                  name: google
+                  preset: GOOGLE
+                  clientId: "id"
+                  allowedEmailDomains: ["contoso.com"]
+        """.trimIndent()
+
+        val providers = loader.loadFromString(yaml).auth?.providers.orEmpty()
+        providers.map { (it as OidcProviderConfig).assumeEmailVerified } shouldBe listOf(true, false)
+    }
+
     test("requiredClaims defaults to null when not specified") {
         val yaml = """
             auth:

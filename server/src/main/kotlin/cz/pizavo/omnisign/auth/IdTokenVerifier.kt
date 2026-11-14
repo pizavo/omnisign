@@ -7,7 +7,9 @@ import com.auth0.jwt.JWT
 import com.auth0.jwt.algorithms.Algorithm
 import com.auth0.jwt.exceptions.JWTDecodeException
 import com.auth0.jwt.exceptions.JWTVerificationException
+import com.auth0.jwt.interfaces.Claim
 import cz.pizavo.omnisign.config.OidcProviderConfig
+import cz.pizavo.omnisign.config.SsoProviderPreset
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -46,6 +48,10 @@ private val logger = KotlinLogging.logger {}
  * 5. **`sub` claim** — must be present; returned to the caller for cross-checking
  *    against the UserInfo `sub` so any tampering of the UserInfo response is detected.
  *
+ * The token's `email` claim and whether the token marks that address verified are returned
+ * too: the `allowedEmailDomains` check prefers the address the IdP signed to UserInfo's (see
+ * [VerifiedIdToken.emailVerified] and [withIdToken]).
+ *
  * JWKS fetches are cached and rate-limited per provider via [JwkProviderBuilder]:
  * up to 10 keys held in memory for 1 hour, fetched at most 10 times per minute, each
  * fetch bounded by a 5-second connect and a 10-second read timeout. Keys roll naturally
@@ -71,8 +77,9 @@ class IdTokenVerifier(
      *   document and the expected audience ([OidcProviderConfig.clientId]).
      * @param idTokenString The raw `id_token` JWT string from
      *   `OAuthAccessTokenResponse.OAuth2.extraParameters["id_token"]`.
-     * @return The verified id_token's [sub claim][VerifiedIdToken.subject] and any
-     *   `email` claim, for downstream cross-checking against UserInfo.
+     * @return The verified id_token's [sub claim][VerifiedIdToken.subject], for
+     *   cross-checking against UserInfo, and any `email` claim with whether the token marks
+     *   it verified.
      * @throws IdTokenVerificationException on any verification failure. Each subtype
      *   identifies a specific failure mode; see [IdTokenVerificationException].
      */
@@ -88,6 +95,7 @@ class IdTokenVerifier(
                 jwkProvider = jwkProvider,
                 expectedIssuer = discovery.issuer,
                 expectedAudience = provider.clientId,
+                preset = provider.preset,
             )
         }
     }
@@ -95,12 +103,19 @@ class IdTokenVerifier(
     /**
      * Blocking verification core. Called from [verify] inside [Dispatchers.IO] because
      * the underlying JWKS fetch and JWT verification calls are synchronous.
+     *
+     * Of two flags that disagree about the address, the one that says it is not verified
+     * wins, so a token never vouches for more than every flag in it allows.
+     *
+     * @param preset The provider's preset; only a [SsoProviderPreset.MICROSOFT] token's
+     *   `xms_edov` claim is read, since other IdPs give the name no meaning.
      */
     private fun verifyBlocking(
         idTokenString: String,
         jwkProvider: JwkProvider,
         expectedIssuer: String,
         expectedAudience: String,
+        preset: SsoProviderPreset?,
     ): VerifiedIdToken {
         val decoded = try {
             JWT.decode(idTokenString)
@@ -135,9 +150,23 @@ class IdTokenVerifier(
         val subject = decoded.subject
             ?: throw IdTokenVerificationException.ClaimInvalid("sub", "claim is missing")
         val email = decoded.getClaim("email").asString()
+        val domainOwnerVerified = if (preset == SsoProviderPreset.MICROSOFT) {
+            decoded.getClaim("xms_edov").asVerificationFlag()
+        } else {
+            null
+        }
+        val emailVerified = listOfNotNull(
+            decoded.getClaim("email_verified").asVerificationFlag(),
+            domainOwnerVerified,
+        ).minOrNull()
 
         logger.debug { "Verified id_token for sub='$subject' (iss=$expectedIssuer)" }
-        return VerifiedIdToken(subject = subject, email = email, issuer = expectedIssuer)
+        return VerifiedIdToken(
+            subject = subject,
+            email = email,
+            issuer = expectedIssuer,
+            emailVerified = emailVerified,
+        )
     }
 
     /**
@@ -226,22 +255,15 @@ class IdTokenVerifier(
 }
 
 /**
- * Outcome of a successful [IdTokenVerifier.verify] call.
+ * Read this claim as a verification flag: a JSON boolean, or the string `"true"` or `"false"`
+ * in any case, as Amazon Cognito and Sign in with Apple send it.
  *
- * Only the fields needed by the OIDC callback handler are exposed here. The full set of
- * id_token claims is intentionally not propagated — UserInfo remains the source of
- * truth for rich identity claims, and the id_token only contributes the cryptographic
- * `sub` binding plus a convenience `email` for environments where UserInfo is sparse.
+ * A claim that is present but none of these, such as `0` or `"no"`, counts as `false`: the
+ * IdP said something about the address, and only a recognisable yes may vouch for it.
  *
- * @property subject The id_token `sub` claim. Cross-checked against the UserInfo
- *   `sub` claim in the route handler so any UserInfo substitution is detected.
- * @property email The id_token `email` claim, if present. Optional in OIDC; many
- *   providers only emit it via UserInfo.
- * @property issuer The id_token `iss` claim (already verified to equal the
- *   discovery document's issuer). Echoed back to the caller for logging.
+ * @return The flag, or `null` when the claim is absent or JSON `null`.
  */
-data class VerifiedIdToken(
-    val subject: String,
-    val email: String?,
-    val issuer: String,
-)
+private fun Claim.asVerificationFlag(): Boolean? {
+    if (isMissing || isNull) return null
+    return asBoolean() ?: asString()?.lowercase()?.toBooleanStrictOrNull() ?: false
+}
