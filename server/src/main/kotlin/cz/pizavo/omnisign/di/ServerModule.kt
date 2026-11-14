@@ -9,6 +9,7 @@ import cz.pizavo.omnisign.auth.ExposedRefreshTokenStore
 import cz.pizavo.omnisign.auth.HandoffCodeStore
 import cz.pizavo.omnisign.auth.IdTokenVerifier
 import cz.pizavo.omnisign.auth.JwtSessionService
+import cz.pizavo.omnisign.auth.LOGIN_FLOW_TTL
 import cz.pizavo.omnisign.auth.LoginRequestStore
 import cz.pizavo.omnisign.auth.OidcDiscoveryService
 import cz.pizavo.omnisign.auth.OidcUserInfoService
@@ -83,7 +84,11 @@ import java.nio.file.Path
  *   [JwtSessionService] becomes inert (`verify` returns `null` for every token,
  *   `issue` throws if called).
  * - [NonceManager] for OAuth2 `state`-parameter CSRF protection on the authorization-code
- *   callback. Implemented as [StatelessHmacNonceManager]; the HMAC key is read from
+ *   callback. Implemented as [StatelessHmacNonceManager], which accepts a `state` for
+ *   [LOGIN_FLOW_TTL] after issuing it rather than for its own default of one minute. It stamps
+ *   the `state` with `System.nanoTime()`, which each host counts from its own origin, typically
+ *   its boot, so a `state` survives a server restart but would not carry over to another host.
+ *   The HMAC key is read from
  *   `auth.oauthStateSecret` (typically declared via env-var substitution:
  *   `oauthStateSecret: "${OMNISIGN_OAUTH_NONCE_SECRET}"`). The binding is lazy and only
  *   resolves when an OIDC provider's `oauth { … }` block actually needs it; deployments
@@ -188,7 +193,7 @@ fun serverModule(serverConfig: ServerConfig, secrets: ServerSecrets, signingConf
 			"auth.oauthStateSecret must be at least $MIN_NONCE_KEY_BYTES bytes (512 bits) — " +
 					"got ${bytes.size}."
 		}
-		StatelessHmacNonceManager(bytes)
+		StatelessHmacNonceManager(bytes, timeoutMillis = LOGIN_FLOW_TTL.inWholeMilliseconds)
 	}
 
 	single<Database> {

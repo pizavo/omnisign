@@ -1,9 +1,11 @@
 package cz.pizavo.omnisign.plugins
 
 import cz.pizavo.omnisign.auth.JwtSessionService
+import cz.pizavo.omnisign.auth.LOGIN_FLOW_TTL
 import cz.pizavo.omnisign.auth.LoginRequest
 import cz.pizavo.omnisign.auth.LoginRequestStore
 import cz.pizavo.omnisign.auth.OidcDiscoveryService
+import cz.pizavo.omnisign.auth.PkceChallenge
 import cz.pizavo.omnisign.auth.PkceService
 import cz.pizavo.omnisign.auth.requireAssumableEmailVerification
 import cz.pizavo.omnisign.config.AuthConfig
@@ -19,8 +21,6 @@ import io.ktor.util.AttributeKey
 import io.ktor.util.NonceManager
 import kotlinx.coroutines.runBlocking
 import org.koin.ktor.ext.inject
-import kotlin.time.Duration
-import kotlin.time.Duration.Companion.minutes
 
 private val logger = KotlinLogging.logger {}
 
@@ -65,24 +65,20 @@ private val logger = KotlinLogging.logger {}
  *    [serverModule][cz.pizavo.omnisign.di.serverModule]).
  *
  *    Each `oauth { … }` block also performs PKCE (RFC 7636) via [PkceService] when
- *    [OidcProviderConfig.pkce] is `true` (the default). `authorizeUrlInterceptor`
- *    appends `code_challenge` + `code_challenge_method=S256` to the authorize URL,
- *    keyed on the OAuth `state` parameter Ktor has just generated. `providerLookup`
- *    consumes the matching verifier from [PkceService] on the callback hop and
- *    injects it into the token-exchange POST via `extraTokenParameters`. Ktor looks
- *    the settings up more than once per call, so the verifier is taken on the first
- *    lookup and kept for the rest of the call (see `pkceTokenParameters`). PKCE binds
- *    the authorization code to the entity that originated the flow, defending against
- *    code-injection attacks even if the client secret is leaked (RFC 9700 / OAuth 2.1
- *    requires this for all clients).
+ *    [OidcProviderConfig.pkce] is `true` (the default), binding the authorization code to
+ *    the login that requested it ([PkceService] explains why a confidential client needs
+ *    that). Three of Ktor's hooks share the work, keyed by the OAuth `state`:
+ *    - `onStateCreated` runs on the redirect leg as soon as Ktor has generated the `state`.
+ *      It stores a fresh verifier, keeps the matching challenge in the call's attributes, and
+ *      parks any [LoginRequest] the caller asked for into [LoginRequestStore]. It suspends,
+ *      so these database writes do not hold a call thread.
+ *    - `authorizeUrlInterceptor` appends that challenge to the authorize URL as
+ *      `code_challenge` + `code_challenge_method=S256`.
+ *    - `extraTokenParametersProvider` runs on the callback leg only after Ktor has verified
+ *      the `state`, and takes the verifier for the token-exchange POST. A forged or expired
+ *      `state` therefore spends no verifier, and a replayed one finds none left.
  *
- *    Finally, `authorizeUrlInterceptor` parks any [LoginRequest] the caller asked for into
- *    [LoginRequestStore], keyed by that same `state`. This is the only hook that can: the
- *    query parameters are readable from `providerLookup`'s [ApplicationCall] receiver but
- *    the `state` does not exist yet, and by the time the callback route handler runs, Ktor
- *    has been through `providerLookup` again — where the PKCE row keyed by the same `state`
- *    is consumed. Reading the parameters in `providerLookup` and writing them in the
- *    interceptor closure it returns is what gets both halves into one place.
+ *    The `state`, the verifier and the parked request all live for [LOGIN_FLOW_TTL].
  *
  * @param config Root authentication configuration, or `null` when auth is disabled.
  * @param externalUrl Base public URL of the server used to build OAuth2 redirect URIs.
@@ -117,41 +113,33 @@ fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String
 
             oauth(authName) {
                 urlProvider = { redirectUrl }
-                providerLookup = {
-                    val extraTokenParams: List<Pair<String, String>> =
-                        if (provider.pkce) pkceTokenParameters(pkceService) else emptyList()
-
-                    val requestedHandoff = requestedLoginHandoff()
-
-                    OAuthServerSettings.OAuth2ServerSettings(
-                        name = provider.name,
-                        authorizeUrl = authUrl,
-                        accessTokenUrl = tokenUrl,
-                        clientId = provider.clientId,
-                        clientSecret = clientSecret.value,
-                        requestMethod = io.ktor.http.HttpMethod.Post,
-                        defaultScopes = provider.scopes,
-                        nonceManager = oauthNonceManager,
-                        extraTokenParameters = extraTokenParams,
-                        authorizeUrlInterceptor = {
-                            val state by lazy {
-                                parameters["state"]
-                                    ?: error(
-                                        "Ktor OAuth should have appended `state` to the authorize URL " +
-                                            "before authorizeUrlInterceptor runs — got null for provider '${provider.name}'",
-                                    )
-                            }
-                            if (provider.pkce) {
-                                val challenge = runBlocking { pkceService.begin(state) }
-                                parameters.append("code_challenge", challenge.challenge)
-                                parameters.append("code_challenge_method", challenge.method)
-                            }
-                            requestedHandoff?.let {
-                                runBlocking { loginRequestStore.put(state, it, LOGIN_REQUEST_TTL) }
-                            }
-                        },
-                    )
-                }
+                settings = OAuthServerSettings.OAuth2ServerSettings(
+                    name = provider.name,
+                    authorizeUrl = authUrl,
+                    accessTokenUrl = tokenUrl,
+                    clientId = provider.clientId,
+                    clientSecret = clientSecret.value,
+                    requestMethod = io.ktor.http.HttpMethod.Post,
+                    defaultScopes = provider.scopes,
+                    nonceManager = oauthNonceManager,
+                    onStateCreated = { call, state ->
+                        if (provider.pkce) call.attributes.put(PKCE_CHALLENGE, pkceService.begin(state))
+                        call.requestedLoginHandoff()?.let { loginRequestStore.put(state, it, LOGIN_FLOW_TTL) }
+                    },
+                    authorizeUrlInterceptor = { request ->
+                        request.call.attributes.getOrNull(PKCE_CHALLENGE)?.let { challenge ->
+                            parameters.append("code_challenge", challenge.challenge)
+                            parameters.append("code_challenge_method", challenge.method)
+                        }
+                    },
+                    extraTokenParametersProvider = { _, callback ->
+                        if (provider.pkce) {
+                            listOfNotNull(pkceService.consume(callback.state)?.let { "code_verifier" to it })
+                        } else {
+                            emptyList()
+                        }
+                    },
+                )
                 client = httpClient
             }
 
@@ -170,8 +158,8 @@ fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String
  * silently receiving an unbound hand-off code. There is no configuration under which half a
  * hand-off is a thing to honour.
  *
- * Called on both legs of the flow, but only ever finds anything on the redirect leg: the
- * identity provider's callback carries `code` and `state` and nothing this server sent it.
+ * Read whenever Ktor starts a login, which in practice is the redirect leg: the identity
+ * provider's callback carries `code` and `state` and nothing this server sent it.
  *
  * @return The requested hand-off, or `null` when this is not a hand-off login.
  */
@@ -192,29 +180,10 @@ private fun ApplicationCall.requestedLoginHandoff(): LoginRequest? {
 }
 
 /**
- * Take the `code_verifier` for this call's OAuth `state` from [pkceService], once per call.
- *
- * Ktor looks the OAuth settings up more than once for a single call: on the JVM its OAuth procedure
- * gives the OAuth1a branch a turn before the OAuth2 branch, and each branch calls `providerLookup`
- * itself. [PkceService.consume] is single-use, so consuming on every lookup would spend the verifier
- * on the OAuth1a branch, which has no use for it, and send the token exchange without one, which an
- * identity provider enforcing PKCE refuses. The first lookup of a call therefore consumes, and the
- * lookups after it read the result back from the call's attributes. Another call with the same
- * `state` finds nothing stored, so the verifier stays single-use.
- *
- * @return The `code_verifier` token parameter, or an empty list when the call carries no `state`
- *   with a stored verifier, as on the redirect leg.
+ * Call attribute in which `onStateCreated` hands the authorize URL interceptor the challenge for
+ * the verifier it has just stored.
  */
-private suspend fun ApplicationCall.pkceTokenParameters(pkceService: PkceService): List<Pair<String, String>> =
-    attributes.getOrNull(PKCE_TOKEN_PARAMETERS)
-        ?: listOfNotNull(
-            parameters["state"]?.let { state -> pkceService.consume(state) }?.let { "code_verifier" to it },
-        ).also { attributes.put(PKCE_TOKEN_PARAMETERS, it) }
-
-/**
- * Call attribute in which [pkceTokenParameters] keeps what the call's first lookup consumed.
- */
-private val PKCE_TOKEN_PARAMETERS = AttributeKey<List<Pair<String, String>>>("OmniSignPkceTokenParameters")
+private val PKCE_CHALLENGE = AttributeKey<PkceChallenge>("OmniSignPkceChallenge")
 
 /**
  * Query parameter naming the page a single-page app wants the finished login returned to.
@@ -239,15 +208,6 @@ private const val MAX_RETURN_TO_LENGTH = 2048
  * S256 challenge is 43 characters; anything longer cannot match a real verifier's digest.
  */
 private const val MAX_HANDOFF_CHALLENGE_LENGTH = 128
-
-/**
- * How long a parked [LoginRequest] stays claimable.
- *
- * Matches [PkceService]'s default verifier TTL, because it covers the same round trip and
- * expiring first would only produce the more confusing of two failures — a login that
- * completes and then refuses to hand back.
- */
-private val LOGIN_REQUEST_TTL: Duration = 5.minutes
 
 /**
  * Resolve authorization and token endpoint URLs for an OIDC provider, either from the

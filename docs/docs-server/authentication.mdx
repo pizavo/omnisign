@@ -138,7 +138,8 @@ its users are refused with `403 EMAIL_NOT_VERIFIED`, it sends no flag; set
 2. The client sends the user to that URL; OmniSign runs the OAuth2 **authorization-code flow with
    PKCE** (RFC 7636, `S256`) and signs the `state` parameter with an HMAC keyed from
    `auth.oauthStateSecret`, verifying it on the callback — Ktor's default nonce manager accepts any
-   `state`.
+   `state`. The user has **five minutes** at the IdP: then the `state`, the PKCE verifier and any
+   hand-off request expire together, and the callback answers `401`.
 3. On the callback, OmniSign verifies the **id_token** signature against the IdP's JWKS plus its
    `iss`, `aud`, `azp`, `exp` and `iat` (through Microsoft's multi-tenant endpoints, `common` and
    `organizations`, the issuer must name the user's own tenant, the token's `tid`), and rejects

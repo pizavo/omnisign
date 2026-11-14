@@ -62,9 +62,10 @@ sealed interface SsoProviderConfig {
  *   A `key: []` value list (empty accepted-values list for a key) is rejected at server startup
  *   — it would reject every login on that claim and is almost certainly a typo.
  * @property pkce Whether to perform PKCE (RFC 7636) on this provider's authorization-code flow.
- *   Defaults to `true` — every modern IdP supports PKCE and the OAuth 2.1 BCP (RFC 9700)
- *   requires it even for confidential clients to defend against authorization-code injection.
- *   Set to `false` only for legacy or homegrown IdPs that reject the `code_challenge` /
+ *   Defaults to `true`. RFC 9700 requires identity providers to support PKCE and recommends it
+ *   for confidential clients such as this server, which sends no OpenID Connect `nonce`, so PKCE
+ *   is its only defence against authorization-code injection (see
+ *   [PkceService][cz.pizavo.omnisign.auth.PkceService]). Set to `false` only for legacy or homegrown IdPs that reject the `code_challenge` /
  *   `code_verifier` parameters; doing so weakens the flow's security and should be a last
  *   resort.
  * @property verifyIdToken Whether to parse and cryptographically verify the OIDC `id_token`
