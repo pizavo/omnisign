@@ -25,7 +25,9 @@ Open the **Profiles** panel from the right sidebar (user icon <AppIcon name="pro
 ## Profile settings
 
 Each profile can override any combination of the following settings. Fields not specified
-in a profile inherit from the global configuration.
+in a profile inherit from the global configuration. Saving changes only what the editor shows:
+settings it has no field for, such as a validation policy or algorithm expiration settings set
+with the CLI, or OCSP and CRL timeouts from an imported profile, are kept as they are.
 
 ### Signing overrides
 
@@ -60,6 +62,12 @@ The effective signature level is derived from the combination:
 |   Enabled    |  Disabled   |    B-LT    |
 |   Enabled    |   Enabled   |   B-LTA    |
 |   Inherit    |   Inherit   | *(global)* |
+
+A toggle left on **Inherit** while the other one is set takes its part of the global level when
+you save: the archival timestamp is on if the global level is B-LTA, and the signature timestamp
+follows a global B-T or B-LT (B-LT when the global level is B-LTA). The profile keeps that level
+if the global level changes later. A B-T level set with the CLI shows the signature timestamp as
+Enabled, like B-LT, and saving keeps it at B-T until you change one of the toggles.
 
 ![Profile signature-level tri-state toggles](/img/desktop/profile-tristate-toggles.avif)
 

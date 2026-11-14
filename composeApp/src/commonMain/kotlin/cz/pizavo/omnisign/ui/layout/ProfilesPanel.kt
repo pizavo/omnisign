@@ -114,7 +114,7 @@ fun ProfilesPanel(
                     readOnly = readOnly,
                     globalDisabledHashAlgorithms = state.globalDisabledHashAlgorithms,
                     globalDisabledEncryptionAlgorithms = state.globalDisabledEncryptionAlgorithms,
-                    globalAddArchivalTimestamp = state.globalAddArchivalTimestamp,
+                    globalSignatureLevel = state.globalSignatureLevel,
                     onBuildTl = onBuildTl,
                     onStageTrustedCert = onStageTrustedCert,
                 )

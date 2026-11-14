@@ -32,7 +32,9 @@ import androidx.compose.ui.unit.dp
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
+import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.value.Sensitive
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.Button
 import cz.pizavo.omnisign.lumo.components.ButtonVariant
@@ -79,9 +81,9 @@ import org.jetbrains.compose.resources.stringResource
  *   disabled in the chip toggles.
  * @param globalDisabledEncryptionAlgorithms Encryption algorithms disabled at the global level.
  *   Same behavior as [globalDisabledHashAlgorithms].
- * @param globalAddArchivalTimestamp Whether the global config includes an archival timestamp (B-LTA).
- *   When `true` and the profile's archival toggle is INHERIT, the signature timestamp
- *   toggle is forced to `ENABLED` and disabled.
+ * @param globalSignatureLevel The global default signature level. A timestamp toggle left on
+ *   Inherit shows its part of it, and when that makes the archival timestamp active, the signature
+ *   timestamp toggle is forced to `ENABLED` and disabled.
  * @param onBuildTl Called when the user clicks "Build Custom TL", or `null` when unavailable.
  * @param onStageTrustedCert Called with the picked certificate bytes, type, and source to parse and
  *   stage an addition to this profile's scope (dedup-checked by the ViewModel); committed on Save.
@@ -95,14 +97,14 @@ fun ProfileEditPanel(
     readOnly: Boolean = false,
     globalDisabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
     globalDisabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet(),
-    globalAddArchivalTimestamp: Boolean = false,
+    globalSignatureLevel: SignatureLevel = SignatureLevel.PADES_BASELINE_B,
     onBuildTl: (() -> Unit)? = null,
     onStageTrustedCert: (ByteArray, TrustedCertificateType, String) -> Unit = { _, _, _ -> },
 ) {
-    if (state.error != null) {
+    state.error?.let { error ->
         SelectableContent {
             Text(
-                text = state.error,
+                text = error.resolve(),
                 style = LumoTheme.typography.body2,
                 color = LumoTheme.colors.error,
             )
@@ -128,7 +130,7 @@ fun ProfileEditPanel(
         readOnly = readOnly,
         globalDisabledHashAlgorithms = globalDisabledHashAlgorithms,
         globalDisabledEncryptionAlgorithms = globalDisabledEncryptionAlgorithms,
-        globalAddArchivalTimestamp = globalAddArchivalTimestamp,
+        globalSignatureLevel = globalSignatureLevel,
     )
 
     SectionDivider()
@@ -331,6 +333,8 @@ private fun DescriptionSection(
  * The signature timestamp toggle is forced to `ENABLED` and disabled whenever
  * archival timestamps are effectively active — either because the profile
  * explicitly sets archival to ENABLED, or because it inherits B-LTA from global.
+ * It reads this from the level Save writes ([ProfileEditState.effectiveSignatureLevel]),
+ * so the form shows what is saved.
  */
 @Composable
 private fun AlgorithmSection(
@@ -339,11 +343,10 @@ private fun AlgorithmSection(
     readOnly: Boolean,
     globalDisabledHashAlgorithms: Set<HashAlgorithm>,
     globalDisabledEncryptionAlgorithms: Set<EncryptionAlgorithm>,
-    globalAddArchivalTimestamp: Boolean,
+    globalSignatureLevel: SignatureLevel,
 ) {
     val archivalEffectivelyEnabled =
-        state.archivalTimestampOverride == TriToggleState.ENABLED ||
-                (state.archivalTimestampOverride == TriToggleState.INHERIT && globalAddArchivalTimestamp)
+        (state.effectiveSignatureLevel(globalSignatureLevel) ?: globalSignatureLevel) == SignatureLevel.PADES_BASELINE_LTA
 
     Text(text = stringResource(Res.string.profileedit_algorithms_timestamps_section), style = LumoTheme.typography.label1)
     Spacer(modifier = Modifier.height(8.dp))
@@ -514,8 +517,8 @@ private fun TimestampSection(
         Spacer(modifier = Modifier.height(8.dp))
 
         PasswordField(
-            value = state.timestampPassword,
-            onValueChange = { value -> onFieldChange { it.copy(timestampPassword = value) } },
+            value = state.timestampPassword.value,
+            onValueChange = { value -> onFieldChange { it.copy(timestampPassword = Sensitive(value)) } },
             hasStoredPassword = state.hasStoredPassword,
             readOnly = readOnly,
         )
