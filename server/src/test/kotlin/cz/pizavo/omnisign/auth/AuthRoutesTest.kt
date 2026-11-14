@@ -703,36 +703,6 @@ class AuthRoutesTest : FunSpec({
 		}
 	}
 
-	test("OIDC callback replayed with the same state sends the token endpoint no verifier") {
-		withTempSessionsDb {
-			testApplication {
-				val tokenRequests = mutableListOf<Parameters>()
-				application {
-					module(
-						authTestConfig(oidcAuthConfig(pkceEnabled = true)),
-						authTestSecrets(mapOf("github" to githubClientSecret)),
-						githubIdpMockEngine(OCTOCAT_USER_INFO, tokenRequests),
-					)
-				}
-				val noRedirect = createClient { followRedirects = false }
-
-				val state = Url(noRedirect.get("/auth/redirect/github").headers["Location"]!!).parameters["state"]
-				state.shouldNotBeNull()
-
-				repeat(2) {
-					noRedirect.get("/auth/callback/github") {
-						url {
-							parameters.append("code", "authorization-code-from-idp")
-							parameters.append("state", state)
-						}
-					}
-				}
-
-				tokenRequests.map { it["code_verifier"] != null } shouldBe listOf(true, false)
-			}
-		}
-	}
-
 	test("OIDC callback sends the token endpoint no verifier when provider.pkce is false") {
 		withTempSessionsDb {
 			testApplication {
@@ -848,6 +818,63 @@ class AuthRoutesTest : FunSpec({
 				callback.status shouldBe HttpStatusCode.Unauthorized
 				tokenRequests.shouldBeEmpty()
 				pkce.consume(state).shouldNotBeNull()
+			}
+		}
+	}
+
+	test("OIDC callback refuses a valid state with no verifier left instead of exchanging the code without one") {
+		withTempSessionsDb {
+			testApplication {
+				val tokenRequests = mutableListOf<Parameters>()
+				application {
+					module(
+						authTestConfig(oidcAuthConfig(pkceEnabled = true)),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(OCTOCAT_USER_INFO, tokenRequests),
+					)
+				}
+				val state = agedState(1.seconds)
+
+				val callback = createClient { followRedirects = false }.get("/auth/callback/github") {
+					url {
+						parameters.append("code", "authorization-code-from-idp")
+						parameters.append("state", state)
+					}
+				}
+
+				callback.status shouldBe HttpStatusCode.Unauthorized
+				tokenRequests.shouldBeEmpty()
+			}
+		}
+	}
+
+	test("OIDC callback refuses a state replayed after its first callback spent the verifier") {
+		withTempSessionsDb {
+			testApplication {
+				val tokenRequests = mutableListOf<Parameters>()
+				application {
+					module(
+						authTestConfig(oidcAuthConfig(pkceEnabled = true)),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(OCTOCAT_USER_INFO, tokenRequests),
+					)
+				}
+				val noRedirect = createClient { followRedirects = false }
+				val state = Url(noRedirect.get("/auth/redirect/github").headers["Location"]!!).parameters["state"]
+				state.shouldNotBeNull()
+
+				val statuses = List(2) {
+					noRedirect.get("/auth/callback/github") {
+						url {
+							parameters.append("code", "authorization-code-from-idp")
+							parameters.append("state", state)
+						}
+					}.status
+				}
+
+				statuses shouldBe listOf(HttpStatusCode.OK, HttpStatusCode.Unauthorized)
+				tokenRequests.size shouldBe 1
+				tokenRequests.single()["code_verifier"].shouldNotBeNull()
 			}
 		}
 	}

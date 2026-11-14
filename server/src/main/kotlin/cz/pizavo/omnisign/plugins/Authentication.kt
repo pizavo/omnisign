@@ -76,7 +76,12 @@ private val logger = KotlinLogging.logger {}
  *      `code_challenge` + `code_challenge_method=S256`.
  *    - `extraTokenParametersProvider` runs on the callback leg only after Ktor has verified
  *      the `state`, and takes the verifier for the token-exchange POST. A forged or expired
- *      `state` therefore spends no verifier, and a replayed one finds none left.
+ *      `state` therefore spends no verifier. A valid `state` with no verifier left (one used
+ *      already, which the stateless nonce manager cannot tell, or one issued before a reboot,
+ *      see [serverModule][cz.pizavo.omnisign.di.serverModule]) is refused rather than exchanged
+ *      without one, since an identity provider accepts a code requested without a challenge
+ *      when no verifier comes with it. The hook can only refuse by throwing; Ktor answers the
+ *      callback `401`, as it does for an expired `state`.
  *
  *    The `state`, the verifier and the parked request all live for [LOGIN_FLOW_TTL].
  *
@@ -134,7 +139,15 @@ fun Application.configureAuthentication(config: AuthConfig?, externalUrl: String
                     },
                     extraTokenParametersProvider = { _, callback ->
                         if (provider.pkce) {
-                            listOfNotNull(pkceService.consume(callback.state)?.let { "code_verifier" to it })
+                            val verifier = pkceService.consume(callback.state) ?: run {
+                                logger.warn {
+                                    "Refused a login callback for provider '${provider.name}': its state is " +
+                                        "valid but has no PKCE verifier left, so it was used already, or issued " +
+                                        "before a reboot or by another server. The code was not exchanged."
+                                }
+                                error("No PKCE verifier is left for this state")
+                            }
+                            listOf("code_verifier" to verifier)
                         } else {
                             emptyList()
                         }

@@ -87,8 +87,11 @@ import java.nio.file.Path
  *   callback. Implemented as [StatelessHmacNonceManager], which accepts a `state` for
  *   [LOGIN_FLOW_TTL] after issuing it rather than for its own default of one minute. It stamps
  *   the `state` with `System.nanoTime()`, which each host counts from its own origin, typically
- *   its boot, so a `state` survives a server restart but would not carry over to another host.
- *   The HMAC key is read from
+ *   its boot. A `state` therefore survives a restart of the server process but would not carry
+ *   over to another host, and after a reboot, where the count starts again, an older `state`
+ *   reads as fresh until the new uptime passes its stamp. With PKCE on, the default, such a
+ *   `state` still reaches no token exchange: its verifier expires on the wall clock, and the
+ *   callback refuses a `state` that has no verifier left. The HMAC key is read from
  *   `auth.oauthStateSecret` (typically declared via env-var substitution:
  *   `oauthStateSecret: "${OMNISIGN_OAUTH_NONCE_SECRET}"`). The binding is lazy and only
  *   resolves when an OIDC provider's `oauth { … }` block actually needs it; deployments
