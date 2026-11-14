@@ -49,6 +49,8 @@
 	<string name="err_truststore_not_found_profile">No trusted certificate %1$s in profile \'%2$s\'</string>
 	<string name="err_config_load_failed">Failed to load configuration</string>
 	<string name="err_config_save_failed">Failed to save configuration</string>
+	<string name="err_config_unreadable_not_overwritten">The configuration file %1$s cannot be read, so the change was not saved. Fix the file, or move it elsewhere to start over from the defaults.</string>
+	<string name="err_config_read_only">The configuration file %1$s is read-only, so the change was not saved.</string>
 	<string name="err_config_serialize_failed">Failed to serialize configuration to %1$s</string>
 	<string name="err_config_deserialize_failed">Failed to deserialize configuration from %1$s</string>
 	<string name="err_config_load_from_server_failed">Failed to load configuration from server</string>

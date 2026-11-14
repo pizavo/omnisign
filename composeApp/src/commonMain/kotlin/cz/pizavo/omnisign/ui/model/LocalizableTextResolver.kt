@@ -62,6 +62,8 @@ private val MESSAGE_RES: Map<MessageKey, StringResource> = mapOf(
 	MessageKey.TRUSTSTORE_NOT_FOUND_PROFILE to Res.string.err_truststore_not_found_profile,
 	MessageKey.CONFIG_LOAD_FAILED to Res.string.err_config_load_failed,
 	MessageKey.CONFIG_SAVE_FAILED to Res.string.err_config_save_failed,
+	MessageKey.CONFIG_UNREADABLE_NOT_OVERWRITTEN to Res.string.err_config_unreadable_not_overwritten,
+	MessageKey.CONFIG_READ_ONLY to Res.string.err_config_read_only,
 	MessageKey.CONFIG_SERIALIZE_FAILED to Res.string.err_config_serialize_failed,
 	MessageKey.CONFIG_DESERIALIZE_FAILED to Res.string.err_config_deserialize_failed,
 	MessageKey.CONFIG_LOAD_FROM_SERVER_FAILED to Res.string.err_config_load_from_server_failed,

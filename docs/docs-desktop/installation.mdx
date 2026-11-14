@@ -163,3 +163,10 @@ OmniSign stores its configuration file and logs in platform-native directories.
 </TabItem>
 </OsTabs>
 
+The desktop app, the CLI and scheduled renewals share the configuration file. If it exists but
+cannot be read — a hand edit left it invalid, say, or a newer OmniSign version wrote a value this
+one does not know — OmniSign runs with the default settings and never saves a change over the
+file, so nothing in it is lost. Fix the file, or move it elsewhere to start over from the defaults.
+A save replaces the file in one step, so a save cut short by a crash or a full disk leaves the
+previous configuration in place.
+

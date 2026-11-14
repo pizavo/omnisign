@@ -49,6 +49,8 @@
 	<string name="err_truststore_not_found_profile">Žiadny dôveryhodný certifikát %1$s v profile \'%2$s\'</string>
 	<string name="err_config_load_failed">Nepodarilo sa načítať konfiguráciu</string>
 	<string name="err_config_save_failed">Nepodarilo sa uložiť konfiguráciu</string>
+	<string name="err_config_unreadable_not_overwritten">Konfiguračný súbor %1$s nemožno prečítať, preto zmena nebola uložená. Súbor opravte alebo ho presuňte inam a začnite odznova s predvolenými hodnotami.</string>
+	<string name="err_config_read_only">Konfiguračný súbor %1$s je iba na čítanie, preto zmena nebola uložená.</string>
 	<string name="err_config_serialize_failed">Nepodarilo sa serializovať konfiguráciu do %1$s</string>
 	<string name="err_config_deserialize_failed">Nepodarilo sa deserializovať konfiguráciu z %1$s</string>
 	<string name="err_config_load_from_server_failed">Nepodarilo sa načítať konfiguráciu zo servera</string>

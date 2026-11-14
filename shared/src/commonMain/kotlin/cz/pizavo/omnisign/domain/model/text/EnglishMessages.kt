@@ -134,6 +134,11 @@ internal object EnglishMessages {
 			"Failed to load configuration"
 		MessageKey.CONFIG_SAVE_FAILED ->
 			"Failed to save configuration"
+		MessageKey.CONFIG_UNREADABLE_NOT_OVERWRITTEN ->
+			"The configuration file %1\$s cannot be read, so the change was not saved. " +
+				"Fix the file, or move it elsewhere to start over from the defaults."
+		MessageKey.CONFIG_READ_ONLY ->
+			"The configuration file %1\$s is read-only, so the change was not saved."
 		MessageKey.CONFIG_SERIALIZE_FAILED ->
 			"Failed to serialize configuration to %1\$s"
 		MessageKey.CONFIG_DESERIALIZE_FAILED ->
