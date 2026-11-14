@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.CrlConfig
 import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
+import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import kotlinx.serialization.Serializable
 
 /**
@@ -111,4 +112,21 @@ data class GlobalConfig(
 	val trustedListRefreshIntervalHours: Long = 4,
 )
 
-
+/**
+ * Why this global configuration cannot be saved, or `null` when it can.
+ *
+ * A [GlobalConfig.defaultHashAlgorithm] or [GlobalConfig.defaultEncryptionAlgorithm] that is also
+ * among the algorithms the configuration disables would make every resolution of it fail, so the
+ * use cases that save a global configuration, a change to it and an import alike, refuse one with
+ * this error before anything is saved.
+ */
+fun GlobalConfig.disabledDefaultError(): ConfigurationError.InvalidConfiguration? {
+	if (defaultHashAlgorithm in disabledHashAlgorithms) {
+		return ConfigurationError.cannotDisableDefaultHash(defaultHashAlgorithm.name)
+	}
+	val encryption = defaultEncryptionAlgorithm
+	if (encryption != null && encryption in disabledEncryptionAlgorithms) {
+		return ConfigurationError.cannotDisableDefaultEncryption(encryption.name)
+	}
+	return null
+}

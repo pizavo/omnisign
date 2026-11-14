@@ -143,6 +143,20 @@ internal object EnglishMessages {
 			"Failed to serialize configuration to %1\$s"
 		MessageKey.CONFIG_DESERIALIZE_FAILED ->
 			"Failed to deserialize configuration from %1\$s"
+		MessageKey.CONFIG_DOCUMENT_APP_NOT_GLOBAL ->
+			"The file holds a full configuration, not only the global settings"
+		MessageKey.CONFIG_DOCUMENT_APP_NOT_PROFILE ->
+			"The file holds a full configuration, not a single profile"
+		MessageKey.CONFIG_DOCUMENT_GLOBAL_NOT_APP ->
+			"The file holds only the global settings, not a full configuration"
+		MessageKey.CONFIG_DOCUMENT_GLOBAL_NOT_PROFILE ->
+			"The file holds only the global settings, not a profile"
+		MessageKey.CONFIG_DOCUMENT_PROFILE_NOT_APP ->
+			"The file holds a single profile, not a full configuration"
+		MessageKey.CONFIG_DOCUMENT_PROFILE_NOT_GLOBAL ->
+			"The file holds a single profile, not the global settings"
+		MessageKey.CONFIG_DOCUMENT_NOT_CONFIGURATION ->
+			"The file holds no OmniSign configuration"
 		MessageKey.CONFIG_LOAD_FROM_SERVER_FAILED ->
 			"Failed to load configuration from server"
 		MessageKey.CONFIG_SAVE_NOT_SUPPORTED_WEB ->

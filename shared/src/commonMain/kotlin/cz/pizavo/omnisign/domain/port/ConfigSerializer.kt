@@ -29,6 +29,9 @@ interface ConfigSerializer {
 	/**
 	 * Deserialize a full application configuration from a string.
 	 *
+	 * A document that holds the global settings alone, a single profile or no configuration at all
+	 * is refused: read as a full configuration, it would leave nothing but the defaults.
+	 *
 	 * @param text Previously serialized configuration text.
 	 * @return Deserialized [AppConfig] or an error.
 	 */
@@ -45,6 +48,9 @@ interface ConfigSerializer {
 	/**
 	 * Deserialize a global configuration from a string.
 	 *
+	 * A document that holds a full configuration, a single profile or no configuration at all is
+	 * refused: read as the global settings, it would leave nothing but their defaults.
+	 *
 	 * @param text Previously serialized global configuration text.
 	 * @return Deserialized [GlobalConfig] or an error.
 	 */
@@ -60,6 +66,9 @@ interface ConfigSerializer {
 	
 	/**
 	 * Deserialize a single profile configuration from a string.
+	 *
+	 * A document that holds a full configuration, the global settings alone or no configuration at
+	 * all is refused.
 	 *
 	 * @param text Previously serialized profile configuration text.
 	 * @return Deserialized [ProfileConfig] or an error.
