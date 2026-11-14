@@ -47,7 +47,7 @@
 	<string name="err_truststore_no_stored_cert_profile">No stored certificate %1$s to reference from profile \'%2$s\'</string>
 	<string name="err_truststore_not_found_global">No trusted certificate %1$s in the global scope</string>
 	<string name="err_truststore_not_found_profile">No trusted certificate %1$s in profile \'%2$s\'</string>
-	<string name="err_truststore_index_unreadable">The trust store index %1$s cannot be read, so the trusted certificates are left as they are and none of them is used. If a newer version of OmniSign wrote it, update to that version; otherwise restore the file from a backup, or move it elsewhere to start over with no trusted certificates.</string>
+	<string name="err_truststore_index_unreadable">The trust store index %1$s cannot be read, so the trusted certificates are left as they are and none of them is used. If a newer version of OmniSign wrote it, update to that version; otherwise restore the file from a backup, or move the directory that holds it elsewhere to start over with no trusted certificates.</string>
 	<string name="err_config_load_failed">Failed to load configuration</string>
 	<string name="err_config_save_failed">Failed to save configuration</string>
 	<string name="err_config_unreadable_not_overwritten">The configuration file %1$s cannot be read, so the change was not saved. Fix the file, or move it elsewhere to start over from the defaults.</string>

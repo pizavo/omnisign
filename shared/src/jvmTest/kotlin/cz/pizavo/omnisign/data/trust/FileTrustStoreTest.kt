@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.data.trust
 
+import cz.pizavo.omnisign.data.denyLookingUp
 import cz.pizavo.omnisign.data.denyReading
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.error.TrustStoreError
@@ -24,6 +25,7 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import java.io.IOException
 import java.math.BigInteger
 import java.nio.file.Path
+import java.nio.file.attribute.AclFileAttributeView
 import java.security.KeyPairGenerator
 import java.security.MessageDigest
 import java.security.cert.X509Certificate
@@ -33,6 +35,7 @@ import kotlin.io.path.createDirectory
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteExisting
 import kotlin.io.path.exists
+import kotlin.io.path.fileAttributesViewOrNull
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
 import kotlin.io.path.readBytes
@@ -40,13 +43,15 @@ import kotlin.io.path.writeBytes
 
 /**
  * Verifies [FileTrustStore]: content-addressed storage, per-scope references, per-reference type,
- * dedup, reference-counted GC, scope resolution, load-time repair, an index that cannot be read,
- * which every operation refuses while it leaves the directory as it was, and the details of an
- * error that an I/O failure causes.
+ * dedup, reference-counted GC, scope resolution, load-time repair, an index that cannot be read or
+ * whose existence cannot be told, which every operation refuses while it leaves the directory as it
+ * was, a missing index that is put back, a certificate file that cannot be read, and the details of
+ * an error that an I/O failure causes.
  *
- * The tests of a file this user may not read deny the reading through an ACL on Windows and
+ * The tests of a file this user may not read or look up deny it through ACLs on Windows and
  * through the POSIX permissions elsewhere, and do not run as root, whom the permissions do not
- * stop.
+ * stop. The test of a certificate file whose existence cannot be told runs only where ACLs can hide
+ * one file: elsewhere that takes the search permission of its directory, which hides the index too.
  */
 @OptIn(ExperimentalSerializationApi::class)
 class FileTrustStoreTest : FunSpec({
@@ -304,6 +309,89 @@ class FileTrustStoreTest : FunSpec({
 		contentsOf(dir) shouldBe before
 	}
 
+	test("an index whose existence cannot be told is one that cannot be read, not a missing one").config(
+		enabledIf = { System.getProperty("user.name") != "root" },
+	) {
+		val dir = newDir()
+		FileTrustStore(dir).add(TrustScope.Global, der("Root"), TrustedCertificateType.CA).shouldBeRight()
+		val before = contentsOf(dir)
+		val store = FileTrustStore(dir)
+		val other = der("Other")
+		val restore = denyLookingUp(dir.resolve("contents.cbor"))
+
+		val results = try {
+			listOf(
+				store.list(TrustScope.Global),
+				store.add(TrustScope.Global, other, TrustedCertificateType.CA),
+			)
+		} finally {
+			restore()
+		}
+
+		results.forEach { result ->
+			val error = result.shouldBeLeft().shouldBeInstanceOf<TrustStoreError.StorageFailed>()
+			error.text shouldBe indexUnreadable(dir)
+			error.details shouldBe "AccessDeniedException"
+		}
+		contentsOf(dir) shouldBe before
+		store.list(TrustScope.Global).shouldBeRight() shouldHaveSize 1
+	}
+
+	test("a store that found no index reads one put in place before its next operation rather than writing over it") {
+		val dir = newDir()
+		val store = FileTrustStore(dir)
+		store.list(TrustScope.Global).shouldBeRight() shouldHaveSize 0
+		val restored = der("Restored")
+		FileTrustStore(dir).add(TrustScope.Global, restored, TrustedCertificateType.CA).shouldBeRight()
+
+		val added = der("Added")
+		store.add(TrustScope.Global, added, TrustedCertificateType.CA).shouldBeRight()
+
+		FileTrustStore(dir).resolve(TrustScope.Global).shouldBeRight().map { it.der.toList() } shouldBe
+			listOf(restored.toList(), added.toList())
+	}
+
+	test("resolve leaves out a certificate file that cannot be read and gives the others").config(
+		enabledIf = { System.getProperty("user.name") != "root" },
+	) {
+		val dir = newDir()
+		val store = FileTrustStore(dir)
+		val unreadable = store.add(TrustScope.Global, der("Unreadable"), TrustedCertificateType.CA)
+			.shouldBeRight().fingerprint
+		val readable = der("Readable")
+		store.add(TrustScope.Global, readable, TrustedCertificateType.CA).shouldBeRight()
+		val restore = denyReading(dir.resolve("$unreadable.der"))
+
+		val resolved = try {
+			store.resolve(TrustScope.Global).shouldBeRight()
+		} finally {
+			restore()
+		}
+
+		resolved.map { it.der.toList() } shouldBe listOf(readable.toList())
+		store.resolve(TrustScope.Global).shouldBeRight() shouldHaveSize 2
+	}
+
+	test("adding a certificate again leaves its file as it is while the file cannot be read").config(
+		enabledIf = { System.getProperty("user.name") != "root" },
+	) {
+		val dir = newDir()
+		val bytes = der("Root")
+		val fp = FileTrustStore(dir).add(TrustScope.Global, bytes, TrustedCertificateType.CA).shouldBeRight().fingerprint
+		val damaged = byteArrayOf(1, 2, 3)
+		dir.resolve("$fp.der").writeBytes(damaged)
+		val restore = denyReading(dir.resolve("$fp.der"))
+
+		val added = try {
+			FileTrustStore(dir).add(TrustScope.Profile("work"), bytes, TrustedCertificateType.CA)
+		} finally {
+			restore()
+		}
+
+		added.shouldBeRight()
+		dir.resolve("$fp.der").readBytes().toList() shouldBe damaged.toList()
+	}
+
 	test("an add or a change the file system refuses gives the class of the I/O failure as its details") {
 		val dir = newDir()
 		val store = FileTrustStore(dir)
@@ -336,6 +424,26 @@ class FileTrustStoreTest : FunSpec({
 
 		listed.map { it.fingerprint } shouldBe listOf(fp)
 		FileTrustStore(dir).resolve(TrustScope.Global).shouldBeRight().single().der shouldBe bytes
+	}
+
+	test("a certificate file whose existence cannot be told when the store loads is kept, not dropped as missing").config(
+		enabledIf = {
+			System.getProperty("user.name") != "root" && root.fileAttributesViewOrNull<AclFileAttributeView>() != null
+		},
+	) {
+		val dir = newDir()
+		val bytes = der("Root")
+		val fp = FileTrustStore(dir).add(TrustScope.Global, bytes, TrustedCertificateType.CA).shouldBeRight().fingerprint
+		val restore = denyLookingUp(dir.resolve("$fp.der"))
+
+		val listed = try {
+			FileTrustStore(dir).list(TrustScope.Global).shouldBeRight()
+		} finally {
+			restore()
+		}
+
+		listed.map { it.fingerprint } shouldBe listOf(fp)
+		FileTrustStore(dir).resolve(TrustScope.Global).shouldBeRight().single().der.toList() shouldBe bytes.toList()
 	}
 
 	test("without an index the store starts empty and keeps the certificate files it finds") {

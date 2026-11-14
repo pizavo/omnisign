@@ -63,8 +63,9 @@ with an index, `contents.cbor`. When the index cannot be read, because it is dam
 version of OmniSign wrote it, the panel shows an error that names the file and lists no
 certificates, and nothing in the directory is changed or deleted. Validation and signing
 meanwhile run without the directly trusted certificates. Restore the file from a backup, use the
-newer version if one wrote it, or move the file elsewhere to start over with no trusted
-certificates.
+newer version if one wrote it, or move the whole `trusted-certs` directory elsewhere to start over
+with no trusted certificates. Move the directory rather than the index alone: certificate files
+left behind without their index are deleted once a new index has been written.
 
 :::tip
 To quickly check which CAs are trusted for a signing or validation operation, open this

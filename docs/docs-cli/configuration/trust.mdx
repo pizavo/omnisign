@@ -21,7 +21,9 @@ configuration file. When the index cannot be read, because it is damaged or a ne
 OmniSign wrote it, every subcommand fails with an error that names it, and nothing in the
 directory is changed or deleted. Validation and signing meanwhile run without the directly
 trusted certificates. Restore the file from a backup, use the newer version if one wrote it, or
-move the file elsewhere to start over with no trusted certificates.
+move the whole `trusted-certs` directory elsewhere to start over with no trusted certificates.
+Move the directory rather than the index alone: certificate files left behind without their index
+are deleted once a new index has been written.
 
 ## `config trust add`
 

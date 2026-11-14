@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.config
 
 import arrow.core.left
 import arrow.core.right
+import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateRef
@@ -22,6 +23,9 @@ import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
 import kotlin.io.path.createTempDirectory
+import kotlin.io.path.listDirectoryEntries
+import kotlin.io.path.name
+import kotlin.io.path.readBytes
 import kotlin.io.path.writeBytes
 import kotlin.time.Instant
 
@@ -29,7 +33,7 @@ import kotlin.time.Instant
  * Verifies [TrustReconciler] imports declared references, checks the fingerprint pin before it
  * stores a certificate, decodes wrapped inline Base64, references a stored copy when the source is
  * gone and reports why that fails, clears scopes the configuration drops, and rejects malformed
- * entries.
+ * entries. One test runs it on a real [FileTrustStore] whose index cannot be read.
  */
 class TrustReconcilerTest : FunSpec({
 
@@ -171,6 +175,21 @@ class TrustReconcilerTest : FunSpec({
 
 		failure.message shouldContain unreadable.message
 		failure.message shouldNotContain "no stored copy"
+	}
+
+	test("a real store whose index cannot be read aborts startup with its own message and leaves the directory as it is") {
+		val dir = newDir()
+		val index = dir.resolve("contents.cbor")
+		index.writeBytes(byteArrayOf(0xA1.toByte()))
+
+		val failure = shouldThrow<IllegalStateException> {
+			TrustReconciler(FileTrustStore(dir)).reconcile(AppConfig(), dir)
+		}
+
+		failure.message shouldContain "enumerate trust scopes"
+		failure.message shouldContain index.toAbsolutePath().toString()
+		dir.listDirectoryEntries().map { it.name } shouldBe listOf("contents.cbor")
+		index.readBytes().toList() shouldBe listOf(0xA1.toByte())
 	}
 
 	test("clears a scope the configuration no longer declares") {

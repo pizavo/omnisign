@@ -21,6 +21,7 @@ import kotlinx.serialization.cbor.Cbor
 import java.io.IOException
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermission
@@ -48,10 +49,13 @@ private val logger = KotlinLogging.logger {}
  * An index file that cannot be read or decoded, or that is in a format version this build does
  * not read, as one a newer build wrote may be, is left as it is, and so is every certificate file:
  * each operation fails with [TrustStoreError.indexUnreadable] and nothing is cached, so the next
- * one reads the file again, and once it is restored or moved away the store works. Without an
- * index file the store starts empty and deletes nothing, as the certificate files it finds may be
- * all that is left of an index moved away. The certificate files that no entry of an index read
- * from its file names are deleted when the store first loads it.
+ * one reads the file again, and once it is restored or moved away the store works. Only a file the
+ * file system reports missing counts as no index: one whose existence cannot be told, as in a
+ * directory this user may not search, is one that cannot be read. Without an index file the store
+ * starts empty, caches nothing and deletes nothing, as the certificate files it finds may be all
+ * that is left of an index moved away, which may yet be put back. The certificate files that no
+ * entry of an index read from its file names are deleted when the store first loads it. A
+ * certificate file that cannot be read is kept, and [resolve] leaves it out until it can be read.
  *
  * An error's details name the class of an I/O failure, as the message of one often holds only the
  * path, and give the message of any other failure.
@@ -214,13 +218,7 @@ class FileTrustStore(
 					index.scopes[scope.key()].orEmpty().forEach { merged[it.fingerprint] = it.type }
 				}
 				merged.mapNotNull { (fingerprint, type) ->
-					val file = certFile(fingerprint)
-					if (file.exists()) {
-						ResolvedTrustAnchor(fingerprint, type, file.readBytes())
-					} else {
-						logger.warn { "Trust file for $fingerprint is missing; skipping it" }
-						null
-					}
+					anchorBytes(fingerprint)?.let { ResolvedTrustAnchor(fingerprint, type, it) }
 				}.right()
 			} catch (e: Exception) {
 				fail(e)
@@ -283,12 +281,33 @@ class FileTrustStore(
 	private fun certFile(fingerprint: String): Path = trustDir.resolve("$fingerprint.der")
 
 	/**
-	 * Whether the certificate [fingerprint] names has to be written to [file]: the file is missing,
-	 * or holds other bytes, as a file left behind by an index that was moved away, and damaged
-	 * since, may. A file that cannot be read now is left as it is.
+	 * Whether the certificate [fingerprint] names has to be written to [file]: the file system
+	 * reports the file missing, or it holds other bytes, as a file left behind by an index that was
+	 * moved away, and damaged since, may. A file that cannot be read now is left as it is.
 	 */
 	private fun needsWriting(file: Path, fingerprint: String): Boolean =
-		!file.exists() || runCatching { certFingerprint(file.readBytes()) != fingerprint }.getOrDefault(false)
+		try {
+			certFingerprint(file.readBytes()) != fingerprint
+		} catch (_: NoSuchFileException) {
+			true
+		} catch (_: IOException) {
+			false
+		}
+
+	/**
+	 * The bytes of the certificate file [fingerprint] names, or `null`, with a warning, when the file
+	 * system reports it missing or it cannot be read now, so that the other anchors are still used.
+	 */
+	private fun anchorBytes(fingerprint: String): ByteArray? =
+		try {
+			certFile(fingerprint).readBytes()
+		} catch (_: NoSuchFileException) {
+			logger.warn { "Trust file for $fingerprint is missing; skipping it" }
+			null
+		} catch (e: IOException) {
+			logger.warn(e) { "Could not read trust file for $fingerprint; skipping it" }
+			null
+		}
 
 	/**
 	 * The key this scope's references are stored under in the index.
@@ -328,28 +347,31 @@ class FileTrustStore(
 	/**
 	 * The index: the cached one, or else the index file, read and reconciled with the directory, or
 	 * an empty index when there is no index file. An index file that cannot be read gives an error
-	 * and is neither cached nor touched, so the next call reads it again.
+	 * and is neither cached nor touched, so the next call reads it again. The empty index of a
+	 * missing file is not cached either, so an index file put in place before the next call is read
+	 * by it rather than written over.
 	 */
 	private fun ensureIndex(): OperationResult<TrustStoreIndex> {
 		cachedIndex?.let { return it.right() }
-		val file = trustDir.resolve(INDEX_FILE)
-		val index = if (file.exists()) {
-			repair(readIndex(file).getOrElse { return it.left() })
-		} else {
-			TrustStoreIndex()
-		}
+		val read = readIndex(trustDir.resolve(INDEX_FILE)).getOrElse { return it.left() }
+			?: return TrustStoreIndex().right()
+		val index = repair(read)
 		cachedIndex = index
 		return index.right()
 	}
 
 	/**
 	 * Read and decode the index [file], refusing one in a format version other than
-	 * [TrustStoreIndex.CURRENT_VERSION].
+	 * [TrustStoreIndex.CURRENT_VERSION], or give `null` when the file system reports that there is
+	 * no such file. A file whose existence cannot be told, as one in a directory this user may not
+	 * search, is one that cannot be read, not a missing one.
 	 */
-	private fun readIndex(file: Path): OperationResult<TrustStoreIndex> {
+	private fun readIndex(file: Path): OperationResult<TrustStoreIndex?> {
 		val path = file.toAbsolutePath().toString()
 		val index = try {
 			cbor.decodeFromByteArray(TrustStoreIndex.serializer(), file.readBytes())
+		} catch (_: NoSuchFileException) {
+			return null.right()
 		} catch (e: Exception) {
 			logger.warn(e) { "Could not read trust index $file; leaving the trust store as it is" }
 			return TrustStoreError.indexUnreadable(path, details = e.failureDetails(), cause = e).left()
@@ -366,19 +388,18 @@ class FileTrustStore(
 
 	/**
 	 * Reconcile [index], read from the index file, with the directory: drop the entries whose file
-	 * is missing or does not hold the certificate its name says, and delete the certificate files
-	 * no entry names. An entry whose file cannot be read now is kept, as a later load may read it.
+	 * the file system reports missing or that does not hold the certificate its name says, and
+	 * delete the certificate files no entry names. An entry whose file cannot be read now, or whose
+	 * existence cannot be told, is kept, as a later load may read it.
 	 */
 	private fun repair(index: TrustStoreIndex): TrustStoreIndex {
 		if (!trustDir.exists()) return index
 		val validCerts = index.certs.filterKeys { fingerprint ->
-			val file = certFile(fingerprint)
-			if (!file.exists()) {
+			val bytes = try {
+				certFile(fingerprint).readBytes()
+			} catch (_: NoSuchFileException) {
 				logger.warn { "Trust index references missing file $fingerprint; dropping it" }
 				return@filterKeys false
-			}
-			val bytes = try {
-				file.readBytes()
 			} catch (e: IOException) {
 				logger.warn(e) { "Could not read trust file $fingerprint; keeping it" }
 				return@filterKeys true

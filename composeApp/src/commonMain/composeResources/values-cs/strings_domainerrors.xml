@@ -47,7 +47,7 @@
 	<string name="err_truststore_no_stored_cert_profile">Žádný uložený certifikát %1$s, na který by bylo možné odkázat z profilu \'%2$s\'</string>
 	<string name="err_truststore_not_found_global">Žádný důvěryhodný certifikát %1$s v globálním rozsahu</string>
 	<string name="err_truststore_not_found_profile">Žádný důvěryhodný certifikát %1$s v profilu \'%2$s\'</string>
-	<string name="err_truststore_index_unreadable">Index úložiště důvěryhodných certifikátů %1$s nelze přečíst, proto jsou důvěryhodné certifikáty ponechány beze změny a žádný z nich se nepoužívá. Pokud jej zapsala novější verze OmniSign, aktualizujte na ni; jinak soubor obnovte ze zálohy, nebo jej přesuňte jinam a začněte znovu bez důvěryhodných certifikátů.</string>
+	<string name="err_truststore_index_unreadable">Index úložiště důvěryhodných certifikátů %1$s nelze přečíst, proto jsou důvěryhodné certifikáty ponechány beze změny a žádný z nich se nepoužívá. Pokud jej zapsala novější verze OmniSign, aktualizujte na ni; jinak soubor obnovte ze zálohy, nebo přesuňte jinam složku, ve které je, a začněte znovu bez důvěryhodných certifikátů.</string>
 	<string name="err_config_load_failed">Nepodařilo se načíst konfiguraci</string>
 	<string name="err_config_save_failed">Nepodařilo se uložit konfiguraci</string>
 	<string name="err_config_unreadable_not_overwritten">Konfigurační soubor %1$s nelze přečíst, proto změna nebyla uložena. Soubor opravte, nebo jej přesuňte jinam a začněte znovu s výchozími hodnotami.</string>
