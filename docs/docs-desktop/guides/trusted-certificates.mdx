@@ -56,6 +56,16 @@ timestamp's. Unlike the profile editor and Settings, this commits immediately (t
 When no trusted certificates are configured, the panel shows a prompt directing you to
 **Settings → Validation → Trusted Certificates** to add them.
 
+## When the store cannot be read
+
+The trusted certificates are kept in a `trusted-certs` directory beside the configuration file,
+with an index, `contents.cbor`. When the index cannot be read, because it is damaged or a newer
+version of OmniSign wrote it, the panel shows an error that names the file and lists no
+certificates, and nothing in the directory is changed or deleted. Validation and signing
+meanwhile run without the directly trusted certificates. Restore the file from a backup, use the
+newer version if one wrote it, or move the file elsewhere to start over with no trusted
+certificates.
+
 :::tip
 To quickly check which CAs are trusted for a signing or validation operation, open this
 panel before running the operation. Certificates from both the profile and global scopes

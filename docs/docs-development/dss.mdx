@@ -237,7 +237,10 @@ overwrites the bundled copy. Commit the result — it is a build input, not a ca
 Beyond the EU LOTL, OmniSign supports custom Trusted Lists and directly-trusted certificates. The
 trust store is app-managed and content-addressed: certificates are stored as `sha256-<hex>.der` files,
 deduplicated by fingerprint, and reference-counted so removing the last reference collects the file.
-`FileTrustStore` implements it; the desktop, server, and CLI all share the format.
+`FileTrustStore` implements it; the desktop, server, and CLI all share the format. Its index,
+`contents.cbor`, always records its format version. An index that cannot be read or decoded, or
+that is in a version the build does not read, fails every operation and is never replaced, and
+certificate files are deleted as orphans only against an index that was read.
 
 ## Before you conclude DSS cannot do something
 

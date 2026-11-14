@@ -60,6 +60,13 @@ sealed interface TrustStoreError : OperationError, LocalizableError {
 			StorageFailed(LocalizableText.of(MessageKey.TRUSTSTORE_OPERATION_FAILED), details, cause)
 
 		/**
+		 * The trust store's index file at [path] cannot be read or decoded, or is in a format version
+		 * this build does not read, so the store is left as it is and none of its certificates is used.
+		 */
+		fun indexUnreadable(path: String, details: String? = null, cause: Throwable? = null): StorageFailed =
+			StorageFailed(LocalizableText.of(MessageKey.TRUSTSTORE_INDEX_UNREADABLE, path), details, cause)
+
+		/**
 		 * No stored certificate [fingerprint] exists to reference from [scope]; the scope phrasing
 		 * (global vs. a named profile) is baked into the chosen message variant.
 		 */

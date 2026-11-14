@@ -156,6 +156,9 @@ enum class MessageKey {
 	/** No trusted certificate is present in a profile scope (args: fingerprint, profile name). */
 	TRUSTSTORE_NOT_FOUND_PROFILE,
 
+	/** The trust store's index cannot be read, so the store is left as it is (arg: index file path). */
+	TRUSTSTORE_INDEX_UNREADABLE,
+
 	/** Loading the on-disk configuration failed for an unclassified reason. */
 	CONFIG_LOAD_FAILED,
 

@@ -245,7 +245,9 @@ Filesystem path to the server's writable trust directory, reconciled at boot fro
 `trustedCertificates` declared in `signing.yml`. Defaults to a `trusted-certs` directory in the
 server's **working directory** — in the Docker image that resolves to `/app/trusted-certs`, a mounted
 volume, so leave it unset there. Set it only to relocate the store onto a specific mount.
-Use a volume separate from the read-only policy and certificate files.
+Use a volume separate from the read-only policy and certificate files. When the store's index,
+`contents.cbor`, cannot be read, because it is damaged or a newer version of OmniSign wrote it,
+the server refuses to start with an error that names the file, and leaves the directory as it is.
 
 ### `aia`
 

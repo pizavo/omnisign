@@ -13,7 +13,6 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
-import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
@@ -95,7 +94,7 @@ class FileConfigRepository(
                     config.right()
                 }
             } catch (e: Exception) {
-                ConfigurationError.loadFailed(details = failureDetails(e), cause = e).left()
+                ConfigurationError.loadFailed(details = e.failureDetails(), cause = e).left()
             }
         }
     }
@@ -119,7 +118,7 @@ class FileConfigRepository(
             unreadableReason()?.let { reason ->
                 return ConfigurationError.unreadableNotOverwritten(
                     path = configPath.toAbsolutePath().toString(),
-                    details = failureDetails(reason),
+                    details = reason.failureDetails(),
                     cause = reason,
                 ).left()
             }
@@ -132,16 +131,9 @@ class FileConfigRepository(
             cachedConfig = config
             Unit.right()
         } catch (e: Exception) {
-            ConfigurationError.saveFailed(details = failureDetails(e), cause = e).left()
+            ConfigurationError.saveFailed(details = e.failureDetails(), cause = e).left()
         }
     }
-
-    /**
-     * The details of an error caused by [failure]: the class of an I/O failure, whose message often
-     * holds only the path, or the message of any other.
-     */
-    private fun failureDetails(failure: Exception): String? =
-        if (failure is IOException) failure::class.simpleName else failure.message
 
     /**
      * Why the existing configuration file cannot be loaded, or `null` when it reads and decodes.

@@ -23,6 +23,7 @@ import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.maps.shouldContainKey
 import io.kotest.matchers.shouldBe
@@ -35,13 +36,13 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.math.BigInteger
 import java.nio.charset.Charset
-import java.nio.file.Files
 import java.security.KeyPairGenerator
 import java.util.Date
 import java.util.TimeZone
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import kotlin.io.path.createTempDirectory
 
 /**
  * Verifies [ConfigArchiveUseCase] round-trips the configuration and its scoped trust material
@@ -74,7 +75,9 @@ class ConfigArchiveUseCaseTest : FunSpec({
 		}
 	}
 
-	fun newStore() = FileTrustStore(Files.createTempDirectory("archive-test"))
+	val root = tempdir().toPath()
+
+	fun newStore() = FileTrustStore(createTempDirectory(root, "archive-test"))
 
 	fun selfSignedDer(cn: String): ByteArray {
 		val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()

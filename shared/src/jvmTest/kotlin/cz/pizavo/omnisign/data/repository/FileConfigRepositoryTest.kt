@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.data.repository
 
+import cz.pizavo.omnisign.data.denyReading
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
@@ -29,10 +30,6 @@ import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import java.nio.file.attribute.AclEntry
-import java.nio.file.attribute.AclEntryPermission
-import java.nio.file.attribute.AclEntryType
-import java.nio.file.attribute.AclFileAttributeView
 import java.nio.file.attribute.PosixFilePermission
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.CoroutineContext
@@ -40,14 +37,11 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.createSymbolicLinkPointingTo
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteIfExists
-import kotlin.io.path.fileAttributesViewOrNull
-import kotlin.io.path.getPosixFilePermissions
 import kotlin.io.path.isSymbolicLink
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.moveTo
 import kotlin.io.path.name
 import kotlin.io.path.readText
-import kotlin.io.path.setPosixFilePermissions
 import kotlin.io.path.writeText
 
 /**
@@ -84,24 +78,6 @@ class FileConfigRepositoryTest : FunSpec({
 
 	fun unreadable(path: Path): LocalizableText =
 		LocalizableText.of(MessageKey.CONFIG_UNREADABLE_NOT_OVERWRITTEN, path.toAbsolutePath().toString())
-
-	fun denyReading(path: Path): () -> Unit {
-		val acl = path.fileAttributesViewOrNull<AclFileAttributeView>()
-		if (acl != null) {
-			val entries = acl.acl
-			val user = path.fileSystem.userPrincipalLookupService.lookupPrincipalByName(System.getProperty("user.name"))
-			val deny = AclEntry.newBuilder()
-				.setType(AclEntryType.DENY)
-				.setPrincipal(user)
-				.setPermissions(AclEntryPermission.READ_DATA)
-				.build()
-			acl.acl = listOf(deny) + entries
-			return { acl.acl = entries }
-		}
-		val permissions = path.getPosixFilePermissions()
-		path.setPosixFilePermissions(setOf(PosixFilePermission.OWNER_WRITE))
-		return { path.setPosixFilePermissions(permissions) }
-	}
 
 	fun canCreateSymbolicLinks(): Boolean {
 		val probe = createTempDirectory("symlink-probe")

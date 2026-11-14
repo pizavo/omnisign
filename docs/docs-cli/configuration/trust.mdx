@@ -16,6 +16,13 @@ the resolved trust set for a profile is the union of the global scope and that p
 A subcommand that fails says why on stderr and exits with status 1, whether the file is not a
 certificate or the trust store cannot be read or written.
 
+The store keeps an index, `contents.cbor`, in the `trusted-certs` directory beside the
+configuration file. When the index cannot be read, because it is damaged or a newer version of
+OmniSign wrote it, every subcommand fails with an error that names it, and nothing in the
+directory is changed or deleted. Validation and signing meanwhile run without the directly
+trusted certificates. Restore the file from a backup, use the newer version if one wrote it, or
+move the file elsewhere to start over with no trusted certificates.
+
 ## `config trust add`
 
 Import a PEM or DER certificate into the trust store.
