@@ -15,15 +15,23 @@ import io.ktor.http.HttpMethod
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.milliseconds
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * Verifies [WebAuthApi] reads the `/auth` endpoints as *values* rather than exceptions — the reason
  * it runs on a bare client — and in particular that it tells the three refresh outcomes apart, since
  * conflating an unreachable server with a dead session would sign users out on a network blip. It
  * also checks that a tab whose refresh token another tab has spent carries on with the cookie's, but
- * only as the same user.
+ * only as the same user, and that a refresh which outlives a sign-out or a silent server leaves
+ * nothing behind.
  */
 class WebAuthApiTest : FunSpec({
 
@@ -345,15 +353,125 @@ class WebAuthApiTest : FunSpec({
 		state.refreshToken shouldBe "refresh-2"
 	}
 
-	test("revokes the session server-side and clears the tokens") {
+	test("does not offer the server a refresh token it has already refused") {
+		val state = WebAuthState()
+		state.set(accessToken = "access-1", refreshToken = "refresh-1", user = sessionUser())
+		val bodies = mutableListOf<String>()
+		val api = WebAuthApi(
+			mockApiClient(expectSuccess = false) { request ->
+				bodies += request.body.bodyText()
+				respond(
+					content = "",
+					status = if (bodies.size == 1) HttpStatusCode.Unauthorized else HttpStatusCode.TooManyRequests,
+				)
+			},
+			state,
+		)
+
+		api.refresh() shouldBe RefreshOutcome.TransientError
+		api.refresh() shouldBe RefreshOutcome.TransientError
+
+		bodies.size shouldBe 3
+		bodies[0] shouldContain "refresh-1"
+		bodies[1] shouldBe ""
+		bodies[2] shouldBe ""
+		state.refreshToken shouldBe "refresh-1"
+	}
+
+	test("gives up on a refresh the server does not answer in time") {
+		val state = WebAuthState()
+		state.set(accessToken = "access-1", refreshToken = "refresh-1", user = sessionUser())
+		val api = WebAuthApi(
+			mockApiClient(expectSuccess = false) { awaitCancellation() },
+			state,
+			requestTimeout = 50.milliseconds,
+		)
+
+		val refresh = CoroutineScope(Dispatchers.Default).async { api.refresh() }
+
+		withTimeoutOrNull(5.seconds) { refresh.await() } shouldBe RefreshOutcome.TransientError
+		state.refreshToken shouldBe "refresh-1"
+	}
+
+	test("a refresh answered after the tab signed out keeps nothing and revokes the session it obtained") {
+		val state = WebAuthState()
+		state.set(accessToken = "access-1", refreshToken = "refresh-1", user = sessionUser())
+		val refreshArrived = CompletableDeferred<Unit>()
+		val answer = CompletableDeferred<Unit>()
+		val revoked = mutableListOf<String>()
+		val api = WebAuthApi(
+			mockApiClient(expectSuccess = false) { request ->
+				if (request.url.encodedPath.endsWith("auth/logout")) {
+					revoked += request.body.bodyText()
+					respond(content = "", status = HttpStatusCode.NoContent)
+				} else {
+					refreshArrived.complete(Unit)
+					answer.await()
+					respond(content = tokenResponseJson("access-2", "refresh-2"), headers = jsonHeaders)
+				}
+			},
+			state,
+		)
+
+		coroutineScope {
+			val refresh = async { api.refresh() }
+			refreshArrived.await()
+			api.logout()
+			answer.complete(Unit)
+			refresh.await() shouldBe RefreshOutcome.SessionOver
+		}
+
+		state.accessToken shouldBe null
+		state.refreshToken shouldBe null
+		state.user shouldBe null
+		revoked.size shouldBe 2
+		revoked[0] shouldContain "refresh-1"
+		revoked[1] shouldContain "refresh-2"
+	}
+
+	test("does not fall back to the cookie once the tab has signed out") {
+		val state = WebAuthState()
+		state.set(accessToken = "access-1", refreshToken = "refresh-1", user = sessionUser())
+		val refreshArrived = CompletableDeferred<Unit>()
+		val answer = CompletableDeferred<Unit>()
+		var refreshes = 0
+		val api = WebAuthApi(
+			mockApiClient(expectSuccess = false) { request ->
+				if (request.url.encodedPath.endsWith("auth/logout")) {
+					respond(content = "", status = HttpStatusCode.NoContent)
+				} else {
+					refreshes++
+					refreshArrived.complete(Unit)
+					answer.await()
+					respond(content = "", status = HttpStatusCode.Unauthorized)
+				}
+			},
+			state,
+		)
+
+		coroutineScope {
+			val refresh = async { api.refresh() }
+			refreshArrived.await()
+			api.logout()
+			answer.complete(Unit)
+			refresh.await() shouldBe RefreshOutcome.SessionOver
+		}
+
+		refreshes shouldBe 1
+		state.refreshToken shouldBe null
+	}
+
+	test("clears the tokens before revoking the session server-side") {
 		val state = WebAuthState()
 		state.set(accessToken = "access-1", refreshToken = "refresh-1", user = sessionUser())
 		var url = ""
 		var body = ""
+		var heldWhileRevoking: String? = "unset"
 		val api = WebAuthApi(
 			mockApiClient(expectSuccess = false) { request ->
 				url = request.url.toString()
 				body = request.body.bodyText()
+				heldWhileRevoking = state.refreshToken
 				respond(content = "", status = HttpStatusCode.NoContent)
 			},
 			state,
@@ -363,6 +481,7 @@ class WebAuthApiTest : FunSpec({
 
 		url shouldContain "auth/logout"
 		body shouldContain "refresh-1"
+		heldWhileRevoking shouldBe null
 		state.accessToken shouldBe null
 		state.refreshToken shouldBe null
 	}

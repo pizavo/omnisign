@@ -27,15 +27,15 @@ import kotlinx.coroutines.sync.withLock
  *   waiter re-checks the token once it holds the lock. A *fresh* one (non-null and different) means
  *   a sibling refreshed while it waited, so it skips straight to the retry rather than rotating the
  *   refresh token a second time. No token at all means the session ended while it waited, since
- *   [onSessionExpired] clears the token, so it lets its `401` through without refreshing or
- *   reporting the end again. A refresh with no token held would resume whatever session the shared
+ *   [onSessionExpired] clears the token, or the user signed out, which clears it before telling the
+ *   server, so it lets its `401` through without refreshing or reporting the end again. A refresh with no token held would resume whatever session the shared
  *   cookie holds, another user's included, behind the login screen the app is already showing.
  *
  * The refresh call itself goes through [WebAuthApi] (the bare client), never this client, so it
  * cannot recurse back into this interceptor. Its [RefreshOutcome] then forks the response:
  * [RefreshOutcome.Refreshed] retries the request with the new token; [RefreshOutcome.SessionOver]
  * (the server rejected the refresh token, and the cookie held no session of the same user to fall
- * back on — see [WebAuthApi.refresh]) fires [onSessionExpired] so the app can switch to its login
+ * back on, or the user signed out meanwhile — see [WebAuthApi.refresh]) fires [onSessionExpired] so the app can switch to its login
  * gate, and lets the original `401` return;
  * [RefreshOutcome.TransientError] (the server was unreachable) simply lets the `401` propagate as an
  * ordinary retryable error, so a momentary blip is never mistaken for a sign-out.

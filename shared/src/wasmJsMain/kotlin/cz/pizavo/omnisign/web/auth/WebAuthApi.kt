@@ -16,7 +16,10 @@ import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentType
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.seconds
 
 /**
  * The `/auth` endpoints the web client drives directly, outside the repository layer.
@@ -35,11 +38,19 @@ import kotlin.coroutines.cancellation.CancellationException
  * @param client A bare Ktor client anchored at the server base URL with JSON negotiation, no
  *   `Authorization` default, and `expectSuccess = false`.
  * @param authState The in-memory token holder this API keeps current.
+ * @param requestTimeout How long [refresh] and [logout] wait for each answer before giving up.
  */
 class WebAuthApi(
     private val client: HttpClient,
     private val authState: WebAuthState,
+    private val requestTimeout: Duration = DEFAULT_REQUEST_TIMEOUT,
 ) {
+
+    /**
+     * The refresh token the server last refused, so that a refresh still holding it asks the
+     * cookie straight away instead of spending a request on an answer already known.
+     */
+    private var refusedToken: String? = null
 
     /**
      * List the identity providers the server offers for login.
@@ -88,78 +99,97 @@ class WebAuthApi(
      * refreshed last, and leaves its successor in the cookie. The second try picks that successor
      * up, but only when the session it resumes belongs to the user this tab was signed in as: a
      * tab never carries on as whoever has signed in elsewhere since, and reports its session over
-     * instead. Two tabs refreshing within one round trip of each other can still race for the
-     * cookie, and the one that loses is signed out.
+     * instead. That other session's token is spent all the same, because the server rotates a
+     * token before it names the user; the cookie then holds its successor, which that user's tab
+     * picks up through its own second try. A token the server has refused is not offered again: a
+     * later refresh still holding it asks the cookie straight away. Two tabs refreshing within one
+     * round trip of each other can still race for the cookie. The one that loses is signed out,
+     * and when its answer arrives last it also clears the cookie, so a reload starts at the login
+     * screen until the winner refreshes again.
      *
      * The refresh runs to the end even when the calling coroutine is cancelled: once the server
-     * has rotated the token, dropping its answer would leave this tab holding a spent one.
+     * has rotated the token, dropping its answer would leave this tab holding a spent one. Each
+     * request gives up after `requestTimeout` instead, because a refresh that cannot be cancelled
+     * holds back every other refresh while it runs.
+     *
+     * An answer is adopted only while this tab still holds the token the refresh started from.
+     * A tab signed out in the meantime ([logout] clears the tokens first) keeps nothing and does
+     * not try the cookie; the session the server issued anyway is revoked, since its cookie could
+     * otherwise outlive the sign-out and resume the session at the next reload.
      *
      * @return [RefreshOutcome.Refreshed] with [authState] repopulated on success;
      *   [RefreshOutcome.SessionOver] when the server answers `401` (unknown / expired / rotated-away
-     *   token, or the session cap is exceeded) and the cookie holds no session of the same user, or
-     *   when a refresh without a body finds no cookie (`400`); [RefreshOutcome.TransientError] when
-     *   the server is unreachable or answers otherwise — the session may still be valid, so the
-     *   caller should surface a retryable error rather than sign the user out.
+     *   token, or the session cap is exceeded) and the cookie holds no session of the same user, when
+     *   a refresh without a body finds no cookie (`400`), or when the tab was signed out meanwhile;
+     *   [RefreshOutcome.TransientError] when the server is unreachable, answers too late or answers
+     *   otherwise — the session may still be valid, so the caller should surface a retryable error
+     *   rather than sign the user out.
      */
     suspend fun refresh(): RefreshOutcome = withContext(NonCancellable) {
         val heldToken = authState.refreshToken
         val heldUser = authState.user
-        val outcome = refreshOnce(heldToken) { true }
-        if (heldToken == null || outcome != RefreshOutcome.SessionOver) {
-            outcome
+        val outcome = if (heldToken != null && heldToken == refusedToken) {
+            RefreshOutcome.SessionOver
         } else {
-            refreshOnce(token = null) { user -> heldUser != null && user.isSameUserAs(heldUser) }
+            refreshOnce(heldToken, heldToken) { true }
+        }
+        when {
+            heldToken == null || outcome != RefreshOutcome.SessionOver -> outcome
+            authState.refreshToken != heldToken -> RefreshOutcome.SessionOver
+            else -> {
+                refusedToken = heldToken
+                refreshOnce(token = null, heldToken) { user -> heldUser != null && user.isSameUserAs(heldUser) }
+            }
         }
     }
 
     /**
      * Revoke the session server-side and clear the local tokens.
      *
-     * Best-effort: the local [authState] is cleared even if the network call fails, so the UI
-     * returns to the login screen regardless. Sends the refresh token in the body because the
-     * cookie is not scoped to `/auth/logout`.
+     * The local [authState] is cleared first, before the server is told, so that no refresh can
+     * start from it meanwhile and one already running does not adopt its answer (see [refresh]).
+     * The network call is best-effort: the UI returns to the login screen regardless. Sends the
+     * refresh token in the body because the cookie is not scoped to `/auth/logout`.
      */
     suspend fun logout() {
         val token = authState.refreshToken
-        runCatching {
-            client.post("auth/logout") {
-                token?.let {
-                    contentType(ContentType.Application.Json)
-                    setBody(RefreshTokenRequest(it))
-                }
-            }
-        }
         authState.clear()
+        postToken("auth/logout", token)
     }
 
     /**
-     * Post one refresh and store the pair it returns when [accept] takes the user it names.
+     * Post one refresh and store the pair it returns when [accept] takes the user it names and
+     * this tab still holds [heldToken].
      *
      * @param token The refresh token to send in the body, or `null` to send none, so the server
      *   reads the cookie.
+     * @param heldToken The refresh token this tab held when the refresh began. A pair that comes
+     *   back once the tab holds another, or none, is revoked rather than stored.
      * @param accept Whether the session the server hands back may replace the one this tab holds.
      * @return What this attempt alone says about the session; a `400` counts as the end of it only
      *   without a body, since only then does it mean the server found no cookie either.
      */
-    private suspend fun refreshOnce(token: String?, accept: (SessionResponse) -> Boolean): RefreshOutcome {
-        val response = try {
-            client.post("auth/refresh") {
-                token?.let {
-                    contentType(ContentType.Application.Json)
-                    setBody(RefreshTokenRequest(it))
-                }
-            }
-        } catch (e: CancellationException) {
-            throw e
-        } catch (_: Throwable) {
-            return RefreshOutcome.TransientError
-        }
+    private suspend fun refreshOnce(
+        token: String?,
+        heldToken: String?,
+        accept: (SessionResponse) -> Boolean,
+    ): RefreshOutcome {
+        val response = postToken("auth/refresh", token) ?: return RefreshOutcome.TransientError
         return when (response.status) {
             HttpStatusCode.OK -> {
                 val tokens = readTokens(response) ?: return RefreshOutcome.TransientError
-                if (!accept(tokens.user)) return RefreshOutcome.SessionOver
-                store(tokens)
-                RefreshOutcome.Refreshed
+                when {
+                    !accept(tokens.user) -> RefreshOutcome.SessionOver
+                    authState.refreshToken != heldToken -> {
+                        postToken("auth/logout", tokens.refreshToken)
+                        RefreshOutcome.SessionOver
+                    }
+
+                    else -> {
+                        store(tokens)
+                        RefreshOutcome.Refreshed
+                    }
+                }
             }
 
             HttpStatusCode.Unauthorized -> RefreshOutcome.SessionOver
@@ -169,6 +199,28 @@ class WebAuthApi(
             else -> RefreshOutcome.TransientError
         }
     }
+
+    /**
+     * Post to [path] with [token] in the body, or with no body when it is `null`, giving up once
+     * `requestTimeout` has passed.
+     *
+     * @return The response, or `null` when the server could not be reached or did not answer in time.
+     */
+    private suspend fun postToken(path: String, token: String?): HttpResponse? =
+        try {
+            withTimeoutOrNull(requestTimeout) {
+                client.post(path) {
+                    token?.let {
+                        contentType(ContentType.Application.Json)
+                        setBody(RefreshTokenRequest(it))
+                    }
+                }
+            }
+        } catch (e: CancellationException) {
+            throw e
+        } catch (_: Throwable) {
+            null
+        }
 
     /**
      * Read the [TokenResponse] of a `200` [response].
@@ -198,4 +250,12 @@ class WebAuthApi(
      */
     private fun SessionResponse.isSameUserAs(other: SessionResponse): Boolean =
         userId == other.userId && providerName == other.providerName
+
+    companion object {
+        /**
+         * How long [refresh] and [logout] wait for each answer by default. Generous, since an
+         * answer normally takes one round trip; it only bounds a server that has stopped answering.
+         */
+        val DEFAULT_REQUEST_TIMEOUT: Duration = 30.seconds
+    }
 }
