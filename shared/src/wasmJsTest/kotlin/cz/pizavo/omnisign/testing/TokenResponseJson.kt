@@ -12,17 +12,17 @@ import kotlinx.serialization.json.Json
  *
  * @param accessToken The short-lived JWT the client attaches as `Authorization: Bearer …`.
  * @param refreshToken The rotated refresh token the client spends on the next refresh.
+ * @param user The user the server issued the pair to.
  */
-fun tokenResponseJson(accessToken: String, refreshToken: String): String = Json.encodeToString(
+fun tokenResponseJson(
+	accessToken: String,
+	refreshToken: String,
+	user: SessionResponse = sessionUser(),
+): String = Json.encodeToString(
 	TokenResponse(
 		token = accessToken,
 		refreshToken = refreshToken,
 		expiresIn = 300,
-		user = SessionResponse(
-			userId = "user-1",
-			email = "signer@example.com",
-			displayName = "Signer",
-			providerName = "oidc",
-		),
+		user = user,
 	),
 )

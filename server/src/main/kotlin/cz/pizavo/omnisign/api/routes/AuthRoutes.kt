@@ -71,7 +71,7 @@ private val logger = KotlinLogging.logger {}
  *   a real session, answering exactly as the callback's JSON branch would. Rejects with
  *   `401 INVALID_HANDOFF_CODE` when the code is unknown / expired / already-redeemed / not
  *   bound to the presented verifier, `400 MISSING_HANDOFF_CODE` on a malformed body, and
- *   `503 AUTH_NOT_CONFIGURED` when no auth providers are configured.
+ *   `503 AUTH_NOT_CONFIGURED` when the server configuration has no `auth` section.
  *
  * - `GET /auth/session` — returns [SessionResponse] for the caller identified by a valid
  *   JWT Bearer token, or `401 Unauthorized` when no valid token is present.
@@ -84,8 +84,8 @@ private val logger = KotlinLogging.logger {}
  *   Rejects with `401 SESSION_EXPIRED` when the total session age exceeds
  *   [cz.pizavo.omnisign.config.SessionConfig.maxSessionSeconds], `401 INVALID_REFRESH_TOKEN`
  *   when the token is unknown / expired / already-consumed, `400 MISSING_REFRESH_TOKEN` when
- *   neither channel carries one, `503 AUTH_NOT_CONFIGURED` when no auth providers are
- *   configured.
+ *   neither channel carries one, `503 AUTH_NOT_CONFIGURED` when the server configuration has
+ *   no `auth` section.
  *
  * - `POST /auth/logout` — accepts a [RefreshTokenRequest] body, deletes that token from the
  *   store, and clears the refresh cookie. Idempotent — always returns `204 No Content`.
@@ -542,8 +542,10 @@ private fun unverifiedEmailHint(provider: OidcProviderConfig, emailVerified: Boo
  * Because refresh rotates the token, the two copies would diverge the moment only one of them
  * were updated: a browser that refreshed from memory would leave a consumed token in its cookie
  * and get logged out on its next reload, for no reason it could see. Writing both on every
- * issue keeps them the same value at every point in the sequence, so it never matters which one
- * the client comes back with.
+ * issue keeps them the same value for the client that refreshed. A browser's tabs share the one
+ * cookie but each keeps its own copy in memory, so a tab that resumes from the cookie spends the
+ * copy held by the tab that refreshed last. That tab's web client then refreshes once more without
+ * a body, so this route reads the cookie (see `WebAuthApi.refresh` in the web client).
  *
  * @param secureCookies Whether the refresh cookie carries `Secure` — see [setRefreshCookie].
  */
