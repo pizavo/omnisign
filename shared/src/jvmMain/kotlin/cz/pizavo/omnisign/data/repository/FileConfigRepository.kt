@@ -31,7 +31,6 @@ import kotlin.io.path.isWritable
 import kotlin.io.path.moveTo
 import kotlin.io.path.name
 import kotlin.io.path.readSymbolicLink
-import kotlin.io.path.readText
 
 /**
  * JVM implementation of ConfigRepository using JSON files.
@@ -42,9 +41,9 @@ import kotlin.io.path.readText
  * same directory: a reader in any process sees the previous configuration or the new one, never a
  * half-written file, and a crash or a full disk during a save leaves the previous file in place.
  * A configuration file that is a symbolic link stays one: the save replaces the file it leads to.
- * Windows refuses to replace a file that another program holds open, so a refused replace is tried
- * again for a moment before the save fails. As the temporary file is created beside the file it
- * replaces, a save needs write access to that directory, not only to the file.
+ * Windows refuses an atomic replace of a file that another program holds open, so a refused
+ * replace is tried again for a moment before the save fails. As the temporary file is created
+ * beside the file it replaces, a save needs write access to that directory, not only to the file.
  *
  * A configuration file that exists but cannot be decoded — a hand edit left it invalid, a write by
  * an older build was cut short, or a newer build wrote a value this one does not know — is never
@@ -85,7 +84,7 @@ class FileConfigRepository(
                     saveConfigInternal(defaultConfig)
                     defaultConfig.right()
                 } else {
-                    val config = json.decodeFromString<AppConfig>(readConfigText())
+                    val config = json.decodeFromString<AppConfig>(configPath.readConfigText())
                     cachedConfig = config
                     config.right()
                 }
@@ -97,7 +96,9 @@ class FileConfigRepository(
 
     /**
      * Save [config] over the configuration file, unless the file exists and cannot be read or
-     * decoded, or is read-only: either way the file is left as it is and an error says why.
+     * decoded, or is read-only: either way the file is left as it is and an error says why. A save
+     * that fails on the way gives the exception's class as the error's details and the exception as
+     * its cause, as the message of a refused replace on Windows holds only the two paths.
      */
     override suspend fun saveConfig(config: AppConfig): OperationResult<Unit> = withContext(ioDispatcher) {
         mutex.withLock {
@@ -127,7 +128,7 @@ class FileConfigRepository(
             cachedConfig = config
             Unit.right()
         } catch (e: Exception) {
-            ConfigurationError.saveFailed(details = e.message, cause = e).left()
+            ConfigurationError.saveFailed(details = e::class.simpleName, cause = e).left()
         }
     }
 
@@ -136,17 +137,11 @@ class FileConfigRepository(
      */
     private fun unreadableReason(): Exception? =
         try {
-            json.decodeFromString<AppConfig>(readConfigText())
+            json.decodeFromString<AppConfig>(configPath.readConfigText())
             null
         } catch (e: Exception) {
             e
         }
-
-    /**
-     * The text of the configuration file, without the byte order mark that some Windows editors
-     * write at the start of a UTF-8 file and that the JSON decoder would refuse.
-     */
-    private fun readConfigText(): String = configPath.readText().removePrefix(BYTE_ORDER_MARK)
 
     /**
      * Replace the configuration file with [bytes] in one step.
@@ -181,10 +176,10 @@ class FileConfigRepository(
     /**
      * Move [replacement] over [target], atomically where the file system supports that.
      *
-     * Windows refuses to replace a file that another program holds open, and a reader of the
-     * configuration in another OmniSign process, a virus scanner or a search indexer can hold it for
-     * a moment. A refused move is therefore tried again after a pause that doubles each time, up to
-     * [REPLACE_ATTEMPTS] attempts in all; the last refusal is thrown.
+     * Windows refuses an atomic replace of a file that another program holds open, and a reader of
+     * the configuration in another OmniSign process, a virus scanner or a search indexer can hold it
+     * for a moment. A refused move is therefore tried again after a pause that doubles each time, up
+     * to [REPLACE_ATTEMPTS] attempts in all; the last refusal is thrown.
      */
     private fun replace(target: Path, replacement: Path) {
         var attempt = 1
@@ -268,9 +263,6 @@ class FileConfigRepository(
 
         /** The pause before the first retry of a refused replace, in milliseconds; it doubles after each. */
         private const val FIRST_RETRY_DELAY_MS = 25L
-
-        /** The byte order mark a UTF-8 file may start with. */
-        private const val BYTE_ORDER_MARK = "\uFEFF"
 
         /**
          * Get the default configuration file path.

@@ -25,7 +25,7 @@ import kotlin.io.path.writeText
  * Verifies [MigrateTrustedCertificatesUseCase] reads legacy inline trusted certificates straight
  * from the on-disk config, imports them into the [FileTrustStore] under the correct scope, clears
  * the inline lists, and is a no-op when there is nothing to migrate. A config the typed model rejects
- * is never replaced by the cleared defaults.
+ * is never replaced by the cleared defaults, and one that starts with a byte order mark is migrated.
  */
 class MigrateTrustedCertificatesUseCaseTest : FunSpec({
 
@@ -83,6 +83,22 @@ class MigrateTrustedCertificatesUseCaseTest : FunSpec({
 		store.list(TrustScope.Profile("p1")).shouldBeRight().single().type shouldBe TrustedCertificateType.TSA
 		repo.getCurrentConfig().global.validation.trustedCertificates.shouldBeEmpty()
 		repo.getCurrentConfig().profiles.getValue("p1").validation!!.trustedCertificates.shouldBeEmpty()
+	}
+
+	test("inline certs in a config file that starts with a byte order mark are migrated") {
+		val dir = Files.createTempDirectory("migrate-test")
+		val configPath = dir.resolve("config.json")
+		val caB64 = selfSignedDerBase64("Root")
+		configPath.writeText(
+			"\uFEFF" + """{ "global": { "validation": { "trustedCertificates": [ { "name": "ca", "type": "CA", "certificateBase64": "$caB64" } ] } } }""",
+		)
+		val repo = FileConfigRepository(configPath)
+		val store = FileTrustStore(dir.resolve("trusted-certs"))
+
+		MigrateTrustedCertificatesUseCase(repo, store, configPath)().shouldBeRight() shouldBe 1
+
+		store.list(TrustScope.Global).shouldBeRight().single().type shouldBe TrustedCertificateType.CA
+		repo.getCurrentConfig().global.validation.trustedCertificates.shouldBeEmpty()
 	}
 
 	test("a missing config file is a no-op") {

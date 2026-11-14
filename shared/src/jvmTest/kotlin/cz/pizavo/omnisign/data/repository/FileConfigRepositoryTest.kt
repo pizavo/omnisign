@@ -263,7 +263,7 @@ class FileConfigRepositoryTest : FunSpec({
 		reloaded.global.defaultHashAlgorithm shouldBe HashAlgorithm.SHA512
 	}
 
-	test("a save waits for another program to let go of the config file, which Windows does not replace while it is open").config(
+	test("a save waits for another program to let go of the config file, which Windows does not atomically replace while it is open").config(
 		enabledIf = { System.getProperty("os.name").lowercase().contains("win") },
 	) {
 		val path = Path.of(tmpDir.absolutePath, "held-open", "config.json")
@@ -299,6 +299,8 @@ class FileConfigRepositoryTest : FunSpec({
 
 		error.shouldBeInstanceOf<ConfigurationError.SaveFailed>()
 		error.text shouldBe LocalizableText.of(MessageKey.CONFIG_SAVE_FAILED)
+		val cause = error.cause.shouldBeInstanceOf<FileSystemException>()
+		error.details shouldBe cause::class.simpleName
 		path.readText() shouldBe before
 		path.parent.listDirectoryEntries().map { it.name } shouldContainExactly listOf("config.json")
 	}
