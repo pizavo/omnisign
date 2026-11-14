@@ -45,7 +45,8 @@ private val logger = KotlinLogging.logger {}
  *    (URL from [OidcDiscoveryDocument.jwksUri]) and the resulting public key is used
  *    to verify the signature. Supported algorithms: RS256/RS384/RS512 and
  *    ES256/ES384/ES512. `none` and HMAC variants are rejected. A key whose JWKS entry
- *    names an `issuer`, as Entra ID's do, signs only for that issuer.
+ *    names an `issuer`, as Entra ID's do, signs only for that issuer, and one whose `issuer`
+ *    member is not a string signs for none.
  * 2. **`iss` claim** — must equal [OidcDiscoveryDocument.issuer] (the IdP's canonical
  *    issuer URL declared in its discovery document). Entra ID's multi-tenant documents
  *    (`common`, `organizations`) declare the template
@@ -53,9 +54,10 @@ private val logger = KotlinLogging.logger {}
  *    which must be a GUID, takes the placeholder's place, so the token must name its own
  *    tenant as its issuer.
  * 3. **`aud` claim** — must contain [OidcProviderConfig.clientId]. An `azp` claim, which a
- *    token for several audiences must carry, must name that client too.
- * 4. **`exp` and `iat` claims** — must be present, and `exp` in the future (30 seconds of
- *    clock skew allowed).
+ *    token for several audiences must carry, must be a string naming that client too.
+ * 4. **`exp` and `iat` claims** — must be present and not null, and `exp` in the future
+ *    (30 seconds of clock skew allowed). java-jwt's date checks let a null date pass, so a
+ *    null one is refused here.
  * 5. **`sub` claim** — must be present; returned to the caller for cross-checking
  *    against the UserInfo `sub` so any tampering of the UserInfo response is detected.
  *
@@ -163,8 +165,8 @@ class IdTokenVerifier(
             JWT.require(algorithm)
                 .withIssuer(expectedIssuer)
                 .withAudience(expectedAudience)
-                .withClaimPresence("exp")
-                .withClaimPresence("iat")
+                .withClaim("exp") { claim, _ -> !claim.isNull }
+                .withClaim("iat") { claim, _ -> !claim.isNull }
                 .acceptLeeway(CLOCK_SKEW_LEEWAY_SECONDS)
                 .build()
                 .verify(idTokenString)
@@ -233,15 +235,24 @@ class IdTokenVerifier(
      * the `{tenantid}` template, with keys for personal Microsoft accounts, whose `issuer`
      * names that one tenant. Microsoft asks relying parties to hold each key to its issuer,
      * so that a key published for one kind of account cannot vouch for the other. A key
-     * whose entry names no issuer, as most IdPs publish them, is not restricted.
+     * whose entry has no `issuer` member, as most IdPs publish them, is not restricted. One
+     * whose member is not a string, such as an array or `null`, signs for no issuer: reading
+     * it as absent would lift the restriction it was meant to carry.
      *
      * @param jwk The JWKS entry whose key verified the signature.
      * @param decoded The verified token.
-     * @throws IdTokenVerificationException.ClaimInvalid when the key's issuer, its
-     *   placeholder filled with the token's tenant, is not the token's `iss`.
+     * @throws IdTokenVerificationException.ClaimInvalid when the key's `issuer` member is not
+     *   a string, or the issuer it names, its placeholder filled with the token's tenant, is
+     *   not the token's `iss`.
      */
     private fun requireKeyIssuedFor(jwk: Jwk, decoded: DecodedJWT) {
-        val keyIssuer = jwk.additionalAttributes?.get(JWK_ISSUER_ATTRIBUTE) as? String ?: return
+        val attributes = jwk.additionalAttributes.orEmpty()
+        if (JWK_ISSUER_ATTRIBUTE !in attributes) return
+        val keyIssuer = attributes[JWK_ISSUER_ATTRIBUTE] as? String
+            ?: throw IdTokenVerificationException.ClaimInvalid(
+                "iss",
+                "the signing key '${jwk.id}' names its issuer in a member that is not a string",
+            )
         if (withTenantOf(decoded, keyIssuer) != decoded.issuer) {
             throw IdTokenVerificationException.ClaimInvalid(
                 "iss",
@@ -254,22 +265,25 @@ class IdTokenVerifier(
      * Check the `azp` (authorized party) claim as OpenID Connect Core §3.1.3.7 asks: a token
      * for several audiences must carry it, and when present it must name this client.
      *
+     * Only an absent claim counts as absent. One that is present but not a string, such as an
+     * array or `null`, names no client, so it is refused rather than read as missing.
+     *
      * @param decoded The verified token.
      * @param clientId This server's client ID at the IdP.
-     * @throws IdTokenVerificationException.ClaimInvalid when `azp` names another client, or is
-     *   missing from a token for several audiences.
+     * @throws IdTokenVerificationException.ClaimInvalid when `azp` is anything but this
+     *   client's ID, or is missing from a token for several audiences.
      */
     private fun requireAuthorizedParty(decoded: DecodedJWT, clientId: String) {
-        val authorizedParty = decoded.getClaim("azp").asString()
-        if (authorizedParty == null) {
+        val authorizedParty = decoded.getClaim("azp")
+        if (authorizedParty.isMissing) {
             if (decoded.audience.orEmpty().size > 1) {
                 throw IdTokenVerificationException.ClaimInvalid(
                     "azp",
                     "claim is missing from a token for several audiences",
                 )
             }
-        } else if (authorizedParty != clientId) {
-            throw IdTokenVerificationException.ClaimInvalid("azp", "names another client")
+        } else if (authorizedParty.asString() != clientId) {
+            throw IdTokenVerificationException.ClaimInvalid("azp", "does not name this client")
         }
     }
 

@@ -9,6 +9,7 @@ import com.auth0.jwt.algorithms.Algorithm
 import cz.pizavo.omnisign.config.OidcProviderConfig
 import cz.pizavo.omnisign.config.SsoProviderPreset
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
@@ -63,13 +64,13 @@ class IdTokenVerifierTest : FunSpec({
     }
 
     /**
-     * A JWKS entry publishing [key] under [kid], naming [issuer] as the issuer it signs for,
-     * as Entra ID's entries do, or no issuer.
+     * A JWKS entry publishing [key] under [kid], with an `issuer` member holding [issuer] when
+     * [hasIssuer], as Entra ID's entries name the issuer a key signs for, or no such member.
      */
-    fun rsaJwk(kid: String, key: RSAPublicKey, issuer: String? = null): Jwk {
+    fun rsaJwk(kid: String, key: RSAPublicKey, issuer: Any? = null, hasIssuer: Boolean = issuer != null): Jwk {
         fun base64Url(value: BigInteger): String = Base64.getUrlEncoder().withoutPadding()
             .encodeToString(value.toByteArray().dropWhile { it == 0.toByte() }.toByteArray())
-        val values = mutableMapOf<String, Any>(
+        val values = mutableMapOf<String, Any?>(
             "kid" to kid,
             "kty" to "RSA",
             "alg" to "RS256",
@@ -77,7 +78,7 @@ class IdTokenVerifierTest : FunSpec({
             "n" to base64Url(key.modulus),
             "e" to base64Url(key.publicExponent),
         )
-        if (issuer != null) values["issuer"] = issuer
+        if (hasIssuer) values["issuer"] = issuer
         return Jwk.fromValues(values)
     }
 
@@ -118,6 +119,7 @@ class IdTokenVerifierTest : FunSpec({
                 is Boolean -> builder.withClaim(name, value)
                 is String -> builder.withClaim(name, value)
                 is Int -> builder.withClaim(name, value)
+                is List<*> -> builder.withClaim(name, value)
                 else -> error("unsupported test claim type for '$name'")
             }
         }
@@ -261,6 +263,21 @@ class IdTokenVerifierTest : FunSpec({
         ex.message shouldContain "iat"
     }
 
+    test("verify rejects an id_token whose exp or iat is JSON null, which java-jwt's date checks let pass") {
+        val tokens = mapOf(
+            "exp" to signValid(expiresAt = null, nullClaims = listOf("exp")),
+            "iat" to signValid(issuedAt = null, nullClaims = listOf("iat")),
+        )
+        tokens.forEach { (claim, token) ->
+            withClue(claim) {
+                val ex = shouldThrow<IdTokenVerificationException.VerificationFailed> {
+                    verifier.verify(provider, token)
+                }
+                ex.message shouldContain "'$claim'"
+            }
+        }
+    }
+
     test("verify accepts an azp claim that names this client") {
         val token = signValid(flags = mapOf("azp" to provider.clientId))
 
@@ -272,6 +289,22 @@ class IdTokenVerifierTest : FunSpec({
             verifier.verify(provider, signValid(flags = mapOf("azp" to "some-other-client")))
         }
         ex.claim shouldBe "azp"
+    }
+
+    test("verify rejects an azp claim that is not a string rather than reading it as absent") {
+        val tokens = mapOf(
+            "an array" to signValid(flags = mapOf("azp" to listOf(provider.clientId))),
+            "a number" to signValid(flags = mapOf("azp" to 42)),
+            "null" to signValid(nullClaims = listOf("azp")),
+        )
+        tokens.forEach { (kind, token) ->
+            withClue(kind) {
+                val ex = shouldThrow<IdTokenVerificationException.ClaimInvalid> {
+                    verifier.verify(provider, token)
+                }
+                ex.claim shouldBe "azp"
+            }
+        }
     }
 
     test("verify rejects a token for several audiences that carries no azp") {
@@ -380,6 +413,27 @@ class IdTokenVerifierTest : FunSpec({
             entra.verify(microsoftProvider, signFromTenant(contosoTenant))
         }
         ex.claim shouldBe "iss"
+    }
+
+    test("verify refuses a key whose issuer member is not a string rather than leaving it unrestricted") {
+        val entraDiscovery = mockk<OidcDiscoveryService>().also {
+            coEvery { it.discover(any()) } returns discoveryDoc.copy(issuer = tenantTemplate)
+        }
+        val members = mapOf(
+            "an array" to listOf(tenantIssuer(personalAccountsTenant)),
+            "a number" to 42,
+            "null" to null,
+        )
+        members.forEach { (kind, member) ->
+            withClue(kind) {
+                val keys = jwkProviderOf(rsaJwk(testKid, publicKey, member, hasIssuer = true))
+                val entra = IdTokenVerifier(entraDiscovery, jwkProviderFactory = { _ -> keys })
+                val ex = shouldThrow<IdTokenVerificationException.ClaimInvalid> {
+                    entra.verify(microsoftProvider, signFromTenant(contosoTenant))
+                }
+                ex.claim shouldBe "iss"
+            }
+        }
     }
 
     test("verify lets a key published for every tenant sign for the one tenant a fixed issuer names") {
