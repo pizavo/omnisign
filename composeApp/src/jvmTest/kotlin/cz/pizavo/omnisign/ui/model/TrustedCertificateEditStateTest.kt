@@ -11,6 +11,7 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
+import kotlinx.datetime.LocalDate
 
 /**
  * Unit tests verifying that trusted certificates never round-trip through the *configuration*.
@@ -18,7 +19,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
  * Directly-trusted certificates live in the app-managed trust store, not in the config. The edit
  * states stage certificate changes for the store separately (baseline + pending add/remove), but
  * [GlobalConfigEditState.from]/[ProfileEditState.from] must ignore any certificates present in a
- * config's validation block, and `toGlobalConfig`/`toProfileConfig` must never write certificates
+ * config's validation block, and [GlobalConfigEditState.appliedTo]/`toProfileConfig` must never write certificates
  * back into the config.
  */
 class TrustedCertificateEditStateTest : FunSpec({
@@ -78,12 +79,12 @@ class TrustedCertificateEditStateTest : FunSpec({
             state.customTrustedLists shouldHaveSize 1
         }
 
-        test("toGlobalConfig() never writes trusted certificates into the config") {
+        test("appliedTo() never writes trusted certificates into the config") {
             val state = GlobalConfigEditState(
                 customTrustedLists = listOf(CustomTrustedListConfig(name = "tl", source = "https://x/tl.xml")),
             )
 
-            val config = state.toGlobalConfig()
+            val config = state.appliedTo(GlobalConfig(), LocalDate(2026, 11, 14))
 
             config.validation.trustedCertificates.shouldBeEmpty()
             config.validation.customTrustedLists shouldHaveSize 1

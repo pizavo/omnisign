@@ -346,7 +346,7 @@ class ProfileViewModel(
                         null
                     }
                     if (certError != null) {
-                        _state.update { it.copy(editState = editState.copy(saving = false, error = certError)) }
+                        _state.update { it.copy(editState = editState.copy(saving = false, error = certError.message)) }
                     } else {
                         _initialEditState.value = null
                         _state.update {

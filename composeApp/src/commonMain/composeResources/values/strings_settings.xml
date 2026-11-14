@@ -22,11 +22,13 @@
 	<string name="settings_validation_use_eu_lotl">Use EU List of Trusted Lists</string>
 	<string name="settings_validation_alert_not_eu_lotl_tooltip">Flag signatures whose trust anchor is not on the EU LOTL. Requires the EU List of Trusted Lists to be enabled.</string>
 	<string name="settings_validation_tl_refresh_interval_label">Trusted list refresh interval (hours)</string>
+	<string name="settings_validation_tl_refresh_interval_range_error">Enter a whole number of hours (1 or more).</string>
 	<string name="settings_validation_trusted_lists_label">Trusted lists</string>
 	<string name="settings_validation_refresh_tl_tooltip">Refresh trusted lists now</string>
 	<string name="settings_algo_expiration_level_label">Expiration level (before policy update)</string>
 	<string name="settings_algo_expiration_level_after_label">Expiration level (after policy update)</string>
 	<string name="settings_pkcs11_probe_timeout_label">Probe timeout (seconds, 1-120)</string>
+	<string name="settings_pkcs11_probe_timeout_range_error">Enter a whole number of seconds from 1 to 120.</string>
 	<string name="settings_pkcs11_drop_dir_hint">Tip: drop a PKCS#11 library file (.dll / .so / .dylib) into the directory below and it will be discovered automatically — no entry needed here.</string>
 	<string name="settings_pkcs11_no_libraries">No custom PKCS#11 libraries registered.</string>
 	<string name="settings_pkcs11_add_name_label">Name</string>
@@ -39,6 +41,10 @@
 	<string name="settings_error_scheduler_time_invalid">Scheduler time is invalid — hour must be 0–23, minute must be 0–59.</string>
 	<string name="settings_error_refresh_failed">Trusted-list refresh failed: %1$s</string>
 	<string name="settings_error_scheduler_install_failed">Failed to install OS scheduler: %1$s</string>
+	<string name="settings_error_pkcs11_probe_timeout_invalid">The PKCS#11 probe timeout must be a whole number of seconds from 1 to 120.</string>
+	<string name="settings_error_tl_refresh_interval_invalid">The trusted list refresh interval must be a whole number of hours, 1 or more.</string>
+	<string name="settings_error_staleness_threshold_invalid">The days before a stalled renewal is reported must be a whole number, 1 or more.</string>
+	<string name="settings_error_reason_unknown">unknown error</string>
 	<string name="settings_certadd_already_trusted">This certificate is already trusted in the global scope.</string>
 	<string name="settings_validation_tl_last_refreshed">Last refreshed: %1$s</string>
 	<string name="settings_validation_tl_last_refreshed_never">Last refreshed: never</string>

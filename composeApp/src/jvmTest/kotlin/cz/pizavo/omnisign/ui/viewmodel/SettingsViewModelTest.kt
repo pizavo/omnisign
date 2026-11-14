@@ -3,15 +3,18 @@ package cz.pizavo.omnisign.ui.viewmodel
 import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.*
+import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.error.TrustStoreError
 import cz.pizavo.omnisign.domain.model.result.RenewalRunOutcome
 import cz.pizavo.omnisign.domain.model.result.RenewalRunRecord
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
+import cz.pizavo.omnisign.domain.model.value.Sensitive
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.port.SchedulerPort
@@ -36,6 +39,7 @@ import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.*
+import kotlinx.datetime.LocalDate
 
 /**
  * Unit tests for [SettingsViewModel].
@@ -160,6 +164,44 @@ class SettingsViewModelTest : FunSpec({
         }
     }
 
+    test("save applies the dialog to the configuration as it is saved, keeping the expiry overrides the CLI set and stamping a level change") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            val editedMeanwhile = baseConfig.copy(
+                global = baseGlobal.copy(
+                    validation = ValidationConfig(
+                        algorithmConstraints = AlgorithmConstraintsConfig(
+                            policyUpdateDate = "2026-11-12",
+                            expirationDateOverrides = mapOf("RIPEMD160" to "2030-01-01"),
+                        ),
+                    ),
+                ),
+            )
+            coEvery { configRepository.getCurrentConfig() } returns editedMeanwhile
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+
+            val vm = SettingsViewModel(
+                getConfig,
+                setGlobalConfig,
+                credentialStore = credentialStore,
+                ioDispatcher = testDispatcher,
+                today = { LocalDate(2026, 11, 14) },
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.updateState { it.copy(algoExpirationLevel = AlgorithmConstraintLevel.WARN) }
+            vm.save()
+            advanceUntilIdle()
+
+            val constraints = saved.captured.global.validation.algorithmConstraints
+            constraints.expirationDateOverrides shouldBe mapOf("RIPEMD160" to "2030-01-01")
+            constraints.expirationLevel shouldBe AlgorithmConstraintLevel.WARN
+            constraints.policyUpdateDate shouldBe "2026-11-14"
+        }
+    }
+
     test("save surfaces error when disabling the default hash algorithm") {
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
@@ -201,7 +243,7 @@ class SettingsViewModelTest : FunSpec({
             vm.updateState {
                 it.copy(
                     timestampUsername = "user1",
-                    timestampPassword = "secret123",
+                    timestampPassword = Sensitive("secret123"),
                 )
             }
 
@@ -229,7 +271,7 @@ class SettingsViewModelTest : FunSpec({
                     timestampEnabled = true,
                     timestampUrl = "https://tsa.example.com",
                     timestampUsername = "user1",
-                    timestampPassword = "secret123",
+                    timestampPassword = Sensitive("secret123"),
                     defaultHashAlgorithm = HashAlgorithm.SHA384,
                 )
             }
@@ -245,6 +287,167 @@ class SettingsViewModelTest : FunSpec({
         }
     }
 
+    test("save clears the TSA password from the form once the credential store keeps it") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.updateState {
+                it.copy(
+                    timestampEnabled = true,
+                    timestampUrl = "https://tsa.example.com",
+                    timestampUsername = "user1",
+                    timestampPassword = Sensitive("secret123"),
+                )
+            }
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            advanceUntilIdle()
+
+            successCalled shouldBe true
+            vm.state.value.timestampPassword shouldBe Sensitive("")
+            vm.state.value.hasStoredPassword shouldBe true
+            vm.hasChanges.value shouldBe false
+        }
+    }
+
+    test("an edit made while the save runs stays in the form, unsaved, and keeps the dialog open") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            val saved = mutableListOf<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
+            vm.load()
+            advanceUntilIdle()
+            val savedOcspTimeout = vm.state.value.ocspTimeout
+
+            vm.updateState {
+                it.copy(
+                    timestampEnabled = true,
+                    timestampUrl = "https://tsa.example.com",
+                    timestampUsername = "user1",
+                    timestampPassword = Sensitive("secret123"),
+                )
+            }
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            vm.updateState { it.copy(ocspTimeout = "9000") }
+            advanceUntilIdle()
+
+            successCalled shouldBe false
+            saved.first().global.ocsp.timeout.toString() shouldBe savedOcspTimeout
+            vm.state.value.ocspTimeout shouldBe "9000"
+            vm.state.value.timestampPassword shouldBe Sensitive("")
+            vm.state.value.saving shouldBe false
+            vm.hasChanges.value shouldBe true
+        }
+    }
+
+    test("save keeps a TSA password changed while the save runs, as an unsaved change") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = testDispatcher)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.updateState {
+                it.copy(
+                    timestampEnabled = true,
+                    timestampUrl = "https://tsa.example.com",
+                    timestampUsername = "user1",
+                    timestampPassword = Sensitive("secret123"),
+                )
+            }
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            vm.updateState { it.copy(timestampPassword = Sensitive("secret456")) }
+            advanceUntilIdle()
+
+            successCalled shouldBe false
+            verify { credentialStore.setPassword("omnisign-tsa", "user1", "secret123") }
+            vm.state.value.timestampPassword shouldBe Sensitive("secret456")
+            vm.state.value.hasStoredPassword shouldBe true
+            vm.hasChanges.value shouldBe true
+        }
+    }
+
+    test("save shows the error, leaves the scheduler alone and keeps the dialog open when the renewal jobs cannot be written") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            val failure = ConfigurationError.saveFailed("The disk is full")
+            coEvery { configRepository.saveConfig(any()) } returnsMany listOf(Unit.right(), failure.left())
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+                ioDispatcher = testDispatcher,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
+            vm.updateState { it.copy(renewalJobs = listOf(job)) }
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            advanceUntilIdle()
+
+            successCalled shouldBe false
+            coVerify(exactly = 2) { configRepository.saveConfig(any()) }
+            verify(exactly = 0) { schedulerPort.install(any(), any(), any(), any()) }
+            verify(exactly = 0) { schedulerPort.uninstall() }
+            vm.state.value.error shouldBe SettingsError.Domain(failure.text)
+            vm.state.value.saving shouldBe false
+            vm.hasChanges.value shouldBe true
+        }
+    }
+
+    test("save refuses a field out of its range, showing its error and saving nothing") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, ioDispatcher = testDispatcher)
+            vm.load()
+            advanceUntilIdle()
+            val loaded = vm.state.value
+
+            listOf<Pair<(GlobalConfigEditState) -> GlobalConfigEditState, SettingsError>>(
+                { s: GlobalConfigEditState -> s.copy(pkcs11ProbeTimeout = "500") } to SettingsError.Pkcs11ProbeTimeoutInvalid,
+                { s: GlobalConfigEditState -> s.copy(trustedListRefreshInterval = "0") } to
+                        SettingsError.TrustedListRefreshIntervalInvalid,
+                { s: GlobalConfigEditState -> s.copy(stalenessNotificationEnabled = true, stalenessThresholdDays = "0") } to
+                        SettingsError.StalenessThresholdInvalid,
+            ).forEach { (edit, expected) ->
+                vm.updateState { edit(loaded) }
+
+                var successCalled = false
+                vm.save(onSuccess = { successCalled = true })
+                advanceUntilIdle()
+
+                successCalled shouldBe false
+                vm.state.value.error shouldBe expected
+                vm.state.value.saving shouldBe false
+            }
+            coVerify(exactly = 0) { configRepository.saveConfig(any()) }
+        }
+    }
+
     test("save stores the TSA password on the IO dispatcher, and saves only after it") {
         runTest(testDispatcher) {
             coEvery { configRepository.getCurrentConfig() } returns baseConfig
@@ -252,7 +455,7 @@ class SettingsViewModelTest : FunSpec({
             val keyringDispatcher = StandardTestDispatcher(TestCoroutineScheduler())
 
             val vm = SettingsViewModel(getConfig, setGlobalConfig, credentialStore = credentialStore, ioDispatcher = keyringDispatcher)
-            vm.updateState { it.copy(timestampUsername = "user1", timestampPassword = "secret123") }
+            vm.updateState { it.copy(timestampUsername = "user1", timestampPassword = Sensitive("secret123")) }
 
             vm.save()
             advanceUntilIdle()
@@ -307,7 +510,7 @@ class SettingsViewModelTest : FunSpec({
                 it.copy(
                     timestampEnabled = true,
                     timestampUrl = "https://tsa.example.com",
-                    timestampPassword = "secret",
+                    timestampPassword = Sensitive("secret"),
                 )
             }
 
@@ -909,6 +1112,32 @@ class SettingsViewModelTest : FunSpec({
         }
     }
 
+    test("a scheduler install failure that gives no message carries no reason, for the dialog to name in its language") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+            every { schedulerPort.install(any(), any(), any(), any()) } throws IllegalStateException()
+            every { schedulerPort.isInstalled() } returns false
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+                ioDispatcher = testDispatcher,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
+            vm.updateState { it.copy(renewalJobs = listOf(job)) }
+
+            vm.save()
+            advanceUntilIdle()
+
+            vm.state.value.error shouldBe SettingsError.SchedulerInstallFailed(null)
+        }
+    }
+
     test("load populates useNativeTitleBar and showNativeTitleBarOption when isLinuxDesktop is true") {
         runTest(testDispatcher) {
             coEvery { configRepository.loadConfig() } returns baseConfig.right()
@@ -1202,6 +1431,49 @@ class SettingsViewModelTest : FunSpec({
             coVerify { trustStore.add(TrustScope.Global, any(), TrustedCertificateType.CA, "ca.pem") }
             vm.state.value.pendingTrustedCertAdds.shouldBeEmpty()
             vm.state.value.pendingTrustedCertRemovals.shouldBeEmpty()
+        }
+    }
+
+    test("a staged certificate the trust store refuses shows the store's error as keyed text, to render in the UI's language") {
+        runTest(testDispatcher) {
+            val trustStore: TrustStore = mockk()
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+            coEvery { trustStore.list(TrustScope.Global) } returns emptyList<TrustedCertificate>().right()
+            val failure = TrustStoreError.storageFailed("Access is denied")
+            coEvery { trustStore.add(TrustScope.Global, any(), any(), any()) } returns failure.left()
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore,
+                ioDispatcher = testDispatcher, trustStore = trustStore,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.updateState {
+                it.copy(
+                    pendingTrustedCertAdds = listOf(
+                        PendingTrustedCert(
+                            source = "ca.pem",
+                            type = TrustedCertificateType.CA,
+                            bytes = byteArrayOf(1, 2, 3),
+                            fingerprint = "sha256-new",
+                            subjectDN = "CN=new",
+                            notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+                        ),
+                    ),
+                )
+            }
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            advanceUntilIdle()
+
+            successCalled shouldBe false
+            vm.state.value.error shouldBe SettingsError.Domain(failure.text)
+            (failure.text is LocalizableText.Keyed) shouldBe true
+            vm.state.value.pendingTrustedCertAdds shouldHaveSize 1
         }
     }
 

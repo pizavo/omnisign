@@ -22,11 +22,13 @@
 	<string name="settings_validation_use_eu_lotl">Použiť zoznam dôveryhodných zoznamov EÚ</string>
 	<string name="settings_validation_alert_not_eu_lotl_tooltip">Označiť podpisy, ktorých kotva dôvery nie je v zozname EU LOTL. Vyžaduje povolený zoznam dôveryhodných zoznamov EÚ.</string>
 	<string name="settings_validation_tl_refresh_interval_label">Interval obnovenia dôveryhodného zoznamu (hodiny)</string>
+	<string name="settings_validation_tl_refresh_interval_range_error">Zadajte celý počet hodín (1 alebo viac).</string>
 	<string name="settings_validation_trusted_lists_label">Dôveryhodné zoznamy</string>
 	<string name="settings_validation_refresh_tl_tooltip">Obnoviť dôveryhodné zoznamy teraz</string>
 	<string name="settings_algo_expiration_level_label">Úroveň exspirácie (pred aktualizáciou politiky)</string>
 	<string name="settings_algo_expiration_level_after_label">Úroveň exspirácie (po aktualizácii politiky)</string>
 	<string name="settings_pkcs11_probe_timeout_label">Časový limit sondovania (sekundy, 1-120)</string>
+	<string name="settings_pkcs11_probe_timeout_range_error">Zadajte celý počet sekúnd od 1 do 120.</string>
 	<string name="settings_pkcs11_drop_dir_hint">Tip: vložte súbor knižnice PKCS#11 (.dll / .so / .dylib) do priečinka nižšie a bude automaticky zistený – tu nie je potrebná žiadna položka.</string>
 	<string name="settings_pkcs11_no_libraries">Nie sú zaregistrované žiadne vlastné knižnice PKCS#11.</string>
 	<string name="settings_pkcs11_add_name_label">Názov</string>
@@ -39,6 +41,10 @@
 	<string name="settings_error_scheduler_time_invalid">Čas plánovača je neplatný – hodina musí byť 0–23, minúta musí byť 0–59.</string>
 	<string name="settings_error_refresh_failed">Obnovenie dôveryhodného zoznamu zlyhalo: %1$s</string>
 	<string name="settings_error_scheduler_install_failed">Nepodarilo sa nainštalovať plánovač operačného systému: %1$s</string>
+	<string name="settings_error_pkcs11_probe_timeout_invalid">Časový limit sondovania PKCS#11 musí byť celý počet sekúnd od 1 do 120.</string>
+	<string name="settings_error_tl_refresh_interval_invalid">Interval obnovenia dôveryhodného zoznamu musí byť celý počet hodín, 1 alebo viac.</string>
+	<string name="settings_error_staleness_threshold_invalid">Počet dní, po ktorých sa ohlási zastavená obnova, musí byť celé číslo, 1 alebo viac.</string>
+	<string name="settings_error_reason_unknown">neznáma chyba</string>
 	<string name="settings_certadd_already_trusted">Tento certifikát je už dôveryhodný v globálnom rozsahu.</string>
 	<string name="settings_validation_tl_last_refreshed">Naposledy obnovené: %1$s</string>
 	<string name="settings_validation_tl_last_refreshed_never">Naposledy obnovené: nikdy</string>

@@ -31,6 +31,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustedListLoadProgress
 import cz.pizavo.omnisign.domain.model.value.DateFormat
+import cz.pizavo.omnisign.domain.model.value.Sensitive
 import cz.pizavo.omnisign.lumo.LumoTheme
 import cz.pizavo.omnisign.lumo.components.*
 import cz.pizavo.omnisign.lumo.components.textfield.UnderlinedTextField
@@ -64,6 +65,12 @@ private val Pkcs11ListMaxHeight = 240.dp
 private const val Pkcs11ListScrollThreshold = 5
 
 /**
+ * The most digits a millisecond timeout field takes, so every value it holds fits an `Int` and a
+ * save never falls back to the default for a number too large to read.
+ */
+private const val MaxTimeoutDigits = 9
+
+/**
  * Full-screen modal dialog for editing the global application configuration.
  *
  * Modeled after the IntelliJ Settings dialog: a left navigation sidebar with a
@@ -87,8 +94,9 @@ private const val Pkcs11ListScrollThreshold = 5
  *   toggling it before showing the dialog.  Defaults to [SettingsCategory.SigningDefaults].
  * @param onExportConfig Called when the user exports the full configuration archive (Backup section).
  * @param onImportConfig Called when the user imports a full configuration archive (Backup section).
- * @param backupEnabled Whether the Backup export/import controls are enabled (false on platforms
- *   without a file-system backend, e.g. web).
+ * @param backupEnabled Whether the Backup controls are enabled: `true` wherever an archive port is
+ *   bound, including the web, where the export downloads the server's configuration and the import
+ *   is hidden.
  * @param readOnly When `true`, the server-owned settings render view-only: their inputs are disabled
  *   and host-only categories (PKCS#11 libraries, scheduler, renewal jobs) are removed from the
  *   navigation. The **Language & Region** panel stays editable regardless — language, region preset,
@@ -582,10 +590,11 @@ private fun SettingsFooter(
 
 /**
  * Configuration backup section: export the full configuration to a ZIP archive, or import one to
- * replace it. Import is a destructive, whole-configuration replace, so it is confirmed inline.
+ * replace it. Import is a destructive, whole-configuration replace, so it is confirmed inline. On the
+ * web the export downloads the server's configuration and the import is hidden, as the server's
+ * configuration is read-only over the API.
  *
- * @param enabled Whether export/import is available (false on platforms without a file-system
- *   backend, e.g. web).
+ * @param enabled Whether the controls are enabled: `false` only where no archive port is bound.
  * @param onExport Called when the user starts an export.
  * @param onImport Called when the user confirms an import.
  */
@@ -884,17 +893,17 @@ private fun TimestampSection(
 		Spacer(modifier = Modifier.height(8.dp))
 
 		SettingsPasswordField(
-			value = state.timestampPassword,
-			onValueChange = { value -> onFieldChange { it.copy(timestampPassword = value) } },
+			value = state.timestampPassword.value,
+			onValueChange = { value -> onFieldChange { it.copy(timestampPassword = Sensitive(value)) } },
 			hasStoredPassword = state.hasStoredPassword,
 		)
-		
+
 		Spacer(modifier = Modifier.height(8.dp))
-		
+
 		UnderlinedTextField(
 			value = state.timestampTimeout,
 			onValueChange = { value ->
-				if (value.all { c -> c.isDigit() }) {
+				if (value.all { c -> c.isDigit() } && value.length <= MaxTimeoutDigits) {
 					onFieldChange { it.copy(timestampTimeout = value) }
 				}
 			},
@@ -917,7 +926,7 @@ private fun OcspCrlSection(
 	UnderlinedTextField(
 		value = state.ocspTimeout,
 		onValueChange = { value ->
-			if (value.all { c -> c.isDigit() }) {
+			if (value.all { c -> c.isDigit() } && value.length <= MaxTimeoutDigits) {
 				onFieldChange { it.copy(ocspTimeout = value) }
 			}
 		},
@@ -932,7 +941,7 @@ private fun OcspCrlSection(
 	UnderlinedTextField(
 		value = state.crlTimeout,
 		onValueChange = { value ->
-			if (value.all { c -> c.isDigit() }) {
+			if (value.all { c -> c.isDigit() } && value.length <= MaxTimeoutDigits) {
 				onFieldChange { it.copy(crlTimeout = value) }
 			}
 		},
@@ -1066,10 +1075,19 @@ private fun ValidationPolicySection(
 			}
 		},
 		label = { Text(text = stringResource(Res.string.settings_validation_tl_refresh_interval_label)) },
+		isError = !state.isTrustedListRefreshIntervalValid,
 		singleLine = true,
 		keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
 		modifier = Modifier.fillMaxWidth(),
 	)
+	if (!state.isTrustedListRefreshIntervalValid) {
+		Spacer(modifier = Modifier.height(4.dp))
+		Text(
+			text = stringResource(Res.string.settings_validation_tl_refresh_interval_range_error),
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.error,
+		)
+	}
 	Spacer(modifier = Modifier.height(12.dp))
 
 	Row(
@@ -1156,12 +1174,13 @@ private fun AlgorithmConstraintsSection(
 }
 
 /**
- * Global-scope trusted certificates section, backed by the app-managed trust store.
+ * Global-scope trusted certificates section, backed by the bound trust store.
  *
  * Lists the global directly-trusted certificates and an inline add form. Additions and removals are
  * staged into the [GlobalConfigEditState] and committed to the trust store only when the dialog is
- * saved, so Cancel discards them — consistent with the rest of the settings form. On platforms
- * without a trust store backend (web) an explanatory message is shown instead of the controls.
+ * saved, so Cancel discards them — consistent with the rest of the settings form. In a read-only
+ * dialog, as on the web, where the store is the server's, read through a read-only remote store,
+ * only the list is shown. Where no trust store is bound an explanatory message is shown instead.
  *
  * @param state Current global config edit state holding the certificate baseline and staged changes.
  * @param onFieldChange Called with a transform to update the staged certificate fields.
@@ -1233,9 +1252,18 @@ private fun Pkcs11Section(
 			}
 		},
 		label = { Text(text = stringResource(Res.string.settings_pkcs11_probe_timeout_label)) },
+		isError = !state.isPkcs11ProbeTimeoutValid,
 		singleLine = true,
 		keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
 	)
+	if (!state.isPkcs11ProbeTimeoutValid) {
+		Spacer(modifier = Modifier.height(4.dp))
+		Text(
+			text = stringResource(Res.string.settings_pkcs11_probe_timeout_range_error),
+			style = LumoTheme.typography.body2,
+			color = LumoTheme.colors.error,
+		)
+	}
 	Spacer(modifier = Modifier.height(16.dp))
 
 	val dropDir = remember { resolvePkcs11DropDirectory() }

@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.ui.viewmodel
 
+import cz.pizavo.omnisign.domain.model.error.OperationError
 import cz.pizavo.omnisign.domain.model.error.TrustStoreError
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.TrustStore
@@ -17,24 +18,25 @@ import cz.pizavo.omnisign.ui.model.PendingTrustedCert
  * @param scope The scope the changes belong to (global or a profile).
  * @param removals Fingerprints staged for removal from [scope].
  * @param additions Certificates staged for addition to [scope].
- * @return `null` on success, or a human-readable message describing the first failure.
+ * @return `null` on success, or the store's error for the first failure, which the caller renders
+ *   in the UI's language.
  */
 internal suspend fun applyStagedTrustedCertChanges(
     store: TrustStore,
     scope: TrustScope,
     removals: Set<String>,
     additions: List<PendingTrustedCert>,
-): String? {
+): OperationError? {
     for (fingerprint in removals) {
         val error = store.remove(scope, fingerprint).fold(
-            ifLeft = { if (it is TrustStoreError.NotFound) null else it.message },
+            ifLeft = { it.takeUnless { error -> error is TrustStoreError.NotFound } },
             ifRight = { null },
         )
         if (error != null) return error
     }
     for (addition in additions) {
         val error = store.add(scope, addition.bytes, addition.type, addition.source).fold(
-            ifLeft = { it.message },
+            ifLeft = { it },
             ifRight = { null },
         )
         if (error != null) return error
