@@ -171,7 +171,8 @@ kotlin {
 			implementation(projects.shared)
 
 			implementation(libs.kotlinx.serialization.json)
-			
+			implementation(libs.kotlinx.datetime)
+
 			implementation(project.dependencies.platform(libs.koin.bom))
 			implementation(libs.koin.compose)
 			implementation(libs.koin.compose.viewmodel)
@@ -953,25 +954,31 @@ tasks.withType<org.jetbrains.compose.desktop.application.tasks.AbstractJPackageT
  * configured for them can no longer select the dependency BOMs the graph relies on.
  * Letting `:composeApp` resolve its own `wasmJsRuntimeClasspath` sidesteps that entirely,
  * and this task's output is an ordinary file input for the generator.
+ *
+ * The coordinates are the task's input, so a change to the Wasm dependencies, made in any
+ * module's build script, runs it again rather than leaving the file it wrote last.
  */
 val collectWebRuntimeCoordinates = tasks.register("collectWebRuntimeCoordinates") {
 	group = "documentation"
 	description = "Records the Wasm runtime classpath coordinates for the third-party notices."
 
-	val artifacts = configurations.named("wasmJsRuntimeClasspath")
+	val coordinates = configurations.named("wasmJsRuntimeClasspath")
 		.flatMap { it.incoming.artifacts.resolvedArtifacts }
+		.map { artifacts ->
+			artifacts.map { it.id.componentIdentifier }
+				.filterIsInstance<ModuleComponentIdentifier>()
+				.map { "${it.group}:${it.module}:${it.version}" }
+				.distinct()
+				.sorted()
+		}
 	val outputFile = layout.buildDirectory.file("notices/web-coordinates.txt")
+	inputs.property("coordinates", coordinates)
 	outputs.file(outputFile)
 
 	doLast {
-		val coordinates = artifacts.get()
-			.map { it.id.componentIdentifier }
-			.filterIsInstance<ModuleComponentIdentifier>()
-			.map { "${it.group}:${it.module}:${it.version}" }
-			.distinct()
-			.sorted()
-		outputFile.get().asFile.writeText(coordinates.joinToString("\n"))
-		logger.lifecycle("Recorded ${coordinates.size} web runtime artifacts.")
+		val recorded = coordinates.get()
+		outputFile.get().asFile.writeText(recorded.joinToString("\n"))
+		logger.lifecycle("Recorded ${recorded.size} web runtime artifacts.")
 	}
 }
 

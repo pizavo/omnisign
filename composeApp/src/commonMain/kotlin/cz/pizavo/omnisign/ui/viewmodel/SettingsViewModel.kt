@@ -9,7 +9,7 @@ import cz.pizavo.omnisign.domain.model.config.SchedulerConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.error.localizableText
 import cz.pizavo.omnisign.domain.model.result.OperationResult
-import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.value.Sensitive
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.port.ConfigArchivePort
 import cz.pizavo.omnisign.domain.port.RenewalActivityProbe
@@ -33,6 +33,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.datetime.LocalDate
+import kotlinx.datetime.TimeZone
+import kotlinx.datetime.todayIn
+import kotlin.time.Clock
 import kotlin.time.Instant
 
 /**
@@ -65,12 +69,19 @@ import kotlin.time.Instant
  *   "Refresh now" control and the last-refreshed indicator. `null` on targets
  *   without a DSS backend (web).
  * @param configArchive Optional full-configuration archive port backing the Backup
- *   (export / import) settings section. `null` on targets without a JVM file backend (web).
- * @param trustStore Optional app-managed trust store backing the Trusted Certificates section.
- *   `null` on targets without a backend (web), where that section renders unavailable.
+ *   (export / import) settings section: on the desktop it exports and imports local archives, on
+ *   the web it downloads the server's configuration and refuses an import. `null` where neither is
+ *   bound, which hides the section.
+ * @param trustStore Optional trust store backing the Trusted Certificates section: the desktop's
+ *   own, or on the web the server's, read through a read-only remote store. `null` where neither is
+ *   bound, and the section then renders unavailable.
+ * @param renewalRunRecordStore Optional store of the record the last batch-renewal run left, read on
+ *   load to show that run's outcome. `null` on targets that never run batch renewal (web).
  * @param renewalActivityProbe Optional probe telling whether a renewal run is executing right now, so
  *   that a run marker left in the record can be reported as interrupted rather than as still in
  *   progress. `null` on targets that never run batch renewal (web).
+ * @param today The current date, which a save that changes an algorithm expiration level stamps as
+ *   the policy update date.
  */
 class SettingsViewModel(
     private val getConfigUseCase: GetConfigUseCase,
@@ -86,6 +97,7 @@ class SettingsViewModel(
     private val trustStore: TrustStore? = null,
     private val renewalRunRecordStore: RenewalRunRecordStore? = null,
     private val renewalActivityProbe: RenewalActivityProbe? = null,
+    private val today: () -> LocalDate = { Clock.System.todayIn(TimeZone.currentSystemDefault()) },
 ) : ViewModel() {
 
     private val _state = MutableStateFlow(GlobalConfigEditState())
@@ -96,13 +108,14 @@ class SettingsViewModel(
     val state: StateFlow<GlobalConfigEditState> = _state.asStateFlow()
 
     /**
-     * Whether the current edit state differs from the originally loaded state.
+     * Whether Save has something to do: the current edit state differs from the state last loaded
+     * or saved, ignoring transient UI fields, or the OS scheduler job is missing where Save
+     * registers it, as [GlobalConfigEditState.schedulerInstallPending] tells.
      *
-     * Returns `false` until [load] completes successfully or when the current state
-     * matches the initial snapshot (ignoring transient UI fields).
+     * Returns `false` until [load] completes successfully.
      */
     val hasChanges: StateFlow<Boolean> = combine(_state, _initialState) { current, initial ->
-        initial != null && !current.contentEquals(initial)
+        initial != null && (current.schedulerInstallPending || !current.contentEquals(initial))
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /**
@@ -145,6 +158,12 @@ class SettingsViewModel(
     /**
      * Load the current global configuration from the config store and populate
      * the edit state. Call this when the settings dialog is opened.
+     *
+     * When renewal jobs and an executable path for the OS scheduler are configured but the scheduler
+     * job is not registered, as after a save that failed to register it in a dialog since closed,
+     * the job is marked as [GlobalConfigEditState.schedulerInstallPending], so Save is enabled to
+     * register it. It is not marked where the OS scheduler cannot register the job at all, as on
+     * Linux without a systemd user instance, since no save could register it there.
      */
     fun load() {
         viewModelScope.launch {
@@ -175,11 +194,15 @@ class SettingsViewModel(
                         schedulerInstalled = installed,
                         schedulerAutoDetectedPath = autoDetectedExecutablePath,
                         trustedCertificates = trustedCerts,
-                    ).copy(
-                        trustedCertsAvailable = trustStore != null,
-                        renewalRunRecord = runRecord,
-                        renewalRunInFlight = runInFlight,
                     ).let {
+                        it.copy(
+                            trustedCertsAvailable = trustStore != null,
+                            renewalRunRecord = runRecord,
+                            renewalRunInFlight = runInFlight,
+                            schedulerInstallPending = !installed && it.renewalJobs.isNotEmpty() &&
+                                    it.effectiveSchedulerExecutablePath != null && schedulerAvailable(),
+                        )
+                    }.let {
                         if (isLinuxDesktop) it.copy(
                             useNativeTitleBar = loadUseNativeTitleBar() ?: false,
                             showNativeTitleBarOption = true,
@@ -249,73 +272,133 @@ class SettingsViewModel(
     /**
      * Persist the current edit state as the global configuration.
      *
-     * Stores a newly entered TSA password in the OS credential store first, then converts
-     * [GlobalConfigEditState] to a [GlobalConfig] and calls [SetGlobalConfigUseCase]. A password
-     * the store does not keep becomes the error and nothing is saved, so the configuration never
-     * names a password that is not there. The [onSuccess] callback is invoked after a successful
-     * save so the caller can dismiss the dialog.
+     * Nothing happens while a save is already running. A field whose value is out of its range, as
+     * [GlobalConfigEditState.invalidFieldError] names it, becomes the error and nothing is saved, and
+     * so does a TSA password to store when the [credentialStore] keeps passwords in memory only, as
+     * the configuration would then name a password that is gone once the application closes.
      *
-     * @param onSuccess Callback invoked after the global config is successfully persisted.
+     * Otherwise a newly entered TSA password is stored in the OS credential store first, which can
+     * wait for the keyring to be unlocked. The configuration is then read again, so that what the CLI
+     * or another instance of the application saved while the dialog was open, that wait included, is
+     * kept: the [GlobalConfigEditState] is applied to the global configuration as it is saved through
+     * [SetGlobalConfigUseCase], keeping what the dialog does not show, and the renewal jobs and
+     * scheduler settings are saved after it. A password the store does not keep becomes the error and
+     * nothing is saved, so the configuration never names a password that is not there; a failed read,
+     * or a failed write of either part, becomes the error too, and the scheduler is then left as it
+     * was. A password stored before such a failure stays in the form, and the next save stores it
+     * again.
+     *
+     * @param onSuccess Callback invoked once the configuration, the OS scheduler job and the staged
+     *   certificate changes are all saved, so the caller can dismiss the dialog. It is not invoked
+     *   when any of them failed, nor when the form was edited while the save ran.
      */
     fun save(onSuccess: () -> Unit = {}) {
         val current = _state.value
-        if (current.hasSchedulerTimeError) {
-            _state.update { it.copy(error = SettingsError.SchedulerTimeInvalid) }
+        if (current.saving) return
+        val refusal = current.invalidFieldError
+            ?: SettingsError.TsaPasswordNotKept.takeIf {
+                current.storesTimestampPassword && credentialStore?.isPersistent == false
+            }
+        refusal?.let { error ->
+            _state.update { it.copy(error = error) }
             return
         }
         _state.update { it.copy(saving = true, error = null) }
         viewModelScope.launch {
-            val passwordStored = withContext(ioDispatcher) { storeTsaPasswordIfNeeded(current) }
-            passwordStored.flatMap { setGlobalConfigUseCase { current.toGlobalConfig() } }.fold(
-                ifLeft = { error ->
-                    _state.update { it.copy(saving = false, error = SettingsError.Domain(error.localizableText())) }
-                },
-                ifRight = {
-                    saveAppLevelConfig(current)
-                    val (schedulerError, installed) = withContext(ioDispatcher) {
-                        val err = syncScheduler(current)
-                        val inst = try { schedulerPort?.isInstalled() == true } catch (_: Exception) { false }
-                        err to inst
-                    }
-                    if (isLinuxDesktop) saveUseNativeTitleBar(current.useNativeTitleBar)
-
-                    val store = trustStore
-                    val certError = if (store != null) {
-                        withContext(ioDispatcher) {
-                            applyStagedTrustedCertChanges(
-                                store = store,
-                                scope = TrustScope.Global,
-                                removals = current.pendingTrustedCertRemovals,
-                                additions = current.pendingTrustedCertAdds,
-                            )
-                        }
-                    } else {
-                        null
-                    }
-
-                    if (certError != null) {
-                        _state.update { it.copy(saving = false, error = SettingsError.Domain(LocalizableText.Literal(certError)), schedulerInstalled = installed) }
-                    } else {
-                        val newBaseline = store
-                            ?.let { withContext(ioDispatcher) { it.list(TrustScope.Global) } }
-                            ?.fold(ifLeft = { emptyList() }, ifRight = { it }).orEmpty()
-                        _state.update {
-                            it.copy(
-                                saving = false,
-                                error = schedulerError,
-                                schedulerInstalled = installed,
-                                trustedCertificates = newBaseline,
-                                pendingTrustedCertAdds = emptyList(),
-                                pendingTrustedCertRemovals = emptySet(),
-                                trustedCertAddError = null,
-                            )
-                        }
-                        _initialState.value = _state.value
-                        if (schedulerError == null) onSuccess()
-                    }
-                },
-            )
+            withContext(ioDispatcher) { storeTsaPasswordIfNeeded(current) }
+                .flatMap { getConfigUseCase() }
+                .flatMap { setGlobalConfigUseCase { current.appliedTo(this, today()) } }
+                .flatMap { saveAppLevelConfig(current) }
+                .fold(
+                    ifLeft = { error ->
+                        _state.update { it.copy(saving = false, error = SettingsError.Domain(error.localizableText())) }
+                    },
+                    ifRight = { finishSave(current, onSuccess) },
+                )
         }
+    }
+
+    /**
+     * Finish a save of [saved], the edit state as it was when Save was clicked, once the
+     * configuration is written: sync the OS scheduler, apply the staged certificate changes, and
+     * make [saved] the new baseline, with a TSA password the credential store now keeps cleared from
+     * it and from the form, unless the form's password was changed meanwhile. Edits made while the
+     * save ran stay in the form, unsaved, and keep the dialog open, so they are neither lost nor
+     * taken for saved. A scheduler job that could not be registered is marked as
+     * [GlobalConfigEditState.schedulerInstallPending] in the form, also when the certificate changes
+     * fail too, which keeps Save enabled to try again, unless the OS scheduler cannot register the
+     * job at all, as on Linux without a systemd user instance.
+     */
+    private suspend fun finishSave(saved: GlobalConfigEditState, onSuccess: () -> Unit) {
+        val (schedulerError, installed) = withContext(ioDispatcher) {
+            val err = syncScheduler(saved)
+            val inst = try { schedulerPort?.isInstalled() == true } catch (_: Exception) { false }
+            err to inst
+        }
+        if (isLinuxDesktop) saveUseNativeTitleBar(saved.useNativeTitleBar)
+
+        val store = trustStore
+        val certError = store?.let {
+            withContext(ioDispatcher) {
+                applyStagedTrustedCertChanges(
+                    store = it,
+                    scope = TrustScope.Global,
+                    removals = saved.pendingTrustedCertRemovals,
+                    additions = saved.pendingTrustedCertAdds,
+                )
+            }
+        }
+        val schedulerInstallPending = schedulerError != null && schedulerAvailable()
+        if (certError != null) {
+            _state.update {
+                it.copy(
+                    saving = false,
+                    error = SettingsError.Domain(certError.localizableText()),
+                    schedulerInstalled = installed,
+                    schedulerInstallPending = schedulerInstallPending,
+                )
+            }
+            return
+        }
+
+        val newBaseline = store
+            ?.let { withContext(ioDispatcher) { it.list(TrustScope.Global) } }
+            ?.fold(ifLeft = { emptyList() }, ifRight = { it }).orEmpty()
+        val passwordKept = credentialStore != null && saved.storesTimestampPassword
+        val baseline = saved.copy(
+            saving = false,
+            error = schedulerError,
+            schedulerInstalled = installed,
+            trustedCertificates = newBaseline,
+            pendingTrustedCertAdds = emptyList(),
+            pendingTrustedCertRemovals = emptySet(),
+            trustedCertAddError = null,
+        ).let { if (passwordKept) it.copy(timestampPassword = Sensitive(""), hasStoredPassword = true) else it }
+        _state.update { live ->
+            live.copy(
+                saving = false,
+                error = schedulerError,
+                schedulerInstalled = installed,
+                schedulerInstallPending = schedulerInstallPending,
+                trustedCertificates = newBaseline,
+                pendingTrustedCertAdds = live.pendingTrustedCertAdds - saved.pendingTrustedCertAdds.toSet(),
+                pendingTrustedCertRemovals = live.pendingTrustedCertRemovals - saved.pendingTrustedCertRemovals,
+                trustedCertAddError = null,
+            ).let {
+                if (passwordKept && it.timestampUsername == saved.timestampUsername) {
+                    it.copy(
+                        timestampPassword = it.timestampPassword.takeUnless { password ->
+                            password == saved.timestampPassword
+                        } ?: Sensitive(""),
+                        hasStoredPassword = true,
+                    )
+                } else {
+                    it
+                }
+            }
+        }
+        _initialState.value = baseline
+        if (schedulerError == null && _state.value.contentEquals(baseline)) onSuccess()
     }
 
     /**
@@ -329,8 +412,8 @@ class SettingsViewModel(
     }
 
     /**
-     * Persist the TSA password from [editState] into the OS credential store
-     * when a new password was entered and a username is present.
+     * Persist the TSA password from [editState] into the OS credential store under its username,
+     * when the save stores one, as [GlobalConfigEditState.storesTimestampPassword] tells.
      *
      * Blocks while the keyring asks to be unlocked, so callers run it on [ioDispatcher].
      *
@@ -338,29 +421,35 @@ class SettingsViewModel(
      *   store's error.
      */
     private fun storeTsaPasswordIfNeeded(editState: GlobalConfigEditState): OperationResult<Unit> {
-        if (editState.timestampPassword.isEmpty()) return Unit.right()
-        val username = editState.timestampUsername.ifBlank { return Unit.right() }
-        return credentialStore?.setPassword(TSA_CREDENTIAL_SERVICE, username, editState.timestampPassword)
-            ?: Unit.right()
+        if (!editState.storesTimestampPassword) return Unit.right()
+        return credentialStore?.setPassword(
+            TSA_CREDENTIAL_SERVICE,
+            editState.timestampUsername,
+            editState.timestampPassword.value,
+        ) ?: Unit.right()
     }
 
     /**
      * Persist renewal jobs and scheduler config from [editState] into the
      * application configuration in a single atomic write via [ConfigRepository].
+     *
+     * @return `Unit` when the write succeeded or there is no [configRepository], otherwise its error.
      */
-    private suspend fun saveAppLevelConfig(editState: GlobalConfigEditState) {
-        val repo = configRepository ?: return
+    private suspend fun saveAppLevelConfig(editState: GlobalConfigEditState): OperationResult<Unit> {
+        val repo = configRepository ?: return Unit.right()
         val appConfig = repo.getCurrentConfig()
         val jobMap = editState.renewalJobs.associateBy { it.name }
+        val defaults = SchedulerConfig()
         val schedulerCfg = SchedulerConfig(
             cliExecutablePath = editState.effectiveSchedulerExecutablePath,
-            runAtHour = editState.schedulerHour.toIntOrNull()?.coerceIn(0, 23) ?: 2,
-            runAtMinute = editState.schedulerMinute.toIntOrNull()?.coerceIn(0, 59) ?: 0,
+            runAtHour = editState.schedulerHour.toIntOrNull()?.coerceIn(0, 23) ?: defaults.runAtHour,
+            runAtMinute = editState.schedulerMinute.toIntOrNull()?.coerceIn(0, 59) ?: defaults.runAtMinute,
             logFilePath = editState.schedulerLogFile.trim().ifBlank { null },
             stalenessNotificationEnabled = editState.stalenessNotificationEnabled,
-            stalenessThresholdDays = editState.stalenessThresholdDays.toIntOrNull()?.coerceAtLeast(1) ?: 14,
+            stalenessThresholdDays = editState.stalenessThresholdDays.toIntOrNull()?.coerceAtLeast(1)
+                ?: defaults.stalenessThresholdDays,
         )
-        repo.saveConfig(
+        return repo.saveConfig(
             appConfig.copy(
                 renewalJobs = jobMap,
                 schedulerConfig = schedulerCfg,
@@ -384,15 +473,16 @@ class SettingsViewModel(
         val exePath = editState.effectiveSchedulerExecutablePath
         if (editState.renewalJobs.isNotEmpty() && exePath != null) {
             return try {
+                val defaults = SchedulerConfig()
                 port.install(
                     cliExecutablePath = exePath,
-                    runAtHour = editState.schedulerHour.toIntOrNull()?.coerceIn(0, 23) ?: 2,
-                    runAtMinute = editState.schedulerMinute.toIntOrNull()?.coerceIn(0, 59) ?: 0,
+                    runAtHour = editState.schedulerHour.toIntOrNull()?.coerceIn(0, 23) ?: defaults.runAtHour,
+                    runAtMinute = editState.schedulerMinute.toIntOrNull()?.coerceIn(0, 59) ?: defaults.runAtMinute,
                     logFilePath = editState.schedulerLogFile.trim().ifBlank { null },
                 )
                 null
             } catch (e: Exception) {
-                SettingsError.SchedulerInstallFailed(e.message ?: "unknown error")
+                SettingsError.SchedulerInstallFailed(e.message)
             }
         } else {
             try {
@@ -402,7 +492,19 @@ class SettingsViewModel(
         }
     }
 
-    /** Whether configuration export/import is available (JVM desktop only). */
+    /**
+     * Whether the OS scheduler can register the renewal job on this system at all, as
+     * [SchedulerPort.isAvailable] tells, asked on the [ioDispatcher] as finding out may start a
+     * process: `false` without a [schedulerPort], and when asking fails.
+     */
+    private suspend fun schedulerAvailable(): Boolean = withContext(ioDispatcher) {
+        try { schedulerPort?.isAvailable() == true } catch (_: Exception) { false }
+    }
+
+    /**
+     * Whether the Backup section works: on the desktop both export and import, on the web only the
+     * export of the server's configuration, as the dialog hides the import there.
+     */
     val canBackup: Boolean get() = configArchive != null
 
     /**

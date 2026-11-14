@@ -13,6 +13,14 @@ The dialog uses an IntelliJ-style layout: a collapsible category tree on the lef
 content panel on the right. Clicking a group header selects its first child; clicking a
 leaf shows the corresponding form.
 
+Changes take effect when you click **Save**; closing the dialog discards those not saved yet.
+A field whose value is out of its range is marked in red, and Save refuses it with an error that
+names the field. Save reads the configuration again before it writes, so a setting the dialog does
+not show keeps what the CLI saved while the dialog was open. When part of a save fails, setting up
+the [renewal scheduler](#scheduler) included, the dialog shows the error and stays open with Save
+enabled, so you can save again; a change made while a save is still running stays in the dialog as
+unsaved.
+
 ![Settings dialog](/img/desktop/settings-overview.avif)
 
 ## Settings categories
@@ -34,7 +42,8 @@ See [Algorithms](../algorithms.mdx) for the full list of supported algorithms.
 | Allow signing with an expired certificate | Produce a signature even if the signing certificate has expired. **Such signatures fail validation**, so leave off unless you specifically need it | Off     |
 
 The effective PAdES level is derived from the two timestamp checkboxes: neither → B-B,
-signature only → B-LT, both → B-LTA.
+signature only → B-LT, both → B-LTA. A B-T default set with the CLI shows as neither box ticked,
+and saving keeps it until you tick a box.
 
 #### Disabled Algorithms
 
@@ -62,10 +71,15 @@ The TSA password is stored in the operating system's native credential store
 GNOME Keyring, KWallet or KeePassXC) — it is never written to the configuration file. When a
 password has been previously stored, the field shows a placeholder indicator.
 
-The password is stored before the settings are saved. If the credential store does not keep it —
-a keyring left locked because its unlock prompt was dismissed, or a keychain that refuses the
-write — the dialog shows an error and saves nothing, so that the configuration never refers to a
-password that is not there.
+The password is stored under the username before the settings are saved, so Save refuses a
+password entered without a username. If the credential store does not keep it — a keyring left
+locked because its unlock prompt was dismissed, or a keychain that refuses the write — the dialog
+shows an error and saves nothing, so that the configuration never refers to a password that is not
+there. Where no credential store is available at all, as on Linux without a Secret Service
+provider, a password would last only until OmniSign closes, so Save refuses it too; clear the
+password to save the other settings, or start a provider and restart OmniSign. Once the store
+keeps it, the field is cleared and shows the stored-password indicator, and renaming the user
+afterwards keeps using the stored password.
 :::
 
 #### OCSP & CRL
@@ -94,14 +108,15 @@ Revocation List requests used during validation and B-LT/B-LTA signing.
   shows an info hint, and its value is preserved so re-enabling EU LOTL restores it. See
   [Validating Signatures → EU LOTL membership](validation.mdx#eu-lotl-membership).
 - **Trusted list refresh interval (hours)** — how often the EU LOTL and custom lists are
-  refreshed automatically in the background (minimum 1 hour, 4 by default). Keep this at or
-  below **6**: the ETSI validation policy considers a trusted list fresh only for 6 hours after
-  its last successful synchronization, so a longer interval leaves qualified validations
-  reporting *"the trusted list is not considered as fresh"* for the rest of each cycle. A list
-  that cannot be downloaded is still used from the copy cached on disk, however old, and
-  validations name it under their **Trusted List Warnings**. OmniSign then tries to download it
-  again every 5 minutes, up to 6 times, before going back to the interval. The freshness check
-  counts from when a list was last loaded, so it does not flag such a copy; the warning does.
+  refreshed automatically in the background (minimum 1 hour, 4 by default; Save refuses a lower
+  value, or one above 2,147,483,647). Keep this at or below **6**: the ETSI validation policy
+  considers a trusted list fresh only for 6 hours after its last successful synchronization, so
+  a longer interval leaves qualified validations reporting *"the trusted list is not considered as
+  fresh"* for the rest of each cycle. A list that cannot be downloaded is still used from the copy
+  cached on disk, however old, and validations name it under their **Trusted List Warnings**.
+  OmniSign then tries to download it again every 5 minutes, up to 6 times, before going back to the
+  interval. The freshness check counts from when a list was last loaded, so it does not flag such a
+  copy; the warning does.
 - **Refresh now** — a refresh button, with a "Last refreshed" indicator, forces an immediate
   online refresh of the EU LOTL and every custom list into the shared cache. While the refresh
   runs, a **Loading trusted lists…** progress bar appears below the row — indeterminate until the
@@ -127,6 +142,11 @@ Available severity levels: **FAIL** (validation fails), **WARN** (reported as a 
 A fourth level, **IGNORE**, skips the check silently with no message; it is intentionally not offered
 in the app — so an expired algorithm is never hidden without a trace — and is reserved for config
 files (CLI / server).
+
+The policy update date is the day the constraints last changed: saving a change to either level
+sets it to today, as the CLI's `config set` does. Saving keeps the
+[expiration date overrides](/cli/configuration/overview#expiration-date-overrides) set with the CLI,
+which this dialog does not show.
 
 #### Trusted Certificates
 
@@ -167,7 +187,7 @@ that are not discovered automatically.
 - **Probe timeout (seconds)** — the maximum time OmniSign waits for a single PKCS#11 library
   probe before terminating it. Each library is probed in an isolated subprocess, so middleware
   that hangs during initialization cannot stall token discovery; this value bounds that wait.
-  Allowed range 1–120 seconds; defaults to 30.
+  Allowed range 1–120 seconds, and Save refuses a value outside it; defaults to 30.
 
 Each entry is the absolute file path to the middleware shared library (`.dll`, `.so`, or
 `.dylib`).
@@ -216,7 +236,7 @@ Configure the OS-level daily scheduler that runs renewal jobs automatically.
 | Run at (minute)          | Minute of the hour (0–59) for the daily run (default: 0).                                                                                                                                                                                                |
 | Log file                 | Optional append-only log file path for scheduler output.                                                                                                                                                                                                 |
 | Warn when renewal stalls | Raise an OS notification when renewal has gone the number of days below without a successful run (default: on). It is checked only when a scheduled run executes, so a computer that was simply off does not trigger it, and a successful run clears it. |
-| Warn after (days)        | Shown while the switch above is on: how many days without a successful run before the notification, which then repeats at most once per this many days while the problem lasts (default: 14).                                                            |
+| Warn after (days)        | Shown while the switch above is on: how many days without a successful run before the notification, which then repeats at most once per this many days while the problem lasts (default: 14; Save refuses a value below 1).                              |
 
 ![Scheduler settings](/img/desktop/settings-scheduler.avif)
 
@@ -225,7 +245,10 @@ The scheduler uses **Task Scheduler** on Windows, **systemd user timers** on Lin
 executing it once as soon as the machine is next available rather than skipping it until the
 next day. (On Linux a systemd user instance is required; where none exists — containers, some
 WSL setups — OmniSign instead prints the command to schedule renewal with another tool.) The
-current installation status is shown as a read-only indicator.
+current installation status is shown as a read-only indicator. Every save installs the scheduler
+while renewal jobs exist and the executable path is known, so when it is not installed then, as
+after a save that could not set it up, Save is enabled as soon as the dialog opens, except on
+Linux without a systemd user instance, where no save could set it up.
 
 At the scheduled time the scheduler launches OmniSign in **headless renewal mode** (no window):
 it checks every configured renewal job, re-timestamps the B-LTA files whose archival timestamp
@@ -290,6 +313,8 @@ platform.
 | **Date format**   | How dates are shown: *System default*, `dd/mm/yyyy`, `dd.mm.yyyy`, `mm/dd/yyyy`, or ISO 8601 (`yyyy-mm-dd`). This preference is shared with the CLI's `config date-format` command.                                                             |
 
 Changes **preview live** as you pick them, **take effect when you save**, and **revert if you close the
-dialog without saving**; the saved choice is restored on the next launch. Switching the language also
-re-renders the signature validation report in that language.
+dialog without saving**; the saved choice is restored on the next launch. Clicking Save keeps them even
+when saving another setting then fails, and a save that changes neither leaves them as stored, so a
+date format set with `config date-format` while OmniSign runs applies from its next launch. Switching
+the language also re-renders the signature validation report in that language.
 

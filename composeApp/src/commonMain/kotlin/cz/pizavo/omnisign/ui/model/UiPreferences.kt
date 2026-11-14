@@ -7,15 +7,16 @@ import kotlinx.serialization.Transient
 /**
  * Aggregated user-interface preferences for the desktop and web client.
  *
- * The chrome fields — [isDark], [useNativeTitleBar], [languageTag] — are persisted as
- * `preferences/ui.json` and are owned solely by this client. [format] is deliberately **not** stored
- * here: it is [Transient] and composed in at load time from the shared `preferences/format.json`
- * store, so the cross-surface date format keeps a single source of truth shared with the CLI. Writes
- * are field-level (read-modify-write) so the independent theme / language / title-bar updates never
- * clobber one another in the shared `ui.json` file.
+ * The chrome fields — [isDark], [useNativeTitleBar], [languageTag] — are owned solely by this
+ * client: the desktop persists them as `preferences/ui.json`, the web in the browser's
+ * `localStorage`. [format] is deliberately **not** stored with them: it is [Transient] and composed
+ * in at load time from its own store, on the desktop the `preferences/format.json` file shared with
+ * the CLI, so the cross-surface date format keeps a single source of truth, and on the web a
+ * separate `localStorage` entry. Writes are field-level (read-modify-write) so the independent
+ * theme / language / title-bar updates never clobber one another.
  *
- * @property format Cross-surface formatting preferences, composed in from the shared store at load
- *   time; never written into `ui.json`.
+ * @property format Cross-surface formatting preferences, composed in from their own store at load
+ *   time; never written with the chrome fields.
  * @property isDark Persisted dark/light theme choice, or `null` to follow the system default.
  * @property useNativeTitleBar Linux-only: use the native OS title bar instead of the merged toolbar,
  *   or `null` for the platform default.

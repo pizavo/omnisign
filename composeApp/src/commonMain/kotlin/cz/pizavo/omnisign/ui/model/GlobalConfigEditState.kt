@@ -7,6 +7,8 @@ import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.result.RenewalRunRecord
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
+import cz.pizavo.omnisign.domain.model.value.Sensitive
+import kotlinx.datetime.LocalDate
 
 /**
  * Mutable-friendly UI state for the global configuration edit dialog.
@@ -15,6 +17,9 @@ import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
  * for two-way data binding with Compose text fields and selectors. Nested
  * configs ([OcspConfig], [CrlConfig], [ValidationConfig]) are flattened into
  * top-level properties so that each form control maps to a single field.
+ *
+ * The defaults are those of a [GlobalConfig] and a [SchedulerConfig] that set nothing, so a dialog
+ * shown before its load completes, or after a load fails, shows what a save would write.
  *
  * @property defaultHashAlgorithm Default hash algorithm for signing.
  * @property defaultEncryptionAlgorithm Default encryption algorithm, or `null` for auto-detect.
@@ -25,7 +30,10 @@ import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
  * @property timestampEnabled Whether the timestamp server section is active.
  * @property timestampUrl TSA endpoint URL.
  * @property timestampUsername HTTP Basic auth username for the TSA.
- * @property timestampPassword HTTP Basic auth password for the current edit session.
+ * @property timestampPassword HTTP Basic auth password for the current edit session, held as
+ *   [Sensitive] so the state's string form never shows it, and cleared once a save that stored it in
+ *   the credential store completes. While the timestamp server section is on, a save refuses one
+ *   entered without a [timestampUsername].
  * @property hasStoredPassword Whether a password is already persisted in the OS credential store.
  * @property timestampTimeout TSA request timeout in milliseconds, stored as a string for the text field.
  * @property ocspTimeout OCSP request timeout in milliseconds, stored as a string.
@@ -44,12 +52,17 @@ import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
  *   [pendingTrustedCertRemovals] and adds [pendingTrustedCertAdds] on top of this.
  * @property pendingTrustedCertAdds Certificates staged to be added to the global scope on save.
  * @property pendingTrustedCertRemovals Fingerprints of baseline certificates staged for removal on save.
- * @property trustedCertsAvailable Whether the trust store backend is wired in (false on web).
+ * @property trustedCertsAvailable Whether a trust store is bound: the desktop's own, or on the web
+ *   the server's, read through a read-only remote store. `false` only where neither is bound.
  * @property trustedCertAddError Error from the last failed certificate add attempt, or `null`. Emitted
  *   as locale-agnostic data; the UI resolves it to a message via [TrustedCertAddError.resolve].
  * @property customPkcs11Libraries User-registered PKCS#11 middleware libraries.
+ * @property pkcs11ProbeTimeout Seconds to wait for a single PKCS#11 library probe, stored as a
+ *   string for the text field. A save refuses a value outside 1–120.
  * @property trustedListRefreshInterval Process-global trusted-list refresh interval in hours,
- *   stored as a string for the text field. Clamped to a minimum of 1 hour on save.
+ *   stored as a string for the text field. A save refuses a value below 1 or above [Int.MAX_VALUE],
+ *   which is the CLI option's limit too and keeps the refresh scheduler's milliseconds well within
+ *   a `Long`.
  * @property renewalJobs Renewal jobs managed in this edit session.
  * @property availableProfiles Names of profiles available for the renewal job profile dropdown.
  * @property activeProfile The currently active profile name, used as the default selection when adding a renewal job.
@@ -63,8 +76,15 @@ import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
  * @property stalenessNotificationEnabled Whether to warn (via OS notification) when renewal has gone
  *   too long without a successful run.
  * @property stalenessThresholdDays Days without a successful run before the staleness warning fires,
- *   stored as a string for the text field. Coerced to at least 1 on save.
+ *   stored as a string for the text field. A save refuses a value below 1 while the warning is on,
+ *   and coerces one to 1 while it is off, as the field is then hidden.
  * @property schedulerInstalled Whether the OS scheduler job is currently registered (read-only, queried on the load).
+ * @property schedulerInstallPending Whether the OS scheduler job is missing where Save can register
+ *   it: the last save wrote the configuration but could not register the job, or the dialog loaded
+ *   renewal jobs and an executable path while the job was not registered, in both cases on a system
+ *   whose OS scheduler can register the job at all, which on Linux takes a systemd user instance. It
+ *   counts as an unsaved change, so Save stays enabled to register the job, and is left out of
+ *   [contentEquals].
  * @property renewalRunRecord Status of the most recent renewal batch run (read-only, queried on load), or `null` when none has run or no backend is available.
  * @property renewalRunInFlight Whether a renewal run is executing right now (read-only, queried on
  *   load). Tells a [RenewalRunRecord.runStartedAt] marker belonging to a live run apart from one a
@@ -89,11 +109,11 @@ data class GlobalConfigEditState(
 	val timestampEnabled: Boolean = false,
 	val timestampUrl: String = "",
 	val timestampUsername: String = "",
-	val timestampPassword: String = "",
+	val timestampPassword: Sensitive<String> = Sensitive(""),
 	val hasStoredPassword: Boolean = false,
-	val timestampTimeout: String = "30000",
-	val ocspTimeout: String = "30000",
-	val crlTimeout: String = "30000",
+	val timestampTimeout: String = TimestampServerConfig.DEFAULT_TIMEOUT_MS.toString(),
+	val ocspTimeout: String = DEFAULTS.ocsp.timeout.toString(),
+	val crlTimeout: String = DEFAULTS.crl.timeout.toString(),
 	val validationPolicyType: ValidationPolicyType = ValidationPolicyType.DEFAULT_ETSI,
 	val customPolicyPath: String = "",
 	val checkRevocation: Boolean = true,
@@ -109,19 +129,20 @@ data class GlobalConfigEditState(
 	val trustedCertsAvailable: Boolean = true,
 	val trustedCertAddError: TrustedCertAddError? = null,
 	val customPkcs11Libraries: List<CustomPkcs11Library> = emptyList(),
-	val pkcs11ProbeTimeout: String = "30",
-	val trustedListRefreshInterval: String = "24",
+	val pkcs11ProbeTimeout: String = DEFAULTS.pkcs11ProbeTimeoutSeconds.toString(),
+	val trustedListRefreshInterval: String = DEFAULTS.trustedListRefreshIntervalHours.toString(),
 	val renewalJobs: List<RenewalJob> = emptyList(),
 	val availableProfiles: List<String> = emptyList(),
 	val activeProfile: String? = null,
 	val schedulerCliPath: String = "",
 	val schedulerAutoDetectedPath: String? = null,
-	val schedulerHour: String = "2",
-	val schedulerMinute: String = "0",
+	val schedulerHour: String = SCHEDULER_DEFAULTS.runAtHour.toString(),
+	val schedulerMinute: String = SCHEDULER_DEFAULTS.runAtMinute.toString(),
 	val schedulerLogFile: String = "",
-	val stalenessNotificationEnabled: Boolean = true,
-	val stalenessThresholdDays: String = "14",
+	val stalenessNotificationEnabled: Boolean = SCHEDULER_DEFAULTS.stalenessNotificationEnabled,
+	val stalenessThresholdDays: String = SCHEDULER_DEFAULTS.stalenessThresholdDays.toString(),
 	val schedulerInstalled: Boolean = false,
+	val schedulerInstallPending: Boolean = false,
 	val renewalRunRecord: RenewalRunRecord? = null,
 	val renewalRunInFlight: Boolean = false,
 	val saving: Boolean = false,
@@ -164,12 +185,12 @@ data class GlobalConfigEditState(
 
 	/**
 	 * Whether the [trustedListRefreshInterval] string represents a valid interval
-	 * (a positive whole number of hours). Empty strings are treated as valid
+	 * (a whole number of hours from 1 to [Int.MAX_VALUE]). Empty strings are treated as valid
 	 * (the default is applied on save).
 	 */
 	val isTrustedListRefreshIntervalValid: Boolean
 		get() = trustedListRefreshInterval.isEmpty() ||
-				trustedListRefreshInterval.toLongOrNull()?.let { it >= 1 } == true
+				trustedListRefreshInterval.toIntOrNull()?.let { it >= 1 } == true
 
 	/**
 	 * Whether the [schedulerHour] string represents a valid hour (0–23).
@@ -197,6 +218,40 @@ data class GlobalConfigEditState(
 	 */
 	val hasSchedulerTimeError: Boolean
 		get() = !isSchedulerHourValid || !isSchedulerMinuteValid
+
+	/**
+	 * Whether a save writes a timestamp server: its section is on and names a URL. A save with the
+	 * section off, or without a URL, leaves the timestamp server out of the configuration.
+	 */
+	private val savesTimestampServer: Boolean
+		get() = timestampEnabled && timestampUrl.isNotBlank()
+
+	/**
+	 * Whether a save stores the [timestampPassword] in the credential store: one was entered, with
+	 * the [timestampUsername] the store keeps it under, for a timestamp server the save writes, whose
+	 * credential key then names it. A password entered for a timestamp server the save leaves out is
+	 * dropped with the rest of its section, as nothing would refer to it.
+	 */
+	val storesTimestampPassword: Boolean
+		get() = savesTimestampServer && timestampPassword.value.isNotEmpty() && timestampUsername.isNotBlank()
+
+	/**
+	 * The error a save reports for the first field whose value is out of its range, or `null` when
+	 * every field can be saved as entered. The staleness threshold counts only while its warning is
+	 * on, as the field is hidden otherwise. A TSA password entered without a username counts too,
+	 * while the timestamp server section is on: the credential store keeps the password under the
+	 * username, so a save would otherwise drop it without a word.
+	 */
+	val invalidFieldError: SettingsError?
+		get() = when {
+			hasSchedulerTimeError -> SettingsError.SchedulerTimeInvalid
+			!isPkcs11ProbeTimeoutValid -> SettingsError.Pkcs11ProbeTimeoutInvalid
+			!isTrustedListRefreshIntervalValid -> SettingsError.TrustedListRefreshIntervalInvalid
+			stalenessNotificationEnabled && !isStalenessThresholdDaysValid -> SettingsError.StalenessThresholdInvalid
+			timestampEnabled && timestampPassword.value.isNotEmpty() && timestampUsername.isBlank() ->
+				SettingsError.TsaPasswordNeedsUsername
+			else -> null
+		}
 
 	/**
 	 * Compare only the persistable content fields of two states, ignoring
@@ -241,50 +296,97 @@ data class GlobalConfigEditState(
 				useNativeTitleBar == other.useNativeTitleBar
 
 	/**
-	 * Convert this UI state back into a persistable [GlobalConfig].
+	 * Apply the settings this dialog edits to [base], the global configuration as it is saved,
+	 * and return the result.
+	 *
+	 * Everything the dialog does not show is kept from [base], so a save does not erase what the
+	 * CLI or an import set there: the algorithm expiration date overrides, the policy update date
+	 * and the trusted certificate references. A save that changes either algorithm expiration
+	 * level, compared with what [base] resolves to, stamps the policy update date with [today], as
+	 * [AlgorithmConstraintsConfig.stampedToday] asks of every constraint change.
+	 *
+	 * Two settings the form shows only in part are kept the same way. A default signature level the
+	 * two timestamp checkboxes cannot express, B-T, shows as neither box ticked and is kept unless the
+	 * boxes are changed. The credential key the TSA password is stored under becomes the username
+	 * when a new password is stored, as the save stores it there. While a password stored earlier
+	 * is kept, it stays the key [base] names, as the CLI keeps it, so that renaming the user without
+	 * typing the password again still finds the password; only when [base] names no key, as after a
+	 * save that left the timestamp server out, does it fall back to the username.
 	 *
 	 * The [timestampPassword] is intentionally **not** included in the returned config
 	 * because passwords are persisted separately through the OS credential store.
 	 */
-	fun toGlobalConfig(): GlobalConfig = GlobalConfig(
-		defaultHashAlgorithm = defaultHashAlgorithm,
-		defaultEncryptionAlgorithm = defaultEncryptionAlgorithm,
-		defaultSignatureLevel = effectiveSignatureLevel,
-		disabledHashAlgorithms = disabledHashAlgorithms,
-		disabledEncryptionAlgorithms = disabledEncryptionAlgorithms,
-		timestampServer = if (timestampEnabled && timestampUrl.isNotBlank()) {
-			val effectiveUsername = timestampUsername.ifBlank { null }
-			val hasPassword = timestampPassword.isNotEmpty() || hasStoredPassword
-			TimestampServerConfig(
-				url = timestampUrl.trim(),
-				username = effectiveUsername,
-				credentialKey = if (hasPassword && effectiveUsername != null) effectiveUsername else null,
-				timeout = timestampTimeout.toIntOrNull() ?: 30000,
-			)
-		} else {
-			null
-		},
-		ocsp = OcspConfig(timeout = ocspTimeout.toIntOrNull() ?: 30000),
-		crl = CrlConfig(timeout = crlTimeout.toIntOrNull() ?: 30000),
-		validation = ValidationConfig(
-			policyType = validationPolicyType,
-			customPolicyPath = customPolicyPath.ifBlank { null },
-			checkRevocation = checkRevocation,
-			allowExpiredCertificate = allowExpiredCertificate,
-			useEuLotl = useEuLotl,
-			alertIfNotEuLotl = alertIfNotEuLotl,
-			customTrustedLists = customTrustedLists,
-			algorithmConstraints = AlgorithmConstraintsConfig(
-				expirationLevel = algoExpirationLevel,
-				expirationLevelAfterUpdate = algoExpirationLevelAfterUpdate,
+	fun appliedTo(base: GlobalConfig, today: LocalDate): GlobalConfig {
+		val constraints = base.validation.algorithmConstraints
+		val unset = AlgorithmConstraintsConfig.DEFAULT
+		val levelsChanged = algoExpirationLevel != (constraints.expirationLevel ?: unset.expirationLevel) ||
+				algoExpirationLevelAfterUpdate != (constraints.expirationLevelAfterUpdate ?: unset.expirationLevelAfterUpdate)
+		return base.copy(
+			defaultHashAlgorithm = defaultHashAlgorithm,
+			defaultEncryptionAlgorithm = defaultEncryptionAlgorithm,
+			defaultSignatureLevel = if (effectiveSignatureLevel == checkboxLevel(base.defaultSignatureLevel)) {
+				base.defaultSignatureLevel
+			} else {
+				effectiveSignatureLevel
+			},
+			disabledHashAlgorithms = disabledHashAlgorithms,
+			disabledEncryptionAlgorithms = disabledEncryptionAlgorithms,
+			timestampServer = if (savesTimestampServer) {
+				val effectiveUsername = timestampUsername.ifBlank { null }
+				TimestampServerConfig(
+					url = timestampUrl.trim(),
+					username = effectiveUsername,
+					credentialKey = when {
+						effectiveUsername == null -> null
+						timestampPassword.value.isNotEmpty() -> effectiveUsername
+						hasStoredPassword -> base.timestampServer?.credentialKey ?: effectiveUsername
+						else -> null
+					},
+					timeout = timestampTimeout.toIntOrNull() ?: TimestampServerConfig.DEFAULT_TIMEOUT_MS,
+				)
+			} else {
+				null
+			},
+			ocsp = base.ocsp.copy(timeout = ocspTimeout.toIntOrNull() ?: DEFAULTS.ocsp.timeout),
+			crl = base.crl.copy(timeout = crlTimeout.toIntOrNull() ?: DEFAULTS.crl.timeout),
+			validation = base.validation.copy(
+				policyType = validationPolicyType,
+				customPolicyPath = customPolicyPath.ifBlank { null },
+				checkRevocation = checkRevocation,
+				allowExpiredCertificate = allowExpiredCertificate,
+				useEuLotl = useEuLotl,
+				alertIfNotEuLotl = alertIfNotEuLotl,
+				customTrustedLists = customTrustedLists,
+				algorithmConstraints = constraints.copy(
+					expirationLevel = algoExpirationLevel,
+					expirationLevelAfterUpdate = algoExpirationLevelAfterUpdate,
+				).let { if (levelsChanged) it.stampedToday(today) else it },
 			),
-		),
-		customPkcs11Libraries = customPkcs11Libraries,
-		pkcs11ProbeTimeoutSeconds = (pkcs11ProbeTimeout.toLongOrNull() ?: 30).coerceIn(1, 120),
-		trustedListRefreshIntervalHours = (trustedListRefreshInterval.toLongOrNull() ?: 4).coerceAtLeast(1),
-	)
+			customPkcs11Libraries = customPkcs11Libraries,
+			pkcs11ProbeTimeoutSeconds = (pkcs11ProbeTimeout.toLongOrNull() ?: DEFAULTS.pkcs11ProbeTimeoutSeconds)
+				.coerceIn(1, 120),
+			trustedListRefreshIntervalHours = (trustedListRefreshInterval.toLongOrNull()
+				?: DEFAULTS.trustedListRefreshIntervalHours).coerceAtLeast(1),
+		)
+	}
 
 	companion object {
+
+		/** A global configuration that sets nothing, whose values the edit state's defaults and save fallbacks take. */
+		private val DEFAULTS = GlobalConfig()
+
+		/** Scheduler settings that set nothing, whose values the edit state's scheduler defaults take. */
+		private val SCHEDULER_DEFAULTS = SchedulerConfig()
+
+		/**
+		 * The level the two timestamp checkboxes show for [level]: B-LTA and B-LT as themselves, and
+		 * any other level, B-T included, as B-B, with neither box ticked, as [from] sets them.
+		 */
+		private fun checkboxLevel(level: SignatureLevel): SignatureLevel = when (level) {
+			SignatureLevel.PADES_BASELINE_LTA -> SignatureLevel.PADES_BASELINE_LTA
+			SignatureLevel.PADES_BASELINE_LT -> SignatureLevel.PADES_BASELINE_LT
+			else -> SignatureLevel.PADES_BASELINE_B
+		}
 
 		/**
 		 * Build a [GlobalConfigEditState] from an existing [GlobalConfig].
@@ -295,6 +397,7 @@ data class GlobalConfigEditState(
 		 * @param availableProfiles Profile names available for the renewal job profile dropdown.
 		 * @param activeProfile The currently active profile name, or `null` if none is active.
 		 * @param schedulerConfig Persisted scheduler settings.
+		 * @param schedulerInstalled Whether the OS scheduler job is currently registered.
 		 * @param schedulerAutoDetectedPath Auto-detected executable path, or `null` when unavailable.
 		 * @param trustedCertificates Global-scope certificates currently in the app-managed trust store.
 		 * @return A new edit state pre-populated with the config's values.
@@ -322,9 +425,9 @@ data class GlobalConfigEditState(
 				timestampEnabled = config.timestampServer != null,
 				timestampUrl = config.timestampServer?.url.orEmpty(),
 				timestampUsername = config.timestampServer?.username.orEmpty(),
-				timestampPassword = "",
+				timestampPassword = Sensitive(""),
 				hasStoredPassword = hasStoredPassword,
-				timestampTimeout = (config.timestampServer?.timeout ?: 30000).toString(),
+				timestampTimeout = (config.timestampServer?.timeout ?: TimestampServerConfig.DEFAULT_TIMEOUT_MS).toString(),
 				ocspTimeout = config.ocsp.timeout.toString(),
 				crlTimeout = config.crl.timeout.toString(),
 				validationPolicyType = config.validation.policyType ?: ValidationPolicyType.DEFAULT_ETSI,

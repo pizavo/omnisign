@@ -20,14 +20,19 @@ private val logger = KotlinLogging.logger {}
  * the machine was off or asleep at the scheduled time is executed once the machine is next
  * available, and multiple missed activations are coalesced into a single run.
  *
- * systemd availability is probed (`systemctl --user`) inside [install], never in the
- * constructor, so constructing this service — for example when the Koin graph is built inside
- * a container that has no systemd — performs no I/O and cannot fail. When systemd is
- * unavailable [install] throws an [IllegalStateException] whose message explains how to
+ * systemd availability is probed (`systemctl --user`) by [isAvailable] and inside [install],
+ * never in the constructor, so constructing this service — for example when the Koin graph is
+ * built inside a container that has no systemd — performs no I/O and cannot fail. When systemd
+ * is unavailable [install] throws an [IllegalStateException] whose message explains how to
  * schedule `omnisign renew` with another scheduler (cron, supercronic, a Kubernetes
  * CronJob, …).
+ *
+ * @param systemctl The `systemctl` command this service runs; tests run a stand-in instead, so that
+ *   they never reach the user's systemd instance.
  */
-class SystemdSchedulerService : OsSchedulerService {
+class SystemdSchedulerService(
+	private val systemctl: String = "systemctl",
+) : OsSchedulerService {
 
 	override fun install(
 		cliExecutablePath: String,
@@ -42,20 +47,26 @@ class SystemdSchedulerService : OsSchedulerService {
 		unitDir.createDirectories()
 		unitDir.resolve(SERVICE_UNIT).writeText(renderServiceUnit(cliExecutablePath, logFilePath))
 		unitDir.resolve(TIMER_UNIT).writeText(renderTimerUnit(runAtHour, runAtMinute))
-		run("systemctl", "--user", "daemon-reload")
-		run("systemctl", "--user", "enable", "--now", TIMER_UNIT)
+		run(systemctl, "--user", "daemon-reload")
+		run(systemctl, "--user", "enable", "--now", TIMER_UNIT)
 	}
 
 	override fun uninstall() {
-		runQuietly("systemctl", "--user", "disable", "--now", TIMER_UNIT)
+		runQuietly(systemctl, "--user", "disable", "--now", TIMER_UNIT)
 		val unitDir = userUnitDir()
 		unitDir.resolve(TIMER_UNIT).deleteIfExists()
 		unitDir.resolve(SERVICE_UNIT).deleteIfExists()
-		runQuietly("systemctl", "--user", "daemon-reload")
+		runQuietly(systemctl, "--user", "daemon-reload")
 	}
 
 	override fun isInstalled(): Boolean =
 		userUnitDir().resolve(TIMER_UNIT).exists()
+
+	/**
+	 * Whether a usable systemd user instance is reachable, without which [install] fails, as in
+	 * containers, on WSL without systemd and on distributions without systemd.
+	 */
+	override fun isAvailable(): Boolean = isSystemdAvailable()
 
 	/**
 	 * Render the `oneshot` service unit that runs `omnisign renew`.
@@ -181,7 +192,7 @@ class SystemdSchedulerService : OsSchedulerService {
 	 */
 	private fun isSystemdAvailable(): Boolean =
 		try {
-			val process = ProcessBuilder("systemctl", "--user", "show-environment")
+			val process = ProcessBuilder(systemctl, "--user", "show-environment")
 				.redirectErrorStream(true)
 				.start()
 			process.inputStream.readAllBytes()

@@ -37,6 +37,11 @@ data class TimestampServerConfig(
     val url: String,
     val username: String? = null,
     val credentialKey: String? = null,
-    val timeout: Int = 30000,
+    val timeout: Int = DEFAULT_TIMEOUT_MS,
     @Transient val runtimePassword: Sensitive<String>? = null
-)
+) {
+    companion object {
+        /** The request timeout, in milliseconds, of a timestamp server whose configuration sets none. */
+        const val DEFAULT_TIMEOUT_MS = 30000
+    }
+}
