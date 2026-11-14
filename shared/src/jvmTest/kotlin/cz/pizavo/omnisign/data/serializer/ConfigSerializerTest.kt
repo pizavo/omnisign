@@ -14,6 +14,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
+import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.result.OperationResult
@@ -35,7 +36,6 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotBeBlank
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.string.shouldNotStartWith
-import io.kotest.matchers.string.shouldStartWith
 import io.kotest.matchers.types.shouldBeInstanceOf
 import tools.jackson.databind.DatabindException
 import kotlin.io.path.createTempFile
@@ -294,7 +294,8 @@ class ConfigSerializerTest : FunSpec({
 			"<disabledHashAlgorithms>\n  </disabledHashAlgorithms>",
 		)
 		for (element in elements) {
-			val global = XmlConfigSerializer().deserializeGlobal("<GlobalConfig>$element</GlobalConfig>").shouldBeRight()
+			val document = "<GlobalConfig><defaultHashAlgorithm>SHA512</defaultHashAlgorithm>$element</GlobalConfig>"
+			val global = XmlConfigSerializer().deserializeGlobal(document).shouldBeRight()
 			global.disabledHashAlgorithms.shouldBeEmpty()
 		}
 	}
@@ -324,7 +325,8 @@ class ConfigSerializerTest : FunSpec({
 
 	test("YAML reads every spelling of null as null") {
 		for (value in listOf("~", "null", "Null", "NULL", "")) {
-			YamlConfigSerializer().deserializeApp("activeProfile: $value").shouldBeRight().activeProfile.shouldBeNull()
+			YamlConfigSerializer().deserializeApp("activeProfile: $value\nschedulerConfig:\n  runAtHour: 3")
+				.shouldBeRight().activeProfile.shouldBeNull()
 		}
 	}
 
@@ -489,13 +491,13 @@ class ConfigSerializerTest : FunSpec({
 		JsonConfigSerializer().deserializeApp(document).shouldBeRight().activeProfile shouldBe "work"
 	}
 
-	test("every format refuses a document most of whose properties no configuration of its kind has, though it has a profile's name") {
+	test("every format refuses a document most of whose properties a profile does not have, though it has a profile's name, naming those properties") {
 		val documents = listOf(
-			JsonConfigSerializer() to """{"name": "my-app", "version": "1.0.0", "scripts": {"build": "tsc"}}""",
-			YamlConfigSerializer() to "name: CI\non: push\njobs: {}",
-			XmlConfigSerializer() to "<project><name>my-app</name><version>1.0.0</version><scripts/></project>",
+			Triple(JsonConfigSerializer(), """{"name": "my-app", "version": "1.0.0", "scripts": {"build": "tsc"}}""", "version, scripts"),
+			Triple(YamlConfigSerializer(), "name: CI\non: push\njobs: {}", "on, jobs"),
+			Triple(XmlConfigSerializer(), "<project><name>my-app</name><version>1.0.0</version><scripts/></project>", "version, scripts"),
 		)
-		for ((serializer, document) in documents) {
+		for ((serializer, document, unknown) in documents) {
 			val results = listOf(
 				serializer.deserializeApp(document),
 				serializer.deserializeGlobal(document),
@@ -504,7 +506,7 @@ class ConfigSerializerTest : FunSpec({
 			for (result in results) {
 				val error = refusal(result)
 				error.text shouldBe LocalizableText.of(MessageKey.CONFIG_DOCUMENT_NOT_CONFIGURATION)
-				error.details.shouldNotBeNull() shouldStartWith "Top-level properties: name, "
+				error.details shouldBe "Top-level properties a profile does not have: $unknown"
 			}
 		}
 	}
@@ -596,6 +598,84 @@ class ConfigSerializerTest : FunSpec({
 	test("XML reads a profile whose root also holds text, which gives no property a name") {
 		XmlConfigSerializer().deserializeProfile("<ProfileConfig>note<name>work</name></ProfileConfig>")
 			.shouldBeRight().name shouldBe "work"
+	}
+
+	test("every format refuses a document with a section that holds only properties it does not have in a configuration, naming the section") {
+		val documents = listOf(
+			Triple(YamlConfigSerializer(), "global:\n  imageRegistry: registry.example.com\n  storageClass: fast\n", "global: imageRegistry, storageClass"),
+			Triple(YamlConfigSerializer(), "global:\n  scrape_interval: 15s\n", "global: scrape_interval"),
+			Triple(YamlConfigSerializer(), "global:\n  checkNewVersion: false\n", "global: checkNewVersion"),
+			Triple(JsonConfigSerializer(), """{"global": {"scrape_interval": "15s"}}""", "global: scrape_interval"),
+			Triple(JsonConfigSerializer(), """{"validation": {"rules": []}}""", "validation: rules"),
+			Triple(JsonConfigSerializer(), """{"global": {"validation": {"rules": []}}}""", "global.validation: rules"),
+			Triple(XmlConfigSerializer(), "<settings><profiles><profile><id>dev</id></profile></profiles></settings>", "profiles.profile: id"),
+		)
+		for ((serializer, document, found) in documents) {
+			val (section, properties) = found.split(": ")
+			withClue(document) {
+				val results = listOf(
+					serializer.deserializeApp(document),
+					serializer.deserializeGlobal(document),
+					serializer.deserializeProfile(document),
+				)
+				for (result in results) {
+					val error = refusal(result)
+					error.text shouldBe LocalizableText.of(MessageKey.CONFIG_DOCUMENT_NOT_CONFIGURATION)
+					error.details shouldBe "$section holds only properties it does not have in a configuration: $properties"
+				}
+			}
+		}
+	}
+
+	test("every format refuses a document whose properties hold nothing, such as an empty map of profiles") {
+		val documents = listOf(
+			Triple(JsonConfigSerializer(), """{"profiles": {}}""", "profiles"),
+			Triple(YamlConfigSerializer(), "profiles: {}\nrenewalJobs: {}\n", "profiles, renewalJobs"),
+			Triple(XmlConfigSerializer(), "<settings><profiles/></settings>", "profiles"),
+			Triple(JsonConfigSerializer(), """{"global": {}}""", "global"),
+			Triple(JsonConfigSerializer(), """{"global": {"ocsp": {}}, "tlDrafts": {}}""", "global, tlDrafts"),
+			Triple(JsonConfigSerializer(), """{"name": " ", "disabledHashAlgorithms": []}""", "name, disabledHashAlgorithms"),
+		)
+		for ((serializer, document, properties) in documents) {
+			withClue(document) {
+				val results = listOf(
+					serializer.deserializeApp(document),
+					serializer.deserializeGlobal(document),
+					serializer.deserializeProfile(document),
+				)
+				for (result in results) {
+					val error = refusal(result)
+					error.text shouldBe LocalizableText.of(MessageKey.CONFIG_DOCUMENT_NOT_CONFIGURATION)
+					error.details shouldBe "Top-level properties that hold nothing: $properties"
+				}
+			}
+		}
+	}
+
+	test("a section reads while it holds a property it has, beside ones a newer build may add, and an empty one reads as its defaults") {
+		val json = JsonConfigSerializer()
+
+		json.deserializeApp("""{"global": {"defaultHashAlgorithm": "SHA512", "newSetting": 1, "otherSetting": 2}}""")
+			.shouldBeRight().global.defaultHashAlgorithm shouldBe HashAlgorithm.SHA512
+		json.deserializeGlobal("""{"ocsp": {"timeout": 1000, "retries": 3}}""").shouldBeRight().ocsp.timeout shouldBe 1000
+		json.deserializeApp("""{"profiles": {"work": {"name": "work", "ocsp": {}}}}""")
+			.shouldBeRight().profiles.getValue("work").ocsp shouldBe OcspConfig()
+	}
+
+	test("the details of a document refused for top-level properties its kind does not have name those properties") {
+		val json = JsonConfigSerializer()
+		val documents = listOf(
+			"""{"name": "work", "description": "Work", "_comment": "mine"}""" to "Top-level properties a profile does not have: _comment",
+			"""{"defaultHashAlgorithm": "SHA512", "comment": "mine"}""" to "Top-level properties the global settings do not have: comment",
+			"""{"activeProfile": "work", "note": "mine"}""" to "Top-level properties a full configuration does not have: note",
+		)
+		for ((document, details) in documents) {
+			withClue(document) {
+				for (result in listOf(json.deserializeApp(document), json.deserializeGlobal(document), json.deserializeProfile(document))) {
+					refusal(result).details shouldBe details
+				}
+			}
+		}
 	}
 
 	test("the details of a document that holds no configuration list its first ten properties") {

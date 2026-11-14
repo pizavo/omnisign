@@ -162,6 +162,19 @@ class ConfigArchiveUseCaseTest : FunSpec({
 		destStore.list(TrustScope.Profile("orig")).shouldBeRight().shouldBeEmpty()
 	}
 
+	test("a profile kept under another key than its name exports its certificates under its name, so that its import restores them") {
+		val sourceRepo = inMemoryRepo(AppConfig(profiles = mapOf("key" to ProfileConfig(name = "other-name"))))
+		val sourceStore = newStore()
+		val fingerprint = sourceStore.add(TrustScope.Profile("key"), selfSignedDer("KeyedCa"), TrustedCertificateType.CA)
+			.shouldBeRight().fingerprint
+		val archive = archiveUseCase(sourceRepo, sourceStore).exportProfile("key", ConfigFormat.JSON).shouldBeRight()
+
+		val destStore = newStore()
+		archiveUseCase(inMemoryRepo(AppConfig()), destStore).importProfile(archive).shouldBeRight() shouldBe "other-name"
+
+		destStore.list(TrustScope.Profile("other-name")).shouldBeRight().map { it.fingerprint } shouldBe listOf(fingerprint)
+	}
+
 	test("a cert-free export still produces a valid archive that imports cleanly") {
 		val archive = archiveUseCase(inMemoryRepo(AppConfig()), newStore())
 			.exportGlobal(ConfigFormat.JSON).shouldBeRight()

@@ -83,10 +83,16 @@ class ConfigArchiveUseCase(
 
 	/**
 	 * Export a single named profile and its own trust scope as an archive.
+	 *
+	 * The manifest lists the scope's certificates under the name the exported profile carries, which
+	 * [importProfile] finds them by, even when the configuration keeps the profile under another key.
 	 */
 	suspend fun exportProfile(profileName: String, format: ConfigFormat): OperationResult<ByteArray> {
 		val configText = exportImport.exportProfile(profileName, format).getOrElse { return it.left() }
-		return buildArchive(format, configText, listOf(TrustScope.Profile(profileName)))
+		val ownName = configRepository.getCurrentConfig().profiles[profileName]?.name ?: profileName
+		return buildArchive(format, configText, listOf(TrustScope.Profile(profileName))) {
+			TrustScope.Profile(ownName)
+		}
 	}
 
 	/**
@@ -150,18 +156,20 @@ class ConfigArchiveUseCase(
 	 *
 	 * Per-scope membership and type come from [TrustStore.list]; the canonical DER for each
 	 * referenced fingerprint is sourced from [TrustStore.resolve] (whose union covers every
-	 * referenced certificate).
+	 * referenced certificate). The manifest lists each scope's certificates under the scope
+	 * [listedAs] gives for it, the scope itself unless an export says otherwise.
 	 */
 	private suspend fun buildArchive(
 		format: ConfigFormat,
 		configText: String,
 		scopes: List<TrustScope>,
+		listedAs: (TrustScope) -> TrustScope = { it },
 	): OperationResult<ByteArray> {
 		val manifestEntries = mutableListOf<TrustArchiveEntry>()
 		val derByFingerprint = mutableMapOf<String, ByteArray>()
 		for (scope in scopes) {
 			trustStore.list(scope).getOrElse { return it.left() }
-				.forEach { manifestEntries += TrustArchiveEntry(scopeKey(scope), it.fingerprint, it.type) }
+				.forEach { manifestEntries += TrustArchiveEntry(scopeKey(listedAs(scope)), it.fingerprint, it.type) }
 			trustStore.resolve(scope).getOrElse { return it.left() }
 				.forEach { derByFingerprint.putIfAbsent(it.fingerprint, it.der) }
 		}

@@ -194,6 +194,24 @@ class ExportImportConfigUseCaseTest : FunSpec({
 		coVerify(exactly = 0) { repository.saveConfig(any()) }
 	}
 
+	test("importProfile refuses a profile that disables its own hash override, and saves nothing") {
+		val repository: ConfigRepository = mockk()
+		coEvery { repository.getCurrentConfig() } returns baseConfig
+		coEvery { repository.saveConfig(any()) } returns Unit.right()
+		val profile = ProfileConfig(
+			name = "imported",
+			hashAlgorithm = HashAlgorithm.SHA512,
+			disabledHashAlgorithms = setOf(HashAlgorithm.SHA512),
+		)
+		val serialized = jsonSerializer.serializeProfile(profile).shouldBeRight()
+
+		val error = ExportImportConfigUseCase(repository, registry).importProfile(serialized, ConfigFormat.JSON).shouldBeLeft()
+
+		error.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>().text shouldBe
+			LocalizableText.of(MessageKey.CONFIG_PROFILE_DISABLES_OWN_HASH, "imported", "SHA512")
+		coVerify(exactly = 0) { repository.saveConfig(any()) }
+	}
+
 	test("importProfile refuses a profile that disables its own encryption override, naming it as it would be saved") {
 		val repository: ConfigRepository = mockk()
 		coEvery { repository.getCurrentConfig() } returns baseConfig

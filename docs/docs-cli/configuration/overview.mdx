@@ -165,14 +165,17 @@ default; with `--all` it must hold a full configuration, as `config export --all
 file that holds another kind — a full configuration without `--all`, the global settings with
 it, or a profile either way — or no OmniSign configuration at all is refused with an error that
 says what it holds. A file holds none when some of its top-level properties are not ones the kind
-it resembles has, unless most of them are and one of those is more than a single word such as
-`name` or `global`, so a `package.json` or a Prometheus configuration is refused. So is a
-configuration whose default hash or encryption algorithm is among the algorithms it disables, or
-one with a profile that disables its own override, as `config set` and `config profile` refuse
-them too. An archive is checked before anything changes — its configuration, its manifest and
-every certificate the import restores — so a refused import leaves the configuration and the
-trusted certificates as they were. Importing the global settings restores only the archive's
-global trusted certificates. An archive that unpacks to more than 64 MiB is refused.
+it resembles has, unless most of them are and one of those joins several words, as
+`defaultHashAlgorithm` does; when a section in it, such as `global` or a profile's `validation`,
+has properties but none that section has; or when what it shares with the kind is all empty. A
+`package.json`, a Prometheus configuration or a Helm values file is therefore refused, and the
+error's details name the properties that gave it away. So is a configuration whose default hash
+or encryption algorithm is among the algorithms it disables, or one with a profile that disables
+its own override, as `config set` and `config profile` refuse them too. An archive is checked
+before anything changes — its configuration, its manifest and every certificate the import
+restores — so a refused import leaves the configuration and the trusted certificates as they
+were. Importing the global settings restores only the archive's global trusted certificates. An
+archive that unpacks to more than 64 MiB is refused.
 
 ## Related pages
 
