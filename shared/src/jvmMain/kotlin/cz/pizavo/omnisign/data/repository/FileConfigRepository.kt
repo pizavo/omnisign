@@ -52,10 +52,10 @@ import kotlin.io.path.readSymbolicLink
  * settings that the configuration being saved, built on the defaults [getCurrentConfig] falls
  * back to, no longer contains. The user fixes the file or moves it away, and the next save works.
  *
- * Every error carries the exception behind it as its cause. For an I/O failure its details give the
- * exception's class, since the message often holds only the path, as for a file this user may not
- * read or a replace that Windows refused; for any other failure, such as a file that does not
- * decode, they give the message.
+ * An error that an exception caused carries that exception as its cause. For an I/O failure its
+ * details give the exception's class, since the message often holds only the path, as for a file
+ * this user may not read or a replace that Windows refused; for any other failure, such as a file
+ * that does not decode, they give the message.
  *
  * All file access runs on [ioDispatcher], so the repository is safe to call from a UI thread.
  *
