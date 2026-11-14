@@ -1,7 +1,9 @@
 package cz.pizavo.omnisign.domain.usecase
 
+import arrow.core.flatMap
 import arrow.core.getOrElse
 import arrow.core.left
+import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.disabledDefaultError
 import cz.pizavo.omnisign.domain.model.config.disabledOverrideError
 import cz.pizavo.omnisign.domain.model.config.enums.ConfigFormat
@@ -125,10 +127,39 @@ class ExportImportConfigUseCase(
 		text: String,
 		format: ConfigFormat,
 		overrideName: String? = null
-	): OperationResult<String> {
+	): OperationResult<String> =
+		readProfile(text, format).flatMap { saveProfile(it, overrideName) }
+
+	/**
+	 * Read the profile serialized [text] holds, without saving it: the first half of [importProfile],
+	 * for an import that has more to check before it saves.
+	 *
+	 * Text that holds a full configuration or the global settings instead, or no configuration, is
+	 * refused, as [ConfigSerializer.deserializeProfile] describes.
+	 *
+	 * @param text Serialized profile text.
+	 * @param format Format of the supplied text.
+	 * @return The profile, or an error.
+	 */
+	fun readProfile(text: String, format: ConfigFormat): OperationResult<ProfileConfig> {
 		val serializer = serializerRegistry.get(format)
 			?: return ConfigurationError.noSerializerForFormat(format.name).left()
-		val profile = serializer.deserializeProfile(text).getOrElse { return it.left() }
+		return serializer.deserializeProfile(text)
+	}
+
+	/**
+	 * Upsert [profile] into the stored configuration, renamed to [overrideName] when it is given:
+	 * the second half of [importProfile].
+	 *
+	 * A profile whose hash or encryption override is among the algorithms it disables is refused and
+	 * nothing is saved, as [disabledOverrideError] describes; the error names the profile as it would
+	 * have been saved.
+	 *
+	 * @param profile The profile [readProfile] read.
+	 * @param overrideName Optional name to use instead of the profile's own.
+	 * @return The name under which the profile was saved, or an error.
+	 */
+	suspend fun saveProfile(profile: ProfileConfig, overrideName: String? = null): OperationResult<String> {
 		val finalProfile = if (overrideName != null) profile.copy(name = overrideName) else profile
 		finalProfile.disabledOverrideError()?.let { return it.left() }
 		val current = configRepository.getCurrentConfig()

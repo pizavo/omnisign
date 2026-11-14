@@ -150,9 +150,15 @@ abstract class JacksonConfigSerializer(
 	 * A full configuration shares no top-level property with the other two kinds, so any of its own
 	 * marks one. A profile shares most of its properties with the global settings, so only those the
 	 * global settings lack mark it, such as the `name` every profile has. Any other property of the
-	 * global settings marks those. A document most of whose top-level properties the marked kind
-	 * does not have holds none, as a `package.json` holds no profile for its `name`; a file a newer
-	 * build wrote still reads, as it has every property this build knows besides its new ones.
+	 * global settings marks those.
+	 *
+	 * A document holds the kind it is marked as when all its top-level properties belong to that
+	 * kind. One with other properties too holds it only when most of its properties belong to the
+	 * kind and one of those is [specific], since a single word such as `name`, `description` or
+	 * `global` is common in other files, a `package.json` or a Prometheus configuration among them.
+	 * So a file a newer build wrote, with top-level properties this build does not know, reads only
+	 * while they are fewer than the ones this build knows. Only the names of the top-level properties
+	 * are compared, not what they hold.
 	 */
 	private fun kindOf(document: ObjectNode): ConfigDocumentKind? {
 		val names = topLevelNames(document)
@@ -162,9 +168,16 @@ abstract class JacksonConfigSerializer(
 			names.any { it in globalMarkers } -> ConfigDocumentKind.GLOBAL
 			else -> return null
 		}
-		val own = kindProperties.getValue(kind)
-		return kind.takeIf { names.count { it in own } * 2 >= names.size }
+		val known = names.filter { it in kindProperties.getValue(kind) }
+		val holdsKind = known.size == names.size || (known.any { specific(it) } && known.size * 2 > names.size)
+		return kind.takeIf { holdsKind }
 	}
+
+	/**
+	 * Whether the property [name] is more than a single lowercase word: a compound such as
+	 * `defaultHashAlgorithm`, which hardly any file but a configuration of this application has.
+	 */
+	private fun specific(name: String): Boolean = name.any { it.isUpperCase() }
 
 	/**
 	 * The top-level property names of [document], for the details of an error that found no
@@ -174,11 +187,11 @@ abstract class JacksonConfigSerializer(
 		topLevelNames(document)
 			.takeIf { it.isNotEmpty() }
 			?.joinToString(prefix = "Top-level properties: ", limit = MAX_LISTED_PROPERTIES)
-			?: "The document has no top-level properties"
+			?: "The document has no named top-level properties"
 
 	/**
-	 * The top-level property names of [document], without the empty name Jackson gives the text an
-	 * XML root holds, which no configuration has.
+	 * The top-level property names of [document] that are not blank. No configuration has a blank
+	 * one, and Jackson gives the text an XML root holds an empty name.
 	 */
 	private fun topLevelNames(document: ObjectNode): List<String> =
 		document.propertyNames().filter { it.isNotBlank() }

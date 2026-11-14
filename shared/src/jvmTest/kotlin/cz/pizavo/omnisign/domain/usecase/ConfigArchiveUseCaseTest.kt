@@ -344,12 +344,15 @@ class ConfigArchiveUseCaseTest : FunSpec({
 		}
 	}
 
-	test("importProfile restores only the manifest's profile entries, even when it lists the global settings'") {
-		val sourceRepo = inMemoryRepo(AppConfig(profiles = mapOf("p1" to ProfileConfig(name = "p1"))))
+	test("importProfile restores only the certificates of the profile its configuration holds, though the manifest lists the global settings' and another profile's") {
+		val sourceRepo = inMemoryRepo(
+			AppConfig(profiles = mapOf("p1" to ProfileConfig(name = "p1"), "p2" to ProfileConfig(name = "p2"))),
+		)
 		val sourceStore = newStore()
 		sourceStore.add(TrustScope.Global, selfSignedDer("Root"), TrustedCertificateType.CA).shouldBeRight()
 		val profileFingerprint = sourceStore.add(TrustScope.Profile("p1"), selfSignedDer("ProfileCa"), TrustedCertificateType.TSA)
 			.shouldBeRight().fingerprint
+		sourceStore.add(TrustScope.Profile("p2"), selfSignedDer("OtherCa"), TrustedCertificateType.CA).shouldBeRight()
 		val fullArchive = archiveUseCase(sourceRepo, sourceStore).exportApp(ConfigFormat.JSON).shouldBeRight()
 		val profileText = ExportImportConfigUseCase(sourceRepo, serializers()).exportProfile("p1", ConfigFormat.JSON)
 			.shouldBeRight()
@@ -359,6 +362,7 @@ class ConfigArchiveUseCaseTest : FunSpec({
 		archiveUseCase(inMemoryRepo(AppConfig()), destStore).importProfile(archive).shouldBeRight() shouldBe "p1"
 
 		destStore.list(TrustScope.Profile("p1")).shouldBeRight().map { it.fingerprint } shouldBe listOf(profileFingerprint)
+		destStore.list(TrustScope.Profile("p2")).shouldBeRight().shouldBeEmpty()
 		destStore.list(TrustScope.Global).shouldBeRight().shouldBeEmpty()
 	}
 

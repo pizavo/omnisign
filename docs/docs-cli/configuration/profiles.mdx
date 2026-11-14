@@ -105,8 +105,9 @@ omnisign config profile import university.zip --name university-backup
 The file must hold a single profile, as `config profile export` writes it. The global settings,
 a full configuration or a file with no OmniSign configuration is refused with an error that says
 what it holds, and so is a profile that disables its own hash or encryption algorithm override;
-nothing changes. An archive's profile certificates are restored into the imported profile; global
-ones it lists are left out.
+nothing changes. The certificates an archive lists for the profile it holds are restored into the
+imported profile; any it lists for the global settings or for another profile are left out. An
+archive that unpacks to more than 64 MiB is refused.
 
 ## Examples
 

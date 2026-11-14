@@ -37,7 +37,8 @@ import java.util.zip.ZipOutputStream
  * An archive is always emitted, even when no certificate is referenced, so the outer container is a
  * stable contract. On import the certificate bytes are re-added through [TrustStore.add], whose
  * content-addressed dedup absorbs anything already present. Entries are sorted and given a fixed
- * timestamp so two exports of identical state are byte-for-byte identical.
+ * timestamp, so two exports of identical state that the same JDK writes are byte-for-byte identical,
+ * whatever the machine's time zone.
  *
  * This wraps the platform-agnostic [ExportImportConfigUseCase] (config text only) with the
  * JVM-only ZIP and trust-store handling.
@@ -125,18 +126,21 @@ class ConfigArchiveUseCase(
 	 * Import a profile archive: upsert the profile (optionally renamed via [overrideName]), then
 	 * restore the archive's trust references into the imported profile's scope.
 	 *
-	 * Only the manifest's profile entries are restored; the global certificates belong to an import
-	 * of the global settings. The archive is checked before anything is changed, as [importApp]
-	 * describes, and one that holds a full configuration or the global settings instead of a profile
-	 * is refused.
+	 * Only the manifest's entries for the profile the archive's configuration holds are restored,
+	 * found by the name that configuration gives it, not by [overrideName]; the global certificates
+	 * belong to an import of the global settings, and another profile's to an import of that
+	 * profile. The archive is checked before anything is changed, as [importApp] describes, and one
+	 * that holds a full configuration or the global settings instead of a profile is refused.
 	 *
 	 * @return The name the profile was saved under.
 	 */
 	suspend fun importProfile(archive: ByteArray, overrideName: String? = null): OperationResult<String> {
 		val entries = readZip(archive).getOrElse { return it.left() }
 		val (configText, format) = readConfigEntry(entries).getOrElse { return it.left() }
-		val certificates = readTrust(entries) { it.startsWith(PROFILE_SCOPE_PREFIX) }.getOrElse { return it.left() }
-		val savedName = exportImport.importProfile(configText, format, overrideName).getOrElse { return it.left() }
+		val profile = exportImport.readProfile(configText, format).getOrElse { return it.left() }
+		val ownScope = scopeKey(TrustScope.Profile(profile.name))
+		val certificates = readTrust(entries) { it == ownScope }.getOrElse { return it.left() }
+		val savedName = exportImport.saveProfile(profile, overrideName).getOrElse { return it.left() }
 		restoreTrust(certificates) { TrustScope.Profile(savedName) }.getOrElse { return it.left() }
 		return savedName.right()
 	}
@@ -334,7 +338,8 @@ class ConfigArchiveUseCase(
 
 		/**
 		 * Fixed ZIP entry timestamp for reproducible archives: 2000-01-01 00:00, written as an MS-DOS
-		 * date and time, which carry no time zone, so that the bytes do not depend on the machine's.
+		 * date and time, which carry no time zone, so that the bytes do not depend on the machine's
+		 * time zone.
 		 */
 		private val FIXED_ENTRY_TIME: LocalDateTime = LocalDateTime.of(2000, 1, 1, 0, 0)
 

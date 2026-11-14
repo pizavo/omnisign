@@ -164,14 +164,15 @@ Without `--all` the file must hold the global settings, as `config export` write
 default; with `--all` it must hold a full configuration, as `config export --all` writes it. A
 file that holds another kind — a full configuration without `--all`, the global settings with
 it, or a profile either way — or no OmniSign configuration at all is refused with an error that
-says what it holds; a file most of whose top-level properties no configuration has, such as a
-`package.json` with a `name`, holds none. So is a configuration whose default hash or encryption
-algorithm is among the algorithms it disables, or one with a profile that disables its own
-override, as `config set` and `config profile` refuse them too. An archive is checked before anything changes — its
-configuration, its manifest and every certificate the import restores — so a refused import
-leaves the configuration and the trusted certificates as they were. Importing the global
-settings restores only the archive's global trusted certificates. An archive that unpacks to more
-than 64 MiB is refused.
+says what it holds. A file holds none when some of its top-level properties are not ones the kind
+it resembles has, unless most of them are and one of those is more than a single word such as
+`name` or `global`, so a `package.json` or a Prometheus configuration is refused. So is a
+configuration whose default hash or encryption algorithm is among the algorithms it disables, or
+one with a profile that disables its own override, as `config set` and `config profile` refuse
+them too. An archive is checked before anything changes — its configuration, its manifest and
+every certificate the import restores — so a refused import leaves the configuration and the
+trusted certificates as they were. Importing the global settings restores only the archive's
+global trusted certificates. An archive that unpacks to more than 64 MiB is refused.
 
 ## Related pages
 

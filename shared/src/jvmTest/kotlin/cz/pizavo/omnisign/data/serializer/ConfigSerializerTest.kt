@@ -23,6 +23,7 @@ import cz.pizavo.omnisign.domain.model.value.sensitive
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
@@ -461,7 +462,7 @@ class ConfigSerializerTest : FunSpec({
 			for (result in results) {
 				val error = refusal(result)
 				error.text shouldBe LocalizableText.of(MessageKey.CONFIG_DOCUMENT_NOT_CONFIGURATION)
-				error.details shouldBe "The document has no top-level properties"
+				error.details shouldBe "The document has no named top-level properties"
 			}
 		}
 	}
@@ -474,8 +475,8 @@ class ConfigSerializerTest : FunSpec({
 			LocalizableText.of(MessageKey.CONFIG_DOCUMENT_GLOBAL_NOT_PROFILE)
 	}
 
-	test("a document with a property of a full configuration reads as one, even beside the name of a profile") {
-		val document = """{"name": "work", "activeProfile": "work"}"""
+	test("a document with properties of a full configuration reads as one, even beside the name of a profile") {
+		val document = """{"name": "work", "activeProfile": "work", "profiles": {}}"""
 
 		JsonConfigSerializer().deserializeApp(document).shouldBeRight().activeProfile shouldBe "work"
 		refusal(JsonConfigSerializer().deserializeProfile(document)).text shouldBe
@@ -483,7 +484,7 @@ class ConfigSerializerTest : FunSpec({
 	}
 
 	test("a document with a property this build does not know still reads, by the properties it knows") {
-		val document = """{"activeProfile": "work", "signingHistory": []}"""
+		val document = """{"activeProfile": "work", "renewalJobs": {}, "signingHistory": []}"""
 
 		JsonConfigSerializer().deserializeApp(document).shouldBeRight().activeProfile shouldBe "work"
 	}
@@ -508,14 +509,93 @@ class ConfigSerializerTest : FunSpec({
 		}
 	}
 
-	test("a profile that sets only its name reads, and so does one with as many unknown properties as known") {
+	test("a profile that sets only its name reads, and so does one with fewer unknown properties than known, one of them more than a word") {
 		val json = JsonConfigSerializer()
 
 		json.deserializeProfile("""{"name": "work"}""").shouldBeRight().name shouldBe "work"
-		json.deserializeProfile("""{"name": "work", "signingHistory": []}""").shouldBeRight().name shouldBe "work"
+		json.deserializeProfile("""{"name": "work", "description": "Work"}""").shouldBeRight().description shouldBe "Work"
 		json.deserializeProfile(
-			"""{"name": "work", "hashAlgorithm": "SHA384", "signingHistory": [], "reviewers": []}"""
+			"""{"name": "work", "hashAlgorithm": "SHA384", "signingHistory": []}"""
 		).shouldBeRight().hashAlgorithm shouldBe HashAlgorithm.SHA384
+	}
+
+	test("a document with unknown properties is refused when the ones it knows are single words, or no more than the unknown ones") {
+		val json = JsonConfigSerializer()
+		val documents = listOf(
+			"""{"name": "work", "signingHistory": []}""",
+			"""{"name": "work", "description": "Work", "signingHistory": []}""",
+			"""{"name": "work", "hashAlgorithm": "SHA384", "signingHistory": [], "reviewers": []}""",
+			"""{"activeProfile": "work", "signingHistory": []}""",
+		)
+		for (document in documents) {
+			withClue(document) {
+				for (result in listOf(json.deserializeApp(document), json.deserializeGlobal(document), json.deserializeProfile(document))) {
+					refusal(result).text shouldBe LocalizableText.of(MessageKey.CONFIG_DOCUMENT_NOT_CONFIGURATION)
+				}
+			}
+		}
+	}
+
+	test("every format refuses a foreign file whose only known properties are single words, such as name or global") {
+		val documents = listOf(
+			JsonConfigSerializer() to """{"name": "my-app", "version": "1.0.0"}""",
+			JsonConfigSerializer() to """{"name": "my-app", "version": "1.0.0", "description": "An app"}""",
+			JsonConfigSerializer() to """{"name": "vendor/package", "description": "A package", "require": {}}""",
+			JsonConfigSerializer() to """{"name": "dev", "image": "mcr.microsoft.com/devcontainers/base"}""",
+			YamlConfigSerializer() to "name: Hello\ndescription: Greets someone\nruns:\n  using: node20\n  main: index.js",
+			YamlConfigSerializer() to "name: proj\nservices: {}",
+			YamlConfigSerializer() to "global:\n  scrape_interval: 15s\nscrape_configs: []",
+			YamlConfigSerializer() to "global:\n  a: 1\nreplicaCount: 2",
+			XmlConfigSerializer() to "<project><name>my-app</name><version>1.0.0</version></project>",
+		)
+		for ((serializer, document) in documents) {
+			withClue(document) {
+				val results = listOf(
+					serializer.deserializeApp(document),
+					serializer.deserializeGlobal(document),
+					serializer.deserializeProfile(document),
+				)
+				for (result in results) {
+					refusal(result).text shouldBe LocalizableText.of(MessageKey.CONFIG_DOCUMENT_NOT_CONFIGURATION)
+				}
+			}
+		}
+	}
+
+	test("a document is measured against the kind it is marked as, so global settings beside a profile's name are refused") {
+		val json = JsonConfigSerializer()
+		val document = """{"name": "work", "defaultHashAlgorithm": "SHA512", "defaultSignatureLevel": "PADES_BASELINE_B"}"""
+
+		for (result in listOf(json.deserializeApp(document), json.deserializeGlobal(document), json.deserializeProfile(document))) {
+			refusal(result).text shouldBe LocalizableText.of(MessageKey.CONFIG_DOCUMENT_NOT_CONFIGURATION)
+		}
+	}
+
+	test("every format reads a default profile a newer build wrote with two new properties, but not with three") {
+		fun withNewProperties(serializer: JacksonConfigSerializer, text: String, count: Int): String {
+			val names = (1..count).map { "newSetting$it" }
+			return when (serializer) {
+				is JsonConfigSerializer -> text.replaceFirst("{", "{" + names.joinToString("") { "\"$it\": 1, " })
+				is YamlConfigSerializer -> text.trimEnd() + "\n" + names.joinToString("\n") { "$it: 1" } + "\n"
+				else -> text.lastIndexOf("</").let { close ->
+					text.substring(0, close) + names.joinToString("") { "<$it>1</$it>" } + text.substring(close)
+				}
+			}
+		}
+
+		for (serializer in serializers) {
+			val text = serializer.serializeProfile(ProfileConfig(name = "work")).shouldBeRight()
+			withClue(serializer::class.simpleName) {
+				serializer.deserializeProfile(withNewProperties(serializer, text, 2)).shouldBeRight().name shouldBe "work"
+				refusal(serializer.deserializeProfile(withNewProperties(serializer, text, 3))).text shouldBe
+					LocalizableText.of(MessageKey.CONFIG_DOCUMENT_NOT_CONFIGURATION)
+			}
+		}
+	}
+
+	test("XML reads a profile whose root also holds text, which gives no property a name") {
+		XmlConfigSerializer().deserializeProfile("<ProfileConfig>note<name>work</name></ProfileConfig>")
+			.shouldBeRight().name shouldBe "work"
 	}
 
 	test("the details of a document that holds no configuration list its first ten properties") {
@@ -525,16 +605,17 @@ class ConfigSerializerTest : FunSpec({
 			"Top-level properties: " + (1..10).joinToString { "p%02d".format(it) } + ", ..."
 	}
 
-	test("XML refuses a root that holds only text, saying it has no top-level properties") {
+	test("XML refuses a root that holds only text, and JSON one whose only property has no name, as having no named top-level properties") {
 		val documents = listOf(
-			"<AppConfig> </AppConfig>",
-			"<AppConfig>text</AppConfig>",
-			"<AppConfig><![CDATA[x]]></AppConfig>",
+			XmlConfigSerializer() to "<AppConfig> </AppConfig>",
+			XmlConfigSerializer() to "<AppConfig>text</AppConfig>",
+			XmlConfigSerializer() to "<AppConfig><![CDATA[x]]></AppConfig>",
+			JsonConfigSerializer() to """{"": 1}""",
 		)
-		for (document in documents) {
-			val error = refusal(XmlConfigSerializer().deserializeApp(document))
+		for ((serializer, document) in documents) {
+			val error = refusal(serializer.deserializeApp(document))
 			error.text shouldBe LocalizableText.of(MessageKey.CONFIG_DOCUMENT_NOT_CONFIGURATION)
-			error.details shouldBe "The document has no top-level properties"
+			error.details shouldBe "The document has no named top-level properties"
 		}
 	}
 })
