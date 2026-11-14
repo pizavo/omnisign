@@ -1,9 +1,12 @@
 package cz.pizavo.omnisign.domain.usecase
 
+import arrow.core.Either
+import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.data.repository.FileConfigRepository
 import cz.pizavo.omnisign.data.repository.readConfigText
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
+import cz.pizavo.omnisign.domain.model.error.TrustStoreError
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -32,8 +35,11 @@ private val logger = KotlinLogging.logger {}
  *
  * It is idempotent and cheap to run on every startup: once the file holds no inline entries it only
  * parses the file and returns. Each certificate is migrated independently — one whose Base64 cannot
- * be decoded, or which the store rejects, is logged and skipped. The store deduplicates by
- * fingerprint, so a re-run after a failed save is safe.
+ * be decoded, or which the store rejects as not a certificate, is logged and skipped. When the store
+ * cannot take a certificate for any other reason, as when its index cannot be read, the migration
+ * stops and leaves the inline lists in the configuration, so that no certificate is lost and the
+ * next run tries again. The store deduplicates by fingerprint, so a re-run after a failed save or a
+ * stopped migration is safe.
  *
  * @property configRepository Loads and saves the live configuration when clearing the inline lists.
  * @property trustStore Destination store the inline certificates are imported into.
@@ -49,7 +55,8 @@ class MigrateTrustedCertificatesUseCase(
 	 * Migrate every inline trusted certificate found in the on-disk config into the [TrustStore]
 	 * and clear the inline lists from the saved configuration.
 	 *
-	 * @return The number of certificates moved into the store, or a
+	 * @return The number of certificates moved into the store; the [TrustStoreError] that stopped
+	 *   the migration, with the inline lists left in the configuration; or a
 	 *   [cz.pizavo.omnisign.domain.model.error.ConfigurationError] if persisting the cleared
 	 *   configuration fails.
 	 */
@@ -64,15 +71,24 @@ class MigrateTrustedCertificatesUseCase(
 					logger.warn(it) { "Skipping legacy trusted certificate '${cert.name}' in $scope: invalid Base64" }
 					continue
 				}
-				trustStore.add(scope, der, cert.type, source = MIGRATION_SOURCE).fold(
-					ifLeft = {
-						logger.warn { "Skipping legacy trusted certificate '${cert.name}' in $scope: ${it.message}" }
-					},
-					ifRight = {
+				when (val added = trustStore.add(scope, der, cert.type, source = MIGRATION_SOURCE)) {
+					is Either.Right -> {
 						migrated++
 						logger.info { "Migrated legacy trusted certificate '${cert.name}' into the trust store ($scope)" }
-					},
-				)
+					}
+
+					is Either.Left -> {
+						val error = added.value
+						if (error !is TrustStoreError.ParseFailed) {
+							logger.warn {
+								"Stopping the migration of legacy trusted certificates, which stay in the configuration: " +
+									"'${cert.name}' in $scope could not be stored: ${error.message}"
+							}
+							return error.left()
+						}
+						logger.warn { "Skipping legacy trusted certificate '${cert.name}' in $scope: ${error.message}" }
+					}
+				}
 			}
 		}
 

@@ -23,6 +23,7 @@ import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.maps.shouldContainKey
 import io.kotest.matchers.shouldBe
@@ -35,13 +36,15 @@ import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.math.BigInteger
 import java.nio.charset.Charset
-import java.nio.file.Files
 import java.security.KeyPairGenerator
 import java.util.Date
 import java.util.TimeZone
 import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
+import kotlin.io.path.createTempDirectory
+import kotlin.io.path.readBytes
+import kotlin.io.path.writeBytes
 
 /**
  * Verifies [ConfigArchiveUseCase] round-trips the configuration and its scoped trust material
@@ -50,7 +53,8 @@ import java.util.zip.ZipOutputStream
  * than the import reads is refused with nothing changed, and a global import restores the global
  * trust scope alone. An archive whose manifest, or a certificate it lists, cannot be read is
  * refused in the same way, as are one whose entry names are not UTF-8 and one that unpacks to more
- * than an import accepts. An export holds the same bytes in every time zone.
+ * than an import accepts. An export holds the same bytes in every time zone, and one over a trust
+ * index that cannot be read fails with the store's error.
  */
 class ConfigArchiveUseCaseTest : FunSpec({
 
@@ -74,7 +78,9 @@ class ConfigArchiveUseCaseTest : FunSpec({
 		}
 	}
 
-	fun newStore() = FileTrustStore(Files.createTempDirectory("archive-test"))
+	val root = tempdir().toPath()
+
+	fun newStore() = FileTrustStore(createTempDirectory(root, "archive-test"))
 
 	fun selfSignedDer(cn: String): ByteArray {
 		val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
@@ -202,6 +208,27 @@ class ConfigArchiveUseCaseTest : FunSpec({
 		val destStore = newStore()
 		archiveUseCase(inMemoryRepo(AppConfig()), destStore).importGlobal(archive).shouldBeRight()
 		destStore.list(TrustScope.Global).shouldBeRight().shouldBeEmpty()
+	}
+
+	test("an export over a trust index that cannot be read fails with the store's error rather than leaving the certs out") {
+		val dir = createTempDirectory(root, "archive-test")
+		FileTrustStore(dir).add(TrustScope.Global, selfSignedDer("Root"), TrustedCertificateType.CA).shouldBeRight()
+		val index = dir.resolve("contents.cbor")
+		val written = index.readBytes()
+		index.writeBytes(written.copyOf(written.size / 2))
+		val useCase = archiveUseCase(
+			inMemoryRepo(AppConfig(profiles = mapOf("p1" to ProfileConfig(name = "p1")))),
+			FileTrustStore(dir),
+		)
+
+		listOf(
+			useCase.exportApp(ConfigFormat.JSON),
+			useCase.exportGlobal(ConfigFormat.JSON),
+			useCase.exportProfile("p1", ConfigFormat.JSON),
+		).forEach { result ->
+			result.shouldBeLeft().shouldBeInstanceOf<TrustStoreError.StorageFailed>().text shouldBe
+				LocalizableText.of(MessageKey.TRUSTSTORE_INDEX_UNREADABLE, index.toAbsolutePath().toString())
+		}
 	}
 
 	test("two exports of identical state are byte-for-byte identical") {

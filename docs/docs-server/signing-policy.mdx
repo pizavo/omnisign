@@ -99,10 +99,12 @@ data; configuring it as a target would silently produce B-B.
 
 `trustedCertificates` are declared **by reference** and reconciled into the server's writable
 [`trustStoreDir`](configuration#truststoredir) at boot. Each entry sets exactly one of `path` (a
-PEM/DER file, relative to `signing.yml`) or `inline` (Base64 DER), plus a required `type`
-(`ANY`/`CA`/`TSA`) and an optional `fingerprint` integrity pin. The bytes are copied into the trust
-directory, so the source file may be removed afterward. A fatal reconcile condition (integrity
-mismatch, unresolvable reference) aborts startup.
+PEM/DER file, relative to `signing.yml`) or `inline` (Base64 DER, in which line breaks and spaces
+are ignored, so a wrapped PEM body pasted as a YAML block works), plus a required `type`
+(`ANY`/`CA`/`TSA`) and an optional `fingerprint` integrity pin, checked before the certificate is
+stored. The bytes are copied into the trust directory, so the source file may be removed afterward.
+A fatal reconcile condition (integrity mismatch, unresolvable reference, a trust directory whose
+index cannot be read) aborts startup.
 
 A profile may also declare its own `validation.trustedCertificates`; each profile gets its own trust
 scope, and a profile removed from the policy has its scope cleared at the next boot.

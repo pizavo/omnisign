@@ -130,6 +130,11 @@ internal object EnglishMessages {
 			"No trusted certificate %1\$s in the global scope"
 		MessageKey.TRUSTSTORE_NOT_FOUND_PROFILE ->
 			"No trusted certificate %1\$s in profile '%2\$s'"
+		MessageKey.TRUSTSTORE_INDEX_UNREADABLE ->
+			"The trust store index %1\$s cannot be read, so the trusted certificates are left as they are " +
+				"and none of them is used. If a newer version of OmniSign wrote it, update to that version; " +
+				"otherwise restore the file from a backup, or move the directory that holds it elsewhere to start " +
+				"over with no trusted certificates."
 		MessageKey.CONFIG_LOAD_FAILED ->
 			"Failed to load configuration"
 		MessageKey.CONFIG_SAVE_FAILED ->
