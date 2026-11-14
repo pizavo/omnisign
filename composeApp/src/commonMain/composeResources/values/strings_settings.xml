@@ -42,8 +42,10 @@
 	<string name="settings_error_refresh_failed">Trusted-list refresh failed: %1$s</string>
 	<string name="settings_error_scheduler_install_failed">Failed to install OS scheduler: %1$s</string>
 	<string name="settings_error_pkcs11_probe_timeout_invalid">The PKCS#11 probe timeout must be a whole number of seconds from 1 to 120.</string>
-	<string name="settings_error_tl_refresh_interval_invalid">The trusted list refresh interval must be a whole number of hours, 1 or more.</string>
+	<string name="settings_error_tl_refresh_interval_invalid">The trusted list refresh interval must be a whole number of hours from 1 to 2,147,483,647.</string>
 	<string name="settings_error_staleness_threshold_invalid">The days before a stalled renewal is reported must be a whole number, 1 or more.</string>
+	<string name="settings_error_tsa_password_needs_username">A timestamp server password is stored under its username, so enter the username or clear the password.</string>
+	<string name="settings_error_tsa_password_not_kept">The timestamp server password cannot be stored: no system credential store is available, so it would be lost when OmniSign closes. Clear the password to save the other settings. On Linux, the credential store is a Secret Service provider such as GNOME Keyring, KWallet or KeePassXC.</string>
 	<string name="settings_error_reason_unknown">unknown error</string>
 	<string name="settings_certadd_already_trusted">This certificate is already trusted in the global scope.</string>
 	<string name="settings_validation_tl_last_refreshed">Last refreshed: %1$s</string>

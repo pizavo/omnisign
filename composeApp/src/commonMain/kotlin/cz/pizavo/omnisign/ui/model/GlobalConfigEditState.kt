@@ -31,8 +31,9 @@ import kotlinx.datetime.LocalDate
  * @property timestampUrl TSA endpoint URL.
  * @property timestampUsername HTTP Basic auth username for the TSA.
  * @property timestampPassword HTTP Basic auth password for the current edit session, held as
- *   [Sensitive] so the state's string form never shows it, and cleared once the credential store
- *   keeps it.
+ *   [Sensitive] so the state's string form never shows it, and cleared once a save that stored it in
+ *   the credential store completes. While the timestamp server section is on, a save refuses one
+ *   entered without a [timestampUsername].
  * @property hasStoredPassword Whether a password is already persisted in the OS credential store.
  * @property timestampTimeout TSA request timeout in milliseconds, stored as a string for the text field.
  * @property ocspTimeout OCSP request timeout in milliseconds, stored as a string.
@@ -59,7 +60,8 @@ import kotlinx.datetime.LocalDate
  * @property pkcs11ProbeTimeout Seconds to wait for a single PKCS#11 library probe, stored as a
  *   string for the text field. A save refuses a value outside 1–120.
  * @property trustedListRefreshInterval Process-global trusted-list refresh interval in hours,
- *   stored as a string for the text field. A save refuses a value below 1.
+ *   stored as a string for the text field. A save refuses a value below 1 or above [Int.MAX_VALUE],
+ *   whose milliseconds would no longer fit the refresh scheduler's `Long`.
  * @property renewalJobs Renewal jobs managed in this edit session.
  * @property availableProfiles Names of profiles available for the renewal job profile dropdown.
  * @property activeProfile The currently active profile name, used as the default selection when adding a renewal job.
@@ -76,6 +78,9 @@ import kotlinx.datetime.LocalDate
  *   stored as a string for the text field. A save refuses a value below 1 while the warning is on,
  *   and coerces one to 1 while it is off, as the field is then hidden.
  * @property schedulerInstalled Whether the OS scheduler job is currently registered (read-only, queried on the load).
+ * @property schedulerSyncFailed Whether the last save wrote the configuration but could not register
+ *   the OS scheduler job. It counts as an unsaved change, so Save stays enabled to try again, and is
+ *   left out of [contentEquals].
  * @property renewalRunRecord Status of the most recent renewal batch run (read-only, queried on load), or `null` when none has run or no backend is available.
  * @property renewalRunInFlight Whether a renewal run is executing right now (read-only, queried on
  *   load). Tells a [RenewalRunRecord.runStartedAt] marker belonging to a live run apart from one a
@@ -133,6 +138,7 @@ data class GlobalConfigEditState(
 	val stalenessNotificationEnabled: Boolean = SCHEDULER_DEFAULTS.stalenessNotificationEnabled,
 	val stalenessThresholdDays: String = SCHEDULER_DEFAULTS.stalenessThresholdDays.toString(),
 	val schedulerInstalled: Boolean = false,
+	val schedulerSyncFailed: Boolean = false,
 	val renewalRunRecord: RenewalRunRecord? = null,
 	val renewalRunInFlight: Boolean = false,
 	val saving: Boolean = false,
@@ -175,12 +181,12 @@ data class GlobalConfigEditState(
 
 	/**
 	 * Whether the [trustedListRefreshInterval] string represents a valid interval
-	 * (a positive whole number of hours). Empty strings are treated as valid
+	 * (a whole number of hours from 1 to [Int.MAX_VALUE]). Empty strings are treated as valid
 	 * (the default is applied on save).
 	 */
 	val isTrustedListRefreshIntervalValid: Boolean
 		get() = trustedListRefreshInterval.isEmpty() ||
-				trustedListRefreshInterval.toLongOrNull()?.let { it >= 1 } == true
+				trustedListRefreshInterval.toIntOrNull()?.let { it >= 1 } == true
 
 	/**
 	 * Whether the [schedulerHour] string represents a valid hour (0–23).
@@ -210,9 +216,27 @@ data class GlobalConfigEditState(
 		get() = !isSchedulerHourValid || !isSchedulerMinuteValid
 
 	/**
+	 * Whether a save writes a timestamp server: its section is on and names a URL. A save with the
+	 * section off, or without a URL, leaves the timestamp server out of the configuration.
+	 */
+	private val savesTimestampServer: Boolean
+		get() = timestampEnabled && timestampUrl.isNotBlank()
+
+	/**
+	 * Whether a save stores the [timestampPassword] in the credential store: one was entered, with
+	 * the [timestampUsername] the store keeps it under, for a timestamp server the save writes, whose
+	 * credential key then names it. A password entered for a timestamp server the save leaves out is
+	 * dropped with the rest of its section, as nothing would refer to it.
+	 */
+	val storesTimestampPassword: Boolean
+		get() = savesTimestampServer && timestampPassword.value.isNotEmpty() && timestampUsername.isNotBlank()
+
+	/**
 	 * The error a save reports for the first field whose value is out of its range, or `null` when
 	 * every field can be saved as entered. The staleness threshold counts only while its warning is
-	 * on, as the field is hidden otherwise.
+	 * on, as the field is hidden otherwise. A TSA password entered without a username counts too,
+	 * while the timestamp server section is on: the credential store keeps the password under the
+	 * username, so a save would otherwise drop it without a word.
 	 */
 	val invalidFieldError: SettingsError?
 		get() = when {
@@ -220,6 +244,8 @@ data class GlobalConfigEditState(
 			!isPkcs11ProbeTimeoutValid -> SettingsError.Pkcs11ProbeTimeoutInvalid
 			!isTrustedListRefreshIntervalValid -> SettingsError.TrustedListRefreshIntervalInvalid
 			stalenessNotificationEnabled && !isStalenessThresholdDaysValid -> SettingsError.StalenessThresholdInvalid
+			timestampEnabled && timestampPassword.value.isNotEmpty() && timestampUsername.isBlank() ->
+				SettingsError.TsaPasswordNeedsUsername
 			else -> null
 		}
 
@@ -275,6 +301,14 @@ data class GlobalConfigEditState(
 	 * level, compared with what [base] resolves to, stamps the policy update date with [today], as
 	 * [AlgorithmConstraintsConfig.stampedToday] asks of every constraint change.
 	 *
+	 * Two settings the form shows only in part are kept the same way. A default signature level the
+	 * two timestamp checkboxes cannot express, B-T, shows as neither box ticked and is kept unless the
+	 * boxes are changed. The credential key the TSA password is stored under becomes the username
+	 * when a new password is stored, as the save stores it there. While a password stored earlier
+	 * is kept, it stays the key [base] names, as the CLI keeps it, so that renaming the user without
+	 * typing the password again still finds the password; only when [base] names no key, as after a
+	 * save that left the timestamp server out, does it fall back to the username.
+	 *
 	 * The [timestampPassword] is intentionally **not** included in the returned config
 	 * because passwords are persisted separately through the OS credential store.
 	 */
@@ -286,16 +320,24 @@ data class GlobalConfigEditState(
 		return base.copy(
 			defaultHashAlgorithm = defaultHashAlgorithm,
 			defaultEncryptionAlgorithm = defaultEncryptionAlgorithm,
-			defaultSignatureLevel = effectiveSignatureLevel,
+			defaultSignatureLevel = if (effectiveSignatureLevel == checkboxLevel(base.defaultSignatureLevel)) {
+				base.defaultSignatureLevel
+			} else {
+				effectiveSignatureLevel
+			},
 			disabledHashAlgorithms = disabledHashAlgorithms,
 			disabledEncryptionAlgorithms = disabledEncryptionAlgorithms,
-			timestampServer = if (timestampEnabled && timestampUrl.isNotBlank()) {
+			timestampServer = if (savesTimestampServer) {
 				val effectiveUsername = timestampUsername.ifBlank { null }
-				val hasPassword = timestampPassword.value.isNotEmpty() || hasStoredPassword
 				TimestampServerConfig(
 					url = timestampUrl.trim(),
 					username = effectiveUsername,
-					credentialKey = if (hasPassword && effectiveUsername != null) effectiveUsername else null,
+					credentialKey = when {
+						effectiveUsername == null -> null
+						timestampPassword.value.isNotEmpty() -> effectiveUsername
+						hasStoredPassword -> base.timestampServer?.credentialKey ?: effectiveUsername
+						else -> null
+					},
 					timeout = timestampTimeout.toIntOrNull() ?: TimestampServerConfig.DEFAULT_TIMEOUT_MS,
 				)
 			} else {
@@ -331,6 +373,16 @@ data class GlobalConfigEditState(
 
 		/** Scheduler settings that set nothing, whose values the edit state's scheduler defaults take. */
 		private val SCHEDULER_DEFAULTS = SchedulerConfig()
+
+		/**
+		 * The level the two timestamp checkboxes show for [level]: B-LTA and B-LT as themselves, and
+		 * any other level, B-T included, as B-B, with neither box ticked, as [from] sets them.
+		 */
+		private fun checkboxLevel(level: SignatureLevel): SignatureLevel = when (level) {
+			SignatureLevel.PADES_BASELINE_LTA -> SignatureLevel.PADES_BASELINE_LTA
+			SignatureLevel.PADES_BASELINE_LT -> SignatureLevel.PADES_BASELINE_LT
+			else -> SignatureLevel.PADES_BASELINE_B
+		}
 
 		/**
 		 * Build a [GlobalConfigEditState] from an existing [GlobalConfig].

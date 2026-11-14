@@ -108,13 +108,14 @@ class SettingsViewModel(
     val state: StateFlow<GlobalConfigEditState> = _state.asStateFlow()
 
     /**
-     * Whether the current edit state differs from the originally loaded state.
+     * Whether Save has something to do: the current edit state differs from the state last loaded
+     * or saved, ignoring transient UI fields, or the last save could not register the OS scheduler
+     * job, which saving again tries anew.
      *
-     * Returns `false` until [load] completes successfully or when the current state
-     * matches the initial snapshot (ignoring transient UI fields).
+     * Returns `false` until [load] completes successfully.
      */
     val hasChanges: StateFlow<Boolean> = combine(_state, _initialState) { current, initial ->
-        initial != null && !current.contentEquals(initial)
+        initial != null && (current.schedulerSyncFailed || !current.contentEquals(initial))
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /**
@@ -261,28 +262,39 @@ class SettingsViewModel(
     /**
      * Persist the current edit state as the global configuration.
      *
-     * A field whose value is out of its range, as [GlobalConfigEditState.invalidFieldError] names
-     * it, becomes the error and nothing is saved. Otherwise a newly entered TSA password is stored in
-     * the OS credential store first, then the [GlobalConfigEditState] is applied to the global
-     * configuration as it is saved through [SetGlobalConfigUseCase], keeping what the dialog does
-     * not show, and the renewal jobs and scheduler settings are saved after it. A password the store
-     * does not keep becomes the error and nothing is saved, so the configuration never names a
-     * password that is not there; a failed write of either part becomes the error too, and the
-     * scheduler is then left as it was. The [onSuccess] callback is invoked after a successful save
-     * so the caller can dismiss the dialog, unless the form was edited while the save ran.
+     * Nothing happens while a save is already running. A field whose value is out of its range, as
+     * [GlobalConfigEditState.invalidFieldError] names it, becomes the error and nothing is saved, and
+     * so does a TSA password to store when the [credentialStore] keeps passwords in memory only, as
+     * the configuration would then name a password that is gone once the application closes.
      *
-     * @param onSuccess Callback invoked after the global config is successfully persisted.
+     * Otherwise the configuration is read again first, so that what the CLI or another instance of
+     * the application saved while the dialog was open is kept. A newly entered TSA password is then
+     * stored in the OS credential store, the [GlobalConfigEditState] is applied to the global
+     * configuration as it is saved through [SetGlobalConfigUseCase], keeping what the dialog does not
+     * show, and the renewal jobs and scheduler settings are saved after it. A password the store does
+     * not keep becomes the error and nothing is saved, so the configuration never names a password
+     * that is not there; a failed read, or a failed write of either part, becomes the error too, and
+     * the scheduler is then left as it was.
+     *
+     * @param onSuccess Callback invoked once the configuration, the OS scheduler job and the staged
+     *   certificate changes are all saved, so the caller can dismiss the dialog. It is not invoked
+     *   when any of them failed, nor when the form was edited while the save ran.
      */
     fun save(onSuccess: () -> Unit = {}) {
         val current = _state.value
-        current.invalidFieldError?.let { error ->
+        if (current.saving) return
+        val refusal = current.invalidFieldError
+            ?: SettingsError.TsaPasswordNotKept.takeIf {
+                current.storesTimestampPassword && credentialStore?.isPersistent == false
+            }
+        refusal?.let { error ->
             _state.update { it.copy(error = error) }
             return
         }
         _state.update { it.copy(saving = true, error = null) }
         viewModelScope.launch {
-            val passwordStored = withContext(ioDispatcher) { storeTsaPasswordIfNeeded(current) }
-            passwordStored
+            getConfigUseCase()
+                .flatMap { withContext(ioDispatcher) { storeTsaPasswordIfNeeded(current) } }
                 .flatMap { setGlobalConfigUseCase { current.appliedTo(this, today()) } }
                 .flatMap { saveAppLevelConfig(current) }
                 .fold(
@@ -300,7 +312,9 @@ class SettingsViewModel(
      * make [saved] the new baseline, with a TSA password the credential store now keeps cleared from
      * it and from the form, unless the form's password was changed meanwhile. Edits made while the
      * save ran stay in the form, unsaved, and keep the dialog open, so they are neither lost nor
-     * taken for saved.
+     * taken for saved. A scheduler job that could not be registered is marked as
+     * [GlobalConfigEditState.schedulerSyncFailed] in the form, also when the certificate changes
+     * fail too, which keeps Save enabled to try again.
      */
     private suspend fun finishSave(saved: GlobalConfigEditState, onSuccess: () -> Unit) {
         val (schedulerError, installed) = withContext(ioDispatcher) {
@@ -321,12 +335,14 @@ class SettingsViewModel(
                 )
             }
         }
+        val schedulerSyncFailed = schedulerError != null
         if (certError != null) {
             _state.update {
                 it.copy(
                     saving = false,
                     error = SettingsError.Domain(certError.localizableText()),
                     schedulerInstalled = installed,
+                    schedulerSyncFailed = schedulerSyncFailed,
                 )
             }
             return
@@ -335,8 +351,7 @@ class SettingsViewModel(
         val newBaseline = store
             ?.let { withContext(ioDispatcher) { it.list(TrustScope.Global) } }
             ?.fold(ifLeft = { emptyList() }, ifRight = { it }).orEmpty()
-        val passwordKept = credentialStore != null && saved.timestampPassword.value.isNotEmpty() &&
-                saved.timestampUsername.isNotBlank()
+        val passwordKept = credentialStore != null && saved.storesTimestampPassword
         val baseline = saved.copy(
             saving = false,
             error = schedulerError,
@@ -351,6 +366,7 @@ class SettingsViewModel(
                 saving = false,
                 error = schedulerError,
                 schedulerInstalled = installed,
+                schedulerSyncFailed = schedulerSyncFailed,
                 trustedCertificates = newBaseline,
                 pendingTrustedCertAdds = live.pendingTrustedCertAdds - saved.pendingTrustedCertAdds.toSet(),
                 pendingTrustedCertRemovals = live.pendingTrustedCertRemovals - saved.pendingTrustedCertRemovals,
@@ -383,8 +399,8 @@ class SettingsViewModel(
     }
 
     /**
-     * Persist the TSA password from [editState] into the OS credential store
-     * when a new password was entered and a username is present.
+     * Persist the TSA password from [editState] into the OS credential store under its username,
+     * when the save stores one, as [GlobalConfigEditState.storesTimestampPassword] tells.
      *
      * Blocks while the keyring asks to be unlocked, so callers run it on [ioDispatcher].
      *
@@ -392,10 +408,12 @@ class SettingsViewModel(
      *   store's error.
      */
     private fun storeTsaPasswordIfNeeded(editState: GlobalConfigEditState): OperationResult<Unit> {
-        val password = editState.timestampPassword.value.ifEmpty { return Unit.right() }
-        val username = editState.timestampUsername.ifBlank { return Unit.right() }
-        return credentialStore?.setPassword(TSA_CREDENTIAL_SERVICE, username, password)
-            ?: Unit.right()
+        if (!editState.storesTimestampPassword) return Unit.right()
+        return credentialStore?.setPassword(
+            TSA_CREDENTIAL_SERVICE,
+            editState.timestampUsername,
+            editState.timestampPassword.value,
+        ) ?: Unit.right()
     }
 
     /**

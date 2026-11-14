@@ -83,7 +83,8 @@ private const val MaxTimeoutDigits = 9
  * the currently selected [SettingsCategory].
  *
  * @param state Current [GlobalConfigEditState] from [cz.pizavo.omnisign.ui.viewmodel.SettingsViewModel].
- * @param hasChanges Whether the user has modified any persistable field since the dialog was opened.
+ * @param hasChanges Whether Save has something to do: a persistable field differs from the state last
+ *   loaded or saved, or the last save could not register the OS scheduler job.
  * @param onFieldChange Called with a transform to update a single field in the edit state.
  * @param onSave Called when the user clicks the Save button.
  * @param onDismiss Called when the user clicks Cancel or the close button.
@@ -550,7 +551,8 @@ private fun SettingsContentPanel(
  * Footer row with Cancel and Save buttons.
  *
  * @param saving Whether a save operation is currently in progress.
- * @param hasChanges Whether any persistable field differs from the originally loaded state.
+ * @param hasChanges Whether Save has something to do: a persistable field differs from the state last
+ *   loaded or saved, or the last save could not register the OS scheduler job.
  * @param onCancel Callback invoked when Cancel is clicked.
  * @param onSave Callback invoked when Save is clicked.
  * @param readOnly When `true`, the Save button is hidden unless there are pending [hasChanges] — so

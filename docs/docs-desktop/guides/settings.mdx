@@ -15,8 +15,11 @@ leaf shows the corresponding form.
 
 Changes take effect when you click **Save**, and closing the dialog without saving discards them.
 A field whose value is out of its range is marked in red, and Save refuses it with an error that
-names the field. When part of a save fails, the dialog shows the error and stays open, so you can
-save again; a change made while a save is still running stays in the dialog as unsaved.
+names the field. Save reads the configuration again before it writes, so a setting the dialog does
+not show keeps what the CLI saved while the dialog was open. When part of a save fails, setting up
+the [renewal scheduler](#scheduler) included, the dialog shows the error and stays open with Save
+enabled, so you can save again; a change made while a save is still running stays in the dialog as
+unsaved.
 
 ![Settings dialog](/img/desktop/settings-overview.avif)
 
@@ -39,7 +42,8 @@ See [Algorithms](../algorithms.mdx) for the full list of supported algorithms.
 | Allow signing with an expired certificate | Produce a signature even if the signing certificate has expired. **Such signatures fail validation**, so leave off unless you specifically need it | Off     |
 
 The effective PAdES level is derived from the two timestamp checkboxes: neither → B-B,
-signature only → B-LT, both → B-LTA.
+signature only → B-LT, both → B-LTA. A B-T default set with the CLI shows as neither box ticked,
+and saving keeps it until you tick a box.
 
 #### Disabled Algorithms
 
@@ -67,11 +71,14 @@ The TSA password is stored in the operating system's native credential store
 GNOME Keyring, KWallet or KeePassXC) — it is never written to the configuration file. When a
 password has been previously stored, the field shows a placeholder indicator.
 
-The password is stored before the settings are saved. If the credential store does not keep it —
-a keyring left locked because its unlock prompt was dismissed, or a keychain that refuses the
-write — the dialog shows an error and saves nothing, so that the configuration never refers to a
-password that is not there. Once the store keeps it, the field is cleared and shows the
-stored-password indicator.
+The password is stored under the username before the settings are saved, so Save refuses a
+password entered without a username. If the credential store does not keep it — a keyring left
+locked because its unlock prompt was dismissed, or a keychain that refuses the write — the dialog
+shows an error and saves nothing, so that the configuration never refers to a password that is not
+there. Where no credential store is available at all, as on Linux without a Secret Service
+provider, a password would last only until OmniSign closes, so Save refuses it too; clear the
+password to save the other settings. Once the store keeps it, the field is cleared and shows the
+stored-password indicator, and renaming the user afterwards keeps using the stored password.
 :::
 
 #### OCSP & CRL
@@ -101,10 +108,10 @@ Revocation List requests used during validation and B-LT/B-LTA signing.
   [Validating Signatures → EU LOTL membership](validation.mdx#eu-lotl-membership).
 - **Trusted list refresh interval (hours)** — how often the EU LOTL and custom lists are
   refreshed automatically in the background (minimum 1 hour, 4 by default; Save refuses a lower
-  value). Keep this at or
-  below **6**: the ETSI validation policy considers a trusted list fresh only for 6 hours after
-  its last successful synchronization, so a longer interval leaves qualified validations
-  reporting *"the trusted list is not considered as fresh"* for the rest of each cycle. A list
+  value, or one above 2,147,483,647). Keep this at or below **6**: the ETSI validation policy
+  considers a trusted list fresh only for 6 hours after its last successful synchronization, so
+  a longer interval leaves qualified validations reporting *"the trusted list is not considered as
+  fresh"* for the rest of each cycle. A list
   that cannot be downloaded is still used from the copy cached on disk, however old, and
   validations name it under their **Trusted List Warnings**. OmniSign then tries to download it
   again every 5 minutes, up to 6 times, before going back to the interval. The freshness check

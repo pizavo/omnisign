@@ -8,6 +8,7 @@ import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
+import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import cz.pizavo.omnisign.domain.model.value.Sensitive
@@ -84,6 +85,87 @@ class GlobalConfigEditStateTest : FunSpec({
 		val original = GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LT)
 		val state = GlobalConfigEditState.from(original)
 		state.appliedTo(original, today).defaultSignatureLevel shouldBe SignatureLevel.PADES_BASELINE_LT
+	}
+
+	test("round-trip from and appliedTo keeps a B-T level, which the checkboxes show as neither ticked") {
+		val original = GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_T)
+		val state = GlobalConfigEditState.from(original)
+
+		state.addSignatureTimestamp shouldBe false
+		state.addArchivalTimestamp shouldBe false
+		state.appliedTo(original, today).defaultSignatureLevel shouldBe SignatureLevel.PADES_BASELINE_T
+	}
+
+	test("appliedTo saves the level the checkboxes show once they are changed") {
+		val bt = GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_T)
+		val lt = GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LT)
+		val lta = GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA)
+
+		GlobalConfigEditState.from(bt).copy(addSignatureTimestamp = true).appliedTo(bt, today)
+			.defaultSignatureLevel shouldBe SignatureLevel.PADES_BASELINE_LT
+		GlobalConfigEditState.from(lt).copy(addSignatureTimestamp = false).appliedTo(lt, today)
+			.defaultSignatureLevel shouldBe SignatureLevel.PADES_BASELINE_B
+		GlobalConfigEditState.from(lta).copy(addArchivalTimestamp = false).appliedTo(lta, today)
+			.defaultSignatureLevel shouldBe SignatureLevel.PADES_BASELINE_LT
+		GlobalConfigEditState.from(lta).copy(addSignatureTimestamp = false, addArchivalTimestamp = false)
+			.appliedTo(lta, today).defaultSignatureLevel shouldBe SignatureLevel.PADES_BASELINE_B
+	}
+
+	test("appliedTo keeps the credential key the configuration names while no new password is entered, as the CLI does") {
+		val base = GlobalConfig(
+			timestampServer = TimestampServerConfig(url = "https://tsa.example.com", username = "b", credentialKey = "a"),
+		)
+		val state = GlobalConfigEditState.from(base, hasStoredPassword = true)
+
+		state.appliedTo(base, today).timestampServer?.credentialKey shouldBe "a"
+		state.copy(timestampUsername = "c").appliedTo(base, today).timestampServer?.credentialKey shouldBe "a"
+	}
+
+	test("appliedTo names the username as the credential key when a new password is entered") {
+		val base = GlobalConfig(
+			timestampServer = TimestampServerConfig(url = "https://tsa.example.com", username = "b", credentialKey = "a"),
+		)
+
+		GlobalConfigEditState.from(base, hasStoredPassword = true)
+			.copy(timestampUsername = "c", timestampPassword = Sensitive("secret"))
+			.appliedTo(base, today).timestampServer?.credentialKey shouldBe "c"
+	}
+
+	test("appliedTo falls back to the username as the credential key when the configuration names none") {
+		val state = GlobalConfigEditState(
+			timestampEnabled = true,
+			timestampUrl = "https://tsa.example.com",
+			timestampUsername = "u",
+			hasStoredPassword = true,
+		)
+
+		state.appliedTo(GlobalConfig(), today).timestampServer?.credentialKey shouldBe "u"
+	}
+
+	test("appliedTo names no credential key without a username, or without a password stored or entered") {
+		val base = GlobalConfig(
+			timestampServer = TimestampServerConfig(url = "https://tsa.example.com", username = "u", credentialKey = "u"),
+		)
+
+		GlobalConfigEditState.from(base, hasStoredPassword = true).copy(timestampUsername = "")
+			.appliedTo(base, today).timestampServer?.credentialKey.shouldBeNull()
+		GlobalConfigEditState.from(base, hasStoredPassword = false)
+			.appliedTo(base, today).timestampServer?.credentialKey.shouldBeNull()
+	}
+
+	test("storesTimestampPassword holds only for a password with a username, for a timestamp server the save writes") {
+		val entered = GlobalConfigEditState(
+			timestampEnabled = true,
+			timestampUrl = "https://tsa.example.com",
+			timestampUsername = "u",
+			timestampPassword = Sensitive("secret"),
+		)
+
+		entered.storesTimestampPassword shouldBe true
+		entered.copy(timestampPassword = Sensitive("")).storesTimestampPassword shouldBe false
+		entered.copy(timestampUsername = " ").storesTimestampPassword shouldBe false
+		entered.copy(timestampEnabled = false).storesTimestampPassword shouldBe false
+		entered.copy(timestampUrl = " ").storesTimestampPassword shouldBe false
 	}
 
 	test("contentEquals detects change in useNativeTitleBar") {
@@ -176,10 +258,14 @@ class GlobalConfigEditStateTest : FunSpec({
 		a.contentEquals(b) shouldBe false
 	}
 
-	test("isTrustedListRefreshIntervalValid accepts blank and positive, rejects zero") {
+	test("isTrustedListRefreshIntervalValid accepts blank and 1 to Int.MAX_VALUE hours, rejects zero and more") {
 		GlobalConfigEditState(trustedListRefreshInterval = "").isTrustedListRefreshIntervalValid shouldBe true
 		GlobalConfigEditState(trustedListRefreshInterval = "1").isTrustedListRefreshIntervalValid shouldBe true
+		GlobalConfigEditState(trustedListRefreshInterval = Int.MAX_VALUE.toString())
+			.isTrustedListRefreshIntervalValid shouldBe true
 		GlobalConfigEditState(trustedListRefreshInterval = "0").isTrustedListRefreshIntervalValid shouldBe false
+		GlobalConfigEditState(trustedListRefreshInterval = "2147483648").isTrustedListRefreshIntervalValid shouldBe false
+		GlobalConfigEditState(trustedListRefreshInterval = "3000000000000").isTrustedListRefreshIntervalValid shouldBe false
 	}
 
 	test("from populates the trusted certificate baseline") {
@@ -324,10 +410,19 @@ class GlobalConfigEditStateTest : FunSpec({
 				SettingsError.StalenessThresholdInvalid
 		valid.copy(schedulerMinute = "60", pkcs11ProbeTimeout = "0").invalidFieldError shouldBe
 				SettingsError.SchedulerTimeInvalid
+		valid.copy(timestampEnabled = true, timestampPassword = Sensitive("secret")).invalidFieldError shouldBe
+				SettingsError.TsaPasswordNeedsUsername
+		valid.copy(timestampEnabled = true, timestampPassword = Sensitive("secret"), timestampUsername = "u")
+			.invalidFieldError.shouldBeNull()
 	}
 
 	test("invalidFieldError ignores the staleness threshold while its warning is off") {
 		GlobalConfigEditState(stalenessNotificationEnabled = false, stalenessThresholdDays = "0")
+			.invalidFieldError.shouldBeNull()
+	}
+
+	test("invalidFieldError ignores a TSA password without a username while the timestamp server section is off") {
+		GlobalConfigEditState(timestampEnabled = false, timestampPassword = Sensitive("secret"))
 			.invalidFieldError.shouldBeNull()
 	}
 })

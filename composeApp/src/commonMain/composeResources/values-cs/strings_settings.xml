@@ -42,8 +42,10 @@
 	<string name="settings_error_refresh_failed">Obnovení důvěryhodných seznamů selhalo: %1$s</string>
 	<string name="settings_error_scheduler_install_failed">Nepodařilo se nainstalovat plánovač operačního systému: %1$s</string>
 	<string name="settings_error_pkcs11_probe_timeout_invalid">Časový limit sondy PKCS#11 musí být celý počet sekund od 1 do 120.</string>
-	<string name="settings_error_tl_refresh_interval_invalid">Interval obnovování důvěryhodných seznamů musí být celý počet hodin, 1 nebo více.</string>
+	<string name="settings_error_tl_refresh_interval_invalid">Interval obnovování důvěryhodných seznamů musí být celý počet hodin od 1 do 2 147 483 647.</string>
 	<string name="settings_error_staleness_threshold_invalid">Počet dní, po kterých se ohlásí zastavená obnova, musí být celé číslo, 1 nebo více.</string>
+	<string name="settings_error_tsa_password_needs_username">Heslo serveru časových razítek se ukládá pod uživatelským jménem, zadejte proto uživatelské jméno, nebo heslo vymažte.</string>
+	<string name="settings_error_tsa_password_not_kept">Heslo serveru časových razítek nelze uložit: není k dispozici žádné systémové úložiště přihlašovacích údajů, takže by se po zavření OmniSign ztratilo. Ostatní nastavení uložíte, když heslo vymažete. V Linuxu je úložištěm přihlašovacích údajů poskytovatel služby Secret Service, například GNOME Keyring, KWallet nebo KeePassXC.</string>
 	<string name="settings_error_reason_unknown">neznámá chyba</string>
 	<string name="settings_certadd_already_trusted">Tento certifikát je již důvěryhodný v globálním rozsahu.</string>
 	<string name="settings_validation_tl_last_refreshed">Naposledy obnoveno: %1$s</string>

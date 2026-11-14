@@ -13,11 +13,20 @@ sealed interface SettingsError {
 	/** The PKCS#11 probe timeout is outside 1–120 seconds. */
 	data object Pkcs11ProbeTimeoutInvalid : SettingsError
 
-	/** The trusted-list refresh interval is below 1 hour. */
+	/** The trusted-list refresh interval is below 1 hour, or too large a number of hours to hold. */
 	data object TrustedListRefreshIntervalInvalid : SettingsError
 
 	/** The renewal staleness threshold is below 1 day while its warning is on. */
 	data object StalenessThresholdInvalid : SettingsError
+
+	/** A TSA password was entered without the username the credential store keeps it under. */
+	data object TsaPasswordNeedsUsername : SettingsError
+
+	/**
+	 * A TSA password was entered, but the credential store keeps passwords in memory only, so it
+	 * would be lost when the application exits while the configuration still pointed at it.
+	 */
+	data object TsaPasswordNotKept : SettingsError
 
 	/** Refreshing a trusted list failed; [reason] is the underlying cause. */
 	data class RefreshFailed(val reason: String) : SettingsError
@@ -39,6 +48,8 @@ fun SettingsError.resolve(): String = when (this) {
 	SettingsError.TrustedListRefreshIntervalInvalid ->
 		stringResource(Res.string.settings_error_tl_refresh_interval_invalid)
 	SettingsError.StalenessThresholdInvalid -> stringResource(Res.string.settings_error_staleness_threshold_invalid)
+	SettingsError.TsaPasswordNeedsUsername -> stringResource(Res.string.settings_error_tsa_password_needs_username)
+	SettingsError.TsaPasswordNotKept -> stringResource(Res.string.settings_error_tsa_password_not_kept)
 	is SettingsError.RefreshFailed -> stringResource(Res.string.settings_error_refresh_failed, reason)
 	is SettingsError.SchedulerInstallFailed -> stringResource(
 		Res.string.settings_error_scheduler_install_failed,
