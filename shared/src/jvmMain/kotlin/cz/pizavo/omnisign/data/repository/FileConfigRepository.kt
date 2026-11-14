@@ -13,6 +13,7 @@ import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
+import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
@@ -50,6 +51,11 @@ import kotlin.io.path.readSymbolicLink
  * replaced: [saveConfig] fails instead, because the file may hold profiles, renewal jobs and
  * settings that the configuration being saved, built on the defaults [getCurrentConfig] falls
  * back to, no longer contains. The user fixes the file or moves it away, and the next save works.
+ *
+ * Every error carries the exception behind it as its cause. For an I/O failure its details give the
+ * exception's class, since the message often holds only the path, as for a file this user may not
+ * read or a replace that Windows refused; for any other failure, such as a file that does not
+ * decode, they give the message.
  *
  * All file access runs on [ioDispatcher], so the repository is safe to call from a UI thread.
  *
@@ -89,16 +95,14 @@ class FileConfigRepository(
                     config.right()
                 }
             } catch (e: Exception) {
-                ConfigurationError.loadFailed(details = e.message, cause = e).left()
+                ConfigurationError.loadFailed(details = failureDetails(e), cause = e).left()
             }
         }
     }
 
     /**
      * Save [config] over the configuration file, unless the file exists and cannot be read or
-     * decoded, or is read-only: either way the file is left as it is and an error says why. A save
-     * that fails on the way gives the exception's class as the error's details and the exception as
-     * its cause, as the message of a refused replace on Windows holds only the two paths.
+     * decoded, or is read-only: either way the file is left as it is and an error says why.
      */
     override suspend fun saveConfig(config: AppConfig): OperationResult<Unit> = withContext(ioDispatcher) {
         mutex.withLock {
@@ -115,7 +119,7 @@ class FileConfigRepository(
             unreadableReason()?.let { reason ->
                 return ConfigurationError.unreadableNotOverwritten(
                     path = configPath.toAbsolutePath().toString(),
-                    details = reason.message,
+                    details = failureDetails(reason),
                     cause = reason,
                 ).left()
             }
@@ -128,9 +132,16 @@ class FileConfigRepository(
             cachedConfig = config
             Unit.right()
         } catch (e: Exception) {
-            ConfigurationError.saveFailed(details = e::class.simpleName, cause = e).left()
+            ConfigurationError.saveFailed(details = failureDetails(e), cause = e).left()
         }
     }
+
+    /**
+     * The details of an error caused by [failure]: the class of an I/O failure, whose message often
+     * holds only the path, or the message of any other.
+     */
+    private fun failureDetails(failure: Exception): String? =
+        if (failure is IOException) failure::class.simpleName else failure.message
 
     /**
      * Why the existing configuration file cannot be loaded, or `null` when it reads and decodes.

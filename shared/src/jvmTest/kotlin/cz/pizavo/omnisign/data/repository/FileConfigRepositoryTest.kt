@@ -23,10 +23,16 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Runnable
 import kotlinx.coroutines.async
 import kotlinx.coroutines.delay
+import kotlinx.serialization.SerializationException
+import java.nio.file.AccessDeniedException
 import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.attribute.AclEntry
+import java.nio.file.attribute.AclEntryPermission
+import java.nio.file.attribute.AclEntryType
+import java.nio.file.attribute.AclFileAttributeView
 import java.nio.file.attribute.PosixFilePermission
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.CoroutineContext
@@ -34,17 +40,25 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.createSymbolicLinkPointingTo
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteIfExists
+import kotlin.io.path.fileAttributesViewOrNull
+import kotlin.io.path.getPosixFilePermissions
 import kotlin.io.path.isSymbolicLink
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.moveTo
 import kotlin.io.path.name
 import kotlin.io.path.readText
+import kotlin.io.path.setPosixFilePermissions
 import kotlin.io.path.writeText
 
 /**
  * Verifies [FileConfigRepository] file-based persistence: creation of defaults, round-trip
  * save/load, the default fallback for a file that cannot be read, the refusal to save over such a
- * file, the atomic replacement of the file on a save, and the dispatcher the file access runs on.
+ * file, the atomic replacement of the file on a save, the details its errors give, and the
+ * dispatcher the file access runs on.
+ *
+ * The test of a file this user may not read denies the reading through an ACL on Windows and
+ * through the POSIX permissions elsewhere, and does not run as root, whom the permissions do not
+ * stop.
  *
  * The symbolic-link test runs only where the test can create a link, which Windows allows only to an
  * administrator or in developer mode.
@@ -70,6 +84,24 @@ class FileConfigRepositoryTest : FunSpec({
 
 	fun unreadable(path: Path): LocalizableText =
 		LocalizableText.of(MessageKey.CONFIG_UNREADABLE_NOT_OVERWRITTEN, path.toAbsolutePath().toString())
+
+	fun denyReading(path: Path): () -> Unit {
+		val acl = path.fileAttributesViewOrNull<AclFileAttributeView>()
+		if (acl != null) {
+			val entries = acl.acl
+			val user = path.fileSystem.userPrincipalLookupService.lookupPrincipalByName(System.getProperty("user.name"))
+			val deny = AclEntry.newBuilder()
+				.setType(AclEntryType.DENY)
+				.setPrincipal(user)
+				.setPermissions(AclEntryPermission.READ_DATA)
+				.build()
+			acl.acl = listOf(deny) + entries
+			return { acl.acl = entries }
+		}
+		val permissions = path.getPosixFilePermissions()
+		path.setPosixFilePermissions(setOf(PosixFilePermission.OWNER_WRITE))
+		return { path.setPosixFilePermissions(permissions) }
+	}
 
 	fun canCreateSymbolicLinks(): Boolean {
 		val probe = createTempDirectory("symlink-probe")
@@ -116,8 +148,9 @@ class FileConfigRepositoryTest : FunSpec({
 		val path = fileWith("corrupt", "{{{invalid json")
 
 		val repo = repoAtPath(path)
-		repo.loadConfig().shouldBeLeft()
+		val error = repo.loadConfig().shouldBeLeft()
 			.shouldBeInstanceOf<ConfigurationError.LoadFailed>()
+		error.details shouldBe error.cause.shouldBeInstanceOf<SerializationException>().message
 		path.readText() shouldBe "{{{invalid json"
 	}
 
@@ -164,7 +197,33 @@ class FileConfigRepositoryTest : FunSpec({
 
 		error.shouldBeInstanceOf<ConfigurationError.SaveFailed>()
 		error.text shouldBe unreadable(path)
+		error.details shouldBe error.cause.shouldBeInstanceOf<SerializationException>().message
 		path.readText() shouldBe text
+	}
+
+	test("a config file this user may not read fails to load and is not replaced, the error naming the denied access").config(
+		enabledIf = { System.getProperty("user.name") != "root" },
+	) {
+		val path = Path.of(tmpDir.absolutePath, "read-denied", "config.json")
+		val repo = repoAtPath(path)
+		repo.saveConfig(AppConfig(global = GlobalConfig(defaultHashAlgorithm = HashAlgorithm.SHA384))).shouldBeRight()
+		val restore = denyReading(path)
+
+		try {
+			val loadError = repo.loadConfig().shouldBeLeft()
+			loadError.shouldBeInstanceOf<ConfigurationError.LoadFailed>()
+			loadError.cause.shouldBeInstanceOf<AccessDeniedException>()
+			loadError.details shouldBe "AccessDeniedException"
+
+			val saveError = repo.saveConfig(AppConfig(global = GlobalConfig())).shouldBeLeft()
+			saveError.shouldBeInstanceOf<ConfigurationError.SaveFailed>()
+			saveError.text shouldBe unreadable(path)
+			saveError.cause.shouldBeInstanceOf<AccessDeniedException>()
+			saveError.details shouldBe "AccessDeniedException"
+		} finally {
+			restore()
+		}
+		repoAtPath(path).loadConfig().shouldBeRight().global.defaultHashAlgorithm shouldBe HashAlgorithm.SHA384
 	}
 
 	test("setActiveProfile leaves a config file it cannot read as it was") {
