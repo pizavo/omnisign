@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.domain.usecase
 
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.disabledOverrideError
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -19,20 +20,13 @@ class ManageProfileUseCase(
      *
      * Returns an error when [profile] disables its own [ProfileConfig.hashAlgorithm] or
      * [ProfileConfig.encryptionAlgorithm] override, since that would make every resolution
-     * using the profile fail immediately.
+     * using the profile fail immediately, as [disabledOverrideError] describes.
      *
      * @param profile The profile to add or replace.
      * @return Unit on success or an error.
      */
     suspend fun upsert(profile: ProfileConfig): OperationResult<Unit> {
-        val ha = profile.hashAlgorithm
-        if (ha != null && ha in profile.disabledHashAlgorithms) {
-            return ConfigurationError.profileDisablesOwnHash(profile.name, ha.name).left()
-        }
-        val ea = profile.encryptionAlgorithm
-        if (ea != null && ea in profile.disabledEncryptionAlgorithms) {
-            return ConfigurationError.profileDisablesOwnEncryption(profile.name, ea.name).left()
-        }
+        profile.disabledOverrideError()?.let { return it.left() }
         val current = configRepository.getCurrentConfig()
         val updated = current.copy(profiles = current.profiles + (profile.name to profile))
         return configRepository.saveConfig(updated)

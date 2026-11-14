@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.CrlConfig
 import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
+import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import kotlinx.serialization.Serializable
 
 /**
@@ -74,4 +75,22 @@ data class ProfileConfig(
 	val validation: ValidationConfig? = null
 )
 
-
+/**
+ * Why this profile cannot be saved, or `null` when it can.
+ *
+ * A [ProfileConfig.hashAlgorithm] or [ProfileConfig.encryptionAlgorithm] override that is also
+ * among the algorithms the profile disables would make every resolution through the profile fail,
+ * so the use cases that save a profile, an upsert and an import alike, refuse one with this error
+ * before anything is saved.
+ */
+fun ProfileConfig.disabledOverrideError(): ConfigurationError.InvalidConfiguration? {
+	val hash = hashAlgorithm
+	if (hash != null && hash in disabledHashAlgorithms) {
+		return ConfigurationError.profileDisablesOwnHash(name, hash.name)
+	}
+	val encryption = encryptionAlgorithm
+	if (encryption != null && encryption in disabledEncryptionAlgorithms) {
+		return ConfigurationError.profileDisablesOwnEncryption(name, encryption.name)
+	}
+	return null
+}

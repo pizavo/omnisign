@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.domain.model.error
 
+import cz.pizavo.omnisign.domain.model.config.enums.ConfigDocumentKind
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.text.MessageKey
 
@@ -74,6 +75,32 @@ sealed interface ConfigurationError : OperationError, LocalizableError {
 		/** Deserializing the configuration from the [format] text representation failed. */
 		fun deserializeFailed(format: String, details: String? = null, cause: Throwable? = null): LoadFailed =
 			LoadFailed(LocalizableText.of(MessageKey.CONFIG_DESERIALIZE_FAILED, format), details, cause)
+
+		/**
+		 * A document read as the [expected] kind holds a configuration of the [found] kind instead, or
+		 * no OmniSign configuration at all when [found] is `null`, so it was refused: bound to the
+		 * [expected] kind, it would lose its own settings and leave the defaults in their place.
+		 * [found] is never [expected].
+		 */
+		fun documentKindMismatch(
+			expected: ConfigDocumentKind,
+			found: ConfigDocumentKind?,
+			details: String? = null,
+		): InvalidConfiguration {
+			val key = when (found) {
+				null -> MessageKey.CONFIG_DOCUMENT_NOT_CONFIGURATION
+				ConfigDocumentKind.APP ->
+					if (expected == ConfigDocumentKind.GLOBAL) MessageKey.CONFIG_DOCUMENT_APP_NOT_GLOBAL
+					else MessageKey.CONFIG_DOCUMENT_APP_NOT_PROFILE
+				ConfigDocumentKind.GLOBAL ->
+					if (expected == ConfigDocumentKind.APP) MessageKey.CONFIG_DOCUMENT_GLOBAL_NOT_APP
+					else MessageKey.CONFIG_DOCUMENT_GLOBAL_NOT_PROFILE
+				ConfigDocumentKind.PROFILE ->
+					if (expected == ConfigDocumentKind.APP) MessageKey.CONFIG_DOCUMENT_PROFILE_NOT_APP
+					else MessageKey.CONFIG_DOCUMENT_PROFILE_NOT_GLOBAL
+			}
+			return InvalidConfiguration(LocalizableText.of(key), details)
+		}
 
 		/** Loading the configuration from the server over the API failed. */
 		fun loadFromServerFailed(details: String? = null, cause: Throwable? = null): LoadFailed =

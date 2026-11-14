@@ -48,12 +48,13 @@ resolution. Separate lists are maintained for hash algorithms and encryption alg
 
 Configure the RFC 3161 timestamp server (TSA) used for B-T, B-LT, and B-LTA signatures.
 
-| Setting  | Description                                                        |
-|----------|--------------------------------------------------------------------|
-| TSA URL  | HTTPS endpoint of the timestamp authority                          |
-| Username | HTTP Basic authentication username (if required)                   |
-| Password | HTTP Basic authentication password                                 |
-| Timeout  | Request timeout in milliseconds (default: 30,000)                  |
+| Setting                 | Description                                                                                                                                     |
+|-------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------|
+| Enable timestamp server | Use a timestamp server. The fields below appear only while it is on; saving with it off, or with no URL, leaves the global settings without one |
+| TSA URL                 | HTTPS endpoint of the timestamp authority                                                                                                       |
+| Username                | HTTP Basic authentication username (if required)                                                                                                |
+| Password                | HTTP Basic authentication password                                                                                                              |
+| Timeout                 | Request timeout in milliseconds (default: 30,000)                                                                                               |
 
 :::note
 The TSA password is stored in the operating system's native credential store
@@ -192,13 +193,15 @@ needed. The path is a clickable link that reveals the folder in your file manage
 Configure named renewal jobs for automatic archival re-timestamping of B-LTA documents.
 Each job defines:
 
-| Field         | Description                                                                                                                                                                                           |
-|---------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Name          | Unique identifier for the renewal job.                                                                                                                                                                |
-| Glob patterns | File path patterns to watch (e.g. `/data/signed/**/*.pdf`). A pattern is rejected if it is not an absolute path, if it matches no files, or if the platform cannot parse it — an unclosed `[` or `{`. |
-| Buffer (days) | Re-timestamp when the archival timestamp expires within this window.                                                                                                                                  |
-| Profile       | Optional profile whose settings are used for the renewal operation.                                                                                                                                   |
-| Notify        | Whether to send OS notifications on completion or failure.                                                                                                                                            |
+| Field         | Description                                                                                                                                                                                                                                                                                                                                                                                                        |
+|---------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Name          | Unique identifier for the renewal job.                                                                                                                                                                                                                                                                                                                                                                             |
+| Glob patterns | File path patterns to watch (e.g. `/data/signed/**/*.pdf`). A pattern is rejected if it is not an absolute path, if it has no wildcard and names no existing file (a bare directory, say), or if the platform cannot parse it — an unclosed `[` or `{`. A pattern whose directory does not exist, or that can only match files with an extension other than `.pdf`, is accepted but shown in amber with a warning. |
+| Buffer (days) | Re-timestamp when the archival timestamp expires within this window.                                                                                                                                                                                                                                                                                                                                               |
+| Backups       | How many timestamped `.bak` copies of a document, as it was before renewal, to keep beside it (default: 3). `0` keeps none; after each successful renewal the oldest beyond this number are deleted.                                                                                                                                                                                                               |
+| Profile       | Optional profile whose settings are used for the renewal operation.                                                                                                                                                                                                                                                                                                                                                |
+| Log file      | Optional path of an append-only log file for this job's renewal output.                                                                                                                                                                                                                                                                                                                                            |
+| Notify        | Whether to send OS notifications on completion or failure.                                                                                                                                                                                                                                                                                                                                                         |
 
 ![Renewal Jobs settings](/img/desktop/settings-renewal-jobs.avif)
 
@@ -206,12 +209,14 @@ Each job defines:
 
 Configure the OS-level daily scheduler that runs renewal jobs automatically.
 
-| Field           | Description                                                                                                                                       |
-|-----------------|---------------------------------------------------------------------------------------------------------------------------------------------------|
-| Executable path | Path to the OmniSign executable. Auto-detected when running from an installed package; editable as a fallback when auto-detection is unavailable. |
-| Run at (hour)   | Hour of the day (0–23) for the daily run (default: 2).                                                                                            |
-| Run at (minute) | Minute of the hour (0–59) for the daily run (default: 0).                                                                                         |
-| Log file        | Optional append-only log file path for scheduler output.                                                                                          |
+| Field                    | Description                                                                                                                                                                                                                                              |
+|--------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Executable path          | Path to the OmniSign executable. Auto-detected when running from an installed package; editable as a fallback when auto-detection is unavailable.                                                                                                        |
+| Run at (hour)            | Hour of the day (0–23) for the daily run (default: 2).                                                                                                                                                                                                   |
+| Run at (minute)          | Minute of the hour (0–59) for the daily run (default: 0).                                                                                                                                                                                                |
+| Log file                 | Optional append-only log file path for scheduler output.                                                                                                                                                                                                 |
+| Warn when renewal stalls | Raise an OS notification when renewal has gone the number of days below without a successful run (default: on). It is checked only when a scheduled run executes, so a computer that was simply off does not trigger it, and a successful run clears it. |
+| Warn after (days)        | Shown while the switch above is on: how many days without a successful run before the notification, which then repeats at most once per this many days while the problem lasts (default: 14).                                                            |
 
 ![Scheduler settings](/img/desktop/settings-scheduler.avif)
 
@@ -256,7 +261,10 @@ configuration.
 - **Export** <AppIcon name="download" label="Export" /> — prompts for a save location and writes the archive.
 - **Import** <AppIcon name="upload" label="Import" /> — asks for confirmation first, because it **replaces all current
   settings, profiles, and trusted certificates and cannot be undone**, then lets you pick the
-  archive to restore.
+  archive to restore. The archive must hold a full configuration, as **Export** or
+  `omnisign config export --all` writes it: one with only the global settings or a single profile
+  is refused with an error that says what it holds, and so is one whose manifest or certificates
+  cannot be read, or one that unpacks to more than 64 MiB. A refused archive changes nothing.
 
 ### Appearance (Linux)
 
