@@ -168,12 +168,33 @@ class RemoteArchivingRepositoryTest : FunSpec({
 		body shouldNotContain "profile"
 	}
 
-	test("maps a failed inspection to an archiving error") {
+	test("keys a recognized server rejection of the inspection, as it does for the extension") {
+		val repository = RemoteArchivingRepository(
+			mockApiClient {
+				respond(
+					content = """{"error":"INVALID_CONFIGURATION","message":"the profile disables its own hash"}""",
+					status = HttpStatusCode.UnprocessableEntity,
+					headers = headersOf(HttpHeaders.ContentType, ContentType.Application.Json.toString()),
+				)
+			},
+		)
+
+		val error = repository.getDocumentTimestampInfo(byteArrayOf(1)).shouldBeLeft()
+
+		error.shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
+		error.text shouldBe LocalizableText.of(MessageKey.SERVER_INVALID_CONFIGURATION)
+		error.details shouldBe null
+	}
+
+	test("falls back to the generic remote-inspection message for an unclassified inspection failure") {
 		val repository = RemoteArchivingRepository(
 			mockApiClient { respond(content = "boom", status = HttpStatusCode.BadRequest) },
 		)
 
-		repository.getDocumentTimestampInfo(byteArrayOf(1)).shouldBeLeft()
+		val error = repository.getDocumentTimestampInfo(byteArrayOf(1)).shouldBeLeft()
+
+		error.shouldBeInstanceOf<ArchivingError.ExtensionFailed>()
+		error.text shouldBe ArchivingError.remoteInspectFailed().text
 	}
 
 	test("refuses the renewal scan because the web client has no filesystem") {

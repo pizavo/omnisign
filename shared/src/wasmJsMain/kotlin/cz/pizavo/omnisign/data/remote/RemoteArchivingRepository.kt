@@ -88,7 +88,7 @@ class RemoteArchivingRepository(
                 revocationDataMissing = meta.revocationDataMissing,
                 achievedLevel = SignatureLevel.entries.firstOrNull { it.name == meta.newLevel },
             )
-        }.mapLeftSuspend { exception -> extensionError(exception) }
+        }.mapLeftSuspend { exception -> requestError(exception) { ArchivingError.remoteExtensionFailed(cause = it) } }
 
     override suspend fun needsArchivalRenewal(
         filePath: String,
@@ -103,6 +103,7 @@ class RemoteArchivingRepository(
      * Ask the server to inspect [inputBytes], naming [resolvedConfig]'s profile so that the server
      * judges the level under the trust anchors the extension will run with. Only the name is sent:
      * the server resolves the profile from its own configuration, as it does for [extendDocument].
+     * A server rejection the user can act on keeps its keyed message, as it does there.
      */
     override suspend fun getDocumentTimestampInfo(
         inputBytes: ByteArray,
@@ -123,17 +124,19 @@ class RemoteArchivingRepository(
                     resolvedConfig?.profileName?.let { append("profile", it) }
                 },
             ).body<DocumentTimestampInfo>()
-        }.mapLeft { exception ->
-            ArchivingError.remoteInspectFailed(cause = exception)
-        }
+        }.mapLeftSuspend { exception -> requestError(exception) { ArchivingError.remoteInspectFailed(cause = it) } }
 
     /**
-     * Map a failed [extendDocument] request to a localizable [ArchivingError]: a keyed message for a
-     * recognized server gating code, otherwise the generic remote-extension message. The server's raw
-     * text is never propagated (no `details`), so no JSON or DSS reason reaches the user.
+     * Map a failed request to a localizable [ArchivingError]: a keyed message for a recognized server
+     * gating code, otherwise the request's own [fallback] message. The server's raw text is never
+     * propagated (no `details`), so no JSON or DSS reason reaches the user.
+     *
+     * The inspection and the extension share the mapping because the timestamp dialog sends the
+     * inspection first: a rejection the user can act on, such as an invalid server configuration,
+     * must read the same whichever of the two requests meets it.
      */
-    private suspend fun extensionError(exception: Throwable): ArchivingError =
+    private suspend fun requestError(exception: Throwable, fallback: (Throwable) -> ArchivingError): ArchivingError =
         serverErrorText(exception.serverErrorCode())
             ?.let { ArchivingError.ExtensionFailed(text = it, cause = exception) }
-            ?: ArchivingError.remoteExtensionFailed(cause = exception)
+            ?: fallback(exception)
 }

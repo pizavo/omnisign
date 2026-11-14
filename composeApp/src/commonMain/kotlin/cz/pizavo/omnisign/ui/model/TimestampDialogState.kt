@@ -18,6 +18,13 @@ sealed interface TimestampDialogState {
 	data object Idle : TimestampDialogState
 
 	/**
+	 * The dialog is open and reading the document's current level, which decides the options
+	 * [Ready] offers. Brief on the desktop, which usually inspected the document when it was
+	 * loaded; on the web this is where the document is sent to the server to be inspected.
+	 */
+	data object Inspecting : TimestampDialogState
+
+	/**
 	 * The extension form is ready for user input.
 	 *
 	 * @property timestampType The selected timestamp operation type.

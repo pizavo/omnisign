@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.ui.viewmodel
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
@@ -37,11 +38,14 @@ import kotlinx.coroutines.flow.update
  * resolve config → build [ArchivingParameters] → invoke [ExtendDocumentUseCase]
  * → show the result.
  *
- * To avoid UI freezes when the dialog is opened, the heavyweight document
- * inspection ([GetDocumentTimestampInfoUseCase]) is pre-fetched in the background
- * as soon as a new document is loaded via [onDocumentChanged]. The [open] method
- * uses the cached result so it only needs to resolve configuration (a fast
- * in-memory operation) before transitioning to [TimestampDialogState.Ready].
+ * The extension options depend on the document's current level, which the heavyweight document
+ * inspection ([GetDocumentTimestampInfoUseCase]) reads. Where that inspection runs locally it is
+ * pre-fetched in the background as soon as a new document is loaded via [onDocumentChanged], so
+ * that [open] usually only has to resolve the configuration (a fast in-memory operation) before
+ * transitioning to [TimestampDialogState.Ready]. Where it would upload the document instead,
+ * nothing is pre-fetched and [open] inspects the document itself. Either way the dialog shows
+ * [TimestampDialogState.Inspecting] until the options are known, and an inspection that fails is
+ * reported rather than read as a document with no timestamps.
  *
  * When the user selects [TimestampType.SIGNATURE_TIMESTAMP] (B-LT) and
  * revocation data cannot be obtained, the dialog offers a fallback to B-T —
@@ -57,6 +61,10 @@ import kotlinx.coroutines.flow.update
  * @param configRepository Repository for reading the current application configuration.
  * @param renewalJobAssigner Shared helper for renewal job persistence and coverage checks.
  * @param ioDispatcher Dispatcher for heavy background work.
+ * @param prefetchInspection Whether [onDocumentChanged] inspects a newly loaded document in the
+ *   background. Off on the web, where an inspection uploads the document to the server: there the
+ *   document is sent only once the user opens the dialog, having chosen an operation that runs on
+ *   the server.
  */
 class TimestampViewModel(
 	private val extendDocumentUseCase: ExtendDocumentUseCase,
@@ -64,6 +72,7 @@ class TimestampViewModel(
 	private val configRepository: ConfigRepository,
 	private val renewalJobAssigner: RenewalJobAssigner? = null,
 	private val ioDispatcher: CoroutineDispatcher = Dispatchers.Default,
+	private val prefetchInspection: Boolean = true,
 ) : ViewModel() {
 
 	private val _state = MutableStateFlow<TimestampDialogState>(TimestampDialogState.Idle)
@@ -118,16 +127,21 @@ class TimestampViewModel(
 	/** In-flight pre-fetch coroutine, cancelled when the document changes. */
 	private var prefetchJob: Job? = null
 
+	/** In-flight [open] coroutine, cancelled by [dismiss] and by the next [open]. */
+	private var openJob: Job? = null
+
 	/**
 	 * Notify the ViewModel that a new PDF document has been loaded (or cleared).
 	 *
-	 * When [document] is non-null, a background pre-fetch of the document's
-	 * timestamp state is triggered so that [open] can skip the heavyweight DSS
-	 * inspection and transition to [TimestampDialogState.Ready] instantly.
+	 * When [document] is non-null and `prefetchInspection` is on, a background pre-fetch of the
+	 * document's timestamp state is triggered so that [open] can skip the heavyweight DSS
+	 * inspection and transition to [TimestampDialogState.Ready] instantly. With it off, the
+	 * document is only remembered, and any earlier pre-fetch is dropped.
 	 *
 	 * The document is inspected under the active profile's configuration, the one the dialog
 	 * would extend with now. A configuration that does not resolve skips the pre-fetch, since
-	 * [open] would report that error rather than use the result.
+	 * [open] would report that error rather than use the result. A failed inspection is not kept
+	 * either, so that [open] tries again and reports the error if it persists.
 	 *
 	 * @param document The newly loaded document, or `null` when no document is open.
 	 */
@@ -135,25 +149,20 @@ class TimestampViewModel(
 		prefetchJob?.cancel()
 		cachedInspection = null
 		currentDocument = document
-		if (document != null) {
-			prefetchJob = viewModelScope.launch {
+		prefetchJob = if (document != null && prefetchInspection) {
+			viewModelScope.launch {
 				withContext(ioDispatcher) {
 					val config = resolveActiveConfig(configRepository.getCurrentConfig()).getOrNull()
 						?: return@withContext
-					cachedInspection = Inspection(config, inspect(document, config))
+					getDocumentTimestampInfoUseCase(document.data, config).onRight { info ->
+						cachedInspection = Inspection(config, info)
+					}
 				}
 			}
+		} else {
+			null
 		}
 	}
-
-	/**
-	 * Inspect [document]'s timestamp and level state under [config]'s trust anchors, which judge
-	 * the level the extension will find. A failed inspection reads as a document with no
-	 * timestamps.
-	 */
-	private suspend fun inspect(document: PdfDocumentInfo, config: ResolvedConfig): DocumentTimestampInfo =
-		getDocumentTimestampInfoUseCase(document.data, config).getOrNull()
-			?: DocumentTimestampInfo(hasDocumentTimestamp = false, containsLtData = false)
 
 	/**
 	 * Resolve the configuration of [appConfig]'s active profile, the one the dialog extends with.
@@ -167,16 +176,23 @@ class TimestampViewModel(
 	/**
 	 * Open the timestamp dialog for the given document.
 	 *
-	 * Uses the pre-fetched [DocumentTimestampInfo] when available (populated by
-	 * [onDocumentChanged]). If the pre-fetch is still running, the method awaits
-	 * its completion without blocking the UI thread.
+	 * The dialog shows [TimestampDialogState.Inspecting] at once and moves on to
+	 * [TimestampDialogState.Ready] once the document's level is known. Uses the pre-fetched
+	 * [DocumentTimestampInfo] when available (populated by [onDocumentChanged]). If the pre-fetch
+	 * is still running, the method awaits its completion without blocking the UI thread.
 	 *
 	 * Configuration is always resolved freshly because the user may have changed
 	 * profiles or settings since the document was loaded. The pre-fetched result is
 	 * used only when it was judged under the configuration resolved now; otherwise, or
-	 * when no prior [onDocumentChanged] call was made for this file, the document is
-	 * inspected afresh, because another profile's trust anchors can read it at another
-	 * level.
+	 * when nothing was pre-fetched for this file, the document is inspected afresh, because
+	 * another profile's trust anchors can read it at another level. An inspection that fails
+	 * ends in [TimestampDialogState.Error]: offering the options of a document with no
+	 * timestamps instead could propose an extension the document's real level rules out.
+	 *
+	 * Everything the open learns about the document is applied on the calling thread once the
+	 * work on `ioDispatcher` returns, so an open that [dismiss] or a newer [open] cancelled cannot
+	 * bring the form back or change what it offers, even when its inspection could not be
+	 * interrupted and ran to the end.
 	 *
 	 * @param document The signed PDF document to extend; its bytes are forwarded to the
 	 *   extension use case and its `filePath` (when present) seeds the suggested output path
@@ -184,50 +200,64 @@ class TimestampViewModel(
 	 *   falls back to deriving the suggested name from [PdfDocumentInfo.name].
 	 */
 	fun open(document: PdfDocumentInfo) {
+		openJob?.cancel()
 		currentDocument = document
 		extendedDocument = null
 		pendingExtension = null
+		_state.value = TimestampDialogState.Inspecting
 
-		viewModelScope.launch {
+		openJob = viewModelScope.launch {
 			prefetchJob?.join()
 
-			withContext(ioDispatcher) {
-				val appConfig = configRepository.getCurrentConfig()
-				cachedRenewalJobs = appConfig.renewalJobs.values.toList()
-				activeProfileName = appConfig.activeProfile
+			val appConfig = withContext(ioDispatcher) { configRepository.getCurrentConfig() }
+			cachedRenewalJobs = appConfig.renewalJobs.values.toList()
+			activeProfileName = appConfig.activeProfile
 
-				resolveActiveConfig(appConfig).fold(
-					ifLeft = { error ->
-						_state.value = TimestampDialogState.Error(
-							content = ErrorMessage.ConfigResolution(error.localizableText()),
-						)
-					},
-					ifRight = { config ->
-						resolvedConfig = config
-						val tsInfo = cachedInspection?.takeIf { it.config == config }?.info
-							?: inspect(document, config)
-						documentAlreadyContainsLtData = tsInfo.containsLtData
-						val sourceName = document.filePath ?: document.name
-						val currentLevel = currentLevelOf(tsInfo)
-						val unavailableTypes = if (tsInfo.hasDocumentTimestamp) {
-							setOf(TimestampType.SIGNATURE_TIMESTAMP)
-						} else {
-							emptySet()
-						}
-						val ready = TimestampDialogState.Ready(
-							timestampType = defaultTypeFor(currentLevel),
-							currentLevel = currentLevel,
-							unavailableTypes = unavailableTypes,
-							ltMaterialUsable = tsInfo.ltMaterialUsable,
-							suggestedName = SigningViewModel.suggestedSaveName(sourceName, "-extended"),
-							inputDirectory = document.filePath?.let { SigningViewModel.parentDirectory(it) },
-						)
-						lastReadyState = ready
-						_state.value = ready
-					},
-				)
-			}
+			resolveActiveConfig(appConfig).fold(
+				ifLeft = { error ->
+					_state.value = TimestampDialogState.Error(
+						content = ErrorMessage.ConfigResolution(error.localizableText()),
+					)
+				},
+				ifRight = { config ->
+					val inspection = cachedInspection?.takeIf { it.config == config }?.info?.right()
+						?: withContext(ioDispatcher) { getDocumentTimestampInfoUseCase(document.data, config) }
+					inspection.fold(
+						ifLeft = { error ->
+							_state.value = TimestampDialogState.Error(
+								content = ErrorMessage.Domain(error.localizableText(), error.details),
+							)
+						},
+						ifRight = { info -> offerExtensions(document, config, info) },
+					)
+				},
+			)
 		}
+	}
+
+	/**
+	 * Show the extension form for [document], whose inspection under [config] found [info].
+	 */
+	private fun offerExtensions(document: PdfDocumentInfo, config: ResolvedConfig, info: DocumentTimestampInfo) {
+		resolvedConfig = config
+		documentAlreadyContainsLtData = info.containsLtData
+		val sourceName = document.filePath ?: document.name
+		val currentLevel = currentLevelOf(info)
+		val unavailableTypes = if (info.hasDocumentTimestamp) {
+			setOf(TimestampType.SIGNATURE_TIMESTAMP)
+		} else {
+			emptySet()
+		}
+		val ready = TimestampDialogState.Ready(
+			timestampType = defaultTypeFor(currentLevel),
+			currentLevel = currentLevel,
+			unavailableTypes = unavailableTypes,
+			ltMaterialUsable = info.ltMaterialUsable,
+			suggestedName = SigningViewModel.suggestedSaveName(sourceName, "-extended"),
+			inputDirectory = document.filePath?.let { SigningViewModel.parentDirectory(it) },
+		)
+		lastReadyState = ready
+		_state.value = ready
 	}
 
 	/**
@@ -548,12 +578,15 @@ class TimestampViewModel(
 	/**
 	 * Dismiss the dialog and reset the state to [TimestampDialogState.Idle].
 	 *
-	 * The pre-fetched [DocumentTimestampInfo] is retained because it is tied to
-	 * the currently loaded document, not the dialog session. The [pendingRenewalOffer]
+	 * An [open] still inspecting the document is cancelled, so its result cannot bring the
+	 * closed dialog's form back. The pre-fetched [DocumentTimestampInfo] is retained because it
+	 * is tied to the currently loaded document, not the dialog session. The [pendingRenewalOffer]
 	 * is intentionally retained so the UI can still display the renewal job assignment
 	 * dialog after the timestamp dialog closes.
 	 */
 	fun dismiss() {
+		openJob?.cancel()
+		openJob = null
 		_state.value = TimestampDialogState.Idle
 		resolvedConfig = null
 		activeProfileName = null

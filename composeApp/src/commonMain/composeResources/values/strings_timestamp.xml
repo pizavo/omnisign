@@ -1,6 +1,7 @@
 <resources>
 	<string name="timestamp_dialog_title">Extend Document</string>
 	<string name="timestamp_extending">Extending document...</string>
+	<string name="timestamp_inspecting">Checking the document\'s current level...</string>
 	<string name="timestamp_type_label">Timestamp Type</string>
 	<string name="timestamp_option_add_timestamp_revocation">Add timestamp &amp; revocation data</string>
 	<string name="timestamp_option_add_revocation">Add revocation data</string>
