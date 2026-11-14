@@ -17,6 +17,7 @@ import cz.pizavo.omnisign.config.SsoProviderPreset
 import cz.pizavo.omnisign.domain.model.value.Sensitive
 import cz.pizavo.omnisign.domain.model.value.sensitive
 import cz.pizavo.omnisign.module
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
@@ -1057,6 +1058,25 @@ class AuthRoutesTest : FunSpec({
 	)
 
 	val idpSecrets = mapOf("idp" to "idp-client-secret".sensitive())
+
+	test("server refuses to start when a provider assumes verification on Entra ID's multi-tenant endpoint") {
+		withTempSessionsDb {
+			val ex = shouldThrow<IllegalArgumentException> {
+				testApplication {
+					application {
+						module(
+							authTestConfig(idpAuthConfig(listOf("contoso.com"), assumeEmailVerified = true)),
+							authTestSecrets(idpSecrets),
+							oidcIdpMockEngine("{}", issuer = "https://login.microsoftonline.com/{tenantid}/v2.0"),
+						)
+					}
+					startApplication()
+				}
+			}
+			ex.message!! shouldContain "'idp'"
+			ex.message!! shouldContain "xms_edov"
+		}
+	}
 
 	test("OIDC callback refuses an address UserInfo marks unverified under a concrete list") {
 		withTempSessionsDb {

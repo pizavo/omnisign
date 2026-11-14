@@ -1,7 +1,5 @@
 package cz.pizavo.omnisign.config
 
-import cz.pizavo.omnisign.auth.OidcDiscoveryService
-import io.ktor.http.Url
 import java.net.URI
 
 /**
@@ -31,13 +29,6 @@ import java.net.URI
  *    network. Neither is something [cz.pizavo.omnisign.auth.isRedirectUriAllowed] can
  *    reasonably second-guess at request time — by then the operator is not watching.
  *
- * 4. **`assumeEmailVerified` on a multi-tenant Microsoft provider.** When the discovery URL
- *    the server fetches reaches Entra ID's `common` or `organizations` endpoint, through
- *    `tenantId` or an explicit `discoveryUrl`, any Entra tenant can sign in, and each
- *    tenant's administrator can give a user any address, the operator's own domain included. Entra sends no `email_verified` claim, so assuming its addresses
- *    verified would let a stranger's tenant pass the domain list; the optional `xms_edov`
- *    claim is the way to admit these users.
- *
  * Called from [cz.pizavo.omnisign.moduleWith] before any provider-dependent component
  * is wired into the application module, so a misconfiguration aborts the server boot
  * with a clear `IllegalArgumentException` rather than producing an undefined runtime
@@ -45,10 +36,9 @@ import java.net.URI
  *
  * @param authConfig Root authentication configuration, or `null` when auth is disabled.
  * @throws IllegalArgumentException with a provider-named message when any OIDC provider
- *   has an empty `allowedEmailDomains` list, any `requiredClaims` entry has an empty
- *   accepted-values list, or a multi-tenant Microsoft provider sets `assumeEmailVerified`,
- *   and with the offending entry when an `allowedRedirectUris` entry is not an absolute
- *   `https` URL (or an `http` one on a loopback host).
+ *   has an empty `allowedEmailDomains` list or any `requiredClaims` entry has an empty
+ *   accepted-values list, and with the offending entry when an `allowedRedirectUris` entry
+ *   is not an absolute `https` URL (or an `http` one on a loopback host).
  */
 fun validateAuthConfig(authConfig: AuthConfig?) {
 	val config = authConfig ?: return
@@ -56,14 +46,6 @@ fun validateAuthConfig(authConfig: AuthConfig?) {
 		require(provider.allowedEmailDomains.isNotEmpty()) {
 			"provider '${provider.name}' must set allowedEmailDomains. " +
 				"Use [\"*\"] to allow any domain, or list specific ones."
-		}
-		val multiTenantEndpoint = multiTenantMicrosoftEndpoint(provider)
-		require(!(provider.assumeEmailVerified && multiTenantEndpoint != null)) {
-			"provider '${provider.name}' sets assumeEmailVerified on the multi-tenant Microsoft " +
-				"endpoint '$multiTenantEndpoint', where any tenant's administrator can give a user any " +
-				"address. Remove it, use preset MICROSOFT, and add the optional claim xms_edov to the " +
-				"app registration's ID token, which says whether the address's domain is verified in " +
-				"the user's tenant."
 		}
 		provider.requiredClaims?.forEach { (key, values) ->
 			require(values.isNotEmpty()) {
@@ -74,59 +56,6 @@ fun validateAuthConfig(authConfig: AuthConfig?) {
 	}
 	config.allowedRedirectUris.forEach(::validateRedirectUri)
 }
-
-/**
- * The multi-tenant Microsoft endpoint [provider] signs users in through, if any.
- *
- * The guard judges the URL [OidcDiscoveryService] fetches the discovery document from, its
- * `discoveryUrl` or its preset's template filled with `tenantId`, and reads it with the parser
- * Ktor's client uses for the request. So no spelling the client accepts, such as the trailing
- * line break a YAML block scalar leaves, can reach one endpoint while the guard sees another.
- *
- * The URL counts as Microsoft's when the provider uses [SsoProviderPreset.MICROSOFT] or its host
- * is one of Entra ID's sign-in hosts, which covers the national clouds that only an explicit URL
- * reaches. It counts as multi-tenant when any piece of its decoded path, split at `/`, `\` and
- * `;`, is a [MULTI_TENANT_MICROSOFT_TENANTS] name. The first segment alone would not do:
- * Microsoft resolves `..` segments, so `/contoso/../common/` reaches `common`, and no
- * single-tenant URL names either tenant anywhere.
- *
- * @return The discovery URL when it reaches a multi-tenant Microsoft endpoint, or `null` when it
- *   does not or cannot be resolved or parsed, which leaves the server unable to fetch it either.
- */
-private fun multiTenantMicrosoftEndpoint(provider: OidcProviderConfig): String? {
-	val discoveryUrl = runCatching { OidcDiscoveryService.resolveDiscoveryUrl(provider) }.getOrNull()
-		?: return null
-	val url = runCatching { Url(discoveryUrl) }.getOrNull() ?: return null
-	val microsoft = provider.preset == SsoProviderPreset.MICROSOFT ||
-		url.host.lowercase().trimEnd('.') in MICROSOFT_SIGN_IN_HOSTS
-	val multiTenant = url.rawSegments
-		.flatMap { it.split('/', '\\', ';') }
-		.any { it.trim().lowercase() in MULTI_TENANT_MICROSOFT_TENANTS }
-	return discoveryUrl.trim().takeIf { microsoft && multiTenant }
-}
-
-/**
- * The tenant names in a Microsoft discovery URL that admit users of any Entra tenant, in lower
- * case.
- */
-private val MULTI_TENANT_MICROSOFT_TENANTS = setOf("common", "organizations")
-
-/**
- * Entra ID's sign-in hosts in the global and national clouds, with their aliases, in lower
- * case.
- */
-private val MICROSOFT_SIGN_IN_HOSTS = setOf(
-	"login.microsoftonline.com",
-	"login.microsoft.com",
-	"login.windows.net",
-	"sts.windows.net",
-	"login.microsoftonline.us",
-	"login.usgovcloudapi.net",
-	"login-us.microsoftonline.com",
-	"login.partner.microsoftonline.cn",
-	"login.chinacloudapi.cn",
-	"login.microsoftonline.de",
-)
 
 /**
  * Check a single `auth.allowedRedirectUris` entry.

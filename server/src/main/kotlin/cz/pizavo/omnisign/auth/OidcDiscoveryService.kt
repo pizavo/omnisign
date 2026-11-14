@@ -139,6 +139,78 @@ class OidcDiscoveryService(
     private fun isFresh(entry: CachedDiscovery): Boolean =
         clock.now() - entry.cachedAt < DISCOVERY_CACHE_TTL
 
+    /**
+     * Resolve the effective discovery document URL for [provider], applying any preset
+     * templates and tenant substitutions.
+     */
+    private fun resolveDiscoveryUrl(provider: OidcProviderConfig): String {
+        provider.discoveryUrl?.let { return it }
+
+        val preset = provider.preset
+            ?: throw IllegalStateException(
+                "OIDC provider '${provider.name}' has no discoveryUrl and no preset configured",
+            )
+
+        if (preset.requiresManualUrls) {
+            return resolveGithubUrls()
+        }
+
+        val template = preset.discoveryUrlTemplate
+            ?: return preset.discoveryUrl
+                ?: throw IllegalStateException(
+                    "Preset ${preset.name} has neither a static discoveryUrl nor a template",
+                )
+
+        return applyTemplate(template, preset, provider.tenantId)
+    }
+
+    /**
+     * GitHub does not have an OIDC discovery document — this returns a placeholder
+     * that signals the auth plugin to use hard-coded GitHub endpoints.
+     */
+    private fun resolveGithubUrls(): String = GITHUB_PSEUDO_DISCOVERY_URL
+
+    /**
+     * Apply tenant / realm / domain substitution to a discovery URL template.
+     */
+    private fun applyTemplate(
+        template: String,
+        preset: SsoProviderPreset,
+        tenantId: String?,
+    ): String {
+        if (tenantId == null) {
+            throw IllegalStateException(
+                "Preset ${preset.name} requires a tenantId to resolve the discovery URL",
+            )
+        }
+
+        return when (preset) {
+            SsoProviderPreset.MICROSOFT ->
+                template.replace("{tenant}", tenantId)
+
+            SsoProviderPreset.AMAZON_COGNITO -> {
+                val parts = tenantId.split("/", limit = 2)
+                require(parts.size == 2) {
+                    "Amazon Cognito tenantId must be '{region}/{poolId}', got: $tenantId"
+                }
+                template.replace("{region}", parts[0]).replace("{poolId}", parts[1])
+            }
+
+            SsoProviderPreset.KEYCLOAK -> {
+                val parts = tenantId.split("/", limit = 2)
+                require(parts.size == 2) {
+                    "Keycloak tenantId must be '{host}/{realm}', got: $tenantId"
+                }
+                template.replace("{host}", parts[0]).replace("{realm}", parts[1])
+            }
+
+            SsoProviderPreset.AUTH0 ->
+                template.replace("{domain}", tenantId)
+
+            else -> template
+        }
+    }
+
     companion object {
         /**
          * Sentinel URL returned when the GitHub preset is used; the auth plugin
@@ -170,90 +242,6 @@ class OidcDiscoveryService(
          * here does not delay key-rotation pickup.
          */
         val DISCOVERY_CACHE_TTL: Duration = 24.hours
-
-        /**
-         * Resolve the effective discovery document URL for [provider], applying any preset
-         * templates and tenant substitutions.
-         *
-         * [OidcDiscoveryService.discover] fetches the document from this URL, and the startup
-         * check in [cz.pizavo.omnisign.config.validateAuthConfig] judges the endpoint by it, so
-         * the two cannot disagree about where a provider signs users in.
-         *
-         * @param provider OIDC provider configuration.
-         * @return The provider's `discoveryUrl` when set, otherwise its preset's URL with the
-         *   tenant filled in, or [GITHUB_PSEUDO_DISCOVERY_URL] for GitHub.
-         * @throws IllegalStateException when the provider names neither a `discoveryUrl` nor a
-         *   preset, or its preset needs a `tenantId` it lacks.
-         * @throws IllegalArgumentException when an Amazon Cognito or Keycloak `tenantId` lacks
-         *   its `/`.
-         */
-        fun resolveDiscoveryUrl(provider: OidcProviderConfig): String {
-            provider.discoveryUrl?.let { return it }
-
-            val preset = provider.preset
-                ?: throw IllegalStateException(
-                    "OIDC provider '${provider.name}' has no discoveryUrl and no preset configured",
-                )
-
-            if (preset.requiresManualUrls) {
-                return resolveGithubUrls()
-            }
-
-            val template = preset.discoveryUrlTemplate
-                ?: return preset.discoveryUrl
-                    ?: throw IllegalStateException(
-                        "Preset ${preset.name} has neither a static discoveryUrl nor a template",
-                    )
-
-            return applyTemplate(template, preset, provider.tenantId)
-        }
-
-        /**
-         * GitHub does not have an OIDC discovery document — this returns a placeholder
-         * that signals the auth plugin to use hard-coded GitHub endpoints.
-         */
-        private fun resolveGithubUrls(): String = GITHUB_PSEUDO_DISCOVERY_URL
-
-        /**
-         * Apply tenant / realm / domain substitution to a discovery URL template.
-         */
-        private fun applyTemplate(
-            template: String,
-            preset: SsoProviderPreset,
-            tenantId: String?,
-        ): String {
-            if (tenantId == null) {
-                throw IllegalStateException(
-                    "Preset ${preset.name} requires a tenantId to resolve the discovery URL",
-                )
-            }
-
-            return when (preset) {
-                SsoProviderPreset.MICROSOFT ->
-                    template.replace("{tenant}", tenantId)
-
-                SsoProviderPreset.AMAZON_COGNITO -> {
-                    val parts = tenantId.split("/", limit = 2)
-                    require(parts.size == 2) {
-                        "Amazon Cognito tenantId must be '{region}/{poolId}', got: $tenantId"
-                    }
-                    template.replace("{region}", parts[0]).replace("{poolId}", parts[1])
-                }
-
-                SsoProviderPreset.KEYCLOAK -> {
-                    val parts = tenantId.split("/", limit = 2)
-                    require(parts.size == 2) {
-                        "Keycloak tenantId must be '{host}/{realm}', got: $tenantId"
-                    }
-                    template.replace("{host}", parts[0]).replace("{realm}", parts[1])
-                }
-
-                SsoProviderPreset.AUTH0 ->
-                    template.replace("{domain}", tenantId)
-
-                else -> template
-            }
-        }
     }
 }
 

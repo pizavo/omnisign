@@ -138,9 +138,9 @@ development: false
 #     # Entra sends no email_verified claim: for a concrete allowedEmailDomains list, add the
 #     # optional claim xms_edov to the app registration's ID token (Token configuration →
 #     # Add optional claim → ID → xms_edov) and keep id_token verification on. Never set
-#     # assumeEmailVerified with tenantId "common" or "organizations" (or a discoveryUrl on
-#     # those endpoints): any tenant's administrator can assign any address there, so the
-#     # server refuses to start.
+#     # assumeEmailVerified with tenantId "common" or "organizations" (or a discoveryUrl that
+#     # serves their multi-tenant document): any tenant's administrator can assign any
+#     # address there, so the server refuses to start.
 #     # client_secret env var: OMNISIGN_OIDC_MICROSOFT_CLIENT_SECRET
 #     - type: oidc
 #       name: microsoft

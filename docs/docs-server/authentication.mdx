@@ -97,9 +97,10 @@ rather than the UserInfo ones, and the session carries it.
 For a provider that sends no flag although you trust every address it hands out, such as a
 self-hosted identity provider without the claim, set `assumeEmailVerified: true` on it. An address
 the provider marks unverified, or flags with anything but `true`, is still refused. The server
-refuses to start with `assumeEmailVerified` on a multi-tenant Microsoft provider (`tenantId: common`
-or `organizations`, or a `discoveryUrl` on such an endpoint, as in a national cloud), since any
-tenant's administrator can assign any address there.
+refuses to start with `assumeEmailVerified` on a multi-tenant Microsoft provider, since any
+tenant's administrator can assign any address there. It recognises one by its discovery document,
+whose issuer is the template `https://login.microsoftonline.com/{tenantid}/v2.0`, as it is for
+`tenantId: common` and `organizations` in any cloud, however the URL is written.
 
 ### eduID.cz (Czech academic federation)
 
