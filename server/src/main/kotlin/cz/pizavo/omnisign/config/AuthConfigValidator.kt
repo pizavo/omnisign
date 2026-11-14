@@ -1,5 +1,7 @@
 package cz.pizavo.omnisign.config
 
+import cz.pizavo.omnisign.auth.OidcDiscoveryService
+import io.ktor.http.Url
 import java.net.URI
 
 /**
@@ -29,10 +31,10 @@ import java.net.URI
  *    network. Neither is something [cz.pizavo.omnisign.auth.isRedirectUriAllowed] can
  *    reasonably second-guess at request time — by then the operator is not watching.
  *
- * 4. **`assumeEmailVerified` on a multi-tenant Microsoft provider.** With `tenantId` `common`
- *    or `organizations`, or a `discoveryUrl` on such an endpoint, any Entra tenant can sign
- *    in, and each tenant's administrator can give a user any address, the operator's own
- *    domain included. Entra sends no `email_verified` claim, so assuming its addresses
+ * 4. **`assumeEmailVerified` on a multi-tenant Microsoft provider.** When the discovery URL
+ *    the server fetches reaches Entra ID's `common` or `organizations` endpoint, through
+ *    `tenantId` or an explicit `discoveryUrl`, any Entra tenant can sign in, and each
+ *    tenant's administrator can give a user any address, the operator's own domain included. Entra sends no `email_verified` claim, so assuming its addresses
  *    verified would let a stranger's tenant pass the domain list; the optional `xms_edov`
  *    claim is the way to admit these users.
  *
@@ -76,32 +78,36 @@ fun validateAuthConfig(authConfig: AuthConfig?) {
 /**
  * The multi-tenant Microsoft endpoint [provider] signs users in through, if any.
  *
- * The discovery URL decides, as it does for [cz.pizavo.omnisign.auth.OidcDiscoveryService]:
- * an explicit `discoveryUrl` wins over the preset's template filled with `tenantId`. Such a
- * URL counts as Microsoft's when the provider uses [SsoProviderPreset.MICROSOFT] or the host is
- * one of Entra ID's sign-in hosts, which covers the national clouds that only an explicit URL
- * reaches.
+ * The guard judges the URL [OidcDiscoveryService] fetches the discovery document from, its
+ * `discoveryUrl` or its preset's template filled with `tenantId`, and reads it with the parser
+ * Ktor's client uses for the request. So no spelling the client accepts, such as the trailing
+ * line break a YAML block scalar leaves, can reach one endpoint while the guard sees another.
  *
- * @return The `tenantId` or `discoveryUrl` that makes the provider multi-tenant, or `null`
- *   when it is not.
+ * The URL counts as Microsoft's when the provider uses [SsoProviderPreset.MICROSOFT] or its host
+ * is one of Entra ID's sign-in hosts, which covers the national clouds that only an explicit URL
+ * reaches. It counts as multi-tenant when any piece of its decoded path, split at `/`, `\` and
+ * `;`, is a [MULTI_TENANT_MICROSOFT_TENANTS] name. The first segment alone would not do:
+ * Microsoft resolves `..` segments, so `/contoso/../common/` reaches `common`, and no
+ * single-tenant URL names either tenant anywhere.
+ *
+ * @return The discovery URL when it reaches a multi-tenant Microsoft endpoint, or `null` when it
+ *   does not or cannot be resolved or parsed, which leaves the server unable to fetch it either.
  */
 private fun multiTenantMicrosoftEndpoint(provider: OidcProviderConfig): String? {
-	val discoveryUrl = provider.discoveryUrl
-	if (discoveryUrl == null) {
-		val multiTenant = provider.preset == SsoProviderPreset.MICROSOFT &&
-			provider.tenantId?.lowercase() in MULTI_TENANT_MICROSOFT_TENANTS
-		return provider.tenantId.takeIf { multiTenant }
-	}
-	val url = runCatching { URI(discoveryUrl) }.getOrNull() ?: return null
+	val discoveryUrl = runCatching { OidcDiscoveryService.resolveDiscoveryUrl(provider) }.getOrNull()
+		?: return null
+	val url = runCatching { Url(discoveryUrl) }.getOrNull() ?: return null
 	val microsoft = provider.preset == SsoProviderPreset.MICROSOFT ||
-		url.host?.lowercase() in MICROSOFT_SIGN_IN_HOSTS
-	val tenant = url.path.orEmpty().trimStart('/').substringBefore('/').lowercase()
-	return discoveryUrl.takeIf { microsoft && tenant in MULTI_TENANT_MICROSOFT_TENANTS }
+		url.host.lowercase().trimEnd('.') in MICROSOFT_SIGN_IN_HOSTS
+	val multiTenant = url.rawSegments
+		.flatMap { it.split('/', '\\', ';') }
+		.any { it.trim().lowercase() in MULTI_TENANT_MICROSOFT_TENANTS }
+	return discoveryUrl.trim().takeIf { microsoft && multiTenant }
 }
 
 /**
- * The tenants in a Microsoft sign-in URL (`tenantId`, or a discovery URL's first path segment)
- * that admit users of any Entra tenant, in lower case.
+ * The tenant names in a Microsoft discovery URL that admit users of any Entra tenant, in lower
+ * case.
  */
 private val MULTI_TENANT_MICROSOFT_TENANTS = setOf("common", "organizations")
 

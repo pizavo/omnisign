@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.config
 
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.string.shouldContain
 
@@ -210,6 +211,39 @@ class AuthConfigValidatorTest : FunSpec({
         }
     }
 
+    test("rejects assumeEmailVerified on a discovery URL spelled to reach a multi-tenant Microsoft endpoint") {
+        val backslash = '\\'
+        val wellKnown = "v2.0/.well-known/openid-configuration"
+        listOf(
+            assumingAt("https://login.microsoftonline.com/organizations/$wellKnown\n", null),
+            assumingAt("https://login.microsoftonline.com/common/$wellKnown?client={id}", null),
+            assumingAt("https://login.microsoftonline.com/contoso.onmicrosoft.com/../common/$wellKnown", null),
+            assumingAt("https://login.microsoftonline.com/contoso/%2e%2e/%6Frganizations/$wellKnown", null),
+            assumingAt("https://login.microsoftonline.com/contoso%2F..%2Fcommon/$wellKnown", null),
+            assumingAt("https://login.microsoftonline.com/contoso$backslash..${backslash}common/$wellKnown", null),
+            assumingAt("https://login.microsoftonline.com/organizations;v=1/$wellKnown", null),
+            assumingAt("https://Login.MicrosoftOnline.com./common/$wellKnown", null),
+            assumingAt("https://login.microsoftonline.com/common%20/$wellKnown", null),
+            microsoft("contoso.onmicrosoft.com/../organizations", assumeEmailVerified = true),
+            OidcProviderConfig(
+                name = "auth0",
+                preset = SsoProviderPreset.AUTH0,
+                tenantId = "login.microsoftonline.com/organizations/v2.0",
+                clientId = "id",
+                allowedEmailDomains = listOf("contoso.com"),
+                assumeEmailVerified = true,
+            ),
+        ).forEach { provider ->
+            withClue(provider.discoveryUrl ?: provider.tenantId) {
+                val ex = shouldThrow<IllegalArgumentException> {
+                    validateAuthConfig(AuthConfig(providers = listOf(provider)))
+                }
+                ex.message!! shouldContain "'${provider.name}'"
+                ex.message!! shouldContain "xms_edov"
+            }
+        }
+    }
+
     test("accepts assumeEmailVerified on a discoveryUrl for one Microsoft tenant or another IdP") {
         listOf(
             assumingAt(
@@ -220,8 +254,18 @@ class AuthConfigValidatorTest : FunSpec({
             microsoft("common", assumeEmailVerified = true).copy(
                 discoveryUrl = "https://login.microsoftonline.com/contoso.onmicrosoft.com/v2.0/.well-known/openid-configuration",
             ),
+            OidcProviderConfig(
+                name = "keycloak",
+                preset = SsoProviderPreset.KEYCLOAK,
+                tenantId = "idp.example/common",
+                clientId = "id",
+                allowedEmailDomains = listOf("contoso.com"),
+                assumeEmailVerified = true,
+            ),
         ).forEach { provider ->
-            validateAuthConfig(AuthConfig(providers = listOf(provider)))
+            withClue(provider.discoveryUrl ?: provider.tenantId) {
+                validateAuthConfig(AuthConfig(providers = listOf(provider)))
+            }
         }
     }
 })
