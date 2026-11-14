@@ -6,8 +6,11 @@ import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.enums.ConfigFormat
+import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.text.MessageKey
 import cz.pizavo.omnisign.domain.port.ConfigSerializerRegistry
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import io.kotest.assertions.arrow.core.shouldBeLeft
@@ -20,12 +23,14 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
+import io.mockk.coVerify
 import io.mockk.mockk
 import io.mockk.slot
 
 /**
  * Verifies [ExportImportConfigUseCase] delegation to [ConfigSerializerRegistry],
- * merge logic, and error propagation.
+ * merge logic, and error propagation, and that an import is refused, with nothing saved, when a
+ * default or override it carries is among the algorithms the same layer disables.
  */
 class ExportImportConfigUseCaseTest : FunSpec({
 	
@@ -132,5 +137,79 @@ class ExportImportConfigUseCaseTest : FunSpec({
 			.shouldBeInstanceOf<ConfigurationError>()
 			.message shouldContain "YAML"
 	}
-})
 
+	test("importGlobal refuses a global section whose default hash algorithm it disables, and saves nothing") {
+		val repository: ConfigRepository = mockk()
+		coEvery { repository.getCurrentConfig() } returns baseConfig
+		coEvery { repository.saveConfig(any()) } returns Unit.right()
+		val global = GlobalConfig(defaultHashAlgorithm = HashAlgorithm.SHA384, disabledHashAlgorithms = setOf(HashAlgorithm.SHA384))
+		val serialized = jsonSerializer.serializeGlobal(global).shouldBeRight()
+
+		val error = ExportImportConfigUseCase(repository, registry).importGlobal(serialized, ConfigFormat.JSON).shouldBeLeft()
+
+		error.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>().text shouldBe
+			LocalizableText.of(MessageKey.CONFIG_CANNOT_DISABLE_DEFAULT_HASH, "SHA384")
+		coVerify(exactly = 0) { repository.saveConfig(any()) }
+	}
+
+	test("importApp refuses a configuration whose global default encryption algorithm it disables, and saves nothing") {
+		val repository: ConfigRepository = mockk()
+		coEvery { repository.getCurrentConfig() } returns baseConfig
+		coEvery { repository.saveConfig(any()) } returns Unit.right()
+		val config = AppConfig(
+			global = GlobalConfig(
+				defaultEncryptionAlgorithm = EncryptionAlgorithm.ECDSA,
+				disabledEncryptionAlgorithms = setOf(EncryptionAlgorithm.ECDSA),
+			),
+		)
+		val serialized = jsonSerializer.serializeApp(config).shouldBeRight()
+
+		val error = ExportImportConfigUseCase(repository, registry).importApp(serialized, ConfigFormat.JSON).shouldBeLeft()
+
+		error.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>().text shouldBe
+			LocalizableText.of(MessageKey.CONFIG_CANNOT_DISABLE_DEFAULT_ENCRYPTION, "ECDSA")
+		coVerify(exactly = 0) { repository.saveConfig(any()) }
+	}
+
+	test("importApp refuses a configuration with a profile that disables its own hash override, and saves nothing") {
+		val repository: ConfigRepository = mockk()
+		coEvery { repository.getCurrentConfig() } returns baseConfig
+		coEvery { repository.saveConfig(any()) } returns Unit.right()
+		val config = AppConfig(
+			profiles = mapOf(
+				"fine" to ProfileConfig(name = "fine", hashAlgorithm = HashAlgorithm.SHA384),
+				"broken" to ProfileConfig(
+					name = "broken",
+					hashAlgorithm = HashAlgorithm.SHA512,
+					disabledHashAlgorithms = setOf(HashAlgorithm.SHA512),
+				),
+			),
+		)
+		val serialized = jsonSerializer.serializeApp(config).shouldBeRight()
+
+		val error = ExportImportConfigUseCase(repository, registry).importApp(serialized, ConfigFormat.JSON).shouldBeLeft()
+
+		error.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>().text shouldBe
+			LocalizableText.of(MessageKey.CONFIG_PROFILE_DISABLES_OWN_HASH, "broken", "SHA512")
+		coVerify(exactly = 0) { repository.saveConfig(any()) }
+	}
+
+	test("importProfile refuses a profile that disables its own encryption override, naming it as it would be saved") {
+		val repository: ConfigRepository = mockk()
+		coEvery { repository.getCurrentConfig() } returns baseConfig
+		coEvery { repository.saveConfig(any()) } returns Unit.right()
+		val profile = ProfileConfig(
+			name = "imported",
+			encryptionAlgorithm = EncryptionAlgorithm.RSA,
+			disabledEncryptionAlgorithms = setOf(EncryptionAlgorithm.RSA),
+		)
+		val serialized = jsonSerializer.serializeProfile(profile).shouldBeRight()
+
+		val error = ExportImportConfigUseCase(repository, registry)
+			.importProfile(serialized, ConfigFormat.JSON, overrideName = "renamed").shouldBeLeft()
+
+		error.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>().text shouldBe
+			LocalizableText.of(MessageKey.CONFIG_PROFILE_DISABLES_OWN_ENCRYPTION, "renamed", "RSA")
+		coVerify(exactly = 0) { repository.saveConfig(any()) }
+	}
+})

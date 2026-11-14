@@ -16,6 +16,9 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.result.OperationResult
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.text.MessageKey
 import cz.pizavo.omnisign.domain.model.value.sensitive
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
@@ -39,7 +42,8 @@ import kotlin.io.path.writeText
 /**
  * Verifies symmetric serialize→deserialize round-trips and invalid-input handling
  * for JSON, YAML, and XML serializers, and how each format reads a hand-written file: what YAML takes
- * for null, a number, or a boolean, how XML writes an empty set, and what every format refuses.
+ * for null, a number, or a boolean, how XML writes an empty set, and what every format refuses,
+ * a document of another kind of configuration than the one asked for among it.
  */
 class ConfigSerializerTest : FunSpec({
 	
@@ -48,6 +52,9 @@ class ConfigSerializerTest : FunSpec({
 		YamlConfigSerializer(),
 		XmlConfigSerializer()
 	)
+
+	fun refusal(result: OperationResult<*>): ConfigurationError.InvalidConfiguration =
+		result.shouldBeLeft().shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
 	
 	val sampleGlobal = GlobalConfig(
 		defaultHashAlgorithm = HashAlgorithm.SHA512,
@@ -384,5 +391,99 @@ class ConfigSerializerTest : FunSpec({
 			}
 		}
 	}
-})
+	test("every format refuses a document of another kind, naming the kind it holds") {
+		for (serializer in serializers) {
+			val app = serializer.serializeApp(sampleApp).shouldBeRight()
+			val global = serializer.serializeGlobal(sampleGlobal).shouldBeRight()
+			val profile = serializer.serializeProfile(sampleProfile).shouldBeRight()
+			val cases = listOf(
+				serializer.deserializeApp(global) to MessageKey.CONFIG_DOCUMENT_GLOBAL_NOT_APP,
+				serializer.deserializeApp(profile) to MessageKey.CONFIG_DOCUMENT_PROFILE_NOT_APP,
+				serializer.deserializeGlobal(app) to MessageKey.CONFIG_DOCUMENT_APP_NOT_GLOBAL,
+				serializer.deserializeGlobal(profile) to MessageKey.CONFIG_DOCUMENT_PROFILE_NOT_GLOBAL,
+				serializer.deserializeProfile(app) to MessageKey.CONFIG_DOCUMENT_APP_NOT_PROFILE,
+				serializer.deserializeProfile(global) to MessageKey.CONFIG_DOCUMENT_GLOBAL_NOT_PROFILE,
+			)
+			for ((result, key) in cases) {
+				val error = refusal(result)
+				error.text shouldBe LocalizableText.of(key)
+				error.details.shouldBeNull()
+			}
+		}
+	}
 
+	test("every format refuses the default global settings read as a full configuration, and the reverse") {
+		for (serializer in serializers) {
+			val global = serializer.serializeGlobal(GlobalConfig()).shouldBeRight()
+			val app = serializer.serializeApp(AppConfig()).shouldBeRight()
+
+			refusal(serializer.deserializeApp(global)).text shouldBe
+				LocalizableText.of(MessageKey.CONFIG_DOCUMENT_GLOBAL_NOT_APP)
+			refusal(serializer.deserializeGlobal(app)).text shouldBe
+				LocalizableText.of(MessageKey.CONFIG_DOCUMENT_APP_NOT_GLOBAL)
+		}
+	}
+
+	test("every format refuses a document that holds no configuration, listing the properties it has") {
+		val documents = listOf(
+			JsonConfigSerializer() to """{"profile": "work", "signatureLevels": []}""",
+			YamlConfigSerializer() to "profile: work\nsignatureLevels: []",
+			XmlConfigSerializer() to "<AppConfig><profile>work</profile><signatureLevels/></AppConfig>",
+		)
+		for ((serializer, document) in documents) {
+			val results = listOf(
+				serializer.deserializeApp(document),
+				serializer.deserializeGlobal(document),
+				serializer.deserializeProfile(document),
+			)
+			for (result in results) {
+				val error = refusal(result)
+				error.text shouldBe LocalizableText.of(MessageKey.CONFIG_DOCUMENT_NOT_CONFIGURATION)
+				error.details shouldBe "Top-level properties: profile, signatureLevels"
+			}
+		}
+	}
+
+	test("every format refuses an empty document instead of reading it as the defaults") {
+		val documents = listOf(
+			JsonConfigSerializer() to "{}",
+			YamlConfigSerializer() to "{}",
+			XmlConfigSerializer() to "<AppConfig/>",
+			XmlConfigSerializer() to "<GlobalConfig></GlobalConfig>",
+		)
+		for ((serializer, document) in documents) {
+			val results = listOf(
+				serializer.deserializeApp(document),
+				serializer.deserializeGlobal(document),
+				serializer.deserializeProfile(document),
+			)
+			for (result in results) {
+				val error = refusal(result)
+				error.text shouldBe LocalizableText.of(MessageKey.CONFIG_DOCUMENT_NOT_CONFIGURATION)
+				error.details shouldBe "The document has no top-level properties"
+			}
+		}
+	}
+
+	test("a document of the settings a profile shares with the global settings reads as the global settings") {
+		val document = """{"ocsp": {"timeout": 1000}}"""
+
+		JsonConfigSerializer().deserializeGlobal(document).shouldBeRight().ocsp.timeout shouldBe 1000
+		refusal(JsonConfigSerializer().deserializeProfile(document)).text shouldBe
+			LocalizableText.of(MessageKey.CONFIG_DOCUMENT_GLOBAL_NOT_PROFILE)
+	}
+
+	test("a document with a property of a full configuration reads as one, even beside the name of a profile") {
+		val document = """{"name": "work", "activeProfile": "work"}"""
+
+		JsonConfigSerializer().deserializeApp(document).shouldBeRight().activeProfile shouldBe "work"
+		refusal(JsonConfigSerializer().deserializeProfile(document)).text shouldBe
+			LocalizableText.of(MessageKey.CONFIG_DOCUMENT_APP_NOT_PROFILE)
+	}
+
+	test("a document with a property this build does not know still reads, by the properties it knows") {
+		val document = """{"activeProfile": "work", "signingHistory": []}"""
+
+		JsonConfigSerializer().deserializeApp(document).shouldBeRight().activeProfile shouldBe "work"
+	}
+})

@@ -102,6 +102,11 @@ omnisign config profile import university.zip --name university-backup
 | `-f, --format`      | Format of a legacy plain profile file (`JSON`, `XML`, `YAML`); ignored for ZIP archives. |
 | `-n, --name <name>` | Override the profile name from the file.                                                 |
 
+The file must hold a single profile, as `config profile export` writes it. The global settings,
+a full configuration or a file with no OmniSign configuration is refused with an error that says
+what it holds, and so is a profile that disables its own hash or encryption algorithm override;
+nothing changes.
+
 ## Examples
 
 ```bash

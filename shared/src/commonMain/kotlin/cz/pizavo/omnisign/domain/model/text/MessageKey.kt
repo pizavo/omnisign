@@ -177,6 +177,27 @@ enum class MessageKey {
 	/** Deserializing the configuration from a text format failed (arg: format name). */
 	CONFIG_DESERIALIZE_FAILED,
 
+	/** A document read as the global settings holds a full configuration. */
+	CONFIG_DOCUMENT_APP_NOT_GLOBAL,
+
+	/** A document read as a profile holds a full configuration. */
+	CONFIG_DOCUMENT_APP_NOT_PROFILE,
+
+	/** A document read as a full configuration holds only the global settings. */
+	CONFIG_DOCUMENT_GLOBAL_NOT_APP,
+
+	/** A document read as a profile holds only the global settings. */
+	CONFIG_DOCUMENT_GLOBAL_NOT_PROFILE,
+
+	/** A document read as a full configuration holds a single profile. */
+	CONFIG_DOCUMENT_PROFILE_NOT_APP,
+
+	/** A document read as the global settings holds a single profile. */
+	CONFIG_DOCUMENT_PROFILE_NOT_GLOBAL,
+
+	/** A document read as a configuration holds no OmniSign configuration. */
+	CONFIG_DOCUMENT_NOT_CONFIGURATION,
+
 	/** Loading the configuration from the server over the API failed. */
 	CONFIG_LOAD_FROM_SERVER_FAILED,
 

@@ -53,6 +53,13 @@
 	<string name="err_config_read_only">Konfiguračný súbor %1$s je iba na čítanie, preto zmena nebola uložená.</string>
 	<string name="err_config_serialize_failed">Nepodarilo sa serializovať konfiguráciu do %1$s</string>
 	<string name="err_config_deserialize_failed">Nepodarilo sa deserializovať konfiguráciu z %1$s</string>
+	<string name="err_config_document_app_not_global">Súbor obsahuje celú konfiguráciu, nie iba globálne nastavenia</string>
+	<string name="err_config_document_app_not_profile">Súbor obsahuje celú konfiguráciu, nie jeden profil</string>
+	<string name="err_config_document_global_not_app">Súbor obsahuje iba globálne nastavenia, nie celú konfiguráciu</string>
+	<string name="err_config_document_global_not_profile">Súbor obsahuje iba globálne nastavenia, nie profil</string>
+	<string name="err_config_document_profile_not_app">Súbor obsahuje iba jeden profil, nie celú konfiguráciu</string>
+	<string name="err_config_document_profile_not_global">Súbor obsahuje jeden profil, nie globálne nastavenia</string>
+	<string name="err_config_document_not_configuration">Súbor neobsahuje žiadnu konfiguráciu OmniSign</string>
 	<string name="err_config_load_from_server_failed">Nepodarilo sa načítať konfiguráciu zo servera</string>
 	<string name="err_config_save_not_supported_web">Ukladanie konfigurácie nie je podporované vo webovej verzii</string>
 	<string name="err_config_server_read_only">Konfigurácia podpisovania na serveri je iba na čítanie</string>

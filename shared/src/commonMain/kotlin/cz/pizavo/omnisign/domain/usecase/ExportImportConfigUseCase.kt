@@ -1,9 +1,13 @@
 package cz.pizavo.omnisign.domain.usecase
 
+import arrow.core.getOrElse
 import arrow.core.left
+import cz.pizavo.omnisign.domain.model.config.disabledDefaultError
+import cz.pizavo.omnisign.domain.model.config.disabledOverrideError
 import cz.pizavo.omnisign.domain.model.config.enums.ConfigFormat
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.result.OperationResult
+import cz.pizavo.omnisign.domain.port.ConfigSerializer
 import cz.pizavo.omnisign.domain.port.ConfigSerializerRegistry
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 
@@ -34,6 +38,11 @@ class ExportImportConfigUseCase(
 	/**
 	 * Import and replace the entire application configuration from serialized text.
 	 *
+	 * Text that holds the global settings or a profile instead, or no configuration, is refused and
+	 * nothing is saved, as [ConfigSerializer.deserializeApp] describes. So is a configuration whose
+	 * global defaults or a profile's overrides are among the algorithms the same layer disables, as
+	 * [disabledDefaultError] and [disabledOverrideError] describe.
+	 *
 	 * @param text Serialized configuration text.
 	 * @param format Format of the supplied text.
 	 * @return Unit on success or an error.
@@ -41,10 +50,10 @@ class ExportImportConfigUseCase(
 	suspend fun importApp(text: String, format: ConfigFormat): OperationResult<Unit> {
 		val serializer = serializerRegistry.get(format)
 			?: return ConfigurationError.noSerializerForFormat(format.name).left()
-		return serializer.deserializeApp(text).fold(
-			ifLeft = { it.left() },
-			ifRight = { configRepository.saveConfig(it) }
-		)
+		val config = serializer.deserializeApp(text).getOrElse { return it.left() }
+		config.global.disabledDefaultError()?.let { return it.left() }
+		config.profiles.values.firstNotNullOfOrNull { it.disabledOverrideError() }?.let { return it.left() }
+		return configRepository.saveConfig(config)
 	}
 	
 	/**
@@ -64,6 +73,11 @@ class ExportImportConfigUseCase(
 	 * Import and replace the global configuration section from serialized text.
 	 * All other configuration sections (profiles, renewal jobs, etc.) are preserved.
 	 *
+	 * Text that holds a full configuration or a profile instead, or no configuration, is refused and
+	 * nothing is saved, as [ConfigSerializer.deserializeGlobal] describes. So is a global section
+	 * whose default hash or encryption algorithm is among the algorithms it disables, as
+	 * [disabledDefaultError] describes.
+	 *
 	 * @param text Serialized global configuration text.
 	 * @param format Format of the supplied text.
 	 * @return Unit on success or an error.
@@ -71,13 +85,10 @@ class ExportImportConfigUseCase(
 	suspend fun importGlobal(text: String, format: ConfigFormat): OperationResult<Unit> {
 		val serializer = serializerRegistry.get(format)
 			?: return ConfigurationError.noSerializerForFormat(format.name).left()
-		return serializer.deserializeGlobal(text).fold(
-			ifLeft = { it.left() },
-			ifRight = { global ->
-				val current = configRepository.getCurrentConfig()
-				configRepository.saveConfig(current.copy(global = global))
-			}
-		)
+		val global = serializer.deserializeGlobal(text).getOrElse { return it.left() }
+		global.disabledDefaultError()?.let { return it.left() }
+		val current = configRepository.getCurrentConfig()
+		return configRepository.saveConfig(current.copy(global = global))
 	}
 	
 	/**
@@ -100,6 +111,11 @@ class ExportImportConfigUseCase(
 	 * Import a profile from serialized text and upsert it into the stored configuration.
 	 * If [overrideName] is provided, it replaces the name embedded in the serialized profile.
 	 *
+	 * Text that holds a full configuration or the global settings instead, or no configuration, is
+	 * refused and nothing is saved, as [ConfigSerializer.deserializeProfile] describes. So is a
+	 * profile whose hash or encryption override is among the algorithms it disables, as
+	 * [disabledOverrideError] describes; the error names the profile as it would have been saved.
+	 *
 	 * @param text Serialized profile text.
 	 * @param format Format of the supplied text.
 	 * @param overrideName Optional name to use instead of the one in the serialized text.
@@ -112,17 +128,14 @@ class ExportImportConfigUseCase(
 	): OperationResult<String> {
 		val serializer = serializerRegistry.get(format)
 			?: return ConfigurationError.noSerializerForFormat(format.name).left()
-		return serializer.deserializeProfile(text).fold(
-			ifLeft = { it.left() },
-			ifRight = { profile ->
-				val finalProfile = if (overrideName != null) profile.copy(name = overrideName) else profile
-				val current = configRepository.getCurrentConfig()
-				val updated = current.copy(
-					profiles = current.profiles + (finalProfile.name to finalProfile)
-				)
-				configRepository.saveConfig(updated).map { finalProfile.name }
-			}
+		val profile = serializer.deserializeProfile(text).getOrElse { return it.left() }
+		val finalProfile = if (overrideName != null) profile.copy(name = overrideName) else profile
+		finalProfile.disabledOverrideError()?.let { return it.left() }
+		val current = configRepository.getCurrentConfig()
+		val updated = current.copy(
+			profiles = current.profiles + (finalProfile.name to finalProfile)
 		)
+		return configRepository.saveConfig(updated).map { finalProfile.name }
 	}
 }
 
