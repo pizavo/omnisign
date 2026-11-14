@@ -53,7 +53,7 @@ import kotlinx.coroutines.sync.withLock
  * selection in [profileSelectionStore] (not to the server) and reflects it in the
  * cache. A `getCurrentConfig` failure falls back to an empty [AppConfig] — its
  * non-`Either` return type cannot carry an error, and this mirrors the JVM
- * `FileConfigRepository` when its on-disk config is missing — but the discarded
+ * `FileConfigRepository` when its on-disk config cannot be read — but the discarded
  * failure is written to the browser console rather than swallowed silently, so a
  * post-login transport error reads as a diagnosable "no profiles" instead of a
  * mystery. (The whole-app auth gate fetches config only once authenticated, so

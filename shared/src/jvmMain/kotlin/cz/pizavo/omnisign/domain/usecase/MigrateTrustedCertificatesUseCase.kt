@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.domain.usecase
 
 import arrow.core.right
 import cz.pizavo.omnisign.data.repository.FileConfigRepository
+import cz.pizavo.omnisign.data.repository.readConfigText
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
@@ -16,7 +17,6 @@ import kotlinx.serialization.json.contentOrNull
 import java.nio.file.Path
 import java.util.Base64
 import kotlin.io.path.exists
-import kotlin.io.path.readText
 
 private val logger = KotlinLogging.logger {}
 
@@ -82,10 +82,13 @@ class MigrateTrustedCertificatesUseCase(
 	/**
 	 * Parse [configPath] and extract the legacy inline certificates per scope, tolerating a missing
 	 * or unparseable file (treated as nothing to migrate).
+	 *
+	 * The file is read as [FileConfigRepository] reads it, without a leading byte order mark: a file
+	 * the repository loads and saves, dropping the inline bytes, must never be one this skips.
 	 */
 	private fun readLegacyInlineCerts(): Map<TrustScope, List<LegacyInlineCert>> {
 		if (!configPath.exists()) return emptyMap()
-		val root = runCatching { Json.parseToJsonElement(configPath.readText()) as? JsonObject }.getOrElse {
+		val root = runCatching { Json.parseToJsonElement(configPath.readConfigText()) as? JsonObject }.getOrElse {
 			logger.warn(it) { "Could not parse $configPath for legacy trusted-certificate migration; skipping" }
 			null
 		} ?: return emptyMap()

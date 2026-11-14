@@ -55,6 +55,18 @@ sealed interface ConfigurationError : OperationError, LocalizableError {
 		fun saveFailed(details: String? = null, cause: Throwable? = null): SaveFailed =
 			SaveFailed(LocalizableText.of(MessageKey.CONFIG_SAVE_FAILED), details, cause)
 
+		/**
+		 * The configuration file at [path] exists but cannot be read, so a save that would replace it
+		 * was refused: the file may hold profiles, renewal jobs and settings that the configuration
+		 * being saved does not, and replacing it would lose them.
+		 */
+		fun unreadableNotOverwritten(path: String, details: String? = null, cause: Throwable? = null): SaveFailed =
+			SaveFailed(LocalizableText.of(MessageKey.CONFIG_UNREADABLE_NOT_OVERWRITTEN, path), details, cause)
+
+		/** The configuration file at [path] is read-only, so a save that would replace it was refused. */
+		fun readOnly(path: String): SaveFailed =
+			SaveFailed(LocalizableText.of(MessageKey.CONFIG_READ_ONLY, path))
+
 		/** Serializing the configuration to the [format] text representation failed. */
 		fun serializeFailed(format: String, details: String? = null, cause: Throwable? = null): SaveFailed =
 			SaveFailed(LocalizableText.of(MessageKey.CONFIG_SERIALIZE_FAILED, format), details, cause)

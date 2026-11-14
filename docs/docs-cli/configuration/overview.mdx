@@ -35,6 +35,14 @@ refuses the write — the command exits with status 1 and saves nothing, not eve
 it was given. Unlock the keyring and run the command again, or pass the password on each run as
 above.
 
+If the file exists but cannot be read — a hand edit left it invalid, say, or a newer OmniSign
+version wrote a value this one does not know — `config show` exits with status 1 because the
+configuration cannot be loaded, and other commands run with the default settings, so
+`config profile show`, for one, finds no profile. A command that would change the configuration
+exits with status 1 and leaves the file as it is. Fix the file, or move it elsewhere to start over
+from the defaults. A save replaces the file in one step, so a save cut short by a crash or a full
+disk leaves the previous configuration in place.
+
 ## `config show`
 
 Print the current configuration including global defaults, active profile, and all named profiles.
