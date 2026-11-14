@@ -70,6 +70,7 @@ class SettingsViewModelTest : FunSpec({
         clearMocks(configRepository, credentialStore, schedulerPort)
         every { credentialStore.isPersistent } returns true
         every { credentialStore.setPassword(any(), any(), any()) } returns Unit.right()
+        every { schedulerPort.isAvailable() } returns true
         Dispatchers.setMain(testDispatcher)
     }
 
@@ -1220,6 +1221,7 @@ class SettingsViewModelTest : FunSpec({
             advanceUntilIdle()
 
             verify { schedulerPort.install("/opt/omnisign/bin/OmniSign", 4, 15, null) }
+            verify(exactly = 0) { schedulerPort.isAvailable() }
             vm.state.value.schedulerInstalled shouldBe true
         }
     }
@@ -1673,6 +1675,7 @@ class SettingsViewModelTest : FunSpec({
 
             vm.state.value.schedulerInstallPending shouldBe false
             vm.hasChanges.value shouldBe false
+            verify(exactly = 0) { schedulerPort.isAvailable() }
         }
     }
 
@@ -1691,6 +1694,7 @@ class SettingsViewModelTest : FunSpec({
 
             vm.state.value.schedulerInstallPending shouldBe false
             vm.hasChanges.value shouldBe false
+            verify(exactly = 0) { schedulerPort.isAvailable() }
         }
     }
 
@@ -1709,6 +1713,7 @@ class SettingsViewModelTest : FunSpec({
 
             vm.state.value.schedulerInstallPending shouldBe false
             vm.hasChanges.value shouldBe false
+            verify(exactly = 0) { schedulerPort.isAvailable() }
         }
     }
 
@@ -1726,6 +1731,83 @@ class SettingsViewModelTest : FunSpec({
 
             vm.state.value.schedulerInstallPending shouldBe false
             vm.hasChanges.value shouldBe false
+        }
+    }
+
+    test("load leaves Save disabled for a missing scheduler job where the OS scheduler cannot register it, as without a systemd user instance") {
+        runTest(testDispatcher) {
+            val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
+            coEvery { configRepository.loadConfig() } returns baseConfig.copy(renewalJobs = mapOf("nightly" to job)).right()
+            every { schedulerPort.isInstalled() } returns false
+            every { schedulerPort.isAvailable() } returns false
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+                ioDispatcher = testDispatcher,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.schedulerInstallPending shouldBe false
+            vm.hasChanges.value shouldBe false
+            verify(exactly = 1) { schedulerPort.isAvailable() }
+        }
+    }
+
+    test("load leaves Save disabled for a missing scheduler job when asking whether the OS scheduler can register it fails") {
+        runTest(testDispatcher) {
+            val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
+            coEvery { configRepository.loadConfig() } returns baseConfig.copy(renewalJobs = mapOf("nightly" to job)).right()
+            every { schedulerPort.isInstalled() } returns false
+            every { schedulerPort.isAvailable() } throws IllegalStateException("probe interrupted")
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+                ioDispatcher = testDispatcher,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.schedulerInstallPending shouldBe false
+            vm.state.value.renewalJobs shouldBe listOf(job)
+            vm.state.value.error.shouldBeNull()
+            vm.hasChanges.value shouldBe false
+        }
+    }
+
+    test("a scheduler install failure leaves Save disabled where the OS scheduler cannot register the job, and keeps the error shown") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+            val noSystemd = "OmniSign's automatic scheduler requires systemd, but no usable user instance was found."
+            every { schedulerPort.install(any(), any(), any(), any()) } throws IllegalStateException(noSystemd)
+            every { schedulerPort.isInstalled() } returns false
+            every { schedulerPort.isAvailable() } returns false
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+                ioDispatcher = testDispatcher,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
+            vm.updateState { it.copy(renewalJobs = listOf(job)) }
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            advanceUntilIdle()
+
+            successCalled shouldBe false
+            vm.state.value.error shouldBe SettingsError.SchedulerInstallFailed(noSystemd)
+            vm.state.value.schedulerInstallPending shouldBe false
+            vm.state.value.renewalJobs shouldBe listOf(job)
+            vm.hasChanges.value shouldBe false
+            verify(exactly = 1) { schedulerPort.isAvailable() }
         }
     }
 

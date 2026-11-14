@@ -162,7 +162,8 @@ class SettingsViewModel(
      * When renewal jobs and an executable path for the OS scheduler are configured but the scheduler
      * job is not registered, as after a save that failed to register it in a dialog since closed,
      * the job is marked as [GlobalConfigEditState.schedulerInstallPending], so Save is enabled to
-     * register it.
+     * register it. It is not marked where the OS scheduler cannot register the job at all, as on
+     * Linux without a systemd user instance, since no save could register it there.
      */
     fun load() {
         viewModelScope.launch {
@@ -198,8 +199,8 @@ class SettingsViewModel(
                             trustedCertsAvailable = trustStore != null,
                             renewalRunRecord = runRecord,
                             renewalRunInFlight = runInFlight,
-                            schedulerInstallPending = schedulerPort != null && !installed &&
-                                    it.renewalJobs.isNotEmpty() && it.effectiveSchedulerExecutablePath != null,
+                            schedulerInstallPending = !installed && it.renewalJobs.isNotEmpty() &&
+                                    it.effectiveSchedulerExecutablePath != null && schedulerAvailable(),
                         )
                     }.let {
                         if (isLinuxDesktop) it.copy(
@@ -325,7 +326,8 @@ class SettingsViewModel(
      * save ran stay in the form, unsaved, and keep the dialog open, so they are neither lost nor
      * taken for saved. A scheduler job that could not be registered is marked as
      * [GlobalConfigEditState.schedulerInstallPending] in the form, also when the certificate changes
-     * fail too, which keeps Save enabled to try again.
+     * fail too, which keeps Save enabled to try again, unless the OS scheduler cannot register the
+     * job at all, as on Linux without a systemd user instance.
      */
     private suspend fun finishSave(saved: GlobalConfigEditState, onSuccess: () -> Unit) {
         val (schedulerError, installed) = withContext(ioDispatcher) {
@@ -346,7 +348,7 @@ class SettingsViewModel(
                 )
             }
         }
-        val schedulerInstallPending = schedulerError != null
+        val schedulerInstallPending = schedulerError != null && schedulerAvailable()
         if (certError != null) {
             _state.update {
                 it.copy(
@@ -488,6 +490,15 @@ class SettingsViewModel(
             } catch (_: Exception) { }
             return null
         }
+    }
+
+    /**
+     * Whether the OS scheduler can register the renewal job on this system at all, as
+     * [SchedulerPort.isAvailable] tells, asked on the [ioDispatcher] as finding out may start a
+     * process: `false` without a [schedulerPort], and when asking fails.
+     */
+    private suspend fun schedulerAvailable(): Boolean = withContext(ioDispatcher) {
+        try { schedulerPort?.isAvailable() == true } catch (_: Exception) { false }
     }
 
     /**

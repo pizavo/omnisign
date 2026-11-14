@@ -1,11 +1,12 @@
 package cz.pizavo.omnisign.data.service
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 
 /**
- * Verifies the plist rendering of [LaunchdSchedulerService].
+ * Verifies the plist rendering of [LaunchdSchedulerService], and that it reports launchd available.
  *
  * `renderPlist` is pure, so these assertions run on every platform; the `launchctl`-backed
  * install/uninstall behaviour is exercised only on a real macOS host and is not covered here.
@@ -36,5 +37,9 @@ class LaunchdSchedulerServiceTest : FunSpec({
 	test("renderPlist escapes XML metacharacters in paths") {
 		val plist = service.renderPlist("/opt/a&b/omnisign", 2, 0, null)
 		plist shouldContain "<string>/opt/a&amp;b/omnisign</string>"
+	}
+
+	test("isAvailable is true, as every macOS installation has launchd") {
+		service.isAvailable().shouldBeTrue()
 	}
 })

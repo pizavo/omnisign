@@ -37,9 +37,10 @@ import cz.pizavo.omnisign.ui.platform.saveThemePreference
  * state. All three are loaded together via [loadUiPreferences]. The theme is persisted the moment
  * it is toggled via [saveThemePreference]; the language and date format instead apply live only as
  * a preview while the Settings dialog is open and are persisted via [saveLanguagePreference] /
- * [saveFormatPreference] only when the user saves it — reverting to the value held at open on
- * cancel — which is why the dialog drives them through separate apply and persist callbacks. A
- * `null` language tag follows the system/browser locale.
+ * [saveFormatPreference] only when the user clicks its Save with either changed, whether or not the
+ * other settings then save — reverting on cancel to the values last persisted — which is why the
+ * dialog drives them through separate apply and persist callbacks. A `null` language tag follows
+ * the system/browser locale.
  *
  * Every ViewModel beneath it lives in a store remembered here with [rememberViewModelStoreOwner],
  * or in one nested inside it, rather than in the window's own store, so all of them are cleared,

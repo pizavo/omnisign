@@ -37,7 +37,17 @@ interface OsSchedulerService {
 	 * Return true if the daily renewal job is currently registered in the OS scheduler.
 	 */
 	fun isInstalled(): Boolean
-	
+
+	/**
+	 * Return true if the OS scheduler can register the daily renewal job on this system at all, and
+	 * false where [install] fails whatever it is given, as on Linux without a usable systemd user
+	 * instance.
+	 *
+	 * The default suits the schedulers every installation of the OS has, Task Scheduler on Windows
+	 * and launchd on macOS; the systemd implementation probes for a user instance instead.
+	 */
+	fun isAvailable(): Boolean = true
+
 	companion object {
 		/** Identifier for the registered job — the Windows task name and the systemd unit base name. */
 		const val JOB_TAG = "omnisign-renewal"

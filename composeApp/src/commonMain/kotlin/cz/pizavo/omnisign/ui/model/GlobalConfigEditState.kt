@@ -79,10 +79,12 @@ import kotlinx.datetime.LocalDate
  *   stored as a string for the text field. A save refuses a value below 1 while the warning is on,
  *   and coerces one to 1 while it is off, as the field is then hidden.
  * @property schedulerInstalled Whether the OS scheduler job is currently registered (read-only, queried on the load).
- * @property schedulerInstallPending Whether the OS scheduler job is missing where Save registers it:
- *   the last save wrote the configuration but could not register the job, or the dialog loaded
- *   renewal jobs and an executable path while the job was not registered. It counts as an unsaved
- *   change, so Save stays enabled to register the job, and is left out of [contentEquals].
+ * @property schedulerInstallPending Whether the OS scheduler job is missing where Save can register
+ *   it: the last save wrote the configuration but could not register the job, or the dialog loaded
+ *   renewal jobs and an executable path while the job was not registered, in both cases on a system
+ *   whose OS scheduler can register the job at all, which on Linux takes a systemd user instance. It
+ *   counts as an unsaved change, so Save stays enabled to register the job, and is left out of
+ *   [contentEquals].
  * @property renewalRunRecord Status of the most recent renewal batch run (read-only, queried on load), or `null` when none has run or no backend is available.
  * @property renewalRunInFlight Whether a renewal run is executing right now (read-only, queried on
  *   load). Tells a [RenewalRunRecord.runStartedAt] marker belonging to a live run apart from one a

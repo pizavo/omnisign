@@ -78,9 +78,11 @@ import org.koin.mp.KoinPlatform
  *   only — it does not persist. The dialog commits it via [onPersistLocale] when Save is clicked, or
  *   on cancel reverts it through this same callback to the one last committed.
  * @param onFormatChange Applies the chosen date format live as a preview only, like [onLanguageChange].
- * @param onPersistLocale Persists the given language tag and date format. Invoked whenever the user
- *   clicks Save in the settings dialog, before the other settings are saved and whether or not that
- *   then succeeds, so a previewed language/format reverts on cancel unless Save was clicked.
+ * @param onPersistLocale Persists the given language tag and date format. Invoked when the user
+ *   clicks Save in the settings dialog with a language or date format other than the one last
+ *   committed, before the other settings are saved and whether or not that then succeeds, so a
+ *   previewed language/format reverts on cancel unless Save was clicked. A Save that changes neither
+ *   writes neither, so a date format the CLI saved meanwhile is kept.
  * @param onLogout Sign-out action for the toolbar, forwarded to [IslandToolbar]. `null` (desktop, or
  *   web with auth disabled) hides the sign-out button; the web target passes a non-null action only
  *   when the server has auth enabled.
@@ -407,7 +409,7 @@ fun IslandLayout(
 						hasChanges = settingsHasChanges || localeChanged,
 						onFieldChange = { transform -> settingsViewModel?.updateState(transform) },
 						onSave = {
-							onPersistLocale(languageTag, dateFormat)
+							if (localeChanged) onPersistLocale(languageTag, dateFormat)
 							settingsLanguageBaseline = languageTag
 							settingsFormatBaseline = dateFormat
 							if (settingsHasChanges) {

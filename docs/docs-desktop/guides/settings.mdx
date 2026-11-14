@@ -247,7 +247,8 @@ next day. (On Linux a systemd user instance is required; where none exists — c
 WSL setups — OmniSign instead prints the command to schedule renewal with another tool.) The
 current installation status is shown as a read-only indicator. Every save installs the scheduler
 while renewal jobs exist and the executable path is known, so when it is not installed then, as
-after a save that could not set it up, Save is enabled as soon as the dialog opens.
+after a save that could not set it up, Save is enabled as soon as the dialog opens, except on
+Linux without a systemd user instance, where no save could set it up.
 
 At the scheduled time the scheduler launches OmniSign in **headless renewal mode** (no window):
 it checks every configured renewal job, re-timestamps the B-LTA files whose archival timestamp
@@ -313,6 +314,7 @@ platform.
 
 Changes **preview live** as you pick them, **take effect when you save**, and **revert if you close the
 dialog without saving**; the saved choice is restored on the next launch. Clicking Save keeps them even
-when saving another setting then fails. Switching the language also re-renders the signature validation
-report in that language.
+when saving another setting then fails, and a save that changes neither leaves them as stored, so a
+date format set with `config date-format` while OmniSign runs applies from its next launch. Switching
+the language also re-renders the signature validation report in that language.
 

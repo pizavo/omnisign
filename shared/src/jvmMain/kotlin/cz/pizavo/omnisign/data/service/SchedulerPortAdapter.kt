@@ -26,5 +26,8 @@ class SchedulerPortAdapter(
 
 	override fun isInstalled(): Boolean =
 		delegate.isInstalled()
+
+	override fun isAvailable(): Boolean =
+		delegate.isAvailable()
 }
 
