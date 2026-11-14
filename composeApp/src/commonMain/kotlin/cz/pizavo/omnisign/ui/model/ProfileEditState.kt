@@ -19,9 +19,10 @@ import cz.pizavo.omnisign.lumo.components.TriToggleState
  *
  * @property profileName The immutable profile name (displayed as a header, not editable).
  * @property loadedProfile The stored profile this form was loaded from, or `null` for a form built
- *   without one. Saving copies the form's fields onto it, so the settings the form does not show,
- *   such as the OCSP and CRL overrides, the validation policy and the algorithm expiry settings,
- *   are kept.
+ *   without one. [effectiveSignatureLevel] keeps its level while the timestamp toggles still show
+ *   it, and [toProfileConfig] copies the form's fields onto it unless it is given the profile as
+ *   stored at the time of the save, so the settings the form does not show, such as the OCSP and
+ *   CRL overrides, the validation policy and the algorithm expiry settings, are kept.
  * @property description Free-text description of the profile.
  * @property hashAlgorithm Selected hash algorithm override, or `null` to inherit from global.
  * @property encryptionAlgorithm Selected encryption algorithm override, or `null` to inherit.
@@ -124,6 +125,16 @@ data class ProfileEditState(
 	}
 
 	/**
+	 * Whether documents signed with this profile get the archival timestamp (B-LTA), as the form is
+	 * now: the level a save writes is B-LTA, or the profile inherits the global level and
+	 * [globalLevel] is B-LTA. The panel then shows the signature timestamp toggle forced on.
+	 *
+	 * @param globalLevel The global default signature level.
+	 */
+	fun archivalTimestampActive(globalLevel: SignatureLevel): Boolean =
+		(effectiveSignatureLevel(globalLevel) ?: globalLevel) == SignatureLevel.PADES_BASELINE_LTA
+
+	/**
 	 * Compare only the persistable content fields of two states, ignoring
 	 * transient UI properties like [saving], [error], and [tlAddError].
 	 */
@@ -151,21 +162,25 @@ data class ProfileEditState(
 	/**
 	 * Convert this UI state back into a persistable [ProfileConfig].
 	 *
-	 * The form's fields are copied onto [loadedProfile], so whatever the form does not show is
-	 * saved as it was loaded: the OCSP and CRL overrides, and in the validation section everything
-	 * but the trusted lists and the two validation toggles. A form without a [loadedProfile] starts
-	 * from an empty profile. The validation section is left out when nothing is left in it.
+	 * The form's fields are copied onto [base], so whatever the form does not show is saved as it is
+	 * there: the OCSP and CRL overrides, and in the validation section everything but the trusted
+	 * lists and the two validation toggles. [base] is [loadedProfile] unless the caller passes the
+	 * profile as it is stored at the time of the save, which keeps what the CLI or an import changed
+	 * there while the form was open. Without a base the profile starts empty. The validation section
+	 * is left out when nothing is left in it.
 	 *
 	 * The [timestampPassword] is intentionally **not** included in the returned config
 	 * because passwords are persisted separately through the OS credential store.
-	 * The [TimestampServerConfig.credentialKey] is set to the username when a password
-	 * has been entered or was already stored.
+	 * The [TimestampServerConfig.credentialKey] names the entry the password is stored under: the
+	 * username when a new password has been entered, the key [base] names when the stored password
+	 * is kept (the username when it names none), and none without a username or a password.
 	 *
 	 * @param globalLevel The global default signature level, which a timestamp toggle left on
 	 *   [TriToggleState.INHERIT] takes its part of (see [effectiveSignatureLevel]).
+	 * @param base The profile the form's fields are copied onto.
 	 */
-	fun toProfileConfig(globalLevel: SignatureLevel): ProfileConfig =
-		(loadedProfile ?: ProfileConfig(name = profileName)).copy(
+	fun toProfileConfig(globalLevel: SignatureLevel, base: ProfileConfig? = loadedProfile): ProfileConfig =
+		(base ?: ProfileConfig(name = profileName)).copy(
 			name = profileName,
 			description = description.ifBlank { null },
 			hashAlgorithm = hashAlgorithm,
@@ -173,11 +188,15 @@ data class ProfileEditState(
 			signatureLevel = effectiveSignatureLevel(globalLevel),
 			timestampServer = if (timestampEnabled && timestampUrl.isNotBlank()) {
 				val effectiveUsername = timestampUsername.ifBlank { null }
-				val hasPassword = timestampPassword.value.isNotEmpty() || hasStoredPassword
 				TimestampServerConfig(
 					url = timestampUrl.trim(),
 					username = effectiveUsername,
-					credentialKey = if (hasPassword && effectiveUsername != null) effectiveUsername else null,
+					credentialKey = when {
+						effectiveUsername == null -> null
+						timestampPassword.value.isNotEmpty() -> effectiveUsername
+						hasStoredPassword -> base?.timestampServer?.credentialKey ?: effectiveUsername
+						else -> null
+					},
 					timeout = timestampTimeout.toIntOrNull() ?: TimestampServerConfig.DEFAULT_TIMEOUT_MS,
 				)
 			} else {
@@ -196,7 +215,7 @@ data class ProfileEditState(
 					TriToggleState.DISABLED -> false
 					TriToggleState.INHERIT -> null
 				}
-				(loadedProfile?.validation ?: ValidationConfig()).copy(
+				(base?.validation ?: ValidationConfig()).copy(
 					customTrustedLists = customTrustedLists,
 					alertIfNotEuLotl = alertOverride,
 					allowExpiredCertificate = allowExpiredOverride,

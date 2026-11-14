@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.ui.viewmodel
 
 import arrow.core.left
 import arrow.core.right
+import cz.pizavo.omnisign.data.repository.FileConfigRepository
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
@@ -33,7 +34,9 @@ import cz.pizavo.omnisign.lumo.components.TriToggleState
 import cz.pizavo.omnisign.ui.model.PendingTrustedCert
 import cz.pizavo.omnisign.ui.model.ProfileError
 import cz.pizavo.omnisign.ui.model.ProfilePanelMode
+import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
@@ -65,6 +68,7 @@ class ProfileViewModelTest : FunSpec({
     val manageProfile = ManageProfileUseCase(configRepository)
     val getConfig = GetConfigUseCase(configRepository)
     val testDispatcher = StandardTestDispatcher()
+    val configDir = tempdir()
 
     fun profile(name: String, description: String? = null) = ProfileConfig(
         name = name,
@@ -1133,7 +1137,7 @@ class ProfileViewModelTest : FunSpec({
         }
     }
 
-    test("saveEdit resolves a timestamp toggle left on Inherit against the global level the panel shows") {
+    test("the panel gets the global level, and saveEdit resolves a timestamp toggle left on Inherit against it") {
         runTest(testDispatcher) {
             var currentConfig = AppConfig(
                 global = GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA),
@@ -1159,6 +1163,74 @@ class ProfileViewModelTest : FunSpec({
             advanceUntilIdle()
 
             saved.captured.profiles["dev"].shouldNotBeNull().signatureLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+        }
+    }
+
+    test("saveEdit keeps what the CLI saved to the configuration file while the form was open") {
+        runTest(testDispatcher) {
+            val configFile = configDir.toPath().resolve("config.json")
+            val desktopRepository = FileConfigRepository(configFile, testDispatcher)
+            desktopRepository.saveConfig(
+                AppConfig(profiles = mapOf("dev" to ProfileConfig(name = "dev", ocsp = OcspConfig(timeout = 5000)))),
+            ).shouldBeRight()
+            val vm = ProfileViewModel(
+                ManageProfileUseCase(desktopRepository),
+                GetConfigUseCase(desktopRepository),
+                ioDispatcher = testDispatcher,
+            )
+            advanceUntilIdle()
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            val cliRepository = FileConfigRepository(configFile, testDispatcher)
+            val cliConfig = cliRepository.loadConfig().shouldBeRight()
+            cliRepository.saveConfig(
+                cliConfig.copy(
+                    global = cliConfig.global.copy(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA),
+                    profiles = mapOf("dev" to ProfileConfig(name = "dev"), "work" to ProfileConfig(name = "work")),
+                ),
+            ).shouldBeRight()
+
+            vm.updateEditState { it.copy(description = "Edited", signatureTimestampOverride = TriToggleState.ENABLED) }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            vm.state.value.mode shouldBe ProfilePanelMode.Listing
+            val onDisk = FileConfigRepository(configFile, testDispatcher).loadConfig().shouldBeRight()
+            onDisk.global.defaultSignatureLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+            onDisk.profiles.keys shouldBe setOf("dev", "work")
+            onDisk.profiles["dev"] shouldBe ProfileConfig(
+                name = "dev",
+                description = "Edited",
+                signatureLevel = SignatureLevel.PADES_BASELINE_LTA,
+            )
+        }
+    }
+
+    test("saveEdit saves nothing and keeps the form open with the error when the configuration cannot be read again") {
+        runTest(testDispatcher) {
+            val config = AppConfig(profiles = mapOf("dev" to profile("dev")))
+            val failure = ConfigurationError.LoadFailed(LocalizableText.Literal("disk error"))
+            var readFails = false
+            coEvery { configRepository.loadConfig() } answers { if (readFails) failure.left() else config.right() }
+            coEvery { configRepository.getCurrentConfig() } returns config
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
+            advanceUntilIdle()
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            readFails = true
+            vm.updateEditState { it.copy(description = "Edited") }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            vm.state.value.mode shouldBe ProfilePanelMode.Editing("dev")
+            val editState = vm.state.value.editState.shouldNotBeNull()
+            editState.error shouldBe ProfileError.Domain(failure.localizableText())
+            editState.saving shouldBe false
+            coVerify(exactly = 0) { configRepository.saveConfig(any()) }
         }
     }
 

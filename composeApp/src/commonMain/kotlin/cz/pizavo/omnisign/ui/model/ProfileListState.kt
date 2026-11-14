@@ -20,8 +20,10 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
  * @property globalDisabledEncryptionAlgorithms Encryption algorithms disabled at the global level,
  *   used to grey-out unavailable options in profile algorithm selectors.
  * @property globalSignatureLevel The global default signature level, B-B until the configuration
- *   loads. A profile timestamp toggle left on Inherit takes its part of it, both in the form and in
- *   the profile it saves (see [ProfileEditState.effectiveSignatureLevel]).
+ *   loads. While it is B-LTA, an archival timestamp toggle left on Inherit is active, and the
+ *   profile form shows the signature timestamp toggle forced on (see
+ *   [ProfileEditState.archivalTimestampActive]). A save resolves the toggles against the global
+ *   level as stored at that time, not against this copy.
  */
 data class ProfileListState(
     val profiles: List<ProfileConfig> = emptyList(),

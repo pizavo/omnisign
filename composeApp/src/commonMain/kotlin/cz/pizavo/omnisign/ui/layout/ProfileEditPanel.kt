@@ -81,9 +81,9 @@ import org.jetbrains.compose.resources.stringResource
  *   disabled in the chip toggles.
  * @param globalDisabledEncryptionAlgorithms Encryption algorithms disabled at the global level.
  *   Same behavior as [globalDisabledHashAlgorithms].
- * @param globalSignatureLevel The global default signature level. A timestamp toggle left on
- *   Inherit shows its part of it, and when that makes the archival timestamp active, the signature
- *   timestamp toggle is forced to `ENABLED` and disabled.
+ * @param globalSignatureLevel The global default signature level. When the archival timestamp is
+ *   active, set on the profile or inherited from this level, the signature timestamp toggle is
+ *   forced to `ENABLED` and disabled; a toggle left on Inherit otherwise keeps showing Inherit.
  * @param onBuildTl Called when the user clicks "Build Custom TL", or `null` when unavailable.
  * @param onStageTrustedCert Called with the picked certificate bytes, type, and source to parse and
  *   stage an addition to this profile's scope (dedup-checked by the ViewModel); committed on Save.
@@ -333,7 +333,7 @@ private fun DescriptionSection(
  * The signature timestamp toggle is forced to `ENABLED` and disabled whenever
  * archival timestamps are effectively active — either because the profile
  * explicitly sets archival to ENABLED, or because it inherits B-LTA from global.
- * It reads this from the level Save writes ([ProfileEditState.effectiveSignatureLevel]),
+ * It reads this from the level Save writes ([ProfileEditState.archivalTimestampActive]),
  * so the form shows what is saved.
  */
 @Composable
@@ -345,8 +345,7 @@ private fun AlgorithmSection(
     globalDisabledEncryptionAlgorithms: Set<EncryptionAlgorithm>,
     globalSignatureLevel: SignatureLevel,
 ) {
-    val archivalEffectivelyEnabled =
-        (state.effectiveSignatureLevel(globalSignatureLevel) ?: globalSignatureLevel) == SignatureLevel.PADES_BASELINE_LTA
+    val archivalEffectivelyEnabled = state.archivalTimestampActive(globalSignatureLevel)
 
     Text(text = stringResource(Res.string.profileedit_algorithms_timestamps_section), style = LumoTheme.typography.label1)
     Spacer(modifier = Modifier.height(8.dp))

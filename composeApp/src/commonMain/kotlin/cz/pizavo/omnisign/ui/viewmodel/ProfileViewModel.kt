@@ -317,67 +317,71 @@ class ProfileViewModel(
     /**
      * Persist the current edit state as a profile and return to the listing view.
      *
-     * Stores a newly entered TSA password in the OS credential store first, then converts
-     * [ProfileEditState] to a [ProfileConfig], calls [ManageProfileUseCase.upsert] and refreshes
-     * the profile list. A password the store does not keep becomes the error and nothing is saved,
-     * so the profile never names a password that is not there.
-     *
-     * The conversion keeps the settings the form does not show and resolves a timestamp toggle left
-     * on Inherit against [ProfileListState.globalSignatureLevel], the level the panel shows (see
-     * [ProfileEditState.toProfileConfig]). An error from the save or from the trust store is kept as
-     * localizable text, so the panel shows it in the UI's language.
+     * Stores a newly entered TSA password in the OS credential store first, which can wait for the
+     * keyring to be unlocked. The configuration is then read again, so that what Settings, an import
+     * or the CLI changed while the form was open, that wait included, is kept: the form is copied
+     * onto the profile as it is stored now, or as it was loaded when it is no longer stored, with a
+     * timestamp toggle left on Inherit resolved against the global level as it is now (see
+     * [ProfileEditState.toProfileConfig]). The result is saved through [ManageProfileUseCase.upsert]
+     * and the profile list is refreshed. A password the store does not keep becomes the error and
+     * nothing is saved, so the profile never names a password that is not there, and a failed read
+     * becomes the error too. An error from the save or from the trust store is kept as localizable
+     * text, so the panel shows it in the UI's language.
      */
     fun saveEdit() {
-        val listState = _state.value
-        val editState = listState.editState ?: return
+        val editState = _state.value.editState ?: return
         _state.update { it.copy(editState = editState.copy(saving = true, error = null)) }
         viewModelScope.launch {
-            val profile = editState.toProfileConfig(listState.globalSignatureLevel)
-            val passwordStored = withContext(ioDispatcher) { storeTsaPasswordIfNeeded(editState) }
-            passwordStored.flatMap { manageProfileUseCase.upsert(profile) }.fold(
-                ifLeft = { error ->
-                    _state.update {
-                        it.copy(
-                            editState = editState.copy(
-                                saving = false,
-                                error = ProfileError.Domain(error.localizableText()),
-                            ),
-                        )
-                    }
-                },
-                ifRight = {
-                    val store = trustStore
-                    val certError = if (store != null) {
-                        applyStagedTrustedCertChanges(
-                            store = store,
-                            scope = TrustScope.Profile(editState.profileName),
-                            removals = editState.pendingTrustedCertRemovals,
-                            additions = editState.pendingTrustedCertAdds,
-                        )
-                    } else {
-                        null
-                    }
-                    if (certError != null) {
+            withContext(ioDispatcher) { storeTsaPasswordIfNeeded(editState) }
+                .flatMap { getConfigUseCase() }
+                .flatMap { config ->
+                    val stored = config.profiles[editState.profileName] ?: editState.loadedProfile
+                    manageProfileUseCase.upsert(editState.toProfileConfig(config.global.defaultSignatureLevel, stored))
+                }
+                .fold(
+                    ifLeft = { error ->
                         _state.update {
                             it.copy(
                                 editState = editState.copy(
                                     saving = false,
-                                    error = ProfileError.Domain(certError.localizableText()),
+                                    error = ProfileError.Domain(error.localizableText()),
                                 ),
                             )
                         }
-                    } else {
-                        _initialEditState.value = null
-                        _state.update {
-                            it.copy(
-                                mode = ProfilePanelMode.Listing,
-                                editState = null,
+                    },
+                    ifRight = {
+                        val store = trustStore
+                        val certError = if (store != null) {
+                            applyStagedTrustedCertChanges(
+                                store = store,
+                                scope = TrustScope.Profile(editState.profileName),
+                                removals = editState.pendingTrustedCertRemovals,
+                                additions = editState.pendingTrustedCertAdds,
                             )
+                        } else {
+                            null
                         }
-                        refresh()
-                    }
-                },
-            )
+                        if (certError != null) {
+                            _state.update {
+                                it.copy(
+                                    editState = editState.copy(
+                                        saving = false,
+                                        error = ProfileError.Domain(certError.localizableText()),
+                                    ),
+                                )
+                            }
+                        } else {
+                            _initialEditState.value = null
+                            _state.update {
+                                it.copy(
+                                    mode = ProfilePanelMode.Listing,
+                                    editState = null,
+                                )
+                            }
+                            refresh()
+                        }
+                    },
+                )
         }
     }
 

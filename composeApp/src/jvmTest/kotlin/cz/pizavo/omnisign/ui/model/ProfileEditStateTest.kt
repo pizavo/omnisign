@@ -13,6 +13,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.config.service.CrlConfig
 import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
+import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import cz.pizavo.omnisign.domain.model.value.Sensitive
 import cz.pizavo.omnisign.lumo.components.TriToggleState
@@ -31,9 +32,15 @@ import kotlin.time.Instant
  */
 class ProfileEditStateTest : FunSpec({
 
+	/** Return the level a form with no loaded profile and the toggles [signature] and [archival] saves under [global]. */
 	fun levelOf(signature: TriToggleState, archival: TriToggleState, global: SignatureLevel): SignatureLevel? =
 		ProfileEditState(profileName = "p", signatureTimestampOverride = signature, archivalTimestampOverride = archival)
 			.effectiveSignatureLevel(global)
+
+	/** Return whether a form with no loaded profile and the given toggles shows the archival timestamp active under [global]. */
+	fun archivalActive(archival: TriToggleState, global: SignatureLevel, signature: TriToggleState = TriToggleState.INHERIT) =
+		ProfileEditState(profileName = "p", signatureTimestampOverride = signature, archivalTimestampOverride = archival)
+			.archivalTimestampActive(global)
 
 	test("effectiveSignatureLevel returns null when both toggles are INHERIT, whatever the global level") {
 		val state = ProfileEditState(
@@ -310,6 +317,87 @@ class ProfileEditStateTest : FunSpec({
 			.toProfileConfig(SignatureLevel.PADES_BASELINE_B)
 
 		saved.validation.shouldBeNull()
+	}
+
+	test("a profile passed as the base supplies the settings the form does not show, in place of the loaded one") {
+		val loaded = ProfileConfig(
+			name = "p",
+			ocsp = OcspConfig(timeout = 5000),
+			validation = ValidationConfig(policyType = ValidationPolicyType.CUSTOM_FILE, customPolicyPath = "policy.xml"),
+		)
+		val stored = ProfileConfig(name = "p", crl = CrlConfig(timeout = 7000))
+
+		val saved = ProfileEditState.from(loaded).copy(description = "new")
+			.toProfileConfig(SignatureLevel.PADES_BASELINE_B, base = stored)
+
+		saved shouldBe stored.copy(description = "new")
+	}
+
+	test("the archival timestamp is active when the profile turns it on or inherits a global B-LTA") {
+		archivalActive(TriToggleState.ENABLED, SignatureLevel.PADES_BASELINE_B) shouldBe true
+		archivalActive(TriToggleState.INHERIT, SignatureLevel.PADES_BASELINE_LTA) shouldBe true
+		archivalActive(TriToggleState.INHERIT, SignatureLevel.PADES_BASELINE_LTA, signature = TriToggleState.DISABLED) shouldBe true
+		archivalActive(TriToggleState.INHERIT, SignatureLevel.PADES_BASELINE_LT) shouldBe false
+		archivalActive(TriToggleState.DISABLED, SignatureLevel.PADES_BASELINE_LTA) shouldBe false
+	}
+
+	test("the archival timestamp shows as active exactly when the level the profile saves, or inherits, is B-LTA") {
+		val loadedLevels = listOf(null) + SignatureLevel.entries
+		val forms = loadedLevels.map { ProfileEditState.from(ProfileConfig(name = "p", signatureLevel = it)) } +
+			ProfileEditState(profileName = "p")
+		for (form in forms) for (global in SignatureLevel.entries) {
+			for (signature in TriToggleState.entries) for (archival in TriToggleState.entries) {
+				val state = form.copy(signatureTimestampOverride = signature, archivalTimestampOverride = archival)
+				val saved = state.toProfileConfig(global).signatureLevel ?: global
+				withClue("loaded ${form.loadedProfile?.signatureLevel}, global $global, toggles $signature/$archival") {
+					state.archivalTimestampActive(global) shouldBe (saved == SignatureLevel.PADES_BASELINE_LTA)
+				}
+			}
+		}
+	}
+
+	test("a kept TSA password keeps the credential key it is stored under, also when the username changes") {
+		val profile = ProfileConfig(
+			name = "p",
+			timestampServer = TimestampServerConfig(url = "https://tsa.example.com", username = "alice", credentialKey = "alice"),
+		)
+
+		val saved = ProfileEditState.from(profile, hasStoredPassword = true).copy(timestampUsername = "bob")
+			.toProfileConfig(SignatureLevel.PADES_BASELINE_B)
+
+		saved.timestampServer.shouldNotBeNull().credentialKey shouldBe "alice"
+	}
+
+	test("a new TSA password is stored under the username, and a kept one the profile names no key for is looked up by it") {
+		val profile = ProfileConfig(
+			name = "p",
+			timestampServer = TimestampServerConfig(url = "https://tsa.example.com", username = "alice", credentialKey = "alice"),
+		)
+
+		ProfileEditState.from(profile, hasStoredPassword = true)
+			.copy(timestampUsername = "bob", timestampPassword = Sensitive("new"))
+			.toProfileConfig(SignatureLevel.PADES_BASELINE_B)
+			.timestampServer.shouldNotBeNull().credentialKey shouldBe "bob"
+		ProfileEditState(
+			profileName = "p",
+			timestampEnabled = true,
+			timestampUrl = "https://tsa.example.com",
+			timestampUsername = "bob",
+			hasStoredPassword = true,
+		).toProfileConfig(SignatureLevel.PADES_BASELINE_B).timestampServer.shouldNotBeNull().credentialKey shouldBe "bob"
+	}
+
+	test("a TSA section without a password, or without a username, names no credential key") {
+		val profile = ProfileConfig(
+			name = "p",
+			timestampServer = TimestampServerConfig(url = "https://tsa.example.com", username = "alice", credentialKey = "alice"),
+		)
+
+		ProfileEditState.from(profile, hasStoredPassword = false).toProfileConfig(SignatureLevel.PADES_BASELINE_B)
+			.timestampServer.shouldNotBeNull().credentialKey.shouldBeNull()
+		ProfileEditState.from(profile, hasStoredPassword = true).copy(timestampUsername = " ")
+			.toProfileConfig(SignatureLevel.PADES_BASELINE_B)
+			.timestampServer.shouldNotBeNull().credentialKey.shouldBeNull()
 	}
 
 	test("toString hides the TSA password") {

@@ -7,12 +7,14 @@ import cz.pizavo.omnisign.domain.model.config.TrustedCertificateRef
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import kotlinx.datetime.LocalDate
+import kotlin.time.Instant
 
 /**
  * Unit tests verifying that trusted certificates never round-trip through the *configuration*.
@@ -50,12 +52,30 @@ class TrustedCertificateEditStateTest : FunSpec({
             val state = ProfileEditState(
                 profileName = "p1",
                 customTrustedLists = listOf(CustomTrustedListConfig(name = "tl", source = "https://x/tl.xml")),
+                trustedCertificates = listOf(
+                    TrustedCertificate(
+                        fingerprint = "sha256-aa",
+                        subjectDN = "CN=ca",
+                        notBefore = Instant.parse("2024-01-01T00:00:00Z"),
+                        notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+                        type = TrustedCertificateType.CA,
+                    ),
+                ),
+                pendingTrustedCertAdds = listOf(
+                    PendingTrustedCert(
+                        source = "new.pem",
+                        type = TrustedCertificateType.CA,
+                        bytes = byteArrayOf(1, 2, 3),
+                        fingerprint = "sha256-bb",
+                        subjectDN = "CN=new",
+                        notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+                    ),
+                ),
             )
 
             val config = state.toProfileConfig(SignatureLevel.PADES_BASELINE_B)
 
-            config.validation.shouldNotBeNull()
-            config.validation!!.trustedCertificates.shouldBeEmpty()
+            config.validation.shouldNotBeNull().trustedCertificates.shouldBeEmpty()
         }
 
         test("toProfileConfig() sets validation to null when no trusted lists") {
