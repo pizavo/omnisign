@@ -39,11 +39,13 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.mockk.*
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.*
 import kotlinx.datetime.LocalDate
+import kotlin.coroutines.CoroutineContext
 
 /**
  * Unit tests for [SettingsViewModel].
@@ -65,6 +67,26 @@ class SettingsViewModelTest : FunSpec({
     val baseConfig = AppConfig(global = baseGlobal)
 
     val configDir = tempdir()
+
+    /**
+     * A dispatcher that runs every block at once on the calling thread and sets [running] while it
+     * does, so a stub can tell whether it was called on this dispatcher or on the main one.
+     */
+    class InPlaceDispatcher : CoroutineDispatcher() {
+        /** Whether this dispatcher is running a block right now. */
+        var running = false
+
+        /** Run [block] at once, with [running] set while it does. */
+        override fun dispatch(context: CoroutineContext, block: Runnable) {
+            val outer = running
+            running = true
+            try {
+                block.run()
+            } finally {
+                running = outer
+            }
+        }
+    }
 
     beforeTest {
         clearMocks(configRepository, credentialStore, schedulerPort)
@@ -1808,6 +1830,56 @@ class SettingsViewModelTest : FunSpec({
             vm.state.value.renewalJobs shouldBe listOf(job)
             vm.hasChanges.value shouldBe false
             verify(exactly = 1) { schedulerPort.isAvailable() }
+        }
+    }
+
+    test("load asks whether the OS scheduler can register a missing job on the IO dispatcher, as it may start a process") {
+        runTest(testDispatcher) {
+            val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
+            coEvery { configRepository.loadConfig() } returns baseConfig.copy(renewalJobs = mapOf("nightly" to job)).right()
+            every { schedulerPort.isInstalled() } returns false
+            val io = InPlaceDispatcher()
+            var askedOnIo: Boolean? = null
+            every { schedulerPort.isAvailable() } answers { askedOnIo = io.running; true }
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+                ioDispatcher = io,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            askedOnIo shouldBe true
+            vm.state.value.schedulerInstallPending shouldBe true
+        }
+    }
+
+    test("a scheduler install failure asks whether the OS scheduler can register the job on the IO dispatcher, as it may start a process") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+            every { schedulerPort.install(any(), any(), any(), any()) } throws IllegalStateException("Access is denied")
+            every { schedulerPort.isInstalled() } returns false
+            val io = InPlaceDispatcher()
+            var askedOnIo: Boolean? = null
+            every { schedulerPort.isAvailable() } answers { askedOnIo = io.running; true }
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+                ioDispatcher = io,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.updateState { it.copy(renewalJobs = listOf(RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf")))) }
+            vm.save()
+            advanceUntilIdle()
+
+            askedOnIo shouldBe true
+            vm.state.value.schedulerInstallPending shouldBe true
         }
     }
 
