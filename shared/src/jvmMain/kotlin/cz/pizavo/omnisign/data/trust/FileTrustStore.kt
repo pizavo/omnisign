@@ -57,7 +57,8 @@ private val logger = KotlinLogging.logger {}
  * entry of an index read from its file names are deleted when the store first loads it. A
  * certificate file, too, is taken for missing only when the file system reports it missing: one
  * that cannot be read, or whose existence cannot be told, is kept and can be referenced, and
- * [resolve] leaves it out until it can be read.
+ * [resolve] leaves it out until it can be read. [resolve] and [reference] check each file they read
+ * against its name, as the load does, so that one damaged since the load is left out.
  *
  * An error's details name the class of an I/O failure, as the message of one often holds only the
  * path, and give the message of any other failure.
@@ -299,37 +300,52 @@ class FileTrustStore(
 		}
 
 	/**
-	 * Whether the certificate file [fingerprint] names is there, `false` only when the file system
-	 * reports it missing: a file that cannot be read now, or whose existence cannot be told, is taken
-	 * for one that is there, with a warning, as the load-time repair keeps it.
+	 * Whether an intact copy of the certificate [fingerprint] names is stored: `false` when the file
+	 * system reports its file missing or the file does not hold that certificate. A file that cannot
+	 * be read now, or whose existence cannot be told, is taken for one that is there, with a warning,
+	 * as the load-time repair keeps it.
 	 */
-	private fun hasStoredCopy(fingerprint: String): Boolean =
-		try {
+	private fun hasStoredCopy(fingerprint: String): Boolean {
+		val bytes = try {
 			certFile(fingerprint).readBytes()
-			true
 		} catch (_: NoSuchFileException) {
-			false
+			return false
 		} catch (e: IOException) {
 			logger.warn { "Could not read trust file for $fingerprint; referencing it all the same: $e" }
-			true
+			return true
 		}
+		return holdsCertificate(fingerprint, bytes)
+	}
 
 	/**
-	 * The bytes of the certificate file [fingerprint] names, or `null`, with a warning, when the file
-	 * system reports it missing or it cannot be read now, so that the other anchors are still used.
-	 * The warning is one line, without a stack trace, as every resolution gives it again, which on a
-	 * server is every validation.
+	 * The bytes of the certificate file [fingerprint] names, or `null`, with a warning, so that the
+	 * other anchors are still used, when the file system reports it missing, it cannot be read now,
+	 * or it does not hold that certificate, as a file damaged since the store loaded may not, since
+	 * the load checks only the files it can read. The warning is one line, without a stack trace, as
+	 * every resolution gives it again, which on a server is every validation.
 	 */
-	private fun anchorBytes(fingerprint: String): ByteArray? =
-		try {
+	private fun anchorBytes(fingerprint: String): ByteArray? {
+		val bytes = try {
 			certFile(fingerprint).readBytes()
 		} catch (_: NoSuchFileException) {
 			logger.warn { "Trust file for $fingerprint is missing; skipping it" }
-			null
+			return null
 		} catch (e: IOException) {
 			logger.warn { "Could not read trust file for $fingerprint; skipping it: $e" }
-			null
+			return null
 		}
+		return bytes.takeIf { holdsCertificate(fingerprint, it) }
+	}
+
+	/**
+	 * Whether [bytes], read from the certificate file [fingerprint] names, hold that certificate,
+	 * with a warning when they do not.
+	 */
+	private fun holdsCertificate(fingerprint: String, bytes: ByteArray): Boolean {
+		val intact = certFingerprint(bytes) == fingerprint
+		if (!intact) logger.warn { "Trust file for $fingerprint fails its own checksum; leaving it out" }
+		return intact
+	}
 
 	/**
 	 * The key this scope's references are stored under in the index.

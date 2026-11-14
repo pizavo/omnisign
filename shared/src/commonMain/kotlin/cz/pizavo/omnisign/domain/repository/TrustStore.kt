@@ -107,8 +107,8 @@ interface TrustStore {
 	 * [type][ResolvedTrustAnchor.type] travels on each [ResolvedTrustAnchor] for post-validation
 	 * policy enforcement rather than filtering the trust input. When a certificate is referenced by
 	 * both the global scope and [scope] with different types, the [scope] type takes precedence. A
-	 * certificate whose stored copy is missing or cannot be read now is left out, so that the others
-	 * are still used.
+	 * certificate whose stored copy is missing, damaged or cannot be read now is left out, so that the
+	 * others are still used.
 	 *
 	 * @param scope Scope to resolve.
 	 * @return The resolved anchors, or an error.
@@ -125,8 +125,8 @@ interface TrustStore {
 	 * be read.
 	 *
 	 * @return Unit on success, or
-	 *   [cz.pizavo.omnisign.domain.model.error.TrustStoreError.NotFound] when no certificate with
-	 *   [fingerprint] is stored.
+	 *   [cz.pizavo.omnisign.domain.model.error.TrustStoreError.NotFound] when no intact copy of the
+	 *   certificate with [fingerprint] is stored.
 	 */
 	suspend fun reference(
 		scope: TrustScope,

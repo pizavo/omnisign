@@ -253,7 +253,7 @@ nothing to reconcile, so the server starts, validates without the directory's ce
 answers `GET /api/v1/config/trusted-certificates` and `GET /api/v1/config/export` with a
 `TRUST_STORE_FAILED` error. A certificate file in the directory that cannot be read, as one whose
 owner a restore changed, is kept: the server starts, logs a warning, and leaves that certificate
-out of validation until the file can be read again.
+out of validation and signing until the file can be read again.
 
 ### `aia`
 

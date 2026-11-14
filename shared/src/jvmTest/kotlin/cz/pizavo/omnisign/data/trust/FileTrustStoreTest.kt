@@ -46,7 +46,8 @@ import kotlin.io.path.writeBytes
  * dedup, reference-counted GC, scope resolution, load-time repair, an index that cannot be read or
  * whose existence cannot be told, which every operation refuses while it leaves the directory as it
  * was, a missing index that is put back, a certificate file that cannot be read or looked up, which
- * is kept and can still be referenced, and the details of an error that an I/O failure causes.
+ * is kept and can still be referenced, one deleted or damaged since the store loaded, which is left
+ * out, and the details of an error that an I/O failure causes.
  *
  * The tests of a file this user may not read or look up deny it through ACLs on Windows and
  * through the POSIX permissions elsewhere, and do not run as root, whom the permissions do not
@@ -372,6 +373,17 @@ class FileTrustStoreTest : FunSpec({
 		store.resolve(TrustScope.Global).shouldBeRight() shouldHaveSize 2
 	}
 
+	test("resolve leaves out a certificate file damaged since the store loaded and gives the others") {
+		val dir = newDir()
+		val store = FileTrustStore(dir)
+		val damaged = store.add(TrustScope.Global, der("Damaged"), TrustedCertificateType.CA).shouldBeRight().fingerprint
+		val intact = der("Intact")
+		store.add(TrustScope.Global, intact, TrustedCertificateType.CA).shouldBeRight()
+		dir.resolve("$damaged.der").writeBytes(byteArrayOf(1, 2, 3))
+
+		store.resolve(TrustScope.Global).shouldBeRight().map { it.der.toList() } shouldBe listOf(intact.toList())
+	}
+
 	test("adding a certificate again leaves its file as it is while the file cannot be read").config(
 		enabledIf = { System.getProperty("user.name") != "root" },
 	) {
@@ -491,6 +503,46 @@ class FileTrustStoreTest : FunSpec({
 		val store = newStore()
 		store.reference(TrustScope.Global, "sha256-unknown", TrustedCertificateType.ANY).shouldBeLeft()
 			.shouldBeInstanceOf<TrustStoreError.NotFound>()
+	}
+
+	test("reference of a stored copy deleted since the store loaded returns NotFound") {
+		val dir = newDir()
+		val store = FileTrustStore(dir)
+		val fp = store.add(TrustScope.Global, der("Root"), TrustedCertificateType.CA).shouldBeRight().fingerprint
+		dir.resolve("$fp.der").deleteExisting()
+
+		store.reference(TrustScope.Profile("p"), fp, TrustedCertificateType.CA).shouldBeLeft()
+			.shouldBeInstanceOf<TrustStoreError.NotFound>()
+		store.list(TrustScope.Profile("p")).shouldBeRight() shouldHaveSize 0
+	}
+
+	test("reference of a stored copy damaged since the store loaded returns NotFound") {
+		val dir = newDir()
+		val store = FileTrustStore(dir)
+		val fp = store.add(TrustScope.Global, der("Root"), TrustedCertificateType.CA).shouldBeRight().fingerprint
+		dir.resolve("$fp.der").writeBytes(byteArrayOf(1, 2, 3))
+
+		store.reference(TrustScope.Profile("p"), fp, TrustedCertificateType.CA).shouldBeLeft()
+			.shouldBeInstanceOf<TrustStoreError.NotFound>()
+		store.list(TrustScope.Profile("p")).shouldBeRight() shouldHaveSize 0
+	}
+
+	test("reference takes a stored copy that cannot be read for one that is there").config(
+		enabledIf = { System.getProperty("user.name") != "root" },
+	) {
+		val dir = newDir()
+		val store = FileTrustStore(dir)
+		val fp = store.add(TrustScope.Global, der("Root"), TrustedCertificateType.CA).shouldBeRight().fingerprint
+		val restore = denyReading(dir.resolve("$fp.der"))
+
+		val referenced = try {
+			store.reference(TrustScope.Profile("p"), fp, TrustedCertificateType.TSA)
+		} finally {
+			restore()
+		}
+
+		referenced.shouldBeRight()
+		store.list(TrustScope.Profile("p")).shouldBeRight().single().type shouldBe TrustedCertificateType.TSA
 	}
 
 	test("reference takes a stored copy whose existence cannot be told for one that is there, not a missing one").config(
