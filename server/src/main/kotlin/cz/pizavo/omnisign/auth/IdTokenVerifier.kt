@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.auth
 
+import com.auth0.jwk.Jwk
 import com.auth0.jwk.JwkException
 import com.auth0.jwk.JwkProvider
 import com.auth0.jwk.JwkProviderBuilder
@@ -8,6 +9,7 @@ import com.auth0.jwt.algorithms.Algorithm
 import com.auth0.jwt.exceptions.JWTDecodeException
 import com.auth0.jwt.exceptions.JWTVerificationException
 import com.auth0.jwt.interfaces.Claim
+import com.auth0.jwt.interfaces.DecodedJWT
 import cz.pizavo.omnisign.config.OidcProviderConfig
 import cz.pizavo.omnisign.config.SsoProviderPreset
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -19,6 +21,8 @@ import java.security.interfaces.ECPublicKey
 import java.security.interfaces.RSAPublicKey
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
+import kotlin.uuid.ExperimentalUuidApi
+import kotlin.uuid.Uuid
 
 private val logger = KotlinLogging.logger {}
 
@@ -40,11 +44,20 @@ private val logger = KotlinLogging.logger {}
  * 1. **Signature** — id_token's `kid` header is looked up in the IdP's JWKS
  *    (URL from [OidcDiscoveryDocument.jwksUri]) and the resulting public key is used
  *    to verify the signature. Supported algorithms: RS256/RS384/RS512 and
- *    ES256/ES384/ES512. `none` and HMAC variants are rejected.
+ *    ES256/ES384/ES512. `none` and HMAC variants are rejected. A key whose JWKS entry
+ *    names an `issuer`, as Entra ID's do, signs only for that issuer, and one whose `issuer`
+ *    member is not a string signs for none.
  * 2. **`iss` claim** — must equal [OidcDiscoveryDocument.issuer] (the IdP's canonical
- *    issuer URL declared in its discovery document).
- * 3. **`aud` claim** — must contain [OidcProviderConfig.clientId].
- * 4. **`exp` claim** — must be in the future (30 seconds of clock skew allowed).
+ *    issuer URL declared in its discovery document). Entra ID's multi-tenant documents
+ *    (`common`, `organizations`) declare the template
+ *    `https://login.microsoftonline.com/{tenantid}/v2.0` instead; the token's `tid` claim,
+ *    which must be a GUID, takes the placeholder's place, so the token must name its own
+ *    tenant as its issuer.
+ * 3. **`aud` claim** — must contain [OidcProviderConfig.clientId]. An `azp` claim, which a
+ *    token for several audiences must carry, must be a string naming that client too.
+ * 4. **`exp` and `iat` claims** — must be present and not null, and `exp` in the future
+ *    (30 seconds of clock skew allowed). java-jwt's date checks let a null date pass, so a
+ *    null one is refused here.
  * 5. **`sub` claim** — must be present; returned to the caller for cross-checking
  *    against the UserInfo `sub` so any tampering of the UserInfo response is detected.
  *
@@ -52,10 +65,11 @@ private val logger = KotlinLogging.logger {}
  * too: the `allowedEmailDomains` check prefers the address the IdP signed to UserInfo's (see
  * [VerifiedIdToken.emailVerified] and [withIdToken]).
  *
- * JWKS fetches are cached and rate-limited per provider via [JwkProviderBuilder]:
+ * JWKS fetches are cached and rate-limited per JWKS URL via [JwkProviderBuilder]:
  * up to 10 keys held in memory for 1 hour, fetched at most 10 times per minute, each
  * fetch bounded by a 5-second connect and a 10-second read timeout. Keys roll naturally
- * as IdPs rotate signing keys without operator intervention.
+ * as IdPs rotate signing keys without operator intervention, and a discovery document
+ * that moves its `jwks_uri` is followed once [OidcDiscoveryService] refreshes it.
  *
  * @param discoveryService Used to resolve [OidcDiscoveryDocument.jwksUri] and
  *   [OidcDiscoveryDocument.issuer] for each provider on first verification.
@@ -68,6 +82,10 @@ class IdTokenVerifier(
     private val jwkProviderFactory: (jwksUri: String) -> JwkProvider = ::defaultJwkProvider,
 ) {
 
+    /**
+     * One [JwkProvider] per JWKS URL, so providers that share a key set share its cache, and
+     * a discovery document that moves its `jwks_uri` gets a provider for the new URL.
+     */
     private val jwkProviders = ConcurrentHashMap<String, JwkProvider>()
 
     /**
@@ -85,15 +103,13 @@ class IdTokenVerifier(
      */
     suspend fun verify(provider: OidcProviderConfig, idTokenString: String): VerifiedIdToken {
         val discovery = discoveryService.discover(provider)
-        val jwkProvider = jwkProviders.computeIfAbsent(provider.name) {
-            jwkProviderFactory(discovery.jwksUri)
-        }
+        val jwkProvider = jwkProviders.computeIfAbsent(discovery.jwksUri) { jwkProviderFactory(it) }
 
         return withContext(Dispatchers.IO) {
             verifyBlocking(
                 idTokenString = idTokenString,
                 jwkProvider = jwkProvider,
-                expectedIssuer = discovery.issuer,
+                discoveryIssuer = discovery.issuer,
                 expectedAudience = provider.clientId,
                 preset = provider.preset,
             )
@@ -104,16 +120,22 @@ class IdTokenVerifier(
      * Blocking verification core. Called from [verify] inside [Dispatchers.IO] because
      * the underlying JWKS fetch and JWT verification calls are synchronous.
      *
+     * The issuer the token must name is worked out before the signature is checked, from
+     * the token's own `tid` when [discoveryIssuer] is Entra ID's tenant template. The check
+     * then covers that `tid` too, so a token that names a tenant it was not signed for fails.
+     *
      * Of two flags that disagree about the address, the one that says it is not verified
      * wins, so a token never vouches for more than every flag in it allows.
      *
+     * @param discoveryIssuer The discovery document's `issuer`, possibly Entra ID's
+     *   `{tenantid}` template.
      * @param preset The provider's preset; only a [SsoProviderPreset.MICROSOFT] token's
      *   `xms_edov` claim is read, since other IdPs give the name no meaning.
      */
     private fun verifyBlocking(
         idTokenString: String,
         jwkProvider: JwkProvider,
-        expectedIssuer: String,
+        discoveryIssuer: String,
         expectedAudience: String,
         preset: SsoProviderPreset?,
     ): VerifiedIdToken {
@@ -125,18 +147,26 @@ class IdTokenVerifier(
 
         val kid = decoded.keyId ?: throw IdTokenVerificationException.MissingKid()
 
+        val jwk = try {
+            jwkProvider.get(kid)
+        } catch (e: JwkException) {
+            throw IdTokenVerificationException.KeyNotFound(kid, e)
+        }
         val publicKey = try {
-            jwkProvider.get(kid).publicKey
+            jwk.publicKey
         } catch (e: JwkException) {
             throw IdTokenVerificationException.KeyNotFound(kid, e)
         }
 
         val algorithm = algorithmFor(decoded.algorithm, publicKey)
+        val expectedIssuer = withTenantOf(decoded, discoveryIssuer)
 
         try {
             JWT.require(algorithm)
                 .withIssuer(expectedIssuer)
                 .withAudience(expectedAudience)
+                .withClaim("exp") { claim, _ -> !claim.isNull }
+                .withClaim("iat") { claim, _ -> !claim.isNull }
                 .acceptLeeway(CLOCK_SKEW_LEEWAY_SECONDS)
                 .build()
                 .verify(idTokenString)
@@ -146,6 +176,9 @@ class IdTokenVerifier(
                 e,
             )
         }
+
+        requireKeyIssuedFor(jwk, decoded)
+        requireAuthorizedParty(decoded, expectedAudience)
 
         val subject = decoded.subject
             ?: throw IdTokenVerificationException.ClaimInvalid("sub", "claim is missing")
@@ -167,6 +200,91 @@ class IdTokenVerifier(
             issuer = expectedIssuer,
             emailVerified = emailVerified,
         )
+    }
+
+    /**
+     * Fill Entra ID's tenant placeholder in [issuer] with the tenant [decoded] names.
+     *
+     * Entra ID's multi-tenant discovery documents (`common`, `organizations`), and the keys
+     * they publish, name the issuer `https://login.microsoftonline.com/{tenantid}/v2.0`, where
+     * the placeholder stands for the tenant of whoever signs in. As Microsoft's token
+     * validation guide asks, the token's `tid` claim takes the placeholder's place, and it
+     * must be a GUID, so it cannot reshape the URL. Any other issuer comes back unchanged.
+     *
+     * @param decoded The token, whose `tid` claim names its tenant.
+     * @param issuer An issuer from a discovery document or a JWKS entry.
+     * @return [issuer] with its placeholder filled in.
+     * @throws IdTokenVerificationException.ClaimInvalid when [issuer] holds the placeholder
+     *   and the token's `tid` is missing or is no GUID.
+     */
+    @OptIn(ExperimentalUuidApi::class)
+    private fun withTenantOf(decoded: DecodedJWT, issuer: String): String {
+        if (!issuer.contains(TENANT_ID_PLACEHOLDER)) return issuer
+        val tenantId = decoded.getClaim("tid").asString()
+            ?: throw IdTokenVerificationException.ClaimInvalid("tid", "claim is missing")
+        if (Uuid.parseHexDashOrNull(tenantId) == null) {
+            throw IdTokenVerificationException.ClaimInvalid("tid", "not a GUID")
+        }
+        return issuer.replace(TENANT_ID_PLACEHOLDER, tenantId)
+    }
+
+    /**
+     * Refuse a token signed with a key that its JWKS keeps for another issuer.
+     *
+     * Entra ID's multi-tenant key sets mix keys for organisations' tenants, whose `issuer` is
+     * the `{tenantid}` template, with keys for personal Microsoft accounts, whose `issuer`
+     * names that one tenant. Microsoft asks relying parties to hold each key to its issuer,
+     * so that a key published for one kind of account cannot vouch for the other. A key
+     * whose entry has no `issuer` member, as most IdPs publish them, is not restricted. One
+     * whose member is not a string, such as an array or `null`, signs for no issuer: reading
+     * it as absent would lift the restriction it was meant to carry.
+     *
+     * @param jwk The JWKS entry whose key verified the signature.
+     * @param decoded The verified token.
+     * @throws IdTokenVerificationException.ClaimInvalid when the key's `issuer` member is not
+     *   a string, or the issuer it names, its placeholder filled with the token's tenant, is
+     *   not the token's `iss`.
+     */
+    private fun requireKeyIssuedFor(jwk: Jwk, decoded: DecodedJWT) {
+        val attributes = jwk.additionalAttributes.orEmpty()
+        if (JWK_ISSUER_ATTRIBUTE !in attributes) return
+        val keyIssuer = attributes[JWK_ISSUER_ATTRIBUTE] as? String
+            ?: throw IdTokenVerificationException.ClaimInvalid(
+                "iss",
+                "the signing key '${jwk.id}' names its issuer in a member that is not a string",
+            )
+        if (withTenantOf(decoded, keyIssuer) != decoded.issuer) {
+            throw IdTokenVerificationException.ClaimInvalid(
+                "iss",
+                "the signing key '${jwk.id}' signs only for the issuer '$keyIssuer'",
+            )
+        }
+    }
+
+    /**
+     * Check the `azp` (authorized party) claim as OpenID Connect Core §3.1.3.7 asks: a token
+     * for several audiences must carry it, and when present it must name this client.
+     *
+     * Only an absent claim counts as absent. One that is present but not a string, such as an
+     * array or `null`, names no client, so it is refused rather than read as missing.
+     *
+     * @param decoded The verified token.
+     * @param clientId This server's client ID at the IdP.
+     * @throws IdTokenVerificationException.ClaimInvalid when `azp` is anything but this
+     *   client's ID, or is missing from a token for several audiences.
+     */
+    private fun requireAuthorizedParty(decoded: DecodedJWT, clientId: String) {
+        val authorizedParty = decoded.getClaim("azp")
+        if (authorizedParty.isMissing) {
+            if (decoded.audience.orEmpty().size > 1) {
+                throw IdTokenVerificationException.ClaimInvalid(
+                    "azp",
+                    "claim is missing from a token for several audiences",
+                )
+            }
+        } else if (authorizedParty.asString() != clientId) {
+            throw IdTokenVerificationException.ClaimInvalid("azp", "does not name this client")
+        }
     }
 
     /**
@@ -194,6 +312,15 @@ class IdTokenVerifier(
          * IdPs and OmniSign without opening a meaningful replay window.
          */
         const val CLOCK_SKEW_LEEWAY_SECONDS = 30L
+
+        /**
+         * The placeholder Entra ID's multi-tenant discovery documents and keys put in an
+         * issuer for the tenant of whoever signs in, spelled as they spell it.
+         */
+        private const val TENANT_ID_PLACEHOLDER = "{tenantid}"
+
+        /** The JWKS entry member in which Entra ID names the issuer a key signs for. */
+        private const val JWK_ISSUER_ATTRIBUTE = "issuer"
 
         /** Default cache size for [JwkProviderBuilder]. */
         private const val JWKS_CACHE_SIZE = 10L

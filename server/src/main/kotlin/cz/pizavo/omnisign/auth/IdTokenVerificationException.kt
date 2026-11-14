@@ -51,8 +51,9 @@ sealed class IdTokenVerificationException(message: String, cause: Throwable? = n
         )
 
     /**
-     * The id_token signature does not validate against the JWKS public key, or one of
-     * the standard claim checks (`iss`, `aud`, `exp`, `nbf`) failed.
+     * The id_token signature does not validate against the JWKS public key, one of
+     * the standard claim checks (`iss`, `aud`, `exp`, `nbf`, `iat`) failed, or the token
+     * lacks `exp` or `iat`.
      */
     class VerificationFailed(message: String, cause: Throwable) :
         IdTokenVerificationException(message, cause)
@@ -60,6 +61,9 @@ sealed class IdTokenVerificationException(message: String, cause: Throwable? = n
     /**
      * The id_token is structurally valid and signed correctly but a required claim is
      * missing or has an unexpected value.
+     *
+     * The one exception is `tid` under Entra ID's multi-tenant issuer template: the issuer
+     * the token must name is built from it, so it is checked before the signature.
      *
      * @property claim Name of the offending claim.
      */

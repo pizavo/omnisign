@@ -14,7 +14,8 @@ package cz.pizavo.omnisign.auth
  * @property email The id_token `email` claim, if present. Optional in OIDC; many
  *   providers only emit it via UserInfo.
  * @property issuer The id_token `iss` claim (already verified to equal the
- *   discovery document's issuer). Echoed back to the caller for logging.
+ *   discovery document's issuer, with Entra ID's `{tenantid}` placeholder filled in from
+ *   the token's `tid`). Echoed back to the caller for logging.
  * @property emailVerified Whether the token marks [email] verified: its `email_verified`
  *   claim and, for a [cz.pizavo.omnisign.config.SsoProviderPreset.MICROSOFT] provider, its
  *   optional `xms_edov` claim, which says the address's domain is verified in the user's
