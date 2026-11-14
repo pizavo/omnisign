@@ -18,9 +18,13 @@ import cz.pizavo.omnisign.domain.model.value.Sensitive
 import cz.pizavo.omnisign.domain.model.value.sensitive
 import cz.pizavo.omnisign.module
 import io.kotest.assertions.throwables.shouldThrow
+import io.kotest.assertions.throwables.shouldThrowAny
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
+import io.kotest.matchers.longs.shouldBeInRange
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -38,6 +42,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.jetbrains.exposed.v1.jdbc.Database
+import org.jetbrains.exposed.v1.jdbc.transactions.transaction
 import java.io.File
 import java.math.BigInteger
 import java.net.InetAddress
@@ -48,7 +53,10 @@ import java.security.interfaces.RSAPrivateKey
 import java.security.interfaces.RSAPublicKey
 import java.util.Base64
 import java.util.Date
+import javax.crypto.Mac
+import javax.crypto.spec.SecretKeySpec
 import kotlin.time.Clock
+import kotlin.time.Duration
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Duration.Companion.minutes
 import kotlin.time.Duration.Companion.seconds
@@ -695,36 +703,6 @@ class AuthRoutesTest : FunSpec({
 		}
 	}
 
-	test("OIDC callback replayed with the same state sends the token endpoint no verifier") {
-		withTempSessionsDb {
-			testApplication {
-				val tokenRequests = mutableListOf<Parameters>()
-				application {
-					module(
-						authTestConfig(oidcAuthConfig(pkceEnabled = true)),
-						authTestSecrets(mapOf("github" to githubClientSecret)),
-						githubIdpMockEngine(OCTOCAT_USER_INFO, tokenRequests),
-					)
-				}
-				val noRedirect = createClient { followRedirects = false }
-
-				val state = Url(noRedirect.get("/auth/redirect/github").headers["Location"]!!).parameters["state"]
-				state.shouldNotBeNull()
-
-				repeat(2) {
-					noRedirect.get("/auth/callback/github") {
-						url {
-							parameters.append("code", "authorization-code-from-idp")
-							parameters.append("state", state)
-						}
-					}
-				}
-
-				tokenRequests.map { it["code_verifier"] != null } shouldBe listOf(true, false)
-			}
-		}
-	}
-
 	test("OIDC callback sends the token endpoint no verifier when provider.pkce is false") {
 		withTempSessionsDb {
 			testApplication {
@@ -751,6 +729,172 @@ class AuthRoutesTest : FunSpec({
 
 				tokenRequests.single()["code_verifier"].shouldBeNull()
 			}
+		}
+	}
+
+	/**
+	 * An OAuth `state` as the server's nonce manager would have issued it [age] ago.
+	 *
+	 * Ktor's [io.ktor.util.StatelessHmacNonceManager] writes a nonce as `random+time+mac`, where
+	 * `time` is `System.nanoTime()` at issue in 16 hex digits and `mac` is the lower-case hex
+	 * HMAC-SHA256 of `random:time` under the configured key. Signing an earlier `time` ages a
+	 * `state` without waiting for it. `System.nanoTime()` counts from an arbitrary origin, so an
+	 * issue time before that origin is written with a sign, which the manager parses all the same.
+	 */
+	fun agedState(age: Duration): String {
+		val issuedAt = System.nanoTime() - age.inWholeNanoseconds
+		val time = if (issuedAt >= 0) {
+			issuedAt.toString(16).padStart(16, '0')
+		} else {
+			"-" + (-issuedAt).toString(16).padStart(15, '0')
+		}
+		val random = "agedstatenonce"
+		val mac = Mac.getInstance("HmacSHA256").run {
+			init(SecretKeySpec(oauthStateSecret.value.toByteArray(Charsets.UTF_8), "HmacSHA256"))
+			doFinal("$random:$time".toByteArray(Charsets.ISO_8859_1))
+		}
+		return "$random+$time+${mac.joinToString("") { "%02x".format(it) }}"
+	}
+
+	/**
+	 * Regression test: Ktor's nonce manager accepts a `state` for one minute unless told
+	 * otherwise, so a user who took longer than that at the IdP, typing a password and approving
+	 * an MFA prompt, came back to a bare `401` while the PKCE verifier was still valid.
+	 */
+	test("OIDC callback accepts a state issued 90 seconds ago and sends the verifier stored for it") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				val tokenRequests = mutableListOf<Parameters>()
+				application {
+					module(
+						authTestConfig(oidcAuthConfig(pkceEnabled = true)),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(OCTOCAT_USER_INFO, tokenRequests),
+					)
+				}
+				val database = Database.connect("jdbc:sqlite:${tempDb.absolutePath}", driver = "org.sqlite.JDBC")
+				val pkce = PkceService(ExposedPkceVerifierStore(database).also { it.initSchema() })
+				val state = agedState(90.seconds)
+				val challenge = pkce.begin(state)
+
+				val callback = createClient { followRedirects = false }.get("/auth/callback/github") {
+					url {
+						parameters.append("code", "authorization-code-from-idp")
+						parameters.append("state", state)
+					}
+				}
+
+				callback.status shouldBe HttpStatusCode.OK
+				val verifier = tokenRequests.single()["code_verifier"]
+				verifier.shouldNotBeNull()
+				pkce.challengeFor(verifier) shouldBe challenge.challenge
+			}
+		}
+	}
+
+	test("OIDC callback refuses a state older than the login flow's lifetime and leaves its verifier unspent") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				val tokenRequests = mutableListOf<Parameters>()
+				application {
+					module(
+						authTestConfig(oidcAuthConfig(pkceEnabled = true)),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(OCTOCAT_USER_INFO, tokenRequests),
+					)
+				}
+				val database = Database.connect("jdbc:sqlite:${tempDb.absolutePath}", driver = "org.sqlite.JDBC")
+				val pkce = PkceService(ExposedPkceVerifierStore(database).also { it.initSchema() })
+				val state = agedState(LOGIN_FLOW_TTL + 1.seconds)
+				pkce.begin(state)
+
+				val callback = createClient { followRedirects = false }.get("/auth/callback/github") {
+					url {
+						parameters.append("code", "authorization-code-from-idp")
+						parameters.append("state", state)
+					}
+				}
+
+				callback.status shouldBe HttpStatusCode.Unauthorized
+				tokenRequests.shouldBeEmpty()
+				pkce.consume(state).shouldNotBeNull()
+			}
+		}
+	}
+
+	test("OIDC callback refuses a valid state with no verifier left instead of exchanging the code without one") {
+		withTempSessionsDb {
+			testApplication {
+				val tokenRequests = mutableListOf<Parameters>()
+				application {
+					module(
+						authTestConfig(oidcAuthConfig(pkceEnabled = true)),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(OCTOCAT_USER_INFO, tokenRequests),
+					)
+				}
+				val state = agedState(1.seconds)
+
+				val callback = createClient { followRedirects = false }.get("/auth/callback/github") {
+					url {
+						parameters.append("code", "authorization-code-from-idp")
+						parameters.append("state", state)
+					}
+				}
+
+				callback.status shouldBe HttpStatusCode.Unauthorized
+				tokenRequests.shouldBeEmpty()
+			}
+		}
+	}
+
+	test("OIDC callback refuses a state replayed after its first callback spent the verifier") {
+		withTempSessionsDb {
+			testApplication {
+				val tokenRequests = mutableListOf<Parameters>()
+				application {
+					module(
+						authTestConfig(oidcAuthConfig(pkceEnabled = true)),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+						githubIdpMockEngine(OCTOCAT_USER_INFO, tokenRequests),
+					)
+				}
+				val noRedirect = createClient { followRedirects = false }
+				val state = Url(noRedirect.get("/auth/redirect/github").headers["Location"]!!).parameters["state"]
+				state.shouldNotBeNull()
+
+				val statuses = List(2) {
+					noRedirect.get("/auth/callback/github") {
+						url {
+							parameters.append("code", "authorization-code-from-idp")
+							parameters.append("state", state)
+						}
+					}.status
+				}
+
+				statuses shouldBe listOf(HttpStatusCode.OK, HttpStatusCode.Unauthorized)
+				tokenRequests.size shouldBe 1
+				tokenRequests.single()["code_verifier"].shouldNotBeNull()
+			}
+		}
+	}
+
+	test("server refuses to start when an OIDC provider is configured without auth.oauthStateSecret") {
+		withTempSessionsDb {
+			val failure = shouldThrowAny {
+				testApplication {
+					application {
+						module(
+							authTestConfig(oidcAuthConfig(pkceEnabled = true).copy(oauthStateSecret = null)),
+							authTestSecrets(mapOf("github" to githubClientSecret)),
+						)
+					}
+					startApplication()
+				}
+			}
+
+			generateSequence(failure) { it.cause }
+				.any { it.message.orEmpty().contains("auth.oauthStateSecret is required") } shouldBe true
 		}
 	}
 
@@ -1519,6 +1663,44 @@ class AuthRoutesTest : FunSpec({
 				parked.shouldNotBeNull()
 				parked.returnTo shouldBe "https://app.example.com/"
 				parked.handoffChallenge shouldBe "challenge-value"
+			}
+		}
+	}
+
+	test("hand-off: the redirect keeps the PKCE verifier and the parked request for the login flow's lifetime") {
+		withTempSessionsDb { tempDb ->
+			testApplication {
+				application {
+					module(
+						authTestConfig(handoffAuthConfig(listOf("https://app.example.com/"))),
+						authTestSecrets(mapOf("github" to githubClientSecret)),
+					)
+				}
+				startApplication()
+
+				val before = Clock.System.now()
+				val redirect = createClient { followRedirects = false }.get("/auth/redirect/github") {
+					url {
+						parameters.append("returnTo", "https://app.example.com/")
+						parameters.append("handoffChallenge", "challenge-value")
+					}
+				}
+				val after = Clock.System.now()
+				val state = Url(redirect.headers["Location"]!!).parameters["state"]
+				state.shouldNotBeNull()
+
+				val database = Database.connect("jdbc:sqlite:${tempDb.absolutePath}", driver = "org.sqlite.JDBC")
+				listOf("pkce_verifiers", "login_requests").forEach { table ->
+					withClue(table) {
+						val expiresAt = transaction(database) {
+							exec("SELECT expires_at_epoch_seconds FROM $table WHERE state = '$state'") { rows ->
+								if (rows.next()) rows.getLong(1) else null
+							}
+						}
+						expiresAt.shouldNotBeNull()
+						expiresAt shouldBeInRange (before + LOGIN_FLOW_TTL).epochSeconds..(after + LOGIN_FLOW_TTL).epochSeconds
+					}
+				}
 			}
 		}
 	}

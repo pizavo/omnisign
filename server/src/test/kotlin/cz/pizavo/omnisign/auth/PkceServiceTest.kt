@@ -115,6 +115,15 @@ class PkceServiceTest : FunSpec({
         store.putTtls.single() shouldBe kotlin.time.Duration.parse("PT7M")
     }
 
+    test("begin keeps the verifier for the login flow's lifetime unless told otherwise") {
+        val store = InMemoryStore()
+        val service = PkceService(store)
+
+        kotlinx.coroutines.runBlocking { service.begin("state-1") }
+
+        store.putTtls.single() shouldBe LOGIN_FLOW_TTL
+    }
+
     test("challengeFor matches begin's derivation for the same verifier") {
         val store = InMemoryStore()
         val service = PkceService(store)

@@ -6,7 +6,7 @@ import kotlin.time.Duration
  * Server-side store of in-flight PKCE (RFC 7636) `code_verifier` values, keyed by the
  * OAuth2 `state` parameter of the corresponding authorization-code flow.
  *
- * Each entry has a short TTL (~5 minutes — see [PkceService]) — long enough to bridge
+ * Each entry has a short TTL ([LOGIN_FLOW_TTL], through [PkceService]) — long enough to bridge
  * the redirect → IdP → callback hop including user MFA, short enough that abandoned
  * flows do not accumulate.
  *
