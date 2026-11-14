@@ -75,11 +75,12 @@ import org.koin.mp.KoinPlatform
  *   dialog's Language & Region panel. Threaded separately from the persisted config, like the theme.
  * @param dateFormat The active UI date format, threaded to the Language & Region panel.
  * @param onLanguageChange Applies the chosen language tag (`null` = system default) live as a preview
- *   only — it does not persist. The dialog commits it via [onPersistLocale] on save, or reverts it
- *   through this same callback on cancel.
+ *   only — it does not persist. The dialog commits it via [onPersistLocale] when Save is clicked, or
+ *   on cancel reverts it through this same callback to the one last committed.
  * @param onFormatChange Applies the chosen date format live as a preview only, like [onLanguageChange].
- * @param onPersistLocale Persists the given language tag and date format. Invoked only when the user
- *   saves the settings dialog, so a previewed language/format reverts on cancel unless it was saved.
+ * @param onPersistLocale Persists the given language tag and date format. Invoked whenever the user
+ *   clicks Save in the settings dialog, before the other settings are saved and whether or not that
+ *   then succeeds, so a previewed language/format reverts on cancel unless Save was clicked.
  * @param onLogout Sign-out action for the toolbar, forwarded to [IslandToolbar]. `null` (desktop, or
  *   web with auth disabled) hides the sign-out button; the web target passes a non-null action only
  *   when the server has auth enabled.
@@ -406,15 +407,16 @@ fun IslandLayout(
 						hasChanges = settingsHasChanges || localeChanged,
 						onFieldChange = { transform -> settingsViewModel?.updateState(transform) },
 						onSave = {
+							onPersistLocale(languageTag, dateFormat)
+							settingsLanguageBaseline = languageTag
+							settingsFormatBaseline = dateFormat
 							if (settingsHasChanges) {
 								settingsViewModel?.save(onSuccess = {
-									onPersistLocale(languageTag, dateFormat)
 									trustedCertsViewModel?.refresh()
 									showSettingsDialog = false
 									initialSettingsCategory = null
 								})
 							} else {
-								onPersistLocale(languageTag, dateFormat)
 								showSettingsDialog = false
 								initialSettingsCategory = null
 							}

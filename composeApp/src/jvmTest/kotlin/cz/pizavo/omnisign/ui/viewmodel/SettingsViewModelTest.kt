@@ -41,6 +41,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.*
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.*
 import kotlinx.datetime.LocalDate
 
@@ -826,6 +827,105 @@ class SettingsViewModelTest : FunSpec({
         }
     }
 
+    test("save keeps what the CLI saved while the credential store was storing the TSA password") {
+        runTest(testDispatcher) {
+            val configFile = configDir.toPath().resolve("config-keyring-wait.json")
+            val dialogRepository = FileConfigRepository(configFile, testDispatcher)
+            dialogRepository.saveConfig(baseConfig).shouldBeRight()
+            val cliRepository = FileConfigRepository(configFile, Dispatchers.Unconfined)
+            every { credentialStore.setPassword(any(), any(), any()) } answers {
+                runBlocking {
+                    val cliConfig = cliRepository.loadConfig().shouldBeRight()
+                    cliRepository.saveConfig(
+                        cliConfig.copy(profiles = mapOf("work" to ProfileConfig(name = "work"))),
+                    ).shouldBeRight()
+                }
+                Unit.right()
+            }
+            val vm = SettingsViewModel(
+                GetConfigUseCase(dialogRepository),
+                SetGlobalConfigUseCase(dialogRepository),
+                dialogRepository,
+                credentialStore,
+                ioDispatcher = testDispatcher,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.updateState {
+                it.copy(
+                    defaultHashAlgorithm = HashAlgorithm.SHA384,
+                    timestampEnabled = true,
+                    timestampUrl = "https://tsa.example.com",
+                    timestampUsername = "user1",
+                    timestampPassword = Sensitive("secret123"),
+                )
+            }
+            vm.save()
+            advanceUntilIdle()
+
+            vm.state.value.error.shouldBeNull()
+            verify { credentialStore.setPassword("omnisign-tsa", "user1", "secret123") }
+            val onDisk = FileConfigRepository(configFile, testDispatcher).loadConfig().shouldBeRight()
+            onDisk.global.defaultHashAlgorithm shouldBe HashAlgorithm.SHA384
+            onDisk.global.timestampServer?.credentialKey shouldBe "user1"
+            onDisk.profiles.keys shouldBe setOf("work")
+        }
+    }
+
+    test("save shows the error and writes nothing when the configuration cannot be read again") {
+        runTest(testDispatcher) {
+            val readFailure = ConfigurationError.InvalidConfiguration(LocalizableText.Literal("corrupt file"))
+            coEvery { configRepository.loadConfig() } returnsMany listOf(baseConfig.right(), readFailure.left())
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                ioDispatcher = testDispatcher,
+            )
+            vm.load()
+            advanceUntilIdle()
+            vm.updateState { it.copy(defaultHashAlgorithm = HashAlgorithm.SHA384) }
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            advanceUntilIdle()
+
+            successCalled shouldBe false
+            vm.state.value.error shouldBe SettingsError.Domain(readFailure.text)
+            vm.state.value.saving shouldBe false
+            coVerify(exactly = 0) { configRepository.saveConfig(any()) }
+            verify(exactly = 0) { schedulerPort.uninstall() }
+        }
+    }
+
+    test("save does not refuse a TSA password where no credential store is bound, as on the web") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            coEvery { configRepository.getCurrentConfig() } returns baseConfig
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, ioDispatcher = testDispatcher)
+            vm.load()
+            advanceUntilIdle()
+            vm.updateState {
+                it.copy(
+                    timestampEnabled = true,
+                    timestampUrl = "https://tsa.example.com",
+                    timestampUsername = "user1",
+                    timestampPassword = Sensitive("secret123"),
+                )
+            }
+
+            vm.save()
+            advanceUntilIdle()
+
+            vm.state.value.error.shouldBeNull()
+            coVerify { configRepository.saveConfig(any()) }
+        }
+    }
+
     test("load detects stored TSA password via credential store") {
         runTest(testDispatcher) {
             val globalWithCreds = baseGlobal.copy(
@@ -1445,7 +1545,7 @@ class SettingsViewModelTest : FunSpec({
             advanceUntilIdle()
 
             successCalled shouldBe false
-            vm.state.value.schedulerSyncFailed shouldBe true
+            vm.state.value.schedulerInstallPending shouldBe true
             vm.hasChanges.value shouldBe true
 
             vm.save(onSuccess = { successCalled = true })
@@ -1454,7 +1554,7 @@ class SettingsViewModelTest : FunSpec({
             successCalled shouldBe true
             installAttempts shouldBe 2
             vm.state.value.error.shouldBeNull()
-            vm.state.value.schedulerSyncFailed shouldBe false
+            vm.state.value.schedulerInstallPending shouldBe false
             vm.state.value.schedulerInstalled shouldBe true
             vm.hasChanges.value shouldBe false
         }
@@ -1494,7 +1594,7 @@ class SettingsViewModelTest : FunSpec({
             advanceUntilIdle()
 
             vm.state.value.error shouldBe SettingsError.Domain(failure.text)
-            vm.state.value.schedulerSyncFailed shouldBe true
+            vm.state.value.schedulerInstallPending shouldBe true
         }
     }
 
@@ -1521,6 +1621,111 @@ class SettingsViewModelTest : FunSpec({
             advanceUntilIdle()
 
             vm.state.value.error shouldBe SettingsError.SchedulerInstallFailed(null)
+        }
+    }
+
+    test("load enables Save for a scheduler job missing while renewal jobs and an executable path exist, and saving registers it") {
+        runTest(testDispatcher) {
+            val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
+            val configWithJobs = baseConfig.copy(renewalJobs = mapOf("nightly" to job))
+            coEvery { configRepository.loadConfig() } returns configWithJobs.right()
+            coEvery { configRepository.getCurrentConfig() } returns configWithJobs
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+            var installed = false
+            every { schedulerPort.isInstalled() } answers { installed }
+            every { schedulerPort.install(any(), any(), any(), any()) } answers { installed = true }
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+                ioDispatcher = testDispatcher,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.schedulerInstallPending shouldBe true
+            vm.hasChanges.value shouldBe true
+
+            var successCalled = false
+            vm.save(onSuccess = { successCalled = true })
+            advanceUntilIdle()
+
+            successCalled shouldBe true
+            verify(exactly = 1) { schedulerPort.install("/opt/omnisign/bin/OmniSign", any(), any(), any()) }
+            vm.state.value.schedulerInstallPending shouldBe false
+            vm.hasChanges.value shouldBe false
+        }
+    }
+
+    test("load leaves Save disabled when the scheduler job is already registered") {
+        runTest(testDispatcher) {
+            val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
+            coEvery { configRepository.loadConfig() } returns baseConfig.copy(renewalJobs = mapOf("nightly" to job)).right()
+            every { schedulerPort.isInstalled() } returns true
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+                ioDispatcher = testDispatcher,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.schedulerInstallPending shouldBe false
+            vm.hasChanges.value shouldBe false
+        }
+    }
+
+    test("load leaves Save disabled when there is no renewal job to schedule") {
+        runTest(testDispatcher) {
+            coEvery { configRepository.loadConfig() } returns baseConfig.right()
+            every { schedulerPort.isInstalled() } returns false
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                autoDetectedExecutablePath = "/opt/omnisign/bin/OmniSign",
+                ioDispatcher = testDispatcher,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.schedulerInstallPending shouldBe false
+            vm.hasChanges.value shouldBe false
+        }
+    }
+
+    test("load leaves Save disabled when no executable path is known for the scheduler") {
+        runTest(testDispatcher) {
+            val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
+            coEvery { configRepository.loadConfig() } returns baseConfig.copy(renewalJobs = mapOf("nightly" to job)).right()
+            every { schedulerPort.isInstalled() } returns false
+
+            val vm = SettingsViewModel(
+                getConfig, setGlobalConfig, configRepository, credentialStore, schedulerPort,
+                ioDispatcher = testDispatcher,
+            )
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.schedulerInstallPending shouldBe false
+            vm.hasChanges.value shouldBe false
+        }
+    }
+
+    test("load leaves Save disabled where no OS scheduler is available, as on the web") {
+        runTest(testDispatcher) {
+            val job = RenewalJob(name = "nightly", globs = listOf("/docs/**/*.pdf"))
+            coEvery { configRepository.loadConfig() } returns baseConfig.copy(
+                renewalJobs = mapOf("nightly" to job),
+                schedulerConfig = SchedulerConfig(cliExecutablePath = "/opt/omnisign/bin/OmniSign"),
+            ).right()
+
+            val vm = SettingsViewModel(getConfig, setGlobalConfig, configRepository, credentialStore, ioDispatcher = testDispatcher)
+            vm.load()
+            advanceUntilIdle()
+
+            vm.state.value.schedulerInstallPending shouldBe false
+            vm.hasChanges.value shouldBe false
         }
     }
 

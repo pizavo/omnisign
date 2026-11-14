@@ -22,7 +22,7 @@
 	<string name="settings_validation_use_eu_lotl">Použít EU LOTL</string>
 	<string name="settings_validation_alert_not_eu_lotl_tooltip">Označit podpisy, jejichž kotva důvěry není v EU LOTL. Vyžaduje povolení EU LOTL.</string>
 	<string name="settings_validation_tl_refresh_interval_label">Interval obnovování důvěryhodných seznamů (hodiny)</string>
-	<string name="settings_validation_tl_refresh_interval_range_error">Zadejte celý počet hodin (1 nebo více).</string>
+	<string name="settings_validation_tl_refresh_interval_range_error">Zadejte celý počet hodin od 1 do 2 147 483 647.</string>
 	<string name="settings_validation_trusted_lists_label">Důvěryhodné seznamy</string>
 	<string name="settings_validation_refresh_tl_tooltip">Obnovit důvěryhodné seznamy nyní</string>
 	<string name="settings_algo_expiration_level_label">Úroveň vypršení platnosti (před aktualizací zásad)</string>
@@ -45,7 +45,7 @@
 	<string name="settings_error_tl_refresh_interval_invalid">Interval obnovování důvěryhodných seznamů musí být celý počet hodin od 1 do 2 147 483 647.</string>
 	<string name="settings_error_staleness_threshold_invalid">Počet dní, po kterých se ohlásí zastavená obnova, musí být celé číslo, 1 nebo více.</string>
 	<string name="settings_error_tsa_password_needs_username">Heslo serveru časových razítek se ukládá pod uživatelským jménem, zadejte proto uživatelské jméno, nebo heslo vymažte.</string>
-	<string name="settings_error_tsa_password_not_kept">Heslo serveru časových razítek nelze uložit: není k dispozici žádné systémové úložiště přihlašovacích údajů, takže by se po zavření OmniSign ztratilo. Ostatní nastavení uložíte, když heslo vymažete. V Linuxu je úložištěm přihlašovacích údajů poskytovatel služby Secret Service, například GNOME Keyring, KWallet nebo KeePassXC.</string>
+	<string name="settings_error_tsa_password_not_kept">Heslo serveru časových razítek nelze uložit: není k dispozici žádné systémové úložiště přihlašovacích údajů, takže by se po zavření OmniSign ztratilo. Ostatní nastavení uložíte, když heslo vymažete. V Linuxu je úložištěm přihlašovacích údajů poskytovatel služby Secret Service, například GNOME Keyring, KWallet nebo KeePassXC; po jeho spuštění OmniSign restartujte.</string>
 	<string name="settings_error_reason_unknown">neznámá chyba</string>
 	<string name="settings_certadd_already_trusted">Tento certifikát je již důvěryhodný v globálním rozsahu.</string>
 	<string name="settings_validation_tl_last_refreshed">Naposledy obnoveno: %1$s</string>

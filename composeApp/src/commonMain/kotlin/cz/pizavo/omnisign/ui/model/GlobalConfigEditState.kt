@@ -61,7 +61,8 @@ import kotlinx.datetime.LocalDate
  *   string for the text field. A save refuses a value outside 1–120.
  * @property trustedListRefreshInterval Process-global trusted-list refresh interval in hours,
  *   stored as a string for the text field. A save refuses a value below 1 or above [Int.MAX_VALUE],
- *   whose milliseconds would no longer fit the refresh scheduler's `Long`.
+ *   which is the CLI option's limit too and keeps the refresh scheduler's milliseconds well within
+ *   a `Long`.
  * @property renewalJobs Renewal jobs managed in this edit session.
  * @property availableProfiles Names of profiles available for the renewal job profile dropdown.
  * @property activeProfile The currently active profile name, used as the default selection when adding a renewal job.
@@ -78,9 +79,10 @@ import kotlinx.datetime.LocalDate
  *   stored as a string for the text field. A save refuses a value below 1 while the warning is on,
  *   and coerces one to 1 while it is off, as the field is then hidden.
  * @property schedulerInstalled Whether the OS scheduler job is currently registered (read-only, queried on the load).
- * @property schedulerSyncFailed Whether the last save wrote the configuration but could not register
- *   the OS scheduler job. It counts as an unsaved change, so Save stays enabled to try again, and is
- *   left out of [contentEquals].
+ * @property schedulerInstallPending Whether the OS scheduler job is missing where Save registers it:
+ *   the last save wrote the configuration but could not register the job, or the dialog loaded
+ *   renewal jobs and an executable path while the job was not registered. It counts as an unsaved
+ *   change, so Save stays enabled to register the job, and is left out of [contentEquals].
  * @property renewalRunRecord Status of the most recent renewal batch run (read-only, queried on load), or `null` when none has run or no backend is available.
  * @property renewalRunInFlight Whether a renewal run is executing right now (read-only, queried on
  *   load). Tells a [RenewalRunRecord.runStartedAt] marker belonging to a live run apart from one a
@@ -138,7 +140,7 @@ data class GlobalConfigEditState(
 	val stalenessNotificationEnabled: Boolean = SCHEDULER_DEFAULTS.stalenessNotificationEnabled,
 	val stalenessThresholdDays: String = SCHEDULER_DEFAULTS.stalenessThresholdDays.toString(),
 	val schedulerInstalled: Boolean = false,
-	val schedulerSyncFailed: Boolean = false,
+	val schedulerInstallPending: Boolean = false,
 	val renewalRunRecord: RenewalRunRecord? = null,
 	val renewalRunInFlight: Boolean = false,
 	val saving: Boolean = false,

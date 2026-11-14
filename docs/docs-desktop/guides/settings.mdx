@@ -13,7 +13,7 @@ The dialog uses an IntelliJ-style layout: a collapsible category tree on the lef
 content panel on the right. Clicking a group header selects its first child; clicking a
 leaf shows the corresponding form.
 
-Changes take effect when you click **Save**, and closing the dialog without saving discards them.
+Changes take effect when you click **Save**; closing the dialog discards those not saved yet.
 A field whose value is out of its range is marked in red, and Save refuses it with an error that
 names the field. Save reads the configuration again before it writes, so a setting the dialog does
 not show keeps what the CLI saved while the dialog was open. When part of a save fails, setting up
@@ -77,8 +77,9 @@ locked because its unlock prompt was dismissed, or a keychain that refuses the w
 shows an error and saves nothing, so that the configuration never refers to a password that is not
 there. Where no credential store is available at all, as on Linux without a Secret Service
 provider, a password would last only until OmniSign closes, so Save refuses it too; clear the
-password to save the other settings. Once the store keeps it, the field is cleared and shows the
-stored-password indicator, and renaming the user afterwards keeps using the stored password.
+password to save the other settings, or start a provider and restart OmniSign. Once the store
+keeps it, the field is cleared and shows the stored-password indicator, and renaming the user
+afterwards keeps using the stored password.
 :::
 
 #### OCSP & CRL
@@ -111,11 +112,11 @@ Revocation List requests used during validation and B-LT/B-LTA signing.
   value, or one above 2,147,483,647). Keep this at or below **6**: the ETSI validation policy
   considers a trusted list fresh only for 6 hours after its last successful synchronization, so
   a longer interval leaves qualified validations reporting *"the trusted list is not considered as
-  fresh"* for the rest of each cycle. A list
-  that cannot be downloaded is still used from the copy cached on disk, however old, and
-  validations name it under their **Trusted List Warnings**. OmniSign then tries to download it
-  again every 5 minutes, up to 6 times, before going back to the interval. The freshness check
-  counts from when a list was last loaded, so it does not flag such a copy; the warning does.
+  fresh"* for the rest of each cycle. A list that cannot be downloaded is still used from the copy
+  cached on disk, however old, and validations name it under their **Trusted List Warnings**.
+  OmniSign then tries to download it again every 5 minutes, up to 6 times, before going back to the
+  interval. The freshness check counts from when a list was last loaded, so it does not flag such a
+  copy; the warning does.
 - **Refresh now** — a refresh button, with a "Last refreshed" indicator, forces an immediate
   online refresh of the EU LOTL and every custom list into the shared cache. While the refresh
   runs, a **Loading trusted lists…** progress bar appears below the row — indeterminate until the
@@ -244,7 +245,9 @@ The scheduler uses **Task Scheduler** on Windows, **systemd user timers** on Lin
 executing it once as soon as the machine is next available rather than skipping it until the
 next day. (On Linux a systemd user instance is required; where none exists — containers, some
 WSL setups — OmniSign instead prints the command to schedule renewal with another tool.) The
-current installation status is shown as a read-only indicator.
+current installation status is shown as a read-only indicator. Every save installs the scheduler
+while renewal jobs exist and the executable path is known, so when it is not installed then, as
+after a save that could not set it up, Save is enabled as soon as the dialog opens.
 
 At the scheduled time the scheduler launches OmniSign in **headless renewal mode** (no window):
 it checks every configured renewal job, re-timestamps the B-LTA files whose archival timestamp
@@ -309,6 +312,7 @@ platform.
 | **Date format**   | How dates are shown: *System default*, `dd/mm/yyyy`, `dd.mm.yyyy`, `mm/dd/yyyy`, or ISO 8601 (`yyyy-mm-dd`). This preference is shared with the CLI's `config date-format` command.                                                             |
 
 Changes **preview live** as you pick them, **take effect when you save**, and **revert if you close the
-dialog without saving**; the saved choice is restored on the next launch. Switching the language also
-re-renders the signature validation report in that language.
+dialog without saving**; the saved choice is restored on the next launch. Clicking Save keeps them even
+when saving another setting then fails. Switching the language also re-renders the signature validation
+report in that language.
 

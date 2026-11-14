@@ -109,13 +109,13 @@ class SettingsViewModel(
 
     /**
      * Whether Save has something to do: the current edit state differs from the state last loaded
-     * or saved, ignoring transient UI fields, or the last save could not register the OS scheduler
-     * job, which saving again tries anew.
+     * or saved, ignoring transient UI fields, or the OS scheduler job is missing where Save
+     * registers it, as [GlobalConfigEditState.schedulerInstallPending] tells.
      *
      * Returns `false` until [load] completes successfully.
      */
     val hasChanges: StateFlow<Boolean> = combine(_state, _initialState) { current, initial ->
-        initial != null && (current.schedulerSyncFailed || !current.contentEquals(initial))
+        initial != null && (current.schedulerInstallPending || !current.contentEquals(initial))
     }.stateIn(viewModelScope, SharingStarted.Eagerly, false)
 
     /**
@@ -158,6 +158,11 @@ class SettingsViewModel(
     /**
      * Load the current global configuration from the config store and populate
      * the edit state. Call this when the settings dialog is opened.
+     *
+     * When renewal jobs and an executable path for the OS scheduler are configured but the scheduler
+     * job is not registered, as after a save that failed to register it in a dialog since closed,
+     * the job is marked as [GlobalConfigEditState.schedulerInstallPending], so Save is enabled to
+     * register it.
      */
     fun load() {
         viewModelScope.launch {
@@ -188,11 +193,15 @@ class SettingsViewModel(
                         schedulerInstalled = installed,
                         schedulerAutoDetectedPath = autoDetectedExecutablePath,
                         trustedCertificates = trustedCerts,
-                    ).copy(
-                        trustedCertsAvailable = trustStore != null,
-                        renewalRunRecord = runRecord,
-                        renewalRunInFlight = runInFlight,
                     ).let {
+                        it.copy(
+                            trustedCertsAvailable = trustStore != null,
+                            renewalRunRecord = runRecord,
+                            renewalRunInFlight = runInFlight,
+                            schedulerInstallPending = schedulerPort != null && !installed &&
+                                    it.renewalJobs.isNotEmpty() && it.effectiveSchedulerExecutablePath != null,
+                        )
+                    }.let {
                         if (isLinuxDesktop) it.copy(
                             useNativeTitleBar = loadUseNativeTitleBar() ?: false,
                             showNativeTitleBarOption = true,
@@ -267,14 +276,16 @@ class SettingsViewModel(
      * so does a TSA password to store when the [credentialStore] keeps passwords in memory only, as
      * the configuration would then name a password that is gone once the application closes.
      *
-     * Otherwise the configuration is read again first, so that what the CLI or another instance of
-     * the application saved while the dialog was open is kept. A newly entered TSA password is then
-     * stored in the OS credential store, the [GlobalConfigEditState] is applied to the global
-     * configuration as it is saved through [SetGlobalConfigUseCase], keeping what the dialog does not
-     * show, and the renewal jobs and scheduler settings are saved after it. A password the store does
-     * not keep becomes the error and nothing is saved, so the configuration never names a password
-     * that is not there; a failed read, or a failed write of either part, becomes the error too, and
-     * the scheduler is then left as it was.
+     * Otherwise a newly entered TSA password is stored in the OS credential store first, which can
+     * wait for the keyring to be unlocked. The configuration is then read again, so that what the CLI
+     * or another instance of the application saved while the dialog was open, that wait included, is
+     * kept: the [GlobalConfigEditState] is applied to the global configuration as it is saved through
+     * [SetGlobalConfigUseCase], keeping what the dialog does not show, and the renewal jobs and
+     * scheduler settings are saved after it. A password the store does not keep becomes the error and
+     * nothing is saved, so the configuration never names a password that is not there; a failed read,
+     * or a failed write of either part, becomes the error too, and the scheduler is then left as it
+     * was. A password stored before such a failure stays in the form, and the next save stores it
+     * again.
      *
      * @param onSuccess Callback invoked once the configuration, the OS scheduler job and the staged
      *   certificate changes are all saved, so the caller can dismiss the dialog. It is not invoked
@@ -293,8 +304,8 @@ class SettingsViewModel(
         }
         _state.update { it.copy(saving = true, error = null) }
         viewModelScope.launch {
-            getConfigUseCase()
-                .flatMap { withContext(ioDispatcher) { storeTsaPasswordIfNeeded(current) } }
+            withContext(ioDispatcher) { storeTsaPasswordIfNeeded(current) }
+                .flatMap { getConfigUseCase() }
                 .flatMap { setGlobalConfigUseCase { current.appliedTo(this, today()) } }
                 .flatMap { saveAppLevelConfig(current) }
                 .fold(
@@ -313,7 +324,7 @@ class SettingsViewModel(
      * it and from the form, unless the form's password was changed meanwhile. Edits made while the
      * save ran stay in the form, unsaved, and keep the dialog open, so they are neither lost nor
      * taken for saved. A scheduler job that could not be registered is marked as
-     * [GlobalConfigEditState.schedulerSyncFailed] in the form, also when the certificate changes
+     * [GlobalConfigEditState.schedulerInstallPending] in the form, also when the certificate changes
      * fail too, which keeps Save enabled to try again.
      */
     private suspend fun finishSave(saved: GlobalConfigEditState, onSuccess: () -> Unit) {
@@ -335,14 +346,14 @@ class SettingsViewModel(
                 )
             }
         }
-        val schedulerSyncFailed = schedulerError != null
+        val schedulerInstallPending = schedulerError != null
         if (certError != null) {
             _state.update {
                 it.copy(
                     saving = false,
                     error = SettingsError.Domain(certError.localizableText()),
                     schedulerInstalled = installed,
-                    schedulerSyncFailed = schedulerSyncFailed,
+                    schedulerInstallPending = schedulerInstallPending,
                 )
             }
             return
@@ -366,7 +377,7 @@ class SettingsViewModel(
                 saving = false,
                 error = schedulerError,
                 schedulerInstalled = installed,
-                schedulerSyncFailed = schedulerSyncFailed,
+                schedulerInstallPending = schedulerInstallPending,
                 trustedCertificates = newBaseline,
                 pendingTrustedCertAdds = live.pendingTrustedCertAdds - saved.pendingTrustedCertAdds.toSet(),
                 pendingTrustedCertRemovals = live.pendingTrustedCertRemovals - saved.pendingTrustedCertRemovals,

@@ -425,5 +425,10 @@ class GlobalConfigEditStateTest : FunSpec({
 		GlobalConfigEditState(timestampEnabled = false, timestampPassword = Sensitive("secret"))
 			.invalidFieldError.shouldBeNull()
 	}
+
+	test("invalidFieldError takes a username of spaces only for none when a TSA password is entered") {
+		GlobalConfigEditState(timestampEnabled = true, timestampUsername = "   ", timestampPassword = Sensitive("secret"))
+			.invalidFieldError shouldBe SettingsError.TsaPasswordNeedsUsername
+	}
 })
 
