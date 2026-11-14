@@ -15,7 +15,10 @@ enum class RefreshOutcome {
 
     /**
      * The server answered `401` — the refresh token is unknown, expired, rotated away, or the
-     * session has passed its maximum lifetime. The session is over and the user must sign in again.
+     * session has passed its maximum lifetime — and the cookie held no session of the same user to
+     * fall back on; or a refresh without a body found no cookie (`400`); or the tab was signed out
+     * while the refresh ran, and whatever it obtained was revoked. The session is over and the user
+     * must sign in again.
      */
     SessionOver,
 

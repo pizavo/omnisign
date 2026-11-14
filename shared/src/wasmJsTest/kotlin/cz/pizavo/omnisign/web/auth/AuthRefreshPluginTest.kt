@@ -1,9 +1,12 @@
 package cz.pizavo.omnisign.web.auth
 
+import cz.pizavo.omnisign.testing.bodyText
 import cz.pizavo.omnisign.testing.mockApiClient
+import cz.pizavo.omnisign.testing.sessionUser
 import cz.pizavo.omnisign.testing.tokenResponseJson
 import io.kotest.assertions.throwables.shouldThrowAny
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.shouldBe
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.mock.MockEngine
@@ -23,7 +26,9 @@ import kotlinx.coroutines.coroutineScope
  * Verifies [authRefreshPlugin] keeps a session alive across the access token's ~5-minute lifetime:
  * a `401` triggers one refresh and a retry that carries the *new* token, concurrent `401`s refresh
  * once between them, and only a genuinely rejected refresh token — never an unreachable server —
- * drops the user to the login gate.
+ * drops the user to the login gate. Once that has happened, `401`s still queued behind the refresh
+ * neither refresh again nor report the end again, so none of them can resume the session another
+ * user has left in the cookie.
  */
 class AuthRefreshPluginTest : FunSpec({
 
@@ -31,7 +36,7 @@ class AuthRefreshPluginTest : FunSpec({
 
 	test("passes a successful response through without refreshing") {
 		val state = WebAuthState()
-		state.set(accessToken = "access-1", refreshToken = "refresh-1")
+		state.set(accessToken = "access-1", refreshToken = "refresh-1", user = sessionUser())
 		var refreshes = 0
 		val api = WebAuthApi(
 			mockApiClient(expectSuccess = false) {
@@ -51,7 +56,7 @@ class AuthRefreshPluginTest : FunSpec({
 
 	test("refreshes on a 401 and retries carrying the new token") {
 		val state = WebAuthState()
-		state.set(accessToken = "stale", refreshToken = "refresh-1")
+		state.set(accessToken = "stale", refreshToken = "refresh-1", user = sessionUser())
 		var refreshes = 0
 		val api = WebAuthApi(
 			mockApiClient(expectSuccess = false) {
@@ -79,7 +84,7 @@ class AuthRefreshPluginTest : FunSpec({
 
 	test("refreshes once for concurrent 401s rather than rotating the refresh token twice") {
 		val state = WebAuthState()
-		state.set(accessToken = "stale", refreshToken = "refresh-1")
+		state.set(accessToken = "stale", refreshToken = "refresh-1", user = sessionUser())
 		var refreshes = 0
 		val api = WebAuthApi(
 			mockApiClient(expectSuccess = false) {
@@ -108,7 +113,7 @@ class AuthRefreshPluginTest : FunSpec({
 
 	test("drops to the login gate when the server rejects the refresh token") {
 		val state = WebAuthState()
-		state.set(accessToken = "stale", refreshToken = "revoked")
+		state.set(accessToken = "stale", refreshToken = "revoked", user = sessionUser())
 		val api = WebAuthApi(
 			mockApiClient(expectSuccess = false) { respond(content = "", status = HttpStatusCode.Unauthorized) },
 			state,
@@ -123,9 +128,69 @@ class AuthRefreshPluginTest : FunSpec({
 		expirations shouldBe 1
 	}
 
+	test("after the session ends, queued 401s neither refresh again nor report the end again") {
+		val state = WebAuthState()
+		state.set(accessToken = "stale", refreshToken = "revoked", user = sessionUser())
+		var refreshRequests = 0
+		val api = WebAuthApi(
+			mockApiClient(expectSuccess = false) {
+				refreshRequests++
+				respond(content = "", status = HttpStatusCode.Unauthorized)
+			},
+			state,
+		)
+		var expirations = 0
+		val client = apiClientWith(state, api, onSessionExpired = { expirations++; state.clear() }) {
+			respond(content = "", status = HttpStatusCode.Unauthorized)
+		}
+
+		val results = coroutineScope {
+			List(3) { async { runCatching { client.get("https://omnisign.test/api/v1/capabilities") } } }.awaitAll()
+		}
+
+		results.map { it.isFailure } shouldBe listOf(true, true, true)
+		expirations shouldBe 1
+		refreshRequests shouldBe 2
+	}
+
+	test("a 401 queued behind the end of the session does not resume the session another user left in the cookie") {
+		val state = WebAuthState()
+		state.set(accessToken = "stale", refreshToken = "spent", user = sessionUser())
+		val api = WebAuthApi(
+			mockApiClient(expectSuccess = false) { request ->
+				if (request.body.bodyText().isEmpty()) {
+					respond(
+						content = tokenResponseJson("their-access", "their-refresh", sessionUser(userId = "user-2")),
+						headers = jsonHeaders,
+					)
+				} else {
+					respond(content = "", status = HttpStatusCode.Unauthorized)
+				}
+			},
+			state,
+		)
+		val sentAuthorizations = mutableListOf<String?>()
+		val client = apiClientWith(state, api, onSessionExpired = { state.clear() }) { request ->
+			val authorization = request.headers[HttpHeaders.Authorization]
+			sentAuthorizations += authorization
+			if (authorization == "Bearer their-access") {
+				respond(content = "ok")
+			} else {
+				respond(content = "", status = HttpStatusCode.Unauthorized)
+			}
+		}
+
+		coroutineScope {
+			List(3) { async { runCatching { client.get("https://omnisign.test/api/v1/capabilities") } } }.awaitAll()
+		}
+
+		sentAuthorizations shouldNotContain "Bearer their-access"
+		state.accessToken shouldBe null
+	}
+
 	test("keeps the session when the refresh call merely fails to reach the server") {
 		val state = WebAuthState()
-		state.set(accessToken = "stale", refreshToken = "refresh-1")
+		state.set(accessToken = "stale", refreshToken = "refresh-1", user = sessionUser())
 		val api = WebAuthApi(
 			mockApiClient(expectSuccess = false) { respond(content = "", status = HttpStatusCode.BadGateway) },
 			state,

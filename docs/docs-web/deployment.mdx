@@ -111,7 +111,8 @@ which the app exchanges for a short-lived session. The access token lives only i
 and an `HttpOnly` refresh cookie scoped to `/auth/refresh` lets a page reload resume the session
 without another trip to the IdP. Closing the **browser** ends the session: the refresh cookie carries
 no `Max-Age`, so it is dropped when the browser exits. Closing just the tab does not — reopening the
-app in the same browser resumes silently from the cookie. The server caps a session at
+app in the same browser resumes silently from the cookie. Every tab shares that cookie, so opening or
+reloading the app in one tab does not sign it out in the others. The server caps a session at
 `auth.session.maxSessionSeconds` (8 hours by default) regardless.
 
 Two server settings make this work:
