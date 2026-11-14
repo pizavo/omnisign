@@ -9,6 +9,7 @@ import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.text.MessageKey
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.collections.shouldContainExactly
@@ -20,14 +21,19 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Runnable
+import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
+import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.nio.file.attribute.PosixFilePermission
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.CoroutineContext
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createSymbolicLinkPointingTo
 import kotlin.io.path.createTempDirectory
+import kotlin.io.path.deleteIfExists
 import kotlin.io.path.isSymbolicLink
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.moveTo
@@ -214,6 +220,26 @@ class FileConfigRepositoryTest : FunSpec({
 		real.parent.listDirectoryEntries().map { it.name } shouldContainExactly listOf("omnisign.json")
 	}
 
+	test("a save follows a chain of relative symbolic links to the file at its end, which may not exist yet").config(
+		enabledIf = { canCreateSymbolicLinks() },
+	) {
+		val root = Path.of(tmpDir.absolutePath, "chain")
+		val real = root.resolve("store").resolve("omnisign.json")
+		real.parent.createDirectories()
+		val middle = root.resolve("middle.json")
+		middle.createSymbolicLinkPointingTo(Path.of("store", "omnisign.json"))
+		val link = root.resolve("app").resolve("config.json")
+		link.parent.createDirectories()
+		link.createSymbolicLinkPointingTo(Path.of("..", "middle.json"))
+
+		repoAtPath(link).saveConfig(AppConfig(global = GlobalConfig(defaultHashAlgorithm = HashAlgorithm.SHA512)))
+			.shouldBeRight()
+
+		link.isSymbolicLink() shouldBe true
+		middle.isSymbolicLink() shouldBe true
+		repoAtPath(real).loadConfig().shouldBeRight().global.defaultHashAlgorithm shouldBe HashAlgorithm.SHA512
+	}
+
 	test("a save leaves no temporary file beside the config file") {
 		val path = Path.of(tmpDir.absolutePath, "no-temp", "config.json")
 		val repo = repoAtPath(path)
@@ -221,6 +247,59 @@ class FileConfigRepositoryTest : FunSpec({
 
 		repo.saveConfig(AppConfig(global = GlobalConfig(defaultHashAlgorithm = HashAlgorithm.SHA512))).shouldBeRight()
 
+		path.parent.listDirectoryEntries().map { it.name } shouldContainExactly listOf("config.json")
+	}
+
+	test("a config file that starts with a byte order mark loads, and a save replaces it") {
+		val text = """{"global": {"defaultHashAlgorithm": "SHA512"}, "profiles": {"work": {"name": "work"}}}"""
+		val path = fileWith("byte-order-mark", "\uFEFF$text")
+		val repo = repoAtPath(path)
+
+		repo.loadConfig().shouldBeRight().profiles.shouldContainKey("work")
+		repo.setActiveProfile("work").shouldBeRight()
+
+		val reloaded = repoAtPath(path).loadConfig().shouldBeRight()
+		reloaded.activeProfile shouldBe "work"
+		reloaded.global.defaultHashAlgorithm shouldBe HashAlgorithm.SHA512
+	}
+
+	test("a save waits for another program to let go of the config file, which Windows does not replace while it is open").config(
+		enabledIf = { System.getProperty("os.name").lowercase().contains("win") },
+	) {
+		val path = Path.of(tmpDir.absolutePath, "held-open", "config.json")
+		val repo = repoAtPath(path)
+		repo.saveConfig(AppConfig(global = GlobalConfig())).shouldBeRight()
+		val reader = Files.newInputStream(path)
+		val probe = path.resolveSibling("probe.json")
+		probe.writeText("{}")
+		shouldThrow<FileSystemException> { probe.moveTo(path, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING) }
+		probe.deleteIfExists()
+
+		val save = async(Dispatchers.IO) {
+			repo.saveConfig(AppConfig(global = GlobalConfig(defaultHashAlgorithm = HashAlgorithm.SHA512)))
+		}
+		delay(100)
+		reader.close()
+
+		save.await().shouldBeRight()
+		repoAtPath(path).loadConfig().shouldBeRight().global.defaultHashAlgorithm shouldBe HashAlgorithm.SHA512
+	}
+
+	test("a save that cannot replace a config file another program keeps open fails, leaving it and no temporary file").config(
+		enabledIf = { System.getProperty("os.name").lowercase().contains("win") },
+	) {
+		val path = Path.of(tmpDir.absolutePath, "held-for-good", "config.json")
+		val repo = repoAtPath(path)
+		repo.saveConfig(AppConfig(global = GlobalConfig())).shouldBeRight()
+		val before = path.readText()
+
+		val error = Files.newInputStream(path).use {
+			repo.saveConfig(AppConfig(global = GlobalConfig(defaultHashAlgorithm = HashAlgorithm.SHA512))).shouldBeLeft()
+		}
+
+		error.shouldBeInstanceOf<ConfigurationError.SaveFailed>()
+		error.text shouldBe LocalizableText.of(MessageKey.CONFIG_SAVE_FAILED)
+		path.readText() shouldBe before
 		path.parent.listDirectoryEntries().map { it.name } shouldContainExactly listOf("config.json")
 	}
 

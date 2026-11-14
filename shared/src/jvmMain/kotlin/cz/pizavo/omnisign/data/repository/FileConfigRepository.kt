@@ -16,6 +16,7 @@ import kotlinx.serialization.json.Json
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
 import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -41,6 +42,9 @@ import kotlin.io.path.readText
  * same directory: a reader in any process sees the previous configuration or the new one, never a
  * half-written file, and a crash or a full disk during a save leaves the previous file in place.
  * A configuration file that is a symbolic link stays one: the save replaces the file it leads to.
+ * Windows refuses to replace a file that another program holds open, so a refused replace is tried
+ * again for a moment before the save fails. As the temporary file is created beside the file it
+ * replaces, a save needs write access to that directory, not only to the file.
  *
  * A configuration file that exists but cannot be decoded — a hand edit left it invalid, a write by
  * an older build was cut short, or a newer build wrote a value this one does not know — is never
@@ -81,7 +85,7 @@ class FileConfigRepository(
                     saveConfigInternal(defaultConfig)
                     defaultConfig.right()
                 } else {
-                    val config = json.decodeFromString<AppConfig>(configPath.readText())
+                    val config = json.decodeFromString<AppConfig>(readConfigText())
                     cachedConfig = config
                     config.right()
                 }
@@ -132,11 +136,17 @@ class FileConfigRepository(
      */
     private fun unreadableReason(): Exception? =
         try {
-            json.decodeFromString<AppConfig>(configPath.readText())
+            json.decodeFromString<AppConfig>(readConfigText())
             null
         } catch (e: Exception) {
             e
         }
+
+    /**
+     * The text of the configuration file, without the byte order mark that some Windows editors
+     * write at the start of a UTF-8 file and that the JSON decoder would refuse.
+     */
+    private fun readConfigText(): String = configPath.readText().removePrefix(BYTE_ORDER_MARK)
 
     /**
      * Replace the configuration file with [bytes] in one step.
@@ -162,13 +172,35 @@ class FileConfigRepository(
                 channel.force(true)
             }
             restrictPermissions(tempFile)
-            try {
-                tempFile.moveTo(target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-            } catch (_: AtomicMoveNotSupportedException) {
-                tempFile.moveTo(target, StandardCopyOption.REPLACE_EXISTING)
-            }
+            replace(target, tempFile)
         } finally {
             tempFile.deleteIfExists()
+        }
+    }
+
+    /**
+     * Move [replacement] over [target], atomically where the file system supports that.
+     *
+     * Windows refuses to replace a file that another program holds open, and a reader of the
+     * configuration in another OmniSign process, a virus scanner or a search indexer can hold it for
+     * a moment. A refused move is therefore tried again after a pause that doubles each time, up to
+     * [REPLACE_ATTEMPTS] attempts in all; the last refusal is thrown.
+     */
+    private fun replace(target: Path, replacement: Path) {
+        var attempt = 1
+        while (true) {
+            try {
+                try {
+                    replacement.moveTo(target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+                } catch (_: AtomicMoveNotSupportedException) {
+                    replacement.moveTo(target, StandardCopyOption.REPLACE_EXISTING)
+                }
+                return
+            } catch (e: FileSystemException) {
+                if (attempt == REPLACE_ATTEMPTS) throw e
+                Thread.sleep(FIRST_RETRY_DELAY_MS shl (attempt - 1))
+                attempt++
+            }
         }
     }
 
@@ -230,6 +262,15 @@ class FileConfigRepository(
     companion object {
         /** How many symbolic links a save follows from the configuration file before it gives up. */
         private const val MAX_SYMBOLIC_LINKS = 40
+
+        /** How many times a save tries to replace the configuration file before it gives up. */
+        private const val REPLACE_ATTEMPTS = 6
+
+        /** The pause before the first retry of a refused replace, in milliseconds; it doubles after each. */
+        private const val FIRST_RETRY_DELAY_MS = 25L
+
+        /** The byte order mark a UTF-8 file may start with. */
+        private const val BYTE_ORDER_MARK = "\uFEFF"
 
         /**
          * Get the default configuration file path.
