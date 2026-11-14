@@ -700,13 +700,22 @@ class ConfigSerializerTest : FunSpec({
 			"Top-level properties: " + (1..10).joinToString { "p%02d".format(it) } + ", ..."
 	}
 
-	test("the details of a refused document write the control, format, separator and surrogate characters of a name as escapes, and cut a long name") {
+	test("the details of a refused document write the control, format, separator and surrogate characters of a name as escapes, double its backslashes, and cut a long name") {
 		val json = JsonConfigSerializer()
-		val names = listOf("a\\u001b[31mb", "c\\u202ed", "e\\u2028f", "g\\u2029h", "i\\ud83d\\ude00", "x".repeat(65), "y".repeat(64))
+		val names = listOf(
+			"a\\u001b[31mb", "c\\u202ed", "e\\u2028f", "g\\u2029h", "i\\ud83d\\ude00", "l\\\\u001bm", "x".repeat(65), "y".repeat(64),
+		)
 		val document = names.joinToString(prefix = """{"name": "work", """, postfix = "}") { """"$it": 1""" }
 
 		refusal(json.deserializeProfile(document)).details shouldBe "Top-level properties a profile does not have: " +
 			names.dropLast(2).joinToString() + ", " + "x".repeat(64) + "..., " + "y".repeat(64)
+	}
+
+	test("the details of a refused document cut a long name before they escape it, so that the cut counts its characters and splits no escape") {
+		val document = """{"name": "work", "\u001b${"x".repeat(64)}": 1, "${"a".repeat(63)}😀b": 2}"""
+
+		refusal(JsonConfigSerializer().deserializeProfile(document)).details shouldBe
+			"Top-level properties a profile does not have: \\u001b" + "x".repeat(63) + "..., " + "a".repeat(63) + "\\ud83d..."
 	}
 
 	test("the details of a refused section write the profile key that leads to it as an escaped and cut name") {

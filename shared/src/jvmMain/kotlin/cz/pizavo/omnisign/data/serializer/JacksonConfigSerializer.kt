@@ -257,19 +257,21 @@ abstract class JacksonConfigSerializer(
 
 	/**
 	 * [name], which a document gives a property or an entry of a map, as the details of an error show
-	 * it: cut to its first [MAX_SHOWN_NAME_LENGTH] characters, and with each character of the
-	 * [ESCAPED_CATEGORIES] written as a `\u` escape. The CLI prints the details to a terminal, which
-	 * would act on such a character, an escape sequence or a mark that reverses the text after it,
-	 * rather than show it.
+	 * it: cut to its first [MAX_SHOWN_NAME_LENGTH] characters, then with each character of the
+	 * [ESCAPED_CATEGORIES] written as a `\u` escape and each backslash doubled, so that a name that
+	 * holds the text of an escape does not read like one that holds the character. The CLI prints the
+	 * details to a terminal, which would act on such a character, an escape sequence or a mark that
+	 * reverses the text after it, rather than show it. The cut comes first, so that it counts the
+	 * characters of the name and never splits an escape.
 	 */
 	private fun shown(name: String): String {
 		val cut = if (name.length > MAX_SHOWN_NAME_LENGTH) name.take(MAX_SHOWN_NAME_LENGTH) + "..." else name
 		return buildString {
 			for (char in cut) {
-				if (char.category in ESCAPED_CATEGORIES) {
-					append("\\u").append(char.code.toString(16).padStart(4, '0'))
-				} else {
-					append(char)
+				when {
+					char == '\\' -> append("\\\\")
+					char.category in ESCAPED_CATEGORIES -> append("\\u").append(char.code.toString(16).padStart(4, '0'))
+					else -> append(char)
 				}
 			}
 		}

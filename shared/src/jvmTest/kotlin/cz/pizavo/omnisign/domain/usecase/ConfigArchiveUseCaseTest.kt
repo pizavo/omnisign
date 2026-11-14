@@ -45,12 +45,12 @@ import java.util.zip.ZipOutputStream
 
 /**
  * Verifies [ConfigArchiveUseCase] round-trips the configuration and its scoped trust material
- * through the ZIP archive: a global cert, in a global and in a full archive, a profile-scoped cert
- * (with name override), and a cert-free export. An archive of another kind than the import reads is refused with nothing
- * changed, and a global import restores the global trust scope alone. An archive whose manifest,
- * or a certificate it lists, cannot be read is refused in the same way, as are one whose entry
- * names are not UTF-8 and one that unpacks to more than an import accepts. An export holds the
- * same bytes in every time zone.
+ * through the ZIP archive: a global cert, through a global archive and through a full one, a
+ * profile-scoped cert (with name override), and a cert-free export. An archive of another kind
+ * than the import reads is refused with nothing changed, and a global import restores the global
+ * trust scope alone. An archive whose manifest, or a certificate it lists, cannot be read is
+ * refused in the same way, as are one whose entry names are not UTF-8 and one that unpacks to more
+ * than an import accepts. An export holds the same bytes in every time zone.
  */
 class ConfigArchiveUseCaseTest : FunSpec({
 
