@@ -21,6 +21,7 @@ import cz.pizavo.omnisign.domain.port.ConfigSerializerRegistry
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.maps.shouldContainKey
@@ -299,6 +300,78 @@ class ConfigArchiveUseCaseTest : FunSpec({
 		error.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>().text shouldBe
 			LocalizableText.of(MessageKey.CONFIG_ARCHIVE_CORRUPT_MANIFEST)
 		destRepo.getCurrentConfig() shouldBe existing
+	}
+
+	test("importGlobal and importProfile refuse an archive whose trust material is broken, and change nothing") {
+		val sourceRepo = inMemoryRepo(AppConfig(profiles = mapOf("p1" to ProfileConfig(name = "p1"))))
+		val sourceStore = newStore()
+		val globalFingerprint = sourceStore.add(TrustScope.Global, selfSignedDer("Root"), TrustedCertificateType.CA)
+			.shouldBeRight().fingerprint
+		val profileFingerprint = sourceStore.add(TrustScope.Profile("p1"), selfSignedDer("ProfileCa"), TrustedCertificateType.TSA)
+			.shouldBeRight().fingerprint
+		val globalEntries = unzip(archiveUseCase(sourceRepo, sourceStore).exportGlobal(ConfigFormat.JSON).shouldBeRight())
+		val profileEntries = unzip(archiveUseCase(sourceRepo, sourceStore).exportProfile("p1", ConfigFormat.JSON).shouldBeRight())
+		val existing = AppConfig(global = GlobalConfig(defaultHashAlgorithm = HashAlgorithm.SHA512))
+
+		fun broken(entries: Map<String, ByteArray>, fingerprint: String) = mapOf(
+			"a certificate it does not hold" to zip(entries - "trusted-certs/$fingerprint.der"),
+			"a certificate that does not parse" to
+				zip(entries + ("trusted-certs/$fingerprint.der" to "not a certificate".encodeToByteArray())),
+			"a manifest that cannot be read" to zip(entries + ("trust-manifest.json" to "{".encodeToByteArray())),
+		)
+
+		for ((case, archive) in broken(globalEntries, globalFingerprint)) {
+			withClue("importGlobal, $case") {
+				val destRepo = inMemoryRepo(existing)
+				val destStore = newStore()
+
+				archiveUseCase(destRepo, destStore).importGlobal(archive).shouldBeLeft()
+
+				destRepo.getCurrentConfig() shouldBe existing
+				destStore.list(TrustScope.Global).shouldBeRight().shouldBeEmpty()
+			}
+		}
+		for ((case, archive) in broken(profileEntries, profileFingerprint)) {
+			withClue("importProfile, $case") {
+				val destRepo = inMemoryRepo(existing)
+				val destStore = newStore()
+
+				archiveUseCase(destRepo, destStore).importProfile(archive).shouldBeLeft()
+
+				destRepo.getCurrentConfig() shouldBe existing
+				destStore.list(TrustScope.Profile("p1")).shouldBeRight().shouldBeEmpty()
+			}
+		}
+	}
+
+	test("importProfile restores only the manifest's profile entries, even when it lists the global settings'") {
+		val sourceRepo = inMemoryRepo(AppConfig(profiles = mapOf("p1" to ProfileConfig(name = "p1"))))
+		val sourceStore = newStore()
+		sourceStore.add(TrustScope.Global, selfSignedDer("Root"), TrustedCertificateType.CA).shouldBeRight()
+		val profileFingerprint = sourceStore.add(TrustScope.Profile("p1"), selfSignedDer("ProfileCa"), TrustedCertificateType.TSA)
+			.shouldBeRight().fingerprint
+		val fullArchive = archiveUseCase(sourceRepo, sourceStore).exportApp(ConfigFormat.JSON).shouldBeRight()
+		val profileText = ExportImportConfigUseCase(sourceRepo, serializers()).exportProfile("p1", ConfigFormat.JSON)
+			.shouldBeRight()
+		val archive = zip(unzip(fullArchive) + ("config.json" to profileText.encodeToByteArray()))
+
+		val destStore = newStore()
+		archiveUseCase(inMemoryRepo(AppConfig()), destStore).importProfile(archive).shouldBeRight() shouldBe "p1"
+
+		destStore.list(TrustScope.Profile("p1")).shouldBeRight().map { it.fingerprint } shouldBe listOf(profileFingerprint)
+		destStore.list(TrustScope.Global).shouldBeRight().shouldBeEmpty()
+	}
+
+	test("an archive that unpacks to exactly 64 MiB is imported, and one a byte larger is refused") {
+		val limit = 64 * 1024 * 1024
+		val configText = ExportImportConfigUseCase(inMemoryRepo(AppConfig()), serializers()).exportApp(ConfigFormat.JSON)
+			.shouldBeRight().encodeToByteArray()
+
+		fun unpackingTo(size: Int) = zip(mapOf("config.json" to configText, "padding.bin" to ByteArray(size - configText.size)))
+
+		archiveUseCase(inMemoryRepo(AppConfig()), newStore()).importApp(unpackingTo(limit)).shouldBeRight()
+		val error = archiveUseCase(inMemoryRepo(AppConfig()), newStore()).importApp(unpackingTo(limit + 1)).shouldBeLeft()
+		error.details shouldBe "The archive unpacks to more than 64 MiB"
 	}
 
 	test("an archive with an entry name that is not UTF-8 is refused as unreadable") {

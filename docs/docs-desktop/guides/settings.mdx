@@ -264,7 +264,7 @@ configuration.
   archive to restore. The archive must hold a full configuration, as **Export** or
   `omnisign config export --all` writes it: one with only the global settings or a single profile
   is refused with an error that says what it holds, and so is one whose manifest or certificates
-  cannot be read. A refused archive changes nothing.
+  cannot be read, or one that unpacks to more than 64 MiB. A refused archive changes nothing.
 
 ### Appearance (Linux)
 

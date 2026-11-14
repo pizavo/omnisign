@@ -34,6 +34,7 @@ import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotBeBlank
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.string.shouldNotStartWith
+import io.kotest.matchers.string.shouldStartWith
 import io.kotest.matchers.types.shouldBeInstanceOf
 import tools.jackson.databind.DatabindException
 import kotlin.io.path.createTempFile
@@ -485,5 +486,55 @@ class ConfigSerializerTest : FunSpec({
 		val document = """{"activeProfile": "work", "signingHistory": []}"""
 
 		JsonConfigSerializer().deserializeApp(document).shouldBeRight().activeProfile shouldBe "work"
+	}
+
+	test("every format refuses a document most of whose properties no configuration of its kind has, though it has a profile's name") {
+		val documents = listOf(
+			JsonConfigSerializer() to """{"name": "my-app", "version": "1.0.0", "scripts": {"build": "tsc"}}""",
+			YamlConfigSerializer() to "name: CI\non: push\njobs: {}",
+			XmlConfigSerializer() to "<project><name>my-app</name><version>1.0.0</version><scripts/></project>",
+		)
+		for ((serializer, document) in documents) {
+			val results = listOf(
+				serializer.deserializeApp(document),
+				serializer.deserializeGlobal(document),
+				serializer.deserializeProfile(document),
+			)
+			for (result in results) {
+				val error = refusal(result)
+				error.text shouldBe LocalizableText.of(MessageKey.CONFIG_DOCUMENT_NOT_CONFIGURATION)
+				error.details.shouldNotBeNull() shouldStartWith "Top-level properties: name, "
+			}
+		}
+	}
+
+	test("a profile that sets only its name reads, and so does one with as many unknown properties as known") {
+		val json = JsonConfigSerializer()
+
+		json.deserializeProfile("""{"name": "work"}""").shouldBeRight().name shouldBe "work"
+		json.deserializeProfile("""{"name": "work", "signingHistory": []}""").shouldBeRight().name shouldBe "work"
+		json.deserializeProfile(
+			"""{"name": "work", "hashAlgorithm": "SHA384", "signingHistory": [], "reviewers": []}"""
+		).shouldBeRight().hashAlgorithm shouldBe HashAlgorithm.SHA384
+	}
+
+	test("the details of a document that holds no configuration list its first ten properties") {
+		val properties = (1..12).joinToString { """"p%02d": 1""".format(it) }
+
+		refusal(JsonConfigSerializer().deserializeGlobal("{$properties}")).details shouldBe
+			"Top-level properties: " + (1..10).joinToString { "p%02d".format(it) } + ", ..."
+	}
+
+	test("XML refuses a root that holds only text, saying it has no top-level properties") {
+		val documents = listOf(
+			"<AppConfig> </AppConfig>",
+			"<AppConfig>text</AppConfig>",
+			"<AppConfig><![CDATA[x]]></AppConfig>",
+		)
+		for (document in documents) {
+			val error = refusal(XmlConfigSerializer().deserializeApp(document))
+			error.text shouldBe LocalizableText.of(MessageKey.CONFIG_DOCUMENT_NOT_CONFIGURATION)
+			error.details shouldBe "The document has no top-level properties"
+		}
 	}
 })

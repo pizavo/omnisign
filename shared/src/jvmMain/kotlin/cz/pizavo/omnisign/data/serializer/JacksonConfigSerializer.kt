@@ -60,6 +60,9 @@ abstract class JacksonConfigSerializer(
 	/** The top-level properties of the global settings, which a full configuration does not have. */
 	private val globalMarkers: Set<String>
 
+	/** Every top-level property of each kind of configuration. */
+	private val kindProperties: Map<ConfigDocumentKind, Set<String>>
+
 	init {
 		val app = propertyNames(AppConfig::class.java)
 		val global = propertyNames(GlobalConfig::class.java)
@@ -67,6 +70,11 @@ abstract class JacksonConfigSerializer(
 		appMarkers = app - global - profile
 		profileMarkers = profile - global - app
 		globalMarkers = global - app
+		kindProperties = mapOf(
+			ConfigDocumentKind.APP to app,
+			ConfigDocumentKind.GLOBAL to global,
+			ConfigDocumentKind.PROFILE to profile,
+		)
 	}
 
 	override fun serializeApp(config: AppConfig): OperationResult<String> =
@@ -137,21 +145,25 @@ abstract class JacksonConfigSerializer(
 
 	/**
 	 * The kind of configuration [document] holds, as its top-level properties tell, or `null` when it
-	 * has none of a configuration's.
+	 * holds none.
 	 *
 	 * A full configuration shares no top-level property with the other two kinds, so any of its own
 	 * marks one. A profile shares most of its properties with the global settings, so only those the
 	 * global settings lack mark it, such as the `name` every profile has. Any other property of the
-	 * global settings marks those.
+	 * global settings marks those. A document most of whose top-level properties the marked kind
+	 * does not have holds none, as a `package.json` holds no profile for its `name`; a file a newer
+	 * build wrote still reads, as it has every property this build knows besides its new ones.
 	 */
 	private fun kindOf(document: ObjectNode): ConfigDocumentKind? {
-		val names = document.propertyNames()
-		return when {
+		val names = topLevelNames(document)
+		val kind = when {
 			names.any { it in appMarkers } -> ConfigDocumentKind.APP
 			names.any { it in profileMarkers } -> ConfigDocumentKind.PROFILE
 			names.any { it in globalMarkers } -> ConfigDocumentKind.GLOBAL
-			else -> null
+			else -> return null
 		}
+		val own = kindProperties.getValue(kind)
+		return kind.takeIf { names.count { it in own } * 2 >= names.size }
 	}
 
 	/**
@@ -159,10 +171,17 @@ abstract class JacksonConfigSerializer(
 	 * configuration in it; at most the first [MAX_LISTED_PROPERTIES] are listed.
 	 */
 	private fun propertiesFound(document: ObjectNode): String =
-		document.propertyNames()
+		topLevelNames(document)
 			.takeIf { it.isNotEmpty() }
 			?.joinToString(prefix = "Top-level properties: ", limit = MAX_LISTED_PROPERTIES)
 			?: "The document has no top-level properties"
+
+	/**
+	 * The top-level property names of [document], without the empty name Jackson gives the text an
+	 * XML root holds, which no configuration has.
+	 */
+	private fun topLevelNames(document: ObjectNode): List<String> =
+		document.propertyNames().filter { it.isNotBlank() }
 
 	/**
 	 * The top-level property names [mapper] writes for [type], read from the format visitor Jackson

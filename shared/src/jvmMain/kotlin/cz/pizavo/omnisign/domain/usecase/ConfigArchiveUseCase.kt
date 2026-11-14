@@ -125,15 +125,17 @@ class ConfigArchiveUseCase(
 	 * Import a profile archive: upsert the profile (optionally renamed via [overrideName]), then
 	 * restore the archive's trust references into the imported profile's scope.
 	 *
-	 * The archive is checked before anything is changed, as [importApp] describes, and one that holds
-	 * a full configuration or the global settings instead of a profile is refused.
+	 * Only the manifest's profile entries are restored; the global certificates belong to an import
+	 * of the global settings. The archive is checked before anything is changed, as [importApp]
+	 * describes, and one that holds a full configuration or the global settings instead of a profile
+	 * is refused.
 	 *
 	 * @return The name the profile was saved under.
 	 */
 	suspend fun importProfile(archive: ByteArray, overrideName: String? = null): OperationResult<String> {
 		val entries = readZip(archive).getOrElse { return it.left() }
 		val (configText, format) = readConfigEntry(entries).getOrElse { return it.left() }
-		val certificates = readTrust(entries) { true }.getOrElse { return it.left() }
+		val certificates = readTrust(entries) { it.startsWith(PROFILE_SCOPE_PREFIX) }.getOrElse { return it.left() }
 		val savedName = exportImport.importProfile(configText, format, overrideName).getOrElse { return it.left() }
 		restoreTrust(certificates) { TrustScope.Profile(savedName) }.getOrElse { return it.left() }
 		return savedName.right()
@@ -266,7 +268,8 @@ class ConfigArchiveUseCase(
 
 	/**
 	 * Write [files] (already sorted by name) into a deterministic ZIP: fixed entry timestamps and a
-	 * stable order, so identical state produces byte-identical archives on every machine.
+	 * stable order, so identical state produces byte-identical archives whatever the time zone of the
+	 * machine that writes them.
 	 */
 	private fun writeZip(files: Map<String, ByteArray>): ByteArray {
 		val buffer = ByteArrayOutputStream()
@@ -331,7 +334,7 @@ class ConfigArchiveUseCase(
 
 		/**
 		 * Fixed ZIP entry timestamp for reproducible archives: 2000-01-01 00:00, written as an MS-DOS
-		 * date and time, which carry no time zone, so that every machine writes the same bytes.
+		 * date and time, which carry no time zone, so that the bytes do not depend on the machine's.
 		 */
 		private val FIXED_ENTRY_TIME: LocalDateTime = LocalDateTime.of(2000, 1, 1, 0, 0)
 
