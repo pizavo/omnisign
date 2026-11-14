@@ -251,7 +251,9 @@ the boot-time reconciliation stops the server from starting with an error that n
 and leaves the directory as it is. Without a [`signingConfigFile`](#signingconfigfile) there is
 nothing to reconcile, so the server starts, validates without the directory's certificates, and
 answers `GET /api/v1/config/trusted-certificates` and `GET /api/v1/config/export` with a
-`TRUST_STORE_FAILED` error.
+`TRUST_STORE_FAILED` error. A certificate file in the directory that cannot be read, as one whose
+owner a restore changed, is kept: the server starts, logs a warning, and leaves that certificate
+out of validation until the file can be read again.
 
 ### `aia`
 

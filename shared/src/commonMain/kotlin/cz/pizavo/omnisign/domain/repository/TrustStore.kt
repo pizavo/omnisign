@@ -106,7 +106,9 @@ interface TrustStore {
 	 * Every referenced certificate is returned at full trust; the per-reference
 	 * [type][ResolvedTrustAnchor.type] travels on each [ResolvedTrustAnchor] for post-validation
 	 * policy enforcement rather than filtering the trust input. When a certificate is referenced by
-	 * both the global scope and [scope] with different types, the [scope] type takes precedence.
+	 * both the global scope and [scope] with different types, the [scope] type takes precedence. A
+	 * certificate whose stored copy is missing or cannot be read now is left out, so that the others
+	 * are still used.
 	 *
 	 * @param scope Scope to resolve.
 	 * @return The resolved anchors, or an error.
@@ -118,7 +120,9 @@ interface TrustStore {
 	 * supplying its bytes. Adding the reference again replaces its [type].
 	 *
 	 * Used by the server boot-time reconcile to restore a scope membership when a declared source
-	 * file is gone but the content-addressed copy is still in the store.
+	 * file is gone but the content-addressed copy is still in the store. A stored copy that cannot be
+	 * read now is still in the store, so it is referenced, and [resolve] leaves it out until it can
+	 * be read.
 	 *
 	 * @return Unit on success, or
 	 *   [cz.pizavo.omnisign.domain.model.error.TrustStoreError.NotFound] when no certificate with

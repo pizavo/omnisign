@@ -45,12 +45,12 @@ import kotlin.io.path.writeBytes
  * Verifies [FileTrustStore]: content-addressed storage, per-scope references, per-reference type,
  * dedup, reference-counted GC, scope resolution, load-time repair, an index that cannot be read or
  * whose existence cannot be told, which every operation refuses while it leaves the directory as it
- * was, a missing index that is put back, a certificate file that cannot be read, and the details of
- * an error that an I/O failure causes.
+ * was, a missing index that is put back, a certificate file that cannot be read or looked up, which
+ * is kept and can still be referenced, and the details of an error that an I/O failure causes.
  *
  * The tests of a file this user may not read or look up deny it through ACLs on Windows and
  * through the POSIX permissions elsewhere, and do not run as root, whom the permissions do not
- * stop. The test of a certificate file whose existence cannot be told runs only where ACLs can hide
+ * stop. The tests of a certificate file whose existence cannot be told run only where ACLs can hide
  * one file: elsewhere that takes the search permission of its directory, which hides the index too.
  */
 @OptIn(ExperimentalSerializationApi::class)
@@ -491,6 +491,31 @@ class FileTrustStoreTest : FunSpec({
 		val store = newStore()
 		store.reference(TrustScope.Global, "sha256-unknown", TrustedCertificateType.ANY).shouldBeLeft()
 			.shouldBeInstanceOf<TrustStoreError.NotFound>()
+	}
+
+	test("reference takes a stored copy whose existence cannot be told for one that is there, not a missing one").config(
+		enabledIf = {
+			System.getProperty("user.name") != "root" && root.fileAttributesViewOrNull<AclFileAttributeView>() != null
+		},
+	) {
+		val dir = newDir()
+		val bytes = der("Root")
+		val store = FileTrustStore(dir)
+		val fp = store.add(TrustScope.Global, bytes, TrustedCertificateType.CA).shouldBeRight().fingerprint
+		val restore = denyLookingUp(dir.resolve("$fp.der"))
+
+		val referenced = try {
+			store.reference(TrustScope.Profile("p"), fp, TrustedCertificateType.TSA)
+		} finally {
+			restore()
+		}
+
+		referenced.shouldBeRight()
+		val listed = store.list(TrustScope.Profile("p")).shouldBeRight().single()
+		listed.fingerprint shouldBe fp
+		listed.type shouldBe TrustedCertificateType.TSA
+		FileTrustStore(dir).resolve(TrustScope.Profile("p")).shouldBeRight().single().der.toList() shouldBe
+			bytes.toList()
 	}
 
 	test("findBySource resolves the fingerprint recorded for a source, and null otherwise") {
