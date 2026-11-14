@@ -81,6 +81,7 @@ class IdTokenVerifierTest : FunSpec({
         algorithm: Algorithm = signingAlgorithm,
         expiresAt: Date = Date(System.currentTimeMillis() + 60_000),
         flags: Map<String, Any> = emptyMap(),
+        nullClaims: List<String> = emptyList(),
     ): String {
         val builder = JWT.create()
             .withIssuer(issuer)
@@ -90,6 +91,7 @@ class IdTokenVerifierTest : FunSpec({
             .withIssuedAt(Date())
         if (kid != null) builder.withKeyId(kid)
         if (email != null) builder.withClaim("email", email)
+        nullClaims.forEach { builder.withNullClaim(it) }
         flags.forEach { (name, value) ->
             when (value) {
                 is Boolean -> builder.withClaim(name, value)
@@ -117,10 +119,20 @@ class IdTokenVerifierTest : FunSpec({
         verifier.verify(provider, signValid(flags = mapOf("email_verified" to "false"))).emailVerified shouldBe false
     }
 
-    test("verify reports no flag when email_verified is absent or holds anything else") {
+    test("verify reports no flag when email_verified is absent or JSON null") {
         verifier.verify(provider, signValid()).emailVerified shouldBe null
-        verifier.verify(provider, signValid(flags = mapOf("email_verified" to "yes"))).emailVerified shouldBe null
-        verifier.verify(provider, signValid(flags = mapOf("email_verified" to 1))).emailVerified shouldBe null
+        verifier.verify(provider, signValid(nullClaims = listOf("email_verified"))).emailVerified shouldBe null
+    }
+
+    test("verify reads an email_verified claim holding anything but a recognisable yes or no as no") {
+        verifier.verify(provider, signValid(flags = mapOf("email_verified" to "yes"))).emailVerified shouldBe false
+        verifier.verify(provider, signValid(flags = mapOf("email_verified" to "0"))).emailVerified shouldBe false
+        verifier.verify(provider, signValid(flags = mapOf("email_verified" to 1))).emailVerified shouldBe false
+        verifier.verify(provider, signValid(flags = mapOf("email_verified" to 0))).emailVerified shouldBe false
+    }
+
+    test("verify reads an xms_edov claim holding anything but a recognisable yes or no as no") {
+        verifier.verify(microsoftProvider, signValid(flags = mapOf("xms_edov" to 1))).emailVerified shouldBe false
     }
 
     test("verify reads xms_edov as the verification flag of a Microsoft token") {

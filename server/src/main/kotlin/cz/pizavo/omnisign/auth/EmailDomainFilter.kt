@@ -26,6 +26,13 @@ import java.net.IDN
  * `fabrıkam.com`, a different and registrable domain, onto `fabrikam.com`. A domain or entry
  * that is no valid host name matches nothing.
  *
+ * Java's conversion follows IDNA2003, which rewrites a few characters that today's IDNA2008
+ * registries keep: `ß` becomes `ss`, the final sigma `ς` becomes `σ`, and the zero-width
+ * joiners vanish. `claß.com`, registered as its own domain `xn--cla-pia.com`, would therefore
+ * pass for `class.com`. So a domain written with non-ASCII characters counts only if
+ * converting it back gives the same domain, ignoring case; any other matches nothing. A
+ * domain with such characters can still be listed, and matched, in its `xn--` spelling.
+ *
  * Empty and missing [allowedDomains] are not handled here — they are rejected at
  * server startup so the filter can rely on receiving a deliberate, non-empty
  * operator choice. See `OidcProviderConfig.allowedEmailDomains` for the
@@ -49,13 +56,21 @@ internal fun isEmailDomainAllowed(email: String?, allowedDomains: List<String>):
 /**
  * Convert [domain] to the lower-case ASCII form DNS uses for it.
  *
- * @return The converted domain, or `null` when [domain] is empty or no valid host name.
+ * An ASCII domain, `xn--` spellings included, converts to itself. A domain with other
+ * characters converts only when converting the result back gives [domain] again, ignoring
+ * case, so a domain that the conversion would rewrite into another one cannot pass for it.
+ *
+ * @return The converted domain, or `null` when [domain] is empty, no valid host name, or
+ *   rewritten by the conversion.
  */
 private fun asciiDomain(domain: String): String? {
     if (domain.isEmpty()) return null
-    return try {
-        IDN.toASCII(domain, IDN.USE_STD3_ASCII_RULES).lowercase()
+    val ascii = try {
+        IDN.toASCII(domain, IDN.USE_STD3_ASCII_RULES)
     } catch (_: IllegalArgumentException) {
-        null
+        return null
     }
+    val faithful = domain.all { it <= '\u007F' } ||
+        IDN.toUnicode(ascii, IDN.USE_STD3_ASCII_RULES).lowercase() == domain.lowercase()
+    return ascii.lowercase().takeIf { faithful }
 }

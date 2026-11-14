@@ -163,11 +163,16 @@ class OidcUserInfoServiceTest : FunSpec({
         service.emailVerified(buildJsonObject { put("email_verified", "False") }) shouldBe false
     }
 
-    test("emailVerified reports no flag when the claim is absent or holds anything else") {
+    test("emailVerified reports no flag when the claim is absent or JSON null") {
         service.emailVerified(buildJsonObject { put("email", "u@example.com") }).shouldBeNull()
-        service.emailVerified(buildJsonObject { put("email_verified", 1) }).shouldBeNull()
         service.emailVerified(buildJsonObject { put("email_verified", JsonNull) }).shouldBeNull()
-        service.emailVerified(buildJsonObject { put("email_verified", buildJsonObject { }) }).shouldBeNull()
+    }
+
+    test("emailVerified reads a claim holding anything but a recognisable yes or no as no") {
+        service.emailVerified(buildJsonObject { put("email_verified", 0) }) shouldBe false
+        service.emailVerified(buildJsonObject { put("email_verified", 1) }) shouldBe false
+        service.emailVerified(buildJsonObject { put("email_verified", "no") }) shouldBe false
+        service.emailVerified(buildJsonObject { put("email_verified", buildJsonObject { }) }) shouldBe false
     }
 
     /**
@@ -225,6 +230,23 @@ class OidcUserInfoServiceTest : FunSpec({
         githubService("""{"message": "unexpected"}""")
             .fetchGitHubEmailVerified("gh-token", "octocat@example.com")
             .shouldBeNull()
+    }
+
+    test("fetchGitHubEmailVerified does not let a verified lookalike vouch for the address") {
+        val lookalike = """[{"email": "ceo@fabrıkam.com", "verified": true, "primary": false, "visibility": null}]"""
+
+        githubService(lookalike).fetchGitHubEmailVerified("gh-token", "ceo@fabrikam.com").shouldBeNull()
+    }
+
+    test("fetchGitHubEmailVerified lets any listing of the address that says no win") {
+        val twice = """
+            [
+              {"email": "Octocat@Example.com", "verified": true, "primary": true, "visibility": "public"},
+              {"email": "octocat@example.com", "verified": false, "primary": false, "visibility": null}
+            ]
+        """.trimIndent()
+
+        githubService(twice).fetchGitHubEmailVerified("gh-token", "octocat@example.com") shouldBe false
     }
 })
 

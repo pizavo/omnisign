@@ -39,12 +39,34 @@ class OidcAuthResultTest : FunSpec({
         result.withIdToken(null) shouldBeSameInstanceAs result
     }
 
-    test("an id_token without an address leaves the UserInfo address and flag, whatever flag it carries") {
+    test("an id_token without an address leaves the UserInfo address and flag when it vouches or says nothing") {
         val result = userInfoResult("alice@contoso.com", emailVerified = null)
 
-        val merged = result.withIdToken(idToken(email = null, emailVerified = true))
+        listOf(true, null).forEach { tokenFlag ->
+            val merged = result.withIdToken(idToken(email = null, emailVerified = tokenFlag))
 
-        merged.principal.email shouldBe "alice@contoso.com"
+            merged.principal.email shouldBe "alice@contoso.com"
+            merged.emailVerified.shouldBeNull()
+        }
+    }
+
+    test("an id_token without an address that marks the user's address unverified still says no") {
+        listOf(true, null).forEach { userInfoFlag ->
+            val result = userInfoResult("alice@contoso.com", emailVerified = userInfoFlag)
+
+            val merged = result.withIdToken(idToken(email = null, emailVerified = false))
+
+            merged.principal.email shouldBe "alice@contoso.com"
+            merged.emailVerified shouldBe false
+        }
+    }
+
+    test("a UserInfo flag for a lookalike address does not count for the signed address") {
+        val result = userInfoResult("alice@fabrıkam.com", emailVerified = true)
+
+        val merged = result.withIdToken(idToken(email = "alice@fabrikam.com", emailVerified = null))
+
+        merged.principal.email shouldBe "alice@fabrikam.com"
         merged.emailVerified.shouldBeNull()
     }
 

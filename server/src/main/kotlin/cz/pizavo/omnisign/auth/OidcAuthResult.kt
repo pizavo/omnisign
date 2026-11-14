@@ -27,18 +27,26 @@ data class OidcAuthResult(
  * Fold what the verified [idToken] says about the user's address into this result.
  *
  * The id_token is signed by the IdP, so the address it names takes precedence over the
- * UserInfo one and becomes the principal's. Its verification flag counts only together with
- * that address, and the UserInfo flag only while UserInfo named the same address, ignoring
- * case. Of the flags that count, one saying the address is not verified wins, so neither
- * source can vouch for more than the other allows.
+ * UserInfo one and becomes the principal's. Its verification flag vouches only together with
+ * that address, and the UserInfo flag counts only while UserInfo named the same address,
+ * compared after lower-casing both; ignoring case character by character would let a
+ * lookalike such as the dotless `ı` of `fabrıkam.com` pass for `fabrikam.com`. Of the flags
+ * that count, one saying the address is not verified wins, so neither source can vouch for
+ * more than the other allows.
+ *
+ * A token that names no address leaves the UserInfo address in place. Its flag cannot vouch
+ * for an address it does not name, but a flag saying the user's address is not verified
+ * still stands.
  *
  * @param idToken The verified id_token of the login, or `null` when the provider's token was
  *   not verified; the result is then returned unchanged.
  * @return The result to judge the login by and mint its session from.
  */
 fun OidcAuthResult.withIdToken(idToken: VerifiedIdToken?): OidcAuthResult {
-    val signedEmail = idToken?.email ?: return this
-    val userInfoFlag = emailVerified.takeIf { principal.email.equals(signedEmail, ignoreCase = true) }
+    if (idToken == null) return this
+    val signedEmail = idToken.email
+        ?: return if (idToken.emailVerified == false) copy(emailVerified = false) else this
+    val userInfoFlag = emailVerified.takeIf { principal.email?.lowercase() == signedEmail.lowercase() }
     return copy(
         principal = principal.copy(email = signedEmail),
         emailVerified = listOfNotNull(idToken.emailVerified, userInfoFlag).minOrNull(),

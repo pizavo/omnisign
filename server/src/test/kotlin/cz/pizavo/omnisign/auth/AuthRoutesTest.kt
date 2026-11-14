@@ -1266,6 +1266,34 @@ class AuthRoutesTest : FunSpec({
 		}
 	}
 
+	test("OIDC callback refuses a login whose id_token marks the address unverified without naming it, even when assumed verified") {
+		withTempSessionsDb {
+			withJwksServer { jwksUri ->
+				testApplication {
+					val idToken = signTestIdToken("https://idp.example", mapOf("email_verified" to false))
+					application {
+						module(
+							authTestConfig(
+								idpAuthConfig(listOf("contoso.com"), assumeEmailVerified = true, verifyIdToken = true),
+							),
+							authTestSecrets(idpSecrets),
+							oidcIdpMockEngine(
+								"""{"sub":"u1","email":"alice@contoso.com"}""",
+								idToken = idToken,
+								jwksUri = jwksUri,
+							),
+						)
+					}
+
+					val callback = completeLogin("idp")
+
+					callback.status shouldBe HttpStatusCode.Forbidden
+					callback.errorCode() shouldBe "EMAIL_NOT_VERIFIED"
+				}
+			}
+		}
+	}
+
 	/**
 	 * Auth config with one Microsoft provider for the single tenant `contoso.onmicrosoft.com`,
 	 * restricted to `contoso.com`, verifying its id_tokens.

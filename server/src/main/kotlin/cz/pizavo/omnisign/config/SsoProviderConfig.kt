@@ -84,9 +84,11 @@ sealed interface SsoProviderConfig {
  *   or the account's email list for [SsoProviderPreset.GITHUB]. Set it to `true` only for an
  *   IdP that sends no flag although every address it hands out is assigned or checked by its
  *   operator, such as a self-hosted IdP without the claim. An address the IdP marks
- *   unverified is refused either way. Rejected at startup on a multi-tenant Microsoft
- *   provider (`tenantId` `common` or `organizations`), where any tenant's administrator can
- *   assign any address; add the `xms_edov` claim there instead. Has no effect under `["*"]`.
+ *   unverified, or flags with anything but a recognisable yes, is refused either way.
+ *   Rejected at startup on a multi-tenant Microsoft provider (`tenantId` `common` or
+ *   `organizations`, or a [discoveryUrl] on such an endpoint), where any tenant's
+ *   administrator can assign any address; add the `xms_edov` claim there instead. Has no
+ *   effect under `["*"]`.
  */
 data class OidcProviderConfig(
     override val name: String,

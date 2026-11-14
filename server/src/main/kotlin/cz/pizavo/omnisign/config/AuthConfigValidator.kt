@@ -30,10 +30,11 @@ import java.net.URI
  *    reasonably second-guess at request time — by then the operator is not watching.
  *
  * 4. **`assumeEmailVerified` on a multi-tenant Microsoft provider.** With `tenantId` `common`
- *    or `organizations`, any Entra tenant can sign in, and each tenant's administrator can
- *    give a user any address, the operator's own domain included. Entra sends no
- *    `email_verified` claim, so assuming its addresses verified would let a stranger's tenant
- *    pass the domain list; the optional `xms_edov` claim is the way to admit these users.
+ *    or `organizations`, or a `discoveryUrl` on such an endpoint, any Entra tenant can sign
+ *    in, and each tenant's administrator can give a user any address, the operator's own
+ *    domain included. Entra sends no `email_verified` claim, so assuming its addresses
+ *    verified would let a stranger's tenant pass the domain list; the optional `xms_edov`
+ *    claim is the way to admit these users.
  *
  * Called from [cz.pizavo.omnisign.moduleWith] before any provider-dependent component
  * is wired into the application module, so a misconfiguration aborts the server boot
@@ -54,13 +55,13 @@ fun validateAuthConfig(authConfig: AuthConfig?) {
 			"provider '${provider.name}' must set allowedEmailDomains. " +
 				"Use [\"*\"] to allow any domain, or list specific ones."
 		}
-		val multiTenantMicrosoft = provider.preset == SsoProviderPreset.MICROSOFT &&
-			provider.tenantId?.lowercase() in MULTI_TENANT_MICROSOFT_TENANTS
-		require(!(provider.assumeEmailVerified && multiTenantMicrosoft)) {
+		val multiTenantEndpoint = multiTenantMicrosoftEndpoint(provider)
+		require(!(provider.assumeEmailVerified && multiTenantEndpoint != null)) {
 			"provider '${provider.name}' sets assumeEmailVerified on the multi-tenant Microsoft " +
-				"tenant '${provider.tenantId}', where any tenant's administrator can give a user any " +
-				"address. Remove it and add the optional claim xms_edov to the app registration's " +
-				"ID token, which says whether the address's domain is verified in the user's tenant."
+				"endpoint '$multiTenantEndpoint', where any tenant's administrator can give a user any " +
+				"address. Remove it, use preset MICROSOFT, and add the optional claim xms_edov to the " +
+				"app registration's ID token, which says whether the address's domain is verified in " +
+				"the user's tenant."
 		}
 		provider.requiredClaims?.forEach { (key, values) ->
 			require(values.isNotEmpty()) {
@@ -73,10 +74,53 @@ fun validateAuthConfig(authConfig: AuthConfig?) {
 }
 
 /**
- * The `tenantId` values with which a [SsoProviderPreset.MICROSOFT] provider admits users of any
- * Entra tenant, in lower case.
+ * The multi-tenant Microsoft endpoint [provider] signs users in through, if any.
+ *
+ * The discovery URL decides, as it does for [cz.pizavo.omnisign.auth.OidcDiscoveryService]:
+ * an explicit `discoveryUrl` wins over the preset's template filled with `tenantId`. Such a
+ * URL counts as Microsoft's when the provider uses [SsoProviderPreset.MICROSOFT] or the host is
+ * one of Entra ID's sign-in hosts, which covers the national clouds that only an explicit URL
+ * reaches.
+ *
+ * @return The `tenantId` or `discoveryUrl` that makes the provider multi-tenant, or `null`
+ *   when it is not.
+ */
+private fun multiTenantMicrosoftEndpoint(provider: OidcProviderConfig): String? {
+	val discoveryUrl = provider.discoveryUrl
+	if (discoveryUrl == null) {
+		val multiTenant = provider.preset == SsoProviderPreset.MICROSOFT &&
+			provider.tenantId?.lowercase() in MULTI_TENANT_MICROSOFT_TENANTS
+		return provider.tenantId.takeIf { multiTenant }
+	}
+	val url = runCatching { URI(discoveryUrl) }.getOrNull() ?: return null
+	val microsoft = provider.preset == SsoProviderPreset.MICROSOFT ||
+		url.host?.lowercase() in MICROSOFT_SIGN_IN_HOSTS
+	val tenant = url.path.orEmpty().trimStart('/').substringBefore('/').lowercase()
+	return discoveryUrl.takeIf { microsoft && tenant in MULTI_TENANT_MICROSOFT_TENANTS }
+}
+
+/**
+ * The tenants in a Microsoft sign-in URL (`tenantId`, or a discovery URL's first path segment)
+ * that admit users of any Entra tenant, in lower case.
  */
 private val MULTI_TENANT_MICROSOFT_TENANTS = setOf("common", "organizations")
+
+/**
+ * Entra ID's sign-in hosts in the global and national clouds, with their aliases, in lower
+ * case.
+ */
+private val MICROSOFT_SIGN_IN_HOSTS = setOf(
+	"login.microsoftonline.com",
+	"login.microsoft.com",
+	"login.windows.net",
+	"sts.windows.net",
+	"login.microsoftonline.us",
+	"login.usgovcloudapi.net",
+	"login-us.microsoftonline.com",
+	"login.partner.microsoftonline.cn",
+	"login.chinacloudapi.cn",
+	"login.microsoftonline.de",
+)
 
 /**
  * Check a single `auth.allowedRedirectUris` entry.

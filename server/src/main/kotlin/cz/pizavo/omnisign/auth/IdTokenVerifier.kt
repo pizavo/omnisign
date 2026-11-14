@@ -258,7 +258,12 @@ class IdTokenVerifier(
  * Read this claim as a verification flag: a JSON boolean, or the string `"true"` or `"false"`
  * in any case, as Amazon Cognito and Sign in with Apple send it.
  *
- * @return The flag, or `null` when the claim is absent or holds anything else.
+ * A claim that is present but none of these, such as `0` or `"no"`, counts as `false`: the
+ * IdP said something about the address, and only a recognisable yes may vouch for it.
+ *
+ * @return The flag, or `null` when the claim is absent or JSON `null`.
  */
-private fun Claim.asVerificationFlag(): Boolean? =
-    asBoolean() ?: asString()?.lowercase()?.toBooleanStrictOrNull()
+private fun Claim.asVerificationFlag(): Boolean? {
+    if (isMissing || isNull) return null
+    return asBoolean() ?: asString()?.lowercase()?.toBooleanStrictOrNull() ?: false
+}

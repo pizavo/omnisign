@@ -82,5 +82,27 @@ class EmailDomainFilterTest : FunSpec({
     test("an entry that is no valid host name matches nothing") {
         isEmailDomainAllowed("user@contoso.com", listOf("@contoso.com")) shouldBe false
     }
+
+    test("a domain with ß does not pass for the ASCII domain IDNA2003 would turn it into") {
+        isEmailDomainAllowed("user@claß.com", listOf("class.com")) shouldBe false
+        isEmailDomainAllowed("user@CLAß.com", listOf("class.com")) shouldBe false
+    }
+
+    test("an entry with ß admits nobody of the ASCII domain IDNA2003 would turn it into") {
+        isEmailDomainAllowed("user@class.com", listOf("claß.com")) shouldBe false
+    }
+
+    test("a domain with a Greek final sigma does not pass for its plain-sigma spelling") {
+        isEmailDomainAllowed("user@αβς.gr", listOf("αβσ.gr")) shouldBe false
+    }
+
+    test("a domain with a zero-width joiner does not pass for the domain without it") {
+        isEmailDomainAllowed("user@con‍toso.com", listOf("contoso.com")) shouldBe false
+    }
+
+    test("a domain with ß matches in its xn-- spelling, which keeps it apart from the ASCII one") {
+        isEmailDomainAllowed("user@xn--cla-pia.com", listOf("xn--cla-pia.com")) shouldBe true
+        isEmailDomainAllowed("user@xn--cla-pia.com", listOf("class.com")) shouldBe false
+    }
 })
 

@@ -7,6 +7,7 @@ import io.ktor.client.request.*
 import io.ktor.http.*
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
@@ -86,7 +87,8 @@ class OidcUserInfoService(private val httpClient: HttpClient) {
      * Read whether the UserInfo [claims] mark their `email` verified.
      *
      * Accepts the standard JSON boolean as well as the strings `"true"` and `"false"` in any
-     * case, which Amazon Cognito's UserInfo endpoint returns.
+     * case, which Amazon Cognito's UserInfo endpoint returns. Any other value, such as `0`
+     * or `"no"`, counts as `false`: only a recognisable yes vouches for the address.
      *
      * @param claims Raw claims from the IdP's UserInfo endpoint.
      * @return The `email_verified` flag, or `null` when the claims carry none.
@@ -100,11 +102,16 @@ class OidcUserInfoService(private val httpClient: HttpClient) {
      * The account's email list at [GITHUB_USER_EMAILS_API_URL] carries one for each address;
      * reading it needs the `user:email` scope.
      *
+     * Listed addresses are compared with [email] after lower-casing both. Ignoring case
+     * character by character instead would let a lookalike such as the dotless `ı` of
+     * `fabrıkam.com`, a different domain, pass for `fabrikam.com`.
+     *
      * @param accessToken The GitHub OAuth access token of the login.
      * @param email The address the login is judged by.
-     * @return The `verified` flag of the listed address that equals [email] ignoring case, or
-     *   `null` when the list does not include it or cannot be read — no scope, an error
-     *   status, a network failure, or an unexpected body, each logged.
+     * @return The `verified` flag of the listed address that matches [email] (`false` if any
+     *   listing of it says no), or `null` when the list does not include it or cannot be
+     *   read — no scope, an error status, a network failure, or an unexpected body, each
+     *   logged.
      */
     suspend fun fetchGitHubEmailVerified(accessToken: String, email: String): Boolean? {
         val entries = try {
@@ -126,10 +133,12 @@ class OidcUserInfoService(private val httpClient: HttpClient) {
             logger.warn(e) { "Could not read the GitHub account's email list" }
             return null
         }
+        val address = email.lowercase()
         return entries
             .filterIsInstance<JsonObject>()
-            .firstOrNull { it.string("email").equals(email, ignoreCase = true) }
-            ?.verificationFlag("verified")
+            .filter { it.string("email")?.lowercase() == address }
+            .mapNotNull { it.verificationFlag("verified") }
+            .minOrNull()
     }
 
     companion object {
@@ -149,7 +158,13 @@ private fun JsonObject.string(key: String): String? =
  * Read the verification flag under [key]: a JSON boolean, or the string `"true"` or
  * `"false"` in any case.
  *
- * @return The flag, or `null` when the key is absent or holds anything else.
+ * A value that is present but none of these, such as `0` or `"no"`, counts as `false`: the
+ * IdP said something about the address, and only a recognisable yes may vouch for it.
+ *
+ * @return The flag, or `null` when the key is absent or JSON `null`.
  */
-private fun JsonObject.verificationFlag(key: String): Boolean? =
-    string(key)?.lowercase()?.toBooleanStrictOrNull()
+private fun JsonObject.verificationFlag(key: String): Boolean? {
+    val value = this[key]
+    if (value == null || value is JsonNull) return null
+    return (value as? JsonPrimitive)?.content?.lowercase()?.toBooleanStrictOrNull() ?: false
+}

@@ -178,4 +178,50 @@ class AuthConfigValidatorTest : FunSpec({
             AuthConfig(providers = listOf(oidc("keycloak", listOf("contoso.com")).copy(assumeEmailVerified = true))),
         )
     }
+
+    /** A provider that reaches its IdP through the explicit [discoveryUrl], assuming verification. */
+    fun assumingAt(discoveryUrl: String, preset: SsoProviderPreset?) = OidcProviderConfig(
+        name = "entra",
+        preset = preset,
+        clientId = "id",
+        discoveryUrl = discoveryUrl,
+        allowedEmailDomains = listOf("contoso.com"),
+        assumeEmailVerified = true,
+    )
+
+    test("rejects assumeEmailVerified on a discoveryUrl that reaches a multi-tenant Microsoft endpoint") {
+        listOf(
+            assumingAt(
+                "https://login.sovereign-cloud.example/organizations/v2.0/.well-known/openid-configuration",
+                SsoProviderPreset.MICROSOFT,
+            ),
+            assumingAt("https://login.microsoftonline.us/organizations/v2.0/.well-known/openid-configuration", null),
+            assumingAt("https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration", null),
+            assumingAt("https://LOGIN.chinacloudapi.cn/Organizations/v2.0/.well-known/openid-configuration", null),
+            microsoft("contoso.onmicrosoft.com", assumeEmailVerified = true).copy(
+                discoveryUrl = "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration",
+            ),
+        ).forEach { provider ->
+            val ex = shouldThrow<IllegalArgumentException> {
+                validateAuthConfig(AuthConfig(providers = listOf(provider)))
+            }
+            ex.message!! shouldContain provider.discoveryUrl!!
+            ex.message!! shouldContain "xms_edov"
+        }
+    }
+
+    test("accepts assumeEmailVerified on a discoveryUrl for one Microsoft tenant or another IdP") {
+        listOf(
+            assumingAt(
+                "https://login.microsoftonline.com/contoso.onmicrosoft.com/v2.0/.well-known/openid-configuration",
+                SsoProviderPreset.MICROSOFT,
+            ),
+            assumingAt("https://idp.example/organizations/.well-known/openid-configuration", null),
+            microsoft("common", assumeEmailVerified = true).copy(
+                discoveryUrl = "https://login.microsoftonline.com/contoso.onmicrosoft.com/v2.0/.well-known/openid-configuration",
+            ),
+        ).forEach { provider ->
+            validateAuthConfig(AuthConfig(providers = listOf(provider)))
+        }
+    }
 })
