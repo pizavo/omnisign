@@ -343,7 +343,7 @@ class FileTrustStore(
 	 */
 	private fun holdsCertificate(fingerprint: String, bytes: ByteArray): Boolean {
 		val intact = certFingerprint(bytes) == fingerprint
-		if (!intact) logger.warn { "Trust file for $fingerprint fails its own checksum; leaving it out" }
+		if (!intact) logger.warn { "Trust file for $fingerprint fails its own checksum" }
 		return intact
 	}
 

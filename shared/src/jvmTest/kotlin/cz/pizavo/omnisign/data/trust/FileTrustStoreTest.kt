@@ -384,6 +384,17 @@ class FileTrustStoreTest : FunSpec({
 		store.resolve(TrustScope.Global).shouldBeRight().map { it.der.toList() } shouldBe listOf(intact.toList())
 	}
 
+	test("resolve leaves out a certificate file deleted since the store loaded and gives the others") {
+		val dir = newDir()
+		val store = FileTrustStore(dir)
+		val deleted = store.add(TrustScope.Global, der("Deleted"), TrustedCertificateType.CA).shouldBeRight().fingerprint
+		val intact = der("Intact")
+		store.add(TrustScope.Global, intact, TrustedCertificateType.CA).shouldBeRight()
+		dir.resolve("$deleted.der").deleteExisting()
+
+		store.resolve(TrustScope.Global).shouldBeRight().map { it.der.toList() } shouldBe listOf(intact.toList())
+	}
+
 	test("adding a certificate again leaves its file as it is while the file cannot be read").config(
 		enabledIf = { System.getProperty("user.name") != "root" },
 	) {
