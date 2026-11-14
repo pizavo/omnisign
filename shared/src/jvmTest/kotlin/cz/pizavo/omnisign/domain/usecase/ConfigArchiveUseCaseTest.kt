@@ -45,8 +45,8 @@ import java.util.zip.ZipOutputStream
 
 /**
  * Verifies [ConfigArchiveUseCase] round-trips the configuration and its scoped trust material
- * through the ZIP archive: a global cert, a profile-scoped cert (with name override), and a
- * cert-free export. An archive of another kind than the import reads is refused with nothing
+ * through the ZIP archive: a global cert, in a global and in a full archive, a profile-scoped cert
+ * (with name override), and a cert-free export. An archive of another kind than the import reads is refused with nothing
  * changed, and a global import restores the global trust scope alone. An archive whose manifest,
  * or a certificate it lists, cannot be read is refused in the same way, as are one whose entry
  * names are not UTF-8 and one that unpacks to more than an import accepts. An export holds the
@@ -145,6 +145,24 @@ class ConfigArchiveUseCaseTest : FunSpec({
 		destRepo.getCurrentConfig().profiles.shouldContainKey("p1")
 		destStore.list(TrustScope.Profile("p1")).shouldBeRight().single().type shouldBe TrustedCertificateType.TSA
 		destStore.list(TrustScope.Global).shouldBeRight().shouldBeEmpty()
+	}
+
+	test("app archive restores the global settings' trusted cert beside a profile's") {
+		val sourceRepo = inMemoryRepo(AppConfig(profiles = mapOf("p1" to ProfileConfig(name = "p1"))))
+		val sourceStore = newStore()
+		val globalFingerprint = sourceStore.add(TrustScope.Global, selfSignedDer("GlobalRoot"), TrustedCertificateType.CA)
+			.shouldBeRight().fingerprint
+		val profileFingerprint = sourceStore.add(TrustScope.Profile("p1"), selfSignedDer("ProfileTsa"), TrustedCertificateType.TSA)
+			.shouldBeRight().fingerprint
+		val archive = archiveUseCase(sourceRepo, sourceStore).exportApp(ConfigFormat.JSON).shouldBeRight()
+
+		val destStore = newStore()
+		archiveUseCase(inMemoryRepo(AppConfig()), destStore).importApp(archive).shouldBeRight()
+
+		val global = destStore.list(TrustScope.Global).shouldBeRight()
+		global.map { it.fingerprint } shouldBe listOf(globalFingerprint)
+		global.single().type shouldBe TrustedCertificateType.CA
+		destStore.list(TrustScope.Profile("p1")).shouldBeRight().map { it.fingerprint } shouldBe listOf(profileFingerprint)
 	}
 
 	test("profile archive import honors the name override and scopes trust to the new name") {

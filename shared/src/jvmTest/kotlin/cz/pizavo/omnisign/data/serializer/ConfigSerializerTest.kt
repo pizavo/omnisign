@@ -45,7 +45,8 @@ import kotlin.io.path.writeText
  * Verifies symmetric serialize→deserialize round-trips and invalid-input handling
  * for JSON, YAML, and XML serializers, and how each format reads a hand-written file: what YAML takes
  * for null, a number, or a boolean, how XML writes an empty set, and what every format refuses,
- * a document of another kind of configuration than the one asked for among it.
+ * a document of another kind of configuration than the one asked for among it, with details that
+ * show the names the document holds escaped and cut.
  */
 class ConfigSerializerTest : FunSpec({
 	
@@ -355,17 +356,31 @@ class ConfigSerializerTest : FunSpec({
 	}
 
 	test("every format refuses a null where a number is required") {
-		JsonConfigSerializer().deserializeApp("""{"schedulerConfig":{"runAtHour":null}}""").shouldBeLeft()
-		YamlConfigSerializer().deserializeApp("schedulerConfig:\n  runAtHour: ~").shouldBeLeft()
-		XmlConfigSerializer().deserializeApp("<AppConfig><schedulerConfig><runAtHour/></schedulerConfig></AppConfig>").shouldBeLeft()
+		val documents = listOf(
+			JsonConfigSerializer() to """{"schedulerConfig":{"runAtHour":null,"runAtMinute":5}}""",
+			YamlConfigSerializer() to "schedulerConfig:\n  runAtHour: ~\n  runAtMinute: 5",
+			XmlConfigSerializer() to
+				"<AppConfig><schedulerConfig><runAtHour/><runAtMinute>5</runAtMinute></schedulerConfig></AppConfig>",
+		)
+		for ((serializer, document) in documents) {
+			withClue(document) {
+				serializer.deserializeApp(document).shouldBeLeft().shouldBeInstanceOf<ConfigurationError.LoadFailed>()
+			}
+		}
 	}
 
 	test("every format refuses a null inside a set") {
-		JsonConfigSerializer().deserializeGlobal("""{"disabledHashAlgorithms":["SHA256",null]}""").shouldBeLeft()
-		YamlConfigSerializer().deserializeGlobal("disabledHashAlgorithms: [SHA256, ~]").shouldBeLeft()
-		XmlConfigSerializer().deserializeGlobal(
-			"<GlobalConfig><disabledHashAlgorithms><disabledHashAlgorithms/></disabledHashAlgorithms></GlobalConfig>"
-		).shouldBeLeft()
+		val documents = listOf(
+			JsonConfigSerializer() to """{"disabledHashAlgorithms":["SHA256",null]}""",
+			YamlConfigSerializer() to "disabledHashAlgorithms: [SHA256, ~]",
+			XmlConfigSerializer() to "<GlobalConfig><disabledHashAlgorithms><disabledHashAlgorithms>SHA256" +
+				"</disabledHashAlgorithms><disabledHashAlgorithms/></disabledHashAlgorithms></GlobalConfig>",
+		)
+		for ((serializer, document) in documents) {
+			withClue(document) {
+				serializer.deserializeGlobal(document).shouldBeLeft().shouldBeInstanceOf<ConfigurationError.LoadFailed>()
+			}
+		}
 	}
 
 	test("every format refuses content after the document instead of ignoring it") {
@@ -683,6 +698,24 @@ class ConfigSerializerTest : FunSpec({
 
 		refusal(JsonConfigSerializer().deserializeGlobal("{$properties}")).details shouldBe
 			"Top-level properties: " + (1..10).joinToString { "p%02d".format(it) } + ", ..."
+	}
+
+	test("the details of a refused document write the control, format, separator and surrogate characters of a name as escapes, and cut a long name") {
+		val json = JsonConfigSerializer()
+		val names = listOf("a\\u001b[31mb", "c\\u202ed", "e\\u2028f", "g\\u2029h", "i\\ud83d\\ude00", "x".repeat(65), "y".repeat(64))
+		val document = names.joinToString(prefix = """{"name": "work", """, postfix = "}") { """"$it": 1""" }
+
+		refusal(json.deserializeProfile(document)).details shouldBe "Top-level properties a profile does not have: " +
+			names.dropLast(2).joinToString() + ", " + "x".repeat(64) + "..., " + "y".repeat(64)
+	}
+
+	test("the details of a refused section write the profile key that leads to it as an escaped and cut name") {
+		val json = JsonConfigSerializer()
+
+		refusal(json.deserializeApp("""{"profiles": {"w\u001bork": {"rules": []}}}""")).details shouldBe
+			"profiles.w\\u001bork holds only properties it does not have in a configuration: rules"
+		refusal(json.deserializeApp("""{"profiles": {"${"z".repeat(70)}": {"rules": []}}}""")).details shouldBe
+			"profiles.${"z".repeat(64)}... holds only properties it does not have in a configuration: rules"
 	}
 
 	test("XML refuses a root that holds only text, and JSON one whose only property has no name, as having no named top-level properties") {

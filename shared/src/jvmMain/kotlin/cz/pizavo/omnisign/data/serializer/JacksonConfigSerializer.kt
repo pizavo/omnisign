@@ -220,7 +220,9 @@ abstract class JacksonConfigSerializer(
 		for ((name, section) in classSections.getValue(type)) {
 			val value = node.get(name) as? ObjectNode ?: continue
 			val parts = if (section.inMap) {
-				value.properties().mapNotNull { (key, part) -> (part as? ObjectNode)?.let { "$prefix$name.$key" to it } }
+				value.properties().mapNotNull { (key, part) ->
+					(part as? ObjectNode)?.let { "$prefix$name.${shown(key)}" to it }
+				}
 			} else {
 				listOf("$prefix$name" to value)
 			}
@@ -248,10 +250,30 @@ abstract class JacksonConfigSerializer(
 
 	/**
 	 * [names] after [prefix], for the details of an error that found no configuration in a document;
-	 * at most the first [MAX_LISTED_PROPERTIES] are listed.
+	 * at most the first [MAX_LISTED_PROPERTIES] are listed, each as [shown] writes it.
 	 */
 	private fun listed(prefix: String, names: List<String>): String =
-		names.joinToString(prefix = prefix, limit = MAX_LISTED_PROPERTIES)
+		names.joinToString(prefix = prefix, limit = MAX_LISTED_PROPERTIES) { shown(it) }
+
+	/**
+	 * [name], which a document gives a property or an entry of a map, as the details of an error show
+	 * it: cut to its first [MAX_SHOWN_NAME_LENGTH] characters, and with each character of the
+	 * [ESCAPED_CATEGORIES] written as a `\u` escape. The CLI prints the details to a terminal, which
+	 * would act on such a character, an escape sequence or a mark that reverses the text after it,
+	 * rather than show it.
+	 */
+	private fun shown(name: String): String {
+		val cut = if (name.length > MAX_SHOWN_NAME_LENGTH) name.take(MAX_SHOWN_NAME_LENGTH) + "..." else name
+		return buildString {
+			for (char in cut) {
+				if (char.category in ESCAPED_CATEGORIES) {
+					append("\\u").append(char.code.toString(16).padStart(4, '0'))
+				} else {
+					append(char)
+				}
+			}
+		}
+	}
 
 	/**
 	 * The property names of [node] that are not blank. No configuration has a blank one, and Jackson
@@ -321,6 +343,23 @@ abstract class JacksonConfigSerializer(
 	private companion object {
 		/** How many property names the details of an error that found no configuration list at most. */
 		const val MAX_LISTED_PROPERTIES = 10
+
+		/** How many characters of a name the details of an error show at most, as [shown] cuts it. */
+		const val MAX_SHOWN_NAME_LENGTH = 64
+
+		/**
+		 * The categories of the characters [shown] writes as a `\u` escape: control characters, such
+		 * as the escape that starts a terminal's escape sequence; format characters, such as the marks
+		 * that set the direction of text; line and paragraph separators; and surrogates, so that a
+		 * name cut between the two halves of a character does not end in half of one.
+		 */
+		val ESCAPED_CATEGORIES: Set<CharCategory> = setOf(
+			CharCategory.CONTROL,
+			CharCategory.FORMAT,
+			CharCategory.LINE_SEPARATOR,
+			CharCategory.PARAGRAPH_SEPARATOR,
+			CharCategory.SURROGATE,
+		)
 
 		/** The details of an error for a document none of whose top-level properties has a name. */
 		const val NO_NAMED_PROPERTIES = "The document has no named top-level properties"
