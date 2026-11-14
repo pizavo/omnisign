@@ -259,6 +259,7 @@ fun IslandLayout(
 			koin.get<GetDocumentTimestampInfoUseCase>(),
 			koin.get<ConfigRepository>(),
 			renewalJobAssigner,
+			prefetchInspection = !isWebPlatform(),
 		)
 	}
 	val timestampState by (timestampViewModel?.state ?: remember {

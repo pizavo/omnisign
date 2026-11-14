@@ -1,6 +1,7 @@
 <resources>
 	<string name="timestamp_dialog_title">Rozšířit dokument</string>
 	<string name="timestamp_extending">Rozšiřování dokumentu...</string>
+	<string name="timestamp_inspecting">Zjišťování aktuální úrovně dokumentu...</string>
 	<string name="timestamp_type_label">Typ časového razítka</string>
 	<string name="timestamp_option_add_timestamp_revocation">Přidat časové razítko a informace o zneplatnění</string>
 	<string name="timestamp_option_add_revocation">Přidat informace o zneplatnění</string>

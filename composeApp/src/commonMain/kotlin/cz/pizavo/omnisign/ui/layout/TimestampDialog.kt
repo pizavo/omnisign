@@ -20,6 +20,7 @@ import org.jetbrains.compose.resources.stringResource
  * Modal dialog for extending a signed PDF to a higher PAdES level (timestamp / archival).
  *
  * The dialog adapts its content to the current [TimestampDialogState]:
+ * - [TimestampDialogState.Inspecting]: progress indicator while the document's current level is read.
  * - [TimestampDialogState.Ready]: form with the timestamp type selector.
  * - [TimestampDialogState.Extending]: progress indicator.
  * - [TimestampDialogState.RevocationWarning]: revocation data warning with abort/continue options.
@@ -64,6 +65,7 @@ fun TimestampDialog(
 			Box(modifier = Modifier.weight(1f)) {
 				when (state) {
 					is TimestampDialogState.Idle -> {}
+					is TimestampDialogState.Inspecting -> LoadingContent(stringResource(Res.string.timestamp_inspecting))
 					is TimestampDialogState.Ready -> TimestampFormContent(
 						state = state,
 						onFieldChange = onFieldChange,

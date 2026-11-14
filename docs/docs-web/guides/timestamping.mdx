@@ -28,7 +28,8 @@ Open the document with the folder icon <AppIcon name="folder" color="folder" lab
 
 Click the stamp icon <AppIcon name="stamp" label="Timestamp" /> in the toolbar. The browser asks the
 server to inspect the document, so the dialog can offer only the extensions that make sense for its
-current level.
+current level. The dialog shows a spinner until the server answers. If the inspection fails, the
+dialog shows the error instead of the options; close it and try again.
 
 ## 3. Choose what to add
 

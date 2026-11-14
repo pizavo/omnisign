@@ -1,6 +1,7 @@
 <resources>
 	<string name="timestamp_dialog_title">Rozšíriť dokument</string>
 	<string name="timestamp_extending">Rozširuje sa dokument...</string>
+	<string name="timestamp_inspecting">Zisťuje sa aktuálna úroveň dokumentu...</string>
 	<string name="timestamp_type_label">Typ časovej pečiatky</string>
 	<string name="timestamp_option_add_timestamp_revocation">Pridať časovú pečiatku a informácie o zrušení</string>
 	<string name="timestamp_option_add_revocation">Pridať informácie o zrušení</string>

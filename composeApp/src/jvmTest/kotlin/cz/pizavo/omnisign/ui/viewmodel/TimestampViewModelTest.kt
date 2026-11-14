@@ -30,9 +30,12 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
 import io.mockk.coVerify
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.test.*
+import kotlinx.coroutines.withContext
 
 /**
  * Unit tests for [TimestampViewModel].
@@ -82,7 +85,13 @@ class TimestampViewModelTest : FunSpec({
 	// Destination the save dialog would return; extension writes the produced bytes here.
 	val extendedPath = "/tmp/signed-extended.pdf"
 
-	fun buildVm() = TimestampViewModel(extendUseCase, getTimestampInfoUseCase, configRepository, ioDispatcher = testDispatcher)
+	fun buildVm(prefetchInspection: Boolean = true) = TimestampViewModel(
+		extendUseCase,
+		getTimestampInfoUseCase,
+		configRepository,
+		ioDispatcher = testDispatcher,
+		prefetchInspection = prefetchInspection,
+	)
 
 	test("initial state is Idle") {
 		buildVm().state.value.shouldBeInstanceOf<TimestampDialogState.Idle>()
@@ -166,7 +175,7 @@ class TimestampViewModelTest : FunSpec({
 		}
 	}
 
-	test("a failed inspection reads as a document with no timestamps") {
+	test("a failed inspection is reported rather than read as a document with no timestamps") {
 		runTest(testDispatcher) {
 			coEvery { archivingRepository.getDocumentTimestampInfo(any(), any()) } returns
 					ArchivingError.ExtensionFailed(text = LocalizableText.Literal("corrupt file")).left()
@@ -175,8 +184,119 @@ class TimestampViewModelTest : FunSpec({
 			vm.open(sampleDoc())
 			advanceUntilIdle()
 
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Error>()
+			state.content shouldBe ErrorMessage.Domain(LocalizableText.Literal("corrupt file"), null)
+		}
+	}
+
+	test("a failed pre-fetch is not kept, so opening the dialog inspects the document again") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.getDocumentTimestampInfo(any(), any()) } returnsMany listOf(
+				ArchivingError.ExtensionFailed(text = LocalizableText.Literal("busy")).left(),
+				hasDocTs.right(),
+			)
+
+			val vm = buildVm()
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
 			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
-			state.unavailableTypes shouldBe emptySet()
+			state.currentLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+			coVerify(exactly = 2) { archivingRepository.getDocumentTimestampInfo(any(), any()) }
+		}
+	}
+
+	test("with the pre-fetch off, loading a document does not inspect it") {
+		runTest(testDispatcher) {
+			val vm = buildVm(prefetchInspection = false)
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			coVerify(exactly = 0) { archivingRepository.getDocumentTimestampInfo(any(), any()) }
+		}
+	}
+
+	test("with the pre-fetch off, the dialog inspects the document when it opens") {
+		runTest(testDispatcher) {
+			coEvery { archivingRepository.getDocumentTimestampInfo(any(), any()) } returns hasDocTs.right()
+
+			val vm = buildVm(prefetchInspection = false)
+			vm.onDocumentChanged(sampleDoc())
+			advanceUntilIdle()
+
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
+			state.currentLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+			coVerify(exactly = 1) { archivingRepository.getDocumentTimestampInfo(any(), any()) }
+		}
+	}
+
+	test("the dialog shows that it is inspecting the document until the options are known") {
+		runTest(testDispatcher) {
+			val vm = buildVm(prefetchInspection = false)
+
+			vm.open(sampleDoc())
+
+			vm.state.value shouldBe TimestampDialogState.Inspecting
+			advanceUntilIdle()
+			vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
+		}
+	}
+
+	test("closing the dialog while it inspects keeps the late result from bringing the form back") {
+		runTest(testDispatcher) {
+			val inspecting = CompletableDeferred<Unit>()
+			val finish = CompletableDeferred<Unit>()
+			coEvery { archivingRepository.getDocumentTimestampInfo(any(), any()) } coAnswers {
+				withContext(NonCancellable) {
+					inspecting.complete(Unit)
+					finish.await()
+				}
+				hasDocTs.right()
+			}
+
+			val vm = buildVm(prefetchInspection = false)
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+			inspecting.isCompleted shouldBe true
+
+			vm.dismiss()
+			finish.complete(Unit)
+			advanceUntilIdle()
+
+			vm.state.value shouldBe TimestampDialogState.Idle
+		}
+	}
+
+	test("opening the dialog again drops an earlier open that is still inspecting") {
+		runTest(testDispatcher) {
+			val finishFirst = CompletableDeferred<Unit>()
+			var inspections = 0
+			coEvery { archivingRepository.getDocumentTimestampInfo(any(), any()) } coAnswers {
+				inspections++
+				if (inspections == 1) {
+					withContext(NonCancellable) { finishFirst.await() }
+					hasDocTs.right()
+				} else {
+					noTimestamps.right()
+				}
+			}
+
+			val vm = buildVm(prefetchInspection = false)
+			vm.open(sampleDoc(filePath = "/tmp/first.pdf", name = "first.pdf"))
+			advanceUntilIdle()
+			vm.open(sampleDoc(filePath = "/tmp/second.pdf", name = "second.pdf"))
+			advanceUntilIdle()
+			finishFirst.complete(Unit)
+			advanceUntilIdle()
+
+			val state = vm.state.value.shouldBeInstanceOf<TimestampDialogState.Ready>()
+			state.suggestedName shouldContain "second"
 			state.currentLevel shouldBe SignatureLevel.PADES_BASELINE_B
 		}
 	}
