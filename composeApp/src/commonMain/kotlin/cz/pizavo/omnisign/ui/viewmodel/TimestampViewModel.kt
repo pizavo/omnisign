@@ -189,9 +189,10 @@ class TimestampViewModel(
 	 * ends in [TimestampDialogState.Error]: offering the options of a document with no
 	 * timestamps instead could propose an extension the document's real level rules out.
 	 *
-	 * Everything the open learns is applied on the calling thread once the work on
-	 * `ioDispatcher` returns, so an open that [dismiss] or a newer [open] cancelled leaves no
-	 * trace, even when its inspection could not be interrupted and ran to the end.
+	 * Everything the open learns about the document is applied on the calling thread once the
+	 * work on `ioDispatcher` returns, so an open that [dismiss] or a newer [open] cancelled cannot
+	 * bring the form back or change what it offers, even when its inspection could not be
+	 * interrupted and ran to the end.
 	 *
 	 * @param document The signed PDF document to extend; its bytes are forwarded to the
 	 *   extension use case and its `filePath` (when present) seeds the suggested output path
