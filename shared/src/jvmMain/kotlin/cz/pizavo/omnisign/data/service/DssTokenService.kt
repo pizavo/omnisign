@@ -288,24 +288,6 @@ class DssTokenService(
 		}
 	}
 
-	override suspend fun loadCertificatesFromFile(
-		filePath: String,
-		password: String,
-	): OperationResult<List<CertificateEntry>> {
-		val file = File(filePath)
-		if (!file.exists()) {
-			return SigningError.fileNotFound(filePath).left()
-		}
-		val tokenInfo = TokenInfo(
-			id = "file-${file.nameWithoutExtension}-${file.absolutePath.hashCode().toUInt()}",
-			name = file.name,
-			type = TokenType.FILE,
-			path = file.absolutePath,
-			requiresPin = true,
-		)
-		return loadCertificatesInternal(tokenInfo, password)
-	}
-
 	override suspend fun requestPassword(prompt: String, title: String): String? =
 		passwordCallback.requestPassword(prompt, title)
 

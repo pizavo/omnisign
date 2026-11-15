@@ -375,7 +375,8 @@ class SigningViewModel(
 	 * Prompts the user for the file password and, on success, merges the discovered
 	 * certificates into [SigningDialogState.Ready.certificates] in
 	 * [cz.pizavo.omnisign.domain.repository.signingCertificateOrder], re-sorting the whole
-	 * list rather than appending.
+	 * list rather than appending, and records [filePath] for each of them in
+	 * [SigningDialogState.Ready.importedKeystores], so that [sign] signs from the file.
 	 *
 	 * @param filePath Absolute path to the PKCS#12 (.p12 / .pfx) file.
 	 */
@@ -404,6 +405,7 @@ class SigningViewModel(
 								val merged = (current.certificates + certs).sortedWith(signingCertificateOrder)
 								current.copy(
 									certificates = merged,
+									importedKeystores = current.importedKeystores + certs.associate { it.alias to filePath },
 									selectedAlias = current.selectedAlias ?: merged.firstOrNull()?.alias,
 								)
 							} else current
@@ -424,6 +426,10 @@ class SigningViewModel(
 	 * user picks a destination, after which [completeSave] finishes the flow. This ordering makes the
 	 * save dialog the last step, so a revocation warning is answered *before* it opens and aborting
 	 * leaves nothing on disk.
+	 *
+	 * A certificate imported by [loadPkcs12File] signs from its file, given as
+	 * [SigningParameters.keystoreFile], which asks for the file's password again; any other is
+	 * looked up among the tokens.
 	 */
 	fun sign() {
 		val ready = _state.value as? SigningDialogState.Ready ?: return
@@ -442,6 +448,7 @@ class SigningViewModel(
 					inputName = document.name,
 					certificateAlias = ready.selectedAlias,
 					certificateSlotId = selectedSlot,
+					keystoreFile = ready.selectedAlias?.let(ready.importedKeystores::get),
 					hashAlgorithm = ready.hashAlgorithm ?: config.hashAlgorithm,
 					signatureLevel = ready.effectiveSignatureLevel,
 					reason = ready.reason.ifBlank { null },

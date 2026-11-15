@@ -9,6 +9,7 @@ import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.SigningError
+import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.domain.model.result.SigningResult
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
@@ -35,6 +36,7 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.slot
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -899,6 +901,70 @@ class SigningViewModelTest : FunSpec({
 			state.tokenWarnings shouldHaveSize 1
 			state.tokenWarnings.first().message.english() shouldBe "Wrong password"
 			state.certificates shouldHaveSize 1
+		}
+	}
+
+	test("sign signs a certificate imported from a file from that file, though another file was imported after it") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { signingRepository.loadCertificatesFromFile("/tmp/first.p12") } returns
+					listOf(sampleCert.copy(alias = "first-cert", tokenType = "FILE")).right()
+			coEvery { signingRepository.loadCertificatesFromFile("/tmp/second.p12") } returns
+					listOf(sampleCert.copy(alias = "second-cert", tokenType = "FILE")).right()
+			val parameters = slot<SigningParameters>()
+			coEvery { signingRepository.signDocument(capture(parameters)) } returns
+					SigningResult(
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-B",
+					).right()
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+			vm.loadPkcs12File("/tmp/first.p12")
+			advanceUntilIdle()
+			vm.loadPkcs12File("/tmp/second.p12")
+			advanceUntilIdle()
+
+			vm.updateState { it.copy(selectedAlias = "first-cert") }
+			vm.sign()
+			advanceUntilIdle()
+
+			parameters.captured.certificateAlias shouldBe "first-cert"
+			parameters.captured.keystoreFile shouldBe "/tmp/first.p12"
+		}
+	}
+
+	test("sign looks a discovered certificate up among the tokens, with no file, after a file was imported") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { signingRepository.loadCertificatesFromFile("/tmp/first.p12") } returns
+					listOf(sampleCert.copy(alias = "first-cert", tokenType = "FILE")).right()
+			val parameters = slot<SigningParameters>()
+			coEvery { signingRepository.signDocument(capture(parameters)) } returns
+					SigningResult(
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-B",
+					).right()
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+			vm.loadPkcs12File("/tmp/first.p12")
+			advanceUntilIdle()
+
+			vm.updateState { it.copy(selectedAlias = "test-cert") }
+			vm.sign()
+			advanceUntilIdle()
+
+			parameters.captured.certificateAlias shouldBe "test-cert"
+			parameters.captured.keystoreFile.shouldBeNull()
 		}
 	}
 

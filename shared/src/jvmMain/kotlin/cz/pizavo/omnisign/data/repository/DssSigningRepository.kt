@@ -454,25 +454,13 @@ class DssSigningRepository(
 	@Suppress("TooGenericExceptionCaught")
 	override suspend fun loadCertificatesFromFile(filePath: String): OperationResult<List<AvailableCertificateInfo>> {
 		return try {
+			val file = File(filePath)
+			if (!file.exists()) return SigningError.fileNotFound(file.path).left()
 			val password = tokenService.requestPassword(
-				"Enter password for ${File(filePath).name}",
+				"Enter password for ${file.name}",
 				"PKCS#12 Password Required",
 			) ?: return SigningError.passwordEntryCancelled().left()
-			
-			tokenService.loadCertificatesFromFile(filePath, password).map { certs ->
-				certs.map { cert ->
-					AvailableCertificateInfo(
-						alias = cert.alias,
-						subjectDN = cert.subjectDN,
-						issuerDN = cert.issuerDN,
-						validFrom = cert.validFrom,
-						validTo = cert.validTo,
-						tokenType = TokenType.FILE.name,
-						tokenName = File(filePath).name,
-						keyUsages = cert.keyUsages,
-					)
-				}
-			}
+			keystoreCertificates(file, password)
 		} catch (e: Exception) {
 			SigningError.loadCertificatesFromFileFailed(details = e.message, cause = e).left()
 		}
@@ -486,26 +474,23 @@ class DssSigningRepository(
 		return try {
 			val file = File(keystoreFile)
 			if (!file.exists()) return SigningError.fileNotFound(file.path).left()
-			val fileToken = keystoreTokenInfo(file)
-			tokenService.loadCertificatesSilent(fileToken, keystorePassword?.value ?: "").map { certs ->
-				certs.map { cert ->
-					AvailableCertificateInfo(
-						alias = cert.alias,
-						subjectDN = cert.subjectDN,
-						issuerDN = cert.issuerDN,
-						validFrom = cert.validFrom,
-						validTo = cert.validTo,
-						tokenType = TokenType.FILE.name,
-						tokenName = file.name,
-						keyUsages = cert.keyUsages,
-						isQualified = cert.isQualified,
-						isQscd = cert.isQscd,
-					)
-				}
-			}
+			keystoreCertificates(file, keystorePassword?.value ?: "")
 		} catch (e: Exception) {
 			SigningError.listCertificatesFailed(details = e.message, cause = e).left()
 		}
+	}
+
+	/**
+	 * The certificates of the PKCS#12 keystore at [file], opened with [password] as the token that
+	 * [keystoreTokenInfo] builds for it, so that each alias is the one [resolveKeyFromKeystore]
+	 * matches when a document is signed from the same file.
+	 */
+	private suspend fun keystoreCertificates(
+		file: File,
+		password: String,
+	): OperationResult<List<AvailableCertificateInfo>> {
+		val token = keystoreTokenInfo(file)
+		return tokenService.loadCertificatesSilent(token, password).map { it.toAvailableCertificateInfoList(token) }
 	}
 
 	/**
@@ -760,11 +745,12 @@ class DssSigningRepository(
 	/**
 	 * Build the transient [TokenInfo] for the PKCS#12 keystore at [file].
 	 *
-	 * Shared by [resolveKeyFromKeystore] (signing) and [listCertificatesFromKeystore] (listing) so
-	 * both derive the *same* [TokenInfo.id] — and therefore the same deterministic
-	 * `<CN>-<serial>@<id>` alias (see `pkcs11CertAlias`). This agreement is load-bearing: it is what
-	 * lets a certificate listed for the signing dialog be handed straight back as
-	 * [SigningParameters.certificateAlias] and resolve to the same key when signing.
+	 * Shared by [resolveKeyFromKeystore] (signing) and [keystoreCertificates] (the listing behind
+	 * [loadCertificatesFromFile] and [listCertificatesFromKeystore]) so both derive the *same*
+	 * [TokenInfo.id] — and therefore the same deterministic `<CN>-<serial>@<id>` alias (see
+	 * `pkcs11CertAlias`). This agreement is load-bearing: it is what lets a certificate listed for
+	 * the signing dialog be handed straight back as [SigningParameters.certificateAlias], with the
+	 * file as [SigningParameters.keystoreFile], and resolve to the same key when signing.
 	 */
 	private fun keystoreTokenInfo(file: File): TokenInfo = TokenInfo(
 		id = "keystore-${file.name}",
@@ -783,7 +769,7 @@ class DssSigningRepository(
 	 * is protected, the user is prompted with hidden input via [TokenService.requestPassword].
 	 * [SigningParameters.certificateAlias] selects the certificate within the keystore, or its sole /
 	 * first key when omitted. The keystore [TokenInfo] is built by [keystoreTokenInfo], shared with
-	 * [listCertificatesFromKeystore] so the alias a client selects from the listing matches here.
+	 * [keystoreCertificates] so the alias a client selects from the listing matches here.
 	 */
 	private suspend fun resolveKeyFromKeystore(
 		parameters: SigningParameters,
