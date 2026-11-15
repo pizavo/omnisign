@@ -266,15 +266,16 @@ class DssTokenService(
 	 * PIN attempts.
 	 *
 	 * Returns an empty list (never an error) for non-PKCS#11 tokens, a token whose id carries no
-	 * serial, when the probe fails, or when the token exposes no public certificates — callers
-	 * then fall back to the PIN-prompt path.
+	 * serial or a blank one, which would match the slot of every token that reports none, when the
+	 * probe fails, or when the token exposes no public certificates — callers then fall back to
+	 * the PIN-prompt path.
 	 */
 	override suspend fun listCertificatesNoLogin(
 		tokenInfo: TokenInfo,
 	): OperationResult<List<CertificateEntry>> {
 		if (tokenInfo.type != TokenType.PKCS11) return emptyList<CertificateEntry>().right()
 		val libraryPath = tokenInfo.path ?: return emptyList<CertificateEntry>().right()
-		val serial = tokenInfo.pkcs11TokenSerial()?.let(::normalizeSerial)
+		val serial = tokenInfo.pkcs11TokenSerial()?.let(::normalizeSerial)?.takeIf { it.isNotEmpty() }
 			?: return emptyList<CertificateEntry>().right()
 		val certs = runCatching {
 			val result = prober.runCertProbe(libraryPath, probeTimeout.seconds)

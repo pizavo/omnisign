@@ -19,6 +19,10 @@ class Pkcs11TokenIdTest : FunSpec({
 		token(pkcs11TokenId("0123 abcd"), TokenType.PKCS11).pkcs11TokenSerial() shouldBe "0123 abcd"
 	}
 
+	test("a serial that itself begins with the id's prefix is read back whole") {
+		token(pkcs11TokenId("pkcs11-7"), TokenType.PKCS11).pkcs11TokenSerial() shouldBe "pkcs11-7"
+	}
+
 	test("a PKCS#11 token whose id was not built from a serial has none") {
 		token("keystore-card.p12", TokenType.PKCS11).pkcs11TokenSerial().shouldBeNull()
 	}

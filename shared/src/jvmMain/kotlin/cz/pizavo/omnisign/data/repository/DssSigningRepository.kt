@@ -583,13 +583,24 @@ class DssSigningRepository(
 	 * Within each token, [tryResolveFromToken] opens the PKCS#11 slot that actually holds the
 	 * selected certificate's private key, which need not be the slot discovery pinned the
 	 * [TokenInfo] to on a card that presents several token-present slots.
+	 *
+	 * When an alias is requested, only the token it names is tried. An alias ends with the id of
+	 * the token it was listed from (`…@<token id>`, see
+	 * [pkcs11CertAlias][cz.pizavo.omnisign.data.service.pkcs11CertAlias]) and
+	 * [selectSigningKeyByAlias] matches it whole, so no other token can hold the certificate.
+	 * Trying another PKCS#11 token of the same middleware would open it at
+	 * [SigningParameters.certificateSlotId], a slot of the named token, and log in to that slot
+	 * with the other token's PIN, spending one of the named token's PIN attempts.
 	 */
 	private suspend fun resolvePrivateKey(
 		parameters: SigningParameters
 	): ResolvedKey? {
 		val tokens = tokenService.discoverTokens().getOrNull() ?: return null
+		val alias = parameters.certificateAlias
 		
-		val presentTokens = tokens.filter { tokenService.probeTokenPresent(it) }
+		val presentTokens = tokens
+			.filter { alias == null || alias.endsWith("@${it.id}") }
+			.filter { tokenService.probeTokenPresent(it) }
 		val deferredPinTokens = mutableListOf<TokenInfo>()
 		
 		for (tokenInfo in presentTokens) {

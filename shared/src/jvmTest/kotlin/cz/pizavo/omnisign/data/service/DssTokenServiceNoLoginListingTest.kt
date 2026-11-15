@@ -167,6 +167,65 @@ class DssTokenServiceNoLoginListingTest : FunSpec({
 		service.listCertificatesNoLogin(card("SN-GONE", 1)).shouldBeRight().shouldBeEmpty()
 	}
 
+	test("a token lists nothing from the slot of a token whose serial begins or ends with its own") {
+		val stdout = probeOutput(
+			identityLine("Card", "0123", 1),
+			identityLine("Longer Card", "01234", 2),
+			identityLine("Prefixed Card", "90123", 3),
+			certLine(1, certificate("Own", 1)),
+			certLine(2, certificate("Longer", 2)),
+			certLine(3, certificate("Prefixed", 3)),
+		)
+		val service = service(prober(stdout))
+
+		val listed = service.listCertificatesNoLogin(card("0123", 1)).shouldBeRight()
+
+		listed.map { it.subjectDN to it.pkcs11SlotId } shouldContainExactly listOf("CN=Own" to 1L)
+	}
+
+	test("a certificate from a slot the probe run names no token for is not listed") {
+		val stdout = probeOutput(
+			identityLine("Card A", "SN-A", 1),
+			certLine(1, certificate("Card A", 1)),
+			certLine(6, certificate("Unnamed", 2)),
+		)
+		val service = service(prober(stdout))
+
+		val listed = service.listCertificatesNoLogin(card("SN-A", 1)).shouldBeRight()
+
+		listed.map { it.subjectDN to it.pkcs11SlotId } shouldContainExactly listOf("CN=Card A" to 1L)
+	}
+
+	test("a token matches its slots whatever order the probe run prints its lines in") {
+		val stdout = probeOutput(
+			certLine(1, certificate("Card A", 1)),
+			certLine(2, certificate("Card B", 2)),
+			identityLine("Card B", "SN-B", 2),
+			identityLine("Card A", "SN-A", 1),
+		)
+		val service = service(prober(stdout))
+
+		val listed = service.listCertificatesNoLogin(card("SN-A", 1)).shouldBeRight()
+
+		listed.map { it.subjectDN to it.pkcs11SlotId } shouldContainExactly listOf("CN=Card A" to 1L)
+	}
+
+	test("a PKCS#11 token whose serial is blank lists nothing, without running the probe") {
+		val stdout = probeOutput(
+			identityLine("Card A", "", 1),
+			identityLine("Card B", " $nul$nul", 2),
+			certLine(1, certificate("Card A", 1)),
+			certLine(2, certificate("Card B", 2)),
+		)
+		val prober = prober(stdout)
+		val service = service(prober)
+
+		service.listCertificatesNoLogin(card("", 1)).shouldBeRight().shouldBeEmpty()
+		service.listCertificatesNoLogin(card(" $nul$nul", 2)).shouldBeRight().shouldBeEmpty()
+
+		verify(exactly = 0) { prober.runCertProbe(any(), any()) }
+	}
+
 	test("a PKCS#11 token whose id carries no serial lists nothing, without running the probe") {
 		val stdout = probeOutput(
 			identityLine("Card A", "SN-A", 1),
