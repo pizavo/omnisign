@@ -628,8 +628,9 @@ class DssSigningRepository(
 	 *    [SigningParameters.certificateSlotId] when the UI supplied it from the selected
 	 *    certificate — so the common path needs no extra probe.
 	 * 2. Only when that misses (the alias is absent from the pinned slot) *and* the caller
-	 *    gave an alias without a slot — e.g. the CLI `--alias` path — the all-slots no-login
-	 *    probe locates the alias's real slot and resolution is retried there.
+	 *    gave an alias without a slot — e.g. the CLI `--alias` path — the no-login listing of
+	 *    every slot that holds this token locates the alias's real slot and resolution is
+	 *    retried there.
 	 *
 	 * Slot overriding applies to PKCS#11 tokens only; other token types resolve unchanged.
 	 *

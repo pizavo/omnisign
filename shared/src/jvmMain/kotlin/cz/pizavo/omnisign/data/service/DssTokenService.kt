@@ -44,6 +44,10 @@ import java.security.cert.X509Certificate
  * rediscovery) finishes, then reads [Pkcs11Discoverer.getCachedTokens] without triggering its
  * own discovery.  The producers are [Pkcs11WarmupService] at startup and
  * [Pkcs11CacheInvalidator] on PC/SC reader-state events.
+ *
+ * @property probeTimeout Process-global probe-timeout holder ([Pkcs11ProbeTimeout]); read when
+ *   [listCertificatesNoLogin] spawns its probe, so that probe honours the configured
+ *   `pkcs11ProbeTimeoutSeconds` as the discovery probes do.
  */
 class DssTokenService(
 	private val passwordCallback: PasswordCallback,
@@ -55,6 +59,7 @@ class DssTokenService(
 	private val pcscMonitorService: PcscMonitorService? = null,
 	private val configRepository: ConfigRepository? = null,
 	private val sessionCache: Pkcs11SessionCache = Pkcs11SessionCache(),
+	private val probeTimeout: Pkcs11ProbeTimeout = Pkcs11ProbeTimeout(),
 ) : TokenService {
 
 	override val discoveryRunning: StateFlow<Boolean> = pkcs11Discoverer.discoveryRunning
@@ -244,7 +249,8 @@ class DssTokenService(
 	 * Enumerate a PKCS#11 token's public certificate objects without `C_Login`.
 	 *
 	 * Runs the out-of-process `--certs` probe ([Pkcs11Prober.runCertProbe]) so a misbehaving
-	 * module cannot crash this JVM, parses the returned DER, and builds [CertificateEntry]s
+	 * module cannot crash this JVM, killing it after the configured [probeTimeout] as discovery
+	 * kills its probes, parses the returned DER, and builds [CertificateEntry]s
 	 * whose [CertificateEntry.alias] is the same deterministic, content-derived value the
 	 * PIN path ([loadCertificatesInternal]) produces, and whose [CertificateEntry.pkcs11SlotId]
 	 * records the exact slot each object was enumerated in — so a certificate listed here
@@ -252,19 +258,33 @@ class DssTokenService(
 	 * [DssSigningRepository][cz.pizavo.omnisign.data.repository.DssSigningRepository] later signs
 	 * with the PIN, even on a card that presents more than one token-present slot.
 	 *
-	 * Returns an empty list (never an error) for non-PKCS#11 tokens, when the probe fails,
-	 * or when the token exposes no public certificates — callers then fall back to the
-	 * PIN-prompt path.
+	 * The probe walks every token-present slot of the library, and other tokens on the same
+	 * middleware sit in some of them, so only the certificates of the slots whose token serial
+	 * number, read in the same probe run, is this token's ([pkcs11TokenSerial]) are kept, compared
+	 * by [normalizeSerial]. Another token's certificate listed under this one would ask for this
+	 * token's PIN and then log in to the other token's slot with it, spending one of that token's
+	 * PIN attempts.
+	 *
+	 * Returns an empty list (never an error) for non-PKCS#11 tokens, a token whose id carries no
+	 * serial, when the probe fails, or when the token exposes no public certificates — callers
+	 * then fall back to the PIN-prompt path.
 	 */
 	override suspend fun listCertificatesNoLogin(
 		tokenInfo: TokenInfo,
 	): OperationResult<List<CertificateEntry>> {
 		if (tokenInfo.type != TokenType.PKCS11) return emptyList<CertificateEntry>().right()
 		val libraryPath = tokenInfo.path ?: return emptyList<CertificateEntry>().right()
+		val serial = tokenInfo.pkcs11TokenSerial()?.let(::normalizeSerial)
+			?: return emptyList<CertificateEntry>().right()
 		val certs = runCatching {
-			val result = prober.runCertProbe(libraryPath, Pkcs11Prober.DEFAULT_PROBE_TIMEOUT_SECONDS)
+			val result = prober.runCertProbe(libraryPath, probeTimeout.seconds)
 			if (result is Pkcs11SubprocessResult.Success) {
-				parseProbeNoLoginCerts(result.stdout).map { it.toCertificateEntry(tokenInfo) }
+				val ownSlots = prober.parseIdentities(result.stdout, libraryPath)
+					.filter { normalizeSerial(it.serialNumber) == serial }
+					.mapTo(mutableSetOf()) { it.slotId }
+				parseProbeNoLoginCerts(result.stdout)
+					.filter { it.slotId in ownSlots }
+					.map { it.toCertificateEntry(tokenInfo) }
 			} else {
 				emptyList()
 			}

@@ -100,6 +100,7 @@ val jvmRepositoryModule = module {
 			pcscMonitorService = get(),
 			configRepository = get(),
 			sessionCache = get(),
+			probeTimeout = get(),
 		)
 	} bind TokenService::class
 	singleOf(::KeyringCredentialStore) bind CredentialStore::class
