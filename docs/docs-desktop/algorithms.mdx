@@ -49,24 +49,31 @@ failures depending on the [algorithm constraint settings](guides/settings.mdx#al
 ## Encryption algorithms
 
 The encryption algorithm is determined by the signing certificate's key type. OmniSign
-auto-detects it from the certificate but also allows manual override in settings and
-profiles.
+detects it from the certificate unless the settings or the profile choose one, and a chosen
+one has to suit the key: RSA-PSS can take the place of RSA on an RSA key, and Plain-ECDSA
+that of ECDSA on an EC key, but one of another family, such as ECDSA for an RSA key, is
+refused before anything is signed. An algorithm the settings or the profile disable is
+refused whether it is chosen or the key implies it.
 
 | Algorithm   | Description                                                                                                        |
 |-------------|--------------------------------------------------------------------------------------------------------------------|
 | RSA         | RSA PKCS#1 v1.5 — widely supported, standard on software keystores and PKCS#12 files.                              |
 | RSA-PSS     | RSA-PSS (RSASSA-PSS) — probabilistic padding, stronger than PKCS#1 v1.5; eIDAS-recommended for new RSA signatures. |
 | ECDSA       | ECDSA (DER-encoded) — elliptic-curve DSA; compact keys with equivalent security to RSA at larger sizes.            |
-| Plain-ECDSA | ECDSA plain (r‖s) — same cryptography as ECDSA with different signature encoding; common on smartcard/CVC tokens.  |
+| Plain-ECDSA | ECDSA plain (r‖s) — same cryptography as ECDSA with another signature encoding; used in CVC and ePassport PKIs.  |
 | DSA         | DSA (FIPS 186) — legacy algorithm; provided for interoperability, RSA or ECDSA preferred.                          |
 | EdDSA       | EdDSA (Ed25519/Ed448) — modern deterministic Edwards-curve algorithm.                                              |
 
 ### Notes
 
 - **EdDSA** has an intrinsic hash algorithm that cannot be overridden — Ed25519 uses
-  SHA-512, Ed448 uses SHAKE256. The hash algorithm selection is ignored when EdDSA is active.
-- **Plain-ECDSA** uses r‖s integer encoding instead of DER. Use only when your token
-  produces this format; most software tokens use standard DER ECDSA.
+  SHA-512, Ed448 uses SHAKE256. The hash algorithm selection is ignored when EdDSA is active,
+  though the selected hash is still checked before the key is read, and an Ed25519 key is
+  refused when SHA-512 is disabled or past its expiration date.
+- **Plain-ECDSA** uses r‖s integer encoding instead of DER. Use it only when a verifier asks
+  for this format; most expect standard DER ECDSA.
+- **RSA-PSS** and **Plain-ECDSA** cannot sign with a key on a PKCS#11 token or in the Windows
+  Certificate Store. Sign with a PKCS#12 file to use them.
 - **DSA** keys are rare on modern tokens; prefer ECDSA or RSA for new signatures.
 
 ## Compatibility matrix
