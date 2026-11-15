@@ -976,6 +976,27 @@ class SigningViewModelTest : FunSpec({
 		}
 	}
 
+	test("a file holding two certificates under one alias lists only the first of them") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			val first = sampleCert.copy(alias = "Twin-1@keystore-twins.p12", tokenType = "FILE", issuerDN = "CN=First CA")
+			val second = first.copy(issuerDN = "CN=Second CA")
+			coEvery { signingRepository.loadCertificatesFromFile("/work/twins.p12") } returns listOf(first, second).right()
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+			vm.loadPkcs12File("/work/twins.p12")
+			advanceUntilIdle()
+
+			val ready = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
+			ready.certificates.filter { it.alias == "Twin-1@keystore-twins.p12" } shouldBe listOf(first)
+			ready.certificates.map { it.alias } shouldContain "test-cert"
+			ready.importedKeystores shouldBe mapOf("Twin-1@keystore-twins.p12" to "/work/twins.p12")
+		}
+	}
+
 	test("sign looks a discovered certificate up among the tokens, with no file, after a file was imported") {
 		runTest(testDispatcher) {
 			coEvery { signingRepository.listAvailableCertificates(false) } returns

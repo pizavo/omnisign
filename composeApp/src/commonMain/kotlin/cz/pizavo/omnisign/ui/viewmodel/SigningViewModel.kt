@@ -381,7 +381,9 @@ class SigningViewModel(
 	 * A certificate already listed under the alias of one of them is dropped from the list: one
 	 * imported before from this file, or from another file of the same name that holds a
 	 * certificate with the same common name and serial number, as the alias names the file by its
-	 * name only. The entry the list shows under an alias is then the one [sign] signs with.
+	 * name only. Of two certificates in the file under one alias, only the first is listed, as
+	 * signing picks the first. The entry the list shows under an alias is then the one [sign]
+	 * signs with.
 	 *
 	 * @param filePath Absolute path to the PKCS#12 (.p12 / .pfx) file.
 	 */
@@ -407,12 +409,13 @@ class SigningViewModel(
 					ifRight = { certs ->
 						_state.update { current ->
 							if (current is SigningDialogState.Ready) {
-								val importedAliases = certs.mapTo(HashSet()) { it.alias }
-								val merged = (current.certificates.filterNot { it.alias in importedAliases } + certs)
+								val imported = certs.distinctBy { it.alias }
+								val importedAliases = imported.mapTo(HashSet()) { it.alias }
+								val merged = (current.certificates.filterNot { it.alias in importedAliases } + imported)
 									.sortedWith(signingCertificateOrder)
 								current.copy(
 									certificates = merged,
-									importedKeystores = current.importedKeystores + certs.associate { it.alias to filePath },
+									importedKeystores = current.importedKeystores + imported.associate { it.alias to filePath },
 									selectedAlias = current.selectedAlias ?: merged.firstOrNull()?.alias,
 								)
 							} else current

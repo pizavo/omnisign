@@ -49,8 +49,9 @@ token's label, the OS certificate store, or the loaded `.p12` file. When the sam
 identity is present on more than one token or store, the source is what tells the
 entries apart, so you can pick the exact key you intend to sign with. Two `.p12` files
 of the same name are the exception, as the source names a file by its name only: a
-certificate imported from the second replaces one imported from the first that has the
-same common name and serial number.
+certificate imported from the second replaces the one imported from the first when both
+have the same common name and serial number, and if that one was selected, signing now
+uses the second file.
 
 Entries also carry **eIDAS qualification** indicators: a rosette <AppIcon name="rosette" color="qualified" label="Qualified" /> marks a **Qualified** certificate,
 a check-rosette <AppIcon name="rosette_check" color="qualifiedQscd" label="Qualified (QSCD)" /> marks a **Qualified (QSCD)** certificate whose key lives on a Qualified
