@@ -26,6 +26,7 @@ import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
 import io.mockk.mockk
@@ -67,19 +68,20 @@ class DssSigningRepositoryKeystoreImportTest : FunSpec({
 
 	/**
 	 * A PKCS#12 file named [fileName] holding an RSA key and a self-signed certificate for each of
-	 * [commonNames], with serial numbers from 1 up, and, when [qualified] is set, a QCStatements
-	 * extension that marks each certificate as qualified and its key as held on a QSCD.
+	 * [subjects], distinguished names stored in that order, with serial numbers from 1 up, or all 1
+	 * when [sameSerial] is set, and, when [qualified] is set, a QCStatements extension that marks
+	 * each certificate as qualified and its key as held on a QSCD.
 	 */
-	fun keystore(fileName: String, vararg commonNames: String, qualified: Boolean = false): File {
+	fun keystore(fileName: String, vararg subjects: String, sameSerial: Boolean = false, qualified: Boolean = false): File {
 		val store = KeyStore.getInstance("PKCS12").apply { load(null, null) }
 		val generator = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }
 		val now = Clock.System.now()
-		commonNames.forEachIndexed { index, commonName ->
+		subjects.forEachIndexed { index, subjectName ->
 			val keyPair = generator.generateKeyPair()
-			val subject = X500Name("CN=$commonName")
+			val subject = X500Name(subjectName)
 			val builder = JcaX509v3CertificateBuilder(
 				subject,
-				BigInteger.valueOf(index + 1L),
+				BigInteger.valueOf(if (sameSerial) 1L else index + 1L),
 				Date(now.minus(1.days).toEpochMilliseconds()),
 				Date(now.plus(365.days).toEpochMilliseconds()),
 				subject,
@@ -99,13 +101,19 @@ class DssSigningRepositoryKeystoreImportTest : FunSpec({
 			}
 			val certificate = JcaX509CertificateConverter()
 				.getCertificate(builder.build(JcaContentSignerBuilder("SHA256withRSA").build(keyPair.private)))
-			store.setKeyEntry(commonName, keyPair.private, password.toCharArray(), arrayOf(certificate))
+			store.setKeyEntry(subjectName, keyPair.private, password.toCharArray(), arrayOf(certificate))
 		}
 		return File(dir, fileName).also { file -> file.outputStream().use { store.store(it, password.toCharArray()) } }
 	}
 
-	val pair = keystore("pair.p12", "OmniSign Import First", "OmniSign Import Second")
-	val qualified = keystore("qualified.p12", "OmniSign Import Qualified", qualified = true)
+	val pair = keystore("pair.p12", "CN=OmniSign Import First", "CN=OmniSign Import Second")
+	val qualified = keystore("qualified.p12", "CN=OmniSign Import Qualified", qualified = true)
+	val twins = keystore(
+		"twins.p12",
+		"CN=OmniSign Import Twin,O=First",
+		"CN=OmniSign Import Twin,O=Second",
+		sameSerial = true,
+	)
 
 	val trustStore = FileTrustStore(tempdir().toPath())
 	val dssServiceFactory = mockk<DssServiceFactory>(relaxed = true)
@@ -183,6 +191,33 @@ class DssSigningRepositoryKeystoreImportTest : FunSpec({
 		signature.signingCertificateToken.certificate.subjectX500Principal.name shouldBe "CN=OmniSign Import Second"
 		verify(exactly = 2) { passwordCallback.requestPassword(any(), any()) }
 		verify(exactly = 0) { discoverer.getCachedTokens() }
+	}
+
+	test("of two certificates a file holds under one alias, the one the import lists first is the one that signs") {
+		val (repository) = fixture()
+
+		val imported = repository.loadCertificatesFromFile(twins.absolutePath).shouldBeRight()
+		imported shouldHaveSize 2
+		val alias = imported.map { it.alias }.distinct().single()
+		imported.first().subjectDN shouldContain "O=First"
+
+		val result = repository.signDocument(
+			SigningParameters(
+				inputBytes = plainPdf(),
+				inputName = "input.pdf",
+				certificateAlias = alias,
+				keystoreFile = twins.absolutePath,
+				addTimestamp = false,
+				resolvedConfig = config,
+			)
+		).shouldBeRight()
+
+		val signature = PDFDocumentValidator(InMemoryDocument(result.outputBytes))
+			.apply { setCertificateVerifier(CommonCertificateVerifier()) }
+			.signatures
+			.single()
+		signature.signatureCryptographicVerification.isSignatureValid.shouldBeTrue()
+		signature.signingCertificateToken.certificate.subjectX500Principal.name shouldContain "O=First"
 	}
 
 	test("the import lists a file's certificates as the keystore listing does, qualified flags included") {
