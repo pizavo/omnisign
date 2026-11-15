@@ -68,8 +68,11 @@ refused whether it is chosen or the key implies it.
 
 - **EdDSA** has an intrinsic hash algorithm that cannot be overridden — Ed25519 uses
   SHA-512, Ed448 uses SHAKE256. The hash algorithm selection is ignored when EdDSA is active,
-  though the selected hash is still checked before the key is read, and an Ed25519 key is
-  refused when SHA-512 is disabled or past its expiration date.
+  though the selected hash is still checked before the key is read. An Ed25519 key is refused
+  when SHA-512 is disabled, or when SHA-512 is past its expiration date and the expiration
+  severity is FAIL; under WARN it signs, with a warning.
+- A key whose certificate marks it for **RSA-PSS** alone signs with RSA-PSS when no algorithm
+  is chosen, and refuses RSA, as RFC 4055 requires of such a key.
 - **Plain-ECDSA** uses r‖s integer encoding instead of DER. Use it only when a verifier asks
   for this format; most expect standard DER ECDSA.
 - **RSA-PSS** and **Plain-ECDSA** cannot sign with a key on a PKCS#11 token or in the Windows

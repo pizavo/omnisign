@@ -180,7 +180,9 @@ Enums in `commonMain` cannot reference DSS types. Three are bridged by an extens
 `jvmMain/.../config/enums/*Extension.kt` — `SignatureLevelExtension`, `EncryptionAlgorithmExtension`,
 `AlgorithmConstraintLevelExtension` — each exposing `toDss()`. Two enums instead carry a
 `dssName: String`, because their DSS mapping is a plain name: `HashAlgorithm` needs no bridge file at
-all, and `EncryptionAlgorithm` keeps both — its extension is one line,
-`DssEncryptionAlgorithm.forName(dssName)`, so a DSS upgrade needs no edit. The remaining enums
+all, and `EncryptionAlgorithm` keeps both — its `toDss()` is one line,
+`DssEncryptionAlgorithm.forName(dssName)`, so a DSS upgrade needs no edit. `EncryptionAlgorithm` and
+`SignatureLevel` also map back with `toDomainOrNull()`, which returns `null` for a DSS value with no
+domain counterpart. The remaining enums
 (`TokenType`, `ValidationPolicyType`, `ConfigFormat`) never cross into DSS. See
 [Architecture](architecture.mdx#bridging-the-domain-to-dss).

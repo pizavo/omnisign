@@ -44,13 +44,13 @@ class EncryptionAlgorithmExtensionTest : FunSpec({
 
 	test("every domain entry maps back from the DSS algorithm it maps to") {
 		EncryptionAlgorithm.entries.forEach { enc ->
-			enc.toDss().toDomain() shouldBe enc
+			enc.toDss().toDomainOrNull() shouldBe enc
 		}
 	}
 
 	test("a DSS algorithm OmniSign does not sign with maps back to nothing") {
 		listOf(DssEncryptionAlgorithm.X25519, DssEncryptionAlgorithm.X448, DssEncryptionAlgorithm.HMAC).forEach {
-			it.toDomain().shouldBeNull()
+			it.toDomainOrNull().shouldBeNull()
 		}
 	}
 })

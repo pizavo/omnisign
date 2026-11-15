@@ -46,12 +46,15 @@ import org.apache.pdfbox.pdmodel.PDPage
 import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
 import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
+import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.math.BigInteger
 import java.security.KeyPairGenerator
 import java.security.KeyStore
+import java.security.PrivateKey
+import java.security.Provider
 import java.security.spec.ECGenParameterSpec
 import java.util.Date
 import kotlin.time.Clock
@@ -63,9 +66,10 @@ import kotlin.time.Duration.Companion.days
  * key or its token cannot sign with, by signing a PDF with a fresh key of each kind and reading the
  * algorithm back out of the signature.
  *
- * Each key is self-signed and kept in a PKCS#12 file, which the [TokenService] mock hands out as a
- * token of whichever [TokenType] a test asks for, so that the rules for PKCS#11 tokens and the
- * Windows Certificate Store can be checked without either.
+ * Each key is kept in a PKCS#12 file, which the [TokenService] mock hands out as a token of
+ * whichever [TokenType] a test asks for, so that the rules for PKCS#11 tokens and the Windows
+ * Certificate Store can be checked without either. Each certificate is self-signed, except the
+ * X25519 key's: that key cannot sign, so a throwaway Ed25519 key signs its certificate.
  */
 class DssSigningRepositoryEncryptionAlgorithmTest : FunSpec({
 
@@ -74,12 +78,22 @@ class DssSigningRepositoryEncryptionAlgorithmTest : FunSpec({
 
 	/**
 	 * A PKCS#12 file named after [name] holding a key from [generator] and a certificate for it,
-	 * self-signed with [signatureAlgorithm].
+	 * signed with [signatureAlgorithm], through [provider] when one is given, by [issuerKey] or,
+	 * without one, by the key itself.
 	 */
-	fun keystore(name: String, signatureAlgorithm: String, generator: KeyPairGenerator): File {
+	fun keystore(
+		name: String,
+		signatureAlgorithm: String,
+		generator: KeyPairGenerator,
+		provider: Provider? = null,
+		issuerKey: PrivateKey? = null,
+	): File {
 		val keyPair = generator.generateKeyPair()
 		val subject = X500Name("CN=OmniSign Test $name")
 		val now = Clock.System.now()
+		val signer = JcaContentSignerBuilder(signatureAlgorithm)
+			.apply { provider?.let { setProvider(it) } }
+			.build(issuerKey ?: keyPair.private)
 		val holder = JcaX509v3CertificateBuilder(
 			subject,
 			BigInteger.ONE,
@@ -87,7 +101,7 @@ class DssSigningRepositoryEncryptionAlgorithmTest : FunSpec({
 			Date(now.plus(365.days).toEpochMilliseconds()),
 			subject,
 			keyPair.public,
-		).build(JcaContentSignerBuilder(signatureAlgorithm).build(keyPair.private))
+		).build(signer)
 		val certificate = JcaX509CertificateConverter().getCertificate(holder)
 		val store = KeyStore.getInstance("PKCS12").apply {
 			load(null, null)
@@ -104,6 +118,18 @@ class DssSigningRepositoryEncryptionAlgorithmTest : FunSpec({
 	)
 	val ed25519 = keystore("ed25519", "Ed25519", KeyPairGenerator.getInstance("Ed25519"))
 	val ed448 = keystore("ed448", "Ed448", KeyPairGenerator.getInstance("Ed448"))
+	val rsaPss = keystore(
+		"rsa-pss",
+		"SHA256withRSAandMGF1",
+		KeyPairGenerator.getInstance("RSASSA-PSS").apply { initialize(2048) },
+		provider = BouncyCastleProvider(),
+	)
+	val x25519 = keystore(
+		"x25519",
+		"Ed25519",
+		KeyPairGenerator.getInstance("X25519"),
+		issuerKey = KeyPairGenerator.getInstance("Ed25519").generateKeyPair().private,
+	)
 
 	val trustStore = FileTrustStore(tempdir().toPath())
 	val dssServiceFactory = mockk<DssServiceFactory>(relaxed = true)
@@ -265,12 +291,31 @@ class DssSigningRepositoryEncryptionAlgorithmTest : FunSpec({
 			constraints = AlgorithmConstraintsConfig(expirationDateOverrides = mapOf("SHA512" to "2020-01-01")),
 		)
 
-		sign(repository(ed25519), disabled).shouldBeLeft()
+		val refusedAsDisabled = sign(repository(ed25519), disabled).shouldBeLeft()
 			.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
-			.message shouldContain "Hash algorithm SHA512 is disabled"
+		refusedAsDisabled.message shouldContain "Hash algorithm SHA512 is disabled"
+		refusedAsDisabled.details shouldBe
+				"An Ed25519 key signs with SHA512, whatever hash algorithm is chosen. Enable SHA512, or sign with another key."
 		sign(repository(ed25519), datedOut).shouldBeLeft().shouldBeInstanceOf<SigningError.ExpiredAlgorithm>()
+			.details shouldBe "An Ed25519 key signs with SHA512, whatever hash algorithm is chosen. " +
+				"Sign with another key, or set --algo-expiration-level WARN to override."
 		signatureAlgorithmOf(sign(repository(ed448), disabled)) shouldBe SignatureAlgorithm.ED448
 		signatureAlgorithmOf(sign(repository(ed448), datedOut)) shouldBe SignatureAlgorithm.ED448
+	}
+
+	test("an Ed25519 key is warned once about a dated-out SHA-512 when SHA-512 is also the configured hash") {
+		val config = resolved(
+			hash = HashAlgorithm.SHA512,
+			constraints = AlgorithmConstraintsConfig(
+				expirationLevel = AlgorithmConstraintLevel.WARN,
+				expirationDateOverrides = mapOf("SHA512" to "2020-01-01"),
+			),
+		)
+
+		val result = sign(repository(ed25519), config)
+
+		signatureAlgorithmOf(result) shouldBe SignatureAlgorithm.ED25519
+		result.shouldBeRight().rawWarnings.count { "SHA512 expired" in it } shouldBe 1
 	}
 
 	test("an Ed25519 key whose SHA-512 is dated out under a WARN level signs, with a warning") {
@@ -347,5 +392,25 @@ class DssSigningRepositoryEncryptionAlgorithmTest : FunSpec({
 		signatureAlgorithmOf(sign(repository(rsa, TokenType.PKCS11))) shouldBe SignatureAlgorithm.RSA_SHA256
 		signatureAlgorithmOf(sign(repository(rsa, TokenType.MACOS_KEYCHAIN), encryption = EncryptionAlgorithm.RSA_SSA_PSS)) shouldBe
 				SignatureAlgorithm.RSA_SSA_PSS_SHA256_MGF1
+	}
+
+	test("a key its certificate marks for RSA-PSS signs with RSA-PSS, whether asked or not, and is refused RSA") {
+		val repository = repository(rsaPss)
+
+		signatureAlgorithmOf(sign(repository)) shouldBe SignatureAlgorithm.RSA_SSA_PSS_SHA256_MGF1
+		signatureAlgorithmOf(sign(repository, encryption = EncryptionAlgorithm.RSA_SSA_PSS)) shouldBe
+				SignatureAlgorithm.RSA_SSA_PSS_SHA256_MGF1
+		val error = sign(repository, encryption = EncryptionAlgorithm.RSA).shouldBeLeft()
+		error.shouldBeInstanceOf<SigningError.InvalidParameters>()
+		error.text shouldBe LocalizableText.of(MessageKey.SIGNING_ENCRYPTION_KEY_MISMATCH, "RSA", "RSA_SSA_PSS")
+	}
+
+	test("a key-agreement key is refused as one OmniSign cannot sign with, whatever encryption algorithm is asked for") {
+		for (requested in listOf(null, EncryptionAlgorithm.EDDSA, EncryptionAlgorithm.RSA)) {
+			val error = sign(repository(x25519), encryption = requested).shouldBeLeft()
+
+			error.shouldBeInstanceOf<SigningError.SigningFailed>()
+			error.details shouldBe "OmniSign cannot sign with a key of type XDH"
+		}
 	}
 })

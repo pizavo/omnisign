@@ -9,7 +9,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
-import cz.pizavo.omnisign.domain.model.config.enums.toDomain
+import cz.pizavo.omnisign.domain.model.config.enums.toDomainOrNull
 import cz.pizavo.omnisign.domain.model.config.enums.toDss
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.error.SigningError
@@ -106,6 +106,10 @@ class DssSigningRepository(
 	 * lists the other refusals that need the key. Only the resolved configuration's disabled sets
 	 * count: the per-request sets on [SigningParameters] are for the web target, which sends them to
 	 * the server.
+	 *
+	 * Fails with [SigningError.ExpiredAlgorithm] before any key is looked up when the hash algorithm
+	 * is past its expiration date under a FAIL level, and once the key is known when the hash an
+	 * EdDSA key's curve fixes is; under a WARN level, either signs with a warning instead.
 	 */
 	@Suppress("TooGenericExceptionCaught", "CyclomaticComplexMethod", "LongMethod", "ReturnCount")
 	override suspend fun signDocument(parameters: SigningParameters): OperationResult<SigningResult> {
@@ -963,12 +967,13 @@ class DssSigningRepository(
 	 * [requested] names, or the one the key implies when it names none, paired with [hash]; for an
 	 * EdDSA key, the algorithm of its curve, which [edDsaAlgorithm] picks.
 	 *
-	 * Fails with [SigningError.InvalidParameters] when [requested] is not of the key's family, as
-	 * ECDSA is not for an RSA key while RSA-PSS is; when [hash] does not pair with the algorithm; and
-	 * when the algorithm is one of [BOUNCY_CASTLE_ALGORITHMS] and the key is on one of the
-	 * [PROVIDER_BOUND_TOKENS]. Fails with [ConfigurationError.InvalidConfiguration] when [config]
-	 * disables the algorithm, which [signDocument] could check before the key was known only when
-	 * one was named.
+	 * Fails with [SigningError.SigningFailed] when the key is of a type OmniSign cannot sign with,
+	 * such as the key-agreement types X25519 and X448. Fails with [SigningError.InvalidParameters]
+	 * when [requested] does not fit the key, as [fitsKey] judges it; when [hash] does not pair with
+	 * the algorithm; and when the algorithm is one of [BOUNCY_CASTLE_ALGORITHMS] and the key is on
+	 * one of the [PROVIDER_BOUND_TOKENS]. Fails with [ConfigurationError.InvalidConfiguration] when
+	 * [config] disables the algorithm, which [signDocument] could check before the key was known
+	 * only when one was named. For an EdDSA key, also fails as [edDsaAlgorithm] does.
 	 */
 	@Suppress("ReturnCount")
 	private fun signatureAlgorithmFor(
@@ -980,16 +985,15 @@ class DssSigningRepository(
 		warnings: MutableList<String>,
 	): OperationResult<SignatureAlgorithm> {
 		val publicKey = privateKey.certificate.publicKey
-		val keyAlgorithm = DssEncryptionAlgorithm.forKey(publicKey)
-		val keyEncryption = keyAlgorithm.toDomain()
-		if (requested != null && !requested.toDss().isEquivalent(keyAlgorithm)) {
-			return SigningError.encryptionDoesNotFitKey(
-				encryption = requested.name,
-				keyAlgorithm = keyEncryption?.name ?: keyAlgorithm.getName(),
+		val keyAlgorithm: DssEncryptionAlgorithm? = DssEncryptionAlgorithm.forName(publicKey.algorithm, null)
+		val keyEncryption = keyAlgorithm?.toDomainOrNull()
+			?: return SigningError.signingFailed(
+				details = "OmniSign cannot sign with a key of type ${keyAlgorithm?.getName() ?: publicKey.algorithm}",
 			).left()
+		if (requested != null && !fitsKey(requested, keyEncryption)) {
+			return SigningError.encryptionDoesNotFitKey(encryption = requested.name, keyAlgorithm = keyEncryption.name).left()
 		}
 		val encryption = requested ?: keyEncryption
-			?: return SigningError.signingFailed(details = "A ${keyAlgorithm.getName()} key cannot sign").left()
 		disabledEncryptionError(encryption, config)?.let { return it.left() }
 		if (encryption in BOUNCY_CASTLE_ALGORITHMS && tokenType in PROVIDER_BOUND_TOKENS) {
 			return SigningError.encryptionNotSupportedByToken(
@@ -998,7 +1002,7 @@ class DssSigningRepository(
 						"and a ${tokenType.name} key can be used only through its own provider",
 			).left()
 		}
-		if (encryption == EncryptionAlgorithm.EDDSA) return edDsaAlgorithm(publicKey, config, warnings)
+		if (encryption == EncryptionAlgorithm.EDDSA) return edDsaAlgorithm(publicKey, hash, config, warnings)
 		return SignatureAlgorithm.getAlgorithm(encryption.toDss(), DigestAlgorithm.forName(hash.dssName))?.right()
 			?: SigningError.hashEncryptionIncompatible(
 				hash = hash.name,
@@ -1008,30 +1012,59 @@ class DssSigningRepository(
 	}
 
 	/**
+	 * Whether [requested] can sign with a key whose own algorithm is [keyEncryption]: it has to be of
+	 * the key's family, as RSA-PSS is for an RSA key while ECDSA is not. A key whose certificate
+	 * marks it for RSASSA-PSS fits RSA-PSS alone, as RFC 4055 allows such a key no other signature.
+	 */
+	private fun fitsKey(requested: EncryptionAlgorithm, keyEncryption: EncryptionAlgorithm): Boolean =
+		requested.toDss().isEquivalent(keyEncryption.toDss()) &&
+				(keyEncryption != EncryptionAlgorithm.RSA_SSA_PSS || requested == EncryptionAlgorithm.RSA_SSA_PSS)
+
+	/**
 	 * The EdDSA signature algorithm of the curve [publicKey] lies on: Ed25519, which hashes with
 	 * SHA-512, or Ed448, which hashes with SHAKE256.
 	 *
 	 * Fails as [disabledHashError] and [expiredHashError] do when [config] disables the curve's hash
-	 * or its date has passed under a FAIL level, and adds a warning to [warnings] when its date has
-	 * passed under a WARN level. SHAKE256 is no [HashAlgorithm], so nothing disables or dates it.
+	 * or its date has passed under a FAIL level, with details that say the key fixes the hash, and
+	 * adds a warning to [warnings] when its date has passed under a WARN level. A curve hash that is
+	 * the configured [hash] is not checked again, as [signDocument] checked it before the key was
+	 * known. SHAKE256 is no [HashAlgorithm], so nothing disables or dates it.
 	 */
 	private fun edDsaAlgorithm(
 		publicKey: PublicKey,
+		hash: HashAlgorithm,
 		config: ResolvedConfig,
 		warnings: MutableList<String>,
 	): OperationResult<SignatureAlgorithm> {
 		val curve = SubjectPublicKeyInfo.getInstance(publicKey.encoded).algorithm.algorithm.id
 		val algorithm = SignatureAlgorithm.forOID(curve)
 		val curveHash = HashAlgorithm.entries.firstOrNull { DigestAlgorithm.forName(it.dssName) == algorithm.digestAlgorithm }
-		curveHash?.let { disabledHashError(it, config) ?: expiredHashError(it, config, warnings) }?.let { return it.left() }
+		if (curveHash == null || curveHash == hash) return algorithm.right()
+		val fixedHash = "An ${algorithm.jceId} key signs with ${curveHash.name}, whatever hash algorithm is chosen"
+		disabledHashError(curveHash, config, details = "$fixedHash. Enable ${curveHash.name}, or sign with another key.")
+			?.let { return it.left() }
+		expiredHashError(
+			curveHash,
+			config,
+			warnings,
+			remedy = "$fixedHash. Sign with another key, or set --algo-expiration-level WARN to override.",
+		)?.let { return it.left() }
 		return algorithm.right()
 	}
 
-	/** The error that refuses [hash] when [config] disables it, or `null` when it does not. */
-	private fun disabledHashError(hash: HashAlgorithm, config: ResolvedConfig): ConfigurationError.InvalidConfiguration? =
+	/**
+	 * The error that refuses [hash] when [config] disables it, with [details] when given, or `null`
+	 * when [config] does not disable it.
+	 */
+	private fun disabledHashError(
+		hash: HashAlgorithm,
+		config: ResolvedConfig,
+		details: String? = null,
+	): ConfigurationError.InvalidConfiguration? =
 		if (hash in config.disabledHashAlgorithms) {
 			ConfigurationError.InvalidConfiguration(
-				LocalizableText.Literal("Hash algorithm ${hash.name} is disabled in the configuration")
+				LocalizableText.Literal("Hash algorithm ${hash.name} is disabled in the configuration"),
+				details,
 			)
 		} else {
 			null
@@ -1052,20 +1085,22 @@ class DssSigningRepository(
 
 	/**
 	 * Check [hash] against the expiration dates of [config]'s validation policy, as of today: the
-	 * error that refuses it once its date has passed under a FAIL level, or `null`, after adding a
-	 * warning to [warnings] when its date has passed under a WARN level.
+	 * error that refuses it once its date has passed under a FAIL level, with [remedy] as its
+	 * details, or `null`, after adding a warning to [warnings] when its date has passed under a WARN
+	 * level.
 	 */
 	private fun expiredHashError(
 		hash: HashAlgorithm,
 		config: ResolvedConfig,
 		warnings: MutableList<String>,
+		remedy: String = "Change the hash algorithm or set --algo-expiration-level WARN to override.",
 	): SigningError.ExpiredAlgorithm? {
 		val today = Clock.System.todayIn(TimeZone.currentSystemDefault())
 		val constraints = config.validation.algorithmConstraints
 		return when (algorithmExpirationChecker.check(hash, constraints, today)) {
 			AlgorithmStatus.EXPIRED_FAIL -> SigningError.ExpiredAlgorithm(
 				text = LocalizableText.Literal(algorithmExpirationChecker.warningMessage(hash, constraints)),
-				details = "Change the hash algorithm or set --algo-expiration-level WARN to override.",
+				details = remedy,
 			)
 
 			AlgorithmStatus.EXPIRED_WARN -> {

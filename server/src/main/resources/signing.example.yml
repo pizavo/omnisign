@@ -41,6 +41,9 @@ global:
   # (recommended). One of:
   #   RSA | RSA_SSA_PSS | ECDSA | PLAIN_ECDSA | DSA | EDDSA
   # Note: EDDSA ignores the hash algorithm (it is intrinsic to the curve).
+  # Caution: a named algorithm has to suit the signing key, or every sign request is refused.
+  #   RSA and RSA_SSA_PSS need an RSA key, ECDSA and PLAIN_ECDSA an EC key, and a key on a
+  #   PKCS#11 token cannot sign with RSA_SSA_PSS or PLAIN_ECDSA at all.
   # defaultEncryptionAlgorithm: RSA_SSA_PSS
 
   # PAdES baseline level for new signatures. One of:
@@ -155,7 +158,7 @@ profiles:
     - name: fast
       # description: "Quick B-level signing"
       hashAlgorithm: SHA256
-      # encryptionAlgorithm: RSA_SSA_PSS
+      # encryptionAlgorithm: RSA_SSA_PSS   # has to suit the key, as global.defaultEncryptionAlgorithm says
       signatureLevel: PADES_BASELINE_B
       # disabledHashAlgorithms: [RIPEMD160, WHIRLPOOL]
       # disabledEncryptionAlgorithms: [DSA]

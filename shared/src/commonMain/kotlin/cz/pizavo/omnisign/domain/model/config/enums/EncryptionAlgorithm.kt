@@ -80,7 +80,7 @@ enum class EncryptionAlgorithm {
 	 */
 	val notes: String?
 		get() = when (this) {
-			EDDSA -> "Hash algorithm selection is ignored for EdDSA — Ed25519 uses SHA-512, Ed448 uses SHAKE256; an Ed25519 key is refused when SHA-512 is disabled or past its expiration date"
+			EDDSA -> "Hash algorithm selection is ignored for EdDSA — Ed25519 uses SHA-512, Ed448 uses SHAKE256; an Ed25519 key is refused when SHA-512 is disabled, or past its expiration date under the FAIL expiration level"
 			DSA -> "DSA keys are rare on modern tokens; prefer ECDSA or RSA for new signatures"
 			PLAIN_ECDSA -> "Use only when a verifier asks for r‖s-encoded signatures; most expect standard DER ECDSA. A key on a PKCS#11 token or in the Windows Certificate Store cannot sign with it"
 			RSA_SSA_PSS -> "A key on a PKCS#11 token or in the Windows Certificate Store cannot sign with it; use a PKCS#12 file"

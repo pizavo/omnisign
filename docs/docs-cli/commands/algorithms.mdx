@@ -55,9 +55,11 @@ signature uses the algorithm the signing key implies: `RSA` for an RSA key, `ECD
 family, such as `ECDSA` for an RSA key, is refused before anything is signed. `RSA_SSA_PSS` and
 `PLAIN_ECDSA` cannot sign with a key on a PKCS#11 token or in the Windows Certificate Store, so
 sign with `--keystore` to use them. An algorithm the configuration disables is refused whether it
-is named or the key implies it.
+is named or the key implies it. A key whose certificate marks it for RSA-PSS alone implies
+`RSA_SSA_PSS` and refuses `RSA`, as RFC 4055 requires of such a key.
 
 An Ed25519 key hashes with SHA-512 and an Ed448 key with SHAKE256, whatever hash is chosen. The
 chosen hash is still checked, as it is before any key is read, and an Ed25519 key is also refused
-when `SHA512` is disabled or past its expiration date.
+when `SHA512` is disabled, or past its expiration date while `--algo-expiration-level` is `FAIL`;
+at `WARN` it signs, with a warning.
 
