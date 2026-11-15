@@ -359,22 +359,22 @@ class ProfileEditStateTest : FunSpec({
 	test("a kept TSA password keeps the credential key it is stored under, also when the username changes") {
 		val profile = ProfileConfig(
 			name = "p",
-			timestampServer = TimestampServerConfig(url = "https://tsa.example.com", username = "alice", credentialKey = "alice"),
+			timestampServer = TimestampServerConfig(url = "https://tsa.example.com", username = "alice", credentialKey = "alice-key"),
 		)
 
 		val saved = ProfileEditState.from(profile, hasStoredPassword = true).copy(timestampUsername = "bob")
 			.toProfileConfig(SignatureLevel.PADES_BASELINE_B)
 
-		saved.timestampServer.shouldNotBeNull().credentialKey shouldBe "alice"
+		saved.timestampServer.shouldNotBeNull().credentialKey shouldBe "alice-key"
 	}
 
 	test("a kept TSA password keeps the credential key the form was loaded with, whatever key the profile stored at the save names") {
 		val loaded = ProfileConfig(
 			name = "p",
-			timestampServer = TimestampServerConfig(url = "https://tsa.example.com", username = "alice", credentialKey = "alice"),
+			timestampServer = TimestampServerConfig(url = "https://tsa.example.com", username = "alice", credentialKey = "alice-key"),
 		)
 		val stored = loaded.copy(
-			timestampServer = TimestampServerConfig(url = "https://tsa.example.com", username = "bob", credentialKey = "bob"),
+			timestampServer = TimestampServerConfig(url = "https://tsa.example.com", username = "bob", credentialKey = "bob-key"),
 		)
 
 		val tsa = ProfileEditState.from(loaded, hasStoredPassword = true)
@@ -382,7 +382,7 @@ class ProfileEditStateTest : FunSpec({
 			.timestampServer.shouldNotBeNull()
 
 		tsa.username shouldBe "alice"
-		tsa.credentialKey shouldBe "alice"
+		tsa.credentialKey shouldBe "alice-key"
 	}
 
 	test("a new TSA password is stored under the username, and a kept one the profile names no key for is looked up by it") {

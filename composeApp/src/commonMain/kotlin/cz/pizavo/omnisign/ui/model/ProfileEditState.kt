@@ -23,7 +23,8 @@ import cz.pizavo.omnisign.lumo.components.TriToggleState
  *   it, and [toProfileConfig] copies the form's fields onto it unless it is given the profile as
  *   stored at the time of the save, so the settings the form does not show, such as the OCSP and
  *   CRL overrides, the validation policy and the algorithm expiry settings, are kept. A kept TSA
- *   password keeps the credential key this profile names either way.
+ *   password keeps the credential key the loaded profile names, whichever profile the fields
+ *   are copied onto.
  * @property description Free-text description of the profile.
  * @property hashAlgorithm Selected hash algorithm override, or `null` to inherit from global.
  * @property encryptionAlgorithm Selected encryption algorithm override, or `null` to inherit.
