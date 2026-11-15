@@ -22,7 +22,8 @@ import cz.pizavo.omnisign.lumo.components.TriToggleState
  *   without one. [effectiveSignatureLevel] keeps its level while the timestamp toggles still show
  *   it, and [toProfileConfig] copies the form's fields onto it unless it is given the profile as
  *   stored at the time of the save, so the settings the form does not show, such as the OCSP and
- *   CRL overrides, the validation policy and the algorithm expiry settings, are kept.
+ *   CRL overrides, the validation policy and the algorithm expiry settings, are kept. A kept TSA
+ *   password keeps the credential key this profile names either way.
  * @property description Free-text description of the profile.
  * @property hashAlgorithm Selected hash algorithm override, or `null` to inherit from global.
  * @property encryptionAlgorithm Selected encryption algorithm override, or `null` to inherit.
@@ -172,8 +173,11 @@ data class ProfileEditState(
 	 * The [timestampPassword] is intentionally **not** included in the returned config
 	 * because passwords are persisted separately through the OS credential store.
 	 * The [TimestampServerConfig.credentialKey] names the entry the password is stored under: the
-	 * username when a new password has been entered, the key [base] names when the stored password
-	 * is kept (the username when it names none), and none without a username or a password.
+	 * username when a new password has been entered, the key [loadedProfile] names when the stored
+	 * password is kept (the username when it names none), and none without a username or a password.
+	 * A kept password keeps the key from [loadedProfile] rather than from [base] because that is the
+	 * entry [hasStoredPassword] was checked against, so a key the CLI saved while the form was open
+	 * cannot pair the form's username with a password stored for another.
 	 *
 	 * @param globalLevel The global default signature level, which a timestamp toggle left on
 	 *   [TriToggleState.INHERIT] takes its part of (see [effectiveSignatureLevel]).
@@ -194,7 +198,7 @@ data class ProfileEditState(
 					credentialKey = when {
 						effectiveUsername == null -> null
 						timestampPassword.value.isNotEmpty() -> effectiveUsername
-						hasStoredPassword -> base?.timestampServer?.credentialKey ?: effectiveUsername
+						hasStoredPassword -> loadedProfile?.timestampServer?.credentialKey ?: effectiveUsername
 						else -> null
 					},
 					timeout = timestampTimeout.toIntOrNull() ?: TimestampServerConfig.DEFAULT_TIMEOUT_MS,

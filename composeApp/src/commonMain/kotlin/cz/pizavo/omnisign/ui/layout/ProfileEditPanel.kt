@@ -333,8 +333,10 @@ private fun DescriptionSection(
  * The signature timestamp toggle is forced to `ENABLED` and disabled whenever
  * archival timestamps are effectively active — either because the profile
  * explicitly sets archival to ENABLED, or because it inherits B-LTA from global.
- * It reads this from the level Save writes ([ProfileEditState.archivalTimestampActive]),
- * so the form shows what is saved.
+ * It works this out with [ProfileEditState.archivalTimestampActive], the rule Save resolves
+ * the toggles by, from the global level the panel last read. Save resolves them against the
+ * global level as stored when it is clicked, so the form can differ from what is saved only
+ * while a global level changed outside the app, such as with the CLI, has not been read yet.
  */
 @Composable
 private fun AlgorithmSection(

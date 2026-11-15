@@ -1234,6 +1234,77 @@ class ProfileViewModelTest : FunSpec({
         }
     }
 
+    test("saveEdit reads the configuration after the TSA password is stored, so what was saved meanwhile is kept") {
+        runTest(testDispatcher) {
+            var currentConfig = AppConfig(
+                profiles = mapOf("dev" to ProfileConfig(name = "dev", ocsp = OcspConfig(timeout = 5000))),
+            )
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+            val credStore: CredentialStore = mockk()
+            io.mockk.every { credStore.setPassword(any(), any(), any()) } answers {
+                currentConfig = currentConfig.copy(
+                    global = currentConfig.global.copy(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA),
+                    profiles = mapOf("dev" to ProfileConfig(name = "dev")),
+                )
+                Unit.right()
+            }
+
+            val vm = ProfileViewModel(manageProfile, getConfig, credStore, ioDispatcher = testDispatcher)
+            advanceUntilIdle()
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState {
+                it.copy(
+                    signatureTimestampOverride = TriToggleState.ENABLED,
+                    timestampEnabled = true,
+                    timestampUrl = "https://tsa.example.com",
+                    timestampUsername = "admin",
+                    timestampPassword = Sensitive("s3cret"),
+                )
+            }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            val dev = saved.captured.profiles["dev"].shouldNotBeNull()
+            dev.ocsp.shouldBeNull()
+            dev.signatureLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+        }
+    }
+
+    test("saveEdit saves a profile removed while the form was open again, with the settings it was loaded with") {
+        runTest(testDispatcher) {
+            val dev = ProfileConfig(name = "dev", ocsp = OcspConfig(timeout = 5000))
+            var currentConfig = AppConfig(profiles = mapOf("dev" to dev, "other" to profile("other")))
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
+            advanceUntilIdle()
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            currentConfig = currentConfig.copy(profiles = mapOf("other" to profile("other")))
+            vm.updateEditState { it.copy(description = "Edited") }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            saved.captured.profiles.keys shouldBe setOf("other", "dev")
+            saved.captured.profiles["dev"] shouldBe dev.copy(description = "Edited")
+        }
+    }
+
     test("a staged certificate the trust store refuses shows the store's error as keyed text, to render in the UI's language") {
         runTest(testDispatcher) {
             val config = AppConfig(profiles = mapOf("dev" to profile("dev")))
