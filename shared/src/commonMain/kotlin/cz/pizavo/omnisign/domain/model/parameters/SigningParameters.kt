@@ -31,7 +31,9 @@ import cz.pizavo.omnisign.domain.model.value.Sensitive
  *   JVM-only; the web target ignores this field.
  * @property keystoreFile Absolute path to a PKCS#12 (`.p12`/`.pfx`) keystore to sign with, instead
  *   of a discovered token. When set, [certificateAlias] selects *within* the keystore (omit to use
- *   its first key). JVM/CLI only; the web target rejects it.
+ *   its first key). JVM only: set by the CLI's `--keystore`, by the server for its configured
+ *   keystore, and by the desktop signing dialog for a certificate imported from a file. The web
+ *   target rejects it.
  * @property keystorePassword In-memory password for [keystoreFile] when supplied non-interactively;
  *   null lets the JVM signer prompt interactively when the keystore is password-protected. A
  *   [Sensitive], so it is never persisted or serialized.

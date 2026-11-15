@@ -26,6 +26,7 @@ import cz.pizavo.omnisign.ui.platform.SaveOutcome
 import cz.pizavo.omnisign.ui.toast.ToastService
 import cz.pizavo.omnisign.ui.toast.ToastText
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -935,6 +936,43 @@ class SigningViewModelTest : FunSpec({
 
 			parameters.captured.certificateAlias shouldBe "first-cert"
 			parameters.captured.keystoreFile shouldBe "/tmp/first.p12"
+		}
+	}
+
+	test("a certificate imported under an alias already listed replaces the listed one, and signs from its own file") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			val fromFirstFolder = sampleCert.copy(alias = "Test-1@keystore-id.p12", tokenType = "FILE", issuerDN = "CN=First CA")
+			val fromSecondFolder = fromFirstFolder.copy(issuerDN = "CN=Second CA")
+			coEvery { signingRepository.loadCertificatesFromFile("/work/a/id.p12") } returns listOf(fromFirstFolder).right()
+			coEvery { signingRepository.loadCertificatesFromFile("/work/b/id.p12") } returns listOf(fromSecondFolder).right()
+			val parameters = slot<SigningParameters>()
+			coEvery { signingRepository.signDocument(capture(parameters)) } returns
+					SigningResult(
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-B",
+					).right()
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+			vm.loadPkcs12File("/work/a/id.p12")
+			advanceUntilIdle()
+			vm.loadPkcs12File("/work/b/id.p12")
+			advanceUntilIdle()
+
+			val ready = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
+			ready.certificates.filter { it.alias == "Test-1@keystore-id.p12" } shouldBe listOf(fromSecondFolder)
+			ready.certificates.map { it.alias } shouldContain "test-cert"
+
+			vm.updateState { it.copy(selectedAlias = "Test-1@keystore-id.p12") }
+			vm.sign()
+			advanceUntilIdle()
+
+			parameters.captured.keystoreFile shouldBe "/work/b/id.p12"
 		}
 	}
 

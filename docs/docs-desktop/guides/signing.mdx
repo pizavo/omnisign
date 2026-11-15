@@ -47,7 +47,10 @@ Each dropdown entry is **source-aware**: it shows the certificate's common name,
 `Jan Novák — valid until 14.03.2027; eToken 5110`. The source suffix is the hardware
 token's label, the OS certificate store, or the loaded `.p12` file. When the same
 identity is present on more than one token or store, the source is what tells the
-entries apart, so you can pick the exact key you intend to sign with.
+entries apart, so you can pick the exact key you intend to sign with. Two `.p12` files
+of the same name are the exception, as the source names a file by its name only: a
+certificate imported from the second replaces one imported from the first that has the
+same common name and serial number.
 
 Entries also carry **eIDAS qualification** indicators: a rosette <AppIcon name="rosette" color="qualified" label="Qualified" /> marks a **Qualified** certificate,
 a check-rosette <AppIcon name="rosette_check" color="qualifiedQscd" label="Qualified (QSCD)" /> marks a **Qualified (QSCD)** certificate whose key lives on a Qualified
@@ -181,7 +184,7 @@ dismissed during this phase.
 
 If you chose a certificate from a PIN-protected token that was listed without a PIN, OmniSign
 prompts you for the token PIN at this point. If you chose one imported from a PKCS#12 file, it
-prompts you for the file's password again, unless the file has none.
+prompts you for the file's password again.
 
 Once the signature is built — and after you have cleared any [revocation warning](#revocation-warning)
 — a native **Save As** dialog opens for you to choose where to write the signed PDF. The document is
