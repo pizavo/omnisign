@@ -557,9 +557,9 @@ class DssSigningRepository(
 	)
 
 	/**
-	 * Iterate all discovered tokens and return the first [DSSPrivateKeyEntry] that matches
-	 * the requested alias (or the first available key when no alias is requested), together
-	 * with its [AbstractSignatureTokenConnection] and the source [TokenType].
+	 * Return the first [DSSPrivateKeyEntry] that matches the requested alias, looked for on the
+	 * token the alias names, or the first available key of any discovered token when no alias is
+	 * requested, together with its [AbstractSignatureTokenConnection] and the source [TokenType].
 	 * Returns null when no matching key is found.
 	 *
 	 * Uses a two-pass strategy to avoid unnecessary PIN prompts:

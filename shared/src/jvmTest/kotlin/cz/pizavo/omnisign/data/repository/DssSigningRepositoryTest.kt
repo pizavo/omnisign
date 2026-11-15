@@ -612,6 +612,34 @@ class DssSigningRepositoryTest : FunSpec({
 		io.mockk.coVerify(exactly = 1) { tokenService.openSigningToken(cardB, "pin-b") }
 	}
 
+	test("signDocument skips a token whose id is a prefix of the id the alias names") {
+		val (first, second) = twoCards("PREFIX")
+		val shortCard = first.copy(id = "pkcs11-PREFIX-0123")
+		val longCard = second.copy(id = "pkcs11-PREFIX-01234")
+		val certificate = userCertificateOf(longCard)
+
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
+		coEvery { tokenService.discoverTokens() } returns listOf(shortCard, longCard).right()
+		coEvery { tokenService.probeTokenPresent(shortCard) } returns true
+		coEvery { tokenService.probeTokenPresent(longCard) } returns true
+		coEvery { credentialStore.getPassword(any(), shortCard.id) } returns "pin-short"
+		coEvery { credentialStore.getPassword(any(), longCard.id) } returns "pin-long"
+		coEvery { tokenService.openSigningToken(longCard, "pin-long") } returns signingTokenFor(certificate).right()
+
+		val params = SigningParameters(
+			inputBytes = tmpFile("prefix-card.pdf").readBytes(),
+			inputName = "prefix-card.pdf",
+			certificateAlias = certificate.alias,
+			certificateSlotId = 2L,
+			addTimestamp = false,
+		)
+
+		repository.signDocument(params)
+
+		io.mockk.coVerify(exactly = 0) { tokenService.openSigningToken(match { it.id == shortCard.id }, any()) }
+		io.mockk.coVerify(exactly = 1) { tokenService.openSigningToken(longCard, "pin-long") }
+	}
+
 	test("signDocument without an alias still looks for a key on every token") {
 		val (cardA, cardB) = twoCards("ANY")
 		val certificate = userCertificateOf(cardB)
