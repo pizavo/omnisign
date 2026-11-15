@@ -60,6 +60,8 @@ is named or the key implies it. A key whose certificate marks it for RSA-PSS alo
 
 An Ed25519 key hashes with SHA-512 and an Ed448 key with SHAKE256, whatever hash is chosen. The
 chosen hash is still checked, as it is before any key is read, and an Ed25519 key is also refused
-when `SHA512` is disabled, or past its expiration date while `--algo-expiration-level` is `FAIL`;
-at `WARN` it signs, with a warning.
+when `SHA512` is disabled, or past its expiration date at the `FAIL` expiration severity; at
+`WARN` it signs, with a warning. `--algo-expiration-level` sets that severity for an expiration
+date on or before the policy update date, and `--algo-expiration-level-after-update` for one after
+it.
 

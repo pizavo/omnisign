@@ -303,6 +303,16 @@ class DssSigningRepositoryEncryptionAlgorithmTest : FunSpec({
 		signatureAlgorithmOf(sign(repository(ed448), datedOut)) shouldBe SignatureAlgorithm.ED448
 	}
 
+	test("an Ed25519 key is refused as disabled when the configuration both disables SHA-512 and dates it out under a FAIL level") {
+		val config = resolved(
+			disabledHash = setOf(HashAlgorithm.SHA512),
+			constraints = AlgorithmConstraintsConfig(expirationDateOverrides = mapOf("SHA512" to "2020-01-01")),
+		)
+
+		sign(repository(ed25519), config).shouldBeLeft().shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+			.message shouldContain "Hash algorithm SHA512 is disabled"
+	}
+
 	test("an Ed25519 key is warned once about a dated-out SHA-512 when SHA-512 is also the configured hash") {
 		val config = resolved(
 			hash = HashAlgorithm.SHA512,
@@ -339,9 +349,10 @@ class DssSigningRepositoryEncryptionAlgorithmTest : FunSpec({
 			trustStore, DocumentInputErrorDetector(), Pkcs11SessionCache(), SignatureSpaceErrorDetector(),
 		)
 
-		sign(strictTokens, resolved(hash = HashAlgorithm.RIPEMD160)).shouldBeLeft()
+		val error = sign(strictTokens, resolved(hash = HashAlgorithm.RIPEMD160)).shouldBeLeft()
 			.shouldBeInstanceOf<SigningError.ExpiredAlgorithm>()
-			.message shouldContain "RIPEMD160"
+		error.message shouldContain "RIPEMD160"
+		error.details shouldBe "Change the hash algorithm or set --algo-expiration-level WARN to override."
 	}
 
 	test("a hash the configuration dates out under a WARN level signs, with a warning") {
@@ -403,6 +414,16 @@ class DssSigningRepositoryEncryptionAlgorithmTest : FunSpec({
 		val error = sign(repository, encryption = EncryptionAlgorithm.RSA).shouldBeLeft()
 		error.shouldBeInstanceOf<SigningError.InvalidParameters>()
 		error.text shouldBe LocalizableText.of(MessageKey.SIGNING_ENCRYPTION_KEY_MISMATCH, "RSA", "RSA_SSA_PSS")
+	}
+
+	test("a key its certificate marks for RSA-PSS is refused on a PKCS#11 token or in the Windows Certificate Store, though nothing names RSA-PSS") {
+		for (type in listOf(TokenType.PKCS11, TokenType.WINDOWS_MY)) {
+			val error = sign(repository(rsaPss, type)).shouldBeLeft()
+
+			error.shouldBeInstanceOf<SigningError.InvalidParameters>()
+			error.text shouldBe LocalizableText.of(MessageKey.SIGNING_ENCRYPTION_NOT_SUPPORTED_BY_TOKEN, "RSA_SSA_PSS")
+			error.details shouldContain type.name
+		}
 	}
 
 	test("a key-agreement key is refused as one OmniSign cannot sign with, whatever encryption algorithm is asked for") {
