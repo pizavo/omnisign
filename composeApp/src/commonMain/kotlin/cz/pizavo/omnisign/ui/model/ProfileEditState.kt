@@ -8,6 +8,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
+import cz.pizavo.omnisign.domain.model.value.Sensitive
 import cz.pizavo.omnisign.lumo.components.TriToggleState
 
 /**
@@ -17,6 +18,13 @@ import cz.pizavo.omnisign.lumo.components.TriToggleState
  * for two-way data binding with Compose text fields and selectors.
  *
  * @property profileName The immutable profile name (displayed as a header, not editable).
+ * @property loadedProfile The stored profile this form was loaded from, or `null` for a form built
+ *   without one. [effectiveSignatureLevel] keeps its level while the timestamp toggles still show
+ *   it, and [toProfileConfig] copies the form's fields onto it unless it is given the profile as
+ *   stored at the time of the save, so the settings the form does not show, such as the OCSP and
+ *   CRL overrides, the validation policy and the algorithm expiry settings, are kept. A kept TSA
+ *   password keeps the credential key the loaded profile names, whichever profile the fields
+ *   are copied onto.
  * @property description Free-text description of the profile.
  * @property hashAlgorithm Selected hash algorithm override, or `null` to inherit from global.
  * @property encryptionAlgorithm Selected encryption algorithm override, or `null` to inherit.
@@ -38,14 +46,17 @@ import cz.pizavo.omnisign.lumo.components.TriToggleState
  *   and adds [pendingTrustedCertAdds] on top of this.
  * @property pendingTrustedCertAdds Certificates staged to be added to this profile's scope on save.
  * @property pendingTrustedCertRemovals Fingerprints of baseline certificates staged for removal on save.
- * @property trustedCertsAvailable Whether the trust store backend is wired in (false on web).
+ * @property trustedCertsAvailable Whether a trust store is bound. On the web it is the server's
+ *   read-only store, so the section lists the server's certificates for this profile; it is
+ *   `false` only when no trust store is bound at all.
  * @property trustedCertAddError Error from the last failed certificate add attempt, or `null`; the UI resolves it via `resolve()`.
  * @property saving Whether a save operation is currently in progress.
- * @property error Human-readable error message from the last failed operation, or `null`.
+ * @property error Error from the last failed save, or `null`; the UI resolves it via `resolve()`.
  * @property tlAddError Human-readable error from the last failed trusted list add attempt, or `null`.
  */
 data class ProfileEditState(
 	val profileName: String,
+	val loadedProfile: ProfileConfig? = null,
 	val description: String = "",
 	val hashAlgorithm: HashAlgorithm? = null,
 	val encryptionAlgorithm: EncryptionAlgorithm? = null,
@@ -56,9 +67,9 @@ data class ProfileEditState(
 	val timestampEnabled: Boolean = false,
 	val timestampUrl: String = "",
 	val timestampUsername: String = "",
-	val timestampPassword: String = "",
+	val timestampPassword: Sensitive<String> = Sensitive(""),
 	val hasStoredPassword: Boolean = false,
-	val timestampTimeout: String = "30000",
+	val timestampTimeout: String = TimestampServerConfig.DEFAULT_TIMEOUT_MS.toString(),
 	val disabledHashAlgorithms: Set<HashAlgorithm> = emptySet(),
 	val disabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet(),
 	val customTrustedLists: List<CustomTrustedListConfig> = emptyList(),
@@ -68,31 +79,62 @@ data class ProfileEditState(
 	val trustedCertsAvailable: Boolean = true,
 	val trustedCertAddError: TrustedCertAddError? = null,
 	val saving: Boolean = false,
-	val error: String? = null,
+	val error: ProfileError? = null,
 	val tlAddError: String? = null,
 ) {
 
 	/**
-	 * Derive the nullable PAdES [SignatureLevel] override from the two toggle states.
+	 * The PAdES [SignatureLevel] override the two toggle states save, or `null` when both are
+	 * [TriToggleState.INHERIT] and the profile inherits the global level.
 	 *
-	 * Returns `null` when both toggles are [TriToggleState.INHERIT], meaning no
-	 * profile-level override is applied.
+	 * A toggle left on [TriToggleState.INHERIT] while the other one is set takes its part of
+	 * [globalLevel]: the archival timestamp is on when the global level is B-LTA, and the signature
+	 * timestamp follows the global B-T or B-LT (B-LT when the global level is B-LTA). The level is
+	 * worked out when the profile is saved, so it does not follow later changes to the global level.
+	 *
+	 * While both toggles still show the level of [loadedProfile], that level is kept as it is. The
+	 * toggles cannot tell B-T from B-LT, so a B-T override set with the CLI survives a save that
+	 * leaves them alone.
+	 *
+	 * @param globalLevel The global default signature level.
 	 */
-	val effectiveSignatureLevel: SignatureLevel?
-		get() {
-			if (signatureTimestampOverride == TriToggleState.INHERIT &&
-				archivalTimestampOverride == TriToggleState.INHERIT
-			) return null
+	fun effectiveSignatureLevel(globalLevel: SignatureLevel): SignatureLevel? {
+		val loaded = loadedProfile
+		if (loaded != null &&
+			toToggleStates(loaded.signatureLevel) == (signatureTimestampOverride to archivalTimestampOverride)
+		) return loaded.signatureLevel
 
-			val archival = archivalTimestampOverride == TriToggleState.ENABLED
-			val signature = signatureTimestampOverride == TriToggleState.ENABLED || archival
+		if (signatureTimestampOverride == TriToggleState.INHERIT &&
+			archivalTimestampOverride == TriToggleState.INHERIT
+		) return null
 
-			return when {
-				archival -> SignatureLevel.PADES_BASELINE_LTA
-				signature -> SignatureLevel.PADES_BASELINE_LT
-				else -> SignatureLevel.PADES_BASELINE_B
+		val archival = when (archivalTimestampOverride) {
+			TriToggleState.ENABLED -> true
+			TriToggleState.DISABLED -> false
+			TriToggleState.INHERIT -> globalLevel == SignatureLevel.PADES_BASELINE_LTA
+		}
+
+		return when {
+			archival -> SignatureLevel.PADES_BASELINE_LTA
+			signatureTimestampOverride == TriToggleState.ENABLED -> SignatureLevel.PADES_BASELINE_LT
+			signatureTimestampOverride == TriToggleState.DISABLED -> SignatureLevel.PADES_BASELINE_B
+			else -> when (globalLevel) {
+				SignatureLevel.PADES_BASELINE_B -> SignatureLevel.PADES_BASELINE_B
+				SignatureLevel.PADES_BASELINE_T -> SignatureLevel.PADES_BASELINE_T
+				SignatureLevel.PADES_BASELINE_LT, SignatureLevel.PADES_BASELINE_LTA -> SignatureLevel.PADES_BASELINE_LT
 			}
 		}
+	}
+
+	/**
+	 * Whether documents signed with this profile get the archival timestamp (B-LTA), as the form is
+	 * now: the level a save writes is B-LTA, or the profile inherits the global level and
+	 * [globalLevel] is B-LTA. The panel then shows the signature timestamp toggle forced on.
+	 *
+	 * @param globalLevel The global default signature level.
+	 */
+	fun archivalTimestampActive(globalLevel: SignatureLevel): Boolean =
+		(effectiveSignatureLevel(globalLevel) ?: globalLevel) == SignatureLevel.PADES_BASELINE_LTA
 
 	/**
 	 * Compare only the persistable content fields of two states, ignoring
@@ -122,60 +164,76 @@ data class ProfileEditState(
 	/**
 	 * Convert this UI state back into a persistable [ProfileConfig].
 	 *
+	 * The form's fields are copied onto [base], so whatever the form does not show is saved as it is
+	 * there: the OCSP and CRL overrides, and in the validation section everything but the trusted
+	 * lists and the two validation toggles. [base] is [loadedProfile] unless the caller passes the
+	 * profile as it is stored at the time of the save, which keeps what the CLI or an import changed
+	 * there while the form was open. Without a base the profile starts empty. The validation section
+	 * is left out when nothing is left in it.
+	 *
 	 * The [timestampPassword] is intentionally **not** included in the returned config
 	 * because passwords are persisted separately through the OS credential store.
-	 * The [TimestampServerConfig.credentialKey] is set to the username when a password
-	 * has been entered or was already stored.
+	 * The [TimestampServerConfig.credentialKey] names the entry the password is stored under: the
+	 * username when a new password has been entered, the key [loadedProfile] names when the stored
+	 * password is kept (the username when it names none), and none without a username or a password.
+	 * A kept password keeps the key from [loadedProfile] rather than from [base] because that is the
+	 * entry [hasStoredPassword] was checked against, so a key the CLI saved while the form was open
+	 * cannot pair the form's username with a password stored for another.
+	 *
+	 * @param globalLevel The global default signature level, which a timestamp toggle left on
+	 *   [TriToggleState.INHERIT] takes its part of (see [effectiveSignatureLevel]).
+	 * @param base The profile the form's fields are copied onto.
 	 */
-	fun toProfileConfig(): ProfileConfig = ProfileConfig(
-		name = profileName,
-		description = description.ifBlank { null },
-		hashAlgorithm = hashAlgorithm,
-		encryptionAlgorithm = encryptionAlgorithm,
-		signatureLevel = effectiveSignatureLevel,
-		timestampServer = if (timestampEnabled && timestampUrl.isNotBlank()) {
-			val effectiveUsername = timestampUsername.ifBlank { null }
-			val hasPassword = timestampPassword.isNotEmpty() || hasStoredPassword
-			TimestampServerConfig(
-				url = timestampUrl.trim(),
-				username = effectiveUsername,
-				credentialKey = if (hasPassword && effectiveUsername != null) effectiveUsername else null,
-				timeout = timestampTimeout.toIntOrNull() ?: 30000,
-			)
-		} else {
-			null
-		},
-		disabledHashAlgorithms = disabledHashAlgorithms,
-		disabledEncryptionAlgorithms = disabledEncryptionAlgorithms,
-		validation = run {
-			val alertOverride = when (alertIfNotEuLotlOverride) {
-				TriToggleState.ENABLED -> true
-				TriToggleState.DISABLED -> false
-				TriToggleState.INHERIT -> null
-			}
-			val allowExpiredOverride = when (allowExpiredCertificateOverride) {
-				TriToggleState.ENABLED -> true
-				TriToggleState.DISABLED -> false
-				TriToggleState.INHERIT -> null
-			}
-			if (customTrustedLists.isNotEmpty() || alertOverride != null || allowExpiredOverride != null) {
-				ValidationConfig(
-					customTrustedLists = customTrustedLists,
-					alertIfNotEuLotl = alertOverride,
-					allowExpiredCertificate = allowExpiredOverride,
+	fun toProfileConfig(globalLevel: SignatureLevel, base: ProfileConfig? = loadedProfile): ProfileConfig =
+		(base ?: ProfileConfig(name = profileName)).copy(
+			name = profileName,
+			description = description.ifBlank { null },
+			hashAlgorithm = hashAlgorithm,
+			encryptionAlgorithm = encryptionAlgorithm,
+			signatureLevel = effectiveSignatureLevel(globalLevel),
+			timestampServer = if (timestampEnabled && timestampUrl.isNotBlank()) {
+				val effectiveUsername = timestampUsername.ifBlank { null }
+				TimestampServerConfig(
+					url = timestampUrl.trim(),
+					username = effectiveUsername,
+					credentialKey = when {
+						effectiveUsername == null -> null
+						timestampPassword.value.isNotEmpty() -> effectiveUsername
+						hasStoredPassword -> loadedProfile?.timestampServer?.credentialKey ?: effectiveUsername
+						else -> null
+					},
+					timeout = timestampTimeout.toIntOrNull() ?: TimestampServerConfig.DEFAULT_TIMEOUT_MS,
 				)
 			} else {
 				null
-			}
-		},
-	)
+			},
+			disabledHashAlgorithms = disabledHashAlgorithms,
+			disabledEncryptionAlgorithms = disabledEncryptionAlgorithms,
+			validation = run {
+				val alertOverride = when (alertIfNotEuLotlOverride) {
+					TriToggleState.ENABLED -> true
+					TriToggleState.DISABLED -> false
+					TriToggleState.INHERIT -> null
+				}
+				val allowExpiredOverride = when (allowExpiredCertificateOverride) {
+					TriToggleState.ENABLED -> true
+					TriToggleState.DISABLED -> false
+					TriToggleState.INHERIT -> null
+				}
+				(base?.validation ?: ValidationConfig()).copy(
+					customTrustedLists = customTrustedLists,
+					alertIfNotEuLotl = alertOverride,
+					allowExpiredCertificate = allowExpiredOverride,
+				).takeUnless { it == ValidationConfig() }
+			},
+		)
 
 	companion object {
 
 		/**
 		 * Build a [ProfileEditState] from an existing [ProfileConfig].
 		 *
-		 * @param profile The source profile configuration.
+		 * @param profile The source profile configuration, kept as [loadedProfile].
 		 * @param hasStoredPassword Whether a password is already persisted in the credential store.
 		 * @param trustedCertificates Certificates currently in this profile's app-managed trust scope.
 		 * @return A new edit state pre-populated with the profile's values.
@@ -188,6 +246,7 @@ data class ProfileEditState(
 			val (sigTs, archTs) = toToggleStates(profile.signatureLevel)
 			return ProfileEditState(
 				profileName = profile.name,
+				loadedProfile = profile,
 				description = profile.description.orEmpty(),
 				hashAlgorithm = profile.hashAlgorithm,
 				encryptionAlgorithm = profile.encryptionAlgorithm,
@@ -206,9 +265,8 @@ data class ProfileEditState(
 				timestampEnabled = profile.timestampServer != null,
 				timestampUrl = profile.timestampServer?.url.orEmpty(),
 				timestampUsername = profile.timestampServer?.username.orEmpty(),
-				timestampPassword = "",
 				hasStoredPassword = hasStoredPassword,
-				timestampTimeout = (profile.timestampServer?.timeout ?: 30000).toString(),
+				timestampTimeout = (profile.timestampServer?.timeout ?: TimestampServerConfig.DEFAULT_TIMEOUT_MS).toString(),
 				disabledHashAlgorithms = profile.disabledHashAlgorithms,
 				disabledEncryptionAlgorithms = profile.disabledEncryptionAlgorithms,
 				customTrustedLists = profile.validation?.customTrustedLists.orEmpty(),

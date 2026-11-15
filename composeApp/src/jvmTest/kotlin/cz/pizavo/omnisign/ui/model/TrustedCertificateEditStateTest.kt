@@ -6,12 +6,15 @@ import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateRef
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
+import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import kotlinx.datetime.LocalDate
+import kotlin.time.Instant
 
 /**
  * Unit tests verifying that trusted certificates never round-trip through the *configuration*.
@@ -19,8 +22,9 @@ import kotlinx.datetime.LocalDate
  * Directly-trusted certificates live in the app-managed trust store, not in the config. The edit
  * states stage certificate changes for the store separately (baseline + pending add/remove), but
  * [GlobalConfigEditState.from]/[ProfileEditState.from] must ignore any certificates present in a
- * config's validation block, and [GlobalConfigEditState.appliedTo]/`toProfileConfig` must never write certificates
- * back into the config.
+ * config's validation block, and [GlobalConfigEditState.appliedTo]/[ProfileEditState.toProfileConfig]
+ * must never write the store's certificates into the config. References the config already holds
+ * are saved as they were loaded.
  */
 class TrustedCertificateEditStateTest : FunSpec({
 
@@ -41,24 +45,43 @@ class TrustedCertificateEditStateTest : FunSpec({
             val state = ProfileEditState.from(profile)
 
             state.customTrustedLists shouldHaveSize 1
+            state.trustedCertificates.shouldBeEmpty()
         }
 
         test("toProfileConfig() never writes trusted certificates into the config") {
             val state = ProfileEditState(
                 profileName = "p1",
                 customTrustedLists = listOf(CustomTrustedListConfig(name = "tl", source = "https://x/tl.xml")),
+                trustedCertificates = listOf(
+                    TrustedCertificate(
+                        fingerprint = "sha256-aa",
+                        subjectDN = "CN=ca",
+                        notBefore = Instant.parse("2024-01-01T00:00:00Z"),
+                        notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+                        type = TrustedCertificateType.CA,
+                    ),
+                ),
+                pendingTrustedCertAdds = listOf(
+                    PendingTrustedCert(
+                        source = "new.pem",
+                        type = TrustedCertificateType.CA,
+                        bytes = byteArrayOf(1, 2, 3),
+                        fingerprint = "sha256-bb",
+                        subjectDN = "CN=new",
+                        notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+                    ),
+                ),
             )
 
-            val config = state.toProfileConfig()
+            val config = state.toProfileConfig(SignatureLevel.PADES_BASELINE_B)
 
-            config.validation.shouldNotBeNull()
-            config.validation!!.trustedCertificates.shouldBeEmpty()
+            config.validation.shouldNotBeNull().trustedCertificates.shouldBeEmpty()
         }
 
         test("toProfileConfig() sets validation to null when no trusted lists") {
             val state = ProfileEditState(profileName = "p1")
 
-            val config = state.toProfileConfig()
+            val config = state.toProfileConfig(SignatureLevel.PADES_BASELINE_B)
 
             config.validation.shouldBeNull()
         }
@@ -77,6 +100,7 @@ class TrustedCertificateEditStateTest : FunSpec({
             val state = GlobalConfigEditState.from(global)
 
             state.customTrustedLists shouldHaveSize 1
+            state.trustedCertificates.shouldBeEmpty()
         }
 
         test("appliedTo() never writes trusted certificates into the config") {

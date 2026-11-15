@@ -2,27 +2,41 @@ package cz.pizavo.omnisign.ui.viewmodel
 
 import arrow.core.left
 import arrow.core.right
+import cz.pizavo.omnisign.data.repository.FileConfigRepository
+import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.CustomTrustedListConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
+import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
+import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
+import cz.pizavo.omnisign.domain.model.config.service.CrlConfig
+import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.error.TrustStoreError
+import cz.pizavo.omnisign.domain.model.error.localizableText
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
+import cz.pizavo.omnisign.domain.model.value.Sensitive
 import cz.pizavo.omnisign.domain.service.CredentialStore
 import cz.pizavo.omnisign.domain.usecase.GetConfigUseCase
 import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
+import cz.pizavo.omnisign.lumo.components.TriToggleState
 import cz.pizavo.omnisign.ui.model.PendingTrustedCert
+import cz.pizavo.omnisign.ui.model.ProfileError
 import cz.pizavo.omnisign.ui.model.ProfilePanelMode
+import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactlyInAnyOrder
 import io.kotest.matchers.collections.shouldHaveSize
@@ -54,6 +68,7 @@ class ProfileViewModelTest : FunSpec({
     val manageProfile = ManageProfileUseCase(configRepository)
     val getConfig = GetConfigUseCase(configRepository)
     val testDispatcher = StandardTestDispatcher()
+    val configDir = tempdir()
 
     fun profile(name: String, description: String? = null) = ProfileConfig(
         name = name,
@@ -453,7 +468,7 @@ class ProfileViewModelTest : FunSpec({
         }
     }
 
-    test("saveEdit with validation error keeps Editing mode") {
+    test("saveEdit with validation error keeps Editing mode and shows the error as keyed text, to render in the UI's language") {
         runTest(testDispatcher) {
             val devProfile = ProfileConfig(
                 name = "dev",
@@ -483,7 +498,9 @@ class ProfileViewModelTest : FunSpec({
 
             vm.state.value.mode shouldBe ProfilePanelMode.Editing("dev")
             vm.state.value.editState.shouldNotBeNull()
-            vm.state.value.editState!!.error.shouldNotBeNull()
+            val error = ConfigurationError.profileDisablesOwnHash("dev", "SHA256")
+            vm.state.value.editState!!.error shouldBe ProfileError.Domain(error.localizableText())
+            (error.localizableText() is LocalizableText.Keyed) shouldBe true
             vm.state.value.editState!!.saving shouldBe false
         }
     }
@@ -513,7 +530,7 @@ class ProfileViewModelTest : FunSpec({
 
             val editState = vm.state.value.editState.shouldNotBeNull()
             editState.hasStoredPassword shouldBe true
-            editState.timestampPassword shouldBe ""
+            editState.timestampPassword shouldBe Sensitive("")
         }
     }
 
@@ -545,7 +562,7 @@ class ProfileViewModelTest : FunSpec({
                     timestampEnabled = true,
                     timestampUrl = "https://tsa.example.com",
                     timestampUsername = "admin",
-                    timestampPassword = "s3cret",
+                    timestampPassword = Sensitive("s3cret"),
                 )
             }
             vm.saveEdit()
@@ -579,7 +596,7 @@ class ProfileViewModelTest : FunSpec({
                     timestampEnabled = true,
                     timestampUrl = "https://tsa.example.com",
                     timestampUsername = "admin",
-                    timestampPassword = "s3cret",
+                    timestampPassword = Sensitive("s3cret"),
                 )
             }
             vm.saveEdit()
@@ -588,7 +605,9 @@ class ProfileViewModelTest : FunSpec({
             coVerify(exactly = 0) { configRepository.saveConfig(any()) }
             vm.state.value.mode shouldBe ProfilePanelMode.Editing("dev")
             val editState = vm.state.value.editState.shouldNotBeNull()
-            editState.error shouldBe "Failed to store the password in the system credential store"
+            editState.error shouldBe ProfileError.Domain(
+                ConfigurationError.passwordStoreFailed("The keyring is locked").localizableText(),
+            )
             editState.saving shouldBe false
         }
     }
@@ -654,7 +673,7 @@ class ProfileViewModelTest : FunSpec({
                     timestampEnabled = true,
                     timestampUrl = "https://tsa.example.com",
                     timestampUsername = "admin",
-                    timestampPassword = "s3cret",
+                    timestampPassword = Sensitive("s3cret"),
                 )
             }
             vm.saveEdit()
@@ -1078,5 +1097,253 @@ class ProfileViewModelTest : FunSpec({
             es.trustedCertAddError.shouldNotBeNull()
         }
     }
-})
 
+    test("saveEdit keeps the settings the editor does not show") {
+        runTest(testDispatcher) {
+            val legacy = ProfileConfig(
+                name = "legacy",
+                signatureLevel = SignatureLevel.PADES_BASELINE_T,
+                ocsp = OcspConfig(timeout = 5000),
+                crl = CrlConfig(timeout = 7000),
+                validation = ValidationConfig(
+                    policyType = ValidationPolicyType.CUSTOM_FILE,
+                    customPolicyPath = "policy.xml",
+                    algorithmConstraints = AlgorithmConstraintsConfig(
+                        expirationLevel = AlgorithmConstraintLevel.WARN,
+                        expirationDateOverrides = mapOf("RIPEMD160" to "2030-01-01"),
+                    ),
+                ),
+            )
+            var currentConfig = AppConfig(profiles = mapOf("legacy" to legacy))
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
+            advanceUntilIdle()
+
+            vm.startEdit("legacy")
+            advanceUntilIdle()
+
+            vm.updateEditState { it.copy(description = "Qualified") }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            saved.captured.profiles["legacy"] shouldBe legacy.copy(description = "Qualified")
+        }
+    }
+
+    test("the panel gets the global level, and saveEdit resolves a timestamp toggle left on Inherit against it") {
+        runTest(testDispatcher) {
+            var currentConfig = AppConfig(
+                global = GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA),
+                profiles = mapOf("dev" to profile("dev")),
+            )
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
+            advanceUntilIdle()
+            vm.state.value.globalSignatureLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState { it.copy(signatureTimestampOverride = TriToggleState.ENABLED) }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            saved.captured.profiles["dev"].shouldNotBeNull().signatureLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+        }
+    }
+
+    test("saveEdit keeps what the CLI saved to the configuration file while the form was open") {
+        runTest(testDispatcher) {
+            val configFile = configDir.toPath().resolve("config.json")
+            val desktopRepository = FileConfigRepository(configFile, testDispatcher)
+            desktopRepository.saveConfig(
+                AppConfig(profiles = mapOf("dev" to ProfileConfig(name = "dev", ocsp = OcspConfig(timeout = 5000)))),
+            ).shouldBeRight()
+            val vm = ProfileViewModel(
+                ManageProfileUseCase(desktopRepository),
+                GetConfigUseCase(desktopRepository),
+                ioDispatcher = testDispatcher,
+            )
+            advanceUntilIdle()
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            val cliRepository = FileConfigRepository(configFile, testDispatcher)
+            val cliConfig = cliRepository.loadConfig().shouldBeRight()
+            cliRepository.saveConfig(
+                cliConfig.copy(
+                    global = cliConfig.global.copy(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA),
+                    profiles = mapOf("dev" to ProfileConfig(name = "dev"), "work" to ProfileConfig(name = "work")),
+                ),
+            ).shouldBeRight()
+
+            vm.updateEditState { it.copy(description = "Edited", signatureTimestampOverride = TriToggleState.ENABLED) }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            vm.state.value.mode shouldBe ProfilePanelMode.Listing
+            val onDisk = FileConfigRepository(configFile, testDispatcher).loadConfig().shouldBeRight()
+            onDisk.global.defaultSignatureLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+            onDisk.profiles.keys shouldBe setOf("dev", "work")
+            onDisk.profiles["dev"] shouldBe ProfileConfig(
+                name = "dev",
+                description = "Edited",
+                signatureLevel = SignatureLevel.PADES_BASELINE_LTA,
+            )
+        }
+    }
+
+    test("saveEdit saves nothing and keeps the form open with the error when the configuration cannot be read again") {
+        runTest(testDispatcher) {
+            val config = AppConfig(profiles = mapOf("dev" to profile("dev")))
+            val failure = ConfigurationError.LoadFailed(LocalizableText.Literal("disk error"))
+            var readFails = false
+            coEvery { configRepository.loadConfig() } answers { if (readFails) failure.left() else config.right() }
+            coEvery { configRepository.getCurrentConfig() } returns config
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
+            advanceUntilIdle()
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            readFails = true
+            vm.updateEditState { it.copy(description = "Edited") }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            vm.state.value.mode shouldBe ProfilePanelMode.Editing("dev")
+            val editState = vm.state.value.editState.shouldNotBeNull()
+            editState.error shouldBe ProfileError.Domain(failure.localizableText())
+            editState.saving shouldBe false
+            coVerify(exactly = 0) { configRepository.saveConfig(any()) }
+        }
+    }
+
+    test("saveEdit reads the configuration after the TSA password is stored, so what was saved meanwhile is kept") {
+        runTest(testDispatcher) {
+            var currentConfig = AppConfig(
+                profiles = mapOf("dev" to ProfileConfig(name = "dev", ocsp = OcspConfig(timeout = 5000))),
+            )
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+            val credStore: CredentialStore = mockk()
+            io.mockk.every { credStore.setPassword(any(), any(), any()) } answers {
+                currentConfig = currentConfig.copy(
+                    global = currentConfig.global.copy(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA),
+                    profiles = mapOf("dev" to ProfileConfig(name = "dev")),
+                )
+                Unit.right()
+            }
+
+            val vm = ProfileViewModel(manageProfile, getConfig, credStore, ioDispatcher = testDispatcher)
+            advanceUntilIdle()
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState {
+                it.copy(
+                    signatureTimestampOverride = TriToggleState.ENABLED,
+                    timestampEnabled = true,
+                    timestampUrl = "https://tsa.example.com",
+                    timestampUsername = "admin",
+                    timestampPassword = Sensitive("s3cret"),
+                )
+            }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            val dev = saved.captured.profiles["dev"].shouldNotBeNull()
+            dev.ocsp.shouldBeNull()
+            dev.signatureLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+        }
+    }
+
+    test("saveEdit saves a profile removed while the form was open again, with the settings it was loaded with") {
+        runTest(testDispatcher) {
+            val dev = ProfileConfig(name = "dev", ocsp = OcspConfig(timeout = 5000))
+            var currentConfig = AppConfig(profiles = mapOf("dev" to dev, "other" to profile("other")))
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+
+            val vm = ProfileViewModel(manageProfile, getConfig, ioDispatcher = testDispatcher)
+            advanceUntilIdle()
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            currentConfig = currentConfig.copy(profiles = mapOf("other" to profile("other")))
+            vm.updateEditState { it.copy(description = "Edited") }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            saved.captured.profiles.keys shouldBe setOf("other", "dev")
+            saved.captured.profiles["dev"] shouldBe dev.copy(description = "Edited")
+        }
+    }
+
+    test("a staged certificate the trust store refuses shows the store's error as keyed text, to render in the UI's language") {
+        runTest(testDispatcher) {
+            val config = AppConfig(profiles = mapOf("dev" to profile("dev")))
+            coEvery { configRepository.loadConfig() } returns config.right()
+            coEvery { configRepository.getCurrentConfig() } returns config
+            coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+            val trustStore: TrustStore = mockk()
+            coEvery { trustStore.list(TrustScope.Profile("dev")) } returns emptyList<TrustedCertificate>().right()
+            val failure = TrustStoreError.storageFailed("Access is denied")
+            coEvery { trustStore.add(TrustScope.Profile("dev"), any(), any(), any()) } returns failure.left()
+
+            val vm = ProfileViewModel(manageProfile, getConfig, null, trustStore, ioDispatcher = testDispatcher)
+            advanceUntilIdle()
+
+            vm.startEdit("dev")
+            advanceUntilIdle()
+
+            vm.updateEditState {
+                it.copy(
+                    pendingTrustedCertAdds = listOf(
+                        PendingTrustedCert(
+                            source = "ca.pem",
+                            type = TrustedCertificateType.CA,
+                            bytes = byteArrayOf(1, 2, 3),
+                            fingerprint = "sha256-new",
+                            subjectDN = "CN=new",
+                            notAfter = Instant.parse("2030-01-01T00:00:00Z"),
+                        ),
+                    ),
+                )
+            }
+            vm.saveEdit()
+            advanceUntilIdle()
+
+            vm.state.value.mode shouldBe ProfilePanelMode.Editing("dev")
+            val editState = vm.state.value.editState.shouldNotBeNull()
+            editState.error shouldBe ProfileError.Domain(failure.text)
+            (failure.text is LocalizableText.Keyed) shouldBe true
+            editState.saving shouldBe false
+        }
+    }
+})

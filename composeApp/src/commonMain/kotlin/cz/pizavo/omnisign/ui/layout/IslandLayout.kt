@@ -69,6 +69,9 @@ import org.koin.mp.KoinPlatform
  * Koin-backed ones through [koinViewModelOrNull], so the store that [App][cz.pizavo.omnisign.App]
  * provides decides how long they live.
  *
+ * The profiles panel reloads whenever the settings dialog closes, so a profile being edited shows
+ * the global signature level as Settings or an imported configuration left it.
+ *
  * @param isDarkTheme Whether a dark theme is currently active.
  * @param onToggleTheme Callback invoked when the user toggles the theme.
  * @param languageTag The active UI language tag (`null` = system default), threaded to the settings
@@ -187,7 +190,10 @@ fun IslandLayout(
 	}).collectAsState()
 	var showSettingsDialog by remember { mutableStateOf(false) }
 
-	LaunchedEffect(showSettingsDialog) { renewalStatusViewModel?.refresh() }
+	LaunchedEffect(showSettingsDialog) {
+		renewalStatusViewModel?.refresh()
+		if (!showSettingsDialog) profileViewModel?.refresh()
+	}
 	var initialSettingsCategory by remember { mutableStateOf<SettingsCategory?>(null) }
 	var settingsLanguageBaseline by remember { mutableStateOf(languageTag) }
 	var settingsFormatBaseline by remember { mutableStateOf(dateFormat) }

@@ -6,6 +6,7 @@ import arrow.core.flatMap
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
+import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.localizableText
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
@@ -40,8 +41,9 @@ import kotlinx.coroutines.withContext
  * @param manageProfileUseCase Use case for CRUD operations on configuration profiles.
  * @param getConfigUseCase Use-case for reading the current application configuration.
  * @param credentialStore Optional OS credential store for persisting TSA passwords.
- * @param trustStore Optional app-managed trust store backing the profile's Trusted Certificates
- *   section. `null` on targets without a backend (web), where that section renders unavailable.
+ * @param trustStore Trust store backing the profile's Trusted Certificates section: the app-managed
+ *   one on the desktop, the server's read-only one on the web. `null` only when none is bound, and
+ *   the section then renders unavailable.
  * @param ioDispatcher Dispatcher for the credential store calls, which can block until the user
  *   answers the keyring's unlock prompt.
  */
@@ -90,8 +92,7 @@ class ProfileViewModel(
             val activeProfile = appConfig?.activeProfile
             val globalDisabledHash = appConfig?.global?.disabledHashAlgorithms ?: emptySet()
             val globalDisabledEnc = appConfig?.global?.disabledEncryptionAlgorithms ?: emptySet()
-            val globalArchival = appConfig?.global?.defaultSignatureLevel ==
-                    cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel.PADES_BASELINE_LTA
+            val globalLevel = appConfig?.global?.defaultSignatureLevel ?: SignatureLevel.PADES_BASELINE_B
 
             manageProfileUseCase.list().fold(
                 ifLeft = { error ->
@@ -106,7 +107,7 @@ class ProfileViewModel(
                             error = null,
                             globalDisabledHashAlgorithms = globalDisabledHash,
                             globalDisabledEncryptionAlgorithms = globalDisabledEnc,
-                            globalAddArchivalTimestamp = globalArchival,
+                            globalSignatureLevel = globalLevel,
                         )
                     }
                 },
@@ -316,49 +317,71 @@ class ProfileViewModel(
     /**
      * Persist the current edit state as a profile and return to the listing view.
      *
-     * Stores a newly entered TSA password in the OS credential store first, then converts
-     * [ProfileEditState] to a [ProfileConfig], calls [ManageProfileUseCase.upsert] and refreshes
-     * the profile list. A password the store does not keep becomes the error and nothing is saved,
-     * so the profile never names a password that is not there.
+     * Stores a newly entered TSA password in the OS credential store first, which can wait for the
+     * keyring to be unlocked. The configuration is then read again, so that what Settings, an import
+     * or the CLI changed while the form was open, that wait included, is kept: the form is copied
+     * onto the profile as it is stored now, or as it was loaded when it is no longer stored, with a
+     * timestamp toggle left on Inherit resolved against the global level as it is now (see
+     * [ProfileEditState.toProfileConfig]). The result is saved through [ManageProfileUseCase.upsert]
+     * and the profile list is refreshed. A password the store does not keep becomes the error and
+     * nothing is saved, so the profile never names a password that is not there, and a failed read
+     * becomes the error too. An error from the save or from the trust store is kept as localizable
+     * text, so the panel shows it in the UI's language.
      */
     fun saveEdit() {
         val editState = _state.value.editState ?: return
         _state.update { it.copy(editState = editState.copy(saving = true, error = null)) }
         viewModelScope.launch {
-            val profile = editState.toProfileConfig()
-            val passwordStored = withContext(ioDispatcher) { storeTsaPasswordIfNeeded(editState) }
-            passwordStored.flatMap { manageProfileUseCase.upsert(profile) }.fold(
-                ifLeft = { error ->
-                    _state.update {
-                        it.copy(editState = editState.copy(saving = false, error = error.message))
-                    }
-                },
-                ifRight = {
-                    val store = trustStore
-                    val certError = if (store != null) {
-                        applyStagedTrustedCertChanges(
-                            store = store,
-                            scope = TrustScope.Profile(editState.profileName),
-                            removals = editState.pendingTrustedCertRemovals,
-                            additions = editState.pendingTrustedCertAdds,
-                        )
-                    } else {
-                        null
-                    }
-                    if (certError != null) {
-                        _state.update { it.copy(editState = editState.copy(saving = false, error = certError.message)) }
-                    } else {
-                        _initialEditState.value = null
+            withContext(ioDispatcher) { storeTsaPasswordIfNeeded(editState) }
+                .flatMap { getConfigUseCase() }
+                .flatMap { config ->
+                    val stored = config.profiles[editState.profileName] ?: editState.loadedProfile
+                    manageProfileUseCase.upsert(editState.toProfileConfig(config.global.defaultSignatureLevel, stored))
+                }
+                .fold(
+                    ifLeft = { error ->
                         _state.update {
                             it.copy(
-                                mode = ProfilePanelMode.Listing,
-                                editState = null,
+                                editState = editState.copy(
+                                    saving = false,
+                                    error = ProfileError.Domain(error.localizableText()),
+                                ),
                             )
                         }
-                        refresh()
-                    }
-                },
-            )
+                    },
+                    ifRight = {
+                        val store = trustStore
+                        val certError = if (store != null) {
+                            applyStagedTrustedCertChanges(
+                                store = store,
+                                scope = TrustScope.Profile(editState.profileName),
+                                removals = editState.pendingTrustedCertRemovals,
+                                additions = editState.pendingTrustedCertAdds,
+                            )
+                        } else {
+                            null
+                        }
+                        if (certError != null) {
+                            _state.update {
+                                it.copy(
+                                    editState = editState.copy(
+                                        saving = false,
+                                        error = ProfileError.Domain(certError.localizableText()),
+                                    ),
+                                )
+                            }
+                        } else {
+                            _initialEditState.value = null
+                            _state.update {
+                                it.copy(
+                                    mode = ProfilePanelMode.Listing,
+                                    editState = null,
+                                )
+                            }
+                            refresh()
+                        }
+                    },
+                )
         }
     }
 
@@ -382,9 +405,9 @@ class ProfileViewModel(
      *   store's error.
      */
     private fun storeTsaPasswordIfNeeded(editState: ProfileEditState): OperationResult<Unit> {
-        if (editState.timestampPassword.isEmpty()) return Unit.right()
+        val password = editState.timestampPassword.value.ifEmpty { return Unit.right() }
         val username = editState.timestampUsername.ifBlank { return Unit.right() }
-        return credentialStore?.setPassword(TSA_CREDENTIAL_SERVICE, username, editState.timestampPassword)
+        return credentialStore?.setPassword(TSA_CREDENTIAL_SERVICE, username, password)
             ?: Unit.right()
     }
 
