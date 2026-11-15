@@ -57,10 +57,15 @@ interface SigningRepository {
      * Load certificates from a PKCS#12 file selected by the user.
      *
      * Prompts for the file password, opens the keystore, and returns available certificates.
-     * The file is treated as a transient token for this session only.
+     * The file is treated as a transient token for this session only, and the password is not
+     * kept. Each [AvailableCertificateInfo.alias] is the one [signDocument] resolves when signing
+     * from the same file, so a certificate listed here signs once it is handed back as
+     * [SigningParameters.certificateAlias] with the file as [SigningParameters.keystoreFile]; the
+     * password is then asked for again unless [SigningParameters.keystorePassword] carries it.
      *
      * @param filePath Absolute path to the PKCS#12 (.p12 / .pfx) file.
-     * @return List of [AvailableCertificateInfo] from the file, or an error.
+     * @return List of [AvailableCertificateInfo] from the file, or an error when the file is
+     *   missing, the password prompt is cancelled, or the keystore cannot be opened.
      */
     suspend fun loadCertificatesFromFile(filePath: String): OperationResult<List<AvailableCertificateInfo>>
 

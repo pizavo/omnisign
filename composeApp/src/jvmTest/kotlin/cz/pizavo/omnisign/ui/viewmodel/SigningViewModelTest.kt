@@ -9,6 +9,7 @@ import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.SigningError
+import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.domain.model.result.SigningResult
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
@@ -25,6 +26,7 @@ import cz.pizavo.omnisign.ui.platform.SaveOutcome
 import cz.pizavo.omnisign.ui.toast.ToastService
 import cz.pizavo.omnisign.ui.toast.ToastText
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
@@ -35,6 +37,7 @@ import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.justRun
 import io.mockk.mockk
+import io.mockk.slot
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -899,6 +902,128 @@ class SigningViewModelTest : FunSpec({
 			state.tokenWarnings shouldHaveSize 1
 			state.tokenWarnings.first().message.english() shouldBe "Wrong password"
 			state.certificates shouldHaveSize 1
+		}
+	}
+
+	test("sign signs a certificate imported from a file from that file, though another file was imported after it") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { signingRepository.loadCertificatesFromFile("/tmp/first.p12") } returns
+					listOf(sampleCert.copy(alias = "first-cert", tokenType = "FILE")).right()
+			coEvery { signingRepository.loadCertificatesFromFile("/tmp/second.p12") } returns
+					listOf(sampleCert.copy(alias = "second-cert", tokenType = "FILE")).right()
+			val parameters = slot<SigningParameters>()
+			coEvery { signingRepository.signDocument(capture(parameters)) } returns
+					SigningResult(
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-B",
+					).right()
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+			vm.loadPkcs12File("/tmp/first.p12")
+			advanceUntilIdle()
+			vm.loadPkcs12File("/tmp/second.p12")
+			advanceUntilIdle()
+
+			vm.updateState { it.copy(selectedAlias = "first-cert") }
+			vm.sign()
+			advanceUntilIdle()
+
+			parameters.captured.certificateAlias shouldBe "first-cert"
+			parameters.captured.keystoreFile shouldBe "/tmp/first.p12"
+		}
+	}
+
+	test("a certificate imported under an alias already listed replaces the listed one, and signs from its own file") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			val fromFirstFolder = sampleCert.copy(alias = "Test-1@keystore-id.p12", tokenType = "FILE", issuerDN = "CN=First CA")
+			val fromSecondFolder = fromFirstFolder.copy(issuerDN = "CN=Second CA")
+			coEvery { signingRepository.loadCertificatesFromFile("/work/a/id.p12") } returns listOf(fromFirstFolder).right()
+			coEvery { signingRepository.loadCertificatesFromFile("/work/b/id.p12") } returns listOf(fromSecondFolder).right()
+			val parameters = slot<SigningParameters>()
+			coEvery { signingRepository.signDocument(capture(parameters)) } returns
+					SigningResult(
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-B",
+					).right()
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+			vm.loadPkcs12File("/work/a/id.p12")
+			advanceUntilIdle()
+			vm.loadPkcs12File("/work/b/id.p12")
+			advanceUntilIdle()
+
+			val ready = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
+			ready.certificates.filter { it.alias == "Test-1@keystore-id.p12" } shouldBe listOf(fromSecondFolder)
+			ready.certificates.map { it.alias } shouldContain "test-cert"
+
+			vm.updateState { it.copy(selectedAlias = "Test-1@keystore-id.p12") }
+			vm.sign()
+			advanceUntilIdle()
+
+			parameters.captured.keystoreFile shouldBe "/work/b/id.p12"
+		}
+	}
+
+	test("a file holding two certificates under one alias lists only the first of them") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			val first = sampleCert.copy(alias = "Twin-1@keystore-twins.p12", tokenType = "FILE", issuerDN = "CN=First CA")
+			val second = first.copy(issuerDN = "CN=Second CA")
+			coEvery { signingRepository.loadCertificatesFromFile("/work/twins.p12") } returns listOf(first, second).right()
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+			vm.loadPkcs12File("/work/twins.p12")
+			advanceUntilIdle()
+
+			val ready = vm.state.value.shouldBeInstanceOf<SigningDialogState.Ready>()
+			ready.certificates.filter { it.alias == "Twin-1@keystore-twins.p12" } shouldBe listOf(first)
+			ready.certificates.map { it.alias } shouldContain "test-cert"
+			ready.importedKeystores shouldBe mapOf("Twin-1@keystore-twins.p12" to "/work/twins.p12")
+		}
+	}
+
+	test("sign looks a discovered certificate up among the tokens, with no file, after a file was imported") {
+		runTest(testDispatcher) {
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { signingRepository.loadCertificatesFromFile("/tmp/first.p12") } returns
+					listOf(sampleCert.copy(alias = "first-cert", tokenType = "FILE")).right()
+			val parameters = slot<SigningParameters>()
+			coEvery { signingRepository.signDocument(capture(parameters)) } returns
+					SigningResult(
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-B",
+					).right()
+
+			val vm = SigningViewModel(signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService, ioDispatcher = testDispatcher)
+			vm.open(sampleDoc())
+			advanceUntilIdle()
+			vm.loadPkcs12File("/tmp/first.p12")
+			advanceUntilIdle()
+
+			vm.updateState { it.copy(selectedAlias = "test-cert") }
+			vm.sign()
+			advanceUntilIdle()
+
+			parameters.captured.certificateAlias shouldBe "test-cert"
+			parameters.captured.keystoreFile.shouldBeNull()
 		}
 	}
 

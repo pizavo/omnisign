@@ -58,6 +58,9 @@ sealed interface SigningDialogState {
 	 * @property tokenWarnings Per-token warnings encountered during discovery.
 	 * @property lockedTokens Tokens that require a PIN to list certificates.
 	 * @property selectedAlias Currently selected certificate alias, or `null` when no certificate has been selected yet.
+	 * @property importedKeystores The PKCS#12 file each certificate imported through
+	 *   [cz.pizavo.omnisign.ui.viewmodel.SigningViewModel.loadPkcs12File] came from, keyed by its alias, so
+	 *   that signing with one of them signs from its file rather than searching the tokens.
 	 * @property hashAlgorithm Hash algorithm override, or `null` to use the resolved config default.
 	 * @property addSignatureTimestamp Whether to include a signature timestamp and revocation data (B-LT).
 	 * @property addArchivalTimestamp Whether to include an archival document timestamp (B-LTA).
@@ -82,6 +85,7 @@ sealed interface SigningDialogState {
 		val tokenWarnings: List<TokenDiscoveryWarning> = emptyList(),
 		val lockedTokens: List<LockedTokenInfo> = emptyList(),
 		val selectedAlias: String? = null,
+		val importedKeystores: Map<String, String> = emptyMap(),
 		val hashAlgorithm: HashAlgorithm? = null,
 		val addSignatureTimestamp: Boolean = true,
 		val addArchivalTimestamp: Boolean = false,

@@ -16,8 +16,9 @@ private const val RADIX_HEX = 16
  * `@<tokenInfo.id>` records *which source* the certificate was read from.  [TokenInfo.id]
  * is stable for a given source — `pkcs11-<tokenSerial>` for a hardware token (the physical
  * token serial, never the transient slot), `windows-my` / `macos-keychain` for the OS stores,
- * `file-…` for an imported keystore — so the same physical certificate yields the same alias
- * whether it is enumerated by the no-login probe, the logged-in keystore, or the signing token.
+ * `keystore-<file name>` for a PKCS#12 file — so the same physical certificate yields the
+ * same alias whether it is enumerated by the no-login probe, the logged-in keystore, or the
+ * signing token.
  *
  * This is the single source of truth shared by [DssTokenService] (which builds
  * [cz.pizavo.omnisign.domain.service.CertificateEntry]s) and
