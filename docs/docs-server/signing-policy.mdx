@@ -90,6 +90,13 @@ dates earlier, so it never makes a weak key acceptable again. The CLI's
 [expiration date overrides](/cli/configuration/overview#expiration-date-overrides) section explains
 how the entries combine.
 
+A `defaultEncryptionAlgorithm`, or a profile's `encryptionAlgorithm`, has to suit the signing key:
+`RSA_SSA_PSS` can take the place of `RSA` on an RSA key, and `PLAIN_ECDSA` that of `ECDSA` on an EC
+key, but a sign request with one of another family is refused, and so is one with `RSA_SSA_PSS` or
+`PLAIN_ECDSA` and a key on a PKCS#11 token, which cannot sign with them; sign from a PKCS#12 file,
+with [`signingKeystorePath`](configuration#operations), to use them. Left unset, the key's own
+algorithm signs. The CLI's [algorithms](/cli/commands/algorithms) page says more.
+
 **`PADES_BASELINE_T` cannot be configured** — neither as `global.defaultSignatureLevel` nor as a
 profile's `signatureLevel`. The server rejects it at startup and points you to `PADES_BASELINE_LT`.
 B-T is only ever a *runtime fallback*, applied automatically when a B-LT sign cannot obtain revocation

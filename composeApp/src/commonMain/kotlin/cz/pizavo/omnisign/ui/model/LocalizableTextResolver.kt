@@ -48,6 +48,8 @@ private val MESSAGE_RES: Map<MessageKey, StringResource> = mapOf(
 	MessageKey.SIGNING_LOAD_FILE_NOT_SUPPORTED_WEB to Res.string.err_signing_load_file_not_supported_web,
 	MessageKey.SIGNING_HASH_ENCRYPTION_INCOMPATIBLE to Res.string.err_signing_hash_encryption_incompatible,
 	MessageKey.SIGNING_HASH_NOT_SUPPORTED_WINDOWS to Res.string.err_signing_hash_not_supported_windows,
+	MessageKey.SIGNING_ENCRYPTION_KEY_MISMATCH to Res.string.err_signing_encryption_key_mismatch,
+	MessageKey.SIGNING_ENCRYPTION_NOT_SUPPORTED_BY_TOKEN to Res.string.err_signing_encryption_not_supported_by_token,
 	MessageKey.SIGNING_PDF_ENCRYPTED to Res.string.err_signing_pdf_encrypted,
 	MessageKey.SIGNING_MALFORMED_PDF to Res.string.err_signing_malformed_pdf,
 	MessageKey.SIGNING_SIGNATURE_TOO_LARGE to Res.string.err_signing_signature_too_large,

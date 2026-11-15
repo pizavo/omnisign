@@ -102,6 +102,12 @@ internal object EnglishMessages {
 			"Hash algorithm %1\$s is not compatible with encryption algorithm %2\$s. Compatible hash algorithms: %3\$s"
 		MessageKey.SIGNING_HASH_NOT_SUPPORTED_WINDOWS ->
 			"Hash algorithm %1\$s is not supported by the Windows Certificate Store"
+		MessageKey.SIGNING_ENCRYPTION_KEY_MISMATCH ->
+			"Encryption algorithm %1\$s cannot sign with the selected key, whose algorithm is %2\$s. " +
+					"Choose an encryption algorithm that suits the key, or leave it unset"
+		MessageKey.SIGNING_ENCRYPTION_NOT_SUPPORTED_BY_TOKEN ->
+			"A key on a PKCS#11 token or in the Windows Certificate Store cannot sign with %1\$s. " +
+					"Choose another encryption algorithm, or sign with a key from a PKCS#12 file"
 		MessageKey.SIGNING_PDF_ENCRYPTED ->
 			"The PDF is encrypted or password-protected and cannot be signed"
 		MessageKey.SIGNING_MALFORMED_PDF ->

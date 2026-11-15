@@ -185,5 +185,19 @@ sealed interface SigningError : OperationError, LocalizableError {
 		/** The chosen hash [hash] is not supported by the Windows Certificate Store. */
 		fun hashNotSupportedByWindowsStore(hash: String, details: String? = null): InvalidParameters =
 			InvalidParameters(LocalizableText.of(MessageKey.SIGNING_HASH_NOT_SUPPORTED_WINDOWS, hash), details)
+
+		/**
+		 * The chosen encryption [encryption] is not one the selected key can sign with, as its
+		 * algorithm is [keyAlgorithm].
+		 */
+		fun encryptionDoesNotFitKey(encryption: String, keyAlgorithm: String): InvalidParameters =
+			InvalidParameters(LocalizableText.of(MessageKey.SIGNING_ENCRYPTION_KEY_MISMATCH, encryption, keyAlgorithm))
+
+		/**
+		 * The chosen encryption [encryption] cannot sign with a key on a PKCS#11 token or in the
+		 * Windows Certificate Store.
+		 */
+		fun encryptionNotSupportedByToken(encryption: String, details: String? = null): InvalidParameters =
+			InvalidParameters(LocalizableText.of(MessageKey.SIGNING_ENCRYPTION_NOT_SUPPORTED_BY_TOKEN, encryption), details)
 	}
 }

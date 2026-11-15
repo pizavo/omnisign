@@ -1,11 +1,13 @@
 package cz.pizavo.omnisign.domain.model.config.enums
 
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import eu.europa.esig.dss.enumerations.EncryptionAlgorithm as DssEncryptionAlgorithm
 
 /**
- * Verifies exhaustive mapping of domain [EncryptionAlgorithm] to DSS [DssEncryptionAlgorithm].
+ * Verifies exhaustive mapping of domain [EncryptionAlgorithm] to DSS [DssEncryptionAlgorithm], and
+ * back.
  */
 class EncryptionAlgorithmExtensionTest : FunSpec({
 
@@ -37,6 +39,18 @@ class EncryptionAlgorithmExtensionTest : FunSpec({
 		EncryptionAlgorithm.entries.forEach { enc ->
 			val dss = enc.toDss()
 			dss shouldBe DssEncryptionAlgorithm.forName(enc.dssName)
+		}
+	}
+
+	test("every domain entry maps back from the DSS algorithm it maps to") {
+		EncryptionAlgorithm.entries.forEach { enc ->
+			enc.toDss().toDomainOrNull() shouldBe enc
+		}
+	}
+
+	test("a DSS algorithm OmniSign does not sign with maps back to nothing") {
+		listOf(DssEncryptionAlgorithm.X25519, DssEncryptionAlgorithm.X448, DssEncryptionAlgorithm.HMAC).forEach {
+			it.toDomainOrNull().shouldBeNull()
 		}
 	}
 })

@@ -120,6 +120,15 @@ enum class MessageKey {
 	/** The chosen hash algorithm is not supported by the Windows Certificate Store (arg: hash). */
 	SIGNING_HASH_NOT_SUPPORTED_WINDOWS,
 
+	/** The chosen encryption algorithm does not fit the selected key (args: encryption, key algorithm). */
+	SIGNING_ENCRYPTION_KEY_MISMATCH,
+
+	/**
+	 * The chosen encryption algorithm cannot sign with a key on a PKCS#11 token or in the Windows
+	 * Certificate Store (arg: encryption).
+	 */
+	SIGNING_ENCRYPTION_NOT_SUPPORTED_BY_TOKEN,
+
 	/** The input PDF is encrypted or password-protected, so it cannot be signed without its password. */
 	SIGNING_PDF_ENCRYPTED,
 

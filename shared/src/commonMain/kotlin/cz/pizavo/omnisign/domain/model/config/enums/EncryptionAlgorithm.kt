@@ -29,7 +29,7 @@ enum class EncryptionAlgorithm {
 	
 	/**
 	 * Plain-ECDSA — ECDSA with plain (r||s) integer encoding.
-	 * Common on CVC/ePassport cards; different on-wire format from [ECDSA].
+	 * Used in CVC and ePassport PKIs; a different on-wire format from [ECDSA].
 	 */
 	PLAIN_ECDSA,
 	
@@ -70,7 +70,7 @@ enum class EncryptionAlgorithm {
 			RSA -> "RSA PKCS#1 v1.5 — widely supported, standard on software keystores and PKCS#12 files"
 			RSA_SSA_PSS -> "RSA-PSS (RSASSA-PSS) — probabilistic padding, stronger than PKCS#1 v1.5; eIDAS-recommended for new RSA signatures"
 			ECDSA -> "ECDSA (DER-encoded) — elliptic-curve DSA; compact keys with equivalent security to RSA at larger sizes"
-			PLAIN_ECDSA -> "ECDSA plain (r‖s) — same cryptography as ECDSA with different signature encoding; common on smartcard/CVC tokens"
+			PLAIN_ECDSA -> "ECDSA plain (r‖s) — same cryptography as ECDSA with another signature encoding; used in CVC and ePassport PKIs"
 			DSA -> "DSA (FIPS 186) — legacy algorithm; provided for interoperability, RSA or ECDSA preferred for new keys"
 			EDDSA -> "EdDSA (Ed25519/Ed448) — modern deterministic Edwards-curve algorithm; hash algorithm is intrinsic and cannot be overridden"
 		}
@@ -80,9 +80,10 @@ enum class EncryptionAlgorithm {
 	 */
 	val notes: String?
 		get() = when (this) {
-			EDDSA -> "Hash algorithm selection is ignored for EdDSA — Ed25519 uses SHA-512, Ed448 uses SHAKE256"
+			EDDSA -> "Hash algorithm selection is ignored for EdDSA — Ed25519 uses SHA-512, Ed448 uses SHAKE256; an Ed25519 key is refused when SHA-512 is disabled, or past its expiration date under the FAIL expiration level"
 			DSA -> "DSA keys are rare on modern tokens; prefer ECDSA or RSA for new signatures"
-			PLAIN_ECDSA -> "Use only when your token produces r‖s-encoded ECDSA signatures; most software tokens use standard DER ECDSA"
+			PLAIN_ECDSA -> "Use only when a verifier asks for r‖s-encoded signatures; most expect standard DER ECDSA. A key on a PKCS#11 token or in the Windows Certificate Store cannot sign with it"
+			RSA_SSA_PSS -> "A key on a PKCS#11 token or in the Windows Certificate Store cannot sign with it; use a PKCS#12 file"
 			else -> null
 		}
 	

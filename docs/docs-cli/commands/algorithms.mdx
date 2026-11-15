@@ -48,3 +48,20 @@ omnisign algorithms encryption list
 | `DSA`         | Digital Signature Algorithm. Legacy; declining support.                |
 | `EDDSA`       | Edwards-curve Digital Signature Algorithm (Ed25519/Ed448). Fixed hash. |
 
+Without `--encryption-algorithm`, and when neither the profile nor the global settings name one, a
+signature uses the algorithm the signing key implies: `RSA` for an RSA key, `ECDSA` for an EC key,
+`DSA` for a DSA key and `EDDSA` for an Ed25519 or Ed448 key. A named algorithm has to suit the key:
+`RSA_SSA_PSS` can take the place of `RSA`, and `PLAIN_ECDSA` that of `ECDSA`, but one of another
+family, such as `ECDSA` for an RSA key, is refused before anything is signed. `RSA_SSA_PSS` and
+`PLAIN_ECDSA` cannot sign with a key on a PKCS#11 token or in the Windows Certificate Store, so
+sign with `--keystore` to use them. An algorithm the configuration disables is refused whether it
+is named or the key implies it. A key whose certificate marks it for RSA-PSS alone implies
+`RSA_SSA_PSS` and refuses `RSA`, as RFC 4055 requires of such a key.
+
+An Ed25519 key hashes with SHA-512 and an Ed448 key with SHAKE256, whatever hash is chosen. The
+chosen hash is still checked, as it is before any key is read, and an Ed25519 key is also refused
+when `SHA512` is disabled, or past its expiration date at the `FAIL` expiration severity; at
+`WARN` it signs, with a warning. `--algo-expiration-level` sets that severity for an expiration
+date on or before the policy update date, and `--algo-expiration-level-after-update` for one after
+it.
+
