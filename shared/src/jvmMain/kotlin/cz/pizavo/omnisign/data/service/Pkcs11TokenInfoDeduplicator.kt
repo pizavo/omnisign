@@ -42,7 +42,7 @@ class Pkcs11TokenInfoDeduplicator {
 			for (identity in identities) {
 				if (seenSerials.add(normalizeSerial(identity.serialNumber))) {
 					result += TokenInfo(
-						id = "pkcs11-${identity.serialNumber}",
+						id = pkcs11TokenId(identity.serialNumber),
 						name = identity.label,
 						type = TokenType.PKCS11,
 						path = path,

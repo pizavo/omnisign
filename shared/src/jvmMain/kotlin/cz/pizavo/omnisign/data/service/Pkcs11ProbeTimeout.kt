@@ -5,13 +5,13 @@ package cz.pizavo.omnisign.data.service
  *
  * `GlobalConfig.pkcs11ProbeTimeoutSeconds` is a plain global knob (it never enters
  * [cz.pizavo.omnisign.domain.model.config.ResolvedConfig] resolution).  The probe-spawning
- * services — [Pkcs11SubprocessProber], [Pkcs11WarmupService] and
- * [Pkcs11LibP11KitModuleResolver] — read [seconds] at spawn time, and the discovery producers
- * (startup warmup, [Pkcs11CacheInvalidator] rediscovery) push the configured value in via
- * [update] each cycle.  This mirrors how `trustedListRefreshIntervalHours` is applied through
- * a settable field on the trusted-list refresh path rather than baked into a constructor at
- * DI time, so a value edited mid-session takes effect on the next discovery without a
- * restart.
+ * services — [Pkcs11SubprocessProber], [Pkcs11WarmupService], [Pkcs11LibP11KitModuleResolver]
+ * and the no-login certificate listing of [DssTokenService] — read [seconds] at spawn time,
+ * and the discovery producers (startup warmup, [Pkcs11CacheInvalidator] rediscovery) push the
+ * configured value in via [update] each cycle.  This mirrors how
+ * `trustedListRefreshIntervalHours` is applied through a settable field on the trusted-list
+ * refresh path rather than baked into a constructor at DI time, so a value edited mid-session
+ * takes effect on the next discovery without a restart.
  *
  * Held as a single shared Koin singleton so every probe-spawning service observes one value.
  * The value is clamped to [MIN_SECONDS]‥[MAX_SECONDS] on construction and on every [update],

@@ -83,6 +83,25 @@ class DssSigningRepositoryTest : FunSpec({
 		return mockk<SigningToken> { every { getDssToken() } returns mockDssToken }
 	}
 
+	/**
+	 * Two PIN-protected PKCS#11 tokens of one middleware whose ids end in [prefix] and `-A` or
+	 * `-B`, the first pinned to slot 1 and the second to slot 2.
+	 */
+	fun twoCards(prefix: String): Pair<TokenInfo, TokenInfo> {
+		val first = TokenInfo(
+			id = "pkcs11-$prefix-A", name = "Card A", type = TokenType.PKCS11,
+			path = "/lib/middleware.so", requiresPin = true, pkcs11SlotId = 1L,
+		)
+		return first to first.copy(id = "pkcs11-$prefix-B", name = "Card B", pkcs11SlotId = 2L)
+	}
+
+	/** The certificate `CN=User` with serial number 7 that [card] holds in the slot it is pinned to. */
+	fun userCertificateOf(card: TokenInfo) = CertificateEntry(
+		alias = "User-7@${card.id}", subjectDN = "CN=User", issuerDN = "CN=CA",
+		serialNumber = "7", validFrom = Instant.parse("2024-01-01T00:00:00Z"), validTo = Instant.parse("2026-01-01T00:00:00Z"),
+		keyUsages = emptyList(), tokenInfo = card, pkcs11SlotId = card.pkcs11SlotId,
+	)
+
 	test("signDocument returns TokenAccessError when token discovery fails") {
 		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
 		coEvery { tokenService.discoverTokens() } returns SigningError.TokenAccessError(
@@ -481,6 +500,169 @@ class DssSigningRepositoryTest : FunSpec({
 		io.mockk.coVerify { tokenService.openSigningToken(card, "1234") }
 		io.mockk.coVerify { tokenService.listCertificatesNoLogin(card) }
 		io.mockk.coVerify { tokenService.openSigningToken(slotBToken, "1234") }
+	}
+
+	test("signDocument asks only the selected certificate's token for a PIN") {
+		val (cardA, cardB) = twoCards("ASK")
+		val certificate = userCertificateOf(cardB)
+
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
+		coEvery { tokenService.discoverTokens() } returns listOf(cardA, cardB).right()
+		coEvery { tokenService.probeTokenPresent(cardA) } returns true
+		coEvery { tokenService.probeTokenPresent(cardB) } returns true
+		coEvery { credentialStore.getPassword(any(), cardA.id) } returns null
+		coEvery { credentialStore.getPassword(any(), cardB.id) } returns null
+		coEvery { tokenService.requestPin(cardA) } returns "pin-a"
+		coEvery { tokenService.requestPin(cardB) } returns "pin-b"
+		coEvery { tokenService.openSigningToken(cardB, "pin-b") } returns signingTokenFor(certificate).right()
+
+		val params = SigningParameters(
+			inputBytes = tmpFile("other-card-prompt.pdf").readBytes(),
+			inputName = "other-card-prompt.pdf",
+			certificateAlias = certificate.alias,
+			certificateSlotId = 2L,
+			addTimestamp = false,
+		)
+
+		repository.signDocument(params)
+
+		io.mockk.coVerify(exactly = 0) { tokenService.requestPin(cardA) }
+		io.mockk.coVerify(exactly = 0) { tokenService.openSigningToken(match { it.id == cardA.id }, any()) }
+		io.mockk.coVerify(exactly = 1) { tokenService.openSigningToken(cardB, "pin-b") }
+	}
+
+	test("signDocument sends no other token's stored PIN to the selected certificate's slot") {
+		val (cardA, cardB) = twoCards("STORED")
+		val certificate = userCertificateOf(cardB)
+
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
+		coEvery { tokenService.discoverTokens() } returns listOf(cardA, cardB).right()
+		coEvery { tokenService.probeTokenPresent(cardA) } returns true
+		coEvery { tokenService.probeTokenPresent(cardB) } returns true
+		coEvery { credentialStore.getPassword(any(), cardA.id) } returns "pin-a"
+		coEvery { credentialStore.getPassword(any(), cardB.id) } returns "pin-b"
+		coEvery { tokenService.openSigningToken(cardB, "pin-b") } returns signingTokenFor(certificate).right()
+
+		val params = SigningParameters(
+			inputBytes = tmpFile("other-card-stored.pdf").readBytes(),
+			inputName = "other-card-stored.pdf",
+			certificateAlias = certificate.alias,
+			certificateSlotId = 2L,
+			addTimestamp = false,
+		)
+
+		repository.signDocument(params)
+
+		io.mockk.coVerify(exactly = 0) { tokenService.openSigningToken(match { it.id == cardA.id }, any()) }
+		io.mockk.coVerify(exactly = 1) { tokenService.openSigningToken(cardB, "pin-b") }
+	}
+
+	test("signDocument does not open an unlocked token at the slot of another token's certificate") {
+		val (cardA, cardB) = twoCards("UNLOCKED")
+		val certificate = userCertificateOf(cardB)
+		val cachedToken = mockk<eu.europa.esig.dss.token.AbstractSignatureTokenConnection>(relaxed = true)
+		val keyOfA = dssKey(subjectDN = "CN=Card A User", issuerDN = "CN=CA", serial = "5")
+		sessionCache.put(cardA.id, Pkcs11SessionCache.CachedSession(cachedToken, listOf(keyOfA)))
+
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
+		coEvery { tokenService.discoverTokens() } returns listOf(cardA, cardB).right()
+		coEvery { tokenService.probeTokenPresent(cardA) } returns true
+		coEvery { tokenService.probeTokenPresent(cardB) } returns true
+		coEvery { credentialStore.getPassword(any(), cardB.id) } returns null
+		coEvery { tokenService.requestPin(cardB) } returns "pin-b"
+		coEvery { tokenService.openSigningToken(cardB, "pin-b") } returns signingTokenFor(certificate).right()
+
+		val params = SigningParameters(
+			inputBytes = tmpFile("other-card-unlocked.pdf").readBytes(),
+			inputName = "other-card-unlocked.pdf",
+			certificateAlias = certificate.alias,
+			certificateSlotId = 2L,
+			addTimestamp = false,
+		)
+
+		repository.signDocument(params)
+
+		io.mockk.coVerify(exactly = 0) { tokenService.openSigningToken(match { it.id == cardA.id }, any()) }
+		io.mockk.coVerify(exactly = 1) { tokenService.openSigningToken(cardB, "pin-b") }
+	}
+
+	test("signDocument by an alias without a slot opens no token but the one the alias names") {
+		val (cardA, cardB) = twoCards("ALIAS")
+		val certificate = userCertificateOf(cardB)
+
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
+		coEvery { tokenService.discoverTokens() } returns listOf(cardA, cardB).right()
+		coEvery { tokenService.probeTokenPresent(cardA) } returns true
+		coEvery { tokenService.probeTokenPresent(cardB) } returns true
+		coEvery { credentialStore.getPassword(any(), cardA.id) } returns "pin-a"
+		coEvery { credentialStore.getPassword(any(), cardB.id) } returns "pin-b"
+		coEvery { tokenService.openSigningToken(cardB, "pin-b") } returns signingTokenFor(certificate).right()
+
+		val params = SigningParameters(
+			inputBytes = tmpFile("other-card-alias.pdf").readBytes(),
+			inputName = "other-card-alias.pdf",
+			certificateAlias = certificate.alias,
+			addTimestamp = false,
+		)
+
+		repository.signDocument(params)
+
+		io.mockk.coVerify(exactly = 0) { tokenService.openSigningToken(match { it.id == cardA.id }, any()) }
+		io.mockk.coVerify(exactly = 0) { tokenService.listCertificatesNoLogin(cardA) }
+		io.mockk.coVerify(exactly = 1) { tokenService.openSigningToken(cardB, "pin-b") }
+	}
+
+	test("signDocument skips a token whose id is a prefix of the id the alias names") {
+		val (first, second) = twoCards("PREFIX")
+		val shortCard = first.copy(id = "pkcs11-PREFIX-0123")
+		val longCard = second.copy(id = "pkcs11-PREFIX-01234")
+		val certificate = userCertificateOf(longCard)
+
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
+		coEvery { tokenService.discoverTokens() } returns listOf(shortCard, longCard).right()
+		coEvery { tokenService.probeTokenPresent(shortCard) } returns true
+		coEvery { tokenService.probeTokenPresent(longCard) } returns true
+		coEvery { credentialStore.getPassword(any(), shortCard.id) } returns "pin-short"
+		coEvery { credentialStore.getPassword(any(), longCard.id) } returns "pin-long"
+		coEvery { tokenService.openSigningToken(longCard, "pin-long") } returns signingTokenFor(certificate).right()
+
+		val params = SigningParameters(
+			inputBytes = tmpFile("prefix-card.pdf").readBytes(),
+			inputName = "prefix-card.pdf",
+			certificateAlias = certificate.alias,
+			certificateSlotId = 2L,
+			addTimestamp = false,
+		)
+
+		repository.signDocument(params)
+
+		io.mockk.coVerify(exactly = 0) { tokenService.openSigningToken(match { it.id == shortCard.id }, any()) }
+		io.mockk.coVerify(exactly = 1) { tokenService.openSigningToken(longCard, "pin-long") }
+	}
+
+	test("signDocument without an alias still looks for a key on every token") {
+		val (cardA, cardB) = twoCards("ANY")
+		val certificate = userCertificateOf(cardB)
+
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig()
+		coEvery { tokenService.discoverTokens() } returns listOf(cardA, cardB).right()
+		coEvery { tokenService.probeTokenPresent(cardA) } returns true
+		coEvery { tokenService.probeTokenPresent(cardB) } returns true
+		coEvery { credentialStore.getPassword(any(), cardA.id) } returns "pin-a"
+		coEvery { credentialStore.getPassword(any(), cardB.id) } returns "pin-b"
+		coEvery { tokenService.openSigningToken(cardA, "pin-a") } returns signingTokenFor().right()
+		coEvery { tokenService.openSigningToken(cardB, "pin-b") } returns signingTokenFor(certificate).right()
+
+		val params = SigningParameters(
+			inputBytes = tmpFile("any-card.pdf").readBytes(),
+			inputName = "any-card.pdf",
+			addTimestamp = false,
+		)
+
+		repository.signDocument(params)
+
+		io.mockk.coVerify(exactly = 1) { tokenService.openSigningToken(cardA, "pin-a") }
+		io.mockk.coVerify(exactly = 1) { tokenService.openSigningToken(cardB, "pin-b") }
 	}
 
 	test("selectSigningKey resolves the certificate by serial when several share a subject DN") {

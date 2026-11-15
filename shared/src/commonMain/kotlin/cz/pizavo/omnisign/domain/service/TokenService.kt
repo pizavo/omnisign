@@ -96,9 +96,10 @@ interface TokenService {
      *
      * Returns only certificates that are public objects on the token — the basis for
      * showing a certificate in the signing dialog before the user enters a PIN, deferring
-     * authentication to the actual signing operation.  An empty list means the token
-     * exposes no public certificate objects (they are private), in which case callers
-     * should fall back to the PIN-prompt path.
+     * authentication to the actual signing operation.  An empty list means none could be
+     * listed this way: the token keeps its certificates private, or the implementation
+     * cannot read them, or tell which slots hold this token, without a login.  Callers
+     * should then fall back to the PIN-prompt path.
      *
      * Default implementation returns an empty list: platforms with no local PKCS#11 stack
      * (server, web) have nothing to enumerate this way.

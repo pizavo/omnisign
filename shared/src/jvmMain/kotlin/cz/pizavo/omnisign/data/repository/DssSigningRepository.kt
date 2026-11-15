@@ -557,9 +557,9 @@ class DssSigningRepository(
 	)
 
 	/**
-	 * Iterate all discovered tokens and return the first [DSSPrivateKeyEntry] that matches
-	 * the requested alias (or the first available key when no alias is requested), together
-	 * with its [AbstractSignatureTokenConnection] and the source [TokenType].
+	 * Return the first [DSSPrivateKeyEntry] that matches the requested alias, looked for on the
+	 * token the alias names, or the first available key of any discovered token when no alias is
+	 * requested, together with its [AbstractSignatureTokenConnection] and the source [TokenType].
 	 * Returns null when no matching key is found.
 	 *
 	 * Uses a two-pass strategy to avoid unnecessary PIN prompts:
@@ -583,13 +583,24 @@ class DssSigningRepository(
 	 * Within each token, [tryResolveFromToken] opens the PKCS#11 slot that actually holds the
 	 * selected certificate's private key, which need not be the slot discovery pinned the
 	 * [TokenInfo] to on a card that presents several token-present slots.
+	 *
+	 * When an alias is requested, only the token it names is tried. An alias ends with the id of
+	 * the token it was listed from (`…@<token id>`, see
+	 * [pkcs11CertAlias][cz.pizavo.omnisign.data.service.pkcs11CertAlias]) and
+	 * [selectSigningKeyByAlias] matches it whole, so no other token can hold the certificate.
+	 * Trying another PKCS#11 token of the same middleware would open it at
+	 * [SigningParameters.certificateSlotId], a slot of the named token, and log in to that slot
+	 * with the other token's PIN, spending one of the named token's PIN attempts.
 	 */
 	private suspend fun resolvePrivateKey(
 		parameters: SigningParameters
 	): ResolvedKey? {
 		val tokens = tokenService.discoverTokens().getOrNull() ?: return null
+		val alias = parameters.certificateAlias
 		
-		val presentTokens = tokens.filter { tokenService.probeTokenPresent(it) }
+		val presentTokens = tokens
+			.filter { alias == null || alias.endsWith("@${it.id}") }
+			.filter { tokenService.probeTokenPresent(it) }
 		val deferredPinTokens = mutableListOf<TokenInfo>()
 		
 		for (tokenInfo in presentTokens) {
@@ -628,8 +639,9 @@ class DssSigningRepository(
 	 *    [SigningParameters.certificateSlotId] when the UI supplied it from the selected
 	 *    certificate — so the common path needs no extra probe.
 	 * 2. Only when that misses (the alias is absent from the pinned slot) *and* the caller
-	 *    gave an alias without a slot — e.g. the CLI `--alias` path — the all-slots no-login
-	 *    probe locates the alias's real slot and resolution is retried there.
+	 *    gave an alias without a slot — e.g. the CLI `--alias` path — the no-login listing of
+	 *    every slot that holds this token locates the alias's real slot and resolution is
+	 *    retried there.
 	 *
 	 * Slot overriding applies to PKCS#11 tokens only; other token types resolve unchanged.
 	 *
