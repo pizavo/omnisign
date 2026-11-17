@@ -6,8 +6,10 @@ import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotBeBlank
 import io.kotest.matchers.string.shouldNotContain
 import kotlin.io.encoding.Base64
 import kotlin.io.path.createDirectories
@@ -150,6 +152,17 @@ class WindowsTaskSchedulerServiceTest : FunSpec({
 		script shouldContain "-Argument 'renew >> ''log'''"
 	}
 
+	test("buildRegisterScript doubles every character PowerShell takes for a single quote") {
+		val script = service.buildRegisterScript("C:\\Users\\O\u2019Brien\\omnisign.exe", "a\u2018b\u201Ac\u201Bd'e", "02:00")
+		script shouldContain "-Execute 'C:\\Users\\O\u2019\u2019Brien\\omnisign.exe'"
+		script shouldContain "-Argument 'a\u2018\u2018b\u201A\u201Ac\u201B\u201Bd''e'"
+	}
+
+	test("buildRegisterScript writes an error's message as UTF-8, so that letters outside ASCII arrive intact") {
+		val script = service.buildRegisterScript("C:\\omnisign\\omnisign.exe", "renew", "02:00")
+		script shouldContain "[Text.Encoding]::UTF8.GetBytes(\$_.Exception.Message)"
+	}
+
 	test("buildAction runs the executable directly when there is no log file") {
 		service.buildAction(spacedExe, null) shouldBe (spacedExe to "renew")
 	}
@@ -188,6 +201,28 @@ class WindowsTaskSchedulerServiceTest : FunSpec({
 			failure.message shouldNotContain "\uFFFD"
 			service.isInstalled().shouldBeFalse()
 		}
+
+	test("install reports a task name Register-ScheduledTask refuses as plain text, and registers nothing")
+		.config(enabled = isWindows()) {
+			val refused = WindowsTaskSchedulerService(taskName = "$taskName|refused")
+			val failure = shouldThrow<IllegalStateException> {
+				refused.install(cliExecutablePath = "C:\\omnisign\\omnisign.exe")
+			}
+
+			failure.message.shouldNotBeNull().substringAfter("): ").shouldNotBeBlank()
+			failure.message shouldNotContain "CLIXML"
+			failure.message shouldNotContain "_x000D__x000A_"
+			failure.message shouldNotContain "\uFFFD"
+			service.isInstalled().shouldBeFalse()
+		}
+
+	test("install registers paths with a typographic apostrophe as written").config(enabledIf = { canCreateTasks }) {
+		val exe = "C:\\Users\\O\u2019Brien\\omnisign.exe"
+		val log = "C:\\Users\\O\u2019Brien\\renew.log"
+		service.install(cliExecutablePath = exe, logFilePath = log)
+
+		registeredAction() shouldBe service.buildAction(exe, log)
+	}
 
 	test("the action's command line runs a program and logs its output when both paths have spaces")
 		.config(enabled = isWindows()) {

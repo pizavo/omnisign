@@ -55,7 +55,6 @@ function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/
 function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/TrustedListCompiler.kt TrustedListCompiler.buildTspList
 function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/TrustedListCompiler.kt TrustedListCompiler.internationalNames
 function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/TrustedListCompiler.kt TrustedListCompiler.multiLangUriList
-function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/WindowsTaskSchedulerService.kt WindowsTaskSchedulerService.escapeSingleQuote
 function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/WindowsTaskSchedulerService.kt WindowsTaskSchedulerService.run
 function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/WindowsTaskSchedulerService.kt WindowsTaskSchedulerService.runQuietly
 function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt alternativeNamesText

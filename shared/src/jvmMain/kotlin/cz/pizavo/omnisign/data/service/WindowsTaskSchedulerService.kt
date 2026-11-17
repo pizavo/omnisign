@@ -145,5 +145,22 @@ class WindowsTaskSchedulerService(
 		ProcessBuilder(*args).redirectErrorStream(true).start().waitFor()
 	}
 
-	private fun String.escapeSingleQuote(): String = replace("'", "''")
+	/**
+	 * This string with each character PowerShell takes for a single quote doubled, which a
+	 * single-quoted PowerShell string reads back as the one character. PowerShell ends such a
+	 * string at the apostrophe and at the typographic quotes U+2018 to U+201B alike, so a path with
+	 * a typographic apostrophe, as in a name like O’Brien, would otherwise end the string early and
+	 * break the parse of the script, which then fails before it can catch any error.
+	 */
+	private fun String.escapeSingleQuote(): String = buildString {
+		for (char in this@escapeSingleQuote) {
+			if (char in POWERSHELL_SINGLE_QUOTES) append(char)
+			append(char)
+		}
+	}
+
+	companion object {
+		/** The characters PowerShell ends a single-quoted string at: the apostrophe and U+2018 to U+201B. */
+		private const val POWERSHELL_SINGLE_QUOTES = "'\u2018\u2019\u201A\u201B"
+	}
 }
