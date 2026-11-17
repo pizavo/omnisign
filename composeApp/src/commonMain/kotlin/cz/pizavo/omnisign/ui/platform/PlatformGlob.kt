@@ -30,3 +30,12 @@ expect fun globNeedsFilePattern(glob: String): Boolean
  * without a filesystem (web) always report `true`, leaving the check to the run, which guards it too.
  */
 expect fun isParseableGlob(glob: String): Boolean
+
+/**
+ * Whether a renewal run selects the file at [filePath] through [glob], judged by the same rules the
+ * run uses to find its files, the platform's case rules included, so that the renewal offer calls a
+ * file covered by a job only when a run would renew it. It may read the file system, so callers run
+ * it off the main thread. Platforms without a filesystem (web) always report `false`, since they
+ * never run renewal jobs.
+ */
+expect fun renewalGlobSelects(glob: String, filePath: String): Boolean

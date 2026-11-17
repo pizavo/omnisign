@@ -60,7 +60,8 @@ import kotlinx.coroutines.flow.update
  * @param getDocumentTimestampInfoUseCase Use case for inspecting the document's current timestamp state.
  * @param configRepository Repository for reading the current application configuration.
  * @param renewalJobAssigner Shared helper for renewal job persistence and coverage checks.
- * @param ioDispatcher Dispatcher for heavy background work.
+ * @param ioDispatcher Dispatcher for heavy background work, the check whether a renewal job covers
+ *   a saved file included, as it reads the file system.
  * @param prefetchInspection Whether [onDocumentChanged] inspects a newly loaded document in the
  *   background. Off on the web, where an inspection uploads the document to the server: there the
  *   document is sent only once the user opens the dialog, having chosen an operation that runs on
@@ -513,7 +514,8 @@ class TimestampViewModel(
 	 * is no [pendingExtension].
 	 *
 	 * - [SaveOutcome.Saved] — advance to [TimestampDialogState.Success] and rebuild [extendedDocument]
-	 *   so the viewer can reopen the saved document; renewal-job coverage is resolved against the path.
+	 *   so the viewer can reopen the saved document; renewal-job coverage is then resolved against the
+	 *   path on [ioDispatcher], as it reads the file system.
 	 * - [SaveOutcome.SavedNameUnknown] — the web download fallback: the file is saved but its final
 	 *   name is unknown, so [extendedDocument] stays `null` (the viewer keeps the current document) and
 	 *   the UI surfaces a "not reopened" notice — still a success.
@@ -533,8 +535,6 @@ class TimestampViewModel(
 			)
 
 			is SaveOutcome.Saved -> {
-				val coveringJob = RenewalJobAssigner.findCoveringJob(outcome.path, cachedRenewalJobs)
-				addToRenewalJobFlag = pending.addToRenewalJob && coveringJob == null
 				extendedDocument = PdfDocumentInfo(
 					name = outcome.path.substringAfterLast('/').substringAfterLast('\\'),
 					data = pending.outputBytes,
@@ -547,7 +547,14 @@ class TimestampViewModel(
 					newLevel = pending.newLevel,
 					warnings = pending.annotatedWarnings,
 				)
-				viewModelScope.launch { populateRenewalOfferIfNeeded(outcome.path) }
+				val renewalJobs = cachedRenewalJobs
+				viewModelScope.launch {
+					val coveringJob = withContext(ioDispatcher) {
+						RenewalJobAssigner.findCoveringJob(outcome.path, renewalJobs)
+					}
+					addToRenewalJobFlag = pending.addToRenewalJob && coveringJob == null
+					populateRenewalOfferIfNeeded(outcome.path)
+				}
 			}
 
 			is SaveOutcome.SavedNameUnknown -> {
@@ -650,10 +657,13 @@ class TimestampViewModel(
 	/**
 	 * Populate [_pendingRenewalOffer] when the extension produced a B-LTA document
 	 * and the user opted in to renewal job assignment.
+	 *
+	 * The offer is built on [ioDispatcher], since finding a job that covers the path reads the file
+	 * system.
 	 */
 	private suspend fun populateRenewalOfferIfNeeded(outputFile: String) {
 		if (!addToRenewalJobFlag || renewalJobAssigner == null) return
-		val offer = renewalJobAssigner.buildOfferState(outputFile)
+		val offer = withContext(ioDispatcher) { renewalJobAssigner.buildOfferState(outputFile) }
 		_pendingRenewalOffer.value = offer
 	}
 

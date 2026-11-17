@@ -838,6 +838,37 @@ class RenewBatchUseCaseTest : FunSpec({
         files.map { it.name }.sorted() shouldContainExactly listOf("deep.pdf", "mid.pdf")
     }
 
+    test("resolveGlobs selects the PDFs directly in the directory of a recursive glob too") {
+        val root = File(tmpDir, "recursive-root-glob").also { it.mkdirs() }
+        File(root, "top.pdf").createNewFile()
+        File(root, "a/b").mkdirs()
+        File(root, "a/mid.pdf").createNewFile()
+        File(root, "a/b/deep.pdf").createNewFile()
+
+        val uc = useCaseWith(baseConfig)
+        val glob = root.absolutePath + "\\**\\*.pdf"
+        val files = uc.resolveGlobs(listOf(glob)).shouldBeRight()
+
+        files.map { it.name }.sorted() shouldContainExactly listOf("deep.pdf", "mid.pdf", "top.pdf")
+    }
+
+    test("resolveGlobs lets a recursive segment after a group match no directory") {
+        val root = File(tmpDir, "inner-recursive-glob").also { it.mkdirs() }
+        File(root, "a/b").mkdirs()
+        File(root, "a/x/y/b").mkdirs()
+        File(root, "c/b").mkdirs()
+        File(root, "a/b/direct.pdf").createNewFile()
+        File(root, "a/x/y/b/below.pdf").createNewFile()
+        File(root, "c/b/side.pdf").createNewFile()
+        File(root, "a/outside.pdf").createNewFile()
+
+        val uc = useCaseWith(baseConfig)
+        val glob = root.absolutePath.replace('\\', '/') + "/{a,c}/**/b/*.pdf"
+        val files = uc.resolveGlobs(listOf(glob)).shouldBeRight()
+
+        files.map { it.name }.sorted() shouldContainExactly listOf("below.pdf", "direct.pdf", "side.pdf")
+    }
+
     test("resolveGlobs restricts a broad wildcard to PDF files") {
         val sub = File(tmpDir, "broad-glob").also { it.mkdirs() }
         File(sub, "a.pdf").createNewFile()

@@ -74,7 +74,8 @@ import omnisign.composeapp.generated.resources.signing_show_diagnostic_info
  *   user-visible acknowledgement toast through it (with a "Show diagnostic info" action
  *   when no PKCS#11 entries were detected).  `null` in tests / web / any context that
  *   doesn't wire the centralised toast surface — emission is silently skipped.
- * @param ioDispatcher Dispatcher for heavy background work (certificate discovery, signing).
+ * @param ioDispatcher Dispatcher for heavy background work (certificate discovery, signing) and for
+ *   the check whether a renewal job covers a saved file, which reads the file system.
  */
 class SigningViewModel(
 	private val signDocumentUseCase: SignDocumentUseCase,
@@ -513,8 +514,8 @@ class SigningViewModel(
 	 * is no [pendingSignature].
 	 *
 	 * - [SaveOutcome.Saved] — advance to [SigningDialogState.Success] and rebuild [signedDocument] from
-	 *   the produced bytes so the viewer can reopen the saved document; renewal-job coverage is
-	 *   resolved against the reported path.
+	 *   the produced bytes so the viewer can reopen the saved document; renewal-job coverage is then
+	 *   resolved against the reported path on [ioDispatcher], as it reads the file system.
 	 * - [SaveOutcome.SavedNameUnknown] — the web download fallback: the file is saved but its final
 	 *   name is unknown, so [signedDocument] stays `null` (the viewer keeps the current document) and
 	 *   the UI surfaces a "not reopened" notice — still a success.
@@ -534,8 +535,6 @@ class SigningViewModel(
 			)
 
 			is SaveOutcome.Saved -> {
-				val coveringJob = RenewalJobAssigner.findCoveringJob(outcome.path, cachedRenewalJobs)
-				addToRenewalJobFlag = pending.addToRenewalJob && coveringJob == null
 				signedDocument = PdfDocumentInfo(
 					name = outcome.path.substringAfterLast('/').substringAfterLast('\\'),
 					data = pending.outputBytes,
@@ -549,7 +548,14 @@ class SigningViewModel(
 					signatureLevel = pending.signatureLevel,
 					warnings = pending.annotatedWarnings,
 				)
-				viewModelScope.launch { populateRenewalOfferIfNeeded(outcome.path) }
+				val renewalJobs = cachedRenewalJobs
+				viewModelScope.launch {
+					val coveringJob = withContext(ioDispatcher) {
+						RenewalJobAssigner.findCoveringJob(outcome.path, renewalJobs)
+					}
+					addToRenewalJobFlag = pending.addToRenewalJob && coveringJob == null
+					populateRenewalOfferIfNeeded(outcome.path)
+				}
 			}
 
 			is SaveOutcome.SavedNameUnknown -> {
@@ -803,10 +809,13 @@ class SigningViewModel(
 	 * expires with the signing certificate rather than with a timestamp, so nothing can recover it
 	 * afterwards. A B-LTA document only owes re-timestamping, whose deadline is recoverable — it is
 	 * the safer of the two to leave unwatched, not the more urgent.
+	 *
+	 * The offer is built on [ioDispatcher], since finding a job that covers the path reads the file
+	 * system.
 	 */
 	private suspend fun populateRenewalOfferIfNeeded(outputFile: String) {
 		if (!addToRenewalJobFlag || renewalJobAssigner == null) return
-		val offer = renewalJobAssigner.buildOfferState(outputFile)
+		val offer = withContext(ioDispatcher) { renewalJobAssigner.buildOfferState(outputFile) }
 		_pendingRenewalOffer.value = offer
 	}
 
