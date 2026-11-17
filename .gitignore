@@ -25,3 +25,7 @@ core.*
 /server/src/main/resources/server.yml
 /.github/copilot-instructions.md
 /server/src/main/resources/signing.yml
+
+# Claude Code: per-agent git worktrees and machine-local settings (the shared settings, hooks and agents are tracked)
+/.claude/worktrees/
+/.claude/settings.local.json
