@@ -41,6 +41,7 @@ sqlite-jdbc = "3.54.1.0"
 java-jwt = "4.6.2"
 jwks-rsa = "0.24.2"
 pitest = "1.30.2"
+roborazzi = "1.78.0"
 
 [libraries]
 kotest-engine = {module = "io.kotest:kotest-framework-engine", version.ref = "kotest" }
@@ -52,6 +53,7 @@ kotest-jvm-runner = {module = "io.kotest:kotest-runner-junit5", version.ref = "k
 konsist = { module = "com.lemonappdev:konsist", version.ref = "konsist" }
 pitest-command-line = { module = "org.pitest:pitest-command-line", version.ref = "pitest" }
 kotest-extensions-pitest = { module = "io.kotest:kotest-extensions-pitest-jvm", version.ref = "kotest" }
+roborazzi-compose-desktop = { module = "io.github.takahirom.roborazzi:roborazzi-compose-desktop", version.ref = "roborazzi" }
 
 androidx-lifecycle-viewmodelCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-viewmodel-compose", version.ref = "androidx-lifecycle" }
 androidx-lifecycle-runtimeCompose = { module = "org.jetbrains.androidx.lifecycle:lifecycle-runtime-compose", version.ref = "androidx-lifecycle" }
@@ -61,6 +63,8 @@ compose-material = { module = "org.jetbrains.compose.material3:material3", versi
 compose-ui = { module = "org.jetbrains.compose.ui:ui", version.ref = "compose" }
 compose-ui-tooling = { module = "org.jetbrains.compose.ui:ui-tooling-preview", version.ref = "compose" }
 compose-components-resources = { module = "org.jetbrains.compose.components:components-resources", version.ref = "compose" }
+compose-ui-test = { module = "org.jetbrains.compose.ui:ui-test", version.ref = "compose" }
+compose-ui-test-junit4 = { module = "org.jetbrains.compose.ui:ui-test-junit4", version.ref = "compose" }
 
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }
 kotlinx-coroutines-swing = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-swing", version.ref = "kotlinx-coroutines" }

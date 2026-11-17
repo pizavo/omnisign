@@ -49,8 +49,8 @@ filed under the other name compiles nothing and runs nothing, and the task repor
 
 `:shared:jvmTest`, `:cli:test`, and `:server:test` add
 `-XX:+EnableDynamicAgentLoading -Xshare:off --enable-native-access=ALL-UNNAMED` (plus `java.smartcardio`
-access flags) and `:composeApp:jvmTest` adds `-XX:+EnableDynamicAgentLoading` alone, so MockK's inline
-agent loads without warnings. **Decoroutinator**, which gives readable stack traces through suspend
+access flags) and `:composeApp:jvmTest` adds the first and the last, so MockK's inline agent, and in
+`composeApp` Skiko's native renderer, load without warnings. **Decoroutinator**, which gives readable stack traces through suspend
 calls, is applied as a Gradle plugin in `shared` and `composeApp`, while `cli` and `server` pull the
 `stacktrace-decoroutinator-jvm` runtime artifact instead.
 
@@ -287,6 +287,69 @@ The default-argument bridges (`…$default`) and the `componentN` and `copy` fun
 are not mutated at all, and PIT makes no mutants in the `equals`, `hashCode` and `toString` of data
 classes or in the generated members of enums. PIT's own output goes to `pit-output.txt`, next to the
 full report.
+
+## Screenshot tests with Roborazzi
+
+The specs in `composeApp/src/jvmTest/kotlin/cz/pizavo/omnisign/ui/screenshot/` render composables with
+Compose's desktop test runner and capture them with [Roborazzi](https://github.com/takahirom/roborazzi).
+Each test renders one state through `captureScreenshot`:
+
+```kotlin
+test("a valid qualified signature in the dark theme") {
+    captureScreenshot("signature-panel-valid-dark", darkTheme = true, interaction = openSignature) {
+        SignaturePanel(SignaturePanelState.Loaded(validReport), onLoadSignatures = {})
+    }
+}
+```
+
+`captureScreenshot` draws the content on the theme's background in a scene of 420 × 720 pixels, about
+the width of the side panel, in English and with dates in UTC. `interaction` runs before the capture:
+`openSignature` opens the signature's section through its click action. A click sent as pointer input
+would leave the header highlighted in the image.
+
+Without a property, `:composeApp:jvmTest` only checks that each state composes. `-Pscreenshots` turns
+the capture on:
+
+| `-Pscreenshots=` | What it does |
+| --- | --- |
+| `record` | Saves each image as `<name>.png` |
+| `compare` | Compares each image with the one recorded before. For each that changed it writes `<name>_compare.png`, with the reference, the difference and the new image side by side, and `<name>_actual.png` |
+| `verify` | Compares like `compare`, and fails the test whose image changed or was never recorded |
+
+```bash
+./gradlew :composeApp:jvmTest \
+  --tests "cz.pizavo.omnisign.ui.screenshot.SignaturePanelScreenshotTest" -Pscreenshots=record
+```
+
+The images go to `composeApp/build/outputs/roborazzi/` unless `-PscreenshotDir` names another directory
+inside `composeApp`; the `_compare` and `_actual` images always go there. Recording a state is the
+quickest way to see it without starting the app, whether for a person or for an agent that reads
+images.
+
+### Reference images
+
+The images the specs are checked against are committed in `composeApp/src/jvmTest/screenshots/`. The
+Linux runner of *CI — Desktop* records them and checks them:
+
+```bash
+./gradlew :composeApp:jvmTest --tests "cz.pizavo.omnisign.ui.screenshot.*" \
+  -Pscreenshots=verify -PscreenshotDir=src/jvmTest/screenshots
+```
+
+When the check fails, the run uploads the `_compare` and `_actual` images as the
+`screenshot-differences` artifact. Do not record the reference images on Windows or macOS: the theme
+uses `FontFamily.Default`, which is each system's own font, so all the text would differ from what
+Linux renders. After a deliberate change to the UI, or for a new screenshot, run the workflow by hand
+with *Record the screenshot specs' reference images* ticked, and commit the images in its
+`screenshots` artifact:
+
+```bash
+gh workflow run ci-desktop.yml --ref <branch> -f record-screenshots=true
+gh run download <run-id> -n screenshots -D composeApp/src/jvmTest/screenshots
+```
+
+A new version of the runner's system can change how it renders text. When every image fails at once
+and the compare images show the same layout, record them all again.
 
 ## What is worth testing
 
