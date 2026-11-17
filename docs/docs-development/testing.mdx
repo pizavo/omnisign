@@ -16,12 +16,17 @@ Kotest matchers** for asserting on `OperationResult`.
 ./gradlew :composeApp:jvmTest
 ./gradlew :shared:wasmJsBrowserTest
 ./gradlew :composeApp:wasmJsBrowserTest
+./gradlew :konsistTest:test
 ```
 
 Or `./gradlew build` for everything. Note the task names differ: the multiplatform modules (`shared`,
 `composeApp`) use `jvmTest`, while the JVM-only modules (`cli`, `server`) use `test`. Test sources sit
 in `src/jvmTest` and `src/test` respectively, plus `src/commonTest` for the platform-agnostic specs in
 `shared` — those run as part of `:shared:jvmTest`.
+
+`:konsistTest:test` runs no product code: it reads the sources of every module and checks them against
+the coding conventions. [How the conventions are checked](conventions.mdx#how-the-conventions-are-checked)
+explains what it looks for and what to do when it fails.
 
 ### The browser suites
 

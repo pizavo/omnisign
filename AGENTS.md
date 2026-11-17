@@ -6,15 +6,16 @@ OmniSign is a Kotlin Multiplatform digital signature app (PAdES BASELINE B/B-T/B
 
 ## Architecture
 
-Four Gradle modules with a strict dependency direction: `cli`/`composeApp`/`server` → `shared`.
+Four Gradle modules with a strict dependency direction: `cli`/`composeApp`/`server` → `shared`. A fifth, `konsistTest`, holds only the convention checks and depends on none of them.
 
-| Module       | Role                                             | Entry point                        |
-|--------------|--------------------------------------------------|------------------------------------|
-| `shared`     | Multiplatform core (domain + JVM data layer)     | —                                  |
-| `cli`        | Clikt-based CLI (fat JAR via Shadow)             | `cz.pizavo.omnisign.CliKt`         |
-| `composeApp` | Compose Multiplatform desktop (JVM) + web (Wasm) | `cz.pizavo.omnisign.MainKt`        |
-| `server`     | Ktor HTTP server                                 | `cz.pizavo.omnisign.ApplicationKt` |
-| `docs`       | Docusaurus documentation site (user + developer) | `pnpm start` inside `docs/`        |
+| Module        | Role                                             | Entry point                        |
+|---------------|--------------------------------------------------|------------------------------------|
+| `shared`      | Multiplatform core (domain + JVM data layer)     | —                                  |
+| `cli`         | Clikt-based CLI (fat JAR via Shadow)             | `cz.pizavo.omnisign.CliKt`         |
+| `composeApp`  | Compose Multiplatform desktop (JVM) + web (Wasm) | `cz.pizavo.omnisign.MainKt`        |
+| `server`      | Ktor HTTP server                                 | `cz.pizavo.omnisign.ApplicationKt` |
+| `konsistTest` | Konsist checks of the coding conventions         | `.\gradlew.bat :konsistTest:test`  |
+| `docs`        | Docusaurus documentation site (user + developer) | `pnpm start` inside `docs/`        |
 
 Aggregated Dokka API docs are generated via `.\gradlew.bat :dokkaGenerate` → `build/dokka/html/`.
 
@@ -143,7 +144,10 @@ Framework: **Kotest 6** (FunSpec style) + **MockK** + **Arrow Kotest matchers** 
 .\gradlew.bat :cli:test
 .\gradlew.bat :server:test
 .\gradlew.bat :composeApp:jvmTest
+.\gradlew.bat :konsistTest:test
 ```
+
+`:konsistTest:test` runs no product code. It parses the Kotlin sources of every module with Konsist and checks them against the coding conventions below: KDoc on every class, interface, object and non-override function; one top-level declaration per file (a sealed hierarchy counts as one), named after it; `object` only in the allowed cases; and no `java.time`, `java.util.UUID`, `java.nio.file.Files` or `Paths` imports. Generated Lumo code is skipped. Violations that predate a rule, or that stay on purpose, are listed in `konsistTest/src/test/resources/known-violations.txt`. The check fails on a violation the list lacks and on a listed line that no longer occurs, and prints the lines to add or delete. Fix new code instead of listing it, and delete a line once its violation is fixed.
 
 `:shared:jvmTest`, `:cli:test`, and `:server:test` add `-XX:+EnableDynamicAgentLoading -Xshare:off --enable-native-access=ALL-UNNAMED` (plus smartcardio module/opens flags); `:composeApp:jvmTest` adds only `-XX:+EnableDynamicAgentLoading`. Decoroutinator (readable coroutine stack traces) is applied as a Gradle plugin in `shared` and `composeApp`, while `cli` and `server` pull the `stacktrace-decoroutinator-jvm` runtime artifact instead.
 
@@ -159,7 +163,7 @@ composeApp ViewModel tests use `StandardTestDispatcher` + `runTest` with `Dispat
 - Do **not** add inline comments unless specifically asked.
 - Do **not** generate Markdown files unless specifically asked.
 - **One top-level declaration per file.** Each `.kt` file may contain at most one top-level class, interface, enum, `object`, or sealed hierarchy. Nested/inner classes inside that declaration are fine. Extension functions related to the declaration may coexist in the same file. However, no additional standalone type declarations are allowed (e.g., do **not** put a data class and an enum in the same file, or two data classes in the same file). Name the file after the declaration it contains.
-- **Prefer Koin for all dependency wiring.** Never introduce a Kotlin `object` singleton for a service, repository, use case, or helper that could be a Koin-managed `single`/`factory`. Kotlin `object` is acceptable only for Compose component defaults (`*Defaults`), theme accessors (`LumoTheme`), compile-time `expect`/`actual` utilities, and `companion object` blocks (constants, loggers, factory methods).
+- **Prefer Koin for all dependency wiring.** Never introduce a Kotlin `object` singleton for a service, repository, use case, or helper that could be a Koin-managed `single`/`factory`. Kotlin `object` is acceptable only for Compose component defaults (`*Defaults`), theme accessors (`LumoTheme`), compile-time `expect`/`actual` utilities, and `companion object` blocks (constants, loggers, factory methods). A `data object` value in a sealed hierarchy and an `external object` that binds a JavaScript module are not singletons and are fine.
 - **Prefer Kotlin APIs over Java ones.** Always use a Kotlin standard library and multiplatform types when an equivalent exists — e.g. `kotlin.uuid.Uuid` instead of `java.util.UUID`, `kotlin.time.Instant` / `kotlin.time.Duration` instead of `java.time.*`, `kotlin.io.path.*` extensions instead of raw `java.nio.file.*` calls. Fall back to a Java API only when no Kotlin equivalent exists or when bridging with a Java library that requires it (e.g., DSS), and isolate that bridge in `jvmMain`.
 - Domain enums live in `commonMain` and are mapped to DSS by extension functions in `jvmMain/.../enums/*Extension.kt`. Only `HashAlgorithm` and `EncryptionAlgorithm` carry a `dssName` property directly, where the mapping is a plain string.
 - Serializable config models use `kotlinx.serialization`. Jackson serializers (`data/serializer/`) handle YAML/XML export/import. Start any mapper that reads YAML from `configYamlMapperBuilder()`, which selects the YAML 1.2 core schema; Jackson's default schema reads `~` as text. Register `SensitiveJacksonSerializer` in any new mapper (see **Sensitive values**).

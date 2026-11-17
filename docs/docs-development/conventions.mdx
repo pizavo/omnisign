@@ -51,6 +51,8 @@ A Kotlin `object` is acceptable **only** where Koin is technically impossible or
 - Subprocess entry points invoked before Koin starts (`Pkcs11ProbeWorker`,
 `Pkcs11ModuleDiscoveryWorker`)
 - Build-generated constant holders and platform reflection shims (`BuildConfig`, `JbrTitleBarHelper`)
+- Exposed table definitions, which Exposed's DSL declares as objects
+(`private object HandoffCodes : Table("handoff_codes")`)
 
 Anything else — a singleton service, a stateless helper — is a `single` or a `factory`.
 
@@ -186,3 +188,30 @@ all, and `EncryptionAlgorithm` keeps both — its `toDss()` is one line,
 domain counterpart. The remaining enums
 (`TokenType`, `ValidationPolicyType`, `ConfigFormat`) never cross into DSS. See
 [Architecture](architecture.mdx#bridging-the-domain-to-dss).
+
+## How the conventions are checked
+
+The `konsistTest` module turns four of these rules into tests. It uses
+[Konsist](https://docs.konsist.lemonappdev.com) to parse the Kotlin sources of every module, skipping
+the code the Lumo plugin generates, and checks that:
+
+- every class, interface, object, and function has KDoc, except overrides and local functions;
+- a file declares one top-level type, or one sealed hierarchy, and is named after it;
+- an `object` is a companion object, a `data object`, an `expect`/`actual` or `external` declaration,
+or a Compose `*Defaults` holder;
+- no file imports `java.time`, `java.util.UUID`, `java.nio.file.Files`, or `java.nio.file.Paths`.
+
+Run it with `./gradlew :konsistTest:test`. The CI workflow *CI — Conventions* runs it for every pull
+request that changes Kotlin code.
+
+Code that predated a rule, and the exceptions listed above, are recorded line by line in
+`konsistTest/src/test/resources/known-violations.txt`. The check fails in two cases, and its message
+prints the lines concerned:
+
+- **A violation the list lacks.** Fix the code. Add the line only for a new exception the rules above
+allow, with a comment that says why.
+- **A listed line that no longer occurs**, because the code was fixed, renamed, or moved. Delete the
+line, or, after a move, replace it with the line the message prints for the new location.
+
+The list therefore only shrinks: new code cannot add to it unnoticed, and a fixed violation cannot
+quietly come back.

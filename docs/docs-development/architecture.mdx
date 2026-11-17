@@ -22,6 +22,10 @@ The dependency direction is strict and one-way: `cli`, `composeApp`, and `server
 `shared`, and `shared` depends on none of them. Nothing depends on a sibling deliverable. A change to
 the CLI can never break the server.
 
+A fifth module, `konsistTest`, holds no product code and depends on none of the four. It checks their
+sources against the coding conventions; see
+[How the conventions are checked](conventions.mdx#how-the-conventions-are-checked).
+
 <Diagram source={moduleDependencies} />
 
 Solid arrows are module dependencies; dashed arrows are the libraries each source set pulls in.
