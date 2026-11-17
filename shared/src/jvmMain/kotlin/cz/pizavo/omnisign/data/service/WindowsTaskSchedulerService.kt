@@ -1,13 +1,20 @@
 package cz.pizavo.omnisign.data.service
 
+import kotlin.io.encoding.Base64
+
 /**
  * [OsSchedulerService] implementation for Windows that manages a single daily task.
  *
  * **install** uses PowerShell's `Register-ScheduledTask` cmdlet because
- * `New-ScheduledTaskAction` cleanly separates the executable path from its arguments
- * via `-Execute` / `-Argument`, avoiding the nested-quoting issue where Java's
- * [ProcessBuilder] escapes embedded double-quotes with backslashes (`\"`) but
- * `schtasks /create /tr` does not use the MSVC quoting convention.
+ * `New-ScheduledTaskAction` keeps the executable apart from its arguments
+ * (`-Execute` / `-Argument`), where `schtasks /create /tr` takes them as one command
+ * line. The registration script reaches PowerShell through `-EncodedCommand`, Base64 of
+ * its UTF-16LE bytes, rather than `-Command`: by default Java's [ProcessBuilder] leaves the
+ * double quotes inside an argument unescaped on Windows, and PowerShell's command-line
+ * parsing then strips them, so the quotes around the paths in the task's arguments would be
+ * lost and a path with a space in it cut there. Encoding bypasses that parsing altogether.
+ * PowerShell writes the errors of an encoded script as CLIXML, so the script writes the message of
+ * its own error as plain text instead (see [buildRegisterScript]).
  *
  * The registered task sets `StartWhenAvailable`, so a daily run missed while the machine was
  * off or asleep is caught up once the machine is next available instead of being skipped
@@ -34,9 +41,27 @@ class WindowsTaskSchedulerService(
 		runAtMinute: Int,
 		logFilePath: String?,
 	) {
+		run(*buildInstallCommand(cliExecutablePath, runAtHour, runAtMinute, logFilePath).toTypedArray())
+	}
+
+	/**
+	 * Build the PowerShell invocation that [install] runs: the script of [buildRegisterScript] for
+	 * the action of [buildAction], handed over through `-EncodedCommand` so that no quote in it is
+	 * lost on the way (see the class description).
+	 *
+	 * @return The program and its arguments, for [ProcessBuilder].
+	 */
+	internal fun buildInstallCommand(
+		cliExecutablePath: String,
+		runAtHour: Int,
+		runAtMinute: Int,
+		logFilePath: String?,
+	): List<String> {
 		val startTime = "%02d:%02d".format(runAtHour, runAtMinute)
 		val (exe, args) = buildAction(cliExecutablePath, logFilePath)
-		run("powershell", "-NoProfile", "-NonInteractive", "-Command", buildRegisterScript(exe, args, startTime))
+		val script = buildRegisterScript(exe, args, startTime)
+		val encoded = Base64.Default.encode(script.toByteArray(Charsets.UTF_16LE))
+		return listOf("powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded)
 	}
 
 	/**
@@ -47,13 +72,20 @@ class WindowsTaskSchedulerService(
 	 * than skipped until the following day. Task Scheduler coalesces multiple missed
 	 * occurrences into a single catch-up run.
 	 *
+	 * The script turns PowerShell's progress records off, stops at its first error, and writes that
+	 * error's message to standard output, encoded as UTF-8, before it exits with 1, so that
+	 * [install] reports the message as PowerShell gave it. Left to PowerShell, the error would reach
+	 * standard error as CLIXML, the form in which PowerShell writes the errors of a script handed
+	 * over through `-EncodedCommand`.
+	 *
 	 * @param exe Executable to launch (the OmniSign binary, or `cmd` when redirecting output).
 	 * @param args Arguments passed to [exe].
 	 * @param startTime Daily trigger time in `HH:mm` form.
-	 * @return The PowerShell command passed to `powershell -Command`.
+	 * @return The PowerShell script that [buildInstallCommand] encodes.
 	 */
 	internal fun buildRegisterScript(exe: String, args: String, startTime: String): String =
 		buildString {
+			append("\$ProgressPreference = 'SilentlyContinue'; \$ErrorActionPreference = 'Stop'; try { ")
 			append("\$action = New-ScheduledTaskAction")
 			append(" -Execute '${exe.escapeSingleQuote()}'")
 			append(" -Argument '${args.escapeSingleQuote()}'")
@@ -62,6 +94,9 @@ class WindowsTaskSchedulerService(
 			append("; Register-ScheduledTask")
 			append(" -TaskName '${taskName.escapeSingleQuote()}'")
 			append(" -Action \$action -Trigger \$trigger -Settings \$settings -Force | Out-Null")
+			append(" } catch { \$bytes = [Text.Encoding]::UTF8.GetBytes(\$_.Exception.Message)")
+			append("; \$out = [Console]::OpenStandardOutput(); \$out.Write(\$bytes, 0, \$bytes.Length); \$out.Flush()")
+			append("; exit 1 }")
 		}
 
 	override fun uninstall() {
@@ -80,14 +115,19 @@ class WindowsTaskSchedulerService(
 	 * Build the scheduled task action pair (executable, arguments).
 	 *
 	 * When a [logFilePath] is provided, the action delegates to `cmd` so that
-	 * shell-level output redirection (`>>`) works. Otherwise the OmniSign
-	 * executable is invoked directly.
+	 * shell-level output redirection (`>>`) works. The executable and the log file are
+	 * quoted, so either may contain spaces, and the whole command line is wrapped in one
+	 * more pair of quotes and run with `/s`, under which `cmd` strips exactly that outer
+	 * pair. Without it, `cmd /c` given more than two quotes strips the first and the last
+	 * of them, the opening quote of the executable's path and the closing quote of the log
+	 * file's. Otherwise the OmniSign executable is invoked directly, its path in a field of
+	 * its own.
 	 *
-	 * @return A pair of (executable, arguments) for [New-ScheduledTaskAction].
+	 * @return A pair of (executable, arguments) for `New-ScheduledTaskAction`.
 	 */
-	private fun buildAction(cliExecutablePath: String, logFilePath: String?): Pair<String, String> =
+	internal fun buildAction(cliExecutablePath: String, logFilePath: String?): Pair<String, String> =
 		if (logFilePath != null) {
-			"cmd" to "/c \"$cliExecutablePath\" renew >> \"$logFilePath\" 2>&1"
+			"cmd" to "/s /c \"\"$cliExecutablePath\" renew >> \"$logFilePath\" 2>&1\""
 		} else {
 			cliExecutablePath to "renew"
 		}
@@ -105,5 +145,22 @@ class WindowsTaskSchedulerService(
 		ProcessBuilder(*args).redirectErrorStream(true).start().waitFor()
 	}
 
-	private fun String.escapeSingleQuote(): String = replace("'", "''")
+	/**
+	 * This string with each character PowerShell takes for a single quote doubled, which a
+	 * single-quoted PowerShell string reads back as the one character. PowerShell ends such a
+	 * string at the apostrophe and at the typographic quotes U+2018 to U+201B alike, so a path with
+	 * a typographic apostrophe, as in a name like O’Brien, would otherwise end the string early and
+	 * break the parse of the script, which then fails before it can catch any error.
+	 */
+	private fun String.escapeSingleQuote(): String = buildString {
+		for (char in this@escapeSingleQuote) {
+			if (char in POWERSHELL_SINGLE_QUOTES) append(char)
+			append(char)
+		}
+	}
+
+	companion object {
+		/** The characters PowerShell ends a single-quoted string at: the apostrophe and U+2018 to U+201B. */
+		private const val POWERSHELL_SINGLE_QUOTES = "'\u2018\u2019\u201A\u201B"
+	}
 }

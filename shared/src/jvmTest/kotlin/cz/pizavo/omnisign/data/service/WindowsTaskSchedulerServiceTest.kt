@@ -1,26 +1,81 @@
 package cz.pizavo.omnisign.data.service
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.nulls.shouldNotBeNull
+import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotBeBlank
+import io.kotest.matchers.string.shouldNotContain
+import kotlin.io.encoding.Base64
+import kotlin.io.path.createDirectories
+import kotlin.io.path.div
+import kotlin.io.path.readText
+import kotlin.io.path.writeText
 import kotlin.uuid.ExperimentalUuidApi
 import kotlin.uuid.Uuid
 
 /**
- * Verifies [WindowsTaskSchedulerService] install/uninstall/idempotency.
+ * Verifies [WindowsTaskSchedulerService] install/uninstall/idempotency, and that the task's
+ * command line keeps its quotes, from the registration script to the `cmd` line the task runs, when
+ * the executable or the log file has a space in its path.
  *
  * The tests that reach Task Scheduler run only on Windows, and only for an account that may create
  * scheduled tasks. They work on a task with a random name instead of [OsSchedulerService.JOB_TAG],
  * so a renewal task the user installed is never replaced or removed, and they remove their task
- * after every test.
+ * after every test through `schtasks` itself rather than [WindowsTaskSchedulerService.uninstall],
+ * so a fault in that method, such as one a mutation test plants, leaves no task behind.
  */
 @OptIn(ExperimentalUuidApi::class)
 class WindowsTaskSchedulerServiceTest : FunSpec({
 
-	val service = WindowsTaskSchedulerService(taskName = "omnisign-test-${Uuid.random()}")
+	val taskName = "omnisign-test-${Uuid.random()}"
+	val service = WindowsTaskSchedulerService(taskName = taskName)
+	val spacedExe = "C:\\Users\\Jan Novak\\AppData\\Local\\omnisign-cli\\omnisign.exe"
+	val spacedLog = "C:\\Users\\Jan Novak\\renewal logs\\renew.log"
 
 	fun isWindows() = System.getProperty("os.name", "").lowercase().contains("win")
+
+	/**
+	 * Read the program and the arguments of the first action of the task this spec registers,
+	 * through a PowerShell script handed over encoded, so that no quote in the answer is lost.
+	 * PowerShell's progress records, which it writes to standard error when that is redirected, are
+	 * turned off and discarded.
+	 */
+	fun registeredAction(): Pair<String, String> {
+		val script = "\$ProgressPreference = 'SilentlyContinue'; " +
+			"[Console]::OutputEncoding = [Text.Encoding]::UTF8; " +
+			"\$action = (Get-ScheduledTask -TaskName '$taskName').Actions[0]; " +
+			"\$action.Execute; \$action.Arguments"
+		val encoded = Base64.Default.encode(script.toByteArray(Charsets.UTF_16LE))
+		val process = ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded)
+			.redirectError(ProcessBuilder.Redirect.DISCARD)
+			.start()
+		val lines = process.inputStream.readAllBytes().toString(Charsets.UTF_8).lines()
+		process.waitFor()
+		return lines[0] to lines[1]
+	}
+
+	/**
+	 * Start [program] with [arguments] as the whole rest of its command line and wait for it, as
+	 * Task Scheduler starts a task's action. PowerShell's `Start-Process` hands a single argument
+	 * string to the program unchanged, where [ProcessBuilder] would quote it once more.
+	 */
+	fun startAsTaskSchedulerDoes(program: String, arguments: String) {
+		val script = "\$ProgressPreference = 'SilentlyContinue'; " +
+			"Start-Process -FilePath '${program.replace("'", "''")}' " +
+			"-ArgumentList '${arguments.replace("'", "''")}' -Wait -NoNewWindow"
+		val encoded = Base64.Default.encode(script.toByteArray(Charsets.UTF_16LE))
+		val process = ProcessBuilder("powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand", encoded)
+			.redirectErrorStream(true)
+			.start()
+		process.inputStream.readAllBytes()
+		process.waitFor()
+	}
 
 	/**
 	 * Run `schtasks` with [args], discarding its output.
@@ -49,7 +104,7 @@ class WindowsTaskSchedulerServiceTest : FunSpec({
 		}
 	}
 
-	afterTest { if (isWindows()) service.uninstall() }
+	afterTest { if (isWindows()) schtasks("/delete", "/tn", taskName, "/f") }
 
 	test("install registers the task and isInstalled returns true").config(enabledIf = { canCreateTasks }) {
 		service.install(cliExecutablePath = "C:\\Program Files\\omnisign\\omnisign.exe")
@@ -90,4 +145,93 @@ class WindowsTaskSchedulerServiceTest : FunSpec({
 			.buildRegisterScript("C:\\omnisign\\omnisign.exe", "renew", "02:00")
 		script shouldContain "-TaskName 'it''s a test'"
 	}
+
+	test("buildRegisterScript doubles a single quote in the executable and its arguments") {
+		val script = service.buildRegisterScript("C:\\Users\\O'Brien\\omnisign.exe", "renew >> 'log'", "02:00")
+		script shouldContain "-Execute 'C:\\Users\\O''Brien\\omnisign.exe'"
+		script shouldContain "-Argument 'renew >> ''log'''"
+	}
+
+	test("buildRegisterScript doubles every character PowerShell takes for a single quote") {
+		val script = service.buildRegisterScript("C:\\Users\\O\u2019Brien\\omnisign.exe", "a\u2018b\u201Ac\u201Bd'e", "02:00")
+		script shouldContain "-Execute 'C:\\Users\\O\u2019\u2019Brien\\omnisign.exe'"
+		script shouldContain "-Argument 'a\u2018\u2018b\u201A\u201Ac\u201B\u201Bd''e'"
+	}
+
+	test("buildRegisterScript writes an error's message as UTF-8, so that letters outside ASCII arrive intact") {
+		val script = service.buildRegisterScript("C:\\omnisign\\omnisign.exe", "renew", "02:00")
+		script shouldContain "[Text.Encoding]::UTF8.GetBytes(\$_.Exception.Message)"
+	}
+
+	test("buildAction runs the executable directly when there is no log file") {
+		service.buildAction(spacedExe, null) shouldBe (spacedExe to "renew")
+	}
+
+	test("buildAction quotes both paths inside one outer pair of quotes that cmd strips") {
+		service.buildAction(spacedExe, spacedLog) shouldBe
+			("cmd" to "/s /c \"\"$spacedExe\" renew >> \"$spacedLog\" 2>&1\"")
+	}
+
+	test("buildInstallCommand hands the registration script to PowerShell encoded, quotes included") {
+		val command = service.buildInstallCommand(spacedExe, 2, 5, spacedLog)
+
+		command.take(4) shouldContainExactly listOf("powershell", "-NoProfile", "-NonInteractive", "-EncodedCommand")
+		command.size shouldBe 5
+		val script = Base64.Default.decode(command[4]).toString(Charsets.UTF_16LE)
+		val (exe, args) = service.buildAction(spacedExe, spacedLog)
+		script shouldBe service.buildRegisterScript(exe, args, "02:05")
+		script shouldContain "-Argument '/s /c \"\"$spacedExe\" renew >> \"$spacedLog\" 2>&1\"'"
+	}
+
+	test("install registers the action's arguments with their quotes intact").config(enabledIf = { canCreateTasks }) {
+		service.install(cliExecutablePath = spacedExe, logFilePath = spacedLog)
+
+		registeredAction() shouldBe service.buildAction(spacedExe, spacedLog)
+	}
+
+	test("install reports a registration PowerShell refuses as plain text, the value it refused included")
+		.config(enabled = isWindows()) {
+			val failure = shouldThrow<IllegalStateException> {
+				service.install(cliExecutablePath = "C:\\omnisign\\omnisign.exe", runAtHour = 25, runAtMinute = 99)
+			}
+
+			failure.message shouldContain "25:99"
+			failure.message shouldNotContain "CLIXML"
+			failure.message shouldNotContain "_x000D__x000A_"
+			failure.message shouldNotContain "\uFFFD"
+			service.isInstalled().shouldBeFalse()
+		}
+
+	test("install reports a task name Register-ScheduledTask refuses as plain text")
+		.config(enabled = isWindows()) {
+			val refused = WindowsTaskSchedulerService(taskName = "$taskName|refused")
+			val failure = shouldThrow<IllegalStateException> {
+				refused.install(cliExecutablePath = "C:\\omnisign\\omnisign.exe")
+			}
+
+			failure.message.shouldNotBeNull().substringAfter("): ").shouldNotBeBlank()
+			failure.message shouldNotContain "CLIXML"
+			failure.message shouldNotContain "_x000D__x000A_"
+			failure.message shouldNotContain "\uFFFD"
+		}
+
+	test("install registers paths with a typographic apostrophe as written").config(enabledIf = { canCreateTasks }) {
+		val exe = "C:\\Users\\O\u2019Brien\\omnisign.exe"
+		val log = "C:\\Users\\O\u2019Brien\\renew.log"
+		service.install(cliExecutablePath = exe, logFilePath = log)
+
+		registeredAction() shouldBe service.buildAction(exe, log)
+	}
+
+	test("the action's command line runs a program and logs its output when both paths have spaces")
+		.config(enabled = isWindows()) {
+			val dir = (tempdir().toPath() / "with space").createDirectories()
+			val program = (dir / "fake renewal.cmd").also { it.writeText("@echo ran %*\r\n") }
+			val log = dir / "renew log.txt"
+			val (exe, args) = service.buildAction(program.toString(), log.toString())
+
+			startAsTaskSchedulerDoes(exe, args)
+
+			log.readText().trim() shouldBe "ran renew"
+		}
 })
