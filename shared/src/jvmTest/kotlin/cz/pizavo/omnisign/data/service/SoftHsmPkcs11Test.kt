@@ -26,12 +26,14 @@ import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.pdf.pdfbox.PdfBoxNativeObjectFactory
 import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import io.kotest.assertions.arrow.core.shouldBeLeft
+import io.kotest.assertions.withClue
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainAll
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldStartWith
 import io.mockk.clearMocks
@@ -56,7 +58,8 @@ import kotlin.time.Duration.Companion.days
  * no-login certificate listing against a real module, logins with right and wrong PINs, and a PAdES signature made
  * by a key that never leaves its token. The tests run only where [SoftHsm.locate] finds SoftHSM2, OpenSC and the
  * configuration file the `jvmTest` task sets aside, such as on the Linux CI runner; elsewhere they are reported as
- * skipped.
+ * skipped. Where the environment variable `OMNISIGN_SOFTHSM2_REQUIRED` is `true`, as on that runner, a missing
+ * SoftHSM2 fails the spec instead, so the tests cannot be skipped there unnoticed.
  *
  * The tests share the tokens and one test JVM, whose PKCS#11 module keeps a token logged in once any test has
  * logged in to it, so each token has one role: `omnisign-a` and `omnisign-b` hold the shared certificate, and
@@ -125,6 +128,16 @@ class SoftHsmPkcs11Test : FunSpec({
 		tokens = tokenService.discoverTokens().shouldBeRight()
 			.filter { it.name in pins }
 			.associateBy { it.name }
+	}
+
+	test("SoftHSM2 is found where the environment requires it").config(enabledIf = { System.getenv("OMNISIGN_SOFTHSM2_REQUIRED") == "true" }) {
+		withClue(
+			"OMNISIGN_SOFTHSM2_REQUIRED is true, but SoftHsm.locate() found nothing: it needs SOFTHSM2_CONF as the jvmTest " +
+				"task sets it, libsofthsm2.so at OMNISIGN_SOFTHSM2_MODULE or a known path, and softhsm2-util and pkcs11-tool " +
+				"on PATH",
+		) {
+			softHsm.shouldNotBeNull()
+		}
 	}
 
 	test("discovery reports each token under the id of its serial number, in a slot of its own").config(enabledIf = { softHsm != null }) {

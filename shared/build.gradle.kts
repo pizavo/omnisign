@@ -143,12 +143,19 @@ kotlin {
  *
  * SoftHSM2 reads the file that `SOFTHSM2_CONF` names, and the spec runs only when `OMNISIGN_SOFTHSM2_TEST_CONF`
  * names the same file, so it never touches the tokens of a SoftHSM2 the machine uses for real. Where SoftHSM2 or
- * OpenSC's `pkcs11-tool` is missing, the spec is skipped.
+ * OpenSC's `pkcs11-tool` is missing, the spec is skipped, unless `OMNISIGN_SOFTHSM2_REQUIRED` is `true`, as on the
+ * Linux CI runner, where it fails. That variable is read while the build is configured and handed to the test JVM
+ * explicitly, because a reused configuration cache entry replays the environment of the build that stored it. It is
+ * also declared as an input, as environment variables are not inputs of a test task: otherwise a result from a run
+ * that skipped the spec could be restored from the build cache where the spec has to run.
  */
 tasks.named<Test>("jvmTest") {
 	val softHsmConfig = layout.buildDirectory.file("softhsm/softhsm2.conf").get().asFile.absolutePath
+	val softHsmRequired = providers.environmentVariable("OMNISIGN_SOFTHSM2_REQUIRED").getOrElse("false")
 	environment("SOFTHSM2_CONF", softHsmConfig)
 	environment("OMNISIGN_SOFTHSM2_TEST_CONF", softHsmConfig)
+	environment("OMNISIGN_SOFTHSM2_REQUIRED", softHsmRequired)
+	inputs.property("softHsm2Required", softHsmRequired)
 }
 
 /**

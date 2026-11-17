@@ -227,10 +227,13 @@ sudo apt-get install softhsm2 opensc
 ./gradlew :shared:jvmTest --tests "cz.pizavo.omnisign.data.service.SoftHsmPkcs11Test"
 ```
 
-Without them, its tests are reported as skipped. The `jvmTest` task points SoftHSM2 at a
-configuration file in `shared/build/softhsm/`, and the spec creates its tokens beside it, so it never
-touches tokens the machine uses for real. Set `OMNISIGN_SOFTHSM2_MODULE` when the module is installed
-somewhere the spec does not look. CI installs both packages on the Linux runner of *CI — CLI*.
+Without them, its tests are reported as skipped, unless the environment variable
+`OMNISIGN_SOFTHSM2_REQUIRED` is `true`: then a missing package fails the spec, so it cannot be skipped
+unnoticed where it has to run. The `jvmTest` task points SoftHSM2 at a configuration file in
+`shared/build/softhsm/`, and the spec creates its tokens beside it, so it never touches tokens the
+machine uses for real. Set `OMNISIGN_SOFTHSM2_MODULE` when the module is installed somewhere the spec
+does not look. CI installs both packages on the Linux runner of *CI — CLI* and sets that variable
+there.
 
 ## Mutation testing with PIT
 

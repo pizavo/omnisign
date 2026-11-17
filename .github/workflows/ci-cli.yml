@@ -47,6 +47,8 @@ jobs:
 
       - name: Build and test
         if: steps.detect.outputs.relevant == 'true'
+        env:
+          OMNISIGN_SOFTHSM2_REQUIRED: ${{ matrix.os == 'ubuntu-latest' }}
         run: ./gradlew :shared:jvmTest :cli:test :cli:shadowJar
 
       - name: Install tooling
