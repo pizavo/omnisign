@@ -29,7 +29,8 @@ import kotlin.io.path.writeText
  * The install, uninstall and probe tests give the service a stand-in for `systemctl` that records
  * its arguments and exits with a chosen code, and the install and uninstall tests a temporary home
  * folder too, so they never reach a real systemd instance or touch the user's units, and they run
- * on every platform.
+ * on every platform. The relative log file the refusal test passes lies under the build folder, so
+ * that a fault letting it through, as a mutation test plants, leaves no file in the source tree.
  */
 class SystemdSchedulerServiceTest : FunSpec({
 
@@ -203,7 +204,9 @@ class SystemdSchedulerServiceTest : FunSpec({
 	test("install refuses a relative log file before it reaches systemd or writes anything") {
 		val home = tempdir().toPath()
 
-		val error = shouldThrow<IllegalArgumentException> { serviceIn(home).install(exe, 2, 0, "renew.log") }
+		val error = shouldThrow<IllegalArgumentException> {
+			serviceIn(home).install(exe, 2, 0, "build/relative-renewal-log/renew.log")
+		}
 
 		error.message shouldContain "must be an absolute path"
 		error.message shouldContain suggestedLog(home)
