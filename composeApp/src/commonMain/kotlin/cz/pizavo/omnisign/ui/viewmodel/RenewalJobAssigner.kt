@@ -37,7 +37,8 @@ class RenewalJobAssigner(
 	/**
 	 * Build a [RenewalJobOfferState] for the given output file by reading the
 	 * current [AppConfig] and checking whether any existing job already covers
-	 * the file via glob matching.
+	 * the file via glob matching. That check reads the file system (see
+	 * [findCoveringJob]), so callers run this off the main thread.
 	 *
 	 * @param outputFile Absolute path to the B-LTA output file.
 	 * @return A fully populated offer state ready for display.
@@ -147,10 +148,11 @@ class RenewalJobAssigner(
 		 * checked — coverage means the file **will be processed** by the job,
 		 * regardless of which settings it uses.
 		 *
-		 * Paths are compared under the platform's own rules, as the run compares
-		 * them: case-insensitively on Windows, so that drive-letter differences
-		 * (e.g. `C:` vs `c:`) do not cause false negatives, and case-sensitively
-		 * where the run tells `SCAN.PDF` from `scan.pdf`.
+		 * Paths are compared as the run reaches them, through the file system:
+		 * letter case is ignored on Windows, so that drive-letter differences
+		 * (e.g. `C:` vs `c:`) do not cause false negatives, and counts where the
+		 * run tells `SCAN.PDF` from `scan.pdf`. As the check reads the file
+		 * system, callers run it off the main thread.
 		 *
 		 * @param filePath Absolute path to the file to check.
 		 * @param jobs All currently configured renewal jobs.

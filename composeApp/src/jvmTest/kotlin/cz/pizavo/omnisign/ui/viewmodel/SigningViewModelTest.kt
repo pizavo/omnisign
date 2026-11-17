@@ -28,6 +28,8 @@ import cz.pizavo.omnisign.ui.toast.ToastText
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.collections.shouldNotBeEmpty
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -685,6 +687,64 @@ class SigningViewModelTest : FunSpec({
 
 			vm.state.value.shouldBeInstanceOf<SigningDialogState.Success>()
 			vm.pendingRenewalOffer.value.shouldBeNull()
+		}
+	}
+
+	test("whether a job covers the signed file is checked on the I/O dispatcher, never on the main one") {
+		runTest(testDispatcher) {
+			val ioScheduler = TestCoroutineScheduler()
+			var watching = false
+			var onIoDispatcher = false
+			val readOnIoDispatcher = mutableListOf<Boolean>()
+			val globs = object : AbstractList<String>() {
+				override val size: Int get() = 1
+				override fun get(index: Int): String =
+					"/elsewhere/**/*.pdf".also { if (watching) readOnIoDispatcher.add(onIoDispatcher) }
+			}
+			val ltaConfig = AppConfig(
+				global = GlobalConfig(defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LTA),
+				profiles = mapOf("prod" to ProfileConfig(name = "prod")),
+				activeProfile = "prod",
+				renewalJobs = mapOf("elsewhere" to RenewalJob(name = "elsewhere", globs = globs, profile = "prod")),
+			)
+			coEvery { configRepository.getCurrentConfig() } returns ltaConfig
+			coEvery { signingRepository.listAvailableCertificates(false) } returns
+					CertificateDiscoveryResult(certificates = listOf(sampleCert)).right()
+			coEvery { signingRepository.signDocument(any()) } returns
+					SigningResult(
+						outputBytes = ByteArray(0),
+						outputName = "test-signed.pdf",
+						signatureId = "sig-1",
+						signatureLevel = "PAdES-BASELINE-LTA",
+					).right()
+
+			/**
+			 * Run the work queued on the main and the I/O dispatcher, in turns, until neither has any left.
+			 */
+			fun settle() = repeat(5) {
+				advanceUntilIdle()
+				onIoDispatcher = true
+				ioScheduler.advanceUntilIdle()
+				onIoDispatcher = false
+			}
+
+			val assigner = RenewalJobAssigner(configRepository)
+			val vm = SigningViewModel(
+				signUseCase, listCertsUseCase, unlockTokenUseCase, loadFileCertsUseCase, configRepository, tokenService,
+				assigner, ioDispatcher = StandardTestDispatcher(ioScheduler),
+			)
+			vm.open(sampleDoc())
+			settle()
+			vm.updateState { it.copy(selectedAlias = "test-cert", addToRenewalJob = true) }
+			vm.sign()
+			settle()
+			watching = true
+			vm.completeSave(SaveOutcome.Saved(signedPath))
+			settle()
+
+			vm.pendingRenewalOffer.value.shouldNotBeNull()
+			readOnIoDispatcher.shouldNotBeEmpty()
+			readOnIoDispatcher shouldNotContain false
 		}
 	}
 

@@ -5,9 +5,12 @@ import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
+import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.collections.shouldNotBeIn
+import io.kotest.matchers.collections.shouldNotContain
 import cz.pizavo.omnisign.domain.model.result.AnnotatedWarning
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
 import cz.pizavo.omnisign.domain.model.result.DocumentTimestampInfo
@@ -977,6 +980,61 @@ class TimestampViewModelTest : FunSpec({
 			advanceUntilIdle()
 
 			vm.pendingRenewalOffer.value.shouldBeNull()
+		}
+	}
+
+	test("whether a job covers the extended file is checked on the I/O dispatcher, never on the main one") {
+		runTest(testDispatcher) {
+			val ioScheduler = TestCoroutineScheduler()
+			var watching = false
+			var onIoDispatcher = false
+			val readOnIoDispatcher = mutableListOf<Boolean>()
+			val globs = object : AbstractList<String>() {
+				override val size: Int get() = 1
+				override fun get(index: Int): String =
+					"/elsewhere/**/*.pdf".also { if (watching) readOnIoDispatcher.add(onIoDispatcher) }
+			}
+			val ltaConfig = AppConfig(
+				global = GlobalConfig(),
+				profiles = mapOf("prod" to ProfileConfig(name = "prod")),
+				activeProfile = "prod",
+				renewalJobs = mapOf("elsewhere" to RenewalJob(name = "elsewhere", globs = globs, profile = "prod")),
+			)
+			coEvery { configRepository.getCurrentConfig() } returns ltaConfig
+			coEvery { archivingRepository.extendDocument(any()) } returns
+					ArchivingResult(
+						outputBytes = ByteArray(0), outputName = "signed-extended.pdf",
+						newSignatureLevel = "PAdES-BASELINE-LTA",
+					).right()
+
+			/**
+			 * Run the work queued on the main and the I/O dispatcher, in turns, until neither has any left.
+			 */
+			fun settle() = repeat(5) {
+				advanceUntilIdle()
+				onIoDispatcher = true
+				ioScheduler.advanceUntilIdle()
+				onIoDispatcher = false
+			}
+
+			val assigner = RenewalJobAssigner(configRepository)
+			val vm = TimestampViewModel(
+				extendUseCase, getTimestampInfoUseCase, configRepository, assigner, StandardTestDispatcher(ioScheduler),
+			)
+			vm.onDocumentChanged(sampleDoc())
+			settle()
+			vm.open(sampleDoc())
+			settle()
+			vm.updateState { it.copy(addToRenewalJob = true) }
+			vm.extend()
+			settle()
+			watching = true
+			vm.completeSave(SaveOutcome.Saved(extendedPath))
+			settle()
+
+			vm.pendingRenewalOffer.value.shouldNotBeNull()
+			readOnIoDispatcher.shouldNotBeEmpty()
+			readOnIoDispatcher shouldNotContain false
 		}
 	}
 
