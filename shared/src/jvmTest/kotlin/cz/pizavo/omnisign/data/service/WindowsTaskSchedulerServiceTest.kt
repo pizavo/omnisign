@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.data.service
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.booleans.shouldBeFalse
@@ -7,6 +8,7 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import kotlin.io.encoding.Base64
 import kotlin.io.path.createDirectories
 import kotlin.io.path.div
@@ -173,6 +175,19 @@ class WindowsTaskSchedulerServiceTest : FunSpec({
 
 		registeredAction() shouldBe service.buildAction(spacedExe, spacedLog)
 	}
+
+	test("install reports a registration PowerShell refuses as plain text, the value it refused included")
+		.config(enabled = isWindows()) {
+			val failure = shouldThrow<IllegalStateException> {
+				service.install(cliExecutablePath = "C:\\omnisign\\omnisign.exe", runAtHour = 25, runAtMinute = 99)
+			}
+
+			failure.message shouldContain "25:99"
+			failure.message shouldNotContain "CLIXML"
+			failure.message shouldNotContain "_x000D__x000A_"
+			failure.message shouldNotContain "\uFFFD"
+			service.isInstalled().shouldBeFalse()
+		}
 
 	test("the action's command line runs a program and logs its output when both paths have spaces")
 		.config(enabled = isWindows()) {

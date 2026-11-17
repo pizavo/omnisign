@@ -13,6 +13,8 @@ import kotlin.io.encoding.Base64
  * double quotes inside an argument unescaped on Windows, and PowerShell's command-line
  * parsing then strips them, so the quotes around the paths in the task's arguments would be
  * lost and a path with a space in it cut there. Encoding bypasses that parsing altogether.
+ * PowerShell writes the errors of an encoded script as CLIXML, so the script writes the message of
+ * its own error as plain text instead (see [buildRegisterScript]).
  *
  * The registered task sets `StartWhenAvailable`, so a daily run missed while the machine was
  * off or asleep is caught up once the machine is next available instead of being skipped
@@ -70,6 +72,12 @@ class WindowsTaskSchedulerService(
 	 * than skipped until the following day. Task Scheduler coalesces multiple missed
 	 * occurrences into a single catch-up run.
 	 *
+	 * The script turns PowerShell's progress records off, stops at its first error, and writes that
+	 * error's message to standard output, encoded as UTF-8, before it exits with 1, so that
+	 * [install] reports the message as PowerShell gave it. Left to PowerShell, the error would reach
+	 * standard error as CLIXML, the form in which PowerShell writes the errors of a script handed
+	 * over through `-EncodedCommand`.
+	 *
 	 * @param exe Executable to launch (the OmniSign binary, or `cmd` when redirecting output).
 	 * @param args Arguments passed to [exe].
 	 * @param startTime Daily trigger time in `HH:mm` form.
@@ -77,6 +85,7 @@ class WindowsTaskSchedulerService(
 	 */
 	internal fun buildRegisterScript(exe: String, args: String, startTime: String): String =
 		buildString {
+			append("\$ProgressPreference = 'SilentlyContinue'; \$ErrorActionPreference = 'Stop'; try { ")
 			append("\$action = New-ScheduledTaskAction")
 			append(" -Execute '${exe.escapeSingleQuote()}'")
 			append(" -Argument '${args.escapeSingleQuote()}'")
@@ -85,6 +94,9 @@ class WindowsTaskSchedulerService(
 			append("; Register-ScheduledTask")
 			append(" -TaskName '${taskName.escapeSingleQuote()}'")
 			append(" -Action \$action -Trigger \$trigger -Settings \$settings -Force | Out-Null")
+			append(" } catch { \$bytes = [Text.Encoding]::UTF8.GetBytes(\$_.Exception.Message)")
+			append("; \$out = [Console]::OpenStandardOutput(); \$out.Write(\$bytes, 0, \$bytes.Length); \$out.Flush()")
+			append("; exit 1 }")
 		}
 
 	override fun uninstall() {
