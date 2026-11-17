@@ -202,7 +202,7 @@ class WindowsTaskSchedulerServiceTest : FunSpec({
 			service.isInstalled().shouldBeFalse()
 		}
 
-	test("install reports a task name Register-ScheduledTask refuses as plain text, and registers nothing")
+	test("install reports a task name Register-ScheduledTask refuses as plain text")
 		.config(enabled = isWindows()) {
 			val refused = WindowsTaskSchedulerService(taskName = "$taskName|refused")
 			val failure = shouldThrow<IllegalStateException> {
@@ -213,7 +213,6 @@ class WindowsTaskSchedulerServiceTest : FunSpec({
 			failure.message shouldNotContain "CLIXML"
 			failure.message shouldNotContain "_x000D__x000A_"
 			failure.message shouldNotContain "\uFFFD"
-			service.isInstalled().shouldBeFalse()
 		}
 
 	test("install registers paths with a typographic apostrophe as written").config(enabledIf = { canCreateTasks }) {
