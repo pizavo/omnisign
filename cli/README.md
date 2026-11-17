@@ -843,12 +843,12 @@ Register (or replace) the daily `omnisign renew` job with the OS scheduler
 omnisign schedule install [options]
 ```
 
-| Option              | Description                                                                                              |
-|---------------------|----------------------------------------------------------------------------------------------------------|
-| `--cli-path <path>` | Absolute path to the omnisign binary. Auto-detected when omitted (may fail for `java -jar` invocations). |
-| `--hour <0-23>`     | Hour of day at which the job runs. Default: `2`                                                          |
-| `--minute <0-59>`   | Minute at which the job runs. Default: `0`                                                               |
-| `--log-file <path>` | Absolute path to an append-only log file for renewal output.                                             |
+| Option              | Description                                                                                                                                                                                                                        |
+|---------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `--cli-path <path>` | Absolute path to the omnisign binary. Auto-detected when omitted (may fail for `java -jar` invocations).                                                                                                                           |
+| `--hour <0-23>`     | Hour of day at which the job runs. Default: `2`                                                                                                                                                                                    |
+| `--minute <0-59>`   | Minute at which the job runs. Default: `0`                                                                                                                                                                                         |
+| `--log-file <path>` | Absolute path to an append-only log file for renewal output. On Linux, install creates the file and its missing folders, and refuses a relative path or a file it cannot write to, as every run would fail before OmniSign starts. |
 
 #### `schedule uninstall`
 
@@ -898,7 +898,7 @@ omnisign schedule job add thesis-archive \
   --profile university
 
 # Install the daily OS scheduler job
-omnisign schedule install --hour 3 --log-file /var/log/omnisign-renew.log
+omnisign schedule install --hour 3 --log-file ~/.local/state/omnisign/renew.log
 
 # Check scheduler status
 omnisign schedule status
