@@ -227,6 +227,7 @@ The project uses **[Kotest 6](https://kotest.io/)** (FunSpec style),
 ./gradlew :server:test             # Server route tests
 ./gradlew :composeApp:jvmTest      # Desktop ViewModel tests
 ./gradlew :konsistTest:test        # Coding-convention checks (Konsist)
+./gradlew :shared:pitest -PpitClasses=<classes> -PpitTests=<specs>  # Mutation testing (PIT)
 ```
 
 ### Key Libraries

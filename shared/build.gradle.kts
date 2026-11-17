@@ -379,3 +379,8 @@ dependencies {
 		dokkaHtmlGeneratorRuntime(libs.jackson2.bom)
 	}
 }
+
+/**
+ * Adds the `pitest` task, which mutation-tests the classes a change touches; see `gradle/pitest.gradle.kts`.
+ */
+apply(from = rootDir.resolve("gradle/pitest.gradle.kts"))

@@ -149,3 +149,8 @@ tasks.named<com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar>("shadowJ
     from(bundledLegalFiles) { into("META-INF/legal") }
     from(rootProject.file("licenses")) { into("META-INF/legal/licenses") }
 }
+
+/**
+ * Adds the `pitest` task, which mutation-tests the classes a change touches; see `gradle/pitest.gradle.kts`.
+ */
+apply(from = rootDir.resolve("gradle/pitest.gradle.kts"))

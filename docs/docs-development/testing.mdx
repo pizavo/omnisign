@@ -232,6 +232,62 @@ configuration file in `shared/build/softhsm/`, and the spec creates its tokens b
 touches tokens the machine uses for real. Set `OMNISIGN_SOFTHSM2_MODULE` when the module is installed
 somewhere the spec does not look. CI installs both packages on the Linux runner of *CI — CLI*.
 
+## Mutation testing with PIT
+
+Coverage shows which lines a spec ran, not whether it checked what they did.
+[PIT](https://pitest.org/) changes the compiled classes one small step at a time: it negates a
+condition, shifts a boundary, removes a call, or makes a method return a constant. Then it reruns the
+specs that cover the changed line. A mutant the specs still pass is behaviour they do not pin down.
+
+`shared`, `cli`, `server` and `composeApp` each have a `pitest` task. It takes the classes to mutate
+and the specs to run, both as comma-separated class-name globs:
+
+```bash
+./gradlew :shared:pitest \
+  -PpitClasses=cz.pizavo.omnisign.data.repository.TspErrorDetector* \
+  -PpitTests=cz.pizavo.omnisign.data.repository.TspErrorDetectorTest
+```
+
+`<package>.<File>*` covers everything compiled from one file: its class, nested classes and lambdas,
+and the `<File>Kt` class that holds its top-level functions. The task prints the mutants that need a
+look:
+
+```text
+PIT: 45 mutants (37 killed, 1 no coverage, 7 survived); 25 more in compiler-generated code left out (25 inlined code).
+Survived, so no spec noticed the change:
+  shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/repository/TspErrorDetector.kt:72 isTspException — negated conditional
+  shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/repository/TspErrorDetector.kt:105 isServerUnreachable — negated conditional
+  …
+Not run by any of the named specs:
+  shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/repository/TspErrorDetector.kt:203 parsePkiFailureReason — replaced return value with ""
+Full report: shared/build/reports/pitest/index.html
+```
+
+Both kinds are worth reading. Line 105 is one of four exception types that count as a transport
+failure, and negating the check for any one of them still passes, because no spec throws that type on
+its own. Line 203 is a fallback that the regular expression before it makes unreachable.
+
+:::warning[Name the specs, not a package]
+PIT runs every spec that `-PpitTests` names once, to measure coverage, before it tries a single mutant.
+A package pattern such as `cz.pizavo.omnisign.data.service.*` therefore also runs
+`WindowsTaskSchedulerServiceTest`, which registers real scheduled tasks on the machine. When no spec
+matches, the task fails instead of reporting every mutant as not covered.
+:::
+
+Kotlin compiles code of its own into the classes, and a mutant there is no finding. The summary counts
+these mutants and lists only the rest:
+
+| Left out as | What it is |
+| --- | --- |
+| null checks | `Intrinsics` calls behind non-null parameters, platform types and `!!` |
+| inlined code | The bodies of inline functions such as `map` or `let`, whose line numbers belong to the file they come from and lie past the end of this one |
+| coroutine state machines | The resumption checks and early returns of a suspend function, which carry the line of its `suspend fun` declaration |
+
+The default-argument bridges (`…$default`) and the `componentN` and `copy` functions of data classes
+are not mutated at all, and PIT makes no mutants in the `equals`, `hashCode` and `toString` of data
+classes or in the generated members of enums. PIT's own output goes to `pit-output.txt`, next to the
+full report.
+
 ## What is worth testing
 
 The DSS infrastructure classes each have a dedicated spec — `DssServiceFactoryTest`,

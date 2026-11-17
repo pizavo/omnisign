@@ -1004,3 +1004,8 @@ val bundleWebLegalFiles = tasks.register<Copy>("bundleWebLegalFiles") {
 tasks.matching { it.name == "wasmJsBrowserDistribution" }.configureEach {
 	finalizedBy(bundleWebLegalFiles)
 }
+
+/**
+ * Adds the `pitest` task, which mutation-tests the classes a change touches; see `gradle/pitest.gradle.kts`.
+ */
+apply(from = rootDir.resolve("gradle/pitest.gradle.kts"))
