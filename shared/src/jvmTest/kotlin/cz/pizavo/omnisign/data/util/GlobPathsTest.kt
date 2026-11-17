@@ -230,11 +230,12 @@ class GlobPathsTest : FunSpec({
 		globSelects("$baseSlash/Stored/report-*.pdf", "$baseSlash/Stored/report-1.pdf") shouldBe isWindows
 	}
 
-	test("reads a Windows short name on either path as the long name it stands for").config(enabledIf = { hasShortNames }) {
-		globSelects("$baseSlash/LONGFO~1/*.pdf", "$baseSlash/LONGFO~1/not-saved-yet.pdf").shouldBeTrue()
-		((base / "Long Folder Name" / "Inner Folder Name").createDirectories() / "a.pdf").createFile()
-		globSelects("$baseSlash/**/*Name/*.pdf", "$baseSlash/LONGFO~1/INNERF~1/a.pdf").shouldBeTrue()
-	}
+	test("reads Windows short names spelled alike in both paths, or below the glob's folder, as the long names they stand for")
+		.config(enabledIf = { hasShortNames }) {
+			globSelects("$baseSlash/LONGFO~1/*.pdf", "$baseSlash/LONGFO~1/not-saved-yet.pdf").shouldBeTrue()
+			((base / "Long Folder Name" / "Inner Folder Name").createDirectories() / "a.pdf").createFile()
+			globSelects("$baseSlash/**/*Name/*.pdf", "$baseSlash/LONGFO~1/INNERF~1/a.pdf").shouldBeTrue()
+		}
 
 	test("never takes a symbolic link named like the file in another letter case for that file")
 		.config(enabledIf = { canLink && !ignoresCase }) {
