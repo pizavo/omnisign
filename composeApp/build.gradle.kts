@@ -880,12 +880,15 @@ dokka {
 }
 
 /**
- * Raises the Jackson 2 that Dokka 2.3.0 brings onto its generator classpath, 2.22.2, to a
- * release without its advisories. Only documentation generation runs it.
+ * Raises two libraries to releases without their advisories: the Jackson 2 that Dokka 2.3.0
+ * brings onto its generator classpath, 2.22.2, and the Guava that Compose's UI test library
+ * brings into the JVM tests through Truth, 28.1-android. Only documentation generation and the
+ * tests run them.
  */
 dependencies {
 	constraints {
 		dokkaHtmlGeneratorRuntime(libs.jackson2.bom)
+		add("jvmTestImplementation", libs.guava)
 	}
 }
 
