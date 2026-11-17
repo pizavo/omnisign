@@ -26,37 +26,72 @@ class RenewalJobAssignerTest : FunSpec({
 
 	val configRepository = mockk<ConfigRepository>()
 
-	test("globMatchesFile matches literal path") {
-		RenewalJobAssigner.globMatchesFile("/tmp/doc.pdf", "/tmp/doc.pdf") shouldBe true
+	val isWindows = System.getProperty("os.name", "").startsWith("Windows")
+
+	/** A renewal job named `docs-job` that watches [globs]. */
+	fun jobWatching(vararg globs: String) = RenewalJob(
+		name = "docs-job",
+		globs = globs.toList(),
+		renewalBufferDays = 30,
+		profile = null,
+	)
+
+	/** Whether a job watching only [glob] covers the file at [filePath]. */
+	fun covers(glob: String, filePath: String): Boolean =
+		RenewalJobAssigner.findCoveringJob(filePath, listOf(jobWatching(glob))) != null
+
+	test("findCoveringJob covers the file a literal glob names and no other") {
+		covers("/tmp/doc.pdf", "/tmp/doc.pdf") shouldBe true
+		covers("/tmp/doc.pdf", "/tmp/other.pdf") shouldBe false
 	}
 
-	test("globMatchesFile rejects non-matching literal path") {
-		RenewalJobAssigner.globMatchesFile("/tmp/doc.pdf", "/tmp/other.pdf") shouldBe false
+	test("findCoveringJob keeps a star within one directory") {
+		covers("/tmp/*.pdf", "/tmp/doc.pdf") shouldBe true
+		covers("/tmp/*.pdf", "/tmp/sub/doc.pdf") shouldBe false
 	}
 
-	test("globMatchesFile matches star wildcard") {
-		RenewalJobAssigner.globMatchesFile("/tmp/*.pdf", "/tmp/doc.pdf") shouldBe true
+	test("findCoveringJob covers PDFs directly in the directory of a recursive glob and below it") {
+		covers("/tmp/**/*.pdf", "/tmp/doc.pdf") shouldBe true
+		covers("/tmp/**/*.pdf", "/tmp/sub/deep/doc.pdf") shouldBe true
 	}
 
-	test("globMatchesFile star does not cross directory boundaries") {
-		RenewalJobAssigner.globMatchesFile("/tmp/*.pdf", "/tmp/sub/doc.pdf") shouldBe false
+	test("findCoveringJob reads backslashes in a glob as separators") {
+		covers("\\tmp\\**\\*.pdf", "/tmp/sub/test.pdf") shouldBe true
 	}
 
-	test("globMatchesFile matches double-star pattern") {
-		RenewalJobAssigner.globMatchesFile("/tmp/**/*.pdf", "/tmp/sub/deep/doc.pdf") shouldBe true
+	test("findCoveringJob reads a question mark as one character") {
+		covers("/tmp/doc?.pdf", "/tmp/doc1.pdf") shouldBe true
+		covers("/tmp/doc?.pdf", "/tmp/doc12.pdf") shouldBe false
 	}
 
-	test("globMatchesFile matches question mark") {
-		RenewalJobAssigner.globMatchesFile("/tmp/doc?.pdf", "/tmp/doc1.pdf") shouldBe true
-		RenewalJobAssigner.globMatchesFile("/tmp/doc?.pdf", "/tmp/doc12.pdf") shouldBe false
+	test("findCoveringJob reads brackets as a character class, as the renewal run does") {
+		covers("/tmp/[2024]/doc.pdf", "/tmp/2/doc.pdf") shouldBe true
+		covers("/tmp/[2024]/doc.pdf", "/tmp/[2024]/doc.pdf") shouldBe false
 	}
 
-	test("globMatchesFile normalises backslashes") {
-		RenewalJobAssigner.globMatchesFile("C:\\docs\\*.pdf", "C:/docs/test.pdf") shouldBe true
+	test("findCoveringJob covers only PDFs, as the renewal run renews only PDFs") {
+		covers("/tmp/*", "/tmp/SCAN.PDF") shouldBe true
+		covers("/tmp/*", "/tmp/notes.txt") shouldBe false
 	}
 
-	test("globMatchesFile is case-insensitive") {
-		RenewalJobAssigner.globMatchesFile("C:\\Users\\Vojta\\Desktop\\doc.pdf", "c:/users/vojta/desktop/doc.pdf") shouldBe true
+	test("findCoveringJob compares letter case as the platform's file system does") {
+		covers("/tmp/Docs/*.pdf", "/tmp/docs/doc.pdf") shouldBe isWindows
+		covers("/tmp/Docs/doc.pdf", "/tmp/docs/doc.pdf") shouldBe isWindows
+	}
+
+	test("findCoveringJob does not cover a file through a pattern the platform cannot parse") {
+		covers("/tmp/[.pdf", "/tmp/[.pdf") shouldBe false
+	}
+
+	test("findCoveringJob returns the first job any of whose globs covers the file") {
+		val other = jobWatching("/other/**/*.pdf").copy(name = "other-job")
+		val second = jobWatching("/elsewhere/*.pdf", "/docs/**/*.pdf").copy(name = "second-job")
+		val third = jobWatching("/docs/*.pdf").copy(name = "third-job")
+
+		RenewalJobAssigner.findCoveringJob(
+			filePath = "/docs/report.pdf",
+			jobs = listOf(other, second, third),
+		)?.name shouldBe "second-job"
 	}
 
 	test("findCoveringJob finds matching job") {
@@ -113,7 +148,7 @@ class RenewalJobAssignerTest : FunSpec({
 		).shouldBeNull()
 	}
 
-	test("findCoveringJob is case-insensitive for Windows paths") {
+	test("findCoveringJob is case-insensitive for Windows paths").config(enabledIf = { isWindows }) {
 		val job = RenewalJob(
 			name = "win-job",
 			globs = listOf("C:\\Users\\Vojta\\Desktop\\*.pdf"),

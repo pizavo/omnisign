@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.ui.platform
 
 import cz.pizavo.omnisign.data.util.globRootExists
+import cz.pizavo.omnisign.data.util.globSelects
 import cz.pizavo.omnisign.data.util.isAbsoluteGlobRoot
 import cz.pizavo.omnisign.data.util.absoluteGlobExample as sharedAbsoluteGlobExample
 import cz.pizavo.omnisign.data.util.globNeedsFilePattern as sharedGlobNeedsFilePattern
@@ -19,3 +20,9 @@ actual fun globTargetExists(glob: String): Boolean = globRootExists(glob)
 actual fun globNeedsFilePattern(glob: String): Boolean = sharedGlobNeedsFilePattern(glob)
 
 actual fun isParseableGlob(glob: String): Boolean = sharedIsParseableGlob(glob)
+
+/**
+ * Whether a renewal run selects [filePath] through [glob], answered by the shared check that
+ * applies the run's own split, matcher and PDF-only rule, so the offer and the run cannot disagree.
+ */
+actual fun renewalGlobSelects(glob: String, filePath: String): Boolean = globSelects(glob, filePath)

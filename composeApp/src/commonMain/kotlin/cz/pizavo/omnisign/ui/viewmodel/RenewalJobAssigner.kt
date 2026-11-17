@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.domain.model.config.SchedulerConfig
 import cz.pizavo.omnisign.domain.port.SchedulerPort
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.ui.model.RenewalJobOfferState
+import cz.pizavo.omnisign.ui.platform.renewalGlobSelects
 
 /**
  * Shared helper that builds [RenewalJobOfferState], checks existing job coverage,
@@ -140,12 +141,16 @@ class RenewalJobAssigner(
 		 * Find a renewal job that already covers the given file.
 		 *
 		 * A job is considered covering when at least one of its glob patterns
-		 * matches the file path. Buffer days and profile are intentionally not
+		 * selects the file the way a renewal run selects the files it renews
+		 * ([renewalGlobSelects]), so the offer is skipped only for a file the job's
+		 * runs will pick up. Buffer days and profile are intentionally not
 		 * checked — coverage means the file **will be processed** by the job,
 		 * regardless of which settings it uses.
 		 *
-		 * Path comparison is case-insensitive so that Windows drive-letter
-		 * differences (e.g. `C:` vs `c:`) do not cause false negatives.
+		 * Paths are compared under the platform's own rules, as the run compares
+		 * them: case-insensitively on Windows, so that drive-letter differences
+		 * (e.g. `C:` vs `c:`) do not cause false negatives, and case-sensitively
+		 * where the run tells `SCAN.PDF` from `scan.pdf`.
 		 *
 		 * @param filePath Absolute path to the file to check.
 		 * @param jobs All currently configured renewal jobs.
@@ -154,64 +159,8 @@ class RenewalJobAssigner(
 		fun findCoveringJob(
 			filePath: String,
 			jobs: List<RenewalJob>,
-		): RenewalJob? {
-			val normalised = filePath.replace('\\', '/').lowercase()
-			return jobs.firstOrNull { job ->
-				job.globs.any { glob -> globMatchesFile(glob, normalised) }
-			}
-		}
-
-		/**
-		 * Check whether a glob pattern matches a file path using simplified
-		 * glob semantics suitable for the coverage hint.
-		 *
-		 * Supports `*` (single directory segment), `**` (any depth), and `?`
-		 * (single character). Literal paths (no wildcards) are compared directly.
-		 *
-		 * Both the glob and the file path are compared case-insensitively to
-		 * handle Windows path casing differences.
-		 *
-		 * @param glob The glob pattern to test.
-		 * @param filePath Absolute file path (any casing, any separator style).
-		 * @return `true` if the glob matches the file path.
-		 */
-		internal fun globMatchesFile(glob: String, filePath: String): Boolean {
-			val normGlob = glob.replace('\\', '/').lowercase()
-			val normPath = filePath.replace('\\', '/').lowercase()
-			if (!normGlob.contains('*') && !normGlob.contains('?') && !normGlob.contains('[')) {
-				return normGlob == normPath
-			}
-			val regex = buildGlobRegex(normGlob)
-			return regex.matches(normPath)
-		}
-
-		/**
-		 * Convert a simplified glob pattern to a [Regex].
-		 *
-		 * @param glob Normalised glob pattern with forward slashes.
-		 * @return Compiled regex that matches the glob semantics.
-		 */
-		private fun buildGlobRegex(glob: String): Regex {
-			val sb = StringBuilder("^")
-			var i = 0
-			while (i < glob.length) {
-				val c = glob[i]
-				when {
-					c == '*' && i + 1 < glob.length && glob[i + 1] == '*' -> {
-						sb.append(".*")
-						i += 2
-						if (i < glob.length && glob[i] == '/') i++
-						continue
-					}
-					c == '*' -> sb.append("[^/]*")
-					c == '?' -> sb.append("[^/]")
-					c in ".()[]{}+^$|" -> sb.append("\\$c")
-					else -> sb.append(c)
-				}
-				i++
-			}
-			sb.append("$")
-			return Regex(sb.toString())
+		): RenewalJob? = jobs.firstOrNull { job ->
+			job.globs.any { glob -> renewalGlobSelects(glob, filePath) }
 		}
 	}
 }

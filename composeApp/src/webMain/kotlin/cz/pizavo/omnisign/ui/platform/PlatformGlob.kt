@@ -19,3 +19,8 @@ actual fun globTargetExists(glob: String): Boolean = true
 actual fun globNeedsFilePattern(glob: String): Boolean = false
 
 actual fun isParseableGlob(glob: String): Boolean = true
+
+/**
+ * Always `false`: the browser runs no renewal jobs, so no job's run would select a file here.
+ */
+actual fun renewalGlobSelects(glob: String, filePath: String): Boolean = false

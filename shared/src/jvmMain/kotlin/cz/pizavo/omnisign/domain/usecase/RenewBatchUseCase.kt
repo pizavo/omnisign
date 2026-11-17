@@ -3,6 +3,8 @@ package cz.pizavo.omnisign.domain.usecase
 import arrow.core.Either
 import arrow.core.left
 import arrow.core.right
+import cz.pizavo.omnisign.data.util.globRootAndTail
+import cz.pizavo.omnisign.data.util.renewalGlobMatcher
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
@@ -1020,7 +1022,9 @@ class RenewBatchUseCase(
      * Both forward-slash and backslash separators are accepted in [globs].
      * Matching uses the relative tail of the glob pattern against the relative
      * path from the root directory, avoiding platform-specific backslash
-     * escaping issues with [java.nio.file.PathMatcher] on Windows.
+     * escaping issues with [java.nio.file.PathMatcher] on Windows. The tail is matched through
+     * [renewalGlobMatcher], in which a `**` segment followed by a separator matches zero or more
+     * directories, so a recursive PDF pattern also selects the PDFs directly in the root directory.
      *
      * Wildcard matches are restricted to `.pdf` files (case-insensitive), since renewal handles PDFs
      * only; any non-PDF files a wildcard happens to match are counted and logged rather than silently
@@ -1047,10 +1051,8 @@ class RenewBatchUseCase(
         val results = mutableListOf<File>()
 
         for (glob in globs) {
-            val normalised = glob.replace('\\', '/')
-            val wildcardIndex = normalised.indexOfFirst { it == '*' || it == '?' || it == '{' || it == '[' }
-
-            if (wildcardIndex == -1) {
+            val split = globRootAndTail(glob)
+            if (split == null) {
                 val file = File(glob).absoluteFile
                 if (file.isFile && seen.add(file.absolutePath)) {
                     results.add(file)
@@ -1058,9 +1060,7 @@ class RenewBatchUseCase(
                 continue
             }
 
-            val prefix = normalised.substring(0, wildcardIndex)
-            val lastSlash = prefix.lastIndexOf('/')
-            val rootStr = if (lastSlash == -1) "." else normalised.substring(0, lastSlash)
+            val (rootStr, tail) = split
             val rootPath = try {
                 Paths.get(rootStr).toAbsolutePath().normalize()
             } catch (e: Exception) {
@@ -1068,9 +1068,8 @@ class RenewBatchUseCase(
             }
             if (!Files.isDirectory(rootPath)) continue
 
-            val tail = normalised.substring(lastSlash + 1)
             val matcher = try {
-                rootPath.fileSystem.getPathMatcher("glob:$tail")
+                renewalGlobMatcher(rootPath.fileSystem, tail)
             } catch (e: Exception) {
                 return malformedGlob(glob, "'$tail' is not a valid glob pattern", e, logFile)
             }
