@@ -1,0 +1,151 @@
+# Convention violations that konsistTest accepts: code that keeps breaking a rule on purpose, and code that
+# predates the rule. Each line names the rule, the file relative to the repository root, and what in the file
+# breaks the rule. konsistTest fails on a violation that is not listed here and on a listed line that no longer
+# occurs, so the list only shrinks: fix new code instead of adding it here, and delete a line once its
+# violation is gone. The rules are in konsistTest/src/test/kotlin/cz/pizavo/omnisign/konsist/ConventionRule.kt;
+# the exceptions marked as on purpose are the ones docs/docs-development/conventions.mdx accepts.
+
+# Functions without KDoc.
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/config/ConfigImport.kt ConfigImport.resolveFormat
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/config/profile/ProfileImport.kt ProfileImport.resolveFormat
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/diagnose/DiagnosePkcs11.kt DiagnosePkcs11.appendCandidate
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/diagnose/DiagnosePkcs11.kt DiagnosePkcs11.appendCandidatesByLayer
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/diagnose/DiagnosePkcs11.kt DiagnosePkcs11.appendEnvironment
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/diagnose/DiagnosePkcs11.kt DiagnosePkcs11.appendFooter
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/diagnose/DiagnosePkcs11.kt DiagnosePkcs11.appendHeader
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/diagnose/DiagnosePkcs11.kt DiagnosePkcs11.appendIndentedBlock
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/diagnose/DiagnosePkcs11.kt DiagnosePkcs11.appendLayer
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/diagnose/DiagnosePkcs11.kt DiagnosePkcs11.appendMergedCandidates
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/diagnose/DiagnosePkcs11.kt DiagnosePkcs11.appendNoLoginResult
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/diagnose/DiagnosePkcs11.kt DiagnosePkcs11.appendP11Kit
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/diagnose/DiagnosePkcs11.kt DiagnosePkcs11.appendPcscReaders
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/diagnose/DiagnosePkcs11.kt DiagnosePkcs11.appendProbe
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/diagnose/DiagnosePkcs11.kt DiagnosePkcs11.appendProbes
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/diagnose/DiagnosePkcs11.kt DiagnosePkcs11.appendRawNoLoginScan
+function-without-kdoc cli/src/main/kotlin/cz/pizavo/omnisign/commands/diagnose/DiagnosePkcs11.kt DiagnosePkcs11.appendTokens
+function-without-kdoc composeApp/src/jvmMain/kotlin/cz/pizavo/omnisign/ui/platform/LocalAppLocale.kt LocalAppLocale.provides
+function-without-kdoc composeApp/src/jvmMain/kotlin/cz/pizavo/omnisign/ui/platform/PlatformGlob.kt absoluteGlobExample
+function-without-kdoc composeApp/src/jvmMain/kotlin/cz/pizavo/omnisign/ui/platform/PlatformGlob.kt globNeedsFilePattern
+function-without-kdoc composeApp/src/jvmMain/kotlin/cz/pizavo/omnisign/ui/platform/PlatformGlob.kt globTargetExists
+function-without-kdoc composeApp/src/jvmMain/kotlin/cz/pizavo/omnisign/ui/platform/PlatformGlob.kt isParseableGlob
+function-without-kdoc composeApp/src/webMain/kotlin/cz/pizavo/omnisign/ui/platform/LocalAppLocale.kt LocalAppLocale.provides
+function-without-kdoc composeApp/src/webMain/kotlin/cz/pizavo/omnisign/ui/platform/LocalAppLocale.kt browserLanguageTag
+function-without-kdoc composeApp/src/webMain/kotlin/cz/pizavo/omnisign/ui/platform/PlatformGlob.kt absoluteGlobExample
+function-without-kdoc composeApp/src/webMain/kotlin/cz/pizavo/omnisign/ui/platform/PlatformGlob.kt globNeedsFilePattern
+function-without-kdoc composeApp/src/webMain/kotlin/cz/pizavo/omnisign/ui/platform/PlatformGlob.kt globTargetExists
+function-without-kdoc composeApp/src/webMain/kotlin/cz/pizavo/omnisign/ui/platform/PlatformGlob.kt isParseableGlob
+function-without-kdoc composeApp/src/webMain/kotlin/cz/pizavo/omnisign/web/auth/BrowserAuthNavigation.kt assignLocation
+function-without-kdoc composeApp/src/webMain/kotlin/cz/pizavo/omnisign/web/auth/BrowserAuthNavigation.kt encodeUriComponentJs
+function-without-kdoc composeApp/src/webMain/kotlin/cz/pizavo/omnisign/web/auth/BrowserAuthNavigation.kt originAndPath
+function-without-kdoc composeApp/src/webMain/kotlin/cz/pizavo/omnisign/web/auth/BrowserAuthNavigation.kt readCodeParam
+function-without-kdoc composeApp/src/webMain/kotlin/cz/pizavo/omnisign/web/auth/BrowserAuthNavigation.kt replaceUrl
+function-without-kdoc server/src/test/kotlin/cz/pizavo/omnisign/auth/OidcDiscoveryServiceTest.kt FixedClock.advance
+function-without-kdoc shared/src/commonMain/kotlin/cz/pizavo/omnisign/domain/usecase/ListCertificatesUseCase.kt ListCertificatesUseCase.isSigningCapable
+function-without-kdoc shared/src/commonMain/kotlin/cz/pizavo/omnisign/domain/usecase/ManageTrustedListsUseCase.kt ManageTrustedListsUseCase.removeServiceFromDraft
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/repository/CountingExecutorService.kt CountingExecutorService.isListAnalysisTask
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/DssTokenService.kt DssTokenService.createDssToken
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/DssTokenService.kt DssTokenService.loadCertificatesInternal
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/LinuxNotificationService.kt LinuxNotificationService.toLinux
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/Pkcs11DiagnosticsService.kt Pkcs11DiagnosticsService.isLinux
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/Pkcs11SessionCache.kt Pkcs11SessionCache.closeQuietly
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/TrustedListCompiler.kt TrustedListCompiler.buildSchemeInformation
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/TrustedListCompiler.kt TrustedListCompiler.buildService
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/TrustedListCompiler.kt TrustedListCompiler.buildTrustStatusList
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/TrustedListCompiler.kt TrustedListCompiler.buildTsp
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/TrustedListCompiler.kt TrustedListCompiler.buildTspList
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/TrustedListCompiler.kt TrustedListCompiler.internationalNames
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/TrustedListCompiler.kt TrustedListCompiler.multiLangUriList
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/WindowsTaskSchedulerService.kt WindowsTaskSchedulerService.escapeSingleQuote
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/WindowsTaskSchedulerService.kt WindowsTaskSchedulerService.run
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/WindowsTaskSchedulerService.kt WindowsTaskSchedulerService.runQuietly
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt alternativeNamesText
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt asn1DumpText
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt basicConstraintsText
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt digestHexColon
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt extendedKeyUsageText
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt fingerprintFields
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt keyUsageText
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt policyInformationText
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt publicKeyFields
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt qcPdsText
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt qcStatementText
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt qcTypeText
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt renderExtension
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt toHex
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt toHexColon
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt toHexColon
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt userNoticeText
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt validityFields
+function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/legal/ThirdPartyCreditsReader.kt ThirdPartyCreditsReader.load
+
+# Files with more than one top-level type.
+# Predate the rule.
+several-top-level-types composeApp/src/commonMain/kotlin/cz/pizavo/omnisign/ui/model/PdfViewerState.kt PdfDocumentInfo,PdfViewerState
+several-top-level-types composeApp/src/commonMain/kotlin/cz/pizavo/omnisign/ui/model/SidePanel.kt PanelSide,SidePanel
+several-top-level-types composeApp/src/commonMain/kotlin/cz/pizavo/omnisign/ui/platform/PasswordDialogController.kt PasswordDialogController,PasswordDialogRequest
+several-top-level-types composeApp/src/jvmMain/kotlin/cz/pizavo/omnisign/ui/platform/WindowStateStore.kt PersistedWindowState,WindowStateStore
+several-top-level-types server/src/main/kotlin/cz/pizavo/omnisign/auth/OidcDiscoveryService.kt CachedDiscovery,OidcDiscoveryDocument,OidcDiscoveryService
+several-top-level-types server/src/main/kotlin/cz/pizavo/omnisign/auth/PkceService.kt PkceChallenge,PkceService
+several-top-level-types server/src/main/kotlin/cz/pizavo/omnisign/auth/RefreshTokenStore.kt RefreshToken,RefreshTokenStore
+several-top-level-types server/src/main/kotlin/cz/pizavo/omnisign/config/SigningConfigLoader.kt SigningConfigLoader,TimestampServerConfigMixin
+several-top-level-types server/src/test/kotlin/cz/pizavo/omnisign/auth/OidcDiscoveryServiceTest.kt FixedClock,OidcDiscoveryServiceTest
+several-top-level-types shared/src/commonMain/kotlin/cz/pizavo/omnisign/domain/model/config/CustomTrustedListDraft.kt CustomTrustedListDraft,TrustServiceDraft,TrustServiceProviderDraft
+several-top-level-types shared/src/commonMain/kotlin/cz/pizavo/omnisign/domain/service/AlgorithmExpirationChecker.kt AlgorithmExpirationChecker,AlgorithmStatus
+several-top-level-types shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/repository/DssServiceFactory.kt CertificateVerifierResult,DssServiceFactory
+several-top-level-types shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/repository/DssWarningSanitizer.kt DssWarningSanitizer,SanitizedWarnings
+several-top-level-types shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/DssTokenService.kt DssSigningToken,DssTokenService
+several-top-level-types shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/OsNotificationService.kt NotificationUrgency,OsNotificationService
+# On purpose: serialization DTOs that exist only as one wire shape.
+several-top-level-types cli/src/main/kotlin/cz/pizavo/omnisign/cli/json/JsonModels.kt JsonAvailableCertificate,JsonCertificateList,JsonError,JsonExtensionResult,JsonRenewalFileResult,JsonRenewalJobResult,JsonRenewalResult,JsonSigningResult,JsonTokenWarning,JsonValidationResult
+several-top-level-types shared/src/commonMain/kotlin/cz/pizavo/omnisign/domain/model/validation/json/JsonReportModels.kt JsonCertificateChainLink,JsonCertificateDetailSection,JsonCertificateField,JsonCertificateReport,JsonRevocationReport,JsonSignatureReport,JsonTimestampReport,JsonTrustSource,JsonValidationReport,JsonValidationSummary
+several-top-level-types shared/src/commonMain/kotlin/cz/pizavo/omnisign/domain/repository/CertificateDiscoveryResult.kt CertificateDiscoveryResult,LockedTokenInfo,TokenDiscoveryWarning
+# On purpose: a KSerializer beside the type it serializes.
+several-top-level-types shared/src/commonMain/kotlin/cz/pizavo/omnisign/domain/model/value/Sensitive.kt Sensitive,SensitiveSerializer
+# On purpose: a parameter object with the enum only it uses.
+several-top-level-types shared/src/commonMain/kotlin/cz/pizavo/omnisign/domain/model/parameters/ValidationParameters.kt RawReportFormat,ValidationParameters
+
+# Files not named after their only top-level type.
+file-not-named-after-type composeApp/src/webMain/kotlin/cz/pizavo/omnisign/web/auth/WebPkce.kt PkceHandoff
+file-not-named-after-type server/src/main/kotlin/cz/pizavo/omnisign/config/ProxyConfigValidator.kt ParsedProxyConfig
+file-not-named-after-type server/src/main/kotlin/cz/pizavo/omnisign/config/SecretResolver.kt ServerSecrets
+file-not-named-after-type shared/src/commonMain/kotlin/cz/pizavo/omnisign/domain/model/config/EtsiConstants.kt EtsiUriHint
+
+# Objects outside the allowed cases.
+# On purpose: a stateless formatter and a message table, with no collaborators to inject.
+object-declaration shared/src/commonMain/kotlin/cz/pizavo/omnisign/domain/model/text/EnglishMessages.kt EnglishMessages
+object-declaration shared/src/commonMain/kotlin/cz/pizavo/omnisign/domain/model/value/InstantFormatter.kt InstantFormatter
+# On purpose: entry points of child JVMs, which start before Koin.
+object-declaration shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/Pkcs11ModuleDiscoveryWorker.kt Pkcs11ModuleDiscoveryWorker
+object-declaration shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/Pkcs11ProbeWorker.kt Pkcs11ProbeWorker
+object-declaration shared/src/jvmTest/kotlin/cz/pizavo/omnisign/data/service/SubprocessProbeFixture.kt SubprocessProbeFixture
+# On purpose: a constant holder read from a build resource, and a platform reflection shim.
+object-declaration cli/src/main/kotlin/cz/pizavo/omnisign/cli/BuildConfig.kt BuildConfig
+object-declaration composeApp/src/jvmMain/kotlin/cz/pizavo/omnisign/ui/platform/JbrTitleBarHelper.kt JbrTitleBarHelper
+# On purpose: Exposed declares database tables as objects.
+object-declaration server/src/main/kotlin/cz/pizavo/omnisign/auth/ExposedHandoffCodeStore.kt ExposedHandoffCodeStore.HandoffCodes
+object-declaration server/src/main/kotlin/cz/pizavo/omnisign/auth/ExposedLoginRequestStore.kt ExposedLoginRequestStore.LoginRequests
+object-declaration server/src/main/kotlin/cz/pizavo/omnisign/auth/ExposedPkceVerifierStore.kt ExposedPkceVerifierStore.PkceVerifiers
+object-declaration server/src/main/kotlin/cz/pizavo/omnisign/auth/ExposedRefreshTokenStore.kt ExposedRefreshTokenStore.LegacyPlaintextRefreshTokens
+object-declaration server/src/main/kotlin/cz/pizavo/omnisign/auth/ExposedRefreshTokenStore.kt ExposedRefreshTokenStore.RefreshTokenHashes
+
+# Java APIs that have a Kotlin counterpart.
+java-api-import cli/src/test/kotlin/cz/pizavo/omnisign/cli/CliFileLoggingTest.kt java.nio.file.Files
+java-api-import composeApp/src/jvmMain/kotlin/cz/pizavo/omnisign/ui/platform/SupportLog.kt java.nio.file.Paths
+java-api-import composeApp/src/jvmMain/kotlin/cz/pizavo/omnisign/ui/platform/SupportLog.kt java.time.LocalDateTime
+java-api-import composeApp/src/jvmMain/kotlin/cz/pizavo/omnisign/ui/platform/SupportLog.kt java.time.format.DateTimeFormatter
+java-api-import composeApp/src/jvmMain/kotlin/cz/pizavo/omnisign/ui/platform/WindowStateStore.kt java.nio.file.Paths
+java-api-import composeApp/src/jvmTest/kotlin/cz/pizavo/omnisign/ui/platform/SupportLogTest.kt java.nio.file.Files
+java-api-import server/src/test/kotlin/cz/pizavo/omnisign/api/routes/DocumentOperationCallThreadTest.kt java.time.Duration
+java-api-import server/src/test/kotlin/cz/pizavo/omnisign/api/routes/MultipartLimitsTest.kt java.time.Duration
+java-api-import server/src/test/kotlin/cz/pizavo/omnisign/plugins/RequestBodyLimitTest.kt java.time.Duration
+java-api-import shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/repository/AppConfigPaths.kt java.nio.file.Paths
+java-api-import shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/repository/FileConfigRepository.kt java.nio.file.Files
+java-api-import shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/trust/FileTrustStore.kt java.nio.file.Files
+java-api-import shared/src/jvmMain/kotlin/cz/pizavo/omnisign/domain/usecase/ConfigArchiveUseCase.kt java.time.LocalDateTime
+java-api-import shared/src/jvmMain/kotlin/cz/pizavo/omnisign/domain/usecase/RenewBatchUseCase.kt java.nio.file.Files
+java-api-import shared/src/jvmMain/kotlin/cz/pizavo/omnisign/domain/usecase/RenewBatchUseCase.kt java.nio.file.Paths
+java-api-import shared/src/jvmMain/kotlin/cz/pizavo/omnisign/domain/usecase/RenewBatchUseCase.kt java.time.ZoneOffset
+java-api-import shared/src/jvmMain/kotlin/cz/pizavo/omnisign/domain/usecase/RenewBatchUseCase.kt java.time.format.DateTimeFormatter
+java-api-import shared/src/jvmTest/kotlin/cz/pizavo/omnisign/data/repository/FileConfigRepositoryTest.kt java.nio.file.Files
+java-api-import shared/src/jvmTest/kotlin/cz/pizavo/omnisign/data/util/GlobPathsTest.kt java.nio.file.Paths
+java-api-import shared/src/jvmTest/kotlin/cz/pizavo/omnisign/domain/usecase/MigrateTrustedCertificatesUseCaseTest.kt java.nio.file.Files

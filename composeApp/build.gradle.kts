@@ -137,7 +137,7 @@ kotlin {
 		testRuns.configureEach {
 			executionTask.configure {
 				useJUnitPlatform()
-				jvmArgs("-XX:+EnableDynamicAgentLoading")
+				jvmArgs("-XX:+EnableDynamicAgentLoading", "--enable-native-access=ALL-UNNAMED")
 			}
 		}
 	}
@@ -190,6 +190,9 @@ kotlin {
 			implementation(libs.kotest.decoroutinator)
 			implementation(libs.mockk)
 			implementation(libs.kotlinx.coroutines.test)
+			implementation(libs.compose.ui.test)
+			implementation(libs.compose.ui.test.junit4)
+			implementation(libs.roborazzi.compose.desktop)
 		}
 		jvmMain.dependencies {
 			implementation(compose.desktop.currentOs)
@@ -1004,3 +1007,41 @@ val bundleWebLegalFiles = tasks.register<Copy>("bundleWebLegalFiles") {
 tasks.matching { it.name == "wasmJsBrowserDistribution" }.configureEach {
 	finalizedBy(bundleWebLegalFiles)
 }
+
+/**
+ * Makes the Roborazzi screenshot specs in `ui/screenshot` capture what they render, with
+ * `-Pscreenshots=record`, `compare` or `verify`; without the property they only check that it composes.
+ *
+ * `record` writes one PNG per screenshot. `compare` compares each with the image recorded before and, for every one
+ * that changed, writes a `_compare.png` and an `_actual.png`; `verify` also fails the test, as it does when no image
+ * was recorded. Images are recorded to and compared with `build/outputs/roborazzi` unless `-PscreenshotDir` names
+ * another directory of this module. CI verifies against the images committed in `src/jvmTest/screenshots`, which
+ * only its Linux runner records: the app uses each system's default font, so another operating system renders every
+ * image differently. The `_compare` and `_actual` images always go to `build/outputs/roborazzi`, and each run first
+ * deletes those an earlier run left there. The reference images are not among the task's inputs, so in screenshot
+ * mode it is never up to date or restored from the build cache.
+ */
+tasks.named<Test>("jvmTest") {
+	val mode = providers.gradleProperty("screenshots").orNull ?: return@named
+	require(mode in setOf("record", "compare", "verify")) {
+		"-Pscreenshots takes record, compare or verify, not '$mode'."
+	}
+	val buildImages = layout.buildDirectory.dir("outputs/roborazzi").get().asFile
+	val images = providers.gradleProperty("screenshotDir").orNull?.let { file(it) } ?: buildImages
+	systemProperty("roborazzi.test.$mode", "true")
+	systemProperty("roborazzi.output.dir", images.absolutePath)
+	systemProperty("roborazzi.compare.output.dir", buildImages.absolutePath)
+	systemProperty("roborazzi.record.filePathStrategy", "relativePathFromRoborazziContextOutputDirectory")
+	outputs.upToDateWhen { false }
+	outputs.doNotCacheIf("the reference images are not among its inputs") { true }
+	doFirst {
+		buildImages.walk()
+			.filter { it.name.endsWith("_compare.png") || it.name.endsWith("_actual.png") }
+			.forEach { it.delete() }
+	}
+}
+
+/**
+ * Adds the `pitest` task, which mutation-tests the classes a change touches; see `gradle/pitest.gradle.kts`.
+ */
+apply(from = rootDir.resolve("gradle/pitest.gradle.kts"))

@@ -1,0 +1,45 @@
+name: CI — Conventions
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**/*.kt'
+      - 'konsistTest/**'
+      - 'gradle/**'
+      - '*.gradle.kts'
+      - 'gradle.properties'
+      - '.github/workflows/ci-conventions.yml'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  konsist:
+    name: Conventions
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - id: detect
+        uses: ./.github/actions/detect-changes
+        with:
+          paths: |
+            :(glob)**/*.kt
+            konsistTest/
+            gradle/
+            :(glob)*.gradle.kts
+            gradle.properties
+            .github/workflows/ci-conventions.yml
+
+      - uses: ./.github/actions/setup-gradle
+        if: steps.detect.outputs.relevant == 'true'
+
+      - name: Check the coding conventions
+        if: steps.detect.outputs.relevant == 'true'
+        run: ./gradlew :konsistTest:test

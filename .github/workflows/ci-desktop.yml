@@ -12,6 +12,11 @@ on:
   pull_request:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      record-screenshots:
+        description: Record the screenshot specs' reference images instead of checking them, and upload them
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -40,6 +45,31 @@ jobs:
       - name: Build and test
         if: steps.detect.outputs.relevant == 'true'
         run: ./gradlew :shared:jvmTest :composeApp:jvmTest :composeApp:createDistributable
+
+      # Compares the screenshot specs' images with the ones committed in composeApp/src/jvmTest/screenshots.
+      # Only this runner records and checks them: each system renders the app's default font differently.
+      - name: Check the screenshots
+        if: steps.detect.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest'
+        env:
+          SCREENSHOTS: ${{ inputs.record-screenshots && 'record' || 'verify' }}
+        run: >-
+          ./gradlew :composeApp:jvmTest --tests "cz.pizavo.omnisign.ui.screenshot.*"
+          -Pscreenshots="$SCREENSHOTS" -PscreenshotDir=src/jvmTest/screenshots
+
+      - name: Upload the recorded screenshots
+        if: steps.detect.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest' && inputs.record-screenshots
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshots
+          path: composeApp/src/jvmTest/screenshots/
+
+      - name: Upload the screenshot differences
+        if: failure() && matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@v7
+        with:
+          name: screenshot-differences
+          path: composeApp/build/outputs/roborazzi/
+          if-no-files-found: ignore
 
       - name: Install tooling
         if: steps.detect.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest'

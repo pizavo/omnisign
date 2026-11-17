@@ -16,12 +16,17 @@ Kotest matchers** for asserting on `OperationResult`.
 ./gradlew :composeApp:jvmTest
 ./gradlew :shared:wasmJsBrowserTest
 ./gradlew :composeApp:wasmJsBrowserTest
+./gradlew :konsistTest:test
 ```
 
 Or `./gradlew build` for everything. Note the task names differ: the multiplatform modules (`shared`,
 `composeApp`) use `jvmTest`, while the JVM-only modules (`cli`, `server`) use `test`. Test sources sit
 in `src/jvmTest` and `src/test` respectively, plus `src/commonTest` for the platform-agnostic specs in
 `shared` — those run as part of `:shared:jvmTest`.
+
+`:konsistTest:test` runs no product code: it reads the sources of every module and checks them against
+the coding conventions. [How the conventions are checked](conventions.mdx#how-the-conventions-are-checked)
+explains what it looks for and what to do when it fails.
 
 ### The browser suites
 
@@ -44,8 +49,8 @@ filed under the other name compiles nothing and runs nothing, and the task repor
 
 `:shared:jvmTest`, `:cli:test`, and `:server:test` add
 `-XX:+EnableDynamicAgentLoading -Xshare:off --enable-native-access=ALL-UNNAMED` (plus `java.smartcardio`
-access flags) and `:composeApp:jvmTest` adds `-XX:+EnableDynamicAgentLoading` alone, so MockK's inline
-agent loads without warnings. **Decoroutinator**, which gives readable stack traces through suspend
+access flags) and `:composeApp:jvmTest` adds the first and the last, so MockK's inline agent, and in
+`composeApp` Skiko's native renderer, load without warnings. **Decoroutinator**, which gives readable stack traces through suspend
 calls, is applied as a Gradle plugin in `shared` and `composeApp`, while `cli` and `server` pull the
 `stacktrace-decoroutinator-jvm` runtime artifact instead.
 
@@ -201,6 +206,153 @@ first checks the merged graph, which is what the application actually starts fro
 each entry point fills in itself, and `MutableStateFlow`, the PKCS#11 warm-up signal resolved with
 `getOrNull` and supplied only by the interactive front ends. Anything else appearing there deserves
 a second look.
+
+## PKCS#11 against SoftHSM2
+
+The PKCS#11 specs fake the module with MockK, except one: `SoftHsmPkcs11Test` in `shared` runs
+against real tokens. It creates three [SoftHSM2](https://github.com/softhsm/SoftHSMv2) tokens, two of
+which hold the same key and certificate, and checks what a fake module cannot show:
+
+- discovery reads each token's label and serial number through the out-of-process probe;
+- a token lists only its own certificate without a login, although another token holds the same one;
+- a wrong PIN is refused, and the right one opens the token afterwards;
+- signing by certificate alias logs in only to the token the alias names, and makes a valid PAdES
+signature with the key that token holds.
+
+The spec needs SoftHSM2 and OpenSC's `pkcs11-tool`, which imports the certificates. On Debian and
+Ubuntu:
+
+```bash
+sudo apt-get install softhsm2 opensc
+./gradlew :shared:jvmTest --tests "cz.pizavo.omnisign.data.service.SoftHsmPkcs11Test"
+```
+
+Without them, its tests are reported as skipped, unless the environment variable
+`OMNISIGN_SOFTHSM2_REQUIRED` is `true`: then a missing package fails the spec, so it cannot be skipped
+unnoticed where it has to run. The `jvmTest` task points SoftHSM2 at a configuration file in
+`shared/build/softhsm/`, and the spec creates its tokens beside it, so it never touches tokens the
+machine uses for real. Set `OMNISIGN_SOFTHSM2_MODULE` when the module is installed somewhere the spec
+does not look. CI installs both packages on the Linux runner of *CI — CLI* and sets that variable
+there.
+
+## Mutation testing with PIT
+
+Coverage shows which lines a spec ran, not whether it checked what they did.
+[PIT](https://pitest.org/) changes the compiled classes one small step at a time: it negates a
+condition, shifts a boundary, removes a call, or makes a method return a constant. Then it reruns the
+specs that cover the changed line. A mutant the specs still pass is behaviour they do not pin down.
+
+`shared`, `cli`, `server` and `composeApp` each have a `pitest` task. It takes the classes to mutate
+and the specs to run, both as comma-separated class-name globs:
+
+```bash
+./gradlew :shared:pitest \
+  -PpitClasses=cz.pizavo.omnisign.data.repository.TspErrorDetector* \
+  -PpitTests=cz.pizavo.omnisign.data.repository.TspErrorDetectorTest
+```
+
+`<package>.<File>*` covers everything compiled from one file: its class, nested classes and lambdas,
+and the `<File>Kt` class that holds its top-level functions. The task prints the mutants that need a
+look:
+
+```text
+PIT: 45 mutants (37 killed, 1 no coverage, 7 survived); 25 more in compiler-generated code left out (25 inlined code).
+Survived, so no spec noticed the change:
+  shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/repository/TspErrorDetector.kt:72 isTspException — negated conditional
+  shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/repository/TspErrorDetector.kt:105 isServerUnreachable — negated conditional
+  …
+Not run by any of the named specs:
+  shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/repository/TspErrorDetector.kt:203 parsePkiFailureReason — replaced return value with ""
+Full report: shared/build/reports/pitest/index.html
+```
+
+Both kinds are worth reading. Line 105 is one of four exception types that count as a transport
+failure, and negating the check for any one of them still passes, because no spec throws that type on
+its own. Line 203 is a fallback that the regular expression before it makes unreachable.
+
+:::warning[Name the specs, not a package]
+PIT runs every spec that `-PpitTests` names once, to measure coverage, before it tries a single mutant.
+A package pattern such as `cz.pizavo.omnisign.data.service.*` therefore also runs
+`WindowsTaskSchedulerServiceTest`, which registers real scheduled tasks on the machine. When no spec
+matches, the task fails instead of reporting every mutant as not covered.
+:::
+
+Kotlin compiles code of its own into the classes, and a mutant there is no finding. The summary counts
+these mutants and lists only the rest:
+
+| Left out as | What it is |
+| --- | --- |
+| null checks | `Intrinsics` calls behind non-null parameters, platform types and `!!` |
+| inlined code | The bodies of inline functions such as `map` or `let`, whose line numbers belong to the file they come from and lie past the end of this one |
+| coroutine state machines | The resumption checks and early returns of a suspend function, which carry the line of its `suspend fun` declaration |
+
+The default-argument bridges (`…$default`) and the `componentN` and `copy` functions of data classes
+are not mutated at all, and PIT makes no mutants in the `equals`, `hashCode` and `toString` of data
+classes or in the generated members of enums. PIT's own output goes to `pit-output.txt`, next to the
+full report.
+
+## Screenshot tests with Roborazzi
+
+The specs in `composeApp/src/jvmTest/kotlin/cz/pizavo/omnisign/ui/screenshot/` render composables with
+Compose's desktop test runner and capture them with [Roborazzi](https://github.com/takahirom/roborazzi).
+Each test renders one state through `captureScreenshot`:
+
+```kotlin
+test("a valid qualified signature in the dark theme") {
+    captureScreenshot("signature-panel-valid-dark", darkTheme = true, interaction = openSignature) {
+        SignaturePanel(SignaturePanelState.Loaded(validReport), onLoadSignatures = {})
+    }
+}
+```
+
+`captureScreenshot` draws the content on the theme's background in a scene of 420 × 720 pixels, about
+the width of the side panel, in English and with dates in UTC. `interaction` runs before the capture:
+`openSignature` opens the signature's section through its click action. A click sent as pointer input
+would leave the header highlighted in the image.
+
+Without a property, `:composeApp:jvmTest` only checks that each state composes. `-Pscreenshots` turns
+the capture on:
+
+| `-Pscreenshots=` | What it does |
+| --- | --- |
+| `record` | Saves each image as `<name>.png` |
+| `compare` | Compares each image with the one recorded before. For each that changed it writes `<name>_compare.png`, with the reference, the difference and the new image side by side, and `<name>_actual.png` |
+| `verify` | Compares like `compare`, and fails the test whose image changed or was never recorded |
+
+```bash
+./gradlew :composeApp:jvmTest \
+  --tests "cz.pizavo.omnisign.ui.screenshot.SignaturePanelScreenshotTest" -Pscreenshots=record
+```
+
+The images go to `composeApp/build/outputs/roborazzi/` unless `-PscreenshotDir` names another directory
+inside `composeApp`; the `_compare` and `_actual` images always go there. Recording a state is the
+quickest way to see it without starting the app, whether for a person or for an agent that reads
+images.
+
+### Reference images
+
+The images the specs are checked against are committed in `composeApp/src/jvmTest/screenshots/`. The
+Linux runner of *CI — Desktop* records them and checks them:
+
+```bash
+./gradlew :composeApp:jvmTest --tests "cz.pizavo.omnisign.ui.screenshot.*" \
+  -Pscreenshots=verify -PscreenshotDir=src/jvmTest/screenshots
+```
+
+When the check fails, the run uploads the `_compare` and `_actual` images as the
+`screenshot-differences` artifact. Do not record the reference images on Windows or macOS: the theme
+uses `FontFamily.Default`, which is each system's own font, so all the text would differ from what
+Linux renders. After a deliberate change to the UI, or for a new screenshot, run the workflow by hand
+with *Record the screenshot specs' reference images* ticked, and commit the images in its
+`screenshots` artifact:
+
+```bash
+gh workflow run ci-desktop.yml --ref <branch> -f record-screenshots=true
+gh run download <run-id> -n screenshots -D composeApp/src/jvmTest/screenshots
+```
+
+A new version of the runner's system can change how it renders text. When every image fails at once
+and the compare images show the same layout, record them all again.
 
 ## What is worth testing
 
