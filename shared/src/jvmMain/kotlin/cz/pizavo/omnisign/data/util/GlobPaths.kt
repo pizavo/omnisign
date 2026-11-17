@@ -113,20 +113,27 @@ fun renewalGlobMatcher(fileSystem: FileSystem, tail: String): PathMatcher {
  * never waits on another volume, such as a network share that has gone away. A pattern or path the
  * platform cannot parse selects nothing.
  */
-fun globSelects(glob: String, filePath: String): Boolean = runCatching {
+fun globSelects(glob: String, filePath: String): Boolean = globSelects(glob, filePath) { it.storedPath() }
+
+/**
+ * [globSelects] with the file system's spelling of a path, absolute and normalized, taken from
+ * [stored], which is asked only about paths spelled like the file's own but for letter case, so a
+ * spec can stand in for a file system of any kind and see which paths would be looked up.
+ */
+internal fun globSelects(glob: String, filePath: String, stored: (Path) -> Path): Boolean = runCatching {
 	val spelled = Path(filePath).toAbsolutePath().normalize()
 	val split = globRootAndTail(glob)
 	if (split == null) {
 		val literal = Path(glob).toAbsolutePath().normalize()
 		return@runCatching literal.toString().equals(spelled.toString(), ignoreCase = true) &&
-			literal.storedPath() == spelled.storedPath()
+			stored(literal) == stored(spelled)
 	}
 	val (rootPart, tail) = split
 	val root = Path(rootPart).toAbsolutePath().normalize()
 	val ancestors = generateSequence(spelled.parent) { it.parent }
 	if (ancestors.none { it.toString().equals(root.toString(), ignoreCase = true) }) return@runCatching false
-	val storedRoot = root.storedPath()
-	val target = spelled.storedPath()
+	val storedRoot = stored(root)
+	val target = stored(spelled)
 	target.startsWith(storedRoot) &&
 		target.fileName.toString().endsWith(".pdf", ignoreCase = true) &&
 		renewalGlobMatcher(root.fileSystem, tail).matches(storedRoot.relativize(target))
@@ -134,10 +141,16 @@ fun globSelects(glob: String, filePath: String): Boolean = runCatching {
 
 /**
  * This path, which is absolute and normalized, spelled as the file system stores its names, letter
- * case included, with any symbolic link on it left in place; a path that does not exist or cannot
- * be read comes back unchanged.
+ * case and Windows' long names included, as far as it exists, with any symbolic link on it left in
+ * place. The names past its longest part that exists and can be read are kept as written, so two
+ * paths through the same folder are spelled alike whether or not the names below it exist; a path
+ * no part of which exists comes back as written.
  */
-private fun Path.storedPath(): Path = runCatching { toRealPath(LinkOption.NOFOLLOW_LINKS) }.getOrDefault(this)
+private fun Path.storedPath(): Path = generateSequence(this) { it.parent }
+	.firstNotNullOfOrNull { part ->
+		runCatching { part.toRealPath(LinkOption.NOFOLLOW_LINKS).resolve(part.relativize(this)) }.getOrNull()
+	}
+	?: this
 
 /**
  * Rewrite a relative renewal [glob] to an absolute one by resolving its directory part against

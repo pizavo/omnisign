@@ -4,9 +4,11 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
+import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import java.nio.file.FileSystems
+import java.nio.file.Path
 import java.nio.file.Paths
 import kotlin.io.path.Path
 import kotlin.io.path.createDirectories
@@ -21,8 +23,11 @@ import kotlin.io.path.exists
  * intact, and that [renewalGlobMatcher] and [globSelects] let a recursive segment match no
  * directory, as the renewal run and the desktop's renewal offer both rely on. Uses the current
  * platform's notion of "absolute" and its case rules (via the JDK), and asks the file system first
- * whether it ignores letter case and whether it may create symbolic links, so the assertions hold
- * on any OS; the test that needs a link is skipped where none can be made.
+ * whether it ignores letter case, whether it may create symbolic links and whether it gives folders
+ * Windows short names, so the assertions hold on any OS; a test that needs a link, a short name or
+ * a drive letter no volume uses is skipped where there is none. File systems of other kinds are
+ * stood in for through the lookup [globSelects] can be given, which also shows the paths it asks
+ * about.
  */
 class GlobPathsTest : FunSpec({
 
@@ -38,6 +43,17 @@ class GlobPathsTest : FunSpec({
 	val canLink = runCatching {
 		(base / "link-probe").createSymbolicLinkPointingTo((base / "link-probe-target").createDirectories())
 	}.isSuccess
+	val hasShortNames = run {
+		(base / "Long Folder Name").createDirectories()
+		(base / "LONGFO~1").exists()
+	}
+	val freeDrive = if (isWindows) {
+		('Z' downTo 'D').firstOrNull { letter ->
+			fileSystem.rootDirectories.none { it.toString().first().uppercaseChar() == letter }
+		}
+	} else {
+		null
+	}
 
 	test("accepts an absolute-rooted glob") {
 		isAbsoluteGlobRoot("$absoluteRoot/**/*.pdf").shouldBeTrue()
@@ -214,6 +230,12 @@ class GlobPathsTest : FunSpec({
 		globSelects("$baseSlash/Stored/report-*.pdf", "$baseSlash/Stored/report-1.pdf") shouldBe isWindows
 	}
 
+	test("reads a Windows short name on either path as the long name it stands for").config(enabledIf = { hasShortNames }) {
+		globSelects("$baseSlash/LONGFO~1/*.pdf", "$baseSlash/LONGFO~1/not-saved-yet.pdf").shouldBeTrue()
+		((base / "Long Folder Name" / "Inner Folder Name").createDirectories() / "a.pdf").createFile()
+		globSelects("$baseSlash/**/*Name/*.pdf", "$baseSlash/LONGFO~1/INNERF~1/a.pdf").shouldBeTrue()
+	}
+
 	test("never takes a symbolic link named like the file in another letter case for that file")
 		.config(enabledIf = { canLink && !ignoresCase }) {
 			val folder = (base / "with-case-link").createDirectories()
@@ -221,6 +243,39 @@ class GlobPathsTest : FunSpec({
 			val link = (folder / "A.pdf").createSymbolicLinkPointingTo(file)
 			globSelects(link.toString().replace('\\', '/'), file.toString()).shouldBeFalse()
 		}
+
+	test("compares the paths as written where no part of them exists").config(enabledIf = { freeDrive != null }) {
+		globSelects("$freeDrive:/docs/**/*.pdf", "$freeDrive:/docs/a.pdf").shouldBeTrue()
+		globSelects("$freeDrive:/docs/a.pdf", "$freeDrive:/docs/a.pdf").shouldBeTrue()
+	}
+
+	test("asks the file system only about the file's path and the folder or file its glob names") {
+		val asked = mutableListOf<Path>()
+		val record: (Path) -> Path = { path -> path.also { asked.add(it) } }
+		globSelects("$baseSlash/other/**/*.pdf", "$baseSlash/docs/a.pdf", record).shouldBeFalse()
+		globSelects("$baseSlash/other/a.pdf", "$baseSlash/docs/a.pdf", record).shouldBeFalse()
+		asked.shouldBeEmpty()
+		globSelects("$baseSlash/DOCS/**/*.pdf", "$baseSlash/docs/a.pdf", record)
+		globSelects("$baseSlash/DOCS/A.pdf", "$baseSlash/docs/a.pdf", record)
+		asked shouldBe listOf(base / "DOCS", base / "docs" / "a.pdf", base / "DOCS" / "A.pdf", base / "docs" / "a.pdf")
+	}
+
+	test("decides by the file system's spelling where a glob differs from the file's path only in letter case") {
+		val keepsCase: (Path) -> Path = { path -> Path(path.toString().replace("kept-case", "Kept-Case", ignoreCase = true)) }
+		globSelects("$baseSlash/kept-case/**/*.pdf", "$baseSlash/KEPT-CASE/a.pdf", keepsCase).shouldBeTrue()
+		globSelects("$baseSlash/kept-case/a.pdf", "$baseSlash/KEPT-CASE/a.pdf", keepsCase).shouldBeTrue()
+	}
+
+	test("matches the names below a glob's folder as the file system spells them") {
+		val expandsShortName: (Path) -> Path = { path -> Path(path.toString().replace("SHORTN~1", "Short Name")) }
+		globSelects("$baseSlash/**/*Name/*.pdf", "$baseSlash/SHORTN~1/a.pdf", expandsShortName).shouldBeTrue()
+		globSelects("$baseSlash/SHORTN~1/*.pdf", "$baseSlash/SHORTN~1/a.pdf", expandsShortName).shouldBeTrue()
+	}
+
+	test("does not select a file the file system keeps outside the glob's folder") {
+		val keepsElsewhere: (Path) -> Path = { path -> if (path.endsWith("a.pdf")) base / "elsewhere" / "a.pdf" else path }
+		globSelects("$baseSlash/docs/**/*.pdf", "$baseSlash/docs/a.pdf", keepsElsewhere).shouldBeFalse()
+	}
 
 	test("selects nothing through a pattern or a path the platform cannot parse") {
 		globSelects("$baseSlash/[.pdf", "$baseSlash/[.pdf").shouldBeFalse()
