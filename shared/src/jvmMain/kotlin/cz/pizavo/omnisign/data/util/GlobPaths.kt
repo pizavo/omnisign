@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.data.util
 
 import java.nio.file.FileSystem
 import java.nio.file.FileSystems
+import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.PathMatcher
 import kotlin.io.path.Path
@@ -99,20 +100,44 @@ fun renewalGlobMatcher(fileSystem: FileSystem, tail: String): PathMatcher {
  * Whether a renewal run selects the file at [filePath] through [glob], judged as
  * [cz.pizavo.omnisign.domain.usecase.RenewBatchUseCase] judges the files it finds: a wildcard
  * pattern selects a PDF under the directory it is rooted in whose path from there its
- * [renewalGlobMatcher] matches, and a literal pattern selects the file it names. Paths are compared
- * under the platform's rules, case-insensitively on Windows and case-sensitively elsewhere, as the
- * run compares them. The desktop's renewal offer uses it, so that it calls a file covered by a job
- * only when a run would renew it. A pattern or path the platform cannot parse selects nothing.
+ * [renewalGlobMatcher] matches, and a literal pattern selects the file it names. The desktop's
+ * renewal offer uses it, so that it calls a file covered by a job only when a run would renew it.
+ *
+ * Paths are compared as the file system stores them, since the run reaches files through it. Where
+ * a pattern's directory, or a literal pattern, is spelled as the file's path is but for letter case,
+ * the file system's stored spelling of both decides, so letter case does not count there where the
+ * file system ignores it, as on Windows and on macOS's usual volumes. Below that directory the
+ * matcher reads the names as stored, comparing them under the platform's rules, case-insensitively
+ * on Windows and case-sensitively elsewhere, as the run's matcher does. Symbolic links on either
+ * path are read as plain names. Only paths spelled like the file's own are looked up, so the check
+ * never waits on another volume, such as a network share that has gone away. A pattern or path the
+ * platform cannot parse selects nothing.
  */
 fun globSelects(glob: String, filePath: String): Boolean = runCatching {
-	val target = Path(filePath).toAbsolutePath().normalize()
-	val (rootPart, tail) = globRootAndTail(glob)
-		?: return@runCatching Path(glob).toAbsolutePath().normalize() == target
+	val spelled = Path(filePath).toAbsolutePath().normalize()
+	val split = globRootAndTail(glob)
+	if (split == null) {
+		val literal = Path(glob).toAbsolutePath().normalize()
+		return@runCatching literal.toString().equals(spelled.toString(), ignoreCase = true) &&
+			literal.storedPath() == spelled.storedPath()
+	}
+	val (rootPart, tail) = split
 	val root = Path(rootPart).toAbsolutePath().normalize()
-	target.startsWith(root) &&
+	val ancestors = generateSequence(spelled.parent) { it.parent }
+	if (ancestors.none { it.toString().equals(root.toString(), ignoreCase = true) }) return@runCatching false
+	val storedRoot = root.storedPath()
+	val target = spelled.storedPath()
+	target.startsWith(storedRoot) &&
 		target.fileName.toString().endsWith(".pdf", ignoreCase = true) &&
-		renewalGlobMatcher(root.fileSystem, tail).matches(root.relativize(target))
+		renewalGlobMatcher(root.fileSystem, tail).matches(storedRoot.relativize(target))
 }.getOrDefault(false)
+
+/**
+ * This path, which is absolute and normalized, spelled as the file system stores its names, letter
+ * case included, with any symbolic link on it left in place; a path that does not exist or cannot
+ * be read comes back unchanged.
+ */
+private fun Path.storedPath(): Path = runCatching { toRealPath(LinkOption.NOFOLLOW_LINKS) }.getOrDefault(this)
 
 /**
  * Rewrite a relative renewal [glob] to an absolute one by resolving its directory part against

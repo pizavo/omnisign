@@ -9,14 +9,20 @@ import io.kotest.matchers.shouldBe
 import java.nio.file.FileSystems
 import java.nio.file.Paths
 import kotlin.io.path.Path
+import kotlin.io.path.createDirectories
+import kotlin.io.path.createFile
+import kotlin.io.path.createSymbolicLinkPointingTo
+import kotlin.io.path.div
+import kotlin.io.path.exists
 
 /**
  * Verifies [isAbsoluteGlobRoot] accepts absolute-rooted globs and rejects relative ones, that
  * [absolutizeGlob] resolves a relative glob against a base directory while leaving the wildcard tail
  * intact, and that [renewalGlobMatcher] and [globSelects] let a recursive segment match no
  * directory, as the renewal run and the desktop's renewal offer both rely on. Uses the current
- * platform's notion of "absolute" and its case rules (via the JDK), so the assertions hold on any
- * OS.
+ * platform's notion of "absolute" and its case rules (via the JDK), and asks the file system first
+ * whether it ignores letter case and whether it may create symbolic links, so the assertions hold
+ * on any OS; the test that needs a link is skipped where none can be made.
  */
 class GlobPathsTest : FunSpec({
 
@@ -25,6 +31,13 @@ class GlobPathsTest : FunSpec({
 	val baseSlash = base.toString().replace('\\', '/')
 	val fileSystem = FileSystems.getDefault()
 	val isWindows = System.getProperty("os.name", "").startsWith("Windows")
+	val ignoresCase = run {
+		(base / "CaseProbe").createDirectories()
+		(base / "caseprobe").exists()
+	}
+	val canLink = runCatching {
+		(base / "link-probe").createSymbolicLinkPointingTo((base / "link-probe-target").createDirectories())
+	}.isSuccess
 
 	test("accepts an absolute-rooted glob") {
 		isAbsoluteGlobRoot("$absoluteRoot/**/*.pdf").shouldBeTrue()
@@ -182,13 +195,32 @@ class GlobPathsTest : FunSpec({
 		globSelects("$baseSlash/report.pdf", "$baseSlash/sub/../report.pdf").shouldBeTrue()
 		globSelects("$baseSlash/sub/../report.pdf", "$baseSlash/report.pdf").shouldBeTrue()
 		globSelects("$baseSlash/report.pdf", "$baseSlash/other.pdf").shouldBeFalse()
+		globSelects("$baseSlash/a/report.pdf", "$baseSlash/b/report.pdf").shouldBeFalse()
 	}
 
-	test("compares letter case as the platform's file system does") {
-		globSelects("$baseSlash/Docs/*.pdf", "$baseSlash/docs/report.pdf") shouldBe isWindows
-		globSelects("$baseSlash/docs/report-*.pdf", "$baseSlash/docs/REPORT-1.pdf") shouldBe isWindows
-		globSelects("$baseSlash/Docs/report.pdf", "$baseSlash/docs/report.pdf") shouldBe isWindows
+	test("finds the directory a glob is rooted in, and a literal glob's file, as the file system does") {
+		val file = ((base / "CaseFolder").createDirectories() / "report.pdf").createFile()
+		globSelects("$baseSlash/casefolder/*.pdf", file.toString()) shouldBe ignoresCase
+		globSelects("$baseSlash/casefolder/report.pdf", file.toString()) shouldBe ignoresCase
+		globSelects("$baseSlash/CaseFolder/REPORT.pdf", file.toString()) shouldBe ignoresCase
 	}
+
+	test("compares the path the matcher reads under the platform's letter case rules") {
+		globSelects("$baseSlash/docs/report-*.pdf", "$baseSlash/docs/REPORT-1.pdf") shouldBe isWindows
+	}
+
+	test("reads the names below a glob's directory as the file system stores them").config(enabledIf = { ignoresCase }) {
+		((base / "Stored").createDirectories() / "REPORT-1.pdf").createFile()
+		globSelects("$baseSlash/Stored/report-*.pdf", "$baseSlash/Stored/report-1.pdf") shouldBe isWindows
+	}
+
+	test("never takes a symbolic link named like the file in another letter case for that file")
+		.config(enabledIf = { canLink && !ignoresCase }) {
+			val folder = (base / "with-case-link").createDirectories()
+			val file = (folder / "a.pdf").createFile()
+			val link = (folder / "A.pdf").createSymbolicLinkPointingTo(file)
+			globSelects(link.toString().replace('\\', '/'), file.toString()).shouldBeFalse()
+		}
 
 	test("selects nothing through a pattern or a path the platform cannot parse") {
 		globSelects("$baseSlash/[.pdf", "$baseSlash/[.pdf").shouldBeFalse()
