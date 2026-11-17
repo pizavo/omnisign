@@ -21,6 +21,7 @@ import cz.pizavo.omnisign.ui.model.PdfDocumentInfo
 import cz.pizavo.omnisign.ui.model.SignaturePanelState
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -36,7 +37,8 @@ import kotlinx.coroutines.withContext
  *
  * Holds the current [SignaturePanelState] and triggers validation on demand.
  * When a new document is loaded via [onDocumentChanged] the state is reset to
- * [SignaturePanelState.Idle] so that stale results are never shown.
+ * [SignaturePanelState.Idle] and a validation still running for the previous document
+ * is cancelled, so that stale results are never shown.
  *
  * @param validateDocumentUseCase Use case for validating a signed PDF.
  * @param configRepository Repository for retrieving the current application configuration
@@ -110,6 +112,9 @@ class SignatureViewModel(
     /** Currently loaded document, if any. */
     private var currentDocument: PdfDocumentInfo? = null
 
+    /** The validation [loadSignatures] last started, which [onDocumentChanged] cancels. */
+    private var validationJob: Job? = null
+
     /**
      * Return the list of [ReportExportFormat] entries that can be used for the
      * current report. Domain-level formats (TXT, JSON) are always available;
@@ -156,12 +161,16 @@ class SignatureViewModel(
     /**
      * Notify the ViewModel that a new PDF document has been loaded (or cleared).
      *
-     * Resets the panel to [SignaturePanelState.Idle].
+     * Resets the panel to [SignaturePanelState.Idle] and cancels a validation still running
+     * for the previous document, whose result the panel would otherwise show as the new
+     * document's. Work that cannot stop midway, as a DSS validation in progress, runs on
+     * until it returns, but its result is dropped.
      *
      * @param document Newly loaded document holding its in-memory bytes and name, or
      *   `null` when no document is open.
      */
     fun onDocumentChanged(document: PdfDocumentInfo?) {
+        validationJob?.cancel()
         currentDocument = document
         _state.update { SignaturePanelState.Idle(hasDocument = document != null) }
     }
@@ -177,7 +186,7 @@ class SignatureViewModel(
         if (validationBlocked.value) return
 
         _state.update { SignaturePanelState.Loading }
-        viewModelScope.launch {
+        validationJob = viewModelScope.launch {
             var alertIfNotEuLotl = false
             val result = withContext(ioDispatcher) {
                 val appConfig = configRepository.getCurrentConfig()
