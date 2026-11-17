@@ -37,6 +37,14 @@ jobs:
       - uses: ./.github/actions/setup-gradle
         if: steps.detect.outputs.relevant == 'true'
 
+      # SoftHsmPkcs11Test runs its PKCS#11 tests against SoftHSM2 tokens it creates with OpenSC's
+      # pkcs11-tool; on the other runners, which lack both, it reports them as skipped.
+      - name: Install SoftHSM2 and OpenSC
+        if: steps.detect.outputs.relevant == 'true' && matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update -q
+          sudo apt-get install -y softhsm2 opensc
+
       - name: Build and test
         if: steps.detect.outputs.relevant == 'true'
         run: ./gradlew :shared:jvmTest :cli:test :cli:shadowJar

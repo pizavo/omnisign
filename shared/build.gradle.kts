@@ -138,6 +138,20 @@ kotlin {
 }
 
 /**
+ * Sets aside a SoftHSM2 configuration file in the build directory for `SoftHsmPkcs11Test`, which creates its
+ * tokens in a directory beside it.
+ *
+ * SoftHSM2 reads the file that `SOFTHSM2_CONF` names, and the spec runs only when `OMNISIGN_SOFTHSM2_TEST_CONF`
+ * names the same file, so it never touches the tokens of a SoftHSM2 the machine uses for real. Where SoftHSM2 or
+ * OpenSC's `pkcs11-tool` is missing, the spec is skipped.
+ */
+tasks.named<Test>("jvmTest") {
+	val softHsmConfig = layout.buildDirectory.file("softhsm/softhsm2.conf").get().asFile.absolutePath
+	environment("SOFTHSM2_CONF", softHsmConfig)
+	environment("OMNISIGN_SOFTHSM2_TEST_CONF", softHsmConfig)
+}
+
+/**
  * Downloads the current Official Journal (OJ) keystore from the DSS demonstrations
  * repository into `src/jvmMain/resources/lotl-keystore.p12`.
  *
