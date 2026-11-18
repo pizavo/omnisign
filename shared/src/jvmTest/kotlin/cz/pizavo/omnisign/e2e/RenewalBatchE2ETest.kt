@@ -95,6 +95,9 @@ class RenewalBatchE2ETest : FunSpec({
 	)
 	val tsa = LocalTestTsa.start(tsaLeaf.p12, pass, genTime = { Date(System.currentTimeMillis() - 3_600_000L) })
 
+	/** Issues tokens dated three hours ago, before [tsa]'s, so one signature can be proven by timestamps of two ages. */
+	val earlierTsa = LocalTestTsa.start(tsaLeaf.p12, pass, genTime = { Date(System.currentTimeMillis() - 3 * 3_600_000L) })
+
 	/** Dates tokens two years back, inside [expiredSigner]'s validity, as a real archive would be. */
 	val backdatedTsa = LocalTestTsa.start(tsaLeaf.p12, pass, genTime = { Date(now - 2 * 365 * day) })
 
@@ -112,6 +115,7 @@ class RenewalBatchE2ETest : FunSpec({
 
 	afterSpec {
 		tsa.close()
+		earlierTsa.close()
 		backdatedTsa.close()
 		expiringTsa.close()
 		laterExpiringTsa.close()
@@ -361,6 +365,36 @@ class RenewalBatchE2ETest : FunSpec({
 		result.errors shouldBe 0
 		levelOf(target) shouldBe SignatureLevel.PADES_BASELINE_LTA
 		result.jobs.first().files.first().reason shouldBe RenewalReason.LT_NOT_SEALED
+	}
+
+	test("a B-LT document whose revocation data postdates its signature timestamp is sealed, though a later document timestamp is newer") {
+		val dir = File(tmp, "earliest-proof").also { it.mkdirs() }
+		val target = File(dir, "earliest-proof.pdf")
+		val restamped = archivingRepository.extendDocument(
+			ArchivingParameters(
+				inputBytes = signBaselineT(validEntry, configWith(earlierTsa.url)),
+				inputName = "input.pdf",
+				targetLevel = SignatureLevel.PADES_BASELINE_T,
+				resolvedConfig = resolved(configWith(tsa.url)),
+			)
+		).shouldBeRight().outputBytes
+
+		crl = pki.buildCrl(
+			thisUpdate = Date(System.currentTimeMillis() - 2 * 3_600_000L),
+			nextUpdate = Date(now + 3650 * day),
+		)
+		val lt = archivingRepository.extendDocument(
+			ArchivingParameters(
+				inputBytes = restamped,
+				inputName = "input.pdf",
+				targetLevel = SignatureLevel.PADES_BASELINE_LT,
+				resolvedConfig = resolved(configWith(tsa.url)),
+			)
+		).shouldBeRight().outputBytes
+		target.writeBytes(lt)
+
+		archivingRepository.needsArchivalRenewal(target.absolutePath).shouldBeRight()
+			.reason shouldBe RenewalReason.LT_NOT_SEALED
 	}
 
 	test("a B-T document whose signing certificate expired is left untouched and reported once") {

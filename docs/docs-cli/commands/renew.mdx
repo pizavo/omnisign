@@ -23,13 +23,18 @@ where it currently stands:
 | Document is at                                        | Step                                         | Deadline                                                                  |
 |-------------------------------------------------------|----------------------------------------------|---------------------------------------------------------------------------|
 | **B-B / B-T** — no revocation data                    | Embed revocation data and seal (→ B-LTA)     | The **signing certificate's** expiry                                      |
-| **B-LT**, revocation predates the signature timestamp | Refresh the revocation data (→ B-LT)         | The issuer's next CRL/OCSP publication                                    |
+| **B-LT**, revocation predates its first timestamp     | Refresh the revocation data (→ B-LT)         | The issuer's next CRL/OCSP publication                                    |
 | **B-LT**, revocation sound                            | Seal it with an archival timestamp (→ B-LTA) | The earlier of the revocation's `nextUpdate` and its issuer's expiry      |
 | **B-LTA**                                             | Re-timestamp (→ B-LTA)                       | The outermost timestamp's certificate expiry, or its algorithms aging out |
 
 Only the last row is the "wait until it is nearly expiring" case, and only it uses the job's renewal
 buffer. The rows above it are **due immediately**: the material they need is available now and will
 not be later, so waiting only shrinks the window.
+
+A signature's first timestamp is the earliest proof that it existed: its signature timestamp when it
+was signed at B-T or higher, or the document timestamp added when it was extended from B-B.
+Revocation data issued before that moment says nothing about the certificate's status when the
+signature was made, so it is refreshed before the document is sealed.
 
 :::warning[The signing certificate is the deadline that cannot be extended]
 Once a signing certificate expires, its issuer stops vouching for that certificate's revocation
