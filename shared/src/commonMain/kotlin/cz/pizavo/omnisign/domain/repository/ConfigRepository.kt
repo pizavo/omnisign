@@ -18,8 +18,8 @@ interface ConfigRepository {
      * Save application configuration.
      *
      * Stored configuration that cannot be read is never replaced: it may hold settings that
-     * [config], built on the defaults [getCurrentConfig] falls back to, lacks, so the save fails
-     * instead and leaves it as it is.
+     * [config], built on what [getCurrentConfig] falls back to, lacks, so the save fails instead
+     * and leaves it as it is.
      *
      * @param config Configuration to save
      * @return Success or error
@@ -29,9 +29,10 @@ interface ConfigRepository {
     /**
      * Get the current configuration, for an operation to run with or for a change to build on.
      *
-     * Does not fail: when the stored configuration cannot be read, the default configuration is
-     * returned, so that operations still run. A change built on those defaults cannot replace the
-     * configuration that could not be read, because [saveConfig] refuses to.
+     * Does not fail: when the stored configuration cannot be read, a configuration read or saved
+     * earlier is returned, or the defaults when there is none, so that operations still run. A
+     * change built on that fallback cannot replace the configuration that could not be read,
+     * because [saveConfig] refuses to.
      *
      * @return Current configuration
      */

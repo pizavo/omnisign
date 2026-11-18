@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.data.repository
 
+import arrow.core.getOrElse
 import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.AppConfig
@@ -35,10 +36,17 @@ import kotlin.io.path.readSymbolicLink
 /**
  * JVM implementation of ConfigRepository using JSON files.
  *
- * A [Mutex] orders the reads and writes of this instance, so callers within one process never
- * interleave. Other processes — the CLI, the desktop app and the scheduled renewal share the file —
- * are not locked out, so every write replaces the file atomically through a temporary file in the
- * same directory: a reader in any process sees the previous configuration or the new one, never a
+ * The CLI, the desktop app and the scheduled renewal share the file, so every read, by
+ * [getCurrentConfig] as much as by [loadConfig], reads it again: a change another process saved
+ * reaches the next read instead of being hidden by an older copy, and a caller that reads the
+ * configuration, changes it and saves it builds on the latest one.
+ *
+ * A [Mutex] orders the reads and writes of this instance, and [setActiveProfile] holds it from its
+ * read to its save. A caller that reads with [getCurrentConfig] and saves with [saveConfig] does not
+ * hold it in between, and no lock spans processes, so a change that another caller or another
+ * process saves between such a read and its save is replaced by that save. Other processes are not
+ * locked out, so every write replaces the file atomically through a temporary file in the same
+ * directory: a reader in any process sees the previous configuration or the new one, never a
  * half-written file, and a crash or a full disk during a save leaves the previous file in place.
  * A configuration file that is a symbolic link stays one: the save replaces the file it leads to.
  * Windows refuses an atomic replace of a file that another program holds open, so a refused
@@ -48,8 +56,9 @@ import kotlin.io.path.readSymbolicLink
  * A configuration file that exists but cannot be decoded — a hand edit left it invalid, a write by
  * an older build was cut short, or a newer build wrote a value this one does not know — is never
  * replaced: [saveConfig] fails instead, because the file may hold profiles, renewal jobs and
- * settings that the configuration being saved, built on the defaults [getCurrentConfig] falls
- * back to, no longer contains. The user fixes the file or moves it away, and the next save works.
+ * settings that the configuration being saved lacks. That configuration was built on what
+ * [getCurrentConfig] falls back to: the configuration this repository last read or saved, or the
+ * defaults when it has none. The user fixes the file or moves it away, and the next save works.
  *
  * An error that an exception caused carries that exception as its cause. For an I/O failure its
  * details give the exception's class, since the message often holds only the path, as for a file
@@ -73,8 +82,11 @@ class FileConfigRepository(
 
     private val mutex = Mutex()
 
-    @Volatile
-    private var cachedConfig: AppConfig? = null
+    /**
+     * The configuration this repository last read from the file or saved to it, which a read that
+     * fails falls back to. Read and written only while [mutex] is held.
+     */
+    private var lastLoaded: AppConfig? = null
 
     /**
      * Load the configuration from the file, creating the file with the defaults when it does not
@@ -82,22 +94,26 @@ class FileConfigRepository(
      * or decoded is left as it is.
      */
     override suspend fun loadConfig(): OperationResult<AppConfig> = withContext(ioDispatcher) {
-        mutex.withLock {
-            try {
-                if (!configPath.exists()) {
-                    val defaultConfig = AppConfig(global = GlobalConfig())
-                    saveConfigInternal(defaultConfig)
-                    defaultConfig.right()
-                } else {
-                    val config = json.decodeFromString<AppConfig>(configPath.readConfigText())
-                    cachedConfig = config
-                    config.right()
-                }
-            } catch (e: Exception) {
-                ConfigurationError.loadFailed(details = e.failureDetails(), cause = e).left()
-            }
-        }
+        mutex.withLock { loadLocked() }
     }
+
+    /**
+     * [loadConfig] for a caller that already holds [mutex].
+     */
+    private fun loadLocked(): OperationResult<AppConfig> =
+        try {
+            if (!configPath.exists()) {
+                val defaultConfig = AppConfig(global = GlobalConfig())
+                saveConfigInternal(defaultConfig)
+                defaultConfig.right()
+            } else {
+                val config = json.decodeFromString<AppConfig>(configPath.readConfigText())
+                lastLoaded = config
+                config.right()
+            }
+        } catch (e: Exception) {
+            ConfigurationError.loadFailed(details = e.failureDetails(), cause = e).left()
+        }
 
     /**
      * Save [config] over the configuration file, unless the file exists and cannot be read or
@@ -110,8 +126,8 @@ class FileConfigRepository(
     }
 
     /**
-     * Internal save without acquiring [mutex]. Called by [loadConfig] (which already holds
-     * the lock) when the config file does not exist yet.
+     * [saveConfig] for a caller that already holds [mutex]: [loadLocked] creating a missing file,
+     * and [setActiveProfile].
      */
     private fun saveConfigInternal(config: AppConfig): OperationResult<Unit> {
         if (configPath.exists()) {
@@ -128,7 +144,7 @@ class FileConfigRepository(
         }
         return try {
             writeAtomically(json.encodeToString(config).encodeToByteArray())
-            cachedConfig = config
+            lastLoaded = config
             Unit.right()
         } catch (e: Exception) {
             ConfigurationError.saveFailed(details = e.failureDetails(), cause = e).left()
@@ -233,28 +249,32 @@ class FileConfigRepository(
     }
 
     /**
-     * The cached configuration, loading it first when nothing is cached.
+     * The configuration the file holds now, read again on every call and created with the defaults
+     * when the file does not exist.
      *
-     * When the file cannot be read, returns the default configuration without caching it, so the
-     * next call tries the file again; [saveConfig] refuses to replace such a file.
+     * When the file cannot be read or decoded, returns the configuration this repository last read
+     * or saved, or the defaults when it has none, and leaves the file as it is; [saveConfig] refuses
+     * to replace such a file. Falling back to the last configuration rather than to the defaults
+     * keeps a read that fails only for a moment, as while another program holds the file, from
+     * handing a caller defaults that it would then save over the file.
      */
-    override suspend fun getCurrentConfig(): AppConfig {
-        return cachedConfig ?: run {
-            val result = loadConfig()
-            result.fold(
-                ifLeft = { AppConfig(global = GlobalConfig()) },
-                ifRight = { it }
-            )
-        }
+    override suspend fun getCurrentConfig(): AppConfig = withContext(ioDispatcher) {
+        mutex.withLock { currentLocked() }
     }
 
     /**
-     * Save the active-profile selection into the configuration file. Fails like [saveConfig]
-     * when the file cannot be read, leaving it as it is.
+     * [getCurrentConfig] for a caller that already holds [mutex].
      */
-    override suspend fun setActiveProfile(name: String?): OperationResult<Unit> {
-        val current = getCurrentConfig()
-        return saveConfig(current.copy(activeProfile = name))
+    private fun currentLocked(): AppConfig =
+        loadLocked().getOrElse { lastLoaded ?: AppConfig(global = GlobalConfig()) }
+
+    /**
+     * Save the active-profile selection into the configuration file, holding [mutex] from the read
+     * of the file to the save, so that no save of this repository comes between them. Fails like
+     * [saveConfig] when the file cannot be read, leaving it as it is.
+     */
+    override suspend fun setActiveProfile(name: String?): OperationResult<Unit> = withContext(ioDispatcher) {
+        mutex.withLock { saveConfigInternal(currentLocked().copy(activeProfile = name)) }
     }
 
     companion object {
