@@ -15,6 +15,7 @@ import io.kotest.koin.KoinLifecycleMode
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.mockk
@@ -181,6 +182,18 @@ class RenewTest : FunSpec({
 
 		result.statusCode shouldBe 1
 		result.stderr shouldContain "lock"
+		verify(exactly = 1) { notificationService.notify(any(), any(), any()) }
+	}
+
+	test("a configuration that could not be loaded is reported as an error, notifies, and exits non-zero") {
+		coEvery { renewBatchUseCase(jobName = null, dryRun = false) } returns
+			RenewBatchResult(configError = "Failed to load configuration: Unexpected JSON token")
+
+		val result = Omnisign().test(listOf("renew"))
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "Renewal did not start: Failed to load configuration: Unexpected JSON token"
+		result.output shouldNotContain "No renewal jobs configured"
 		verify(exactly = 1) { notificationService.notify(any(), any(), any()) }
 	}
 })

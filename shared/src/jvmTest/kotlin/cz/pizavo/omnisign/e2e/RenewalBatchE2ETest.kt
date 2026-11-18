@@ -182,6 +182,7 @@ class RenewalBatchE2ETest : FunSpec({
 
 	val configRepository = mockk<ConfigRepository>()
 	coEvery { configRepository.getCurrentConfig() } returns AppConfig(global = GlobalConfig())
+	coEvery { configRepository.loadConfig() } coAnswers { configRepository.getCurrentConfig().right() }
 
 	val dssServiceFactory = mockk<DssServiceFactory>(relaxed = true)
 	every { dssServiceFactory.buildPdfObjectFactory() } returns PdfBoxNativeObjectFactory()

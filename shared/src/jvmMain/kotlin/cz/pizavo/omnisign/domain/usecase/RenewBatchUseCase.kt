@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.domain.usecase
 
 import arrow.core.Either
+import arrow.core.getOrElse
 import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.data.util.globRootAndTail
@@ -155,7 +156,9 @@ class RenewBatchUseCase(
      * scheduled one — can never re-timestamp the same documents concurrently; it still evaluates
      * staleness, so a lock that stays held for too long is surfaced rather than silently skipped. If
      * the lock cannot be established at all, the run is **not** attempted and a result with
-     * [RenewBatchResult.lockError] is returned.
+     * [RenewBatchResult.lockError] is returned. Nor is it when the configuration cannot be loaded:
+     * the jobs are part of it, so a result with [RenewBatchResult.configError] is returned and the
+     * run is recorded as failed, rather than as a successful run of no jobs on the defaults.
      *
      * Before the batch starts, the run is marked as in flight (see [markRunStarted]) and any marker a
      * previous run left behind is written up as an interrupted run. A dry-run neither marks nor
@@ -167,9 +170,11 @@ class RenewBatchUseCase(
      *   modified.
      * @return A [RenewBatchResult] summarising every job and file outcome, or a result with
      *   [RenewBatchResult.alreadyRunning] when another run holds the lock, or a result with
-     *   [RenewBatchResult.lockError] when the lock could not be acquired, or `null` when the requested
-     *   [jobName] does not exist. A completed run or a lock-skipped run additionally carries a
-     *   [RenewBatchResult.stalenessAlert] when renewal has now gone too long without a success.
+     *   [RenewBatchResult.lockError] when the lock could not be acquired, or a result with
+     *   [RenewBatchResult.configError] when the configuration could not be loaded, or `null` when the
+     *   requested [jobName] does not exist. A completed run or a lock-skipped run additionally
+     *   carries a [RenewBatchResult.stalenessAlert] when renewal has now gone too long without a
+     *   success.
      */
     suspend operator fun invoke(
         jobName: String? = null,
@@ -192,7 +197,7 @@ class RenewBatchUseCase(
                     null
                 }
                 dryRun -> result
-                else -> result.copy(stalenessAlert = recordRun(result, emitStaleness = true))
+                else -> result.copy(stalenessAlert = recordRun(result, emitStaleness = result.configError == null))
             }
         } finally {
             lock.close()
@@ -298,11 +303,11 @@ class RenewBatchUseCase(
      * Writing this record also clears [RenewalRunRecord.runStartedAt]. An interrupted run never
      * reaches this point, so the marker [markRunStarted] set survives only when the run died.
      *
-     * When [emitStaleness] is `true` — a run that actually executed, as opposed to a lock failure
-     * reported separately — and renewal has now gone [SchedulerConfig.stalenessThresholdDays] without
-     * a success, a [StalenessAlert] is returned (via [decideStaleness]) and
-     * [RenewalRunRecord.lastStaleNotifiedAt] is stamped so the alert re-fires at most once per
-     * threshold window. Staleness is wall-clock time since [RenewalRunRecord.lastSuccessAt] —
+     * When [emitStaleness] is `true` — a run that actually executed, as opposed to a lock or
+     * configuration failure reported separately — and renewal has now gone
+     * [SchedulerConfig.stalenessThresholdDays] without a success, a [StalenessAlert] is returned (via
+     * [decideStaleness]) and [RenewalRunRecord.lastStaleNotifiedAt] is stamped so the alert re-fires
+     * at most once per threshold window. Staleness is wall-clock time since [RenewalRunRecord.lastSuccessAt] —
      * including time the machine was off, since the renewal buffer expires in real time — yet a
      * powered-off machine never trips it, because staleness is only evaluated when a run actually
      * executes and a successful run resets the clock. Lock-skipped runs evaluate it too, via
@@ -317,7 +322,7 @@ class RenewBatchUseCase(
             val now = Clock.System.now()
             val previous = runRecordStore.load()
             val outcome = when {
-                result.lockError != null -> RenewalRunOutcome.FAILED
+                result.lockError != null || result.configError != null -> RenewalRunOutcome.FAILED
                 result.errors > 0 -> RenewalRunOutcome.COMPLETED_WITH_ERRORS
                 else -> RenewalRunOutcome.SUCCESS
             }
@@ -359,7 +364,7 @@ class RenewBatchUseCase(
                     errors = result.errors,
                     unrecoverable = result.unrecoverable,
                     unrecoverablePaths = result.unrecoverablePaths,
-                    failureReason = result.lockError,
+                    failureReason = result.lockError ?: result.configError,
                     errorDetails = errorDetails,
                     warnings = warnings,
                     jobs = jobs,
@@ -440,7 +445,11 @@ class RenewBatchUseCase(
      * parameters and return value.
      */
     private suspend fun runBatch(jobName: String?, dryRun: Boolean): RenewBatchResult? {
-        val appConfig = configRepository.getCurrentConfig()
+        val appConfig = configRepository.loadConfig().getOrElse { error ->
+            val reason = listOfNotNull(error.message, error.details).joinToString(": ")
+            logger.error { "Renewal did not start — $reason" }
+            return RenewBatchResult(dryRun = dryRun, configError = reason)
+        }
 
         val jobsToRun = if (jobName != null) {
             val job = appConfig.renewalJobs[jobName] ?: return null

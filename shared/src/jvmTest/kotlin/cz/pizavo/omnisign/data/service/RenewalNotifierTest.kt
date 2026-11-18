@@ -11,11 +11,11 @@ import java.util.Locale
 
 /**
  * Verifies [RenewalNotifier] fires exactly one correctly-branded notification per notifying job
- * along the partial-failure / failure / completion ladder, raises the run-wide lock-error and
- * staleness notifications independently of the per-job opt-in, and stays silent for dry-runs,
- * opted-out jobs, and jobs where nothing was renewed. A fixed locale is injected so the asserted text
- * is independent of the machine's default locale, and a Czech-locale notifier confirms the bundle is
- * actually resolved per locale.
+ * along the partial-failure / failure / completion ladder, raises the run-wide lock-error,
+ * configuration-error and staleness notifications independently of the per-job opt-in, and stays
+ * silent for dry-runs, opted-out jobs, and jobs where nothing was renewed. A fixed locale is injected
+ * so the asserted text is independent of the machine's default locale, and a Czech-locale notifier
+ * confirms the bundle is actually resolved per locale.
  */
 class RenewalNotifierTest : FunSpec({
 
@@ -57,6 +57,18 @@ class RenewalNotifierTest : FunSpec({
 			notificationService.notify(
 				match { it.contains("OmniSign") && it.contains("could not start") },
 				match { it.contains("lock file unwritable") },
+				eq(NotificationUrgency.CRITICAL),
+			)
+		}
+		verify(exactly = 1) { notificationService.notify(any(), any(), any()) }
+	}
+
+	test("sends a single critical configuration-error notification when the configuration could not be loaded") {
+		notifier.notify(RenewBatchResult(configError = "Failed to load configuration: Unexpected JSON token at offset 7"))
+		verify(exactly = 1) {
+			notificationService.notify(
+				match { it.contains("OmniSign") && it.contains("could not start") },
+				match { it.contains("Unexpected JSON token at offset 7") && it.contains("configuration file") },
 				eq(NotificationUrgency.CRITICAL),
 			)
 		}
@@ -139,6 +151,17 @@ class RenewalNotifierTest : FunSpec({
 			notificationService.notify(
 				match { it.contains("Obnova selhala") },
 				match { it.contains("dlouhodobá platnost") },
+				eq(NotificationUrgency.CRITICAL),
+			)
+		}
+	}
+
+	test("renders the Czech configuration-error title and body when the locale is Czech") {
+		czechNotifier.notify(RenewBatchResult(configError = "Failed to load configuration"))
+		verify(exactly = 1) {
+			notificationService.notify(
+				match { it.contains("Obnovu nelze spustit") },
+				match { it.contains("Žádná úloha obnovy neproběhla") && it.contains("konfigurační soubor") },
 				eq(NotificationUrgency.CRITICAL),
 			)
 		}

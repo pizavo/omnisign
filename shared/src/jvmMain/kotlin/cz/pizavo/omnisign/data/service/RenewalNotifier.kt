@@ -66,7 +66,9 @@ class RenewalNotifier(
 	 * A dry-run notifies nothing, since no files were changed. When the run never started because the
 	 * renewal lock could not be acquired ([RenewBatchResult.lockError]), a single
 	 * [NotificationUrgency.CRITICAL] lock-failure notification is sent and no per-job notifications
-	 * follow — this fires regardless of any job's opt-in, since nothing ran. Otherwise, for each job
+	 * follow — this fires regardless of any job's opt-in, since nothing ran. The same holds, with a
+	 * configuration-failure notification, when the configuration that holds the jobs could not be
+	 * loaded ([RenewBatchResult.configError]). Otherwise, for each job
 	 * that requested notifications, a single notification is sent: a [NotificationUrgency.CRITICAL]
 	 * partial-failure note when some files renewed but others errored, a [NotificationUrgency.CRITICAL]
 	 * failure note when only errors occurred, or a [NotificationUrgency.NORMAL] completion note when
@@ -84,6 +86,14 @@ class RenewalNotifier(
 			notificationService.notify(
 				title = messages.format("lockError.title"),
 				body = messages.format("lockError.body", result.lockError),
+				urgency = NotificationUrgency.CRITICAL,
+			)
+			return
+		}
+		if (result.configError != null) {
+			notificationService.notify(
+				title = messages.format("configError.title"),
+				body = messages.format("configError.body", result.configError),
 				urgency = NotificationUrgency.CRITICAL,
 			)
 			return
