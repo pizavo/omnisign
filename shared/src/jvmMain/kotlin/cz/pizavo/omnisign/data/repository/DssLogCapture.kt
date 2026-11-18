@@ -19,9 +19,12 @@ import java.util.concurrent.CopyOnWriteArraySet
  *
  * Rather than whitelisting individual child loggers (which silently misses any new DSS
  * logger), this class works on the **parent** `eu.europa.esig` logger. While at least one
- * [Session] is open, that logger is lowered to WARN, made non-additive and given a routing
- * appender. Child loggers that do not carry their own explicit level inherit WARN, and their
- * events propagate upward to the routing appender via Logback's default additivity.
+ * [Session] is open, that logger is made non-additive, given a routing appender and, unless it
+ * already lets WARN through, lowered to WARN. Child loggers that do not carry their own explicit
+ * level inherit that level, and their events propagate upward to the routing appender via
+ * Logback's default additivity. A more verbose level, such as the DEBUG that the CLI's
+ * `--debug-extended` and the desktop's extended logging set, is left as it is, so the log keeps
+ * DSS's debug output while a document is signed or extended.
  *
  * The routing appender records each event in the sessions opened on the thread that logged it.
  * DSS runs an operation on the thread that calls it, so operations that overlap, such as two
@@ -29,7 +32,9 @@ import java.util.concurrent.CopyOnWriteArraySet
  * session therefore has to be opened on the thread that runs the operation, right before the
  * DSS calls, with no suspension before [Session.stop]. The first session to open saves the
  * logger's level and additivity, and the last one to close restores them, so sessions may open
- * and close in any order.
+ * and close in any order. A level set on the logger while a session is open applies at once and
+ * is kept when the last session closes; set above WARN, it hides DSS warnings from the sessions
+ * open at the time.
  *
  * The routing appender also hands every event on to the appenders above `eu.europa.esig` when
  * the logger that emitted it would have let it through without the capture, unless
@@ -84,8 +89,9 @@ class DssLogCapture(
 	 * until [Session.stop] is called.
 	 *
 	 * The first session to open saves the level and additivity of the logger named by
-	 * `loggerName`, lowers it to WARN, turns its additivity off and attaches the routing
-	 * appender. If the runtime SLF4J binding is not Logback, the session records nothing.
+	 * `loggerName`, attaches the routing appender, turns its additivity off and, when it does
+	 * not let WARN through already, lowers it to WARN. If the runtime SLF4J binding is not
+	 * Logback, the session records nothing.
 	 */
 	fun start(): Session {
 		val session = Session(Thread.currentThread())
@@ -116,7 +122,8 @@ class DssLogCapture(
 
 	/**
 	 * Save the state of the logger named by `loggerName` as an [Installation], then attach the
-	 * routing appender, turn the logger's additivity off and lower it to WARN.
+	 * routing appender, turn the logger's additivity off and, when the level it applies is above
+	 * WARN, lower it to WARN.
 	 *
 	 * The installation is published before the appender is attached, so the appender never sees
 	 * an event without it. Additivity goes off only once the appender is attached, so no event is
@@ -125,11 +132,13 @@ class DssLogCapture(
 	private fun install(api: LogbackApi) {
 		val logger = api.logger(loggerName) ?: return
 		val context = api.context(logger)
+		val effectiveLevel = api.effectiveLevel(logger)
 		val current = Installation(
 			logger = logger,
 			context = context,
 			level = api.level(logger),
-			effectiveLevel = api.effectiveLevel(logger),
+			effectiveLevel = effectiveLevel,
+			lowered = effectiveLevel > api.warnInt,
 			additive = api.isAdditive(logger),
 			parent = api.existing(context, parentName(loggerName) ?: ROOT_LOGGER_NAME),
 			appender = api.newAppender(APPENDER_NAME, ::route),
@@ -137,25 +146,36 @@ class DssLogCapture(
 		installation = current
 		api.addAppender(current.logger, current.appender)
 		api.setAdditive(current.logger, false)
-		api.setLevel(current.logger, api.warn)
+		if (current.lowered) api.setLevel(current.logger, api.warn)
 	}
 
 	/**
-	 * Give the logger of [current] back the level and additivity it had before the first session
-	 * opened, and detach the routing appender.
+	 * Give the logger of [current] back the additivity it had before the first session opened
+	 * and, while it still has the WARN the capture lowered it to (see [holdsLoweredLevel]), the
+	 * level it had then, and detach the routing appender. A level set on the logger since the
+	 * first session opened is kept.
 	 *
 	 * Additivity comes back before the appender is detached, and the appender passes nothing on
 	 * while the logger is additive, so no event is lost or delivered twice in between.
 	 */
 	private fun restore(api: LogbackApi, current: Installation) {
 		try {
-			api.setLevel(current.logger, current.level)
+			if (holdsLoweredLevel(api, current)) api.setLevel(current.logger, current.level)
 			api.setAdditive(current.logger, current.additive)
 			api.detachAppender(current.logger, current.appender)
 		} finally {
 			installation = null
 		}
 	}
+
+	/**
+	 * Return whether the logger of [current] still has the WARN the first session lowered it to.
+	 *
+	 * It is `false` when the capture left the level alone and when a level other than WARN has been
+	 * set on the logger since; a WARN set on it meanwhile cannot be told apart from the capture's.
+	 */
+	private fun holdsLoweredLevel(api: LogbackApi, current: Installation): Boolean =
+		current.lowered && api.level(current.logger) == api.warn
 
 	/**
 	 * Record [event] in every open session of the thread that logged it, and hand it on to the
@@ -196,10 +216,11 @@ class DssLogCapture(
 			api.levelOf(event) >= thresholdOf(api, current, api.loggerNameOf(event))
 
 	/**
-	 * Return the integer value of the level the logger [name] applied before the capture: the
+	 * Return the integer value of the level the logger [name] would apply without the capture: the
 	 * level it, or the nearest logger between it and the captured one, has of its own, which the
-	 * capture leaves alone, and otherwise the level the captured logger applied before the first
-	 * session opened.
+	 * capture leaves alone, and otherwise the level of the captured logger, which is the one it
+	 * applied before the first session opened while it still has the capture's WARN (see
+	 * [holdsLoweredLevel]), and the one it applies now otherwise.
 	 */
 	private fun thresholdOf(api: LogbackApi, current: Installation, name: String): Int {
 		var ancestor: String? = name
@@ -207,7 +228,7 @@ class DssLogCapture(
 			api.explicitLevel(current.context, ancestor)?.let { return it }
 			ancestor = parentName(ancestor)
 		}
-		return current.effectiveLevel
+		return if (holdsLoweredLevel(api, current)) current.effectiveLevel else api.effectiveLevel(current.logger)
 	}
 
 	/**
@@ -240,8 +261,8 @@ class DssLogCapture(
 		 *
 		 * Only the first call returns them and later calls return an empty list, so a `finally`
 		 * block may call it again after the operation has read its warnings. The last open session
-		 * to close restores the level and additivity of the captured logger and detaches the routing
-		 * appender.
+		 * to close restores the additivity of the captured logger and, unless a level has been set on
+		 * it meanwhile, its level, and detaches the routing appender.
 		 */
 		fun stop(): List<String> = if (close(this)) messages.distinct() else emptyList()
 	}
@@ -255,6 +276,8 @@ class DssLogCapture(
 	 * @property level The level the logger had of its own before the capture, `null` when it
 	 *   inherited one.
 	 * @property effectiveLevel The integer value of the level the logger applied before the capture.
+	 * @property lowered Whether the first session lowered the logger to WARN, because the level it
+	 *   applied was above WARN.
 	 * @property additive Whether the logger passed events on to the loggers above it before the
 	 *   capture.
 	 * @property parent The logger directly above it, whose appenders, and those above, get the
@@ -266,6 +289,7 @@ class DssLogCapture(
 		val context: Any,
 		val level: Any?,
 		val effectiveLevel: Int,
+		val lowered: Boolean,
 		val additive: Boolean,
 		val parent: Any?,
 		val appender: Any,
@@ -440,9 +464,10 @@ class DssLogCapture(
 		 * The logger the routing appender is attached to by default.
 		 *
 		 * By capturing at the `eu.europa.esig` parent logger, all child loggers that
-		 * do not carry their own explicit level inherit WARN during the capture window,
-		 * and their events propagate up to the routing appender. This eliminates the need to
-		 * enumerate every individual DSS logger that might produce useful warnings.
+		 * do not carry their own explicit level inherit WARN, or the more verbose level it
+		 * already had, during the capture window, and their events propagate up to the routing
+		 * appender. This eliminates the need to enumerate every individual DSS logger that might
+		 * produce useful warnings.
 		 */
 		const val DSS_LOGGER_NAME = "eu.europa.esig"
 

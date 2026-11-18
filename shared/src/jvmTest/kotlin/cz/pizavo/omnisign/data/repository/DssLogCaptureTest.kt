@@ -19,7 +19,8 @@ import java.util.concurrent.Executors
 /**
  * Verifies [DssLogCapture]: what a session records, that sessions on different threads keep their
  * warnings apart and leave the `eu.europa.esig` logger as they found it in whatever order they
- * stop, and which events still reach the configured log appenders while a session is open.
+ * stop, that they never make it less verbose and keep a level set on it while they are open, and
+ * which events still reach the configured log appenders while a session is open.
  *
  * The tests drive the real Logback, which is on the `jvmTest` classpath, watch the root logger's
  * appenders through a [ListAppender], and put back every logger they change after each test.
@@ -35,6 +36,7 @@ class DssLogCaptureTest : FunSpec({
 
 	val dss = logback(DssLogCapture.DSS_LOGGER_NAME)
 	val root = logback(Logger.ROOT_LOGGER_NAME)
+	val rootLevel = root.level
 	val shown = ListAppender<ILoggingEvent>()
 
 	/** Return the messages the root logger's appenders got from DSS loggers since the test started. */
@@ -54,6 +56,7 @@ class DssLogCaptureTest : FunSpec({
 
 	afterTest {
 		root.detachAppender(shown)
+		root.level = rootLevel
 		dss.level = null
 		dss.isAdditive = true
 		logback(pinnedParent).level = null
@@ -116,6 +119,7 @@ class DssLogCaptureTest : FunSpec({
 	}
 
 	test("a logger that had no level of its own gets none back") {
+		root.level = Level.ERROR
 		dss.level = null
 
 		val session = DssLogCapture().start()
@@ -123,6 +127,59 @@ class DssLogCaptureTest : FunSpec({
 		session.stop()
 
 		dss.level.shouldBeNull()
+	}
+
+	test("a logger set more verbose than WARN keeps its level, and its debug lines keep reaching the log") {
+		dss.level = Level.DEBUG
+		val session = DssLogCapture().start()
+
+		dss.level shouldBe Level.DEBUG
+		logback(child).debug("debug line")
+		logback(child).warn("warning")
+
+		session.stop() shouldContainExactly listOf("warning")
+		logged() shouldContainExactly listOf("debug line", "warning")
+		dss.level shouldBe Level.DEBUG
+		dss.isAdditive shouldBe true
+	}
+
+	test("a logger that inherits a level more verbose than WARN gets none of its own") {
+		root.level = Level.DEBUG
+		dss.level = null
+		val session = DssLogCapture().start()
+
+		dss.level.shouldBeNull()
+		logback(child).debug("inherited debug line")
+
+		session.stop().shouldBeEmpty()
+		logged() shouldContainExactly listOf("inherited debug line")
+		dss.level.shouldBeNull()
+	}
+
+	test("a level set on the lowered logger while a session is open applies at once and is kept after it stops") {
+		val session = DssLogCapture().start()
+		dss.level shouldBe Level.WARN
+
+		dss.level = Level.DEBUG
+		logback(child).debug("debug after the change")
+		logback(child).warn("warning after the change")
+
+		session.stop() shouldContainExactly listOf("warning after the change")
+		logged() shouldContainExactly listOf("debug after the change", "warning after the change")
+		dss.level shouldBe Level.DEBUG
+	}
+
+	test("a level set while a session is open on a logger the capture left alone is kept, WARN included") {
+		dss.level = Level.DEBUG
+		val session = DssLogCapture().start()
+
+		dss.level = Level.WARN
+		logback(child).info("info after the change")
+		logback(child).warn("warning after the change")
+
+		session.stop() shouldContainExactly listOf("warning after the change")
+		logged() shouldContainExactly listOf("warning after the change")
+		dss.level shouldBe Level.WARN
 	}
 
 	test("two sessions that overlap without nesting keep their warnings apart and restore the logger once both have stopped") {
