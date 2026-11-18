@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.data.repository
 
+import cz.pizavo.omnisign.data.denyReading
 import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
@@ -400,6 +401,21 @@ class DssValidationRepositoryTest : FunSpec({
 			LocalizableText.of(MessageKey.VALIDATION_POLICY_FILE_UNREADABLE, tmpDir.path)
 		policyErrorOf(null, customPolicyPath = impossible).text shouldBe
 			LocalizableText.of(MessageKey.VALIDATION_POLICY_FILE_UNREADABLE, impossible)
+	}
+
+	test("a policy file this user may not read fails validation, naming the path, though it holds a policy") {
+		val policy = renamedDefaultPolicy("Unreadable policy")
+		val config = policyConfig(ValidationPolicyType.CUSTOM_FILE, policy.path)
+		val restore = denyReading(policy.toPath())
+
+		val error = try {
+			policyErrorOf(config)
+		} finally {
+			restore()
+		}
+
+		error.text shouldBe LocalizableText.of(MessageKey.VALIDATION_POLICY_FILE_UNREADABLE, policy.path)
+		policyNameOf(validateSigned(config).shouldBeRight()) shouldBe "Unreadable policy"
 	}
 
 	test("a policy file that holds no validation policy fails validation, naming the path and the reason") {

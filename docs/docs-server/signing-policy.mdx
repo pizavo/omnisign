@@ -85,8 +85,9 @@ a list was last loaded, so it does not flag such a copy; the report's notice doe
 
 With `policyType: CUSTOM_FILE`, the server validates under the DSS validation policy file that
 `customPolicyPath` names, never under the default ETSI policy. While the path is unset, or the file
-is missing, unreadable or not a validation policy, every validation request fails with an
-`INVALID_POLICY` error that names the file, which the server also logs.
+is missing, unreadable or not a validation policy, every validation request fails with
+`500 INVALID_POLICY`. The response does not name the file. The server's log does, at ERROR level,
+with the reason the file cannot be used.
 
 A key in `algorithmConstraints.expirationDateOverrides` is an algorithm name, or `NAME:KEY_SIZE`
 for one key-size entry of an algorithm the validation policy dates by key size, such as

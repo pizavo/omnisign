@@ -18,6 +18,13 @@ import io.ktor.server.response.*
 private val logger = KotlinLogging.logger {}
 
 /**
+ * The message a [ValidationError.InvalidPolicy] is answered with, in place of its own, which names
+ * the server's policy file.
+ */
+internal const val SERVER_POLICY_UNUSABLE =
+	"The server's validation policy cannot be used. The server's log says which file it is and why."
+
+/**
  * Install Ktor [StatusPages] plugin that maps domain [OperationError] subtypes and
  * common exceptions to structured JSON error responses with appropriate HTTP status codes.
  *
@@ -154,6 +161,11 @@ private suspend fun ApplicationCall.respondRequestError(status: HttpStatusCode, 
 
 /**
  * Map a domain [OperationError] to the appropriate HTTP status code and [ApiError] body.
+ *
+ * A [ValidationError.InvalidPolicy] can only be about the policy file that the server's own
+ * `signing.yml` names, since no request can name one. It is answered with 500 and
+ * [SERVER_POLICY_UNUSABLE] alone, and logged at ERROR level with the file and the reason it cannot
+ * be used, so that a caller learns nothing of the server's files.
  */
 private suspend fun ApplicationCall.respondOperationError(error: OperationError) {
 	val (status, errorType) = when (error) {
@@ -167,7 +179,7 @@ private suspend fun ApplicationCall.respondOperationError(error: OperationError)
 		is SigningError.MalformedDocument -> HttpStatusCode.BadRequest to "MALFORMED_DOCUMENT"
 
 		is ValidationError.InvalidDocument -> HttpStatusCode.BadRequest to "INVALID_DOCUMENT"
-		is ValidationError.InvalidPolicy -> HttpStatusCode.BadRequest to "INVALID_POLICY"
+		is ValidationError.InvalidPolicy -> HttpStatusCode.InternalServerError to "INVALID_POLICY"
 		is ValidationError.ValidationFailed -> HttpStatusCode.InternalServerError to "VALIDATION_FAILED"
 
 		is ArchivingError.RevocationInfoError -> HttpStatusCode.BadGateway to "REVOCATION_INFO_ERROR"
@@ -186,6 +198,11 @@ private suspend fun ApplicationCall.respondOperationError(error: OperationError)
 		is TrustStoreError.StorageFailed -> HttpStatusCode.InternalServerError to "TRUST_STORE_FAILED"
 	}
 
+	if (error is ValidationError.InvalidPolicy) {
+		logger.error(error.cause) { "$errorType: ${error.message}${error.details?.let { ": $it" }.orEmpty()}" }
+		respond(status, ApiError(error = errorType, message = SERVER_POLICY_UNUSABLE))
+		return
+	}
 	logger.warn { "$errorType: ${error.message}" }
 	respond(
 		status,
