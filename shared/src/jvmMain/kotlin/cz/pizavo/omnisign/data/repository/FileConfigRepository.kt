@@ -56,8 +56,9 @@ import kotlin.io.path.readSymbolicLink
  * A configuration file that exists but cannot be decoded — a hand edit left it invalid, a write by
  * an older build was cut short, or a newer build wrote a value this one does not know — is never
  * replaced: [saveConfig] fails instead, because the file may hold profiles, renewal jobs and
- * settings that the configuration being saved, built on the defaults [getCurrentConfig] falls
- * back to, no longer contains. The user fixes the file or moves it away, and the next save works.
+ * settings that the configuration being saved lacks. That configuration was built on what
+ * [getCurrentConfig] falls back to: the configuration this repository last read or saved, or the
+ * defaults when it has none. The user fixes the file or moves it away, and the next save works.
  *
  * An error that an exception caused carries that exception as its cause. For an I/O failure its
  * details give the exception's class, since the message often holds only the path, as for a file
