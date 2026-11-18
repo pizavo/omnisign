@@ -7,6 +7,7 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldHaveSize
+import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
@@ -316,10 +317,44 @@ class DssWarningSanitizerTest : FunSpec({
 		)?.first shouldBe WarningCategory.REVOCATION_NOT_FOUND
 	}
 	
-	test("Unable to download CRL is classified as REVOCATION_NOT_FOUND") {
+	test("a CRL that could not be retrieved, as DSS 6.5.1 words it, is classified as REVOCATION_NOT_FOUND") {
 		sanitizer.classify(
-			"CRL DSS Exception: Unable to download CRL for certificate with Id 'C-ABCD1234'"
-		)?.first shouldBe WarningCategory.REVOCATION_NOT_FOUND
+			"CRL DSS Exception: Unable to retrieve CRL for certificate with Id 'C-4F2A9C' " +
+					"from URL 'http://crl.example.com/ca.crl'. Reason : Read timed out"
+		) shouldBe (WarningCategory.REVOCATION_NOT_FOUND to setOf("C-4F2A9C"))
+	}
+
+	test("a failed attempt at one of a certificate's CRL addresses, which names no certificate, is left unclassified") {
+		sanitizer.classify(
+			"Unable to retrieve CRL with URL 'http://crl.example.com/ca.crl' : Read timed out"
+		).shouldBeNull()
+	}
+
+	test("a CRL that could not be retrieved means long-term material is missing, and is hidden when its category is suppressed") {
+		val raw = listOf(
+			"CRL DSS Exception: Unable to retrieve CRL for certificate with Id 'C-4F2A9C' " +
+					"from URL 'http://crl.example.com/ca.crl'. Reason : Read timed out"
+		)
+
+		sanitizer.sanitize(raw).longTermMaterialMissing shouldBe true
+
+		val signing = sanitizer.sanitize(raw, suppressedCategories = setOf(WarningCategory.REVOCATION_NOT_FOUND))
+		signing.summaries.shouldBeEmpty()
+		signing.categories shouldBe setOf(WarningCategory.REVOCATION_NOT_FOUND)
+		signing.longTermMaterialMissing shouldBe false
+	}
+
+	test("a failed CRL and a failed OCSP retrieval group into one summary") {
+		val raw = listOf(
+			"CRL DSS Exception: Unable to retrieve CRL for certificate with Id 'C-AAAA1111' " +
+					"from URL 'http://crl.example.com/ca.crl'. Reason : Read timed out",
+			"OCSP DSS Exception: Unable to retrieve OCSP response for certificate with Id 'C-BBBB2222' " +
+					"from URL 'http://ocsp.example.com/'. Reason : Connection refused",
+		)
+		val result = sanitizer.sanitize(raw)
+		result.summaries shouldHaveSize 1
+		result.summaries[0] shouldContain "2 certificates"
+		result.summaries[0] shouldContain "CRL/OCSP"
 	}
 	
 	test("OCSP and standard revocation messages group into one summary") {
