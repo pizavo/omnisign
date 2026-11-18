@@ -33,6 +33,7 @@ import cz.pizavo.omnisign.domain.port.RenewalRunRecordStore
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
+import java.io.IOError
 import java.io.IOException
 import java.nio.ByteBuffer
 import java.nio.channels.FileChannel
@@ -1070,9 +1071,11 @@ class RenewBatchUseCase(
      * which the caller surfaces like an unresolvable profile. Both the root ([Paths.get], which
      * rejects characters illegal in a path) and the wildcard tail
      * ([java.nio.file.FileSystem.getPathMatcher], which rejects an unclosed `[` or `{`) raise
-     * unchecked exceptions, while add-time validation inspects only the root. Unguarded, such a
-     * pattern would escape the whole batch, skipping every remaining job and writing no run record, so
-     * a single typo would stop renewal indefinitely and leave no record of why.
+     * unchecked exceptions, while add-time validation inspects only the root. A root relative to a
+     * Windows drive that is not there, such as `Z:docs`, which a hand-edited configuration may hold,
+     * fails too: making it absolute raises an [IOError], an `Error` rather than an exception.
+     * Unguarded, such a pattern would escape the whole batch, skipping every remaining job and writing
+     * no run record, so a single typo would stop renewal indefinitely and leave no record of why.
      *
      * @return the matched files and the paths that could not be reached, or a description of the
      *   pattern that could not be parsed.
@@ -1103,6 +1106,8 @@ class RenewBatchUseCase(
             val (rootStr, tail) = split
             val rootPath = try {
                 Paths.get(rootStr).toAbsolutePath().normalize()
+            } catch (e: IOError) {
+                return malformedGlob(glob, "its directory '$rootStr' cannot be made an absolute path", e, logFile)
             } catch (e: Exception) {
                 return malformedGlob(glob, "its directory '$rootStr' is not a valid path", e, logFile)
             }
@@ -1180,13 +1185,13 @@ class RenewBatchUseCase(
      *
      * @param glob The pattern as the user configured it.
      * @param reason Which half of the pattern the platform rejected.
-     * @param cause The exception the path or matcher API raised.
+     * @param cause What the path or matcher API raised.
      * @param logFile The job's optional audit-log file path.
      */
     private fun malformedGlob(
         glob: String,
         reason: String,
-        cause: Exception,
+        cause: Throwable,
         logFile: String?,
     ): Either<String, ResolvedGlobs> {
         val message = "renewal glob '$glob' cannot be used: $reason"

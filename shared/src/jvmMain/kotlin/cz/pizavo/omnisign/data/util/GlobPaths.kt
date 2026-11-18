@@ -48,15 +48,26 @@ fun isParseableGlob(glob: String): Boolean {
  * rooted in, the prefix up to the last separator before its first wildcard (`.` when there is
  * none), and the wildcard tail after that separator; `null` for a literal pattern, which has no
  * wildcard.
+ *
+ * Where that separator is the root's own, as in `C:\**\*.pdf` or `\**\*.pdf`, the directory keeps
+ * it: cut off, it would leave the bare drive `C:` or an empty path, which both name the working
+ * directory, so a glob meant for a whole drive would search the folder the process was started in.
  */
 fun globRootAndTail(glob: String): Pair<String, String>? {
 	val normalised = glob.replace('\\', '/')
 	val wildcardIndex = normalised.indexOfFirst { it == '*' || it == '?' || it == '[' || it == '{' }
 	if (wildcardIndex == -1) return null
 	val lastSlash = normalised.substring(0, wildcardIndex).lastIndexOf('/')
-	val root = if (lastSlash == -1) "." else normalised.substring(0, lastSlash)
-	return root to normalised.substring(lastSlash + 1)
+	val tail = normalised.substring(lastSlash + 1)
+	if (lastSlash == -1) return "." to tail
+	val parent = normalised.substring(0, lastSlash)
+	return (if (parent.isEmpty() || parent.matches(driveSpecifier)) "$parent/" else parent) to tail
 }
+
+/**
+ * A Windows drive with no path after it, such as `C:`.
+ */
+private val driveSpecifier = Regex("[A-Za-z]:")
 
 /**
  * The matcher of a renewal glob's wildcard [tail], with forward slashes as its separators, on
@@ -161,12 +172,13 @@ private fun Path.storedPath(): Path = generateSequence(this) { it.parent }
  * CLI, however, is normally invoked from the directory the user wants to watch, so it can freeze
  * that directory here at add time — turning a `*.pdf` typed in `C:\Docs` into a glob rooted there.
  *
- * An already-absolute glob is returned unchanged. Otherwise the directory part — the prefix up to
- * the last separator before the first wildcard, or the whole pattern when it has none — is resolved
- * against [base] and normalised, and the wildcard tail is re-appended. The result uses forward
- * slashes (accepted on every platform), since a wildcard tail cannot pass through the path APIs that
- * would otherwise choose the native separator. A glob that cannot be parsed is returned unchanged,
- * so the caller's absolute-path check still rejects it.
+ * An already-absolute glob is returned unchanged. Otherwise the directory part, as
+ * [globRootAndTail] cuts it, or the whole pattern when it has no wildcard, is resolved against
+ * [base] and normalised, and the wildcard tail is re-appended. A pattern that starts with a
+ * separator, such as `\**\*.pdf` on Windows, thus starts at the root of [base]'s drive. The result
+ * uses forward slashes (accepted on every platform), since a wildcard tail cannot pass through the
+ * path APIs that would otherwise choose the native separator. A glob that cannot be parsed is
+ * returned unchanged, so the caller's absolute-path check still rejects it.
  *
  * @param glob The possibly-relative glob the user typed.
  * @param base The directory relative globs resolve against; the process working directory by default.
@@ -175,15 +187,8 @@ private fun Path.storedPath(): Path = generateSequence(this) { it.parent }
 fun absolutizeGlob(glob: String, base: Path = Path("").absolute()): String =
 	runCatching {
 		if (isAbsoluteGlobRoot(glob)) return@runCatching glob
-		val normalised = glob.replace('\\', '/')
-		val wildcardIndex = normalised.indexOfFirst { it == '*' || it == '?' || it == '[' || it == '{' }
-		if (wildcardIndex == -1) {
-			return@runCatching (base / normalised).normalize().toString().replace('\\', '/')
-		}
-		val prefix = normalised.substring(0, wildcardIndex)
-		val lastSlash = prefix.lastIndexOf('/')
-		val rootStr = if (lastSlash == -1) "." else normalised.substring(0, lastSlash)
-		val tail = normalised.substring(lastSlash + 1)
+		val (rootStr, tail) = globRootAndTail(glob)
+			?: return@runCatching (base / glob.replace('\\', '/')).normalize().toString().replace('\\', '/')
 		val root = (base / rootStr).normalize().toString().replace('\\', '/').trimEnd('/')
 		"$root/$tail"
 	}.getOrDefault(glob)
