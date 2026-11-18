@@ -66,6 +66,28 @@ class ResolvedTimestampServerTest : FunSpec({
 		}
 	}
 
+	test("an override naming another host before a slash, question mark or hash that the stored host follows takes none of the stored credentials") {
+		val urls = listOf(
+			"https://evil.example/@tsa.vendor-a.example/tsr",
+			"https://evil.example?@tsa.vendor-a.example/tsr",
+			"https://evil.example#@tsa.vendor-a.example/tsr",
+		)
+		for (url in urls) {
+			resolveWith(TimestampServerConfig(url = url)) shouldBe withoutStoredCredentials(url)
+		}
+	}
+
+	test("an override naming the stored server with user information in front of its host keeps the stored credentials") {
+		val url = "https://bob@tsa.vendor-a.example/other"
+		resolveWith(TimestampServerConfig(url = url)) shouldBe storedAt(url)
+	}
+
+	test("an override naming a stored http server with port 80 written out keeps the stored credentials") {
+		val base = stored.copy(url = "http://tsa.vendor-a.example/tsr")
+		val url = "http://tsa.vendor-a.example:80/other"
+		resolveWith(TimestampServerConfig(url = url), base) shouldBe base.copy(url = url)
+	}
+
 	test("an override naming the stored server at another path keeps the stored credentials") {
 		val url = "https://tsa.vendor-a.example/other-policy?profile=qualified"
 		resolveWith(TimestampServerConfig(url = url)) shouldBe storedAt(url)
