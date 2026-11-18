@@ -163,9 +163,9 @@ private suspend fun ApplicationCall.respondRequestError(status: HttpStatusCode, 
  * Map a domain [OperationError] to the appropriate HTTP status code and [ApiError] body.
  *
  * A [ValidationError.InvalidPolicy] can only be about the policy file that the server's own
- * `signing.yml` names, since no request can name one. It is answered with 500 and
- * [SERVER_POLICY_UNUSABLE] alone, and logged at ERROR level with the file and the reason it cannot
- * be used, so that a caller learns nothing of the server's files.
+ * `signing.yml` names, since no request can name one, so no caller can do anything about it. It is
+ * answered with 500 and [SERVER_POLICY_UNUSABLE] alone, without DSS's reason, and logged at ERROR
+ * level with the file, the reason and the cause, for the operator who has to fix the file.
  */
 private suspend fun ApplicationCall.respondOperationError(error: OperationError) {
 	val (status, errorType) = when (error) {

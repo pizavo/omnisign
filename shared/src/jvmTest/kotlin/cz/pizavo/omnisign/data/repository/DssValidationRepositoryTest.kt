@@ -403,7 +403,9 @@ class DssValidationRepositoryTest : FunSpec({
 			LocalizableText.of(MessageKey.VALIDATION_POLICY_FILE_UNREADABLE, impossible)
 	}
 
-	test("a policy file this user may not read fails validation, naming the path, though it holds a policy") {
+	test("a policy file this user may not read fails validation, naming the path, though it holds a policy").config(
+		enabledIf = { System.getProperty("user.name") != "root" },
+	) {
 		val policy = renamedDefaultPolicy("Unreadable policy")
 		val config = policyConfig(ValidationPolicyType.CUSTOM_FILE, policy.path)
 		val restore = denyReading(policy.toPath())
