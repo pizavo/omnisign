@@ -28,8 +28,10 @@ enum class RenewalReason {
     BELOW_LT,
 
     /**
-     * The document is at B-LT, but its embedded revocation data predates the signature timestamp, so
-     * none of it covers the moment of signing.
+     * The document is at B-LT, but its embedded revocation data predates the earliest timestamp that
+     * proves the signature existed, so none of it covers the moment of signing. That timestamp is the
+     * signature timestamp of a signature made at B-T or higher, or the document timestamp of one
+     * extended from B-B.
      *
      * Sealing this with an archival timestamp would freeze a gap rather than close it. The document
      * needs newer revocation data first; the issuer's `nextUpdate` is when that data is due.

@@ -45,7 +45,8 @@ interface ArchivingRepository {
 	 * - **B-LT** — revocation data is present but nothing proves when it existed. It is sealed with
 	 *   an archival timestamp ([RenewalReason.LT_NOT_SEALED]) before the earlier of its `nextUpdate`
 	 *   and its issuer's expiry, or refreshed first ([RenewalReason.LT_REFRESH_NEEDED]) when it
-	 *   predates the signature timestamp and so covers nothing.
+	 *   predates the earliest timestamp that proves the signature existed, a signature timestamp or
+	 *   the document timestamp of an extension from B-B, and so covers nothing.
 	 * - **B-LTA** — protection is complete and merely ages. Here, and only here, the
 	 *   **coverage-aware** rule applies: renewal is due when a timestamp that no current document
 	 *   timestamp seals approaches its signing (TSA) certificate's expiry

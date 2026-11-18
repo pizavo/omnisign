@@ -415,11 +415,15 @@ class DssArchivingRepository(
 	 * Assess a B-LT document: revocation data is embedded, but nothing proves when it existed.
 	 *
 	 * Both outcomes are due now, and they differ in what has to happen. When the embedded revocation
-	 * data predates the signature timestamp it covers nothing, so it has to be refreshed before
-	 * anything is sealed over it ([RenewalReason.LT_REFRESH_NEEDED]); sealing first would freeze the
-	 * gap. Otherwise the data is sound and only needs anchoring ([RenewalReason.LT_NOT_SEALED])
-	 * before the earlier of its own `nextUpdate` and its issuer's expiry, after which it can no
-	 * longer be validated on its own.
+	 * data predates the earliest timestamp that proves the signature existed it covers nothing, so it
+	 * has to be refreshed before anything is sealed over it ([RenewalReason.LT_REFRESH_NEEDED]);
+	 * sealing first would freeze the gap. Otherwise the data is sound and only needs anchoring
+	 * ([RenewalReason.LT_NOT_SEALED]) before the earlier of its own `nextUpdate` and its issuer's
+	 * expiry, after which it can no longer be validated on its own.
+	 *
+	 * That proof is a signature timestamp when the signature was made at B-T or higher, and a
+	 * document timestamp covering it when the signature was extended there from B-B, since DSS
+	 * cannot add a signature timestamp to an existing signature; both count.
 	 *
 	 * A signing certificate with no revocation data embedded for it needs none, as
 	 * [hasUsableSigningCertificateRevocation] has established before this is called, so it has nothing
@@ -432,7 +436,7 @@ class DssArchivingRepository(
 		renewalCheckCache.remove(filePath)
 		val stale = signatures.any { signature ->
 			val revocations = signature.signingCertificate?.certificateRevocationData.orEmpty()
-			val bestSignatureTime = signature.signatureTimestamps
+			val bestSignatureTime = (signature.signatureTimestamps + signature.documentTimestamps)
 				.mapNotNull { it.productionTime?.toKotlinInstant() }
 				.minOrNull()
 			val newest = revocations.mapNotNull { it.thisUpdate?.toKotlinInstant() }.maxOrNull()
