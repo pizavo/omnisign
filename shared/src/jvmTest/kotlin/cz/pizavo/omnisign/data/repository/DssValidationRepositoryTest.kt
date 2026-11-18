@@ -41,6 +41,7 @@ import org.apache.pdfbox.pdmodel.PDDocument
 import org.apache.pdfbox.pdmodel.PDPage
 import java.io.File
 import java.security.KeyStore
+import java.security.MessageDigest
 import java.util.Locale
 import java.util.Properties
 
@@ -58,6 +59,7 @@ import java.util.Properties
  * It also checks the result for a document that cannot be validated and for one without
  * signatures, and that a signed document's report reads in the language it is asked for, or in
  * English for a language without a translation, even on a machine whose default locale is Czech.
+ * A signed document's report also names the signing certificate's SHA-256 fingerprint.
  */
 class DssValidationRepositoryTest : FunSpec({
 
@@ -270,6 +272,23 @@ class DssValidationRepositoryTest : FunSpec({
 			Locale.setDefault(Locale.Category.DISPLAY, display)
 			Locale.setDefault(Locale.Category.FORMAT, format)
 		}
+	}
+
+	test("a signature's summary names its signing certificate's SHA-256 fingerprint, the one the full-certificate view shows") {
+		val p12 = DssValidationRepositoryTest::class.java.getResourceAsStream("/e2e/signer.test.p12")?.readBytes()
+			?: error("Missing test fixture /e2e/signer.test.p12")
+		val signerDer = Pkcs12SignatureToken(p12, KeyStore.PasswordProtection("test1234".toCharArray())).use { token ->
+			token.keys.first().certificate.encoded
+		}
+		val expected = MessageDigest.getInstance("SHA-256").digest(signerDer).joinToString(":") { "%02X".format(it) }
+
+		val certificate = offlineRepository.validateDocument(
+			ValidationParameters(inputBytes = signedPdf(), inputName = "signed.pdf")
+		).shouldBeRight().signatures.single().certificate
+
+		certificate.sha256Fingerprint shouldBe expected
+		certificate.chain.first().details.first { it.title == "Fingerprints" }.fields
+			.single { it.label == "SHA-256" }.value shouldBe expected
 	}
 
 	// ── DSS Indication mapping ──────────────────────────────────────────────

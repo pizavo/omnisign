@@ -299,10 +299,19 @@ private fun qcTypeText(info: ASN1Encodable?): String =
 private fun generalNameText(name: GeneralName): String =
     (name.name as? ASN1String)?.string ?: name.name.toString()
 
+/** The SHA-1 and SHA-256 fingerprints of the certificate encoded as [der], for the "Fingerprints" section. */
 private fun fingerprintFields(der: ByteArray): List<CertificateField> = listOf(
     CertificateField("SHA-1", digestHexColon(der, "SHA-1")),
-    CertificateField("SHA-256", digestHexColon(der, "SHA-256")),
+    CertificateField("SHA-256", sha256FingerprintOf(der)),
 )
+
+/**
+ * The SHA-256 fingerprint of the certificate whose DER encoding is [der]: the digest of the whole
+ * encoding, as colon-separated pairs of uppercase hex digits, the form
+ * `openssl x509 -fingerprint -sha256` prints. The full-certificate view shows it among the
+ * fingerprints, and a validated signature's summary shows it for the signing certificate.
+ */
+internal fun sha256FingerprintOf(der: ByteArray): String = digestHexColon(der, "SHA-256")
 
 private fun digestHexColon(data: ByteArray, algorithm: String): String =
     MessageDigest.getInstance(algorithm).digest(data).toHexColon()
