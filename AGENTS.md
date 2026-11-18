@@ -163,6 +163,8 @@ CLI command tests use the Kotest `KoinExtension` with `KoinLifecycleMode.Test` t
 
 composeApp ViewModel tests use `StandardTestDispatcher` + `runTest` with `Dispatchers.setMain`/`resetMain`, injecting mocked use cases directly (no Koin). See `composeApp/src/jvmTest/.../ui/viewmodel/SigningViewModelTest.kt` for the pattern.
 
+Composable behavior is tested with Compose's `ui-test` library, calling `androidx.compose.ui.test.v2.runComposeUiTest` inside a Kotest test (the older `androidx.compose.ui.test.runComposeUiTest` is deprecated). Look strings up with `getString`, because Compose Resources follows the JVM's default locale. Use `performMouseInput` for gestures that differ with a mouse, such as text selection, which `performClick`'s touch tap never starts. See `composeApp/src/jvmTest/.../ui/layout/WarningRowTest.kt`.
+
 ## Coding Conventions
 
 - Every class, interface, and function **must** have a KDoc comment.

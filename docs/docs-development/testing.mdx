@@ -152,6 +152,45 @@ The same `testDispatcher` is also passed in as the ViewModel's `ioDispatcher`, s
 it launches is driven by the test's scheduler rather than a real thread pool. See
 `composeApp/src/jvmTest/.../ui/viewmodel/SigningViewModelTest.kt`.
 
+## Composables — Compose UI tests
+
+What a composable does on a click or a key press is tested with Compose's `ui-test` library, in
+`composeApp/src/jvmTest` next to the ViewModel specs. Its `runComposeUiTest` runs inside a Kotest
+test like any other call: it sets the content, then finds nodes and sends input to them. How a
+composable looks is checked by the [screenshot tests](#screenshot-tests-with-roborazzi), which run
+on the same library.
+
+```kotlin
+class WarningRowTest : FunSpec({
+    test("a mouse press on the affected certificates dialog's title leaves it open, without a crash") {
+        val title = getString(Res.string.warningrow_affected_certificates)
+        runComposeUiTest {
+            setContent { WarningRow(warning) }
+            onNode(hasClickAction()).performClick()
+
+            onNodeWithText(title).performMouseInput { click() }
+
+            onNodeWithText(title).assertExists()
+        }
+    }
+})
+```
+
+Import `runComposeUiTest` from `androidx.compose.ui.test.v2`. That version queues the composition's
+coroutines on a `StandardTestDispatcher`, as the ViewModel specs do, and the older one in
+`androidx.compose.ui.test` is deprecated.
+
+Two more details are worth copying:
+
+- **Look text up with `getString` instead of writing it out.** Compose Resources picks the strings for
+  the JVM's default locale, so a spec that searches for the English title finds nothing on a machine
+  set to Czech.
+- **Send mouse input where the desktop behaves differently with a mouse.** `performClick` sends a touch
+  tap. Some gestures react differently to the two: text selection, for one, starts on a mouse press but
+  needs a long press by touch.
+
+See `composeApp/src/jvmTest/.../ui/layout/WarningRowTest.kt`.
+
 ## Browser repositories — a mock engine, not a mock client
 
 The `Remote*` classes are thin: they build a request, send it, and map the response. Mocking the
