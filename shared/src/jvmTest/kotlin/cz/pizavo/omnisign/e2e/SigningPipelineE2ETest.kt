@@ -37,6 +37,7 @@ import eu.europa.esig.dss.pdf.pdfbox.PdfBoxNativeObjectFactory
 import eu.europa.esig.dss.service.http.commons.TimestampDataLoader
 import eu.europa.esig.dss.service.tsp.OnlineTSPSource
 import eu.europa.esig.dss.spi.DSSUtils
+import eu.europa.esig.dss.spi.exception.DSSExternalResourceException
 import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import eu.europa.esig.dss.spi.x509.CommonTrustedCertificateSource
 import eu.europa.esig.dss.spi.x509.revocation.crl.ExternalResourcesCRLSource
@@ -91,7 +92,8 @@ import java.util.*
  *
  * An extension whose timestamp server answers with an HTTP error status is reported as a timestamp
  * failure rather than a revocation one, and an extension given no configuration blames the timestamp
- * server of the active profile.
+ * server of the active profile. A failed fetch of any other address, a CRL under the timestamp
+ * server's own address included, stays a revocation failure.
  */
 class SigningPipelineE2ETest : FunSpec({
 
@@ -602,5 +604,45 @@ class SigningPipelineE2ETest : FunSpec({
 		).shouldBeLeft().shouldBeInstanceOf<ArchivingError.TimestampFailed>()
 		error.kind shouldBe TimestampFailureKind.UNREACHABLE
 		error.message shouldContain unreachableTsaUrl
+	}
+
+	/**
+	 * An archiving repository wired like the spec's own, except that every timestamp request fails with
+	 * [failure], standing in for a fetch DSS could not complete while it extended the document.
+	 */
+	fun repositoryFailingWith(failure: DSSExternalResourceException): DssArchivingRepository {
+		val factory = mockk<DssServiceFactory>(relaxed = true)
+		every { factory.buildPdfObjectFactory() } returns PdfBoxNativeObjectFactory()
+		every { factory.buildExtendCertificateVerifier(any(), any(), any()) } answers {
+			CertificateVerifierResult(extendVerifier(arg<() -> StatusAlert>(2)()))
+		}
+		every { factory.buildLevelInspectionVerifier(any(), any()) } answers {
+			CertificateVerifierResult(trustAndRevocationVerifier())
+		}
+		every { factory.buildTspSource(any()) } returns mockk<OnlineTSPSource>(relaxed = true) {
+			every { getTimeStampResponse(any(), any()) } throws failure
+		}
+		return DssArchivingRepository(
+			configRepository, factory, DssWarningSanitizer(), TspErrorDetector(),
+			RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()),
+			mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(), DssLogCapture(),
+		)
+	}
+
+	test("an extension that fails fetching a CRL under the timestamp server's address is a revocation failure") {
+		val tsaUrl = "http://pki.example.invalid"
+		val crlUrl = "$tsaUrl/ca.crl"
+		val refused = "Not acceptable HTTP Status (HTTP status code : 401 / reason : Unauthorized)"
+		val error = repositoryFailingWith(
+			DSSExternalResourceException("Unable to process GET call for url [$crlUrl]. Reason : [$refused]"),
+		).extendDocument(
+			ArchivingParameters(
+				inputBytes = signBaselineT(),
+				inputName = "input.pdf",
+				targetLevel = SignatureLevel.PADES_BASELINE_LTA,
+				resolvedConfig = resolvedConfig(GlobalConfig(timestampServer = TimestampServerConfig(url = tsaUrl))),
+			)
+		).shouldBeLeft().shouldBeInstanceOf<ArchivingError.RevocationInfoError>()
+		error.details.shouldNotBeNull() shouldContain crlUrl
 	}
 })

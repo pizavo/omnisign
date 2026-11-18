@@ -83,11 +83,12 @@ class TspErrorDetector {
 	 *
 	 * Either of two things in the cause chain attributes the failure to the timestamp request.
 	 *
-	 * - A message names [tsaUrl]. DSS's `CommonsDataLoader` reports every request it could not
-	 *   complete as a `DSSExternalResourceException` reading
+	 * - A message names [tsaUrl] between square brackets. DSS's `CommonsDataLoader` reports every
+	 *   request it could not complete as a `DSSExternalResourceException` reading
 	 *   `Unable to process POST call for url [...]. Reason : [...]`, an HTTP error status included,
 	 *   whose reason never reaches the protocol layer. It reports a failed OCSP or CRL fetch in the
-	 *   same shape, so the URL is what tells the two apart.
+	 *   same shape, so the URL is what tells the two apart, and only the whole of it: a CRL published
+	 *   under the timestamp server's address is not the timestamp server.
 	 * - A message carries wording only `eu.europa.esig.dss.service.tsp.OnlineTSPSource` produces,
 	 *   such as the `An error occurred during timestamp request` it wraps an I/O failure in.
 	 *
@@ -113,8 +114,8 @@ class TspErrorDetector {
 	 *
 	 * - The cause chain must contain a transport exception — a timeout, a refused or reset connection,
 	 *   an unresolvable host, or a TLS failure — which rules out a server that answered.
-	 * - The joined messages must name [tsaUrl], which rules out a revocation endpoint failing while
-	 *   the TSA is fine.
+	 * - A message must name [tsaUrl] between square brackets, which rules out a revocation endpoint
+	 *   failing while the TSA is fine, one under the TSA's own address included.
 	 *
 	 * [isTspException] does not cover this case, because it looks for TSP wording that a transport
 	 * failure never carries: the request never reached the protocol layer.
@@ -133,13 +134,15 @@ class TspErrorDetector {
 		}
 
 	/**
-	 * Whether a message in the [exception] cause chain names [tsaUrl], which is how DSS's data loader
-	 * identifies the request it could not complete. A `null` or blank [tsaUrl] names nothing.
+	 * Whether a message in the [exception] cause chain names [tsaUrl] between the square brackets
+	 * DSS's data loader puts around the address of a request it could not complete. Matching the
+	 * brackets too keeps a longer address that starts with [tsaUrl], such as a CRL the timestamp
+	 * server's host publishes, from passing for it. A `null` or blank [tsaUrl] names nothing.
 	 */
 	private fun namesTsa(exception: Throwable, tsaUrl: String?): Boolean =
 		!tsaUrl.isNullOrBlank() && generateSequence(exception) { it.cause }
 			.mapNotNull { it.message }
-			.any { it.contains(tsaUrl, ignoreCase = true) }
+			.any { it.contains("[$tsaUrl]", ignoreCase = true) }
 
 	/**
 	 * Classify how a timestamp request failed.

@@ -20,7 +20,8 @@ import java.net.UnknownHostException
  * The reachability and attribution cases reproduce the wrapper DSS actually raises:
  * `CommonsDataLoader` reports a failed HTTP call as `Unable to process POST call for url [...]. Reason : [...]`
  * with the transport exception, or the HTTP error status it would not accept, as its cause, and uses
- * the same shape for revocation fetches — which is why the URL has to be part of the verdict.
+ * the same shape for revocation fetches — which is why the URL has to be part of the verdict, and
+ * the whole URL between its brackets, since a CRL can live under the timestamp server's address.
  */
 class TspErrorDetectorTest : FunSpec({
 
@@ -239,6 +240,16 @@ class TspErrorDetectorTest : FunSpec({
 		detector.classify(ex, tsa).isServerWide shouldBe false
 	}
 
+	test("classify does not blame the TSA when a CRL under its own address is the one that timed out") {
+		val hostTsa = "http://pki.example.com"
+		val ex = RuntimeException(
+			"Unable to process GET call for url [$hostTsa/ca.crl]. Reason : [Read timed out]",
+			SocketTimeoutException("Read timed out"),
+		)
+		detector.isServerUnreachable(ex, hostTsa) shouldBe false
+		detector.classify(ex, hostTsa).isServerWide shouldBe false
+	}
+
 	test("classify cannot attribute a transport failure without a configured TSA URL") {
 		val ex = RuntimeException("Unable to process POST call", SocketTimeoutException("Connect timed out"))
 		detector.classify(ex, null).isServerWide shouldBe false
@@ -296,6 +307,20 @@ class TspErrorDetectorTest : FunSpec({
 			IOException(unauthorized),
 		)
 		detector.isTimestampRequestFailure(ex, tsa) shouldBe false
+	}
+
+	test("isTimestampRequestFailure does not take a CRL under the TSA's own address for the TSA") {
+		val hostTsa = "http://pki.example.com"
+		val crlFailure = RuntimeException(
+			"Unable to process GET call for url [$hostTsa/ca.crl]. Reason : [$unauthorized]",
+			IOException(unauthorized),
+		)
+		val tsaFailure = RuntimeException(
+			"Unable to process POST call for url [$hostTsa]. Reason : [$unauthorized]",
+			IOException(unauthorized),
+		)
+		detector.isTimestampRequestFailure(crlFailure, hostTsa) shouldBe false
+		detector.isTimestampRequestFailure(tsaFailure, hostTsa) shouldBe true
 	}
 
 	test("isTimestampRequestFailure attributes nothing to a missing or blank TSA URL") {
