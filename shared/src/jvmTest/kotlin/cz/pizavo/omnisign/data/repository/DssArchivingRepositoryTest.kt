@@ -22,9 +22,11 @@ import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
+import eu.europa.esig.dss.diagnostic.SignatureWrapper
 import eu.europa.esig.dss.diagnostic.TimestampWrapper
 import eu.europa.esig.dss.diagnostic.jaxb.*
 import eu.europa.esig.dss.enumerations.*
+import eu.europa.esig.dss.enumerations.SignatureLevel as DssSignatureLevel
 import eu.europa.esig.dss.pdf.pdfbox.PdfBoxNativeObjectFactory
 import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import io.kotest.assertions.arrow.core.shouldBeLeft
@@ -46,6 +48,7 @@ import org.apache.pdfbox.cos.COSName
 import org.apache.pdfbox.pdmodel.PDDocument
 import java.io.File
 import java.util.*
+import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
 
 /**
@@ -548,5 +551,92 @@ class DssArchivingRepositoryTest : FunSpec({
 	test("earliestRenewalAt returns null when no timestamp drives renewal") {
 		repository.earliestRenewalAt(emptyList(), cryptographicSuite) shouldBe null
 	}
-})
 
+	/**
+	 * Build a DSS [SignatureWrapper] over a hand-assembled [XmlSignature] that DSS reads at [format],
+	 * for the tests of [DssArchivingRepository.hasUsableSigningCertificateRevocation]. Its signing
+	 * certificate expires at [certificateExpiry]; a null [certificateExpiry] leaves it unresolved. No
+	 * revocation data is embedded for the certificate unless [revocationIssued] is given, which embeds
+	 * one CRL issued then. A non-null [certHashMatch] gives that CRL a certHash extension, one that
+	 * matches the certificate or not.
+	 */
+	fun signatureAt(
+		format: DssSignatureLevel?,
+		certificateExpiry: Instant? = freshCert,
+		revocationIssued: Instant? = null,
+		certHashMatch: Boolean? = null,
+	): SignatureWrapper =
+		SignatureWrapper(
+			XmlSignature().apply {
+				id = "sig"
+				signatureFormat = format
+				certificateExpiry?.let { expiry ->
+					signingCertificate = XmlSigningCertificate().apply {
+						certificate = XmlCertificate().apply {
+							id = "sig-cert"
+							notAfter = Date(expiry.toEpochMilliseconds())
+							revocationIssued?.let { issued ->
+								revocations.add(
+									XmlCertificateRevocation().apply {
+										revocation = XmlRevocation().apply {
+											id = "crl"
+											thisUpdate = Date(issued.toEpochMilliseconds())
+											certHashMatch?.let { matches ->
+												setCertHashExtensionPresent(true)
+												setCertHashExtensionMatch(matches)
+											}
+										}
+									},
+								)
+							}
+						}
+					}
+				}
+			}
+		)
+
+	test("a signing certificate with no revocation data needs none in a signature DSS reads at B-LT or higher") {
+		repository.hasUsableSigningCertificateRevocation(signatureAt(DssSignatureLevel.PAdES_BASELINE_LT))
+			.shouldBeTrue()
+		repository.hasUsableSigningCertificateRevocation(signatureAt(DssSignatureLevel.PAdES_BASELINE_LTA))
+			.shouldBeTrue()
+	}
+
+	test("no revocation data is not enough for a signing certificate in a signature below B-LT") {
+		repository.hasUsableSigningCertificateRevocation(signatureAt(DssSignatureLevel.PAdES_BASELINE_T))
+			.shouldBeFalse()
+	}
+
+	test("no revocation data is not enough in a signature outside the baseline levels, or of no level DSS names") {
+		repository.hasUsableSigningCertificateRevocation(signatureAt(DssSignatureLevel.PKCS7_LT))
+			.shouldBeFalse()
+		repository.hasUsableSigningCertificateRevocation(signatureAt(null)).shouldBeFalse()
+	}
+
+	test("a signature whose signing certificate DSS could not resolve has no usable revocation data") {
+		repository.hasUsableSigningCertificateRevocation(
+			signatureAt(DssSignatureLevel.PAdES_BASELINE_LT, certificateExpiry = null),
+		).shouldBeFalse()
+	}
+
+	test("revocation data issued while the signing certificate was valid is usable below B-LT too") {
+		repository.hasUsableSigningCertificateRevocation(
+			signatureAt(DssSignatureLevel.PAdES_BASELINE_T, revocationIssued = freshCert - 30.days),
+		).shouldBeTrue()
+	}
+
+	test("revocation data issued after the signing certificate expired is not usable, at B-LT either") {
+		repository.hasUsableSigningCertificateRevocation(
+			signatureAt(DssSignatureLevel.PAdES_BASELINE_LT, revocationIssued = freshCert + 1.days),
+		).shouldBeFalse()
+	}
+
+	test("revocation data issued after the signing certificate expired is usable when its certHash names the certificate") {
+		repository.hasUsableSigningCertificateRevocation(
+			signatureAt(DssSignatureLevel.PAdES_BASELINE_LT, revocationIssued = freshCert + 1.days, certHashMatch = true),
+		).shouldBeTrue()
+		repository.hasUsableSigningCertificateRevocation(
+			signatureAt(DssSignatureLevel.PAdES_BASELINE_LT, revocationIssued = freshCert + 1.days, certHashMatch = false),
+		).shouldBeFalse()
+	}
+})
