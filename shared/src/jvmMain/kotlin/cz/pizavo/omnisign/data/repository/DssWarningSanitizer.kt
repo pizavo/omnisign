@@ -216,7 +216,7 @@ class DssWarningSanitizer {
 				Regex("""No revocation data found"""),
 				Regex("""Revocation data is missing for one or more certificate"""),
 				Regex("""Unable to retrieve OCSP response.*?'$CERT_ID'"""),
-				Regex("""Unable to download CRL.*?'$CERT_ID'"""),
+				Regex("""Unable to retrieve CRL.*?'$CERT_ID'"""),
 			),
 			
 			WarningCategory.REVOCATION_STATUS_UNKNOWN to listOf(
