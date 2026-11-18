@@ -129,6 +129,12 @@ enum class MessageKey {
 	 */
 	SIGNING_ENCRYPTION_NOT_SUPPORTED_BY_TOKEN,
 
+	/**
+	 * The signing certificate, or a certificate above it in its chain, is revoked or suspended
+	 * (arg: the revoked certificate's common name).
+	 */
+	SIGNING_CERTIFICATE_REVOKED,
+
 	/** The input PDF is encrypted or password-protected, so it cannot be signed without its password. */
 	SIGNING_PDF_ENCRYPTED,
 

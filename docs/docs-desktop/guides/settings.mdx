@@ -98,7 +98,9 @@ Revocation List requests used during validation and B-LT/B-LTA signing.
 
 - **Validation policy** — choose between the default ETSI policy or a custom XML policy
   file. When "Custom" is selected, enter the file path to the XML policy document.
-- **Revocation checking** — enable or disable CRL/OCSP checking during validation.
+- **Revocation checking** — enable or disable CRL/OCSP checking during validation. Signing uses it
+  too: while it is on, signing refuses a certificate that has been revoked (see
+  [Signing → Sign](signing.mdx#5-sign)).
 - **EU LOTL** — toggle integration with the EU List of Trusted Lists. When enabled,
   OmniSign loads the EU LOTL at startup and uses it for certificate qualification
   and trust chain resolution.

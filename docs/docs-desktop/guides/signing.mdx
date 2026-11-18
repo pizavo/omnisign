@@ -187,6 +187,12 @@ If you chose a certificate from a PIN-protected token that was listed without a 
 prompts you for the token PIN at this point. If you chose one imported from a PKCS#12 file, it
 prompts you for the file's password again.
 
+While [revocation checking](settings.mdx#policy--trust) is on, as it is by default, OmniSign then
+asks whether the certificate, or a CA certificate above it, has been revoked. If it has been revoked
+or suspended, signing stops with an error naming the certificate, and nothing is signed: a signature
+made with it would not validate, so sign with another certificate. A status the issuer does not
+confirm, such as no revocation data at all or an OCSP answer of *unknown*, does not stop the signing.
+
 Once the signature is built — and after you have cleared any [revocation warning](#revocation-warning)
 — a native **Save As** dialog opens for you to choose where to write the signed PDF. The document is
 written only at this final step, so aborting or cancelling anywhere earlier leaves nothing on disk.

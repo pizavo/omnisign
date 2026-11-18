@@ -37,6 +37,7 @@
 	<string name="err_signing_hash_not_supported_windows">Hash algorithm %1$s is not supported by the Windows Certificate Store</string>
 	<string name="err_signing_encryption_key_mismatch">Encryption algorithm %1$s cannot sign with the selected key, whose algorithm is %2$s. Choose an encryption algorithm that suits the key, or leave it unset</string>
 	<string name="err_signing_encryption_not_supported_by_token">A key on a PKCS#11 token or in the Windows Certificate Store cannot sign with %1$s. Choose another encryption algorithm, or sign with a key from a PKCS#12 file</string>
+	<string name="err_signing_certificate_revoked">The certificate issued to %1$s has been revoked or suspended, so the document was not signed: the signature would not validate. Sign with another certificate</string>
 	<string name="err_signing_pdf_encrypted">The PDF is encrypted or password-protected and cannot be signed</string>
 	<string name="err_signing_malformed_pdf">The file is not a valid PDF or could not be parsed</string>
 	<string name="err_signing_signature_too_large">The signature did not fit the space reserved for it in the document, so nothing was written and the original file is unchanged. The signing certificate chain, together with the timestamp token at levels above B-B, exceeds that reservation, which is fixed before signing starts and cannot grow afterwards. Report this document so the reserved size can be raised</string>

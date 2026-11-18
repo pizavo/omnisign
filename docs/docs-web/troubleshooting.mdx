@@ -55,8 +55,8 @@ likelihood:
 4. **The server refused the upload.** A PDF above the server's `maxFileSize` (100 MB by default)
    comes back `413`, and too many requests from one address come back `429`. Both look like any other
    failure in the app.
-5. **The operation genuinely failed** — an unreachable timestamp authority, an expired server
-   certificate, a malformed PDF. The reason stays in the server's log; the browser shows only the
+5. **The operation genuinely failed** — an unreachable timestamp authority, an expired or revoked
+   server certificate, a malformed PDF. The reason stays in the server's log; the browser shows only the
    generic message.
 
 Open the browser's developer console: it shows the actual HTTP status, which separates a failed

@@ -37,6 +37,7 @@
 	<string name="err_signing_hash_not_supported_windows">Hašovací algoritmus %1$s není podporován úložištěm certifikátů systému Windows</string>
 	<string name="err_signing_encryption_key_mismatch">Šifrovacím algoritmem %1$s nelze podepsat vybraným klíčem, jehož algoritmus je %2$s. Zvolte šifrovací algoritmus, který se ke klíči hodí, nebo jej nenastavujte</string>
 	<string name="err_signing_encryption_not_supported_by_token">Klíčem na tokenu PKCS#11 ani klíčem v úložišti certifikátů systému Windows nelze podepsat algoritmem %1$s. Zvolte jiný šifrovací algoritmus, nebo podepište klíčem ze souboru PKCS#12</string>
+	<string name="err_signing_certificate_revoked">Certifikát vydaný pro %1$s byl zneplatněn nebo pozastaven, proto dokument nebyl podepsán: podpis by nebyl platný. Podepište jiným certifikátem</string>
 	<string name="err_signing_pdf_encrypted">PDF je zašifrované nebo chráněné heslem a nelze jej podepsat</string>
 	<string name="err_signing_malformed_pdf">Soubor není platné PDF nebo se jej nepodařilo zpracovat</string>
 	<string name="err_signing_signature_too_large">Podpis se nevešel do místa, které je pro něj v dokumentu vyhrazeno, takže se nic nezapsalo a původní soubor zůstal beze změny. Řetězec podpisových certifikátů spolu s tokenem časového razítka na úrovních nad B-B tuto rezervaci přesahuje a zvětšit ji po zahájení podpisu už nelze. Nahlaste prosím tento dokument, aby bylo možné vyhrazené místo zvětšit</string>

@@ -96,6 +96,10 @@ Click **Sign**. The document is uploaded, the server builds the signature, and t
 *Signing document…*. The signed bytes are held in memory in the tab — **nothing has been written
 anywhere yet**.
 
+While the server checks revocation, as it does by default, it refuses to sign with a certificate
+that has been revoked or suspended, and the dialog reports that signing failed. The server's log
+names the certificate.
+
 ### Revocation warning
 
 If you asked for B-LT or B-LTA and the server could not obtain full revocation data (CRL/OCSP), an

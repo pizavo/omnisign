@@ -60,6 +60,22 @@ Signing suppresses the two revocation alerts because they fire in the verifier's
 before the PAdES extension embeds CRL/OCSP data — on a signing operation that reaches B-LT or B-LTA
 they describe a gap the very next step closes.
 
+The revoked-certificate alert stays raised on signing, but it only reports: at B-LT and B-LTA the
+extension raises it for the chain of every signature in the document, and another signer's revoked
+certificate is no reason to refuse to sign beside it. A revoked *signing* certificate is refused
+earlier, by `DssSigningRepository` itself. Before the key signs, `signingChainRevocation` builds a
+`SignatureValidationContext` at the signing time for the signing certificate and its chain, on a
+complete copy of the signing verifier, and lets DSS's `SignatureValidationAlerter` find the first
+certificate whose status is not good. Only a *revoked* status, a suspension included, fails the
+signing, with `SigningError.CertificateRevoked`. No revocation data, an OCSP answer of *unknown* and a
+chain with no trust anchor sign as before, as a just-issued certificate whose OCSP responder lags
+behind is no reason to refuse. The walk stops at the first certificate that is not good, so a revoked
+CA above a certificate of unknown status goes unreported. The check runs only while `validation.checkRevocation` is on, since
+otherwise there is no revocation source to ask, and before the DSS log capture starts, so its fetch
+logs do not become signing warnings. DSS's own check, `isCheckCertificateRevocation` on the signature
+parameters, is not used: it reports through the same `alertOnRevokedCertificate`, so it could refuse
+only by making that alert throw, which would refuse a co-signer's revoked certificate too.
+
 **Extension keeps them**, because there is no next step: embedding that data *is* the operation. It
 can fail in two shapes, and only one of them is visible in the resulting level:
 

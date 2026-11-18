@@ -65,6 +65,17 @@ sealed interface SigningError : OperationError, LocalizableError {
 	) : SigningError
 
 	/**
+	 * The revocation data obtained for the signing certificate, or for a certificate above it in its
+	 * chain, shows it revoked or suspended, so the document is not signed: the signature would not
+	 * validate.
+	 */
+	data class CertificateRevoked(
+		override val text: LocalizableText,
+		override val details: String? = null,
+		override val cause: Throwable? = null,
+	) : SigningError
+
+	/**
 	 * The input is not a PDF: it carries no `%PDF-` header, so it is rejected before DSS is invoked.
 	 *
 	 * A structural pre-check (`DocumentInputErrorDetector.looksLikePdf`)
@@ -199,5 +210,12 @@ sealed interface SigningError : OperationError, LocalizableError {
 		 */
 		fun encryptionNotSupportedByToken(encryption: String, details: String? = null): InvalidParameters =
 			InvalidParameters(LocalizableText.of(MessageKey.SIGNING_ENCRYPTION_NOT_SUPPORTED_BY_TOKEN, encryption), details)
+
+		/**
+		 * The certificate issued to [certificate], a common name, is revoked or suspended: the
+		 * signing certificate, or a certificate above it in its chain.
+		 */
+		fun certificateRevoked(certificate: String, details: String? = null): CertificateRevoked =
+			CertificateRevoked(LocalizableText.of(MessageKey.SIGNING_CERTIFICATE_REVOKED, certificate), details)
 	}
 }

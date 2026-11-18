@@ -156,10 +156,16 @@ class DssServiceFactory(
 	 * `SignatureValidationAlerter.assertAllRequiredRevocationDataPresent`), so nothing else stops an
 	 * augmentation that embedded nothing.
 	 *
-	 * The three alerts that remain active detect genuinely actionable conditions:
+	 * The three alerts that remain active detect genuinely actionable conditions, and report them
+	 * to the alert [alertFactory] makes, which logs or collects them rather than abort signing:
 	 * - [CommonCertificateVerifier.setAlertOnUncoveredPOE] — proof-of-existence gaps.
 	 * - [CommonCertificateVerifier.setAlertOnInvalidTimestamp] — timestamp validation failures.
-	 * - [CommonCertificateVerifier.setAlertOnRevokedCertificate] — revoked signing certificate.
+	 * - [CommonCertificateVerifier.setAlertOnRevokedCertificate] — a revoked or suspended
+	 *   certificate in the chain of any signature in the document, which DSS checks while it
+	 *   gathers the validation data at B-LT and B-LTA. Another signer's revoked certificate is no
+	 *   reason to refuse to sign, so this alert does not stop signing with a revoked certificate:
+	 *   [DssSigningRepository] refuses that itself, before the key signs, through
+	 *   [signingChainRevocation], which runs DSS's check on a copy of this verifier.
 	 *
 	 * The expired-signing-certificate alert keeps its default (which aborts signing) unless
 	 * [cz.pizavo.omnisign.domain.model.config.ValidationConfig.allowExpiredCertificate] is set, in
