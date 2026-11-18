@@ -63,6 +63,7 @@ val jvmRepositoryModule = module {
 			crashBlacklist = get(),
 			warmupSignal = getOrNull<MutableStateFlow<Boolean>>() ?: MutableStateFlow(true),
 			discoverySignal = get(),
+			appDataPkcs11Dir = pkcs11DropDir(),
 			probeTimeout = get(),
 		)
 	}

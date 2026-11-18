@@ -8,6 +8,12 @@ Register custom PKCS#11 middleware library paths for hardware token discovery.
 Libraries registered here are merged into token discovery alongside the OS-native
 autodiscovery results and the built-in fallback candidate list.
 
+A library file (`.dll`, `.so` or `.dylib`) copied into the `pkcs11` folder of the configuration
+directory is discovered too, without registering it: `~/.config/omnisign/pkcs11` on Linux,
+`~/Library/Application Support/omnisign/pkcs11` on macOS and `%APPDATA%\omnisign\pkcs11` on
+Windows, beside the [configuration file](overview). [`diagnose pkcs11`](../commands/diagnose)
+lists the libraries it finds there.
+
 A subcommand that fails says why on stderr and exits with status 1, whether no library has the
 given name or the configuration could not be saved.
 
