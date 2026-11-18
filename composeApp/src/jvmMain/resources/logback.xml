@@ -31,6 +31,11 @@
     <logger name="eu.europa.esig.dss.tsl.sync" level="ERROR"/>
     <logger name="org.apache" level="WARN"/>
     <logger name="org.apache.pdfbox.pdfparser" level="ERROR"/>
+    <!-- HttpClient writes every request header to these two loggers at DEBUG, the
+         Authorization header with a timestamp server's HTTP Basic credentials included.
+         Their own INFO level keeps them quiet when extended logging lowers org.apache. -->
+    <logger name="org.apache.hc.client5.http.headers" level="INFO"/>
+    <logger name="org.apache.hc.client5.http.wire" level="INFO"/>
     <!-- veraPDF, which DSS runs to check PDF/A conformance, logs through java.util.logging,
          which the jul-to-slf4j bridge routes here. Like PDFBox's parser, it warns about
          every structural fault it tolerates. -->

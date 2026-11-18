@@ -37,7 +37,11 @@ private const val KEY_EXTENDED = "extended"
  * keep it at its baseline. The `eu.europa.esig.dss.tsl.*` loggers keep their own
  * explicit ERROR level and are intentionally never touched here, so the
  * trusted-list firehose stays suppressed even with extended logging enabled.
- * `internal` for unit testing.
+ * HttpClient's `org.apache.hc.client5.http.headers` and
+ * `org.apache.hc.client5.http.wire` loggers keep their explicit INFO level the
+ * same way: at DEBUG they write every request header, a timestamp server's
+ * `Authorization: Basic` credentials included, into the log that **Export logs**
+ * packages. `internal` for unit testing.
  */
 internal val LIBRARY_BASELINE: Map<String, Level> = mapOf(
     "eu.europa.esig" to Level.ERROR,
@@ -123,11 +127,17 @@ internal fun libraryLoggerLevel(debug: Boolean, extended: Boolean, baseline: Lev
     if (debug && extended) Level.DEBUG else baseline
 
 /**
- * Applies the resolved levels to the running Logback context using
- * [appLoggerLevel] and [libraryLoggerLevel].
+ * Applies the resolved levels to [context], the running Logback context unless
+ * given, using [appLoggerLevel] and [libraryLoggerLevel]. Any other logger
+ * `logback.xml` gives a level of its own keeps that level. `internal` for unit
+ * testing.
  */
-private fun applyLevels(debug: Boolean, extended: Boolean) {
-    val context = LoggerFactory.getILoggerFactory() as? LoggerContext ?: return
+internal fun applyLevels(
+    debug: Boolean,
+    extended: Boolean,
+    context: LoggerContext? = LoggerFactory.getILoggerFactory() as? LoggerContext,
+) {
+    if (context == null) return
     context.getLogger(APP_LOGGER).level = appLoggerLevel(debug)
     for ((name, baseline) in LIBRARY_BASELINE) {
         context.getLogger(name).level = libraryLoggerLevel(debug, extended, baseline)

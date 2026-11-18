@@ -104,6 +104,9 @@ Every subcommand inherits these flags from the root `omnisign` command:
 | `--log-file <path>` | Also write this run's log to a file (appended, in addition to stderr) |
 | `-v, --version`     | Print the application version and exit                              |
 
+Even with `--debug-extended`, the request headers and raw traffic of the HTTP client stay out of the
+log, because they can carry the HTTP Basic credentials of a timestamp server.
+
 Every option can also be set through an environment variable — `OMNISIGN_JSON` for `--json`, for
 example. [Environment variables](configuration/config-overrides#environment-variables) explains how
 the names are formed. Explicit command-line flags always take precedence.

@@ -1,6 +1,8 @@
 package cz.pizavo.omnisign.cli
 
 import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.LoggerContext
 
 /**
  * Third-party library loggers lowered to DEBUG when `--debug-extended` is set.
@@ -10,7 +12,10 @@ import ch.qos.logback.classic.Level
  * quiet. The `eu.europa.esig.dss.tsl.*` loggers pinned to ERROR in
  * `logback.xml` are left out, so they retain that explicit level even when
  * their `eu.europa.esig` parent is lowered, and the TSL firehose stays
- * suppressed.
+ * suppressed. HttpClient's `org.apache.hc.client5.http.headers` and
+ * `org.apache.hc.client5.http.wire` loggers, pinned to INFO there, are left out
+ * too: at DEBUG they write every request header, a timestamp server's
+ * `Authorization: Basic` credentials included, to stderr and to `--log-file`.
  */
 internal val CliExtendedLoggers: List<String> = listOf("eu.europa.esig", "org.apache", "org.apache.pdfbox.pdfparser")
 
@@ -40,3 +45,18 @@ internal fun rootLogLevel(verbose: Boolean, debug: Boolean, extended: Boolean): 
  * set: [Level.DEBUG] when on, `null` (leave the logger as configured) when off.
  */
 internal fun extendedLibraryLevel(extended: Boolean): Level? = if (extended) Level.DEBUG else null
+
+/**
+ * Applies the verbosity flags to [context]: the root level [rootLogLevel]
+ * resolves and, with [extended], the [extendedLibraryLevel] on each of
+ * [CliExtendedLoggers]. Any other logger `logback.xml` gives a level of its own
+ * keeps that level.
+ */
+internal fun applyLogLevels(context: LoggerContext, verbose: Boolean, debug: Boolean, extended: Boolean) {
+    rootLogLevel(verbose = verbose, debug = debug, extended = extended)?.let { target ->
+        context.getLogger(Logger.ROOT_LOGGER_NAME).level = target
+    }
+    extendedLibraryLevel(extended = extended)?.let { target ->
+        for (name in CliExtendedLoggers) context.getLogger(name).level = target
+    }
+}
