@@ -9,15 +9,25 @@ import cz.pizavo.omnisign.domain.model.config.service.CrlConfig
 import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
 import cz.pizavo.omnisign.domain.model.error.ValidationError
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
 import cz.pizavo.omnisign.domain.model.validation.ValidationResult
 import eu.europa.esig.dss.enumerations.Indication
+import eu.europa.esig.dss.enumerations.SignatureLevel as DssSignatureLevel
+import eu.europa.esig.dss.i18n.MessageTag
+import eu.europa.esig.dss.model.InMemoryDocument
+import eu.europa.esig.dss.pades.PAdESSignatureParameters
+import eu.europa.esig.dss.pades.signature.PAdESService
+import eu.europa.esig.dss.pdf.pdfbox.PdfBoxNativeObjectFactory
+import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import eu.europa.esig.dss.spi.x509.KeyStoreCertificateSource
+import eu.europa.esig.dss.token.Pkcs12SignatureToken
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.comparables.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
@@ -25,10 +35,14 @@ import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
+import io.mockk.every
 import io.mockk.mockk
 import org.apache.pdfbox.pdmodel.PDDocument
 import org.apache.pdfbox.pdmodel.PDPage
 import java.io.File
+import java.security.KeyStore
+import java.util.Locale
+import java.util.Properties
 
 /**
  * Verifies the critical invariants of [DssServiceFactory] and [DssValidationRepository]
@@ -42,7 +56,8 @@ import java.io.File
  *    strictly positive so DSS can reuse cached responses between validation calls.
  *
  * It also checks the result for a document that cannot be validated and for one without
- * signatures.
+ * signatures, and that a signed document's report reads in the language it is asked for, or in
+ * English for a language without a translation, even on a machine whose default locale is Czech.
  */
 class DssValidationRepositoryTest : FunSpec({
 
@@ -175,6 +190,86 @@ class DssValidationRepositoryTest : FunSpec({
 				resolvedConfig = config,
 			)
 		).shouldBeRight().overallResult shouldBe ValidationResult.NO_SIGNATURES
+	}
+
+	// ── Report language ──────────────────────────────────────────────────────
+
+	fun signedPdf(): ByteArray {
+		val p12 = DssValidationRepositoryTest::class.java.getResourceAsStream("/e2e/signer.test.p12")?.readBytes()
+			?: error("Missing test fixture /e2e/signer.test.p12")
+		return Pkcs12SignatureToken(p12, KeyStore.PasswordProtection("test1234".toCharArray())).use { token ->
+			val key = token.keys.first()
+			val parameters = PAdESSignatureParameters().apply {
+				signatureLevel = DssSignatureLevel.PAdES_BASELINE_B
+				signingCertificate = key.certificate
+				certificateChain = key.certificateChain.toList()
+			}
+			val service = PAdESService(CommonCertificateVerifier(true)).apply {
+				setPdfObjFactory(PdfBoxNativeObjectFactory())
+			}
+			val document = InMemoryDocument(unsignedPdf("to-sign.pdf").readBytes())
+			val signature = token.sign(service.getDataToSign(document, parameters), parameters.digestAlgorithm, key)
+			service.signDocument(document, parameters, signature).openStream().use { it.readBytes() }
+		}
+	}
+
+	fun dssMessage(resource: String, key: String): String = Properties().apply {
+		val stream = DssValidationRepositoryTest::class.java.getResourceAsStream(resource)
+			?: error("resource not found on the classpath: $resource")
+		stream.reader(Charsets.UTF_8).use { load(it) }
+	}.getProperty(key)
+
+	/**
+	 * A verifier with no trust anchors and no online sources, whose alerts are silenced as
+	 * [DssServiceFactory.buildValidationCertificateVerifier] silences them when revocation is not
+	 * checked, so that the report, rather than an exception, tells of the untrusted chain.
+	 */
+	fun offlineVerifier(): CommonCertificateVerifier = CommonCertificateVerifier(true).apply {
+		alertOnMissingRevocationData = null
+		alertOnInvalidTimestamp = null
+		alertOnRevokedCertificate = null
+		alertOnExpiredCertificate = null
+		alertOnNotYetValidCertificate = null
+		alertOnUncoveredPOE = null
+		alertOnNoRevocationAfterBestSignatureTime = null
+	}
+
+	val offlineRepository = DssValidationRepository(
+		mockk<DssServiceFactory>(relaxed = true).also { factory ->
+			every { factory.buildPdfObjectFactory() } returns PdfBoxNativeObjectFactory()
+			every { factory.buildValidationCertificateVerifier(any(), any(), any()) } answers {
+				CertificateVerifierResult(offlineVerifier())
+			}
+		},
+		FileTrustStore(tempdir().toPath()),
+		DssWarningSanitizer(),
+	)
+
+	test("on a Czech machine a report asked for in English or German reads in English, and one asked for in Czech in Czech") {
+		val signed = signedPdf()
+		val untrustedChain = MessageTag.BBB_XCV_CCCBB_SIG_ANS.id
+		val english = LocalizableText.Literal(dssMessage("/dss-messages.properties", untrustedChain))
+		val czech = LocalizableText.Literal(dssMessage("/dss-messages_cs.properties", untrustedChain))
+
+		suspend fun errorsIn(language: String?): List<LocalizableText> =
+			offlineRepository.validateDocument(
+				ValidationParameters(inputBytes = signed, inputName = "signed.pdf", language = language)
+			).shouldBeRight().signatures.single().errors
+
+		val default = Locale.getDefault()
+		val display = Locale.getDefault(Locale.Category.DISPLAY)
+		val format = Locale.getDefault(Locale.Category.FORMAT)
+		Locale.setDefault(Locale.forLanguageTag("cs-CZ"))
+		try {
+			errorsIn("en") shouldContain english
+			errorsIn("de") shouldContain english
+			errorsIn("cs") shouldContain czech
+			errorsIn(null) shouldContain czech
+		} finally {
+			Locale.setDefault(default)
+			Locale.setDefault(Locale.Category.DISPLAY, display)
+			Locale.setDefault(Locale.Category.FORMAT, format)
+		}
 	}
 
 	// ── DSS Indication mapping ──────────────────────────────────────────────
