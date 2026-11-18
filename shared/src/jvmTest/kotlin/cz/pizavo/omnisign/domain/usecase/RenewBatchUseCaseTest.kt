@@ -802,6 +802,105 @@ class RenewBatchUseCaseTest : FunSpec({
         jobResult.notify shouldBe true
     }
 
+    test("a job whose profile does not exist is a configuration error and none of its documents is touched") {
+        val dir = subDir("missing-profile")
+        val original = "original".toByteArray()
+        val file = File(dir, "doc.pdf").also { it.writeBytes(original) }
+        coEvery { archivingRepository.needsArchivalRenewal(any(), any(), any()) } returns
+            RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { runRecordStore.load() } returns null
+        val saved = slot<RenewalRunRecord>()
+        coEvery { runRecordStore.save(capture(saved)) } returns Unit
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), profile = "qualified")
+        val result = useCaseWith(
+            baseConfig.copy(
+                profiles = mapOf("desk" to ProfileConfig(name = "desk")),
+                renewalJobs = mapOf("j" to job),
+            )
+        )().shouldNotBeNull()
+
+        result.errors shouldBe 1
+        val row = result.jobs.single().files.single()
+        row.status shouldBe RenewFileStatus.Status.CONFIG_ERROR
+        row.message shouldContain "qualified"
+        file.readBytes() shouldBe original
+        coVerify(exactly = 0) { archivingRepository.needsArchivalRenewal(any(), any(), any()) }
+        coVerify(exactly = 0) { archivingRepository.extendDocument(any()) }
+        saved.captured.outcome shouldBe RenewalRunOutcome.COMPLETED_WITH_ERRORS
+        saved.captured.lastSuccessAt.shouldBeNull()
+    }
+
+    test("a job without a profile is a configuration error while the active profile does not exist") {
+        val dir = subDir("missing-active-profile")
+        File(dir, "doc.pdf").createNewFile()
+        coEvery { archivingRepository.needsArchivalRenewal(any(), any(), any()) } returns
+            RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val result = useCaseWith(
+            baseConfig.copy(activeProfile = "removed", renewalJobs = mapOf("j" to job))
+        )().shouldNotBeNull()
+
+        result.errors shouldBe 1
+        val row = result.jobs.single().files.single()
+        row.status shouldBe RenewFileStatus.Status.CONFIG_ERROR
+        row.message shouldContain "removed"
+        coVerify(exactly = 0) { archivingRepository.extendDocument(any()) }
+    }
+
+    test("a job whose profile does not exist is a configuration error, not renewed under the active profile") {
+        val dir = subDir("missing-profile-beside-active")
+        File(dir, "doc.pdf").createNewFile()
+        coEvery { archivingRepository.needsArchivalRenewal(any(), any(), any()) } returns
+            RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), profile = "qualified")
+        val result = useCaseWith(
+            baseConfig.copy(
+                profiles = mapOf("desk" to ProfileConfig(name = "desk")),
+                activeProfile = "desk",
+                renewalJobs = mapOf("j" to job),
+            )
+        )().shouldNotBeNull()
+
+        result.errors shouldBe 1
+        val row = result.jobs.single().files.single()
+        row.status shouldBe RenewFileStatus.Status.CONFIG_ERROR
+        row.message shouldContain "qualified"
+        coVerify(exactly = 0) { archivingRepository.needsArchivalRenewal(any(), any(), any()) }
+        coVerify(exactly = 0) { archivingRepository.extendDocument(any()) }
+    }
+
+    test("a job with a profile of its own renews under it while the active profile does not exist") {
+        val dir = subDir("own-profile-beside-missing-active")
+        val file = File(dir, "doc.pdf").apply { writeText("ORIGINAL") }
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
+            RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.extendDocument(any()) } returns ArchivingResult(
+            outputBytes = "RENEWED".toByteArray(),
+            outputName = file.name,
+            newSignatureLevel = SignatureLevel.PADES_BASELINE_LTA.name,
+            achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
+        ).right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)), profile = "archive")
+        val result = useCaseWith(
+            baseConfig.copy(
+                profiles = mapOf("archive" to ProfileConfig(name = "archive")),
+                activeProfile = "removed",
+                renewalJobs = mapOf("j" to job),
+            )
+        )().shouldNotBeNull()
+
+        result.errors shouldBe 0
+        result.renewed shouldBe 1
+        file.readText() shouldBe "RENEWED"
+        coVerify(exactly = 1) {
+            archivingRepository.needsArchivalRenewal(file.absolutePath, any(), match { it.profileName == "archive" })
+        }
+    }
+
     test("preserves notify flag from job in result") {
         val sub1 = File(tmpDir, "notify-loud").also { it.mkdirs() }
         val sub2 = File(tmpDir, "notify-quiet").also { it.mkdirs() }

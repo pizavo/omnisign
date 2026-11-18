@@ -1424,15 +1424,21 @@ class RenewBatchUseCase(
     private class RenewedOutput(val bytes: ByteArray, val assessment: RenewalAssessment)
 
     /**
-     * Build a [ResolvedConfig] for a renewal job, honoring the job's optional
-     * profile override.
+     * Build a [ResolvedConfig] for a renewal job, under the job's own profile or, when it names
+     * none, the active one.
+     *
+     * A profile that does not exist, named by the job or active, is a configuration error rather
+     * than no profile: resolving without it would renew the job's documents under the global
+     * timestamp server and trust settings, which the job was never set up to use.
      */
     private fun resolveJobConfig(
         appConfig: AppConfig,
         job: RenewalJob,
     ): Either<ConfigurationError.InvalidConfiguration, ResolvedConfig> {
         val profileName = job.profile ?: appConfig.activeProfile
-        val profileConfig = profileName?.let { appConfig.profiles[it] }
+        val profileConfig = profileName?.let { name ->
+            appConfig.profiles[name] ?: return ConfigurationError.profileNotFound(name).left()
+        }
         return ResolvedConfig.resolve(
             global = appConfig.global,
             profile = profileConfig,

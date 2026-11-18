@@ -15,7 +15,9 @@ import kotlinx.serialization.Serializable
  * @property renewalBufferDays Days before the timestamp certificate expiry at which
  *   re-timestamping is triggered. Defaults to [ArchivingRepository.DEFAULT_RENEWAL_BUFFER_DAYS].
  * @property profile Named profile for TSA / revocation settings. Falls back to the active
- *   profile when null.
+ *   profile when null. A run reports a job whose profile, named here or active, does not exist as a
+ *   configuration error and renews none of its documents, rather than renewing them under the global
+ *   settings.
  * @property logFile Absolute path to an append-only log file for renewal output. No log
  *   is written when null.
  * @property notify When true (the default), the OS notification centre alerts the user about
