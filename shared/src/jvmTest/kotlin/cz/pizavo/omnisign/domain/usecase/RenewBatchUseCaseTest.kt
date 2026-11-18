@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.domain.usecase
 
 import arrow.core.left
 import arrow.core.right
+import cz.pizavo.omnisign.data.denyReading
 import cz.pizavo.omnisign.data.service.FileRenewalRunRecordStore
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
@@ -938,17 +939,93 @@ class RenewBatchUseCaseTest : FunSpec({
 
         val uc = useCaseWith(baseConfig)
         val glob = sub.absolutePath.replace('\\', '/') + "/*.pdf"
-        val files = uc.resolveGlobs(listOf(glob)).shouldBeRight()
+        val files = uc.resolveGlobs(listOf(glob)).shouldBeRight().files
 
         files shouldHaveSize 2
         files.all { it.extension == "pdf" } shouldBe true
     }
 
-    test("resolveGlobs handles non-existent root gracefully") {
+    test("resolveGlobs reports a folder that does not exist instead of matching nothing") {
         val uc = useCaseWith(baseConfig)
-        val nonExistent = File(tmpDir, "nonexistent").absolutePath.replace('\\', '/') + "/*.pdf"
-        val files = uc.resolveGlobs(listOf(nonExistent)).shouldBeRight()
-        files shouldHaveSize 0
+        val missing = File(tmpDir, "nonexistent")
+        val glob = missing.absolutePath.replace('\\', '/') + "/*.pdf"
+        val log = File(tmpDir, "nonexistent-folder.log")
+        val resolved = uc.resolveGlobs(listOf(glob), log.absolutePath).shouldBeRight()
+
+        resolved.files.shouldBeEmpty()
+        val row = resolved.unreachable.single()
+        row.path shouldBe missing.absolutePath
+        row.status shouldBe RenewFileStatus.Status.ERROR
+        row.message shouldBe "the folder does not exist or cannot be reached, so renewal glob '$glob' checked none of its documents"
+        log.readText() shouldContain "[ERROR] ${missing.absolutePath} — ${row.message}\n"
+    }
+
+    test("resolveGlobs reports a listed file that no longer exists") {
+        val uc = useCaseWith(baseConfig)
+        val gone = File(subDir("literal-gone"), "contract.pdf")
+        val resolved = uc.resolveGlobs(listOf(gone.absolutePath)).shouldBeRight()
+
+        resolved.files.shouldBeEmpty()
+        val row = resolved.unreachable.single()
+        row.path shouldBe gone.absolutePath
+        row.status shouldBe RenewFileStatus.Status.ERROR
+        row.message shouldBe "the file does not exist or cannot be reached, so it was not checked"
+    }
+
+    test("resolveGlobs takes a listed file that exists, once however often it is listed") {
+        val uc = useCaseWith(baseConfig)
+        val file = File(subDir("literal-present"), "contract.pdf").also { it.createNewFile() }
+
+        val once = uc.resolveGlobs(listOf(file.absolutePath)).shouldBeRight()
+        once.files shouldContainExactly listOf(file.absoluteFile)
+        once.unreachable.shouldBeEmpty()
+        uc.resolveGlobs(listOf(file.absolutePath, file.absolutePath)).shouldBeRight().files shouldContainExactly
+            listOf(file.absoluteFile)
+    }
+
+    test("resolveGlobs reports a folder this user may not read").config(
+        enabledIf = { System.getProperty("user.name") != "root" },
+    ) {
+        val dir = subDir("unreadable-root")
+        File(dir, "doc.pdf").createNewFile()
+        val glob = globDir(dir)
+        val uc = useCaseWith(baseConfig)
+        val restore = denyReading(dir.toPath())
+
+        val resolved = try {
+            uc.resolveGlobs(listOf(glob)).shouldBeRight()
+        } finally {
+            restore()
+        }
+
+        resolved.files.shouldBeEmpty()
+        val row = resolved.unreachable.single()
+        row.path shouldBe dir.absolutePath
+        row.status shouldBe RenewFileStatus.Status.ERROR
+        row.message shouldBe "the folder cannot be read (AccessDeniedException), so renewal glob '$glob' checked none of its documents"
+    }
+
+    test("resolveGlobs skips a folder below its root this user may not read and takes the rest").config(
+        enabledIf = { System.getProperty("user.name") != "root" },
+    ) {
+        val dir = subDir("unreadable-below")
+        val readable = File(dir, "doc.pdf").also { it.createNewFile() }
+        val locked = File(dir, "locked").also { it.mkdirs() }
+        File(locked, "hidden.pdf").createNewFile()
+        val glob = dir.absolutePath.replace('\\', '/') + "/**/*.pdf"
+        val log = File(tmpDir, "unreadable-below.log")
+        val uc = useCaseWith(baseConfig)
+        val restore = denyReading(locked.toPath())
+
+        val resolved = try {
+            uc.resolveGlobs(listOf(glob), log.absolutePath).shouldBeRight()
+        } finally {
+            restore()
+        }
+
+        resolved.files shouldContainExactly listOf(readable)
+        resolved.unreachable.shouldBeEmpty()
+        log.readText() shouldContain "[WARN] skipped unreadable path: ${locked.absolutePath}"
     }
 
     test("resolveGlobs matches files in nested subdirectories") {
@@ -961,7 +1038,7 @@ class RenewBatchUseCaseTest : FunSpec({
 
         val uc = useCaseWith(baseConfig)
         val glob = root.absolutePath.replace('\\', '/') + "/**/*.pdf"
-        val files = uc.resolveGlobs(listOf(glob)).shouldBeRight()
+        val files = uc.resolveGlobs(listOf(glob)).shouldBeRight().files
 
         files.map { it.name }.sorted() shouldContainExactly listOf("deep.pdf", "mid.pdf")
     }
@@ -975,7 +1052,7 @@ class RenewBatchUseCaseTest : FunSpec({
 
         val uc = useCaseWith(baseConfig)
         val glob = root.absolutePath + "\\**\\*.pdf"
-        val files = uc.resolveGlobs(listOf(glob)).shouldBeRight()
+        val files = uc.resolveGlobs(listOf(glob)).shouldBeRight().files
 
         files.map { it.name }.sorted() shouldContainExactly listOf("deep.pdf", "mid.pdf", "top.pdf")
     }
@@ -992,7 +1069,7 @@ class RenewBatchUseCaseTest : FunSpec({
 
         val uc = useCaseWith(baseConfig)
         val glob = root.absolutePath.replace('\\', '/') + "/{a,c}/**/b/*.pdf"
-        val files = uc.resolveGlobs(listOf(glob)).shouldBeRight()
+        val files = uc.resolveGlobs(listOf(glob)).shouldBeRight().files
 
         files.map { it.name }.sorted() shouldContainExactly listOf("below.pdf", "direct.pdf", "side.pdf")
     }
@@ -1005,7 +1082,7 @@ class RenewBatchUseCaseTest : FunSpec({
 
         val uc = useCaseWith(baseConfig)
         val glob = sub.absolutePath.replace('\\', '/') + "/*"
-        val files = uc.resolveGlobs(listOf(glob)).shouldBeRight()
+        val files = uc.resolveGlobs(listOf(glob)).shouldBeRight().files
 
         files.map { it.name } shouldContainExactly listOf("a.pdf")
     }
@@ -1795,6 +1872,83 @@ class RenewBatchUseCaseTest : FunSpec({
         result.jobs.single { it.name == "healthy" }.files.single().status shouldBe RenewFileStatus.Status.RENEWED
     }
 
+    test("a job whose folder does not exist fails the run instead of reporting success over documents it never looked at") {
+        val missing = File(tmpDir, "offline-share")
+        val longAgo = Clock.System.now() - 60.days
+        coEvery { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = longAgo,
+            outcome = RenewalRunOutcome.SUCCESS,
+            lastSuccessAt = longAgo,
+        )
+        val saved = slot<RenewalRunRecord>()
+        coEvery { runRecordStore.save(capture(saved)) } returns Unit
+
+        val job = RenewalJob(name = "archive", globs = listOf(missing.absolutePath.replace('\\', '/') + "/**/*.pdf"))
+        val result = useCaseWith(baseConfig.copy(renewalJobs = mapOf("archive" to job)))().shouldNotBeNull()
+
+        result.errors shouldBe 1
+        result.success shouldBe false
+        val jobResult = result.jobs.single()
+        jobResult.errors shouldBe 1
+        val row = jobResult.files.single()
+        row.path shouldBe missing.absolutePath
+        row.status shouldBe RenewFileStatus.Status.ERROR
+        saved.captured.outcome shouldBe RenewalRunOutcome.COMPLETED_WITH_ERRORS
+        saved.captured.lastSuccessAt shouldBe longAgo
+        saved.captured.failuresSinceSuccess shouldBe 1
+        saved.captured.errorDetails.single().path shouldBe missing.absolutePath
+        result.stalenessAlert.shouldNotBeNull().daysWithoutSuccess shouldBe 60
+    }
+
+    test("a job whose folder does not exist still renews the documents its other globs reach") {
+        val present = subDir("present-share")
+        val file = File(present, "doc.pdf").also { it.createNewFile() }
+        val missing = File(tmpDir, "renamed-share")
+        coEvery {
+            archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any())
+        } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery {
+            archivingRepository.extendDocument(match { it.inputName == file.name })
+        } returns ArchivingResult(
+            outputBytes = ByteArray(0),
+            outputName = file.name,
+            newSignatureLevel = "PAdES-BASELINE-LTA",
+            achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
+        ).right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(missing), globDir(present)), backupRetention = 0)
+        val result = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))().shouldNotBeNull()
+
+        result.renewed shouldBe 1
+        result.errors shouldBe 1
+        val jobResult = result.jobs.single()
+        jobResult.renewed shouldBe 1
+        jobResult.errors shouldBe 1
+        jobResult.files.map { it.path to it.status } shouldContainExactly listOf(
+            missing.absolutePath to RenewFileStatus.Status.ERROR,
+            file.absolutePath to RenewFileStatus.Status.RENEWED,
+        )
+    }
+
+    test("a job whose profile does not exist reports its missing folder too") {
+        val present = subDir("profile-and-folder")
+        File(present, "doc.pdf").createNewFile()
+        val missing = File(tmpDir, "profile-and-folder-gone")
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(missing), globDir(present)), profile = "qualified")
+        val result = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))().shouldNotBeNull()
+
+        result.errors shouldBe 2
+        val jobResult = result.jobs.single()
+        jobResult.errors shouldBe 2
+        jobResult.files.map { it.status } shouldContainExactly listOf(
+            RenewFileStatus.Status.CONFIG_ERROR,
+            RenewFileStatus.Status.ERROR,
+        )
+        jobResult.files.last().path shouldBe missing.absolutePath
+        coVerify(exactly = 0) { archivingRepository.extendDocument(any()) }
+    }
+
     test("a document that fails with a JVM Error is one error row, not a dead batch") {
         val dir = subDir("error-guard")
         val boom = File(dir, "boom.pdf").also { it.createNewFile() }
@@ -2181,7 +2335,7 @@ class RenewBatchUseCaseTest : FunSpec({
         val staged = inspected.single { it.contains(".verify.") }
         staged.shouldEndWith(".tmp")
         File(staged).parentFile shouldBe dir.absoluteFile
-        uc.resolveGlobs(listOf(globDir(dir))).shouldBeRight()
+        uc.resolveGlobs(listOf(globDir(dir))).shouldBeRight().files
             .map { it.absolutePath } shouldNotContain staged
     }
 })
