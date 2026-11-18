@@ -3,6 +3,8 @@ package cz.pizavo.omnisign.e2e
 import arrow.core.right
 import com.sun.net.httpserver.HttpServer
 import cz.pizavo.omnisign.data.repository.*
+import cz.pizavo.omnisign.data.service.FileRenewalLock
+import cz.pizavo.omnisign.data.service.FileRenewalRunRecordStore
 import cz.pizavo.omnisign.data.service.Pkcs11SessionCache
 import cz.pizavo.omnisign.data.service.pkcs11CertAlias
 import cz.pizavo.omnisign.data.trust.FileTrustStore
@@ -10,6 +12,7 @@ import cz.pizavo.omnisign.data.util.toKotlinInstant
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.RenewalJob
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
@@ -26,6 +29,9 @@ import cz.pizavo.omnisign.domain.model.validation.revocationOutcome
 import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.*
+import cz.pizavo.omnisign.domain.usecase.CheckArchivalRenewalUseCase
+import cz.pizavo.omnisign.domain.usecase.ExtendDocumentUseCase
+import cz.pizavo.omnisign.domain.usecase.RenewBatchUseCase
 import eu.europa.esig.dss.model.InMemoryDocument
 import eu.europa.esig.dss.model.timedependent.TimeDependentValues
 import eu.europa.esig.dss.model.tsl.CertificateTrustTime
@@ -52,6 +58,7 @@ import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.ints.shouldBeGreaterThan
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.mockk.coEvery
@@ -106,6 +113,12 @@ import java.util.*
  * repositories, under anchors that pin the intermediate and nothing above it. The root exists only
  * to issue the intermediate: it is neither trusted nor shipped in the PKCS#12, exactly as a relying
  * party would meet this chain.
+ *
+ * When a profile trusts the signer's own certificate, the walk stops at the signer: DSS needs no
+ * revocation data for it and relates none to it, and the document still reads as B-LT on the TSA's
+ * CRL. Renewal must not take that absence for revocation data that has to be refreshed, which no
+ * refresh could ever supply, so such a B-LT document is sealed and such a B-LTA one is renewed when
+ * its archive timestamp ages.
  *
  * The same documents show which revocation checks validation accepts. Under the anchor DSS accepts
  * the CRL embedded at signing, and it settles that the signer was not revoked. Without the anchor DSS
@@ -270,22 +283,27 @@ class TrustAnchoredLevelE2ETest : FunSpec({
 
 	/**
 	 * Pins the issuing CA, standing in for the trusted-list entry or trust-store anchor, unless
-	 * [anchored] is false, which leaves the verifier with no trust anchor at all.
+	 * [anchored] is false, which leaves the verifier with no trust anchor at all. [signerTrusted] pins
+	 * the signer's own certificate beside it, as a profile that trusts the signer directly does.
 	 */
-	fun verifier(anchored: Boolean = true): CommonCertificateVerifier = CommonCertificateVerifier().apply {
-		if (anchored) {
-			setTrustedCertSources(
-				CommonTrustedCertificateSource().apply { addCertificate(DSSUtils.loadCertificate(interCert.encoded)) },
-			)
+	fun verifier(anchored: Boolean = true, signerTrusted: Boolean = false): CommonCertificateVerifier =
+		CommonCertificateVerifier().apply {
+			if (anchored) {
+				setTrustedCertSources(
+					CommonTrustedCertificateSource().apply {
+						addCertificate(DSSUtils.loadCertificate(interCert.encoded))
+						if (signerTrusted) addCertificate(DSSUtils.loadCertificate(signerCert.encoded))
+					},
+				)
+			}
+			crlSource = OnlineCRLSource().apply { setDataLoader(CommonsDataLoader()) }
+			isCheckRevocationForUntrustedChains = false
+			alertOnUncoveredPOE = null
+			alertOnInvalidTimestamp = null
+			alertOnRevokedCertificate = null
+			alertOnMissingRevocationData = null
+			alertOnNoRevocationAfterBestSignatureTime = null
 		}
-		crlSource = OnlineCRLSource().apply { setDataLoader(CommonsDataLoader()) }
-		isCheckRevocationForUntrustedChains = false
-		alertOnUncoveredPOE = null
-		alertOnInvalidTimestamp = null
-		alertOnRevokedCertificate = null
-		alertOnMissingRevocationData = null
-		alertOnNoRevocationAfterBestSignatureTime = null
-	}
 
 	fun embeddedRevocationCount(pdf: ByteArray): Int =
 		PDFDocumentValidator(InMemoryDocument(pdf))
@@ -469,6 +487,86 @@ class TrustAnchoredLevelE2ETest : FunSpec({
 			.reason shouldNotBe RenewalReason.BELOW_LT
 		corpScopedArchiving.needsArchivalRenewal(file.absolutePath).shouldBeRight()
 			.reason shouldBe RenewalReason.BELOW_LT
+	}
+
+	/**
+	 * A repository whose level inspection and extension pin the signer's own certificate beside the
+	 * issuing CA, standing in for a profile that trusts the signer directly. DSS then needs no
+	 * revocation data for the signer and relates none to it, although the CRL embedded for the TSA
+	 * comes from the same issuer, while the TSA's chain still needs that CRL to reach B-LT.
+	 */
+	val signerTrustingArchiving = run {
+		val factory = mockk<DssServiceFactory>(relaxed = true)
+		every { factory.buildPdfObjectFactory() } returns PdfBoxNativeObjectFactory()
+		every { factory.buildLevelInspectionVerifier(any(), any()) } answers {
+			CertificateVerifierResult(verifier(signerTrusted = true))
+		}
+		every { factory.buildExtendCertificateVerifier(any(), any(), any()) } answers {
+			CertificateVerifierResult(verifier(signerTrusted = true))
+		}
+		every { factory.buildTspSource(any()) } returns
+			OnlineTSPSource(tsa.url).apply { setDataLoader(TimestampDataLoader()) }
+		DssArchivingRepository(
+			configRepository, factory, DssWarningSanitizer(), TspErrorDetector(),
+			RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()),
+			mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(), DssLogCapture(),
+		)
+	}
+
+	test("the extension dialog finds the B-LT material of a signer trusted directly usable, though none of it is the signer's") {
+		val signed = signAt(SignatureLevel.PADES_BASELINE_LT)
+
+		val info = signerTrustingArchiving.getDocumentTimestampInfo(signed.outputBytes).shouldBeRight()
+
+		info.level shouldBe SignatureLevel.PADES_BASELINE_LT
+		info.ltMaterialUsable.shouldBeTrue()
+	}
+
+	test("renewal seals the B-LT document of a signer trusted directly instead of refreshing revocation data it needs none of") {
+		val signed = signAt(SignatureLevel.PADES_BASELINE_LT)
+		val file = File(tmp, "signer-trusted-lt.pdf").also { it.writeBytes(signed.outputBytes) }
+
+		signerTrustingArchiving.needsArchivalRenewal(file.absolutePath).shouldBeRight()
+			.reason shouldBe RenewalReason.LT_NOT_SEALED
+	}
+
+	test("a renewal run seals the B-LT document of a signer trusted directly and keeps the sealed document") {
+		val dir = File(tmp, "signer-trusted-batch").also { it.mkdirs() }
+		val file = File(dir, "signer-trusted-lt.pdf").also { it.writeBytes(signAt(SignatureLevel.PADES_BASELINE_LT).outputBytes) }
+		val job = RenewalJob(
+			name = "signer-trusted",
+			globs = listOf(dir.absolutePath.replace('\\', '/') + "/*.pdf"),
+			backupRetention = 0,
+		)
+		val batchConfig = mockk<ConfigRepository>()
+		coEvery { batchConfig.getCurrentConfig() } returns AppConfig(
+			global = GlobalConfig(timestampServer = TimestampServerConfig(url = tsa.url)),
+			renewalJobs = mapOf(job.name to job),
+		)
+		val state = tempdir()
+		val batch = RenewBatchUseCase(
+			CheckArchivalRenewalUseCase(signerTrustingArchiving),
+			ExtendDocumentUseCase(signerTrustingArchiving),
+			batchConfig,
+			FileRenewalLock(File(state, "renewal.lock").toPath()),
+			FileRenewalRunRecordStore(File(state, "renewal-run.json").toPath()),
+		)
+
+		val result = batch().shouldNotBeNull()
+
+		result.renewed shouldBe 1
+		result.errors shouldBe 0
+		result.jobs.single().files.single().reason shouldBe RenewalReason.LT_NOT_SEALED
+		signerTrustingArchiving.getDocumentTimestampInfo(file.readBytes()).shouldBeRight()
+			.level shouldBe SignatureLevel.PADES_BASELINE_LTA
+	}
+
+	test("renewal judges the B-LTA document of a signer trusted directly by its archive timestamp") {
+		val signed = signAt(SignatureLevel.PADES_BASELINE_LTA)
+		val file = File(tmp, "signer-trusted-lta.pdf").also { it.writeBytes(signed.outputBytes) }
+
+		signerTrustingArchiving.needsArchivalRenewal(file.absolutePath, renewalBufferDays = 400).shouldBeRight()
+			.reason shouldBe RenewalReason.TIMESTAMP_EXPIRING
 	}
 
 	test("validation accepts the embedded CRL under the anchor, so it settles that the signer was not revoked") {

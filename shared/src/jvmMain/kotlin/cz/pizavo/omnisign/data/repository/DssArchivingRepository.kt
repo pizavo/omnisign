@@ -356,7 +356,9 @@ class DssArchivingRepository(
 	}
 
 	/**
-	 * Whether any revocation data embedded for [signature]'s signing certificate is usable at all.
+	 * Whether [signature]'s signing certificate has the revocation data a validator needs: a usable
+	 * one among the responses embedded for it, or none at all in a signature that DSS reads at B-LT or
+	 * higher.
 	 *
 	 * Mirrors DSS's `RevocationHasInformationAboutCertificateCheck`, which is the rule that decides
 	 * acceptability: revocation data counts for a certificate when a matching `certHash` proves the
@@ -365,6 +367,12 @@ class DssArchivingRepository(
 	 * by a CRL `expiredCertsOnCRL` or an OCSP `archiveCutoff` extension when one is present — the
 	 * issuer's explicit statement that it reports on certificates that expired that long ago.
 	 *
+	 * DSS relates no revocation data to a certificate that needs none: a self-signed or trusted one,
+	 * or one carrying an extension that exempts it, such as `id-pkix-ocsp-nocheck`. It reads a
+	 * signature at B-LT only when every certificate of its chain that does need revocation data has
+	 * some, so a signing certificate with none in such a signature is exempt, and there is nothing to
+	 * refresh for it. Below B-LT, none is not enough.
+	 *
 	 * Deliberately does not consider the `expiredCertsRevocationInfo` extension a trusted list can
 	 * carry, which DSS's validation consults when neither response extension is present — and neither
 	 * does DSS's own check of a response it fetches while augmenting, which this rule stands in for
@@ -372,10 +380,14 @@ class DssArchivingRepository(
 	 * stricter than a full validation would be, which is why [assessUnusableRevocation] treats its
 	 * verdict as "refresh" rather than "hopeless".
 	 */
-	private fun hasUsableSigningCertificateRevocation(signature: SignatureWrapper): Boolean {
+	internal fun hasUsableSigningCertificateRevocation(signature: SignatureWrapper): Boolean {
 		val certificate = signature.signingCertificate ?: return false
 		val notAfter = certificate.notAfter ?: return false
-		return certificate.certificateRevocationData.orEmpty().any { revocation ->
+		val revocations = certificate.certificateRevocationData.orEmpty()
+		if (revocations.isEmpty()) {
+			return signature.signatureFormat?.toDomainOrNull()?.let { it >= SignatureLevel.PADES_BASELINE_LT } == true
+		}
+		return revocations.any { revocation ->
 			val certHashProves = revocation.isCertHashExtensionPresent && revocation.isCertHashExtensionMatch
 			certHashProves || !notAfter.before(vouchedForSince(revocation))
 		}
@@ -402,6 +414,10 @@ class DssArchivingRepository(
 	 * gap. Otherwise the data is sound and only needs anchoring ([RenewalReason.LT_NOT_SEALED])
 	 * before the earlier of its own `nextUpdate` and its issuer's expiry, after which it can no
 	 * longer be validated on its own.
+	 *
+	 * A signing certificate with no revocation data embedded for it needs none, as
+	 * [hasUsableSigningCertificateRevocation] has established before this is called, so it has nothing
+	 * to refresh.
 	 */
 	private fun assessLt(
 		filePath: String,
@@ -409,13 +425,12 @@ class DssArchivingRepository(
 	): OperationResult<RenewalAssessment> {
 		renewalCheckCache.remove(filePath)
 		val stale = signatures.any { signature ->
+			val revocations = signature.signingCertificate?.certificateRevocationData.orEmpty()
 			val bestSignatureTime = signature.signatureTimestamps
 				.mapNotNull { it.productionTime?.toKotlinInstant() }
 				.minOrNull()
-			val newest = signature.signingCertificate?.certificateRevocationData
-				?.mapNotNull { it.thisUpdate?.toKotlinInstant() }
-				?.maxOrNull()
-			bestSignatureTime != null && (newest == null || newest < bestSignatureTime)
+			val newest = revocations.mapNotNull { it.thisUpdate?.toKotlinInstant() }.maxOrNull()
+			bestSignatureTime != null && revocations.isNotEmpty() && (newest == null || newest < bestSignatureTime)
 		}
 		return if (stale) {
 			RenewalAssessment.needed(RenewalReason.LT_REFRESH_NEEDED, revocationHorizon(signatures)).right()
@@ -427,7 +442,8 @@ class DssArchivingRepository(
 	/**
 	 * The instant after which the embedded revocation data of [signatures] can no longer be
 	 * validated on its own: the earliest of each response's `nextUpdate` and the expiry of the
-	 * certificate that signed it. `null` when neither could be read.
+	 * certificate that signed it. `null` when neither could be read, or when no signing certificate
+	 * has revocation data embedded for it because none needs any.
 	 */
 	private fun revocationHorizon(signatures: List<SignatureWrapper>): Instant? =
 		signatures.flatMap { it.signingCertificate?.certificateRevocationData.orEmpty() }

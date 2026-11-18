@@ -47,6 +47,11 @@ Renewal is coverage-aware at B-LTA: a timestamp already sealed by a current docu
 not drive a renewal of its own, so a document is not re-timestamped on every run once one of its
 inner timestamps ages.
 
+A signing certificate that needs no revocation data leaves nothing to refresh: one the profile
+trusts directly, a self-signed one, or one carrying an extension such as `id-pkix-ocsp-nocheck`.
+DSS needs no revocation data for it, so a B-LT document it signed is sealed, and a B-LTA one is
+renewed when its timestamps age.
+
 ## Options
 
 | Option             | Description                                                            |
