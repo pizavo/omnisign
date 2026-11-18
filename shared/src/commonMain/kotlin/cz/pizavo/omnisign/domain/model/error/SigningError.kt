@@ -98,6 +98,16 @@ sealed interface SigningError : OperationError, LocalizableError {
 		override val cause: Throwable? = null,
 	) : SigningError
 
+	/**
+	 * The input PDF forbids further signatures: it was certified with no changes allowed, or an
+	 * earlier signature locked it. Unlike an [EncryptedDocument], no password lifts this.
+	 */
+	data class LockedDocument(
+		override val text: LocalizableText,
+		override val details: String? = null,
+		override val cause: Throwable? = null,
+	) : SigningError
+
 	companion object {
 
 		/** Token discovery failed unexpectedly. */
@@ -174,6 +184,10 @@ sealed interface SigningError : OperationError, LocalizableError {
 		/** The input PDF is encrypted or password-protected. */
 		fun pdfEncrypted(details: String? = null, cause: Throwable? = null): EncryptedDocument =
 			EncryptedDocument(LocalizableText.of(MessageKey.SIGNING_PDF_ENCRYPTED), details, cause)
+
+		/** The input PDF's certification or an earlier signature forbids further signatures. */
+		fun pdfLocked(details: String? = null, cause: Throwable? = null): LockedDocument =
+			LockedDocument(LocalizableText.of(MessageKey.SIGNING_PDF_LOCKED), details, cause)
 
 		/** Listing certificates from the server failed. */
 		fun listCertificatesFromServerFailed(details: String? = null, cause: Throwable? = null): TokenAccessError =

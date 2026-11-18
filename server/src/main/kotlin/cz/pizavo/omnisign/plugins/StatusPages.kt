@@ -176,6 +176,7 @@ private suspend fun ApplicationCall.respondOperationError(error: OperationError)
 		is SigningError.CertificateRevoked -> HttpStatusCode.UnprocessableEntity to "CERTIFICATE_REVOKED"
 		is SigningError.SigningFailed -> HttpStatusCode.InternalServerError to "SIGNING_FAILED"
 		is SigningError.EncryptedDocument -> HttpStatusCode.UnprocessableEntity to "ENCRYPTED_DOCUMENT"
+		is SigningError.LockedDocument -> HttpStatusCode.UnprocessableEntity to "LOCKED_DOCUMENT"
 		is SigningError.MalformedDocument -> HttpStatusCode.BadRequest to "MALFORMED_DOCUMENT"
 
 		is ValidationError.InvalidDocument -> HttpStatusCode.BadRequest to "INVALID_DOCUMENT"

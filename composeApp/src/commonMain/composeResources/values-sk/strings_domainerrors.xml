@@ -39,6 +39,7 @@
 	<string name="err_signing_encryption_not_supported_by_token">Kľúčom na tokene PKCS#11 ani kľúčom v úložisku certifikátov systému Windows nemožno podpísať algoritmom %1$s. Zvoľte iný šifrovací algoritmus alebo podpíšte kľúčom zo súboru PKCS#12</string>
 	<string name="err_signing_certificate_revoked">Certifikát vydaný pre %1$s bol zrušený alebo pozastavený, preto dokument nebol podpísaný: podpis by nebol platný. Podpíšte iným certifikátom</string>
 	<string name="err_signing_pdf_encrypted">Súbor PDF je šifrovaný alebo chránený heslom a nie je možné ho podpísať</string>
+	<string name="err_signing_pdf_locked">Súbor PDF neprijíma ďalšie podpisy: bol certifikovaný bez povolených zmien alebo ho uzamkol predchádzajúci podpis</string>
 	<string name="err_signing_malformed_pdf">Súbor nie je platný PDF alebo sa ho nepodarilo analyzovať</string>
 	<string name="err_signing_signature_too_large">Podpis sa nezmestil do miesta, ktoré je preň v dokumente vyhradené, takže sa nič nezapísalo a pôvodný súbor zostal bez zmeny. Reťazec podpisových certifikátov spolu s tokenom časovej pečiatky na úrovniach nad B-B túto rezerváciu presahuje a zväčšiť ju po začatí podpisu už nie je možné. Nahláste prosím tento dokument, aby bolo možné vyhradené miesto zväčšiť</string>
 	<string name="err_validation_validation_failed">Validácia zlyhala</string>

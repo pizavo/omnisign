@@ -113,6 +113,9 @@ internal object EnglishMessages {
 					"the signature would not validate. Sign with another certificate"
 		MessageKey.SIGNING_PDF_ENCRYPTED ->
 			"The PDF is encrypted or password-protected and cannot be signed"
+		MessageKey.SIGNING_PDF_LOCKED ->
+			"The PDF does not accept further signatures: it was certified with no changes allowed, " +
+					"or an earlier signature locked it"
 		MessageKey.SIGNING_MALFORMED_PDF ->
 			"The file is not a valid PDF or could not be parsed"
 		MessageKey.SIGNING_SIGNATURE_TOO_LARGE ->

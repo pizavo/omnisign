@@ -9,7 +9,7 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import java.io.IOException
 
 /**
- * Verifies [DocumentInputErrorDetector] recognises encrypted/protected and malformed input
+ * Verifies [DocumentInputErrorDetector] recognises encrypted/protected, locked and malformed input
  * documents — directly and when wrapped in a cause chain — and leaves unrelated failures alone.
  */
 class DocumentInputErrorDetectorTest : FunSpec({
@@ -34,8 +34,30 @@ class DocumentInputErrorDetectorTest : FunSpec({
 		detector.isEncrypted(IOException("disk full")).shouldBeFalse()
 	}
 
+	test("does not flag a signature restriction as encrypted, though it is a ProtectedDocumentException") {
+		detector.isEncrypted(SignatureRestrictionException("DocMDP dictionary")).shouldBeFalse()
+		detector.isEncrypted(RuntimeException("signing failed", SignatureRestrictionException("DocMDP dictionary")))
+			.shouldBeFalse()
+	}
+
+	test("flags a signature restriction as locked, directly and wrapped in a cause chain") {
+		detector.isLocked(SignatureRestrictionException("DocMDP dictionary")).shouldBeTrue()
+		detector.isLocked(RuntimeException("signing failed", SignatureRestrictionException("Lock dictionary")))
+			.shouldBeTrue()
+	}
+
+	test("does not flag encryption or an unrelated failure as locked") {
+		detector.isLocked(ProtectedDocumentException("the document is encrypted")).shouldBeFalse()
+		detector.isLocked(InvalidPasswordException("wrong password")).shouldBeFalse()
+		detector.isLocked(IOException("disk full")).shouldBeFalse()
+	}
+
 	test("looksLikePdf accepts a document whose %PDF- header is at the start") {
 		detector.looksLikePdf("%PDF-1.7\nbody".encodeToByteArray()).shouldBeTrue()
+	}
+
+	test("looksLikePdf accepts input that is the %PDF- header alone") {
+		detector.looksLikePdf("%PDF-".encodeToByteArray()).shouldBeTrue()
 	}
 
 	test("looksLikePdf accepts a header within the first kilobyte") {
