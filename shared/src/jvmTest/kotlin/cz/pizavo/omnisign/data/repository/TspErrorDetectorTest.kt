@@ -323,6 +323,21 @@ class TspErrorDetectorTest : FunSpec({
 		detector.isTimestampRequestFailure(tsaFailure, hostTsa) shouldBe true
 	}
 
+	test("an address that only ends with the TSA's URL is not the TSA, whether it refuses or times out") {
+		val proxied = "http://proxy.example.net/fetch?url=$tsa"
+		val refused = RuntimeException(
+			"Unable to process GET call for url [$proxied]. Reason : [$unauthorized]",
+			IOException(unauthorized),
+		)
+		val timedOut = RuntimeException(
+			"Unable to process GET call for url [$proxied]. Reason : [Read timed out]",
+			SocketTimeoutException("Read timed out"),
+		)
+		detector.isTimestampRequestFailure(refused, tsa) shouldBe false
+		detector.isServerUnreachable(timedOut, tsa) shouldBe false
+		detector.classify(timedOut, tsa).isServerWide shouldBe false
+	}
+
 	test("isTimestampRequestFailure attributes nothing to a missing or blank TSA URL") {
 		val ex = RuntimeException("Unable to process POST call for url [$tsa]. Reason : [$unauthorized]")
 		detector.isTimestampRequestFailure(ex, null) shouldBe false
