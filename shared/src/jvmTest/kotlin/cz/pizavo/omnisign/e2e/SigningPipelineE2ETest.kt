@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.e2e
 import arrow.core.right
 import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.Logger
+import com.sun.net.httpserver.HttpServer
 import cz.pizavo.omnisign.data.repository.*
 import cz.pizavo.omnisign.data.service.FileRenewalCheckCache
 import cz.pizavo.omnisign.data.service.Pkcs11SessionCache
@@ -17,6 +18,8 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
+import cz.pizavo.omnisign.domain.model.error.ArchivingError
+import cz.pizavo.omnisign.domain.model.error.TimestampFailureKind
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.result.RenewalNeed
@@ -34,6 +37,7 @@ import eu.europa.esig.dss.pdf.pdfbox.PdfBoxNativeObjectFactory
 import eu.europa.esig.dss.service.http.commons.TimestampDataLoader
 import eu.europa.esig.dss.service.tsp.OnlineTSPSource
 import eu.europa.esig.dss.spi.DSSUtils
+import eu.europa.esig.dss.spi.exception.DSSExternalResourceException
 import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import eu.europa.esig.dss.spi.x509.CommonTrustedCertificateSource
 import eu.europa.esig.dss.spi.x509.revocation.crl.ExternalResourcesCRLSource
@@ -50,6 +54,7 @@ import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -60,6 +65,7 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.net.InetSocketAddress
 import java.security.KeyStore
 import java.security.PrivateKey
 import java.security.cert.X509CRL
@@ -83,6 +89,11 @@ import java.util.*
  * It also checks the log capture both repositories open around their DSS calls: a warning DSS logs
  * while it signs a PDF straight to B-LT reaches the signing result, and a signing or an extension that
  * fails at the timestamp server leaves the `eu.europa.esig` logger as it found it.
+ *
+ * An extension whose timestamp server answers with an HTTP error status is reported as a timestamp
+ * failure rather than a revocation one, and an extension given no configuration blames the timestamp
+ * server of the active profile. A failed fetch of any other address, a CRL under the timestamp
+ * server's own address included, stays a revocation failure.
  */
 class SigningPipelineE2ETest : FunSpec({
 
@@ -537,5 +548,101 @@ class SigningPipelineE2ETest : FunSpec({
 		extended.achievedLevel shouldBe SignatureLevel.PADES_BASELINE_T
 		embeddedRevocationCount(extended.outputBytes) shouldBe 0
 		extended.revocationDataMissing.shouldBeFalse()
+	}
+
+	/**
+	 * Run [block] with the URL of a loopback server that answers every request with the HTTP error
+	 * [status] and no body, standing in for a timestamp server that refuses the request.
+	 */
+	suspend fun withRefusingServer(status: Int, block: suspend (String) -> Unit) {
+		val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
+		server.createContext("/") { exchange ->
+			exchange.requestBody.readAllBytes()
+			exchange.sendResponseHeaders(status, -1)
+			exchange.close()
+		}
+		server.start()
+		try {
+			block("http://127.0.0.1:${server.address.port}/")
+		} finally {
+			server.stop(0)
+		}
+	}
+
+	test("an extension the timestamp server refuses with an HTTP error is reported as a timestamp failure") {
+		withRefusingServer(401) { refusingUrl ->
+			val error = archivingRepository.extendDocument(
+				ArchivingParameters(
+					inputBytes = signBaselineT(),
+					inputName = "input.pdf",
+					targetLevel = SignatureLevel.PADES_BASELINE_LTA,
+					resolvedConfig = resolvedConfig(GlobalConfig(timestampServer = TimestampServerConfig(url = refusingUrl))),
+				)
+			).shouldBeLeft().shouldBeInstanceOf<ArchivingError.TimestampFailed>()
+			error.message shouldContain refusingUrl
+			error.details.shouldNotBeNull() shouldContain "401"
+		}
+	}
+
+	test("an extension under the active profile blames the timestamp server the profile names") {
+		val signed = signBaselineT()
+		val profiled = mockk<ConfigRepository>()
+		coEvery { profiled.getCurrentConfig() } returns AppConfig(
+			global = GlobalConfig(timestampServer = TimestampServerConfig(url = tsa.url)),
+			profiles = mapOf(
+				"archive" to ProfileConfig(name = "archive", timestampServer = TimestampServerConfig(url = unreachableTsaUrl)),
+			),
+			activeProfile = "archive",
+		)
+
+		val error = cachingRepository(mockk<RenewalCheckCache>(relaxed = true), profiled).extendDocument(
+			ArchivingParameters(
+				inputBytes = signed,
+				inputName = "input.pdf",
+				targetLevel = SignatureLevel.PADES_BASELINE_LTA,
+			)
+		).shouldBeLeft().shouldBeInstanceOf<ArchivingError.TimestampFailed>()
+		error.kind shouldBe TimestampFailureKind.UNREACHABLE
+		error.message shouldContain unreachableTsaUrl
+	}
+
+	/**
+	 * An archiving repository wired like the spec's own, except that every timestamp request fails with
+	 * [failure], standing in for a fetch DSS could not complete while it extended the document.
+	 */
+	fun repositoryFailingWith(failure: DSSExternalResourceException): DssArchivingRepository {
+		val factory = mockk<DssServiceFactory>(relaxed = true)
+		every { factory.buildPdfObjectFactory() } returns PdfBoxNativeObjectFactory()
+		every { factory.buildExtendCertificateVerifier(any(), any(), any()) } answers {
+			CertificateVerifierResult(extendVerifier(arg<() -> StatusAlert>(2)()))
+		}
+		every { factory.buildLevelInspectionVerifier(any(), any()) } answers {
+			CertificateVerifierResult(trustAndRevocationVerifier())
+		}
+		every { factory.buildTspSource(any()) } returns mockk<OnlineTSPSource>(relaxed = true) {
+			every { getTimeStampResponse(any(), any()) } throws failure
+		}
+		return DssArchivingRepository(
+			configRepository, factory, DssWarningSanitizer(), TspErrorDetector(),
+			RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()),
+			mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(), DssLogCapture(),
+		)
+	}
+
+	test("an extension that fails fetching a CRL under the timestamp server's address is a revocation failure") {
+		val tsaUrl = "http://pki.example.invalid"
+		val crlUrl = "$tsaUrl/ca.crl"
+		val refused = "Not acceptable HTTP Status (HTTP status code : 401 / reason : Unauthorized)"
+		val error = repositoryFailingWith(
+			DSSExternalResourceException("Unable to process GET call for url [$crlUrl]. Reason : [$refused]"),
+		).extendDocument(
+			ArchivingParameters(
+				inputBytes = signBaselineT(),
+				inputName = "input.pdf",
+				targetLevel = SignatureLevel.PADES_BASELINE_LTA,
+				resolvedConfig = resolvedConfig(GlobalConfig(timestampServer = TimestampServerConfig(url = tsaUrl))),
+			)
+		).shouldBeLeft().shouldBeInstanceOf<ArchivingError.RevocationInfoError>()
+		error.details.shouldNotBeNull() shouldContain crlUrl
 	}
 })

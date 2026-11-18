@@ -7,18 +7,21 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import cz.pizavo.omnisign.domain.model.error.TimestampFailureKind
 import cz.pizavo.omnisign.domain.model.error.isServerWide
+import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
 /**
  * Unit tests for [TspErrorDetector] verifying TSP exception detection,
- * PKIFailureInfo parsing, reachability classification, and user-friendly message generation.
+ * PKIFailureInfo parsing, reachability classification, the attribution of a failed request to the
+ * timestamp server, and user-friendly message generation.
  *
- * The reachability cases reproduce the wrapper DSS actually raises: `CommonsDataLoader` reports a
- * failed HTTP call as `Unable to process POST call for url [...]. Reason : [...]` with the transport
- * exception as its cause, and uses the same shape for revocation fetches — which is why the URL has
- * to be part of the verdict.
+ * The reachability and attribution cases reproduce the wrapper DSS actually raises:
+ * `CommonsDataLoader` reports a failed HTTP call as `Unable to process POST call for url [...]. Reason : [...]`
+ * with the transport exception, or the HTTP error status it would not accept, as its cause, and uses
+ * the same shape for revocation fetches — which is why the URL has to be part of the verdict, and
+ * the whole URL between its brackets, since a CRL can live under the timestamp server's address.
  */
 class TspErrorDetectorTest : FunSpec({
 
@@ -237,6 +240,16 @@ class TspErrorDetectorTest : FunSpec({
 		detector.classify(ex, tsa).isServerWide shouldBe false
 	}
 
+	test("classify does not blame the TSA when a CRL under its own address is the one that timed out") {
+		val hostTsa = "http://pki.example.com"
+		val ex = RuntimeException(
+			"Unable to process GET call for url [$hostTsa/ca.crl]. Reason : [Read timed out]",
+			SocketTimeoutException("Read timed out"),
+		)
+		detector.isServerUnreachable(ex, hostTsa) shouldBe false
+		detector.classify(ex, hostTsa).isServerWide shouldBe false
+	}
+
 	test("classify cannot attribute a transport failure without a configured TSA URL") {
 		val ex = RuntimeException("Unable to process POST call", SocketTimeoutException("Connect timed out"))
 		detector.classify(ex, null).isServerWide shouldBe false
@@ -258,6 +271,87 @@ class TspErrorDetectorTest : FunSpec({
 		val msg = detector.buildUserMessage(ex, tsa)
 		msg shouldContain "could not be reached"
 		msg shouldContain tsa
+	}
+
+	val unauthorized = "Not acceptable HTTP Status (HTTP status code : 401 / reason : Unauthorized)"
+
+	test("isTimestampRequestFailure attributes an HTTP error status from the TSA to the timestamp request") {
+		val ex = RuntimeException(
+			"Unable to process POST call for url [$tsa]. Reason : [$unauthorized]",
+			IOException(unauthorized),
+		)
+		detector.isTspException(ex) shouldBe false
+		detector.isServerUnreachable(ex, tsa) shouldBe false
+		detector.isTimestampRequestFailure(ex, tsa) shouldBe true
+	}
+
+	test("isTimestampRequestFailure finds the TSA's URL in a cause the failure was wrapped in") {
+		val ex = RuntimeException(
+			"Extension failed",
+			RuntimeException("Unable to process POST call for url [$tsa]. Reason : [$unauthorized]", IOException(unauthorized)),
+		)
+		detector.isTimestampRequestFailure(ex, tsa) shouldBe true
+	}
+
+	test("isTimestampRequestFailure finds the TSP source's wording in a cause the failure was wrapped in") {
+		val ex = RuntimeException(
+			"Extension failed",
+			RuntimeException("An error occurred during timestamp request : unexpected end-of-contents marker"),
+		)
+		detector.isTimestampRequestFailure(ex, null) shouldBe true
+	}
+
+	test("isTimestampRequestFailure does not blame the TSA for an HTTP error status from another endpoint") {
+		val ex = RuntimeException(
+			"Unable to process POST call for url [http://ocsp.example.com]. Reason : [$unauthorized]",
+			IOException(unauthorized),
+		)
+		detector.isTimestampRequestFailure(ex, tsa) shouldBe false
+	}
+
+	test("isTimestampRequestFailure does not take a CRL under the TSA's own address for the TSA") {
+		val hostTsa = "http://pki.example.com"
+		val crlFailure = RuntimeException(
+			"Unable to process GET call for url [$hostTsa/ca.crl]. Reason : [$unauthorized]",
+			IOException(unauthorized),
+		)
+		val tsaFailure = RuntimeException(
+			"Unable to process POST call for url [$hostTsa]. Reason : [$unauthorized]",
+			IOException(unauthorized),
+		)
+		detector.isTimestampRequestFailure(crlFailure, hostTsa) shouldBe false
+		detector.isTimestampRequestFailure(tsaFailure, hostTsa) shouldBe true
+	}
+
+	test("an address that only ends with the TSA's URL is not the TSA, whether it refuses or times out") {
+		val proxied = "http://proxy.example.net/fetch?url=$tsa"
+		val refused = RuntimeException(
+			"Unable to process GET call for url [$proxied]. Reason : [$unauthorized]",
+			IOException(unauthorized),
+		)
+		val timedOut = RuntimeException(
+			"Unable to process GET call for url [$proxied]. Reason : [Read timed out]",
+			SocketTimeoutException("Read timed out"),
+		)
+		detector.isTimestampRequestFailure(refused, tsa) shouldBe false
+		detector.isServerUnreachable(timedOut, tsa) shouldBe false
+		detector.classify(timedOut, tsa).isServerWide shouldBe false
+	}
+
+	test("isTimestampRequestFailure attributes nothing to a missing or blank TSA URL") {
+		val ex = RuntimeException("Unable to process POST call for url [$tsa]. Reason : [$unauthorized]")
+		detector.isTimestampRequestFailure(ex, null) shouldBe false
+		detector.isTimestampRequestFailure(ex, "") shouldBe false
+		detector.isTimestampRequestFailure(ex, " ") shouldBe false
+	}
+
+	test("isTimestampRequestFailure recognizes the wrapper the TSP source puts around an I/O failure") {
+		val ex = RuntimeException(
+			"An error occurred during timestamp request : unexpected end-of-contents marker",
+			IOException("unexpected end-of-contents marker"),
+		)
+		detector.isTspException(ex) shouldBe false
+		detector.isTimestampRequestFailure(ex, null) shouldBe true
 	}
 })
 

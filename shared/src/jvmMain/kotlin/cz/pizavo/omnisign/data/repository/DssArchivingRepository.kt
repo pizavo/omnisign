@@ -11,7 +11,6 @@ import cz.pizavo.omnisign.domain.model.config.enums.toDomainOrNull
 import cz.pizavo.omnisign.domain.model.config.enums.toDss
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
-import cz.pizavo.omnisign.domain.model.error.isServerWide
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.*
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
@@ -92,6 +91,7 @@ class DssArchivingRepository(
 
 	@Suppress("TooGenericExceptionCaught", "ReturnCount")
 	override suspend fun extendDocument(parameters: ArchivingParameters): OperationResult<ArchivingResult> {
+		var tsaUrl: String? = null
 		return try {
 			val config = configRepository.getCurrentConfig()
 			val resolvedConfig = parameters.resolvedConfig ?: ResolvedConfig.resolve(
@@ -108,7 +108,8 @@ class DssArchivingRepository(
 			
 			val tsConfig = resolvedConfig.timestampServer
 				?: return ArchivingError.timestampServerRequired(parameters.targetLevel.name).left()
-			
+			tsaUrl = tsConfig.url
+
 			if (!documentInputErrorDetector.looksLikePdf(parameters.inputBytes)) {
 				return ArchivingError.malformedPdf(details = "input has no %PDF- header").left()
 			}
@@ -166,20 +167,12 @@ class DssArchivingRepository(
 				logSession.stop()
 			}
 		} catch (e: Exception) {
-			val tsaUrl = runCatching {
-				(parameters.resolvedConfig ?: ResolvedConfig.resolve(
-					global = configRepository.getCurrentConfig().global,
-					profile = null,
-					operationOverrides = null
-				).getOrNull())?.timestampServer?.url
-			}.getOrNull()
-			val timestampFailure = tspErrorDetector.classify(e, tsaUrl)
-			if (timestampFailure.isServerWide || tspErrorDetector.isTspException(e)) {
+			if (tspErrorDetector.isTspException(e) || tspErrorDetector.isTimestampRequestFailure(e, tsaUrl)) {
 				return ArchivingError.TimestampFailed(
 					LocalizableText.Literal(tspErrorDetector.buildUserMessage(e, tsaUrl)),
 					details = e.message,
 					cause = e,
-					kind = timestampFailure,
+					kind = tspErrorDetector.classify(e, tsaUrl),
 				).left()
 			}
 			
