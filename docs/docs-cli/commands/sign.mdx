@@ -27,11 +27,11 @@ omnisign sign -f <input> -o <output> (-c <alias> | --keystore <file>) [options]
 | `--profile <name>`          | Use a named configuration profile for this operation                |
 | `--visible`                 | Add a visible signature appearance                                  |
 | `--vis-page <n>`            | Page for the visible signature (default: `1`)                       |
-| `--vis-x <n>`               | X position in PDF user units (required with `--visible`)            |
-| `--vis-y <n>`               | Y position in PDF user units (required with `--visible`)            |
+| `--vis-x <n>`               | Distance of the box's left edge from the page's left edge, in PDF user units (required with `--visible`) |
+| `--vis-y <n>`               | Distance of the box's top edge from the page's top edge, in PDF user units (required with `--visible`) |
 | `--vis-width <n>`           | Width in PDF user units (required with `--visible`)                 |
 | `--vis-height <n>`          | Height in PDF user units (required with `--visible`)                |
-| `--vis-text <text>`         | Custom text inside the visible signature                            |
+| `--vis-text <text>`         | Text inside the visible signature (default: who signed and when, unless `--vis-image` is given) |
 | `--vis-image <path>`        | Path to an image for the visible signature                          |
 
 All [config overrides](../configuration/config-overrides) are supported.
@@ -126,10 +126,19 @@ omnisign sign -f doc.pdf -o doc-signed.pdf -c "My Qualified Certificate" --no-ti
 
 ## Visible signatures
 
-Pass `--visible` to add a visible signature rectangle. You must also provide position
-(`--vis-x`, `--vis-y`) and size (`--vis-width`, `--vis-height`) in PDF user units
-(1 unit = 1/72 inch). Optionally provide `--vis-text` for custom label text
-or `--vis-image` for a logo/image inside the signature box.
+Pass `--visible` to add a visible signature box, with its position (`--vis-x`, `--vis-y`) and size
+(`--vis-width`, `--vis-height`) in PDF user units (1 unit = 1/72 inch). `sign` fails without all
+four, and signs nothing. The position is that of the box's top-left corner, measured from the
+page's top-left corner, so `--vis-y` counts down from the top of the page, where PDF coordinates
+usually count up from the bottom: on an A4 page, which is 842 units high, `--vis-y 700` with
+`--vis-height 50` puts the box near the bottom.
+
+`--vis-text` sets the text inside the box, and `--vis-image` an image, such as a logo. Without
+either, the box says who signed and when: "Digitally signed by" and the common name of the
+signing certificate's subject, then "Date:" and the signing time, in ISO 8601 with the UTC
+offset of the computer that signs, sized to fill the box. The box's font has no Greek, Chinese,
+Arabic or Hebrew letters, so a name written in them is left out, and the box says only
+"Digitally signed".
 
 ## JSON output
 

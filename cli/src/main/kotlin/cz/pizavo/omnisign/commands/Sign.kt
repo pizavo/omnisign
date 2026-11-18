@@ -115,10 +115,16 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 		.int()
 		.default(1)
 	
-	private val visX by option("--vis-x", help = "X position of the visible signature in PDF user units")
+	private val visX by option(
+		"--vis-x",
+		help = "Distance of the visible signature's left edge from the page's left edge, in PDF user units",
+	)
 		.float()
 	
-	private val visY by option("--vis-y", help = "Y position of the visible signature in PDF user units")
+	private val visY by option(
+		"--vis-y",
+		help = "Distance of the visible signature's top edge from the page's top edge, in PDF user units",
+	)
 		.float()
 	
 	private val visWidth by option("--vis-width", help = "Width of the visible signature in PDF user units")
@@ -127,7 +133,10 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 	private val visHeight by option("--vis-height", help = "Height of the visible signature in PDF user units")
 		.float()
 	
-	private val visText by option("--vis-text", help = "Custom text displayed inside the visible signature")
+	private val visText by option(
+		"--vis-text",
+		help = "Text inside the visible signature (default without --vis-image: who signed and when)",
+	)
 	
 	private val visImage by option("--vis-image", help = "Path to an image for the visible signature")
 		.path(mustExist = true, canBeDir = false, mustBeReadable = true)
@@ -137,15 +146,12 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 	
 	override fun run(): Unit = runBlocking {
 		if (keystore == null && certificate == null) {
-			val message = "Specify the signing key: --certificate <alias> for a discovered token, " +
-					"or --keystore <file> for a PKCS#12 keystore."
-			if (output.json) {
-				echo(Json.encodeToString(JsonSigningResult(success = false, error = JsonError(message = message))))
-			} else {
-				echo("❌ $message", err = true)
-			}
-			throw ProgramResult(1)
+			failWithUsageError(
+				"Specify the signing key: --certificate <alias> for a discovered token, " +
+						"or --keystore <file> for a PKCS#12 keystore."
+			)
 		}
+		val visibleSignatureParameters = buildVisibleSignatureParameters()
 
 		val appConfig = configRepository.getCurrentConfig()
 		val activeProfile = profile ?: appConfig.activeProfile
@@ -191,7 +197,7 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 			location = location,
 			contactInfo = contact,
 			addTimestamp = !noTimestamp,
-			visibleSignature = buildVisibleSignatureParameters(),
+			visibleSignature = visibleSignatureParameters,
 			resolvedConfig = resolvedConfig
 		)
 
@@ -231,9 +237,15 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 	}
 	
 	/**
-	 * Build [VisibleSignatureParameters] when [visibleSignature] is enabled and all
-	 * required geometry options (x, y, width, height) are present.
-	 * Emits a warning and returns null when any required geometry option is missing.
+	 * Build [VisibleSignatureParameters] when [visibleSignature] is enabled, or return `null` when
+	 * it is not.
+	 *
+	 * A visible signature needs the position and the size of its box. When [visibleSignature] is
+	 * enabled without all four of [visX], [visY], [visWidth] and [visHeight], the command ends
+	 * with status 1, as [failWithUsageError] ends it, rather than sign without the visible
+	 * signature it was asked for.
+	 *
+	 * @throws ProgramResult with status 1, when a position or a size is missing.
 	 */
 	private fun buildVisibleSignatureParameters(): VisibleSignatureParameters? {
 		if (!visibleSignature) return null
@@ -244,13 +256,13 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 		val h = visHeight
 		
 		if (x == null || y == null || w == null || h == null) {
-			echo(
-				"⚠️ --visible requires --vis-x, --vis-y, --vis-width and --vis-height. " +
-						"Visible signature will be skipped.",
-				err = true
+			val missing = listOf("--vis-x" to x, "--vis-y" to y, "--vis-width" to w, "--vis-height" to h)
+				.filter { it.second == null }
+				.joinToString { it.first }
+			failWithUsageError(
+				"--visible needs the position and the size of the signature's box: " +
+						"--vis-x, --vis-y, --vis-width and --vis-height. Missing: $missing."
 			)
-			
-			return null
 		}
 		
 		return VisibleSignatureParameters(
@@ -280,6 +292,21 @@ class Sign : CliktCommand(name = "sign"), KoinComponent {
 		echo("═══════════════════════════════════════════════════════════════")
 	}
 
+	/**
+	 * End the command with status 1 because its options are incomplete, after printing [message]:
+	 * as a JSON result with `--json`, or on stderr otherwise.
+	 *
+	 * @throws ProgramResult with status 1, always.
+	 */
+	private fun failWithUsageError(message: String): Nothing {
+		if (output.json) {
+			echo(Json.encodeToString(JsonSigningResult(success = false, error = JsonError(message = message))))
+		} else {
+			echo("❌ $message", err = true)
+		}
+		throw ProgramResult(1)
+	}
+	
 	/**
 	 * Report [error], which keeps the configuration of this run from being resolved, and end the
 	 * command with exit code 1.

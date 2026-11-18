@@ -382,7 +382,18 @@ class PdfaConformanceE2ETest : FunSpec({
 			SignatureLevel.PADES_BASELINE_T,
 			VisibleSignatureParameters(page = 1, x = 50f, y = 50f, width = 220f, height = 60f, text = "OmniSign"),
 		)
-		
+
+		val result = pdfaResult(signed)
+		withClue(result.errorMessages) { result.isCompliant.shouldBeTrue() }
+	}
+
+	test("a visible signature that shows who signed and when keeps a PDF/A-3b document conformant") {
+		val signed = sign(
+			pdfA3b(),
+			SignatureLevel.PADES_BASELINE_B,
+			VisibleSignatureParameters(page = 1, x = 50f, y = 50f, width = 220f, height = 60f),
+		)
+
 		val result = pdfaResult(signed)
 		withClue(result.errorMessages) { result.isCompliant.shouldBeTrue() }
 	}
