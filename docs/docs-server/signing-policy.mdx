@@ -119,11 +119,11 @@ stored. The bytes are copied into the trust directory, so the source file may be
 A fatal reconcile condition (integrity mismatch, unresolvable reference, a trust directory whose
 index cannot be read) aborts startup.
 
-A signature counts as trusted only when its trust anchor has the type `CA` or `ANY`, a timestamp
-only when its anchor has `TSA` or `ANY`. The anchor is the first trusted certificate in the chain,
-counting from the signer, because validation stops there: when an issuing CA is trusted, the type
-of the root above it does not count. A certificate a trusted list also trusts keeps that trust,
-whatever its type.
+A signature anchored at one of these certificates counts as trusted only when the anchor has the
+type `CA` or `ANY`, and a timestamp only when its anchor has `TSA` or `ANY`. An anchor that a
+trusted list also trusts counts for both, whatever its type. The anchor is the first trusted
+certificate in the chain, counting from the signer, because validation stops there: when an
+issuing CA is trusted, the type of the root above it does not count.
 
 A profile may also declare its own `validation.trustedCertificates`; each profile gets its own trust
 scope, and a profile removed from the policy has its scope cleared at the next boot.

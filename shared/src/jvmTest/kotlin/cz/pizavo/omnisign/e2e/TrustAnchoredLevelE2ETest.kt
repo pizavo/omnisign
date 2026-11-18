@@ -27,6 +27,13 @@ import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.*
 import eu.europa.esig.dss.model.InMemoryDocument
+import eu.europa.esig.dss.model.timedependent.TimeDependentValues
+import eu.europa.esig.dss.model.tsl.CertificateTrustTime
+import eu.europa.esig.dss.model.tsl.TLInfo
+import eu.europa.esig.dss.model.tsl.TLValidationJobSummary
+import eu.europa.esig.dss.model.tsl.TrustProperties
+import eu.europa.esig.dss.model.tsl.TrustServiceProvider
+import eu.europa.esig.dss.model.tsl.TrustServiceStatusAndInformationExtensions
 import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.pdf.pdfbox.PdfBoxNativeObjectFactory
 import eu.europa.esig.dss.service.crl.OnlineCRLSource
@@ -34,6 +41,7 @@ import eu.europa.esig.dss.service.http.commons.CommonsDataLoader
 import eu.europa.esig.dss.service.http.commons.TimestampDataLoader
 import eu.europa.esig.dss.service.tsp.OnlineTSPSource
 import eu.europa.esig.dss.spi.DSSUtils
+import eu.europa.esig.dss.spi.tsl.TrustedListsCertificateSource
 import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import eu.europa.esig.dss.spi.x509.CommonTrustedCertificateSource
 import eu.europa.esig.dss.token.Pkcs12SignatureToken
@@ -107,6 +115,14 @@ import java.util.*
  * chain up to the root, past the issuing CA it trusts, so with the root in the trust store too both
  * are trusted, and only the issuing CA, where DSS ends its validation, decides whether a signature
  * or a timestamp is downgraded for the role its anchor is typed for.
+ *
+ * And they show what a trusted list's trust does to that judgement. An issuing CA a trusted list
+ * trusts keeps its trust for both roles, whatever role the store gives it or the root. A list that
+ * sets a trust-anchor validity predicate stops trusting a CA once it withdraws the CA's service,
+ * and DSS's trusted-list job records when. DSS then passes the CA over for the root above it when
+ * the store trusts that root, so the root's role decides, and a CA the store pins itself is held to
+ * the role the store gives it. OmniSign's own lists set no such predicate, so with them no trust
+ * ends.
  */
 class TrustAnchoredLevelE2ETest : FunSpec({
 
@@ -480,10 +496,14 @@ class TrustAnchoredLevelE2ETest : FunSpec({
 
 	/**
 	 * A [DssValidationRepository] whose verifier trusts the anchors [store] resolves, built as the
-	 * production factory builds them, together with [unmanaged]: certificates a source the store does
-	 * not manage trusts, as a trusted list trusts its entries.
+	 * production factory builds them, together with [unmanaged], certificates a source the store does
+	 * not manage trusts, and the trusted list [listed], when given.
 	 */
-	fun storeValidationRepository(store: FileTrustStore, vararg unmanaged: X509Certificate): DssValidationRepository {
+	fun storeValidationRepository(
+		store: FileTrustStore,
+		vararg unmanaged: X509Certificate,
+		listed: TrustedListsCertificateSource? = null,
+	): DssValidationRepository {
 		val factory = mockk<DssServiceFactory>(relaxed = true)
 		every { factory.buildPdfObjectFactory() } returns PdfBoxNativeObjectFactory()
 		every { factory.buildValidationCertificateVerifier(any(), any(), any()) } answers {
@@ -492,10 +512,43 @@ class TrustAnchoredLevelE2ETest : FunSpec({
 				CommonTrustedCertificateSource().apply {
 					unmanaged.forEach { addCertificate(DSSUtils.loadCertificate(it.encoded)) }
 				},
+				listed,
 			)
 			CertificateVerifierResult(verifier(anchored = false).apply { setTrustedCertSources(*sources.toTypedArray()) })
 		}
 		return DssValidationRepository(factory, store, DssWarningSanitizer())
+	}
+
+	/** A status of a qualified CA service, [status] from [from] until [until], or for good when `null`. */
+	fun serviceStatus(status: String, from: Date, until: Date?): TrustServiceStatusAndInformationExtensions =
+		TrustServiceStatusAndInformationExtensions.TrustServiceStatusAndInformationExtensionsBuilder()
+			.setType(QUALIFIED_CA_SERVICE)
+			.setStatus(status)
+			.setStartDate(from)
+			.setEndDate(until)
+			.build()
+
+	/**
+	 * A trusted list as DSS's trusted-list job leaves it for a list whose trust-anchor validity
+	 * predicate accepts granted services, naming [cert] as a qualified CA service granted a year ago.
+	 * When [withdrawnSince] is given, the list withdrew the service then and trusts [cert] only until
+	 * that time; otherwise it trusts [cert] for good.
+	 */
+	fun trustedList(cert: X509Certificate, withdrawnSince: Date? = null): TrustedListsCertificateSource {
+		val token = DSSUtils.loadCertificate(cert.encoded)
+		val grantedSince = Date(now - 365 * day)
+		val list = TLInfo(null, null, null, TRUSTED_LIST_URL)
+		val history = listOfNotNull(
+			withdrawnSince?.let { serviceStatus(WITHDRAWN_STATUS, it, null) },
+			serviceStatus(GRANTED_STATUS, grantedSince, withdrawnSince),
+		)
+		return TrustedListsCertificateSource().apply {
+			setTrustPropertiesByCertificates(
+				mapOf(token to listOf(TrustProperties(list, TrustServiceProvider(), TimeDependentValues(history)))),
+			)
+			setTrustTimeByCertificates(mapOf(token to listOf(CertificateTrustTime(grantedSince, withdrawnSince))))
+			summary = TLValidationJobSummary(emptyList(), listOf(list))
+		}
 	}
 
 	test("a signature anchored at a CA the store does not manage keeps its trust, whatever role the store gives the root") {
@@ -533,8 +586,66 @@ class TrustAnchoredLevelE2ETest : FunSpec({
 
 		timestamp.policyUntrusted.shouldBeTrue()
 	}
+
+	test("a signature anchored at a CA a trusted list trusts keeps its trust, whatever role the store gives the root") {
+		val signature = validatedSignature(
+			storeValidationRepository(storeWith(rootCert to TrustedCertificateType.TSA), listed = trustedList(interCert)),
+			signAt(SignatureLevel.PADES_BASELINE_T).outputBytes,
+		)
+
+		signature.policyUntrusted.shouldBeFalse()
+	}
+
+	test("a store CA trusted for timestamps only keeps its trust for signatures while a trusted list trusts it") {
+		val signature = validatedSignature(
+			storeValidationRepository(storeWith(interCert to TrustedCertificateType.TSA), listed = trustedList(interCert)),
+			signAt(SignatureLevel.PADES_BASELINE_T).outputBytes,
+		)
+
+		signature.policyUntrusted.shouldBeFalse()
+	}
+
+	test("a store CA trusted for timestamps only is held to that role once the trusted list naming it has withdrawn it") {
+		val signature = validatedSignature(
+			storeValidationRepository(
+				storeWith(interCert to TrustedCertificateType.TSA),
+				listed = trustedList(interCert, withdrawnSince = Date(now - day)),
+			),
+			signAt(SignatureLevel.PADES_BASELINE_T).outputBytes,
+		)
+
+		signature.policyUntrusted.shouldBeTrue()
+	}
+
+	test("a signature whose CA the trusted list has withdrawn is judged by the store root DSS anchors at instead") {
+		val signature = validatedSignature(
+			storeValidationRepository(
+				storeWith(rootCert to TrustedCertificateType.TSA),
+				listed = trustedList(interCert, withdrawnSince = Date(now - day)),
+			),
+			signAt(SignatureLevel.PADES_BASELINE_T).outputBytes,
+		)
+
+		signature.policyUntrusted.shouldBeTrue()
+	}
+
+	test("a timestamp whose CA the trusted list has withdrawn is judged by the store root DSS anchors at instead") {
+		val timestamp = validatedSignature(
+			storeValidationRepository(
+				storeWith(rootCert to TrustedCertificateType.CA),
+				listed = trustedList(interCert, withdrawnSince = Date(now - day)),
+			),
+			signAt(SignatureLevel.PADES_BASELINE_T).outputBytes,
+		).timestamps.single()
+
+		timestamp.policyUntrusted.shouldBeTrue()
+	}
 })
 
+private const val TRUSTED_LIST_URL = "https://tl.omnisign.test/anchored.xml"
+private const val QUALIFIED_CA_SERVICE = "http://uri.etsi.org/TrstSvc/Svctype/CA/QC"
+private const val GRANTED_STATUS = "http://uri.etsi.org/TrstSvc/TrustedList/Svcstatus/granted"
+private const val WITHDRAWN_STATUS = "http://uri.etsi.org/TrstSvc/TrustedList/Svcstatus/withdrawn"
 private const val BC = "BC"
 private const val SIGNATURE_ALGORITHM = "SHA256withRSA"
 private const val RSA_KEY_SIZE = 4096

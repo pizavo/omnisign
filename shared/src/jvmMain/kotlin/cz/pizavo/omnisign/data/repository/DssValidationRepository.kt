@@ -44,6 +44,7 @@ import eu.europa.esig.dss.model.policy.ValidationPolicy
 import eu.europa.esig.dss.model.x509.CertificateToken
 import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.simplereport.SimpleReport
+import eu.europa.esig.dss.spi.DSSUtils
 import eu.europa.esig.dss.spi.validation.executor.CompleteValidationContextExecutor
 import eu.europa.esig.dss.spi.validation.executor.DefaultValidationContextExecutor
 import eu.europa.esig.dss.spi.validation.executor.ValidationContextExecutor
@@ -103,9 +104,9 @@ internal fun euLotlUnavailableWarranted(
  *
  * Per-reference trust types are enforced as a post-validation downgrade: a signature or timestamp
  * DSS accepts is flagged [SignatureValidationResult.policyUntrusted] /
- * [TimestampValidationResult.policyUntrusted] when the trust anchor its chain ends at, the first
- * trusted certificate in it, is a store anchor trusted only for the other role (see
- * [managedAnchorType] and [isDowngradedByPolicy]).
+ * [TimestampValidationResult.policyUntrusted] when the trust anchor DSS validated its chain
+ * against is a store anchor trusted only for the other role, and no trusted list trusts that
+ * anchor at the validation time (see [managedAnchorType] and [isDowngradedByPolicy]).
  *
  * Revocation data that predates the time it has to cover is reported as a warning without changing
  * the indication, because it does not make the signature invalid — it makes it under-evidenced (see
@@ -200,8 +201,16 @@ class DssValidationRepository(
 			val trustSourcesOf: (CertificateWrapper) -> List<CertificateTrustSource> = { cert ->
 				trustSourcesFor(cert, globalTrustedFingerprints, profileTrustedFingerprints, profileName)
 			}
+			val validationTime = reports.diagnosticData.validationDate
+			val trustedByList: (CertificateWrapper) -> Boolean = { cert ->
+				cert.binaries?.let {
+					isTrustedByListAt(cv.trustedCertSources.sources, DSSUtils.loadCertificate(it), validationTime)
+				} == true
+			}
 
-			val report = convertReports(reports, parameters.inputName, anchorTypeByDssId(directAnchors), trustSourcesOf)
+			val report = convertReports(
+				reports, parameters.inputName, anchorTypeByDssId(directAnchors), trustSourcesOf, trustedByList,
+			)
 			val annotatedSignatures = report.signatures.map { sig ->
 				annotateRevocationCoverage(
 					annotateDisabledAlgorithms(sig, disabledHash, disabledEncryption),
@@ -285,19 +294,22 @@ class DssValidationRepository(
 	 *
 	 * @param anchorTypes DSS certificate id → per-reference trust type for the store-managed anchors,
 	 *   used to apply the post-validation downgrade.
+	 * @param trustedByList Whether a trusted list trusts a certificate at the validation time, which
+	 *   exempts a store anchor from the downgrade (see [managedAnchorType]).
 	 */
 	private fun convertReports(
 		reports: Reports,
 		documentName: String,
 		anchorTypes: Map<String, TrustedCertificateType>,
 		trustSourcesOf: (CertificateWrapper) -> List<CertificateTrustSource>,
+		trustedByList: (CertificateWrapper) -> Boolean,
 	): ValidationReport {
 		val simpleReport = reports.simpleReport
 		val detailedReport = reports.detailedReport
 		val diagnosticData = reports.diagnosticData
 		
 		val allTimestampResults = diagnosticData.getTimestampList().associate { tsw ->
-			tsw.id to convertTimestamp(tsw, simpleReport, detailedReport, anchorTypes, trustSourcesOf)
+			tsw.id to convertTimestamp(tsw, simpleReport, detailedReport, anchorTypes, trustSourcesOf, trustedByList)
 		}
 
 		val sealedRevocationIds = timestampSealedRevocationIds(diagnosticData, allTimestampResults)
@@ -316,6 +328,7 @@ class DssValidationRepository(
 			
 			convertSignature(
 				simpleReport, detailedReport, diagnosticData, sigId, anchorTypes, sealedRevocationIds, trustSourcesOf,
+				trustedByList,
 			).copy(
 				timestamps = sigTimestamps
 			)
@@ -375,6 +388,7 @@ class DssValidationRepository(
 		detailedReport: DetailedReport,
 		anchorTypes: Map<String, TrustedCertificateType>,
 		trustSourcesOf: (CertificateWrapper) -> List<CertificateTrustSource>,
+		trustedByList: (CertificateWrapper) -> Boolean,
 	): TimestampValidationResult {
 		val id = tsw.id
 		
@@ -429,7 +443,7 @@ class DssValidationRepository(
 		
 		val tsaSubjectDN = tsw.signingCertificate?.getCertificateDN()?.let(::readableDistinguishedName)
 		val policyUntrusted = isDowngradedByPolicy(
-			managedAnchorType(tsw.certificateChain, anchorTypes),
+			managedAnchorType(tsw.certificateChain, bbb?.xcv, anchorTypes, trustedByList),
 			TrustedCertificateType.TSA,
 		)
 
@@ -455,10 +469,13 @@ class DssValidationRepository(
 	 * pulling rich certificate details from the [DiagnosticData].
 	 *
 	 * @param detailedReport Where DSS records which revocation tokens it accepted for the signing
-	 *   certificate (see [acceptedRevocationIds]).
+	 *   certificate (see [acceptedRevocationIds]), and the trust anchor it validated the signature's
+	 *   chain against.
 	 * @param sealedRevocationIds Ids of revocation tokens protected by a document/archive timestamp
 	 *   (see [timestampSealedRevocationIds]), used to mark the signing certificate's revocation
 	 *   evidence as timestamp-sealed.
+	 * @param trustedByList Whether a trusted list trusts a certificate at the validation time (see
+	 *   [managedAnchorType]).
 	 */
 	private fun convertSignature(
 		simpleReport: SimpleReport,
@@ -468,6 +485,7 @@ class DssValidationRepository(
 		anchorTypes: Map<String, TrustedCertificateType>,
 		sealedRevocationIds: Set<String>,
 		trustSourcesOf: (CertificateWrapper) -> List<CertificateTrustSource>,
+		trustedByList: (CertificateWrapper) -> Boolean,
 	): SignatureValidationResult {
 		val indication = when (simpleReport.getIndication(signatureId)) {
 			Indication.TOTAL_PASSED, Indication.PASSED -> ValidationIndication.TOTAL_PASSED
@@ -499,7 +517,12 @@ class DssValidationRepository(
 			)
 		} ?: emptyList()
 		val policyUntrusted = isDowngradedByPolicy(
-			managedAnchorType(sigWrapper?.certificateChain ?: emptyList(), anchorTypes),
+			managedAnchorType(
+				sigWrapper?.certificateChain ?: emptyList(),
+				detailedReport.getBasicBuildingBlockById(signatureId)?.xcv,
+				anchorTypes,
+				trustedByList,
+			),
 			TrustedCertificateType.CA,
 		)
 		
