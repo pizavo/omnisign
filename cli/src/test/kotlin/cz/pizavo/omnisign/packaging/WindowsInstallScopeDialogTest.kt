@@ -15,7 +15,8 @@ import kotlin.io.path.inputStream
  * The dialog sets `INSTALLDIR` when the user picks a scope, which replaces the folder jpackage's
  * `--install-dir` chose. While it named `omnisign` instead of `omnisign-cli`, every interactive install
  * went into the desktop app's folder, and uninstalling either app removed the other. The `test` task
- * passes the folder name and the dialog's path as system properties.
+ * passes the folder name and the dialog's path, relative to the project directory the tests run in,
+ * as system properties.
  */
 class WindowsInstallScopeDialogTest : FunSpec({
 

@@ -532,12 +532,16 @@ val windowsInstallSubdir = "omnisign-cli"
  * Passes [windowsInstallSubdir] and the Windows installer's scope dialog to the tests, so
  * `WindowsInstallScopeDialogTest` can check that the dialog names the same folder, and runs the tests
  * again whenever the dialog changes.
+ *
+ * The dialog's path is relative to the project directory, which the tests run in, and the dialog is
+ * tracked by that relative path, so neither puts the location of the checkout into the task's build
+ * cache key.
  */
 tasks.named<Test>("test") {
-	val installerUi = layout.projectDirectory.file("src/main/jpackage/win/ui.wxf")
-	inputs.file(installerUi)
+	val installerUi = "src/main/jpackage/win/ui.wxf"
+	inputs.file(installerUi).withPathSensitivity(PathSensitivity.RELATIVE)
 	systemProperty("omnisign.test.windowsInstallSubdir", windowsInstallSubdir)
-	systemProperty("omnisign.test.windowsInstallerUi", installerUi.asFile.absolutePath)
+	systemProperty("omnisign.test.windowsInstallerUi", installerUi)
 }
 
 /**
