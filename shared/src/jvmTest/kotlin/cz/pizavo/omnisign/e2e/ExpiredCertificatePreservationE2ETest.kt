@@ -324,6 +324,10 @@ class ExpiredCertificatePreservationE2ETest : FunSpec({
 			.reason shouldBe RenewalReason.TIMESTAMP_EXPIRING
 		archivingRepository.getDocumentTimestampInfo(extended.outputBytes).shouldBeRight()
 			.ltMaterialUsable.shouldBeFalse()
+
+		val renewed = extendTo(SignatureLevel.PADES_BASELINE_LTA, extended.outputBytes).shouldBeRight()
+		renewed.achievedLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+		renewed.revocationDataMissing.shouldBeTrue()
 	}
 
 	test("a B-LT document whose CRL covers expired certificates is treated as sound and sealed") {

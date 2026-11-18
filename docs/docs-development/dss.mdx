@@ -101,7 +101,10 @@ removes the abort it would otherwise cause: DSS skips the check entirely when th
 rather than falling back to throwing, so nothing else stops an augmentation that embedded nothing.
 Both shapes end in `ArchivingResult.revocationDataMissing` (only for targets ≥ B-LT, since B-T needs
 no revocation data); the desktop asks before saving such a document, the CLI refuses to write it, and
-the renewal scheduler leaves the original file untouched.
+the renewal scheduler leaves the original file untouched when the step was meant to embed revocation
+data: bringing a document up to B-LT, or refreshing a B-LT document's data. It keeps a seal or a
+re-timestamp that could not collect fresh revocation data, since the new archive timestamp still
+carries the document's proof forward.
 
 `ArchivingResult.newSignatureLevel` is the level the output **actually reached**, not the one that
 was requested: `DssArchivingRepository` reads it back out of the produced bytes with DSS's own
