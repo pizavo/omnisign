@@ -511,7 +511,8 @@ val prepareJpackageInput = tasks.register<Copy>("prepareJpackageInput") {
 val jpackageInputDir: Provider<Directory> = layout.buildDirectory.dir("jpackage/input")
 
 /**
- * Sub-directory the Windows installer places the CLI in, under the per-user install root.
+ * Sub-directory the Windows installer places the CLI in, under `%LOCALAPPDATA%` for a per-user
+ * install or `Program Files` for a system-wide one.
  *
  * Deliberately *not* the `--name` default. jpackage would otherwise derive the folder from the
  * launcher name and install to `%LOCALAPPDATA%\omnisign`, which on a case-insensitive filesystem is
@@ -520,8 +521,24 @@ val jpackageInputDir: Provider<Directory> = layout.buildDirectory.dir("jpackage/
  * left its launcher running against a module set the bundled CDS archive no longer matched — which
  * surfaces as a JDK-internal class missing during VM initialisation rather than anything legible.
  * Mirrors what `--linux-package-name` already does for the DEB and RPM.
+ *
+ * The install scope dialog in `src/main/jpackage/win/ui.wxf` sets the folder again when the user
+ * picks a scope, which replaces the one `--install-dir` chose, so it has to repeat this name. The
+ * test task below hands both to `WindowsInstallScopeDialogTest`, which fails when they differ.
  */
 val windowsInstallSubdir = "omnisign-cli"
+
+/**
+ * Passes [windowsInstallSubdir] and the Windows installer's scope dialog to the tests, so
+ * `WindowsInstallScopeDialogTest` can check that the dialog names the same folder, and runs the tests
+ * again whenever the dialog changes.
+ */
+tasks.named<Test>("test") {
+	val installerUi = layout.projectDirectory.file("src/main/jpackage/win/ui.wxf")
+	inputs.file(installerUi)
+	systemProperty("omnisign.test.windowsInstallSubdir", windowsInstallSubdir)
+	systemProperty("omnisign.test.windowsInstallerUi", installerUi.asFile.absolutePath)
+}
 
 /**
  * Upgrade code identifying the CLI to the Windows Installer across versions.
