@@ -103,6 +103,24 @@ Terminal files are counted separately from errors, and do not make a run unsucce
 failed, and treating them as failures would leave the run permanently reporting itself as broken over
 something no run can fix — including the staleness warning, which would then never clear.
 
+## When a folder cannot be reached
+
+A glob is searched from the folder before its first wildcard, `/srv/archive` in
+`/srv/archive/**/*.pdf`. When that folder does not exist or cannot be read, as when the share that
+holds it is offline or the folder was renamed, the job reports it as an error rather than as a job
+with nothing to do, and it does the same for a listed file that is no longer there:
+
+```
+[ERROR] /srv/archive — the folder does not exist or cannot be reached, so renewal glob
+        '/srv/archive/**/*.pdf' checked none of its documents
+```
+
+The job's other globs still run. A run that reports such an error is unsuccessful, so the last
+success stays where it was, and the staleness warning fires once renewal has gone too long without
+one, rather than every run reporting success over an archive nothing renews. A folder below the one
+a glob is searched from that cannot be read is logged and skipped instead, since some folders, such
+as `System Volume Information` at the root of a Windows drive, cannot be read by any account.
+
 ## When the timestamp server is down
 
 Reaching the TSA is the last thing an extension does, so every document first parses the archive and

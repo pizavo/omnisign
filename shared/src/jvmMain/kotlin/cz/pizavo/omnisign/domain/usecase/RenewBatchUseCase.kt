@@ -105,6 +105,12 @@ private val logger = KotlinLogging.logger {}
  * skips, because a run of skips would report success, reset the last-success timestamp, and hold off
  * the staleness alert over documents nothing renewed.
  *
+ * The same goes for documents a job cannot reach at all. A glob whose folder does not exist or cannot
+ * be read, a search of that folder that stops early, and a listed file that is no longer there are
+ * each recorded as an error against the job, while its other globs still run. An archive share that
+ * went offline, or a folder that was renamed, therefore fails every run until it is back, instead of
+ * letting each run report success over documents it never looked at.
+ *
  * Renewing an aging document has to move its deadline later, not merely add a timestamp. A timestamp
  * server whose certificate expires inside the renewal buffer, or whose key or algorithms stop being
  * acceptable within it, issues seals that are due for renewal the moment they are made, and since it
@@ -491,9 +497,12 @@ class RenewBatchUseCase(
                 jobResults.add(configErrorResult(job, globResult.leftOrNull()!!))
                 continue
             }
-            val files = globResult.getOrNull()!!
+            val (files, unreachable) = globResult.getOrNull()!!
+            totalErrors += unreachable.size
             if (files.isEmpty()) {
-                jobResults.add(RenewJobResult(name = job.name, notify = job.notify))
+                jobResults.add(
+                    RenewJobResult(name = job.name, files = unreachable, errors = unreachable.size, notify = job.notify)
+                )
                 continue
             }
 
@@ -502,17 +511,17 @@ class RenewBatchUseCase(
                 val error = resolvedConfigResult.leftOrNull()!!
                 logger.warn { "Renewal job '${job.name}' configuration error — ${error.message}" }
                 totalErrors++
-                jobResults.add(configErrorResult(job, error.message))
+                jobResults.add(configErrorResult(job, error.message, unreachable))
                 continue
             }
             val resolvedConfig = resolvedConfigResult.getOrNull()!!
             val tsaUrl = resolvedConfig.timestampServer?.url
 
             var jobRenewed = 0
-            var jobErrors = 0
+            var jobErrors = unreachable.size
             var jobUnrecoverable = 0
             var jobNewlyUnrecoverable = 0
-            val fileStatuses = mutableListOf<RenewFileStatus>()
+            val fileStatuses = unreachable.toMutableList()
 
             /**
              * The latest deadline among the seals this job's timestamp server issued in this run that
@@ -937,13 +946,19 @@ class RenewBatchUseCase(
     }
 
     /**
-     * The single-row [RenewJobResult] reporting [job] as unrunnable because of the configuration
-     * problem [message] describes — an unresolvable profile, or a glob the platform cannot parse.
+     * The [RenewJobResult] reporting [job] as unrunnable because of the configuration problem
+     * [message] describes — an unresolvable profile, or a glob the platform cannot parse — followed by
+     * the [unreachable] rows of the folders and files its globs could not reach.
      *
-     * Counted as one error so that a job which never ran cannot leave the run reporting success, which
-     * would reset the last-success timestamp and hold off the staleness alert.
+     * Counted as one error, and one more per unreachable path, so that a job which never ran cannot
+     * leave the run reporting success, which would reset the last-success timestamp and hold off the
+     * staleness alert.
      */
-    private fun configErrorResult(job: RenewalJob, message: String): RenewJobResult =
+    private fun configErrorResult(
+        job: RenewalJob,
+        message: String,
+        unreachable: List<RenewFileStatus> = emptyList(),
+    ): RenewJobResult =
         RenewJobResult(
             name = job.name,
             files = listOf(
@@ -952,8 +967,8 @@ class RenewBatchUseCase(
                     status = RenewFileStatus.Status.CONFIG_ERROR,
                     message = message,
                 )
-            ),
-            errors = 1,
+            ) + unreachable,
+            errors = 1 + unreachable.size,
             notify = job.notify,
         )
 
@@ -1039,11 +1054,17 @@ class RenewBatchUseCase(
      * only; any non-PDF files a wildcard happens to match are counted and logged rather than silently
      * dropped. A literal (wildcard-free) path is taken as-is.
      *
-     * The walk is fault-tolerant: an unreadable directory (or one that becomes
-     * inaccessible mid-walk) is skipped rather than aborting the whole batch, so a
-     * single permission problem cannot stop every job from renewing. Each skipped path is
-     * logged to the application log and appended to [logFile] when one is configured, so the
-     * gap is never silent.
+     * The walk is fault-tolerant: a directory below the root that cannot be read is skipped rather
+     * than aborting the whole batch, so a single permission problem cannot stop every job from
+     * renewing. Each skipped path is logged to the application log and appended to [logFile] when
+     * one is configured, so the gap is never silent.
+     *
+     * What a pattern cannot reach at all is reported instead, as an error row in
+     * [ResolvedGlobs.unreachable]: a root that does not exist or is not a directory, which is how a
+     * share that went offline or a renamed folder looks; a root that cannot be read; a walk that
+     * stops early; and a literal path that is not a file. Each is logged like a skipped path. The
+     * caller counts these rows as errors, so a job that could not look at its documents never lets
+     * the run report success.
      *
      * A pattern the platform cannot parse at all is reported as a configuration error for the job,
      * which the caller surfaces like an unresolvable profile. Both the root ([Paths.get], which
@@ -1053,17 +1074,27 @@ class RenewBatchUseCase(
      * pattern would escape the whole batch, skipping every remaining job and writing no run record, so
      * a single typo would stop renewal indefinitely and leave no record of why.
      *
-     * @return the matched files, or a description of the pattern that could not be parsed.
+     * @return the matched files and the paths that could not be reached, or a description of the
+     *   pattern that could not be parsed.
      */
-    internal fun resolveGlobs(globs: List<String>, logFile: String? = null): Either<String, List<File>> {
+    internal fun resolveGlobs(globs: List<String>, logFile: String? = null): Either<String, ResolvedGlobs> {
         val seen = LinkedHashSet<String>()
         val results = mutableListOf<File>()
+        val unreachable = mutableListOf<RenewFileStatus>()
 
         for (glob in globs) {
             val split = globRootAndTail(glob)
             if (split == null) {
                 val file = File(glob).absoluteFile
-                if (file.isFile && seen.add(file.absolutePath)) {
+                if (!file.isFile) {
+                    unreachable += unreachableGlobPath(
+                        file.path,
+                        "the file does not exist or cannot be reached",
+                        "it was not checked",
+                        null,
+                        logFile,
+                    )
+                } else if (seen.add(file.absolutePath)) {
                     results.add(file)
                 }
                 continue
@@ -1075,7 +1106,16 @@ class RenewBatchUseCase(
             } catch (e: Exception) {
                 return malformedGlob(glob, "its directory '$rootStr' is not a valid path", e, logFile)
             }
-            if (!Files.isDirectory(rootPath)) continue
+            if (!Files.isDirectory(rootPath)) {
+                unreachable += unreachableGlobPath(
+                    rootPath.toString(),
+                    "the folder does not exist or cannot be reached",
+                    "renewal glob '$glob' checked none of its documents",
+                    null,
+                    logFile,
+                )
+                continue
+            }
 
             val matcher = try {
                 renewalGlobMatcher(rootPath.fileSystem, tail)
@@ -1099,12 +1139,28 @@ class RenewBatchUseCase(
                     }
 
                     override fun visitFileFailed(file: Path, exc: IOException): FileVisitResult {
-                        logSkippedGlobPath(file, exc, logFile)
+                        if (file == rootPath) {
+                            unreachable += unreachableGlobPath(
+                                rootPath.toString(),
+                                "the folder cannot be read",
+                                "renewal glob '$glob' checked none of its documents",
+                                exc,
+                                logFile,
+                            )
+                        } else {
+                            logSkippedGlobPath(file, exc, logFile)
+                        }
                         return FileVisitResult.CONTINUE
                     }
                 })
             } catch (e: IOException) {
-                logSkippedGlobPath(rootPath, e, logFile)
+                unreachable += unreachableGlobPath(
+                    rootPath.toString(),
+                    "the search of the folder stopped early",
+                    "renewal glob '$glob' may have missed some of its documents",
+                    e,
+                    logFile,
+                )
             }
             matched.sorted().forEach { path ->
                 val abs = path.toAbsolutePath().normalize().toString()
@@ -1115,7 +1171,7 @@ class RenewBatchUseCase(
                 appendLog(logFile, "[SKIP] $glob — ignored $nonPdfCount non-PDF file(s) (PDFs only)")
             }
         }
-        return results.right()
+        return ResolvedGlobs(results, unreachable).right()
     }
 
     /**
@@ -1132,7 +1188,7 @@ class RenewBatchUseCase(
         reason: String,
         cause: Exception,
         logFile: String?,
-    ): Either<String, List<File>> {
+    ): Either<String, ResolvedGlobs> {
         val message = "renewal glob '$glob' cannot be used: $reason"
         logger.warn(cause) { message }
         appendLog(logFile, "[ERROR] $message")
@@ -1147,6 +1203,31 @@ class RenewBatchUseCase(
     private fun logSkippedGlobPath(path: Path, cause: Exception, logFile: String?) {
         logger.warn(cause) { "Renewal could not access $path — skipping it" }
         appendLog(logFile, "[WARN] skipped unreadable path: $path — ${cause.message}")
+    }
+
+    /**
+     * Report [path], a folder or file a renewal glob names, as out of reach: log it to the
+     * application log and to the job's [logFile], and return the error row that counts it against
+     * the job, so a job that could not look at its documents never lets the run report success.
+     *
+     * @param path The folder or file that could not be reached.
+     * @param problem What went wrong with [path].
+     * @param consequence What that means for the documents the glob covers.
+     * @param cause The exception the file system raised, when there was one; its type is named in
+     *   the message.
+     * @param logFile The job's optional audit-log file path.
+     */
+    private fun unreachableGlobPath(
+        path: String,
+        problem: String,
+        consequence: String,
+        cause: IOException?,
+        logFile: String?,
+    ): RenewFileStatus {
+        val message = "$problem${cause?.let { " (${it::class.simpleName})" }.orEmpty()}, so $consequence"
+        logger.warn(cause) { "Renewal could not reach $path — $message" }
+        appendLog(logFile, "[ERROR] $path — $message")
+        return RenewFileStatus(path = path, status = RenewFileStatus.Status.ERROR, message = message)
     }
 
     /**
@@ -1484,6 +1565,18 @@ class RenewBatchUseCase(
         logger.warn { "Renewal failed for $path — $reason" }
         appendLog(logFile, "[ERROR] $path — $reason")
     }
+
+    /**
+     * What [resolveGlobs] found for a job's patterns.
+     *
+     * @property files The existing documents the patterns match, without duplicates.
+     * @property unreachable One [RenewFileStatus.Status.ERROR] row for each folder or file the patterns
+     *   name that could not be reached or searched, which the job counts as an error.
+     */
+    internal data class ResolvedGlobs(
+        val files: List<File>,
+        val unreachable: List<RenewFileStatus>,
+    )
 
     companion object {
         /**
