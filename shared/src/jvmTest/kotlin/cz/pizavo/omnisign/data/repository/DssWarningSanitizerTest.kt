@@ -433,6 +433,14 @@ class DssWarningSanitizerTest : FunSpec({
 		result.annotatedSummaries[1].summary.shouldBeInstanceOf<LocalizableText.Literal>().value shouldBe unknownEntry
 	}
 
+	test("a proof-of-existence detail that shares only the start of the stale one is not reported as stale") {
+		val result = sanitizer.sanitize(
+			listOf("Revocation data is missing for one or more POE(s). [C-CCCC3333: No revocation data found for the timestamp!]")
+		)
+		result.categories shouldBe setOf(WarningCategory.REVOCATION_NOT_FOUND)
+		result.annotatedSummaries.single().affectedIds shouldContainExactly listOf("C-CCCC3333")
+	}
+
 	test("OCSP DSS Exception is classified as REVOCATION_NOT_FOUND") {
 		val raw = listOf(
 			"OCSP DSS Exception: Unable to retrieve OCSP response for certificate " +
