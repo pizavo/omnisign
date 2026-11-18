@@ -53,5 +53,17 @@ sealed interface ValidationError : OperationError, LocalizableError {
 		/** Remote (server-delegated) document validation failed. */
 		fun remoteValidationFailed(details: String? = null, cause: Throwable? = null): ValidationFailed =
 			ValidationFailed(LocalizableText.of(MessageKey.VALIDATION_REMOTE_VALIDATION_FAILED), details, cause)
+
+		/** The custom validation policy (`CUSTOM_FILE`) is selected, but no policy file is set. */
+		fun policyFileNotSet(): InvalidPolicy =
+			InvalidPolicy(LocalizableText.of(MessageKey.VALIDATION_POLICY_FILE_NOT_SET))
+
+		/** The validation policy file at [path] does not exist, is not a regular file, or cannot be read. */
+		fun policyFileUnreadable(path: String): InvalidPolicy =
+			InvalidPolicy(LocalizableText.of(MessageKey.VALIDATION_POLICY_FILE_UNREADABLE, path))
+
+		/** The file at [path] could not be loaded as a validation policy, for the reason in [details]. */
+		fun policyFileInvalid(path: String, details: String? = null, cause: Throwable? = null): InvalidPolicy =
+			InvalidPolicy(LocalizableText.of(MessageKey.VALIDATION_POLICY_FILE_INVALID, path), details, cause)
 	}
 }

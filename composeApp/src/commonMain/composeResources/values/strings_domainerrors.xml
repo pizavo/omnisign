@@ -43,6 +43,9 @@
 	<string name="err_signing_signature_too_large">The signature did not fit the space reserved for it in the document, so nothing was written and the original file is unchanged. The signing certificate chain, together with the timestamp token at levels above B-B, exceeds that reservation, which is fixed before signing starts and cannot grow afterwards. Report this document so the reserved size can be raised</string>
 	<string name="err_validation_validation_failed">Validation failed</string>
 	<string name="err_validation_remote_validation_failed">Remote validation failed</string>
+	<string name="err_validation_policy_file_not_set">A custom validation policy is selected, but no policy file is set</string>
+	<string name="err_validation_policy_file_unreadable">The policy file \'%1$s\' does not exist or cannot be read</string>
+	<string name="err_validation_policy_file_invalid">The policy file \'%1$s\' could not be loaded as a validation policy</string>
 	<string name="err_truststore_parse_failed">Could not parse the certificate</string>
 	<string name="err_truststore_store_failed">Could not store the trusted certificate</string>
 	<string name="err_truststore_operation_failed">Trust store operation failed</string>

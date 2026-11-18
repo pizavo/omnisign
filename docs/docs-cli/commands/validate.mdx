@@ -23,6 +23,12 @@ omnisign validate -f <file> [options]
 
 All [config overrides](../configuration/config-overrides) are supported.
 
+`-p` takes precedence over any policy the configuration selects. A custom policy is never replaced
+by the default ETSI policy: when the custom policy is selected, with `-p` or with
+`--validation-policy CUSTOM_FILE` and the policy file the configuration names, and that file is not
+set, does not exist, cannot be read or holds no validation policy, the command fails with a
+validation error that names the file and validates nothing.
+
 ## Examples
 
 ```bash

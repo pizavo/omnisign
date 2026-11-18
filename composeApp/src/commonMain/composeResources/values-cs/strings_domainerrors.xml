@@ -43,6 +43,9 @@
 	<string name="err_signing_signature_too_large">Podpis se nevešel do místa, které je pro něj v dokumentu vyhrazeno, takže se nic nezapsalo a původní soubor zůstal beze změny. Řetězec podpisových certifikátů spolu s tokenem časového razítka na úrovních nad B-B tuto rezervaci přesahuje a zvětšit ji po zahájení podpisu už nelze. Nahlaste prosím tento dokument, aby bylo možné vyhrazené místo zvětšit</string>
 	<string name="err_validation_validation_failed">Ověření selhalo</string>
 	<string name="err_validation_remote_validation_failed">Vzdálené ověření selhalo</string>
+	<string name="err_validation_policy_file_not_set">Je vybrána vlastní zásada ověřování platnosti, ale není nastaven soubor zásad</string>
+	<string name="err_validation_policy_file_unreadable">Soubor zásad \'%1$s\' neexistuje nebo jej nelze přečíst</string>
+	<string name="err_validation_policy_file_invalid">Soubor zásad \'%1$s\' se nepodařilo načíst jako zásadu ověřování platnosti</string>
 	<string name="err_truststore_parse_failed">Certifikát se nepodařilo zpracovat</string>
 	<string name="err_truststore_store_failed">Nepodařilo se uložit důvěryhodný certifikát</string>
 	<string name="err_truststore_operation_failed">Operace s úložištěm důvěryhodných certifikátů selhala</string>

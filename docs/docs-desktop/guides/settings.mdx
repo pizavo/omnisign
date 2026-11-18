@@ -97,7 +97,10 @@ Revocation List requests used during validation and B-LT/B-LTA signing.
 #### Policy & Trust
 
 - **Validation policy** — choose between the default ETSI policy or a custom XML policy
-  file. When "Custom" is selected, enter the file path to the XML policy document.
+  file. When "Custom" is selected, enter the file path to the XML policy document. Validation
+  then always uses that file: while the path is empty, or the file is missing, unreadable or not a
+  validation policy, validation fails with an error that says so instead of falling back to the
+  default policy.
 - **Revocation checking** — enable or disable CRL/OCSP checking during validation. Signing uses it
   too: while it is on, signing refuses a certificate that has been revoked (see
   [Signing → Sign](signing.mdx#5-sign)).

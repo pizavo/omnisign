@@ -35,10 +35,13 @@ import java.util.TimeZone
 open class AdESPolicy {
 	
 	/**
-	 * Load a [ValidationPolicy] from [policyFile] (or the DSS built-in ETSI default when
-	 * null / non-existent), apply [algorithmConstraints] on top, and strip any
-	 * [disabledHashAlgorithms] / [disabledEncryptionAlgorithms] from every
-	 * `AcceptableDigestAlgo` / `AcceptableEncryptionAlgo` section of the policy.
+	 * Load a [ValidationPolicy] from [policyFile], or the DSS built-in ETSI default when it is
+	 * null, apply [algorithmConstraints] on top, and strip any [disabledHashAlgorithms] /
+	 * [disabledEncryptionAlgorithms] from every `AcceptableDigestAlgo` / `AcceptableEncryptionAlgo`
+	 * section of the policy.
+	 *
+	 * A [policyFile] is never replaced by the default: one that does not exist, cannot be read or
+	 * holds no validation policy throws, so that nothing is validated under a policy nobody chose.
 	 */
 	open fun load(
 		policyFile: File?,
@@ -47,9 +50,10 @@ open class AdESPolicy {
 		disabledEncryptionAlgorithms: Set<EncryptionAlgorithm> = emptySet(),
 	): ValidationPolicy {
 		val facade = ValidationPolicyFacade.newFacade()
-		val policy = when {
-			policyFile?.exists() == true -> facade.getValidationPolicy(policyFile)
-			else -> EtsiValidationPolicyFactory().loadDefaultValidationPolicy()
+		val policy = if (policyFile != null) {
+			facade.getValidationPolicy(policyFile)
+		} else {
+			EtsiValidationPolicyFactory().loadDefaultValidationPolicy()
 		}
 		if (algorithmConstraints != null) {
 			applyAlgorithmConstraints(policy, algorithmConstraints)

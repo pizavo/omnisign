@@ -1,16 +1,21 @@
 package cz.pizavo.omnisign.data.repository
 
+import cz.pizavo.omnisign.data.denyReading
 import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
 import cz.pizavo.omnisign.domain.model.config.service.CrlConfig
 import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
 import cz.pizavo.omnisign.domain.model.error.ValidationError
+import cz.pizavo.omnisign.domain.model.parameters.RawReportFormat
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.text.MessageKey
 import cz.pizavo.omnisign.domain.model.validation.ValidationIndication
+import cz.pizavo.omnisign.domain.model.validation.ValidationReport
 import cz.pizavo.omnisign.domain.model.validation.ValidationResult
 import eu.europa.esig.dss.enumerations.Indication
 import eu.europa.esig.dss.enumerations.SignatureLevel as DssSignatureLevel
@@ -30,9 +35,11 @@ import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.comparables.shouldBeGreaterThan
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotBeBlank
 import io.kotest.matchers.string.shouldNotContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.every
@@ -60,6 +67,10 @@ import java.util.Properties
  * signatures, and that a signed document's report reads in the language it is asked for, or in
  * English for a language without a translation, even on a machine whose default locale is Czech.
  * A signed document's report also names the signing certificate's SHA-256 fingerprint.
+ *
+ * A custom policy file is the policy a document is validated under, and a custom policy without a
+ * usable file fails validation with [ValidationError.InvalidPolicy] instead of falling back to the
+ * default policy.
  */
 class DssValidationRepositoryTest : FunSpec({
 
@@ -289,6 +300,135 @@ class DssValidationRepositoryTest : FunSpec({
 		certificate.sha256Fingerprint shouldBe expected
 		certificate.chain.first().details.first { it.title == "Fingerprints" }.fields
 			.single { it.label == "SHA-256" }.value shouldBe expected
+	}
+
+	/** The name DSS's default validation policy gives itself. */
+	val defaultPolicyName = "QES AES/QC AES TL based"
+
+	/** DSS's default validation policy renamed [name], written to a file of its own in [tmpDir]. */
+	fun renamedDefaultPolicy(name: String): File {
+		val xml = DssValidationRepositoryTest::class.java.getResource("/policy/constraint.xml")?.readText()
+			?: error("DSS's default validation policy is not on the classpath")
+		val renamed = xml.replaceFirst("Name=\"$defaultPolicyName\"", "Name=\"$name\"")
+		check(renamed != xml) { "DSS's default validation policy is not named $defaultPolicyName" }
+		return File(tmpDir, "${name.replace(' ', '-')}.xml").also { it.writeText(renamed) }
+	}
+
+	/** An offline configuration that validates under [policyType], with [customPolicyPath] as its policy file. */
+	fun policyConfig(policyType: ValidationPolicyType, customPolicyPath: String?): ResolvedConfig = ResolvedConfig(
+		hashAlgorithm = HashAlgorithm.SHA256,
+		encryptionAlgorithm = null,
+		signatureLevel = SignatureLevel.PADES_BASELINE_B,
+		timestampServer = null,
+		ocsp = OcspConfig(),
+		crl = CrlConfig(),
+		validation = ValidationConfig(
+			policyType = policyType,
+			customPolicyPath = customPolicyPath,
+			checkRevocation = false,
+			useEuLotl = false,
+		),
+	)
+
+	/** Validate a signed document under [config] and [customPolicyPath], asking for its simple report. */
+	suspend fun validateSigned(config: ResolvedConfig?, customPolicyPath: String? = null) =
+		offlineRepository.validateDocument(
+			ValidationParameters(
+				inputBytes = signedPdf(),
+				inputName = "signed.pdf",
+				customPolicyPath = customPolicyPath,
+				resolvedConfig = config,
+				rawReportFormats = setOf(RawReportFormat.XML_SIMPLE),
+			)
+		)
+
+	/** The name of the policy [report]'s simple report says the document was validated under. */
+	fun policyNameOf(report: ValidationReport): String {
+		val xml = report.rawReports.getValue(RawReportFormat.XML_SIMPLE)
+		return Regex("<(?:\\w+:)?PolicyName>([^<]*)</(?:\\w+:)?PolicyName>").find(xml)?.groupValues?.get(1)
+			?: error("the simple report names no validation policy")
+	}
+
+	/** The error validating a signed document under [config] and [customPolicyPath] fails with. */
+	suspend fun policyErrorOf(config: ResolvedConfig?, customPolicyPath: String? = null): ValidationError.InvalidPolicy =
+		validateSigned(config, customPolicyPath).shouldBeLeft().shouldBeInstanceOf<ValidationError.InvalidPolicy>()
+
+	test("a configured custom policy file is the policy a document is validated under") {
+		val custom = renamedDefaultPolicy("Configured custom policy")
+
+		policyNameOf(validateSigned(null).shouldBeRight()) shouldBe defaultPolicyName
+		policyNameOf(validateSigned(policyConfig(ValidationPolicyType.CUSTOM_FILE, custom.path)).shouldBeRight()) shouldBe
+			"Configured custom policy"
+	}
+
+	test("a policy file given for the operation is used whatever policy the configuration names") {
+		val operation = renamedDefaultPolicy("Operation policy")
+		val missing = File(tmpDir, "missing-configured-policy.xml").path
+
+		for (config in listOf(
+			policyConfig(ValidationPolicyType.CUSTOM_FILE, missing),
+			policyConfig(ValidationPolicyType.DEFAULT_ETSI, null),
+			null,
+		)) {
+			policyNameOf(validateSigned(config, operation.path).shouldBeRight()) shouldBe "Operation policy"
+		}
+	}
+
+	test("the default policy ignores a configured custom policy file, even one that does not exist") {
+		val missing = File(tmpDir, "unused-policy.xml").path
+
+		policyNameOf(validateSigned(policyConfig(ValidationPolicyType.DEFAULT_ETSI, missing)).shouldBeRight()) shouldBe
+			defaultPolicyName
+	}
+
+	test("a custom policy without a policy file fails validation instead of falling back to the default policy") {
+		val notSet = LocalizableText.of(MessageKey.VALIDATION_POLICY_FILE_NOT_SET)
+
+		policyErrorOf(policyConfig(ValidationPolicyType.CUSTOM_FILE, null)).text shouldBe notSet
+		policyErrorOf(policyConfig(ValidationPolicyType.CUSTOM_FILE, "  ")).text shouldBe notSet
+		policyErrorOf(null, customPolicyPath = "").text shouldBe notSet
+	}
+
+	test("a policy file that does not exist, a folder, or a path no file can have fails validation, naming the path") {
+		val missing = File(tmpDir, "missing-policy.xml").path
+		val impossible = "policy\u0000.xml"
+
+		policyErrorOf(policyConfig(ValidationPolicyType.CUSTOM_FILE, missing)).text shouldBe
+			LocalizableText.of(MessageKey.VALIDATION_POLICY_FILE_UNREADABLE, missing)
+		policyErrorOf(null, customPolicyPath = missing).text shouldBe
+			LocalizableText.of(MessageKey.VALIDATION_POLICY_FILE_UNREADABLE, missing)
+		policyErrorOf(policyConfig(ValidationPolicyType.CUSTOM_FILE, tmpDir.path)).text shouldBe
+			LocalizableText.of(MessageKey.VALIDATION_POLICY_FILE_UNREADABLE, tmpDir.path)
+		policyErrorOf(null, customPolicyPath = impossible).text shouldBe
+			LocalizableText.of(MessageKey.VALIDATION_POLICY_FILE_UNREADABLE, impossible)
+	}
+
+	test("a policy file this user may not read fails validation, naming the path, though it holds a policy").config(
+		enabledIf = { System.getProperty("user.name") != "root" },
+	) {
+		val policy = renamedDefaultPolicy("Unreadable policy")
+		val config = policyConfig(ValidationPolicyType.CUSTOM_FILE, policy.path)
+		val restore = denyReading(policy.toPath())
+
+		val error = try {
+			policyErrorOf(config)
+		} finally {
+			restore()
+		}
+
+		error.text shouldBe LocalizableText.of(MessageKey.VALIDATION_POLICY_FILE_UNREADABLE, policy.path)
+		policyNameOf(validateSigned(config).shouldBeRight()) shouldBe "Unreadable policy"
+	}
+
+	test("a policy file that holds no validation policy fails validation, naming the path and the reason") {
+		val empty = File(tmpDir, "empty-policy.xml").also { it.writeText("") }
+		val other = File(tmpDir, "other-policy.xml").also { it.writeText("<NotAPolicy/>") }
+
+		for (file in listOf(empty, other)) {
+			val error = policyErrorOf(policyConfig(ValidationPolicyType.CUSTOM_FILE, file.path))
+			error.text shouldBe LocalizableText.of(MessageKey.VALIDATION_POLICY_FILE_INVALID, file.path)
+			error.details.shouldNotBeNull().shouldNotBeBlank()
+		}
 	}
 
 	// ── DSS Indication mapping ──────────────────────────────────────────────

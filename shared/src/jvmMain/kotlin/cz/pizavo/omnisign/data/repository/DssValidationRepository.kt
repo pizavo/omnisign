@@ -40,6 +40,7 @@ import eu.europa.esig.dss.enumerations.SubIndication
 import eu.europa.esig.dss.enumerations.TokenExtractionStrategy
 import eu.europa.esig.dss.enumerations.TimestampQualification
 import eu.europa.esig.dss.model.InMemoryDocument
+import eu.europa.esig.dss.model.policy.ValidationPolicy
 import eu.europa.esig.dss.model.x509.CertificateToken
 import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.simplereport.SimpleReport
@@ -50,6 +51,9 @@ import eu.europa.esig.dss.validation.SignedDocumentValidator
 import eu.europa.esig.dss.validation.reports.Reports
 import java.io.File
 import java.util.Locale
+import kotlin.io.path.Path
+import kotlin.io.path.isReadable
+import kotlin.io.path.isRegularFile
 
 /**
  * DSS sub-indications ([SubIndication.toString], i.e. the enum name our report stores) that mean the
@@ -144,8 +148,14 @@ class DssValidationRepository(
 	 * Czech / Slovak. Any other locale gets DSS's English, whatever the JVM default locale is:
 	 * [dssMessageLocale] picks the locale DSS is given, so that its lookup cannot fall back to a Czech
 	 * or Slovak default.
+	 *
+	 * A custom validation policy that cannot be used, because no file is set for it or its file is
+	 * missing, unreadable or not a validation policy, gives a [ValidationError.InvalidPolicy] before
+	 * the document is read, instead of a report made under the default policy.
 	 */
 	override suspend fun validateDocument(parameters: ValidationParameters): OperationResult<ValidationReport> {
+		val policy = resolveValidationPolicy(parameters.resolvedConfig, parameters.customPolicyPath)
+			.getOrElse { return it.left() }
 		return Either.catch {
 			val document = InMemoryDocument(parameters.inputBytes, parameters.inputName)
 
@@ -168,9 +178,7 @@ class DssValidationRepository(
 				}
 
 
-			val reports = resolveValidationPolicy(parameters.resolvedConfig, parameters.customPolicyPath)
-				?.let { validator.validateDocument(it) }
-				?: validator.validateDocument()
+			val reports = validator.validateDocument(policy)
 
 			parameters.rawReportOutputPath?.let { outPath ->
 				writeRawReport(reports, outPath, parameters.rawReportFormat)
@@ -227,31 +235,43 @@ class DssValidationRepository(
 	}
 	
 	/**
-	 * Load a [eu.europa.esig.dss.model.policy.ValidationPolicy] from the resolved config
-	 * or a custom policy path. Returns null to let DSS use its built-in default ETSI policy.
+	 * The [ValidationPolicy] to validate under: the file at [customPolicyPath] when one is given,
+	 * otherwise the file [config] names when its policy type is [ValidationPolicyType.CUSTOM_FILE],
+	 * otherwise DSS's built-in default ETSI policy, with [config]'s algorithm constraints applied
+	 * and its disabled hash / encryption algorithms removed, so that DSS itself treats them as
+	 * non-compliant.
 	 *
-	 * Disabled hash / encryption algorithms from the [config] are forwarded to
-	 * [AdESPolicy.load] so that DSS itself treats them as non-compliant.
+	 * A custom policy is never replaced by the default one, which could report valid what the
+	 * custom policy rejects. A custom policy without a path, a path that names no regular, readable
+	 * file, and a file that does not load as a validation policy each give a
+	 * [ValidationError.InvalidPolicy].
 	 */
 	private fun resolveValidationPolicy(
 		config: ResolvedConfig?,
-		customPolicyPath: String?
-	): eu.europa.esig.dss.model.policy.ValidationPolicy? {
-		val policyFile = when {
-			customPolicyPath != null -> File(customPolicyPath)
-			config?.validation?.policyType == ValidationPolicyType.CUSTOM_FILE ->
-				config.validation.customPolicyPath?.let { File(it) }
-			
-			else -> null
+		customPolicyPath: String?,
+	): Either<ValidationError, ValidationPolicy> {
+		val policyPath = customPolicyPath
+			?: config?.validation?.takeIf { it.policyType == ValidationPolicyType.CUSTOM_FILE }
+				?.let { it.customPolicyPath.orEmpty() }
+		if (policyPath != null && policyPath.isBlank()) return ValidationError.policyFileNotSet().left()
+		val policyFile = policyPath?.let { path ->
+			runCatching { Path(path) }.getOrNull()
+				?.takeIf { it.isRegularFile() && it.isReadable() }
+				?.toFile()
+				?: return ValidationError.policyFileUnreadable(path).left()
 		}
 		val constraints = config?.validation?.algorithmConstraints
 		val disabledHash = config?.disabledHashAlgorithms ?: emptySet()
 		val disabledEncryption = config?.disabledEncryptionAlgorithms ?: emptySet()
-		return if (policyFile != null || constraints != null || disabledHash.isNotEmpty() || disabledEncryption.isNotEmpty()) {
-			adeSPolicy.load(policyFile, constraints, disabledHash, disabledEncryption)
-		} else {
-			null
-		}
+		return Either.catch { adeSPolicy.load(policyFile, constraints, disabledHash, disabledEncryption) }
+			.mapLeft { exception ->
+				val reason = generateSequence(exception) { it.cause }.firstNotNullOfOrNull { it.message }
+				if (policyPath != null) {
+					ValidationError.policyFileInvalid(policyPath, reason, exception)
+				} else {
+					ValidationError.validationFailed(reason, exception)
+				}
+			}
 	}
 	
 	/**

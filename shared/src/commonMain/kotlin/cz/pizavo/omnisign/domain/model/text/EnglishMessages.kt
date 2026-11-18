@@ -125,6 +125,12 @@ internal object EnglishMessages {
 			"Validation failed"
 		MessageKey.VALIDATION_REMOTE_VALIDATION_FAILED ->
 			"Remote validation failed"
+		MessageKey.VALIDATION_POLICY_FILE_NOT_SET ->
+			"A custom validation policy is selected, but no policy file is set"
+		MessageKey.VALIDATION_POLICY_FILE_UNREADABLE ->
+			"The policy file '%1\$s' does not exist or cannot be read"
+		MessageKey.VALIDATION_POLICY_FILE_INVALID ->
+			"The policy file '%1\$s' could not be loaded as a validation policy"
 		MessageKey.TRUSTSTORE_PARSE_FAILED ->
 			"Could not parse the certificate"
 		MessageKey.TRUSTSTORE_STORE_FAILED ->

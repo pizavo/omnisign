@@ -1,12 +1,19 @@
 package cz.pizavo.omnisign.plugins
 
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import cz.pizavo.omnisign.api.exception.OperationException
 import cz.pizavo.omnisign.api.model.responses.ApiError
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.error.ValidationError
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.string.shouldNotContain
 import io.ktor.client.request.*
 import io.ktor.client.statement.*
 import io.ktor.http.*
@@ -15,6 +22,7 @@ import io.ktor.server.response.*
 import io.ktor.server.routing.*
 import io.ktor.server.testing.*
 import kotlinx.serialization.json.Json
+import org.slf4j.LoggerFactory
 import kotlin.reflect.typeOf
 
 /**
@@ -79,6 +87,53 @@ class StatusPagesTest : FunSpec({
 			val body = Json.decodeFromString<ApiError>(response.bodyAsText())
 			body.error shouldBe "VALIDATION_FAILED"
 		}
+	}
+
+	test("OperationException with ValidationError.InvalidPolicy returns 500 and sends neither the server's policy file nor the reason") {
+		val path = "/etc/omnisign/policies/strict-policy.xml"
+		val reason = "cvc-elt.1.a: Cannot find the declaration of element 'NotAPolicy'."
+
+		for (error in listOf(
+			ValidationError.policyFileNotSet(),
+			ValidationError.policyFileUnreadable(path),
+			ValidationError.policyFileInvalid(path, reason),
+		)) {
+			testApplication {
+				configureTestApp { throw OperationException(error) }
+				val response = client.get("/test")
+				response.status shouldBe HttpStatusCode.InternalServerError
+				val text = response.bodyAsText()
+				text shouldNotContain "strict-policy"
+				text shouldNotContain "NotAPolicy"
+				val body = Json.decodeFromString<ApiError>(text)
+				body.error shouldBe "INVALID_POLICY"
+				body.message shouldBe SERVER_POLICY_UNUSABLE
+				body.details shouldBe null
+			}
+		}
+	}
+
+	test("OperationException with ValidationError.InvalidPolicy logs the policy file, the reason and the cause as an error") {
+		val path = "/etc/omnisign/policies/strict-policy.xml"
+		val reason = "cvc-elt.1.a: Cannot find the declaration of element 'NotAPolicy'."
+		val cause = IllegalStateException("unmarshalling failed")
+		val appender = ListAppender<ILoggingEvent>().apply { start() }
+		val plugins = LoggerFactory.getLogger("cz.pizavo.omnisign.plugins") as Logger
+		plugins.addAppender(appender)
+		try {
+			testApplication {
+				configureTestApp { throw OperationException(ValidationError.policyFileInvalid(path, reason, cause)) }
+				client.get("/test").status shouldBe HttpStatusCode.InternalServerError
+			}
+		} finally {
+			plugins.detachAppender(appender)
+		}
+
+		val logged = appender.list.single { it.formattedMessage.startsWith("INVALID_POLICY") }
+		logged.level shouldBe Level.ERROR
+		logged.formattedMessage shouldContain path
+		logged.formattedMessage shouldContain reason
+		logged.throwableProxy.shouldNotBeNull().message shouldBe "unmarshalling failed"
 	}
 
 	test("IllegalArgumentException returns 400") {
