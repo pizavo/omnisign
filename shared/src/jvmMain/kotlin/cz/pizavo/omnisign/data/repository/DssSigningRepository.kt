@@ -32,7 +32,6 @@ import eu.europa.esig.dss.model.SignatureValue
 import eu.europa.esig.dss.model.ToBeSigned
 import eu.europa.esig.dss.pades.PAdESSignatureParameters
 import eu.europa.esig.dss.pades.SignatureImageParameters
-import eu.europa.esig.dss.pades.SignatureImageTextParameters
 import eu.europa.esig.dss.pades.signature.PAdESService
 import eu.europa.esig.dss.spi.validation.CertificateVerifier
 import eu.europa.esig.dss.spi.x509.revocation.RevocationToken
@@ -49,6 +48,7 @@ import java.io.File
 import java.security.PublicKey
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Clock
+import kotlin.time.Instant
 import eu.europa.esig.dss.enumerations.EncryptionAlgorithm as DssEncryptionAlgorithm
 import eu.europa.esig.dss.enumerations.SignatureLevel as DssSignatureLevel
 
@@ -955,7 +955,9 @@ class DssSigningRepository(
 	
 	/**
 	 * Build [PAdESSignatureParameters] that sign with [signatureAlgorithm] at [dssLevel], with the
-	 * key in [privateKey] and the reason, location, contact and appearance in [parameters].
+	 * key in [privateKey] and the reason, location, contact and appearance in [parameters]. A box
+	 * given neither text nor an image names the signer and shows the signing time these parameters
+	 * claim, as [visibleSignatureText] describes.
 	 *
 	 * The signing certificate is set before the algorithms: setting it resets the encryption
 	 * algorithm to the one the certificate's key implies, which would undo a choice such as RSA-PSS
@@ -979,7 +981,13 @@ class DssSigningRepository(
 		parameters.reason?.let { reason = it }
 		parameters.location?.let { location = it }
 		parameters.contactInfo?.let { contactInfo = it }
-		parameters.visibleSignature?.let { imageParameters = buildImageParameters(it) }
+		parameters.visibleSignature?.let {
+			imageParameters = buildImageParameters(
+				it,
+				extractSubjectCN(privateKey.certificate.certificate.subjectX500Principal),
+				bLevel().signingDate.toKotlinInstant(),
+			)
+		}
 	}
 
 	/**
@@ -1191,9 +1199,18 @@ class DssSigningRepository(
 	}
 	
 	/**
-	 * Build DSS [SignatureImageParameters] from our domain [VisibleSignatureParameters].
+	 * Build DSS [SignatureImageParameters] from our domain [VisibleSignatureParameters], with the
+	 * text [visibleSignatureText] gives a signature by [signerName] at [signingDate].
+	 *
+	 * @param vsp The appearance the signature was asked for.
+	 * @param signerName The name a box without text or image gives the signer.
+	 * @param signingDate The signing time the signature claims, which such a box shows.
 	 */
-	private fun buildImageParameters(vsp: VisibleSignatureParameters): SignatureImageParameters =
+	private fun buildImageParameters(
+		vsp: VisibleSignatureParameters,
+		signerName: String,
+		signingDate: Instant,
+	): SignatureImageParameters =
 		SignatureImageParameters().apply {
 			fieldParameters.page = vsp.page
 			fieldParameters.originX = vsp.x
@@ -1201,9 +1218,7 @@ class DssSigningRepository(
 			fieldParameters.width = vsp.width
 			fieldParameters.height = vsp.height
 			
-			vsp.text?.let {
-				textParameters = SignatureImageTextParameters().apply { text = it }
-			}
+			visibleSignatureText(vsp, signerName, signingDate)?.let { textParameters = it }
 			vsp.imagePath?.let { path ->
 				val imgBytes = File(path).readBytes()
 				image = InMemoryDocument(imgBytes)

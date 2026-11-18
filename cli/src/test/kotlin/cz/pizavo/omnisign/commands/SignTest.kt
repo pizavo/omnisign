@@ -14,6 +14,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
+import cz.pizavo.omnisign.domain.model.parameters.VisibleSignatureParameters
 import cz.pizavo.omnisign.domain.model.result.SigningResult
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -436,6 +437,54 @@ class SignTest : FunSpec({
 
 		result.statusCode shouldBe 0
 		captured.captured.resolvedConfig?.timestampServer?.url shouldBe "https://tsa.example.test"
+	}
+	test("sign --visible with the whole box passes its position and size to the signer, and no text") {
+		val captured = signsSuccessfully()
+
+		val result = Omnisign().test(
+			keystoreSigning("vis-box") +
+					listOf("--visible", "--vis-x", "50", "--vis-y", "700", "--vis-width", "200", "--vis-height", "50")
+		)
+
+		result.statusCode shouldBe 0
+		captured.captured.visibleSignature shouldBe
+				VisibleSignatureParameters(page = 1, x = 50f, y = 700f, width = 200f, height = 50f)
+	}
+
+	test("sign --visible without the whole box fails, names what is missing, and signs nothing") {
+		val captured = signsSuccessfully()
+
+		val result = Omnisign().test(keystoreSigning("vis-partial") + listOf("--visible", "--vis-x", "50", "--vis-y", "700"))
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "--visible needs the position and the size of the signature's box"
+		result.stderr shouldContain "Missing: --vis-width, --vis-height."
+		captured.isCaptured shouldBe false
+	}
+
+	test("sign --visible with --json reports the missing box as JSON") {
+		val captured = signsSuccessfully()
+
+		val result = Omnisign().test(
+			listOf("--json") + keystoreSigning("vis-json") + listOf("--visible", "--vis-width", "200", "--vis-height", "50")
+		)
+
+		result.statusCode shouldBe 1
+		result.output shouldContain "\"success\":false"
+		result.output shouldContain "Missing: --vis-x, --vis-y."
+		captured.isCaptured shouldBe false
+	}
+
+	test("sign --visible without the whole box fails before it asks for the keystore password") {
+		val captured = signsSuccessfully()
+
+		val result = Omnisign().test(
+			keystoreSigning("vis-before-password") + listOf("--keystore-password", "-", "--visible", "--vis-x", "50")
+		)
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "Missing: --vis-y, --vis-width, --vis-height."
+		captured.isCaptured shouldBe false
 	}
 })
 
