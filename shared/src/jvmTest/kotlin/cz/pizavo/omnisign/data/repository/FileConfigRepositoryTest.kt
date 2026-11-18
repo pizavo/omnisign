@@ -46,9 +46,10 @@ import kotlin.io.path.writeText
 
 /**
  * Verifies [FileConfigRepository] file-based persistence: creation of defaults, round-trip
- * save/load, the default fallback for a file that cannot be read, the refusal to save over such a
- * file, the atomic replacement of the file on a save, the details its errors give, and the
- * dispatcher the file access runs on.
+ * save/load, reads that return what another program saved since the last one, the fallback for a
+ * file that cannot be read to the last configuration read or to the defaults, the refusal to save
+ * over such a file, the atomic replacement of the file on a save, the details its errors give, and
+ * the dispatcher the file access runs on.
  *
  * The test of a file this user may not read denies the reading through an ACL on Windows and
  * through the POSIX permissions elsewhere, and does not run as root, whom the permissions do not
@@ -130,7 +131,7 @@ class FileConfigRepositoryTest : FunSpec({
 		path.readText() shouldBe "{{{invalid json"
 	}
 
-	test("getCurrentConfig returns cached config after load") {
+	test("getCurrentConfig returns the config the file holds") {
 		val repo = repoAt("cached")
 		val config = AppConfig(
 			global = GlobalConfig(defaultHashAlgorithm = HashAlgorithm.SHA384),
@@ -148,6 +149,71 @@ class FileConfigRepositoryTest : FunSpec({
 		val repo = repoAtPath(path)
 		val current = repo.getCurrentConfig()
 		current shouldBe AppConfig(global = GlobalConfig())
+	}
+
+	test("getCurrentConfig returns what another program saved since this repository last read the file") {
+		val path = Path.of(tmpDir.absolutePath, "other-program", "config.json")
+		val desktop = repoAtPath(path)
+		desktop.saveConfig(AppConfig(global = GlobalConfig())).shouldBeRight()
+		desktop.getCurrentConfig().profiles.keys shouldBe emptySet()
+
+		repoAtPath(path).saveConfig(AppConfig(profiles = mapOf("work" to ProfileConfig(name = "work")))).shouldBeRight()
+
+		desktop.getCurrentConfig().profiles.keys shouldContainExactly setOf("work")
+	}
+
+	test("setActiveProfile keeps what another program saved since this repository last read the file") {
+		val path = Path.of(tmpDir.absolutePath, "active-after-other", "config.json")
+		val desktop = repoAtPath(path)
+		desktop.saveConfig(AppConfig(global = GlobalConfig())).shouldBeRight()
+		desktop.getCurrentConfig()
+		repoAtPath(path).saveConfig(AppConfig(profiles = mapOf("work" to ProfileConfig(name = "work")))).shouldBeRight()
+
+		desktop.setActiveProfile("work").shouldBeRight()
+
+		val saved = repoAtPath(path).loadConfig().shouldBeRight()
+		saved.profiles.keys shouldContainExactly setOf("work")
+		saved.activeProfile shouldBe "work"
+	}
+
+	test("a config file that turns invalid after a save keeps serving the config saved, and a save over it is refused") {
+		val path = Path.of(tmpDir.absolutePath, "invalid-after-save", "config.json")
+		val repo = repoAtPath(path)
+		val config = AppConfig(global = GlobalConfig(defaultHashAlgorithm = HashAlgorithm.SHA384))
+		repo.saveConfig(config).shouldBeRight()
+
+		path.writeText("not valid json")
+
+		repo.getCurrentConfig() shouldBe config
+		repo.loadConfig().shouldBeLeft().shouldBeInstanceOf<ConfigurationError.LoadFailed>()
+		repo.saveConfig(config).shouldBeLeft().shouldBeInstanceOf<ConfigurationError.SaveFailed>().text shouldBe
+			unreadable(path)
+		path.readText() shouldBe "not valid json"
+	}
+
+	test("a config file that turns invalid after a read keeps serving the config read, not the one saved before it") {
+		val path = Path.of(tmpDir.absolutePath, "invalid-after-read", "config.json")
+		val repo = repoAtPath(path)
+		repo.saveConfig(AppConfig(global = GlobalConfig(defaultHashAlgorithm = HashAlgorithm.SHA384))).shouldBeRight()
+		val other = AppConfig(profiles = mapOf("work" to ProfileConfig(name = "work")))
+		repoAtPath(path).saveConfig(other).shouldBeRight()
+		repo.getCurrentConfig() shouldBe other
+
+		path.writeText("not valid json")
+
+		repo.getCurrentConfig() shouldBe other
+	}
+
+	test("a config file deleted after a read is not brought back from memory: the next read starts over from the defaults") {
+		val path = Path.of(tmpDir.absolutePath, "deleted", "config.json")
+		val repo = repoAtPath(path)
+		repo.saveConfig(AppConfig(profiles = mapOf("work" to ProfileConfig(name = "work")))).shouldBeRight()
+		repo.getCurrentConfig().profiles.keys shouldContainExactly setOf("work")
+
+		path.deleteIfExists()
+
+		repo.getCurrentConfig() shouldBe AppConfig(global = GlobalConfig())
+		repoAtPath(path).loadConfig().shouldBeRight() shouldBe AppConfig(global = GlobalConfig())
 	}
 
 	test("a change built on the defaults of a config written by a newer build leaves its profiles in the file") {
@@ -384,9 +450,15 @@ class FileConfigRepositoryTest : FunSpec({
 		repo.loadConfig().shouldBeRight()
 		val afterLoad = dispatches.get()
 		repo.saveConfig(AppConfig(global = GlobalConfig())).shouldBeRight()
+		val afterSave = dispatches.get()
+		repo.getCurrentConfig()
+		val afterRead = dispatches.get()
+		repo.setActiveProfile(null).shouldBeRight()
 
 		afterLoad shouldBeGreaterThan 0
-		dispatches.get() shouldBeGreaterThan afterLoad
+		afterSave shouldBeGreaterThan afterLoad
+		afterRead shouldBeGreaterThan afterSave
+		dispatches.get() shouldBeGreaterThan afterRead
 	}
 
 	test("saveConfig sets POSIX owner-only permissions on non-Windows").config(

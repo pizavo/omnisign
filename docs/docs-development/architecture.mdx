@@ -143,6 +143,12 @@ Configuration resolves through a three-layer merge — global, then profile, the
 overrides — in `ResolvedConfig.resolve()`. Every deliverable shares that logic, which is why a profile
 means the same thing in the CLI as it does in the desktop app.
 
+The CLI, the desktop app and the scheduled renewal also share the file the configuration is kept in.
+`FileConfigRepository` reads that file again on every read, `getCurrentConfig()` included, so each of
+them sees what the others saved, and a use case that changes the configuration builds on the file as
+it is just before the save. Nothing locks the file across processes, so of two changes saved at the
+same moment only the later one is kept.
+
 The names above are patterns, not incidental vocabulary: the repository interfaces are the
 **Repository** pattern, `domain/port/` is **Ports and Adapters**, and the fact that the domain owns
 both is **Dependency Inversion**. [Design patterns](patterns.mdx) walks through each one, what problem
