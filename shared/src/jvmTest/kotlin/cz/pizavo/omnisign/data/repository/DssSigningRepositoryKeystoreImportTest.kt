@@ -139,7 +139,7 @@ class DssSigningRepositoryKeystoreImportTest : FunSpec({
 		val repository = DssSigningRepository(
 			DssTokenService(passwordCallback, pkcs11Discoverer = discoverer), mockk(), mockk(relaxed = true),
 			dssServiceFactory, AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
-			trustStore, DocumentInputErrorDetector(), Pkcs11SessionCache(), SignatureSpaceErrorDetector(),
+			trustStore, DocumentInputErrorDetector(), Pkcs11SessionCache(), SignatureSpaceErrorDetector(), DssLogCapture(),
 		)
 		return Fixture(repository, passwordCallback, discoverer)
 	}

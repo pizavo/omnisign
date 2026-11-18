@@ -125,8 +125,8 @@ Java date.
 `use { }` is worth singling out. It closes on every path — early return, exception, non-local return —
 and because it is `inline`, `suspend` calls work inside it. It is for streams and documents:
 `signedDocument.openStream().use { … }`, `ZipOutputStream(buffer).use { … }`, `PDDocument().use { … }`.
-Reserve `try`/`finally` for cleanup of things that are not `Closeable`, such as
-`DssLogCapture.start()` / `stop()`.
+Reserve `try`/`finally` for cleanup of things that are not `Closeable`, such as the session
+`DssLogCapture.start()` opens and `stop()` closes.
 
 DSS's `AbstractSignatureTokenConnection` is the deliberate exception: an unlocked PKCS#11 session
 outlives the operation that opened it, so it is pooled process-wide in `Pkcs11SessionCache` and closed

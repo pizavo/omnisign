@@ -76,6 +76,7 @@ class DssArchivingRepository(
 	private val trustStore: TrustStore,
 	private val renewalCheckCache: RenewalCheckCache,
 	private val signatureSpaceErrorDetector: SignatureSpaceErrorDetector,
+	private val logCapture: DssLogCapture,
 ) : ArchivingRepository {
 	
 	private val adesPolicy = AdESPolicy()
@@ -114,19 +115,18 @@ class DssArchivingRepository(
 
 			val dssLevel = parameters.targetLevel.toDss()
 			val statusAlert = CollectingStatusAlert()
-			val logCapture = DssLogCapture()
 			val (service, verifier, tlWarnings) = buildExtendService(resolvedConfig, tsConfig, statusAlert)
 			val extendParams = PAdESSignatureParameters().apply {
 				setSignatureLevel(dssLevel)
 				dssServiceFactory.applyTimestampContentSize(this)
 			}
-			logCapture.start()
+			val logSession = logCapture.start()
 			try {
 				val extendedDocument = service.extendDocument(
 					InMemoryDocument(parameters.inputBytes, parameters.inputName), extendParams,
 				)
 
-				val warnings = tlWarnings + statusAlert.drain() + logCapture.stop()
+				val warnings = tlWarnings + statusAlert.drain() + logSession.stop()
 
 				val outputBytes = withContext(Dispatchers.IO) {
 					extendedDocument.openStream().use { it.readAllBytes() }
@@ -163,7 +163,7 @@ class DssArchivingRepository(
 						parameters.targetLevel >= SignatureLevel.PADES_BASELINE_LT,
 				).right()
 			} finally {
-				logCapture.stop()
+				logSession.stop()
 			}
 		} catch (e: Exception) {
 			val tsaUrl = runCatching {

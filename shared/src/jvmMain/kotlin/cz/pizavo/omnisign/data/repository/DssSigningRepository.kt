@@ -78,6 +78,7 @@ class DssSigningRepository(
 	private val documentInputErrorDetector: DocumentInputErrorDetector,
 	private val sessionCache: Pkcs11SessionCache,
 	private val signatureSpaceErrorDetector: SignatureSpaceErrorDetector,
+	private val logCapture: DssLogCapture,
 ) : SigningRepository {
 	
 	private var discoveredTokens: List<TokenInfo> = emptyList()
@@ -176,7 +177,6 @@ class DssSigningRepository(
 					privateKey, effectiveEncryption, effectiveHash, resolvedKey.tokenType, resolvedConfig, signingWarnings,
 				).getOrElse { return it.left() }
 				val statusAlert = CollectingStatusAlert()
-				val logCapture = DssLogCapture()
 				val (service, verifier, tlWarnings) = buildSigningService(
 					resolvedConfig,
 					dssSignatureLevel,
@@ -186,7 +186,7 @@ class DssSigningRepository(
 				signingWarnings += tlWarnings
 				val signatureParams = buildSignatureParameters(privateKey, signatureAlgorithm, dssSignatureLevel, parameters)
 				val certIdNames = buildCertIdNames(privateKey)
-				logCapture.start()
+				val logSession = logCapture.start()
 				try {
 					val dataToSign: ToBeSigned = service.getDataToSign(document, signatureParams)
 					val signatureValue: SignatureValue =
@@ -194,7 +194,7 @@ class DssSigningRepository(
 					val signedDocument = service.signDocument(document, signatureParams, signatureValue)
 					
 					signingWarnings += statusAlert.drain()
-					signingWarnings += logCapture.stop()
+					signingWarnings += logSession.stop()
 					
 					val sanitized =
 						warningSanitizer.sanitize(signingWarnings, certIdNames, SIGNING_SUPPRESSED_CATEGORIES)
@@ -216,7 +216,7 @@ class DssSigningRepository(
 						hasRevocationWarnings = sanitized.hasRevocationWarnings,
 					).right()
 				} finally {
-					logCapture.stop()
+					logSession.stop()
 				}
 			} finally {
 				if (!resolvedKey.cached) tokenConnection.close()

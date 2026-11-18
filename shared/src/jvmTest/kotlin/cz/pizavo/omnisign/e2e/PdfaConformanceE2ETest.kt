@@ -194,12 +194,12 @@ class PdfaConformanceE2ETest : FunSpec({
 		FileTrustStore(tempdir().toPath()),
 		DocumentInputErrorDetector(),
 		Pkcs11SessionCache(),
-		SignatureSpaceErrorDetector(),
+		SignatureSpaceErrorDetector(), DssLogCapture(),
 	)
 	val archivingRepository = DssArchivingRepository(
 		configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(),
 		RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()),
-		mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(),
+		mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(), DssLogCapture(),
 	)
 	
 	/**

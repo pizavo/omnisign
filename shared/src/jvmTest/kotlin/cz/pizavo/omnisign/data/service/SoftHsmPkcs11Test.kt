@@ -2,6 +2,7 @@ package cz.pizavo.omnisign.data.service
 
 import cz.pizavo.omnisign.data.repository.CertificateVerifierResult
 import cz.pizavo.omnisign.data.repository.DocumentInputErrorDetector
+import cz.pizavo.omnisign.data.repository.DssLogCapture
 import cz.pizavo.omnisign.data.repository.DssServiceFactory
 import cz.pizavo.omnisign.data.repository.DssSigningRepository
 import cz.pizavo.omnisign.data.repository.DssWarningSanitizer
@@ -113,6 +114,7 @@ class SoftHsmPkcs11Test : FunSpec({
 		tokenService, configRepository, credentialStore, dssServiceFactory,
 		AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
 		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(), sessionCache, SignatureSpaceErrorDetector(),
+		DssLogCapture(),
 	)
 
 	lateinit var tokens: Map<String, TokenInfo>

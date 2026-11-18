@@ -211,12 +211,12 @@ class ExpiredCertificatePreservationE2ETest : FunSpec({
 	val signingRepository = DssSigningRepository(
 		tokenService, configRepository, mockk<CredentialStore>(relaxed = true), dssServiceFactory,
 		AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
-		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(), Pkcs11SessionCache(), SignatureSpaceErrorDetector(),
+		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(), Pkcs11SessionCache(), SignatureSpaceErrorDetector(), DssLogCapture(),
 	)
 	val archivingRepository = DssArchivingRepository(
 		configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(),
 		RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()),
-		mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(),
+		mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(), DssLogCapture(),
 	)
 
 	fun plainPdf(): ByteArray {
@@ -351,7 +351,7 @@ class ExpiredCertificatePreservationE2ETest : FunSpec({
 	) = DssArchivingRepository(
 		config, factory, DssWarningSanitizer(), TspErrorDetector(),
 		RevocationErrorDetector(), DocumentInputErrorDetector(), trustStore,
-		cache, SignatureSpaceErrorDetector(),
+		cache, SignatureSpaceErrorDetector(), DssLogCapture(),
 	)
 
 	test("a terminal verdict is cached with the profile that reached it") {

@@ -46,7 +46,7 @@ class DssSigningRepositoryTest : FunSpec({
 	val repository = DssSigningRepository(
 		tokenService, configRepository, credentialStore, dssServiceFactory,
 		AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
-		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(), sessionCache, SignatureSpaceErrorDetector(),
+		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(), sessionCache, SignatureSpaceErrorDetector(), DssLogCapture(),
 	)
 
 	beforeTest { sessionCache.invalidateAll() }

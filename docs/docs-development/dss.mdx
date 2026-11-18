@@ -154,11 +154,15 @@ logging to SLF4J. OmniSign captures both, then normalises them.
 
 1. **`CollectingStatusAlert`** is registered on the `CertificateVerifier`. Instead of throwing or
 printing, it accumulates DSS's status messages for the duration of an operation.
-2. **`DssLogCapture`** attaches a capturing Logback appender — by reflection, so `shared` needs no
+2. **`DssLogCapture`** attaches a routing Logback appender — by reflection, so `shared` needs no
 compile-time `logback-classic` dependency — to the `eu.europa.esig` parent logger while an operation
 runs. It catches the diagnostics DSS only ever logs, minus the `eu.europa.esig.dss.tsl.` loggers,
-whose output the separate trusted-list warning mechanism handles. It is *not* `Closeable` — it is
-started and stopped in a `try`/`finally`.
+whose output the separate trusted-list warning mechanism handles. One instance, a Koin single,
+serves the whole process. Each operation opens a session on the thread that runs it and gets only
+the lines logged on that thread, so two signing requests the server handles at once do not see each
+other's warnings. The first session to open saves the logger's level and additivity, and the last one
+to close restores them. Lines the log shows outside a capture, such as DSS errors, still reach it. A
+session is *not* `Closeable` — it is opened and stopped in a `try`/`finally`.
 3. **`DssWarningSanitizer`** classifies each raw message into a `WarningCategory` and folds the
 affected certificate identifiers together, so ten warnings about ten certificates become one
 sentence.
