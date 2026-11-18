@@ -261,7 +261,9 @@ paths:
         '422':
           description: >
             Invalid resolved configuration (including a requested hashAlgorithm that is disabled),
-            an encrypted document, or a timestamp is required but TIMESTAMP is disabled.
+            an encrypted document, a timestamp is required but TIMESTAMP is disabled, the hash
+            algorithm is past its expiration date under a FAIL level, or the revocation data shows
+            the signing certificate, or a certificate above it in its chain, revoked or suspended.
           content:
             application/json:
               schema:
@@ -273,6 +275,10 @@ paths:
                   value: { error: TIMESTAMP_NOT_ALLOWED, message: "Signing at PADES_BASELINE_T embeds a timestamp, but TIMESTAMP is not enabled" }
                 encrypted:
                   value: { error: ENCRYPTED_DOCUMENT, message: "The PDF is encrypted or password-protected and cannot be signed" }
+                expiredAlgorithm:
+                  value: { error: EXPIRED_ALGORITHM, message: "Algorithm RIPEMD160 expired on 2014-08-01 per ETSI TS 119 312. Signatures created with this algorithm may fail validation.", details: "Change the hash algorithm or set --algo-expiration-level WARN to override." }
+                certificateRevoked:
+                  value: { error: CERTIFICATE_REVOKED, message: "The certificate issued to Example Seal has been revoked or suspended, so the document was not signed: the signature would not validate. Sign with another certificate", details: "Subject: CN=Example Seal; serial number: 4660; issuer: CN=Example CA; revoked on: 2026-11-02T08:30:00Z; reason: keyCompromise" }
         '429':
           $ref: '#/components/responses/RateLimited'
         '500':

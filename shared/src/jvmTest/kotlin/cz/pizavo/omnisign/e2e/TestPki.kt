@@ -169,7 +169,8 @@ class TestPki(
 	 * @param revoked The serial numbers of the certificates the CRL lists, each with the date it
 	 *   states the certificate was revoked on.
 	 * @param reason The RFC 5280 reason code every entry carries, such as [CRLReason.certificateHold]
-	 *   for a suspension.
+	 *   for a suspension, or 0 for entries that carry none, as BouncyCastle then leaves the reason
+	 *   code out.
 	 */
 	fun buildCrl(
 		thisUpdate: Date,
