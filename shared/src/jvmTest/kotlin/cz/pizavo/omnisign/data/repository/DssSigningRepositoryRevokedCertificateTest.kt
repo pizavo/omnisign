@@ -16,6 +16,8 @@ import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
+import cz.pizavo.omnisign.domain.model.text.LocalizableText
+import cz.pizavo.omnisign.domain.model.text.MessageKey
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
@@ -26,6 +28,7 @@ import eu.europa.esig.dss.alert.StatusAlert
 import eu.europa.esig.dss.enumerations.SignatureAlgorithm
 import eu.europa.esig.dss.model.InMemoryDocument
 import eu.europa.esig.dss.model.x509.CertificateToken
+import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.pdf.pdfbox.PdfBoxNativeObjectFactory
 import eu.europa.esig.dss.service.http.commons.TimestampDataLoader
 import eu.europa.esig.dss.service.tsp.OnlineTSPSource
@@ -33,12 +36,14 @@ import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import eu.europa.esig.dss.spi.x509.CommonTrustedCertificateSource
 import eu.europa.esig.dss.spi.x509.revocation.RevocationToken
 import eu.europa.esig.dss.spi.x509.revocation.crl.ExternalResourcesCRLSource
+import eu.europa.esig.dss.spi.x509.tsp.TimestampToken
 import eu.europa.esig.dss.token.Pkcs12SignatureToken
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldContainExactly
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.shouldBe
@@ -70,7 +75,8 @@ import kotlin.time.Instant
 /**
  * Verifies that [DssSigningRepository] refuses to sign with a certificate that its issuer has
  * revoked, before the key signs, and only then: not when revocation checking is off, and not for
- * another signer's revoked certificate, which signing at B-LT reports as a warning.
+ * another signer's revoked certificate, which signing at B-LT reports as a warning of its own, as
+ * it does another signer's timestamp that no longer verifies.
  *
  * The signers are minted off the committed end-to-end CA by [TestPki], and the CA's CRL is handed
  * to DSS through an offline source by a verifier configured as OmniSign's signing verifier is, so
@@ -282,6 +288,29 @@ class DssSigningRepositoryRevokedCertificateTest : FunSpec({
 	fun resolved(global: GlobalConfig): ResolvedConfig =
 		ResolvedConfig.resolve(global = global, profile = null, operationOverrides = null).getOrNull()!!
 
+	/** The signature timestamp of [pdf]'s only signature, as DSS reads it from the document. */
+	fun signatureTimestampOf(pdf: ByteArray): TimestampToken =
+		PDFDocumentValidator(InMemoryDocument(pdf)).apply {
+			setCertificateVerifier(CommonCertificateVerifier(true))
+			setPdfObjFactory(PdfBoxNativeObjectFactory())
+		}.signatures.single().signatureTimestamps.single()
+
+	/**
+	 * [pdf], signed once at B-T, with one hex digit of its signature timestamp's own signature value
+	 * changed, so that the timestamp no longer verifies while the signature it covers still does,
+	 * paired with the id DSS gives the changed timestamp.
+	 */
+	fun breakSignatureTimestamp(pdf: ByteArray): Pair<ByteArray, String> {
+		val signatureValue = signatureTimestampOf(pdf).timeStamp.toCMSSignedData().signerInfos.signers.single().signature
+		val signatureHex = signatureValue.joinToString("") { "%02X".format(it) }
+		val middle = signatureHex.length / 2
+		val digit = if (signatureHex[middle] == '0') '1' else '0'
+		val at = String(pdf, Charsets.ISO_8859_1).indexOf(signatureHex, ignoreCase = true)
+		check(at >= 0) { "the timestamp's signature value is not in the PDF" }
+		val broken = pdf.copyOf().also { it[at + middle] = digit.code.toByte() }
+		return broken to signatureTimestampOf(broken).dssIdAsString
+	}
+
 	/** Sign [input] with [leaf] at [level], under [global], adding no timestamp that [level] does not. */
 	suspend fun DssSigningRepository.sign(
 		leaf: TestPki.Leaf,
@@ -352,7 +381,7 @@ class DssSigningRepositoryRevokedCertificateTest : FunSpec({
 		result.rawWarnings.filter { it.contains("revocation check is skipped", ignoreCase = true) }.shouldBeEmpty()
 	}
 
-	test("a co-signer's revoked certificate does not stop signing at B-LT, which reports it as a warning") {
+	test("a co-signer's revoked certificate does not stop signing at B-LT, which reports it first, under its own category") {
 		val signedBeforeTheRevocation = repository(revokedSigner, listOf(crlRevoking()))
 			.sign(revokedSigner, SignatureLevel.PADES_BASELINE_B)
 			.shouldBeRight().outputBytes
@@ -361,7 +390,30 @@ class DssSigningRepositoryRevokedCertificateTest : FunSpec({
 			.sign(coSigner, SignatureLevel.PADES_BASELINE_LT, input = signedBeforeTheRevocation)
 			.shouldBeRight()
 
-		result.rawWarnings.filter { it.contains("revoked", ignoreCase = true) }.shouldNotBeEmpty()
+		result.rawWarnings.filter { it.contains("Revoked/Suspended certificate(s) detected") }.shouldNotBeEmpty()
+		val revoked = result.annotatedWarnings.first()
+		revoked.summary.shouldBeInstanceOf<LocalizableText.Keyed>().key shouldBe MessageKey.WARNING_CERTIFICATE_REVOKED
+		revoked.affectedIds shouldContainExactly listOf(CertificateToken(revokedSigner.certificate).dssIdAsString)
+		result.annotatedWarnings.map { it.summary }.filterIsInstance<LocalizableText.Literal>()
+			.filter { it.value.contains("Revoked/Suspended") }.shouldBeEmpty()
+	}
+
+	test("a co-signer's broken timestamp does not stop signing at B-LT, which reports it under its own category") {
+		val timestamped = repository(revokedSigner, listOf(crlRevoking()))
+			.sign(revokedSigner, SignatureLevel.PADES_BASELINE_T)
+			.shouldBeRight().outputBytes
+		val (broken, brokenTimestampId) = breakSignatureTimestamp(timestamped)
+
+		val result = repository(coSigner, listOf(crlRevoking()))
+			.sign(coSigner, SignatureLevel.PADES_BASELINE_LT, input = broken)
+			.shouldBeRight()
+
+		result.rawWarnings.filter { it.contains("Broken timestamp(s) detected") }.shouldNotBeEmpty()
+		result.annotatedWarnings
+			.filter { (it.summary as? LocalizableText.Keyed)?.key == MessageKey.WARNING_TIMESTAMP_BROKEN }
+			.single().affectedIds shouldContainExactly listOf(brokenTimestampId)
+		result.annotatedWarnings.map { it.summary }.filterIsInstance<LocalizableText.Literal>()
+			.filter { it.value.contains("Broken timestamp") }.shouldBeEmpty()
 	}
 
 	test("a revocation its CRL gives no reason for is reported with an unspecified reason") {

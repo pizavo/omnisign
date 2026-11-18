@@ -885,5 +885,21 @@ class DssWarningSanitizerTest : FunSpec({
 			MessageKey.WARNING_REVOCATION_POE_MISSING,
 		)
 	}
+
+	test("a broken timestamp is reported after every revocation category and before the other timestamp ones") {
+		val raw = listOf(
+			"POE extraction is skipped for untrusted timestamp : T-FFFF",
+			"Broken timestamp(s) detected. [T-AAAA1111: Signature is not intact!]",
+			"Fresh revocation data is missing for one or more certificate(s). [C-BBBB2222: $staleDetail]",
+		)
+
+		val result = sanitizer.sanitize(raw)
+
+		keyedIds(result) shouldContainExactly listOf(
+			MessageKey.WARNING_FRESH_REVOCATION_MISSING_BY_TIME to listOf("C-BBBB2222"),
+			MessageKey.WARNING_TIMESTAMP_BROKEN to listOf("T-AAAA1111"),
+			MessageKey.WARNING_TIMESTAMP_UNTRUSTED to listOf("T-FFFF"),
+		)
+	}
 })
 

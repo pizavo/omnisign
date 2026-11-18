@@ -473,7 +473,8 @@ class DssWarningSanitizer {
 		 * every timestamp it processes, with the detail `Signature is not intact!` whichever of those
 		 * checks failed. Reported in every operation, but neither revocation-related nor blocking: it
 		 * mostly concerns a timestamp already in the document, which neither signing nor augmenting
-		 * can mend.
+		 * can mend. Declared after the revocation categories and before the other timestamp ones, so
+		 * that its summary leads the timestamp summaries.
 		 */
 		TIMESTAMP_BROKEN {
 			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) =
