@@ -150,6 +150,15 @@ enum class MessageKey {
 	/** Remote (server-delegated) document validation failed. */
 	VALIDATION_REMOTE_VALIDATION_FAILED,
 
+	/** The custom validation policy is selected, but no policy file is set. */
+	VALIDATION_POLICY_FILE_NOT_SET,
+
+	/** The validation policy file does not exist, is not a regular file, or cannot be read (arg: file path). */
+	VALIDATION_POLICY_FILE_UNREADABLE,
+
+	/** The file could not be loaded as a validation policy (arg: file path). */
+	VALIDATION_POLICY_FILE_INVALID,
+
 	/** The supplied bytes could not be parsed as an X.509 certificate. */
 	TRUSTSTORE_PARSE_FAILED,
 

@@ -92,7 +92,8 @@ global:
   validation:
     # DEFAULT_ETSI (built-in ETSI policy) | CUSTOM_FILE (load customPolicyPath)
     policyType: DEFAULT_ETSI
-    # DSS validation-policy XML; required when policyType is CUSTOM_FILE.
+    # DSS validation-policy XML; required when policyType is CUSTOM_FILE, which then
+    # fails every validation while the file is missing, unreadable or not a policy.
     # customPolicyPath: "/etc/omnisign/validation-policy.xml"
     checkRevocation: true
     useEuLotl: true

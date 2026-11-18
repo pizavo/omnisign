@@ -12,7 +12,9 @@ import eu.europa.esig.dss.enumerations.SubContext
 import eu.europa.esig.dss.model.policy.CryptographicSuite
 import eu.europa.esig.dss.policy.EtsiValidationPolicy
 import eu.europa.esig.dss.validation.policy.CryptographicSuiteUtils
+import io.kotest.assertions.throwables.shouldThrowAny
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.engine.spec.tempdir
 import io.kotest.engine.spec.tempfile
 import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.collections.shouldNotContain
@@ -21,12 +23,14 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import kotlinx.datetime.LocalDate
+import java.io.File
 import java.util.*
 import kotlin.time.Instant
 
 /**
  * Verifies algorithm constraint application and disabled-algorithm enforcement
- * on the DSS validation policy.
+ * on the DSS validation policy, and that a policy file is read in place of the default,
+ * which never stands in for a file that is missing or holds no validation policy.
  */
 class AdESPolicyTest : FunSpec({
 	
@@ -80,7 +84,26 @@ class AdESPolicyTest : FunSpec({
 	test("load returns non-null policy with no file and no constraints") {
 		policy.load(null, null).shouldNotBeNull()
 	}
-	
+
+	test("load reads the policy a file holds instead of the default") {
+		val xml = AdESPolicy::class.java.getResource("/policy/constraint.xml").shouldNotBeNull().readText()
+		val renamed = xml.replaceFirst("Name=\"QES AES/QC AES TL based\"", "Name=\"OmniSign test policy\"")
+		renamed shouldNotBe xml
+		val file = tempfile(suffix = ".xml").apply { writeText(renamed) }
+
+		policy.load(null).policyName shouldBe "QES AES/QC AES TL based"
+		policy.load(file).policyName shouldBe "OmniSign test policy"
+	}
+
+	test("load throws for a policy file that does not exist instead of loading the default") {
+		shouldThrowAny { policy.load(File(tempdir(), "missing.xml")) }
+	}
+
+	test("load throws for a policy file that is empty or holds no validation policy") {
+		shouldThrowAny { policy.load(tempfile(suffix = ".xml")) }
+		shouldThrowAny { policy.load(tempfile(suffix = ".xml").apply { writeText("<NotAPolicy/>") }) }
+	}
+
 	test("load applies FAIL expiration level to signature crypto suite") {
 		val config = AlgorithmConstraintsConfig(
 			expirationLevel = AlgorithmConstraintLevel.FAIL,

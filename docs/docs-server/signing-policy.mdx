@@ -83,6 +83,11 @@ validation reports name it as not refreshed. The server then tries to download i
 5 minutes, up to 6 times, before going back to the interval. The freshness check counts from when
 a list was last loaded, so it does not flag such a copy; the report's notice does.
 
+With `policyType: CUSTOM_FILE`, the server validates under the DSS validation policy file that
+`customPolicyPath` names, never under the default ETSI policy. While the path is unset, or the file
+is missing, unreadable or not a validation policy, every validation request fails with an
+`INVALID_POLICY` error that names the file, which the server also logs.
+
 A key in `algorithmConstraints.expirationDateOverrides` is an algorithm name, or `NAME:KEY_SIZE`
 for one key-size entry of an algorithm the validation policy dates by key size, such as
 `"RSA:1900"` (quoted, because of the colon). A bare name of such an algorithm only moves its

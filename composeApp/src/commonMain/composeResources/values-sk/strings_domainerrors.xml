@@ -43,6 +43,9 @@
 	<string name="err_signing_signature_too_large">Podpis sa nezmestil do miesta, ktoré je preň v dokumente vyhradené, takže sa nič nezapísalo a pôvodný súbor zostal bez zmeny. Reťazec podpisových certifikátov spolu s tokenom časovej pečiatky na úrovniach nad B-B túto rezerváciu presahuje a zväčšiť ju po začatí podpisu už nie je možné. Nahláste prosím tento dokument, aby bolo možné vyhradené miesto zväčšiť</string>
 	<string name="err_validation_validation_failed">Validácia zlyhala</string>
 	<string name="err_validation_remote_validation_failed">Vzdialená validácia zlyhala</string>
+	<string name="err_validation_policy_file_not_set">Je vybraná vlastná politika validácie, ale súbor politiky nie je nastavený</string>
+	<string name="err_validation_policy_file_unreadable">Súbor politiky \'%1$s\' neexistuje alebo ho nemožno prečítať</string>
+	<string name="err_validation_policy_file_invalid">Súbor politiky \'%1$s\' sa nepodarilo načítať ako politiku validácie</string>
 	<string name="err_truststore_parse_failed">Certifikát sa nepodarilo analyzovať</string>
 	<string name="err_truststore_store_failed">Dôveryhodný certifikát sa nepodarilo uložiť</string>
 	<string name="err_truststore_operation_failed">Operácia s úložiskom dôvery zlyhala</string>
