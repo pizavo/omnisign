@@ -243,6 +243,12 @@ root logger, which is why the configurations do without it.
 timestamp authority rejects a request. Without it, a TSA saying *"policy not supported"* and a TSA
 being unreachable are the same opaque failure.
 
+The code is a set of bits, which DSS prints in hexadecimal through BouncyCastle's
+`PKIFailureInfo.toString()`. That value packs the failure bit string a byte at a time, with the
+first bit of each byte as its most significant one, so RFC 3161's bit 0, `badAlg`, prints as `0x80`,
+not `0x1`, and bit 25, `systemFailure`, as `0x40000000`. The detector decodes the code with
+BouncyCastle's own constants and names every failure whose bit is set.
+
 A TSP failure can be non-fatal: DSS may retry and succeed, in which case the failure survives only as
 a logged warning that `DssLogCapture` picks up. That is why `TSP_FAILURE` exists as a warning category
 *and* as a dedicated error — the operation's outcome decides which one the user sees.

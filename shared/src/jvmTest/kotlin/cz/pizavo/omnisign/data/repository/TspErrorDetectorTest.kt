@@ -1,12 +1,24 @@
 package cz.pizavo.omnisign.data.repository
 
+import eu.europa.esig.dss.enumerations.DigestAlgorithm
+import eu.europa.esig.dss.service.tsp.OnlineTSPSource
+import eu.europa.esig.dss.spi.client.http.DataLoader
+import eu.europa.esig.dss.spi.exception.DSSExternalResourceException
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.nulls.shouldBeNull
-import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.mockk.every
+import io.mockk.mockk
 import cz.pizavo.omnisign.domain.model.error.TimestampFailureKind
 import cz.pizavo.omnisign.domain.model.error.isServerWide
+import org.bouncycastle.asn1.DERBitString
+import org.bouncycastle.asn1.cmp.PKIFailureInfo
+import org.bouncycastle.asn1.cmp.PKIFreeText
+import org.bouncycastle.asn1.cmp.PKIStatus
+import org.bouncycastle.asn1.cmp.PKIStatusInfo
+import org.bouncycastle.asn1.tsp.TimeStampResp
 import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
@@ -22,11 +34,51 @@ import java.net.UnknownHostException
  * with the transport exception, or the HTTP error status it would not accept, as its cause, and uses
  * the same shape for revocation fetches — which is why the URL has to be part of the verdict, and
  * the whole URL between its brackets, since a CRL can live under the timestamp server's address.
+ *
+ * The refusals are built as a TSA sends them, from RFC 3161's bit numbers, and passed through DSS's
+ * own `OnlineTSPSource`, so the code each carries is the one DSS prints, whatever table the detector
+ * decodes it with.
  */
 class TspErrorDetectorTest : FunSpec({
 
 	val detector = TspErrorDetector()
 	val tsa = "https://tsa.example.com/timestamp"
+
+	/**
+	 * The answer a TSA sends when it refuses a request: a `TimeStampResp` whose status is a rejection
+	 * and whose failure info sets the RFC 3161 bits [bits], laid out as DER lays out a named bit
+	 * string, bit 0 being the most significant bit of the first byte.
+	 */
+	fun rejection(vararg bits: Int): ByteArray {
+		val last = bits.max()
+		val octets = ByteArray(last / 8 + 1)
+		for (bit in bits) octets[bit / 8] = (octets[bit / 8].toInt() or (0x80 ushr (bit % 8))).toByte()
+		val failInfo = PKIFailureInfo(DERBitString(octets, 7 - last % 8))
+		return TimeStampResp(PKIStatusInfo(PKIStatus.rejection, PKIFreeText("Request refused"), failInfo), null).encoded
+	}
+
+	/**
+	 * The exception DSS's `OnlineTSPSource` raises when the TSA at [tsa] answers its request with the
+	 * [rejection] that sets [bits].
+	 */
+	fun refusal(vararg bits: Int): DSSExternalResourceException {
+		val loader = mockk<DataLoader>(relaxed = true)
+		every { loader.post(tsa, any()) } returns rejection(*bits)
+		return shouldThrow<DSSExternalResourceException> {
+			OnlineTSPSource(tsa, loader).getTimeStampResponse(DigestAlgorithm.SHA256, ByteArray(32))
+		}
+	}
+
+	val rfc3161Failures = listOf(
+		0 to "badAlg — unrecognized or unsupported algorithm",
+		2 to "badRequest — transaction not permitted or supported",
+		5 to "badDataFormat — submitted data has the wrong format",
+		14 to "timeNotAvailable — TSA's time source is not available",
+		15 to "unacceptedPolicy — requested TSA policy not supported",
+		16 to "unacceptedExtension — requested extension not supported",
+		17 to "addInfoNotAvailable — additional information not available",
+		25 to "systemFailure — internal TSA error",
+	)
 
 	test("isTspException returns true for 'No timestamp token' message") {
 		val ex = RuntimeException("No timestamp token has been retrieved (TSP Status : ...)")
@@ -54,40 +106,45 @@ class TspErrorDetectorTest : FunSpec({
 		detector.isTspException(ex) shouldBe false
 	}
 
-	test("parsePkiFailureReason returns badAlg for 0x1") {
-		val ex = RuntimeException("PKIFailureInfo: 0x1")
-		val reason = detector.parsePkiFailureReason(ex)
-		reason.shouldNotBeNull()
-		reason shouldContain "badAlg"
+	test("DSS prints the failure info as BouncyCastle packs it, RFC 3161's bit 0 as 0x80 and bit 25 as 0x40000000") {
+		refusal(0).message shouldContain "PKIFailureInfo: 0x80)"
+		refusal(25).message shouldContain "PKIFailureInfo: 0x40000000)"
 	}
 
-	test("parsePkiFailureReason returns badRequest for 0x4") {
-		val ex = RuntimeException("PKIFailureInfo: 0x4")
-		val reason = detector.parsePkiFailureReason(ex)
-		reason.shouldNotBeNull()
-		reason shouldContain "badRequest"
+	for ((bit, reason) in rfc3161Failures) {
+		test("a TSA's refusal with RFC 3161 failure bit $bit is reported as ${reason.substringBefore(' ')}") {
+			detector.buildUserMessage(refusal(bit), tsa) shouldBe "Timestamp server ($tsa) rejected the request: $reason"
+		}
 	}
 
-	test("parsePkiFailureReason returns badDataFormat for 0x20") {
-		val ex = RuntimeException("PKIFailureInfo: 0x20")
-		val reason = detector.parsePkiFailureReason(ex)
-		reason.shouldNotBeNull()
-		reason shouldContain "badDataFormat"
+	test("a refusal with two RFC 3161 failure bits names both, in the RFC's order") {
+		detector.parsePkiFailureReason(refusal(15, 0)) shouldBe
+				"badAlg — unrecognized or unsupported algorithm; unacceptedPolicy — requested TSA policy not supported"
 	}
 
-	test("parsePkiFailureReason returns systemFailure for 0x2000000") {
-		val ex = RuntimeException("PKIFailureInfo: 0x2000000")
-		val reason = detector.parsePkiFailureReason(ex)
-		reason.shouldNotBeNull()
-		reason shouldContain "systemFailure"
+	test("a failure bit RFC 3161 does not name is reported as an unknown failure code") {
+		detector.parsePkiFailureReason(refusal(1)) shouldBe "unknown failure code 0x40"
 	}
 
-	test("parsePkiFailureReason returns unknown for unmapped code") {
-		val ex = RuntimeException("PKIFailureInfo: 0xFF")
-		val reason = detector.parsePkiFailureReason(ex)
-		reason.shouldNotBeNull()
-		reason shouldContain "unknown failure code"
-		reason shouldContain "0xFF"
+	test("the failure bits RFC 3161 does not name follow the named ones together, as one unknown failure code") {
+		detector.parsePkiFailureReason(refusal(0, 1, 23)) shouldBe
+				"badAlg — unrecognized or unsupported algorithm; unknown failure code 0x10040"
+	}
+
+	test("a code with the highest bit BouncyCastle packs into it is decoded, that bit not read as a sign") {
+		detector.parsePkiFailureReason(refusal(24, 25)) shouldBe
+				"systemFailure — internal TSA error; unknown failure code 0x80000000"
+	}
+
+	test("a failure info that sets no bit names no failure") {
+		val ex = RuntimeException("No timestamp token has been retrieved (TSP Status : Request refused / PKIFailureInfo: 0x0)")
+		detector.parsePkiFailureReason(ex).shouldBeNull()
+		detector.buildUserMessage(ex, tsa) shouldBe "Timestamp server ($tsa) failed to produce a timestamp token"
+	}
+
+	test("a code too long to be one BouncyCastle printed is reported whole as an unknown failure code") {
+		detector.parsePkiFailureReason(RuntimeException("PKIFailureInfo: 0x123456789")) shouldBe
+				"unknown failure code 0x123456789"
 	}
 
 	test("parsePkiFailureReason returns null when no PKIFailureInfo is present") {
@@ -95,27 +152,14 @@ class TspErrorDetectorTest : FunSpec({
 		detector.parsePkiFailureReason(ex).shouldBeNull()
 	}
 
-	test("parsePkiFailureReason finds code in nested cause") {
-		val root = RuntimeException("PKIFailureInfo: 0x4")
-		val wrapper = RuntimeException("No timestamp token has been retrieved", root)
-		val reason = detector.parsePkiFailureReason(wrapper)
-		reason.shouldNotBeNull()
-		reason shouldContain "badRequest"
-	}
-
-	test("buildUserMessage includes TSA URL and decoded reason") {
-		val ex = RuntimeException("No timestamp token has been retrieved (PKIFailureInfo: 0x4)")
-		val msg = detector.buildUserMessage(ex, "https://tsa.example.com/timestamp")
-		msg shouldContain "https://tsa.example.com/timestamp"
-		msg shouldContain "badRequest"
-		msg shouldContain "rejected the request"
+	test("parsePkiFailureReason finds the code in a cause the refusal was wrapped in") {
+		val wrapper = RuntimeException("Signing failed", refusal(2))
+		detector.parsePkiFailureReason(wrapper) shouldBe "badRequest — transaction not permitted or supported"
 	}
 
 	test("buildUserMessage without TSA URL omits parentheses") {
-		val ex = RuntimeException("No timestamp token has been retrieved (PKIFailureInfo: 0x4)")
-		val msg = detector.buildUserMessage(ex, null)
-		msg shouldContain "rejected the request"
-		msg shouldContain "badRequest"
+		detector.buildUserMessage(refusal(2), null) shouldBe
+				"Timestamp server rejected the request: badRequest — transaction not permitted or supported"
 	}
 
 	test("buildUserMessage with no PKIFailureInfo gives generic message") {
@@ -134,14 +178,13 @@ class TspErrorDetectorTest : FunSpec({
 		detector.isTspException(ex) shouldBe true
 	}
 
-	test("parsePkiFailureReason parses 0x4 from real DSS-style message") {
+	test("a real TSA's refusal of a request it could not decode reads as badDataFormat") {
 		val ex = RuntimeException(
 			"No timestamp token has been retrieved (TSP Status : " +
 				"TimeStampReq: Asn1Exception: ASN.1 decode error @ offset 0:" +
 				"Unexpected end-of-buffer encountered. / PKIFailureInfo: 0x4)"
 		)
-		val reason = detector.parsePkiFailureReason(ex)
-		reason.shouldNotBeNull()
+		detector.parsePkiFailureReason(ex) shouldBe "badDataFormat — submitted data has the wrong format"
 	}
 
 	test("isTspException returns true for 'Invalid TSP response' with malformed body") {

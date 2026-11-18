@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.data.repository
 
 import cz.pizavo.omnisign.domain.model.error.TimestampFailureKind
+import org.bouncycastle.asn1.cmp.PKIFailureInfo
 import java.io.InterruptedIOException
 import java.net.SocketException
 import java.net.UnknownHostException
@@ -20,15 +21,24 @@ class TspErrorDetector {
 	companion object {
 		private val PKI_FAILURE_REGEX = Regex("""PKIFailureInfo:\s*0x([0-9a-fA-F]+)""")
 		
+		/**
+		 * The failures RFC 3161 § 2.4.2 names, in the RFC's order, keyed by the bit each sets in the
+		 * code DSS prints.
+		 *
+		 * DSS prints BouncyCastle's `PKIFailureInfo.toString()`, whose value packs the failure bit
+		 * string one byte at a time, its first byte lowest, and the bits of each byte from the most
+		 * significant down. RFC bit 0, `badAlg`, therefore reads `0x80`, not `0x1`, and bit 25,
+		 * `systemFailure`, reads `0x40000000`. BouncyCastle's own constants hold these values.
+		 */
 		private val PKI_FAILURE_REASONS: Map<Int, String> = mapOf(
-			0x01 to "badAlg — unrecognized or unsupported algorithm",
-			0x04 to "badRequest — transaction not permitted or supported",
-			0x20 to "badDataFormat — submitted data has the wrong format",
-			0x4000 to "timeNotAvailable — TSA's time source is not available",
-			0x8000 to "unacceptedPolicy — requested TSA policy not supported",
-			0x10000 to "unacceptedExtension — requested extension not supported",
-			0x20000 to "addInfoNotAvailable — additional information not available",
-			0x2000000 to "systemFailure — internal TSA error",
+			PKIFailureInfo.badAlg to "badAlg — unrecognized or unsupported algorithm",
+			PKIFailureInfo.badRequest to "badRequest — transaction not permitted or supported",
+			PKIFailureInfo.badDataFormat to "badDataFormat — submitted data has the wrong format",
+			PKIFailureInfo.timeNotAvailable to "timeNotAvailable — TSA's time source is not available",
+			PKIFailureInfo.unacceptedPolicy to "unacceptedPolicy — requested TSA policy not supported",
+			PKIFailureInfo.unacceptedExtension to "unacceptedExtension — requested extension not supported",
+			PKIFailureInfo.addInfoNotAvailable to "addInfoNotAvailable — additional information not available",
+			PKIFailureInfo.systemFailure to "systemFailure — internal TSA error",
 		)
 		
 		private val MALFORMED_INDICATORS = listOf(
@@ -224,17 +234,28 @@ class TspErrorDetector {
 	}
 	
 	/**
-	 * Extracts the first PKIFailureInfo hex code from the [exception]'s cause chain
-	 * and returns its human-readable description, or `null` when no code is found.
+	 * Decodes the first PKIFailureInfo code in the [exception]'s cause chain into the failures it
+	 * names.
+	 *
+	 * The code is a set of bits, packed as [PKI_FAILURE_REASONS] describes. Every failure RFC 3161
+	 * names whose bit is set is described, in the RFC's order and joined by `; `, and the bits it
+	 * does not name, such as the further failures of RFC 4210, follow together as an unknown failure
+	 * code. A code too long to be one BouncyCastle printed is reported whole as an unknown failure
+	 * code.
+	 *
+	 * @return The description, or `null` when the chain carries no code or the code sets no bit.
 	 */
 	fun parsePkiFailureReason(exception: Throwable): String? {
 		val allMessages = generateSequence(exception) { it.cause }
 			.mapNotNull { it.message }
 			.joinToString(" ")
-		
-		val match = PKI_FAILURE_REGEX.find(allMessages) ?: return null
-		val code = match.groupValues[1].toIntOrNull(16) ?: return "unknown failure code 0x${match.groupValues[1]}"
-		return PKI_FAILURE_REASONS[code] ?: "unknown failure code 0x${match.groupValues[1]}"
+
+		val hex = PKI_FAILURE_REGEX.find(allMessages)?.groupValues?.get(1) ?: return null
+		val code = hex.toUIntOrNull(16)?.toInt() ?: return "unknown failure code 0x$hex"
+		val named = PKI_FAILURE_REASONS.filterKeys { bit -> (code and bit) != 0 }
+		val unnamed = named.keys.fold(code) { rest, bit -> rest and bit.inv() }
+		val unknown = if (unnamed == 0) emptyList() else listOf("unknown failure code 0x${unnamed.toUInt().toString(16)}")
+		return (named.values + unknown).joinToString("; ").ifEmpty { null }
 	}
 }
 
