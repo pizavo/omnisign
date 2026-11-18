@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.ades.policy.AdESPolicy
 import cz.pizavo.omnisign.data.trust.certFingerprint
 import cz.pizavo.omnisign.data.util.extractCertificateDetails
 import cz.pizavo.omnisign.data.util.readableDistinguishedName
+import cz.pizavo.omnisign.data.util.sha256FingerprintOf
 import cz.pizavo.omnisign.data.util.toKotlinInstant
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
@@ -481,10 +482,6 @@ class DssValidationRepository(
 			TrustedCertificateType.CA,
 		)
 		
-		val sha256Fingerprint = signingCert?.digestAlgoAndValue?.digestValue?.let { bytes ->
-			bytes.joinToString(":") { "%02X".format(it) }
-		}
-		
 		val euLotlBacked = isEuLotlBacked(sigWrapper?.certificateChain)
 		
 		val certificate = CertificateInfo(
@@ -496,7 +493,7 @@ class DssValidationRepository(
 			keyUsages = signingCert?.keyUsages?.map { it.name } ?: emptyList(),
 			isQualified = trustTier != SignatureTrustTier.NOT_QUALIFIED,
 			publicKeyAlgorithm = signingCert?.encryptionAlgorithm?.name,
-			sha256Fingerprint = sha256Fingerprint,
+			sha256Fingerprint = signingCert?.binaries?.let(::sha256FingerprintOf),
 			chain = buildCertificateChain(sigWrapper?.certificateChain, trustSourcesOf),
 		)
 		

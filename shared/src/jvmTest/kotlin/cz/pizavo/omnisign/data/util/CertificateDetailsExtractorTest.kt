@@ -13,7 +13,8 @@ import java.util.Base64
  * Key Usage, and Basic Constraints — covering the DN enumeration and the decoded extensions —
  * against a second certificate whose common name contains a comma, covering RFC 4514 unescaping,
  * and against the e2e test PKI's CA-issued signer certificate, covering the Authority Key
- * Identifier.
+ * Identifier. The first certificate's SHA-256 fingerprint is the one `openssl x509 -fingerprint
+ * -sha256` prints for it.
  */
 class CertificateDetailsExtractorTest : FunSpec({
 
@@ -83,6 +84,14 @@ class CertificateDetailsExtractorTest : FunSpec({
         key["Algorithm"] shouldBe "RSA"
         key["Key Size"] shouldBe "2048 bit"
         sections.first { it.title == "Fingerprints" }.fields.map { it.label } shouldContain "SHA-256"
+    }
+
+    test("the SHA-256 fingerprint digests the whole encoding and reads as openssl x509 -fingerprint -sha256 prints it") {
+        val opensslFingerprint =
+            "24:F0:D7:94:BB:C4:79:7C:6D:8F:0B:7F:BD:FA:26:88:9D:39:BD:B2:5F:CF:82:2D:7D:80:FB:08:F2:69:5A:9C"
+        sha256FingerprintOf(der) shouldBe opensslFingerprint
+        extractCertificateDetails(der).first { it.title == "Fingerprints" }.fields
+            .single { it.label == "SHA-256" }.value shouldBe opensslFingerprint
     }
 
     test("renders an in-value comma in a distinguished name without RFC 4514 escaping") {

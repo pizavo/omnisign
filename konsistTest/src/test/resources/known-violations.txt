@@ -62,7 +62,6 @@ function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/Cer
 function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt basicConstraintsText
 function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt digestHexColon
 function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt extendedKeyUsageText
-function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt fingerprintFields
 function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt keyUsageText
 function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt policyInformationText
 function-without-kdoc shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/util/CertificateDetailsExtractor.kt publicKeyFields
