@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.ui.layout
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicText
+import androidx.compose.foundation.text.selection.DisableSelection
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -132,8 +133,15 @@ private fun AnnotatedWarningText(
  *
  * When a human-readable name is available in [idNames] for a given ID, it is displayed
  * as the primary label with the raw DSS identifier shown underneath in secondary style.
- * All text is wrapped in a [SelectableContent] so the user can select and copy
- * identifiers for searching or troubleshooting purposes.
+ * The identifiers are wrapped in a [SelectableContent] so the user can select and copy
+ * them for searching or troubleshooting purposes.
+ *
+ * The whole dialog is hosted under [DisableSelection]. It is opened from inside the warning's
+ * own [SelectableContent], and the dialog renders its body in a separate window layer while
+ * remaining a subcomposition, so the warning's selection scope would otherwise reach its title
+ * and Close button through the composition local, and a press on either would try to select
+ * text in a different layout hierarchy and crash. [DisableSelection] clears the inherited
+ * registrar; the identifiers' [SelectableContent] then establishes its own scope.
  *
  * @param title Dialog heading (e.g. "Affected Certificates").
  * @param ids Full DSS identifiers to display.
@@ -148,52 +156,54 @@ private fun AffectedEntitiesDialog(
 	onDismiss: () -> Unit,
 ) {
 	BasicAlertDialog(onDismissRequest = onDismiss) {
-		Surface(
-			shape = RoundedCornerShape(16.dp),
-			color = LumoTheme.colors.surface,
-			shadowElevation = 4.dp,
-		) {
-			Column(modifier = Modifier.padding(24.dp)) {
-				Text(
-					text = title,
-					style = LumoTheme.typography.h4,
-					color = LumoTheme.colors.text,
-				)
-				Spacer(Modifier.height(12.dp))
-				SelectableContent {
-					Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-						ids.forEach { id ->
-							val name = idNames[id]
-							if (name != null) {
-								Column {
+		DisableSelection {
+			Surface(
+				shape = RoundedCornerShape(16.dp),
+				color = LumoTheme.colors.surface,
+				shadowElevation = 4.dp,
+			) {
+				Column(modifier = Modifier.padding(24.dp)) {
+					Text(
+						text = title,
+						style = LumoTheme.typography.h4,
+						color = LumoTheme.colors.text,
+					)
+					Spacer(Modifier.height(12.dp))
+					SelectableContent {
+						Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+							ids.forEach { id ->
+								val name = idNames[id]
+								if (name != null) {
+									Column {
+										Text(
+											text = name,
+											style = LumoTheme.typography.body2,
+											color = LumoTheme.colors.text,
+										)
+										Text(
+											text = id,
+											style = LumoTheme.typography.body3,
+											color = LumoTheme.colors.textSecondary,
+										)
+									}
+								} else {
 									Text(
-										text = name,
+										text = id,
 										style = LumoTheme.typography.body2,
 										color = LumoTheme.colors.text,
 									)
-								Text(
-									text = id,
-									style = LumoTheme.typography.body3,
-									color = LumoTheme.colors.textSecondary,
-								)
 								}
-							} else {
-								Text(
-									text = id,
-									style = LumoTheme.typography.body2,
-									color = LumoTheme.colors.text,
-								)
 							}
 						}
 					}
+					Spacer(Modifier.height(16.dp))
+					Button(
+						variant = ButtonVariant.Ghost,
+						text = stringResource(Res.string.action_close),
+						onClick = onDismiss,
+						modifier = Modifier.align(Alignment.End),
+					)
 				}
-				Spacer(Modifier.height(16.dp))
-				Button(
-					variant = ButtonVariant.Ghost,
-					text = stringResource(Res.string.action_close),
-					onClick = onDismiss,
-					modifier = Modifier.align(Alignment.End),
-				)
 			}
 		}
 	}
