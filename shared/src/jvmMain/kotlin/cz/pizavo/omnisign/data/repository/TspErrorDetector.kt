@@ -77,6 +77,32 @@ class TspErrorDetector {
 			}
 	
 	/**
+	 * Determines whether [exception] is a timestamp request to the TSA at [tsaUrl] that failed in a
+	 * shape [isTspException] does not recognize, such as an HTTP error status the server answered
+	 * with: a refused login or a missing page.
+	 *
+	 * Either of two things in the cause chain attributes the failure to the timestamp request.
+	 *
+	 * - A message names [tsaUrl]. DSS's `CommonsDataLoader` reports every request it could not
+	 *   complete as a `DSSExternalResourceException` reading
+	 *   `Unable to process POST call for url [...]. Reason : [...]`, an HTTP error status included,
+	 *   whose reason never reaches the protocol layer. It reports a failed OCSP or CRL fetch in the
+	 *   same shape, so the URL is what tells the two apart.
+	 * - A message carries wording only `eu.europa.esig.dss.service.tsp.OnlineTSPSource` produces,
+	 *   such as the `An error occurred during timestamp request` it wraps an I/O failure in.
+	 *
+	 * A caller that has to tell a failed timestamp request from a revocation failure asks this first,
+	 * because both arrive as a `DSSExternalResourceException`.
+	 *
+	 * @param exception The caught exception (the whole cause chain is inspected).
+	 * @param tsaUrl The configured TSA endpoint, or `null` when none could be resolved, in which case
+	 *   only the TSP source's wording attributes the failure.
+	 * @return `true` when the failure came from the timestamp request.
+	 */
+	fun isTimestampRequestFailure(exception: Throwable, tsaUrl: String?): Boolean =
+		namesTsa(exception, tsaUrl) || isAttributableToTsp(exception)
+
+	/**
 	 * Determines whether [exception] means the TSA at [tsaUrl] could not be reached, as opposed to
 	 * having answered and refused the request.
 	 *
@@ -98,18 +124,22 @@ class TspErrorDetector {
 	 *   the result is `false`.
 	 * @return `true` when the TSA could not be reached at all.
 	 */
-	fun isServerUnreachable(exception: Throwable, tsaUrl: String?): Boolean {
-		if (tsaUrl.isNullOrBlank()) return false
-		val chain = generateSequence(exception) { it.cause }.toList()
-		val transport = chain.any { e ->
+	fun isServerUnreachable(exception: Throwable, tsaUrl: String?): Boolean =
+		namesTsa(exception, tsaUrl) && generateSequence(exception) { it.cause }.any { e ->
 			e is InterruptedIOException ||
 					e is SocketException ||
 					e is UnknownHostException ||
 					e is SSLException
 		}
-		if (!transport) return false
-		return chain.mapNotNull { it.message }.any { it.contains(tsaUrl, ignoreCase = true) }
-	}
+
+	/**
+	 * Whether a message in the [exception] cause chain names [tsaUrl], which is how DSS's data loader
+	 * identifies the request it could not complete. A `null` or blank [tsaUrl] names nothing.
+	 */
+	private fun namesTsa(exception: Throwable, tsaUrl: String?): Boolean =
+		!tsaUrl.isNullOrBlank() && generateSequence(exception) { it.cause }
+			.mapNotNull { it.message }
+			.any { it.contains(tsaUrl, ignoreCase = true) }
 
 	/**
 	 * Classify how a timestamp request failed.

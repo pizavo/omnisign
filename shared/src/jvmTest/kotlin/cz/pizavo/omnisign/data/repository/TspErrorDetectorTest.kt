@@ -7,18 +7,20 @@ import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import cz.pizavo.omnisign.domain.model.error.TimestampFailureKind
 import cz.pizavo.omnisign.domain.model.error.isServerWide
+import java.io.IOException
 import java.net.ConnectException
 import java.net.SocketTimeoutException
 import java.net.UnknownHostException
 
 /**
  * Unit tests for [TspErrorDetector] verifying TSP exception detection,
- * PKIFailureInfo parsing, reachability classification, and user-friendly message generation.
+ * PKIFailureInfo parsing, reachability classification, the attribution of a failed request to the
+ * timestamp server, and user-friendly message generation.
  *
- * The reachability cases reproduce the wrapper DSS actually raises: `CommonsDataLoader` reports a
- * failed HTTP call as `Unable to process POST call for url [...]. Reason : [...]` with the transport
- * exception as its cause, and uses the same shape for revocation fetches — which is why the URL has
- * to be part of the verdict.
+ * The reachability and attribution cases reproduce the wrapper DSS actually raises:
+ * `CommonsDataLoader` reports a failed HTTP call as `Unable to process POST call for url [...]. Reason : [...]`
+ * with the transport exception, or the HTTP error status it would not accept, as its cause, and uses
+ * the same shape for revocation fetches — which is why the URL has to be part of the verdict.
  */
 class TspErrorDetectorTest : FunSpec({
 
@@ -258,6 +260,58 @@ class TspErrorDetectorTest : FunSpec({
 		val msg = detector.buildUserMessage(ex, tsa)
 		msg shouldContain "could not be reached"
 		msg shouldContain tsa
+	}
+
+	val unauthorized = "Not acceptable HTTP Status (HTTP status code : 401 / reason : Unauthorized)"
+
+	test("isTimestampRequestFailure attributes an HTTP error status from the TSA to the timestamp request") {
+		val ex = RuntimeException(
+			"Unable to process POST call for url [$tsa]. Reason : [$unauthorized]",
+			IOException(unauthorized),
+		)
+		detector.isTspException(ex) shouldBe false
+		detector.isServerUnreachable(ex, tsa) shouldBe false
+		detector.isTimestampRequestFailure(ex, tsa) shouldBe true
+	}
+
+	test("isTimestampRequestFailure finds the TSA's URL in a cause the failure was wrapped in") {
+		val ex = RuntimeException(
+			"Extension failed",
+			RuntimeException("Unable to process POST call for url [$tsa]. Reason : [$unauthorized]", IOException(unauthorized)),
+		)
+		detector.isTimestampRequestFailure(ex, tsa) shouldBe true
+	}
+
+	test("isTimestampRequestFailure finds the TSP source's wording in a cause the failure was wrapped in") {
+		val ex = RuntimeException(
+			"Extension failed",
+			RuntimeException("An error occurred during timestamp request : unexpected end-of-contents marker"),
+		)
+		detector.isTimestampRequestFailure(ex, null) shouldBe true
+	}
+
+	test("isTimestampRequestFailure does not blame the TSA for an HTTP error status from another endpoint") {
+		val ex = RuntimeException(
+			"Unable to process POST call for url [http://ocsp.example.com]. Reason : [$unauthorized]",
+			IOException(unauthorized),
+		)
+		detector.isTimestampRequestFailure(ex, tsa) shouldBe false
+	}
+
+	test("isTimestampRequestFailure attributes nothing to a missing or blank TSA URL") {
+		val ex = RuntimeException("Unable to process POST call for url [$tsa]. Reason : [$unauthorized]")
+		detector.isTimestampRequestFailure(ex, null) shouldBe false
+		detector.isTimestampRequestFailure(ex, "") shouldBe false
+		detector.isTimestampRequestFailure(ex, " ") shouldBe false
+	}
+
+	test("isTimestampRequestFailure recognizes the wrapper the TSP source puts around an I/O failure") {
+		val ex = RuntimeException(
+			"An error occurred during timestamp request : unexpected end-of-contents marker",
+			IOException("unexpected end-of-contents marker"),
+		)
+		detector.isTspException(ex) shouldBe false
+		detector.isTimestampRequestFailure(ex, null) shouldBe true
 	}
 })
 
