@@ -38,7 +38,9 @@ credential override does not discard the stored server URL, and a URL override k
 username and password as long as it names the same server, with the same scheme, host and port.
 A `--timestamp-url` that names another server gets none of the stored credentials, so the password
 saved for the stored server does not go to the server the option names; give `--timestamp-username`
-and `--timestamp-password` with it when that server asks for them. Validation settings
+and `--timestamp-password` with it when that server asks for them. A `--timestamp-timeout` replaces
+the stored timeout whenever it is given, even with the default of 30000, and without it the stored
+timeout applies, to another server too. Validation settings
 resolve one by one too: `--validation-policy` replaces only the policy, while revocation checking
 and the EU LOTL still come from the profile or the global configuration.
 

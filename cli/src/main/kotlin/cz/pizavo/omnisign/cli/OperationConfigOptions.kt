@@ -9,12 +9,12 @@ import com.github.ajalt.clikt.parameters.types.int
 import cz.pizavo.omnisign.data.secret.EnvironmentSecretReader
 import cz.pizavo.omnisign.data.secret.SecretSource
 import cz.pizavo.omnisign.domain.model.config.OperationConfig
+import cz.pizavo.omnisign.domain.model.config.TimestampServerOverride
 import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.ValidationPolicyType
-import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.platform.PasswordCallback
 
@@ -118,9 +118,9 @@ class OperationConfigOptions : OptionGroup(
 	/**
 	 * Build an [OperationConfig] from the provided CLI options.
 	 * Only non-null values are included; null means "use the resolved default".
-	 * When any timestamp option is supplied a [TimestampServerConfig] override is
-	 * constructed. A blank override URL falls back to the stored URL during
-	 * [cz.pizavo.omnisign.domain.model.config.ResolvedConfig.resolve].
+	 * When any timestamp option is supplied a [TimestampServerOverride] is constructed, holding
+	 * only the options given, so that every option left out, the URL and the timeout included,
+	 * keeps its stored value during [cz.pizavo.omnisign.domain.model.config.ResolvedConfig.resolve].
 	 * The runtime password, from [timestampPassword] or else the environment (see
 	 * [resolveSecretOption]), is carried in the override object but is never written to any
 	 * persistent store.
@@ -146,12 +146,12 @@ class OperationConfigOptions : OptionGroup(
 		val hasTimestampOverride = timestampUrl != null || timestampUsername != null ||
 				resolvedPassword != null || timestampTimeout != null
 		
-		val tsConfig = if (hasTimestampOverride) {
-			TimestampServerConfig(
-				url = timestampUrl ?: "",
+		val tsOverride = if (hasTimestampOverride) {
+			TimestampServerOverride(
+				url = timestampUrl,
 				username = timestampUsername,
 				runtimePassword = resolvedPassword,
-				timeout = timestampTimeout ?: 30000
+				timeout = timestampTimeout
 			)
 		} else null
 		
@@ -159,7 +159,7 @@ class OperationConfigOptions : OptionGroup(
 			hashAlgorithm = hashAlgorithm,
 			encryptionAlgorithm = encryptionAlgorithm,
 			signatureLevel = signatureLevel,
-			timestampServer = tsConfig,
+			timestampServer = tsOverride,
 			validation = validationPolicy?.let { ValidationConfig(policyType = it) },
 			disabledHashAlgorithms = disableHashAlgorithm.toSet(),
 			disabledEncryptionAlgorithms = disableEncryptionAlgorithm.toSet()

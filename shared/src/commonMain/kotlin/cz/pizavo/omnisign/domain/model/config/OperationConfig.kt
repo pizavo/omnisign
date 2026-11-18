@@ -5,7 +5,6 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.CrlConfig
 import cz.pizavo.omnisign.domain.model.config.service.OcspConfig
-import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 
 /**
  * Operation-specific configuration overrides.
@@ -15,7 +14,11 @@ data class OperationConfig(
 	val hashAlgorithm: HashAlgorithm? = null,
 	val encryptionAlgorithm: EncryptionAlgorithm? = null,
 	val signatureLevel: SignatureLevel? = null,
-	val timestampServer: TimestampServerConfig? = null,
+	/**
+	 * The timestamp server for this operation, merged field by field onto the stored one by
+	 * [ResolvedConfig.resolve].
+	 */
+	val timestampServer: TimestampServerOverride? = null,
 	val ocsp: OcspConfig? = null,
 	val crl: CrlConfig? = null,
 	val validation: ValidationConfig? = null,
