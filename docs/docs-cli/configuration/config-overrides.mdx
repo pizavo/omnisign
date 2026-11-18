@@ -34,7 +34,11 @@ Configuration values are resolved in this order (highest priority first):
 3. **Global defaults** — values set with `config set`
 
 For timestamp server settings, fields are merged at the field level: a per-execution
-credential override does not discard the stored server URL, and vice versa. Validation settings
+credential override does not discard the stored server URL, and a URL override keeps the stored
+username and password as long as it names the same server, with the same scheme, host and port.
+A `--timestamp-url` that names another server gets none of the stored credentials, so a password
+saved for one server is never sent to another; give `--timestamp-username` and
+`--timestamp-password` with it when that server asks for them. Validation settings
 resolve one by one too: `--validation-policy` replaces only the policy, while revocation checking
 and the EU LOTL still come from the profile or the global configuration.
 

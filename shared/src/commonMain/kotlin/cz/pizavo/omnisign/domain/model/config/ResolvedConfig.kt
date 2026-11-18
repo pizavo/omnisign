@@ -46,7 +46,8 @@ data class ResolvedConfig(
 		 * Priority: operation-specific > profile > global.
 		 *
 		 * Timestamp server settings are merged at the field level so that a per-execution
-		 * credential override does not discard the stored server URL, and vice versa.
+		 * credential override does not discard the stored server URL, and vice versa. A URL
+		 * override that points at another server inherits none of the stored credentials.
 		 *
 		 * When [excludeGlobalTls] is `true`, custom trusted lists from the global config
 		 * are excluded from the resolved [ValidationConfig.customTrustedLists].  Profile-
@@ -136,6 +137,11 @@ data class ResolvedConfig(
 		 * falls back to the [base] URL so credential-only overrides work correctly.
 		 * [TimestampServerConfig.runtimePassword] is preserved from the override
 		 * so in-memory passwords are not silently dropped.
+		 *
+		 * The credentials of [base], its username, credential key and in-memory password, carry
+		 * over only while the override stays with the [base] server: its URL is blank or names the
+		 * same server ([sameServer]). An override that points at another server takes only the
+		 * credentials given with it, so a password stored for one server is never sent to another.
 		 */
 		private fun mergeTimestampConfig(
 			base: TimestampServerConfig?,
@@ -143,13 +149,39 @@ data class ResolvedConfig(
 		): TimestampServerConfig? {
 			if (override == null) return base
 			if (base == null) return override.takeIf { it.url.isNotBlank() }
+			val timeout = override.timeout.takeIf { it != 30000 } ?: base.timeout
+			if (override.url.isNotBlank() && !sameServer(override.url, base.url)) {
+				return override.copy(timeout = timeout)
+			}
 			return base.copy(
 				url = override.url.ifBlank { base.url },
 				username = override.username ?: base.username,
 				credentialKey = override.credentialKey ?: base.credentialKey,
-				timeout = override.timeout.takeIf { it != 30000 } ?: base.timeout,
+				timeout = timeout,
 				runtimePassword = override.runtimePassword ?: base.runtimePassword
 			)
+		}
+
+		/**
+		 * Whether the URLs [first] and [second] point at the same server: they are equal, or
+		 * [originOf] reads the same origin from both. A URL it cannot read matches no other.
+		 */
+		private fun sameServer(first: String, second: String): Boolean =
+			first == second || originOf(first)?.let { it == originOf(second) } == true
+
+		/**
+		 * The origin of [url], its scheme, host and port, as `scheme://host:port` in lower case,
+		 * with the default port of `http` or `https` when [url] gives none. `null` when [url] is
+		 * not of that plain form: user information outside the characters RFC 3986 allows, so
+		 * that it cannot hide a second `@` or a backslash; a host other than a name of letters,
+		 * digits, dots and hyphens or a bracketed IPv6 address; or no port and a scheme whose
+		 * default is not known.
+		 */
+		private fun originOf(url: String): String? {
+			val (scheme, host, port) = ORIGIN_PATTERN.matchEntire(url)?.destructured ?: return null
+			val lowerScheme = scheme.lowercase()
+			val portNumber = port.toIntOrNull() ?: DEFAULT_PORTS[lowerScheme] ?: return null
+			return "$lowerScheme://${host.lowercase()}:$portNumber"
 		}
 
 		/**
@@ -300,5 +332,16 @@ data class ResolvedConfig(
 						+ (operation?.expirationDateOverrides ?: emptyMap())
 			)
 		}
+
+		/**
+		 * A URL's scheme, optional user information, host and optional port, followed by nothing or
+		 * by a path, query or fragment. [originOf] reads the scheme, host and port from its groups.
+		 */
+		private val ORIGIN_PATTERN = Regex(
+			"""([A-Za-z][A-Za-z0-9+.-]*)://(?:[A-Za-z0-9._~%!$&'()*+,;=:-]*@)?([A-Za-z0-9.-]+|\[[0-9A-Fa-f:.]+\])(?::([0-9]{1,5}))?(?:[/?#].*)?"""
+		)
+
+		/** The port a URL of each scheme [originOf] knows connects to when it names none. */
+		private val DEFAULT_PORTS = mapOf("http" to 80, "https" to 443)
 	}
 }
