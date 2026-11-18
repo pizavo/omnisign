@@ -97,8 +97,7 @@ class DssServiceFactory(
 			?: tsConfig.credentialKey?.let { key -> storedTsaPassword(key) }
 		
 		val dataLoader = TimestampDataLoader().apply {
-			timeoutConnection = tsConfig.timeout
-			timeoutSocket = tsConfig.timeout
+			applyTimeout(this, tsConfig.timeout)
 			if (tsConfig.username != null && password != null) {
 				val uri = java.net.URI.create(tsConfig.url)
 				val port = if (uri.port != -1) uri.port else if (uri.scheme == "https") HTTPS_PORT else HTTP_PORT
@@ -274,20 +273,13 @@ class DssServiceFactory(
 			)
 		}
 
-		val timeout = minOf(config.ocsp.timeout, config.crl.timeout)
-		val dataLoader = CommonsDataLoader().apply {
-			timeoutConnection = timeout
-			timeoutSocket = timeout
-		}
-		val ocspLoader = OCSPDataLoader().apply {
-			timeoutConnection = timeout
-			timeoutSocket = timeout
-		}
+		val crlLoader = CommonsDataLoader().apply { applyTimeout(this, config.crl.timeout) }
+		val ocspLoader = OCSPDataLoader().apply { applyTimeout(this, config.ocsp.timeout) }
 
 		val alert = alertFactory()
 		cv.apply {
 			ocspSource = OnlineOCSPSource().apply { setDataLoader(ocspLoader) }
-			crlSource = OnlineCRLSource().apply { setDataLoader(dataLoader) }
+			crlSource = OnlineCRLSource().apply { setDataLoader(crlLoader) }
 			isCheckRevocationForUntrustedChains = false
 			alertOnMissingRevocationData = alert.takeIf { reportMissingRevocationData }
 			alertOnUncoveredPOE = alert
@@ -355,20 +347,13 @@ class DssServiceFactory(
 			)
 		}
 
-		val timeout = minOf(config.ocsp.timeout, config.crl.timeout)
-		val dataLoader = CommonsDataLoader().apply {
-			timeoutConnection = timeout
-			timeoutSocket = timeout
-		}
-		val ocspLoader = OCSPDataLoader().apply {
-			timeoutConnection = timeout
-			timeoutSocket = timeout
-		}
+		val crlLoader = CommonsDataLoader().apply { applyTimeout(this, config.crl.timeout) }
+		val ocspLoader = OCSPDataLoader().apply { applyTimeout(this, config.ocsp.timeout) }
 
 		val alert = alertFactory()
 		cv.apply {
 			ocspSource = OnlineOCSPSource().apply { setDataLoader(ocspLoader) }
-			crlSource = OnlineCRLSource().apply { setDataLoader(dataLoader) }
+			crlSource = OnlineCRLSource().apply { setDataLoader(crlLoader) }
 			alertOnUncoveredPOE = alert
 			alertOnNoRevocationAfterBestSignatureTime = alert
 		}
@@ -482,26 +467,6 @@ class DssServiceFactory(
 	}
 	
 	/**
-	 * Build a lenient [CommonCertificateVerifier] with online AIA, OCSP and CRL sources whose HTTP
-	 * data loaders use a configurable [timeout], without requiring a full [ResolvedConfig].
-	 */
-	fun buildCertificateVerifier(timeout: Int = DEFAULT_TIMEOUT): CommonCertificateVerifier {
-		val dataLoader = CommonsDataLoader().apply {
-			timeoutConnection = timeout
-			timeoutSocket = timeout
-		}
-		val ocspLoader = OCSPDataLoader().apply {
-			timeoutConnection = timeout
-			timeoutSocket = timeout
-		}
-		return CommonCertificateVerifier().apply {
-			aiaSource = buildAiaSource(timeout)
-			ocspSource = OnlineOCSPSource().apply { setDataLoader(ocspLoader) }
-			crlSource = OnlineCRLSource().apply { setDataLoader(dataLoader) }
-		}
-	}
-
-	/**
 	 * Build the AIA source every verifier here carries: DSS's [DefaultAIASource], accepting only
 	 * `http` and `https` URLs, over an [AiaDataLoader] that downloads within [timeoutMillis] and a
 	 * size cap, and reaches internal addresses only when [aiaFetchPolicy] allows it.
@@ -519,7 +484,7 @@ class DssServiceFactory(
 
 	/**
 	 * Time limit for the AIA downloads of a verifier built for [config]: the shorter of its OCSP and
-	 * CRL timeouts, which also bound the verifier's other downloads, or [DEFAULT_TIMEOUT] without a
+	 * CRL timeouts, which bound its OCSP and CRL requests each, or [DEFAULT_TIMEOUT] without a
 	 * config.
 	 */
 	private fun aiaTimeout(config: ResolvedConfig?): Int =
@@ -786,6 +751,22 @@ class DssServiceFactory(
 		}
 		
 		/**
+		 * Give [loader] [timeoutMillis] for each of its waits: connecting, getting a connection from
+		 * its pool, the response, and each read.
+		 *
+		 * Apache HttpClient 5, which DSS's loaders run on, sets a connection's socket timeout to the
+		 * request's response timeout before each exchange, so a loader given only a connect and a
+		 * socket timeout waits up to DSS's default response timeout, 60 seconds, for each part of an
+		 * answer, whatever was configured.
+		 */
+		internal fun applyTimeout(loader: CommonsDataLoader, timeoutMillis: Int) {
+			loader.timeoutConnection = timeoutMillis
+			loader.timeoutConnectionRequest = timeoutMillis
+			loader.timeoutResponse = timeoutMillis
+			loader.timeoutSocket = timeoutMillis
+		}
+		
+		/**
 		 * Build [tlTransportTrustStore]: load every platform trust anchor under a
 		 * distinct alias, add each bundled root from [TL_TRANSPORT_ROOT_RESOURCES] the
 		 * platform does not already trust (deduplicated by encoded form, so a full
@@ -967,7 +948,8 @@ class DssServiceFactory(
 		private const val DEFAULT_TIMEOUT = 30_000
 		
 		/**
-		 * Process-global connect/read timeout (ms) for fetching trusted-list XML.
+		 * Process-global timeout (ms) for fetching trusted-list XML, which [applyTimeout] gives to
+		 * connecting and to every wait for the answer.
 		 *
 		 * Decoupled from the per-config OCSP/CRL revocation timeout because the EU
 		 * LOTL source is shared across every profile and cannot carry a per-profile

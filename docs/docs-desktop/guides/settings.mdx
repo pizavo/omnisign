@@ -84,8 +84,10 @@ afterwards keeps using the stored password.
 
 #### OCSP & CRL
 
-Configure connection timeouts for Online Certificate Status Protocol and Certificate
-Revocation List requests used during validation and B-LT/B-LTA signing.
+Configure the timeouts for Online Certificate Status Protocol and Certificate Revocation List
+requests used during validation and B-LT/B-LTA signing. Each applies to its own requests and
+limits both the wait to connect and each wait for the answer, so a server that accepts the
+connection and then stays silent is given up on once the timeout has passed.
 
 | Setting      | Description                                     | Default |
 |--------------|-------------------------------------------------|---------|
