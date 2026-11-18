@@ -48,7 +48,9 @@ sidebar as a reminder, even when the panel is closed.
 **Extended logs** additionally lowers third-party library loggers (the DSS
 signature stack and Apache) to debug level. This is very verbose and is only
 useful when specifically asked for during deep diagnosis — leave it off
-otherwise. It is only available while **Debug logging** is on.
+otherwise. It is only available while **Debug logging** is on. Even then, the
+request headers and raw traffic of the HTTP client stay out of the log, because
+they can carry the HTTP Basic credentials of a timestamp server.
 
 ## Where the logs are
 

@@ -1,7 +1,9 @@
 package cz.pizavo.omnisign.ui.platform
 
 import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.LoggerContext
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.matchers.collections.shouldNotContain
 import io.kotest.matchers.maps.shouldContain
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
@@ -11,10 +13,13 @@ import javax.xml.parsers.DocumentBuilderFactory
 
 /**
  * Unit tests for the testable seams of the JVM [SupportLog] actual: the
- * Logback level mapping, the library loggers extended logging lowers, and the
- * persisted-preferences round-trip.
+ * Logback level mapping, the library loggers extended logging lowers and those it
+ * must leave alone, and the persisted-preferences round-trip.
  */
 class SupportLogTest : FunSpec({
+
+    /** HttpClient's loggers that write every request header, HTTP Basic credentials included, at DEBUG. */
+    val headerLoggers = listOf("org.apache.hc.client5.http.headers", "org.apache.hc.client5.http.wire")
 
     /** Return the loggers the desktop's `logback.xml` gives a level, mapped to that level. */
     fun configuredLoggers(): Map<String, Level> {
@@ -29,14 +34,40 @@ class SupportLogTest : FunSpec({
             .associate { it.getAttribute("name") to Level.toLevel(it.getAttribute("level")) }
     }
 
-    test("extended logging lowers every DSS and Apache logger logback.xml gives a level, apart from the TSL ones, and restores that level") {
+    test("extended logging lowers every DSS and Apache logger logback.xml gives a level, apart from the TSL ones and HttpClient's header and wire loggers, and restores that level") {
         val expected = configuredLoggers().filterKeys { name ->
             listOf("eu.europa.esig", "org.apache").any { name == it || name.startsWith("$it.") } &&
-                !name.startsWith("eu.europa.esig.dss.tsl.")
+                !name.startsWith("eu.europa.esig.dss.tsl.") && name !in headerLoggers
         }
 
         expected shouldContain ("org.apache.pdfbox.pdfparser" to Level.ERROR)
         LIBRARY_BASELINE shouldBe expected
+    }
+
+    test("extended logging leaves HttpClient's header and wire loggers at the INFO logback.xml pins them to, while the rest of Apache logs at DEBUG until it is turned off") {
+        val configured = configuredLoggers()
+        for (name in headerLoggers) {
+            configured[name] shouldBe Level.INFO
+            LIBRARY_BASELINE.keys shouldNotContain name
+        }
+        val context = LoggerContext()
+        for ((name, level) in configured) context.getLogger(name).level = level
+
+        applyLevels(debug = true, extended = true, context = context)
+        for (name in headerLoggers) context.getLogger(name).isDebugEnabled shouldBe false
+        context.getLogger("org.apache.hc.client5.http.impl.classic.InternalHttpClient").isDebugEnabled shouldBe true
+        context.getLogger("eu.europa.esig.dss.service.http.commons.CommonsDataLoader").isDebugEnabled shouldBe true
+        context.getLogger("cz.pizavo.omnisign").level shouldBe Level.DEBUG
+
+        applyLevels(debug = true, extended = false, context = context)
+        context.getLogger("org.apache.hc.client5.http.impl.classic.InternalHttpClient").isDebugEnabled shouldBe false
+        context.getLogger("org.apache").level shouldBe Level.WARN
+        for (name in headerLoggers) context.getLogger(name).level shouldBe Level.INFO
+        context.getLogger("cz.pizavo.omnisign").level shouldBe Level.DEBUG
+
+        applyLevels(debug = false, extended = false, context = context)
+        context.getLogger("cz.pizavo.omnisign").level shouldBe null
+        context.getLogger("org.apache").level shouldBe Level.WARN
     }
 
     test("app logger is DEBUG when debug logging is on, inherits root when off") {

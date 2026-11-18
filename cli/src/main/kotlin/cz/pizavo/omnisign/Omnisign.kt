@@ -1,6 +1,5 @@
 package cz.pizavo.omnisign
 
-import ch.qos.logback.classic.Logger
 import ch.qos.logback.classic.LoggerContext
 import com.github.ajalt.clikt.core.CliktCommand
 import com.github.ajalt.clikt.core.Context
@@ -10,11 +9,9 @@ import com.github.ajalt.clikt.parameters.options.flag
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.options.versionOption
 import cz.pizavo.omnisign.cli.BuildConfig
-import cz.pizavo.omnisign.cli.CliExtendedLoggers
 import cz.pizavo.omnisign.cli.OutputConfig
+import cz.pizavo.omnisign.cli.applyLogLevels
 import cz.pizavo.omnisign.cli.attachLogFileAppender
-import cz.pizavo.omnisign.cli.extendedLibraryLevel
-import cz.pizavo.omnisign.cli.rootLogLevel
 import cz.pizavo.omnisign.commands.Credits
 import cz.pizavo.omnisign.commands.Renew
 import cz.pizavo.omnisign.commands.Sign
@@ -99,12 +96,7 @@ class Omnisign : CliktCommand(name = "omnisign") {
 	
 	override fun run() {
 		(LoggerFactory.getILoggerFactory() as? LoggerContext)?.let { ctx ->
-			rootLogLevel(verbose = verbose, debug = debug, extended = debugExtended)?.let { target ->
-				ctx.getLogger(Logger.ROOT_LOGGER_NAME).level = target
-			}
-			extendedLibraryLevel(extended = debugExtended)?.let { target ->
-				for (name in CliExtendedLoggers) ctx.getLogger(name).level = target
-			}
+			applyLogLevels(ctx, verbose = verbose, debug = debug, extended = debugExtended)
 		}
 
 		logFile?.let { path ->
