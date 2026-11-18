@@ -1,5 +1,8 @@
 package cz.pizavo.omnisign.data.service
 
+import cz.pizavo.omnisign.domain.model.config.AppConfig
+import cz.pizavo.omnisign.domain.model.config.CustomPkcs11Library
+import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
@@ -176,6 +179,31 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		).warmup(userLibraries)
 
 		verify(exactly = 1) { collector.collectCandidates(dropDirectory, userLibraries) }
+	}
+
+	test("a warmup of a configuration probes its libraries within the probe timeout it configures") {
+		val collector = mockk<Pkcs11CandidateCollector>(relaxUnitFun = true)
+		every { collector.collectCandidates(any(), any()) } returns listOf("Vendor" to "/test/vendor.so")
+		val prober = mockk<Pkcs11Prober>()
+		every { prober.runProbe("/test/vendor.so", any()) } returns
+				Pkcs11SubprocessResult.Success(pid = 300L, stdout = "")
+		every { prober.parseIdentities(any(), any()) } returns emptyList()
+		val probeTimeout = Pkcs11ProbeTimeout()
+		val config = AppConfig(
+			global = GlobalConfig(
+				customPkcs11Libraries = listOf(CustomPkcs11Library(name = "Vendor", path = "/test/vendor.so")),
+				pkcs11ProbeTimeoutSeconds = 45,
+			),
+		)
+
+		Pkcs11WarmupService(
+			collector, newProbeCache(), prober, Pkcs11CrashBlacklist(), MutableStateFlow(false), newDiscoverySignal(),
+			probeTimeout = probeTimeout,
+		).warmup(config)
+
+		verify(exactly = 1) { collector.collectCandidates(null, listOf("Vendor" to "/test/vendor.so")) }
+		verify(exactly = 1) { prober.runProbe("/test/vendor.so", 45L) }
+		probeTimeout.seconds shouldBe 45L
 	}
 
 	test("warmup sets signal to true when no candidates found") {

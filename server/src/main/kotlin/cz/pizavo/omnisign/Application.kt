@@ -349,6 +349,9 @@ private fun Application.attachPkcs11CacheInvalidatorIfNeeded(serverConfig: Serve
  * warmup is skipped entirely because the certificate discovery route (`GET /api/v1/certificates`)
  * is gated behind `SIGN` and will never be invoked.
  *
+ * The warmup applies the signing policy's `pkcs11ProbeTimeoutSeconds` before it probes, so the
+ * policy's timeout holds from startup, not only from the first rediscovery.
+ *
  * @param serverConfig Current server configuration.
  */
 private fun Application.launchPkcs11WarmupIfNeeded(serverConfig: ServerConfig) {
@@ -364,9 +367,8 @@ private fun Application.launchPkcs11WarmupIfNeeded(serverConfig: ServerConfig) {
 	launch(Dispatchers.IO) {
 		try {
 			val config = configRepo.getCurrentConfig()
-			val userLibs = config.global.customPkcs11Libraries.map { it.name to it.path }
-			logger.info { "Launching PKCS#11 background warmup (${userLibs.size} user lib(s))" }
-			warmupService.warmup(userPkcs11Libraries = userLibs)
+			logger.info { "Launching PKCS#11 background warmup (${config.global.customPkcs11Libraries.size} user lib(s))" }
+			warmupService.warmup(config)
 		} catch (e: Exception) {
 			logger.warn(e) { "PKCS#11 background warmup failed — certificate discovery will use subprocess probing" }
 			signal.value = true
