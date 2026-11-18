@@ -243,6 +243,22 @@ class RenewalBatchE2ETest : FunSpec({
 			)
 		).shouldBeRight().outputBytes
 
+	/**
+	 * A B-B document signed by [entry] under [global], with no timestamp, so an extension adds a
+	 * document timestamp rather than a signature timestamp to prove when the signature existed.
+	 */
+	suspend fun signBaselineB(entry: CertificateEntry, global: GlobalConfig): ByteArray =
+		signingRepository.signDocument(
+			SigningParameters(
+				inputBytes = plainPdf(),
+				inputName = "input.pdf",
+				certificateAlias = entry.alias,
+				signatureLevel = SignatureLevel.PADES_BASELINE_B,
+				addTimestamp = false,
+				resolvedConfig = resolved(global),
+			)
+		).shouldBeRight().outputBytes
+
 	/** Runs one batch over [dir], with the job's TSA at [tsaUrl] — the long-lived local authority by default. */
 	suspend fun runBatchOver(dir: File, jobName: String = "j", tsaUrl: String = tsa.url) = run {
 		val job = RenewalJob(
@@ -313,6 +329,33 @@ class RenewalBatchE2ETest : FunSpec({
 
 		crl = pki.buildCrl(thisUpdate = Date(System.currentTimeMillis()), nextUpdate = Date(now + 3650 * day))
 		val result = runBatchOver(dir, jobName = "chain").shouldNotBeNull()
+
+		result.renewed shouldBe 1
+		result.errors shouldBe 0
+		levelOf(target) shouldBe SignatureLevel.PADES_BASELINE_LTA
+		result.jobs.first().files.first().reason shouldBe RenewalReason.LT_NOT_SEALED
+	}
+
+	test("a stale B-LT document extended from B-B is refreshed before it is sealed") {
+		val dir = File(tmp, "chain-from-b").also { it.mkdirs() }
+		val target = File(dir, "stale-lt-from-b.pdf")
+
+		crl = pki.buildCrl(thisUpdate = Date(now - 2 * 3_600_000L), nextUpdate = Date(now + 3650 * day))
+		val staleLt = archivingRepository.extendDocument(
+			ArchivingParameters(
+				inputBytes = signBaselineB(validEntry, configWith(tsa.url)),
+				inputName = "input.pdf",
+				targetLevel = SignatureLevel.PADES_BASELINE_LT,
+				resolvedConfig = resolved(configWith(tsa.url)),
+			)
+		).shouldBeRight().outputBytes
+		target.writeBytes(staleLt)
+
+		archivingRepository.needsArchivalRenewal(target.absolutePath).shouldBeRight()
+			.reason shouldBe RenewalReason.LT_REFRESH_NEEDED
+
+		crl = pki.buildCrl(thisUpdate = Date(System.currentTimeMillis()), nextUpdate = Date(now + 3650 * day))
+		val result = runBatchOver(dir, jobName = "chain-from-b").shouldNotBeNull()
 
 		result.renewed shouldBe 1
 		result.errors shouldBe 0
