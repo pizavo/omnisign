@@ -444,6 +444,31 @@ class RenewBatchUseCaseTest : FunSpec({
         file.readBytes() shouldBe sealed
     }
 
+    test("a re-timestamp is not vetoed because re-collecting revocation data failed") {
+        val dir = subDir("retimestamp-anyway")
+        val file = File(dir, "doubted-lta.pdf").also { it.writeBytes("original".toByteArray()) }
+        val renewed = "re-timestamped archive".toByteArray()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns
+            RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery {
+            archivingRepository.extendDocument(match { it.inputName == file.name })
+        } returns ArchivingResult(
+            outputBytes = renewed,
+            outputName = file.name,
+            newSignatureLevel = SignatureLevel.PADES_BASELINE_LTA.name,
+            achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
+            revocationDataMissing = true,
+        ).right()
+
+        val job = RenewalJob(name = "j", globs = listOf(globDir(dir)))
+        val result = useCaseWith(baseConfig.copy(renewalJobs = mapOf("j" to job)))()
+
+        result.shouldNotBeNull()
+        result.renewed shouldBe 1
+        result.errors shouldBe 0
+        file.readBytes() shouldBe renewed
+    }
+
     test("an extension that fails while the deadline is still ahead stays an error") {
         val dir = subDir("still-recoverable")
         val file = File(dir, "recoverable.pdf").also { it.writeBytes("original".toByteArray()) }
@@ -489,17 +514,18 @@ class RenewBatchUseCaseTest : FunSpec({
         log.exists() shouldBe false
     }
 
-    test("an extension that embedded no revocation data is an error and leaves the file untouched") {
+    test("an extension from below B-LT that embedded no usable revocation data is an error and leaves the file untouched") {
         val dir = subDir("no-revocation")
         val original = "original archive".toByteArray()
         val file = File(dir, "no-revocation.pdf").also { it.writeBytes(original) }
-        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery { archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any()) } returns RenewalAssessment.needed(RenewalReason.BELOW_LT).right()
         coEvery {
             archivingRepository.extendDocument(match { it.inputName == file.name })
         } returns ArchivingResult(
             outputBytes = "weaker output".toByteArray(),
             outputName = file.name,
             newSignatureLevel = "PAdES-BASELINE-LTA",
+            achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
             revocationDataMissing = true,
         ).right()
 
@@ -512,6 +538,7 @@ class RenewBatchUseCaseTest : FunSpec({
         result.errors shouldBe 1
         result.success shouldBe false
         result.jobs.first().files.first().status shouldBe RenewFileStatus.Status.ERROR
+        result.jobs.first().files.first().message shouldContain "could not embed the revocation data"
         file.readBytes() shouldBe original
         dir.listFiles { f: File -> f.name.endsWith(".bak") }?.size shouldBe 0
     }

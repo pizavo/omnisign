@@ -262,7 +262,7 @@ class DssArchivingRepository(
 				level == null || level < SignatureLevel.PADES_BASELINE_LT ->
 					assessBelowLt(filePath, file, signatures, now, profile, cacheable)
 
-				!signatures.all { hasUsableSigningCertificateRevocation(it) } ->
+				level == SignatureLevel.PADES_BASELINE_LT && !signatures.all { hasUsableSigningCertificateRevocation(it) } ->
 					assessUnusableRevocation(filePath, signatures)
 
 				level == SignatureLevel.PADES_BASELINE_LT ->
@@ -329,8 +329,14 @@ class DssArchivingRepository(
 	}
 
 	/**
-	 * Assess a document whose structural level is B-LT or higher but whose embedded revocation data
-	 * cannot actually be used, so it must be replaced before anything is sealed over it.
+	 * Assess a B-LT document whose embedded revocation data cannot actually be used, so it must be
+	 * replaced before anything is sealed over it.
+	 *
+	 * A B-LTA document whose revocation data this check doubts is not sent here but to
+	 * [assessArchival]. The refresh this reason asks for targets B-LT, a level below the document's,
+	 * which DSS refuses to extend to, and a B-LTA target would add an archive timestamp on every run
+	 * for as long as the doubt stays. Its archive timestamps are renewed as they age instead, and
+	 * [getDocumentTimestampInfo] still reports the doubted data as unusable.
 	 *
 	 * This is the case the level cannot see. DSS's baseline-LT requirement counts revocation binaries
 	 * that are *present*; whether they are *acceptable* is decided separately, at validation time, by
