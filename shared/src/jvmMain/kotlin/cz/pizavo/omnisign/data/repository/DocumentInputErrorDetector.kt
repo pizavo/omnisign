@@ -5,10 +5,12 @@ import eu.europa.esig.dss.pades.exception.ProtectedDocumentException
 
 /**
  * Classifies input-document failures that arise during a PAdES operation (signing or extension):
- * an encrypted / password-protected PDF, or input that is not a PDF at all.
+ * an encrypted / password-protected PDF, a PDF locked against further signatures, or input that is
+ * not a PDF at all.
  *
- * [isEncrypted] walks the full cause chain and keys off DSS's dedicated encryption exception types,
- * so it is independent of message wording and DSS version. [looksLikePdf] is a cheap structural
+ * [isEncrypted] and [isLocked] walk the full cause chain and key off exception types, DSS's own and
+ * the [SignatureRestrictionException] that [SignatureRestrictionChecker] raises, so they are
+ * independent of message wording and DSS version. [looksLikePdf] is a cheap structural
  * pre-check on the raw bytes, run before the document is handed to DSS so a non-PDF is reported with
  * a clear, actionable error instead of DSS's generic input exception.
  *
@@ -24,10 +26,23 @@ class DocumentInputErrorDetector {
 	 * Whether [exception] — or any exception in its cause chain — signals an encrypted or
 	 * password-protected PDF that cannot be modified (DSS `ProtectedDocumentException` /
 	 * `InvalidPasswordException`).
+	 *
+	 * A [SignatureRestrictionException] does not count, though it is a `ProtectedDocumentException`:
+	 * it is about a document locked against further signatures, which [isLocked] reports.
 	 */
 	fun isEncrypted(exception: Throwable): Boolean =
 		generateSequence(exception) { it.cause }
-			.any { it is ProtectedDocumentException || it is InvalidPasswordException }
+			.any {
+				(it is ProtectedDocumentException && it !is SignatureRestrictionException) ||
+						it is InvalidPasswordException
+			}
+
+	/**
+	 * Whether [exception] — or any exception in its cause chain — is the [SignatureRestrictionException]
+	 * raised when the document's certification or an earlier signature's lock forbids a new signature.
+	 */
+	fun isLocked(exception: Throwable): Boolean =
+		generateSequence(exception) { it.cause }.any { it is SignatureRestrictionException }
 
 	/**
 	 * Whether [bytes] carry a PDF header (`%PDF-`) within the first [PDF_HEADER_SEARCH_LIMIT] bytes —

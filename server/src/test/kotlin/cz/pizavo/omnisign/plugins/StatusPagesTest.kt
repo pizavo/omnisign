@@ -75,6 +75,21 @@ class StatusPagesTest : FunSpec({
 		}
 	}
 
+	test("OperationException with SigningError.LockedDocument returns 422 LOCKED_DOCUMENT") {
+		testApplication {
+			configureTestApp {
+				throw OperationException(SigningError.pdfLocked(details = "Reason : DocMDP dictionary"))
+			}
+			val response = client.get("/test")
+			response.status shouldBe HttpStatusCode.UnprocessableEntity
+			val body = Json.decodeFromString<ApiError>(response.bodyAsText())
+			body.error shouldBe "LOCKED_DOCUMENT"
+			body.message shouldBe "The PDF does not accept further signatures: it was certified with no changes " +
+					"allowed, or an earlier signature locked it"
+			body.details shouldBe "Reason : DocMDP dictionary"
+		}
+	}
+
 	test("OperationException with ValidationError.ValidationFailed returns 500") {
 		testApplication {
 			configureTestApp {

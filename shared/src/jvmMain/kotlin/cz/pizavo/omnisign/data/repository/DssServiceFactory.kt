@@ -502,13 +502,15 @@ class DssServiceFactory(
 	
 	/**
 	 * Build a memory-efficient [PdfBoxNativeObjectFactory] that spills large documents to a
-	 * temporary file once the in-heap limit is exceeded.
+	 * temporary file once the in-heap limit is exceeded, and whose services check a document's
+	 * permissions with a [SignatureRestrictionChecker].
 	 */
 	fun buildPdfObjectFactory(): PdfBoxNativeObjectFactory =
 		PdfBoxNativeObjectFactory().apply {
 			setPdfMemoryUsageSetting(
 				PdfMemoryUsageSetting.mixed(MEMORY_LIMIT_BYTES, TEMP_FILE_LIMIT_BYTES)
 			)
+			setPdfPermissionsChecker(SignatureRestrictionChecker())
 		}
 	
 	/**

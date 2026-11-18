@@ -261,7 +261,9 @@ paths:
         '422':
           description: >
             Invalid resolved configuration (including a requested hashAlgorithm that is disabled),
-            an encrypted document, a timestamp is required but TIMESTAMP is disabled, the hash
+            an encrypted document, a document that does not accept further signatures because it
+            was certified with no changes allowed or an earlier signature locked it
+            (`LOCKED_DOCUMENT`), a timestamp is required but TIMESTAMP is disabled, the hash
             algorithm is past its expiration date under a FAIL level, or the revocation data shows
             the signing certificate, or a certificate above it in its chain, revoked or suspended.
           content:
@@ -275,6 +277,8 @@ paths:
                   value: { error: TIMESTAMP_NOT_ALLOWED, message: "Signing at PADES_BASELINE_T embeds a timestamp, but TIMESTAMP is not enabled" }
                 encrypted:
                   value: { error: ENCRYPTED_DOCUMENT, message: "The PDF is encrypted or password-protected and cannot be signed" }
+                locked:
+                  value: { error: LOCKED_DOCUMENT, message: "The PDF does not accept further signatures: it was certified with no changes allowed, or an earlier signature locked it", details: "The creation of new signatures is not permitted in the current document. Reason : DocMDP dictionary does not permit a new signature creation!" }
                 expiredAlgorithm:
                   value: { error: EXPIRED_ALGORITHM, message: "Algorithm RIPEMD160 expired on 2014-08-01 per ETSI TS 119 312. Signatures created with this algorithm may fail validation.", details: "Change the hash algorithm or set --algo-expiration-level WARN to override." }
                 certificateRevoked:

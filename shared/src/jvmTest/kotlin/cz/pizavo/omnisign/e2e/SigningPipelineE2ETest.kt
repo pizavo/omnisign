@@ -31,8 +31,11 @@ import cz.pizavo.omnisign.domain.port.RenewalCheckCache
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.service.*
 import eu.europa.esig.dss.alert.StatusAlert
+import eu.europa.esig.dss.enumerations.CertificationPermission
 import eu.europa.esig.dss.enumerations.Indication
 import eu.europa.esig.dss.model.InMemoryDocument
+import eu.europa.esig.dss.pades.PAdESSignatureParameters
+import eu.europa.esig.dss.pades.signature.PAdESService
 import eu.europa.esig.dss.pades.validation.PDFDocumentValidator
 import eu.europa.esig.dss.pdf.pdfbox.PdfBoxNativeObjectFactory
 import eu.europa.esig.dss.service.http.commons.TimestampDataLoader
@@ -74,6 +77,7 @@ import java.security.PrivateKey
 import java.security.cert.X509CRL
 import java.security.cert.X509Certificate
 import java.util.*
+import eu.europa.esig.dss.enumerations.SignatureLevel as DssSignatureLevel
 
 /**
  * Repository-level end-to-end test of the real archiving pipeline at the **long-term** PAdES levels
@@ -98,7 +102,9 @@ import java.util.*
  * server of the active profile. A failed fetch of any other address, a CRL under the timestamp
  * server's own address included, stays a revocation failure. A signing whose timestamp server
  * cannot be reached, or answers with an HTTP error status, is reported as a timestamp error that
- * names the server, while one that fails on its document is not blamed on the server.
+ * names the server, while one that fails on its document is not blamed on the server. A document
+ * certified with no changes allowed is reported as locked rather than encrypted, and one whose
+ * certification allows form filling and signing is signed.
  */
 class SigningPipelineE2ETest : FunSpec({
 
@@ -219,7 +225,8 @@ class SigningPipelineE2ETest : FunSpec({
 	coEvery { configRepository.getCurrentConfig() } returns AppConfig(global = GlobalConfig())
 
 	val dssServiceFactory = mockk<DssServiceFactory>(relaxed = true)
-	every { dssServiceFactory.buildPdfObjectFactory() } returns PdfBoxNativeObjectFactory()
+	val productionFactory = DssServiceFactory(mockk(relaxed = true))
+	every { dssServiceFactory.buildPdfObjectFactory() } answers { productionFactory.buildPdfObjectFactory() }
 	every { dssServiceFactory.buildSigningCertificateVerifier(any(), any(), any()) } answers {
 		CertificateVerifierResult(trustAndRevocationVerifier())
 	}
@@ -677,5 +684,40 @@ class SigningPipelineE2ETest : FunSpec({
 	test("a signing that fails on an encrypted document is not blamed on the timestamp server") {
 		signingRepository.signDocument(baselineTSigning(tsa.url).copy(inputBytes = encryptedPdf()))
 			.shouldBeLeft().shouldBeInstanceOf<SigningError.EncryptedDocument>()
+	}
+
+	/** A one-page PDF the test signer certified at B-B, allowing the changes [permission] names. */
+	fun certifiedPdf(permission: CertificationPermission): ByteArray {
+		val token = Pkcs12SignatureToken(signerP12, KeyStore.PasswordProtection(pass.toCharArray()))
+		try {
+			val key = token.keys.first()
+			val parameters = PAdESSignatureParameters().apply {
+				signatureLevel = DssSignatureLevel.PAdES_BASELINE_B
+				signingCertificate = key.certificate
+				certificateChain = key.certificateChain.toMutableList()
+				this.permission = permission
+			}
+			val service = PAdESService(CommonCertificateVerifier())
+			val document = InMemoryDocument(plainPdf())
+			val signatureValue = token.sign(service.getDataToSign(document, parameters), parameters.signatureAlgorithm, key)
+			return service.signDocument(document, parameters, signatureValue).openStream().use { it.readAllBytes() }
+		} finally {
+			token.close()
+		}
+	}
+
+	test("a signing that the document's certification forbids is reported as a locked document, not an encrypted one") {
+		val error = signingRepository.signDocument(
+			baselineTSigning(tsa.url).copy(inputBytes = certifiedPdf(CertificationPermission.NO_CHANGE_PERMITTED)),
+		).shouldBeLeft().shouldBeInstanceOf<SigningError.LockedDocument>()
+
+		error.text shouldBe LocalizableText.of(MessageKey.SIGNING_PDF_LOCKED)
+		error.details.shouldNotBeNull() shouldContain "DocMDP"
+	}
+
+	test("a document whose certification allows form filling and signing is signed") {
+		signingRepository.signDocument(
+			baselineTSigning(tsa.url).copy(inputBytes = certifiedPdf(CertificationPermission.MINIMAL_CHANGES_PERMITTED)),
+		).shouldBeRight()
 	}
 })

@@ -138,6 +138,9 @@ enum class MessageKey {
 	/** The input PDF is encrypted or password-protected, so it cannot be signed without its password. */
 	SIGNING_PDF_ENCRYPTED,
 
+	/** The input PDF's certification or an earlier signature forbids further signatures. */
+	SIGNING_PDF_LOCKED,
+
 	/** The input is not a valid PDF or could not be parsed for signing. */
 	SIGNING_MALFORMED_PDF,
 

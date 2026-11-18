@@ -251,6 +251,8 @@ class DssSigningRepository(
 				).left()
 			} else if (documentInputErrorDetector.isEncrypted(e)) {
 				SigningError.pdfEncrypted(details = e.message, cause = e).left()
+			} else if (documentInputErrorDetector.isLocked(e)) {
+				SigningError.pdfLocked(details = e.message, cause = e).left()
 			} else if (signatureSpaceErrorDetector.isSignatureTooLarge(e)) {
 				SigningError.signatureTooLarge(details = e.message, cause = e).left()
 			} else {
