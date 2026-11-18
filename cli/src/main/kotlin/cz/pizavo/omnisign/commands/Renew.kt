@@ -98,6 +98,23 @@ class Renew : CliktCommand(name = "renew"), KoinComponent {
 			throw ProgramResult(1)
 		}
 
+		if (result.configError != null) {
+			if (output.json) {
+				echo(
+					Json.encodeToString(
+						JsonRenewalResult(
+							success = false,
+							error = JsonError(message = "Renewal did not start: ${result.configError}"),
+						)
+					)
+				)
+			} else {
+				echo("❌ Renewal did not start: ${result.configError}", err = true)
+			}
+			renewalNotifier.notify(result)
+			throw ProgramResult(1)
+		}
+
 		if (result.jobs.isEmpty()) {
 			if (output.json) {
 				echo(Json.encodeToString(JsonRenewalResult(success = true, dryRun = dryRun)))

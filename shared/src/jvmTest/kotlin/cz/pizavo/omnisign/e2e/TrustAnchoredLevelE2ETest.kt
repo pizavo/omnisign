@@ -539,6 +539,7 @@ class TrustAnchoredLevelE2ETest : FunSpec({
 			backupRetention = 0,
 		)
 		val batchConfig = mockk<ConfigRepository>()
+		coEvery { batchConfig.loadConfig() } coAnswers { batchConfig.getCurrentConfig().right() }
 		coEvery { batchConfig.getCurrentConfig() } returns AppConfig(
 			global = GlobalConfig(timestampServer = TimestampServerConfig(url = tsa.url)),
 			renewalJobs = mapOf(job.name to job),

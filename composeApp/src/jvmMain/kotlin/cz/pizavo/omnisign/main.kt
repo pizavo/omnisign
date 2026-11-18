@@ -415,6 +415,12 @@ private fun runHeadlessRenewal() {
 		exitProcess(1)
 	}
 
+	if (result?.configError != null) {
+		logger.error { "Renewal aborted — ${result.configError}" }
+		renewalNotifier.notify(result)
+		exitProcess(1)
+	}
+
 	if (result == null || result.jobs.isEmpty()) {
 		logger.info { "No renewal jobs configured — exiting." }
 		exitProcess(0)

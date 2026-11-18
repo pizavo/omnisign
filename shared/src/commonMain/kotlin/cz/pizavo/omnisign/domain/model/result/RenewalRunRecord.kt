@@ -24,7 +24,7 @@ import kotlin.time.Instant
  *   [lastSuccessAt], which would leave the staleness alert firing for ever over something no run can
  *   fix.
  * @property failureReason Why the run could not start, when [outcome] is [RenewalRunOutcome.FAILED]
- *   (e.g. the lock could not be acquired); `null` otherwise.
+ *   (the lock could not be acquired, or the configuration could not be loaded); `null` otherwise.
  * @property unrecoverablePaths Files found past their preservation deadline in the most recent run.
  *   Carried forward so the next run can tell a newly terminal document from one it has already
  *   reported, and notify only about the former: a condition nobody can act on must be raised once,

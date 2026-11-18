@@ -19,10 +19,14 @@ package cz.pizavo.omnisign.domain.model.result
  *   the host-wide lock; all other counts are then zero and no files were inspected.
  * @property lockError Non-null when the run did not start because the renewal lock could not be
  *   established (its file could not be created or locked); carries the failure reason.
+ * @property configError Non-null when the run did not start because the configuration could not be
+ *   loaded (its file could not be read or decoded); carries the failure reason. No job ran, as the
+ *   jobs are part of that configuration, so the run is recorded as failed rather than as a run of no
+ *   jobs.
  * @property stalenessAlert Non-null when renewal has gone too long without a successful run, so the
  *   caller should raise a standing staleness notification on top of any per-job outcome — set on a
- *   completed run or a run skipped because the lock was held; `null` for dry-runs, lock failures, and
- *   runs that are healthy or only recently failing.
+ *   completed run or a run skipped because the lock was held; `null` for dry-runs, lock failures,
+ *   configuration failures, and runs that are healthy or only recently failing.
  */
 data class RenewBatchResult(
     val checked: Int = 0,
@@ -35,12 +39,14 @@ data class RenewBatchResult(
     val jobs: List<RenewJobResult> = emptyList(),
     val alreadyRunning: Boolean = false,
     val lockError: String? = null,
+    val configError: String? = null,
     val stalenessAlert: StalenessAlert? = null,
 ) {
 
     /**
-     * `true` when the batch completed without any errors and the lock was acquired.
+     * `true` when the batch completed without any errors, the lock was acquired and the
+     * configuration was loaded.
      */
-    val success: Boolean get() = errors == 0 && lockError == null
+    val success: Boolean get() = errors == 0 && lockError == null && configError == null
 }
 

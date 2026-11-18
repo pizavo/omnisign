@@ -12,6 +12,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
+import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.error.TimestampFailureKind
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.result.ArchivingResult
@@ -71,6 +72,7 @@ class RenewBatchUseCaseTest : FunSpec({
 
     beforeTest {
         clearMocks(archivingRepository, configRepository, runRecordStore)
+        coEvery { configRepository.loadConfig() } coAnswers { configRepository.getCurrentConfig().right() }
         coEvery {
             archivingRepository.needsArchivalRenewal(match { it.contains(".verify.") }, any(), any())
         } returns RenewalAssessment.notNeeded().right()
@@ -1097,6 +1099,59 @@ class RenewBatchUseCaseTest : FunSpec({
         result.lockError shouldBe "disk on fire"
         result.success shouldBe false
         coVerify(exactly = 0) { archivingRepository.needsArchivalRenewal(any(), any(), any()) }
+    }
+
+    test("a configuration that cannot be loaded fails the run instead of running no jobs on the defaults") {
+        val dir = subDir("unloadable-config")
+        File(dir, "doc.pdf").createNewFile()
+        coEvery { archivingRepository.needsArchivalRenewal(any(), any(), any()) } returns
+            RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        val lastGood = baseConfig.copy(renewalJobs = mapOf("j" to RenewalJob(name = "j", globs = listOf(globDir(dir)))))
+        val uc = useCaseWith(lastGood)
+        coEvery { configRepository.loadConfig() } returns
+            ConfigurationError.loadFailed(details = "Unexpected JSON token at offset 7").left()
+        val longAgo = Clock.System.now() - 60.days
+        coEvery { runRecordStore.load() } returns RenewalRunRecord(
+            lastRunAt = longAgo,
+            outcome = RenewalRunOutcome.SUCCESS,
+            lastSuccessAt = longAgo,
+        )
+        val saved = slot<RenewalRunRecord>()
+        coEvery { runRecordStore.save(capture(saved)) } returns Unit
+
+        val result = uc().shouldNotBeNull()
+
+        result.configError shouldBe "Failed to load configuration: Unexpected JSON token at offset 7"
+        result.success shouldBe false
+        result.jobs.shouldBeEmpty()
+        result.stalenessAlert.shouldBeNull()
+        coVerify(exactly = 0) { archivingRepository.needsArchivalRenewal(any(), any(), any()) }
+        coVerify(exactly = 0) { archivingRepository.extendDocument(any()) }
+        saved.captured.outcome shouldBe RenewalRunOutcome.FAILED
+        saved.captured.failureReason shouldBe result.configError
+        saved.captured.lastSuccessAt shouldBe longAgo
+        saved.captured.failuresSinceSuccess shouldBe 1
+        saved.captured.lastStaleNotifiedAt.shouldBeNull()
+    }
+
+    test("a run of one job reports a configuration that cannot be loaded, not a job that does not exist") {
+        val uc = useCaseWith(baseConfig)
+        coEvery { configRepository.loadConfig() } returns ConfigurationError.loadFailed().left()
+
+        val result = uc(jobName = "j").shouldNotBeNull()
+
+        result.configError shouldBe "Failed to load configuration"
+    }
+
+    test("a dry run reports a configuration that cannot be loaded and records nothing") {
+        val uc = useCaseWith(baseConfig)
+        coEvery { configRepository.loadConfig() } returns ConfigurationError.loadFailed().left()
+
+        val result = uc(dryRun = true).shouldNotBeNull()
+
+        result.configError.shouldNotBeNull()
+        result.dryRun shouldBe true
+        coVerify(exactly = 0) { runRecordStore.save(any()) }
     }
 
     test("writes a timestamped backup of the original before renewing in place") {

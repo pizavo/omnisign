@@ -14,7 +14,10 @@ enum class RenewalRunOutcome {
     /** The run completed, but one or more files failed. */
     COMPLETED_WITH_ERRORS,
 
-    /** The run could not start — the host-wide renewal lock could not be acquired. */
+    /**
+     * The run could not start — the host-wide renewal lock could not be acquired, or the
+     * configuration that holds the jobs could not be loaded.
+     */
     FAILED,
 
     /**
