@@ -328,6 +328,29 @@ class SignTest : FunSpec({
 		captured.captured.resolvedConfig?.timestampServer?.runtimePassword?.value shouldBe "tsa-file-secret"
 	}
 
+	test("sign keeps the stored timestamp timeout unless --timestamp-timeout gives one, the default value included") {
+		coEvery { configRepository.getCurrentConfig() } returns defaultConfig.copy(
+			global = defaultConfig.global.copy(
+				timestampServer = TimestampServerConfig(url = "https://tsa.example.test", username = "tsa-user", timeout = 60000)
+			)
+		)
+		val captured = signsSuccessfully()
+
+		/** Sign with [options] added to the command and return the timestamp timeout the signer was given. */
+		fun timeoutWith(vararg options: String): Int? {
+			val result = Omnisign().test(
+				listOf("sign", "-c", "my-cert", "-f", tmpFile("timeout-input.pdf").absolutePath, "-o", tmpFile("timeout-output.pdf").absolutePath) +
+						options
+			)
+			result.statusCode shouldBe 0
+			return captured.captured.resolvedConfig?.timestampServer?.timeout
+		}
+
+		timeoutWith("--timestamp-username", "other-user") shouldBe 60000
+		timeoutWith("--timestamp-timeout", "30000") shouldBe 30000
+		timeoutWith("--timestamp-timeout", "5000") shouldBe 5000
+	}
+
 	test("sign reads the keystore password from the file OMNISIGN_KEYSTORE_PASSWORD_FILE names") {
 		val captured = signsSuccessfully()
 		val passwordFile = tmpFile("keystore-password").also { it.writeText("file-secret\n") }

@@ -132,34 +132,41 @@ data class ResolvedConfig(
 		}
 
 		/**
-		 * Merge an operation-level timestamp override onto a base config.
-		 * Individual fields from [override] take precedence; a blank override URL
-		 * falls back to the [base] URL so credential-only overrides work correctly.
-		 * [TimestampServerConfig.runtimePassword] is preserved from the override
-		 * so in-memory passwords are not silently dropped.
+		 * Merge an operation-level timestamp [override] onto the stored [base] config.
+		 * A field the override sets takes precedence and a field it leaves `null` keeps the
+		 * [base] value: an override without a URL keeps the stored server, one without a timeout
+		 * keeps the stored timeout, and a timeout it gives replaces the stored one even when it
+		 * equals [TimestampServerConfig.DEFAULT_TIMEOUT_MS]. The override's in-memory password
+		 * is kept so that a password given for this operation is not silently dropped.
 		 *
 		 * The credentials of [base], its username, credential key and in-memory password, carry
 		 * over only while the override stays with the [base] server: its URL is blank or names the
 		 * same server ([sameServer]). An override that points at another server takes only the
 		 * credentials given with it, so a password stored for one server is never sent to another.
+		 * Without a [base], an override that names no server resolves to none.
 		 */
 		private fun mergeTimestampConfig(
 			base: TimestampServerConfig?,
-			override: TimestampServerConfig?
+			override: TimestampServerOverride?
 		): TimestampServerConfig? {
 			if (override == null) return base
-			if (base == null) return override.takeIf { it.url.isNotBlank() }
-			val timeout = override.timeout.takeIf { it != 30000 } ?: base.timeout
-			if (override.url.isNotBlank() && !sameServer(override.url, base.url)) {
-				return override.copy(timeout = timeout)
+			val url = override.url?.takeIf { it.isNotBlank() }
+			if (base != null && (url == null || sameServer(url, base.url))) {
+				return base.copy(
+					url = url ?: base.url,
+					username = override.username ?: base.username,
+					timeout = override.timeout ?: base.timeout,
+					runtimePassword = override.runtimePassword ?: base.runtimePassword
+				)
 			}
-			return base.copy(
-				url = override.url.ifBlank { base.url },
-				username = override.username ?: base.username,
-				credentialKey = override.credentialKey ?: base.credentialKey,
-				timeout = timeout,
-				runtimePassword = override.runtimePassword ?: base.runtimePassword
-			)
+			return url?.let {
+				TimestampServerConfig(
+					url = it,
+					username = override.username,
+					timeout = override.timeout ?: base?.timeout ?: TimestampServerConfig.DEFAULT_TIMEOUT_MS,
+					runtimePassword = override.runtimePassword
+				)
+			}
 		}
 
 		/**
