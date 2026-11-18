@@ -1,9 +1,11 @@
 package cz.pizavo.omnisign.data.service
 
+import cz.pizavo.omnisign.data.repository.appConfigDirectory
 import java.io.File
 
 /**
- * Resolve the platform-appropriate PKCS#11 drop directory: `<appDataDir>/omnisign/pkcs11/`.
+ * Resolve the platform-appropriate PKCS#11 drop directory: `pkcs11/` in the configuration
+ * directory [appConfigDirectory] resolves.
  *
  * Files placed here are discovered automatically by [Pkcs11Discoverer] without any config
  * change.  The directory does not need to exist — discovery treats a missing or empty drop
@@ -20,14 +22,4 @@ import java.io.File
  *
  * @return The drop directory [File]; existence on disk is **not** asserted.
  */
-fun pkcs11DropDir(): File {
-	val os = System.getProperty("os.name").lowercase()
-	val userHome = System.getProperty("user.home")
-	val base = when {
-		os.contains("win") -> System.getenv("APPDATA")?.let { File(it, "omnisign") }
-			?: File(userHome, "AppData/Roaming/omnisign")
-		os.contains("mac") -> File(userHome, "Library/Application Support/omnisign")
-		else -> File(userHome, ".config/omnisign")
-	}
-	return File(base, "pkcs11")
-}
+fun pkcs11DropDir(): File = appConfigDirectory().resolve("pkcs11").toFile()
