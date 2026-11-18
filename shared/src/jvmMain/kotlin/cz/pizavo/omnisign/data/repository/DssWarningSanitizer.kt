@@ -230,11 +230,10 @@ class DssWarningSanitizer {
 		 *   reports it, so that category is tried first.
 		 * - No revocation data at all is [WarningCategory.REVOCATION_POE_MISSING] in a
 		 *   proof-of-existence status and [WarningCategory.REVOCATION_NOT_FOUND] in the other two.
-		 * - Only data older than the time it has to cover is stale. For a proof-of-existence that
-		 *   is [WarningCategory.REVOCATION_POE_STALE], which takes what the two categories before it
-		 *   leave of that status. For the signing chain it is
-		 *   [WarningCategory.FRESH_REVOCATION_MISSING], which names that detail itself, as the
-		 *   category that takes the status's other details comes after it.
+		 * - Only data older than the time it has to cover is stale: for a proof-of-existence that is
+		 *   [WarningCategory.REVOCATION_POE_STALE], and for the signing chain
+		 *   [WarningCategory.FRESH_REVOCATION_MISSING]. Both name that detail, so a detail DSS adds
+		 *   in a later version is not reported as stale.
 		 *
 		 * Every category keyed on a base message has to be tried before
 		 * [WarningCategory.REVOCATION_NOT_FOUND], whose `No revocation data found` matches all of
@@ -253,7 +252,7 @@ class DssWarningSanitizer {
 			),
 			
 			WarningCategory.REVOCATION_POE_STALE to listOf(
-				Regex("""Revocation data is missing for one or more POE"""),
+				Regex("""Revocation data is missing for one or more POE.*?No revocation data found after the best signature time"""),
 			),
 			
 			WarningCategory.FRESH_REVOCATION_MISSING to listOf(

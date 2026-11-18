@@ -419,6 +419,20 @@ class DssWarningSanitizerTest : FunSpec({
 		)
 	}
 
+	test("a proof-of-existence detail DSS 6.5.1 does not produce is kept as DSS words it, not reported as stale") {
+		val unknownEntry = "Revocation data is missing for one or more POE(s). [C-BBBB2222: Revocation data is pending!]"
+		val result = sanitizer.sanitize(
+			listOf(
+				"Revocation data is missing for one or more POE(s). " +
+						"[C-AAAA1111: $staleDetail; C-BBBB2222: Revocation data is pending!]"
+			)
+		)
+		result.categories shouldBe setOf(WarningCategory.REVOCATION_POE_STALE)
+		result.annotatedSummaries shouldHaveSize 2
+		result.annotatedSummaries[0].affectedIds shouldContainExactly listOf("C-AAAA1111")
+		result.annotatedSummaries[1].summary.shouldBeInstanceOf<LocalizableText.Literal>().value shouldBe unknownEntry
+	}
+
 	test("OCSP DSS Exception is classified as REVOCATION_NOT_FOUND") {
 		val raw = listOf(
 			"OCSP DSS Exception: Unable to retrieve OCSP response for certificate " +

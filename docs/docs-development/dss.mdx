@@ -193,7 +193,7 @@ The categories, and roughly what each means:
 
 | Category | Meaning |
 | --- | --- |
-| `REVOCATION_NOT_FOUND` | CRL/OCSP could not be downloaded |
+| `REVOCATION_NOT_FOUND` | No CRL or OCSP data could be obtained for a certificate that needs it: a download failed, or DSS found none at all |
 | `REVOCATION_AFTER_CERTIFICATE_EXPIRY` | Revocation data was retrieved but rejected: it was issued after the certificate expired, and the issuer asserts no knowledge of that period |
 | `REVOCATION_ACCESS_POINT_MISSING` | A certificate names no CRL distribution point or OCSP address, so DSS disregards the timestamps and revocation data it signed while gathering validation data. Informational: where that leaves a real gap, the gap surfaces as `REVOCATION_NOT_FOUND` or `REVOCATION_STATUS_UNKNOWN` |
 | `REVOCATION_UNTRUSTED_CHAIN` | Revocation was skipped — the chain has no trusted anchor |
