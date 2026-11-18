@@ -193,6 +193,7 @@ The categories, and roughly what each means:
 
 | Category | Meaning |
 | --- | --- |
+| `CERTIFICATE_REVOKED` | Revocation data shows a certificate in a signature's chain revoked or suspended before the signature's proof-of-existence, or of unknown status. Reported only: signing with a revoked certificate is refused before the key signs |
 | `REVOCATION_NOT_FOUND` | No CRL or OCSP data could be obtained for a certificate that needs it: a download failed, or DSS found none at all |
 | `REVOCATION_AFTER_CERTIFICATE_EXPIRY` | Revocation data was retrieved but rejected: it was issued after the certificate expired, and the issuer asserts no knowledge of that period |
 | `REVOCATION_ACCESS_POINT_MISSING` | A certificate names no CRL distribution point or OCSP address, so DSS disregards the timestamps and revocation data it signed while gathering validation data. Informational: where that leaves a real gap, the gap surfaces as `REVOCATION_NOT_FOUND` or `REVOCATION_STATUS_UNKNOWN` |
@@ -201,6 +202,7 @@ The categories, and roughly what each means:
 | `REVOCATION_POE_MISSING` | Revocation data needed for proof-of-existence is absent |
 | `REVOCATION_POE_STALE` | Revocation data was collected, but every response predates the timestamp whose proof-of-existence it has to cover |
 | `FRESH_REVOCATION_MISSING` | Revocation data for the signing chain predates the signature's own timestamp, so none of it covers the moment of signing |
+| `TIMESTAMP_BROKEN` | A timestamp in the document fails verification: its signature does not verify, or the data it covers was changed or is missing |
 | `TIMESTAMP_UNTRUSTED` | The issuing TSA is not in any trusted list |
 | `CERTIFICATE_PARSE_ERROR` | Malformed ASN.1 extensions, typically in a third-party TSA certificate |
 | `TSP_FAILURE` | The timestamp server returned a `PKIFailureInfo` |
