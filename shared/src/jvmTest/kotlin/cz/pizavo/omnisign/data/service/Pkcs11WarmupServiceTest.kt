@@ -6,10 +6,11 @@ import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.shouldBe
 import io.mockk.*
 import kotlinx.coroutines.flow.MutableStateFlow
+import java.io.File
 
 /**
- * Verifies [Pkcs11WarmupService] orchestration: subprocess result handling,
- * [Pkcs11CrashBlacklist] updates, parallelism cap, and signal lifecycle.
+ * Verifies [Pkcs11WarmupService] orchestration: the candidates it collects, subprocess result
+ * handling, [Pkcs11CrashBlacklist] updates, parallelism cap, and signal lifecycle.
  *
  * The probe seam is the injected [Pkcs11Prober] mock — warmup branches on the
  * [Pkcs11SubprocessResult] it returns and parses successes via [Pkcs11Prober.parseIdentities].
@@ -161,6 +162,20 @@ class Pkcs11WarmupServiceTest : FunSpec({
 		Pkcs11WarmupService(collector, newProbeCache(), prober, blacklist, signal, newDiscoverySignal()).warmup()
 
 		verify(exactly = 0) { collector.collectCandidates(any(), any()) }
+	}
+
+	test("warmup collects the candidates of the drop directory it was built with and of the libraries it is given") {
+		val dropDirectory = File("/test/pkcs11-drop")
+		val userLibraries = listOf("Vendor" to "/test/vendor.so")
+		val collector = mockk<Pkcs11CandidateCollector>(relaxUnitFun = true)
+		every { collector.collectCandidates(any(), any()) } returns emptyList()
+
+		Pkcs11WarmupService(
+			collector, newProbeCache(), mockk(), Pkcs11CrashBlacklist(), MutableStateFlow(false), newDiscoverySignal(),
+			appDataPkcs11Dir = dropDirectory,
+		).warmup(userLibraries)
+
+		verify(exactly = 1) { collector.collectCandidates(dropDirectory, userLibraries) }
 	}
 
 	test("warmup sets signal to true when no candidates found") {

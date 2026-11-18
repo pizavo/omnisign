@@ -23,7 +23,6 @@ import cz.pizavo.omnisign.data.service.Pkcs11CacheInvalidator
 import cz.pizavo.omnisign.data.service.Pkcs11ProbeTimeout
 import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
 import cz.pizavo.omnisign.data.service.TrustedListRefreshScheduler
-import cz.pizavo.omnisign.data.service.pkcs11DropDir
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
@@ -327,12 +326,8 @@ fun main(args: Array<String> = emptyArray()) {
 				val config = warmupConfigRepo.getCurrentConfig()
 				koin.get<Pkcs11ProbeTimeout>().update(config.global.pkcs11ProbeTimeoutSeconds)
 				val userLibs = config.global.customPkcs11Libraries.map { it.name to it.path }
-				val pkcs11Dir = pkcs11DropDir()
-				logger.info { "Launching PKCS#11 background warmup (${userLibs.size} user lib(s), dropDir=$pkcs11Dir)" }
-				warmupService.warmup(
-					appDataPkcs11Dir = pkcs11Dir,
-					userPkcs11Libraries = userLibs,
-				)
+				logger.info { "Launching PKCS#11 background warmup (${userLibs.size} user lib(s))" }
+				warmupService.warmup(userPkcs11Libraries = userLibs)
 			} catch (e: Exception) {
 				logger.warn(e) { "PKCS#11 background warmup failed — certificate discovery will use subprocess probing" }
 				koin.get<MutableStateFlow<Boolean>>().value = true

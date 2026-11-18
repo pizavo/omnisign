@@ -8,6 +8,7 @@ import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withPermit
+import java.io.File
 
 /**
  * Validates discovered PKCS#11 libraries against a crash blacklist at application startup.
@@ -46,6 +47,11 @@ import kotlinx.coroutines.sync.withPermit
  *   any subsequent invalidator-launched rediscovery cycles.
  * @property discoverySignal Shared discovery-running signal bracketed around the validation
  *   pass so passive readers see warmup as an in-flight cycle ([Pkcs11DiscoverySignal]).
+ * @property appDataPkcs11Dir The drop directory whose PKCS#11 libraries are validated along with
+ *   the operating system's and the configured ones, or null to leave a drop directory out. The
+ *   module passes [pkcs11DropDir], as it does to [Pkcs11CacheInvalidator], so the CLI, the
+ *   desktop app and the server all prime the probe cache for the candidates that every later
+ *   rediscovery probes.
  * @property probeTimeout Process-global probe-timeout holder ([Pkcs11ProbeTimeout]); read at
  *   spawn time so each warmup probe honours the configured `pkcs11ProbeTimeoutSeconds`.
  * @property maxParallelism Upper bound on concurrent warmup probes.  Each probe spawns a
@@ -59,6 +65,7 @@ class Pkcs11WarmupService(
 	private val crashBlacklist: Pkcs11CrashBlacklist,
 	private val warmupSignal: MutableStateFlow<Boolean>,
 	private val discoverySignal: Pkcs11DiscoverySignal,
+	private val appDataPkcs11Dir: File? = null,
 	private val probeTimeout: Pkcs11ProbeTimeout = Pkcs11ProbeTimeout(),
 	private val maxParallelism: Int = DEFAULT_MAX_PARALLELISM,
 ) {
@@ -66,20 +73,16 @@ class Pkcs11WarmupService(
 	/**
 	 * Run the bounded-parallel validation pass for all discoverable PKCS#11 libraries.
 	 *
-	 * Candidate libraries are enumerated from OS-native sources, the app-data drop directory,
-	 * and user-supplied paths.  At most [maxParallelism] candidates are probed in parallel
-	 * via [Dispatchers.IO]; the remainder queue behind a [Semaphore] permit.
+	 * Candidate libraries are enumerated from OS-native sources, the drop directory
+	 * [appDataPkcs11Dir], and user-supplied paths.  At most [maxParallelism] candidates are
+	 * probed in parallel via [Dispatchers.IO]; the remainder queue behind a [Semaphore] permit.
 	 *
 	 * This method is safe to call multiple times — further calls after the first successful
 	 * warmup return immediately.
 	 *
-	 * @param appDataPkcs11Dir Optional drop directory for user-placed PKCS#11 libraries.
 	 * @param userPkcs11Libraries Additional `(display name, path)` pairs from config.
 	 */
-	suspend fun warmup(
-		appDataPkcs11Dir: java.io.File? = null,
-		userPkcs11Libraries: List<Pair<String, String>> = emptyList(),
-	) {
+	suspend fun warmup(userPkcs11Libraries: List<Pair<String, String>> = emptyList()) {
 		if (warmupSignal.value) {
 			logger.debug { "PKCS#11 warmup already completed — skipping" }
 			return
@@ -89,7 +92,7 @@ class Pkcs11WarmupService(
 		try {
 			logger.info {
 				"Starting PKCS#11 background warmup (timeout=${probeTimeout.seconds}s, " +
-						"maxParallelism=$maxParallelism)"
+						"maxParallelism=$maxParallelism, dropDir=$appDataPkcs11Dir)"
 			}
 			val startTime = System.currentTimeMillis()
 
