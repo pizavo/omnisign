@@ -283,6 +283,19 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '500':
           $ref: '#/components/responses/InternalError'
+        '502':
+          description: >
+            The timestamp server, which signing at PADES_BASELINE_T and above calls, could not be
+            reached, refused the request or answered with something other than a timestamp token.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                timestampServerUnreachable:
+                  value: { error: TIMESTAMP_ERROR, message: "Timestamp server (https://tsa.example.com/tsr) could not be reached. Check the network connection and that the server is accepting requests." }
+                timestampServerRefused:
+                  value: { error: TIMESTAMP_ERROR, message: "Timestamp server (https://tsa.example.com/tsr) failed to produce a timestamp token", details: "Unable to process POST call for url [https://tsa.example.com/tsr]. Reason : [Not acceptable HTTP Status (HTTP status code : 401 / reason : Unauthorized)]" }
 
   /api/v1/validate:
     post:
@@ -437,6 +450,22 @@ paths:
           $ref: '#/components/responses/RateLimited'
         '500':
           $ref: '#/components/responses/InternalError'
+        '502':
+          description: >
+            The timestamp server could not be reached, refused the request or answered with
+            something other than a timestamp token (`TIMESTAMP_FAILED`), or the revocation data the
+            target level embeds could not be obtained (`REVOCATION_INFO_ERROR`).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiError'
+              examples:
+                timestampServerUnreachable:
+                  value: { error: TIMESTAMP_FAILED, message: "Timestamp server (https://tsa.example.com/tsr) could not be reached. Check the network connection and that the server is accepting requests." }
+                timestampServerRefused:
+                  value: { error: TIMESTAMP_FAILED, message: "Timestamp server (https://tsa.example.com/tsr) failed to produce a timestamp token", details: "Unable to process POST call for url [https://tsa.example.com/tsr]. Reason : [Not acceptable HTTP Status (HTTP status code : 401 / reason : Unauthorized)]" }
+                revocationInfo:
+                  value: { error: REVOCATION_INFO_ERROR, message: "Failed to obtain revocation information" }
 
   /api/v1/timestamp/inspect:
     post:

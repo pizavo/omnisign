@@ -19,6 +19,7 @@ import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.error.ArchivingError
+import cz.pizavo.omnisign.domain.model.error.SigningError
 import cz.pizavo.omnisign.domain.model.error.TimestampFailureKind
 import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
@@ -58,6 +59,8 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import org.apache.pdfbox.pdmodel.encryption.AccessPermission
+import org.apache.pdfbox.pdmodel.encryption.StandardProtectionPolicy
 import org.bouncycastle.cert.X509v2CRLBuilder
 import org.bouncycastle.cert.jcajce.JcaX509CRLConverter
 import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder
@@ -93,7 +96,9 @@ import java.util.*
  * An extension whose timestamp server answers with an HTTP error status is reported as a timestamp
  * failure rather than a revocation one, and an extension given no configuration blames the timestamp
  * server of the active profile. A failed fetch of any other address, a CRL under the timestamp
- * server's own address included, stays a revocation failure.
+ * server's own address included, stays a revocation failure. A signing whose timestamp server
+ * cannot be reached, or answers with an HTTP error status, is reported as a timestamp error that
+ * names the server, while one that fails on its document is not blamed on the server.
  */
 class SigningPipelineE2ETest : FunSpec({
 
@@ -251,22 +256,25 @@ class SigningPipelineE2ETest : FunSpec({
 	fun resolvedConfig(global: GlobalConfig): ResolvedConfig =
 		ResolvedConfig.resolve(global = global, profile = null, operationOverrides = null).getOrNull()!!
 
-	suspend fun signBaselineT(tsaUrl: String = tsa.url): ByteArray =
-		signingRepository.signDocument(
-			SigningParameters(
-				inputBytes = plainPdf(),
-				inputName = "input.pdf",
-				certificateAlias = certEntry.alias,
-				signatureLevel = SignatureLevel.PADES_BASELINE_T,
-				addTimestamp = true,
-				resolvedConfig = resolvedConfig(
-					GlobalConfig(
-						defaultSignatureLevel = SignatureLevel.PADES_BASELINE_T,
-						timestampServer = TimestampServerConfig(url = tsaUrl),
-					),
+	/** The parameters that sign a plain PDF at B-T, timestamped by the server at [tsaUrl]. */
+	fun baselineTSigning(tsaUrl: String): SigningParameters =
+		SigningParameters(
+			inputBytes = plainPdf(),
+			inputName = "input.pdf",
+			certificateAlias = certEntry.alias,
+			signatureLevel = SignatureLevel.PADES_BASELINE_T,
+			addTimestamp = true,
+			resolvedConfig = resolvedConfig(
+				GlobalConfig(
+					defaultSignatureLevel = SignatureLevel.PADES_BASELINE_T,
+					timestampServer = TimestampServerConfig(url = tsaUrl),
 				),
-			)
-		).shouldBeRight().outputBytes
+			),
+		)
+
+	/** A plain PDF signed at B-T, timestamped by the server at [tsaUrl], the in-process TSA unless another is named. */
+	suspend fun signBaselineT(tsaUrl: String = tsa.url): ByteArray =
+		signingRepository.signDocument(baselineTSigning(tsaUrl)).shouldBeRight().outputBytes
 
 	/** An address no TSA listens on, so a timestamp request sent there fails. */
 	val unreachableTsaUrl = "http://127.0.0.1:1/tsa"
@@ -377,21 +385,8 @@ class SigningPipelineE2ETest : FunSpec({
 
 	test("a signing that fails at the timestamp server leaves the DSS logger as it found it") {
 		leavesDssLoggerAsFound {
-			signingRepository.signDocument(
-				SigningParameters(
-					inputBytes = plainPdf(),
-					inputName = "input.pdf",
-					certificateAlias = certEntry.alias,
-					signatureLevel = SignatureLevel.PADES_BASELINE_T,
-					addTimestamp = true,
-					resolvedConfig = resolvedConfig(
-						GlobalConfig(
-							defaultSignatureLevel = SignatureLevel.PADES_BASELINE_T,
-							timestampServer = TimestampServerConfig(url = unreachableTsaUrl),
-						),
-					),
-				)
-			).shouldBeLeft().details.shouldNotBeNull() shouldContain unreachableTsaUrl
+			signingRepository.signDocument(baselineTSigning(unreachableTsaUrl))
+				.shouldBeLeft().details.shouldNotBeNull() shouldContain unreachableTsaUrl
 		}
 	}
 
@@ -644,5 +639,43 @@ class SigningPipelineE2ETest : FunSpec({
 			)
 		).shouldBeLeft().shouldBeInstanceOf<ArchivingError.RevocationInfoError>()
 		error.details.shouldNotBeNull() shouldContain crlUrl
+	}
+
+	test("a signing whose timestamp server cannot be reached is reported as a timestamp error naming the server") {
+		val error = signingRepository.signDocument(baselineTSigning(unreachableTsaUrl))
+			.shouldBeLeft().shouldBeInstanceOf<SigningError.TimestampError>()
+
+		error.message shouldBe "Timestamp server ($unreachableTsaUrl) could not be reached. " +
+			"Check the network connection and that the server is accepting requests."
+		error.details.shouldNotBeNull() shouldContain unreachableTsaUrl
+	}
+
+	test("a signing the timestamp server refuses with an HTTP error is reported as a timestamp error") {
+		withRefusingServer(401) { refusingUrl ->
+			val error = signingRepository.signDocument(baselineTSigning(refusingUrl))
+				.shouldBeLeft().shouldBeInstanceOf<SigningError.TimestampError>()
+
+			error.message shouldBe "Timestamp server ($refusingUrl) failed to produce a timestamp token"
+			error.details.shouldNotBeNull() shouldContain "401"
+		}
+	}
+
+	/** A one-page PDF that opens only with a password. */
+	fun encryptedPdf(): ByteArray {
+		val out = ByteArrayOutputStream()
+		org.apache.pdfbox.pdmodel.PDDocument().use { doc ->
+			doc.addPage(org.apache.pdfbox.pdmodel.PDPage())
+			doc.protect(
+				StandardProtectionPolicy("owner-secret", "user-secret", AccessPermission())
+					.apply { encryptionKeyLength = 128 },
+			)
+			doc.save(out)
+		}
+		return out.toByteArray()
+	}
+
+	test("a signing that fails on an encrypted document is not blamed on the timestamp server") {
+		signingRepository.signDocument(baselineTSigning(tsa.url).copy(inputBytes = encryptedPdf()))
+			.shouldBeLeft().shouldBeInstanceOf<SigningError.EncryptedDocument>()
 	}
 })

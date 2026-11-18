@@ -122,15 +122,22 @@ class DssSigningRepository(
 	 * chain is untrusted or that no data could be found, does not become a warning: B-B and B-T
 	 * signing fetched no revocation data before, and at B-LT and B-LTA DSS fetches it again while it
 	 * embeds it, and logs the same then.
+	 *
+	 * Fails with [SigningError.TimestampError] when the timestamp server, which signing at B-T and
+	 * above calls, cannot be reached, refuses the request, an HTTP error status included, or answers
+	 * with something other than a timestamp token. [TspErrorDetector] attributes the failure to the
+	 * server whose URL the resolved configuration gives, and its message names that server.
 	 */
 	@Suppress("TooGenericExceptionCaught", "CyclomaticComplexMethod", "LongMethod", "ReturnCount")
 	override suspend fun signDocument(parameters: SigningParameters): OperationResult<SigningResult> {
+		var tsaUrl: String? = null
 		return try {
 			val document = InMemoryDocument(parameters.inputBytes, parameters.inputName)
 			
 			val resolvedConfigResult = resolveConfig(parameters)
 			if (resolvedConfigResult.isLeft()) return resolvedConfigResult.leftOrNull()!!.left()
 			val resolvedConfig = resolvedConfigResult.getOrNull()!!
+			tsaUrl = resolvedConfig.timestampServer?.url
 			val effectiveLevel = parameters.signatureLevel ?: resolvedConfig.signatureLevel
 			val effectiveHash = parameters.hashAlgorithm ?: resolvedConfig.hashAlgorithm
 			val effectiveEncryption = parameters.encryptionAlgorithm ?: resolvedConfig.encryptionAlgorithm
@@ -236,8 +243,7 @@ class DssSigningRepository(
 				if (!resolvedKey.cached) tokenConnection.close()
 			}
 		} catch (e: Exception) {
-			if (tspErrorDetector.isTspException(e)) {
-				val tsaUrl = resolveConfig(parameters).getOrNull()?.timestampServer?.url
+			if (tspErrorDetector.isTspException(e) || tspErrorDetector.isTimestampRequestFailure(e, tsaUrl)) {
 				SigningError.TimestampError(
 					text = LocalizableText.Literal(tspErrorDetector.buildUserMessage(e, tsaUrl)),
 					details = e.message,
