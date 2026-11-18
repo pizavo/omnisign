@@ -8,8 +8,9 @@ import java.time.ZoneOffset
 /**
  * Resolves the platform-native crash-dump directory at Gradle evaluation time.
  *
- * Mirrors the runtime `resolveLogDir()` logic in `main.kt` so that `-XX:ErrorFile`
- * points to a `crashes/` subdirectory of the application log folder. Used only by the
+ * Mirrors the runtime `desktopLogDirectory()` logic in `DesktopLogDirectory.kt`, a blank
+ * `LOCALAPPDATA` or `XDG_STATE_HOME` and a relative `XDG_STATE_HOME` counting as unset, so
+ * that `-XX:ErrorFile` points to a `crashes/` subdirectory of the application log folder. Used only by the
  * `:run` task — packaged builds intentionally omit `-XX:ErrorFile` because the path
  * resolved here is the build host's `user.home`, which would never match the path on
  * an end-user's machine. Without the flag, HotSpot falls back to writing crash dumps
@@ -20,11 +21,11 @@ fun resolveCrashDir(): String {
 	val os = System.getProperty("os.name").lowercase()
 	val logDir = when {
 		os.contains("win") ->
-			File(System.getenv("LOCALAPPDATA") ?: "$userHome/AppData/Local", "omnisign/logs")
+			File(System.getenv("LOCALAPPDATA")?.takeIf { it.isNotBlank() } ?: "$userHome/AppData/Local", "omnisign/logs")
 		os.contains("mac") ->
 			File(userHome, "Library/Logs/omnisign")
 		else ->
-			File(System.getenv("XDG_STATE_HOME") ?: "$userHome/.local/state", "omnisign")
+			File(System.getenv("XDG_STATE_HOME")?.takeIf { it.startsWith("/") } ?: "$userHome/.local/state", "omnisign")
 	}
 	return File(logDir, "crashes").absolutePath
 }
