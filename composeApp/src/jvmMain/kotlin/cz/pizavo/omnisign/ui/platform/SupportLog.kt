@@ -32,13 +32,17 @@ private const val KEY_EXTENDED = "extended"
 /**
  * Third-party logger names lowered to DEBUG when extended logging is on, mapped
  * to the baseline level they are restored to (their explicit level in
- * `logback.xml`). The `eu.europa.esig.dss.tsl.*` loggers keep their own
+ * `logback.xml`). A logger below them that `logback.xml` gives a level of its
+ * own, such as PDFBox's parser, is listed too, since that level would otherwise
+ * keep it at its baseline. The `eu.europa.esig.dss.tsl.*` loggers keep their own
  * explicit ERROR level and are intentionally never touched here, so the
  * trusted-list firehose stays suppressed even with extended logging enabled.
+ * `internal` for unit testing.
  */
-private val LIBRARY_BASELINE: Map<String, Level> = mapOf(
+internal val LIBRARY_BASELINE: Map<String, Level> = mapOf(
     "eu.europa.esig" to Level.ERROR,
     "org.apache" to Level.WARN,
+    "org.apache.pdfbox.pdfparser" to Level.ERROR,
 )
 
 /**

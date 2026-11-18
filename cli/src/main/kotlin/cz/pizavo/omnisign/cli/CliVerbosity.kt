@@ -5,11 +5,14 @@ import ch.qos.logback.classic.Level
 /**
  * Third-party library loggers lowered to DEBUG when `--debug-extended` is set.
  *
- * The `eu.europa.esig.dss.tsl.*` loggers pinned to ERROR in `logback.xml`
- * retain that explicit level even when their `eu.europa.esig` parent is
- * lowered, so the TSL firehose stays suppressed.
+ * A logger below them that `logback.xml` gives a level of its own, such as
+ * PDFBox's parser, is listed too, since that level would otherwise keep it
+ * quiet. The `eu.europa.esig.dss.tsl.*` loggers pinned to ERROR in
+ * `logback.xml` are left out, so they retain that explicit level even when
+ * their `eu.europa.esig` parent is lowered, and the TSL firehose stays
+ * suppressed.
  */
-internal val CliExtendedLoggers: List<String> = listOf("eu.europa.esig", "org.apache")
+internal val CliExtendedLoggers: List<String> = listOf("eu.europa.esig", "org.apache", "org.apache.pdfbox.pdfparser")
 
 /**
  * Resolves the Logback root level for this CLI invocation given the global

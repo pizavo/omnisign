@@ -160,8 +160,10 @@ runs. It catches the diagnostics DSS only ever logs, minus the `eu.europa.esig.d
 whose output the separate trusted-list warning mechanism handles. One instance, a Koin single,
 serves the whole process. Each operation opens a session on the thread that runs it and gets only
 the lines logged on that thread, so two signing requests the server handles at once do not see each
-other's warnings. The first session to open saves the logger's level and additivity, and the last one
-to close restores them. Lines the log shows outside a capture, such as DSS errors, still reach it. A
+other's warnings. The first session to open saves the logger's level and additivity, lowers the level
+to WARN only when it is set less verbose, and the last one to close restores them, unless a level was
+set on the logger in between. Lines the log shows outside a capture, such as DSS errors, still reach
+it, and so does the debug output `--debug-extended` or the desktop's extended logging turns on. A
 session is *not* `Closeable` — it is opened and stopped in a `try`/`finally`.
 3. **`DssWarningSanitizer`** classifies each raw message into a `WarningCategory` and folds the
 affected certificate identifiers together, so ten warnings about ten certificates become one
