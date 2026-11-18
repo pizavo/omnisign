@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.ui.platform
 import ch.qos.logback.classic.Level
 import ch.qos.logback.classic.LoggerContext
 import cz.pizavo.omnisign.BuildConfig
+import cz.pizavo.omnisign.data.repository.appConfigDirectory
 import io.github.oshai.kotlinlogging.KotlinLogging
 import io.github.vinceglb.filekit.FileKit
 import io.github.vinceglb.filekit.dialogs.openFileSaver
@@ -11,7 +12,6 @@ import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.nio.file.Path
-import java.nio.file.Paths
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Properties
@@ -55,19 +55,10 @@ private fun logDir(): File? =
     System.getProperty("omnisign.log.dir")?.takeIf { it.isNotBlank() }?.let { File(it) }
 
 /**
- * Path of the persisted Support preferences file, in the same platform-native
- * configuration directory used by the other OmniSign preference stores.
+ * Path of the persisted Support preferences file, in the configuration directory
+ * [appConfigDirectory] resolves for the other OmniSign preference stores too.
  */
-private val propsPath: Path by lazy {
-    val userHome = System.getProperty("user.home")
-    val os = System.getProperty("os.name").lowercase()
-    val dir = when {
-        os.contains("win") -> Paths.get(System.getenv("APPDATA") ?: "$userHome/AppData/Roaming", "omnisign")
-        os.contains("mac") -> Paths.get(userHome, "Library", "Application Support", "omnisign")
-        else -> Paths.get(userHome, ".config", "omnisign")
-    }
-    dir.resolve(PROPS_FILE)
-}
+private val propsPath: Path by lazy { appConfigDirectory().resolve(PROPS_FILE) }
 
 /**
  * Loads the Support preferences from [path], returning empty defaults on any

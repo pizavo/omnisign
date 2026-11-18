@@ -89,7 +89,6 @@ several-top-level-types server/src/main/kotlin/cz/pizavo/omnisign/config/Signing
 several-top-level-types server/src/test/kotlin/cz/pizavo/omnisign/auth/OidcDiscoveryServiceTest.kt FixedClock,OidcDiscoveryServiceTest
 several-top-level-types shared/src/commonMain/kotlin/cz/pizavo/omnisign/domain/model/config/CustomTrustedListDraft.kt CustomTrustedListDraft,TrustServiceDraft,TrustServiceProviderDraft
 several-top-level-types shared/src/commonMain/kotlin/cz/pizavo/omnisign/domain/service/AlgorithmExpirationChecker.kt AlgorithmExpirationChecker,AlgorithmStatus
-several-top-level-types shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/repository/DssServiceFactory.kt CertificateVerifierResult,DssServiceFactory
 several-top-level-types shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/repository/DssWarningSanitizer.kt DssWarningSanitizer,SanitizedWarnings
 several-top-level-types shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/DssTokenService.kt DssSigningToken,DssTokenService
 several-top-level-types shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/service/OsNotificationService.kt NotificationUrgency,OsNotificationService
@@ -128,15 +127,12 @@ object-declaration server/src/main/kotlin/cz/pizavo/omnisign/auth/ExposedRefresh
 
 # Java APIs that have a Kotlin counterpart.
 java-api-import cli/src/test/kotlin/cz/pizavo/omnisign/cli/CliFileLoggingTest.kt java.nio.file.Files
-java-api-import composeApp/src/jvmMain/kotlin/cz/pizavo/omnisign/ui/platform/SupportLog.kt java.nio.file.Paths
 java-api-import composeApp/src/jvmMain/kotlin/cz/pizavo/omnisign/ui/platform/SupportLog.kt java.time.LocalDateTime
 java-api-import composeApp/src/jvmMain/kotlin/cz/pizavo/omnisign/ui/platform/SupportLog.kt java.time.format.DateTimeFormatter
-java-api-import composeApp/src/jvmMain/kotlin/cz/pizavo/omnisign/ui/platform/WindowStateStore.kt java.nio.file.Paths
 java-api-import composeApp/src/jvmTest/kotlin/cz/pizavo/omnisign/ui/platform/SupportLogTest.kt java.nio.file.Files
 java-api-import server/src/test/kotlin/cz/pizavo/omnisign/api/routes/DocumentOperationCallThreadTest.kt java.time.Duration
 java-api-import server/src/test/kotlin/cz/pizavo/omnisign/api/routes/MultipartLimitsTest.kt java.time.Duration
 java-api-import server/src/test/kotlin/cz/pizavo/omnisign/plugins/RequestBodyLimitTest.kt java.time.Duration
-java-api-import shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/repository/AppConfigPaths.kt java.nio.file.Paths
 java-api-import shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/repository/FileConfigRepository.kt java.nio.file.Files
 java-api-import shared/src/jvmMain/kotlin/cz/pizavo/omnisign/data/trust/FileTrustStore.kt java.nio.file.Files
 java-api-import shared/src/jvmMain/kotlin/cz/pizavo/omnisign/domain/usecase/ConfigArchiveUseCase.kt java.time.LocalDateTime

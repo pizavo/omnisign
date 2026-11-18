@@ -42,21 +42,9 @@ import java.security.cert.X509Certificate
 import java.util.concurrent.ConcurrentHashMap
 import javax.net.ssl.TrustManagerFactory
 import javax.net.ssl.X509TrustManager
+import kotlin.io.path.Path
 
 private val logger = KotlinLogging.logger {}
-
-/**
- * Result of building a [CommonCertificateVerifier] with optional trusted-list wiring.
- *
- * @property verifier The fully configured certificate verifier.
- * @property tlWarnings Non-fatal, localizable warnings from trusted-list loading (e.g., unreachable
- *   TL hosts). Rendered per-locale by the validation report; the signing/archiving paths take their
- *   English rendering.
- */
-data class CertificateVerifierResult(
-	val verifier: CommonCertificateVerifier,
-	val tlWarnings: List<LocalizableText> = emptyList()
-)
 
 /**
  * Shared factory for DSS infrastructure objects used across PAdES repositories.
@@ -637,26 +625,33 @@ class DssServiceFactory(
 		 * Returns the platform-appropriate persistent directory for caching downloaded
 		 * trusted lists (EU LOTL and member-state TLs).
 		 *
-		 * - **Windows**: `%LOCALAPPDATA%\omnisign\tl-cache`
+		 * - **Windows**: `%LOCALAPPDATA%\omnisign\tl-cache` (fallback `~\AppData\Local\omnisign\tl-cache`)
 		 * - **macOS**: `~/Library/Caches/omnisign/tl-cache`
-		 * - **Linux / other**: `~/.cache/omnisign/tl-cache`
+		 * - **Linux / other**: `$XDG_CACHE_HOME/omnisign/tl-cache` (fallback `~/.cache/omnisign/tl-cache`)
+		 *
+		 * `LOCALAPPDATA` and `XDG_CACHE_HOME` count only while they hold an absolute path, as
+		 * [environmentDirectory] reads them.
 		 */
-		internal fun tlCacheDir(): File {
-			val os = System.getProperty("os.name", "").lowercase()
-			val userHome = System.getProperty("user.home")
+		internal fun tlCacheDir(): File =
+			tlCacheDir(System.getProperty("os.name", ""), System.getProperty("user.home"), System::getenv)
+		
+		/**
+		 * Resolve the directory [tlCacheDir] describes on the operating system named [osName] for the
+		 * home directory [userHome].
+		 *
+		 * @param osName The `os.name` system property.
+		 * @param userHome The `user.home` system property.
+		 * @param environment Return the value of the environment variable it is given, or `null` when
+		 *   it is not set.
+		 */
+		internal fun tlCacheDir(osName: String, userHome: String, environment: (String) -> String?): File {
+			val os = osName.lowercase()
 			val base = when {
-				os.contains("win") ->
-					System.getenv("LOCALAPPDATA")?.let { File(it, "omnisign") }
-						?: File(userHome, "AppData/Local/omnisign")
-				
-				os.contains("mac") ->
-					File(userHome, "Library/Caches/omnisign")
-				
-				else ->
-					System.getenv("XDG_CACHE_HOME")?.let { File(it, "omnisign") }
-						?: File(userHome, ".cache/omnisign")
+				os.contains("win") -> environmentDirectory("LOCALAPPDATA", environment) ?: Path(userHome, "AppData", "Local")
+				os.contains("mac") -> Path(userHome, "Library", "Caches")
+				else -> environmentDirectory("XDG_CACHE_HOME", environment) ?: Path(userHome, ".cache")
 			}
-			return File(base, "tl-cache")
+			return base.resolve("omnisign").resolve("tl-cache").toFile()
 		}
 		
 		/**

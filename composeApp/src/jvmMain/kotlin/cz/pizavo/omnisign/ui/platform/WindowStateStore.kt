@@ -3,9 +3,9 @@ package cz.pizavo.omnisign.ui.platform
 import androidx.compose.ui.unit.DpSize
 import androidx.compose.ui.window.WindowPlacement
 import androidx.compose.ui.window.WindowPosition
+import cz.pizavo.omnisign.data.repository.appConfigDirectory
 import io.github.oshai.kotlinlogging.KotlinLogging
 import java.nio.file.Path
-import java.nio.file.Paths
 import java.util.*
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
@@ -53,24 +53,11 @@ class WindowStateStore(private val path: Path = defaultStorePath()) {
 		private const val FILE_NAME = "window-state.properties"
 
 		/**
-		 * Resolves the platform-specific file for storing window state,
-		 * matching the convention used by [cz.pizavo.omnisign.data.repository.FileConfigRepository].
+		 * Resolves the file for storing window state in the configuration directory
+		 * [appConfigDirectory] resolves, beside [cz.pizavo.omnisign.data.repository.FileConfigRepository]'s
+		 * `config.json`.
 		 */
-		private fun defaultStorePath(): Path {
-			val userHome = System.getProperty("user.home")
-			val os = System.getProperty("os.name").lowercase()
-			val dir = when {
-				os.contains("win") ->
-					Paths.get(System.getenv("APPDATA") ?: "$userHome/AppData/Roaming", "omnisign")
-
-				os.contains("mac") ->
-					Paths.get(userHome, "Library", "Application Support", "omnisign")
-
-				else ->
-					Paths.get(userHome, ".config", "omnisign")
-			}
-			return dir.resolve(FILE_NAME)
-		}
+		private fun defaultStorePath(): Path = appConfigDirectory().resolve(FILE_NAME)
 	}
 
 	/**

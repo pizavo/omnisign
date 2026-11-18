@@ -47,6 +47,7 @@ import java.io.File
 import java.net.InetSocketAddress
 import java.util.*
 import java.util.concurrent.atomic.AtomicInteger
+import kotlin.io.path.Path
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.toJavaInstant
@@ -323,6 +324,42 @@ class DssServiceFactoryTest : FunSpec({
 	}
 	
 	// ── companion utilities ──────────────────────────────────────────────────
+	
+	test("the trusted-list cache is under an absolute LOCALAPPDATA on Windows, and the home directory otherwise") {
+		val home = tempdir().absolutePath
+		val localAppData = tempdir().absolutePath
+
+		DssServiceFactory.tlCacheDir("Windows 11", home) { if (it == "LOCALAPPDATA") localAppData else null } shouldBe
+			Path(localAppData, "omnisign", "tl-cache").toFile()
+		listOf(null, "", " ", "relative").forEach { value ->
+			withClue("LOCALAPPDATA=$value") {
+				DssServiceFactory.tlCacheDir("Windows 11", home) { if (it == "LOCALAPPDATA") value else null } shouldBe
+					Path(home, "AppData", "Local", "omnisign", "tl-cache").toFile()
+			}
+		}
+	}
+	
+	test("the trusted-list cache is under an absolute XDG_CACHE_HOME on Linux, and ~/.cache otherwise") {
+		val home = tempdir().absolutePath
+		val cacheHome = tempdir().absolutePath
+
+		DssServiceFactory.tlCacheDir("Linux", home) { if (it == "XDG_CACHE_HOME") cacheHome else null } shouldBe
+			Path(cacheHome, "omnisign", "tl-cache").toFile()
+		listOf(null, "", " ", "relative").forEach { value ->
+			withClue("XDG_CACHE_HOME=$value") {
+				DssServiceFactory.tlCacheDir("Linux", home) { if (it == "XDG_CACHE_HOME") value else null } shouldBe
+					Path(home, ".cache", "omnisign", "tl-cache").toFile()
+			}
+		}
+	}
+	
+	test("the trusted-list cache on macOS is in the home directory's caches, whatever the environment holds") {
+		val home = tempdir().absolutePath
+		val elsewhere = tempdir().absolutePath
+
+		DssServiceFactory.tlCacheDir("Mac OS X", home) { elsewhere } shouldBe
+			Path(home, "Library", "Caches", "omnisign", "tl-cache").toFile()
+	}
 	
 	test("EU LOTL URL points to the EC trusted list endpoint") {
 		DssServiceFactory.EU_LOTL_URL shouldContain "ec.europa.eu"

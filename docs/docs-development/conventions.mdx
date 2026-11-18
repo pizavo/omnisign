@@ -169,6 +169,8 @@ exactly the path Jackson's `KotlinModule` takes when constructing server config 
 overrides — later layers win. Every deliverable uses it, which is why a profile means the same thing
 in the CLI as in the desktop app. Configuration persists as JSON under `~/.config/omnisign/` on Linux,
 `~/Library/Application Support/omnisign/` on macOS, and `%APPDATA%/omnisign/` on Windows.
+`appConfigDirectory()` resolves that directory for every file OmniSign keeps there, and reads
+`APPDATA` only while it holds an absolute path.
 
 <Diagram source={configResolution} />
 
