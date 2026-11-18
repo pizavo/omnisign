@@ -69,11 +69,13 @@ import java.util.*
  * assertion here is about real bytes produced by the real repositories; nothing is mocked but the
  * token service and the trust/revocation wiring the committed fixtures cannot carry.
  *
- * Three things are pinned:
+ * Four things are pinned:
  * 1. Extending such a document to B-LT produces revocation data that cannot be used, and says so.
  * 2. It *can* be promoted properly when the issuer's CRL explicitly claims to cover expired
  *    certificates, so the app is not writing off documents the standards still allow.
  * 3. Renewal reports a B-T document past that deadline as terminal, not as work to retry.
+ * 4. Renewal does not send a B-LTA document carrying such data to a refresh whose B-LT target DSS
+ *    refuses, but renews its archive timestamp as it ages.
  *
  * The first case is worth reading carefully, because it is not the shape one might expect. DSS
  * *fetches and embeds* the fresh CRL — it is a valid CRL from the right issuer — and its
@@ -308,6 +310,24 @@ class ExpiredCertificatePreservationE2ETest : FunSpec({
 		info.level shouldBe SignatureLevel.PADES_BASELINE_LT
 		info.containsLtData.shouldBeTrue()
 		info.ltMaterialUsable.shouldBeFalse()
+	}
+
+	test("a B-LTA document whose signer's revocation data is unusable is renewed as its archive timestamp ages") {
+		crl = pki.buildCrl(thisUpdate = Date(now - day), nextUpdate = Date(now + 3650 * day))
+		val extended = extendTo(SignatureLevel.PADES_BASELINE_LTA, signBaselineT()).shouldBeRight()
+		extended.achievedLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+		val file = File(tmp, "unusable-lta.pdf").also { it.writeBytes(extended.outputBytes) }
+
+		archivingRepository.needsArchivalRenewal(file.absolutePath).shouldBeRight()
+			.need shouldBe RenewalNeed.NOT_NEEDED
+		archivingRepository.needsArchivalRenewal(file.absolutePath, renewalBufferDays = 400).shouldBeRight()
+			.reason shouldBe RenewalReason.TIMESTAMP_EXPIRING
+		archivingRepository.getDocumentTimestampInfo(extended.outputBytes).shouldBeRight()
+			.ltMaterialUsable.shouldBeFalse()
+
+		val renewed = extendTo(SignatureLevel.PADES_BASELINE_LTA, extended.outputBytes).shouldBeRight()
+		renewed.achievedLevel shouldBe SignatureLevel.PADES_BASELINE_LTA
+		renewed.revocationDataMissing.shouldBeTrue()
 	}
 
 	test("a B-LT document whose CRL covers expired certificates is treated as sound and sealed") {
