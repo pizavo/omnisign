@@ -67,6 +67,21 @@ The files go into an `omnisign-cli` subdirectory of whichever location you choos
 carries its own upgrade code, so the CLI and the desktop app are independent and can be installed
 side by side in either order.
 
+:::warning[Upgrading from 1.22.0-pre.1 or earlier]
+Up to 1.22.0-pre.1, the MSI put the CLI in an `omnisign` folder instead whenever you clicked
+through its pages: `Program Files\omnisign`, or `%LOCALAPPDATA%\omnisign`, which is also the folder
+the desktop app installs into for the current user. Upgrading uninstalls the old version first, and
+its uninstaller deletes that folder with everything in it. Under `%LOCALAPPDATA%` that includes the
+desktop app's logs, the trusted-list cache the two apps share, and the desktop app itself if it is
+installed there, so reinstall the desktop app after the upgrade. The trusted lists are downloaded
+again the next time they are needed, and your settings and profiles in `%APPDATA%\omnisign` are
+not affected.
+
+If you registered the daily renewal job with `omnisign schedule install`, the task it created
+still points at the `omnisign.exe` in the old folder. Run `omnisign schedule install` again after
+the upgrade, repeating any `--hour`, `--minute` or `--log-file` you gave it before.
+:::
+
 **Option B — Fat JAR**
 
 ```powershell

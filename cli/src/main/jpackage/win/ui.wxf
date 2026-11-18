@@ -7,6 +7,11 @@
       the user can choose between a system-wide install (Program Files, system
       PATH, elevation required) and a per-user install (LocalAppData, user PATH,
       no elevation).
+    Its Next button sets INSTALLDIR, which replaces the folder jpackage's
+    install-dir option chose, so both values must end in the folder name
+    windowsInstallSubdir gives in cli/build.gradle.kts (omnisign-cli).
+    WindowsInstallScopeDialogTest fails when they differ. A bare "omnisign"
+    is the desktop app's folder, and uninstalling either app removes it.
     Dialog sequence:
       WelcomeDlg → OmniSignScopeDlg → InstallDirDlg → [InstallDirNotEmptyDlg] → VerifyReadyDlg
     Update this file if upgrading the JDK and jpackage changes its default ui.wxf.
@@ -69,9 +74,9 @@
                    Condition="INSTALL_SCOPE = &quot;perMachine&quot;" />
           <Publish Property="MSIINSTALLPERUSER" Value="1" Order="1"
                    Condition="INSTALL_SCOPE = &quot;perUser&quot;" />
-          <Publish Property="INSTALLDIR" Value="[ProgramFiles64Folder]omnisign" Order="2"
+          <Publish Property="INSTALLDIR" Value="[ProgramFiles64Folder]omnisign-cli" Order="2"
                    Condition="INSTALL_SCOPE = &quot;perMachine&quot;" />
-          <Publish Property="INSTALLDIR" Value="[LocalAppDataFolder]omnisign" Order="2"
+          <Publish Property="INSTALLDIR" Value="[LocalAppDataFolder]omnisign-cli" Order="2"
                    Condition="INSTALL_SCOPE = &quot;perUser&quot;" />
           <Publish Event="NewDialog" Value="InstallDirDlg" Order="3" Condition="1" />
         </Control>
