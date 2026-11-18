@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.data.service
 
+import cz.pizavo.omnisign.domain.model.config.AppConfig
 import io.github.oshai.kotlinlogging.KotlinLogging
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
@@ -71,6 +72,23 @@ class Pkcs11WarmupService(
 ) {
 
 	/**
+	 * Run the warmup the way [config] configures it: its `pkcs11ProbeTimeoutSeconds` is applied
+	 * to [probeTimeout] first, so the warmup's probes and every later probe that reads the same
+	 * holder honour it, and its registered PKCS#11 libraries are validated along with the
+	 * operating system's and those of the drop directory.
+	 *
+	 * This is how the CLI, the desktop app and the server start their warmup; the overload that
+	 * takes the libraries alone is internal to this module, so no entry point can leave the
+	 * configured timeout out.
+	 *
+	 * @param config The configuration whose PKCS#11 settings the warmup follows.
+	 */
+	suspend fun warmup(config: AppConfig) {
+		probeTimeout.update(config.global.pkcs11ProbeTimeoutSeconds)
+		warmup(userPkcs11Libraries = config.global.customPkcs11Libraries.map { it.name to it.path })
+	}
+
+	/**
 	 * Run the bounded-parallel validation pass for all discoverable PKCS#11 libraries.
 	 *
 	 * Candidate libraries are enumerated from OS-native sources, the drop directory
@@ -82,7 +100,7 @@ class Pkcs11WarmupService(
 	 *
 	 * @param userPkcs11Libraries Additional `(display name, path)` pairs from config.
 	 */
-	suspend fun warmup(userPkcs11Libraries: List<Pair<String, String>> = emptyList()) {
+	internal suspend fun warmup(userPkcs11Libraries: List<Pair<String, String>> = emptyList()) {
 		if (warmupSignal.value) {
 			logger.debug { "PKCS#11 warmup already completed — skipping" }
 			return

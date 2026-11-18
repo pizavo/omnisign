@@ -20,7 +20,6 @@ import com.jetbrains.WindowDecorations
 import com.jetbrains.WindowMove
 import cz.pizavo.omnisign.data.service.RenewalNotifier
 import cz.pizavo.omnisign.data.service.Pkcs11CacheInvalidator
-import cz.pizavo.omnisign.data.service.Pkcs11ProbeTimeout
 import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
 import cz.pizavo.omnisign.data.service.TrustedListRefreshScheduler
 import cz.pizavo.omnisign.di.appModule
@@ -324,10 +323,8 @@ fun main(args: Array<String> = emptyArray()) {
 		CoroutineScope(Dispatchers.IO).launch {
 			try {
 				val config = warmupConfigRepo.getCurrentConfig()
-				koin.get<Pkcs11ProbeTimeout>().update(config.global.pkcs11ProbeTimeoutSeconds)
-				val userLibs = config.global.customPkcs11Libraries.map { it.name to it.path }
-				logger.info { "Launching PKCS#11 background warmup (${userLibs.size} user lib(s))" }
-				warmupService.warmup(userPkcs11Libraries = userLibs)
+				logger.info { "Launching PKCS#11 background warmup (${config.global.customPkcs11Libraries.size} user lib(s))" }
+				warmupService.warmup(config)
 			} catch (e: Exception) {
 				logger.warn(e) { "PKCS#11 background warmup failed — certificate discovery will use subprocess probing" }
 				koin.get<MutableStateFlow<Boolean>>().value = true

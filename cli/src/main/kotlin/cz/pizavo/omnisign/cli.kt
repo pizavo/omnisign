@@ -4,7 +4,6 @@ import com.github.ajalt.clikt.core.ProgramResult
 import com.github.ajalt.clikt.core.main
 import com.github.ajalt.mordant.terminal.Terminal
 import cz.pizavo.omnisign.cli.CliPasswordCallback
-import cz.pizavo.omnisign.data.service.Pkcs11ProbeTimeout
 import cz.pizavo.omnisign.data.service.Pkcs11WarmupService
 import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
@@ -119,12 +118,9 @@ fun main(args: Array<String>) {
 		CoroutineScope(Dispatchers.IO).launch {
 			try {
 				val warmupService = koin.get<Pkcs11WarmupService>()
-				val configRepo = koin.get<ConfigRepository>()
-				val config = configRepo.getCurrentConfig()
-				koin.get<Pkcs11ProbeTimeout>().update(config.global.pkcs11ProbeTimeoutSeconds)
-				val userLibs = config.global.customPkcs11Libraries.map { it.name to it.path }
-				logger.info { "Launching PKCS#11 background warmup (${userLibs.size} user lib(s))" }
-				warmupService.warmup(userPkcs11Libraries = userLibs)
+				val config = koin.get<ConfigRepository>().getCurrentConfig()
+				logger.info { "Launching PKCS#11 background warmup (${config.global.customPkcs11Libraries.size} user lib(s))" }
+				warmupService.warmup(config)
 			} catch (e: Exception) {
 				logger.warn(e) { "PKCS#11 background warmup failed — certificate discovery will use subprocess probing" }
 				koin.get<MutableStateFlow<Boolean>>().value = true

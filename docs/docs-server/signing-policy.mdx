@@ -83,6 +83,10 @@ validation reports name it as not refreshed. The server then tries to download i
 5 minutes, up to 6 times, before going back to the interval. The freshness check counts from when
 a list was last loaded, so it does not flag such a copy; the report's notice does.
 
+`pkcs11ProbeTimeoutSeconds` is the longest the server waits for a single PKCS#11 library probe
+before terminating it, from 1 to 120 seconds; it defaults to 30. It applies from startup, to the
+probes of the warmup that a server allowing `SIGN` runs when it starts, and to every later probe.
+
 With `policyType: CUSTOM_FILE`, the server validates under the DSS validation policy file that
 `customPolicyPath` names, never under the default ETSI policy. While the path is unset, or the file
 is missing, unreadable or not a validation policy, every validation request fails with
