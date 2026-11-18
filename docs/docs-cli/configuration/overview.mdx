@@ -174,8 +174,10 @@ or encryption algorithm is among the algorithms it disables, or one with a profi
 its own override, as `config set` and `config profile` refuse them too. An archive is checked
 before anything changes — its configuration, its manifest and every certificate the import
 restores — so a refused import leaves the configuration and the trusted certificates as they
-were. Importing the global settings restores only the archive's global trusted certificates. An
-archive that unpacks to more than 64 MiB is refused.
+were. Importing the global settings restores only the archive's global trusted certificates. A
+full import that leaves out one of your profiles drops that profile's trusted certificates too, and
+a profile it adds starts with only the certificates the archive holds for it. An archive that
+unpacks to more than 64 MiB is refused.
 
 ## Related pages
 

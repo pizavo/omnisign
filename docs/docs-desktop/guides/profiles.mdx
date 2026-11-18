@@ -18,7 +18,7 @@ Open the **Profiles** panel from the right sidebar (user icon <AppIcon name="pro
 - **Edit** an existing profile — opens a dedicated edit form in the same panel.
 - **Activate** a profile to make it the default for all operations.
 - **Deactivate** the current profile to revert to global defaults.
-- **Delete** a profile.
+- **Delete** a profile, together with the trusted certificates scoped to it.
 
 ![Profiles panel](/img/desktop/profiles-panel.avif)
 
@@ -122,7 +122,8 @@ Add CA and TSA certificates scoped to this profile. Choose a **trust role** for 
 type its path. Additions and removals are **staged**: a new certificate shows a **Pending** badge, 
 and a removed one stays visible marked **Removing** (with an undo button) until you **Save** the
 profile; closing without saving discards the staged changes. Profile certificates are merged with
-the global trusted certificates during config resolution.
+the global trusted certificates during config resolution. Deleting the profile removes them too,
+so a profile created later under the same name starts without them.
 
 ### Custom trusted lists
 

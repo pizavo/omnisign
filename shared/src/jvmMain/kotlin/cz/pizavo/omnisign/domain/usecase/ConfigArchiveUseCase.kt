@@ -103,7 +103,9 @@ class ConfigArchiveUseCase(
 	 * profile instead of a full configuration, or no configuration, is refused, because
 	 * [ExportImportConfigUseCase.importApp] refuses its configuration, and so is one whose manifest
 	 * or a certificate it lists cannot be read, as [readTrust] checks first. Only a failure to store
-	 * a certificate can leave the import half done, with the configuration already saved.
+	 * a certificate, or to drop the trust scope of a profile the import leaves out, as
+	 * [ExportImportConfigUseCase.importApp] does, can leave the import half done, with the
+	 * configuration already saved.
 	 */
 	suspend fun importApp(archive: ByteArray): OperationResult<Unit> {
 		val entries = readZip(archive).getOrElse { return it.left() }

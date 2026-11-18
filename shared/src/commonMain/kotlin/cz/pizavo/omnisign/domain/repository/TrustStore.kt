@@ -1,5 +1,8 @@
 package cz.pizavo.omnisign.domain.repository
 
+import arrow.core.getOrElse
+import arrow.core.left
+import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor
@@ -155,4 +158,23 @@ interface TrustStore {
 	 * @return The non-empty scopes, or an error.
 	 */
 	suspend fun scopes(): OperationResult<Set<TrustScope>>
+}
+
+/**
+ * Drop the scope of every profile not named in [profileNames], as [TrustStore.clearProfileScope] does for
+ * one, so that no profile created later under such a name inherits the certificates a removed profile was
+ * trusting. Scopes are keyed by profile name alone, so a scope that outlives its profile would otherwise
+ * be picked up again. A read-only store is left as it is.
+ *
+ * @param profileNames Names of the profiles whose scopes are kept: those of the configuration.
+ * @return Unit once every other profile scope is gone, or the first error, with the scopes before it
+ *   already dropped.
+ */
+suspend fun TrustStore.clearOrphanedProfileScopes(profileNames: Set<String>): OperationResult<Unit> {
+	if (readOnly) return Unit.right()
+	val orphaned = scopes().getOrElse { return it.left() }
+		.filterIsInstance<TrustScope.Profile>()
+		.filter { it.name !in profileNames }
+	for (scope in orphaned) clearProfileScope(scope.name).getOrElse { return it.left() }
+	return Unit.right()
 }

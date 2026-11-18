@@ -46,6 +46,7 @@ import io.kotest.matchers.shouldBe
 import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
 import kotlin.time.Instant
@@ -65,7 +66,11 @@ import kotlinx.coroutines.test.setMain
 class ProfileViewModelTest : FunSpec({
 
     val configRepository: ConfigRepository = mockk()
-    val manageProfile = ManageProfileUseCase(configRepository)
+    val profileScopes: TrustStore = mockk {
+        every { readOnly } returns false
+        coEvery { scopes() } returns emptySet<TrustScope>().right()
+    }
+    val manageProfile = ManageProfileUseCase(configRepository, profileScopes)
     val getConfig = GetConfigUseCase(configRepository)
     val testDispatcher = StandardTestDispatcher()
     val configDir = tempdir()
@@ -1174,7 +1179,7 @@ class ProfileViewModelTest : FunSpec({
                 AppConfig(profiles = mapOf("dev" to ProfileConfig(name = "dev", ocsp = OcspConfig(timeout = 5000)))),
             ).shouldBeRight()
             val vm = ProfileViewModel(
-                ManageProfileUseCase(desktopRepository),
+                ManageProfileUseCase(desktopRepository, profileScopes),
                 GetConfigUseCase(desktopRepository),
                 ioDispatcher = testDispatcher,
             )

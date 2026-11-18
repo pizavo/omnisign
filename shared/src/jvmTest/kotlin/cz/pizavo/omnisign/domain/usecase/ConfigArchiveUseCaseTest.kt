@@ -54,7 +54,9 @@ import kotlin.io.path.writeBytes
  * trust scope alone. An archive whose manifest, or a certificate it lists, cannot be read is
  * refused in the same way, as are one whose entry names are not UTF-8 and one that unpacks to more
  * than an import accepts. An export holds the same bytes in every time zone, and one over a trust
- * index that cannot be read fails with the store's error.
+ * index that cannot be read fails with the store's error. A full import drops the certificates of a
+ * stored profile it leaves out, and neither a full nor a profile import lets a profile it adds inherit
+ * certificates left behind under its name.
  */
 class ConfigArchiveUseCaseTest : FunSpec({
 
@@ -99,7 +101,7 @@ class ConfigArchiveUseCaseTest : FunSpec({
 	}
 
 	fun archiveUseCase(repo: ConfigRepository, store: FileTrustStore) =
-		ConfigArchiveUseCase(repo, ExportImportConfigUseCase(repo, serializers()), store)
+		ConfigArchiveUseCase(repo, ExportImportConfigUseCase(repo, serializers(), store), store)
 
 	fun unzip(archive: ByteArray): Map<String, ByteArray> {
 		val entries = LinkedHashMap<String, ByteArray>()
@@ -197,6 +199,45 @@ class ConfigArchiveUseCaseTest : FunSpec({
 		archiveUseCase(inMemoryRepo(AppConfig()), destStore).importProfile(archive).shouldBeRight() shouldBe "other-name"
 
 		destStore.list(TrustScope.Profile("other-name")).shouldBeRight().map { it.fingerprint } shouldBe listOf(fingerprint)
+	}
+
+	test("a full archive import drops the certificates of a stored profile it leaves out, and a profile it adds inherits none left behind under its name") {
+		val destRepo = inMemoryRepo(
+			AppConfig(profiles = mapOf("kept" to ProfileConfig(name = "kept"), "dropped" to ProfileConfig(name = "dropped"))),
+		)
+		val destStore = newStore()
+		val keptFingerprint = destStore.add(TrustScope.Profile("kept"), selfSignedDer("KeptCa"), TrustedCertificateType.CA)
+			.shouldBeRight().fingerprint
+		destStore.add(TrustScope.Profile("dropped"), selfSignedDer("DroppedCa"), TrustedCertificateType.CA).shouldBeRight()
+		destStore.add(TrustScope.Profile("added"), selfSignedDer("LeftoverCa"), TrustedCertificateType.CA).shouldBeRight()
+		val sourceRepo = inMemoryRepo(
+			AppConfig(profiles = mapOf("kept" to ProfileConfig(name = "kept"), "added" to ProfileConfig(name = "added"))),
+		)
+		val sourceStore = newStore()
+		val addedFingerprint = sourceStore.add(TrustScope.Profile("added"), selfSignedDer("AddedTsa"), TrustedCertificateType.TSA)
+			.shouldBeRight().fingerprint
+		val archive = archiveUseCase(sourceRepo, sourceStore).exportApp(ConfigFormat.JSON).shouldBeRight()
+
+		archiveUseCase(destRepo, destStore).importApp(archive).shouldBeRight()
+
+		destStore.list(TrustScope.Profile("dropped")).shouldBeRight().shouldBeEmpty()
+		destStore.list(TrustScope.Profile("added")).shouldBeRight().map { it.fingerprint } shouldBe listOf(addedFingerprint)
+		destStore.list(TrustScope.Profile("kept")).shouldBeRight().map { it.fingerprint } shouldBe listOf(keptFingerprint)
+	}
+
+	test("a profile archive imported under a new name inherits none of the certificates left behind under that name") {
+		val destRepo = inMemoryRepo(AppConfig())
+		val destStore = newStore()
+		destStore.add(TrustScope.Profile("renamed"), selfSignedDer("LeftoverCa"), TrustedCertificateType.CA).shouldBeRight()
+		val sourceRepo = inMemoryRepo(AppConfig(profiles = mapOf("orig" to ProfileConfig(name = "orig"))))
+		val sourceStore = newStore()
+		val fingerprint = sourceStore.add(TrustScope.Profile("orig"), selfSignedDer("OrigCa"), TrustedCertificateType.CA)
+			.shouldBeRight().fingerprint
+		val archive = archiveUseCase(sourceRepo, sourceStore).exportProfile("orig", ConfigFormat.JSON).shouldBeRight()
+
+		archiveUseCase(destRepo, destStore).importProfile(archive, overrideName = "renamed").shouldBeRight()
+
+		destStore.list(TrustScope.Profile("renamed")).shouldBeRight().map { it.fingerprint } shouldBe listOf(fingerprint)
 	}
 
 	test("a cert-free export still produces a valid archive that imports cleanly") {
@@ -298,7 +339,7 @@ class ConfigArchiveUseCaseTest : FunSpec({
 			.shouldBeRight().fingerprint
 		sourceStore.add(TrustScope.Profile("p1"), selfSignedDer("ProfileCa"), TrustedCertificateType.TSA).shouldBeRight()
 		val fullArchive = archiveUseCase(sourceRepo, sourceStore).exportApp(ConfigFormat.JSON).shouldBeRight()
-		val globalText = ExportImportConfigUseCase(sourceRepo, serializers()).exportGlobal(ConfigFormat.JSON).shouldBeRight()
+		val globalText = ExportImportConfigUseCase(sourceRepo, serializers(), newStore()).exportGlobal(ConfigFormat.JSON).shouldBeRight()
 		val archive = zip(unzip(fullArchive) + ("config.json" to globalText.encodeToByteArray()))
 
 		val destStore = newStore()
@@ -412,7 +453,7 @@ class ConfigArchiveUseCaseTest : FunSpec({
 			.shouldBeRight().fingerprint
 		sourceStore.add(TrustScope.Profile("p2"), selfSignedDer("OtherCa"), TrustedCertificateType.CA).shouldBeRight()
 		val fullArchive = archiveUseCase(sourceRepo, sourceStore).exportApp(ConfigFormat.JSON).shouldBeRight()
-		val profileText = ExportImportConfigUseCase(sourceRepo, serializers()).exportProfile("p1", ConfigFormat.JSON)
+		val profileText = ExportImportConfigUseCase(sourceRepo, serializers(), newStore()).exportProfile("p1", ConfigFormat.JSON)
 			.shouldBeRight()
 		val archive = zip(unzip(fullArchive) + ("config.json" to profileText.encodeToByteArray()))
 
@@ -426,7 +467,7 @@ class ConfigArchiveUseCaseTest : FunSpec({
 
 	test("an archive that unpacks to exactly 64 MiB is imported, and one a byte larger is refused") {
 		val limit = 64 * 1024 * 1024
-		val configText = ExportImportConfigUseCase(inMemoryRepo(AppConfig()), serializers()).exportApp(ConfigFormat.JSON)
+		val configText = ExportImportConfigUseCase(inMemoryRepo(AppConfig()), serializers(), newStore()).exportApp(ConfigFormat.JSON)
 			.shouldBeRight().encodeToByteArray()
 
 		fun unpackingTo(size: Int) = zip(mapOf("config.json" to configText, "padding.bin" to ByteArray(size - configText.size)))

@@ -4,11 +4,15 @@ import arrow.core.left
 import arrow.core.right
 import com.github.ajalt.clikt.testing.test
 import cz.pizavo.omnisign.Omnisign
+import cz.pizavo.omnisign.domain.model.config.AppConfig
+import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.error.TrustStoreError
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
+import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
+import cz.pizavo.omnisign.domain.usecase.ManageProfileUseCase
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempfile
 import io.kotest.koin.KoinExtension
@@ -29,20 +33,27 @@ import kotlin.time.Instant
  *
  * A prefix that matches no certificate, or more than one, removes nothing and exits with status 1,
  * as does every failure of the store itself. A store that cannot be read is reported as such, not as
- * a prefix that matched nothing, which would send the user looking for a typo.
+ * a prefix that matched nothing, which would send the user looking for a typo. A `--profile` that names
+ * no profile is refused before the store is touched, so a mistyped name never leaves certificates that a
+ * profile created later under it would trust.
  */
 class ConfigTrustTest : FunSpec({
 
 	val trustStore: TrustStore = mockk()
+	val configRepository: ConfigRepository = mockk()
 
 	extension(
 		KoinExtension(
-			module { single { trustStore } },
+			module {
+				single { trustStore }
+				single { configRepository }
+				single { ManageProfileUseCase(get(), get()) }
+			},
 			mode = KoinLifecycleMode.Test,
 		),
 	)
 
-	beforeTest { clearMocks(trustStore) }
+	beforeTest { clearMocks(trustStore, configRepository) }
 
 	val certificateFile = tempfile(suffix = ".pem")
 
@@ -128,5 +139,36 @@ class ConfigTrustTest : FunSpec({
 
 		result.statusCode shouldBe 1
 		result.stderr shouldContain "Details: disk full"
+	}
+
+	test("add, list and remove refuse a --profile that names no profile, and leave the store alone") {
+		coEvery { configRepository.getCurrentConfig() } returns AppConfig(profiles = mapOf("work" to ProfileConfig(name = "work")))
+
+		val results = listOf(
+			listOf("config", "trust", "add", "--cert", certificateFile.absolutePath, "--profile", "wrok"),
+			listOf("config", "trust", "list", "--profile", "wrok"),
+			listOf("config", "trust", "remove", "sha256-1a", "--profile", "wrok"),
+		).map { Omnisign().test(it) }
+
+		for (result in results) {
+			result.statusCode shouldBe 1
+			result.stderr shouldContain "Profile 'wrok' does not exist"
+		}
+		coVerify(exactly = 0) { trustStore.add(any(), any(), any(), any()) }
+		coVerify(exactly = 0) { trustStore.list(any()) }
+		coVerify(exactly = 0) { trustStore.remove(any(), any()) }
+	}
+
+	test("add stores a certificate in the scope of a profile that exists") {
+		coEvery { configRepository.getCurrentConfig() } returns AppConfig(profiles = mapOf("work" to ProfileConfig(name = "work")))
+		coEvery { trustStore.add(TrustScope.Profile("work"), any(), TrustedCertificateType.ANY, any()) } returns
+			trusted("sha256-1a2b3c").right()
+
+		val result = Omnisign().test(
+			listOf("config", "trust", "add", "--cert", certificateFile.absolutePath, "--profile", "work"),
+		)
+
+		result.statusCode shouldBe 0
+		result.output shouldContain "profile 'work'"
 	}
 })

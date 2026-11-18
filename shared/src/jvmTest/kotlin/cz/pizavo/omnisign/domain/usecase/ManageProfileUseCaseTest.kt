@@ -1,15 +1,25 @@
 package cz.pizavo.omnisign.domain.usecase
 
+import arrow.core.left
 import arrow.core.right
+import cz.pizavo.omnisign.data.repository.FileConfigRepository
+import cz.pizavo.omnisign.data.trust.FileTrustStore
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
+import cz.pizavo.omnisign.domain.model.error.TrustStoreError
+import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
+import cz.pizavo.omnisign.domain.repository.TrustStore
 import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
+import io.kotest.engine.spec.tempdir
+import io.kotest.matchers.collections.shouldBeEmpty
+import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.maps.shouldBeEmpty
 import io.kotest.matchers.maps.shouldContainKey
 import io.kotest.matchers.maps.shouldHaveSize
@@ -20,21 +30,56 @@ import io.kotest.matchers.types.shouldBeInstanceOf
 import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.coVerify
+import io.mockk.coVerifyOrder
+import io.mockk.every
 import io.mockk.mockk
 import io.mockk.slot
+import org.bouncycastle.asn1.x500.X500Name
+import org.bouncycastle.cert.jcajce.JcaX509CertificateConverter
+import org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder
+import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
+import java.math.BigInteger
+import java.security.KeyPairGenerator
+import java.util.Date
 
 /**
  * Verifies [ManageProfileUseCase] CRUD operations, active-profile management,
- * and self-disabling algorithm rejection.
+ * and self-disabling algorithm rejection, and that a profile's trust scope goes with it: a removal drops
+ * it once the configuration is saved, a profile of a new name is saved only once every scope no profile
+ * owns is gone, and a read-only trust store is left alone.
  */
 class ManageProfileUseCaseTest : FunSpec({
 
 	val configRepository: ConfigRepository = mockk()
-	val useCase = ManageProfileUseCase(configRepository)
+	val trustStore: TrustStore = mockk()
+	val useCase = ManageProfileUseCase(configRepository, trustStore)
 
 	val baseConfig = AppConfig()
 
-	beforeTest { clearMocks(configRepository) }
+	beforeTest {
+		clearMocks(configRepository, trustStore)
+		every { trustStore.readOnly } returns false
+		coEvery { trustStore.scopes() } returns emptySet<TrustScope>().right()
+	}
+
+	/**
+	 * Return the DER encoding of a new self-signed certificate whose subject's common name is [cn].
+	 */
+	fun selfSignedDer(cn: String): ByteArray {
+		val keyPair = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+		val name = X500Name("CN=$cn,O=OmniSign Test")
+		val now = System.currentTimeMillis()
+		val builder = JcaX509v3CertificateBuilder(
+			name,
+			BigInteger.valueOf(now),
+			Date(now - 1000L),
+			Date(now + 365L * 24 * 60 * 60 * 1000),
+			name,
+			keyPair.public,
+		)
+		val signer = JcaContentSignerBuilder("SHA256WithRSA").build(keyPair.private)
+		return JcaX509CertificateConverter().getCertificate(builder.build(signer)).encoded
+	}
 
 	fun profile(
 		name: String,
@@ -202,6 +247,137 @@ class ManageProfileUseCaseTest : FunSpec({
 		coEvery { configRepository.getCurrentConfig() } returns baseConfig
 
 		useCase.list().shouldBeRight().shouldBeEmpty()
+	}
+
+	test("remove drops the removed profile's trust scope, and that of any other profile that is gone, once the configuration without it is saved") {
+		coEvery { configRepository.getCurrentConfig() } returns
+			baseConfig.copy(profiles = mapOf("work" to profile("work"), "home" to profile("home")))
+		coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+		coEvery { trustStore.scopes() } returns setOf(
+			TrustScope.Global,
+			TrustScope.Profile("work"),
+			TrustScope.Profile("home"),
+			TrustScope.Profile("gone"),
+		).right()
+		coEvery { trustStore.clearProfileScope(any()) } returns Unit.right()
+
+		useCase.remove("work").shouldBeRight()
+
+		coVerifyOrder {
+			configRepository.saveConfig(match { "work" !in it.profiles && "home" in it.profiles })
+			trustStore.clearProfileScope("work")
+		}
+		coVerify { trustStore.clearProfileScope("gone") }
+		coVerify(exactly = 0) { trustStore.clearProfileScope("home") }
+	}
+
+	test("remove leaves the trust store alone when the configuration cannot be saved") {
+		coEvery { configRepository.getCurrentConfig() } returns baseConfig.copy(profiles = mapOf("work" to profile("work")))
+		val failure = ConfigurationError.saveFailed(details = "disk full")
+		coEvery { configRepository.saveConfig(any()) } returns failure.left()
+
+		useCase.remove("work").shouldBeLeft() shouldBe failure
+
+		coVerify(exactly = 0) { trustStore.scopes() }
+		coVerify(exactly = 0) { trustStore.clearProfileScope(any()) }
+	}
+
+	test("remove returns the trust store's error, with the profile removed, when its scope cannot be dropped") {
+		coEvery { configRepository.getCurrentConfig() } returns baseConfig.copy(profiles = mapOf("work" to profile("work")))
+		val saved = slot<AppConfig>()
+		coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
+		coEvery { trustStore.scopes() } returns setOf<TrustScope>(TrustScope.Profile("work")).right()
+		val failure = TrustStoreError.operationFailed(details = "index not writable")
+		coEvery { trustStore.clearProfileScope("work") } returns failure.left()
+
+		useCase.remove("work").shouldBeLeft() shouldBe failure
+
+		saved.captured.profiles.shouldBeEmpty()
+	}
+
+	test("upsert of a new name drops every trust scope no profile owns, that name's among them, before it saves the profile") {
+		coEvery { configRepository.getCurrentConfig() } returns baseConfig.copy(profiles = mapOf("home" to profile("home")))
+		coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+		coEvery { trustStore.scopes() } returns setOf(
+			TrustScope.Global,
+			TrustScope.Profile("home"),
+			TrustScope.Profile("work"),
+			TrustScope.Profile("gone"),
+		).right()
+		coEvery { trustStore.clearProfileScope(any()) } returns Unit.right()
+
+		useCase.upsert(profile("work")).shouldBeRight()
+
+		coVerifyOrder {
+			trustStore.clearProfileScope("work")
+			configRepository.saveConfig(match { "work" in it.profiles })
+		}
+		coVerify { trustStore.clearProfileScope("gone") }
+		coVerify(exactly = 0) { trustStore.clearProfileScope("home") }
+	}
+
+	test("upsert of a new name saves nothing when a leftover trust scope cannot be dropped") {
+		coEvery { configRepository.getCurrentConfig() } returns baseConfig
+		coEvery { trustStore.scopes() } returns setOf<TrustScope>(TrustScope.Profile("work")).right()
+		val failure = TrustStoreError.operationFailed(details = "index not writable")
+		coEvery { trustStore.clearProfileScope("work") } returns failure.left()
+
+		useCase.upsert(profile("work")).shouldBeLeft() shouldBe failure
+
+		coVerify(exactly = 0) { configRepository.saveConfig(any()) }
+	}
+
+	test("upsert of a new name saves nothing when the trust store cannot list its scopes") {
+		coEvery { configRepository.getCurrentConfig() } returns baseConfig
+		val failure = TrustStoreError.operationFailed(details = "index unreadable")
+		coEvery { trustStore.scopes() } returns failure.left()
+
+		useCase.upsert(profile("work")).shouldBeLeft() shouldBe failure
+
+		coVerify(exactly = 0) { configRepository.saveConfig(any()) }
+	}
+
+	test("upsert of a stored profile leaves the trust store alone") {
+		coEvery { configRepository.getCurrentConfig() } returns baseConfig.copy(profiles = mapOf("work" to profile("work")))
+		coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+
+		useCase.upsert(profile("work", hash = HashAlgorithm.SHA512)).shouldBeRight()
+
+		coVerify(exactly = 0) { trustStore.scopes() }
+		coVerify(exactly = 0) { trustStore.clearProfileScope(any()) }
+	}
+
+	test("a read-only trust store is left alone when a profile is created or removed") {
+		every { trustStore.readOnly } returns true
+		coEvery { configRepository.getCurrentConfig() } returns baseConfig.copy(profiles = mapOf("home" to profile("home")))
+		coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+
+		useCase.upsert(profile("work")).shouldBeRight()
+		useCase.remove("home").shouldBeRight()
+
+		coVerify(exactly = 0) { trustStore.scopes() }
+		coVerify(exactly = 0) { trustStore.clearProfileScope(any()) }
+	}
+
+	test("a profile created under the name of a removed one trusts none of the certificates the removed one trusted, however it was removed") {
+		val store = FileTrustStore(tempdir().toPath())
+		val repository = FileConfigRepository(tempdir().toPath().resolve("config.json"))
+		val profiles = ManageProfileUseCase(repository, store)
+		val work = TrustScope.Profile("work")
+		store.add(TrustScope.Global, selfSignedDer("Global CA"), TrustedCertificateType.CA).shouldBeRight()
+
+		profiles.upsert(profile("work")).shouldBeRight()
+		store.add(work, selfSignedDer("Contractor CA"), TrustedCertificateType.CA).shouldBeRight()
+		profiles.remove("work").shouldBeRight()
+		store.list(work).shouldBeRight().shouldBeEmpty()
+
+		profiles.upsert(profile("work")).shouldBeRight()
+		store.add(work, selfSignedDer("Test CA"), TrustedCertificateType.CA).shouldBeRight()
+		repository.saveConfig(repository.getCurrentConfig().copy(profiles = emptyMap())).shouldBeRight()
+		profiles.upsert(profile("work")).shouldBeRight()
+
+		store.list(work).shouldBeRight().shouldBeEmpty()
+		store.resolve(work).shouldBeRight().shouldHaveSize(1)
 	}
 })
 

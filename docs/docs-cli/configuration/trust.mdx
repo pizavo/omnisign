@@ -12,6 +12,9 @@ Certificates are kept in the **app-managed trust store** (shared with the deskto
 certificate is imported once and stored under its SHA-256 **fingerprint**, which is its identity —
 there is no separate name. Trust is partitioned into a **global** scope plus one scope per profile;
 the resolved trust set for a profile is the union of the global scope and that profile's scope.
+A profile's scope goes with the profile: `config profile remove` drops it, and a profile created
+later under the same name starts without it. `--profile` must name a profile that exists, so a
+mistyped name is refused instead of starting a scope that no profile uses.
 
 A certificate's role decides what it vouches for: a signature anchored at a certificate of the
 trust store needs that anchor trusted as `CA` or `ANY`, a timestamp as `TSA` or `ANY`, and one
