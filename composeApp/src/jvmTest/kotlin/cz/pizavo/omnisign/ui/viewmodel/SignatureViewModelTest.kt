@@ -32,14 +32,18 @@ import io.mockk.clearMocks
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
+import kotlinx.coroutines.withContext
 import kotlin.time.Instant
 
 /**
@@ -55,6 +59,26 @@ class SignatureViewModelTest : FunSpec({
 
     fun samplePdfDoc(filePath: String, name: String = "doc.pdf"): PdfDocumentInfo =
         PdfDocumentInfo(name = name, data = ByteArray(0), pageCount = 1, filePath = filePath)
+
+    /** A report on the document named [documentName], with no signatures. */
+    fun reportFor(documentName: String): ValidationReport = ValidationReport(
+        documentName = documentName,
+        validationTime = Instant.parse("2026-03-27T10:00:00Z"),
+        overallResult = ValidationResult.VALID,
+        signatures = emptyList(),
+    )
+
+    /**
+     * Make the validation of the document named [name] wait for [gate] and then return [report].
+     * Once started it runs to the end even when its coroutine is cancelled, as a DSS validation
+     * does, so only a result dropped on return keeps it off the panel.
+     */
+    fun validationOf(name: String, gate: CompletableDeferred<Unit>, report: ValidationReport) {
+        coEvery { validationRepository.validateDocument(match { it.inputName == name }) } coAnswers {
+            withContext(NonCancellable) { gate.await() }
+            report.right()
+        }
+    }
 
     val sampleReport = ValidationReport(
         documentName = "test.pdf",
@@ -225,6 +249,74 @@ class SignatureViewModelTest : FunSpec({
             vm.onDocumentChanged(samplePdfDoc("/second.pdf"))
             val state = vm.state.value.shouldBeInstanceOf<SignaturePanelState.Idle>()
             state.hasDocument shouldBe true
+        }
+    }
+
+    test("a validation still running when another document opens never shows its result for that document") {
+        runTest(testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            validationOf("a.pdf", gate, reportFor("a.pdf"))
+
+            val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
+            vm.onDocumentChanged(samplePdfDoc("/docs/a.pdf", name = "a.pdf"))
+            vm.loadSignatures()
+            runCurrent()
+            vm.state.value shouldBe SignaturePanelState.Loading
+
+            vm.onDocumentChanged(samplePdfDoc("/docs/b.pdf", name = "b.pdf"))
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            vm.state.value shouldBe SignaturePanelState.Idle(hasDocument = true)
+            vm.exportReportText().shouldBeNull()
+            vm.suggestedReportFileName(ReportExportFormat.TXT).shouldBeNull()
+        }
+    }
+
+    test("a validation failure for a document closed meanwhile is not shown") {
+        runTest(testDispatcher) {
+            val gate = CompletableDeferred<Unit>()
+            coEvery { validationRepository.validateDocument(any()) } coAnswers {
+                withContext(NonCancellable) { gate.await() }
+                ValidationError.ValidationFailed(text = LocalizableText.Literal("Corrupted PDF")).left()
+            }
+
+            val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
+            vm.onDocumentChanged(samplePdfDoc("/docs/a.pdf", name = "a.pdf"))
+            vm.loadSignatures()
+            runCurrent()
+
+            vm.onDocumentChanged(null)
+            gate.complete(Unit)
+            advanceUntilIdle()
+
+            vm.state.value shouldBe SignaturePanelState.Idle(hasDocument = false)
+        }
+    }
+
+    test("the new document's result stays when the previous document's validation finishes after it") {
+        runTest(testDispatcher) {
+            val gateA = CompletableDeferred<Unit>()
+            val gateB = CompletableDeferred<Unit>()
+            validationOf("a.pdf", gateA, reportFor("a.pdf"))
+            validationOf("b.pdf", gateB, reportFor("b.pdf"))
+
+            val vm = SignatureViewModel(useCase, configRepository, testDispatcher)
+            vm.onDocumentChanged(samplePdfDoc("/docs/a.pdf", name = "a.pdf"))
+            vm.loadSignatures()
+            runCurrent()
+            vm.onDocumentChanged(samplePdfDoc("/docs/b.pdf", name = "b.pdf"))
+            vm.loadSignatures()
+            runCurrent()
+
+            gateB.complete(Unit)
+            advanceUntilIdle()
+            vm.state.value.shouldBeInstanceOf<SignaturePanelState.Loaded>().report.documentName shouldBe "b.pdf"
+
+            gateA.complete(Unit)
+            advanceUntilIdle()
+            vm.state.value.shouldBeInstanceOf<SignaturePanelState.Loaded>().report.documentName shouldBe "b.pdf"
+            vm.suggestedReportFileName(ReportExportFormat.TXT) shouldBe "b.report"
         }
     }
 

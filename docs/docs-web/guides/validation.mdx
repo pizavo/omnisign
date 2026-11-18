@@ -26,7 +26,9 @@ Until you do, the Signature panel simply says so.
 
 Open the **Signature** panel <AppIcon name="signature" label="Signature panel" /> on the left edge
 and press the refresh button <AppIcon name="refresh" label="Refresh" />. The document is uploaded, the
-server validates it, and the report appears in the panel.
+server validates it, and the report appears in the panel. Opening another document meanwhile drops
+that validation: the panel returns to its prompt for the new document and never shows the earlier
+one's report.
 
 If the request fails — the server is down, unreachable, or refuses it — the panel shows the error with
 a **Retry** button. It is the only place in the app that offers one.
