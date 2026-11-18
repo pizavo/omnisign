@@ -221,15 +221,33 @@ class DssWarningSanitizer {
 		 * matching pattern wins. A compound status is matched one object at a time, as its base
 		 * message followed by that object's entry (see [objectTexts]).
 		 *
-		 * The order is load-bearing. DSS raises three distinct statuses — missing revocation
+		 * The order is load-bearing. DSS fills its three revocation statuses — missing revocation
 		 * data, an uncovered proof-of-existence, and revocation data that predates the best
-		 * signature time — and attaches the same per-certificate detail text (`No revocation
-		 * data found…`) to all of them; only the base message tells them apart. Categories keyed
-		 * on a base message therefore have to be tried before those keyed on a detail text, or a
-		 * proof-of-existence warning would be reported as a failed CRL/OCSP download.
+		 * signature time — from one per-certificate check, so they share its details: the chain
+		 * is untrusted, no revocation data was found for the certificate, or none was found after
+		 * the time it has to cover. The detail decides the category, and the status refines it:
+		 * - An untrusted chain is [WarningCategory.REVOCATION_UNTRUSTED_CHAIN] whichever status
+		 *   reports it, so that category is tried first.
+		 * - No revocation data at all is [WarningCategory.REVOCATION_POE_MISSING] in a
+		 *   proof-of-existence status and [WarningCategory.REVOCATION_NOT_FOUND] in the other two.
+		 * - Only data older than the time it has to cover is stale. For a proof-of-existence that
+		 *   is [WarningCategory.REVOCATION_POE_STALE], which takes what the two categories before it
+		 *   leave of that status. For the signing chain it is
+		 *   [WarningCategory.FRESH_REVOCATION_MISSING], which names that detail itself, as the
+		 *   category that takes the status's other details comes after it.
+		 *
+		 * Every category keyed on a base message has to be tried before
+		 * [WarningCategory.REVOCATION_NOT_FOUND], whose `No revocation data found` matches all of
+		 * those details, or a proof-of-existence warning would be reported as a failed CRL/OCSP
+		 * download.
 		 */
 		private val PATTERNS: Map<WarningCategory, List<Regex>> = mapOf(
 		
+			WarningCategory.REVOCATION_UNTRUSTED_CHAIN to listOf(
+				Regex("""Revocation data is skipped for untrusted certificate"""),
+				Regex("""External revocation check is skipped for untrusted certificate\s*:\s*$CERT_ID"""),
+			),
+			
 			WarningCategory.REVOCATION_POE_MISSING to listOf(
 				Regex("""Revocation data is missing for one or more POE.*?No revocation data found for certificate"""),
 			),
@@ -239,13 +257,7 @@ class DssWarningSanitizer {
 			),
 			
 			WarningCategory.FRESH_REVOCATION_MISSING to listOf(
-				Regex("""Fresh revocation data is missing"""),
-			),
-			
-			WarningCategory.REVOCATION_UNTRUSTED_CHAIN to listOf(
-				Regex("""Revocation data is skipped for untrusted certificate"""),
-				Regex("""External revocation check is skipped for untrusted certificate\s*:\s*$CERT_ID"""),
-				Regex("""Revocation data is missing for one or more certificate.*?untrusted"""),
+				Regex("""Fresh revocation data is missing.*?No revocation data found after the best signature time"""),
 			),
 			
 			WarningCategory.REVOCATION_AFTER_CERTIFICATE_EXPIRY to listOf(
@@ -292,7 +304,8 @@ class DssWarningSanitizer {
 	enum class WarningCategory {
 		
 		/**
-		 * CRL/OCSP revocation data could not be downloaded for one or more certificates.
+		 * CRL/OCSP revocation data could not be obtained for one or more certificates: a download
+		 * failed, or DSS found none at all for a certificate that needs it.
 		 */
 		REVOCATION_NOT_FOUND {
 			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) =

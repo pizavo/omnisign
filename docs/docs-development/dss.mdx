@@ -185,7 +185,9 @@ session is *not* `Closeable` — it is opened and stopped in a `try`/`finally`.
 affected certificate identifiers together, so ten warnings about ten certificates become one
 sentence. A status that names several certificates is classified one certificate at a time, by the
 detail DSS gives for each, so one status can report a certificate with no revocation data beside
-another whose chain is untrusted.
+another whose chain is untrusted. The detail decides the category: an untrusted chain is reported as
+such whichever status names it, and only revocation data older than the time it has to cover counts
+as stale.
 
 The categories, and roughly what each means:
 
