@@ -108,6 +108,9 @@ internal object EnglishMessages {
 		MessageKey.SIGNING_ENCRYPTION_NOT_SUPPORTED_BY_TOKEN ->
 			"A key on a PKCS#11 token or in the Windows Certificate Store cannot sign with %1\$s. " +
 					"Choose another encryption algorithm, or sign with a key from a PKCS#12 file"
+		MessageKey.SIGNING_CERTIFICATE_REVOKED ->
+			"The certificate issued to %1\$s has been revoked or suspended, so the document was not signed: " +
+					"the signature would not validate. Sign with another certificate"
 		MessageKey.SIGNING_PDF_ENCRYPTED ->
 			"The PDF is encrypted or password-protected and cannot be signed"
 		MessageKey.SIGNING_MALFORMED_PDF ->

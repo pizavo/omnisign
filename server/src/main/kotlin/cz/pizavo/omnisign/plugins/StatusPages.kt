@@ -161,6 +161,7 @@ private suspend fun ApplicationCall.respondOperationError(error: OperationError)
 		is SigningError.TokenAccessError -> HttpStatusCode.ServiceUnavailable to "TOKEN_ACCESS_ERROR"
 		is SigningError.TimestampError -> HttpStatusCode.BadGateway to "TIMESTAMP_ERROR"
 		is SigningError.ExpiredAlgorithm -> HttpStatusCode.UnprocessableEntity to "EXPIRED_ALGORITHM"
+		is SigningError.CertificateRevoked -> HttpStatusCode.UnprocessableEntity to "CERTIFICATE_REVOKED"
 		is SigningError.SigningFailed -> HttpStatusCode.InternalServerError to "SIGNING_FAILED"
 		is SigningError.EncryptedDocument -> HttpStatusCode.UnprocessableEntity to "ENCRYPTED_DOCUMENT"
 		is SigningError.MalformedDocument -> HttpStatusCode.BadRequest to "MALFORMED_DOCUMENT"

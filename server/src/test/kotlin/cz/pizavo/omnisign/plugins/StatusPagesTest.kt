@@ -52,6 +52,21 @@ class StatusPagesTest : FunSpec({
 		}
 	}
 
+	test("OperationException with SigningError.CertificateRevoked returns 422 CERTIFICATE_REVOKED") {
+		testApplication {
+			configureTestApp {
+				throw OperationException(SigningError.certificateRevoked("Jan Novák", details = "serial number: 42"))
+			}
+			val response = client.get("/test")
+			response.status shouldBe HttpStatusCode.UnprocessableEntity
+			val body = Json.decodeFromString<ApiError>(response.bodyAsText())
+			body.error shouldBe "CERTIFICATE_REVOKED"
+			body.message shouldBe "The certificate issued to Jan Novák has been revoked or suspended, so the document " +
+					"was not signed: the signature would not validate. Sign with another certificate"
+			body.details shouldBe "serial number: 42"
+		}
+	}
+
 	test("OperationException with ValidationError.ValidationFailed returns 500") {
 		testApplication {
 			configureTestApp {

@@ -48,7 +48,7 @@ global:
 
   validation:
     policyType: DEFAULT_ETSI            # or CUSTOM_FILE (+ customPolicyPath)
-    checkRevocation: true
+    checkRevocation: true               # also refuses SIGNING with a revoked certificate
     useEuLotl: true
     # alertIfNotEuLotl: false           # flag signatures whose anchor is not on the EU LOTL
     # allowExpiredCertificate: false    # allow SIGNING with an expired certificate

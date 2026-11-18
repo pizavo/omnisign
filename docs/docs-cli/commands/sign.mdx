@@ -81,6 +81,19 @@ Use this only for narrow cases such as testing or a tolerated grace window.
 The same behavior can also be enabled per-profile or globally in the configuration (it lives under
 `validation.allowExpiredCertificate`); the flag turns it on for a single run.
 
+## Revoked certificates
+
+While revocation checking is on (`config set --check-revocation`, on by default), `sign` first asks
+whether the signing certificate, or a CA certificate above it, has been revoked, through the OCSP
+responder or CRL the certificate names. If it has been revoked or suspended, `sign` signs nothing
+and fails with an error naming the certificate. Its `Details:` line gives the
+certificate's subject, serial number and issuer, the revocation date and the reason.
+
+A signature made with such a certificate would not validate, so no flag signs anyway. A status the
+issuer does not confirm does not stop the signing: when no revocation data can be obtained, the OCSP
+responder answers *unknown*, or the chain leads to no trusted certificate, `sign` goes ahead as
+before. With revocation checking off, the check is skipped along with every other revocation lookup.
+
 ## Examples
 
 ```bash

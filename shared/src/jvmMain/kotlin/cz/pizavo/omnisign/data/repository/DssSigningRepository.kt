@@ -4,6 +4,7 @@ import arrow.core.getOrElse
 import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.data.service.Pkcs11SessionCache
+import cz.pizavo.omnisign.data.util.toKotlinInstant
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
@@ -34,6 +35,7 @@ import eu.europa.esig.dss.pades.SignatureImageParameters
 import eu.europa.esig.dss.pades.SignatureImageTextParameters
 import eu.europa.esig.dss.pades.signature.PAdESService
 import eu.europa.esig.dss.spi.validation.CertificateVerifier
+import eu.europa.esig.dss.spi.x509.revocation.RevocationToken
 import eu.europa.esig.dss.token.AbstractSignatureTokenConnection
 import eu.europa.esig.dss.token.DSSPrivateKeyEntry
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -111,6 +113,15 @@ class DssSigningRepository(
 	 * Fails with [SigningError.ExpiredAlgorithm] before any key is looked up when the hash algorithm
 	 * is past its expiration date under a FAIL level, and once the key is known when the hash an
 	 * EdDSA key's curve fixes is; under a WARN level, either signs with a warning instead.
+	 *
+	 * Fails with [SigningError.CertificateRevoked] before the key signs when the revocation data
+	 * fetched for the signing certificate's chain shows the certificate, or one above it, revoked or
+	 * suspended; see [signingChainRevocation]. The check is skipped when the resolved configuration
+	 * turns revocation checking off, as the verifier then has no revocation source. It runs before
+	 * the DSS log capture starts, so that what DSS logs while it fetches the data, such as that the
+	 * chain is untrusted or that no data could be found, does not become a warning: B-B and B-T
+	 * signing fetched no revocation data before, and at B-LT and B-LTA DSS fetches it again while it
+	 * embeds it, and logs the same then.
 	 */
 	@Suppress("TooGenericExceptionCaught", "CyclomaticComplexMethod", "LongMethod", "ReturnCount")
 	override suspend fun signDocument(parameters: SigningParameters): OperationResult<SigningResult> {
@@ -185,6 +196,9 @@ class DssSigningRepository(
 				)
 				signingWarnings += tlWarnings
 				val signatureParams = buildSignatureParameters(privateKey, signatureAlgorithm, dssSignatureLevel, parameters)
+				if (resolvedConfig.validation.checkRevocation != false) {
+					signingChainRevocation(signatureParams, verifier)?.let { return certificateRevokedError(it).left() }
+				}
 				val certIdNames = buildCertIdNames(privateKey)
 				val logSession = logCapture.start()
 				try {
@@ -1108,6 +1122,23 @@ class DssSigningRepository(
 
 			AlgorithmStatus.VALID -> null
 		}
+	}
+
+	/**
+	 * The refusal to sign under a chain that [revocation] shows a certificate of revoked or
+	 * suspended: [SigningError.CertificateRevoked], naming the certificate by its common name, with
+	 * its subject, serial number and issuer and the revocation's date and reason as the details.
+	 */
+	private fun certificateRevokedError(revocation: RevocationToken<*>): SigningError.CertificateRevoked {
+		val certificate = revocation.relatedCertificate.certificate
+		return SigningError.certificateRevoked(
+			certificate = extractSubjectCN(certificate.subjectX500Principal),
+			details = "Subject: ${certificate.subjectX500Principal.name}; " +
+					"serial number: ${certificate.serialNumber}; " +
+					"issuer: ${certificate.issuerX500Principal.name}; " +
+					"revoked on: ${revocation.revocationDate?.toKotlinInstant() ?: "unknown"}; " +
+					"reason: ${revocation.reason?.shortName ?: "unspecified"}",
+		)
 	}
 
 	/**
