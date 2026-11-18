@@ -333,6 +333,13 @@ internal object EnglishMessages {
 			"Revocation data for %1\$s in the signing chain predates the signature timestamp, " +
 				"so it does not cover the moment of signing. Augmenting the signature once newer " +
 				"revocation data is published closes the gap."
+		MessageKey.WARNING_CERTIFICATE_REVOKED ->
+			"Revocation data for %1\$s in the chain of a signature in this document reports a revocation " +
+				"or suspension that predates the signature's proof-of-existence, or an unknown status, so " +
+				"that signature cannot be trusted."
+		MessageKey.WARNING_TIMESTAMP_BROKEN ->
+			"Verification failed for %1\$s in this document: a timestamp signature does not verify, or " +
+				"the data a timestamp covers was changed or is missing. Such a timestamp proves nothing."
 		MessageKey.WARNING_TIMESTAMP_UNTRUSTED ->
 			"Proof-of-existence could not be established for %1\$s because the issuing TSA " +
 				"is not in the trusted list."

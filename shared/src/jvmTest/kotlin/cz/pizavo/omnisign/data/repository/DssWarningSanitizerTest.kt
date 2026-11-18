@@ -838,5 +838,68 @@ class DssWarningSanitizerTest : FunSpec({
 		result.categories shouldBe setOf(WarningCategory.REVOCATION_STATUS_UNKNOWN)
 		result.hasRevocationWarnings shouldBe false
 	}
+
+	test("revoked certificates are reported under their own category, with no prompt and no block") {
+		val raw = listOf(
+			"Error on signature creation : Revoked/Suspended certificate(s) detected. " +
+				"[C-AAAA1111: Certificate is revoked/suspended!; C-BBBB2222: Certificate is revoked/suspended!]",
+		)
+
+		val result = sanitizer.sanitize(raw, suppressedCategories = signingSuppressed)
+
+		keyedIds(result) shouldContainExactly listOf(
+			MessageKey.WARNING_CERTIFICATE_REVOKED to listOf("C-AAAA1111", "C-BBBB2222"),
+		)
+		result.summaries.single() shouldContain "2 certificates"
+		result.hasRevocationWarnings shouldBe false
+		result.longTermMaterialMissing shouldBe false
+		result.revocationNotRefreshed shouldBe false
+	}
+
+	test("a broken timestamp is reported under its own category, with no prompt and no block") {
+		val raw = listOf(
+			"Error on signature augmentation : Broken timestamp(s) detected. [T-AAAA1111: Signature is not intact!]",
+		)
+
+		val result = sanitizer.sanitize(raw)
+
+		keyedIds(result) shouldContainExactly listOf(MessageKey.WARNING_TIMESTAMP_BROKEN to listOf("T-AAAA1111"))
+		result.summaries.single() shouldContain "1 timestamp"
+		result.hasRevocationWarnings shouldBe false
+		result.longTermMaterialMissing shouldBe false
+		result.revocationNotRefreshed shouldBe false
+	}
+
+	test("a revoked certificate is reported before every other category") {
+		val raw = listOf(
+			"No revocation found for the certificate C-CCCC3333",
+			"Revocation data is missing for one or more POE(s). [C-DDDD4444: $absentDetail]",
+			"Revoked/Suspended certificate(s) detected. [C-AAAA1111: Certificate is revoked/suspended!]",
+		)
+
+		val result = sanitizer.sanitize(raw)
+
+		keyedIds(result).map { it.first } shouldContainExactly listOf(
+			MessageKey.WARNING_CERTIFICATE_REVOKED,
+			MessageKey.WARNING_REVOCATION_NOT_FOUND,
+			MessageKey.WARNING_REVOCATION_POE_MISSING,
+		)
+	}
+
+	test("a broken timestamp is reported after every revocation category and before the other timestamp ones") {
+		val raw = listOf(
+			"POE extraction is skipped for untrusted timestamp : T-FFFF",
+			"Broken timestamp(s) detected. [T-AAAA1111: Signature is not intact!]",
+			"Fresh revocation data is missing for one or more certificate(s). [C-BBBB2222: $staleDetail]",
+		)
+
+		val result = sanitizer.sanitize(raw)
+
+		keyedIds(result) shouldContainExactly listOf(
+			MessageKey.WARNING_FRESH_REVOCATION_MISSING_BY_TIME to listOf("C-BBBB2222"),
+			MessageKey.WARNING_TIMESTAMP_BROKEN to listOf("T-AAAA1111"),
+			MessageKey.WARNING_TIMESTAMP_UNTRUSTED to listOf("T-FFFF"),
+		)
+	}
 })
 

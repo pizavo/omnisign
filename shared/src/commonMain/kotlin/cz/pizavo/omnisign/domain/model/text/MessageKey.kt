@@ -448,6 +448,15 @@ enum class MessageKey {
 	/** Sanitized warning: signing-chain revocation data predates the signature (arg: affected-count phrase). */
 	WARNING_FRESH_REVOCATION_MISSING_GENERIC,
 
+	/**
+	 * Sanitized warning: revocation data shows a certificate in a signature's chain revoked or suspended
+	 * before the signature's proof-of-existence, or of unknown status (arg: affected-count phrase).
+	 */
+	WARNING_CERTIFICATE_REVOKED,
+
+	/** Sanitized warning: a timestamp in the document fails verification (arg: affected-count phrase). */
+	WARNING_TIMESTAMP_BROKEN,
+
 	/** Sanitized warning: a timestamp's proof-of-existence could not be established, the TSA being untrusted (arg: affected-count phrase). */
 	WARNING_TIMESTAMP_UNTRUSTED,
 

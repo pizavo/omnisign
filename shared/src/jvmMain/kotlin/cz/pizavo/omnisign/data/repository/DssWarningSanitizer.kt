@@ -259,6 +259,14 @@ class DssWarningSanitizer {
 				Regex("""Fresh revocation data is missing.*?No revocation data found after the best signature time"""),
 			),
 			
+			WarningCategory.CERTIFICATE_REVOKED to listOf(
+				Regex("""Revoked/Suspended certificate\(s\) detected"""),
+			),
+			
+			WarningCategory.TIMESTAMP_BROKEN to listOf(
+				Regex("""Broken timestamp\(s\) detected"""),
+			),
+			
 			WarningCategory.REVOCATION_AFTER_CERTIFICATE_EXPIRY to listOf(
 				Regex("""was not issued during the validity period of the certificate"""),
 			),
@@ -301,6 +309,27 @@ class DssWarningSanitizer {
 	 * Known categories of DSS warnings with user-facing summary templates.
 	 */
 	enum class WarningCategory {
+		
+		/**
+		 * Revocation data shows a certificate in the chain of a signature in the document revoked or
+		 * suspended before the earliest time the signature is proven to have existed, or gives its
+		 * status as unknown, so the signature cannot be trusted. Declared first, so that its summary
+		 * comes before every other.
+		 *
+		 * DSS raises it through `alertOnRevokedCertificate` while it gathers the validation data at
+		 * B-LT and B-LTA, for every signature in the document. While signing it mostly concerns another
+		 * signature: [DssSigningRepository] refuses to sign with a certificate whose revocation data
+		 * says *revoked* before the key signs, but lets through one whose status is unknown, which DSS
+		 * reports here too.
+		 *
+		 * Reported in every operation, and deliberately neither revocation-related nor blocking: the
+		 * revocation data was obtained, so the confirmation prompt, which says it could not be
+		 * embedded, would misstate the case, and no later augmentation changes what the data says.
+		 */
+		CERTIFICATE_REVOKED {
+			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) =
+				LocalizableText.of(MessageKey.WARNING_CERTIFICATE_REVOKED, pluralCerts(ids.size))
+		},
 		
 		/**
 		 * CRL/OCSP revocation data could not be obtained for one or more certificates: a download
@@ -434,6 +463,22 @@ class DssWarningSanitizer {
 						nextUpdate.toString(),
 					)
 				}
+		},
+		
+		/**
+		 * A timestamp in the document fails verification: its signature does not verify, or the data
+		 * it covers was changed or cannot be found, so it proves nothing.
+		 *
+		 * DSS raises it through `alertOnInvalidTimestamp` while it gathers the validation data, for
+		 * every timestamp it processes, with the detail `Signature is not intact!` whichever of those
+		 * checks failed. Reported in every operation, but neither revocation-related nor blocking: it
+		 * mostly concerns a timestamp already in the document, which neither signing nor augmenting
+		 * can mend. Declared after the revocation categories and before the other timestamp ones, so
+		 * that its summary leads the timestamp summaries.
+		 */
+		TIMESTAMP_BROKEN {
+			override fun toSummary(ids: Set<String>, nextUpdate: Instant?) =
+				LocalizableText.of(MessageKey.WARNING_TIMESTAMP_BROKEN, pluralTimestamps(ids.size))
 		},
 		
 		/**
