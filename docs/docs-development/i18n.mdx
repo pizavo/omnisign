@@ -141,8 +141,15 @@ supplies the Czech and Slovak variants as `dss-messages_cs.properties` and `dss-
 in `shared/jvmMain/resources/`, and selects them through the validator:
 
 ```kotlin
-setLocale(parameters.language?.let { Locale.forLanguageTag(it) } ?: Locale.getDefault())
+val requested = parameters.language?.let { Locale.forLanguageTag(it) } ?: Locale.getDefault()
+setLocale(dssMessageLocale(requested))
 ```
+
+`dssMessageLocale` is there because DSS looks its bundle up with Java's default `ResourceBundle`
+lookup, which tries the JVM's default locale before it settles for the base bundle. Without it, a
+server on a Czech machine would answer `Accept-Language: en` with a Czech report. It looks the bundle
+up itself, without that fallback, and gives DSS the locale of the bundle it found: `cs` or `sk` for a
+translation, or the root locale for DSS's English, which DSS then uses as it is.
 
 On the server, `ValidationParameters.language` is populated from the request's **`Accept-Language`**
 header by `api/RequestLanguage.kt`, which takes the caller's highest-priority tag. So report

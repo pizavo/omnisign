@@ -140,7 +140,9 @@ class DssValidationRepository(
 	 * `Accept-Language` header — otherwise to the JVM default locale, which the desktop sets from the
 	 * user's language preference via `LocalAppLocale`. DSS ships only an English message bundle, so the
 	 * bundled `dss-messages_cs.properties` / `dss-messages_sk.properties` (shared JVM resources) supply
-	 * Czech / Slovak; any locale without a bundle falls back to English per key.
+	 * Czech / Slovak. Any other locale gets DSS's English, whatever the JVM default locale is:
+	 * [dssMessageLocale] picks the locale DSS is given, so that its lookup cannot fall back to a Czech
+	 * or Slovak default.
 	 */
 	override suspend fun validateDocument(parameters: ValidationParameters): OperationResult<ValidationReport> {
 		return Either.catch {
@@ -157,7 +159,8 @@ class DssValidationRepository(
 					setCertificateVerifier(cv)
 					setValidationContextExecutor(validationContextExecutor)
 					setTokenExtractionStrategy(TokenExtractionStrategy.EXTRACT_CERTIFICATES_ONLY)
-					setLocale(parameters.language?.let { Locale.forLanguageTag(it) } ?: Locale.getDefault())
+					val requested = parameters.language?.let { Locale.forLanguageTag(it) } ?: Locale.getDefault()
+					setLocale(dssMessageLocale(requested))
 					if (this is PDFDocumentValidator) {
 						setPdfObjFactory(dssServiceFactory.buildPdfObjectFactory())
 					}
