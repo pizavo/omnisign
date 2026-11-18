@@ -120,6 +120,7 @@ val jvmRepositoryModule = module {
 	singleOf(::RevocationErrorDetector)
 	singleOf(::DocumentInputErrorDetector)
 	singleOf(::SignatureSpaceErrorDetector)
+	single { DssLogCapture() }
 	singleOf(::DssValidationRepository) bind ValidationRepository::class
 	singleOf(::DssSigningRepository) bind SigningRepository::class
 	singleOf(::DssArchivingRepository) bind ArchivingRepository::class

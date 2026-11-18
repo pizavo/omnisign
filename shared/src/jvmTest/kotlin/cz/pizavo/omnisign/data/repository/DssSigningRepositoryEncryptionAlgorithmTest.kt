@@ -162,7 +162,7 @@ class DssSigningRepositoryEncryptionAlgorithmTest : FunSpec({
 		return DssSigningRepository(
 			tokenService, mockk(), mockk(relaxed = true), dssServiceFactory,
 			AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
-			trustStore, DocumentInputErrorDetector(), Pkcs11SessionCache(), SignatureSpaceErrorDetector(),
+			trustStore, DocumentInputErrorDetector(), Pkcs11SessionCache(), SignatureSpaceErrorDetector(), DssLogCapture(),
 		)
 	}
 
@@ -346,7 +346,7 @@ class DssSigningRepositoryEncryptionAlgorithmTest : FunSpec({
 		val strictTokens = DssSigningRepository(
 			mockk(), mockk(), mockk(relaxed = true), dssServiceFactory,
 			AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
-			trustStore, DocumentInputErrorDetector(), Pkcs11SessionCache(), SignatureSpaceErrorDetector(),
+			trustStore, DocumentInputErrorDetector(), Pkcs11SessionCache(), SignatureSpaceErrorDetector(), DssLogCapture(),
 		)
 
 		val error = sign(strictTokens, resolved(hash = HashAlgorithm.RIPEMD160)).shouldBeLeft()

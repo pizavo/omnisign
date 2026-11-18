@@ -66,7 +66,7 @@ class DssSigningRepositoryStoredPinTest : FunSpec({
 		repository = DssSigningRepository(
 			tokenService, configRepository, credentialStore, mockk(relaxed = true),
 			AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
-			trustStore, DocumentInputErrorDetector(), Pkcs11SessionCache(), SignatureSpaceErrorDetector(),
+			trustStore, DocumentInputErrorDetector(), Pkcs11SessionCache(), SignatureSpaceErrorDetector(), DssLogCapture(),
 		)
 		coEvery { configRepository.getCurrentConfig() } returns AppConfig(
 			global = GlobalConfig(

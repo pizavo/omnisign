@@ -304,12 +304,12 @@ class TrustAnchoredLevelE2ETest : FunSpec({
 		tokenService, configRepository, mockk<CredentialStore>(relaxed = true), dssServiceFactory,
 		AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
 		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(), Pkcs11SessionCache(),
-		SignatureSpaceErrorDetector(),
+		SignatureSpaceErrorDetector(), DssLogCapture(),
 	)
 	val archivingRepository = DssArchivingRepository(
 		configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(),
 		RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()),
-		mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(),
+		mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(), DssLogCapture(),
 	)
 
 	/** A [DssValidationRepository] that validates with [verifier], pinning the issuing CA only when [anchored]. */
@@ -421,7 +421,7 @@ class TrustAnchoredLevelE2ETest : FunSpec({
 		DssArchivingRepository(
 			configRepository, factory, DssWarningSanitizer(), TspErrorDetector(),
 			RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()),
-			mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(),
+			mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(), DssLogCapture(),
 		)
 	}
 

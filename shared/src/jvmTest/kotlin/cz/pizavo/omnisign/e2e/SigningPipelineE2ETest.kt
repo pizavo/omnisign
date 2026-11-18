@@ -1,6 +1,8 @@
 package cz.pizavo.omnisign.e2e
 
 import arrow.core.right
+import ch.qos.logback.classic.Level
+import ch.qos.logback.classic.Logger
 import cz.pizavo.omnisign.data.repository.*
 import cz.pizavo.omnisign.data.service.FileRenewalCheckCache
 import cz.pizavo.omnisign.data.service.Pkcs11SessionCache
@@ -36,6 +38,7 @@ import eu.europa.esig.dss.spi.validation.CommonCertificateVerifier
 import eu.europa.esig.dss.spi.x509.CommonTrustedCertificateSource
 import eu.europa.esig.dss.spi.x509.revocation.crl.ExternalResourcesCRLSource
 import eu.europa.esig.dss.token.Pkcs12SignatureToken
+import io.kotest.assertions.arrow.core.shouldBeLeft
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
@@ -46,6 +49,7 @@ import io.kotest.matchers.ints.shouldBeGreaterThan
 import io.kotest.matchers.nulls.shouldBeNull
 import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import io.mockk.coEvery
 import io.mockk.every
 import io.mockk.mockk
@@ -53,6 +57,7 @@ import org.bouncycastle.cert.X509v2CRLBuilder
 import org.bouncycastle.cert.jcajce.JcaX509CRLConverter
 import org.bouncycastle.cert.jcajce.JcaX509CertificateHolder
 import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
+import org.slf4j.LoggerFactory
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.security.KeyStore
@@ -74,6 +79,10 @@ import java.util.*
  * One more TSA is minted off the committed CA at test time (see [TestPki]): one whose certificate
  * names no revocation address, whose timestamps DSS refuses as proofs of existence while it gathers
  * validation data however sound the rest of the chain is — and whose documents it still validates.
+ *
+ * It also checks the log capture both repositories open around their DSS calls: a warning DSS logs
+ * while it signs a PDF straight to B-LT reaches the signing result, and a signing or an extension that
+ * fails at the timestamp server leaves the `eu.europa.esig` logger as it found it.
  */
 class SigningPipelineE2ETest : FunSpec({
 
@@ -211,12 +220,12 @@ class SigningPipelineE2ETest : FunSpec({
 	val signingRepository = DssSigningRepository(
 		tokenService, configRepository, mockk<CredentialStore>(relaxed = true), dssServiceFactory,
 		AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
-		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(), Pkcs11SessionCache(), SignatureSpaceErrorDetector(),
+		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(), Pkcs11SessionCache(), SignatureSpaceErrorDetector(), DssLogCapture(),
 	)
 	val archivingRepository = DssArchivingRepository(
 		configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(),
 		RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()),
-		mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(),
+		mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(), DssLogCapture(),
 	)
 
 	fun plainPdf(): ByteArray {
@@ -247,6 +256,32 @@ class SigningPipelineE2ETest : FunSpec({
 				),
 			)
 		).shouldBeRight().outputBytes
+
+	/** An address no TSA listens on, so a timestamp request sent there fails. */
+	val unreachableTsaUrl = "http://127.0.0.1:1/tsa"
+
+	/**
+	 * Run [operation] with the `eu.europa.esig` logger at ERROR and additive, the state a log capture session
+	 * changes while it is open, and check that the operation leaves the logger so: at ERROR, additive, and without
+	 * the capture's appender. However the check ends, the logger gets its own level and additivity back.
+	 */
+	suspend fun leavesDssLoggerAsFound(operation: suspend () -> Unit) {
+		val dss = LoggerFactory.getLogger("eu.europa.esig") as Logger
+		val ownLevel = dss.level
+		val ownAdditivity = dss.isAdditive
+		dss.level = Level.ERROR
+		dss.isAdditive = true
+		try {
+			operation()
+			dss.level shouldBe Level.ERROR
+			dss.isAdditive.shouldBeTrue()
+			dss.getAppender(DssLogCapture.APPENDER_NAME).shouldBeNull()
+		} finally {
+			dss.getAppender(DssLogCapture.APPENDER_NAME)?.let { dss.detachAppender(it) }
+			dss.isAdditive = ownAdditivity
+			dss.level = ownLevel
+		}
+	}
 
 	test("extends a signed PDF to PAdES-B-LT, embedding offline revocation data") {
 		val signed = signBaselineT()
@@ -308,6 +343,64 @@ class SigningPipelineE2ETest : FunSpec({
 		report.getIndication(report.firstSignatureId) shouldBe Indication.TOTAL_PASSED
 	}
 
+	test("a TSA that names no revocation address is reported when a PDF is signed straight to B-LT") {
+		val signed = signingRepository.signDocument(
+			SigningParameters(
+				inputBytes = plainPdf(),
+				inputName = "input.pdf",
+				certificateAlias = certEntry.alias,
+				signatureLevel = SignatureLevel.PADES_BASELINE_LT,
+				addTimestamp = true,
+				resolvedConfig = resolvedConfig(
+					GlobalConfig(
+						defaultSignatureLevel = SignatureLevel.PADES_BASELINE_LT,
+						timestampServer = TimestampServerConfig(url = addresslessTsa.url),
+					),
+				),
+			)
+		).shouldBeRight()
+
+		signed.annotatedWarnings.map { (it.summary as? LocalizableText.Keyed)?.key } shouldContain
+			MessageKey.WARNING_REVOCATION_ACCESS_POINT_MISSING
+	}
+
+	test("a signing that fails at the timestamp server leaves the DSS logger as it found it") {
+		leavesDssLoggerAsFound {
+			signingRepository.signDocument(
+				SigningParameters(
+					inputBytes = plainPdf(),
+					inputName = "input.pdf",
+					certificateAlias = certEntry.alias,
+					signatureLevel = SignatureLevel.PADES_BASELINE_T,
+					addTimestamp = true,
+					resolvedConfig = resolvedConfig(
+						GlobalConfig(
+							defaultSignatureLevel = SignatureLevel.PADES_BASELINE_T,
+							timestampServer = TimestampServerConfig(url = unreachableTsaUrl),
+						),
+					),
+				)
+			).shouldBeLeft().details.shouldNotBeNull() shouldContain unreachableTsaUrl
+		}
+	}
+
+	test("an extension that fails at the timestamp server leaves the DSS logger as it found it") {
+		val signed = signBaselineT()
+
+		leavesDssLoggerAsFound {
+			archivingRepository.extendDocument(
+				ArchivingParameters(
+					inputBytes = signed,
+					inputName = "input.pdf",
+					targetLevel = SignatureLevel.PADES_BASELINE_LTA,
+					resolvedConfig = resolvedConfig(
+						GlobalConfig(timestampServer = TimestampServerConfig(url = unreachableTsaUrl)),
+					),
+				)
+			).shouldBeLeft().details.shouldNotBeNull() shouldContain unreachableTsaUrl
+		}
+	}
+
 	test("a B-T document is due for preservation now, on the signing certificate's clock") {
 		val signed = File(tmp, "b-t-renewal.pdf").also { it.writeBytes(signBaselineT()) }
 
@@ -355,7 +448,7 @@ class SigningPipelineE2ETest : FunSpec({
 		DssArchivingRepository(
 			config, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(),
 			RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()),
-			cache, SignatureSpaceErrorDetector(),
+			cache, SignatureSpaceErrorDetector(), DssLogCapture(),
 		)
 
 	/** A freshly sealed B-LTA document, written to [name] under the spec's directory. */

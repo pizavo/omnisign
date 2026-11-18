@@ -34,7 +34,7 @@ class DssSigningRepositoryDisabledAlgorithmTest : FunSpec({
 		tokenService, mockk(), mockk(relaxed = true), mockk(relaxed = true),
 		AlgorithmExpirationChecker(), DssWarningSanitizer(), TspErrorDetector(),
 		FileTrustStore(tempdir().toPath()), DocumentInputErrorDetector(), Pkcs11SessionCache(),
-		SignatureSpaceErrorDetector(),
+		SignatureSpaceErrorDetector(), DssLogCapture(),
 	)
 
 	/**

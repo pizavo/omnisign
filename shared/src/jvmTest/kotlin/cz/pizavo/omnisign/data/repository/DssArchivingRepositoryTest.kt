@@ -59,7 +59,7 @@ class DssArchivingRepositoryTest : FunSpec({
 	val configRepository: ConfigRepository = mockk()
 	val dssServiceFactory: DssServiceFactory = mockk(relaxed = true)
 	
-	val repository = DssArchivingRepository(configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(), RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()), mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector())
+	val repository = DssArchivingRepository(configRepository, dssServiceFactory, DssWarningSanitizer(), TspErrorDetector(), RevocationErrorDetector(), DocumentInputErrorDetector(), FileTrustStore(tempdir().toPath()), mockk<RenewalCheckCache>(relaxed = true), SignatureSpaceErrorDetector(), DssLogCapture())
 
 	val cryptographicSuite = AdESPolicy().cryptographicSuite()
 	
@@ -217,7 +217,7 @@ class DssArchivingRepositoryTest : FunSpec({
 		}
 		val repo = DssArchivingRepository(
 			configRepository, factory, DssWarningSanitizer(), TspErrorDetector(), RevocationErrorDetector(),
-			DocumentInputErrorDetector(), trustStore, cache, SignatureSpaceErrorDetector(),
+			DocumentInputErrorDetector(), trustStore, cache, SignatureSpaceErrorDetector(), DssLogCapture(),
 		)
 		return repo to factory
 	}
