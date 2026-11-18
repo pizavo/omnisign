@@ -183,7 +183,9 @@ it, and so does the debug output `--debug-extended` or the desktop's extended lo
 session is *not* `Closeable` — it is opened and stopped in a `try`/`finally`.
 3. **`DssWarningSanitizer`** classifies each raw message into a `WarningCategory` and folds the
 affected certificate identifiers together, so ten warnings about ten certificates become one
-sentence.
+sentence. A status that names several certificates is classified one certificate at a time, by the
+detail DSS gives for each, so one status can report a certificate with no revocation data beside
+another whose chain is untrusted.
 
 The categories, and roughly what each means:
 

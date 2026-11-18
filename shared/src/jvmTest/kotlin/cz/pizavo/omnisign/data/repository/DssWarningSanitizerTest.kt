@@ -27,6 +27,7 @@ class DssWarningSanitizerTest : FunSpec({
 			"[2026-07-09T09:21:41Z]! The nextUpdate available after : [2026-07-23T02:36:55Z]"
 	val undatedStalePoeDetail = "No revocation data found after the best signature time [2026-07-09T09:21:41Z]!"
 	val absentPoeDetail = "No revocation data found for certificate!"
+	val untrustedChainDetail = "Revocation data is skipped for untrusted certificate chain!"
 	val accessPointMissing = "The certificate 'C-ABCD1234' requires a revocation data, which is not " +
 			"acceptable due its configuration (no revocation access location points)!"
 	val afterExpiry = "The revocation 'R-1234ABCD' was not issued during the validity period of the certificate! " +
@@ -37,6 +38,14 @@ class DssWarningSanitizerTest : FunSpec({
 		WarningCategory.FRESH_REVOCATION_MISSING,
 		WarningCategory.CERTIFICATE_PARSE_ERROR,
 	)
+
+	/**
+	 * The message key of each summary in [result], in the order they are reported, paired with the
+	 * objects that summary names.
+	 */
+	fun keyedIds(result: SanitizedWarnings) = result.annotatedSummaries.map {
+		it.summary.shouldBeInstanceOf<LocalizableText.Keyed>().key to it.affectedIds
+	}
 
 	test("empty input produces empty output") {
 		val result = sanitizer.sanitize(emptyList())
@@ -129,6 +138,16 @@ class DssWarningSanitizerTest : FunSpec({
 		result.summaries[0] shouldNotContain "2026-07-16T02:36:55Z"
 	}
 
+	test("the stale POE summary reports the latest guaranteed time of separate warnings, the later one first") {
+		val raw = listOf(
+			"Revocation data is missing for one or more POE(s). [C-AB12CD34: $laterStalePoeDetail]",
+			"Revocation data is missing for one or more POE(s). [C-660A98F1: $stalePoeDetail]",
+		)
+		val result = sanitizer.sanitize(raw)
+		result.summaries[0] shouldContain "guarantees newer revocation data by 2026-07-23T02:36:55Z"
+		result.summaries[0] shouldNotContain "2026-07-16T02:36:55Z"
+	}
+
 	test("the stale POE summary falls back to generic advice when DSS reports no due time") {
 		val raw = listOf("Revocation data is missing for one or more POE(s). [C-660A98F1: $undatedStalePoeDetail]")
 		val result = sanitizer.sanitize(raw)
@@ -176,13 +195,17 @@ class DssWarningSanitizerTest : FunSpec({
 		result.annotatedSummaries[0].affectedIds shouldContainExactly listOf("C-AAAA1111")
 	}
 
-	test("POE warning mixing absent and stale revocation data reports the absent data") {
+	test("a POE warning mixing absent and stale revocation data reports each certificate under its own category") {
 		val raw = listOf(
 			"Revocation data is missing for one or more POE(s). " +
 					"[C-AAAA1111: $absentPoeDetail; C-BBBB2222: $stalePoeDetail]"
 		)
 		val result = sanitizer.sanitize(raw)
-		result.categories shouldBe setOf(WarningCategory.REVOCATION_POE_MISSING)
+		keyedIds(result) shouldContainExactly listOf(
+			MessageKey.WARNING_REVOCATION_POE_MISSING to listOf("C-AAAA1111"),
+			MessageKey.WARNING_REVOCATION_POE_STALE_BY_TIME to listOf("C-BBBB2222"),
+		)
+		result.hasRevocationWarnings shouldBe true
 	}
 
 	test("the missing-revocation-data status keeps its own category") {
@@ -298,7 +321,50 @@ class DssWarningSanitizerTest : FunSpec({
 		result.summaries shouldHaveSize 1
 		result.summaries[0] shouldContain "untrusted chain"
 	}
-	
+
+	test("a missing-revocation status naming missing data beside an untrusted chain reports both, in either order") {
+		listOf(
+			"[C-AAAA1111: $absentPoeDetail; C-BBBB2222: $untrustedChainDetail]",
+			"[C-BBBB2222: $untrustedChainDetail; C-AAAA1111: $absentPoeDetail]",
+		).forEach { entries ->
+			val result = sanitizer.sanitize(listOf("Revocation data is missing for one or more certificate(s). $entries"))
+			keyedIds(result) shouldContainExactly listOf(
+				MessageKey.WARNING_REVOCATION_NOT_FOUND to listOf("C-AAAA1111"),
+				MessageKey.WARNING_REVOCATION_UNTRUSTED_CHAIN to listOf("C-BBBB2222"),
+			)
+			result.summaries[0] shouldContain "1 certificate"
+			result.longTermMaterialMissing shouldBe true
+		}
+	}
+
+	test("a compound status with a blank base message is split by object too, brackets in its details included") {
+		val result = sanitizer.sanitize(listOf("[C-AAAA1111: $stalePoeDetail; C-BBBB2222: $untrustedChainDetail]"))
+		keyedIds(result) shouldContainExactly listOf(
+			MessageKey.WARNING_REVOCATION_NOT_FOUND to listOf("C-AAAA1111"),
+			MessageKey.WARNING_REVOCATION_UNTRUSTED_CHAIN to listOf("C-BBBB2222"),
+		)
+	}
+
+	test("an object of a compound status that no pattern matches is kept with the status's base message") {
+		val raw = listOf(
+			"Some unknown status. [C-AAAA1111: $absentPoeDetail; C-BBBB2222: An unknown detail; it goes on]"
+		)
+		val result = sanitizer.sanitize(raw)
+		result.categories shouldBe setOf(WarningCategory.REVOCATION_NOT_FOUND)
+		result.annotatedSummaries[0].affectedIds shouldContainExactly listOf("C-AAAA1111")
+		result.summaries shouldHaveSize 2
+		result.summaries[0] shouldContain "1 certificate"
+		result.summaries[1] shouldBe "Some unknown status. [C-BBBB2222: An unknown detail; it goes on]"
+		result.raw shouldContainExactly raw
+	}
+
+	test("a compound status none of whose objects match is kept whole, as one verbatim line") {
+		val message = "Some unknown status. [C-AAAA1111: An unknown detail; C-BBBB2222: Another unknown detail]"
+		val result = sanitizer.sanitize(listOf(message))
+		result.categories.shouldBeEmpty()
+		result.summaries shouldContainExactly listOf(message)
+	}
+
 	test("OCSP DSS Exception is classified as REVOCATION_NOT_FOUND") {
 		val raw = listOf(
 			"OCSP DSS Exception: Unable to retrieve OCSP response for certificate " +
