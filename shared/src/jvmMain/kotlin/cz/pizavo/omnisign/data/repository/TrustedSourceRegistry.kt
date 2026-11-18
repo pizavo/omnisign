@@ -58,10 +58,13 @@ private val logger = KotlinLogging.logger {}
  * @param signal Where acquisitions and refreshes are reported.
  * @param cacheDirectory The directory downloaded lists are cached in, [DssServiceFactory.tlCacheDir]
  *   unless a test needs a cache of its own.
+ * @param fetchTimeoutMillis How long a list's download may wait to connect and for each part of
+ *   the answer, [DssServiceFactory.TL_FETCH_TIMEOUT_MS] unless a test needs a shorter wait.
  */
 class TrustedSourceRegistry(
 	private val signal: TrustedListRefreshSignal = TrustedListRefreshSignal(),
 	private val cacheDirectory: () -> File = { DssServiceFactory.tlCacheDir() },
+	private val fetchTimeoutMillis: Int = DssServiceFactory.TL_FETCH_TIMEOUT_MS,
 ) {
 
 	/**
@@ -578,8 +581,7 @@ class TrustedSourceRegistry(
 			setCacheExpirationTime(cacheExpirationMillis)
 			setDataLoader(
 				CommonsDataLoader().apply {
-					timeoutConnection = DssServiceFactory.TL_FETCH_TIMEOUT_MS
-					timeoutSocket = DssServiceFactory.TL_FETCH_TIMEOUT_MS
+					DssServiceFactory.applyTimeout(this, fetchTimeoutMillis)
 					DssServiceFactory.configureTlTransportTrust(this)
 				}
 			)

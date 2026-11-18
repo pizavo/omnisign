@@ -316,15 +316,6 @@ class DssServiceFactoryTest : FunSpec({
 		result.verifier.alertOnRevokedCertificate shouldBe null
 	}
 	
-	// ── buildCertificateVerifier (simple timeout-based) ──────────────────────
-	
-	test("simple certificate verifier has wired AIA, OCSP, and CRL sources") {
-		val cv = factory.buildCertificateVerifier()
-		cv.aiaSource shouldNotBe null
-		cv.ocspSource shouldNotBe null
-		cv.crlSource shouldNotBe null
-	}
-	
 	// ── buildPdfObjectFactory ────────────────────────────────────────────────
 	
 	test("buildPdfObjectFactory returns a non-null PdfBox factory") {
@@ -443,7 +434,6 @@ class DssServiceFactoryTest : FunSpec({
 		"validation without a config" to factory.buildValidationCertificateVerifier(null).verifier,
 		"level inspection" to factory.buildLevelInspectionVerifier(minimalConfig()).verifier,
 		"level inspection without a config" to factory.buildLevelInspectionVerifier(null).verifier,
-		"lenient" to factory.buildCertificateVerifier(),
 	)
 
 	test("no verifier follows a file URL to an issuer") {

@@ -136,13 +136,11 @@ trust anchors are composed either way, since without them DSS trusts no chain an
 comes back `NO_CERTIFICATE_CHAIN_FOUND`. Without a `config` they are the directly-trusted
 certificates alone, as no configuration names a trusted list.
 
-Four more builders round it out. `buildLevelInspectionVerifier(config)` serves the inspections that
+Three more builders round it out. `buildLevelInspectionVerifier(config)` serves the inspections that
 have no operation behind them, the extension dialog's pre-fetch and the renewal assessment: it carries
 the configured trust anchors, without which a conformant B-LT document reads as B-T, and no CRL or
 OCSP source, so it never fetches revocation data. Its AIA source may still download an issuer
 certificate a document does not embed; the level itself is read from an offline copy.
-`buildCertificateVerifier(timeout)` returns a lenient verifier with AIA/OCSP/CRL sources but no config
-and no alerts.
 
 Every verifier, whichever builder made it and whether or not revocation checking is on, gets its AIA
 source from `buildAiaSource`. The `CommonCertificateVerifier` constructor installs one of its own that
@@ -159,6 +157,13 @@ overrides the binding from `aia.allowPrivateAddresses` in `server.yml`, which is
 Revocation sources are left alone: DSS fetches revocation data only for chains that end at a trust
 anchor, so those URLs come from trusted CAs. `buildTspSource()` constructs an `OnlineTSPSource`
 per configured timestamp server, wiring in that server's timeout and credentials.
+Each data loader the factory builds, and the one `TrustedSourceRegistry` downloads trusted lists
+with, gets its timeout from `DssServiceFactory.applyTimeout`, which sets all four of
+`CommonsDataLoader`'s timeouts: connecting, leasing a pooled connection, the response, and each
+read. Apache HttpClient 5 sets a connection's socket timeout to the request's response timeout
+before each exchange, so a loader given only the connect and socket timeouts would wait DSS's
+default of 60 seconds for an answer. The OCSP loader takes the OCSP timeout and the CRL loader the
+CRL timeout; the AIA loader keeps the shorter of the two and sets its timeouts itself.
 `buildPdfObjectFactory()` returns a `PdfBoxNativeObjectFactory` that spills large documents to a
 temporary file once the in-heap limit is exceeded, so signing a large PDF does not scale with its size
 in memory.
