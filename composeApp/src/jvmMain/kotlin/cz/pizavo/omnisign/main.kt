@@ -45,12 +45,11 @@ import org.koin.mp.KoinPlatform.getKoin
 import java.awt.Frame
 import java.awt.MouseInfo
 import java.awt.Point
-import java.awt.Rectangle
 import java.awt.event.MouseAdapter
 import java.io.File
 import java.util.Locale
-import java.util.concurrent.ConcurrentHashMap
 import javax.swing.Timer
+import kotlin.io.path.absolutePathString
 import kotlin.system.exitProcess
 
 /**
@@ -153,8 +152,9 @@ private val isMacOs: Boolean = System.getProperty("os.name").lowercase().contain
  * is undecorated and the Compose toolbar acts as a CSD header with custom window
  * controls and WM-assisted drag.
  *
- * The preference is loaded once at startup from `~/.config/omnisign/appearance.properties`
- * and can be changed via the Settings dialog under Appearance > Window (requires restart).
+ * The preference is loaded once at startup from the UI preferences store, `preferences/ui.json`
+ * in the application configuration directory (see [loadUseNativeTitleBar]), and can be changed
+ * via the Settings dialog under Appearance > Window (requires restart).
  */
 private val useNativeTitleBar: Boolean = if (isLinux) loadUseNativeTitleBar() ?: false else false
 
@@ -167,30 +167,61 @@ private val useNativeTitleBar: Boolean = if (isLinux) loadUseNativeTitleBar() ?:
 private val isLinuxCsd: Boolean = isLinux && !useNativeTitleBar
 
 /**
- * Resolves the platform-native log directory for the OmniSign desktop application.
- *
- * - **Windows**: `%LOCALAPPDATA%/omnisign/logs`
- * - **macOS**: `~/Library/Logs/omnisign`
- * - **Linux/other**: `$XDG_STATE_HOME/omnisign` (fallback `~/.local/state/omnisign`)
+ * Resolves the platform-native log directory for the OmniSign desktop application, as
+ * [desktopLogDirectory] describes, for this JVM's operating system, home directory and
+ * environment.
  */
-private fun resolveLogDir(): String {
-	val userHome = System.getProperty("user.home")
-	val os = System.getProperty("os.name").lowercase()
-	return when {
-		os.contains("win") ->
-			File(
-				System.getenv("LOCALAPPDATA") ?: "$userHome/AppData/Local",
-				"omnisign/logs"
-			).absolutePath
+private fun resolveLogDir(): String =
+	desktopLogDirectory(System.getProperty("os.name"), System.getProperty("user.home"), System::getenv)
+		.absolutePathString()
 
-		os.contains("mac") ->
-			File(userHome, "Library/Logs/omnisign").absolutePath
+/**
+ * Make every X11 window this process opens report `WM_CLASS` "OmniSign".
+ *
+ * On Linux, JBR 25 sets `WM_CLASS` from `XToolkit.awtAppClassName`, which the `XToolkit`
+ * constructor derives from the bottom frame of the call stack, the main class name; it no longer
+ * reads `sun.awt.wmclass` for this. This forces the toolkit to initialize and then overrides that
+ * private static field by reflection, which needs `--add-opens java.desktop/sun.awt.X11=ALL-UNNAMED`
+ * in the JVM arguments (see `build.gradle.kts`). On a display that is not X11, or in a JVM that
+ * refuses the reflection, nothing changes.
+ *
+ * [main] calls it only after the `renew` early exit: initializing the toolkit starts the AWT event
+ * dispatch thread, which is not a daemon thread and would keep a headless renewal run from exiting.
+ */
+private fun overrideX11WmClass() {
+	try {
+		java.awt.Toolkit.getDefaultToolkit()
+		val cls = Class.forName("sun.awt.X11.XToolkit")
+		val fld = cls.getDeclaredField("awtAppClassName")
+		fld.isAccessible = true
+		fld.set(null, "OmniSign")
+	} catch (_: Exception) {
+	}
+}
 
-		else ->
-			File(
-				System.getenv("XDG_STATE_HOME") ?: "$userHome/.local/state",
-				"omnisign"
-			).absolutePath
+/**
+ * Set the X11 `_NET_WM_WINDOW_TYPE` of [window] to `_NET_WM_WINDOW_TYPE_NORMAL`, so that the
+ * window manager draws its shadows around the undecorated window.
+ *
+ * In a session that is not X11, or in a JVM that refuses the reflection, nothing changes and the
+ * window may have no shadow.
+ */
+private fun markX11WindowTypeNormal(window: java.awt.Window) {
+	try {
+		val xWindow = Class.forName("sun.awt.X11.XToolkit")
+			.getMethod("windowToXWindow", java.awt.Window::class.java)
+			.invoke(null, window)
+		val xAtomClass = Class.forName("sun.awt.X11.XAtom")
+		val getMethod = xAtomClass.getMethod("get", String::class.java)
+		val typeAtom = getMethod.invoke(null, "_NET_WM_WINDOW_TYPE")
+		val normalAtom = getMethod.invoke(null, "_NET_WM_WINDOW_TYPE_NORMAL")
+		val windowId = xWindow.javaClass.getMethod("getWindow").invoke(xWindow) as Long
+		val atomValue = xAtomClass.getMethod("getAtom").invoke(normalAtom) as Long
+		val setAtomListPropertyMethod = typeAtom.javaClass.getMethod(
+			"setAtomListProperty", Long::class.javaPrimitiveType, LongArray::class.java,
+		)
+		setAtomListPropertyMethod.invoke(typeAtom, windowId, longArrayOf(atomValue))
+	} catch (_: Throwable) {
 	}
 }
 
@@ -241,28 +272,9 @@ fun main(args: Array<String> = emptyArray()) {
 		return
 	}
 
-	// On Linux, JBR 25 sets WM_CLASS from XToolkit.awtAppClassName, which is derived
-	// from the call-stack's bottom frame (the main class name) in the XToolkit constructor.
-	// It no longer reads sun.awt.wmclass for this purpose.  We force toolkit
-	// initialization, then override the private static field via reflection so that
-	// every subsequent X11 window gets WM_CLASS = "OmniSign".
-	// --add-opens java.desktop/sun.awt.X11=ALL-UNNAMED must be in jvmArgs (see build.gradle.kts).
-	// This block must come AFTER the renew-mode early-exit: Toolkit.getDefaultToolkit()
-	// starts the AWT event-dispatch thread (a non-daemon thread), which would prevent
-	// the JVM from exiting cleanly after a headless-renewal run.
 	val displayServer: DisplayServer? = if (isLinux) {
 		val ds = DisplayServer.detect()
-		if (ds != DisplayServer.WAYLAND) {
-			try {
-				java.awt.Toolkit.getDefaultToolkit() // ensure XToolkit.<init> has already run
-				val cls = Class.forName("sun.awt.X11.XToolkit")
-				val fld = cls.getDeclaredField("awtAppClassName")
-				fld.isAccessible = true
-				fld.set(null, "OmniSign")
-			} catch (_: Exception) {
-				// Non-X11 display or restricted JVM – ignore.
-			}
-		}
+		if (ds != DisplayServer.WAYLAND) overrideX11WmClass()
 		ds
 	} else null
 
@@ -444,10 +456,13 @@ private val TitleBarClientAreaListener = object : MouseAdapter() {}
  *
  * On **Windows and macOS** the window is **decorated**: the OS keeps its native
  * frame (shadows, resize borders, snap assist) while JBR hides the title bar
- * and hands its pixels to Compose. The OS provides native window-control buttons *  at `rightInset` / `leftInset`. Drag is handled via
+ * and hands its pixels to Compose. The OS provides native window-control buttons
+ * at `rightInset` / `leftInset`. Drag is handled via
  * [WindowDecorations.CustomTitleBar.forceHitTest] on a high-frequency polling
  * timer that primes the next hit-test to return `HTCAPTION` when the cursor
- * is over a registered drag area.
+ * is over a registered drag area. The areas are held in [TitleBarDragAreas],
+ * which converts them at the display scale the window has when Compose lays them
+ * out, so they stay in place after the window moves to a monitor with another scale.
  *
  * On **Linux** the window is **undecorated**, so the Compose toolbar can occupy
  * the full top edge. JBR's `forceHitTest` does not work on X11, and the WM
@@ -516,25 +531,7 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 		}
 
 		if (isLinuxCsd) {
-			remember(awtWindow) {
-				try {
-					val xWindow = Class.forName("sun.awt.X11.XToolkit")
-						.getMethod("windowToXWindow", java.awt.Window::class.java)
-						.invoke(null, awtWindow)
-					val xAtomClass = Class.forName("sun.awt.X11.XAtom")
-					val getMethod = xAtomClass.getMethod("get", String::class.java)
-					val typeAtom = getMethod.invoke(null, "_NET_WM_WINDOW_TYPE")
-					val normalAtom = getMethod.invoke(null, "_NET_WM_WINDOW_TYPE_NORMAL")
-					val windowId = xWindow.javaClass.getMethod("getWindow").invoke(xWindow) as Long
-					val atomValue = xAtomClass.getMethod("getAtom").invoke(normalAtom) as Long
-					val setAtomListPropertyMethod = typeAtom.javaClass.getMethod(
-						"setAtomListProperty", Long::class.javaPrimitiveType, LongArray::class.java,
-					)
-					setAtomListPropertyMethod.invoke(typeAtom, windowId, longArrayOf(atomValue))
-				} catch (_: Throwable) {
-					// Non-X11 session or restricted JVM — WM shadows may not appear.
-				}
-			}
+			remember(awtWindow) { markX11WindowTypeNormal(awtWindow) }
 		}
 
 		val isMacOs = remember { System.getProperty("os.name").lowercase().contains("mac") }
@@ -588,8 +585,10 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 		
 		val hasTitleBar = titleBar != null
 		
-		val dragAreas = remember { ConcurrentHashMap<String, Rectangle>() }
-		
+		val dragAreas = remember(awtWindow) {
+			TitleBarDragAreas { awtWindow.graphicsConfiguration?.defaultTransform?.scaleX ?: 1.0 }
+		}
+
 		DisposableEffect(titleBar) {
 			val timer = if (titleBar != null) {
 				Timer(FORCE_HIT_TEST_POLL_MS) {
@@ -602,7 +601,7 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 					}
 					val localX = screen.x - panePos.x
 					val localY = screen.y - panePos.y
-					val hit = dragAreas.values.any { it.contains(localX, localY) }
+					val hit = dragAreas.contains(localX, localY)
 					if (hit) {
 						titleBar.forceHitTest(false)
 					}
@@ -612,21 +611,10 @@ private fun JbrDecoratedWindow(onCloseRequest: () -> Unit) {
 			onDispose { timer?.stop() }
 		}
 		
-		val awtScale = remember(awtWindow) {
-			awtWindow.graphicsConfiguration.defaultTransform.scaleX
-		}
-		
-		val dragAreaCallback: ((String, LayoutCoordinates) -> Unit)? = remember(hasTitleBar, dragAreas, awtScale) {
+		val dragAreaCallback: ((String, LayoutCoordinates) -> Unit)? = remember(hasTitleBar, dragAreas) {
 			if (!hasTitleBar) null
 			else { key: String, coords: LayoutCoordinates ->
-				val pos = coords.positionInWindow()
-				val size = coords.size
-				dragAreas[key] = Rectangle(
-					(pos.x / awtScale).toInt(),
-					(pos.y / awtScale).toInt(),
-					(size.width / awtScale).toInt(),
-					(size.height / awtScale).toInt(),
-				)
+				dragAreas.register(key, coords.positionInWindow(), coords.size)
 			}
 		}
 		

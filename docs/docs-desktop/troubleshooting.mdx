@@ -60,6 +60,9 @@ Logs rotate daily and are kept for 30 days. The directory is:
 | macOS    | `~/Library/Logs/omnisign`                                   |
 | Linux    | `$XDG_STATE_HOME/omnisign` (else `~/.local/state/omnisign`) |
 
+On Linux, an `XDG_STATE_HOME` that is empty or not an absolute path counts as unset, as the XDG Base
+Directory specification asks.
+
 The current log is `omnisign.log`; older days are gzip-compressed
 (`omnisign.YYYY-MM-DD.log.gz`). **Export logs** packages these for you, so you
 normally don't need to open the folder manually.
