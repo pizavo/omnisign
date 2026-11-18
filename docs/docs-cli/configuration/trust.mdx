@@ -13,6 +13,13 @@ certificate is imported once and stored under its SHA-256 **fingerprint**, which
 there is no separate name. Trust is partitioned into a **global** scope plus one scope per profile;
 the resolved trust set for a profile is the union of the global scope and that profile's scope.
 
+A certificate's role decides what it vouches for: a signature anchored at a certificate of the
+trust store needs that anchor trusted as `CA` or `ANY`, a timestamp as `TSA` or `ANY`, and one
+whose anchor has the other role is not counted as trusted. An anchor that a trusted list also
+trusts counts for both roles, whatever its role here. The anchor is the first trusted certificate
+in the chain, counting from the signer, because validation stops there: when you trust an issuing
+CA, the role you give the root above it does not count.
+
 A subcommand that fails says why on stderr and exits with status 1, whether the file is not a
 certificate or the trust store cannot be read or written.
 

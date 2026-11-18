@@ -167,8 +167,10 @@ refresh button to see it reflected.
 :::note[Trust is per role]
 Trusting a certificate from a signature's chain (CA) does not by itself trust it for timestamps, or
 vice versa — trust it from both views if you need both roles. Certificates already on a trusted list
-are unaffected. You can review and re-type trusted certificates anytime under
-[Trusted Certificates](trusted-certificates.mdx).
+are unaffected. The role that counts is that of the first trusted certificate in the chain,
+counting from the signer, because validation stops there: when you trust an issuing CA, the role
+of the root above it does not count. You can review and re-type trusted certificates anytime
+under [Trusted Certificates](trusted-certificates.mdx).
 :::
 
 ### Document timestamps
