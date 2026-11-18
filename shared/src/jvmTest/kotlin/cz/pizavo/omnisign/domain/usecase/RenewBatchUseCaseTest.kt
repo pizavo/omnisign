@@ -52,6 +52,7 @@ import io.mockk.slot
 import io.mockk.verify
 import java.io.File
 import java.io.IOException
+import java.nio.file.FileSystems
 import kotlin.coroutines.cancellation.CancellationException
 import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
@@ -63,6 +64,13 @@ import kotlin.time.Instant
 class RenewBatchUseCaseTest : FunSpec({
 
     val tmpDir = tempdir()
+    val freeDrive = if (System.getProperty("os.name", "").startsWith("Windows")) {
+        ('Z' downTo 'D').firstOrNull { letter ->
+            FileSystems.getDefault().rootDirectories.none { it.toString().first().uppercaseChar() == letter }
+        }
+    } else {
+        null
+    }
     val archivingRepository: ArchivingRepository = mockk()
     val configRepository: ConfigRepository = mockk()
 
@@ -970,6 +978,30 @@ class RenewBatchUseCaseTest : FunSpec({
         row.path shouldBe gone.absolutePath
         row.status shouldBe RenewFileStatus.Status.ERROR
         row.message shouldBe "the file does not exist or cannot be reached, so it was not checked"
+    }
+
+    test("resolveGlobs reports a glob rooted at a drive that is not there as a folder it cannot reach").config(
+        enabledIf = { freeDrive != null },
+    ) {
+        val uc = useCaseWith(baseConfig)
+        val glob = "$freeDrive:/**/*.pdf"
+        val resolved = uc.resolveGlobs(listOf(glob)).shouldBeRight()
+
+        resolved.files.shouldBeEmpty()
+        val row = resolved.unreachable.single()
+        row.path shouldBe "$freeDrive:\\"
+        row.status shouldBe RenewFileStatus.Status.ERROR
+        row.message shouldBe "the folder does not exist or cannot be reached, so renewal glob '$glob' checked none of its documents"
+    }
+
+    test("resolveGlobs reports a glob whose folder is relative to a drive that is not there as unusable").config(
+        enabledIf = { freeDrive != null },
+    ) {
+        val uc = useCaseWith(baseConfig)
+        val glob = "$freeDrive:docs/*.pdf"
+
+        uc.resolveGlobs(listOf(glob)).shouldBeLeft() shouldBe
+            "renewal glob '$glob' cannot be used: its directory '$freeDrive:docs' cannot be made an absolute path"
     }
 
     test("resolveGlobs takes a listed file that exists, once however often it is listed") {
@@ -1947,6 +1979,39 @@ class RenewBatchUseCaseTest : FunSpec({
         )
         jobResult.files.last().path shouldBe missing.absolutePath
         coVerify(exactly = 0) { archivingRepository.extendDocument(any()) }
+    }
+
+    test("a job whose glob is rooted at a drive that is not there fails alone, and the next job still renews").config(
+        enabledIf = { freeDrive != null },
+    ) {
+        val present = subDir("after-unplugged-drive")
+        val file = File(present, "doc.pdf").also { it.createNewFile() }
+        coEvery {
+            archivingRepository.needsArchivalRenewal(file.absolutePath, any(), any())
+        } returns RenewalAssessment.needed(RenewalReason.TIMESTAMP_EXPIRING).right()
+        coEvery {
+            archivingRepository.extendDocument(match { it.inputName == file.name })
+        } returns ArchivingResult(
+            outputBytes = ByteArray(0),
+            outputName = file.name,
+            newSignatureLevel = "PAdES-BASELINE-LTA",
+            achievedLevel = SignatureLevel.PADES_BASELINE_LTA,
+        ).right()
+
+        val unplugged = RenewalJob(name = "unplugged", globs = listOf("$freeDrive:/**/*.pdf"), backupRetention = 0)
+        val next = RenewalJob(name = "next", globs = listOf(globDir(present)), backupRetention = 0)
+        val result = useCaseWith(
+            baseConfig.copy(renewalJobs = mapOf("unplugged" to unplugged, "next" to next))
+        )().shouldNotBeNull()
+
+        result.renewed shouldBe 1
+        result.errors shouldBe 1
+        result.jobs.single { it.name == "unplugged" }.files.map { it.path to it.status } shouldContainExactly listOf(
+            "$freeDrive:\\" to RenewFileStatus.Status.ERROR,
+        )
+        result.jobs.single { it.name == "next" }.files.map { it.path to it.status } shouldContainExactly listOf(
+            file.absolutePath to RenewFileStatus.Status.RENEWED,
+        )
     }
 
     test("a document that fails with a JVM Error is one error row, not a dead batch") {

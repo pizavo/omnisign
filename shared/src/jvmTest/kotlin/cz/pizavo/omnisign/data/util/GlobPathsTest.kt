@@ -19,6 +19,7 @@ import kotlin.io.path.exists
 
 /**
  * Verifies [isAbsoluteGlobRoot] accepts absolute-rooted globs and rejects relative ones, that
+ * [globRootAndTail] keeps the separator of a drive or file system root a glob starts from, that
  * [absolutizeGlob] resolves a relative glob against a base directory while leaving the wildcard tail
  * intact, and that [renewalGlobMatcher] and [globSelects] let a recursive segment match no
  * directory, as the renewal run and the desktop's renewal offer both rely on. Uses the current
@@ -126,6 +127,24 @@ class GlobPathsTest : FunSpec({
 		globRootAndTail("/docs/a?.pdf") shouldBe ("/docs" to "a?.pdf")
 		globRootAndTail("/docs/[ab].pdf") shouldBe ("/docs" to "[ab].pdf")
 		globRootAndTail("/docs/{a,b}.pdf") shouldBe ("/docs" to "{a,b}.pdf")
+	}
+
+	test("keeps the separator of a root a glob starts from") {
+		globRootAndTail("/*.pdf") shouldBe ("/" to "*.pdf")
+		globRootAndTail("\\**\\*.pdf") shouldBe ("/" to "**/*.pdf")
+		globRootAndTail("C:\\**\\*.pdf") shouldBe ("C:/" to "**/*.pdf")
+		globRootAndTail("z:/report-*.pdf") shouldBe ("z:/" to "report-*.pdf")
+	}
+
+	test("resolves a glob that starts with a separator against the root of the base's drive") {
+		val driveRoot = base.root.toString().replace('\\', '/')
+		absolutizeGlob("\\*.pdf", base) shouldBe "${driveRoot}*.pdf"
+		absolutizeGlob("\\**\\*.pdf", base) shouldBe "${driveRoot}**/*.pdf"
+	}
+
+	test("selects a file through a glob rooted at the root of its drive") {
+		val rootGlob = "${base.root.toString().replace('\\', '/')}**/*.pdf"
+		globSelects(rootGlob, (base / "doc.pdf").toString()).shouldBeTrue()
 	}
 
 	test("roots a glob without a directory part in the working directory") {
