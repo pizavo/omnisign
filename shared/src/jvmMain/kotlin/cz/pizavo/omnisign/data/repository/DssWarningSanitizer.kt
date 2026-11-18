@@ -26,8 +26,11 @@ class DssWarningSanitizer {
 	 * Classify and group [rawWarnings] into user-friendly summary lines.
 	 *
 	 * Each raw message is matched against known DSS warning patterns and placed into a
-	 * [WarningCategory] bucket. Categories are emitted in enum declaration order, one
-	 * summary line per bucket, followed by any unmatched messages verbatim.
+	 * [WarningCategory] bucket. A compound status, which names several objects, is matched one
+	 * object at a time, so one status can feed several buckets. Categories are emitted in enum
+	 * declaration order, one summary line per bucket, followed by any unmatched messages verbatim.
+	 * When only some objects of a compound status match, each of the others is kept as the
+	 * status's base message followed by that object's own entry.
 	 *
 	 * Categories listed in [suppressedCategories] are still classified (and appear in the
 	 * returned [SanitizedWarnings.categories] set and [SanitizedWarnings.raw] list) but
@@ -66,15 +69,20 @@ class DssWarningSanitizer {
 		}
 
 		for (raw in rawWarnings) {
-			val match = classify(raw)
-			if (match != null) {
+			val texts = objectTexts(raw)
+			val unclassified = mutableListOf<String>()
+			for (text in texts) {
+				val match = classify(text)
+				if (match == null) {
+					unclassified += text
+					continue
+				}
 				buckets.getOrPut(match.first) { mutableSetOf() } += match.second
 				val due = extractNextUpdate(raw)
 				val current = dueDates[match.first]
 				if (due != null && (current == null || due > current)) dueDates[match.first] = due
-			} else {
-				unmatched += raw
 			}
+			unmatched += if (unclassified.size == texts.size) listOf(raw) else unclassified
 		}
 
 		val annotated = mutableListOf<AnnotatedWarning>()
@@ -104,12 +112,30 @@ class DssWarningSanitizer {
 	}
 	
 	/**
+	 * The texts [classify] is given for [message]: one per object a compound status names, or
+	 * [message] alone when it is not a compound status.
+	 *
+	 * [CollectingStatusAlert] renders a status that concerns several objects as
+	 * `<base message> [<id>: <detail>; <id>: <detail>]`, and the detail can differ from one object
+	 * to the next. One status about missing revocation data can say of one certificate that none
+	 * was found and of another that its chain is untrusted. Matched as a whole, the message would
+	 * put every object it names into the category of whichever detail a pattern found first, so
+	 * each object gets a text of its own, `<base message> [<id>: <detail>]`, and lands in the
+	 * category its own detail calls for.
+	 */
+	private fun objectTexts(message: String): List<String> {
+		val compound = COMPOUND_STATUS.matchEntire(message) ?: return listOf(message)
+		val (head, entries) = compound.destructured
+		return OBJECT_SEPARATOR.split(entries).map { "$head$it]" }
+	}
+
+	/**
 	 * Try to match [message] against the known DSS warning patterns.
 	 *
-	 * Identifiers are collected independently of the matching pattern: a compound
-	 * [CollectingStatusAlert] message names its objects *before* the detail text that
-	 * describes them, so a pattern anchored on the detail cannot capture them, and a
-	 * single message can name several objects at once.
+	 * [sanitize] calls it once per object of a compound status (see [objectTexts]), so each object
+	 * is classified by its own detail. Identifiers are collected independently of the matching
+	 * pattern, because an object's identifier comes *before* the detail text a pattern is anchored
+	 * on, and every identifier [message] names is returned with the one category it matched.
 	 *
 	 * @return A pair of the matched [WarningCategory] and every DSS object identifier named
 	 *   in the message (full certificate or timestamp hashes like `C-AAAA…`), or null when no
@@ -157,6 +183,24 @@ class DssWarningSanitizer {
 		 */
 		private val OBJECT_ID = Regex("""\b[CT]-[A-F0-9]{4,}\b""")
 
+		/**
+		 * Matches a compound status as a whole, capturing its head, which is the base message with
+		 * the bracket that opens the object list, and its entries, which are what lies between that
+		 * bracket and the closing one at the very end.
+		 *
+		 * The first bracket opens the list, as no base message DSS sets contains one. A status whose
+		 * base message is blank starts with the bracket, and that alternative is tried first,
+		 * because the details themselves can contain brackets, such as the times of a stale
+		 * revocation detail.
+		 */
+		private val COMPOUND_STATUS = Regex("""(\[|.*? \[)(.+)]""")
+
+		/**
+		 * Where one entry of a compound status ends and the next begins. Only a semicolon followed
+		 * by an object identifier and its colon counts, so punctuation within a detail cannot split it.
+		 */
+		private val OBJECT_SEPARATOR = Regex("""; (?=[A-Z]-[A-F0-9]{4,}: )""")
+
 		private const val ISO_INSTANT = """\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z"""
 
 		/**
@@ -174,7 +218,8 @@ class DssWarningSanitizer {
 		
 		/**
 		 * Warning patterns per category, tried in iteration order; the first category with a
-		 * matching pattern wins.
+		 * matching pattern wins. A compound status is matched one object at a time, as its base
+		 * message followed by that object's entry (see [objectTexts]).
 		 *
 		 * The order is load-bearing. DSS raises three distinct statuses — missing revocation
 		 * data, an uncovered proof-of-existence, and revocation data that predates the best
