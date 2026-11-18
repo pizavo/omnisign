@@ -11,6 +11,7 @@ import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.ResolvedConfig
+import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
 import cz.pizavo.omnisign.domain.model.config.enums.TokenType
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
@@ -18,6 +19,8 @@ import cz.pizavo.omnisign.domain.model.parameters.ArchivingParameters
 import cz.pizavo.omnisign.domain.model.parameters.SigningParameters
 import cz.pizavo.omnisign.domain.model.parameters.ValidationParameters
 import cz.pizavo.omnisign.domain.model.result.RenewalReason
+import cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor
+import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.model.validation.RevocationOutcome
 import cz.pizavo.omnisign.domain.model.validation.revocationOutcome
 import cz.pizavo.omnisign.domain.port.RenewalCheckCache
@@ -37,6 +40,7 @@ import eu.europa.esig.dss.token.Pkcs12SignatureToken
 import io.kotest.assertions.arrow.core.shouldBeRight
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
+import io.kotest.matchers.booleans.shouldBeFalse
 import io.kotest.matchers.booleans.shouldBeTrue
 import io.kotest.matchers.collections.shouldNotBeEmpty
 import io.kotest.matchers.ints.shouldBeGreaterThan
@@ -98,6 +102,11 @@ import java.util.*
  * The same documents show which revocation checks validation accepts. Under the anchor DSS accepts
  * the CRL embedded at signing, and it settles that the signer was not revoked. Without the anchor DSS
  * accepts none, so the same good CRL settles nothing.
+ *
+ * They also show which trusted certificate the per-reference trust policy judges. DSS lists each
+ * chain up to the root, past the issuing CA it trusts, so with the root in the trust store too both
+ * are trusted, and only the issuing CA, where DSS ends its validation, decides whether a signature
+ * or a timestamp is downgraded for the role its anchor is typed for.
  */
 class TrustAnchoredLevelE2ETest : FunSpec({
 
@@ -461,6 +470,68 @@ class TrustAnchoredLevelE2ETest : FunSpec({
 		signature.revocations.map { it.status }.toSet() shouldBe setOf("GOOD")
 		signature.revocations.map { it.accepted }.toSet() shouldBe setOf(false)
 		signature.revocations.revocationOutcome(signature.signatureTime) shouldBe RevocationOutcome.Undetermined
+	}
+
+	/** A trust store holding each of [anchors]' certificates in the global scope, typed for its role. */
+	suspend fun storeWith(vararg anchors: Pair<X509Certificate, TrustedCertificateType>): FileTrustStore =
+		FileTrustStore(tempdir().toPath()).also { store ->
+			anchors.forEach { (cert, type) -> store.add(TrustScope.Global, cert.encoded, type).shouldBeRight() }
+		}
+
+	/**
+	 * A [DssValidationRepository] whose verifier trusts the anchors [store] resolves, built as the
+	 * production factory builds them, together with [unmanaged]: certificates a source the store does
+	 * not manage trusts, as a trusted list trusts its entries.
+	 */
+	fun storeValidationRepository(store: FileTrustStore, vararg unmanaged: X509Certificate): DssValidationRepository {
+		val factory = mockk<DssServiceFactory>(relaxed = true)
+		every { factory.buildPdfObjectFactory() } returns PdfBoxNativeObjectFactory()
+		every { factory.buildValidationCertificateVerifier(any(), any(), any()) } answers {
+			val sources = listOfNotNull(
+				DssServiceFactory.buildTrustedCertSource(secondArg<List<ResolvedTrustAnchor>>()),
+				CommonTrustedCertificateSource().apply {
+					unmanaged.forEach { addCertificate(DSSUtils.loadCertificate(it.encoded)) }
+				},
+			)
+			CertificateVerifierResult(verifier(anchored = false).apply { setTrustedCertSources(*sources.toTypedArray()) })
+		}
+		return DssValidationRepository(factory, store, DssWarningSanitizer())
+	}
+
+	test("a signature anchored at a CA the store does not manage keeps its trust, whatever role the store gives the root") {
+		val signature = validatedSignature(
+			storeValidationRepository(storeWith(rootCert to TrustedCertificateType.TSA), interCert),
+			signAt(SignatureLevel.PADES_BASELINE_T).outputBytes,
+		)
+
+		signature.policyUntrusted.shouldBeFalse()
+	}
+
+	test("a timestamp anchored at a CA the store does not manage keeps its trust, whatever role the store gives the root") {
+		val timestamp = validatedSignature(
+			storeValidationRepository(storeWith(rootCert to TrustedCertificateType.CA), interCert),
+			signAt(SignatureLevel.PADES_BASELINE_T).outputBytes,
+		).timestamps.single()
+
+		timestamp.policyUntrusted.shouldBeFalse()
+	}
+
+	test("a signature anchored at a store CA trusted for timestamps only is downgraded, though the store trusts the root for signatures") {
+		val signature = validatedSignature(
+			storeValidationRepository(storeWith(interCert to TrustedCertificateType.TSA, rootCert to TrustedCertificateType.CA)),
+			signAt(SignatureLevel.PADES_BASELINE_T).outputBytes,
+		)
+
+		signature.policyUntrusted.shouldBeTrue()
+	}
+
+	test("a timestamp anchored at a store CA trusted for signatures only is downgraded, though the store trusts the root for timestamps") {
+		val timestamp = validatedSignature(
+			storeValidationRepository(storeWith(interCert to TrustedCertificateType.CA, rootCert to TrustedCertificateType.TSA)),
+			signAt(SignatureLevel.PADES_BASELINE_T).outputBytes,
+		).timestamps.single()
+
+		timestamp.policyUntrusted.shouldBeTrue()
 	}
 })
 

@@ -103,8 +103,9 @@ internal fun euLotlUnavailableWarranted(
  *
  * Per-reference trust types are enforced as a post-validation downgrade: a signature or timestamp
  * DSS accepts is flagged [SignatureValidationResult.policyUntrusted] /
- * [TimestampValidationResult.policyUntrusted] when its terminating store anchor is trusted only for
- * the other role (see [isDowngradedByPolicy]).
+ * [TimestampValidationResult.policyUntrusted] when the trust anchor its chain ends at, the first
+ * trusted certificate in it, is a store anchor trusted only for the other role (see
+ * [managedAnchorType] and [isDowngradedByPolicy]).
  *
  * Revocation data that predates the time it has to cover is reported as a warning without changing
  * the indication, because it does not make the signature invalid — it makes it under-evidenced (see
@@ -428,7 +429,7 @@ class DssValidationRepository(
 		
 		val tsaSubjectDN = tsw.signingCertificate?.getCertificateDN()?.let(::readableDistinguishedName)
 		val policyUntrusted = isDowngradedByPolicy(
-			managedAnchorTypes(tsw.certificateChain, anchorTypes),
+			managedAnchorType(tsw.certificateChain, anchorTypes),
 			TrustedCertificateType.TSA,
 		)
 
@@ -498,7 +499,7 @@ class DssValidationRepository(
 			)
 		} ?: emptyList()
 		val policyUntrusted = isDowngradedByPolicy(
-			managedAnchorTypes(sigWrapper?.certificateChain ?: emptyList(), anchorTypes),
+			managedAnchorType(sigWrapper?.certificateChain ?: emptyList(), anchorTypes),
 			TrustedCertificateType.CA,
 		)
 		
@@ -869,8 +870,8 @@ class DssValidationRepository(
 	}
 
 	/**
-	 * Map each resolved anchor's DSS certificate id to its per-reference trust type, so a
-	 * component's terminating trusted anchor can be matched back to the policy it carries.
+	 * Map each resolved anchor's DSS certificate id to its per-reference trust type, so the trust
+	 * anchor a component's chain ends at can be matched back to the policy it carries.
 	 */
 	private fun anchorTypeByDssId(
 		anchors: List<ResolvedTrustAnchor>,
@@ -879,14 +880,4 @@ class DssValidationRepository(
 			.generateCertificate(anchor.der.inputStream()) as java.security.cert.X509Certificate
 		CertificateToken(x509).getDSSIdAsString() to anchor.type
 	}
-
-	/**
-	 * The per-reference types of the store-managed anchors that terminate [chain] - empty when
-	 * trust came from a trusted list or an anchor the store does not manage.
-	 */
-	private fun managedAnchorTypes(
-		chain: List<CertificateWrapper>,
-		anchorTypes: Map<String, TrustedCertificateType>,
-	): List<TrustedCertificateType> =
-		chain.filter { it.isTrusted }.mapNotNull { anchorTypes[it.id] }
 }
