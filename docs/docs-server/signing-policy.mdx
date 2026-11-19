@@ -106,8 +106,10 @@ how the entries combine.
 Every date of `algorithmConstraints`, its `policyUpdateDate` and each date of
 `expirationDateOverrides`, is written as `YYYY-MM-DD`, in `global` and in every profile, whatever
 date format a custom validation policy uses: the server writes the date into the policy in the
-policy's own format. A date in any other form, such as `2030` or `31.12.2030`, fails startup with
-an error that names the field.
+policy's own format. If that format cannot hold the exact day, as a format of the year alone
+(`yyyy`) cannot hold any day but 1 January, the policy keeps its own date, and a warning in the log
+says so. A date in any other form, such as `2030` or `31.12.2030`, fails startup with an error that
+names the field.
 
 A `defaultEncryptionAlgorithm`, or a profile's `encryptionAlgorithm`, has to suit the signing key:
 `RSA_SSA_PSS` can take the place of `RSA` on an RSA key, and `PLAIN_ECDSA` that of `ECDSA` on an EC
