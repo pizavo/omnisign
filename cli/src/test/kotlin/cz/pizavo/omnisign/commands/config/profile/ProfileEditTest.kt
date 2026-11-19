@@ -344,6 +344,19 @@ class ProfileEditTest : FunSpec({
 		)
 	}
 
+	test("refuses an expiry override whose date is not in the form YYYY-MM-DD, and changes nothing") {
+		coEvery { manageProfile.get(existing.name) } returns existing.right()
+
+		val result = Omnisign().test(
+			listOf("config", "profile", "edit", existing.name, "--algo-expiry-override", "SHA1=01.01.2028")
+		)
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "invalid value for --algo-expiry-override: the date of SHA1, '01.01.2028', " +
+			"is not in the form YYYY-MM-DD, such as 2030-12-31"
+		coVerify(exactly = 0) { manageProfile.upsert(any()) }
+	}
+
 	test("removes every expiry override on request") {
 		val updated = editProfile("--clear-algo-expiry-overrides")
 

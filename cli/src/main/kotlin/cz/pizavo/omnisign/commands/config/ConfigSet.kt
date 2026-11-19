@@ -6,6 +6,7 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
+import cz.pizavo.omnisign.cli.expiryOverrides
 import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.cli.requirePersistentCredentialStore
 import cz.pizavo.omnisign.cli.resolvePasswordOption
@@ -103,10 +104,11 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 		"--algo-expiry-override",
 		help = "Per-algorithm expiration date override in ALGORITHM=DATE format, or " +
 				"ALGORITHM:KEY_SIZE=DATE for one key-size entry of an algorithm the policy dates by " +
-				"key size, such as RSA (e.g. RIPEMD160=2030-01-01, RSA:1900=2030-12-31). Without " +
-				"KEY_SIZE, such an algorithm's dates can only be moved earlier. Repeatable. " +
-				"Hash algorithm dates apply to both pre-signing checks and DSS validation."
-	).multiple()
+				"key size, such as RSA (e.g. RIPEMD160=2030-01-01, RSA:1900=2030-12-31), with DATE " +
+				"in the form YYYY-MM-DD. Without KEY_SIZE, such an algorithm's dates can only be " +
+				"moved earlier. Repeatable. Hash algorithm dates apply to both pre-signing checks " +
+				"and DSS validation."
+	).expiryOverrides()
 	
 	private val disableHashAlgorithm by option(
 		"--disable-hash-algorithm",
@@ -183,7 +185,7 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 						expirationLevelAfterUpdate = algoExpirationLevelAfterUpdate
 							?: validation.algorithmConstraints.expirationLevelAfterUpdate,
 						expirationDateOverrides = validation.algorithmConstraints.expirationDateOverrides
-								+ parseExpiryOverrides(algoExpiryOverride)
+								+ algoExpiryOverride.toMap()
 					).let { if (hasAlgoChange) it.stampedToday(today) else it })
 			)
 		}
@@ -231,17 +233,6 @@ class ConfigSet : CliktCommand(name = "set"), KoinComponent {
 	companion object {
 		/** Keychain service name used as the namespace for all TSA passwords. */
 		const val TSA_CREDENTIAL_SERVICE = "omnisign-tsa"
-		
-		/**
-		 * Parse a list of `ALGORITHM=DATE` or `ALGORITHM:KEY_SIZE=DATE` strings into a map suitable for
-		 * [cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig.expirationDateOverrides],
-		 * keyed by the text before the first `=`. Entries that do not contain `=` are silently ignored.
-		 */
-		fun parseExpiryOverrides(raw: List<String>): Map<String, String> =
-			raw.mapNotNull { entry ->
-				val idx = entry.indexOf('=')
-				if (idx < 1) null else entry.substring(0, idx).trim() to entry.substring(idx + 1).trim()
-			}.toMap()
 	}
 }
 

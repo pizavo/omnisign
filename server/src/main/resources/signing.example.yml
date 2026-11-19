@@ -124,9 +124,10 @@ global:
     #   expirationLevel: FAIL
     #   # Severity when an algorithm expired AFTER policyUpdateDate.
     #   expirationLevelAfterUpdate: WARN
-    #   # ISO-8601 date; when omitted the DSS built-in applies (2026-02-01 in DSS 6.5.1).
+    #   # A date written as YYYY-MM-DD, as every date here must be (any other form fails
+    #   # startup); when omitted the DSS built-in applies (2026-02-01 in DSS 6.5.1).
     #   policyUpdateDate: "2026-02-01"
-    #   # Per-algorithm expiration overrides (algorithm name -> ISO-8601 date). For an algorithm
+    #   # Per-algorithm expiration overrides (algorithm name -> YYYY-MM-DD). For an algorithm
     #   # dated by key size, such as RSA or ECDSA, "NAME:KEY_SIZE" sets one key-size entry; a bare
     #   # name only moves its dates earlier.
     #   expirationDateOverrides:

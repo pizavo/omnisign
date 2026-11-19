@@ -7,6 +7,7 @@ import arrow.core.right
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.disabledDefaultError
 import cz.pizavo.omnisign.domain.model.config.disabledOverrideError
+import cz.pizavo.omnisign.domain.model.config.invalidAlgorithmDateError
 import cz.pizavo.omnisign.domain.model.config.enums.ConfigFormat
 import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.result.OperationResult
@@ -57,7 +58,9 @@ class ExportImportConfigUseCase(
 	 * Text that holds the global settings or a profile instead, or no configuration, is refused and
 	 * nothing is saved, as [ConfigSerializer.deserializeApp] describes. So is a configuration whose
 	 * global defaults or a profile's overrides are among the algorithms the same layer disables, as
-	 * [disabledDefaultError] and [disabledOverrideError] describe.
+	 * [disabledDefaultError] and [disabledOverrideError] describe, and one with an algorithm
+	 * constraint date that is not in the form `YYYY-MM-DD`, in the global settings or a profile, as
+	 * [invalidAlgorithmDateError] describes.
 	 *
 	 * When the imported configuration names a profile the stored one does not, every trust scope no
 	 * profile owns is dropped before it is saved, and when it lacks a stored profile, again after it is
@@ -79,6 +82,8 @@ class ExportImportConfigUseCase(
 		val config = serializer.deserializeApp(text).getOrElse { return it.left() }
 		config.global.disabledDefaultError()?.let { return it.left() }
 		config.profiles.values.firstNotNullOfOrNull { it.disabledOverrideError() }?.let { return it.left() }
+		config.global.invalidAlgorithmDateError()?.let { return it.left() }
+		config.profiles.values.firstNotNullOfOrNull { it.invalidAlgorithmDateError() }?.let { return it.left() }
 		val stored = configRepository.loadConfig().getOrElse { return it.left() }.profiles.ownedProfileScopeNames()
 		val imported = config.profiles.ownedProfileScopeNames()
 		if (!stored.containsAll(imported)) {
@@ -109,7 +114,8 @@ class ExportImportConfigUseCase(
 	 * Text that holds a full configuration or a profile instead, or no configuration, is refused and
 	 * nothing is saved, as [ConfigSerializer.deserializeGlobal] describes. So is a global section
 	 * whose default hash or encryption algorithm is among the algorithms it disables, as
-	 * [disabledDefaultError] describes.
+	 * [disabledDefaultError] describes, and one with an algorithm constraint date that is not in the
+	 * form `YYYY-MM-DD`, as [invalidAlgorithmDateError] describes.
 	 *
 	 * @param text Serialized global configuration text.
 	 * @param format Format of the supplied text.
@@ -120,6 +126,7 @@ class ExportImportConfigUseCase(
 			?: return ConfigurationError.noSerializerForFormat(format.name).left()
 		val global = serializer.deserializeGlobal(text).getOrElse { return it.left() }
 		global.disabledDefaultError()?.let { return it.left() }
+		global.invalidAlgorithmDateError()?.let { return it.left() }
 		val current = configRepository.getCurrentConfig()
 		return configRepository.saveConfig(current.copy(global = global))
 	}
@@ -147,7 +154,9 @@ class ExportImportConfigUseCase(
 	 * Text that holds a full configuration or the global settings instead, or no configuration, is
 	 * refused and nothing is saved, as [ConfigSerializer.deserializeProfile] describes. So is a
 	 * profile whose hash or encryption override is among the algorithms it disables, as
-	 * [disabledOverrideError] describes; the error names the profile as it would have been saved.
+	 * [disabledOverrideError] describes, or that has an algorithm constraint date that is not in the
+	 * form `YYYY-MM-DD`, as [invalidAlgorithmDateError] describes; the error names the profile as it
+	 * would have been saved.
 	 *
 	 * @param text Serialized profile text.
 	 * @param format Format of the supplied text.
@@ -183,12 +192,13 @@ class ExportImportConfigUseCase(
 	 * the second half of [importProfile].
 	 *
 	 * A profile whose hash or encryption override is among the algorithms it disables is refused and
-	 * nothing is saved, as [disabledOverrideError] describes; the error names the profile as it would
-	 * have been saved. Before a profile of a new name is saved, every trust scope no profile owns is
-	 * dropped, as [clearOrphanedProfileScopes] describes, so it does not inherit the certificates of a
-	 * removed profile of that name; when that fails, nothing is saved. The stored profiles are read with
-	 * [ConfigRepository.loadConfig], so a stored configuration that cannot be read fails the import
-	 * before any scope is dropped.
+	 * nothing is saved, as [disabledOverrideError] describes, and so is one with an algorithm
+	 * constraint date that is not in the form `YYYY-MM-DD`, as [invalidAlgorithmDateError] describes;
+	 * the error names the profile as it would have been saved. Before a profile of a new name is
+	 * saved, every trust scope no profile owns is dropped, as [clearOrphanedProfileScopes] describes,
+	 * so it does not inherit the certificates of a removed profile of that name; when that fails,
+	 * nothing is saved. The stored profiles are read with [ConfigRepository.loadConfig], so a stored
+	 * configuration that cannot be read fails the import before any scope is dropped.
 	 *
 	 * @param profile The profile [readProfile] read.
 	 * @param overrideName Optional name to use instead of the profile's own.
@@ -197,6 +207,7 @@ class ExportImportConfigUseCase(
 	suspend fun saveProfile(profile: ProfileConfig, overrideName: String? = null): OperationResult<String> {
 		val finalProfile = if (overrideName != null) profile.copy(name = overrideName) else profile
 		finalProfile.disabledOverrideError()?.let { return it.left() }
+		finalProfile.invalidAlgorithmDateError()?.let { return it.left() }
 		val current = configRepository.loadConfig().getOrElse { return it.left() }
 		val owned = current.profiles.ownedProfileScopeNames()
 		if (finalProfile.name !in owned) {

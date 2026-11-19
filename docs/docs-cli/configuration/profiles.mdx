@@ -51,7 +51,8 @@ credential store, `--timestamp-password` is refused, and where the store does no
 the command saves no profile — see the [Overview](overview).
 
 `--algo-expiry-override` takes the same forms as in `config set`, including `ALGORITHM:KEY_SIZE=DATE`
-for one key-size entry — see [Expiration date overrides](overview#expiration-date-overrides).
+for one key-size entry, and refuses a date that is not written as `YYYY-MM-DD` in the same way — see
+[Expiration date overrides](overview#expiration-date-overrides).
 
 `edit` additionally supports `--enable-hash-algorithm`, `--enable-encryption-algorithm`,
 and the following `--clear-*` flags to unset individual fields:

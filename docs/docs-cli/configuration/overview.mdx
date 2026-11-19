@@ -104,7 +104,11 @@ omnisign config set \
 ### Expiration date overrides
 
 `--algo-expiry-override` changes the date after which the validation policy no longer accepts an
-algorithm. Dates are written as `YYYY-MM-DD`.
+algorithm. Dates are written as `YYYY-MM-DD`, whatever date format a custom validation policy uses:
+OmniSign writes the date into the policy in the policy's own format. If that format cannot hold the
+exact day, as a format of the year alone (`yyyy`) cannot hold any day but 1 January, the policy
+keeps its own date for that algorithm, and a warning in the log says so. A date in any other form,
+such as `2030` or `31.12.2030`, or a value without `=`, fails the command, and nothing is saved.
 
 - A hash algorithm takes `ALGORITHM=DATE`, such as `RIPEMD160=2030-01-01`. The date may be earlier
   or later than the policy's, and it also applies to the check made before signing.

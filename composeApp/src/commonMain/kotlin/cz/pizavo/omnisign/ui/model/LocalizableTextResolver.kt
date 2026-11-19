@@ -96,6 +96,8 @@ private val MESSAGE_RES: Map<MessageKey, StringResource> = mapOf(
 	MessageKey.CONFIG_CANNOT_DISABLE_DEFAULT_ENCRYPTION to Res.string.err_config_cannot_disable_default_encryption,
 	MessageKey.CONFIG_PROFILE_DISABLES_OWN_HASH to Res.string.err_config_profile_disables_own_hash,
 	MessageKey.CONFIG_PROFILE_DISABLES_OWN_ENCRYPTION to Res.string.err_config_profile_disables_own_encryption,
+	MessageKey.CONFIG_ALGORITHM_DATE_INVALID to Res.string.err_config_algorithm_date_invalid,
+	MessageKey.CONFIG_PROFILE_ALGORITHM_DATE_INVALID to Res.string.err_config_profile_algorithm_date_invalid,
 	MessageKey.CONFIG_PROFILE_NOT_FOUND to Res.string.err_config_profile_not_found,
 	MessageKey.CONFIG_NO_PROFILE_NAMED to Res.string.err_config_no_profile_named,
 	MessageKey.CONFIG_TRUSTED_LIST_NOT_FOUND to Res.string.err_config_trusted_list_not_found,

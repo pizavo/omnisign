@@ -347,6 +347,68 @@ profiles:
 		ex.message.shouldNotBeNull() shouldContain "\"hashAlgorithm\""
 	}
 
+	test("load refuses a global algorithm date that is not in the form YYYY-MM-DD, naming the field") {
+		val file = newDir().put("signing.yml", """
+global:
+  validation:
+    algorithmConstraints:
+      policyUpdateDate: "2026-02-01"
+      expirationDateOverrides:
+        SHA512: "2035-01-01"
+        "RSA:1900": "31.12.2030"
+""")
+		val message = shouldThrow<IllegalArgumentException> { loader.load(file.absolutePath) }.message
+		message shouldBe "The algorithm constraint expirationDateOverrides.RSA:1900 holds '31.12.2030', " +
+			"which is not a date in the form YYYY-MM-DD, such as 2027-12-31"
+	}
+
+	test("load refuses a profile's update date that is not in the form YYYY-MM-DD, naming the profile and the field") {
+		val dir = newDir()
+		dir.put("p/archival.yml", """
+name: archival
+validation:
+  algorithmConstraints:
+    policyUpdateDate: "2026"
+""")
+		val file = dir.put("signing.yml", """
+profiles:
+  inline:
+    - name: fast
+      validation:
+        algorithmConstraints:
+          expirationDateOverrides:
+            SHA256: "2040-01-01"
+  files:
+    - p/archival.yml
+""")
+		val message = shouldThrow<IllegalArgumentException> { loader.load(file.absolutePath) }.message
+		message shouldBe "The algorithm constraint policyUpdateDate of profile 'archival' holds '2026', " +
+			"which is not a date in the form YYYY-MM-DD, such as 2027-12-31"
+	}
+
+	test("load takes algorithm dates in the form YYYY-MM-DD, globally and in a profile") {
+		val file = newDir().put("signing.yml", """
+global:
+  validation:
+    algorithmConstraints:
+      policyUpdateDate: 2026-02-01
+      expirationDateOverrides:
+        "RSA:1900": "2030-12-31"
+profiles:
+  inline:
+    - name: fast
+      validation:
+        algorithmConstraints:
+          expirationDateOverrides:
+            SHA256: "2040-01-01"
+""")
+		val config = loader.load(file.absolutePath)
+		config.global.validation.algorithmConstraints.policyUpdateDate shouldBe "2026-02-01"
+		config.global.validation.algorithmConstraints.expirationDateOverrides shouldBe mapOf("RSA:1900" to "2030-12-31")
+		config.profiles.getValue("fast").validation?.algorithmConstraints?.expirationDateOverrides shouldBe
+			mapOf("SHA256" to "2040-01-01")
+	}
+
 	test("load refuses a key given twice in a JSON profile file it names under files") {
 		val dir = newDir()
 		dir.put("p/a.json", """{"name": "a", "hashAlgorithm": "SHA256", "hashAlgorithm": "SHA512"}""")

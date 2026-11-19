@@ -1,9 +1,11 @@
 package cz.pizavo.omnisign.ades.policy
 
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
+import cz.pizavo.omnisign.domain.model.config.algorithmConstraintDate
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.toDss
+import cz.pizavo.omnisign.domain.model.text.shownInMessage
 import eu.europa.esig.dss.enumerations.Context
 import eu.europa.esig.dss.enumerations.EncryptionAlgorithm as DssEncryptionAlgorithm
 import eu.europa.esig.dss.enumerations.SubContext
@@ -15,10 +17,14 @@ import eu.europa.esig.dss.policy.ValidationPolicyFacade
 import eu.europa.esig.dss.policy.jaxb.Algo
 import eu.europa.esig.dss.policy.jaxb.AlgoExpirationDate
 import eu.europa.esig.dss.policy.jaxb.CryptographicConstraint
+import io.github.oshai.kotlinlogging.KotlinLogging
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.TimeZone
+import kotlin.time.Duration.Companion.days
+
+private val logger = KotlinLogging.logger {}
 
 /**
  * Loads and optionally customizes a DSS [ValidationPolicy].
@@ -90,6 +96,12 @@ open class AdESPolicy {
 	 * `AlgoExpirationDate` object so that DSS validation honors the same dates as the
 	 * pre-signing check. How each override reaches the `Algo` entries is described at
 	 * [applyPerAlgorithmDateOverrides].
+	 *
+	 * Each date is written in the policy's own date format, as [policyDate] describes, since DSS
+	 * reads a date that format cannot parse as no date at all: an override would then leave its
+	 * algorithm with no expiry, accepted for good. An update date [policyDate] cannot write, one
+	 * that is not in the form `YYYY-MM-DD` above all, is left out with a warning in the log, so the
+	 * policy keeps its own, as the pre-signing check keeps the default.
 	 */
 	private fun applyAlgorithmConstraints(
 		policy: ValidationPolicy,
@@ -107,12 +119,38 @@ open class AdESPolicy {
 		}
 		
 		val algoExpirationDate = policy.cryptographic?.algoExpirationDate ?: return
+		val format by lazy { dssDateFormat(algoExpirationDate) }
 		
-		config.policyUpdateDate?.let { algoExpirationDate.updateDate = it }
+		config.policyUpdateDate?.let { text ->
+			val date = policyDate(text, format)
+			if (date != null) {
+				algoExpirationDate.updateDate = date
+			} else {
+				logger.warn {
+					"Ignoring the policy update date '${shownInMessage(text)}': it is not a date in the form " +
+						"YYYY-MM-DD, or the validation policy's date format cannot hold it"
+				}
+			}
+		}
 		
 		if (config.expirationDateOverrides.isNotEmpty()) {
-			applyPerAlgorithmDateOverrides(algoExpirationDate, config.expirationDateOverrides)
+			applyPerAlgorithmDateOverrides(algoExpirationDate, config.expirationDateOverrides, format)
 		}
+	}
+	
+	/**
+	 * [text], a date in the form `YYYY-MM-DD` as [algorithmConstraintDate] reads it, written in
+	 * [format], the date format DSS reads the policy's dates with: midnight UTC of that day, which
+	 * is what DSS reads back. It is `null` when [text] is not such a date, and when [format] does not
+	 * read what it writes back as that midnight, since DSS would then read another day or no date at
+	 * all: a policy whose `Format` is empty reads no date, and one whose `Format` is `yyyy` would
+	 * write `2027-12-31` as `2027`, which reads as the first day of 2027.
+	 */
+	private fun policyDate(text: String, format: SimpleDateFormat): String? {
+		val day = algorithmConstraintDate(text) ?: return null
+		val midnight = Date(day.toEpochDays().days.inWholeMilliseconds)
+		val written = format.format(midnight)
+		return written.takeIf { format.parseOrNull(it) == midnight }
 	}
 	
 	/**
@@ -138,15 +176,28 @@ open class AdESPolicy {
 	 * ([policySpelling]). Matching the spelling alone would add an entry without a `Size` for such a
 	 * name, and DSS applies that entry to keys of every size.
 	 *
-	 * A `NAME:SIZE` key whose size is not a positive number is skipped, and so is a cap whose date
-	 * the policy's date format cannot read, since DSS would read such a date as no expiry at all.
+	 * Every date is written in [format], the policy's date format, as [policyDate] describes. An
+	 * override whose date [policyDate] cannot write, one that is not in the form `YYYY-MM-DD` above
+	 * all, is skipped with a warning in the log, since DSS would read a date it cannot parse as no
+	 * expiry at all, and so is a `NAME:SIZE` key whose size is not a positive number.
 	 */
 	private fun applyPerAlgorithmDateOverrides(
 		expirations: AlgoExpirationDate,
 		overrides: Map<String, String>,
+		format: SimpleDateFormat,
 	) {
 		val algos = expirations.algos
-		val (sized, named) = overrides.entries.partition { ':' in it.key }
+		val readable = overrides.mapNotNull { (key, text) ->
+			val date = policyDate(text, format)
+			if (date == null) {
+				logger.warn {
+					"Ignoring the expiration date override of ${shownInMessage(key)}, '${shownInMessage(text)}': " +
+						"it is not a date in the form YYYY-MM-DD, or the validation policy's date format cannot hold it"
+				}
+			}
+			date?.let { key to it }
+		}
+		val (sized, named) = readable.partition { ':' in it.first }
 		sized.forEach { (key, date) ->
 			key.substringAfter(':').toIntOrNull()?.takeIf { it > 0 }?.let { size ->
 				setExpirationDate(algos, key.substringBefore(':'), size, date)
@@ -155,7 +206,7 @@ open class AdESPolicy {
 		named.forEach { (name, date) ->
 			val entries = algos.filter { it.isFor(name) }
 			if (entries.any { it.size != null }) {
-				capExpirationDates(entries, date, dssDateFormat(expirations))
+				capExpirationDates(entries, date, format)
 			} else {
 				setExpirationDate(algos, name, null, date)
 			}
@@ -197,12 +248,13 @@ open class AdESPolicy {
 		runCatching { DssEncryptionAlgorithm.forName(name) }.getOrNull()
 	
 	/**
-	 * Give [date] to every entry in [entries] that ends after it or never ends, so no entry ends
-	 * later than [date]. Dates are compared as DSS reads them, through [format]; nothing changes
-	 * when [format] cannot read [date].
+	 * Give [date], which [policyDate] wrote in [format] so that [format] reads it back as its day, to
+	 * every entry in [entries] that ends after it or never ends, so no entry ends later than [date].
+	 * Dates are compared as DSS reads them, through [format]; an entry whose date [format] cannot read
+	 * never ends, as DSS reads it.
 	 */
 	private fun capExpirationDates(entries: List<Algo>, date: String, format: SimpleDateFormat) {
-		val cap = format.parseOrNull(date) ?: return
+		val cap = format.parse(date)
 		entries.forEach { algo ->
 			val current = format.parseOrNull(algo.date)
 			if (current == null || current.after(cap)) algo.date = date

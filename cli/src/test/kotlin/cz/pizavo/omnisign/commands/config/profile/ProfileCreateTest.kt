@@ -231,6 +231,17 @@ class ProfileCreateTest : FunSpec({
 		constraints?.expirationDateOverrides shouldBe mapOf("RIPEMD160" to "2030-01-01")
 	}
 
+	test("refuses an expiry override whose date is not in the form YYYY-MM-DD, and creates nothing") {
+		val result = Omnisign().test(
+			listOf("config", "profile", "create", "qualified", "-H", "SHA512", "--algo-expiry-override", "SHA1=2030")
+		)
+
+		result.statusCode shouldBe 1
+		result.stderr shouldContain "invalid value for --algo-expiry-override: the date of SHA1, '2030', " +
+			"is not in the form YYYY-MM-DD, such as 2030-12-31"
+		coVerify(exactly = 0) { manageProfile.upsert(any()) }
+	}
+
 	test("reports a save failure on stderr and exits non-zero") {
 		coEvery { manageProfile.upsert(any()) } returns
 			ConfigurationError.saveFailed(details = "disk full").left()
