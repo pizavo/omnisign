@@ -425,6 +425,13 @@ class ServerConfigLoaderTest : FunSpec({
 		ex.message.shouldNotBeNull() shouldContain "\"port\""
 	}
 
+	test("loadFromString refuses a key given twice inside an item of a list") {
+		val ex = shouldThrow<MismatchedInputException> {
+			loader.loadFromString("auth:\n  providers:\n    - type: oidc\n      name: g\n      name: h")
+		}
+		ex.message.shouldNotBeNull() shouldContain "\"name\""
+	}
+
 	test("load names the supported SSO provider types for an unknown type") {
 		val ex = shouldThrow<DatabindException> {
 			loader.loadFromString("auth:\n  providers:\n    - type: saml\n      name: g")

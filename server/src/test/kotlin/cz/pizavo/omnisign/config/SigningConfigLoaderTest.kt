@@ -347,6 +347,18 @@ profiles:
 		ex.message.shouldNotBeNull() shouldContain "\"hashAlgorithm\""
 	}
 
+	test("load refuses a key given twice in a JSON profile file it names under files") {
+		val dir = newDir()
+		dir.put("p/a.json", """{"name": "a", "hashAlgorithm": "SHA256", "hashAlgorithm": "SHA512"}""")
+		val file = dir.put("signing.yml", """
+profiles:
+  files:
+    - p/a.json
+""")
+		val ex = shouldThrow<MismatchedInputException> { loader.load(file.absolutePath) }
+		ex.message.shouldNotBeNull() shouldContain "\"hashAlgorithm\""
+	}
+
 	test("neither mapper writes a TSA password back out") {
 		val timestampServer = TimestampServerConfig(url = "https://tsa.example", runtimePassword = "hunter2".sensitive())
 		for (mapper in listOf(SigningConfigLoader.yamlMapper, SigningConfigLoader.jsonMapper)) {

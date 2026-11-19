@@ -69,11 +69,11 @@ private abstract class TimestampServerConfigMixin {
  * A name appearing twice from any source is a hard error. Relative `files` / `directories`
  * paths resolve against the directory containing the signing.yml file.
  *
- * **Fail-fast.** A configured-but-missing file, a malformed/unknown-key document, a missing
- * referenced profile file or directory, a duplicate profile name, an unset environment
- * variable referenced by a value, a `credentialKey`, or an explicitly-configured
- * `PADES_BASELINE_T` signature level all throw, so a misconfiguration stops the server at
- * startup instead of surfacing on the first request.
+ * **Fail-fast.** A configured-but-missing file, a malformed/unknown-key document, a key given
+ * twice in one mapping of it or of a profile file, a missing referenced profile file or
+ * directory, a duplicate profile name, an unset environment variable referenced by a value, a
+ * `credentialKey`, or an explicitly-configured `PADES_BASELINE_T` signature level all throw, so a
+ * misconfiguration stops the server at startup instead of surfacing on the first request.
  *
  * @param env Environment-variable resolver, injectable for testing. Defaults to
  *   [placeholderResolver] over the process environment.
@@ -90,7 +90,8 @@ class SigningConfigLoader(private val env: (String) -> String? = placeholderReso
 	 * @throws IllegalArgumentException if [path] is set but missing/invalid, a referenced
 	 *   profile file or directory is missing, two profiles share a name, or a `credentialKey`
 	 *   is present. [IllegalStateException] if a value references an unset environment variable.
-	 *   Jackson throws on a malformed document or an unknown key.
+	 *   Jackson throws on a malformed document, an unknown key, or a key given twice in one
+	 *   mapping of the document or of a profile file.
 	 */
 	fun load(path: String?): AppConfig {
 		if (path == null) {

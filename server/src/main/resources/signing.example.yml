@@ -15,7 +15,8 @@
 # OMNISIGN_TSA_PASSWORD_FILE), or pass a systemd credential of that name. The file must be
 # owned by the server's user with mode 0600, or by root with mode 0640 or stricter.
 #
-# Unknown keys fail startup (no silent typos). The desktop-only AppConfig fields
+# Unknown keys fail startup (no silent typos), and so does a key given twice in one block,
+# which would otherwise replace the first one whole. The desktop-only AppConfig fields
 # (activeProfile, tlDrafts, renewalJobs, schedulerConfig) are intentionally not part of
 # this schema and are rejected if present.
 #
