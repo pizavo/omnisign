@@ -401,6 +401,37 @@ class ServerConfigLoaderTest : FunSpec({
 		shouldThrow<MismatchedInputException> { loader.loadFromString("development: true\n---\ndevelopment: false") }
 	}
 
+	test("load refuses a block given twice instead of letting the second replace the first") {
+		val yaml = """
+			auth:
+			  enabled: true
+			development: true
+			auth:
+			  allowedRedirectUris: ["https://sign.example.org/"]
+		""".trimIndent()
+
+		val tmpFile = File.createTempFile("server-repeated-block-", ".yml")
+		tmpFile.deleteOnExit()
+		tmpFile.writeText(yaml)
+
+		val ex = shouldThrow<MismatchedInputException> { loader.load(tmpFile.absolutePath) }
+		ex.message.shouldNotBeNull() shouldContain "\"auth\""
+	}
+
+	test("loadFromString refuses a key given twice inside a block") {
+		val ex = shouldThrow<MismatchedInputException> {
+			loader.loadFromString("listen:\n  port: 18080\n  port: 8443")
+		}
+		ex.message.shouldNotBeNull() shouldContain "\"port\""
+	}
+
+	test("loadFromString refuses a key given twice inside an item of a list") {
+		val ex = shouldThrow<MismatchedInputException> {
+			loader.loadFromString("auth:\n  providers:\n    - type: oidc\n      name: g\n      name: h")
+		}
+		ex.message.shouldNotBeNull() shouldContain "\"name\""
+	}
+
 	test("load names the supported SSO provider types for an unknown type") {
 		val ex = shouldThrow<DatabindException> {
 			loader.loadFromString("auth:\n  providers:\n    - type: saml\n      name: g")
