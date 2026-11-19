@@ -41,6 +41,7 @@ Choose at most four checks, the ones that matter most for this change. Typical o
 - `<package>.<File>*` covers a file's class, its nested classes and lambdas, and the `<File>Kt` class of its top-level functions. Name every changed file of the module, and run the task once per module.
 - Name the specs by their fully qualified names, as for a test run: PIT runs each named spec once to measure coverage, so a package pattern would run the scheduler specs. It fails when no spec matches.
 - The summary leaves out mutants in code Kotlin generates and counts them in its first line. Read the survivors; the full report is `build/reports/pitest/index.html` in the module.
+- A spec that starts the server, through `testApplication` or `embeddedServer`, runs one in each of PIT's threads, and the session that started you may be running such a spec too. Never have more than two servers up at once: give PIT on such specs `-PpitThreads=2`, and do not run it while a test run of yours is going. Specs that start no server need no limit.
 - A PR branch older than the PIT setup has no `pitest` task; make the mutation by hand there.
 
 ## Limits

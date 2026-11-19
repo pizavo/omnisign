@@ -55,6 +55,11 @@ dependencies {
  * a one-line `suspend fun … = …`, where they share the line with real code. The default-argument bridges and the
  * `componentN` and `copy` functions of data classes are not mutated at all.
  *
+ * PIT tests as many mutants at once as half the machine's processors, each in a JVM of its own, and `-PpitThreads`
+ * sets another number. A spec that starts the server, through `testApplication` or `embeddedServer`, runs one in
+ * each of those JVMs, so for such specs keep it at three or fewer (`-PpitThreads=3`), and fewer still while other
+ * specs that start the server run beside it.
+ *
  * PIT's own output goes to `build/reports/pitest/pit-output.txt`, the summary to `survivors.txt` beside it, and the
  * full report to `index.html`, with every mutant in `mutations.xml`. The task fails when PIT does, and when no spec
  * matches `-PpitTests`, since PIT would then report every mutant as not covered.
@@ -77,7 +82,12 @@ tasks.register<JavaExec>("pitest") {
 	val targetClasses = providers.gradleProperty("pitClasses")
 	val targetTests = providers.gradleProperty("pitTests")
 	val minionJvmArgs = unitTests.jvmArgs.orEmpty()
-	val threads = (Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1)
+	val threads = providers.gradleProperty("pitThreads")
+		.map { text ->
+			text.toIntOrNull()?.takeIf { it > 0 }
+				?: throw GradleException("-PpitThreads takes a whole number above zero, not '$text'")
+		}
+		.orElse((Runtime.getRuntime().availableProcessors() / 2).coerceAtLeast(1))
 	val outputTail = 30
 	val moduleClasspath = unitTests.classpath
 	val classpathFile = layout.buildDirectory.file("tmp/pitest/classpath.txt")
@@ -105,7 +115,7 @@ tasks.register<JavaExec>("pitest") {
 				"--verbosity=QUIET",
 				"--timestampedReports=false",
 				"--excludedMethods=*\$default,component*,copy",
-				"--threads=$threads",
+				"--threads=${threads.get()}",
 				"--useClasspathJar=true",
 				"--jvmArgs=${minionJvmArgs.joinToString(",")}",
 				"--inputEncoding=UTF-8",
