@@ -15,7 +15,9 @@ import org.koin.core.component.KoinComponent
 import org.koin.core.component.inject
 
 /**
- * CLI subcommand that prints all settings of a single named profile.
+ * CLI subcommand that prints all settings of a single named profile, or of the active profile when no
+ * name is given. When the configuration file cannot be read, it stops with the error that names the
+ * file, with or without a name, rather than reporting that no active profile is set.
  */
 class ProfileShow : CliktCommand(name = "show"), KoinComponent {
 	private val manageProfile: ManageProfileUseCase by inject()
@@ -26,15 +28,11 @@ class ProfileShow : CliktCommand(name = "show"), KoinComponent {
 	override fun help(context: Context): String = "Show all settings of a named profile"
 	
 	override fun run(): Unit = runBlocking {
-		val resolvedName = name ?: run {
-			val activeProfile = getConfig().fold(ifLeft = { null }, ifRight = { it.activeProfile })
-			if (activeProfile == null) {
-				echo("❌ No profile name given and no active profile is set. Use: config profile use <name>", err = true)
-				throw ProgramResult(1)
-			}
-			activeProfile
+		val activeProfile = getConfig().fold(ifLeft = { failWith(it) }, ifRight = { it.activeProfile })
+		val resolvedName = name ?: activeProfile ?: run {
+			echo("❌ No profile name given and no active profile is set. Use: config profile use <name>", err = true)
+			throw ProgramResult(1)
 		}
-		val activeProfile = getConfig().fold(ifLeft = { null }, ifRight = { it.activeProfile })
 		
 		manageProfile.get(resolvedName).fold(
 			ifLeft = { failWith(it) },

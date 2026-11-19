@@ -53,9 +53,9 @@ sealed interface ConfigurationError : OperationError, LocalizableError {
 			LoadFailed(LocalizableText.of(MessageKey.CONFIG_LOAD_FAILED), details, cause)
 
 		/**
-		 * The configuration file at [path] exists but cannot be read or decoded, so it was left as it is,
-		 * and a change that would have been saved over it was not made: the user fixes the file, or moves
-		 * it away to start over from the defaults.
+		 * The configuration file at [path] exists but cannot be read or decoded, so the operation that
+		 * needed it stopped and left the file as it is: the user fixes the file, or moves it away to start
+		 * over from the defaults.
 		 */
 		fun unreadable(path: String, details: String? = null, cause: Throwable? = null): LoadFailed =
 			LoadFailed(LocalizableText.of(MessageKey.CONFIG_UNREADABLE, path), details, cause)

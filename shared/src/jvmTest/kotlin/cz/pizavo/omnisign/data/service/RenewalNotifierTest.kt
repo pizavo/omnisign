@@ -64,11 +64,16 @@ class RenewalNotifierTest : FunSpec({
 	}
 
 	test("sends a single critical configuration-error notification when the configuration could not be loaded") {
-		notifier.notify(RenewBatchResult(configError = "Failed to load configuration: Unexpected JSON token at offset 7"))
+		val reason = "The configuration file /home/user/.config/omnisign/config.json cannot be read. Fix the " +
+			"file, or move it elsewhere to start over from the defaults (Unexpected JSON token at offset 7)"
+		notifier.notify(RenewBatchResult(configError = reason))
 		verify(exactly = 1) {
 			notificationService.notify(
 				match { it.contains("OmniSign") && it.contains("could not start") },
-				match { it.contains("Unexpected JSON token at offset 7") && it.contains("configuration file") },
+				eq(
+					"$reason. No renewal job ran and no files were re-timestamped — repair the configuration " +
+						"file and check the log.",
+				),
 				eq(NotificationUrgency.CRITICAL),
 			)
 		}
