@@ -46,9 +46,11 @@ package cz.pizavo.omnisign.config
  *   IPs in [trusted] are honored so the server sees the real client IP for rate limiting
  *   and audit logging. TLS termination is then assumed to be handled by the reverse proxy
  *   and the HTTPS-redirect plugin is skipped.
- * @property trusted IP addresses or CIDR ranges of trusted reverse proxies. Required and
- *   non-empty whenever [enabled] is `true`. See the validation table above for the exact
- *   rules.
+ * @property trusted IP addresses or CIDR ranges of trusted reverse proxies: the proxy the
+ *   server's connections come from, and every proxy before it that adds to
+ *   `X-Forwarded-For`, such as a CDN in front of a load balancer. The client's IP is the
+ *   rightmost entry of `X-Forwarded-For` that is not in this list. Required and non-empty
+ *   whenever [enabled] is `true`. See the validation table above for the exact rules.
  */
 data class ProxyConfig(
 	val enabled: Boolean = false,

@@ -48,9 +48,13 @@ disable. Behind a proxy, client IPs are taken from `X-Forwarded-For` only for co
 ## Reverse proxy
 
 With `proxy.enabled: true`, TLS is terminated upstream (nginx, Caddy, Traefik) and the server runs on
-the plain-HTTP connector. Only `X-Forwarded-For` is honored — its **first** entry becomes the client
-IP — and only when the TCP source IP matches an entry in `proxy.trusted` (literal IPs or CIDRs;
-hostnames and `*` are rejected), so a client reaching the Ktor port directly cannot spoof its IP.
+the plain-HTTP connector. Only `X-Forwarded-For` is honored, and only when the TCP source IP matches
+an entry in `proxy.trusted` (literal IPs or CIDRs; hostnames and `*` are rejected), so a client
+reaching the Ktor port directly cannot spoof its IP. The server reads the header's entries, from all
+of its lines, from the right, skips each entry that is in `proxy.trusted`, and takes the first one
+that is not as the client's IP. An entry that a client writes itself, ahead of the ones its proxies
+append, therefore never counts. If an entry the server reads on the way is not an IP address, with
+or without a port, it ignores the header and counts the request against the proxy's IP.
 `X-Forwarded-Proto` and `X-Forwarded-Host` are deliberately **not** consumed; use
 `OMNISIGN_EXTERNAL_URL` to tell the server its public scheme and host. `proxy.enabled: true` requires
 a non-empty `trusted` list. See [Deployment → Reverse proxy](deployment#reverse-proxy).
