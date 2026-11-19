@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.config
 
+import cz.pizavo.omnisign.auth.isMatchableEmailDomainEntry
 import java.net.URI
 
 /**
@@ -15,6 +16,12 @@ import java.net.URI
  *    level. Both the empty and the missing case must surface with the same
  *    operator-facing message so the path of least resistance is to make a deliberate
  *    choice (`["*"]` for explicit allow-all, or a concrete list).
+ *
+ *    Two lists that look deliberate are refused as well, since each fails open or shut:
+ *    `"*"` beside other entries, which restrict nothing because the filter admits every
+ *    account once `"*"` is listed; and an entry no address can match (see
+ *    [isMatchableEmailDomainEntry]), such as `"@contoso.com"` or `"https://contoso.com"`,
+ *    which quietly turns away every login it was meant to admit.
  *
  * 2. **Empty value list under `requiredClaims.<key>`.** A `requiredClaims` entry with
  *    no accepted values silently rejects every login on that claim — almost always a
@@ -36,8 +43,9 @@ import java.net.URI
  *
  * @param authConfig Root authentication configuration, or `null` when auth is disabled.
  * @throws IllegalArgumentException with a provider-named message when any OIDC provider
- *   has an empty `allowedEmailDomains` list or any `requiredClaims` entry has an empty
- *   accepted-values list, and with the offending entry when an `allowedRedirectUris` entry
+ *   has an empty `allowedEmailDomains` list, one that holds `"*"` beside other entries or an
+ *   entry no address can match, or a `requiredClaims` entry with an empty accepted-values
+ *   list, and with the offending entry when an `allowedRedirectUris` entry
  *   is not an absolute `https` URL (or an `http` one on a loopback host).
  */
 fun validateAuthConfig(authConfig: AuthConfig?) {
@@ -46,6 +54,21 @@ fun validateAuthConfig(authConfig: AuthConfig?) {
 		require(provider.allowedEmailDomains.isNotEmpty()) {
 			"provider '${provider.name}' must set allowedEmailDomains. " +
 				"Use [\"*\"] to allow any domain, or list specific ones."
+		}
+		require("*" !in provider.allowedEmailDomains || provider.allowedEmailDomains.all { it == "*" }) {
+			"provider '${provider.name}' lists \"*\" in allowedEmailDomains beside other entries. " +
+				"\"*\" admits every account the identity provider signs in, so the other entries " +
+				"would restrict nothing. Use [\"*\"] alone to allow any domain, or list only the " +
+				"domains to allow."
+		}
+		provider.allowedEmailDomains.forEach { entry ->
+			require(isMatchableEmailDomainEntry(entry)) {
+				"provider '${provider.name}' has the allowedEmailDomains entry '$entry', which no " +
+					"email address can match, so it would admit nobody. Write the bare domain, " +
+					"e.g. \"contoso.com\", with no '@', scheme, wildcard, spaces or trailing dot. A " +
+					"domain with ß, the Greek final ς or a zero-width joiner matches only in its " +
+					"xn-- spelling."
+			}
 		}
 		provider.requiredClaims?.forEach { (key, values) ->
 			require(values.isNotEmpty()) {

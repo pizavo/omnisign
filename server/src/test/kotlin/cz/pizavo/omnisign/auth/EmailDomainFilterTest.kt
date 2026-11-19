@@ -1,10 +1,11 @@
 package cz.pizavo.omnisign.auth
 
+import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 
 /**
- * Unit tests for [isEmailDomainAllowed].
+ * Unit tests for [isEmailDomainAllowed] and [isMatchableEmailDomainEntry].
  */
 class EmailDomainFilterTest : FunSpec({
 
@@ -103,6 +104,35 @@ class EmailDomainFilterTest : FunSpec({
     test("a domain with ß matches in its xn-- spelling, which keeps it apart from the ASCII one") {
         isEmailDomainAllowed("user@xn--cla-pia.com", listOf("xn--cla-pia.com")) shouldBe true
         isEmailDomainAllowed("user@xn--cla-pia.com", listOf("class.com")) shouldBe false
+    }
+
+    test("an entry ending with a dot does not match the address without the dot") {
+        isEmailDomainAllowed("user@contoso.com", listOf("contoso.com.")) shouldBe false
+    }
+
+    test("isMatchableEmailDomainEntry accepts the wildcard and domain names in any case or spelling") {
+        val entries = listOf(
+            "*", "contoso.com", "CONTOSO.COM", "contoso", "bücher.de", "xn--bcher-kva.de", "xn--cla-pia.com",
+        )
+        for (entry in entries) {
+            withClue(entry) { isMatchableEmailDomainEntry(entry) shouldBe true }
+        }
+    }
+
+    test("isMatchableEmailDomainEntry refuses an entry no address can match") {
+        val entries = listOf(
+            "@contoso.com",
+            "*.contoso.com",
+            "https://contoso.com",
+            " contoso.com",
+            "contoso.com.",
+            "claß.com",
+            "con_toso.com",
+            "",
+        )
+        for (entry in entries) {
+            withClue(entry) { isMatchableEmailDomainEntry(entry) shouldBe false }
+        }
     }
 })
 

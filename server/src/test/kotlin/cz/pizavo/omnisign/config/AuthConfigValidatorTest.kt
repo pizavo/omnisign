@@ -38,6 +38,34 @@ class AuthConfigValidatorTest : FunSpec({
         validateAuthConfig(AuthConfig(providers = listOf(oidc("g", listOf("contoso.com", "fabrikam.com")))))
     }
 
+    test("rejects \"*\" beside other allowedEmailDomains entries and names the provider") {
+        for (domains in listOf(listOf("*", "osu.cz"), listOf("osu.cz", "*"))) {
+            val ex = shouldThrow<IllegalArgumentException> {
+                validateAuthConfig(AuthConfig(providers = listOf(oidc("keycloak", domains))))
+            }
+            ex.message!! shouldContain "keycloak"
+            ex.message!! shouldContain "beside other entries"
+        }
+    }
+
+    test("rejects an allowedEmailDomains entry no address can match and names the provider and the entry") {
+        val entries = listOf("@osu.cz", "*.osu.cz", "https://osu.cz", " osu.cz", "osu.cz.", "claß.com", "")
+        for (entry in entries) {
+            val ex = shouldThrow<IllegalArgumentException> {
+                validateAuthConfig(AuthConfig(providers = listOf(oidc("eduid", listOf("muni.cz", entry)))))
+            }
+            ex.message!! shouldContain "eduid"
+            ex.message!! shouldContain "'$entry'"
+        }
+    }
+
+    test("accepts internationalised domains in either spelling, and the wildcard given twice") {
+        validateAuthConfig(
+            AuthConfig(providers = listOf(oidc("g", listOf("bücher.de", "xn--bcher-kva.de", "xn--cla-pia.com")))),
+        )
+        validateAuthConfig(AuthConfig(providers = listOf(oidc("h", listOf("*", "*")))))
+    }
+
     test("rejects an OIDC provider with an empty allowedEmailDomains list and names the provider") {
         val ex = shouldThrow<IllegalArgumentException> {
             validateAuthConfig(AuthConfig(providers = listOf(oidc("acme-idp", emptyList()))))

@@ -64,15 +64,18 @@ non-alphanumerics → `_`; e.g. `name: google` → `OMNISIGN_OIDC_GOOGLE_CLIENT_
 | `APPLE`         | —                                 | public IdP — domain-restrict                       |
 | `EDUID_CZ`      | —                                 | Czech academic federation (see below)             |
 
-`allowedEmailDomains` is mandatory — pick `["*"]` (deliberate allow-all, e.g., a private Cognito pool
-or self-hosted Keycloak realm), `["yourcompany.com"]`, or several. An empty list or a missing field
-is rejected at startup. An internationalised domain matches in either spelling (`bücher.de` or
-`xn--bcher-kva.de`). A domain with `ß`, the Greek final `ς` or a zero-width joiner matches only in
-its `xn--` spelling, since the server's IDNA conversion would turn it into another domain
-(`claß.com` into `class.com`). `requiredClaims` (a map of claim → allowed values) adds finer control:
-**every** listed claim must be present and match **at least one** of its listed values. Single-valued
-and array-valued claims both work. A key with an empty value list is rejected at startup — it would
-reject every login.
+`allowedEmailDomains` is mandatory — pick `["*"]` (deliberate allow-all, e.g., a private Cognito
+pool or self-hosted Keycloak realm), `["yourcompany.com"]`, or several. An empty list or a missing
+field is rejected at startup, and so is `"*"` beside other entries, which would admit every account
+anyway. So is an entry no address can match, which would turn away every login it was meant to
+admit: write the bare domain, with no `@`, scheme, spaces or trailing dot, and list subdomains one
+by one rather than as `*.yourcompany.com`. An internationalised domain matches in either spelling
+(`bücher.de` or `xn--bcher-kva.de`). A domain with `ß`, the Greek final `ς` or a zero-width joiner
+matches only in its `xn--` spelling, since the server's IDNA conversion would turn it into another
+domain (`claß.com` into `class.com`). `requiredClaims` (a map of claim → allowed values) adds finer
+control: **every** listed claim must be present and match **at least one** of its listed values.
+Single-valued and array-valued claims both work. A key with an empty value list is rejected at
+startup — it would reject every login.
 
 ### Verified addresses
 

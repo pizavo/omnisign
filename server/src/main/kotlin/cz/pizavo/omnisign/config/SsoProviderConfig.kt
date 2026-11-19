@@ -51,7 +51,9 @@ sealed interface SsoProviderConfig {
  *     email claim is available.
  *
  *   Empty list and missing field are both rejected at server startup with a message naming
- *   the offending provider. See
+ *   the offending provider, and so are `"*"` beside other entries, which would admit every
+ *   account anyway, and an entry no address can match, such as `"@contoso.com"`,
+ *   `"*.contoso.com"` or `"https://contoso.com"`. See
  *   [isEmailDomainAllowed][cz.pizavo.omnisign.auth.isEmailDomainAllowed] for the runtime check.
  * @property requiredClaims When non-null and non-empty, the user's raw IdP claims must satisfy
  *   every entry: for each `(claimName, values)` pair, the claim must contain at least one of
