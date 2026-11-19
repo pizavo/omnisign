@@ -237,12 +237,14 @@ the classpath, merging the translations in the additions file; see
 [The DSS validation report](i18n.mdx#the-dss-validation-report) for when and how.
 
 `regenerateTestPki` replaces the CA, signer and TSA key stores the end-to-end tests sign with, in
-`shared/src/jvmTest/resources/e2e/` and, for the signer and the TSA, `cli/src/test/resources/e2e/`.
+`shared/src/jvmTest/resources/e2e/`, in `cli/src/test/resources/e2e/` for the signer and the TSA, and
+in `server/src/test/resources/e2e/` for the signer, whose certificate the server's TLS connector test
+serves.
 Every key is RSA-4096 because a smaller one would age out of DSS's validation policy long before the
 certificates do: DSS 6.5.1 accepts 2048-bit RSA only until 1 January 2027, after which every test
 signing with such a fixture would fail on the fixture rather than on the code. The certificates
 themselves last until the 2120s, so run it only when the algorithm policy moves again, and commit the
-five key stores. It uses the `keytool` of the JDK running Gradle.
+six key stores. It uses the `keytool` of the JDK running Gradle.
 
 `generateIcons` needs ImageMagick 7 (`magick`) and `icnsify` on the `PATH`. It rewrites the icons in
 `assets/icons/` and copies them into the places that consume them, including this documentation site's

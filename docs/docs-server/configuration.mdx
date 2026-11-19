@@ -180,8 +180,10 @@ proxy:
 
 ### `tls`
 
-Direct HTTPS (TLS 1.2/1.3 + HTTP/2). Passwords come from env vars (see [Secrets](#secrets)). See
-[Security → TLS & HSTS](security#tls--hsts).
+Direct HTTPS over TLS 1.3 or TLS 1.2, with HTTP/2. Passwords come from env vars (see [Secrets](#secrets)).
+`enabledProtocols` lists the TLS versions the server accepts: `TLSv1.3` and `TLSv1.2` when it is left
+out, and `[TLSv1.3]` for TLS 1.3 alone. An empty list or any other version stops the server at
+startup. See [Security → TLS & HSTS](security#tls--hsts).
 
 When `proxy.enabled: true` the TLS **connector** is not created and the HTTPS-redirect plugin is
 skipped, but the block is not fully ignored: `tls.hsts` still emits `Strict-Transport-Security`, and
@@ -193,6 +195,7 @@ tls:
   port: 18443
   keystorePath: "/path/to/keystore.p12"
   keyAlias: "omnisign"
+  enabledProtocols: [TLSv1.3, TLSv1.2]
   hsts:
     maxAgeSeconds: 31536000
     includeSubDomains: true
