@@ -4,8 +4,9 @@ import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 
 /**
- * Verifies [CorsConfig.allowedHosts], the one reading of `cors.allowedOrigins` that both the validator and the CORS
- * plugin use: each entry trimmed and without its `http://` or `https://` prefix, whatever the prefix's case.
+ * Verifies [CorsConfig.allowedHosts], the one reading of `cors.allowedOrigins` that both the validator and the
+ * CORS plugin use: each entry trimmed and without the `http://` or `https://` prefix it starts with, whatever
+ * the prefix's case.
  */
 class CorsConfigTest : FunSpec({
 
@@ -36,5 +37,11 @@ class CorsConfigTest : FunSpec({
 	test("allowedHosts keeps a prefix of another scheme and a subdomain wildcard as written") {
 		val entries = listOf("ftp://files.example.org", "*.example.org")
 		CorsConfig(allowedOrigins = entries).allowedHosts() shouldBe entries
+	}
+
+	test("allowedHosts strips an http or https prefix only where it starts the entry") {
+		val entries = listOf("ftp://http://files.example.org", "files.example.org/https://x")
+		CorsConfig(allowedOrigins = entries).allowedHosts() shouldBe entries
+		CorsConfig(allowedOrigins = listOf("https://http://x")).allowedHosts() shouldBe listOf("http://x")
 	}
 })
