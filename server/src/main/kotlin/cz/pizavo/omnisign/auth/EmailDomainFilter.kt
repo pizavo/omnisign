@@ -58,7 +58,8 @@ internal fun isEmailDomainAllowed(email: String?, allowedDomains: List<String>):
 /**
  * Whether [entry], one entry of a provider's `allowedEmailDomains`, is one [isEmailDomainAllowed]
  * can match an address to: the wildcard `"*"`, or a domain name that converts to the ASCII form
- * the comparison uses and does not end with a dot, as no address's domain does.
+ * the comparison uses and does not end with a dot. An entry with a trailing dot could match only
+ * an address whose domain ends with one too, which RFC 5321 does not allow.
  *
  * [validateAuthConfig][cz.pizavo.omnisign.config.validateAuthConfig] refuses any other entry at
  * startup, since it would admit nobody: `"@contoso.com"`, `"*.contoso.com"`,

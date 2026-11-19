@@ -106,12 +106,14 @@ class EmailDomainFilterTest : FunSpec({
         isEmailDomainAllowed("user@xn--cla-pia.com", listOf("class.com")) shouldBe false
     }
 
-    test("an entry ending with a dot matches no address") {
+    test("an entry ending with a dot does not match the address without the dot") {
         isEmailDomainAllowed("user@contoso.com", listOf("contoso.com.")) shouldBe false
     }
 
     test("isMatchableEmailDomainEntry accepts the wildcard and domain names in any case or spelling") {
-        val entries = listOf("*", "contoso.com", "CONTOSO.COM", "contoso", "bücher.de", "xn--bcher-kva.de", "xn--cla-pia.com")
+        val entries = listOf(
+            "*", "contoso.com", "CONTOSO.COM", "contoso", "bücher.de", "xn--bcher-kva.de", "xn--cla-pia.com",
+        )
         for (entry in entries) {
             withClue(entry) { isMatchableEmailDomainEntry(entry) shouldBe true }
         }
