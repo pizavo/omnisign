@@ -222,6 +222,38 @@ class ProfileViewModelTest : FunSpec({
         }
     }
 
+    test("delete reloads the list and shows the error when the profile is removed but its trusted certificates cannot be dropped") {
+        runTest(testDispatcher) {
+            var currentConfig = AppConfig(profiles = mapOf("dev" to profile("dev"), "prod" to profile("prod")))
+            coEvery { configRepository.loadConfig() } answers { currentConfig.right() }
+            coEvery { configRepository.getCurrentConfig() } answers { currentConfig }
+            val saved = slot<AppConfig>()
+            coEvery { configRepository.saveConfig(capture(saved)) } answers {
+                currentConfig = saved.captured
+                Unit.right()
+            }
+            val failingScopes: TrustStore = mockk {
+                every { readOnly } returns false
+                coEvery { scopes() } returns setOf<TrustScope>(TrustScope.Profile("dev")).right()
+                coEvery { clearProfileScope("dev") } returns
+                    TrustStoreError.operationFailed(details = "index not writable").left()
+            }
+            val vm = ProfileViewModel(
+                ManageProfileUseCase(configRepository, failingScopes),
+                getConfig,
+                ioDispatcher = testDispatcher,
+            )
+            advanceUntilIdle()
+
+            vm.delete("dev")
+            advanceUntilIdle()
+
+            saved.captured.profiles.keys shouldBe setOf("prod")
+            vm.state.value.profiles.map { it.name } shouldBe listOf("prod")
+            vm.state.value.error.shouldNotBeNull()
+        }
+    }
+
     test("empty profile list shows no profiles") {
         runTest(testDispatcher) {
             val config = AppConfig()

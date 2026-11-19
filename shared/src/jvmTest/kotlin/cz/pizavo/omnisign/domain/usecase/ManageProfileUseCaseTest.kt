@@ -41,12 +41,15 @@ import org.bouncycastle.operator.jcajce.JcaContentSignerBuilder
 import java.math.BigInteger
 import java.security.KeyPairGenerator
 import java.util.Date
+import kotlin.io.path.readText
+import kotlin.io.path.writeText
 
 /**
  * Verifies [ManageProfileUseCase] CRUD operations, active-profile management,
  * and self-disabling algorithm rejection, and that a profile's trust scope goes with it: a removal drops
  * it once the configuration is saved, a profile of a new name is saved only once every scope no profile
- * owns is gone, and a read-only trust store is left alone.
+ * owns is gone, and a read-only trust store is left alone. A creation that cannot read the stored
+ * configuration drops no scope, and a profile stored under a key other than its name keeps both scopes.
  */
 class ManageProfileUseCaseTest : FunSpec({
 
@@ -96,7 +99,7 @@ class ManageProfileUseCaseTest : FunSpec({
 	)
 
 	test("upsert saves a new profile") {
-		coEvery { configRepository.getCurrentConfig() } returns baseConfig
+		coEvery { configRepository.loadConfig() } returns baseConfig.right()
 		val saved = slot<AppConfig>()
 		coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
 
@@ -110,7 +113,7 @@ class ManageProfileUseCaseTest : FunSpec({
 		val existing = baseConfig.copy(
 			profiles = mapOf("p1" to profile("p1", hash = HashAlgorithm.SHA256))
 		)
-		coEvery { configRepository.getCurrentConfig() } returns existing
+		coEvery { configRepository.loadConfig() } returns existing.right()
 		val saved = slot<AppConfig>()
 		coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
 
@@ -136,7 +139,7 @@ class ManageProfileUseCaseTest : FunSpec({
 	}
 
 	test("upsert allows disabled set when override is null") {
-		coEvery { configRepository.getCurrentConfig() } returns baseConfig
+		coEvery { configRepository.loadConfig() } returns baseConfig.right()
 		val saved = slot<AppConfig>()
 		coEvery { configRepository.saveConfig(capture(saved)) } returns Unit.right()
 
@@ -296,7 +299,7 @@ class ManageProfileUseCaseTest : FunSpec({
 	}
 
 	test("upsert of a new name drops every trust scope no profile owns, that name's among them, before it saves the profile") {
-		coEvery { configRepository.getCurrentConfig() } returns baseConfig.copy(profiles = mapOf("home" to profile("home")))
+		coEvery { configRepository.loadConfig() } returns baseConfig.copy(profiles = mapOf("home" to profile("home"))).right()
 		coEvery { configRepository.saveConfig(any()) } returns Unit.right()
 		coEvery { trustStore.scopes() } returns setOf(
 			TrustScope.Global,
@@ -317,7 +320,7 @@ class ManageProfileUseCaseTest : FunSpec({
 	}
 
 	test("upsert of a new name saves nothing when a leftover trust scope cannot be dropped") {
-		coEvery { configRepository.getCurrentConfig() } returns baseConfig
+		coEvery { configRepository.loadConfig() } returns baseConfig.right()
 		coEvery { trustStore.scopes() } returns setOf<TrustScope>(TrustScope.Profile("work")).right()
 		val failure = TrustStoreError.operationFailed(details = "index not writable")
 		coEvery { trustStore.clearProfileScope("work") } returns failure.left()
@@ -328,7 +331,7 @@ class ManageProfileUseCaseTest : FunSpec({
 	}
 
 	test("upsert of a new name saves nothing when the trust store cannot list its scopes") {
-		coEvery { configRepository.getCurrentConfig() } returns baseConfig
+		coEvery { configRepository.loadConfig() } returns baseConfig.right()
 		val failure = TrustStoreError.operationFailed(details = "index unreadable")
 		coEvery { trustStore.scopes() } returns failure.left()
 
@@ -338,7 +341,7 @@ class ManageProfileUseCaseTest : FunSpec({
 	}
 
 	test("upsert of a stored profile leaves the trust store alone") {
-		coEvery { configRepository.getCurrentConfig() } returns baseConfig.copy(profiles = mapOf("work" to profile("work")))
+		coEvery { configRepository.loadConfig() } returns baseConfig.copy(profiles = mapOf("work" to profile("work"))).right()
 		coEvery { configRepository.saveConfig(any()) } returns Unit.right()
 
 		useCase.upsert(profile("work", hash = HashAlgorithm.SHA512)).shouldBeRight()
@@ -350,6 +353,7 @@ class ManageProfileUseCaseTest : FunSpec({
 	test("a read-only trust store is left alone when a profile is created or removed") {
 		every { trustStore.readOnly } returns true
 		coEvery { configRepository.getCurrentConfig() } returns baseConfig.copy(profiles = mapOf("home" to profile("home")))
+		coEvery { configRepository.loadConfig() } returns baseConfig.copy(profiles = mapOf("home" to profile("home"))).right()
 		coEvery { configRepository.saveConfig(any()) } returns Unit.right()
 
 		useCase.upsert(profile("work")).shouldBeRight()
@@ -378,6 +382,56 @@ class ManageProfileUseCaseTest : FunSpec({
 
 		store.list(work).shouldBeRight().shouldBeEmpty()
 		store.resolve(work).shouldBeRight().shouldHaveSize(1)
+	}
+
+	test("upsert drops no trust scope and saves nothing when the stored configuration cannot be read") {
+		val failure = ConfigurationError.loadFailed(details = "config.json is not valid JSON")
+		coEvery { configRepository.loadConfig() } returns failure.left()
+		coEvery { configRepository.getCurrentConfig() } returns baseConfig
+
+		useCase.upsert(profile("work")).shouldBeLeft() shouldBe failure
+
+		coVerify(exactly = 0) { trustStore.scopes() }
+		coVerify(exactly = 0) { trustStore.clearProfileScope(any()) }
+		coVerify(exactly = 0) { configRepository.saveConfig(any()) }
+	}
+
+	test("a profile created while the stored configuration cannot be read leaves every stored profile's certificates in place") {
+		val store = FileTrustStore(tempdir().toPath())
+		val configFile = tempdir().toPath().resolve("config.json")
+		val work = TrustScope.Profile("work")
+		ManageProfileUseCase(FileConfigRepository(configFile), store).upsert(profile("work")).shouldBeRight()
+		store.add(work, selfSignedDer("Contractor CA"), TrustedCertificateType.CA).shouldBeRight()
+		val stored = configFile.readText()
+		configFile.writeText("{ not json")
+
+		ManageProfileUseCase(FileConfigRepository(configFile), store).upsert(profile("other"))
+			.shouldBeLeft().shouldBeInstanceOf<ConfigurationError.LoadFailed>()
+
+		configFile.writeText(stored)
+		store.list(work).shouldBeRight().shouldHaveSize(1)
+	}
+
+	test("a profile stored under a key other than its name keeps the scopes of both when a profile is created or removed") {
+		val config = baseConfig.copy(profiles = mapOf("work" to profile("Work"), "home" to profile("home")))
+		coEvery { configRepository.loadConfig() } returns config.right()
+		coEvery { configRepository.getCurrentConfig() } returns config
+		coEvery { configRepository.saveConfig(any()) } returns Unit.right()
+		coEvery { trustStore.scopes() } returns setOf(
+			TrustScope.Profile("work"),
+			TrustScope.Profile("Work"),
+			TrustScope.Profile("home"),
+			TrustScope.Profile("gone"),
+		).right()
+		coEvery { trustStore.clearProfileScope(any()) } returns Unit.right()
+
+		useCase.upsert(profile("new")).shouldBeRight()
+		useCase.remove("home").shouldBeRight()
+
+		coVerify { trustStore.clearProfileScope("gone") }
+		coVerify { trustStore.clearProfileScope("home") }
+		coVerify(exactly = 0) { trustStore.clearProfileScope("work") }
+		coVerify(exactly = 0) { trustStore.clearProfileScope("Work") }
 	}
 })
 

@@ -8,6 +8,7 @@ import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.repository.clearOrphanedProfileScopes
+import cz.pizavo.omnisign.domain.repository.ownedProfileScopeNames
 import arrow.core.flatMap
 import arrow.core.getOrElse
 import arrow.core.left
@@ -39,14 +40,20 @@ class ManageProfileUseCase(
      * [clearOrphanedProfileScopes] describes, so the new profile does not inherit the certificates of a
      * removed profile of that name. When that fails, nothing is saved.
      *
+     * Which profiles exist is read with [ConfigRepository.loadConfig], which fails when the stored
+     * configuration cannot be read, rather than with [ConfigRepository.getCurrentConfig], which would fall
+     * back on the defaults and so make every profile's scope look orphaned. When the read fails, nothing is
+     * dropped or saved, and its error is returned.
+     *
      * @param profile The profile to add or replace.
      * @return Unit on success or an error.
      */
     suspend fun upsert(profile: ProfileConfig): OperationResult<Unit> {
         profile.disabledOverrideError()?.let { return it.left() }
-        val current = configRepository.getCurrentConfig()
-        if (profile.name !in current.profiles) {
-            trustStore.clearOrphanedProfileScopes(current.profiles.keys).getOrElse { return it.left() }
+        val current = configRepository.loadConfig().getOrElse { return it.left() }
+        val owned = current.profiles.ownedProfileScopeNames()
+        if (profile.name !in owned) {
+            trustStore.clearOrphanedProfileScopes(owned).getOrElse { return it.left() }
         }
         val updated = current.copy(profiles = current.profiles + (profile.name to profile))
         return configRepository.saveConfig(updated)
@@ -72,7 +79,7 @@ class ManageProfileUseCase(
             activeProfile = if (current.activeProfile == name) null else current.activeProfile
         )
         return configRepository.saveConfig(updated)
-            .flatMap { trustStore.clearOrphanedProfileScopes(updated.profiles.keys) }
+            .flatMap { trustStore.clearOrphanedProfileScopes(updated.profiles.ownedProfileScopeNames()) }
     }
 
     /**

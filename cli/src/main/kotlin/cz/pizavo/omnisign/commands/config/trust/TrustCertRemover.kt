@@ -31,7 +31,7 @@ class TrustCertRemover : CliktCommand(name = "remove"), KoinComponent {
 
 	private val profile by option(
 		"--profile", "-p",
-		help = "Remove from the given profile instead of the global scope"
+		help = "Remove from the given profile, which must exist, instead of the global scope"
 	)
 
 	override fun help(context: Context): String =

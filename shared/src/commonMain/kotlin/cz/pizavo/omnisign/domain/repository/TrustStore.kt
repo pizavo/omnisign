@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.domain.repository
 import arrow.core.getOrElse
 import arrow.core.left
 import arrow.core.right
+import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor
@@ -166,7 +167,8 @@ interface TrustStore {
  * trusting. Scopes are keyed by profile name alone, so a scope that outlives its profile would otherwise
  * be picked up again. A read-only store is left as it is.
  *
- * @param profileNames Names of the profiles whose scopes are kept: those of the configuration.
+ * @param profileNames Names of the scopes that are kept: those [ownedProfileScopeNames] gives for the
+ *   profiles of the configuration.
  * @return Unit once every other profile scope is gone, or the first error, with the scopes before it
  *   already dropped.
  */
@@ -178,3 +180,15 @@ suspend fun TrustStore.clearOrphanedProfileScopes(profileNames: Set<String>): Op
 	for (scope in orphaned) clearProfileScope(scope.name).getOrElse { return it.left() }
 	return Unit.right()
 }
+
+/**
+ * The names of the profile trust scopes that the profiles of this map, keyed as
+ * [cz.pizavo.omnisign.domain.model.config.AppConfig.profiles] is, own: each key, which the CLI's
+ * `config trust` commands check a profile name against, and each profile's own [ProfileConfig.name],
+ * whose scope signing and validation resolve. A profile created through the profile use case is keyed by
+ * its name, but one in a configuration edited by hand or imported may be keyed otherwise, and then both
+ * scopes are its own, so [clearOrphanedProfileScopes] keeps both.
+ *
+ * @return The names of the scopes the profiles own.
+ */
+fun Map<String, ProfileConfig>.ownedProfileScopeNames(): Set<String> = keys + values.map { it.name }

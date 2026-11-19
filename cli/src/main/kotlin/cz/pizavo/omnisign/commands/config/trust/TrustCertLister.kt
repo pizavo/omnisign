@@ -23,7 +23,7 @@ class TrustCertLister : CliktCommand(name = "list"), KoinComponent {
 
 	private val profile by option(
 		"--profile", "-p",
-		help = "List certificates from the given profile instead of the global scope"
+		help = "List certificates from the given profile, which must exist, instead of the global scope"
 	)
 
 	override fun help(context: Context): String =

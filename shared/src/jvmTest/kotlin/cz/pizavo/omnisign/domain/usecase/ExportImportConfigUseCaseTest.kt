@@ -38,7 +38,9 @@ import io.mockk.slot
  * merge logic, and error propagation, and that an import is refused, with nothing saved, when a
  * default or override it carries is among the algorithms the same layer disables. An import that adds a
  * profile drops every trust scope no profile owns before it saves, one that drops a profile drops its
- * scope once it has saved, and one that keeps the stored profiles leaves the trust store alone.
+ * scope once it has saved, and one that keeps the stored profiles leaves the trust store alone. An
+ * import that cannot read the stored configuration drops no scope, and a profile stored under a key
+ * other than its name keeps both scopes.
  */
 class ExportImportConfigUseCaseTest : FunSpec({
 	
@@ -86,7 +88,7 @@ class ExportImportConfigUseCaseTest : FunSpec({
 	}
 	
 	test("importApp replaces the entire config") {
-		coEvery { configRepository.getCurrentConfig() } returns baseConfig
+		coEvery { configRepository.loadConfig() } returns baseConfig.right()
 		val savedSlot = slot<AppConfig>()
 		coEvery { configRepository.saveConfig(capture(savedSlot)) } returns Unit.right()
 		
@@ -114,7 +116,7 @@ class ExportImportConfigUseCaseTest : FunSpec({
 	}
 	
 	test("importProfile upserts profile using name from file") {
-		coEvery { configRepository.getCurrentConfig() } returns baseConfig
+		coEvery { configRepository.loadConfig() } returns baseConfig.right()
 		val savedSlot = slot<AppConfig>()
 		coEvery { configRepository.saveConfig(capture(savedSlot)) } returns Unit.right()
 		
@@ -127,7 +129,7 @@ class ExportImportConfigUseCaseTest : FunSpec({
 	}
 	
 	test("importProfile respects overrideName") {
-		coEvery { configRepository.getCurrentConfig() } returns baseConfig
+		coEvery { configRepository.loadConfig() } returns baseConfig.right()
 		val savedSlot = slot<AppConfig>()
 		coEvery { configRepository.saveConfig(capture(savedSlot)) } returns Unit.right()
 		
@@ -256,8 +258,8 @@ class ExportImportConfigUseCaseTest : FunSpec({
 	test("importApp drops the trust scope of a stored profile the imported configuration leaves out, once it is saved") {
 		val repository: ConfigRepository = mockk()
 		val store = storeWithScopes("p1", "p2")
-		coEvery { repository.getCurrentConfig() } returns
-			baseConfig.copy(profiles = mapOf("p1" to baseProfile, "p2" to baseProfile.copy(name = "p2")))
+		coEvery { repository.loadConfig() } returns
+			baseConfig.copy(profiles = mapOf("p1" to baseProfile, "p2" to baseProfile.copy(name = "p2"))).right()
 		coEvery { repository.saveConfig(any()) } returns Unit.right()
 		val serialized = jsonSerializer.serializeApp(baseConfig).shouldBeRight()
 
@@ -274,7 +276,7 @@ class ExportImportConfigUseCaseTest : FunSpec({
 	test("importApp drops a leftover trust scope of a profile it adds before it saves the configuration") {
 		val repository: ConfigRepository = mockk()
 		val store = storeWithScopes("p1", "added")
-		coEvery { repository.getCurrentConfig() } returns baseConfig
+		coEvery { repository.loadConfig() } returns baseConfig.right()
 		coEvery { repository.saveConfig(any()) } returns Unit.right()
 		val imported = baseConfig.copy(profiles = baseConfig.profiles + ("added" to ProfileConfig(name = "added")))
 		val serialized = jsonSerializer.serializeApp(imported).shouldBeRight()
@@ -294,7 +296,7 @@ class ExportImportConfigUseCaseTest : FunSpec({
 		val failure = TrustStoreError.operationFailed(details = "index not writable")
 		val store = storeWithScopes("added")
 		coEvery { store.clearProfileScope("added") } returns failure.left()
-		coEvery { repository.getCurrentConfig() } returns baseConfig
+		coEvery { repository.loadConfig() } returns baseConfig.right()
 		val imported = baseConfig.copy(profiles = baseConfig.profiles + ("added" to ProfileConfig(name = "added")))
 		val serialized = jsonSerializer.serializeApp(imported).shouldBeRight()
 
@@ -307,7 +309,7 @@ class ExportImportConfigUseCaseTest : FunSpec({
 	test("importApp of the stored profiles leaves the trust store alone") {
 		val repository: ConfigRepository = mockk()
 		val store = storeWithScopes("p1", "gone")
-		coEvery { repository.getCurrentConfig() } returns baseConfig
+		coEvery { repository.loadConfig() } returns baseConfig.right()
 		coEvery { repository.saveConfig(any()) } returns Unit.right()
 		val serialized = jsonSerializer.serializeApp(baseConfig.copy(global = GlobalConfig())).shouldBeRight()
 
@@ -321,8 +323,8 @@ class ExportImportConfigUseCaseTest : FunSpec({
 		val repository: ConfigRepository = mockk()
 		val store = storeWithScopes("p1", "p2")
 		val failure = ConfigurationError.saveFailed(details = "disk full")
-		coEvery { repository.getCurrentConfig() } returns
-			baseConfig.copy(profiles = mapOf("p1" to baseProfile, "p2" to baseProfile.copy(name = "p2")))
+		coEvery { repository.loadConfig() } returns
+			baseConfig.copy(profiles = mapOf("p1" to baseProfile, "p2" to baseProfile.copy(name = "p2"))).right()
 		coEvery { repository.saveConfig(any()) } returns failure.left()
 		val serialized = jsonSerializer.serializeApp(baseConfig).shouldBeRight()
 
@@ -335,7 +337,7 @@ class ExportImportConfigUseCaseTest : FunSpec({
 	test("importProfile under a new name drops every trust scope no profile owns before it saves, and under a stored name leaves the trust store alone") {
 		val repository: ConfigRepository = mockk()
 		val store = storeWithScopes("p1", "imported", "gone")
-		coEvery { repository.getCurrentConfig() } returns baseConfig
+		coEvery { repository.loadConfig() } returns baseConfig.right()
 		coEvery { repository.saveConfig(any()) } returns Unit.right()
 		val serialized = jsonSerializer.serializeProfile(ProfileConfig(name = "imported")).shouldBeRight()
 		val imports = ExportImportConfigUseCase(repository, registry, store)
@@ -359,12 +361,50 @@ class ExportImportConfigUseCaseTest : FunSpec({
 		val failure = TrustStoreError.operationFailed(details = "index not writable")
 		val store = storeWithScopes("imported")
 		coEvery { store.clearProfileScope("imported") } returns failure.left()
-		coEvery { repository.getCurrentConfig() } returns baseConfig
+		coEvery { repository.loadConfig() } returns baseConfig.right()
 		val serialized = jsonSerializer.serializeProfile(ProfileConfig(name = "imported")).shouldBeRight()
 
 		ExportImportConfigUseCase(repository, registry, store).importProfile(serialized, ConfigFormat.JSON)
 			.shouldBeLeft() shouldBe failure
 
 		coVerify(exactly = 0) { repository.saveConfig(any()) }
+	}
+
+	test("importApp and importProfile drop no trust scope and save nothing when the stored configuration cannot be read") {
+		val repository: ConfigRepository = mockk()
+		val store = storeWithScopes("p1", "p2")
+		val failure = ConfigurationError.loadFailed(details = "config.json is not valid JSON")
+		coEvery { repository.loadConfig() } returns failure.left()
+		coEvery { repository.getCurrentConfig() } returns AppConfig()
+		val imports = ExportImportConfigUseCase(repository, registry, store)
+		val imported = baseConfig.copy(profiles = baseConfig.profiles + ("added" to ProfileConfig(name = "added")))
+		val appText = jsonSerializer.serializeApp(imported).shouldBeRight()
+		val profileText = jsonSerializer.serializeProfile(ProfileConfig(name = "added")).shouldBeRight()
+
+		imports.importApp(appText, ConfigFormat.JSON).shouldBeLeft() shouldBe failure
+		imports.importProfile(profileText, ConfigFormat.JSON).shouldBeLeft() shouldBe failure
+
+		coVerify(exactly = 0) { store.scopes() }
+		coVerify(exactly = 0) { store.clearProfileScope(any()) }
+		coVerify(exactly = 0) { repository.saveConfig(any()) }
+	}
+
+	test("importApp keeps the scopes of both the key and the name of a profile stored under a key other than its name") {
+		val repository: ConfigRepository = mockk()
+		val store = storeWithScopes("p1", "P1", "p2", "added", "gone")
+		val renamed = baseProfile.copy(name = "P1")
+		val stored = baseConfig.copy(profiles = mapOf("p1" to renamed, "p2" to baseProfile.copy(name = "p2")))
+		coEvery { repository.loadConfig() } returns stored.right()
+		coEvery { repository.saveConfig(any()) } returns Unit.right()
+		val imported = stored.copy(profiles = mapOf("p1" to renamed, "added" to ProfileConfig(name = "added")))
+		val serialized = jsonSerializer.serializeApp(imported).shouldBeRight()
+
+		ExportImportConfigUseCase(repository, registry, store).importApp(serialized, ConfigFormat.JSON).shouldBeRight()
+
+		coVerify { store.clearProfileScope("added") }
+		coVerify { store.clearProfileScope("gone") }
+		coVerify { store.clearProfileScope("p2") }
+		coVerify(exactly = 0) { store.clearProfileScope("p1") }
+		coVerify(exactly = 0) { store.clearProfileScope("P1") }
 	}
 })

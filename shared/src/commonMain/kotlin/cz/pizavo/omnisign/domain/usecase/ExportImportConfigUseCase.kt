@@ -15,6 +15,7 @@ import cz.pizavo.omnisign.domain.port.ConfigSerializerRegistry
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.domain.repository.TrustStore
 import cz.pizavo.omnisign.domain.repository.clearOrphanedProfileScopes
+import cz.pizavo.omnisign.domain.repository.ownedProfileScopeNames
 
 /**
  * Use case for exporting and importing application and profile configurations
@@ -62,7 +63,9 @@ class ExportImportConfigUseCase(
 	 * profile owns is dropped before it is saved, and when it lacks a stored profile, again after it is
 	 * saved, so neither an imported profile nor one created later inherits the certificates of a profile
 	 * that is gone. A failure before the save leaves the configuration as it was; one after it returns
-	 * the error with the imported configuration saved.
+	 * the error with the imported configuration saved. The stored profiles are read with
+	 * [ConfigRepository.loadConfig], so a stored configuration that cannot be read fails the import
+	 * before any scope is dropped, instead of making every stored profile's scope look orphaned.
 	 *
 	 * @param text Serialized configuration text.
 	 * @param format Format of the supplied text.
@@ -74,13 +77,14 @@ class ExportImportConfigUseCase(
 		val config = serializer.deserializeApp(text).getOrElse { return it.left() }
 		config.global.disabledDefaultError()?.let { return it.left() }
 		config.profiles.values.firstNotNullOfOrNull { it.disabledOverrideError() }?.let { return it.left() }
-		val stored = configRepository.getCurrentConfig().profiles.keys
-		if (!stored.containsAll(config.profiles.keys)) {
+		val stored = configRepository.loadConfig().getOrElse { return it.left() }.profiles.ownedProfileScopeNames()
+		val imported = config.profiles.ownedProfileScopeNames()
+		if (!stored.containsAll(imported)) {
 			trustStore.clearOrphanedProfileScopes(stored).getOrElse { return it.left() }
 		}
 		configRepository.saveConfig(config).getOrElse { return it.left() }
-		if (config.profiles.keys.containsAll(stored)) return Unit.right()
-		return trustStore.clearOrphanedProfileScopes(config.profiles.keys)
+		if (imported.containsAll(stored)) return Unit.right()
+		return trustStore.clearOrphanedProfileScopes(imported)
 	}
 	
 	/**
@@ -180,7 +184,9 @@ class ExportImportConfigUseCase(
 	 * nothing is saved, as [disabledOverrideError] describes; the error names the profile as it would
 	 * have been saved. Before a profile of a new name is saved, every trust scope no profile owns is
 	 * dropped, as [clearOrphanedProfileScopes] describes, so it does not inherit the certificates of a
-	 * removed profile of that name; when that fails, nothing is saved.
+	 * removed profile of that name; when that fails, nothing is saved. The stored profiles are read with
+	 * [ConfigRepository.loadConfig], so a stored configuration that cannot be read fails the import
+	 * before any scope is dropped.
 	 *
 	 * @param profile The profile [readProfile] read.
 	 * @param overrideName Optional name to use instead of the profile's own.
@@ -189,9 +195,10 @@ class ExportImportConfigUseCase(
 	suspend fun saveProfile(profile: ProfileConfig, overrideName: String? = null): OperationResult<String> {
 		val finalProfile = if (overrideName != null) profile.copy(name = overrideName) else profile
 		finalProfile.disabledOverrideError()?.let { return it.left() }
-		val current = configRepository.getCurrentConfig()
-		if (finalProfile.name !in current.profiles) {
-			trustStore.clearOrphanedProfileScopes(current.profiles.keys).getOrElse { return it.left() }
+		val current = configRepository.loadConfig().getOrElse { return it.left() }
+		val owned = current.profiles.ownedProfileScopeNames()
+		if (finalProfile.name !in owned) {
+			trustStore.clearOrphanedProfileScopes(owned).getOrElse { return it.left() }
 		}
 		val updated = current.copy(
 			profiles = current.profiles + (finalProfile.name to finalProfile)

@@ -171,4 +171,27 @@ class ConfigTrustTest : FunSpec({
 		result.statusCode shouldBe 0
 		result.output shouldContain "profile 'work'"
 	}
+
+	test("list shows the certificates in the scope of a profile that exists") {
+		coEvery { configRepository.getCurrentConfig() } returns AppConfig(profiles = mapOf("work" to ProfileConfig(name = "work")))
+		coEvery { trustStore.list(TrustScope.Profile("work")) } returns listOf(trusted("sha256-1a2b3c")).right()
+
+		val result = Omnisign().test(listOf("config", "trust", "list", "--profile", "work"))
+
+		result.statusCode shouldBe 0
+		result.output shouldContain "sha256-1a2b3c"
+		coVerify(exactly = 0) { trustStore.list(TrustScope.Global) }
+	}
+
+	test("remove removes a certificate from the scope of a profile that exists") {
+		coEvery { configRepository.getCurrentConfig() } returns AppConfig(profiles = mapOf("work" to ProfileConfig(name = "work")))
+		coEvery { trustStore.list(TrustScope.Profile("work")) } returns listOf(trusted("sha256-1a2b3c")).right()
+		coEvery { trustStore.remove(TrustScope.Profile("work"), "sha256-1a2b3c") } returns Unit.right()
+
+		val result = Omnisign().test(listOf("config", "trust", "remove", "sha256-1a", "--profile", "work"))
+
+		result.statusCode shouldBe 0
+		result.stdout shouldContain "sha256-1a2b3c removed"
+		coVerify(exactly = 1) { trustStore.remove(TrustScope.Profile("work"), "sha256-1a2b3c") }
+	}
 })

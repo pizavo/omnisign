@@ -39,11 +39,11 @@ are deleted once a new index has been written.
 
 Import a PEM or DER certificate into the trust store.
 
-| Option                 | Description                                                          |
-|------------------------|---------------------------------------------------------------------|
-| `-c, --cert <path>`    | **(Required)** Path to the PEM or DER certificate file              |
-| `-t, --type <type>`    | Trust role: `ANY` (both CA and TSA), `CA`, or `TSA`. Default: `ANY` |
-| `-p, --profile <name>` | Store in the given profile's scope instead of the global scope      |
+| Option                 | Description                                                                          |
+|------------------------|--------------------------------------------------------------------------------------|
+| `-c, --cert <path>`    | **(Required)** Path to the PEM or DER certificate file                               |
+| `-t, --type <type>`    | Trust role: `ANY` (both CA and TSA), `CA`, or `TSA`. Default: `ANY`                  |
+| `-p, --profile <name>` | Store in the scope of the given profile, which must exist, instead of the global one |
 
 On success the subject DN and fingerprint are printed. The original file is not needed afterward.
 
@@ -56,9 +56,9 @@ omnisign config trust list
 omnisign config trust list --profile university
 ```
 
-| Option                 | Description                                      |
-|------------------------|--------------------------------------------------|
-| `-p, --profile <name>` | List the given profile's scope instead of global |
+| Option                 | Description                                                                      |
+|------------------------|----------------------------------------------------------------------------------|
+| `-p, --profile <name>` | List the scope of the given profile, which must exist, instead of the global one |
 
 ## `config trust remove <fingerprint>`
 
@@ -71,9 +71,9 @@ omnisign config trust remove sha256-1a2b3c
 omnisign config trust remove sha256-1a2b3c --profile university
 ```
 
-| Option                 | Description                                             |
-|------------------------|--------------------------------------------------------|
-| `-p, --profile <name>` | Remove from the given profile's scope instead of global |
+| Option                 | Description                                                                             |
+|------------------------|-----------------------------------------------------------------------------------------|
+| `-p, --profile <name>` | Remove from the scope of the given profile, which must exist, instead of the global one |
 
 ## Examples
 
