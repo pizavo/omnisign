@@ -6,6 +6,11 @@ import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
+import io.kotest.matchers.types.shouldBeInstanceOf
+import io.kotest.matchers.types.shouldBeSameInstanceAs
+import io.ktor.server.engine.ApplicationEngine
+import io.ktor.server.engine.ConnectorType
+import io.ktor.server.engine.EngineSSLConnectorConfig
 import io.ktor.server.engine.applicationEnvironment
 import io.ktor.server.engine.embeddedServer
 import io.ktor.server.netty.Netty
@@ -20,7 +25,8 @@ import javax.net.ssl.TrustManagerFactory
  * Verifies the connector [tlsConnector] adds, through real handshakes with a Netty server on
  * 127.0.0.1: a client that offers a version in [TlsConfig.enabledProtocols] connects with it, and one
  * that offers only another version is refused with a `protocol_version` alert, so the list, not the
- * JVM's defaults, decides which versions the server accepts.
+ * JVM's defaults, decides which versions the server accepts. Without a server, it also checks that
+ * the connector takes the host, port, key alias and both passwords it is given.
  *
  * The server presents the certificate of the end-to-end signer key store, which the client trusts
  * through the test CA that issued it.
@@ -30,7 +36,9 @@ class TlsConnectorTest : FunSpec({
 	val alias = "key"
 	val password = "test1234"
 	val keyStore = KeyStore.getInstance("PKCS12").apply {
-		TlsConnectorTest::class.java.getResourceAsStream("/e2e/signer.test.p12").use { load(it, password.toCharArray()) }
+		TlsConnectorTest::class.java.getResourceAsStream("/e2e/signer.test.p12").use {
+			load(it, password.toCharArray())
+		}
 	}
 	val client: SSLContext = SSLContext.getInstance("TLS").apply {
 		val anchors = KeyStore.getInstance("PKCS12").apply {
@@ -71,6 +79,27 @@ class TlsConnectorTest : FunSpec({
 			socket.startHandshake()
 			socket.session.protocol
 		}
+
+	test("the connector takes the host, port, key alias and both passwords it is given") {
+		val configuration = ApplicationEngine.Configuration().apply {
+			tlsConnector(
+				defaults.copy(keyAlias = "seal", port = 18_555, enabledProtocols = listOf("TLSv1.3")),
+				"192.0.2.7",
+				keyStore,
+				Sensitive("store-password"),
+				Sensitive("key-password"),
+			)
+		}
+		val connector = configuration.connectors.single().shouldBeInstanceOf<EngineSSLConnectorConfig>()
+		connector.type shouldBe ConnectorType.HTTPS
+		connector.host shouldBe "192.0.2.7"
+		connector.port shouldBe 18_555
+		connector.keyStore shouldBeSameInstanceAs keyStore
+		connector.keyAlias shouldBe "seal"
+		connector.keyStorePassword().concatToString() shouldBe "store-password"
+		connector.privateKeyPassword().concatToString() shouldBe "key-password"
+		connector.enabledProtocols shouldBe listOf("TLSv1.3")
+	}
 
 	test("by default the connector accepts a client that offers only TLS 1.3 and one that offers only TLS 1.2") {
 		withTlsServer(defaults) { port ->
