@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.data.service
 
 import cz.pizavo.omnisign.data.repository.appConfigDirectory
+import java.nio.file.Path
 import kotlin.io.encoding.Base64
 import kotlin.io.path.absolutePathString
 import kotlin.io.path.createDirectories
@@ -23,26 +24,31 @@ import kotlin.io.path.outputStream
  * `GetElementsByTagName` throws a "collection was modified" error at runtime.
  * - The toast XML and the icon's path reach PowerShell in the environment variables
  * [TOAST_XML_VARIABLE] and [ICON_PATH_VARIABLE], never in the script, which is [SCRIPT] for every
- * toast. PowerShell therefore never reads a job name, an error message or a path as code. Spliced
- * into a single-quoted PowerShell string, any of them could end it early: PowerShell ends such a
- * string at the typographic quotes U+2018 to U+201B as well as at the apostrophe, so a job named
- * `Jan’s contracts` broke the script and its toast never showed, and a crafted name, which an
- * imported configuration archive can carry, ran the text after the quote as commands.
+ * toast. PowerShell therefore never reads a job name, an error message or a path as code. A text
+ * spliced into a single-quoted PowerShell string ends it at an apostrophe or at any of the
+ * typographic quotes U+2018 to U+201B, so a job name such as `Jan’s contracts` would make the
+ * script fail to parse, and a crafted one, which an imported configuration archive can carry, would
+ * run the text after the quote as commands.
  * - The script is handed to PowerShell through `-EncodedCommand` (Base64 of its UTF-16LE bytes)
  * rather than `-Command`, whose parsing of the command line strips and mangles quotes. Encoding
  * bypasses that parsing altogether; no `-ExecutionPolicy Bypass` is needed because nothing is read
  * from a file.
  *
  * CRITICAL urgency sets the toast scenario to "alarm" so it persists until dismissed.
+ *
+ * @param iconDirectory The directory the bundled toast icon is extracted to, [appConfigDirectory]
+ * unless a spec gives another.
+ * @param run Starts a toast's process and waits for it to end. Unless a spec gives another, it
+ * starts the process with this one's standard input, output and error.
  */
-class WindowsNotificationService : OsNotificationService {
+class WindowsNotificationService(
+	private val iconDirectory: () -> Path = ::appConfigDirectory,
+	private val run: (ProcessBuilder) -> Unit = { process -> process.inheritIO().start().waitFor() },
+) : OsNotificationService {
 
 	override fun notify(title: String, body: String, urgency: NotificationUrgency) {
 		try {
-			toastProcess(title, body, urgency, toastIconPath())
-				.inheritIO()
-				.start()
-				.waitFor()
+			run(toastProcess(title, body, urgency, toastIconPath()))
 		} catch (e: Exception) {
 			System.err.println("omnisign: Windows toast notification failed: ${e.message}")
 		}
@@ -55,6 +61,8 @@ class WindowsNotificationService : OsNotificationService {
 	 * [TOAST_XML_VARIABLE], and [iconPath] in [ICON_PATH_VARIABLE], which is empty when [iconPath]
 	 * is `null` whatever this process's own environment holds.
 	 *
+	 * @param title The toast's first line.
+	 * @param body The toast's second line.
 	 * @param urgency Urgency of the toast; [NotificationUrgency.CRITICAL] shows it in the "alarm"
 	 * scenario.
 	 * @param iconPath Absolute path of the icon registered with the app's identity when a toast is
@@ -97,12 +105,12 @@ class WindowsNotificationService : OsNotificationService {
 	 * cannot be provided.
 	 *
 	 * The Windows toast `IconUri` needs a real file path, but the icon ships as a classpath resource,
-	 * so it is extracted once into [appConfigDirectory] and reused thereafter. Any failure degrades
+	 * so it is extracted once into [iconDirectory] and reused thereafter. Any failure degrades
 	 * to `null`, leaving the toast to show without the branded icon rather than failing outright.
 	 */
 	private fun toastIconPath(): String? =
 		try {
-			val target = appConfigDirectory().resolve(ICON_FILE_NAME)
+			val target = iconDirectory().resolve(ICON_FILE_NAME)
 			if (target.notExists()) {
 				target.parent?.createDirectories()
 				(javaClass.getResourceAsStream(ICON_RESOURCE) ?: return null).use { input ->

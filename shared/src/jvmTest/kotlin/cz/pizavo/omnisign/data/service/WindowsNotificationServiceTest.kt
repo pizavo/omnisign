@@ -4,10 +4,18 @@ import io.kotest.assertions.withClue
 import io.kotest.core.spec.style.FunSpec
 import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.collections.shouldContainExactly
+import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.string.shouldNotContain
+import java.io.ByteArrayOutputStream
+import java.io.IOException
+import java.io.PrintStream
+import java.nio.file.Path
 import kotlin.io.encoding.Base64
+import kotlin.io.path.absolutePathString
+import kotlin.io.path.readBytes
+import kotlin.io.path.writeBytes
 
 /**
  * Verifies that [WindowsNotificationService] keeps the text of a toast out of the PowerShell script that
@@ -16,9 +24,13 @@ import kotlin.io.encoding.Base64
  * neither break the script nor run as code. On Windows, PowerShell parses the script without errors, and
  * loads a toast whose body is written to run as commands as plain text, typographic quotes and all.
  *
+ * [WindowsNotificationService.notify] builds the process for its title, body and urgency, with the icon it
+ * extracts once, and reports a process that fails to start rather than throwing.
+ *
  * No test shows a toast or writes to the registry: each builds the process that
- * [WindowsNotificationService.notify] would start without starting it, and on Windows runs either
- * PowerShell's parser on the script or [WindowsNotificationService.LOAD_TOAST_XML] alone.
+ * [WindowsNotificationService.notify] would start without starting it, or calls `notify` on a service that only
+ * keeps that process and extracts its icon into a temporary directory, and on Windows runs either PowerShell's
+ * parser on the script or [WindowsNotificationService.LOAD_TOAST_XML] alone.
  */
 class WindowsNotificationServiceTest : FunSpec({
 
@@ -81,7 +93,8 @@ class WindowsNotificationServiceTest : FunSpec({
 
 		process.environment()[WindowsNotificationService.TOAST_XML_VARIABLE] shouldBe
 			"<toast scenario='default'><visual><binding template='ToastGeneric'>" +
-			"<text>OmniSign — Obnova dokončena (Jan’s ‚smlouvy‘, Ann's ‛notes‛ &amp; &lt;drafts&gt;)</text>" +
+			"<text>OmniSign — Obnova dokončena (Jan’s ‚smlouvy‘, " +
+			"Ann's ‛notes‛ &amp; &lt;drafts&gt;)</text>" +
 			"<text>x’+(New-Item -ItemType File -Path ’ran’)+’</text>" +
 			"</binding></visual></toast>"
 	}
@@ -103,6 +116,70 @@ class WindowsNotificationServiceTest : FunSpec({
 			.environment()[WindowsNotificationService.ICON_PATH_VARIABLE] shouldBe iconPath
 		service.toastProcess(title, payload, NotificationUrgency.NORMAL, null)
 			.environment()[WindowsNotificationService.ICON_PATH_VARIABLE] shouldBe ""
+	}
+
+	/**
+	 * A [WindowsNotificationService] that extracts its icon into [directory] and adds each process
+	 * [WindowsNotificationService.notify] would start to [started] instead of starting it.
+	 */
+	fun keeping(directory: Path, started: MutableList<ProcessBuilder>) =
+		WindowsNotificationService(iconDirectory = { directory }, run = { process -> started += process })
+
+	test("notify starts the process for its title, body and urgency, with the icon it extracts") {
+		val directory = tempdir().toPath().resolve("config")
+		val started = mutableListOf<ProcessBuilder>()
+
+		keeping(directory, started).notify(title, payload, NotificationUrgency.CRITICAL)
+
+		val process = started.single()
+		val icon = directory.resolve("omnisign-toast-icon.png")
+		val xml = process.environment()[WindowsNotificationService.TOAST_XML_VARIABLE].orEmpty()
+		textsOf(xml) shouldContainExactly listOf(title, payload)
+		xml shouldContain "<toast scenario='alarm'>"
+		scriptOf(process) shouldBe WindowsNotificationService.SCRIPT
+		process.environment()[WindowsNotificationService.ICON_PATH_VARIABLE] shouldBe icon.absolutePathString()
+		val bundled = WindowsNotificationService::class.java.getResourceAsStream("/omnisign-toast-icon.png")
+			.shouldNotBeNull().use { it.readBytes() }
+		icon.readBytes() shouldBe bundled
+	}
+
+	test("notify keeps the icon it extracted before") {
+		val directory = tempdir().toPath()
+		val icon = directory.resolve("omnisign-toast-icon.png").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+		val started = mutableListOf<ProcessBuilder>()
+
+		keeping(directory, started).notify(title, payload, NotificationUrgency.NORMAL)
+
+		icon.readBytes() shouldBe byteArrayOf(1, 2, 3)
+		started.single().environment()[WindowsNotificationService.ICON_PATH_VARIABLE] shouldBe
+			icon.absolutePathString()
+	}
+
+	test("notify starts the process without an icon when it cannot extract one") {
+		val started = mutableListOf<ProcessBuilder>()
+
+		WindowsNotificationService(iconDirectory = { error("no config directory") }, run = { started += it })
+			.notify(title, payload, NotificationUrgency.NORMAL)
+
+		started.single().environment()[WindowsNotificationService.ICON_PATH_VARIABLE] shouldBe ""
+	}
+
+	test("notify writes a process that fails to start to standard error rather than throwing") {
+		val directory = tempdir().toPath()
+		val errors = ByteArrayOutputStream()
+		val original = System.err
+		System.setErr(PrintStream(errors, true, Charsets.UTF_8))
+		try {
+			WindowsNotificationService(
+				iconDirectory = { directory },
+				run = { throw IOException("powershell not found") },
+			).notify(title, payload, NotificationUrgency.NORMAL)
+		} finally {
+			System.setErr(original)
+		}
+
+		errors.toString(Charsets.UTF_8) shouldContain
+			"omnisign: Windows toast notification failed: powershell not found"
 	}
 
 	test("PowerShell parses the script that shows a toast without an error").config(enabled = onWindows) {
