@@ -54,7 +54,11 @@ private abstract class TimestampServerConfigMixin {
  * **Strict parsing.** [DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES] is enabled, so any
  * key that does not map to a property — including the `AppConfig` fields excluded from the
  * provider schema (`activeProfile`, `tlDrafts`, `renewalJobs`, `schedulerConfig`) — fails
- * startup rather than being silently ignored.
+ * startup rather than being silently ignored. [DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY]
+ * is enabled too, so a key given twice in one mapping of any file the policy reads fails startup
+ * rather than the later value replacing the earlier one: a second `validation:` under `global:`
+ * would otherwise drop the first one's `trustedCertificates`, which [TrustReconciler] would then
+ * remove from the trust store.
  *
  * **TSA credentials.** The OS-keyring `credentialKey` is rejected: a headless server has no
  * keyring, so the password is supplied from the environment via `password` instead.
@@ -264,7 +268,7 @@ class SigningConfigLoader(private val env: (String) -> String? = placeholderReso
 
 		/**
 		 * Build a mapper from [builder] with the shared strict configuration: the Kotlin module,
-		 * fail-on-unknown keys, the [TimestampServerConfigMixin], the [Sensitive] string
+		 * fail-on-unknown and fail-on-repeated keys, the [TimestampServerConfigMixin], the [Sensitive] string
 		 * deserializer, and [SensitiveJacksonSerializer], which refuses to write one back out. The
 		 * mixin exposes the TSA password as `password` for reading, so without that serializer a
 		 * write through either mapper would carry it.
@@ -273,6 +277,7 @@ class SigningConfigLoader(private val env: (String) -> String? = placeholderReso
 			builder
 				.addModule(KotlinModule.Builder().build())
 				.enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+				.enable(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY)
 				.addMixIn(TimestampServerConfig::class.java, TimestampServerConfigMixin::class.java)
 				.addModule(
 					SimpleModule()

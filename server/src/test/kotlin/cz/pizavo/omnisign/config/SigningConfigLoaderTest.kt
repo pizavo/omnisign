@@ -21,7 +21,8 @@ import kotlin.io.path.createTempDirectory
 
 /**
  * Verifies [SigningConfigLoader] parsing, env-var substitution, profile-source folding
- * (inline / files / directories), and the fail-fast contract on misconfiguration.
+ * (inline / files / directories), and the fail-fast contract on misconfiguration, a key given
+ * twice in one mapping of the policy or of a profile file among it.
  *
  * YAML fixtures are written column-aligned at the left margin so their literal indentation
  * is the YAML structure, independent of the surrounding Kotlin indentation.
@@ -315,6 +316,35 @@ profiles: {}
 	test("load refuses content after a JSON document instead of ignoring it") {
 		val file = newDir().put("signing.json", "{}{}")
 		shouldThrow<MismatchedInputException> { loader.load(file.absolutePath) }
+	}
+
+	test("load refuses a block given twice instead of letting the second replace the first") {
+		val file = newDir().put("signing.yml", """
+global:
+  defaultHashAlgorithm: SHA256
+global:
+  defaultHashAlgorithm: SHA512
+""")
+		val ex = shouldThrow<MismatchedInputException> { loader.load(file.absolutePath) }
+		ex.message.shouldNotBeNull() shouldContain "\"global\""
+	}
+
+	test("load refuses a key given twice in a JSON signing file") {
+		val file = newDir().put("signing.json", """{"global": {"defaultHashAlgorithm": "SHA256", "defaultHashAlgorithm": "SHA512"}}""")
+		val ex = shouldThrow<MismatchedInputException> { loader.load(file.absolutePath) }
+		ex.message.shouldNotBeNull() shouldContain "\"defaultHashAlgorithm\""
+	}
+
+	test("load refuses a key given twice in a profile file found in a directory") {
+		val dir = newDir()
+		dir.put("p/a.yml", "name: a\nhashAlgorithm: SHA256\nhashAlgorithm: SHA512\n")
+		val file = dir.put("signing.yml", """
+profiles:
+  directories:
+    - p
+""")
+		val ex = shouldThrow<MismatchedInputException> { loader.load(file.absolutePath) }
+		ex.message.shouldNotBeNull() shouldContain "\"hashAlgorithm\""
 	}
 
 	test("neither mapper writes a TSA password back out") {

@@ -51,6 +51,13 @@ private val logger = KotlinLogging.logger {}
  * `tls: { keystorePat: "..." }` would skip TLS entirely; etc. Failing loudly forces
  * every misconfiguration through an explicit fix instead of through unnoticed
  * fail-open behavior.
+ *
+ * **No repeated keys.** [DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY] is enabled as well,
+ * so a key given twice in one mapping fails the load, naming the key, where Jackson would
+ * otherwise keep the later value. YAML 1.2 forbids such a key, and keeping the later value is
+ * fail-open in the same way as a typo: a second `auth:` block further down, meant to add
+ * `allowedRedirectUris`, would replace the first block whole, and with it `enabled: true`. Every
+ * load reads the document into a tree first, which is where the feature applies.
  */
 class ServerConfigLoader(private val env: (String) -> String? = placeholderResolver()) {
 
@@ -62,6 +69,7 @@ class ServerConfigLoader(private val env: (String) -> String? = placeholderResol
 	internal val mapper: ObjectMapper = configYamlMapperBuilder()
 		.addModule(KotlinModule.Builder().build())
 		.enable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+		.enable(DeserializationFeature.FAIL_ON_READING_DUP_TREE_KEY)
 		.addModule(
 			SimpleModule()
 				.addDeserializer(SsoProviderConfig::class.java, SsoProviderConfigDeserializer())

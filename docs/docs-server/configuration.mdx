@@ -25,9 +25,11 @@ The server resolves its config file from the first source that exists, in order:
 
 Three parsing rules protect you from silent misconfiguration:
 
-- **Unknown keys fail startup.** A typo like `auth: { enable: true }` (missing `d`) or
+- **Unknown and repeated keys fail startup.** A typo like `auth: { enable: true }` (missing `d`) or
   `tls: { keystorePat: … }` would otherwise silently disable a defense; instead the server refuses
-  to start and names the offending key.
+  to start and names the offending key. So does a key given twice in one block: a second `auth:`
+  further down, meant to add `allowedRedirectUris`, would otherwise replace the first one whole,
+  `enabled: true` and the providers with it.
 - **Values must say what they mean.** The file is read as YAML 1.2, so `true` and `false` are the
   booleans, and `yes`, `no`, `on`, or `off` on a boolean key fails startup. `~` and an empty value mean
   null, which a number or boolean key refuses rather than reading as `0` or `false`: a blank `port:`
