@@ -83,6 +83,8 @@
 	<string name="err_config_cannot_disable_default_encryption">Nie je možné zakázať predvolený šifrovací algoritmus %1$s; najprv zmeňte predvolený</string>
 	<string name="err_config_profile_disables_own_hash">Profil \'%1$s\' zakazuje vlastné prepísanie hašovacieho algoritmu %2$s; odstráňte prepísanie alebo ho odstráňte zo zakázanej množiny</string>
 	<string name="err_config_profile_disables_own_encryption">Profil \'%1$s\' zakazuje vlastné prepísanie šifrovacieho algoritmu %2$s; odstráňte prepísanie alebo ho odstráňte zo zakázanej množiny</string>
+	<string name="err_config_algorithm_date_invalid">Obmedzenie algoritmov %1$s obsahuje \'%2$s\', čo nie je dátum v tvare RRRR-MM-DD, napríklad 2027-12-31</string>
+	<string name="err_config_profile_algorithm_date_invalid">Obmedzenie algoritmov %2$s profilu \'%1$s\' obsahuje \'%3$s\', čo nie je dátum v tvare RRRR-MM-DD, napríklad 2027-12-31</string>
 	<string name="err_config_profile_not_found">Profil \'%1$s\' neexistuje</string>
 	<string name="err_config_no_profile_named">Nenašiel sa žiadny profil s názvom \'%1$s\'</string>
 	<string name="err_config_trusted_list_not_found">Nenašiel sa žiadny dôveryhodný zoznam s názvom \'%1$s\'</string>

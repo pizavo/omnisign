@@ -103,6 +103,12 @@ dates earlier, so it never makes a weak key acceptable again. The CLI's
 [expiration date overrides](/cli/configuration/overview#expiration-date-overrides) section explains
 how the entries combine.
 
+Every date of `algorithmConstraints`, its `policyUpdateDate` and each date of
+`expirationDateOverrides`, is written as `YYYY-MM-DD`, in `global` and in every profile, whatever
+date format a custom validation policy uses: the server writes the date into the policy in the
+policy's own format. A date in any other form, such as `2030` or `31.12.2030`, fails startup with
+an error that names the field.
+
 A `defaultEncryptionAlgorithm`, or a profile's `encryptionAlgorithm`, has to suit the signing key:
 `RSA_SSA_PSS` can take the place of `RSA` on an RSA key, and `PLAIN_ECDSA` that of `ECDSA` on an EC
 key, but a sign request with one of another family is refused, and so is one with `RSA_SSA_PSS` or

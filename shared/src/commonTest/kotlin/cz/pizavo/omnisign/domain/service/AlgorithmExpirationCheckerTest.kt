@@ -171,6 +171,20 @@ class AlgorithmExpirationCheckerTest : FunSpec({
 	test("effectiveExpirationDate returns null for non-expiring algo with no override") {
 		checker.effectiveExpirationDate(HashAlgorithm.SHA256, defaultConfig).shouldBeNull()
 	}
+
+	test("an override whose date is not in the form YYYY-MM-DD counts as no override") {
+		for (date in listOf("2050", "01.01.2050", "2050-02-30", "+12050-01-01", " 2050-01-01")) {
+			val config = defaultConfig.copy(expirationDateOverrides = mapOf("RIPEMD160" to date))
+			checker.effectiveExpirationDate(HashAlgorithm.RIPEMD160, config) shouldBe
+				HashAlgorithm.RIPEMD160.expirationDate
+			checker.check(HashAlgorithm.RIPEMD160, config, today) shouldBe AlgorithmStatus.EXPIRED_FAIL
+		}
+	}
+
+	test("an update date that is not in the form YYYY-MM-DD gives way to the default update date") {
+		val config = defaultConfig.copy(policyUpdateDate = "01.01.2010")
+		checker.check(HashAlgorithm.RIPEMD160, config, today) shouldBe AlgorithmStatus.EXPIRED_FAIL
+	}
 	
 	test("all non-expiring algorithms have no bundled expirationDate") {
 		listOf(

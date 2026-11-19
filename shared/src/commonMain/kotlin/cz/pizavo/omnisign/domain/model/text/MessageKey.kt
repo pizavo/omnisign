@@ -273,6 +273,12 @@ enum class MessageKey {
 	/** A profile disables its own encryption algorithm override (args: profile name, algorithm). */
 	CONFIG_PROFILE_DISABLES_OWN_ENCRYPTION,
 
+	/** A date of the global algorithm constraints is not in the form YYYY-MM-DD (args: field, text). */
+	CONFIG_ALGORITHM_DATE_INVALID,
+
+	/** A date of a profile's algorithm constraints is not in the form YYYY-MM-DD (args: profile name, field, text). */
+	CONFIG_PROFILE_ALGORITHM_DATE_INVALID,
+
 	/** No profile with the requested name exists (arg: profile name). */
 	CONFIG_PROFILE_NOT_FOUND,
 

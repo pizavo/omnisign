@@ -8,6 +8,7 @@ import com.github.ajalt.clikt.parameters.options.multiple
 import com.github.ajalt.clikt.parameters.options.option
 import com.github.ajalt.clikt.parameters.types.enum
 import com.github.ajalt.clikt.parameters.types.int
+import cz.pizavo.omnisign.cli.expiryOverrides
 import cz.pizavo.omnisign.cli.failWith
 import cz.pizavo.omnisign.cli.requirePersistentCredentialStore
 import cz.pizavo.omnisign.cli.resolvePasswordOption
@@ -80,9 +81,9 @@ class ProfileCreate : CliktCommand(name = "create"), KoinComponent {
 		"--algo-expiry-override",
 		help = "Per-algorithm expiration date override: ALGORITHM=DATE, or ALGORITHM:KEY_SIZE=DATE " +
 				"for one key-size entry of an algorithm the policy dates by key size, such as RSA " +
-				"(e.g. RIPEMD160=2030-01-01, RSA:1900=2030-12-31). Without KEY_SIZE, such an " +
-				"algorithm's dates can only be moved earlier. Repeatable."
-	).multiple()
+				"(e.g. RIPEMD160=2030-01-01, RSA:1900=2030-12-31), with DATE in the form YYYY-MM-DD. " +
+				"Without KEY_SIZE, such an algorithm's dates can only be moved earlier. Repeatable."
+	).expiryOverrides()
 	
 	private val disableHashAlgorithm by option(
 		"--disable-hash-algorithm",
@@ -156,7 +157,7 @@ class ProfileCreate : CliktCommand(name = "create"), KoinComponent {
 			algorithmConstraints = if (hasAlgoConstraints) base.copy(
 				expirationLevel = algoExpirationLevel,
 				expirationLevelAfterUpdate = algoExpirationLevelAfterUpdate,
-				expirationDateOverrides = ConfigSet.parseExpiryOverrides(algoExpiryOverride)
+				expirationDateOverrides = algoExpiryOverride.toMap()
 			).stampedToday(today) else base
 		)
 	}

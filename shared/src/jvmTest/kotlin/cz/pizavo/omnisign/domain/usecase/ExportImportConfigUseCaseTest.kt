@@ -3,9 +3,11 @@ package cz.pizavo.omnisign.domain.usecase
 import arrow.core.left
 import arrow.core.right
 import cz.pizavo.omnisign.data.serializer.JsonConfigSerializer
+import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
+import cz.pizavo.omnisign.domain.model.config.ValidationConfig
 import cz.pizavo.omnisign.domain.model.config.enums.ConfigFormat
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
@@ -36,7 +38,8 @@ import io.mockk.slot
 /**
  * Verifies [ExportImportConfigUseCase] delegation to [ConfigSerializerRegistry],
  * merge logic, and error propagation, and that an import is refused, with nothing saved, when a
- * default or override it carries is among the algorithms the same layer disables. An import that adds a
+ * default or override it carries is among the algorithms the same layer disables, or when it holds an
+ * algorithm constraint date that is not in the form `YYYY-MM-DD`. An import that adds a
  * profile drops every trust scope no profile owns before it saves, one that drops a profile drops its
  * scope once it has saved, and one that keeps the stored profiles leaves the trust store alone. An
  * import that cannot read the stored configuration drops no scope. A profile stored under a key other
@@ -243,6 +246,116 @@ class ExportImportConfigUseCaseTest : FunSpec({
 
 		error.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>().text shouldBe
 			LocalizableText.of(MessageKey.CONFIG_PROFILE_DISABLES_OWN_ENCRYPTION, "renamed", "RSA")
+		coVerify(exactly = 0) { repository.saveConfig(any()) }
+	}
+
+	/** Validation settings whose algorithm constraints hold [updateDate] and [overrides]. */
+	fun datedValidation(updateDate: String? = null, overrides: Map<String, String> = emptyMap()) =
+		ValidationConfig(
+			algorithmConstraints = AlgorithmConstraintsConfig(
+				policyUpdateDate = updateDate,
+				expirationDateOverrides = overrides,
+			),
+		)
+
+	test("importGlobal refuses a global section with an override date not in the form YYYY-MM-DD, and saves nothing") {
+		val repository: ConfigRepository = mockk()
+		coEvery { repository.getCurrentConfig() } returns baseConfig
+		coEvery { repository.saveConfig(any()) } returns Unit.right()
+		val global = GlobalConfig(validation = datedValidation(overrides = mapOf("SHA1" to "2030")))
+		val serialized = jsonSerializer.serializeGlobal(global).shouldBeRight()
+
+		val error = ExportImportConfigUseCase(repository, registry, trustStore)
+			.importGlobal(serialized, ConfigFormat.JSON).shouldBeLeft()
+
+		error.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>().text shouldBe
+			LocalizableText.of(MessageKey.CONFIG_ALGORITHM_DATE_INVALID, "expirationDateOverrides.SHA1", "2030")
+		coVerify(exactly = 0) { repository.saveConfig(any()) }
+	}
+
+	test("importGlobal saves a global section whose algorithm dates are all in the form YYYY-MM-DD") {
+		val repository: ConfigRepository = mockk()
+		coEvery { repository.getCurrentConfig() } returns baseConfig
+		coEvery { repository.saveConfig(any()) } returns Unit.right()
+		val global = GlobalConfig(
+			validation = datedValidation("2026-02-01", mapOf("SHA1" to "2030-12-31", "RSA:1900" to "2031-01-01")),
+		)
+		val serialized = jsonSerializer.serializeGlobal(global).shouldBeRight()
+
+		ExportImportConfigUseCase(repository, registry, trustStore)
+			.importGlobal(serialized, ConfigFormat.JSON).shouldBeRight()
+
+		coVerify(exactly = 1) { repository.saveConfig(baseConfig.copy(global = global)) }
+	}
+
+	test("importApp refuses a global update date not in the form YYYY-MM-DD, and saves nothing") {
+		val repository: ConfigRepository = mockk()
+		coEvery { repository.getCurrentConfig() } returns baseConfig
+		coEvery { repository.saveConfig(any()) } returns Unit.right()
+		val config = AppConfig(global = GlobalConfig(validation = datedValidation(updateDate = "1.2.2026")))
+		val serialized = jsonSerializer.serializeApp(config).shouldBeRight()
+
+		val error = ExportImportConfigUseCase(repository, registry, trustStore)
+			.importApp(serialized, ConfigFormat.JSON).shouldBeLeft()
+
+		error.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>().text shouldBe
+			LocalizableText.of(MessageKey.CONFIG_ALGORITHM_DATE_INVALID, "policyUpdateDate", "1.2.2026")
+		coVerify(exactly = 0) { repository.saveConfig(any()) }
+	}
+
+	test("importApp refuses a profile's override date not in the form YYYY-MM-DD, and saves nothing") {
+		val repository: ConfigRepository = mockk()
+		coEvery { repository.getCurrentConfig() } returns baseConfig
+		coEvery { repository.saveConfig(any()) } returns Unit.right()
+		val config = AppConfig(
+			profiles = mapOf(
+				"fine" to ProfileConfig(
+					name = "fine",
+					validation = datedValidation(overrides = mapOf("SHA1" to "2030-12-31")),
+				),
+				"broken" to ProfileConfig(
+					name = "broken",
+					validation = datedValidation(overrides = mapOf("SHA1" to "31.12.2030")),
+				),
+			),
+		)
+		val serialized = jsonSerializer.serializeApp(config).shouldBeRight()
+
+		val error = ExportImportConfigUseCase(repository, registry, trustStore)
+			.importApp(serialized, ConfigFormat.JSON).shouldBeLeft()
+
+		error.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>().text shouldBe
+			LocalizableText.of(
+				MessageKey.CONFIG_PROFILE_ALGORITHM_DATE_INVALID,
+				"broken",
+				"expirationDateOverrides.SHA1",
+				"31.12.2030",
+			)
+		coVerify(exactly = 0) { repository.saveConfig(any()) }
+	}
+
+	test("importProfile refuses a date not in the form YYYY-MM-DD, showing what the file gives escaped") {
+		val repository: ConfigRepository = mockk()
+		coEvery { repository.getCurrentConfig() } returns baseConfig
+		coEvery { repository.saveConfig(any()) } returns Unit.right()
+		val profile = ProfileConfig(
+			name = "imported",
+			validation = datedValidation(overrides = mapOf("SHA\u001B1" to "2030\n")),
+		)
+		val serialized = jsonSerializer.serializeProfile(profile).shouldBeRight()
+
+		val error = ExportImportConfigUseCase(repository, registry, trustStore)
+			.importProfile(serialized, ConfigFormat.JSON, overrideName = "re\u202Enamed").shouldBeLeft()
+
+		val invalid = error.shouldBeInstanceOf<ConfigurationError.InvalidConfiguration>()
+		invalid.text shouldBe LocalizableText.of(
+			MessageKey.CONFIG_PROFILE_ALGORITHM_DATE_INVALID,
+			"re\\u202enamed",
+			"expirationDateOverrides.SHA\\u001b1",
+			"2030\\u000a",
+		)
+		invalid.message shouldBe "The algorithm constraint expirationDateOverrides.SHA\\u001b1 of profile " +
+			"'re\\u202enamed' holds '2030\\u000a', which is not a date in the form YYYY-MM-DD, such as 2027-12-31"
 		coVerify(exactly = 0) { repository.saveConfig(any()) }
 	}
 

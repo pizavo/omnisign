@@ -40,6 +40,17 @@ import kotlinx.serialization.Serializable
  *   [policyUpdateDate].  Null means inherit from the layer below.
  * @property expirationLevelAfterUpdate Severity when an algorithm expired **after**
  *   [policyUpdateDate].  Null means inherit from the layer below.
+ * **Dates**
+ *
+ * Every date here is an ISO-8601 calendar date in the form `YYYY-MM-DD`, as
+ * [algorithmConstraintDate] reads it. The validation policy and the pre-signing check pass over a
+ * date in any other form and keep the date they would use without it, and the CLI, an import and
+ * the server's `signing.yml` refuse one, as [invalidDate] finds it.
+ *
+ * @property expirationLevel Severity when an algorithm expired **before or on**
+ *   [policyUpdateDate].  Null means inherit from the layer below.
+ * @property expirationLevelAfterUpdate Severity when an algorithm expired **after**
+ *   [policyUpdateDate].  Null means inherit from the layer below.
  * @property policyUpdateDate ISO-8601 date string stamped automatically on every change.
  *   Null defers to the DSS built-in default.
  * @property expirationDateOverrides Per-algorithm expiration date overrides, from a key to an
@@ -80,4 +91,34 @@ data class AlgorithmConstraintsConfig(
 			expirationDateOverrides = emptyMap()
 		)
 	}
+}
+
+/**
+ * The shape of a date [algorithmConstraintDate] reads: a four-digit year, a two-digit month and a
+ * two-digit day, joined by hyphens. ISO-8601 alone would also let in a year with a sign and more
+ * than four digits.
+ */
+private val ALGORITHM_CONSTRAINT_DATE_SHAPE = Regex("[0-9]{4}-[0-9]{2}-[0-9]{2}")
+
+/**
+ * The date [text] names when it is an ISO-8601 calendar date in the form `YYYY-MM-DD`, such as
+ * `2027-12-31`, the form every date of an [AlgorithmConstraintsConfig] takes, or `null` when it is
+ * not one, including when it has that shape but names no day of the calendar, such as `2027-02-30`.
+ *
+ * DSS would read a date its validation policy cannot parse as no expiry at all, so the validation
+ * policy and the pre-signing check pass over a date this cannot read rather than hand it on.
+ */
+fun algorithmConstraintDate(text: String): LocalDate? =
+	if (ALGORITHM_CONSTRAINT_DATE_SHAPE.matches(text)) LocalDate.Formats.ISO.parseOrNull(text) else null
+
+/**
+ * The first date of these constraints that [algorithmConstraintDate] cannot read, or `null` when
+ * every one reads: the field that holds it, named as a configuration file names it,
+ * `policyUpdateDate` or `expirationDateOverrides.<key>` for an override, paired with the text it
+ * holds.
+ */
+fun AlgorithmConstraintsConfig.invalidDate(): Pair<String, String>? {
+	policyUpdateDate?.let { if (algorithmConstraintDate(it) == null) return "policyUpdateDate" to it }
+	return expirationDateOverrides.entries.firstOrNull { algorithmConstraintDate(it.value) == null }
+		?.let { "expirationDateOverrides.${it.key}" to it.value }
 }

@@ -94,3 +94,15 @@ fun ProfileConfig.disabledOverrideError(): ConfigurationError.InvalidConfigurati
 	}
 	return null
 }
+
+/**
+ * Why the algorithm constraints of this profile cannot be imported, or `null` when they can: a date
+ * that is not in the form `YYYY-MM-DD`, as [invalidDate] finds it. The validation policy and the
+ * pre-signing check would pass over such a date as if it were not there, so the use cases that
+ * import a profile, alone or in a whole configuration, refuse one with this error, naming the
+ * profile, the field and what it holds, before anything is saved.
+ */
+fun ProfileConfig.invalidAlgorithmDateError(): ConfigurationError.InvalidConfiguration? =
+	validation?.algorithmConstraints?.invalidDate()?.let { (field, text) ->
+		ConfigurationError.profileAlgorithmDateInvalid(name, field, text)
+	}

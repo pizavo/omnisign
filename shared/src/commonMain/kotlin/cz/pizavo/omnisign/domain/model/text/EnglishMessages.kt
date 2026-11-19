@@ -213,6 +213,12 @@ internal object EnglishMessages {
 		MessageKey.CONFIG_PROFILE_DISABLES_OWN_ENCRYPTION ->
 			"Profile '%1\$s' disables its own encryption algorithm override %2\$s; " +
 				"remove the override or remove it from the disabled set"
+		MessageKey.CONFIG_ALGORITHM_DATE_INVALID ->
+			"The algorithm constraint %1\$s holds '%2\$s', which is not a date in the form " +
+				"YYYY-MM-DD, such as 2027-12-31"
+		MessageKey.CONFIG_PROFILE_ALGORITHM_DATE_INVALID ->
+			"The algorithm constraint %2\$s of profile '%1\$s' holds '%3\$s', which is not a date " +
+				"in the form YYYY-MM-DD, such as 2027-12-31"
 		MessageKey.CONFIG_PROFILE_NOT_FOUND ->
 			"Profile '%1\$s' does not exist"
 		MessageKey.CONFIG_NO_PROFILE_NAMED ->

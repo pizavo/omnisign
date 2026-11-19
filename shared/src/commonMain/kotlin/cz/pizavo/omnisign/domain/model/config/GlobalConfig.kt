@@ -130,3 +130,15 @@ fun GlobalConfig.disabledDefaultError(): ConfigurationError.InvalidConfiguration
 	}
 	return null
 }
+
+/**
+ * Why the algorithm constraints of this global configuration cannot be imported, or `null` when
+ * they can: a date that is not in the form `YYYY-MM-DD`, as [invalidDate] finds it. The validation
+ * policy and the pre-signing check would pass over such a date as if it were not there, so the use
+ * case that imports a configuration refuses one with this error, naming the field and what it
+ * holds, before anything is saved.
+ */
+fun GlobalConfig.invalidAlgorithmDateError(): ConfigurationError.InvalidConfiguration? =
+	validation.algorithmConstraints.invalidDate()?.let { (field, text) ->
+		ConfigurationError.algorithmDateInvalid(field, text)
+	}

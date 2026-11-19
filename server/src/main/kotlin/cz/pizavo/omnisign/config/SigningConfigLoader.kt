@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.GlobalConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.enums.SignatureLevel
+import cz.pizavo.omnisign.domain.model.config.invalidAlgorithmDateError
 import cz.pizavo.omnisign.domain.model.config.service.TimestampServerConfig
 import cz.pizavo.omnisign.domain.model.value.Sensitive
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -63,6 +64,11 @@ private abstract class TimestampServerConfigMixin {
  * **TSA credentials.** The OS-keyring `credentialKey` is rejected: a headless server has no
  * keyring, so the password is supplied from the environment via `password` instead.
  *
+ * **Algorithm dates.** A `policyUpdateDate` or an `expirationDateOverrides` date that is not in
+ * the form `YYYY-MM-DD`, in the global validation settings or a profile's, is rejected: the
+ * validation policy would pass over it and keep the date it holds, so an override meant to retire
+ * an algorithm sooner would do nothing.
+ *
  * **Profile assembly.** [ProfileSources.inline], every file in [ProfileSources.files], and
  * every `*.yml` / `*.yaml` file found by recursively scanning each [ProfileSources.directories]
  * entry (hidden entries skipped) are combined into a single map keyed by [ProfileConfig.name].
@@ -72,8 +78,9 @@ private abstract class TimestampServerConfigMixin {
  * **Fail-fast.** A configured-but-missing file, a malformed/unknown-key document, a key given
  * twice in one mapping of it or of a profile file, a missing referenced profile file or
  * directory, a duplicate profile name, an unset environment variable referenced by a value, a
- * `credentialKey`, or an explicitly-configured `PADES_BASELINE_T` signature level all throw, so a
- * misconfiguration stops the server at startup instead of surfacing on the first request.
+ * `credentialKey`, an explicitly-configured `PADES_BASELINE_T` signature level, or an algorithm
+ * date that is not in the form `YYYY-MM-DD` all throw, so a misconfiguration stops the server at
+ * startup instead of surfacing on the first request.
  *
  * @param env Environment-variable resolver, injectable for testing. Defaults to
  *   [placeholderResolver] over the process environment.
@@ -88,10 +95,11 @@ class SigningConfigLoader(private val env: (String) -> String? = placeholderReso
 	 * @return The resolved [AppConfig]. When [path] is `null`, built-in defaults with no
 	 *   profiles are returned (with a WARN); the home-directory config file is never read.
 	 * @throws IllegalArgumentException if [path] is set but missing/invalid, a referenced
-	 *   profile file or directory is missing, two profiles share a name, or a `credentialKey`
-	 *   is present. [IllegalStateException] if a value references an unset environment variable.
-	 *   Jackson throws on a malformed document, an unknown key, or a key given twice in one
-	 *   mapping of the document or of a profile file.
+	 *   profile file or directory is missing, two profiles share a name, a `credentialKey`
+	 *   is present, or an algorithm date is not in the form `YYYY-MM-DD`. [IllegalStateException]
+	 *   if a value references an unset environment variable. Jackson throws on a malformed
+	 *   document, an unknown key, or a key given twice in one mapping of the document or of a
+	 *   profile file.
 	 */
 	fun load(path: String?): AppConfig {
 		if (path == null) {
@@ -171,6 +179,7 @@ class SigningConfigLoader(private val env: (String) -> String? = placeholderReso
 		val appConfig = AppConfig(global = signingConfig.global, profiles = profiles)
 		rejectKeyringCredentials(appConfig)
 		rejectExplicitBaselineT(appConfig)
+		rejectInvalidAlgorithmDates(appConfig)
 		return appConfig
 	}
 
@@ -226,6 +235,20 @@ class SigningConfigLoader(private val env: (String) -> String? = placeholderReso
 			"signatureLevel PADES_BASELINE_T cannot be configured ($source). Use PADES_BASELINE_LT — " +
 				"B-T is only a runtime fallback, applied automatically when revocation data cannot be obtained."
 		}
+	}
+
+	/**
+	 * Reject an algorithm constraint date that is not in the form `YYYY-MM-DD`, in the global
+	 * validation settings or any profile's, as [invalidAlgorithmDateError] finds it. The message
+	 * names the field, the text it holds and, for a profile, the profile.
+	 *
+	 * @param config The assembled configuration to check.
+	 */
+	private fun rejectInvalidAlgorithmDates(config: AppConfig) {
+		val error = config.global.invalidAlgorithmDateError()
+			?: config.profiles.values.firstNotNullOfOrNull { it.invalidAlgorithmDateError() }
+			?: return
+		throw IllegalArgumentException(error.message)
 	}
 
 	/**

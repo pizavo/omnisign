@@ -34,7 +34,8 @@ import org.koin.dsl.module
  * and reported as saved while never reaching the persisted [ValidationConfig]. The TSA password
  * tests pin that it goes to the keyring, that it is refused rather than saved where no keyring
  * could keep it, and that nothing is saved when the keyring does not keep it. A configuration that
- * cannot be saved ends the command with status 1.
+ * cannot be saved ends the command with status 1, and so does an expiry override whose date is not in
+ * the form `YYYY-MM-DD` or that names no algorithm, before anything is saved.
  */
 class ConfigSetTest : FunSpec({
 
@@ -176,6 +177,40 @@ class ConfigSetTest : FunSpec({
 
 		updated.timestampServer?.url shouldBe "https://tsa.example.com"
 		updated.timestampServer?.username shouldBe "tsa-user"
+	}
+
+	test("saves the expiry overrides it is given, trimmed, with a key size or without one") {
+		val updated = applyConfigSet(
+			"--algo-expiry-override", "RIPEMD160=2030-01-01",
+			"--algo-expiry-override", " RSA:1900 = 2030-12-31 ",
+		)
+
+		updated.validation.algorithmConstraints.expirationDateOverrides shouldBe
+			mapOf("RIPEMD160" to "2030-01-01", "RSA:1900" to "2030-12-31")
+	}
+
+	test("refuses an expiry override whose date is not in the form YYYY-MM-DD, and saves nothing") {
+		for (date in listOf("2030", "31.12.2030", "2030-02-30")) {
+			val result = Omnisign().test(
+				listOf("config", "set", "--check-revocation", "false", "--algo-expiry-override", "SHA1=$date")
+			)
+
+			result.statusCode shouldBe 1
+			result.stderr shouldContain "invalid value for --algo-expiry-override: the date of SHA1, '$date', " +
+				"is not in the form YYYY-MM-DD, such as 2030-12-31"
+		}
+		coVerify(exactly = 0) { setGlobalConfig(any()) }
+	}
+
+	test("refuses an expiry override without an equals sign or without an algorithm, and saves nothing") {
+		for (value in listOf("SHA1", "SHA1 2030-12-31", "=2030-12-31", " =2030-12-31")) {
+			val result = Omnisign().test(listOf("config", "set", "--algo-expiry-override", value))
+
+			result.statusCode shouldBe 1
+			result.stderr shouldContain "invalid value for --algo-expiry-override: '$value' is not ALGORITHM=DATE " +
+				"or ALGORITHM:KEY_SIZE=DATE, such as SHA256=2030-12-31"
+		}
+		coVerify(exactly = 0) { setGlobalConfig(any()) }
 	}
 
 	test("reports a configuration it could not save and exits non-zero") {

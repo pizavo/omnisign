@@ -3,6 +3,7 @@ package cz.pizavo.omnisign.domain.model.error
 import cz.pizavo.omnisign.domain.model.config.enums.ConfigDocumentKind
 import cz.pizavo.omnisign.domain.model.text.LocalizableText
 import cz.pizavo.omnisign.domain.model.text.MessageKey
+import cz.pizavo.omnisign.domain.model.text.shownInMessage
 
 /**
  * Configuration-related errors.
@@ -169,6 +170,35 @@ sealed interface ConfigurationError : OperationError, LocalizableError {
 		fun profileDisablesOwnEncryption(profileName: String, algorithm: String): InvalidConfiguration =
 			InvalidConfiguration(
 				LocalizableText.of(MessageKey.CONFIG_PROFILE_DISABLES_OWN_ENCRYPTION, profileName, algorithm)
+			)
+
+		/**
+		 * The field [field] of the global algorithm constraints holds [text], which is not a date in
+		 * the form `YYYY-MM-DD`. Both come from the document being imported, so the message shows them
+		 * as [shownInMessage] writes them.
+		 */
+		fun algorithmDateInvalid(field: String, text: String): InvalidConfiguration =
+			InvalidConfiguration(
+				LocalizableText.of(
+					MessageKey.CONFIG_ALGORITHM_DATE_INVALID,
+					shownInMessage(field),
+					shownInMessage(text),
+				)
+			)
+
+		/**
+		 * The field [field] of the algorithm constraints of profile [profileName] holds [text], which
+		 * is not a date in the form `YYYY-MM-DD`. All three come from the document being imported, so
+		 * the message shows them as [shownInMessage] writes them.
+		 */
+		fun profileAlgorithmDateInvalid(profileName: String, field: String, text: String): InvalidConfiguration =
+			InvalidConfiguration(
+				LocalizableText.of(
+					MessageKey.CONFIG_PROFILE_ALGORITHM_DATE_INVALID,
+					shownInMessage(profileName),
+					shownInMessage(field),
+					shownInMessage(text),
+				)
 			)
 
 		/** No profile named [profileName] exists. */

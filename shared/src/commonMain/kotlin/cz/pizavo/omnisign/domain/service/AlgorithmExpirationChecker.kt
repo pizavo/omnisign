@@ -1,6 +1,7 @@
 package cz.pizavo.omnisign.domain.service
 
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
+import cz.pizavo.omnisign.domain.model.config.algorithmConstraintDate
 import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
 import cz.pizavo.omnisign.domain.model.config.enums.HashAlgorithm
 import cz.pizavo.omnisign.domain.service.AlgorithmExpirationChecker.Companion.DEFAULT_UPDATE_DATE
@@ -34,9 +35,12 @@ enum class AlgorithmStatus {
  *
  * 1. Expiry resolution: [AlgorithmConstraintsConfig.expirationDateOverrides] first, then
  *    [HashAlgorithm.expirationDate].  No expiry date → always [AlgorithmStatus.VALID].
+ *    An override whose date [algorithmConstraintDate] cannot read is passed over, as the
+ *    validation policy passes it over, so the bundled date applies.
  * 2. If today is on or before the effective expiry date → [AlgorithmStatus.VALID].
- * 3. The effective update date is [AlgorithmConstraintsConfig.policyUpdateDate] parsed
- *    as ISO-8601, or the DSS default [DEFAULT_UPDATE_DATE] when null.
+ * 3. The effective update date is [AlgorithmConstraintsConfig.policyUpdateDate] as
+ *    [algorithmConstraintDate] reads it, or the DSS default [DEFAULT_UPDATE_DATE] when it is
+ *    null or not a date in that form, which the validation policy leaves out too.
  * 4. If the algorithm's expiry date is **after** the effective update date, the algorithm was
  *    not yet known to be expired when the policy was last updated, so the more lenient
  *    [AlgorithmConstraintsConfig.expirationLevelAfterUpdate] determines the outcome.
@@ -76,7 +80,7 @@ class AlgorithmExpirationChecker {
 		val expiry = effectiveExpirationDate(algorithm, config) ?: return AlgorithmStatus.VALID
 		if (today <= expiry) return AlgorithmStatus.VALID
 		val updateDate = config.policyUpdateDate
-			?.let { LocalDate.parse(it) }
+			?.let { algorithmConstraintDate(it) }
 			?: DEFAULT_UPDATE_DATE
 		val level = if (expiry > updateDate)
 			config.expirationLevelAfterUpdate ?: AlgorithmConstraintsConfig.DEFAULT.expirationLevelAfterUpdate!!
@@ -89,13 +93,14 @@ class AlgorithmExpirationChecker {
 	/**
 	 * Return the effective expiration date for [algorithm], consulting
 	 * [AlgorithmConstraintsConfig.expirationDateOverrides] before the bundled
-	 * [HashAlgorithm.expirationDate] snapshot.
+	 * [HashAlgorithm.expirationDate] snapshot. An override whose date [algorithmConstraintDate]
+	 * cannot read counts as no override, as it does in the validation policy.
 	 */
 	fun effectiveExpirationDate(
 		algorithm: HashAlgorithm,
 		config: AlgorithmConstraintsConfig,
 	): LocalDate? = config.expirationDateOverrides[algorithm.name]
-		?.let { LocalDate.parse(it) }
+		?.let { algorithmConstraintDate(it) }
 		?: algorithm.expirationDate
 	
 	/**

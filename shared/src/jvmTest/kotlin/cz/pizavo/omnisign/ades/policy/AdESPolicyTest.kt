@@ -1,5 +1,9 @@
 package cz.pizavo.omnisign.ades.policy
 
+import ch.qos.logback.classic.Level as LogLevel
+import ch.qos.logback.classic.Logger
+import ch.qos.logback.classic.spi.ILoggingEvent
+import ch.qos.logback.core.read.ListAppender
 import cz.pizavo.omnisign.domain.model.config.AlgorithmConstraintsConfig
 import cz.pizavo.omnisign.domain.model.config.enums.AlgorithmConstraintLevel
 import cz.pizavo.omnisign.domain.model.config.enums.EncryptionAlgorithm
@@ -23,6 +27,7 @@ import io.kotest.matchers.nulls.shouldNotBeNull
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
 import kotlinx.datetime.LocalDate
+import org.slf4j.LoggerFactory
 import java.io.File
 import java.util.*
 import kotlin.time.Instant
@@ -30,7 +35,9 @@ import kotlin.time.Instant
 /**
  * Verifies algorithm constraint application and disabled-algorithm enforcement
  * on the DSS validation policy, and that a policy file is read in place of the default,
- * which never stands in for a file that is missing or holds no validation policy.
+ * which never stands in for a file that is missing or holds no validation policy. A date of the
+ * constraints is written in the policy's own date format, and one that is not in the form
+ * `YYYY-MM-DD` is passed over with a warning in the log, so DSS never reads it as no date at all.
  */
 class AdESPolicyTest : FunSpec({
 	
@@ -281,7 +288,7 @@ class AdESPolicyTest : FunSpec({
 		expiryEntries(overrides).none { it.value?.contains(':') == true || (it.size ?: 1) < 1 } shouldBe true
 	}
 	
-	test("an override without a key size whose date the policy cannot read caps nothing") {
+	test("an override without a key size whose date is not in the form YYYY-MM-DD caps nothing") {
 		val overrides = mapOf("RSA" to "31.12.2026")
 		
 		expiry(SignatureAlgorithm.RSA_SHA256, 2048, overrides) shouldBe "2027-01-01"
@@ -316,21 +323,105 @@ class AdESPolicyTest : FunSpec({
 		expiry(SignatureAlgorithm.RSA_SSA_PSS_SHA256_MGF1, 2048, mapOf("RSA" to "2026-06-01")) shouldBe "2027-01-01"
 	}
 	
-	test("an override's date is read in the date format the policy names") {
+	test("a date is written in the date format the policy names, and one written in that format is passed over") {
 		val xml = AdESPolicy::class.java.getResource("/policy/constraint.xml").shouldNotBeNull().readText()
 		val slashed = xml.replace("Format=\"yyyy-MM-dd\"", "Format=\"yyyy/MM/dd\"")
 			.replace(Regex("""Date="(\d{4})-(\d{2})-(\d{2})""""), "Date=\"\$1/\$2/\$3\"")
 		slashed shouldNotBe xml
 		val file = tempfile(suffix = ".xml").apply { writeText(slashed) }
-		
+
+		/** The default policy, dated with slashes, loaded with [constraints] applied. */
+		fun loadSlashed(constraints: AlgorithmConstraintsConfig): EtsiValidationPolicy =
+			policy.load(file, constraints) as EtsiValidationPolicy
+
+		/** The day a 2048-bit RSA key stops being acceptable in the slashed policy under [overrides]. */
 		fun slashedExpiry(overrides: Map<String, String>): String? {
-			val loaded = policy.load(file, AlgorithmConstraintsConfig(expirationDateOverrides = overrides)) as EtsiValidationPolicy
+			val loaded = loadSlashed(AlgorithmConstraintsConfig(expirationDateOverrides = overrides))
 			return expiryIn(signatureSuite(loaded).shouldNotBeNull(), SignatureAlgorithm.RSA_SHA256, 2048)
 		}
-		
+
 		slashedExpiry(emptyMap()) shouldBe "2027-01-01"
-		slashedExpiry(mapOf("RSA" to "2026/06/01")) shouldBe "2026-06-01"
-		slashedExpiry(mapOf("RSA" to "2026-06-01")) shouldBe "2027-01-01"
+		slashedExpiry(mapOf("RSA" to "2026-06-01")) shouldBe "2026-06-01"
+		slashedExpiry(mapOf("RSA:1900" to "2030-12-31")) shouldBe "2030-12-31"
+		slashedExpiry(mapOf("RSA" to "2026/06/01")) shouldBe "2027-01-01"
+		slashedExpiry(mapOf("RSA:1900" to "2030/12/31")) shouldBe "2027-01-01"
+		loadSlashed(AlgorithmConstraintsConfig(expirationDateOverrides = mapOf("MD2" to "2035-06-01")))
+			.cryptographic?.algoExpirationDate?.algos.orEmpty().single { it.value == "MD2" }.date shouldBe "2035/06/01"
+		val updated = signatureSuite(loadSlashed(AlgorithmConstraintsConfig(policyUpdateDate = "2030-01-01")))
+			.shouldNotBeNull()
+		val updateDate = updated.cryptographicSuiteUpdateDate.shouldNotBeNull()
+		Instant.fromEpochMilliseconds(updateDate.time).toString().take(10) shouldBe "2030-01-01"
+	}
+
+	test("a policy whose date format cannot read back the date it writes takes no override and no update date") {
+		val xml = AdESPolicy::class.java.getResource("/policy/constraint.xml").shouldNotBeNull().readText()
+		val unreadable = xml.replace("Format=\"yyyy-MM-dd\"", "Format=\"\"")
+		unreadable shouldNotBe xml
+		val file = tempfile(suffix = ".xml").apply { writeText(unreadable) }
+		val constraints = AlgorithmConstraintsConfig(
+			policyUpdateDate = "2030-01-01",
+			expirationDateOverrides = mapOf("RSA:1900" to "2030-12-31", "RSA" to "2026-06-01", "MD2" to "2035-06-01"),
+		)
+
+		val expirations = (policy.load(file, constraints) as EtsiValidationPolicy)
+			.cryptographic?.algoExpirationDate.shouldNotBeNull()
+
+		expirations.updateDate shouldBe "2026-02-01"
+		expirations.algos.filter { it.value == "RSA" }.map { it.date } shouldBe
+			(policy.load(file, null) as EtsiValidationPolicy).cryptographic?.algoExpirationDate.shouldNotBeNull()
+				.algos.filter { it.value == "RSA" }.map { it.date }
+		expirations.algos.none { it.value == "MD2" } shouldBe true
+	}
+
+	test("an override whose date is not in the form YYYY-MM-DD leaves the date the policy holds") {
+		digestExpiry(DigestAlgorithm.SHA1, emptyMap()) shouldBe "2012-08-01"
+		for (date in listOf("2027", "31.12.2027", "2027-02-30", "2027/12/31")) {
+			digestExpiry(DigestAlgorithm.SHA1, mapOf("SHA1" to date)) shouldBe "2012-08-01"
+			expiry(SignatureAlgorithm.RSA_SHA256, 2048, mapOf("RSA:1900" to date)) shouldBe "2027-01-01"
+			expiryEntries(mapOf("MD2" to date)).none { it.value == "MD2" } shouldBe true
+			expiryEntries(mapOf("RSA:4096" to date)).none { it.size == 4096 } shouldBe true
+		}
+	}
+
+	test("an update date that is not in the form YYYY-MM-DD leaves the date the policy holds") {
+		val loaded =
+			policy.load(null, AlgorithmConstraintsConfig(policyUpdateDate = "1.1.2030")) as EtsiValidationPolicy
+		loaded.cryptographic?.algoExpirationDate?.updateDate shouldBe "2026-02-01"
+	}
+
+	/** Run [block] and return the warnings [AdESPolicy] logged meanwhile. */
+	fun warningsLoggedDuring(block: () -> Unit): List<String> {
+		val logbackLogger = LoggerFactory.getLogger(AdESPolicy::class.java) as Logger
+		val appender = ListAppender<ILoggingEvent>().also {
+			it.start()
+			logbackLogger.addAppender(it)
+		}
+		try {
+			block()
+		} finally {
+			logbackLogger.detachAppender(appender)
+			appender.stop()
+		}
+		return appender.list.filter { it.level == LogLevel.WARN }.map { it.formattedMessage }
+	}
+
+	test("a date that is not in the form YYYY-MM-DD is reported in the log, as the configuration gives it, escaped") {
+		val warnings = warningsLoggedDuring {
+			policy.load(
+				null,
+				AlgorithmConstraintsConfig(
+					policyUpdateDate = "1.1.2030",
+					expirationDateOverrides = mapOf("SHA\u001B1" to "2027\n", "RSA:1900" to "2030-12-31"),
+				),
+			)
+		}
+
+		warnings shouldBe listOf(
+			"Ignoring the policy update date '1.1.2030': it is not a date in the form YYYY-MM-DD, " +
+				"or the validation policy's date format cannot hold it",
+			"Ignoring the expiration date override of SHA\\u001b1, '2027\\u000a': it is not a date in the form " +
+				"YYYY-MM-DD, or the validation policy's date format cannot hold it",
+		)
 	}
 	
 	test("an override reaches the suites of the other validation contexts") {
