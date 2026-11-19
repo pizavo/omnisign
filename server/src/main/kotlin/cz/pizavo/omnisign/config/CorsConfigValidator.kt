@@ -31,6 +31,12 @@ package cz.pizavo.omnisign.config
  * enforced here — at startup, where an operator can act on it, rather than as a silent
  * runtime property nobody observes.
  *
+ * The wildcard is recognized in the hosts the plugin installs, [CorsConfig.allowedHosts],
+ * rather than in the entries as written: the plugin trims each entry and strips its
+ * `http://` or `https://` prefix, so `https://` or `HTTP://` followed by `*`, and `*`
+ * with spaces around it, install `anyHost()` just as `"*"` does, and each is refused with
+ * credentials alike.
+ *
  * Called from [cz.pizavo.omnisign.moduleWith] before any plugin that depends on the CORS
  * settings is installed. The validated [CorsConfig] is returned so the
  * [cz.pizavo.omnisign.plugins.configureCors] call can take a non-null argument and
@@ -42,7 +48,7 @@ package cz.pizavo.omnisign.config
  *   wildcard-with-credentials combination).
  * @throws IllegalArgumentException with operator-actionable guidance when [config] is
  *   `null`, when [CorsConfig.allowedOrigins] is empty, or when [CorsConfig.allowCredentials]
- *   is combined with the `["*"]` wildcard.
+ *   is combined with an entry that allows any origin.
  */
 fun validateCorsConfig(config: CorsConfig?): CorsConfig {
 	requireNotNull(config) {
@@ -54,10 +60,12 @@ fun validateCorsConfig(config: CorsConfig?): CorsConfig {
 		"cors.allowedOrigins must not be empty. Use [\"*\"] to allow any origin, or list " +
 			"specific origins (host, host:port, or http(s)://host[:port])."
 	}
-	require(!(config.allowCredentials && WILDCARD_ORIGIN in config.allowedOrigins)) {
-		"cors.allowCredentials: true cannot be combined with cors.allowedOrigins: " +
-			"[\"$WILDCARD_ORIGIN\"] — the wildcard is reflected back as the caller's own " +
-			"origin once credentials are enabled, which would let any site the user visits " +
+	val anyOrigin = config.allowedOrigins.zip(config.allowedHosts())
+		.firstOrNull { (_, host) -> host == CorsConfig.ANY_HOST }?.first
+	require(!(config.allowCredentials && anyOrigin != null)) {
+		"cors.allowCredentials: true cannot be combined with the cors.allowedOrigins entry " +
+			"\"$anyOrigin\", which allows any origin: once credentials are enabled, the wildcard " +
+			"is reflected back as the caller's own origin, which would let any site the user visits " +
 			"make authenticated requests to this server and read the responses. List the " +
 			"origins your browser front-end is served from (e.g. " +
 			"[\"https://omnisign.example.com\"]), or set cors.allowCredentials: false if no " +
@@ -65,8 +73,3 @@ fun validateCorsConfig(config: CorsConfig?): CorsConfig {
 	}
 	return config
 }
-
-/**
- * The explicit allow-all entry accepted in [CorsConfig.allowedOrigins].
- */
-private const val WILDCARD_ORIGIN = "*"

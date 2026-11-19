@@ -201,7 +201,8 @@ tls:
 
 **Required.** `allowedOrigins` must be a non-empty list or `["*"]` — a missing block and an empty
 list are both rejected so "didn't configure", "allow all", and "deny all" can't collapse into one
-silent state. Entries may be bare host, `host:port`, or a full URL. See
+silent state. Entries may be bare host, `host:port`, or a full URL; the server trims each entry and
+drops an `http://` or `https://` prefix in any case, so `"https://*"` is the same entry as `"*"`. See
 [Security → CORS](security#cors).
 
 ```yaml
@@ -212,9 +213,9 @@ cors:
 ```
 
 `allowCredentials` (default `false`) lets a browser front-end on a different origin send its refresh
-cookie and read the response. It is **rejected at startup** when combined with
-`allowedOrigins: ["*"]` — with credentials enabled, the response reflects the caller's own `Origin`
-back instead of emitting a literal `*`.
+cookie and read the response. It is **rejected at startup** when combined with an entry that allows any
+origin, `"*"` or the same written as a URL, such as `"https://*"` — with credentials enabled, the
+response reflects the caller's own `Origin` back instead of emitting a literal `*`.
 
 ### `rateLimiting`
 

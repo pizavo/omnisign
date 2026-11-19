@@ -350,7 +350,8 @@ operations:
 # into the same silent-disable runtime.
 #
 # Entries may be bare host ("example.com"), host:port ("example.com:18443"), or full URL
-# ("https://example.com:18443") — the http(s):// prefix is stripped.
+# ("https://example.com:18443") — each entry is trimmed and its http(s):// prefix, in any
+# case, is stripped, so "https://*" is the same entry as "*".
 #
 # The defaults below cover the three common Compose / Wasm / JS local dev-server ports
 # so the local dev workflow works out of the box. Replace them with your production
@@ -366,9 +367,10 @@ cors:
   # needs no opt-in. Set it to true only to serve the OmniSign web app from a DIFFERENT
   # origin to this API (app.example.com + api.example.com, or one host on two ports), where
   # the app relies on the HttpOnly refresh cookie to resume a session across reloads. It is
-  # incompatible with allowedOrigins: ["*"] and startup rejects the pair — with credentials
-  # enabled the wildcard is reflected back as the caller's own origin, which would let any
-  # site the user visits read authenticated responses. List your app's origin explicitly.
+  # incompatible with allowedOrigins: ["*"], written so or as "https://*", and startup
+  # rejects the pair — with credentials enabled the wildcard is reflected back as the
+  # caller's own origin, which would let any site the user visits read authenticated
+  # responses. List your app's origin explicitly.
   # allowCredentials: true
 
 # Maximum upload file size in bytes (default: 100 MB). A request body may be up to 1 MiB

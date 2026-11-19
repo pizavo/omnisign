@@ -10,7 +10,8 @@ import io.kotest.matchers.string.shouldContain
  *
  * Pins the operator-facing contract: missing `cors:` block and empty `allowedOrigins`
  * list both surface as startup failures with messages that name the field and offer
- * the wildcard escape hatch, and the wildcard may not be combined with credentialed CORS.
+ * the wildcard escape hatch, and the wildcard, however it is written, may not be combined
+ * with credentialed CORS.
  */
 class CorsConfigValidatorTest : FunSpec({
 
@@ -63,6 +64,33 @@ class CorsConfigValidatorTest : FunSpec({
     test("accepts allowCredentials with a concrete allowedOrigins list") {
         val result = validateCorsConfig(
             CorsConfig(allowedOrigins = listOf("https://omnisign.example.com"), allowCredentials = true),
+        )
+        result.allowCredentials shouldBe true
+    }
+
+    test("rejects allowCredentials combined with the wildcard written as a URL, naming the entry") {
+        for (entry in listOf("https://*", "http://*", "HTTPS://*", " * ")) {
+            val ex = shouldThrow<IllegalArgumentException> {
+                validateCorsConfig(
+                    CorsConfig(
+                        allowedOrigins = listOf("https://omnisign.example.com", entry),
+                        allowCredentials = true,
+                    ),
+                )
+            }
+            ex.message!! shouldContain "\"$entry\""
+            ex.message!! shouldContain "any site the user visits"
+        }
+    }
+
+    test("accepts the wildcard written as a URL while credentials stay off") {
+        val origins = listOf("https://*", "http://*")
+        validateCorsConfig(CorsConfig(allowedOrigins = origins)).allowedOrigins shouldBe origins
+    }
+
+    test("accepts allowCredentials with a subdomain wildcard, which does not allow any origin") {
+        val result = validateCorsConfig(
+            CorsConfig(allowedOrigins = listOf("https://*.example.com"), allowCredentials = true),
         )
         result.allowCredentials shouldBe true
     }

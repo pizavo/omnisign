@@ -16,14 +16,15 @@ package cz.pizavo.omnisign.config
  *   app falls back to a full round-trip through the identity provider on every page load;
  *   it still works, just less quietly.
  *
- *   `true` is incompatible with the `["*"]` wildcard and [validateCorsConfig] rejects the
- *   pair at startup. The two look combinable but are not: Ktor's `anyHost()` does not emit
- *   a literal `*` when credentials are enabled, it **reflects the caller's `Origin` header**
- *   back as `Access-Control-Allow-Origin`, and a reflected origin paired with
- *   `Access-Control-Allow-Credentials: true` is exactly the pattern browsers honour — so
- *   any site the user visits could issue credentialed requests and read the authenticated
- *   responses. The wildcard's "I have not thought about origins" meaning is safe on its own
- *   and unsafe here, so the combination is refused rather than silently reinterpreted.
+ *   `true` is incompatible with the wildcard, `"*"` or the same written as a URL, and
+ *   [validateCorsConfig] rejects the pair at startup. The two look combinable but are not:
+ *   Ktor's `anyHost()` does not emit a literal `*` when credentials are enabled, it
+ *   **reflects the caller's `Origin` header** back as `Access-Control-Allow-Origin`, and a
+ *   reflected origin paired with `Access-Control-Allow-Credentials: true` is exactly the
+ *   pattern browsers honour — so any site the user visits could issue credentialed requests
+ *   and read the authenticated responses. The wildcard's "I have not thought about origins"
+ *   meaning is safe on its own and unsafe here, so the combination is refused rather than
+ *   silently reinterpreted.
  *
  * @property allowedOrigins Required, non-empty list of origins permitted to access the
  *   API. Operators must always make a deliberate, explicit choice — there is no
@@ -33,11 +34,13 @@ package cz.pizavo.omnisign.config
  *   - `"*"` — explicit allow-all (parallel to
  *     [OidcProviderConfig.allowedEmailDomains]'s `["*"]`); accept any origin. Use this
  *     when the API is intentionally public, or for local development where the dev
- *     server's port shifts.
+ *     server's port shifts. With `http://` or `https://` in front of it, it is the same
+ *     entry and allows any origin, with either scheme.
  *   - Bare host (`"example.com"`) — accept any scheme/port for that host.
  *   - Host:port (`"example.com:18443"`).
- *   - Full URL with scheme (`"https://example.com:18443"`). The plugin strips
- *     `http(s)://` prefixes so all three forms are interchangeable.
+ *   - Full URL with scheme (`"https://example.com:18443"`). [allowedHosts] trims each
+ *     entry and strips an `http://` or `https://` prefix, whatever its case, so all three
+ *     forms are interchangeable.
  *
  *   Empty list and missing `cors:` block are both rejected at server startup
  *   ([validateCorsConfig]).
@@ -45,5 +48,28 @@ package cz.pizavo.omnisign.config
 data class CorsConfig(
 	val allowedOrigins: List<String> = emptyList(),
 	val allowCredentials: Boolean = false,
-)
+) {
+	/**
+	 * The entries of [allowedOrigins] in the form Ktor's CORS plugin takes a host in. Both
+	 * [validateCorsConfig] and [cz.pizavo.omnisign.plugins.configureCors] read them from here,
+	 * so the validator judges the very hosts the plugin installs. Each entry is trimmed and
+	 * loses an `http://` or `https://` prefix, whatever its case; an entry that comes out as
+	 * [ANY_HOST], such as `https://` followed by `*`, allows any origin, because Ktor's
+	 * `allowHost("*")` installs `anyHost()`.
+	 *
+	 * @return One host for each entry of [allowedOrigins], in the same order.
+	 */
+	fun allowedHosts(): List<String> = allowedOrigins.map { it.trim().replaceFirst(SCHEME_PREFIX, "") }
+
+	/**
+	 * The host that allows any origin and the prefix [allowedHosts] strips.
+	 */
+	companion object {
+		/** The host that allows any origin, whether an entry gives it as `"*"` alone or after an `http://` or `https://` prefix. */
+		const val ANY_HOST = "*"
+
+		/** An `http://` or `https://` prefix at the start of an entry, in any case. */
+		private val SCHEME_PREFIX = Regex("^https?://", RegexOption.IGNORE_CASE)
+	}
+}
 
