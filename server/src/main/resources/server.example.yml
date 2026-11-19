@@ -27,6 +27,8 @@ development: false
 # connector. X-Forwarded-* headers are honored, BUT only when the TCP connection's source
 # IP matches one of the entries in `trusted` — headers arriving from any other peer are
 # ignored so an attacker reaching the Ktor port directly cannot spoof their client IP.
+# The client's IP is the rightmost X-Forwarded-For entry that is not in `trusted`, so
+# list every proxy that adds to the header, such as a CDN in front of a load balancer.
 #
 # proxy.enabled: true REQUIRES a non-empty proxy.trusted list — startup aborts otherwise.
 # Use literal IPs (e.g. "127.0.0.1", "::1") or CIDR ranges (e.g. "10.0.0.0/24").

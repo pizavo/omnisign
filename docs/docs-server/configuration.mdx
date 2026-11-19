@@ -168,7 +168,9 @@ server's signing identity.
 ### `proxy`
 
 Reverse-proxy mode. When enabled, TLS is terminated upstream and `X-Forwarded-*` headers are honored
-**only** from the listed trusted IPs/CIDRs. See [Security → Reverse proxy](security#reverse-proxy).
+**only** from the listed trusted IPs/CIDRs. List every proxy that adds to `X-Forwarded-For`, such as
+a CDN in front of a load balancer, since the client's IP is the rightmost entry that is not a
+trusted proxy's. See [Security → Reverse proxy](security#reverse-proxy).
 
 ```yaml
 proxy:
