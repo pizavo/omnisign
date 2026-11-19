@@ -12,6 +12,9 @@ Certificates are kept in the **app-managed trust store** (shared with the deskto
 certificate is imported once and stored under its SHA-256 **fingerprint**, which is its identity —
 there is no separate name. Trust is partitioned into a **global** scope plus one scope per profile;
 the resolved trust set for a profile is the union of the global scope and that profile's scope.
+A profile's scope goes with the profile: `config profile remove` drops it, and a profile created
+later under the same name starts without it. `--profile` must name a profile that exists, so a
+mistyped name is refused instead of starting a scope that no profile uses.
 
 A certificate's role decides what it vouches for: a signature anchored at a certificate of the
 trust store needs that anchor trusted as `CA` or `ANY`, a timestamp as `TSA` or `ANY`, and one
@@ -36,11 +39,11 @@ are deleted once a new index has been written.
 
 Import a PEM or DER certificate into the trust store.
 
-| Option                 | Description                                                          |
-|------------------------|---------------------------------------------------------------------|
-| `-c, --cert <path>`    | **(Required)** Path to the PEM or DER certificate file              |
-| `-t, --type <type>`    | Trust role: `ANY` (both CA and TSA), `CA`, or `TSA`. Default: `ANY` |
-| `-p, --profile <name>` | Store in the given profile's scope instead of the global scope      |
+| Option                 | Description                                                                          |
+|------------------------|--------------------------------------------------------------------------------------|
+| `-c, --cert <path>`    | **(Required)** Path to the PEM or DER certificate file                               |
+| `-t, --type <type>`    | Trust role: `ANY` (both CA and TSA), `CA`, or `TSA`. Default: `ANY`                  |
+| `-p, --profile <name>` | Store in the scope of the given profile, which must exist, instead of the global one |
 
 On success the subject DN and fingerprint are printed. The original file is not needed afterward.
 
@@ -53,9 +56,9 @@ omnisign config trust list
 omnisign config trust list --profile university
 ```
 
-| Option                 | Description                                      |
-|------------------------|--------------------------------------------------|
-| `-p, --profile <name>` | List the given profile's scope instead of global |
+| Option                 | Description                                                                      |
+|------------------------|----------------------------------------------------------------------------------|
+| `-p, --profile <name>` | List the scope of the given profile, which must exist, instead of the global one |
 
 ## `config trust remove <fingerprint>`
 
@@ -68,9 +71,9 @@ omnisign config trust remove sha256-1a2b3c
 omnisign config trust remove sha256-1a2b3c --profile university
 ```
 
-| Option                 | Description                                             |
-|------------------------|--------------------------------------------------------|
-| `-p, --profile <name>` | Remove from the given profile's scope instead of global |
+| Option                 | Description                                                                             |
+|------------------------|-----------------------------------------------------------------------------------------|
+| `-p, --profile <name>` | Remove from the scope of the given profile, which must exist, instead of the global one |
 
 ## Examples
 

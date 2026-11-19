@@ -82,37 +82,46 @@ class ProfileViewModel(
      * Reload the profile list and active profile from the configuration store.
      */
     fun refresh() {
-        viewModelScope.launch {
-            _state.update { it.copy(loading = true, error = null) }
+        viewModelScope.launch { reload() }
+    }
 
-            val appConfig = getConfigUseCase().fold(
-                ifLeft = { null },
-                ifRight = { it },
-            )
-            val activeProfile = appConfig?.activeProfile
-            val globalDisabledHash = appConfig?.global?.disabledHashAlgorithms ?: emptySet()
-            val globalDisabledEnc = appConfig?.global?.disabledEncryptionAlgorithms ?: emptySet()
-            val globalLevel = appConfig?.global?.defaultSignatureLevel ?: SignatureLevel.PADES_BASELINE_B
+    /**
+     * Reload the profile list and active profile from the configuration store, as [refresh] does, and
+     * show [error] once the list is reloaded, in place of the error a reload clears.
+     *
+     * @param error An error to show beside the reloaded list, such as the one a change that preceded the
+     *   reload returned, or `null` to show none.
+     */
+    private suspend fun reload(error: ProfileError? = null) {
+        _state.update { it.copy(loading = true, error = null) }
 
-            manageProfileUseCase.list().fold(
-                ifLeft = { error ->
-                    _state.update { it.copy(loading = false, error = ProfileError.Domain(error.localizableText())) }
-                },
-                ifRight = { profiles ->
-                    _state.update {
-                        it.copy(
-                            profiles = profiles.values.toList(),
-                            activeProfile = activeProfile,
-                            loading = false,
-                            error = null,
-                            globalDisabledHashAlgorithms = globalDisabledHash,
-                            globalDisabledEncryptionAlgorithms = globalDisabledEnc,
-                            globalSignatureLevel = globalLevel,
-                        )
-                    }
-                },
-            )
-        }
+        val appConfig = getConfigUseCase().fold(
+            ifLeft = { null },
+            ifRight = { it },
+        )
+        val activeProfile = appConfig?.activeProfile
+        val globalDisabledHash = appConfig?.global?.disabledHashAlgorithms ?: emptySet()
+        val globalDisabledEnc = appConfig?.global?.disabledEncryptionAlgorithms ?: emptySet()
+        val globalLevel = appConfig?.global?.defaultSignatureLevel ?: SignatureLevel.PADES_BASELINE_B
+
+        manageProfileUseCase.list().fold(
+            ifLeft = { listError ->
+                _state.update { it.copy(loading = false, error = ProfileError.Domain(listError.localizableText())) }
+            },
+            ifRight = { profiles ->
+                _state.update {
+                    it.copy(
+                        profiles = profiles.values.toList(),
+                        activeProfile = activeProfile,
+                        loading = false,
+                        error = error,
+                        globalDisabledHashAlgorithms = globalDisabledHash,
+                        globalDisabledEncryptionAlgorithms = globalDisabledEnc,
+                        globalSignatureLevel = globalLevel,
+                    )
+                }
+            },
+        )
     }
 
     /**
@@ -152,18 +161,16 @@ class ProfileViewModel(
     }
 
     /**
-     * Delete the profile with the given [name] and refresh the list.
+     * Delete the profile with the given [name] and reload the list, after a failed removal as well: a
+     * removal fails after the profile is gone when its trusted certificates cannot be dropped, and the
+     * list then shows it gone beside the error.
      *
      * @param name Profile name to remove.
      */
     fun delete(name: String) {
         viewModelScope.launch {
-            manageProfileUseCase.remove(name).fold(
-                ifLeft = { error ->
-                    _state.update { it.copy(error = ProfileError.Domain(error.localizableText())) }
-                },
-                ifRight = { refresh() },
-            )
+            val error = manageProfileUseCase.remove(name).leftOrNull()
+            reload(error?.let { ProfileError.Domain(it.localizableText()) })
         }
     }
 

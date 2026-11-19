@@ -1,5 +1,9 @@
 package cz.pizavo.omnisign.domain.repository
 
+import arrow.core.getOrElse
+import arrow.core.left
+import arrow.core.right
+import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
 import cz.pizavo.omnisign.domain.model.result.OperationResult
 import cz.pizavo.omnisign.domain.model.trust.ResolvedTrustAnchor
@@ -156,3 +160,36 @@ interface TrustStore {
 	 */
 	suspend fun scopes(): OperationResult<Set<TrustScope>>
 }
+
+/**
+ * Drop the scope of every profile not named in [profileNames], as [TrustStore.clearProfileScope] does for
+ * one, so that no profile created later under such a name inherits the certificates a removed profile was
+ * trusting. Scopes are keyed by profile name alone, so a scope that outlives its profile would otherwise
+ * be picked up again. A read-only store is left as it is.
+ *
+ * @param profileNames Names of the scopes that are kept: those [ownedProfileScopeNames] gives for the
+ *   profiles of the configuration.
+ * @return Unit once every other profile scope is gone, or the first error, with the scopes before it
+ *   already dropped.
+ */
+suspend fun TrustStore.clearOrphanedProfileScopes(profileNames: Set<String>): OperationResult<Unit> {
+	if (readOnly) return Unit.right()
+	val orphaned = scopes().getOrElse { return it.left() }
+		.filterIsInstance<TrustScope.Profile>()
+		.filter { it.name !in profileNames }
+	for (scope in orphaned) clearProfileScope(scope.name).getOrElse { return it.left() }
+	return Unit.right()
+}
+
+/**
+ * The names of the profile trust scopes that the profiles in this map own, the map being keyed as
+ * [cz.pizavo.omnisign.domain.model.config.AppConfig.profiles] is.
+ *
+ * A profile owns two scopes: that of its key, by which the CLI's `config trust` commands look a profile
+ * up, and that of its [ProfileConfig.name], by which signing and validation resolve its trust. A profile
+ * created through the profile use case is keyed by its name, so the two are one; in a configuration
+ * edited by hand or imported they may differ, and [clearOrphanedProfileScopes] then keeps both.
+ *
+ * @return The names of the scopes the profiles own.
+ */
+fun Map<String, ProfileConfig>.ownedProfileScopeNames(): Set<String> = keys + values.map { it.name }

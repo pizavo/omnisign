@@ -52,6 +52,14 @@ sealed interface ConfigurationError : OperationError, LocalizableError {
 		fun loadFailed(details: String? = null, cause: Throwable? = null): LoadFailed =
 			LoadFailed(LocalizableText.of(MessageKey.CONFIG_LOAD_FAILED), details, cause)
 
+		/**
+		 * The configuration file at [path] exists but cannot be read or decoded, so the operation that
+		 * needed it stopped and left the file as it is: the user fixes the file, or moves it away to start
+		 * over from the defaults.
+		 */
+		fun unreadable(path: String, details: String? = null, cause: Throwable? = null): LoadFailed =
+			LoadFailed(LocalizableText.of(MessageKey.CONFIG_UNREADABLE, path), details, cause)
+
 		/** Saving the on-disk configuration failed for an unclassified reason. */
 		fun saveFailed(details: String? = null, cause: Throwable? = null): SaveFailed =
 			SaveFailed(LocalizableText.of(MessageKey.CONFIG_SAVE_FAILED), details, cause)

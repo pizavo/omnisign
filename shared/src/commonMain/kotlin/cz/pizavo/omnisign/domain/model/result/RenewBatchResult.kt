@@ -20,9 +20,10 @@ package cz.pizavo.omnisign.domain.model.result
  * @property lockError Non-null when the run did not start because the renewal lock could not be
  *   established (its file could not be created or locked); carries the failure reason.
  * @property configError Non-null when the run did not start because the configuration could not be
- *   loaded (its file could not be read or decoded); carries the failure reason. No job ran, as the
- *   jobs are part of that configuration, so the run is recorded as failed rather than as a run of no
- *   jobs.
+ *   loaded (its file could not be read or decoded); carries the failure reason: the error's message
+ *   without its closing period, then its details in parentheses, so that the notification, the log
+ *   and the CLI can each end the sentence their own way. No job ran, as the jobs are part of that
+ *   configuration, so the run is recorded as failed rather than as a run of no jobs.
  * @property stalenessAlert Non-null when renewal has gone too long without a successful run, so the
  *   caller should raise a standing staleness notification on top of any per-job outcome — set on a
  *   completed run or a run skipped because the lock was held; `null` for dry-runs, lock failures,

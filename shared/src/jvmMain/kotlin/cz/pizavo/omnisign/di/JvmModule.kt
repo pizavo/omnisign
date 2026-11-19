@@ -134,7 +134,7 @@ val jvmRepositoryModule = module {
 			listOf(JsonConfigSerializer(), XmlConfigSerializer(), YamlConfigSerializer())
 		)
 	}
-	single { ExportImportConfigUseCase(get(), get()) }
+	single { ExportImportConfigUseCase(get(), get(), get()) }
 	single { ConfigArchiveUseCase(get(), get(), get()) } bind ConfigArchivePort::class
 	single<RenewalLock> {
 		FileRenewalLock(FileConfigRepository.getDefaultConfigPath().resolveSibling("renewal.lock"))

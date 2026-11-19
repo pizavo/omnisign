@@ -192,6 +192,9 @@ enum class MessageKey {
 	/** Saving the on-disk configuration failed for an unclassified reason. */
 	CONFIG_SAVE_FAILED,
 
+	/** The on-disk configuration file exists but cannot be read or decoded, so it was left as it is (arg: file path). */
+	CONFIG_UNREADABLE,
+
 	/**
 	 * The on-disk configuration file exists but cannot be read, so a save that would replace it was
 	 * refused (arg: file path).

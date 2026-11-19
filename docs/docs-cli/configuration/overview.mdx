@@ -37,11 +37,13 @@ above.
 
 If the file exists but cannot be read — a hand edit left it invalid, say, or a newer OmniSign
 version wrote a value this one does not know — `config show` exits with status 1 because the
-configuration cannot be loaded, and other commands run with the default settings, so
-`config profile show`, for one, finds no profile. A command that would change the configuration
-exits with status 1 and leaves the file as it is. Fix the file, or move it elsewhere to start over
-from the defaults. A save replaces the file in one step, so a save cut short by a crash or a full
-disk leaves the previous configuration in place.
+configuration cannot be loaded, and so do the commands that look a profile up in it:
+`config profile show` and `edit`, and the `config trust` commands given `--profile`. The error
+names the file. Other commands run with the default settings, so `config profile list`, for one,
+lists no profile. A command that would change the configuration exits with status 1 and leaves the
+file as it is. Fix the file, or move it elsewhere to start over from the defaults. A save replaces
+the file in one step, so a save cut short by a crash or a full disk leaves the previous
+configuration in place.
 
 ## `config show`
 
@@ -174,8 +176,10 @@ or encryption algorithm is among the algorithms it disables, or one with a profi
 its own override, as `config set` and `config profile` refuse them too. An archive is checked
 before anything changes — its configuration, its manifest and every certificate the import
 restores — so a refused import leaves the configuration and the trusted certificates as they
-were. Importing the global settings restores only the archive's global trusted certificates. An
-archive that unpacks to more than 64 MiB is refused.
+were. Importing the global settings restores only the archive's global trusted certificates. A
+full import that leaves out one of your profiles drops that profile's trusted certificates too, and
+a profile it adds starts with only the certificates the archive holds for it. An archive that
+unpacks to more than 64 MiB is refused.
 
 ## Related pages
 

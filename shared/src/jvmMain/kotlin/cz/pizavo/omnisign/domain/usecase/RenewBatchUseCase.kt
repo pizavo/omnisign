@@ -453,7 +453,7 @@ class RenewBatchUseCase(
      */
     private suspend fun runBatch(jobName: String?, dryRun: Boolean): RenewBatchResult? {
         val appConfig = configRepository.loadConfig().getOrElse { error ->
-            val reason = listOfNotNull(error.message, error.details).joinToString(": ")
+            val reason = error.message.removeSuffix(".") + error.details?.let { " ($it)" }.orEmpty()
             logger.error { "Renewal did not start — $reason" }
             return RenewBatchResult(dryRun = dryRun, configError = reason)
         }

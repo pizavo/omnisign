@@ -186,13 +186,14 @@ class RenewTest : FunSpec({
 	}
 
 	test("a configuration that could not be loaded is reported as an error, notifies, and exits non-zero") {
-		coEvery { renewBatchUseCase(jobName = null, dryRun = false) } returns
-			RenewBatchResult(configError = "Failed to load configuration: Unexpected JSON token")
+		val reason = "The configuration file /home/user/.config/omnisign/config.json cannot be read. Fix the " +
+			"file, or move it elsewhere to start over from the defaults (Unexpected JSON token)"
+		coEvery { renewBatchUseCase(jobName = null, dryRun = false) } returns RenewBatchResult(configError = reason)
 
 		val result = Omnisign().test(listOf("renew"))
 
 		result.statusCode shouldBe 1
-		result.stderr shouldContain "Renewal did not start: Failed to load configuration: Unexpected JSON token"
+		result.stderr shouldContain "Renewal did not start: $reason"
 		result.output shouldNotContain "No renewal jobs configured"
 		verify(exactly = 1) { notificationService.notify(any(), any(), any()) }
 	}

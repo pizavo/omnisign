@@ -60,6 +60,10 @@ import kotlin.time.Instant
 
 /**
  * Unit tests for [RenewBatchUseCase].
+ *
+ * A run whose configuration cannot be read reports the error's message without its closing period,
+ * then its details in parentheses, so that the notification, which ends the sentence itself, reads
+ * as one.
  */
 class RenewBatchUseCaseTest : FunSpec({
 
@@ -78,6 +82,7 @@ class RenewBatchUseCaseTest : FunSpec({
     val extend = ExtendDocumentUseCase(archivingRepository)
     val grantingLock: RenewalLock = mockk { every { tryAcquire() } returns AutoCloseable {} }
     val runRecordStore: RenewalRunRecordStore = mockk(relaxed = true)
+    val configFile = "/home/user/.config/omnisign/config.json"
 
     beforeTest {
         clearMocks(archivingRepository, configRepository, runRecordStore)
@@ -1218,7 +1223,7 @@ class RenewBatchUseCaseTest : FunSpec({
         val lastGood = baseConfig.copy(renewalJobs = mapOf("j" to RenewalJob(name = "j", globs = listOf(globDir(dir)))))
         val uc = useCaseWith(lastGood)
         coEvery { configRepository.loadConfig() } returns
-            ConfigurationError.loadFailed(details = "Unexpected JSON token at offset 7").left()
+            ConfigurationError.unreadable(configFile, details = "Unexpected JSON token at offset 7").left()
         val longAgo = Clock.System.now() - 60.days
         coEvery { runRecordStore.load() } returns RenewalRunRecord(
             lastRunAt = longAgo,
@@ -1230,7 +1235,8 @@ class RenewBatchUseCaseTest : FunSpec({
 
         val result = uc().shouldNotBeNull()
 
-        result.configError shouldBe "Failed to load configuration: Unexpected JSON token at offset 7"
+        result.configError shouldBe "The configuration file $configFile cannot be read. Fix the file, or move it " +
+            "elsewhere to start over from the defaults (Unexpected JSON token at offset 7)"
         result.success shouldBe false
         result.jobs.shouldBeEmpty()
         result.stalenessAlert.shouldBeNull()
@@ -1245,20 +1251,22 @@ class RenewBatchUseCaseTest : FunSpec({
 
     test("a run of one job reports a configuration that cannot be loaded, not a job that does not exist") {
         val uc = useCaseWith(baseConfig)
-        coEvery { configRepository.loadConfig() } returns ConfigurationError.loadFailed().left()
+        coEvery { configRepository.loadConfig() } returns ConfigurationError.unreadable(configFile).left()
 
         val result = uc(jobName = "j").shouldNotBeNull()
 
-        result.configError shouldBe "Failed to load configuration"
+        result.configError shouldBe "The configuration file $configFile cannot be read. Fix the file, or move it " +
+            "elsewhere to start over from the defaults"
     }
 
     test("a dry run reports a configuration that cannot be loaded and records nothing") {
         val uc = useCaseWith(baseConfig)
-        coEvery { configRepository.loadConfig() } returns ConfigurationError.loadFailed().left()
+        coEvery { configRepository.loadConfig() } returns ConfigurationError.unreadable(configFile).left()
 
         val result = uc(dryRun = true).shouldNotBeNull()
 
-        result.configError.shouldNotBeNull()
+        result.configError shouldBe "The configuration file $configFile cannot be read. Fix the file, or move it " +
+            "elsewhere to start over from the defaults"
         result.dryRun shouldBe true
         coVerify(exactly = 0) { runRecordStore.save(any()) }
     }

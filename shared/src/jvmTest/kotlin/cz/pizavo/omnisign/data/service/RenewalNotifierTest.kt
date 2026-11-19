@@ -14,14 +14,17 @@ import java.util.Locale
  * along the partial-failure / failure / completion ladder, raises the run-wide lock-error,
  * configuration-error and staleness notifications independently of the per-job opt-in, and stays
  * silent for dry-runs, opted-out jobs, and jobs where nothing was renewed. A fixed locale is injected
- * so the asserted text is independent of the machine's default locale, and a Czech-locale notifier
- * confirms the bundle is actually resolved per locale.
+ * so the asserted text is independent of the machine's default locale, and Czech- and Slovak-locale
+ * notifiers confirm the bundle is actually resolved per locale.
  */
 class RenewalNotifierTest : FunSpec({
 
 	val notificationService: OsNotificationService = mockk(relaxed = true)
 	val notifier = RenewalNotifier(notificationService) { Locale.ENGLISH }
 	val czechNotifier = RenewalNotifier(notificationService) { Locale.forLanguageTag("cs") }
+	val slovakNotifier = RenewalNotifier(notificationService) { Locale.forLanguageTag("sk") }
+	val configErrorReason = "The configuration file /home/user/.config/omnisign/config.json cannot be read. " +
+		"Fix the file, or move it elsewhere to start over from the defaults (Unexpected JSON token at offset 7)"
 
 	beforeTest { clearMocks(notificationService) }
 
@@ -64,11 +67,14 @@ class RenewalNotifierTest : FunSpec({
 	}
 
 	test("sends a single critical configuration-error notification when the configuration could not be loaded") {
-		notifier.notify(RenewBatchResult(configError = "Failed to load configuration: Unexpected JSON token at offset 7"))
+		notifier.notify(RenewBatchResult(configError = configErrorReason))
 		verify(exactly = 1) {
 			notificationService.notify(
 				match { it.contains("OmniSign") && it.contains("could not start") },
-				match { it.contains("Unexpected JSON token at offset 7") && it.contains("configuration file") },
+				eq(
+					"$configErrorReason. No renewal job ran and no files were re-timestamped — repair the configuration " +
+						"file and check the log.",
+				),
 				eq(NotificationUrgency.CRITICAL),
 			)
 		}
@@ -157,11 +163,28 @@ class RenewalNotifierTest : FunSpec({
 	}
 
 	test("renders the Czech configuration-error title and body when the locale is Czech") {
-		czechNotifier.notify(RenewBatchResult(configError = "Failed to load configuration"))
+		czechNotifier.notify(RenewBatchResult(configError = configErrorReason))
 		verify(exactly = 1) {
 			notificationService.notify(
-				match { it.contains("Obnovu nelze spustit") },
-				match { it.contains("Žádná úloha obnovy neproběhla") && it.contains("konfigurační soubor") },
+				eq("OmniSign – Obnovu nelze spustit"),
+				eq(
+					"$configErrorReason. Žádná úloha obnovy neproběhla a žádné soubory nebyly obnoveny – " +
+						"opravte konfigurační soubor a zkontrolujte protokol.",
+				),
+				eq(NotificationUrgency.CRITICAL),
+			)
+		}
+	}
+
+	test("renders the Slovak configuration-error title and body when the locale is Slovak") {
+		slovakNotifier.notify(RenewBatchResult(configError = configErrorReason))
+		verify(exactly = 1) {
+			notificationService.notify(
+				eq("OmniSign – Obnovu nemožno spustiť"),
+				eq(
+					"$configErrorReason. Žiadna úloha obnovy neprebehla a žiadne súbory neboli obnovené – " +
+						"opravte konfiguračný súbor a skontrolujte protokol.",
+				),
 				eq(NotificationUrgency.CRITICAL),
 			)
 		}

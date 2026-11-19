@@ -36,7 +36,9 @@ import org.koin.dsl.module
  * different things at signing time. And a stored TSA password must be reported as living in the
  * keychain without the command ever reaching for the secret itself.
  *
- * When there is no profile to show, the command says why on stderr and exits with status 1.
+ * When there is no profile to show, the command says why on stderr and exits with status 1. When the
+ * configuration file cannot be read, the reason it gives is that error, which names the file, whether
+ * or not a name was given.
  */
 class ProfileShowTest : FunSpec({
 
@@ -185,6 +187,21 @@ class ProfileShowTest : FunSpec({
 		result.statusCode shouldBe 1
 		result.stderr shouldContain "no active profile is set"
 		coVerify(exactly = 0) { manageProfile.get(any()) }
+	}
+
+	test("stops with the error naming the configuration file when it cannot be read, with or without a name") {
+		val path = "/home/user/.config/omnisign/config.json"
+		val unreadable = ConfigurationError.unreadable(path, details = "Unexpected JSON token at offset 0").left()
+		coEvery { getConfig() } returns unreadable
+		coEvery { manageProfile.get(any()) } returns unreadable
+
+		for (args in listOf(emptyList<String>(), listOf("work"))) {
+			val result = Omnisign().test(listOf("config", "profile", "show") + args)
+
+			result.statusCode shouldBe 1
+			result.stderr shouldContain "The configuration file $path cannot be read"
+			result.stderr shouldNotContain "no active profile is set"
+		}
 	}
 
 	test("names the missing profile on stderr and exits non-zero") {
