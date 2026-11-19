@@ -1261,11 +1261,12 @@ class RenewBatchUseCaseTest : FunSpec({
 
     test("a dry run reports a configuration that cannot be loaded and records nothing") {
         val uc = useCaseWith(baseConfig)
-        coEvery { configRepository.loadConfig() } returns ConfigurationError.loadFailed().left()
+        coEvery { configRepository.loadConfig() } returns ConfigurationError.unreadable(configFile).left()
 
         val result = uc(dryRun = true).shouldNotBeNull()
 
-        result.configError.shouldNotBeNull()
+        result.configError shouldBe "The configuration file $configFile cannot be read. Fix the file, or move it " +
+            "elsewhere to start over from the defaults"
         result.dryRun shouldBe true
         coVerify(exactly = 0) { runRecordStore.save(any()) }
     }
