@@ -21,10 +21,16 @@ details to clients. Keep it `false` everywhere except local debugging on `127.0.
 
 ## TLS & HSTS
 
-A `tls:` block enables direct HTTPS with **TLS 1.2/1.3 and HTTP/2** (ALPN). To force TLS 1.3 only,
-launch with `-Djdk.tls.disabledAlgorithms=TLSv1,TLSv1.1,TLSv1.2`. Keystore and private-key passwords
-come from the environment, never from YAML (see [Secrets](configuration#secrets)); a `.p12`/`.pfx`
-path is read as PKCS#12, anything else as JKS.
+A `tls:` block enables direct HTTPS over **TLS 1.3 or TLS 1.2, with HTTP/2** (ALPN). To accept TLS
+1.3 alone, set `tls.enabledProtocols: [TLSv1.3]`: a client that offers only TLS 1.2 is then refused
+during the handshake. The list takes `TLSv1.3` and `TLSv1.2`, and the server refuses to start with an
+empty list or any other version. Launching the JVM with `-Djdk.tls.disabledAlgorithms=…`, as earlier
+versions of this page advised, changes nothing: the JVM reads that setting as a security property,
+not as a system property. Set as a security property, the same value would replace the JVM's default
+list, and with it the limits that list places on weak algorithms such as RC4, 3DES and short
+Diffie-Hellman keys, so use `enabledProtocols` instead. Keystore and private-key passwords come from
+the environment, never from YAML (see [Secrets](configuration#secrets)); a `.p12`/`.pfx` path is
+read as PKCS#12, anything else as JKS.
 
 Enable **HSTS** (`tls.hsts`) only when *all* traffic is HTTPS — sending it over plain HTTP can lock
 users out. Start with a short `maxAgeSeconds` (e.g., 300) and raise to a year once stable. Behind a

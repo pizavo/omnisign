@@ -6,6 +6,7 @@ import cz.pizavo.omnisign.config.ServerConfig
 import cz.pizavo.omnisign.config.ServerConfigLoader
 import cz.pizavo.omnisign.config.ServerSecrets
 import cz.pizavo.omnisign.config.SigningConfigLoader
+import cz.pizavo.omnisign.config.TlsConfig
 import cz.pizavo.omnisign.config.TrustReconciler
 import cz.pizavo.omnisign.config.isLoopbackHost
 import cz.pizavo.omnisign.config.unsatisfiableSigningTargets
@@ -13,6 +14,7 @@ import cz.pizavo.omnisign.config.validateAuthConfig
 import cz.pizavo.omnisign.config.validateCorsConfig
 import cz.pizavo.omnisign.config.validateOperationsConfig
 import cz.pizavo.omnisign.config.validateProxyConfig
+import cz.pizavo.omnisign.config.validateTlsConfig
 import cz.pizavo.omnisign.config.validateTransportSecurity
 import cz.pizavo.omnisign.data.service.PcscMonitorService
 import cz.pizavo.omnisign.data.service.Pkcs11CacheInvalidator
@@ -26,6 +28,7 @@ import cz.pizavo.omnisign.di.appModule
 import cz.pizavo.omnisign.di.jvmRepositoryModule
 import cz.pizavo.omnisign.di.serverModule
 import cz.pizavo.omnisign.domain.model.config.AppConfig
+import cz.pizavo.omnisign.domain.model.value.Sensitive
 import cz.pizavo.omnisign.domain.repository.ConfigRepository
 import cz.pizavo.omnisign.plugins.*
 import io.github.oshai.kotlinlogging.KotlinLogging
@@ -65,10 +68,10 @@ private val logger = run {
  * Loads [ServerConfig] from `server.yml` and starts a Netty embedded server.
  *
  * When TLS is configured and reverse-proxy mode is inactive (`proxy` absent or
- * `proxy.enabled: false`), a TLS connector is created with TLS 1.2/1.3 and HTTP/2 ALPN
- * negotiation enabled. To restrict to TLS 1.3 only, set the JVM system property
- * `-Djdk.tls.disabledAlgorithms=TLSv1,TLSv1.1,TLSv1.2` at launch. Otherwise, a plain HTTP
- * connector is used (suitable for deployment behind a TLS-terminating reverse proxy).
+ * `proxy.enabled: false`), [tlsConnector] adds a TLS connector that offers the protocol versions
+ * `tls.enabledProtocols` lists, TLS 1.3 and TLS 1.2 unless it says otherwise, with HTTP/2 ALPN
+ * negotiation. Otherwise, a plain HTTP connector is used (suitable for deployment behind a
+ * TLS-terminating reverse proxy).
  *
  * The `--config <path>` argument can be passed on the command line to point to a non-default
  * YAML config file location.
@@ -110,21 +113,16 @@ fun main(args: Array<String>) {
 			Netty,
 			environment = applicationEnvironment { },
 			configure = {
-				sslConnector(
-					keyStore = keyStore,
-					keyAlias = tlsCfg.keyAlias,
-					keyStorePassword = { keystorePassword.value.toCharArray() },
-					privateKeyPassword = { privateKeyPassword.value.toCharArray() },
-				) {
-					port = tlsCfg.port
-					host = serverConfig.listen.host
-				}
+				tlsConnector(tlsCfg, serverConfig.listen.host, keyStore, keystorePassword, privateKeyPassword)
 			},
 		) {
 			moduleWith(serverConfig, secrets)
 		}.start(wait = true)
 
-		logger.info { "TLS connector configured on ${serverConfig.listen.host}:${tlsCfg.port} (TLS 1.2/1.3, HTTP/2 ALPN)" }
+		logger.info {
+			"TLS connector configured on ${serverConfig.listen.host}:${tlsCfg.port} " +
+				"(${tlsCfg.enabledProtocols.joinToString("/")}, HTTP/2 ALPN)"
+		}
 	} else {
 		if (serverConfig.proxy?.enabled == true) {
 			logger.info { "Proxy mode enabled — plain HTTP on ${serverConfig.listen.host}:${serverConfig.listen.port}" }
@@ -143,6 +141,37 @@ fun main(args: Array<String>) {
 }
 
 /**
+ * Add the TLS connector [tls] describes to this engine configuration, bound to [host]. It serves the
+ * key and certificate chain stored under [TlsConfig.keyAlias] in [keyStore], and offers only the
+ * protocol versions in [TlsConfig.enabledProtocols], which Ktor's Netty engine sets on the SSL engine
+ * of every connection it accepts.
+ *
+ * @param tls The `tls` block of `server.yml`.
+ * @param host The address the connector binds.
+ * @param keyStore The keystore that holds the server's key.
+ * @param keystorePassword The password of [keyStore].
+ * @param privateKeyPassword The password of the key.
+ */
+internal fun ApplicationEngine.Configuration.tlsConnector(
+	tls: TlsConfig,
+	host: String,
+	keyStore: KeyStore,
+	keystorePassword: Sensitive<String>,
+	privateKeyPassword: Sensitive<String>,
+) {
+	sslConnector(
+		keyStore = keyStore,
+		keyAlias = tls.keyAlias,
+		keyStorePassword = { keystorePassword.value.toCharArray() },
+		privateKeyPassword = { privateKeyPassword.value.toCharArray() },
+	) {
+		port = tls.port
+		this.host = host
+		enabledProtocols = tls.enabledProtocols
+	}
+}
+
+/**
  * Configure the full application module with the given [ServerConfig] and resolved
  * [ServerSecrets].
  *
@@ -157,6 +186,7 @@ fun Application.moduleWith(serverConfig: ServerConfig, secrets: ServerSecrets, h
 	val parsedProxy = validateProxyConfig(serverConfig.proxy)
 	val corsConfig = validateCorsConfig(serverConfig.cors)
 	validateTransportSecurity(serverConfig)
+	validateTlsConfig(serverConfig.tls)
 	validateOperationsConfig(serverConfig.operations)
 	serverConfig.operations.signingKeystorePath?.let { path ->
 		require(File(path).isFile) {

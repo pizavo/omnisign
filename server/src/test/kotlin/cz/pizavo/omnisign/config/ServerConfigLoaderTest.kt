@@ -356,6 +356,14 @@ class ServerConfigLoaderTest : FunSpec({
 		config.tls.hsts.shouldBeNull()
 	}
 
+	test("load parses tls.enabledProtocols, and offers TLS 1.3 and TLS 1.2 when it is omitted") {
+		val limited = loader.loadFromString("tls:\n  keystorePath: \"/tmp/ks.p12\"\n  enabledProtocols: [TLSv1.3]")
+		limited.tls.shouldNotBeNull().enabledProtocols shouldBe listOf("TLSv1.3")
+
+		val omitted = loader.loadFromString("tls:\n  keystorePath: \"/tmp/ks.p12\"")
+		omitted.tls.shouldNotBeNull().enabledProtocols shouldBe listOf("TLSv1.3", "TLSv1.2")
+	}
+
 	test("load reads a tilde as no secret rather than as the one-character secret ~") {
 		val config = loader.loadFromString("auth:\n  oauthStateSecret: ~")
 		config.auth.shouldNotBeNull().oauthStateSecret.shouldBeNull()

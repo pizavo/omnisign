@@ -782,8 +782,9 @@ tasks.register("generateIcons") {
 
 /**
  * Regenerates the committed end-to-end PKI fixtures: `ca.test.p12`, `signer.test.p12` and
- * `tsa.test.p12` in `shared/src/jvmTest/resources/e2e/`, and the copies of the signer and TSA key
- * stores in `cli/src/test/resources/e2e/`.
+ * `tsa.test.p12` in `shared/src/jvmTest/resources/e2e/`, the copies of the signer and TSA key
+ * stores in `cli/src/test/resources/e2e/`, and the copy of the signer's in
+ * `server/src/test/resources/e2e/`, whose certificate the server's TLS connector test serves.
  *
  * Every key is RSA-4096, signed with SHA-256. A smaller key would age out of DSS's validation policy
  * long before the certificates expire (DSS 6.5.1 accepts 2048-bit RSA only until 2027-01-01), and from
@@ -799,7 +800,7 @@ tasks.register("generateIcons") {
  * holds its key under the alias `key` with the chain up to the CA, behind the password `test1234` the
  * tests use.
  *
- * keytool is taken from the JDK running Gradle. Commit the five key stores afterwards:
+ * keytool is taken from the JDK running Gradle. Commit the six key stores afterwards:
  * ```
  * .\gradlew regenerateTestPki
  * ```
@@ -810,6 +811,7 @@ tasks.register("regenerateTestPki") {
 
     val sharedFixtures = rootProject.file("shared/src/jvmTest/resources/e2e")
     val cliFixtures = rootProject.file("cli/src/test/resources/e2e")
+    val serverFixtures = rootProject.file("server/src/test/resources/e2e")
     val workDir = layout.buildDirectory.dir("tmp/test-pki")
 
     doLast {
@@ -879,6 +881,7 @@ tasks.register("regenerateTestPki") {
         listOf("signer", "tsa").forEach { name ->
             File(work, "$name.test.p12").copyTo(File(cliFixtures, "$name.test.p12"), overwrite = true)
         }
-        logger.lifecycle("Test PKI regenerated → $sharedFixtures and $cliFixtures")
+        File(work, "signer.test.p12").copyTo(File(serverFixtures, "signer.test.p12"), overwrite = true)
+        logger.lifecycle("Test PKI regenerated → $sharedFixtures, $cliFixtures and $serverFixtures")
     }
 }

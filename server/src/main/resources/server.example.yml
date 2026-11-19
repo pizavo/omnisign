@@ -333,6 +333,10 @@ operations:
 #   keystorePath: "/path/to/keystore.p12"
 #   keyAlias: "omnisign"
 #
+#   # TLS versions the server accepts: both by default, [TLSv1.3] for TLS 1.3 alone. An empty list
+#   # or any other version stops the server at startup.
+#   enabledProtocols: [TLSv1.3, TLSv1.2]
+#
 #   # HTTP Strict Transport Security (HSTS).
 #   # Only enable when ALL traffic to the server arrives over HTTPS.
 #   # Sending this header over plain HTTP is a protocol error and can lock users out.
