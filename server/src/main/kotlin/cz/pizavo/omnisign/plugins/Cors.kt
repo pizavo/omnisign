@@ -19,11 +19,16 @@ import io.ktor.server.plugins.cors.routing.*
  * only the `https` scheme is permitted for allowed hosts. Otherwise, both `http` and
  * `https` are accepted.
  *
+ * Each entry is installed in the form [CorsConfig.allowedHosts] gives it, trimmed and
+ * without its `http://` or `https://` prefix, and an entry that comes out as
+ * [CorsConfig.ANY_HOST], `"*"` alone or after such a prefix, installs `anyHost()`.
+ *
  * [CorsConfig.allowCredentials] drives Ktor's `allowCredentials`, which is what lets a
  * browser front-end on another origin send the refresh cookie to `/auth/refresh` and read
- * the reply. The validator has already established it is not paired with the `["*"]`
- * wildcard, so `anyHost()` and credentialed CORS can never both be active here — the
- * combination would make `anyHost()` reflect the caller's origin rather than emit `*`.
+ * the reply. The validator has judged the same hosts and established that none of them is
+ * the wildcard while credentials are on, so `anyHost()` and credentialed CORS can never
+ * both be active here — the combination would make `anyHost()` reflect the caller's origin
+ * rather than emit `*`.
  *
  * The following request headers are allowed: `Content-Type`, `Authorization`, `X-Request-Id`.
  * The following response headers are exposed to JavaScript: `X-OmniSign-Result`, `X-Request-Id`.
@@ -36,11 +41,11 @@ fun Application.configureCors(config: CorsConfig, tlsEnabled: Boolean = false) {
 	val schemes = if (tlsEnabled) listOf("https") else listOf("https", "http")
 
 	install(CORS) {
-		config.allowedOrigins.forEach { origin ->
-			if (origin == "*") {
+		config.allowedHosts().forEach { host ->
+			if (host == CorsConfig.ANY_HOST) {
 				anyHost()
 			} else {
-				allowHost(origin.removePrefix("https://").removePrefix("http://"), schemes = schemes)
+				allowHost(host, schemes = schemes)
 			}
 		}
 
