@@ -141,5 +141,6 @@ internal addresses, because they process their own user's documents.
   `Referrer-Policy: strict-origin-when-cross-origin`, and
   `Content-Security-Policy: default-src 'none'; frame-ancestors 'none'`. No `X-Powered-By` is sent.
 - A client-supplied `X-Request-Id` is accepted only if it matches `[a-z0-9+/=-]` and is 1–64
-  characters; anything else is replaced by a server-generated UUIDv7. The character check is what
-  stops CRLF injection into the MDC log context.
+  characters; anything else is replaced by a server-generated UUIDv7. The character check keeps a
+  client from writing spaces, `|` or control characters into the ID, which the access-log line of
+  its request echoes.

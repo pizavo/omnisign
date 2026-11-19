@@ -1,5 +1,6 @@
 package cz.pizavo.omnisign.plugins
 
+import io.ktor.callid.CALL_ID_DEFAULT_DICTIONARY
 import io.ktor.http.*
 import io.ktor.server.application.*
 import io.ktor.server.plugins.callid.*
@@ -11,9 +12,9 @@ import kotlin.uuid.Uuid
  *
  * Behavior:
  * 1. If the incoming request already carries an `X-Request-Id` header, the value
- *    is accepted as the call ID only when it passes both Ktor's built-in
- *    character-set verifier (the default dictionary `[a-z0-9+/=-]`) **and** the
- *    length cap of `1..`[MAX_CALL_ID_LENGTH].
+ *    is accepted as the call ID only when it is `1..`[MAX_CALL_ID_LENGTH] characters
+ *    long **and** every character is in Ktor's default dictionary `[a-z0-9+/=-]`
+ *    ([CALL_ID_DEFAULT_DICTIONARY]).
  * 2. Otherwise (header missing, character outside the dictionary, or length
  *    outside the cap), a random V7 UUID is generated server-side.
  * 3. The resolved ID is echoed back in the `X-Request-Id` response header so that
@@ -21,21 +22,21 @@ import kotlin.uuid.Uuid
  * 4. The ID is also registered under the MDC key `"request-id"` by [configureCallLogging],
  *    making it available in all log lines emitted during the request lifecycle.
  *
- * The default character-set dictionary is the load-bearing CRLF defense on the
- * MDC log-poisoning path — Logback's `MDCConverter` does not sanitize MDC values,
- * so without the dictionary check an attacker could submit
- * `X-Request-Id: foo<CR><LF>INJECTED` and split log lines. Netty's response-header
- * validator catches CRLF only on the *response* write, not on the *MDC populate*,
- * so the dictionary must stay; replacing the implicit default with `verify { true }`
- * re-opens the log-poisoning path. The length cap added here closes the
- * log-storage amplification residual (an attacker submitting megabytes of valid
- * dictionary characters that would otherwise be copied into every log line emitted
- * for that request).
+ * Both checks sit in the one predicate given to `verify`, because Ktor keeps a single
+ * verifier: its own dictionary check, installed by default, is replaced by any `verify`
+ * call, so a predicate that checked only the length would accept every character. Ktor
+ * runs the verifier on the generated ID as well, which a V7 UUID, written in lower-case
+ * hex and hyphens, passes.
+ *
+ * The dictionary keeps a client from writing spaces, `|` or control characters into the
+ * access line [configureCallLogging] writes for its request (`status | method uri | id=…`),
+ * where they would let it forge fields of that line, and into the MDC. The length cap
+ * bounds how much a client can make every log line of its request carry.
  */
 fun Application.configureCallId() {
 	install(CallId) {
 		retrieve { call -> call.request.headers[HttpHeaders.XRequestId] }
-		verify { it.length in 1..MAX_CALL_ID_LENGTH }
+		verify { id -> id.length in 1..MAX_CALL_ID_LENGTH && id.all { it in CALL_ID_DEFAULT_DICTIONARY } }
 		generate {
 			@OptIn(ExperimentalUuidApi::class)
 			Uuid.generateV7().toString()
