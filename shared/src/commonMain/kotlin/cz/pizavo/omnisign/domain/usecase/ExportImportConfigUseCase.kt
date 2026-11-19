@@ -65,7 +65,9 @@ class ExportImportConfigUseCase(
 	 * that is gone. A failure before the save leaves the configuration as it was; one after it returns
 	 * the error with the imported configuration saved. The stored profiles are read with
 	 * [ConfigRepository.loadConfig], so a stored configuration that cannot be read fails the import
-	 * before any scope is dropped, instead of making every stored profile's scope look orphaned.
+	 * before any scope is dropped. [ConfigRepository.getCurrentConfig] would fall back on the
+	 * configuration last read, or on the defaults, with no profiles, when none was read, as in a fresh
+	 * CLI process, and every stored profile's scope would then look orphaned.
 	 *
 	 * @param text Serialized configuration text.
 	 * @param format Format of the supplied text.

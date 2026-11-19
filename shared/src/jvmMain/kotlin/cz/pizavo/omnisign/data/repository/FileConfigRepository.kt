@@ -91,7 +91,8 @@ class FileConfigRepository(
     /**
      * Load the configuration from the file, creating the file with the defaults when it does not
      * exist yet; the defaults are returned even when that write fails. A file that cannot be read
-     * or decoded is left as it is.
+     * or decoded is left as it is, and the error, [ConfigurationError.unreadable], names it, so the
+     * user knows which file to fix or move away.
      */
     override suspend fun loadConfig(): OperationResult<AppConfig> = withContext(ioDispatcher) {
         mutex.withLock { loadLocked() }
@@ -100,20 +101,24 @@ class FileConfigRepository(
     /**
      * [loadConfig] for a caller that already holds [mutex].
      */
-    private fun loadLocked(): OperationResult<AppConfig> =
-        try {
-            if (!configPath.exists()) {
-                val defaultConfig = AppConfig(global = GlobalConfig())
-                saveConfigInternal(defaultConfig)
-                defaultConfig.right()
-            } else {
-                val config = json.decodeFromString<AppConfig>(configPath.readConfigText())
-                lastLoaded = config
-                config.right()
-            }
-        } catch (e: Exception) {
-            ConfigurationError.loadFailed(details = e.failureDetails(), cause = e).left()
+    private fun loadLocked(): OperationResult<AppConfig> {
+        if (!configPath.exists()) {
+            val defaultConfig = AppConfig(global = GlobalConfig())
+            saveConfigInternal(defaultConfig)
+            return defaultConfig.right()
         }
+        return try {
+            val config = json.decodeFromString<AppConfig>(configPath.readConfigText())
+            lastLoaded = config
+            config.right()
+        } catch (e: Exception) {
+            ConfigurationError.unreadable(
+                path = configPath.toAbsolutePath().toString(),
+                details = e.failureDetails(),
+                cause = e,
+            ).left()
+        }
+    }
 
     /**
      * Save [config] over the configuration file, unless the file exists and cannot be read or

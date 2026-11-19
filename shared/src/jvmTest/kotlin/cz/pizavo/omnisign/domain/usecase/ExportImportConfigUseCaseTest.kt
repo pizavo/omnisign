@@ -39,8 +39,9 @@ import io.mockk.slot
  * default or override it carries is among the algorithms the same layer disables. An import that adds a
  * profile drops every trust scope no profile owns before it saves, one that drops a profile drops its
  * scope once it has saved, and one that keeps the stored profiles leaves the trust store alone. An
- * import that cannot read the stored configuration drops no scope, and a profile stored under a key
- * other than its name keeps both scopes.
+ * import that cannot read the stored configuration drops no scope. A profile stored under a key other
+ * than its name keeps both scopes, whether a whole configuration or another profile is imported, and one
+ * that an import renames does not inherit a leftover scope of its new name.
  */
 class ExportImportConfigUseCaseTest : FunSpec({
 	
@@ -406,5 +407,37 @@ class ExportImportConfigUseCaseTest : FunSpec({
 		coVerify { store.clearProfileScope("p2") }
 		coVerify(exactly = 0) { store.clearProfileScope("p1") }
 		coVerify(exactly = 0) { store.clearProfileScope("P1") }
+	}
+
+	test("importProfile of a new profile keeps the scope of the name of a profile stored under another key") {
+		val repository: ConfigRepository = mockk()
+		val store = storeWithScopes("work", "Work", "gone")
+		coEvery { repository.loadConfig() } returns AppConfig(profiles = mapOf("work" to ProfileConfig(name = "Work"))).right()
+		coEvery { repository.saveConfig(any()) } returns Unit.right()
+		val serialized = jsonSerializer.serializeProfile(ProfileConfig(name = "imported")).shouldBeRight()
+
+		ExportImportConfigUseCase(repository, registry, store).importProfile(serialized, ConfigFormat.JSON).shouldBeRight()
+
+		coVerify { store.clearProfileScope("gone") }
+		coVerify(exactly = 0) { store.clearProfileScope("work") }
+		coVerify(exactly = 0) { store.clearProfileScope("Work") }
+	}
+
+	test("importApp that renames a profile stored under another key drops a leftover scope of its new name before it saves") {
+		val repository: ConfigRepository = mockk()
+		val store = storeWithScopes("work", "Work", "Work2")
+		coEvery { repository.loadConfig() } returns AppConfig(profiles = mapOf("work" to ProfileConfig(name = "Work"))).right()
+		coEvery { repository.saveConfig(any()) } returns Unit.right()
+		val imported = AppConfig(profiles = mapOf("work" to ProfileConfig(name = "Work2")))
+		val serialized = jsonSerializer.serializeApp(imported).shouldBeRight()
+
+		ExportImportConfigUseCase(repository, registry, store).importApp(serialized, ConfigFormat.JSON).shouldBeRight()
+
+		coVerifyOrder {
+			store.clearProfileScope("Work2")
+			repository.saveConfig(match { it.profiles["work"]?.name == "Work2" })
+			store.clearProfileScope("Work")
+		}
+		coVerify(exactly = 0) { store.clearProfileScope("work") }
 	}
 })

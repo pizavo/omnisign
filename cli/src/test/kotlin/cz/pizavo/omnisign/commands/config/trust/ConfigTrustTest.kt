@@ -7,6 +7,7 @@ import cz.pizavo.omnisign.Omnisign
 import cz.pizavo.omnisign.domain.model.config.AppConfig
 import cz.pizavo.omnisign.domain.model.config.ProfileConfig
 import cz.pizavo.omnisign.domain.model.config.TrustedCertificateType
+import cz.pizavo.omnisign.domain.model.error.ConfigurationError
 import cz.pizavo.omnisign.domain.model.error.TrustStoreError
 import cz.pizavo.omnisign.domain.model.trust.TrustScope
 import cz.pizavo.omnisign.domain.model.trust.TrustedCertificate
@@ -35,7 +36,8 @@ import kotlin.time.Instant
  * as does every failure of the store itself. A store that cannot be read is reported as such, not as
  * a prefix that matched nothing, which would send the user looking for a typo. A `--profile` that names
  * no profile is refused before the store is touched, so a mistyped name never leaves certificates that a
- * profile created later under it would trust.
+ * profile created later under it would trust; so is one given while the configuration cannot be read, with
+ * the error that names the file.
  */
 class ConfigTrustTest : FunSpec({
 
@@ -142,7 +144,7 @@ class ConfigTrustTest : FunSpec({
 	}
 
 	test("add, list and remove refuse a --profile that names no profile, and leave the store alone") {
-		coEvery { configRepository.getCurrentConfig() } returns AppConfig(profiles = mapOf("work" to ProfileConfig(name = "work")))
+		coEvery { configRepository.loadConfig() } returns AppConfig(profiles = mapOf("work" to ProfileConfig(name = "work"))).right()
 
 		val results = listOf(
 			listOf("config", "trust", "add", "--cert", certificateFile.absolutePath, "--profile", "wrok"),
@@ -159,8 +161,30 @@ class ConfigTrustTest : FunSpec({
 		coVerify(exactly = 0) { trustStore.remove(any(), any()) }
 	}
 
+	test("add, list and remove with a --profile stop with the error naming the configuration file when it cannot be read, and leave the store alone") {
+		val path = "/home/user/.config/omnisign/config.json"
+		coEvery { configRepository.loadConfig() } returns
+			ConfigurationError.unreadable(path, details = "Unexpected JSON token at offset 0").left()
+		coEvery { configRepository.getCurrentConfig() } returns AppConfig()
+
+		val results = listOf(
+			listOf("config", "trust", "add", "--cert", certificateFile.absolutePath, "--profile", "work"),
+			listOf("config", "trust", "list", "--profile", "work"),
+			listOf("config", "trust", "remove", "sha256-1a", "--profile", "work"),
+		).map { Omnisign().test(it) }
+
+		for (result in results) {
+			result.statusCode shouldBe 1
+			result.stderr shouldContain "The configuration file $path cannot be read"
+			result.stderr shouldNotContain "does not exist"
+		}
+		coVerify(exactly = 0) { trustStore.add(any(), any(), any(), any()) }
+		coVerify(exactly = 0) { trustStore.list(any()) }
+		coVerify(exactly = 0) { trustStore.remove(any(), any()) }
+	}
+
 	test("add stores a certificate in the scope of a profile that exists") {
-		coEvery { configRepository.getCurrentConfig() } returns AppConfig(profiles = mapOf("work" to ProfileConfig(name = "work")))
+		coEvery { configRepository.loadConfig() } returns AppConfig(profiles = mapOf("work" to ProfileConfig(name = "work"))).right()
 		coEvery { trustStore.add(TrustScope.Profile("work"), any(), TrustedCertificateType.ANY, any()) } returns
 			trusted("sha256-1a2b3c").right()
 
@@ -173,7 +197,7 @@ class ConfigTrustTest : FunSpec({
 	}
 
 	test("list shows the certificates in the scope of a profile that exists") {
-		coEvery { configRepository.getCurrentConfig() } returns AppConfig(profiles = mapOf("work" to ProfileConfig(name = "work")))
+		coEvery { configRepository.loadConfig() } returns AppConfig(profiles = mapOf("work" to ProfileConfig(name = "work"))).right()
 		coEvery { trustStore.list(TrustScope.Profile("work")) } returns listOf(trusted("sha256-1a2b3c")).right()
 
 		val result = Omnisign().test(listOf("config", "trust", "list", "--profile", "work"))
@@ -184,7 +208,7 @@ class ConfigTrustTest : FunSpec({
 	}
 
 	test("remove removes a certificate from the scope of a profile that exists") {
-		coEvery { configRepository.getCurrentConfig() } returns AppConfig(profiles = mapOf("work" to ProfileConfig(name = "work")))
+		coEvery { configRepository.loadConfig() } returns AppConfig(profiles = mapOf("work" to ProfileConfig(name = "work"))).right()
 		coEvery { trustStore.list(TrustScope.Profile("work")) } returns listOf(trusted("sha256-1a2b3c")).right()
 		coEvery { trustStore.remove(TrustScope.Profile("work"), "sha256-1a2b3c") } returns Unit.right()
 

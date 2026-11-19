@@ -50,8 +50,8 @@ import kotlin.io.path.writeText
 /**
  * Verifies [FileConfigRepository] file-based persistence: creation of defaults, round-trip
  * save/load, reads that return what another program saved since the last one, the fallback for a
- * file that cannot be read to the last configuration read or to the defaults, the refusal to save
- * over such a file, the atomic replacement of the file on a save, the details its errors give, the
+ * file that cannot be read to the last configuration read or to the defaults, the load error that
+ * names such a file, the refusal to save over it, the atomic replacement of the file on a save, the details its errors give, the
  * dispatcher the file access runs on, and the lock [FileConfigRepository.setActiveProfile] holds from
  * its read to its save.
  *
@@ -88,6 +88,12 @@ class FileConfigRepositoryTest : FunSpec({
 
 	fun unreadable(path: Path): LocalizableText =
 		LocalizableText.of(MessageKey.CONFIG_UNREADABLE_NOT_OVERWRITTEN, path.toAbsolutePath().toString())
+
+	/**
+	 * The message of a load that finds the configuration file at [path] but cannot read or decode it.
+	 */
+	fun cannotBeRead(path: Path): LocalizableText =
+		LocalizableText.of(MessageKey.CONFIG_UNREADABLE, path.toAbsolutePath().toString())
 
 	fun canCreateSymbolicLinks(): Boolean {
 		val probe = createTempDirectory("symlink-probe")
@@ -130,12 +136,13 @@ class FileConfigRepositoryTest : FunSpec({
 		loaded.profiles.shouldContainKey("test")
 	}
 
-	test("loadConfig returns LoadFailed for corrupt JSON and leaves the file as it was") {
+	test("loadConfig returns LoadFailed naming the file for corrupt JSON, and leaves the file as it was") {
 		val path = fileWith("corrupt", "{{{invalid json")
 
 		val repo = repoAtPath(path)
 		val error = repo.loadConfig().shouldBeLeft()
 			.shouldBeInstanceOf<ConfigurationError.LoadFailed>()
+		error.text shouldBe cannotBeRead(path)
 		error.details shouldBe error.cause.shouldBeInstanceOf<SerializationException>().message
 		path.readText() shouldBe "{{{invalid json"
 	}
@@ -211,7 +218,7 @@ class FileConfigRepositoryTest : FunSpec({
 		path.writeText("not valid json")
 
 		repo.getCurrentConfig() shouldBe config
-		repo.loadConfig().shouldBeLeft().shouldBeInstanceOf<ConfigurationError.LoadFailed>()
+		repo.loadConfig().shouldBeLeft().shouldBeInstanceOf<ConfigurationError.LoadFailed>().text shouldBe cannotBeRead(path)
 		repo.saveConfig(config).shouldBeLeft().shouldBeInstanceOf<ConfigurationError.SaveFailed>().text shouldBe
 			unreadable(path)
 		path.readText() shouldBe "not valid json"
@@ -280,6 +287,7 @@ class FileConfigRepositoryTest : FunSpec({
 		try {
 			val loadError = repo.loadConfig().shouldBeLeft()
 			loadError.shouldBeInstanceOf<ConfigurationError.LoadFailed>()
+			loadError.text shouldBe cannotBeRead(path)
 			loadError.cause.shouldBeInstanceOf<AccessDeniedException>()
 			loadError.details shouldBe "AccessDeniedException"
 

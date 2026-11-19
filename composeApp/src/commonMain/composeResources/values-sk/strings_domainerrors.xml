@@ -57,6 +57,7 @@
 	<string name="err_truststore_index_unreadable">Index úložiska dôvery %1$s nemožno prečítať, preto sú dôveryhodné certifikáty ponechané bez zmeny a žiadny z nich sa nepoužíva. Ak ho zapísala novšia verzia OmniSign, aktualizujte na ňu; inak súbor obnovte zo zálohy alebo presuňte inam priečinok, v ktorom je, a začnite odznova bez dôveryhodných certifikátov.</string>
 	<string name="err_config_load_failed">Nepodarilo sa načítať konfiguráciu</string>
 	<string name="err_config_save_failed">Nepodarilo sa uložiť konfiguráciu</string>
+	<string name="err_config_unreadable">Konfiguračný súbor %1$s nemožno prečítať. Súbor opravte alebo ho presuňte inam a začnite odznova s predvolenými hodnotami.</string>
 	<string name="err_config_unreadable_not_overwritten">Konfiguračný súbor %1$s nemožno prečítať, preto zmena nebola uložená. Súbor opravte alebo ho presuňte inam a začnite odznova s predvolenými hodnotami.</string>
 	<string name="err_config_read_only">Konfiguračný súbor %1$s je iba na čítanie, preto zmena nebola uložená.</string>
 	<string name="err_config_serialize_failed">Nepodarilo sa serializovať konfiguráciu do %1$s</string>

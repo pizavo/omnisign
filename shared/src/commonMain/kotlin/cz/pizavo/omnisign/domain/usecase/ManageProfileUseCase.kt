@@ -41,9 +41,10 @@ class ManageProfileUseCase(
      * removed profile of that name. When that fails, nothing is saved.
      *
      * Which profiles exist is read with [ConfigRepository.loadConfig], which fails when the stored
-     * configuration cannot be read, rather than with [ConfigRepository.getCurrentConfig], which would fall
-     * back on the defaults and so make every profile's scope look orphaned. When the read fails, nothing is
-     * dropped or saved, and its error is returned.
+     * configuration cannot be read. [ConfigRepository.getCurrentConfig] would fall back on the configuration
+     * last read, or on the defaults, with no profiles, when none was read, as in a fresh CLI process, and
+     * every stored profile's scope would then look orphaned. When the read fails, nothing is dropped or
+     * saved, and its error is returned.
      *
      * @param profile The profile to add or replace.
      * @return Unit on success or an error.
@@ -66,11 +67,14 @@ class ManageProfileUseCase(
      * the removed profile's among them, as [clearOrphanedProfileScopes] describes. When that fails, the
      * profile stays removed and the error is returned; the scope is dropped when a profile is next created.
      *
+     * The stored profiles are read with [ConfigRepository.loadConfig], as [upsert] reads them, so when the
+     * stored configuration cannot be read, nothing is saved or dropped, and the read's error is returned.
+     *
      * @param name The profile name to remove.
      * @return Unit on success or an error if the profile does not exist.
      */
     suspend fun remove(name: String): OperationResult<Unit> {
-        val current = configRepository.getCurrentConfig()
+        val current = configRepository.loadConfig().getOrElse { return it.left() }
         if (!current.profiles.containsKey(name)) {
             return ConfigurationError.profileNotFound(name).left()
         }
@@ -104,11 +108,15 @@ class ManageProfileUseCase(
     /**
      * Retrieve a single profile by name.
      *
+     * The profile is looked up in the configuration [ConfigRepository.loadConfig] reads, so when the stored
+     * configuration cannot be read, the read's error is returned rather than a report that the profile does
+     * not exist.
+     *
      * @param name The profile name to look up.
      * @return The [ProfileConfig] on success or an error if the profile does not exist.
      */
     suspend fun get(name: String): OperationResult<ProfileConfig> {
-        val current = configRepository.getCurrentConfig()
+        val current = configRepository.loadConfig().getOrElse { return it.left() }
         return current.profiles[name]?.right()
             ?: ConfigurationError.profileNotFound(name).left()
     }

@@ -37,11 +37,13 @@ above.
 
 If the file exists but cannot be read — a hand edit left it invalid, say, or a newer OmniSign
 version wrote a value this one does not know — `config show` exits with status 1 because the
-configuration cannot be loaded, and other commands run with the default settings, so
-`config profile show`, for one, finds no profile. A command that would change the configuration
-exits with status 1 and leaves the file as it is. Fix the file, or move it elsewhere to start over
-from the defaults. A save replaces the file in one step, so a save cut short by a crash or a full
-disk leaves the previous configuration in place.
+configuration cannot be loaded, and so do the commands that look a profile up in it:
+`config profile show` and `edit`, and the `config trust` commands given `--profile`. The error
+names the file. Other commands run with the default settings, so `config profile list`, for one,
+lists no profile. A command that would change the configuration exits with status 1 and leaves the
+file as it is. Fix the file, or move it elsewhere to start over from the defaults. A save replaces
+the file in one step, so a save cut short by a crash or a full disk leaves the previous
+configuration in place.
 
 ## `config show`
 

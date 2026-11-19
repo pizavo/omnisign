@@ -157,6 +157,9 @@ internal object EnglishMessages {
 			"Failed to load configuration"
 		MessageKey.CONFIG_SAVE_FAILED ->
 			"Failed to save configuration"
+		MessageKey.CONFIG_UNREADABLE ->
+			"The configuration file %1\$s cannot be read. " +
+				"Fix the file, or move it elsewhere to start over from the defaults."
 		MessageKey.CONFIG_UNREADABLE_NOT_OVERWRITTEN ->
 			"The configuration file %1\$s cannot be read, so the change was not saved. " +
 				"Fix the file, or move it elsewhere to start over from the defaults."

@@ -182,12 +182,13 @@ suspend fun TrustStore.clearOrphanedProfileScopes(profileNames: Set<String>): Op
 }
 
 /**
- * The names of the profile trust scopes that the profiles of this map, keyed as
- * [cz.pizavo.omnisign.domain.model.config.AppConfig.profiles] is, own: each key, which the CLI's
- * `config trust` commands check a profile name against, and each profile's own [ProfileConfig.name],
- * whose scope signing and validation resolve. A profile created through the profile use case is keyed by
- * its name, but one in a configuration edited by hand or imported may be keyed otherwise, and then both
- * scopes are its own, so [clearOrphanedProfileScopes] keeps both.
+ * The names of the profile trust scopes that the profiles in this map own, the map being keyed as
+ * [cz.pizavo.omnisign.domain.model.config.AppConfig.profiles] is.
+ *
+ * A profile owns two scopes: that of its key, by which the CLI's `config trust` commands look a profile
+ * up, and that of its [ProfileConfig.name], by which signing and validation resolve its trust. A profile
+ * created through the profile use case is keyed by its name, so the two are one; in a configuration
+ * edited by hand or imported they may differ, and [clearOrphanedProfileScopes] then keeps both.
  *
  * @return The names of the scopes the profiles own.
  */
