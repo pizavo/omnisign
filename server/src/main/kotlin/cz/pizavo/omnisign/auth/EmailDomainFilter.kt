@@ -24,7 +24,9 @@ import java.net.IDN
  * lower-cased), so an internationalised domain matches its `xn--` spelling. Ignoring case
  * character by character instead would fold lookalikes such as the dotless `ı` of
  * `fabrıkam.com`, a different and registrable domain, onto `fabrikam.com`. A domain or entry
- * that is no valid host name matches nothing.
+ * that is no valid host name matches nothing, and
+ * [validateAuthConfig][cz.pizavo.omnisign.config.validateAuthConfig] refuses such an entry at
+ * startup (see [isMatchableEmailDomainEntry]).
  *
  * Java's conversion follows IDNA2003, which rewrites a few characters that today's IDNA2008
  * registries keep: `ß` becomes `ss`, the final sigma `ς` becomes `σ`, and the zero-width
@@ -35,8 +37,8 @@ import java.net.IDN
  *
  * Empty and missing [allowedDomains] are not handled here — they are rejected at
  * server startup so the filter can rely on receiving a deliberate, non-empty
- * operator choice. See `OidcProviderConfig.allowedEmailDomains` for the
- * configuration contract.
+ * operator choice. So are `"*"` beside other entries and an entry no address can
+ * match. See `OidcProviderConfig.allowedEmailDomains` for the configuration contract.
  *
  * @param email The user's email address resolved from IdP claims, or `null` when the
  *   IdP did not supply one (e.g. a GitHub user with private email, or an IdP that does
@@ -52,6 +54,22 @@ internal fun isEmailDomainAllowed(email: String?, allowedDomains: List<String>):
     val domain = asciiDomain(email.substringAfterLast("@", missingDelimiterValue = "")) ?: return false
     return allowedDomains.any { asciiDomain(it) == domain }
 }
+
+/**
+ * Whether [entry], one entry of a provider's `allowedEmailDomains`, is one [isEmailDomainAllowed]
+ * can match an address to: the wildcard `"*"`, or a domain name that converts to the ASCII form
+ * the comparison uses and does not end with a dot, as no address's domain does.
+ *
+ * [validateAuthConfig][cz.pizavo.omnisign.config.validateAuthConfig] refuses any other entry at
+ * startup, since it would admit nobody: `"@contoso.com"`, `"*.contoso.com"`,
+ * `"https://contoso.com"` and `" contoso.com"` among them, and a domain the conversion would
+ * rewrite into another, such as `"claß.com"`, which matches only in its `xn--` spelling.
+ *
+ * @param entry The configured entry, as written.
+ * @return `true` when some address can match [entry].
+ */
+internal fun isMatchableEmailDomainEntry(entry: String): Boolean =
+    entry == "*" || (!entry.endsWith(".") && asciiDomain(entry) != null)
 
 /**
  * Convert [domain] to the lower-case ASCII form DNS uses for it.

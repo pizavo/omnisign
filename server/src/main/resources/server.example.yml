@@ -109,7 +109,9 @@ development: false
 #     #   allowedEmailDomains: ["*"]                    # explicit allow-all (deliberate choice)
 #     #   allowedEmailDomains: ["yourcompany.com"]      # restrict to one domain
 #     #   allowedEmailDomains: ["a.com", "b.org"]       # restrict to several
-#     # An empty list ([]) and a missing field are both rejected at server startup.
+#     # An empty list ([]) and a missing field are both rejected at server startup, and so
+#     # are "*" beside other entries and an entry that is not a bare domain, such as
+#     # "@yourcompany.com", "*.yourcompany.com" or "https://yourcompany.com".
 #     # A concrete list also requires an address the identity provider marks verified
 #     # (email_verified, or the per-provider ways shown below); a login without that is
 #     # refused with 403 EMAIL_NOT_VERIFIED. For an IdP that sends no flag although every
