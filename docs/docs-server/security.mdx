@@ -53,7 +53,10 @@ an entry in `proxy.trusted` (literal IPs or CIDRs; hostnames and `*` are rejecte
 reaching the Ktor port directly cannot spoof its IP. The server reads the header's entries, from all
 of its lines, from the right, skips each entry that is in `proxy.trusted`, and takes the first one
 that is not as the client's IP. An entry that a client writes itself, ahead of the ones its proxies
-append, therefore never counts. If an entry the server reads on the way is not an IP address, with
+append, therefore never counts. When every entry is in `proxy.trusted`, the leftmost one is taken, as
+for a request from inside the trusted network. List only your proxies' addresses there: a client whose
+own address falls inside `proxy.trusted` is skipped like a proxy, so whatever it writes to the left of
+its address is taken as its IP. If an entry the server reads on the way is not an IP address, with
 or without a port, it ignores the header and counts the request against the proxy's IP.
 `X-Forwarded-Proto` and `X-Forwarded-Host` are deliberately **not** consumed; use
 `OMNISIGN_EXTERNAL_URL` to tell the server its public scheme and host. `proxy.enabled: true` requires

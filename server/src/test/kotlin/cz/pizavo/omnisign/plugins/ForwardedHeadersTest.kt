@@ -94,7 +94,7 @@ class ForwardedHeadersTest : FunSpec({
 			response.substringAfter(' ').substringBefore(' ').toInt() to response.substringAfter("\r\n\r\n")
 		}
 
-	test("the client is the rightmost entry that is not a trusted proxy's, with every trusted proxy on the way skipped") {
+	test("the client is the rightmost entry that is not a trusted proxy's, every trusted proxy on the way skipped") {
 		clientOf(listOf("198.51.100.1, 203.0.113.7, 192.0.2.10, 10.1.2.3"), "10.0.0.0/8", "192.0.2.10") shouldBe
 			"203.0.113.7"
 	}
@@ -140,15 +140,17 @@ class ForwardedHeadersTest : FunSpec({
 	test("parseForwardedEntry refuses hostnames, zones and every other form that is not an address") {
 		val entries = listOf(
 			"unknown", "proxy.example", "_hidden", "foo:bar", "203.0.113", "999.0.113.7", "203.0.113.7:",
-			"203.0.113.7:port", "fe80::1%eth0", "[fe80::1%eth0]", "[2001:db8::7", "[2001:db8::7]x", "2001:db8::7]:443",
+			"203.0.113.7:port", "fe80::1%eth0", "fe80::1%1", "[fe80::1%eth0]", "[2001:db8::7", "[2001:db8::7]x",
+			"2001:db8::7]:443",
 		)
 		for (entry in entries) withClue(entry) { parseForwardedEntry(entry).shouldBeNull() }
 	}
 
-	test("on Netty, behind a trusted proxy, the call's origin is the client the header names, read from all its lines") {
+	test("on Netty, behind a trusted proxy, the call's origin is the client the header names, from all its lines") {
 		withServer(listOf("127.0.0.1")) { port ->
 			send(port, "/address", "198.51.100.1, 198.51.100.2", "203.0.113.7") shouldBe (ok to "203.0.113.7")
 			send(port, "/host", "198.51.100.1, 198.51.100.2", "203.0.113.7") shouldBe (ok to "203.0.113.7")
+			send(port, "/address", "203.0.113.7", "127.0.0.1") shouldBe (ok to "203.0.113.7")
 			send(port, "/address", "203.0.113.7:4711") shouldBe (ok to "203.0.113.7")
 		}
 	}
@@ -163,7 +165,7 @@ class ForwardedHeadersTest : FunSpec({
 		}
 	}
 
-	test("on Netty, a header from a trusted proxy that names no client is logged at debug level with the proxy's address") {
+	test("on Netty, a trusted proxy's header that names no client is logged at debug level with the proxy's address") {
 		val appender = ListAppender<ILoggingEvent>().apply { start() }
 		val plugins = LoggerFactory.getLogger("cz.pizavo.omnisign.plugins") as Logger
 		val level = plugins.level
@@ -183,7 +185,7 @@ class ForwardedHeadersTest : FunSpec({
 		logged.formattedMessage shouldContain "'127.0.0.1'"
 	}
 
-	test("on Netty, behind a trusted proxy, a client that writes a new entry on every request still runs out of its quota, and another client has its own") {
+	test("on Netty, behind a trusted proxy, new entries do not refill a client's quota, and another has its own") {
 		withServer(listOf("127.0.0.1"), authLimit = 2) { port ->
 			(1..3).map { send(port, "/limited", "198.51.100.$it, 203.0.113.7").first } shouldBe
 				listOf(ok, ok, tooManyRequests)
@@ -191,7 +193,7 @@ class ForwardedHeadersTest : FunSpec({
 		}
 	}
 
-	test("on Netty, a peer that is no trusted proxy does not reset its quota by sending a new X-Forwarded-For every time") {
+	test("on Netty, a peer that is no trusted proxy does not reset its quota with a new X-Forwarded-For each time") {
 		withServer(listOf("10.0.0.0/8"), authLimit = 2) { port ->
 			(1..3).map { send(port, "/limited", "203.0.113.$it").first } shouldBe listOf(ok, ok, tooManyRequests)
 		}
@@ -199,8 +201,8 @@ class ForwardedHeadersTest : FunSpec({
 
 	test("on Netty, behind a trusted proxy, every spelling of one address draws on one quota") {
 		withServer(listOf("127.0.0.1"), authLimit = 2) { port ->
-			listOf("2001:db8::7", "2001:DB8:0:0::7", "[2001:db8::7]:443").map { send(port, "/limited", it).first } shouldBe
-				listOf(ok, ok, tooManyRequests)
+			val spellings = listOf("2001:db8::7", "2001:DB8:0:0::7", "[2001:db8::7]:443")
+			spellings.map { send(port, "/limited", it).first } shouldBe listOf(ok, ok, tooManyRequests)
 		}
 	}
 })

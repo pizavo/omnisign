@@ -26,8 +26,8 @@ private val logger = KotlinLogging.logger {}
  * The narrow surface is the M-7 fix: the previous flat `proxyMode: true` install of
  * Ktor's `XForwardedHeaders` accepted forwarded headers from any TCP peer, which let an
  * attacker reaching the Ktor port directly (or sharing the same LAN as a
- * misconfigured deployment) spoof their effective IP for rate-limiting and audit
- * logging purposes. The TCP-peer check is enforced application-side in addition to —
+ * misconfigured deployment) spoof the address the rate limiter keys them on, the one
+ * reader of the call's origin. The TCP-peer check is enforced application-side in addition to —
  * not instead of — OS-level network restrictions.
  *
  * Only `X-Forwarded-For` is honored, and the client's address is the one
