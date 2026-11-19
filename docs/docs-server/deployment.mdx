@@ -167,6 +167,7 @@ Environment=OMNISIGN_SERVER_CONFIG=/etc/omnisign/server.yml
 EnvironmentFile=/etc/omnisign/secrets.env
 ExecStart=/opt/omnisign/bin/server
 Restart=on-failure
+PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
@@ -178,6 +179,11 @@ it the first refresh-token write fails. `trustStoreDir` likewise resolves relati
 `WorkingDirectory` when left unset. The `EnvironmentFile` must carry `OMNISIGN_JWT_SECRET` and
 `OMNISIGN_OAUTH_NONCE_SECRET` when auth is enabled; systemd reads it as root before dropping to
 `User=omnisign`, so root-owned mode `600` is correct.
+
+The server keeps each uploaded document in a temporary file, which only `User=omnisign` may read,
+until it has answered the request. `PrivateTmp=true` gives the service a `/tmp` of its own, which no
+other account on the host can list, and systemd removes it, with whatever a crash left in it, when
+the service stops.
 
 Instead of the `EnvironmentFile`, systemd can hand each secret to the server as a
 [credential](configuration#secrets-in-files), which keeps it out of the server's environment. Name

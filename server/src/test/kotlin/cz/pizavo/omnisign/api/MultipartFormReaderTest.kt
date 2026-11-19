@@ -13,6 +13,7 @@ import io.kotest.engine.spec.tempdir
 import io.kotest.matchers.collections.shouldBeEmpty
 import io.kotest.matchers.collections.shouldHaveSize
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldStartWith
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.ktor.client.request.forms.MultiPartFormDataContent
 import io.ktor.client.request.forms.formData
@@ -27,14 +28,17 @@ import kotlinx.coroutines.withContext
 import kotlinx.io.Buffer
 import java.io.File
 import java.io.IOException
+import java.nio.file.attribute.PosixFilePermission
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.io.path.getPosixFilePermissions
 import kotlin.random.Random
 
 /**
  * Verifies [MultipartFormReader]: what it reads from well-formed bodies, including ones written by
  * Ktor's client and ones that arrive a few bytes at a time, and that it holds a body to its limits,
  * refuses malformed ones and deletes the temporary file of a part it gives up on, or of a body its
- * caller stops waiting for.
+ * caller stops waiting for. On a file system with POSIX permissions, the temporary file it makes by
+ * default is one that only its owner may read or write.
  *
  * The limit on part headers is the reason the reader exists: Ktor's own parser keeps every header
  * line of a part, however many there are.
@@ -249,6 +253,26 @@ class MultipartFormReaderTest : FunSpec({
 
 		shouldThrow<CancellationException> { withContext(caller) { reader.readParts() } }
 		file.exists() shouldBe false
+	}
+
+	test("streams the file part, unless told otherwise, to a temporary file that only its owner may read or write").config(
+		enabledIf = { !System.getProperty("os.name").lowercase().contains("win") },
+	) {
+		val part = MultipartFormReader(
+			ByteReadChannel(filePart("contract.pdf", ByteArray(64)) + closing()),
+			BOUNDARY,
+			MAX_FILE_SIZE,
+			MAX_PARTS,
+			MAX_FIELD_BYTES,
+		).readParts().single().shouldBeInstanceOf<FilePartData>()
+
+		try {
+			part.file.name shouldStartWith "omnisign-upload-"
+			part.file.toPath().getPosixFilePermissions() shouldBe
+				setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE)
+		} finally {
+			part.file.delete()
+		}
 	}
 
 	test("passes on a failure of the body instead of reading it as the end of the body") {

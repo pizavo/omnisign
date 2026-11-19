@@ -18,6 +18,7 @@ import kotlinx.io.readByteArray
 import kotlinx.io.readString
 import java.io.File
 import kotlin.coroutines.cancellation.CancellationException
+import kotlin.io.path.createTempFile
 
 /**
  * Reads the parts of a `multipart/form-data` body from [body], holding at most [maxFieldBytes] of
@@ -31,7 +32,9 @@ import kotlin.coroutines.cancellation.CancellationException
  * longer than 8192 bytes, much as Ktor refuses one of 8192 bytes or more. It discards the preamble
  * and the spaces after a boundary as it reads them, streams the one file part to a temporary file
  * bounded by [maxFileSize], and stops reading at the closing boundary; the engine discards whatever
- * it has not read of the epilogue.
+ * it has not read of the epilogue. Documents uploaded for signing or validation are often
+ * confidential, so the temporary file is by default one that only the server's own account may read
+ * or write, wherever the file system has POSIX permissions.
  *
  * It reads bodies as browsers, curl and Ktor's client write them, following RFC 2046 and RFC 7578:
  * - A part ends at the next CRLF followed by `--` and the boundary. A client picks a boundary that
@@ -49,7 +52,10 @@ import kotlin.coroutines.cancellation.CancellationException
  * @param maxParts The most parts the body may have, the file included.
  * @param maxFieldBytes The most bytes that the form fields and the header blocks of all parts may
  *   take together.
- * @param createTempFile Creates the file that the file part is streamed to.
+ * @param createSpoolFile Creates the file that the file part is streamed to: by default a new file in
+ *   the system's temporary directory, made by [kotlin.io.path.createTempFile], which gives it the POSIX
+ *   permissions `rw-------`. [java.io.File.createTempFile] would leave it readable by every local account
+ *   under the usual umask.
  * @throws MalformedMultipartException If [boundary] is not 1 to 70 characters that RFC 2046 allows
  *   in a boundary, or ends with a space.
  */
@@ -59,7 +65,7 @@ internal class MultipartFormReader(
 	private val maxFileSize: Long,
 	private val maxParts: Int,
 	private val maxFieldBytes: Long,
-	private val createTempFile: () -> File = { File.createTempFile("omnisign-upload-", ".pdf") },
+	private val createSpoolFile: () -> File = { createTempFile("omnisign-upload-", ".pdf").toFile() },
 ) {
 
 	/**
@@ -278,7 +284,7 @@ internal class MultipartFormReader(
 	 * @param fileName The file name the part's `Content-Disposition` gives.
 	 */
 	private suspend fun readFilePart(name: String?, fileName: String): FilePartData {
-		val file = createTempFile()
+		val file = createSpoolFile()
 		try {
 			var size = 0L
 			val complete = file.outputStream().use { output ->
