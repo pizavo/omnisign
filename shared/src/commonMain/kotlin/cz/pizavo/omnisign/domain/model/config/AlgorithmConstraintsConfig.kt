@@ -36,10 +36,6 @@ import kotlinx.serialization.Serializable
  * ([cz.pizavo.omnisign.domain.service.AlgorithmExpirationChecker.DEFAULT_UPDATE_DATE],
  * `2026-02-01` in DSS 6.5.1) is used.
  *
- * @property expirationLevel Severity when an algorithm expired **before or on**
- *   [policyUpdateDate].  Null means inherit from the layer below.
- * @property expirationLevelAfterUpdate Severity when an algorithm expired **after**
- *   [policyUpdateDate].  Null means inherit from the layer below.
  * **Dates**
  *
  * Every date here is an ISO-8601 calendar date in the form `YYYY-MM-DD`, as

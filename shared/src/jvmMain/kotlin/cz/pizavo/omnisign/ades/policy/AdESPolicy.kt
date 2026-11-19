@@ -141,14 +141,16 @@ open class AdESPolicy {
 	/**
 	 * [text], a date in the form `YYYY-MM-DD` as [algorithmConstraintDate] reads it, written in
 	 * [format], the date format DSS reads the policy's dates with: midnight UTC of that day, which
-	 * is what DSS reads back. It is `null` when [text] is not such a date, and when [format] cannot
-	 * read back what it writes, as a policy whose `Format` is empty cannot, since DSS would read
-	 * that as no date either.
+	 * is what DSS reads back. It is `null` when [text] is not such a date, and when [format] does not
+	 * read what it writes back as that midnight, since DSS would then read another day or no date at
+	 * all: a policy whose `Format` is empty reads no date, and one whose `Format` is `yyyy` would
+	 * write `2027-12-31` as `2027`, which reads as the first day of 2027.
 	 */
 	private fun policyDate(text: String, format: SimpleDateFormat): String? {
 		val day = algorithmConstraintDate(text) ?: return null
-		val written = format.format(Date(day.toEpochDays().days.inWholeMilliseconds))
-		return written.takeIf { format.parseOrNull(it) != null }
+		val midnight = Date(day.toEpochDays().days.inWholeMilliseconds)
+		val written = format.format(midnight)
+		return written.takeIf { format.parseOrNull(it) == midnight }
 	}
 	
 	/**
@@ -246,10 +248,10 @@ open class AdESPolicy {
 		runCatching { DssEncryptionAlgorithm.forName(name) }.getOrNull()
 	
 	/**
-	 * Give [date], which [policyDate] wrote in [format] so that [format] reads it back, to every entry
-	 * in [entries] that ends after it or never ends, so no entry ends later than [date]. Dates are
-	 * compared as DSS reads them, through [format]; an entry whose date [format] cannot read never
-	 * ends, as DSS reads it.
+	 * Give [date], which [policyDate] wrote in [format] so that [format] reads it back as its day, to
+	 * every entry in [entries] that ends after it or never ends, so no entry ends later than [date].
+	 * Dates are compared as DSS reads them, through [format]; an entry whose date [format] cannot read
+	 * never ends, as DSS reads it.
 	 */
 	private fun capExpirationDates(entries: List<Algo>, date: String, format: SimpleDateFormat) {
 		val cap = format.parse(date)

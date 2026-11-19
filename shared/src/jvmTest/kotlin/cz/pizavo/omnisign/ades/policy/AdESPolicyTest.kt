@@ -38,6 +38,8 @@ import kotlin.time.Instant
  * which never stands in for a file that is missing or holds no validation policy. A date of the
  * constraints is written in the policy's own date format, and one that is not in the form
  * `YYYY-MM-DD` is passed over with a warning in the log, so DSS never reads it as no date at all.
+ * A date is written only where that format reads it back as the same day, whatever the JVM's
+ * default time zone.
  */
 class AdESPolicyTest : FunSpec({
 	
@@ -353,24 +355,59 @@ class AdESPolicyTest : FunSpec({
 		Instant.fromEpochMilliseconds(updateDate.time).toString().take(10) shouldBe "2030-01-01"
 	}
 
-	test("a policy whose date format cannot read back the date it writes takes no override and no update date") {
+	test("a policy whose date format cannot read back the day it writes takes no override and no update date") {
 		val xml = AdESPolicy::class.java.getResource("/policy/constraint.xml").shouldNotBeNull().readText()
-		val unreadable = xml.replace("Format=\"yyyy-MM-dd\"", "Format=\"\"")
-		unreadable shouldNotBe xml
-		val file = tempfile(suffix = ".xml").apply { writeText(unreadable) }
+		val constraints = AlgorithmConstraintsConfig(
+			policyUpdateDate = "2030-06-15",
+			expirationDateOverrides = mapOf("RSA:1900" to "2030-12-31", "RSA" to "2026-06-01", "MD2" to "2035-06-01"),
+		)
+		for (format in listOf("", "yyyy")) {
+			val changed = xml.replace("Format=\"yyyy-MM-dd\"", "Format=\"$format\"")
+			changed shouldNotBe xml
+			val file = tempfile(suffix = ".xml").apply { writeText(changed) }
+
+			val expirations = (policy.load(file, constraints) as EtsiValidationPolicy)
+				.cryptographic?.algoExpirationDate.shouldNotBeNull()
+
+			expirations.updateDate shouldBe "2026-02-01"
+			expirations.algos.filter { it.value == "RSA" }.map { it.date } shouldBe
+				(policy.load(file, null) as EtsiValidationPolicy).cryptographic?.algoExpirationDate.shouldNotBeNull()
+					.algos.filter { it.value == "RSA" }.map { it.date }
+			expirations.algos.none { it.value == "MD2" } shouldBe true
+		}
+	}
+
+	test("a policy whose date format holds only the year takes a date on the first day of a year") {
+		val xml = AdESPolicy::class.java.getResource("/policy/constraint.xml").shouldNotBeNull().readText()
+		val yearly = xml.replace("Format=\"yyyy-MM-dd\"", "Format=\"yyyy\"")
+		val file = tempfile(suffix = ".xml").apply { writeText(yearly) }
 		val constraints = AlgorithmConstraintsConfig(
 			policyUpdateDate = "2030-01-01",
-			expirationDateOverrides = mapOf("RSA:1900" to "2030-12-31", "RSA" to "2026-06-01", "MD2" to "2035-06-01"),
+			expirationDateOverrides = mapOf("MD2" to "2035-01-01"),
 		)
 
 		val expirations = (policy.load(file, constraints) as EtsiValidationPolicy)
 			.cryptographic?.algoExpirationDate.shouldNotBeNull()
 
-		expirations.updateDate shouldBe "2026-02-01"
-		expirations.algos.filter { it.value == "RSA" }.map { it.date } shouldBe
-			(policy.load(file, null) as EtsiValidationPolicy).cryptographic?.algoExpirationDate.shouldNotBeNull()
-				.algos.filter { it.value == "RSA" }.map { it.date }
-		expirations.algos.none { it.value == "MD2" } shouldBe true
+		expirations.updateDate shouldBe "2030"
+		expirations.algos.single { it.value == "MD2" }.date shouldBe "2035"
+	}
+
+	test("a date is written as the day it names whatever the JVM's default time zone") {
+		val original = TimeZone.getDefault()
+		val days = try {
+			listOf("America/New_York", "Pacific/Kiritimati").map { zone ->
+				TimeZone.setDefault(TimeZone.getTimeZone(zone))
+				val updated = policy.load(null, AlgorithmConstraintsConfig(policyUpdateDate = "2030-06-15"))
+					as EtsiValidationPolicy
+				digestExpiry(DigestAlgorithm.SHA1, mapOf("SHA1" to "2027-12-31")) to
+					updated.cryptographic?.algoExpirationDate?.updateDate
+			}
+		} finally {
+			TimeZone.setDefault(original)
+		}
+
+		days shouldBe List(2) { "2027-12-31" to "2030-06-15" }
 	}
 
 	test("an override whose date is not in the form YYYY-MM-DD leaves the date the policy holds") {
