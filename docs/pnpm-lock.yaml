@@ -216,10 +216,10 @@ importers:
         version: 5.2.0(685c97246c5a513e1514e232a0463f5b)
       docusaurus-plugin-sass:
         specifier: ^0.2.7
-        version: 0.2.7(9bd67d0cd94d2fbd1b93cd54de6f90f3)
+        version: 0.2.7(0e49fbeb4e991e553658a50ab36b4ff7)
       docusaurus-theme-openapi-docs:
         specifier: ^5.2.0
-        version: 5.2.0(@docusaurus/theme-common@3.10.2(2656f010b3bf1b67ba1fff1e350cb491))(@rspack/core@1.7.12)(@types/react@19.3.0)(docusaurus-plugin-openapi-docs@5.2.0(685c97246c5a513e1514e232a0463f5b))(docusaurus-plugin-sass@0.2.7(9bd67d0cd94d2fbd1b93cd54de6f90f3))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(redux@5.0.1)(supports-color@8.1.1)(webpack@5.112.2(@swc/core@1.16.21)(@swc/html@1.16.21)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.32)(svgo@3.3.5))
+        version: 5.2.0(@docusaurus/theme-common@3.10.2(2656f010b3bf1b67ba1fff1e350cb491))(@rspack/core@1.7.12)(@types/react@19.3.0)(docusaurus-plugin-openapi-docs@5.2.0(685c97246c5a513e1514e232a0463f5b))(docusaurus-plugin-sass@0.2.7(0e49fbeb4e991e553658a50ab36b4ff7))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(redux@5.0.1)(supports-color@8.1.1)(webpack@5.112.2(@swc/core@1.16.21)(@swc/html@1.16.21)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.32)(svgo@3.3.5))
       prism-react-renderer:
         specifier: ^2.4.1
         version: 2.4.1(react@19.3.1)
@@ -230,8 +230,8 @@ importers:
         specifier: ^19.3.1
         version: 19.3.1(react@19.3.1)
       sass:
-        specifier: ^1.107.1
-        version: 1.107.1
+        specifier: ^1.108.2
+        version: 1.108.2
     devDependencies:
       '@docusaurus/module-type-aliases':
         specifier: ^3.10.2
@@ -6311,8 +6311,8 @@ packages:
       webpack:
         optional: true
 
-  sass@1.107.1:
-    resolution: {integrity: sha512-aJ1/LvxOOb04YhmiBjzZn3jVwdHKol+OVhoMV6fFl02fF9T3i+5Mg9l/CnzqtM+NX5Jn5o3lAbs/ZJivTCLHfQ==}
+  sass@1.108.2:
+    resolution: {integrity: sha512-kugK8djotnG9HQRPTOf36asKYlxg8rWWsNLYHOgWDIVOiZQqlRfKBgF4XXM6kfw146kIDMvm57B4GIkvDSyTzA==}
     engines: {node: '>=20.19.0'}
     hasBin: true
 
@@ -11876,18 +11876,18 @@ snapshots:
       - '@types/json-schema'
       - encoding
 
-  docusaurus-plugin-sass@0.2.7(9bd67d0cd94d2fbd1b93cd54de6f90f3):
+  docusaurus-plugin-sass@0.2.7(0e49fbeb4e991e553658a50ab36b4ff7):
     dependencies:
       '@docusaurus/core': 3.10.2(@docusaurus/faster@3.10.2(@docusaurus/types@3.10.2(@swc/core@1.16.21)(@swc/html@1.16.21)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@8.1.1)(svgo@3.3.5))(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(html-minifier-terser@7.2.0)(postcss@8.5.32)(svgo@3.3.5))(@mdx-js/react@3.1.1(@types/react@19.3.0)(react@19.3.1))(@rspack/core@1.7.12)(@swc/core@1.16.21)(@swc/html@1.16.21)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(debug@4.4.3(supports-color@8.1.1))(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.32)(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(supports-color@8.1.1)(svgo@3.3.5)(typescript@7.0.2)
-      sass: 1.107.1
-      sass-loader: 16.0.8(@rspack/core@1.7.12)(sass@1.107.1)(webpack@5.112.2(@swc/core@1.16.21)(@swc/html@1.16.21)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.32)(svgo@3.3.5))
+      sass: 1.108.2
+      sass-loader: 16.0.8(@rspack/core@1.7.12)(sass@1.108.2)(webpack@5.112.2(@swc/core@1.16.21)(@swc/html@1.16.21)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.32)(svgo@3.3.5))
     transitivePeerDependencies:
       - '@rspack/core'
       - node-sass
       - sass-embedded
       - webpack
 
-  docusaurus-theme-openapi-docs@5.2.0(@docusaurus/theme-common@3.10.2(2656f010b3bf1b67ba1fff1e350cb491))(@rspack/core@1.7.12)(@types/react@19.3.0)(docusaurus-plugin-openapi-docs@5.2.0(685c97246c5a513e1514e232a0463f5b))(docusaurus-plugin-sass@0.2.7(9bd67d0cd94d2fbd1b93cd54de6f90f3))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(redux@5.0.1)(supports-color@8.1.1)(webpack@5.112.2(@swc/core@1.16.21)(@swc/html@1.16.21)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.32)(svgo@3.3.5)):
+  docusaurus-theme-openapi-docs@5.2.0(@docusaurus/theme-common@3.10.2(2656f010b3bf1b67ba1fff1e350cb491))(@rspack/core@1.7.12)(@types/react@19.3.0)(docusaurus-plugin-openapi-docs@5.2.0(685c97246c5a513e1514e232a0463f5b))(docusaurus-plugin-sass@0.2.7(0e49fbeb4e991e553658a50ab36b4ff7))(react-dom@19.3.1(react@19.3.1))(react@19.3.1)(redux@5.0.1)(supports-color@8.1.1)(webpack@5.112.2(@swc/core@1.16.21)(@swc/html@1.16.21)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.32)(svgo@3.3.5)):
     dependencies:
       '@docusaurus/theme-common': 3.10.2(2656f010b3bf1b67ba1fff1e350cb491)
       '@hookform/error-message': 2.0.1(react-dom@19.3.1(react@19.3.1))(react-hook-form@7.91.0(@types/react@19.3.0)(react@19.3.1))(react@19.3.1)
@@ -11898,7 +11898,7 @@ snapshots:
       copy-text-to-clipboard: 3.2.2
       crypto-js: 4.2.0
       docusaurus-plugin-openapi-docs: 5.2.0(685c97246c5a513e1514e232a0463f5b)
-      docusaurus-plugin-sass: 0.2.7(9bd67d0cd94d2fbd1b93cd54de6f90f3)
+      docusaurus-plugin-sass: 0.2.7(0e49fbeb4e991e553658a50ab36b4ff7)
       file-saver: 2.0.5
       lodash: 4.18.1
       pako: 3.0.3
@@ -11917,8 +11917,8 @@ snapshots:
       react-redux: 9.3.1(@types/react@19.3.0)(react@19.3.1)(redux@5.0.1)
       rehype-raw: 7.0.0
       remark-gfm: 4.0.1(supports-color@8.1.1)
-      sass: 1.107.1
-      sass-loader: 17.1.0(@rspack/core@1.7.12)(sass@1.107.1)(webpack@5.112.2(@swc/core@1.16.21)(@swc/html@1.16.21)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.32)(svgo@3.3.5))
+      sass: 1.108.2
+      sass-loader: 17.1.0(@rspack/core@1.7.12)(sass@1.108.2)(webpack@5.112.2(@swc/core@1.16.21)(@swc/html@1.16.21)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.32)(svgo@3.3.5))
       unist-util-visit: 5.2.0
       url: 0.11.4
       xml-formatter: 3.7.0
@@ -14904,21 +14904,21 @@ snapshots:
 
   safer-buffer@2.1.2: {}
 
-  sass-loader@16.0.8(@rspack/core@1.7.12)(sass@1.107.1)(webpack@5.112.2(@swc/core@1.16.21)(@swc/html@1.16.21)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.32)(svgo@3.3.5)):
+  sass-loader@16.0.8(@rspack/core@1.7.12)(sass@1.108.2)(webpack@5.112.2(@swc/core@1.16.21)(@swc/html@1.16.21)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.32)(svgo@3.3.5)):
     dependencies:
       neo-async: 2.6.2
     optionalDependencies:
       '@rspack/core': 1.7.12
-      sass: 1.107.1
+      sass: 1.108.2
       webpack: 5.112.2(@swc/core@1.16.21)(@swc/html@1.16.21)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.32)(svgo@3.3.5)
 
-  sass-loader@17.1.0(@rspack/core@1.7.12)(sass@1.107.1)(webpack@5.112.2(@swc/core@1.16.21)(@swc/html@1.16.21)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.32)(svgo@3.3.5)):
+  sass-loader@17.1.0(@rspack/core@1.7.12)(sass@1.108.2)(webpack@5.112.2(@swc/core@1.16.21)(@swc/html@1.16.21)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.32)(svgo@3.3.5)):
     optionalDependencies:
       '@rspack/core': 1.7.12
-      sass: 1.107.1
+      sass: 1.108.2
       webpack: 5.112.2(@swc/core@1.16.21)(@swc/html@1.16.21)(clean-css@5.3.3)(cssnano@6.1.2(postcss@8.5.32))(csso@5.0.5)(html-minifier-terser@7.2.0)(lightningcss@1.33.0)(postcss@8.5.32)(svgo@3.3.5)
 
-  sass@1.107.1:
+  sass@1.108.2:
     dependencies:
       chokidar: 5.0.0
       immutable: 5.1.9
